@@ -228,7 +228,7 @@ mod tagging {
 
     fn file(name: &str) -> FileEntry {
         FileEntry {
-            name: name.to_string(),
+            name: name.into(),
             path: PathBuf::from("/tmp").join(name),
             is_dir: false,
             is_symlink: false,

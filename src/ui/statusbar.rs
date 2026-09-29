@@ -23,9 +23,10 @@ pub fn view<'a, M: 'a>(panel: &'a PanelState, lang: Language) -> Element<'a, M> 
             .wrapping(text::Wrapping::None)
             .into()
     } else if let Some(entry) = panel.selected_entry() {
+        let name = entry.name.to_string_lossy().into_owned();
         row![
             container(
-                text(entry.name.as_str())
+                text(name)
                     .size(font_size::STATUS)
                     .wrapping(text::Wrapping::None)
             )

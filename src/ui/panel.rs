@@ -76,11 +76,10 @@ impl PanelState {
         visible_rows: usize,
     ) {
         self.path = path;
-        // A reload replaces the rows, so an index that pointed at a file may now
-        // point at a different one. Dropping the stale tags is the safe
-        // direction: a forgotten file in a copy is worse than a tag the user
-        // has to set again.
-        self.selection.retain_valid(entries.len());
+        // A reload replaces the rows. A tag whose name is still there stays; one
+        // whose file is gone is dropped — the safe direction, since a forgotten
+        // file in a copy is worse than a tag the user has to set again.
+        self.selection.retain_present(&entries);
         self.entries = entries;
         self.error = error;
         self.loading = false;
@@ -146,7 +145,9 @@ pub fn view<'a, M: Clone + 'a>(
         .skip(state.scroll_offset)
         .take(props.visible_rows)
         .map(|(index, entry)| {
-            let mark = state.selection.state_of(index, state.selected);
+            let mark = state
+                .selection
+                .state_of(index, &state.entries, state.selected);
             file_row(entry, mark, props.is_active, on_row_click(index))
         });
 
@@ -217,12 +218,16 @@ fn file_row<'a, M: Clone + 'a>(
         Font::MONOSPACE
     };
 
+    // Display only. The identity is `entry.name` as the filesystem spells it;
+    // this is the lossy form, computed here and thrown away. A name that is not
+    // valid UTF-8 shows as U+FFFD, which is what the platform's own file
+    // managers do.
     let name = if entry.is_dir && !entry.is_parent {
-        format!("/{}", entry.name)
+        format!("/{}", entry.name.to_string_lossy())
     } else if entry.is_symlink {
-        format!("~{}", entry.name)
+        format!("~{}", entry.name.to_string_lossy())
     } else {
-        entry.name.clone()
+        entry.name.to_string_lossy().into_owned()
     };
 
     let cell = |content: String| {
@@ -283,7 +288,7 @@ mod tests {
         let mut p = PanelState::new(PathBuf::from("/"));
         p.entries = (0..n)
             .map(|i| FileEntry {
-                name: format!("f{i}"),
+                name: format!("f{i}").into(),
                 path: PathBuf::from(format!("/f{i}")),
                 is_dir: false,
                 is_symlink: false,
@@ -325,7 +330,7 @@ mod tagging_tests {
 
     fn entry(name: &str, is_parent: bool) -> FileEntry {
         FileEntry {
-            name: name.to_string(),
+            name: name.into(),
             path: PathBuf::from(name),
             is_dir: true,
             is_symlink: false,
@@ -345,11 +350,11 @@ mod tagging_tests {
     #[test]
     fn tags_live_on_the_panel() {
         let mut p = panel_with(&[("..", true), ("a", false), ("b", false)]);
-        p.selected = 1;
-        p.selection.toggle(p.selected);
+        let name = p.entries[1].name.clone();
+        p.selection.toggle(&name);
 
-        assert!(p.selection.is_tagged(1));
-        assert!(!p.selection.is_tagged(2));
+        assert!(p.selection.is_tagged(&name));
+        assert!(!p.selection.is_tagged(&p.entries[2].name));
     }
 
     /// `..` is not taggable: copying a directory into itself is not a thing
@@ -357,47 +362,84 @@ mod tagging_tests {
     #[test]
     fn the_parent_entry_is_not_tagged() {
         let mut p = panel_with(&[("..", true), ("a", false)]);
-        p.selection.tag_all(p.entries.len(), &p.entries);
-        assert!(!p.selection.is_tagged(0));
-        assert!(p.selection.is_tagged(1));
+        p.selection.tag_all(&p.entries);
+        assert!(!p.selection.is_tagged(&p.entries[0].name));
+        assert!(p.selection.is_tagged(&p.entries[1].name));
     }
 
-    /// After a reload that shrinks the listing, tags pointing past the end are
-    /// dropped rather than silently addressing a different file.
+    /// The point of tags being names rather than positions: a reload that
+    /// reorders the rows keeps the tag on the same file. With indices, a tag on
+    /// "beta" would silently become a tag on whatever took position 2 — and F8
+    /// would delete that.
     #[test]
-    fn tags_outside_the_new_listing_are_dropped() {
-        let mut p = panel_with(&[("a", false), ("b", false), ("c", false), ("d", false)]);
-        p.selection.toggle(3);
-        assert!(p.selection.is_tagged(3));
+    fn a_reload_keeps_the_tag_on_the_same_file() {
+        let mut p = panel_with(&[("..", true), ("alpha", false), ("beta", false)]);
+        p.selection.toggle(&p.entries[2].name.clone());
 
-        // A reload with fewer entries, as after deleting a file.
+        // Same files, new order, one file gone.
         p.apply_listing(
             PathBuf::from("/tmp"),
-            vec![entry("a", false)],
+            vec![
+                entry("..", true),
+                entry("beta", false),
+                entry("gamma", false),
+            ],
             None,
             None,
             10,
         );
 
-        assert!(!p.selection.is_tagged(3), "a stale tag survived the reload");
-        assert!(p.selection.is_empty());
+        assert!(
+            p.selection.is_tagged(&std::ffi::OsString::from("beta")),
+            "the tag followed the position instead of the file"
+        );
+        assert_eq!(p.selection.len(), 1, "more than one row ended up tagged");
+
+        // And the file that was tagged is still the only tagged one: an
+        // index-based set would have moved the tag onto "..'s neighbour.
+        let tagged: Vec<String> = p
+            .entries
+            .iter()
+            .filter(|e| p.selection.is_tagged(&e.name))
+            .map(|e| e.name.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(tagged, vec!["beta".to_string()]);
     }
 
-    /// A tag inside the new range survives, so tagging one file and refreshing
-    /// the panel does not silently drop the selection.
+    /// A tag whose file is gone is dropped rather than left pointing at
+    /// whatever took the name.
+    #[test]
+    fn tags_for_vanished_files_are_dropped() {
+        let mut p = panel_with(&[("..", true), ("a", false), ("b", false), ("c", false)]);
+        p.selection.toggle(&p.entries[3].name.clone());
+        assert_eq!(p.selection.len(), 1);
+
+        p.apply_listing(
+            PathBuf::from("/tmp"),
+            vec![entry("..", true)],
+            None,
+            None,
+            10,
+        );
+
+        assert!(p.selection.is_empty(), "a tag for a deleted file survived");
+    }
+
+    /// A tag inside the new listing survives, so tagging one file and
+    /// refreshing the panel does not silently drop the selection.
     #[test]
     fn tags_inside_the_new_listing_survive() {
-        let mut p = panel_with(&[("a", false), ("b", false), ("c", false)]);
-        p.selection.toggle(1);
+        let mut p = panel_with(&[("..", true), ("a", false), ("b", false)]);
+        p.selection.toggle(&std::ffi::OsString::from("a"));
 
         p.apply_listing(
             PathBuf::from("/tmp"),
-            vec![entry("a", false), entry("b", false), entry("c", false)],
+            vec![entry("..", true), entry("a", false), entry("b", false)],
             None,
             None,
             10,
         );
 
-        assert!(p.selection.is_tagged(1));
+        assert!(p.selection.is_tagged(&std::ffi::OsString::from("a")));
     }
 }

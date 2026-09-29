@@ -310,17 +310,22 @@ impl App {
             Message::ToggleTag => {
                 let panel = self.active_panel_mut();
                 // The `..` entry is not a thing to copy, so it cannot be tagged.
-                if panel.selected_entry().is_some_and(|e| e.is_parent) {
+                let Some(entry) = panel.selected_entry() else {
+                    return Task::none();
+                };
+                if entry.is_parent {
                     return Task::none();
                 }
-                panel.selection.toggle(panel.selected);
+                let name = entry.name.clone();
+                panel.selection.toggle(&name);
                 Task::none()
             }
             Message::TagAll => {
+                // Split borrow: the set is filled while the entries are read.
                 let panel = self.active_panel_mut();
-                let len = panel.entries.len();
-                let entries = panel.entries.clone();
-                panel.selection.tag_all(len, &entries);
+                let mut selection = std::mem::take(&mut panel.selection);
+                selection.tag_all(&panel.entries);
+                panel.selection = selection;
                 Task::none()
             }
             Message::ClearTags => {
@@ -537,7 +542,7 @@ mod render_timing {
     fn entries(n: usize) -> Vec<FileEntry> {
         (0..n)
             .map(|i| FileEntry {
-                name: format!("file_{i}.txt"),
+                name: format!("file_{i}.txt").into(),
                 path: std::path::PathBuf::from(format!("/tmp/file_{i}.txt")),
                 is_dir: i % 5 == 0,
                 is_symlink: false,
@@ -922,7 +927,7 @@ impl App {
                 .iter()
                 .enumerate()
                 .map(|(i, name)| fs::FileEntry {
-                    name: (*name).to_string(),
+                    name: (*name).into(),
                     path: PathBuf::from("/home/test").join(name),
                     is_dir: i == 0 || name.ends_with('s') && i < 2,
                     is_symlink: false,
@@ -971,18 +976,25 @@ impl App {
         self.visible_rows = rows;
     }
 
+    /// Tags the row at `index`, addressed by position the way a keypress is.
     pub fn toggle_tag_for_test(&mut self, index: usize) {
-        self.left_panel.selection.toggle(index);
+        let Some(name) = self.left_panel.entries.get(index).map(|e| e.name.clone()) else {
+            return;
+        };
+        self.left_panel.selection.toggle(&name);
     }
 
     pub fn tag_all_for_test(&mut self) {
-        let len = self.left_panel.entries.len();
-        let entries = self.left_panel.entries.clone();
-        self.left_panel.selection.tag_all(len, &entries);
+        let mut selection = crate::selection::SelectionSet::new();
+        selection.tag_all(&self.left_panel.entries);
+        self.left_panel.selection = selection;
     }
 
     pub fn left_panel_selection_tagged_for_test(&self, index: usize) -> bool {
-        self.left_panel.selection.is_tagged(index)
+        self.left_panel
+            .entries
+            .get(index)
+            .is_some_and(|e| self.left_panel.selection.is_tagged(&e.name))
     }
 
     pub fn move_selection_for_test(&mut self, delta: isize) {
