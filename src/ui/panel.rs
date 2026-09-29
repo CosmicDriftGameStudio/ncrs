@@ -1,8 +1,6 @@
 //! File panel: the state type ([`PanelState`]) and a pure view function
 //! ([`view`]). The component owns no state; it lives in the app state and is
 //! only mutated from `App::update`.
-// reason: bounds in the signature are the short form this codebase uses
-#![allow(clippy::inline_trait_bounds)]
 use std::path::PathBuf;
 
 use iced::widget::{button, column, container, row, text, Column};
@@ -289,8 +287,6 @@ impl<'a, M: 'a> ApplyFrame<'a, M> for Column<'a, M> {
     clippy::panic,
     clippy::indexing_slicing
 )]
-// reason: a test module belongs next to what it tests
-#[allow(clippy::inline_modules)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -342,8 +338,6 @@ mod tests {
     clippy::panic,
     clippy::indexing_slicing
 )]
-// reason: a test module belongs next to what it tests
-#[allow(clippy::inline_modules)]
 #[cfg(test)]
 mod tagging_tests {
     use super::*;

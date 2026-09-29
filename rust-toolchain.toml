@@ -1,12 +1,18 @@
-# Pinned so a new stable cannot turn a green build red overnight.
+# Pinned to the version that builds, not to a guess about which one might.
 #
-# Only effective with rustup. Homebrew's rust ignores this file, so a local
-# "cargo test" can still run a different compiler than CI — install rustup
-# (`rustup default stable` plus this pin) if the two must agree.
+# The pin used to be 1.90, chosen because `thiserror` 2.0.x — which iced pulls
+# in — failed to compile on the newest compiler (E0392 in its `make_dispatch`
+# macro). That stopped being true: 1.98.1 builds this project, and so does every
+# version in between. The old pin had drifted into costing more than it saved:
+# clippy 1.90 does not know `inline_modules` or `inline_trait_bounds`, which
+# needed seventeen `#[allow]` attributes and a `-A unknown-lints` in CI to keep
+# the build green — workarounds for a compiler restriction that no longer
+# applies.
 #
-# Raise the pin deliberately, in its own commit. iced pulls thiserror, and
-# thiserror 2.0.x fails to build on the very newest compiler (E0392 in the
-# `make_dispatch` macro). CI hit exactly that with an unpinned `stable`.
+# Raise this deliberately, in its own commit, and check that CI is green on the
+# new one first. `softbuffer` and `thiserror` both bit once; the next dependency
+# may too, and that is the moment to pin again — with a comment saying what
+# broke, not a guess about what might.
 [toolchain]
-channel = "1.90.0"
+channel = "1.98.1"
 components = ["rustfmt", "clippy"]

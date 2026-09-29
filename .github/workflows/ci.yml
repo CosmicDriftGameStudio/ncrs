@@ -40,14 +40,7 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Clippy
-        # `-A unknown-lints` because the project pins clippy 1.90 and carries
-        # two `#[allow(clippy::...)]` attributes for lints that only exist in
-        # newer clippy (`inline_modules`, `inline_trait_bounds`). 1.90 rejects
-        # an unknown lint name as an error under -D warnings. The attributes are
-        # why the lints are off; without them the group reports 29+6 hits. Both
-        # come off the day the pin moves past 1.90, which rust-toolchain.toml
-        # asks to happen in a commit of its own.
-        run: cargo clippy --all-targets -- -D warnings -A unknown-lints
+        run: cargo clippy --all-targets -- -D warnings
 
       # Pixel comparisons are only meaningful where the reference images were
       # produced. Font rasterisation differs per operating system, so a

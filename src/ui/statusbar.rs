@@ -1,6 +1,4 @@
 //! Bottom bar: active path, selected entry info, or the last error.
-// reason: bounds in the signature are the short form this codebase uses
-#![allow(clippy::inline_trait_bounds)]
 use iced::widget::{container, row, text};
 use iced::{alignment, Element, Length};
 
@@ -98,8 +96,6 @@ fn format_error(error: &ReadError, path: &std::path::Path, lang: Language) -> St
     clippy::panic,
     clippy::indexing_slicing
 )]
-// reason: a test module belongs next to what it tests
-#[allow(clippy::inline_modules)]
 #[cfg(test)]
 mod tests {
     use super::*;

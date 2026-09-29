@@ -1,6 +1,4 @@
 //! Top bar: app name and keyboard shortcut hints.
-// reason: bounds in the signature are the short form this codebase uses
-#![allow(clippy::inline_trait_bounds)]
 
 use iced::widget::{container, row, text, Row};
 use iced::{alignment, Element, Font, Length};

@@ -108,8 +108,6 @@ impl std::error::Error for CreateDirError {}
     clippy::panic,
     clippy::indexing_slicing
 )]
-// reason: a test module belongs next to what it tests
-#[allow(clippy::inline_modules)]
 #[cfg(test)]
 mod tests {
     use super::*;

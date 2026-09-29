@@ -1,11 +1,5 @@
 //! Colors, spacing and reusable widget styles (dark, Norton Commander inspired).
 
-// `colors` and `spacing` are named groups on purpose: 31 call sites say
-// `theme::colors::SELECTED_BG` rather than reaching into a flat list, and the
-// module name is what says what the constant is for. Inline modules are the
-// Rust convention and this codebase follows it — tests next to what they test.
-#![allow(clippy::inline_modules)]
-
 use iced::widget::{button, container};
 use iced::{Background, Border, Color, Theme};
 

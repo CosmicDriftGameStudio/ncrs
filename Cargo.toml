@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 # Matches rust-toolchain.toml. One place decides the compiler; this makes the
 # requirement visible to anything reading the manifest instead of the file.
-rust-version = "1.90"
+rust-version = "1.98"
 description = "A Norton Commander style dual-panel file manager built with iced"
 license = "MIT"
 
@@ -157,14 +157,15 @@ default_numeric_fallback = "allow"
 # several of. Said again at the function, because the pattern looks risky.
 string_slice = "allow"
 
-# `inline_modules` off on purpose. A `#[cfg(test)] mod tests` next to the code
-# it tests is the Rust convention and the one this codebase follows; splitting
-# each test module into its own file would move a test away from what it
-# verifies. Same for the named groups in ui/theme.rs, where 31 call sites say
-# `theme::colors::SELECTED_BG` and the module name carries the meaning.
+# Inline modules stay inline. A `#[cfg(test)] mod tests` next to the code it
+# tests is the Rust convention and the one this codebase follows; splitting each
+# test module into its own file would move a test away from what it verifies.
+# Same for the named groups in ui/theme.rs, where 31 call sites read
+# theme::colors::SELECTED_BG and the module name says what the constant is for.
 #
-# The name cannot simply be listed here: 1.90, the pinned toolchain, does not
-# know `inline_modules` and treats an unknown lint name as an error on every
-# platform. An `#[allow]` at the item behaves differently — an unknown name there
-# is only a warning — which is why these two live as attributes and not here.
-# Both go back in this list when the pin moves past 1.90.
+# These two names only exist in clippy newer than the 1.90 this project used to
+# pin. The pin now matches the compiler that builds it, so listing them here is
+# what turns them off again — and the seventeen #[allow] attributes and the
+# -A unknown-lints flag they needed are gone with it.
+inline_modules = "allow"
+inline_trait_bounds = "allow"

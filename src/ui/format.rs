@@ -57,8 +57,6 @@ pub fn time(time: Option<SystemTime>) -> String {
     clippy::panic,
     clippy::indexing_slicing
 )]
-// reason: a test module belongs next to what it tests
-#[allow(clippy::inline_modules)]
 #[cfg(test)]
 mod tests {
     use super::*;
