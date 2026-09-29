@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 # Matches rust-toolchain.toml. One place decides the compiler; this makes the
 # requirement visible to anything reading the manifest instead of the file.
-rust-version = "1.90"
+rust-version = "1.98"
 description = "A Norton Commander style dual-panel file manager built with iced"
 license = "MIT"
 
@@ -114,7 +114,6 @@ print_stdout = "allow"
 
 # Style and taste, decided rather than defaulted into. Each of these was in the
 # list after enabling the group; what stays on is the list above this point.
-inline_modules = "allow"
 missing_trait_methods = "allow"
 module_name_repetitions = "allow"
 non_ascii_literal = "allow"
@@ -137,7 +136,6 @@ impl_trait_in_params = "allow"
 
 # `where T: X` on the same line as the item. Both are valid; the codebase uses
 # the short form and that is a decision, not an oversight.
-inline_trait_bounds = "allow"
 
 # `let _ = expr` to drop a must_use value. Clippy wants `let _x: T = expr`,
 # which is longer and says the same thing.
@@ -158,3 +156,16 @@ default_numeric_fallback = "allow"
 # the build with a context full of umlauts and an emoji, which strings.json has
 # several of. Said again at the function, because the pattern looks risky.
 string_slice = "allow"
+
+# Inline modules stay inline. A `#[cfg(test)] mod tests` next to the code it
+# tests is the Rust convention and the one this codebase follows; splitting each
+# test module into its own file would move a test away from what it verifies.
+# Same for the named groups in ui/theme.rs, where 31 call sites read
+# theme::colors::SELECTED_BG and the module name says what the constant is for.
+#
+# These two names only exist in clippy newer than the 1.90 this project used to
+# pin. The pin now matches the compiler that builds it, so listing them here is
+# what turns them off again — and the seventeen #[allow] attributes and the
+# -A unknown-lints flag they needed are gone with it.
+inline_modules = "allow"
+inline_trait_bounds = "allow"

@@ -3,6 +3,18 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Manual re-run, for when a release has to be rebuilt and republished
+  # without cutting a new tag.
+  #
+  # GitHub renders a branch picker for workflow_dispatch, so this can be
+  # started from any branch. The job guard below refuses anything that is not
+  # main or a v* tag, and the `release` environment refuses the deployment on
+  # top of that. Two gates, because write access is far easier to hand out
+  # than the signing key.
+  #
+  # A run started from a feature branch is reported by GitHub as "likely
+  # failed because of a workflow file issue", because every job in the file
+  # is skipped. That is the guard working, not a broken file.
   workflow_dispatch:
 
 permissions:
@@ -15,6 +27,22 @@ jobs:
   build:
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    # The build job runs before the environment-protected release job and
+    # produces what gets signed, so it needs the same guarantee: only main
+    # may be built for a release. A `workflow_dispatch` on some other branch
+    # would otherwise compile that branch and feed it to notarization, which
+    # turns a manual re-run into a signing oracle for whatever is on it.
+    #
+    # Only main or a release tag may be built. A workflow_dispatch can be
+    # started from any branch, and whatever is built here is what gets signed
+    # and notarized, so the ref has to be checked before the first compile —
+    # not after, when a binary already exists.
+    #
+    # Note that GitHub also starts this workflow on a plain branch push when
+    # the push touches this file, to validate it. On such a run both jobs are
+    # skipped, which GitHub reports as "likely failed because of a workflow
+    # file issue". That is this guard, not a syntax error.
+    if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
     strategy:
       fail-fast: false
       matrix:
@@ -96,7 +124,26 @@ jobs:
 
   release:
     needs: build
-    runs-on: ubuntu-latest
+    # The Apple secrets are only readable from inside this environment, and the
+    # environment's protection rules decide who may release. Without it, any
+    # account with write access could dispatch the workflow from a branch
+    # holding modified build.rs and have ncrs signed with the maintainer's
+    # certificate. Write access is a much easier thing to hand out than
+    # control of the signing key, so the workflow must not treat the two as
+    # equivalent.
+    #
+    # What the environment is configured to allow, on the repository:
+    #   - deployment branches: main only
+    #   - required reviewers: the maintainer
+    #   - prevent self-review: on
+    environment: release
+    # macOS, not ubuntu: notarization is what makes Gatekeeper let a user run
+    # the binary. `notarytool` and `stapler` ship only with the macOS runner, so
+    # the job that publishes and the job that signs have to be the same one —
+    # notarizing an archive on Linux and publishing it from another machine
+    # works, but the ticket has to be stapled to the binary before the tarball
+    # is built, and that needs the macOS tooling.
+    runs-on: macos-latest
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -110,10 +157,99 @@ jobs:
           done
           ls -la dist/
 
+      - name: Sign and notarize the macOS binaries
+        # Without this, Gatekeeper refuses the binary with "cannot be opened
+        # because it is from a developer who cannot be verified", and the only
+        # way out is System Settings > Privacy > Open Anyway. That is the
+        # first thing a new user sees, and it is why the file has to be
+        # notarized before it is uploaded, not after.
+        #
+        # A fork has no Apple secrets, so this is skipped rather than failing:
+        # a fork should be able to cut a release. The trade-off is stated in
+        # the summary so nobody reads "skipped" as "verified".
+        if: ${{ secrets.APPLE_CERTIFICATE_P12 != '' }}
+        env:
+          # base64, because a GitHub secret must be a single line and a
+          # base64 blob survives the copy-and-paste into the web form.
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          # A throwaway keychain: the runner is shared state, and leaving a
+          # private key behind in ~/.login would outlive the job.
+          KEYCHAIN=build.keychain-db
+          PASS=$(uuidgen)
+          security create-keychain -p "$PASS" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$PASS" "$KEYCHAIN"
+          security import <(echo "$APPLE_CERTIFICATE_P12" | base64 --decode) \
+            -k "$KEYCHAIN" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$PASS" "$KEYCHAIN" > /dev/null
+          security list-keychain -d user -s "$KEYCHAIN"
+          # shellcheck disable=SC2086
+          trap 'security delete-keychain "$KEYCHAIN"' EXIT
+
+          for archive in dist/ncrs-*-apple-darwin.tar.gz; do
+            [ -e "$archive" ] || continue
+            echo "::group::$(basename "$archive")"
+            workdir=$(mktemp -d)
+            tar -xzf "$archive" -C "$workdir"
+            # The archive holds a directory named after the target, so the
+            # binary sits one level down — never assume a flat layout.
+            dir=$(find "$workdir" -type d -name 'ncrs-*apple-darwin' | head -n 1)
+            binary="$dir/ncrs"
+            test -x "$binary" || { echo "::error::no binary in $archive"; exit 1; }
+
+            # --options runtime makes the hardened runtime mandatory, which
+            # the notary service requires. The identifier is stable across
+            # releases so an update replaces the app instead of duplicating it.
+            codesign --force --sign "$APPLE_TEAM_ID" \
+              --options runtime --timestamp \
+              --identifier dev.cosmicdrift.ncrs "$binary"
+            codesign --verify --strict --verbose=2 "$binary"
+
+            # The ticket goes onto the binary, not the archive: Gatekeeper
+            # inspects the file the user launches, and stapling is what makes
+            # that work with no network access.
+            xcrun notarytool submit "$binary" \
+              --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --wait --timeout 20m
+            xcrun stapler staple "$binary"
+            xcrun stapler validate "$binary"
+
+            # Repack, so the notarized binary is what users download. The
+            # checksum step below runs after this, so it covers this file.
+            tar -czf "$archive" -C "$workdir" "$(basename "$dir")"
+            rm -rf "$workdir"
+            echo "::endgroup::"
+          done
+
+          # Proof rather than hope: this is the same check the user's Mac
+          # makes, and it fails the job if the binary would be rejected.
+          for archive in dist/ncrs-*-apple-darwin.tar.gz; do
+            [ -e "$archive" ] || continue
+            workdir=$(mktemp -d); tar -xzf "$archive" -C "$workdir"
+            binary=$(find "$workdir" -name ncrs -type f | head -n 1)
+            echo "$(basename "$archive"): $(spctl -a -t exec -v "$binary" 2>&1)"
+            rm -rf "$workdir"
+          done
+
       - name: Checksums
+        # After notarization, never before: signing rewrites the binary, so a
+        # checksum computed earlier would describe a file nobody downloads.
+        #
+        # `shasum` rather than `sha256sum` — this job runs on a macOS runner,
+        # where the GNU spelling does not exist and the step would fail on the
+        # first file. The installer looks for both.
         run: |
           cd dist
-          sha256sum * > SHA256SUMS
+          shasum -a 256 * > SHA256SUMS
           cat SHA256SUMS
 
       - name: Publish release

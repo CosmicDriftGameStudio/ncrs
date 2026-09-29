@@ -1,15 +1,19 @@
 # cargo-deny configuration.
 #
 # The point is the license check: this project distributes under MIT, so every
-# dependency has to be permissive. The audit I ran when the tree was at 166
-# crates found one crate under Apache-2.0 OR GPL-2.0-only (self_cell, via
-# cosmic-text); a binary distributed under MIT takes the Apache option, so it is
-# allowed here — but the entry is written out so a change to it is a deliberate
-# decision rather than an accident.
+# dependency has to be permissive. A blanket allowance for the licenses below
+# would be a check that can never fail, so the two exceptions that exist are
+# named per crate and carry the reason.
 #
-# Run locally: cargo deny check
+# This replaced a prose audit in ROADMAP.md, which had looked at 166 crates
+# and was never run by anything. A check nobody runs is not a check.
+#
+# Run locally: cargo install cargo-deny && cargo deny check
 
 [graph]
+# All release targets, not just the host: a Windows-only crate is invisible to
+# `cargo tree` on Linux, and that is how clipboard-win and error-code got past
+# the original audit.
 targets = [
     { triple = "x86_64-unknown-linux-gnu" },
     { triple = "aarch64-unknown-linux-gnu" },
@@ -21,11 +25,24 @@ targets = [
 [advisories]
 version = 2
 yanked = "deny"
-# A duplicate advisory is noise; an unmaintained one is worth knowing about.
-ignore = []
+
+# RUSTSEC-2026-0192: ttf-parser is unmaintained and the author has said no
+# further fixes will come. It arrives transitively through cosmic-text ->
+# fontdb, and cosmic-text is how iced lays out text, so there is no version of
+# iced that avoids it and no upgrade that fixes it.
+#
+# Not blocked, because the alternative is a project that cannot be built at
+# all — but recorded here so it is a decision rather than an oversight, and
+# re-checked whenever the lockfile moves. The practical exposure is small: it
+# parses font outlines, we only use it to measure text, and no untrusted input
+# reaches it. If ied ever ships a version that drops cosmic-text, this goes.
+ignore = ["RUSTSEC-2026-0192"]
 
 [licenses]
 version = 2
+# Permissive only. BSL-1.0 is deliberately absent: it is OSI-listed and
+# MIT-compatible, but it carries a naming condition for resale, and allowing it
+# for the whole tree would hide any future crate that arrives with it.
 allow = [
     "MIT",
     "Apache-2.0",
@@ -41,6 +58,20 @@ allow = [
     "MPL-2.0",
 ]
 confidence-threshold = 0.93
+
+# Per-crate exceptions, so BSL-1.0 is accepted for these two and nothing else.
+# Both are transitive and Windows-only, so they do not appear in a
+# `cargo tree` on Linux or macOS — which is exactly how the first audit, run
+# with `cargo metadata` on one platform, missed them.
+#
+# Both are single-purpose and each has a maintained replacement:
+#   clipboard-win -> arboard,  error-code -> windows-sys
+# Swapping them is worth doing; it is not worth blocking the build until it is
+# done, and pretending the check does not exist is worse.
+exceptions = [
+    { allow = ["BSL-1.0"], crate = "clipboard-win" },
+    { allow = ["BSL-1.0"], crate = "error-code" },
+]
 
 [bans]
 multiple-versions = "warn"
