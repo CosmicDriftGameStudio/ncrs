@@ -83,11 +83,20 @@ info ""
 
 # --- checksum ---------------------------------------------------------------
 
-# If a SHA256SUMS is published alongside the release, verify. A missing file is
-# not fatal: releases may be produced without one.
+# Verify against the published SHA256SUMS. Required, not optional: a release
+# workflow that fails halfway can leave the file behind while the binary is
+# stale, or vice versa, and a checksum that is skipped when it is inconvenient
+# is a checksum that verifies nothing. The two failure modes stay separate so
+# the message says which one it was — a missing SHA256SUMS means the release
+# was built wrong, a missing entry for this archive means the release is
+# incomplete.
 sums_available=no
 if fetch "https://github.com/$REPO/releases/latest/download/SHA256SUMS" "$tmp/SHA256SUMS" 2>/dev/null; then
     sums_available=yes
+else
+    fail "no SHA256SUMS published for the latest release
+       (expected at https://github.com/$REPO/releases/latest/download/SHA256SUMS)
+       Refusing to install an unverified binary."
 fi
 
 # --- download ---------------------------------------------------------------
@@ -97,7 +106,7 @@ url="https://github.com/$REPO/releases/latest/download/$archive"
 
 if ! fetch "$url" "$tmp/$archive" 2>/dev/null; then
     fail "no release found for $target at $url
-       (this is expected until a v* tag exists)"
+       (a release exists but not for this platform, or none is published yet)"
 fi
 
 if [ "$sums_available" = yes ]; then
@@ -108,8 +117,10 @@ if [ "$sums_available" = yes ]; then
         elif command -v shasum >/dev/null 2>&1; then
             actual=$(shasum -a 256 "$tmp/$archive" | awk '{print $1}')
         else
-            actual=""
-            info "no sha256 tool found, skipping checksum"
+            fail "no sha256 tool found (neither sha256sum nor shasum is installed)
+       Cannot verify $archive, so refusing to install it.
+       Install coreutils, or fetch and verify the archive by hand:
+         https://github.com/$REPO/releases/latest/download/$archive"
         fi
         if [ -n "$actual" ]; then
             [ "$actual" = "$expected" ] || fail "checksum mismatch for $archive
@@ -118,10 +129,9 @@ if [ "$sums_available" = yes ]; then
             info "checksum ok"
         fi
     else
-        info "no checksum for $archive, skipping"
+        fail "SHA256SUMS has no entry for $archive
+       The release is incomplete. Refusing to install an unverified binary."
     fi
-else
-    info "no SHA256SUMS published, skipping checksum"
 fi
 
 # --- install ----------------------------------------------------------------

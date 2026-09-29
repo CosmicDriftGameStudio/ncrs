@@ -72,25 +72,29 @@ try {
         return
     }
 
-    # Verify the checksum when the release publishes one.
+    # Verify the checksum. Required, not optional, for the same reason as in
+    # install.sh: a checksum that is skipped when it is inconvenient verifies
+    # nothing. The download already succeeded at this point, so a failure to
+    # fetch SHA256SUMS means the release is malformed, not that the network
+    # is down.
     try {
         $sumsPath = Join-Path $tmp 'SHA256SUMS'
         Invoke-WebRequest -Uri "$base/SHA256SUMS" -OutFile $sumsPath -UseBasicParsing
         $expected = (Get-Content $sumsPath | Where-Object { $_ -match " $archive$" } | Select-Object -First 1)
-        if ($expected) {
-            $actual = (Get-FileHash -Path $archivePath -Algorithm SHA256).Hash.ToLower()
-            if ($actual -ne $expected.Split(' ')[0]) {
-                Write-Error "checksum mismatch for $archive"
-                return
-            }
-            Write-Info 'checksum ok'
+        if (-not $expected) {
+            Write-Error "SHA256SUMS has no entry for $archive. The release is incomplete."
+            return
         }
-        else {
-            Write-Info "no checksum for $archive, skipping"
+        $actual = (Get-FileHash -Path $archivePath -Algorithm SHA256).Hash.ToLower()
+        if ($actual -ne $expected.Split(' ')[0]) {
+            Write-Error "checksum mismatch for $archive"
+            return
         }
+        Write-Info 'checksum ok'
     }
     catch {
-        Write-Info 'no SHA256SUMS published, skipping checksum'
+        Write-Error "no SHA256SUMS published for the latest release. Refusing to install an unverified binary."
+        return
     }
 
     # --- install ------------------------------------------------------------
