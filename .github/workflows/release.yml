@@ -3,11 +3,18 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  # Manual re-run. There is deliberately no input for the ref: with one, the
-  # run would execute on the chosen branch, and the job's `if` below would
-  # still have to guess whether that branch was legitimate. Without it, a
-  # dispatch always runs on the default branch, which is the only thing the
-  # environment's branch policy trusts.
+  # Manual re-run, for when a release has to be rebuilt and republished
+  # without cutting a new tag.
+  #
+  # GitHub renders a branch picker for workflow_dispatch, so this can be
+  # started from any branch. The job guard below refuses anything that is not
+  # main or a v* tag, and the `release` environment refuses the deployment on
+  # top of that. Two gates, because write access is far easier to hand out
+  # than the signing key.
+  #
+  # A run started from a feature branch is reported by GitHub as "likely
+  # failed because of a workflow file issue", because every job in the file
+  # is skipped. That is the guard working, not a broken file.
   workflow_dispatch:
 
 permissions:
@@ -26,9 +33,15 @@ jobs:
     # would otherwise compile that branch and feed it to notarization, which
     # turns a manual re-run into a signing oracle for whatever is on it.
     #
-    # `if` and not a branch filter: a dispatch on a tag has no branches
-    # context to compare against, so the tag path is allowed through here and
-    # the environment rules decide the rest.
+    # Only main or a release tag may be built. A workflow_dispatch can be
+    # started from any branch, and whatever is built here is what gets signed
+    # and notarized, so the ref has to be checked before the first compile —
+    # not after, when a binary already exists.
+    #
+    # Note that GitHub also starts this workflow on a plain branch push when
+    # the push touches this file, to validate it. On such a run both jobs are
+    # skipped, which GitHub reports as "likely failed because of a workflow
+    # file issue". That is this guard, not a syntax error.
     if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
     strategy:
       fail-fast: false
