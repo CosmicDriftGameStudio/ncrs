@@ -124,5 +124,11 @@ jobs:
           # `releases/latest/download/`, which cannot see drafts. A drafted
           # release would leave the documented install command broken.
           draft: false
-          prerelease: ${{ startsWith(github.ref, 'refs/tags/v0.') }}
+          # Also not a prerelease, and that is load-bearing rather than
+          # cosmetic: `releases/latest` ignores prereleases, so a prereleased
+          # v0.1.0 makes `releases/latest/download/<asset>` answer 404 and
+          # silently breaks the install command the README documents. Once a
+          # stable v1+ exists, a prerelease mark can come back — together with
+          # the installer's fallback to a pinned URL, not before.
+          prerelease: false
           generate_release_notes: true
