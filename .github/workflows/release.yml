@@ -164,10 +164,16 @@ jobs:
         # first thing a new user sees, and it is why the file has to be
         # notarized before it is uploaded, not after.
         #
-        # A fork has no Apple secrets, so this is skipped rather than failing:
-        # a fork should be able to cut a release. The trade-off is stated in
-        # the summary so nobody reads "skipped" as "verified".
-        if: ${{ secrets.APPLE_CERTIFICATE_P12 != '' }}
+        # Not `if: secrets.… != ''`: GitHub rejects that outright, with
+        # "Unrecognized named-value: 'secrets'" at parse time, which takes the
+        # whole workflow down with zero jobs rather than skipping one step.
+        # Secrets are not available in an `if` expression on a step.
+        #
+        # So the check moves into the script. A fork without Apple secrets
+        # publishes unsigned binaries rather than failing the release, and the
+        # script says so in the job summary — a skipped verification must not
+        # read as a passed one.
+        continue-on-error: false
         env:
           # base64, because a GitHub secret must be a single line and a
           # base64 blob survives the copy-and-paste into the web form.
@@ -178,6 +184,18 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: |
           set -euo pipefail
+
+          # The check that could not live in the `if` above. A fork has no
+          # Apple secrets and should still be able to cut a release, so this
+          # exits successfully — but it writes to the job summary, because a
+          # silent pass would be read as "Gatekeeper will accept this".
+          if [ -z "${APPLE_CERTIFICATE_P12:-}" ] || [ -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]; then
+            echo "### Notarization skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "No Apple secrets configured. macOS binaries are published" >> "$GITHUB_STEP_SUMMARY"
+            echo "**unsigned**, and Gatekeeper will warn on first launch." >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::Apple secrets not set; publishing unsigned binaries."
+            exit 0
+          fi
 
           # A throwaway keychain: the runner is shared state, and leaving a
           # private key behind in ~/.login would outlive the job.
