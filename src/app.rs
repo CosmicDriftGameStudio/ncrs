@@ -274,6 +274,28 @@ impl App {
             }
             Message::GoUp => self.go_up(self.active_panel),
 
+            // --- selection ---
+            Message::ToggleTag => {
+                let panel = self.active_panel_mut();
+                // The `..` entry is not a thing to copy, so it cannot be tagged.
+                if panel.selected_entry().is_some_and(|e| e.is_parent) {
+                    return Task::none();
+                }
+                panel.selection.toggle(panel.selected);
+                Task::none()
+            }
+            Message::TagAll => {
+                let panel = self.active_panel_mut();
+                let len = panel.entries.len();
+                let entries = panel.entries.clone();
+                panel.selection.tag_all(len, &entries);
+                Task::none()
+            }
+            Message::ClearTags => {
+                self.active_panel_mut().selection.clear();
+                Task::none()
+            }
+
             Message::SwitchPanel => {
                 self.active_panel = self.active_panel.other();
                 Task::none()
@@ -844,5 +866,35 @@ impl App {
                 prompt.set_error(error.to_string());
             }
         }
+    }
+}
+
+#[cfg(test)]
+impl App {
+    pub fn panel_mut_for_test(&mut self, side: PanelSide) -> &mut PanelState {
+        self.panel_mut(side)
+    }
+
+    pub fn set_visible_rows_for_test(&mut self, rows: usize) {
+        self.visible_rows = rows;
+    }
+
+    pub fn toggle_tag_for_test(&mut self, index: usize) {
+        self.left_panel.selection.toggle(index);
+    }
+
+    pub fn tag_all_for_test(&mut self) {
+        let len = self.left_panel.entries.len();
+        let entries = self.left_panel.entries.clone();
+        self.left_panel.selection.tag_all(len, &entries);
+    }
+
+    pub fn left_panel_selection_tagged_for_test(&self, index: usize) -> bool {
+        self.left_panel.selection.is_tagged(index)
+    }
+
+    pub fn move_selection_for_test(&mut self, delta: isize) {
+        let rows = self.visible_rows;
+        self.left_panel.move_selection(delta, rows);
     }
 }

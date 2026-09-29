@@ -14,6 +14,7 @@ use super::layout::{
 use super::theme::{self, colors, font_size, spacing};
 use crate::fs::{FileEntry, ReadError};
 use crate::i18n::{Language, Msg};
+use crate::selection::{Selection, SelectionSet};
 
 // ---------------------------------------------------------------------------
 // State
@@ -25,8 +26,11 @@ pub struct PanelState {
     pub path: PathBuf,
     /// Directory contents (`..` first when not at the root).
     pub entries: Vec<FileEntry>,
-    /// Index of the highlighted row.
+    /// Index of the row the cursor is on. One per panel.
     pub selected: usize,
+    /// Rows marked with Insert. An operation applies to these, or to the cursor
+    /// row when nothing is tagged.
+    pub selection: SelectionSet,
     /// Index of the first visible row.
     pub scroll_offset: usize,
     /// Last read error, if any. Rendered by the status bar in the UI language.
@@ -43,6 +47,7 @@ impl PanelState {
             path,
             entries: Vec::new(),
             selected: 0,
+            selection: SelectionSet::new(),
             scroll_offset: 0,
             error: None,
             loading: false,
@@ -71,6 +76,11 @@ impl PanelState {
         visible_rows: usize,
     ) {
         self.path = path;
+        // A reload replaces the rows, so an index that pointed at a file may now
+        // point at a different one. Dropping the stale tags is the safe
+        // direction: a forgotten file in a copy is worse than a tag the user
+        // has to set again.
+        self.selection.retain_valid(entries.len());
         self.entries = entries;
         self.error = error;
         self.loading = false;
@@ -136,12 +146,8 @@ pub fn view<'a, M: Clone + 'a>(
         .skip(state.scroll_offset)
         .take(props.visible_rows)
         .map(|(index, entry)| {
-            file_row(
-                entry,
-                index == state.selected,
-                props.is_active,
-                on_row_click(index),
-            )
+            let mark = state.selection.state_of(index, state.selected);
+            file_row(entry, mark, props.is_active, on_row_click(index))
         });
 
     column![
@@ -194,12 +200,15 @@ fn column_header<'a, M: 'a>(lang: Language) -> Element<'a, M> {
 
 fn file_row<'a, M: Clone + 'a>(
     entry: &'a FileEntry,
-    selected: bool,
+    mark: Selection,
     panel_active: bool,
     on_press: M,
 ) -> Element<'a, M> {
-    let color = theme::row_text_color(entry.is_dir, selected, panel_active);
-    let font = if entry.is_dir || (selected && panel_active) {
+    // The cursor row of the active panel is the one drawn as highlighted; a
+    // tagged row is marked in its own column and tinted by the row style.
+    let highlighted = mark.cursor && panel_active;
+    let color = theme::row_text_color(entry.is_dir, highlighted, panel_active);
+    let font = if entry.is_dir || (highlighted && panel_active) {
         Font {
             weight: iced::font::Weight::Bold,
             ..Font::MONOSPACE
@@ -224,7 +233,13 @@ fn file_row<'a, M: Clone + 'a>(
             .wrapping(text::Wrapping::None)
     };
 
+    // The tag marker, in its own column. Norton Commander puts it left of the
+    // name; without it a tagged row would look the same as an untagged one and
+    // the selection would be invisible.
+    let mark_cell = cell(if mark.tagged { "*" } else { " " }.to_string());
+
     let content = row![
+        container(mark_cell).width(spacing::CELL_PADDING_X * 2.0),
         container(cell(name)).width(Length::Fill).clip(true),
         cell(format::entry_size(entry))
             .width(SIZE_COLUMN_WIDTH)
@@ -240,7 +255,7 @@ fn file_row<'a, M: Clone + 'a>(
         .padding([0.0, spacing::CELL_PADDING_X])
         .height(ROW_HEIGHT)
         .width(Length::Fill)
-        .style(theme::row(selected, panel_active))
+        .style(theme::row(mark.tagged || highlighted, panel_active))
         .into()
 }
 
@@ -300,5 +315,89 @@ mod tests {
         p.select_last(5);
         assert_eq!((p.selected, p.scroll_offset), (0, 0));
         assert!(p.selected_entry().is_none());
+    }
+}
+
+#[cfg(test)]
+mod tagging_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn entry(name: &str, is_parent: bool) -> FileEntry {
+        FileEntry {
+            name: name.to_string(),
+            path: PathBuf::from(name),
+            is_dir: true,
+            is_symlink: false,
+            is_parent,
+            size: 0,
+            modified: None,
+        }
+    }
+
+    fn panel_with(names: &[(&str, bool)]) -> PanelState {
+        let mut p = PanelState::new(PathBuf::from("/tmp"));
+        p.entries = names.iter().map(|(n, parent)| entry(n, *parent)).collect();
+        p
+    }
+
+    /// Tagging is per panel, and survives navigation within that panel.
+    #[test]
+    fn tags_live_on_the_panel() {
+        let mut p = panel_with(&[("..", true), ("a", false), ("b", false)]);
+        p.selected = 1;
+        p.selection.toggle(p.selected);
+
+        assert!(p.selection.is_tagged(1));
+        assert!(!p.selection.is_tagged(2));
+    }
+
+    /// `..` is not taggable: copying a directory into itself is not a thing
+    /// anyone means, and the file manager should not offer it.
+    #[test]
+    fn the_parent_entry_is_not_tagged() {
+        let mut p = panel_with(&[("..", true), ("a", false)]);
+        p.selection.tag_all(p.entries.len(), &p.entries);
+        assert!(!p.selection.is_tagged(0));
+        assert!(p.selection.is_tagged(1));
+    }
+
+    /// After a reload that shrinks the listing, tags pointing past the end are
+    /// dropped rather than silently addressing a different file.
+    #[test]
+    fn tags_outside_the_new_listing_are_dropped() {
+        let mut p = panel_with(&[("a", false), ("b", false), ("c", false), ("d", false)]);
+        p.selection.toggle(3);
+        assert!(p.selection.is_tagged(3));
+
+        // A reload with fewer entries, as after deleting a file.
+        p.apply_listing(
+            PathBuf::from("/tmp"),
+            vec![entry("a", false)],
+            None,
+            None,
+            10,
+        );
+
+        assert!(!p.selection.is_tagged(3), "a stale tag survived the reload");
+        assert!(p.selection.is_empty());
+    }
+
+    /// A tag inside the new range survives, so tagging one file and refreshing
+    /// the panel does not silently drop the selection.
+    #[test]
+    fn tags_inside_the_new_listing_survive() {
+        let mut p = panel_with(&[("a", false), ("b", false), ("c", false)]);
+        p.selection.toggle(1);
+
+        p.apply_listing(
+            PathBuf::from("/tmp"),
+            vec![entry("a", false), entry("b", false), entry("c", false)],
+            None,
+            None,
+            10,
+        );
+
+        assert!(p.selection.is_tagged(1));
     }
 }

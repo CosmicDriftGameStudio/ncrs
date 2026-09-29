@@ -117,6 +117,22 @@ fn build_actions() -> Vec<Action> {
             message: Message::SwitchLanguage,
             hint: Some(Msg::ShortcutSwitchLanguage),
         },
+        // --- selection: tagged rows, not advertised ---
+        Action {
+            binding: Binding::key(KeyNamed(Insert)),
+            message: Message::ToggleTag,
+            hint: None,
+        },
+        Action {
+            binding: Binding::key(Character("*".into())),
+            message: Message::TagAll,
+            hint: None,
+        },
+        Action {
+            binding: Binding::with_modifiers(Character("*".into()), Modifiers::CTRL),
+            message: Message::ClearTags,
+            hint: None,
+        },
         Action {
             binding: Binding::key(KeyNamed(F7)),
             message: Message::CreateDirPrompt,

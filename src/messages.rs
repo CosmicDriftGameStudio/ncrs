@@ -67,6 +67,14 @@ pub enum Message {
         result: Result<(), CreateDirError>,
     },
 
+    // --- Selection ---
+    /// Insert: tag or untag the row under the cursor.
+    ToggleTag,
+    /// `*`: tag everything except `..`.
+    TagAll,
+    /// Ctrl+`*`: drop every tag.
+    ClearTags,
+
     // --- Panel handling ---
     SwitchPanel,
     /// Temporarily switches the UI language. Not yet persisted in config.

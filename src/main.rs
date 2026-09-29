@@ -13,6 +13,7 @@ mod fs;
 mod i18n;
 mod keymap;
 mod messages;
+mod selection;
 mod ui;
 
 use app::App;

@@ -213,7 +213,7 @@ Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
 
 # Tasks – Basis-Feature
 
-**Stand: 10 von 17 erledigt, 7 offen.** 67 Tests inkl. 8 UI-Tests mit Pixelvergleich.
+**Stand: 11 von 17 erledigt, 6 offen.** 85 Tests inkl. 12 UI-Tests mit Pixelvergleich.
 
 | Block | Inhalt | Stand |
 |---|---|---|
@@ -334,7 +334,26 @@ Abhängigkeit, nicht Bequemlichkeit. Jeder Task endet grün: `cargo fmt --check`
   (`src/ui/layout_tests.rs`). Die Crate macht ihn überflüssig, und er lief nur im
   Software-Build.
 
-- [ ] **T7 – F5 Copy / F6 Move** – nutzt `inactive_panel_mut()`, Reload beider Panels
+- [x] **T6c – Mehrfachauswahl (Voraussetzung für F5/F6)**
+  F5 „Copy" ohne Auswahl wäre nutzlos oder gefährlich. Drei Zustände wie in NC: Cursor,
+  getaggt, beides. Die Regel: **sind etwas getaggt, gilt die Operation für die Tags; sonst
+  für die Cursor-Zeile.** Ohne die Vorrang-Regel wäre F5 ein Würfelwurf.
+  - `src/selection.rs`: `SelectionSet` (Index-Menge, überlebt kein Listing ohne Prüfung)
+    und `Selection` (Zustand einer Zeile). `..` ist nicht tagbar — ein Verzeichnis in sich
+    selbst kopieren meint niemand.
+  - **Stale-Tags:** nach einem Reload zeigen Indizes sonst auf andere Dateien. Sie werden
+    verworfen, nicht behalten: eine vergessene Datei im Copy ist schlimmer als ein Tag, den
+    man neu setzen muss.
+  - Ansicht: eigene Spalte mit `*`, plus Zeilenfarbe. Ohne die Spalte wäre die Auswahl
+    unsichtbar und F5 würde auf etwas Unsichtbares wirken.
+  - Tasten: `Insert`, `*`, `Ctrl`+`*` — im Registry-Pattern registriert, nicht im
+    View verdrahtet.
+  - 14 neue Tests (71 → 85), davon 4 UI-Tests mit Pixelvergleich.
+  **Ehrliche Grenze:** der Pixelvergleich beweist, dass sich *etwas* ändert, nicht dass es
+  der `*` ist — die Zeilenfarbe ändert sich mit. Gemessen und im Test so benannt, statt
+  eine Genauigkeit zu behaupten, die der Test nicht hat. `in_operation` hat noch keinen
+  Aufrufer: die Regel wird in T7 beim Bauen der Operation gebraucht.
+
 - [ ] **T8 – F8 Delete mit Bestätigungsdialog und Papierkorb** – siehe offene Frage unten
 - [ ] **T9 – F3 View / F4 Edit** – externes Programm, `std::process::Command`
 - [ ] **T10 – Konfigurationsdatei** – `serde` + `toml`, Schema-Validierung, Versionierung

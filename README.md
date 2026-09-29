@@ -14,7 +14,9 @@ for the state, the licensing audit and the reasoning behind the order.
 
 ## Features
 
-- Two side-by-side file panels (left starts in `$HOME`, right at the filesystem root)
+- Two side-by-side file panels (left starts in the working directory, right at `$HOME`)
+- Multi-selection: tag rows with `Insert`, an operation applies to the tagged rows, or to
+  the single row under the cursor when nothing is tagged
 - Keyboard navigation, selection highlighting, auto-scrolling
 - Name / Size / Modified columns, directories first, case-insensitive sort
 - `..` entry to go up; the directory you came from is re-selected
@@ -34,6 +36,9 @@ for the state, the licensing audit and the reasoning behind the order.
 | `PgUp` / `PgDn`    | Move selection by one page               |
 | `Home` / `End`     | First / last entry                       |
 | `Enter`            | Open directory (files: placeholder)      |
+| `Insert`           | Tag / untag the row under the cursor    |
+| `*`                | Tag every row (except `..`)             |
+| `Ctrl`+`*`         | Clear all tags                          |
 | `F7`               | Create directory                        |
 | `Backspace`        | Go to parent directory                   |
 | `Tab`              | Switch active panel                      |
@@ -90,7 +95,7 @@ cargo build --features gpu-with-fallback --release
 ## Tests
 
 ```bash
-cargo test                                      # 67 tests
+cargo test                                      # 85 tests
 cargo test --features gpu-with-fallback        # the release backend
 ```
 
@@ -98,7 +103,7 @@ Three layers, and they cover different things:
 
 | Layer | What it covers | Where |
 |---|---|---|
-| Filesystem, state, routing | what the app *decides* | `src/fs/`, `src/dialog.rs`, `app.rs` |
+| Filesystem, state, routing, selection | what the app *decides* | `src/fs/`, `src/dialog.rs`, `src/selection.rs`, `app.rs` |
 | UI, headless | what the user *sees* — clicks, rendering, layout | `src/ui_tests.rs` via `iced_test` |
 | Snapshots | the images themselves | `tests/snapshots/` |
 
@@ -135,6 +140,7 @@ macOS and Windows need no extra system packages.
 src/
 ├── main.rs          # Entry point: iced::application builder (tokio executor)
 ├── app.rs           # App state, update() – the ONLY place state changes – and view()
+├── selection.rs     # Tagged rows: the rule an operation applies to
 ├── dialog.rs        # State of the modal prompt (F7 and the operations after it)
 ├── messages.rs      # Central Message enum + PanelSide
 ├── keymap.rs        # Key press -> Message mapping, shortcut list for the header
