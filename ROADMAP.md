@@ -184,18 +184,20 @@ Rationale für die Reihenfolge: Netzwerk und Archive sind die beiden Features, d
 wenigsten vom Kern abhängen und am meisten am „nicht benutzt" leiden. Sie nach hinten zu
 legen ist Absicht, nicht Verseum.
 
-## 6. Drei Entscheidungen, die vor Phase 0 fallen müssen
+## 6. Offene Entscheidungen
 
-1. **Trash oder nicht?** (F8) Ohne Papierkorb ist F8 unwiderruflich. Es gibt die Crate
-   `trash` (MIT) — die nennt crates.io als Lizenz; **lokal verifiziert habe ich das
-   nicht**, sie war nicht im Cargo-Cache. Also vor der Umsetzung einmal gegenprüfen.
-   Keine Lizenzfrage im Prinzip, sondern eine UX-Frage. Meine Empfehlung: rein.
-2. **Testharness** (3.2): reine Logiktests wie heute, oder zusätzlich Snapshot-Tests der
-   Views? Bestimmt, ob „alles getestet" realistisch ist.
-3. **Sprachen**: nur `en`/`de` wie von dir genannt, oder ist das Set von Anfang an offen
-   (Sprachdatei pro Sprache, fehlender Schlüssel → Fallback)? Die Fallback-Mechanik
-   existiert bereits. Offen ist die Frage, ob der Kontext in Rust-Sourden bleibt oder
-   nach `strings.json` wandert (Abschnitt 2).
+Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
+
+1. **Trash oder nicht?** (F8) Ohne Papierkorb ist F8 unwiderruflich. Die Crate `trash`
+   nennt crates.io als MIT; **lokal verifiziert habe ich das nie**, sie war nicht im
+   Cargo-Cache. Keine Lizenzfrage im Prinzip, sondern eine UX-Frage. Empfehlung: rein.
+2. **Testharness** (3.2): **entschieden, ohne Snapshot-Tests.** 36 Logiktests decken `fs`,
+   `i18n`, `keymap`, `backend`, Layout-Arithmetik und Fehler-Rendering. Es gibt kein
+   Framework, dessen Ausgabe ich gegen eine echte Referenz geprüft habe — ein
+   Snapshot-Test ohne Wahrheitswert ist eine Datei, die immer grün ist. Falls sich das
+   ändert, wäre `insta` der erste Kandidat.
+3. **Sprach-Set**: `en`/`de` sind gebaut, Kontext liegt in `strings.json`, F9 schaltet um.
+   Offen ist nur die **Persistenz** (T13), und die hängt an der Config (T10).
 
 ## 7. Nicht im Plan, mit Begründung
 
@@ -211,9 +213,17 @@ legen ist Absicht, nicht Verseum.
 
 # Tasks – Basis-Feature
 
+**Stand: 8 von 17 erledigt, 9 offen.** 36 Tests, grün in fünf Feature-Kombinationen.
+
+| Block | Inhalt | Stand |
+|---|---|---|
+| A | CI, Installer, Release, `strings.json` | ✅ fertig (T1–T5, T5b) |
+| B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | ⬜ offen — **T6 ist der nächste Task** |
+| C | Netzwerk-Mounts, Archive | ⬜ offen, hängt an B |
+
 Legende: **[P]** Pflicht für ein benutzbares Basis-Feature, **[S]** später. Reihenfolge =
 Abhängigkeit, nicht Bequemlichkeit. Jeder Task endet grün: `cargo fmt --check`,
-`cargo clippy --all-targets`, `cargo test`, ein Commit.
+`cargo clippy --all-targets -- -D warnings`, `cargo test`, ein Commit.
 
 ## Block A – CI und Installation (zuerst, weil alles Weitere davon profitiert)
 
@@ -285,7 +295,13 @@ Abhängigkeit, nicht Bequemlichkeit. Jeder Task endet grün: `cargo fmt --check`
 
 ## Block B – Basis-Feature (der Dateimanager selbst)
 
-- [ ] **T6 – F7 MkDir** – kleinster End-to-End-Durchstich: Dialog → `Task` → `Message` → Reload
+- [ ] **T6 – F7 MkDir** — kleinster End-to-End-Durchstich: Dialog → `Task` → `Message` → Reload
+  **Nächster Task.** Die einzige Aktion ohne Quell-Panel, also der kleinste Weg, die
+  ganze Kette einmal zu beweisen: Dialog-State, `Task::perform`, Message, Reload.
+  `DialogState` kommt nach `src/app.rs` neben den anderen States, **nicht** nach
+  `src/ui/` — es ist State, kein View.
+  *Geprüft:* `Stack` + `helpers::opaque` für das Overlay gehen **ohne** das
+  `advanced`-Feature, das steht inzwischen in den Features.
 - [ ] **T7 – F5 Copy / F6 Move** – nutzt `inactive_panel_mut()`, Reload beider Panels
 - [ ] **T8 – F8 Delete mit Bestätigungsdialog und Papierkorb** – siehe offene Frage unten
 - [ ] **T9 – F3 View / F4 Edit** – externes Programm, `std::process::Command`
@@ -307,11 +323,39 @@ Abhängigkeit, nicht Bequemlichkeit. Jeder Task endet grün: `cargo fmt --check`
 - [ ] **T15 – Netzwerk-Mounts** (macOS/Linux), **T16 – Archiv-Support lesend**,
   **T17 – Archiv-Support schreibend** – Umfang siehe Abschnitt 4
 
+## Was das Testen über den Aufbau gelehrt hat
+
+Aus T2/T2b: fünf Runden mit einem Compiler-Fehler und zwei Testrunden. Die Regeln, die
+sich daraus ergeben:
+
+1. **Ein Test, der die Implementierung nachbaut, ist keine Prüfung.** Zweimal passiert —
+   bei `Backend::CURRENT` und bei der ersten Fassung der `visible_rows`-Tests. Beide waren
+   grün, während der Code falsch war. Ein Test liest Werte gegen eine unabhängige Quelle:
+   eine Tabelle, ein Vertrag, ein gemessener Wert.
+2. **Fehler an der Grenze eines Features, nicht in der Mitte.** `Backend::CURRENT` ist in
+   vier Varianten kaputtgegangen, die der Default-Build nie ausführt. CI baut jetzt jede
+   Feature-Kombination — auch die, von der ich glaube, sie sei ungefährlich.
+3. **`cargo check` ist kein Beweis.** Ich habe damit einen „Fix" verifiziert, der das
+   Problem nicht behoben hatte. `cargo run --features X` ist der Befehl, der bei einem
+   Nutzer auftaucht.
+4. **Die Messung vor der Vermutung.** Zwei Runden lang habe ich den Keymap-Cache als
+   Ursache der Trägheit benannt; 210 ns, sichtbar irrelevant. Erst „auf einmal" und dann
+   die Messung haben es auf die Rasterisierung gebracht.
+5. **Acht Dateien ohne Test waren verdächtig, eine war es wirklich.** `layout.rs` hat
+   eine Handrechnung über genau die Konstanten, die das Layout benutzt, und nichts hat
+   die beiden verbunden. Jetzt: eine `CHROME`-Konstante plus Drift-Test.
+
+**Was nicht testbar ist:** wie schnell sich ein Frame *anfühlt*. 3,6 Mio Pixel pro Frame
+auf HiDPI sind eine Rechnung, keine Assertion. Dass `gpu-with-fallback` schneller ist,
+weiß ich nur durch deine Beobachtung — die steht als Messung im README, nicht als Test.
+
 ## Entscheidungen, die vor den jeweiligen Tasks fallen
 
-| Task | Frage | Meine Empfehlung |
+| Task | Frage | Stand |
 |---|---|---|
-| T2 | wgpu behalten oder Software-Rendering? | Software (tiny-skia), siehe oben |
-| T8 | Papierkorb? Crate `trash`, Lizenz ungeprüft | ja, aber Lizenz vorher prüfen |
-| T5 | `build.rs` oder Handpflege? | `build.rs`, sonst laufen Code und Daten auseinander |
-| T10 | TOML oder JSON für die Config? | TOML, besser für Handeditierung |
+| T2 | wgpu oder Software-Rendering? | **beides, als Features.** Gemessen: Software ist auf HiDPI unbrauchbar, `gpu-with-fallback` ist schnell. Releases bauen mit Fallback. |
+| T5 | `build.rs` oder Handpflege? | **`build.rs`, gebaut.** Kontext und Text kommen aus `strings.json`. |
+| T8 | Papierkorb? Crate `trash`, Lizenz ungeprüft | **offen.** Ohne die Crate ist F8 unwiderruflich; die Lizenz ist bis heute nicht lokal verifiziert. |
+| T10 | TOML oder JSON für die Config? | **offen.** Empfehlung: TOML, besser für Handeditierung. |
+| T13 | Sprachauswahl persistent | **teilweise.** `en`/`de` gebaut, F9 schaltet um; die Persistenz hängt an T10. |
+| T14 | Suche: `glob` oder inkrementell? | **offen.** Die Filterlogik ist in beiden testbar, das Timing nicht. |
