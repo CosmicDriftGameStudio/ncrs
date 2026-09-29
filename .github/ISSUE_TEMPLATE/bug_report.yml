@@ -1,0 +1,61 @@
+name: Bug
+description: Something behaves differently from what it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, and what you saw instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: ncrs version
+      description: "ncrs has no --version flag yet; use the release you downloaded."
+      placeholder: v0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Linux, macOS, Windows]
+    validations:
+      required: true
+
+  - type: dropdown
+    id: build
+    attributes:
+      label: Renderer
+      description: "Debug builds use software rendering unless the GPU feature is enabled, and software rendering is measurably slower on high-resolution displays."
+      options: [Release build (GPU with fallback), Release build (software only), Debug build, Not sure]
+    validations:
+      required: true
+
+  - type: textarea
+    id: filesystem
+    attributes:
+      label: Filesystem
+      description: >-
+        Relevant for anything involving paths, permissions or hangs: local disk,
+        network share, encrypted volume, case-insensitive filesystem. A hang
+        on a network mount is a known open problem, not a mystery.
+      placeholder: ext4 on Ubuntu, NTFS on Windows, SMB share, ...
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Any output from the terminal you started ncrs from
+      description: The startup line naming the graphics backend is the useful one.
+      render: text

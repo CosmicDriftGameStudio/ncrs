@@ -1,0 +1,29 @@
+name: Feature
+description: Something ncrs should be able to do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the situation, not the solution. It often turns out to be a different problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What should ncrs do about it?
+
+  - type: textarea
+    id: nc
+    attributes:
+      label: How does Norton Commander do it?
+      description: ncrs is a clone, so the original is a useful reference. A keybinding and the behaviour it triggers is ideal.
+
+  - type: checkboxes
+    id: destructive
+    attributes:
+      label: Does this operation destroy or overwrite data?
+      options:
+        - label: Yes — it deletes, moves or overwrites

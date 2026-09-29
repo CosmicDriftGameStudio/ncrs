@@ -4,7 +4,7 @@
 
 Please report security issues privately, **not** in a public issue.
 
-Email: security@cosmicdrift.de — or use GitHub's private reporting form
+Email: marc@cosmicdriftgamestudio.com — or use GitHub's private reporting form
 ("Security" → "Report a vulnerability") on this repository.
 
 Please include: affected version, your platform, and the steps to reproduce.

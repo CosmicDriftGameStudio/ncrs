@@ -1,5 +1,10 @@
 # NC-rs
 
+[![CI](https://github.com/CosmicDriftGameStudio/ncrs/actions/workflows/ci.yml/badge.svg)](https://github.com/CosmicDriftGameStudio/ncrs/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/CosmicDriftGameStudio/ncrs?label=release)](https://github.com/CosmicDriftGameStudio/ncrs/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.90%2B-orange.svg)](rust-toolchain.toml)
+
 A fast, keyboard-first **Norton Commander style dual-panel file manager** written in Rust
 with [iced](https://iced.rs) 0.14 (GPU-accelerated, cross-platform native UI).
 
