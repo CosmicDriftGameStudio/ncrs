@@ -235,26 +235,25 @@ Abhängigkeit, nicht Bequemlichkeit. Jeder Task endet grün: `cargo fmt --check`
   **Nachtrag:** Software-Rendering ist die Ursache der gemeldeten Navigations-Trägheit
   (siehe T2b).
 
-- [ ] **T2b – Renderer-Wechsel zu wgpu (offen, eingerüstet)**
-  Gemeldet: die aktive Zeile hinkt beim Navigieren ~1 Sekunde nach. Untersucht und
-  eingegrenzt:
-  - `App::view` ist **nicht** die Ursache: gemessen ~0,1 ms pro Frame bei 200 Entries,
-    16-fach unter dem 60-fps-Budget. Abgedeckt durch `app::render_timing`.
-  - `map_key` ist **nicht** die Ursache: Lookup 65 ns, Neubau der Tabelle 210 ns pro
-    Tastendruck. Der Caching-Fix ist trotzdem geblieben, erklärt die Verzögerung aber nicht.
-  - **Verbleibender Verdacht: die Rasterisierung.** tiny-skia zeichnet in Software; auf
-    einem 2x-Display sind das 3,6 Mio Pixel pro Frame, auf 3x 8,2 Mio. wgpu würde das an
-    die GPU geben.
-  **Warum es noch offen ist:** `iced::application` ist generisch über den Renderer, und
-  die UI-Module waren bisher nur über `M` generisch. Der Wechsel auf einen konkreten
-  Renderer zieht sich durch `app.rs` und alle fünf `ui/*`-Module (Theme-Catalogs,
-  `Font: From<iced::Font>`, ~20 Aufrufstellen). Versuch und Rückbau in einer Runde
-  durchgeführt, nicht zu Ende gebracht — deshalb bewusst offen gelassen statt
-  halbfertig committet.
-  **Nächster Schritt:** als erstes wgpu **zusätzlich** aktivieren, ohne den Renderer
-  festzulegen, und messen ob es automatisch genutzt wird. Das ist ein Einzeiler in
-  `Cargo.toml` gegen eine unknown-unknown-Größe. Erst wenn das nichts bringt, ist der
-  generische Umbau gerechtfertigt.
+- [x] **T2b – Backend konfigurierbar machen, statt den Renderer festzulegen**
+  Der Renderer stand nirgends im Code — `src/main.rs` enthält keine einzige Zeile
+  mit `wgpu` oder `tiny-skia`. Er wurde allein von ieds Features bestimmt, also
+  unbemerkt änderbar. Zwei falsche cfg-Bedingungen in meinem ersten Test fielen
+  zusätzlich durch.
+  **Gelöst mit Features statt generischem Umbau** (`Cargo.toml`):
+  - `software-rendering` (Default) → tiny-skia, keine GPU nötig
+  - `gpu-rendering` → wgpu
+  - `gpu-with-fallback` → wgpu, tiny-skia als Rückfall
+  ied löst die Kombination selbst auf (`iced_renderer-0.13.0/src/lib.rs:24-59`),
+  deshalb war der geplante generische Umbau durch `app.rs` und alle `ui/*`-Module
+  **nicht nötig** — der Renderer bleibt untypisiert.
+  `src/backend.rs` hält den Test, der den Backend an die Build-Konfiguration bindet,
+  plus eine Startmeldung im Debug-Build. Verifiziert über alle drei Konfigurationen,
+  und durch absichtliches Einbauen eines Fehlers geprüft, dass er anschlägt.
+  CI baut und testet alle drei Varianten.
+  **Offen bleibt nur die Messung:** fühlt sich `--features gpu-with-fallback` auf
+  einem HiDPI-Display spürbar schneller an? Das ist eine Beobachtung, keine
+  automatisierbare Testfrage.
 
 - [x] **T3 – Release-Pipeline: Binaries für Linux/macOS/Windows**
   `.github/workflows/release.yml`, getriggert per Tag. Cross-Compile per

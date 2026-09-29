@@ -6,7 +6,7 @@ description = "A Norton Commander style dual-panel file manager built with iced"
 license = "MIT"
 
 [dependencies]
-iced = { version = "0.13.1", default-features = false, features = ["tokio", "tiny-skia", "fira-sans"] }
+iced = { version = "0.13.1", default-features = false, features = ["tokio", "fira-sans"] }
 tokio = { version = "1", features = ["full"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
@@ -14,3 +14,16 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 opt-level = 3
 lto = "thin"
 codegen-units = 1
+
+[features]
+default = ["software-rendering"]
+
+# Software rasterisation only: no GPU or driver needed, works on CI runners and
+# VMs, but slow on high-resolution displays.
+software-rendering = ["iced/tiny-skia"]
+
+# GPU rendering. Faster to draw, needs Vulkan/Metal/DX11 at runtime.
+gpu-rendering = ["iced/wgpu"]
+
+# Both: wgpu is tried first, tiny-skia takes over where there is no GPU.
+gpu-with-fallback = ["iced/wgpu", "iced/tiny-skia"]

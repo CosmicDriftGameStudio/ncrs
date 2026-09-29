@@ -4,6 +4,7 @@
 //! run every `Task` on a tokio runtime, so no `#[tokio::main]` is needed here.
 
 mod app;
+mod backend;
 mod fs;
 mod i18n;
 mod keymap;
@@ -13,6 +14,7 @@ mod ui;
 use app::App;
 
 fn main() -> iced::Result {
+    backend::log_backend();
     iced::application(App::title, App::update, App::view)
         .subscription(App::subscription)
         .theme(App::theme)

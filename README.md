@@ -63,6 +63,25 @@ On Windows (PowerShell):
 irm https://raw.githubusercontent.com/ncrs/ncrs/main/install.ps1 | iex
 ```
 
+## Graphics backend
+
+The renderer is chosen by cargo features, not in code — `src/main.rs` contains no
+renderer reference at all, which makes it easy to change by accident. Three
+configurations:
+
+| Build | Backend | Use it when |
+|---|---|---|
+| `cargo run` (default) | tiny-skia, software | CI, VMs, machines without a GPU. Slow on high-resolution displays. |
+| `--features gpu-rendering` | wgpu, GPU | Desktop use. Needs Vulkan/Metal/DX11. |
+| `--features gpu-with-fallback` | wgpu, falling back to tiny-skia | Ship to users: fast where a GPU exists, starts where it does not. |
+
+A debug build prints the backend at startup, and `src/backend.rs` holds the test
+that pins it to the build configuration.
+
+```bash
+cargo build --features gpu-with-fallback --release
+```
+
 ## Build & run
 
 Requirements: Rust (stable, 1.80+) via [rustup](https://rustup.rs).

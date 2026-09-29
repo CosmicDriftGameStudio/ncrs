@@ -35,3 +35,11 @@ jobs:
 
       - name: Tests
         run: cargo test
+
+      # The backend differs per feature set, so the app has to build — and its
+      # tests pass — in all three configurations.
+      - name: Tests with GPU rendering
+        run: cargo test --no-default-features --features gpu-with-fallback
+
+      - name: Tests with GPU rendering only
+        run: cargo test --no-default-features --features gpu-rendering
