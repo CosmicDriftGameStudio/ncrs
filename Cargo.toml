@@ -6,7 +6,7 @@ description = "A Norton Commander style dual-panel file manager built with iced"
 license = "MIT"
 
 [dependencies]
-iced = { version = "0.13.1", features = ["tokio", "advanced"] }
+iced = { version = "0.13.1", default-features = false, features = ["tokio", "tiny-skia", "fira-sans"] }
 tokio = { version = "1", features = ["full"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
