@@ -282,14 +282,24 @@ per frame, independent of directory size.
 
 ## Tech notes
 
-- iced **0.13.x** (`Task`, `iced::application` builder, `keyboard::on_key_press`,
-  `window::resize_events`). iced 0.14 has since been released; migrating mainly touches
-  `main.rs` (application builder) and style closures.
 - Font: the built-in monospace font for an authentic commander look.
 - The `advanced` iced feature is **not** enabled: the app uses no `pane_grid`, `tooltip`,
   `pick_list` or `text::Font` variant. Add it back in `Cargo.toml` when you reach for one
   of those.
+- The compiler is pinned in `rust-toolchain.toml`, and that pin only takes effect
+  under **rustup**. A Homebrew-installed Rust ignores the file, so a local
+  `cargo test` can run a different compiler than CI. `thiserror` and `softbuffer`,
+  both pulled in by iced, have each broken the build on a brand-new stable.
 
 ## License
 
 MIT
+
+## Contributing, security, changes
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — the rules the code follows, and how to
+  verify a change
+- [CHANGELOG.md](CHANGELOG.md) — what each release does, and what it does not
+- [SECURITY.md](SECURITY.md) — how to report a vulnerability privately
+- [ARCHITECTURE_REVIEW.md](ARCHITECTURE_REVIEW.md) — the state of the
+  architecture, the numbered findings, and the order they are being fixed in
