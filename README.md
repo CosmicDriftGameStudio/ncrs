@@ -105,7 +105,12 @@ Three layers, and they cover different things:
 |---|---|---|
 | Filesystem, state, routing, selection | what the app *decides* | `src/fs/`, `src/dialog.rs`, `src/selection.rs`, `app.rs` |
 | UI, headless | what the user *sees* — clicks, rendering, layout | `src/ui_tests.rs` via `iced_test` |
-| Snapshots | the images themselves | `tests/snapshots/` |
+| Snapshots | the images themselves | `tests/snapshots/` — **macOS only in CI** |
+
+The snapshot tests run only where the reference images were produced. Font
+rasterisation differs per operating system, so a macOS reference does not match
+Windows output; the tests are skipped elsewhere rather than compared against a
+reference that cannot hold.
 
 The UI layer is [iced's own harness](https://docs.rs/iced_test): `Simulator` renders a
 view headless and can click, type, tap keys and snapshot it. References in

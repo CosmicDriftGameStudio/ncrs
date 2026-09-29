@@ -9,6 +9,13 @@
 //! state tests in `app.rs` cover the routing decisions; both are needed,
 //! because correct `update` behind a button nobody can click is not a feature.
 //!
+//! **These tests only run on macOS in CI** (see `.github/workflows/ci.yml`).
+//! The reference images in `tests/snapshots/` were produced there, and font
+//! rasterisation differs per operating system: a reference made on macOS does
+//! not match Windows output. Everywhere else the tests are skipped rather than
+//! asserted against a reference that cannot hold, which would be a test that
+//! passes without checking anything.
+//!
 //! Two limits worth knowing, both from iced 0.14:
 //!
 //! - `iced_selector` finds widgets by `widget::Id`, and `Button` has no `id`

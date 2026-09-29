@@ -37,8 +37,20 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
 
+      # Pixel comparisons are only meaningful where the reference images were
+      # produced. Font rasterisation differs per operating system, so a
+      # reference made on macOS does not match Windows output, and asserting it
+      # there would be asserting nothing. The snapshot tests are therefore
+      # skipped away from macOS; everything else runs everywhere.
       - name: Tests
-        run: cargo test
+        run: cargo test -- --skip ui_tests
+
+      # The snapshot tests run only here, where the reference images in
+      # tests/snapshots/ were produced. They are skipped above so a font
+      # difference on another operating system cannot fail the build.
+      - name: Snapshot tests (macOS)
+        if: runner.os == 'macOS'
+        run: cargo test ui_tests
 
       # The backend differs per feature set, so the app has to build and its
       # tests have to pass in every configuration. This is not a formality: the
