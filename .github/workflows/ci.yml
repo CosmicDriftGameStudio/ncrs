@@ -68,6 +68,8 @@ jobs:
       # A build with no backend opens an empty window. iced only rejects that
       # in release mode, so CI has to be the one that catches it.
       - name: Tests, no backend must fail
+        # Bash syntax, and the default shell on windows-latest is PowerShell.
+        shell: bash
         run: |
           if cargo test --no-default-features backend::tests 2>/dev/null; then
             echo "::error::a build without a graphics backend must not pass its tests"
