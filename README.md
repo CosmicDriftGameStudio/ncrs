@@ -72,7 +72,7 @@ configurations:
 | Build | Backend | Use it when |
 |---|---|---|
 | `cargo run` (default) | tiny-skia, software | CI, VMs, machines without a GPU. Measured: visibly laggy on a high-resolution display. |
-| `--features gpu-rendering` | wgpu, GPU | Desktop only. Needs Vulkan/Metal/DX11 and has no software fallback. |
+| `--features gpu-rendering` | wgpu, GPU | Desktop only. Needs Vulkan/Metal/DX11, no software fallback. Add `--no-default-features`, otherwise the default feature is still on and you get the fallback renderer. |
 | `--features gpu-with-fallback` | wgpu, falling back to tiny-skia | **Releases.** Fast where a GPU exists, still starts where it does not. |
 
 Measured on a high-resolution display: software rendering took about a second to move the
