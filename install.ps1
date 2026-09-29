@@ -16,7 +16,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$Repo = if ($env:NCRS_REPO) { $env:NCRS_REPO } else { 'ncrs/ncrs' }
+$Repo = if ($env:NCRS_REPO) { $env:NCRS_REPO } else { 'CosmicDriftGameStudio/ncrs' }
 $BinName = 'ncrs.exe'
 
 function Write-Info($message) { Write-Host "  $message" }

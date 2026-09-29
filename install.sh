@@ -8,7 +8,7 @@
 
 set -eu
 
-REPO="${NCRS_REPO:-ncrs/ncrs}"
+REPO="${NCRS_REPO:-CosmicDriftGameStudio/ncrs}"
 BIN_DIR="${NCRS_BIN_DIR:-$HOME/.local/bin}"
 BIN_NAME="ncrs"
 
