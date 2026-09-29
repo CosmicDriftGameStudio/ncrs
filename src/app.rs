@@ -51,9 +51,13 @@ pub struct App {
 /// The part of the prompt the key routing needs, cheap to clone.
 ///
 /// A subscription outlives the call that created it, so it cannot borrow the
-/// app. It gets this instead: two flags and the name typed so far. `Arc<str>`
-/// rather than `&'static str` because leaking a copy per keypress would grow
-/// without bound, and a `String` per keypress is what this avoids.
+/// app. It gets this instead: two flags and the name typed so far.
+///
+/// Built once per run rather than per keystroke — iced_winit calls
+/// `subscription()` once at startup and once when the instance ends
+/// (iced_winit-0.14.1/src/lib.rs:123 and :1338), not per frame. Measured
+/// rather than assumed, because a per-frame allocation was the reason for the
+/// `Arc<str>` in the first place.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct PromptKeyState {
     /// A prompt is open, so keys belong to it.
@@ -61,7 +65,7 @@ pub struct PromptKeyState {
     /// Whether the operation is running; keys are ignored then.
     pub busy: bool,
     /// The name typed so far.
-    pub typed: std::sync::Arc<str>,
+    pub typed: String,
 }
 
 /// Decides who a key press belongs to: the open prompt, or the bindings.
@@ -77,19 +81,17 @@ pub fn route_key(prompt: &PromptKeyState, key: Key) -> Option<Message> {
     if prompt.busy {
         return None;
     }
-    let mut name = prompt.typed.to_string();
+    // Characters are not handled here. `TextInput::on_input` reports the whole
+    // field value, and a key press that also arrived through this subscription
+    // would apply the same character twice. One route for the text, one for
+    // Enter and Escape.
     match key.as_ref() {
         Key::Named(Named::Enter) => Some(Message::PromptSubmit),
         Key::Named(Named::Escape) => Some(Message::PromptCancel),
         // Backspace edits the text; it must not walk to the parent directory.
         Key::Named(Named::Backspace) => {
+            let mut name = prompt.typed.clone();
             name.pop();
-            Some(Message::PromptInput(name))
-        }
-        // No filtering: a directory name may contain anything but a path
-        // separator, and `Prompt::validate` reports the rest.
-        Key::Character(c) => {
-            name.push_str(c);
             Some(Message::PromptInput(name))
         }
         _ => None,
@@ -454,7 +456,7 @@ impl App {
             Some(prompt) => PromptKeyState {
                 open: true,
                 busy: prompt.busy(),
-                typed: prompt.name().into(),
+                typed: prompt.name().to_string(),
             },
         }
     }
@@ -668,16 +670,18 @@ mod prompt_routing {
         );
     }
 
-    /// Typing appends, backspace removes one character — the field behaves like
-    /// a text field, not like a panel selection.
+    /// Backspace edits the name; a character key does not. The text field
+    /// reports its own value through `on_input`, so handling characters here as
+    /// well would apply each one twice.
     #[test]
-    fn typing_and_backspace_edit_the_name() {
+    fn backspace_edits_but_characters_are_the_widgets_job() {
         let mut app = with_prompt();
         app.prompt.as_mut().unwrap().set_name("abc".into());
 
         assert_eq!(
             press(&app, Key::Character("d".into())),
-            Some(Message::PromptInput("abcd".into()))
+            None,
+            "a character must not go through the subscription"
         );
         assert_eq!(
             press(&app, Key::Named(Named::Backspace)),
@@ -761,8 +765,12 @@ mod prompt_routing {
         press_and_update(&mut app, Key::Named(Named::F7));
         assert!(app.prompt.is_some(), "F7 did not open the prompt");
 
+        // The text arrives the way the user produces it: the widget reports the
+        // whole field value through on_input, character by character.
+        let mut typed = String::new();
         for c in "neuer ordner".chars() {
-            press_and_update(&mut app, Key::Character(c.to_string().into()));
+            typed.push(c);
+            let _ = app.update(Message::PromptInput(typed.clone()));
         }
         assert_eq!(app.prompt.as_ref().unwrap().name(), "neuer ordner");
 
