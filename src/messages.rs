@@ -5,6 +5,8 @@ use std::path::PathBuf;
 
 use iced::Size;
 
+use crate::dialog::PromptKind;
+use crate::fs::CreateDirError;
 use crate::fs::{FileEntry, ReadError};
 
 /// Identifies one of the two file panels.
@@ -47,6 +49,31 @@ pub enum Message {
     SelectLast,
     OpenSelected,
     GoUp,
+
+    /// A key press, unclassified. `iced`'s `on_key_press` only takes a plain
+    /// `fn`, which cannot read app state, so the key arrives raw and
+    /// `App::update` decides whether it belongs to the prompt or the panels.
+    Typed {
+        key: Box<iced::keyboard::Key>,
+        modifiers: iced::keyboard::Modifiers,
+    },
+
+    // --- Modal prompt (see crate::dialog) ---
+    /// F7: open the create-directory prompt.
+    CreateDirPrompt,
+    /// A keystroke went to the open prompt.
+    PromptInput(String),
+    /// The user confirmed the prompt.
+    PromptSubmit,
+    /// The user dismissed the prompt.
+    PromptCancel,
+    /// The background task finished.
+    PromptFinished {
+        /// The operation, so a stale result can be matched to its prompt.
+        prompt: PromptKind,
+        request_id: u64,
+        result: Result<(), CreateDirError>,
+    },
 
     // --- Panel handling ---
     SwitchPanel,

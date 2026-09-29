@@ -117,6 +117,11 @@ fn build_actions() -> Vec<Action> {
             message: Message::SwitchLanguage,
             hint: Some(Msg::ShortcutSwitchLanguage),
         },
+        Action {
+            binding: Binding::key(KeyNamed(F7)),
+            message: Message::CreateDirPrompt,
+            hint: Some(Msg::ShortcutMkdir),
+        },
         // Quit is also F10, the Norton Commander convention.
         Action {
             binding: Binding::key(KeyNamed(F10)),

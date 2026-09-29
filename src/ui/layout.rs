@@ -13,6 +13,8 @@ pub const PANEL_TITLE_HEIGHT: f32 = 28.0;
 pub const COLUMN_HEADER_HEIGHT: f32 = 24.0;
 pub const ROW_HEIGHT: f32 = 22.0;
 
+pub const DIALOG_WIDTH: f32 = 420.0;
+
 pub const SIZE_COLUMN_WIDTH: f32 = 90.0;
 pub const DATE_COLUMN_WIDTH: f32 = 150.0;
 

@@ -213,12 +213,12 @@ Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
 
 # Tasks – Basis-Feature
 
-**Stand: 8 von 17 erledigt, 9 offen.** 36 Tests, grün in fünf Feature-Kombinationen.
+**Stand: 9 von 17 erledigt, 8 offen.** 59 Tests, grün in vier Feature-Kombinationen.
 
 | Block | Inhalt | Stand |
 |---|---|---|
 | A | CI, Installer, Release, `strings.json` | ✅ fertig (T1–T5, T5b) |
-| B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | ⬜ offen — **T6 ist der nächste Task** |
+| B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | 🔶 MkDir fertig — **T7 (Copy/Move) ist der nächste Task** |
 | C | Netzwerk-Mounts, Archive | ⬜ offen, hängt an B |
 
 Legende: **[P]** Pflicht für ein benutzbares Basis-Feature, **[S]** später. Reihenfolge =
@@ -295,13 +295,26 @@ Abhängigkeit, nicht Bequemlichkeit. Jeder Task endet grün: `cargo fmt --check`
 
 ## Block B – Basis-Feature (der Dateimanager selbst)
 
-- [ ] **T6 – F7 MkDir** — kleinster End-to-End-Durchstich: Dialog → `Task` → `Message` → Reload
-  **Nächster Task.** Die einzige Aktion ohne Quell-Panel, also der kleinste Weg, die
-  ganze Kette einmal zu beweisen: Dialog-State, `Task::perform`, Message, Reload.
-  `DialogState` kommt nach `src/app.rs` neben den anderen States, **nicht** nach
-  `src/ui/` — es ist State, kein View.
-  *Geprüft:* `Stack` + `helpers::opaque` für das Overlay gehen **ohne** das
-  `advanced`-Feature, das steht inzwischen in den Features.
+- [x] **T6 – F7 MkDir** — Dialog → `Task` → `Message` → Reload
+  Die Kette einmal vollständig gebaut. Was dabei herauskam:
+  - `src/fs/ops.rs`: `create_dir` via `spawn_blocking`, Fehler **strukturiert**
+    (`CreateDirError` mit `io::Error` darin), damit „Name vergeben" und
+    „Elternverzeichnis fehlt" unterscheidbar bleiben — zwei verschiedene Hilfehinweise.
+  - `src/dialog.rs`: `Prompt`-State mit `validate()`. Leertaste-Name, `.`/`..` und
+    Pfadtrenner werden abgewiesen, **bevor** das Dateisystem angefasst wird; `..` kann so
+    nichts oberhalb des Panels anlegen.
+  - `src/ui/dialog.rs`: Overlay über `Stack` + `opaque`-Scrim, Textfeld, zwei Buttons.
+  - **Tastenverteilung war der schwierige Teil.** `iced::keyboard::on_key_press` nimmt nur
+    einen `fn`-Pointer, der keinen App-Zustand sehen kann — eine Closure über `self` geht
+    nicht. Lösung: jede Taste kommt als `Message::Typed` an, `App::route_key` entscheidet
+    dann, ob sie zum Dialog oder zu den Panels gehört. Eine Stelle, damit kein Binding
+    halb-modal werden kann.
+  - 23 neue Tests (36 → 59), darunter `an_open_prompt_takes_every_key` (verhindert, dass
+    Enter im Textfeld ein Verzeichnis öffnet) und ein Ende-zu-Ende-Test mit echtem
+    Dateisystem.
+  **Nicht getestet:** das Aussehen des Dialogs und die Bedienung per Maus. Beides braucht
+  ein Fenster, dafür gibt es hier keinen Harness.
+
 - [ ] **T7 – F5 Copy / F6 Move** – nutzt `inactive_panel_mut()`, Reload beider Panels
 - [ ] **T8 – F8 Delete mit Bestätigungsdialog und Papierkorb** – siehe offene Frage unten
 - [ ] **T9 – F3 View / F4 Edit** – externes Programm, `std::process::Command`
@@ -359,3 +372,4 @@ weiß ich nur durch deine Beobachtung — die steht als Messung im README, nicht
 | T10 | TOML oder JSON für die Config? | **offen.** Empfehlung: TOML, besser für Handeditierung. |
 | T13 | Sprachauswahl persistent | **teilweise.** `en`/`de` gebaut, F9 schaltet um; die Persistenz hängt an T10. |
 | T14 | Suche: `glob` oder inkrementell? | **offen.** Die Filterlogik ist in beiden testbar, das Timing nicht. |
+| T15 | Settings | **offen.** Wichtige Sachen soll sich das program merken |

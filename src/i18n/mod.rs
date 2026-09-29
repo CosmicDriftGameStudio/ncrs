@@ -126,8 +126,15 @@ mod tests {
     }
 
     /// Keys whose English and German are legitimately the same.
+    ///
+    /// `ColumnName` and `DialogMkdirLabel` are both "Name": the word is the same
+    /// in both languages. `MarkerDir`/`MarkerUp` are a Norton Commander
+    /// convention and are never translated at all.
     fn is_allowed_identical(msg: Msg) -> bool {
-        matches!(msg, Msg::ColumnName | Msg::MarkerDir | Msg::MarkerUp)
+        matches!(
+            msg,
+            Msg::ColumnName | Msg::MarkerDir | Msg::MarkerUp | Msg::DialogMkdirLabel
+        )
     }
 
     /// The marker convention is deliberately not translated.

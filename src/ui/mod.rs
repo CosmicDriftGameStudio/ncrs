@@ -2,6 +2,7 @@
 //! components are generic over the message type where they emit messages,
 //! so they can be reused in other contexts.
 
+pub mod dialog;
 pub mod format;
 pub mod header;
 pub mod layout;

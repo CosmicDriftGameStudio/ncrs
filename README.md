@@ -34,6 +34,7 @@ for the state, the licensing audit and the reasoning behind the order.
 | `PgUp` / `PgDn`    | Move selection by one page               |
 | `Home` / `End`     | First / last entry                       |
 | `Enter`            | Open directory (files: placeholder)      |
+| `F7`               | Create directory                        |
 | `Backspace`        | Go to parent directory                   |
 | `Tab`              | Switch active panel                      |
 | `F9`               | Switch language (en/de, temporary)        |
@@ -110,10 +111,12 @@ macOS and Windows need no extra system packages.
 src/
 ├── main.rs          # Entry point: iced::application builder (tokio executor)
 ├── app.rs           # App state, update() – the ONLY place state changes – and view()
+├── dialog.rs        # State of the modal prompt (F7 and the operations after it)
 ├── messages.rs      # Central Message enum + PanelSide
 ├── keymap.rs        # Key press -> Message mapping, shortcut list for the header
 ├── ui/              # Pure, reusable view components (no business logic)
 │   ├── panel.rs     # PanelState (data + selection/scroll helpers) + view()
+│   ├── dialog.rs    # The prompt: text field, buttons, scrim
 │   ├── header.rs    # Title bar with shortcut hints
 │   ├── statusbar.rs # Active path | selected entry | size | date (or error)
 │   ├── theme.rs     # Colors, spacing, font sizes, widget style functions
@@ -125,6 +128,7 @@ src/
 │   └── lang/de.rs    # German
 └── fs/              # Filesystem layer – knows nothing about the UI
     ├── entry.rs     # FileEntry (name, path, size, modified, is_dir, ...) + sort order
+    ├── ops.rs       # create_dir() and friends, structured errors, no text
     └── reader.rs    # async read_directory(), home_dir(), root_of()
 ```
 

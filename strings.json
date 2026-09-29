@@ -89,6 +89,72 @@
       "context": "Status bar error shown when the background read task itself failed, not the filesystem. Internal error, users should rarely see it. Keep the {reason} placeholder.",
       "en": "Directory read task failed: {reason}",
       "de": "Lesen fehlgeschlagen: {reason}"
+    },
+    {
+      "key": "shortcut.mkdir",
+      "context": "Header hint describing the F7 key, which asks for a new directory name. Say 'create' or 'make', not 'new'.",
+      "en": "Create Directory",
+      "de": "Ordner erstellen"
+    },
+    {
+      "key": "dialog.mkdir.title",
+      "context": "Title of the create-directory dialog. Imperative, matches the header hint.",
+      "en": "Create directory",
+      "de": "Ordner erstellen"
+    },
+    {
+      "key": "dialog.mkdir.label",
+      "context": "Label next to the text field for the new directory name. One or two words, no colon.",
+      "en": "Name",
+      "de": "Name"
+    },
+    {
+      "key": "dialog.mkdir.create",
+      "context": "Confirm button in the create-directory dialog. Verb, what the button does.",
+      "en": "Create",
+      "de": "Erstellen"
+    },
+    {
+      "key": "dialog.cancel",
+      "context": "Button that dismisses any dialog without doing anything. Verb. Used by every dialog, so keep it short.",
+      "en": "Cancel",
+      "de": "Abbrechen"
+    },
+    {
+      "key": "error.empty_name",
+      "context": "Shown in the dialog when the name field is empty. Addressed to the user, not a technical error.",
+      "en": "Please enter a name",
+      "de": "Bitte einen Namen eingeben"
+    },
+    {
+      "key": "error.reserved_name",
+      "context": "Shown when the user typed . or .., which cannot be a directory name. Mention that this is not allowed rather than what it would navigate to.",
+      "en": "\"..\" is not a valid name",
+      "de": "„..\" ist kein gültiger Name"
+    },
+    {
+      "key": "error.separator_not_allowed",
+      "context": "Shown when the typed name contains a path separator. The new directory is always created inside the current one, so tell the user to use a plain name.",
+      "en": "A name cannot contain / or \\\\",
+      "de": "Ein Name darf kein / oder \\ enthalten"
+    },
+    {
+      "key": "error.mkdir_failed",
+      "context": "Shown when creating the directory failed for a reason the user could not have predicted — a permission problem, a read-only disk, a full filesystem. Takes the directory name and the OS reason. For the two predictable failures use error.mkdir_taken and error.parent_missing instead.",
+      "en": "Could not create {name}: {reason}",
+      "de": "{name} konnte nicht erstellt werden: {reason}"
+    },
+    {
+      "key": "error.mkdir_taken",
+      "context": "Shown when a directory with the name the user typed already exists. Takes the name. Do not suggest a different name — just say it is taken.",
+      "en": "\u201c{name}\u201d already exists",
+      "de": "\u201e{name}\u201c existiert bereits"
+    },
+    {
+      "key": "error.parent_missing",
+      "context": "Shown when the panel's own directory no longer exists: it was deleted, renamed or unmounted while the dialog was open. Tells the user the panel is out of date, not that they typed something wrong.",
+      "en": "This folder no longer exists",
+      "de": "Dieser Ordner existiert nicht mehr"
     }
   ]
 }

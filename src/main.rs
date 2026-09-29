@@ -5,6 +5,7 @@
 
 mod app;
 mod backend;
+mod dialog;
 mod fs;
 mod i18n;
 mod keymap;

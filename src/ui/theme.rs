@@ -25,6 +25,13 @@ pub mod colors {
     pub const DIR_COLOR: Color = Color::from_rgb(1.000, 1.000, 1.000);
     pub const ACCENT: Color = Color::from_rgb(1.000, 0.850, 0.300);
     pub const ERROR: Color = Color::from_rgb(1.000, 0.450, 0.450);
+    /// Behind a modal dialog: darkens the panels without hiding them.
+    pub const SCRIM: Color = Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 0.65,
+    };
 }
 
 pub mod spacing {
@@ -118,5 +125,48 @@ pub fn row_text_color(is_dir: bool, selected: bool, panel_active: bool) -> Color
         (true, _) => colors::SELECTED_TEXT,
         (false, true) => colors::DIR_COLOR,
         (false, false) => colors::TEXT,
+    }
+}
+
+/// The prompt panel: a raised box over the scrim.
+pub fn dialog(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(colors::PANEL_TITLE_ACTIVE_BG)),
+        text_color: Some(colors::TEXT),
+        border: Border {
+            color: colors::ACTIVE_BORDER,
+            width: 2.0,
+            radius: spacing::BORDER_RADIUS.into(),
+        },
+        ..container::Style::default()
+    }
+}
+
+/// Buttons in the prompt. `primary` is the action the user most likely wants.
+pub fn dialog_button(primary: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |_theme, _status| {
+        let background = if primary {
+            Some(Background::Color(colors::SELECTED_BG))
+        } else {
+            None
+        };
+        button::Style {
+            background,
+            text_color: if primary {
+                colors::SELECTED_TEXT
+            } else {
+                colors::DIM_TEXT
+            },
+            border: Border {
+                color: if primary {
+                    colors::ACTIVE_BORDER
+                } else {
+                    colors::INACTIVE_BORDER
+                },
+                width: 1.0,
+                radius: spacing::BORDER_RADIUS.into(),
+            },
+            ..button::Style::default()
+        }
     }
 }
