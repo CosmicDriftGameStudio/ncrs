@@ -1,0 +1,16 @@
+[package]
+name = "ncrs"
+version = "0.1.0"
+edition = "2021"
+description = "A Norton Commander style dual-panel file manager built with iced"
+license = "MIT"
+
+[dependencies]
+iced = { version = "0.13.1", features = ["tokio", "advanced"] }
+tokio = { version = "1", features = ["full"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1

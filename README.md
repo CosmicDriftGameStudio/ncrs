@@ -1,0 +1,157 @@
+# NC-rs
+
+A fast, keyboard-first **Norton Commander style dual-panel file manager** written in Rust
+with [iced](https://iced.rs) (GPU-accelerated, cross-platform native UI).
+
+This project is intentionally small: it is a **clean, extensible template** with a strict
+separation between UI components, filesystem layer and application state – inspired by
+the architecture principles of editors like Zed (async I/O, message-driven state, pure views).
+
+## Features
+
+- Two side-by-side file panels (left starts in `$HOME`, right at the filesystem root)
+- Keyboard navigation, selection highlighting, auto-scrolling
+- Name / Size / Modified columns, directories first, case-insensitive sort
+- `..` entry to go up; the directory you came from is re-selected
+- Async directory loading (tokio blocking pool) – the UI never blocks
+- Stale-result protection (fast navigation cannot show an outdated listing)
+- Errors (e.g. *Permission denied*) are shown in the status bar – no panics
+- Mouse click selects a row and activates its panel
+- Runs on Linux, macOS and Windows
+
+## Keyboard shortcuts
+
+| Key                | Action                                   |
+|--------------------|------------------------------------------|
+| `↑` / `↓`          | Move selection                           |
+| `PgUp` / `PgDn`    | Move selection by one page               |
+| `Home` / `End`     | First / last entry                       |
+| `Enter`            | Open directory (files: placeholder)      |
+| `Backspace`        | Go to parent directory                   |
+| `Tab`              | Switch active panel                      |
+| `F10` / `Q`        | Quit                                     |
+
+## Build & run
+
+Requirements: Rust (stable, 1.80+) via [rustup](https://rustup.rs).
+
+```bash
+cargo run            # debug build
+cargo run --release  # optimized build
+cargo test           # unit tests (fs reader, formatting, panel selection logic)
+```
+
+**Linux** additionally needs the usual windowing/font dev packages, e.g. on Debian/Ubuntu:
+
+```bash
+sudo apt install pkg-config libxkbcommon-dev libwayland-dev libx11-dev libfontconfig1-dev
+```
+
+macOS and Windows need no extra system packages.
+
+## Architecture
+
+```
+src/
+├── main.rs          # Entry point: iced::application builder (tokio executor)
+├── app.rs           # App state, update() – the ONLY place state changes – and view()
+├── messages.rs      # Central Message enum + PanelSide
+├── keymap.rs        # Key press -> Message mapping, shortcut list for the header
+├── ui/              # Pure, reusable view components (no business logic)
+│   ├── panel.rs     # PanelState (data + selection/scroll helpers) + view()
+│   ├── header.rs    # Title bar with shortcut hints
+│   ├── statusbar.rs # Active path | selected entry | size | date (or error)
+│   ├── theme.rs     # Colors, spacing, font sizes, widget style functions
+│   ├── layout.rs    # Fixed metrics (row height, column widths, visible rows)
+│   └── format.rs    # Size / date formatting
+└── fs/              # Filesystem layer – knows nothing about the UI
+    ├── entry.rs     # FileEntry (name, path, size, modified, is_dir, ...)
+    └── reader.rs    # async read_directory(), home_dir(), root_of()
+```
+
+### Data flow (Elm architecture)
+
+```
+ keyboard / mouse / window events
+            │  (keymap::map_key, subscriptions)
+            ▼
+        Message ──► App::update(&mut self) ──► Task<Message> (async fs work)
+            ▲                │                         │
+            │                ▼                         │
+            │          App::view(&self)                │
+            │      (pure: state -> Element)            │
+            └──────── Message::DirectoryLoaded ◄───────┘
+```
+
+### Principles
+
+1. **No business logic in views.** `ui::*::view` functions take state and return
+   `Element`s – nothing else.
+2. **All state mutations go through messages.** `App::update` is the single place where
+   state changes.
+3. **Filesystem work is async.** `fs::read_directory` runs on tokio's blocking pool via
+   `Task::perform`; results come back as `Message::DirectoryLoaded`.
+4. **Components are functions, not stateful widgets.** `PanelState` lives in `App`;
+   `panel::view` just renders it.
+5. **Components are generic over the message type.** `panel::view` receives an
+   `on_row_click: impl Fn(usize) -> M` callback, `header::view` / `statusbar::view` are
+   generic `M` – they can be reused in any iced app or in other screens (dialogs, viewers…).
+6. **Minimal exports.** `fs` re-exports only `FileEntry` and the reader functions; the UI
+   module exposes components and `PanelState`/`PanelProps`.
+
+### Scrolling
+
+Rows have a fixed height (`ui::layout::ROW_HEIGHT`). On window resize the app recomputes
+`visible_rows`; each panel renders `entries[scroll_offset .. scroll_offset + visible_rows]`
+and `PanelState::ensure_visible` keeps the selection on screen. This is O(visible rows)
+per frame, independent of directory size.
+
+## Extending NC-rs
+
+### Add a keyboard shortcut / action
+
+1. Add a variant to `Message` in `src/messages.rs`, e.g. `ToggleHidden`.
+2. Map a key in `keymap::map_key` (`Key::Named(Named::F3) => Some(Message::View)`),
+   optionally add it to `keymap::SHORTCUTS` so it shows up in the header.
+3. Handle it in `App::update`. Keep the view untouched unless something new is displayed.
+
+### Add a filesystem operation (copy, move, delete, mkdir …)
+
+1. Implement it as an `async fn` in a new file under `src/fs/` (use
+   `tokio::task::spawn_blocking` or `tokio::fs`), return a plain result type.
+2. Re-export it from `src/fs/mod.rs`.
+3. In `App::update`, start it with `Task::perform(fs::op(src, dst), |r| Message::OpDone(r))`.
+   Use `active_panel()` for the source and `inactive_panel_mut()` for the target panel.
+4. On completion, reload the affected panels with `App::load`.
+
+### Add a UI component (dialog, file viewer, command line …)
+
+1. Create `src/ui/<component>.rs` with a `pub fn view<'a, M: Clone + 'a>(…) -> Element<'a, M>`.
+   Pass everything it needs as arguments (state refs, props struct, message callbacks).
+2. Put its colors/styles into `ui/theme.rs` and fixed sizes into `ui/layout.rs`.
+3. Keep its state (if any) as a field in `App` (e.g. `dialog: Option<DialogState>`) and
+   compose it in `App::view` (e.g. with `iced::widget::stack` for overlays).
+
+### Add a column (permissions, extension …)
+
+1. Add the field to `FileEntry` and fill it in `FileEntry::from_dir_entry`.
+2. Add a formatter to `ui/format.rs`, a width to `ui/layout.rs`, and the cell to
+   `panel::column_header` / `panel::file_row`.
+
+### Ideas for next steps
+
+- F3 view / F4 edit, F5 copy, F6 move, F7 mkdir, F8 delete (with confirm dialog)
+- Multi-selection (`Insert`), quick search by typing
+- Filesystem watching (`notify` crate) as an iced `Subscription`
+- Configurable keymap and theme (TOML)
+
+## Tech notes
+
+- iced **0.13.x** (`Task`, `iced::application` builder, `keyboard::on_key_press`,
+  `window::resize_events`). iced 0.14 has since been released; migrating mainly touches
+  `main.rs` (application builder) and style closures.
+- Font: the built-in monospace font for an authentic commander look.
+
+## License
+
+MIT

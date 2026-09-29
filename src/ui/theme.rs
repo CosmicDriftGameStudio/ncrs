@@ -1,0 +1,122 @@
+//! Colors, spacing and reusable widget styles (dark, Norton Commander inspired).
+
+use iced::widget::{button, container};
+use iced::{Background, Border, Color, Theme};
+
+pub mod colors {
+    use iced::Color;
+
+    pub const BACKGROUND: Color = Color::from_rgb(0.035, 0.047, 0.098);
+    pub const PANEL_BACKGROUND: Color = Color::from_rgb(0.047, 0.086, 0.200);
+    pub const PANEL_TITLE_BG: Color = Color::from_rgb(0.070, 0.125, 0.270);
+    pub const PANEL_TITLE_ACTIVE_BG: Color = Color::from_rgb(0.110, 0.420, 0.520);
+    pub const HEADER_BACKGROUND: Color = Color::from_rgb(0.110, 0.420, 0.520);
+    pub const STATUSBAR_BACKGROUND: Color = Color::from_rgb(0.070, 0.125, 0.270);
+
+    pub const SELECTED_BG: Color = Color::from_rgb(0.180, 0.690, 0.760);
+    pub const SELECTED_INACTIVE_BG: Color = Color::from_rgb(0.130, 0.210, 0.360);
+    pub const SELECTED_TEXT: Color = Color::from_rgb(0.020, 0.040, 0.090);
+
+    pub const ACTIVE_BORDER: Color = Color::from_rgb(0.310, 0.840, 0.910);
+    pub const INACTIVE_BORDER: Color = Color::from_rgb(0.165, 0.210, 0.390);
+
+    pub const TEXT: Color = Color::from_rgb(0.800, 0.840, 0.940);
+    pub const DIM_TEXT: Color = Color::from_rgb(0.450, 0.500, 0.640);
+    pub const DIR_COLOR: Color = Color::from_rgb(1.000, 1.000, 1.000);
+    pub const ACCENT: Color = Color::from_rgb(1.000, 0.850, 0.300);
+    pub const ERROR: Color = Color::from_rgb(1.000, 0.450, 0.450);
+}
+
+pub mod spacing {
+    pub const OUTER_PADDING: f32 = 6.0;
+    pub const SECTION_GAP: f32 = 6.0;
+    pub const PANEL_GAP: f32 = 6.0;
+    pub const CELL_PADDING_X: f32 = 8.0;
+    pub const BORDER_WIDTH: f32 = 1.0;
+    pub const BORDER_RADIUS: f32 = 3.0;
+}
+
+pub mod font_size {
+    pub const HEADER: f32 = 14.0;
+    pub const TITLE: f32 = 14.0;
+    pub const ROW: f32 = 14.0;
+    pub const COLUMN_HEADER: f32 = 12.0;
+    pub const STATUS: f32 = 13.0;
+}
+
+/// Base theme handed to iced (our widgets override most colors).
+pub fn app_theme() -> Theme {
+    Theme::Dark
+}
+
+fn filled(bg: Color, text: Color) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(bg)),
+        text_color: Some(text),
+        ..container::Style::default()
+    }
+}
+
+pub fn root(_theme: &Theme) -> container::Style {
+    filled(colors::BACKGROUND, colors::TEXT)
+}
+
+pub fn header(_theme: &Theme) -> container::Style {
+    filled(colors::HEADER_BACKGROUND, colors::SELECTED_TEXT)
+}
+
+pub fn statusbar(_theme: &Theme) -> container::Style {
+    filled(colors::STATUSBAR_BACKGROUND, colors::TEXT)
+}
+
+/// Outer frame of a file panel; highlighted border when active.
+pub fn panel(active: bool) -> impl Fn(&Theme) -> container::Style {
+    move |_theme| container::Style {
+        border: Border {
+            color: if active {
+                colors::ACTIVE_BORDER
+            } else {
+                colors::INACTIVE_BORDER
+            },
+            width: spacing::BORDER_WIDTH,
+            radius: spacing::BORDER_RADIUS.into(),
+        },
+        ..filled(colors::PANEL_BACKGROUND, colors::TEXT)
+    }
+}
+
+pub fn panel_title(active: bool) -> impl Fn(&Theme) -> container::Style {
+    move |_theme| {
+        if active {
+            filled(colors::PANEL_TITLE_ACTIVE_BG, colors::SELECTED_TEXT)
+        } else {
+            filled(colors::PANEL_TITLE_BG, colors::DIM_TEXT)
+        }
+    }
+}
+
+/// Background of a file row (flat button, no hover chrome).
+pub fn row(selected: bool, panel_active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |_theme, _status| {
+        let background = match (selected, panel_active) {
+            (true, true) => Some(Background::Color(colors::SELECTED_BG)),
+            (true, false) => Some(Background::Color(colors::SELECTED_INACTIVE_BG)),
+            _ => None,
+        };
+        button::Style {
+            background,
+            text_color: colors::TEXT,
+            border: Border::default(),
+            ..button::Style::default()
+        }
+    }
+}
+
+/// Text color for a row depending on entry kind and selection state.
+pub fn row_text_color(is_dir: bool, selected: bool, panel_active: bool) -> Color {
+    match (selected && panel_active, is_dir) {
+        (true, _) => colors::SELECTED_TEXT,
+        (false, true) => colors::DIR_COLOR,
+        (false, false) => colors::TEXT,
+    }
+}
