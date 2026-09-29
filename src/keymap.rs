@@ -86,7 +86,7 @@ struct Action {
 ///
 /// Built at runtime rather than as a `static` because `Key::Character` needs a
 /// `SmolStr`, which is not a const constructor.
-fn actions() -> Vec<Action> {
+fn build_actions() -> Vec<Action> {
     use key::Named::*;
     use Key::{Character, Named as KeyNamed};
 
@@ -157,20 +157,30 @@ fn actions() -> Vec<Action> {
     ]
 }
 
+/// The binding table, built once on first use.
+///
+/// `map_key` runs on every key press, and `Action` owns a `Key`, which owns a
+/// `SmolStr`. Building the list per press meant an allocation per key repeat;
+/// holding a cursor key down made the UI visibly lag behind the keystroke.
+fn actions() -> &'static [Action] {
+    static ACTIONS: std::sync::OnceLock<Vec<Action>> = std::sync::OnceLock::new();
+    ACTIONS.get_or_init(build_actions)
+}
+
 /// Maps a key press to a message. Must be a plain `fn` for
 /// `iced::keyboard::on_key_press`.
 pub fn map_key(key: Key, modifiers: Modifiers) -> Option<Message> {
     actions()
-        .into_iter()
+        .iter()
         .find(|action| action.binding.key == key && action.binding.modifiers == modifiers)
-        .map(|action| action.message)
+        .map(|action| action.message.clone())
 }
 
 /// Shortcuts shown in the header bar, derived from the bindings above:
 /// `(key label, translated description)`.
 pub fn shortcuts(lang: Language) -> Vec<(String, &'static str)> {
     let mut hints: Vec<_> = actions()
-        .into_iter()
+        .iter()
         .filter_map(|action| {
             let hint = action.hint?;
             Some((action.binding.label(), lang.text(hint)))
@@ -193,7 +203,7 @@ mod tests {
     fn every_advertised_binding_responds_to_its_key() {
         for (label, _) in shortcuts(Language::English) {
             let advertised = actions()
-                .into_iter()
+                .iter()
                 .find(|action| action.binding.label() == label);
             let action = advertised.expect("a header hint without a binding");
             assert!(action.hint.is_some(), "{label} is advertised with no hint");

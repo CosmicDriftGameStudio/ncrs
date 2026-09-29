@@ -27,13 +27,15 @@ pub struct App {
 
 impl App {
     /// Initial state plus tasks that load both panels.
+    /// Left panel starts in the working directory, right in `$HOME`, so the
+    /// two panels are not the same directory on launch.
     pub fn new() -> (Self, Task<Message>) {
+        let start = fs::start_dir();
         let home = fs::home_dir();
-        let root = fs::root_of(&home);
 
         let mut app = Self {
-            left_panel: PanelState::new(home.clone()),
-            right_panel: PanelState::new(root.clone()),
+            left_panel: PanelState::new(start.clone()),
+            right_panel: PanelState::new(home.clone()),
             active_panel: PanelSide::Left,
             visible_rows: layout::visible_rows(layout::INITIAL_WINDOW_SIZE),
             lang: Language::default(),
@@ -41,8 +43,8 @@ impl App {
         };
 
         let tasks = Task::batch([
-            app.load(PanelSide::Left, home, None),
-            app.load(PanelSide::Right, root, None),
+            app.load(PanelSide::Left, start, None),
+            app.load(PanelSide::Right, home, None),
         ]);
         (app, tasks)
     }

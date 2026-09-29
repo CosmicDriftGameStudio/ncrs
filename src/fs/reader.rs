@@ -89,11 +89,24 @@ pub fn home_dir() -> PathBuf {
 }
 
 /// Filesystem root of `path` (`/` on Unix, e.g. `C:\` on Windows).
+///
+/// Not used at startup any more — see [`start_dir`]. Kept because "go to the
+/// filesystem root" is a standard file-manager action and will need it.
+#[allow(dead_code)]
 pub fn root_of(path: &Path) -> PathBuf {
     path.ancestors()
         .last()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("/"))
+}
+
+/// The directory the app should start in when the user has no better idea:
+/// the working directory, falling back to the home directory.
+pub fn start_dir() -> PathBuf {
+    std::env::current_dir()
+        .ok()
+        .filter(|p| p.is_dir())
+        .unwrap_or_else(home_dir)
 }
 
 #[cfg(test)]
@@ -128,5 +141,47 @@ mod tests {
         assert!(listing.error.is_some());
         assert_eq!(listing.entries.len(), 1);
         assert!(listing.entries[0].is_parent);
+    }
+}
+
+#[cfg(test)]
+mod start_dir_tests {
+    use super::*;
+
+    /// Regression: the app opened its right panel at the filesystem root
+    /// instead of a useful directory, because `root_of` was used where the
+    /// working directory was meant.
+    #[test]
+    fn start_dir_is_the_working_directory() {
+        let start = start_dir();
+        assert!(
+            start.is_dir(),
+            "start_dir {:?} is not a directory",
+            start.display()
+        );
+        // Falls back to home rather than the filesystem root.
+        assert_ne!(
+            start.parent(),
+            None,
+            "start_dir should not be the filesystem root"
+        );
+    }
+
+    #[test]
+    fn root_of_finds_the_filesystem_root() {
+        let root = root_of(Path::new("/a/b/c"));
+        assert_eq!(root, PathBuf::from("/"));
+    }
+
+    /// `start_dir` must never hand out a path that cannot be listed, so a
+    /// fresh panel shows entries rather than an error.
+    #[tokio::test]
+    async fn start_dir_is_readable() {
+        let listing = read_directory(start_dir()).await;
+        assert!(
+            listing.error.is_none(),
+            "start_dir could not be read: {:?}",
+            listing.error
+        );
     }
 }

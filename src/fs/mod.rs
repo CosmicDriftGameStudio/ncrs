@@ -4,4 +4,4 @@ mod entry;
 mod reader;
 
 pub use entry::FileEntry;
-pub use reader::{home_dir, read_directory, root_of, ReadError};
+pub use reader::{home_dir, read_directory, start_dir, ReadError};
