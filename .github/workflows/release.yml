@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-13
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add ${{ matrix.target }}
+
+      # The windowing backend needs these; the renderer itself is pure Rust.
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config libxkbcommon-dev libwayland-dev libx11-dev libfontconfig1-dev
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # aarch64 Linux is cross-compiled on the x86_64 runner.
+      - name: Add cross linker for aarch64 Linux
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p ncrs-${{ matrix.target }}
+          cp target/${{ matrix.target }}/release/ncrs ncrs-${{ matrix.target }}/
+          cp LICENSE README.md ROADMAP.md ncrs-${{ matrix.target }}/ 2>/dev/null || true
+          tar -czf ncrs-${{ matrix.target }}.tar.gz -C . ncrs-${{ matrix.target }}
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          New-Item -ItemType Directory -Force -Path "ncrs-${{ matrix.target }}"
+          Copy-Item "target/${{ matrix.target }}/release/ncrs.exe" "ncrs-${{ matrix.target }}/"
+          Copy-Item LICENSE, README.md, ROADMAP.md "ncrs-${{ matrix.target }}/" -ErrorAction SilentlyContinue
+          Compress-Archive -Path "ncrs-${{ matrix.target }}" -DestinationPath "ncrs-${{ matrix.target }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ncrs-${{ matrix.target }}
+          path: ncrs-${{ matrix.target }}.*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect archives
+        run: |
+          mkdir -p dist
+          find artifacts -name "*.tar.gz" -o -name "*.zip" | while read -r f; do
+            cp "$f" dist/
+          done
+          ls -la dist/
+
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          draft: true
+          generate_release_notes: true
