@@ -67,3 +67,54 @@ impl FileEntry {
             .then_with(|| a.name.cmp(&b.name))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(name: &str, is_dir: bool) -> FileEntry {
+        FileEntry {
+            name: name.to_string(),
+            path: PathBuf::from(name),
+            is_dir,
+            is_symlink: false,
+            is_parent: false,
+            size: 0,
+            modified: None,
+        }
+    }
+
+    #[test]
+    fn parent_entry_sorts_first() {
+        let parent = FileEntry::parent(Path::new("/"));
+        let file = entry("a.txt", false);
+        let dir = entry("zdir", true);
+
+        assert_eq!(FileEntry::listing_order(&parent, &file), Ordering::Less);
+        assert_eq!(FileEntry::listing_order(&parent, &dir), Ordering::Less);
+    }
+
+    #[test]
+    fn directories_sort_before_files() {
+        let dir = entry("zzz", true);
+        let file = entry("aaa.txt", false);
+
+        assert_eq!(FileEntry::listing_order(&dir, &file), Ordering::Less);
+    }
+
+    #[test]
+    fn names_compare_case_insensitively() {
+        let upper = entry("B.txt", false);
+        let lower = entry("a.txt", false);
+
+        assert_eq!(FileEntry::listing_order(&lower, &upper), Ordering::Less);
+    }
+
+    #[test]
+    fn equal_names_fall_back_to_byte_order() {
+        let a = entry("A.txt", false);
+        let b = entry("a.txt", false);
+
+        assert_eq!(FileEntry::listing_order(&a, &b), Ordering::Less);
+    }
+}

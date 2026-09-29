@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use iced::Size;
 
-use crate::fs::FileEntry;
+use crate::fs::{FileEntry, ReadError};
 
 /// Identifies one of the two file panels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,7 +32,7 @@ pub enum Message {
         request_id: u64,
         path: PathBuf,
         entries: Vec<FileEntry>,
-        error: Option<String>,
+        error: Option<ReadError>,
         /// Entry name to select after loading (e.g. the dir we came from).
         select: Option<String>,
     },
@@ -48,8 +48,13 @@ pub enum Message {
 
     // --- Panel handling ---
     SwitchPanel,
+    /// Temporarily switches the UI language. Not yet persisted in config.
+    SwitchLanguage,
     /// Mouse click on a row of a panel.
-    RowClicked { side: PanelSide, index: usize },
+    RowClicked {
+        side: PanelSide,
+        index: usize,
+    },
 
     // --- Window / app ---
     WindowResized(Size),

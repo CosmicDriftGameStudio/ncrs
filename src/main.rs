@@ -5,6 +5,7 @@
 
 mod app;
 mod fs;
+mod i18n;
 mod keymap;
 mod messages;
 mod ui;

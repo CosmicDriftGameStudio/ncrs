@@ -5,6 +5,7 @@ use std::time::SystemTime;
 use chrono::{DateTime, Local};
 
 use crate::fs::FileEntry;
+use crate::i18n::Msg;
 
 /// Human readable size, e.g. `512 B`, `1.4 KB`, `3.0 GB`.
 pub fn size(bytes: u64) -> String {
@@ -22,11 +23,14 @@ pub fn size(bytes: u64) -> String {
 }
 
 /// Size column text: `<UP>` / `<DIR>` for directories, size otherwise.
+///
+/// The markers are a Norton Commander convention and are deliberately not
+/// translated, so this takes no `Language`.
 pub fn entry_size(entry: &FileEntry) -> String {
     if entry.is_parent {
-        "<UP>".into()
+        Msg::MarkerUp.text().into()
     } else if entry.is_dir {
-        "<DIR>".into()
+        Msg::MarkerDir.text().into()
     } else {
         size(entry.size)
     }
@@ -34,8 +38,12 @@ pub fn entry_size(entry: &FileEntry) -> String {
 
 /// Local timestamp `YYYY-MM-DD HH:MM`, or empty if unknown.
 pub fn time(time: Option<SystemTime>) -> String {
-    time.map(|t| DateTime::<Local>::from(t).format("%Y-%m-%d %H:%M").to_string())
-        .unwrap_or_default()
+    time.map(|t| {
+        DateTime::<Local>::from(t)
+            .format("%Y-%m-%d %H:%M")
+            .to_string()
+    })
+    .unwrap_or_default()
 }
 
 #[cfg(test)]

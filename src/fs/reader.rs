@@ -3,14 +3,34 @@ use std::path::{Path, PathBuf};
 
 use super::FileEntry;
 
+/// Why a directory read failed, without any user-facing text. The message is
+/// formatted by the UI layer, which owns the language.
+#[derive(Debug, Clone)]
+pub enum ReadError {
+    /// The OS refused to read the directory. The inner string is the OS message.
+    CannotRead { reason: String },
+    /// The background task itself failed, not the filesystem operation.
+    TaskFailed { reason: String },
+}
+
+impl std::fmt::Display for ReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReadError::CannotRead { reason } | ReadError::TaskFailed { reason } => {
+                f.write_str(reason)
+            }
+        }
+    }
+}
+
 /// Result of reading a directory. Reading never "fails" from the caller's
 /// perspective: on error, `entries` contains only `..` (if any) and `error`
-/// holds a human readable message.
+/// holds a structured cause the UI renders in the current language.
 #[derive(Debug, Clone)]
 pub struct Listing {
     pub path: PathBuf,
     pub entries: Vec<FileEntry>,
-    pub error: Option<String>,
+    pub error: Option<ReadError>,
 }
 
 /// Reads `path` on tokio's blocking thread pool so the UI never blocks.
@@ -26,12 +46,16 @@ pub async fn read_directory(path: PathBuf) -> Listing {
         },
         Ok(Err(err)) => Listing {
             entries: parent_only(&path),
-            error: Some(format!("Cannot read {}: {err}", path.display())),
+            error: Some(ReadError::CannotRead {
+                reason: err.to_string(),
+            }),
             path,
         },
         Err(join_err) => Listing {
             entries: parent_only(&path),
-            error: Some(format!("Directory read task failed: {join_err}")),
+            error: Some(ReadError::TaskFailed {
+                reason: join_err.to_string(),
+            }),
             path,
         },
     }
@@ -76,9 +100,15 @@ pub fn root_of(path: &Path) -> PathBuf {
 mod tests {
     use super::*;
 
+    /// One scratch directory per test, so parallel `#[tokio::test]`s never share
+    /// paths. `label` must be a filename-safe, per-test-unique string.
+    fn scratch_dir(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("ncrs-{label}-{}", std::process::id()))
+    }
+
     #[tokio::test]
     async fn reads_directory_with_parent_first() {
-        let dir = std::env::temp_dir().join(format!("ncrs-test-{}", std::process::id()));
+        let dir = scratch_dir("read-listing");
         std::fs::create_dir_all(dir.join("sub")).unwrap();
         std::fs::write(dir.join("b.txt"), b"hello").unwrap();
         std::fs::write(dir.join("A.txt"), b"").unwrap();

@@ -7,6 +7,7 @@ use iced::widget::{column, container, row};
 use iced::{keyboard, window, Element, Length, Subscription, Task, Theme};
 
 use crate::fs;
+use crate::i18n::Language;
 use crate::keymap;
 use crate::messages::{Message, PanelSide};
 use crate::ui::{self, header, layout, panel, statusbar, theme, PanelProps, PanelState};
@@ -19,6 +20,9 @@ pub struct App {
     active_panel: PanelSide,
     /// Number of file rows that fit into a panel (derived from window size).
     visible_rows: usize,
+    lang: Language,
+    /// Header hints, kept in state so `view` does not allocate per frame.
+    shortcuts: Vec<(&'static str, &'static str)>,
 }
 
 impl App {
@@ -32,6 +36,8 @@ impl App {
             right_panel: PanelState::new(root.clone()),
             active_panel: PanelSide::Left,
             visible_rows: layout::visible_rows(layout::INITIAL_WINDOW_SIZE),
+            lang: Language::default(),
+            shortcuts: keymap::shortcuts(Language::default()),
         };
 
         let tasks = Task::batch([
@@ -84,7 +90,8 @@ impl App {
                 Task::none()
             }
             Message::PageUp => {
-                self.active_panel_mut().move_selection(-(rows as isize), rows);
+                self.active_panel_mut()
+                    .move_selection(-(rows as isize), rows);
                 Task::none()
             }
             Message::PageDown => {
@@ -120,6 +127,11 @@ impl App {
                 self.active_panel = self.active_panel.other();
                 Task::none()
             }
+            Message::SwitchLanguage => {
+                self.lang = self.lang.other();
+                self.shortcuts = keymap::shortcuts(self.lang);
+                Task::none()
+            }
             Message::RowClicked { side, index } => {
                 self.active_panel = side;
                 self.panel_mut(side).select(index, rows);
@@ -148,6 +160,7 @@ impl App {
                     is_active: self.active_panel == side,
                     visible_rows: self.visible_rows,
                 },
+                self.lang,
                 move |index| Message::RowClicked { side, index },
             )
         };
@@ -158,9 +171,9 @@ impl App {
 
         container(
             column![
-                header::view(APP_NAME, keymap::SHORTCUTS),
+                header::view(APP_NAME, &self.shortcuts),
                 panels,
-                statusbar::view(self.active_panel()),
+                statusbar::view(self.active_panel(), self.lang),
             ]
             .spacing(theme::spacing::SECTION_GAP),
         )

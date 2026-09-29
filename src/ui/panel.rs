@@ -12,7 +12,8 @@ use super::layout::{
     COLUMN_HEADER_HEIGHT, DATE_COLUMN_WIDTH, PANEL_TITLE_HEIGHT, ROW_HEIGHT, SIZE_COLUMN_WIDTH,
 };
 use super::theme::{self, colors, font_size, spacing};
-use crate::fs::FileEntry;
+use crate::fs::{FileEntry, ReadError};
+use crate::i18n::{Language, Msg};
 
 // ---------------------------------------------------------------------------
 // State
@@ -28,8 +29,8 @@ pub struct PanelState {
     pub selected: usize,
     /// Index of the first visible row.
     pub scroll_offset: usize,
-    /// Last read error, if any.
-    pub error: Option<String>,
+    /// Last read error, if any. Rendered by the status bar in the UI language.
+    pub error: Option<ReadError>,
     /// A directory read is in flight.
     pub loading: bool,
     /// Id of the latest load request; older results are ignored.
@@ -65,7 +66,7 @@ impl PanelState {
         &mut self,
         path: PathBuf,
         entries: Vec<FileEntry>,
-        error: Option<String>,
+        error: Option<ReadError>,
         select: Option<&str>,
         visible_rows: usize,
     ) {
@@ -125,6 +126,7 @@ pub struct PanelProps {
 pub fn view<'a, M: Clone + 'a>(
     state: &'a PanelState,
     props: PanelProps,
+    lang: Language,
     on_row_click: impl Fn(usize) -> M,
 ) -> Element<'a, M> {
     let rows = state
@@ -134,12 +136,17 @@ pub fn view<'a, M: Clone + 'a>(
         .skip(state.scroll_offset)
         .take(props.visible_rows)
         .map(|(index, entry)| {
-            file_row(entry, index == state.selected, props.is_active, on_row_click(index))
+            file_row(
+                entry,
+                index == state.selected,
+                props.is_active,
+                on_row_click(index),
+            )
         });
 
     column![
         title_bar(state, props.is_active),
-        column_header(),
+        column_header(lang),
         Column::with_children(rows).height(Length::Fill),
     ]
     .apply_frame(props.is_active)
@@ -164,19 +171,15 @@ fn title_bar<'a, M: 'a>(state: &'a PanelState, active: bool) -> Element<'a, M> {
     .into()
 }
 
-fn column_header<'a, M: 'a>() -> Element<'a, M> {
-    let label = |s: &'static str| {
-        text(s)
-            .size(font_size::COLUMN_HEADER)
-            .color(colors::ACCENT)
-    };
+fn column_header<'a, M: 'a>(lang: Language) -> Element<'a, M> {
+    let label = |s: &'static str| text(s).size(font_size::COLUMN_HEADER).color(colors::ACCENT);
     container(
         row![
-            label("Name").width(Length::Fill),
-            label("Size")
+            label(lang.text(Msg::ColName)).width(Length::Fill),
+            label(lang.text(Msg::ColSize))
                 .width(SIZE_COLUMN_WIDTH)
                 .align_x(alignment::Horizontal::Right),
-            label("Modified")
+            label(lang.text(Msg::ColModified))
                 .width(DATE_COLUMN_WIDTH)
                 .align_x(alignment::Horizontal::Right),
         ]

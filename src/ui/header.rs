@@ -7,7 +7,10 @@ use super::layout::HEADER_HEIGHT;
 use super::theme::{self, colors, font_size, spacing};
 
 /// Renders the header. `shortcuts` is a list of `(key, description)` pairs.
-pub fn view<'a, M: 'a>(app_name: &'a str, shortcuts: &'a [(&'a str, &'a str)]) -> Element<'a, M> {
+pub fn view<'a, M: 'a>(
+    app_name: &'a str,
+    shortcuts: &'a [(impl AsRef<str> + 'a, &'static str)],
+) -> Element<'a, M> {
     let bold = Font {
         weight: iced::font::Weight::Bold,
         ..Font::MONOSPACE
@@ -15,7 +18,10 @@ pub fn view<'a, M: 'a>(app_name: &'a str, shortcuts: &'a [(&'a str, &'a str)]) -
 
     let hints = Row::with_children(shortcuts.iter().map(|(key, desc)| {
         row![
-            text(*key).size(font_size::HEADER).font(bold).color(colors::ACCENT),
+            text(key.as_ref())
+                .size(font_size::HEADER)
+                .font(bold)
+                .color(colors::ACCENT),
             text(format!("={desc}"))
                 .size(font_size::HEADER)
                 .color(colors::DIR_COLOR),
