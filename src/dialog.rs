@@ -7,7 +7,6 @@
 //! Not yet in the roadmap's T10 (config): the prompt remembers the name the
 //! user typed while the operation runs, so a failure can be shown next to the
 //! text that caused it.
-
 use std::path::PathBuf;
 
 /// Which operation the prompt is collecting input for.
@@ -115,6 +114,14 @@ impl Prompt {
     }
 }
 
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

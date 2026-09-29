@@ -1,7 +1,6 @@
 //! File panel: the state type ([`PanelState`]) and a pure view function
 //! ([`view`]). The component owns no state; it lives in the app state and is
 //! only mutated from `App::update`.
-
 use std::path::PathBuf;
 
 use iced::widget::{button, column, container, row, text, Column};
@@ -280,6 +279,14 @@ impl<'a, M: 'a> ApplyFrame<'a, M> for Column<'a, M> {
     }
 }
 
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -323,6 +330,14 @@ mod tests {
     }
 }
 
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod tagging_tests {
     use super::*;

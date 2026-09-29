@@ -1,5 +1,4 @@
 //! Presentation helpers for sizes and dates.
-
 use std::time::SystemTime;
 
 use chrono::{DateTime, Local};
@@ -19,7 +18,11 @@ pub fn size(bytes: u64) -> String {
         value /= 1024.0;
         unit += 1;
     }
-    format!("{value:.1} {}", UNITS[unit])
+    // `get` rather than `[]`: the loop above keeps `unit` inside the array, but
+    // saying so with a type instead of relying on it means a later change to the
+    // loop cannot turn a file size into a panic.
+    let label = UNITS.get(unit).copied().unwrap_or("?");
+    format!("{value:.1} {label}")
 }
 
 /// Size column text: `<UP>` / `<DIR>` for directories, size otherwise.
@@ -46,6 +49,14 @@ pub fn time(time: Option<SystemTime>) -> String {
     .unwrap_or_default()
 }
 
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -23,7 +23,6 @@
 //!   them rather than by name.
 //! - `Snapshot` exposes no bytes, only a comparison against a file. The
 //!   reference is written on the first run.
-
 use iced_test::Simulator;
 
 use crate::app::App;
@@ -37,6 +36,14 @@ fn simulator(app: &App) -> Simulator<'_, Message, iced::Theme> {
     )
 }
 
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,6 +216,14 @@ mod tests {
     }
 }
 
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod tagging {
     use super::*;

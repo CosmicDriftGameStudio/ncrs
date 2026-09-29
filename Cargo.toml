@@ -2,6 +2,9 @@
 name = "ncrs"
 version = "0.1.0"
 edition = "2021"
+# Matches rust-toolchain.toml. One place decides the compiler; this makes the
+# requirement visible to anything reading the manifest instead of the file.
+rust-version = "1.90"
 description = "A Norton Commander style dual-panel file manager built with iced"
 license = "MIT"
 
@@ -14,7 +17,10 @@ license = "MIT"
 # They are ignored on macOS and Windows, where the softbuffer backends are
 # cfg'd out anyway, so enabling them costs nothing there.
 iced = { version = "0.14", default-features = false, features = ["tokio", "fira-sans", "x11", "wayland"] }
-tokio = { version = "1", features = ["full"] }
+# Only what the code uses: spawn_blocking, #[tokio::test] and the multi-thread
+# runtime iced's executor needs. "full" also pulls mio, socket2, signal-hook-registry
+# and wasi — network and signal machinery a file manager has no use for.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [profile.release]
@@ -41,3 +47,114 @@ tempfile = "3.27"
 # snapshot images, and Ice scripts.
 iced_test = "0.14"
 iced_selector = "0.14"
+
+[lints.rust]
+# A file manager must never execute unchecked code: the whole point is to touch
+# the filesystem, and the unsafe surface there is not worth the review.
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[lints.clippy]
+# `unwrap_used`, `expect_used` and `panic` are clippy restriction lints. They
+# cannot be switched on one by one: naming them below without the group on top
+# does nothing at all, silently. Enabling the group brings ~1000 further
+# warnings, so the unwanted members are named "allow" after it.
+#
+# Verified by putting an `expect` into production code: silent without the group,
+# reported with it. The `#![allow]` on each `mod tests` keeps the test tree out
+# of the count, since a failing assertion there *is* the signal.
+restriction = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+indexing_slicing = "warn"
+
+# The rest of the group, off again. Each was in the warning list after enabling
+# it; the names are taken from clippy's own output, not guessed.
+absolute_paths = "allow"
+allow_attributes = "allow"
+allow_attributes_without_reason = "allow"
+arbitrary_source_item_ordering = "allow"
+arithmetic_side_effects = "allow"
+as_conversions = "allow"
+blanket_clippy_restriction_lints = "allow"
+create_dir = "allow"
+else_if_without_else = "allow"
+implicit_return = "allow"
+min_ident_chars = "allow"
+missing_inline_in_public_items = "allow"
+mod_module_files = "allow"
+needless_pass_by_value = "allow"
+pattern_type_mismatch = "allow"
+question_mark_used = "allow"
+single_call_fn = "allow"
+single_char_lifetime_names = "allow"
+std_instead_of_core = "allow"
+string_add = "allow"
+string_add_assign = "allow"
+string_lit_as_bytes = "allow"
+todo = "allow"
+unnecessary_debug_formatting = "allow"
+unnecessary_literal_unwrap = "allow"
+unnecessary_result_map_or_else = "allow"
+# Documentation is wanted where it explains a decision, not everywhere. This
+# asks for a doc comment on every private field and every enum variant, which
+# is 224 warnings of noise in a codebase whose comments already explain the
+# "why".
+missing_docs_in_private_items = "allow"
+
+# The parser in build.rs indexes strings by byte index. Two of the remaining
+# warnings point at that and are fixed in code, not silenced here.
+
+# `println!` in build.rs reports what it generated; in tests it is the output of
+# the translation dump. A binary that logs to stdout in production would be a
+# bug, and CI is the place to catch that, not a lint here.
+print_stderr = "allow"
+print_stdout = "allow"
+
+# Style and taste, decided rather than defaulted into. Each of these was in the
+# list after enabling the group; what stays on is the list above this point.
+inline_modules = "allow"
+missing_trait_methods = "allow"
+module_name_repetitions = "allow"
+non_ascii_literal = "allow"
+pub_use = "allow"
+std_instead_of_alloc = "allow"
+str_to_string = "allow"
+
+# Pixel arithmetic. `layout.rs` computes chrome heights and row counts in f32
+# because iced does; `floating_point_arithmetic` would ask for integer maths on
+# values that are never integers. The places it is right to be careful —
+# casting, dividing, clamping — are the ones with tests.
+float_arithmetic = "allow"
+
+# `i % 5` in the test fixtures, to produce a mix of files and directories.
+integer_division_remainder_used = "allow"
+
+# `impl Trait` in argument position is the house style; `-> impl Trait` is where
+# it hides a type the caller cannot name.
+impl_trait_in_params = "allow"
+
+# `where T: X` on the same line as the item. Both are valid; the codebase uses
+# the short form and that is a decision, not an oversight.
+inline_trait_bounds = "allow"
+
+# `let _ = expr` to drop a must_use value. Clippy wants `let _x: T = expr`,
+# which is longer and says the same thing.
+let_underscore_untyped = "allow"
+let_underscore_must_use = "allow"
+
+# `match x { ... _ => ... }` over an enum is exhaustive-checked by the
+# compiler. A wildcard arm is deliberate where a new variant should not break
+# the build — `Prompt` has one today and is expected to grow.
+wildcard_enum_match_arm = "allow"
+
+# `Default` for a numeric fallback in the test fixtures, and `#[derive(Default)]`
+# where a zero value is the right one.
+default_numeric_fallback = "allow"
+
+# The byte-index slicing in build.rs. Safe because both helper functions walk
+# char_indices, so every index is on a character boundary — verified by running
+# the build with a context full of umlauts and an emoji, which strings.json has
+# several of. Said again at the function, because the pattern looks risky.
+string_slice = "allow"

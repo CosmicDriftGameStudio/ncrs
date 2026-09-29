@@ -1,5 +1,4 @@
 //! Bottom bar: active path, selected entry info, or the last error.
-
 use iced::widget::{container, row, text};
 use iced::{alignment, Element, Length};
 
@@ -89,6 +88,14 @@ fn format_error(error: &ReadError, path: &std::path::Path, lang: Language) -> St
         .replace("{error}", reason)
 }
 
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

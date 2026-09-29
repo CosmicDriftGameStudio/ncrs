@@ -3,7 +3,6 @@
 //! An action registers a binding here; the key handler and the header hint list
 //! are both derived from it, so a binding cannot exist in one and be missing in
 //! the other. This is the extension point a plugin would use.
-
 use iced::keyboard::{key, Key, Modifiers};
 
 use crate::i18n::{Language, Msg};
@@ -213,6 +212,14 @@ pub fn shortcuts(lang: Language) -> Vec<(String, &'static str)> {
     hints
 }
 
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

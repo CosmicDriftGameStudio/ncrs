@@ -40,7 +40,7 @@ jobs:
             archive: zip
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Rust
         run: |
@@ -56,7 +56,7 @@ jobs:
           sudo apt-get install -y \
             pkg-config libxkbcommon-dev libwayland-dev libx11-dev libfontconfig1-dev
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           key: ${{ matrix.target }}
 
@@ -88,7 +88,7 @@ jobs:
           Copy-Item LICENSE, README.md, ROADMAP.md "ncrs-${{ matrix.target }}/" -ErrorAction SilentlyContinue
           Compress-Archive -Path "ncrs-${{ matrix.target }}" -DestinationPath "ncrs-${{ matrix.target }}.zip"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ncrs-${{ matrix.target }}
           path: ncrs-${{ matrix.target }}.*
@@ -98,7 +98,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           path: artifacts
 
@@ -117,7 +117,7 @@ jobs:
           cat SHA256SUMS
 
       - name: Publish release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@5113cdc90fd4d541c801c55356214017bf5ae34b # v3
         with:
           files: dist/*
           # Not a draft: `install.sh` resolves the binaries through

@@ -147,8 +147,8 @@
     {
       "key": "error.mkdir_taken",
       "context": "Shown when a directory with the name the user typed already exists. Takes the name. Do not suggest a different name — just say it is taken.",
-      "en": "\u201c{name}\u201d already exists",
-      "de": "\u201e{name}\u201c existiert bereits"
+      "en": "“{name}” already exists",
+      "de": "„{name}“ existiert bereits"
     },
     {
       "key": "error.parent_missing",

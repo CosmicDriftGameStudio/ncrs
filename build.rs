@@ -5,6 +5,22 @@
 //! `cargo build` after editing it; `cargo run --bin dump-strings` prints the
 //! same data for translators.
 
+// A build script must stop on bad input. A strings.json with a missing
+// translator context would otherwise produce modules whose translations are
+// wrong, and the failure would only show up in the running app. So the
+// restriction lints about panicking are off here by design, and on nowhere else.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::str_to_string,
+    clippy::doc_markdown,
+    clippy::min_ident_chars,
+    clippy::single_char_lifetime_names,
+    clippy::std_instead_of_core
+)]
+
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
@@ -27,8 +43,8 @@ fn parse(json: &str) -> Vec<Entry> {
     let mut current: BTreeMap<&str, String> = BTreeMap::new();
     let mut in_comment = false;
 
-    for line in json.lines() {
-        let line = line.trim();
+    for raw in json.lines() {
+        let line = raw.trim();
 
         if in_comment {
             if !line.contains(']') {
@@ -82,11 +98,18 @@ fn parse(json: &str) -> Vec<Entry> {
 }
 
 /// Splits `"key": "value",` into its two parts, tolerating escaped quotes.
+///
+/// The slices below are byte-indexed. That is safe here because
+/// `find_outside_quotes` and `find_closing_quote` both walk `char_indices`, so
+/// every index they return is on a character boundary — checked by running the
+/// build with a context full of umlauts and an emoji, which strings.json has
+/// several of. Clippy flags the pattern as risky anyway; the allowance in
+/// Cargo.toml says why it does not apply to this file.
 fn split_pair(line: &str) -> Option<(String, String)> {
     let colon = find_outside_quotes(line, ':')?;
     let key = line[..colon].trim().trim_matches('"').to_string();
-    let rest = line[colon + 1..].trim();
-    let rest = rest.strip_prefix('"')?;
+    let after_colon = line[colon + 1..].trim();
+    let rest = after_colon.strip_prefix('"')?;
     let end = find_closing_quote(rest)?;
     Some((key, rest[..end].to_string()))
 }
@@ -94,15 +117,17 @@ fn split_pair(line: &str) -> Option<(String, String)> {
 fn find_outside_quotes(line: &str, needle: char) -> Option<usize> {
     let mut in_quotes = false;
     let mut escaped = false;
-    for (i, c) in line.char_indices() {
+    for (i, found) in line.char_indices() {
         if escaped {
             escaped = false;
             continue;
         }
-        match c {
+        match found {
             '\\' if in_quotes => escaped = true,
             '"' => in_quotes = !in_quotes,
-            c if c == needle && !in_quotes => return Some(i),
+            // A guard, not a new binding: naming it `c` shadowed the loop
+            // variable of the same name and made the arm unreadable.
+            candidate if candidate == needle && !in_quotes => return Some(i),
             _ => {}
         }
     }
@@ -264,6 +289,22 @@ fn generate_text(entries: &[Entry]) -> String {
     out
 }
 
+/// The stable key per message, so a log or the translation sheet can name a
+/// string without printing its localised text.
+fn generate_keys(entries: &[Entry]) -> String {
+    let mut out = String::new();
+    out.push_str("pub fn key(msg: Msg) -> &'static str {\n    match msg {\n");
+    for entry in entries {
+        out.push_str(&format!(
+            "            Msg::{} => {},\n",
+            variant_name(&entry.key),
+            rust_str(&entry.key)
+        ));
+    }
+    out.push_str("    }\n}\n");
+    out
+}
+
 fn main() {
     let manifest = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
     let out_dir = env::var(OUT_DIR).expect(OUT_DIR);
@@ -300,6 +341,7 @@ fn main() {
     write("notes.rs", generate_notes(&entries));
     write("enum.rs", generate_enum(&entries));
     write("text.rs", generate_text(&entries));
+    write("key.rs", generate_keys(&entries));
 
     println!("cargo:rerun-if-changed={}", input.display());
     println!("cargo:rerun-if-changed=build.rs");

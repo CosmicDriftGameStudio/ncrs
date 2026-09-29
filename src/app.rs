@@ -1,6 +1,5 @@
 //! Root application: state, `update` (the only place state changes) and
 //! `view` (pure composition of UI components).
-
 use std::path::PathBuf;
 
 use iced::keyboard::{self, key::Named, Key, Modifiers};
@@ -137,21 +136,25 @@ impl App {
         // A subscription outlives the call that created it, so it cannot close
         // over `&self`. What it needs from the app is the open prompt and
         // nothing else, and that is two `Copy` values.
-        let prompt = self.prompt_key_state();
+        let initial_key_state = self.prompt_key_state();
 
         Subscription::batch([
             // `listen` yields the event stream, so the mapping can decide
             // without routing every key through a message first.
-            keyboard::listen()
-                .with(prompt)
-                .filter_map(|(prompt, event)| match event {
+            //
+            // `with` moves the state into the stream, so the mapping below reads
+            // the copy that comes back with each event rather than closing over
+            // the original.
+            keyboard::listen().with(initial_key_state).filter_map(
+                |(key_state, event)| match event {
                     keyboard::Event::KeyPressed { key, modifiers, .. }
                         if modifiers == Modifiers::default() =>
                     {
-                        route_key(&prompt, key)
+                        route_key(&key_state, key)
                     }
                     _ => None,
-                }),
+                },
+            ),
             window::resize_events().map(|(_id, size)| Message::WindowResized(size)),
         ])
     }
@@ -223,7 +226,9 @@ impl App {
                 Task::none()
             }
             Message::PromptFinished {
-                prompt: _,
+                // The prompt kind is fixed by the only operation that sends
+                // this today; a second one will want it back.
+                prompt: _kind,
                 request_id,
                 result,
             } => {
@@ -402,13 +407,13 @@ impl App {
             Message::PromptSubmit,
             Message::PromptCancel,
         );
-        let Some(overlay) = overlay else {
+        let Some(dialog) = overlay else {
             return root.into();
         };
 
         // The prompt sits above everything and takes every keystroke; the scrim
         // swallows clicks meant for the panels underneath.
-        Stack::with_children([root.into(), dialog::scrim(overlay)]).into()
+        Stack::with_children([root.into(), dialog::scrim(dialog)]).into()
     }
 
     // -----------------------------------------------------------------------
@@ -531,6 +536,14 @@ impl App {
     }
 }
 
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod render_timing {
     use super::*;
@@ -587,6 +600,14 @@ mod render_timing {
     }
 }
 
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod prompt_routing {
     use super::*;
@@ -840,6 +861,14 @@ mod prompt_routing {
     }
 }
 
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod prompt_end_to_end {
     use super::*;
@@ -892,117 +921,14 @@ mod prompt_end_to_end {
     }
 }
 
-#[cfg(test)]
-impl App {
-    /// An app with the create-directory prompt open, for the UI tests. The
-    /// prompt field is private to this module, so the setup lives here.
-    /// An app whose panels are filled from fixed data, for snapshot tests.
-    ///
-    /// `App::new()` would read the working directory, so the rendered image
-    /// would depend on where the test runner happens to be started — a fresh CI
-    /// container and a laptop would produce different references for the same
-    /// code. This one renders the same bytes everywhere.
-    pub fn with_fixed_panels() -> Self {
-        let mut app = Self {
-            left_panel: PanelState::new(PathBuf::from("/home/test/links")),
-            right_panel: PanelState::new(PathBuf::from("/home/test/files")),
-            active_panel: PanelSide::Left,
-            visible_rows: 12,
-            lang: Language::default(),
-            shortcuts: keymap::shortcuts(Language::default()),
-            prompt: None,
-            prompt_side: None,
-            prompt_request_id: 0,
-            pending_reload: None,
-        };
-        for (side, names) in [
-            (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
-            (
-                PanelSide::Right,
-                ["..", "notes.txt", "report.pdf", "photo.jpg"],
-            ),
-        ] {
-            let panel = app.panel_mut(side);
-            panel.entries = names
-                .iter()
-                .enumerate()
-                .map(|(i, name)| fs::FileEntry {
-                    name: (*name).into(),
-                    path: PathBuf::from("/home/test").join(name),
-                    is_dir: i == 0 || name.ends_with('s') && i < 2,
-                    is_symlink: false,
-                    is_parent: i == 0,
-                    size: if i == 0 { 0 } else { 1024 * (i as u64 * 4096) },
-                    modified: None,
-                })
-                .collect();
-        }
-        app
-    }
-
-    /// A prompt on fixed data, for the prompt's own reference image.
-    pub fn with_fixed_prompt() -> Self {
-        let mut app = Self::with_fixed_panels();
-        app.prompt = Some(Prompt::create_dir(PathBuf::from("/home/test/links")));
-        if let Some(prompt) = app.prompt.as_mut() {
-            prompt.set_name("neuer ordner".to_string());
-        }
-        app
-    }
-
-    pub fn with_prompt_open(parent: PathBuf) -> Self {
-        let mut app = Self::new().0;
-        app.prompt = Some(Prompt::create_dir(parent));
-        app
-    }
-
-    pub fn set_prompt(&mut self, name: &str, error: Option<&str>) {
-        if let Some(prompt) = self.prompt.as_mut() {
-            prompt.set_name(name.to_string());
-            if let Some(error) = error {
-                prompt.set_error(error.to_string());
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-impl App {
-    pub fn panel_mut_for_test(&mut self, side: PanelSide) -> &mut PanelState {
-        self.panel_mut(side)
-    }
-
-    pub fn set_visible_rows_for_test(&mut self, rows: usize) {
-        self.visible_rows = rows;
-    }
-
-    /// Tags the row at `index`, addressed by position the way a keypress is.
-    pub fn toggle_tag_for_test(&mut self, index: usize) {
-        let Some(name) = self.left_panel.entries.get(index).map(|e| e.name.clone()) else {
-            return;
-        };
-        self.left_panel.selection.toggle(&name);
-    }
-
-    pub fn tag_all_for_test(&mut self) {
-        let mut selection = crate::selection::SelectionSet::new();
-        selection.tag_all(&self.left_panel.entries);
-        self.left_panel.selection = selection;
-    }
-
-    pub fn left_panel_selection_tagged_for_test(&self, index: usize) -> bool {
-        self.left_panel
-            .entries
-            .get(index)
-            .is_some_and(|e| self.left_panel.selection.is_tagged(&e.name))
-    }
-
-    pub fn move_selection_for_test(&mut self, delta: isize) {
-        let rows = self.visible_rows;
-        self.left_panel.move_selection(delta, rows);
-    }
-}
-
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod reload_order {
     use super::*;
@@ -1140,5 +1066,115 @@ mod reload_order {
             app.pending_reload.is_some(),
             "a stale result consumed the queued reload"
         );
+    }
+}
+
+#[cfg(test)]
+// Test-only constructors and helpers. One block rather than four: they were
+// appended as tests were written, and a reader had to hunt for them.
+impl App {
+    /// An app with the create-directory prompt open, for the UI tests. The
+    /// prompt field is private to this module, so the setup lives here.
+    /// An app whose panels are filled from fixed data, for snapshot tests.
+    ///
+    /// `App::new()` would read the working directory, so the rendered image
+    /// would depend on where the test runner happens to be started — a fresh CI
+    /// container and a laptop would produce different references for the same
+    /// code. This one renders the same bytes everywhere.
+    pub fn with_fixed_panels() -> Self {
+        let mut app = Self {
+            left_panel: PanelState::new(PathBuf::from("/home/test/links")),
+            right_panel: PanelState::new(PathBuf::from("/home/test/files")),
+            active_panel: PanelSide::Left,
+            visible_rows: 12,
+            lang: Language::default(),
+            shortcuts: keymap::shortcuts(Language::default()),
+            prompt: None,
+            prompt_side: None,
+            prompt_request_id: 0,
+            pending_reload: None,
+        };
+        for (side, names) in [
+            (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
+            (
+                PanelSide::Right,
+                ["..", "notes.txt", "report.pdf", "photo.jpg"],
+            ),
+        ] {
+            let panel = app.panel_mut(side);
+            panel.entries = names
+                .iter()
+                .enumerate()
+                .map(|(i, name)| fs::FileEntry {
+                    name: (*name).into(),
+                    path: PathBuf::from("/home/test").join(name),
+                    is_dir: i == 0 || name.ends_with('s') && i < 2,
+                    is_symlink: false,
+                    is_parent: i == 0,
+                    size: if i == 0 { 0 } else { 1024 * (i as u64 * 4096) },
+                    modified: None,
+                })
+                .collect();
+        }
+        app
+    }
+
+    /// A prompt on fixed data, for the prompt's own reference image.
+    pub fn with_fixed_prompt() -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.prompt = Some(Prompt::create_dir(PathBuf::from("/home/test/links")));
+        if let Some(prompt) = app.prompt.as_mut() {
+            prompt.set_name("neuer ordner".to_string());
+        }
+        app
+    }
+
+    pub fn with_prompt_open(parent: PathBuf) -> Self {
+        let mut app = Self::new().0;
+        app.prompt = Some(Prompt::create_dir(parent));
+        app
+    }
+
+    pub fn set_prompt(&mut self, name: &str, error: Option<&str>) {
+        let Some(open) = self.prompt.as_mut() else {
+            return;
+        };
+        open.set_name(name.to_string());
+        if let Some(message) = error {
+            open.set_error(message.to_string());
+        }
+    }
+    pub fn panel_mut_for_test(&mut self, side: PanelSide) -> &mut PanelState {
+        self.panel_mut(side)
+    }
+
+    pub fn set_visible_rows_for_test(&mut self, rows: usize) {
+        self.visible_rows = rows;
+    }
+
+    /// Tags the row at `index`, addressed by position the way a keypress is.
+    pub fn toggle_tag_for_test(&mut self, index: usize) {
+        let Some(name) = self.left_panel.entries.get(index).map(|e| e.name.clone()) else {
+            return;
+        };
+        self.left_panel.selection.toggle(&name);
+    }
+
+    pub fn tag_all_for_test(&mut self) {
+        let mut selection = crate::selection::SelectionSet::new();
+        selection.tag_all(&self.left_panel.entries);
+        self.left_panel.selection = selection;
+    }
+
+    pub fn left_panel_selection_tagged_for_test(&self, index: usize) -> bool {
+        self.left_panel
+            .entries
+            .get(index)
+            .is_some_and(|e| self.left_panel.selection.is_tagged(&e.name))
+    }
+
+    pub fn move_selection_for_test(&mut self, delta: isize) {
+        let rows = self.visible_rows;
+        self.left_panel.move_selection(delta, rows);
     }
 }

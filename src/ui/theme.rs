@@ -145,11 +145,7 @@ pub fn dialog(_theme: &Theme) -> container::Style {
 /// Buttons in the prompt. `primary` is the action the user most likely wants.
 pub fn dialog_button(primary: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |_theme, _status| {
-        let background = if primary {
-            Some(Background::Color(colors::SELECTED_BG))
-        } else {
-            None
-        };
+        let background = primary.then_some(Background::Color(colors::SELECTED_BG));
         button::Style {
             background,
             text_color: if primary {

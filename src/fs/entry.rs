@@ -98,6 +98,14 @@ impl FileEntry {
     }
 }
 
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,6 +157,14 @@ mod tests {
     }
 }
 
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod sort_key_tests {
     use super::*;
@@ -205,10 +221,10 @@ mod sort_key_tests {
             entry("..", true, true),
             entry("alpha", true, false),
         ];
-        let mut entries = entries.to_vec();
-        entries.sort_by_cached_key(|e| e.sort_key());
+        let mut sorted = entries.to_vec();
+        sorted.sort_by_cached_key(|e| e.sort_key());
 
-        let names: Vec<String> = entries
+        let names: Vec<String> = sorted
             .iter()
             .map(|e| e.name.to_string_lossy().into_owned())
             .collect();

@@ -14,7 +14,6 @@
 //! `iced` resolves the features like this (iced_renderer-0.13.0/src/lib.rs:24-59):
 //! both features give a fallback renderer that tries wgpu first; exactly one
 //! gives that renderer alone; neither fails to compile in release builds.
-
 /// The backend in use, as far as the build configuration can say.
 ///
 /// This is a compile-time constant, so a test cannot be fooled by it: a wrong
@@ -91,6 +90,14 @@ pub fn log_backend() {
     eprintln!("[ncrs] graphics backend: {}", Backend::CURRENT.name());
 }
 
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,7 +108,7 @@ mod tests {
     ///   wgpu + tiny-skia -> fallback renderer, GPU first
     ///   wgpu            -> GPU only
     ///   tiny-skia       -> software only
-    ///   neither         -> nothing; iced rejects this in release builds
+    ///   neither         -> nothing; iced rejects this in release builds.
     ///
     /// Written as a table rather than a second copy of the `if` chain in
     /// `CURRENT`: a duplicated chain drifts, and then the test agrees with the

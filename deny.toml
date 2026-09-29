@@ -1,0 +1,53 @@
+# cargo-deny configuration.
+#
+# The point is the license check: this project distributes under MIT, so every
+# dependency has to be permissive. The audit I ran when the tree was at 166
+# crates found one crate under Apache-2.0 OR GPL-2.0-only (self_cell, via
+# cosmic-text); a binary distributed under MIT takes the Apache option, so it is
+# allowed here — but the entry is written out so a change to it is a deliberate
+# decision rather than an accident.
+#
+# Run locally: cargo deny check
+
+[graph]
+targets = [
+    { triple = "x86_64-unknown-linux-gnu" },
+    { triple = "aarch64-unknown-linux-gnu" },
+    { triple = "x86_64-apple-darwin" },
+    { triple = "aarch64-apple-darwin" },
+    { triple = "x86_64-pc-windows-msvc" },
+]
+
+[advisories]
+version = 2
+yanked = "deny"
+# A duplicate advisory is noise; an unmaintained one is worth knowing about.
+ignore = []
+
+[licenses]
+version = 2
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "Unlicense",
+    "CC0-1.0",
+    "Unicode-3.0",
+    "MPL-2.0",
+]
+confidence-threshold = 0.93
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

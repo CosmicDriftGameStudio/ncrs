@@ -15,7 +15,6 @@
 //! directory read replaces wholesale, so index 3 after a reload is a different
 //! file than index 3 before it — and F8 would delete the wrong one. A name
 //! survives the reload, or the file is genuinely gone and the tag should be.
-
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 
@@ -150,6 +149,14 @@ impl SelectionSet {
     }
 }
 
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod tests {
     use super::*;

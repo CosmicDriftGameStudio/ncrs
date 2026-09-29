@@ -1,6 +1,5 @@
 //! Fixed layout metrics. Rows have a fixed height so the number of visible
 //! rows can be derived from the window height (used for scrolling).
-
 use iced::Size;
 
 use super::theme::spacing;
@@ -41,6 +40,14 @@ pub fn visible_rows(window: Size) -> usize {
     (rows as isize).max(1) as usize
 }
 
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,8 +83,8 @@ mod tests {
         assert_eq!(visible_rows(window), 1);
 
         // A partial row does not count.
-        let window = Size::new(800.0, CHROME + ROW_HEIGHT + 1.0);
-        assert_eq!(visible_rows(window), 1);
+        let a_bit_taller = Size::new(800.0, CHROME + ROW_HEIGHT + 1.0);
+        assert_eq!(visible_rows(a_bit_taller), 1);
     }
 
     /// The chrome sum has to match what the view actually spends, or the last
