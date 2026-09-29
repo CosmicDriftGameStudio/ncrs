@@ -3,6 +3,11 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Manual re-run. There is deliberately no input for the ref: with one, the
+  # run would execute on the chosen branch, and the job's `if` below would
+  # still have to guess whether that branch was legitimate. Without it, a
+  # dispatch always runs on the default branch, which is the only thing the
+  # environment's branch policy trusts.
   workflow_dispatch:
 
 permissions:
@@ -15,6 +20,16 @@ jobs:
   build:
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    # The build job runs before the environment-protected release job and
+    # produces what gets signed, so it needs the same guarantee: only main
+    # may be built for a release. A `workflow_dispatch` on some other branch
+    # would otherwise compile that branch and feed it to notarization, which
+    # turns a manual re-run into a signing oracle for whatever is on it.
+    #
+    # `if` and not a branch filter: a dispatch on a tag has no branches
+    # context to compare against, so the tag path is allowed through here and
+    # the environment rules decide the rest.
+    if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
     strategy:
       fail-fast: false
       matrix:
@@ -96,6 +111,19 @@ jobs:
 
   release:
     needs: build
+    # The Apple secrets are only readable from inside this environment, and the
+    # environment's protection rules decide who may release. Without it, any
+    # account with write access could dispatch the workflow from a branch
+    # holding modified build.rs and have ncrs signed with the maintainer's
+    # certificate. Write access is a much easier thing to hand out than
+    # control of the signing key, so the workflow must not treat the two as
+    # equivalent.
+    #
+    # What the environment is configured to allow, on the repository:
+    #   - deployment branches: main only
+    #   - required reviewers: the maintainer
+    #   - prevent self-review: on
+    environment: release
     # macOS, not ubuntu: notarization is what makes Gatekeeper let a user run
     # the binary. `notarytool` and `stapler` ship only with the macOS runner, so
     # the job that publishes and the job that signs have to be the same one —
