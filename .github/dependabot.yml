@@ -1,0 +1,22 @@
+# Cargo.lock is committed and the dependency tree is deep (iced pulls wgpu,
+# winit, naga and more), so a single advisory in a transitive crate is normal.
+# Security updates are the point; version bumps for libraries are noise.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for the patch line rather than fifteen for one icd bump.
+      cargo-minor:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        update-types: [minor, patch]

@@ -9,6 +9,10 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
+# Least privilege: a push to a fork must not be able to touch the repository.
+permissions:
+  contents: read
+
 jobs:
   check:
     name: ${{ matrix.os }}
