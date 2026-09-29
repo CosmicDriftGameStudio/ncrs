@@ -59,8 +59,25 @@ Pre-built binaries for Linux, macOS and Windows are attached to each
 curl -fsSL https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/install.sh | sh
 ```
 
-The script installs into `~/.local/bin`, verifies the download checksum when one is
-published, needs no `sudo`, and is safe to re-run. Remove it again with:
+On macOS, Homebrew is the better choice — it is what a package manager is for,
+and it keeps the binary up to date:
+
+```bash
+brew install --cask ./Casks/ncrs.rb
+```
+
+The cask lives in this repository at [`Casks/ncrs.rb`](Casks/ncrs.rb); run the
+command from a clone, or point at the file directly:
+
+```bash
+brew install --cask https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/Casks/ncrs.rb
+```
+
+It is not in homebrew-cask upstream yet. Once it is, `brew install --cask ncrs`
+will work without a path.
+
+`install.sh` installs into `~/.local/bin`, verifies the download checksum,
+needs no `sudo`, and is safe to re-run. Remove it again with:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/install.sh | sh -s -- --uninstall
