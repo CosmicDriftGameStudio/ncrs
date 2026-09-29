@@ -44,7 +44,7 @@ mod tests {
     /// in `view` would take the window down in the real app.
     #[test]
     fn the_app_renders_headless() {
-        let app = App::new().0;
+        let app = App::with_fixed_panels();
         let mut sim = simulator(&app);
         sim.snapshot(&iced::Theme::Dark)
             .expect("the view should render");
@@ -66,7 +66,7 @@ mod tests {
     #[test]
     fn the_prompt_is_drawn_over_the_panels() {
         // First run writes the reference and returns true; later runs compare.
-        simulator(&App::new().0)
+        simulator(&App::with_fixed_panels())
             .snapshot(&iced::Theme::Dark)
             .unwrap()
             .matches_image("tests/snapshots/no_prompt.png")
@@ -158,15 +158,47 @@ mod tests {
             .expect("the dialog should be clickable");
     }
 
-    /// Reference images for the two views the user spends time in.
+    /// Reference image for the two-panel view.
+    ///
+    /// The `bool` has to be asserted. `matches_image` returns `true` when the
+    /// reference does not exist yet — it writes one — and `false` when the
+    /// images differ, without failing. Discarding the value means the test
+    /// passes on a first run and on any change to the layout, which is the
+    /// opposite of what a reference test is for.
     #[test]
     fn the_two_panel_view_matches_its_snapshot() {
-        let app = App::new().0;
+        let app = App::with_fixed_panels();
         let mut sim = simulator(&app);
-        sim.snapshot(&iced::Theme::Dark)
+        let matches = sim
+            .snapshot(&iced::Theme::Dark)
             .unwrap()
             .matches_image("tests/snapshots/two_panels.png")
             .expect("snapshot comparison");
+
+        assert!(
+            matches,
+            "the two-panel view does not match tests/snapshots/two_panels.png. \
+             If the change is intended, update the reference; if not, this is a \
+             regression."
+        );
+    }
+
+    /// Same for the prompt's own reference. Both are in the repo, so this
+    /// compares against a real image rather than writing one.
+    #[test]
+    fn the_prompt_matches_its_snapshot() {
+        let app = App::with_fixed_prompt();
+        let mut sim = simulator(&app);
+        let matches = sim
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/prompt.png")
+            .expect("snapshot comparison");
+
+        assert!(
+            matches,
+            "the prompt does not match tests/snapshots/prompt.png"
+        );
     }
 }
 
@@ -177,7 +209,7 @@ mod tagging {
     use std::path::{Path, PathBuf};
 
     fn app_with_files() -> App {
-        let mut app = App::new().0;
+        let mut app = App::with_fixed_panels();
         for side in [
             crate::messages::PanelSide::Left,
             crate::messages::PanelSide::Right,

@@ -51,14 +51,14 @@ Pre-built binaries for Linux, macOS and Windows are attached to each
 [release](../../releases). On Linux and macOS:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ncrs/ncrs/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/install.sh | sh
 ```
 
 The script installs into `~/.local/bin`, verifies the download checksum when one is
 published, needs no `sudo`, and is safe to re-run. Remove it again with:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ncrs/ncrs/main/install.sh | sh -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/install.sh | sh -s -- --uninstall
 ```
 
 Set `NCRS_BIN_DIR` to install elsewhere, or `NCRS_REPO` if you fork it.
@@ -66,7 +66,7 @@ Set `NCRS_BIN_DIR` to install elsewhere, or `NCRS_REPO` if you fork it.
 On Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/ncrs/ncrs/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/install.ps1 | iex
 ```
 
 ## Graphics backend

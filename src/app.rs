@@ -16,6 +16,18 @@ use crate::ui::{self, dialog, header, layout, panel, statusbar, theme, PanelProp
 
 const APP_NAME: &str = "NC-rs";
 
+/// A reload waiting for its operation to finish.
+///
+/// F7 creates a directory and then reads the panel. Both were started at once,
+/// which races: a read that finishes first does not see the new entry. The
+/// reload waits here until the create has reported back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PendingReload {
+    side: PanelSide,
+    /// Name to select afterwards, so Enter opens what was just created.
+    name: String,
+}
+
 pub struct App {
     left_panel: PanelState,
     right_panel: PanelState,
@@ -33,6 +45,8 @@ pub struct App {
     /// Id of the running prompt operation, so a late result cannot land on a
     /// prompt the user already dismissed.
     prompt_request_id: u64,
+    /// Reload queued by `PromptSubmit`, run once the create has reported.
+    pending_reload: Option<PendingReload>,
 }
 
 /// The part of the prompt the key routing needs, cheap to clone.
@@ -101,6 +115,7 @@ impl App {
             prompt: None,
             prompt_side: None,
             prompt_request_id: 0,
+            pending_reload: None,
         };
 
         let tasks = Task::batch([
@@ -181,6 +196,8 @@ impl App {
                 self.prompt_request_id = request_id;
                 self.set_prompt_busy(true);
 
+                // The new directory's name, carried through the task so the
+                // reload can select it.
                 let target = parent.join(&new_name);
                 let create = Task::perform(fs::create_dir(target), move |result| {
                     Message::PromptFinished {
@@ -189,10 +206,16 @@ impl App {
                         result,
                     }
                 });
-                // Reload regardless, so the listing matches the disk even if
-                // creation failed and something else is there.
-                let reload = self.load(side, parent, Some(new_name));
-                Task::batch([create, reload])
+
+                // The reload belongs *after* the create, not beside it.
+                // Running both at once races: a read that finishes first sees a
+                // directory that does not contain the new entry yet, and the
+                // selection then points at whatever is there instead.
+                self.pending_reload = Some(PendingReload {
+                    side,
+                    name: new_name,
+                });
+                create
             }
             Message::PromptCancel => {
                 self.prompt = None;
@@ -208,6 +231,15 @@ impl App {
                     // Dismissed or retried while the operation ran.
                     return Task::none();
                 }
+                // The queued reload runs here, after the create has reported —
+                // never beside it. On success it selects the new directory; on
+                // failure it still re-reads, because the name may belong to
+                // something else that appeared meanwhile.
+                let reload = self.pending_reload.take().map(|pending| {
+                    let path = self.panel(pending.side).path.clone();
+                    self.load(pending.side, path, Some(pending.name))
+                });
+
                 match result {
                     Ok(()) => {
                         self.prompt = None;
@@ -218,7 +250,7 @@ impl App {
                         self.set_prompt_error_text(&self.prompt_error(&err));
                     }
                 }
-                Task::none()
+                reload.unwrap_or_else(Task::none)
             }
 
             Message::DirectoryLoaded {
@@ -683,13 +715,19 @@ mod prompt_routing {
         }
     }
 
-    fn scratch(label: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("ncrs-chain-{label}-{}", std::process::id()))
+    /// Removes itself, so a failed assertion does not leave a directory that
+    /// makes the next run fail.
+    fn scratch(label: &str) -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix(&format!("ncrs-chain-{label}-"))
+            .tempdir()
+            .expect("a scratch directory")
     }
 
     #[test]
     fn f7_then_a_name_then_enter_readies_the_operation() {
-        let base = scratch("submit");
+        let scratch = scratch("submit");
+        let base = scratch.path().to_path_buf();
         std::fs::create_dir_all(&base).unwrap();
         let mut app = app();
         app.left_panel.path = base.clone();
@@ -710,15 +748,14 @@ mod prompt_routing {
         );
         assert!(app.prompt.as_ref().unwrap().busy());
         assert_eq!(app.prompt.as_ref().unwrap().error(), None);
-
-        std::fs::remove_dir_all(&base).unwrap();
     }
 
     /// An empty name is refused while the dialog is still open: no filesystem
     /// call, no busy state, an error the user can act on.
     #[test]
     fn submitting_an_empty_name_reports_it_without_closing() {
-        let base = scratch("empty");
+        let scratch = scratch("empty");
+        let base = scratch.path().to_path_buf();
         std::fs::create_dir_all(&base).unwrap();
         let mut app = app();
         app.left_panel.path = base.clone();
@@ -729,8 +766,6 @@ mod prompt_routing {
         assert!(app.prompt.is_some(), "the prompt closed on an invalid name");
         assert!(!app.prompt.as_ref().unwrap().busy());
         assert_eq!(app.prompt.as_ref().unwrap().error(), Some("empty_name"));
-
-        std::fs::remove_dir_all(&base).unwrap();
     }
 
     /// Escape closes the prompt and leaves no state behind.
@@ -804,8 +839,13 @@ mod prompt_routing {
 mod prompt_end_to_end {
     use super::*;
 
-    fn scratch(label: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("ncrs-e2e-{label}-{}", std::process::id()))
+    /// Removes itself, so a failed assertion does not leave a directory that
+    /// makes the next run fail.
+    fn scratch(label: &str) -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix(&format!("ncrs-e2e-{label}-"))
+            .tempdir()
+            .expect("a scratch directory")
     }
 
     /// The whole path, including the filesystem: F7, type a name, submit, and
@@ -813,22 +853,22 @@ mod prompt_end_to_end {
     /// executor so this is the real thing, not a simulation.
     #[tokio::test]
     async fn the_directory_exists_after_submitting() {
-        let base = scratch("create");
+        let scratch = scratch("create");
+        let base = scratch.path().to_path_buf();
         std::fs::create_dir_all(&base).unwrap();
         let target = base.join("angelegt");
 
         let result = fs::create_dir(target.clone()).await;
         assert!(result.is_ok(), "create_dir failed: {result:?}");
         assert!(target.is_dir(), "{} was not created", target.display());
-
-        std::fs::remove_dir_all(&base).unwrap();
     }
 
     /// A name taken is reported as such, and the existing directory is left
     /// alone — the case a second F7 on the same name produces.
     #[tokio::test]
     async fn a_taken_name_leaves_the_existing_directory_intact() {
-        let base = scratch("taken");
+        let scratch = scratch("taken");
+        let base = scratch.path().to_path_buf();
         std::fs::create_dir_all(&base).unwrap();
         let target = base.join("vorhanden");
         std::fs::create_dir(&target).unwrap();
@@ -844,8 +884,6 @@ mod prompt_end_to_end {
             b"wichtig",
             "an existing directory must not be touched"
         );
-
-        std::fs::remove_dir_all(&base).unwrap();
     }
 }
 
@@ -853,6 +891,60 @@ mod prompt_end_to_end {
 impl App {
     /// An app with the create-directory prompt open, for the UI tests. The
     /// prompt field is private to this module, so the setup lives here.
+    /// An app whose panels are filled from fixed data, for snapshot tests.
+    ///
+    /// `App::new()` would read the working directory, so the rendered image
+    /// would depend on where the test runner happens to be started — a fresh CI
+    /// container and a laptop would produce different references for the same
+    /// code. This one renders the same bytes everywhere.
+    pub fn with_fixed_panels() -> Self {
+        let mut app = Self {
+            left_panel: PanelState::new(PathBuf::from("/home/test/links")),
+            right_panel: PanelState::new(PathBuf::from("/home/test/files")),
+            active_panel: PanelSide::Left,
+            visible_rows: 12,
+            lang: Language::default(),
+            shortcuts: keymap::shortcuts(Language::default()),
+            prompt: None,
+            prompt_side: None,
+            prompt_request_id: 0,
+            pending_reload: None,
+        };
+        for (side, names) in [
+            (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
+            (
+                PanelSide::Right,
+                ["..", "notes.txt", "report.pdf", "photo.jpg"],
+            ),
+        ] {
+            let panel = app.panel_mut(side);
+            panel.entries = names
+                .iter()
+                .enumerate()
+                .map(|(i, name)| fs::FileEntry {
+                    name: (*name).to_string(),
+                    path: PathBuf::from("/home/test").join(name),
+                    is_dir: i == 0 || name.ends_with('s') && i < 2,
+                    is_symlink: false,
+                    is_parent: i == 0,
+                    size: if i == 0 { 0 } else { 1024 * (i as u64 * 4096) },
+                    modified: None,
+                })
+                .collect();
+        }
+        app
+    }
+
+    /// A prompt on fixed data, for the prompt's own reference image.
+    pub fn with_fixed_prompt() -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.prompt = Some(Prompt::create_dir(PathBuf::from("/home/test/links")));
+        if let Some(prompt) = app.prompt.as_mut() {
+            prompt.set_name("neuer ordner".to_string());
+        }
+        app
+    }
+
     pub fn with_prompt_open(parent: PathBuf) -> Self {
         let mut app = Self::new().0;
         app.prompt = Some(Prompt::create_dir(parent));
@@ -896,5 +988,145 @@ impl App {
     pub fn move_selection_for_test(&mut self, delta: isize) {
         let rows = self.visible_rows;
         self.left_panel.move_selection(delta, rows);
+    }
+}
+
+#[cfg(test)]
+mod reload_order {
+    use super::*;
+
+    /// Removes itself, so a failed assertion does not leave a directory that
+    /// makes the next run fail.
+    fn scratch(label: &str) -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix(&format!("ncrs-order-{label}-"))
+            .tempdir()
+            .expect("a scratch directory")
+    }
+
+    /// Regression: F7 started the create and the reload at the same time with
+    /// `Task::batch`. A read that finished first saw a directory without the new
+    /// entry, and the selection landed on whatever was there instead — the new
+    /// directory silently missing from the panel.
+    ///
+    /// The fix puts the reload behind the create's result. This checks the
+    /// ordering without timing: while the create is still in flight, no reload
+    /// may have been issued.
+    #[test]
+    fn the_reload_waits_for_the_create() {
+        let scratch = scratch("waits");
+        let base = scratch.path().to_path_buf();
+        std::fs::create_dir_all(&base).unwrap();
+
+        let mut app = App::new().0;
+        app.left_panel.path = base.clone();
+        app.prompt = Some(Prompt::create_dir(base.clone()));
+        app.prompt.as_mut().unwrap().set_name("neu".into());
+        // Submitting queues the reload instead of running it.
+        let _ = app.update(Message::PromptSubmit);
+        assert!(
+            app.pending_reload.is_some(),
+            "no reload was queued, so the panel would never refresh"
+        );
+        assert_ne!(
+            app.prompt_request_id, 0,
+            "the request id was not advanced, so a stale result could land"
+        );
+
+        // Still busy: the create has not reported.
+        assert!(app.prompt.as_ref().unwrap().busy());
+    }
+
+    /// The queued reload runs when the create reports, and clears itself so a
+    /// later result cannot trigger a second read.
+    #[test]
+    fn the_reload_runs_when_the_create_reports() {
+        let scratch = scratch("runs");
+        let base = scratch.path().to_path_buf();
+        std::fs::create_dir_all(&base).unwrap();
+
+        let mut app = App::new().0;
+        app.left_panel.path = base.clone();
+        app.prompt = Some(Prompt::create_dir(base.clone()));
+        app.prompt.as_mut().unwrap().set_name("spaet".into());
+        app.prompt_request_id = 1;
+        app.pending_reload = Some(PendingReload {
+            side: PanelSide::Left,
+            name: "spaet".into(),
+        });
+
+        let _ = app.update(Message::PromptFinished {
+            prompt: PromptKind::CreateDir,
+            request_id: 1,
+            result: Ok(()),
+        });
+
+        assert!(
+            app.pending_reload.is_none(),
+            "the reload was not consumed and would run again"
+        );
+        assert!(app.prompt.is_none(), "the prompt stayed open after success");
+    }
+
+    /// On failure the prompt stays open with the error, and the reload still
+    /// runs: the name may belong to something that appeared in the meantime.
+    #[test]
+    fn a_failure_still_reloads() {
+        let scratch = scratch("failure");
+        let base = scratch.path().to_path_buf();
+        std::fs::create_dir_all(&base).unwrap();
+
+        let mut app = App::new().0;
+        app.left_panel.path = base.clone();
+        app.prompt = Some(Prompt::create_dir(base.clone()));
+        app.prompt.as_mut().unwrap().set_name("weg".into());
+        app.prompt_request_id = 2;
+        app.pending_reload = Some(PendingReload {
+            side: PanelSide::Left,
+            name: "weg".into(),
+        });
+
+        let _ = app.update(Message::PromptFinished {
+            prompt: PromptKind::CreateDir,
+            request_id: 2,
+            result: Err(fs::CreateDirError::AlreadyExists {
+                path: base.join("weg"),
+                source: std::io::Error::new(std::io::ErrorKind::AlreadyExists, "exists"),
+            }),
+        });
+
+        assert!(
+            app.pending_reload.is_none(),
+            "a failed create left a reload queued"
+        );
+        assert!(
+            app.prompt.is_some(),
+            "the prompt closed on failure, so the user cannot correct the name"
+        );
+        assert!(!app.prompt.as_ref().unwrap().busy());
+    }
+
+    /// A result for a request the app has moved past changes nothing — not the
+    /// prompt, and not a queued reload either.
+    #[test]
+    fn a_stale_result_touches_neither() {
+        let mut app = App::new().0;
+        app.prompt_request_id = 5;
+        app.pending_reload = Some(PendingReload {
+            side: PanelSide::Left,
+            name: "x".into(),
+        });
+
+        let _ = app.update(Message::PromptFinished {
+            prompt: PromptKind::CreateDir,
+            request_id: 4,
+            result: Ok(()),
+        });
+
+        assert!(app.prompt.is_none());
+        assert!(
+            app.pending_reload.is_some(),
+            "a stale result consumed the queued reload"
+        );
     }
 }

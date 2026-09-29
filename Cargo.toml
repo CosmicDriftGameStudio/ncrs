@@ -29,6 +29,7 @@ gpu-rendering = ["iced/wgpu"]
 gpu-with-fallback = ["iced/wgpu", "iced/tiny-skia"]
 
 [dev-dependencies]
+tempfile = "3.27"
 # iced's own UI testing: Simulator (headless), Emulator (end-to-end),
 # snapshot images, and Ice scripts.
 iced_test = "0.14"

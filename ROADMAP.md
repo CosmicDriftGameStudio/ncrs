@@ -354,6 +354,54 @@ Abhängigkeit, nicht Bequemlichkeit. Jeder Task endet grün: `cargo fmt --check`
   eine Genauigkeit zu behaupten, die der Test nicht hat. `in_operation` hat noch keinen
   Aufrufer: die Regel wird in T7 beim Bauen der Operation gebraucht.
 
+- [ ] **T6d – Bedienungsleisten und Ablage (Architektur, vor F5/F6/F8)**
+  Fünf Anforderungen, die zusammen eine Struktur brauchen. Hier aufgenommen, weil drei
+  davon den Kopier-Vorgang und die Tastatur betreffen und nicht später unterzuschieben sind.
+
+  **1. Command-Line unten (ersetzt die Statusbar)**
+  In NC ist die untere Leiste die *Kommandozeile*, nicht eine Statusanzeige: man tippt
+  Befehle und Pfade. Das ersetzt `statusbar::view`, erweitert es nicht.
+
+  *Der Konflikt, der vorher gelöst werden muss:* heute bekommt `keymap::map_key` jede
+  Taste. Tippt der Nutzer unten `5`, um `F5` zu tippen, muss `"5"` Text sein, keine
+  Message.
+  **Die Lösung steht schon im Code:** `route_key` entscheidet heute, ob eine Taste zum
+  offenen Prompt gehört. Die Leiste ist derselbe Mechanismus — Esc nimmt den Fokus,
+  zweites Esc löst aus (NC-Verhalten). Keine neue Mechanik, dieselbe für ein anderes
+  Ziel. Das `When`-Feld der Command-Registry bekommt damit seinen ersten echten Nutzer.
+
+  **2. Task-Queue (Kopieren blockiert nicht)**
+  `F5` auf 50.000 Dateien darf die Oberfläche nicht anhalten. Braucht einen `JobManager`
+  mit `JobEvent { Progress, Done, Failed, NeedsDecision }` über eine Subscription.
+  **Die Leiste zeigt den Fortschritt**, sonst ist die Queue unsichtbar — die beiden
+  Punkte hängen zusammen.
+
+  **3. Überschreiben/Ersetzen immer als „für alle"**
+  NC fragt bei Namenskollision und bietet *Alle überschreiben / Alle behalten /
+  Überschreiben / Behalten / Abbrechen*. Die Entscheidung ist ein `Command` im Dialog, keine
+  Bedingung im Code — sonst braucht jede Operation ihre eigene Kopie des Dialogs. Gehört in
+  die Command-Schicht, nicht in `fs`.
+
+  **4. Spaltensortierung**
+  `fs::entry::listing_order` ist heute fest auf Name. Sortierbare Spalten heißt
+  `SortKey { Name, Size, Modified, Extension }` plus Richtung, und `listing_order` wird ein
+  Funktor über `(SortKey, bool)`. NC-Sonderregeln: Verzeichnisse immer zuerst
+  (unabhängig vom Schlüssel), `..` immer oben.
+  *Besteht auf P3:* `to_lowercase()` pro Vergleich ist O(n log n) Allokationen —
+  `sort_by_cached_key` kommt mit.
+
+  **5. Favoriten / Historie — zwei verschiedene Dinge, hier getrennt**
+  - *Favoriten* (Total Commander: Leiste zwischen Header und Liste) — feste, benannte
+    Sprungziele. Kleine Liste, gehört in die Config.
+  - *Historie* (NC: Verzeichnis-Rückwärts) — pro Panel; ein Zurück-Schritt geht einen
+    Eintrag zurück statt eine Ebene nach oben.
+  Beide brauchen einen Stack, aber unterschiedliche. **Empfehlung:** Historie zuerst, weil
+  sie ohne Konfiguration auskommt. Favoriten als reine Config-Liste darüber.
+
+- [ ] **T7 – F5 Copy / F6 Move** — nutzt `SelectionSet` und `inactive_panel_mut()`
+  Braucht T6c (Auswahl) und T6d Punkt 2 (Queue, sonst blockiert ein großes Copy).
+  Reload beider Panels; F5 kopiert in das inaktive Panel, F6 verschiebt dorthin.
+
 - [ ] **T8 – F8 Delete mit Bestätigungsdialog und Papierkorb** – siehe offene Frage unten
 - [ ] **T9 – F3 View / F4 Edit** – externes Programm, `std::process::Command`
 - [ ] **T10 – Konfigurationsdatei** – `serde` + `toml`, Schema-Validierung, Versionierung

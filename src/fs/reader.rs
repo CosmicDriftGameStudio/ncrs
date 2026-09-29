@@ -113,15 +113,20 @@ pub fn start_dir() -> PathBuf {
 mod tests {
     use super::*;
 
-    /// One scratch directory per test, so parallel `#[tokio::test]`s never share
-    /// paths. `label` must be a filename-safe, per-test-unique string.
-    fn scratch_dir(label: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("ncrs-{label}-{}", std::process::id()))
+    /// A scratch directory that removes itself, including when the test fails
+    /// halfway. A hand-made path in `temp_dir()` survives a panic and makes the
+    /// next run fail with `AlreadyExists` for no reason.
+    fn scratch_dir(label: &str) -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix(&format!("ncrs-{label}-"))
+            .tempdir()
+            .expect("a scratch directory")
     }
 
     #[tokio::test]
     async fn reads_directory_with_parent_first() {
-        let dir = scratch_dir("read-listing");
+        let scratch = scratch_dir("read-listing");
+        let dir = scratch.path().to_path_buf();
         std::fs::create_dir_all(dir.join("sub")).unwrap();
         std::fs::write(dir.join("b.txt"), b"hello").unwrap();
         std::fs::write(dir.join("A.txt"), b"").unwrap();

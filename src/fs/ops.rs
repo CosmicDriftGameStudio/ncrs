@@ -104,22 +104,26 @@ impl std::error::Error for CreateDirError {}
 mod tests {
     use super::*;
 
-    /// One scratch directory per test, so parallel tests never share paths.
-    /// `label` must be filename-safe and unique within the binary.
-    fn scratch_dir(label: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("ncrs-{label}-{}", std::process::id()))
+    /// A scratch directory that removes itself, including when the test fails
+    /// halfway. A hand-made path in `temp_dir()` survives a panic and makes the
+    /// next run fail with `AlreadyExists` for no reason.
+    fn scratch_dir(label: &str) -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix(&format!("ncrs-{label}-"))
+            .tempdir()
+            .expect("a scratch directory")
     }
 
     #[tokio::test]
     async fn creates_the_directory() {
-        let base = scratch_dir("ops-create");
+        let scratch = scratch_dir("ops-create");
+        let base = scratch.path().to_path_buf();
         let target = base.join("newdir");
         std::fs::create_dir_all(&base).unwrap();
 
         create_dir(target.clone()).await.unwrap();
 
         assert!(target.is_dir());
-        std::fs::remove_dir_all(&base).unwrap();
     }
 
     /// The failure that matters: a name that is already taken must not be
@@ -127,7 +131,8 @@ mod tests {
     /// quietly write into the wrong place.
     #[tokio::test]
     async fn refuses_an_existing_directory() {
-        let base = scratch_dir("ops-exists");
+        let scratch = scratch_dir("ops-exists");
+        let base = scratch.path().to_path_buf();
         std::fs::create_dir_all(&base).unwrap();
 
         let err = create_dir(base.clone()).await.unwrap_err();
@@ -136,13 +141,13 @@ mod tests {
             "expected AlreadyExists, got {err:?}"
         );
         assert!(base.is_dir(), "the existing directory should be untouched");
-        std::fs::remove_dir_all(&base).unwrap();
     }
 
     /// A file in the way counts as "already exists" too.
     #[tokio::test]
     async fn refuses_when_a_file_is_in_the_way() {
-        let base = scratch_dir("ops-file-in-the-way");
+        let scratch = scratch_dir("ops-file-in-the-way");
+        let base = scratch.path().to_path_buf();
         std::fs::create_dir_all(&base).unwrap();
         let target = base.join("afile");
         std::fs::write(&target, b"content").unwrap();
@@ -154,14 +159,14 @@ mod tests {
             b"content",
             "the file must not be replaced by a directory"
         );
-        std::fs::remove_dir_all(&base).unwrap();
     }
 
     /// A parent that does not exist is a different failure from "name taken",
     /// and the user needs to be told which one happened: the fix is different.
     #[tokio::test]
     async fn a_missing_parent_is_not_reported_as_a_taken_name() {
-        let base = scratch_dir("ops-missing-parent");
+        let scratch = scratch_dir("ops-missing-parent");
+        let base = scratch.path().to_path_buf();
         let target = base.join("nope").join("deeper");
 
         let err = create_dir(target).await.unwrap_err();
@@ -176,7 +181,8 @@ mod tests {
     /// A name that is taken reports the other kind, so the UI can say so.
     #[tokio::test]
     async fn a_taken_name_reports_already_exists() {
-        let base = scratch_dir("ops-taken");
+        let scratch = scratch_dir("ops-taken");
+        let base = scratch.path().to_path_buf();
         std::fs::create_dir_all(&base).unwrap();
 
         let err = create_dir(base.clone()).await.unwrap_err();
@@ -184,20 +190,18 @@ mod tests {
             err.io_error().unwrap().kind(),
             std::io::ErrorKind::AlreadyExists
         );
-        std::fs::remove_dir_all(&base).unwrap();
     }
 
     /// Two calls with the same name: the second must fail. This is the case a
     /// retry or a double keypress produces.
     #[tokio::test]
     async fn a_second_call_with_the_same_name_fails() {
-        let base = scratch_dir("ops-twice");
+        let scratch = scratch_dir("ops-twice");
+        let base = scratch.path().to_path_buf();
         let target = base.join("once");
         std::fs::create_dir_all(&base).unwrap();
 
         create_dir(target.clone()).await.unwrap();
         assert!(create_dir(target.clone()).await.is_err());
-
-        std::fs::remove_dir_all(&base).unwrap();
     }
 }
