@@ -88,7 +88,7 @@ jobs:
           Copy-Item LICENSE, README.md, ROADMAP.md "ncrs-${{ matrix.target }}/" -ErrorAction SilentlyContinue
           Compress-Archive -Path "ncrs-${{ matrix.target }}" -DestinationPath "ncrs-${{ matrix.target }}.zip"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ncrs-${{ matrix.target }}
           path: ncrs-${{ matrix.target }}.*
