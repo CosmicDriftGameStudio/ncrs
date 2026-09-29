@@ -1,7 +1,7 @@
 # NC-rs
 
 A fast, keyboard-first **Norton Commander style dual-panel file manager** written in Rust
-with [iced](https://iced.rs) (GPU-accelerated, cross-platform native UI).
+with [iced](https://iced.rs) 0.14 (GPU-accelerated, cross-platform native UI).
 
 The architecture follows the principles of editors like Zed: async I/O, message-driven
 state, pure views, and a strict separation between UI components, filesystem layer and
@@ -86,6 +86,30 @@ that pins it to the build configuration.
 ```bash
 cargo build --features gpu-with-fallback --release
 ```
+
+## Tests
+
+```bash
+cargo test                                      # 67 tests
+cargo test --features gpu-with-fallback        # the release backend
+```
+
+Three layers, and they cover different things:
+
+| Layer | What it covers | Where |
+|---|---|---|
+| Filesystem, state, routing | what the app *decides* | `src/fs/`, `src/dialog.rs`, `app.rs` |
+| UI, headless | what the user *sees* — clicks, rendering, layout | `src/ui_tests.rs` via `iced_test` |
+| Snapshots | the images themselves | `tests/snapshots/` |
+
+The UI layer is [iced's own harness](https://docs.rs/iced_test): `Simulator` renders a
+view headless and can click, type, tap keys and snapshot it. References in
+`tests/snapshots/` are written on the first run and compared afterwards, so a layout
+change shows up as a failing image.
+
+Two limits of iced 0.14 worth knowing: `iced_selector` finds widgets by `widget::Id`, and
+`Button` has no `id` method — so buttons are addressed by the position the layout reports
+for them. And `Snapshot` offers no bytes, only a comparison against a file.
 
 ## Build & run
 

@@ -16,16 +16,6 @@ use crate::ui::{self, dialog, header, layout, panel, statusbar, theme, PanelProp
 
 const APP_NAME: &str = "NC-rs";
 
-/// Every key press, as a message. `iced`'s `on_key_press` only accepts a plain
-/// `fn`, so nothing here may look at app state: whether a key belongs to the
-/// open prompt or to the panels is decided in `App::update`, which can see it.
-fn map_key_always(key: Key, modifiers: Modifiers) -> Option<Message> {
-    Some(Message::Typed {
-        key: Box::new(key),
-        modifiers,
-    })
-}
-
 pub struct App {
     left_panel: PanelState,
     right_panel: PanelState,
@@ -43,6 +33,54 @@ pub struct App {
     /// Id of the running prompt operation, so a late result cannot land on a
     /// prompt the user already dismissed.
     prompt_request_id: u64,
+}
+
+/// The part of the prompt the key routing needs, cheap to clone.
+///
+/// A subscription outlives the call that created it, so it cannot borrow the
+/// app. It gets this instead: two flags and the name typed so far. `Arc<str>`
+/// rather than `&'static str` because leaking a copy per keypress would grow
+/// without bound, and a `String` per keypress is what this avoids.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+pub struct PromptKeyState {
+    /// A prompt is open, so keys belong to it.
+    pub open: bool,
+    /// Whether the operation is running; keys are ignored then.
+    pub busy: bool,
+    /// The name typed so far.
+    pub typed: std::sync::Arc<str>,
+}
+
+/// Decides who a key press belongs to: the open prompt, or the bindings.
+///
+/// A free function because the subscription that calls it outlives `&self`.
+/// One place, so a binding cannot end up half-modal: with a prompt open, Enter
+/// submits instead of opening a directory, and Backspace edits text instead of
+/// walking to the parent.
+pub fn route_key(prompt: &PromptKeyState, key: Key) -> Option<Message> {
+    if !prompt.open {
+        return keymap::map_key(key, Modifiers::default());
+    }
+    if prompt.busy {
+        return None;
+    }
+    let mut name = prompt.typed.to_string();
+    match key.as_ref() {
+        Key::Named(Named::Enter) => Some(Message::PromptSubmit),
+        Key::Named(Named::Escape) => Some(Message::PromptCancel),
+        // Backspace edits the text; it must not walk to the parent directory.
+        Key::Named(Named::Backspace) => {
+            name.pop();
+            Some(Message::PromptInput(name))
+        }
+        // No filtering: a directory name may contain anything but a path
+        // separator, and `Prompt::validate` reports the rest.
+        Key::Character(c) => {
+            name.push_str(c);
+            Some(Message::PromptInput(name))
+        }
+        _ => None,
+    }
 }
 
 impl App {
@@ -81,47 +119,26 @@ impl App {
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
+        // A subscription outlives the call that created it, so it cannot close
+        // over `&self`. What it needs from the app is the open prompt and
+        // nothing else, and that is two `Copy` values.
+        let prompt = self.prompt_key_state();
+
         Subscription::batch([
-            // `on_key_press` takes a plain `fn`, so the mapping cannot read the
-            // app state. The prompt therefore receives every keystroke as
-            // `Message::Typed` and decides in `update` whether it belongs to
-            // the prompt or to the panels.
-            keyboard::on_key_press(map_key_always),
+            // `listen` yields the event stream, so the mapping can decide
+            // without routing every key through a message first.
+            keyboard::listen()
+                .with(prompt)
+                .filter_map(|(prompt, event)| match event {
+                    keyboard::Event::KeyPressed { key, modifiers, .. }
+                        if modifiers == Modifiers::default() =>
+                    {
+                        route_key(&prompt, key)
+                    }
+                    _ => None,
+                }),
             window::resize_events().map(|(_id, size)| Message::WindowResized(size)),
         ])
-    }
-
-    /// Decides who a key press belongs to: the open prompt, or the bindings.
-    ///
-    /// One place, so a new key cannot end up half-modal — bound to the panels
-    /// while a dialog is open, or swallowed by one.
-    fn route_key(&self, key: Key, modifiers: Modifiers) -> Option<Message> {
-        if self.prompt.is_some() {
-            return self.prompt_key(key, modifiers);
-        }
-        keymap::map_key(key, modifiers)
-    }
-
-    /// Keys that belong to the open prompt. Modifiers are ignored: a text field
-    /// has to accept Shift for capitals and Ctrl for editing.
-    fn prompt_key(&self, key: Key, _modifiers: Modifiers) -> Option<Message> {
-        let current = self.prompt.as_ref()?.name().to_string();
-        match key.as_ref() {
-            Key::Named(Named::Enter) => Some(Message::PromptSubmit),
-            Key::Named(Named::Escape) => Some(Message::PromptCancel),
-            // Backspace edits the text; it must not walk to the parent dir.
-            Key::Named(Named::Backspace) => {
-                let mut name = current;
-                name.pop();
-                Some(Message::PromptInput(name))
-            }
-            Key::Character(c) => {
-                // No filtering: a directory name may contain anything but a
-                // path separator, and validate() reports the rest.
-                Some(Message::PromptInput(format!("{current}{c}")))
-            }
-            _ => None,
-        }
     }
 
     // -----------------------------------------------------------------------
@@ -134,16 +151,6 @@ impl App {
         match message {
             // A raw key press. Routed here rather than in the subscription,
             // because that one cannot see whether a prompt is open.
-            Message::Typed { key, modifiers } => {
-                let Some(message) = self.route_key(*key, modifiers) else {
-                    return Task::none();
-                };
-                // The routing above is total: it either claims the key for the
-                // prompt, falls back to the bindings, or drops it.
-                debug_assert!(!matches!(message, Message::Typed { .. }));
-                self.update(message)
-            }
-
             // --- modal prompt ---
             // Handled before the panels: while a prompt is open every
             // keystroke belongs to it, and Enter must not open a directory.
@@ -376,6 +383,18 @@ impl App {
         self.panel_mut(self.active_panel.other())
     }
 
+    /// The state the key routing needs, cheap to clone.
+    fn prompt_key_state(&self) -> PromptKeyState {
+        match &self.prompt {
+            None => PromptKeyState::default(),
+            Some(prompt) => PromptKeyState {
+                open: true,
+                busy: prompt.busy(),
+                typed: prompt.name().into(),
+            },
+        }
+    }
+
     /// Shows a validation failure in the open prompt.
     fn set_prompt_error(&mut self, reason: &'static str) {
         if let Some(prompt) = self.prompt.as_mut() {
@@ -524,6 +543,12 @@ mod prompt_routing {
         app
     }
 
+    /// Routes as the subscription does: build the state, then call the free
+    /// function. Same path the real keypress takes.
+    fn press(app: &App, key: Key) -> Option<Message> {
+        route_key(&app.prompt_key_state(), key)
+    }
+
     /// While the prompt is open, F7 must not open a second one and the panel
     /// keys must not move the cursor. This is the bug the whole routing exists
     /// to prevent: Enter in a text field that also opens directories.
@@ -538,7 +563,7 @@ mod prompt_routing {
             Key::Named(Named::F10),
         ] {
             let label = format!("{key:?}");
-            let routed = app.route_key(key.clone(), Modifiers::default());
+            let routed = press(&app, key.clone());
             let leaked = matches!(
                 routed,
                 Some(Message::MoveSelection(_))
@@ -554,11 +579,11 @@ mod prompt_routing {
     fn enter_submits_and_escape_cancels() {
         let app = with_prompt();
         assert_eq!(
-            app.route_key(Key::Named(Named::Enter), Modifiers::default()),
+            press(&app, Key::Named(Named::Enter)),
             Some(Message::PromptSubmit)
         );
         assert_eq!(
-            app.route_key(Key::Named(Named::Escape), Modifiers::default()),
+            press(&app, Key::Named(Named::Escape)),
             Some(Message::PromptCancel)
         );
     }
@@ -570,11 +595,14 @@ mod prompt_routing {
         let mut app = with_prompt();
         app.prompt.as_mut().unwrap().set_name("abc".into());
 
-        let routed = app.route_key(Key::Character("d".into()), Modifiers::default());
-        assert_eq!(routed, Some(Message::PromptInput("abcd".into())));
-
-        let routed = app.route_key(Key::Named(Named::Backspace), Modifiers::default());
-        assert_eq!(routed, Some(Message::PromptInput("ab".into())));
+        assert_eq!(
+            press(&app, Key::Character("d".into())),
+            Some(Message::PromptInput("abcd".into()))
+        );
+        assert_eq!(
+            press(&app, Key::Named(Named::Backspace)),
+            Some(Message::PromptInput("ab".into()))
+        );
     }
 
     /// A new keystroke clears the error, so a corrected name does not still
@@ -595,11 +623,11 @@ mod prompt_routing {
     fn without_a_prompt_the_bindings_apply() {
         let app = app();
         assert_eq!(
-            app.route_key(Key::Named(Named::ArrowDown), Modifiers::default()),
+            press(&app, Key::Named(Named::ArrowDown)),
             Some(Message::MoveSelection(1))
         );
         assert_eq!(
-            app.route_key(Key::Named(Named::Enter), Modifiers::default()),
+            press(&app, Key::Named(Named::Enter)),
             Some(Message::OpenSelected)
         );
     }
@@ -610,7 +638,7 @@ mod prompt_routing {
     fn f7_opens_the_prompt_and_is_advertised() {
         let app = app();
         assert_eq!(
-            app.route_key(Key::Named(Named::F7), Modifiers::default()),
+            press(&app, Key::Named(Named::F7)),
             Some(Message::CreateDirPrompt)
         );
         assert!(
@@ -627,8 +655,8 @@ mod prompt_routing {
     // filesystem work itself is not awaited here, so this covers routing and
     // validation; the directory is checked in the async test below.
 
-    fn press(app: &mut App, key: Key) {
-        if let Some(message) = app.route_key(key, Modifiers::default()) {
+    fn press_and_update(app: &mut App, key: Key) {
+        if let Some(message) = route_key(&app.prompt_key_state(), key) {
             let _ = app.update(message);
         }
     }
@@ -644,11 +672,11 @@ mod prompt_routing {
         let mut app = app();
         app.left_panel.path = base.clone();
 
-        press(&mut app, Key::Named(Named::F7));
+        press_and_update(&mut app, Key::Named(Named::F7));
         assert!(app.prompt.is_some(), "F7 did not open the prompt");
 
         for c in "neuer ordner".chars() {
-            press(&mut app, Key::Character(c.to_string().into()));
+            press_and_update(&mut app, Key::Character(c.to_string().into()));
         }
         assert_eq!(app.prompt.as_ref().unwrap().name(), "neuer ordner");
 
@@ -673,7 +701,7 @@ mod prompt_routing {
         let mut app = app();
         app.left_panel.path = base.clone();
 
-        press(&mut app, Key::Named(Named::F7));
+        press_and_update(&mut app, Key::Named(Named::F7));
         let _task = app.update(Message::PromptSubmit);
 
         assert!(app.prompt.is_some(), "the prompt closed on an invalid name");
@@ -687,10 +715,10 @@ mod prompt_routing {
     #[test]
     fn escape_closes_the_prompt() {
         let mut app = app();
-        press(&mut app, Key::Named(Named::F7));
+        press_and_update(&mut app, Key::Named(Named::F7));
         assert!(app.prompt.is_some());
 
-        press(&mut app, Key::Named(Named::Escape));
+        press_and_update(&mut app, Key::Named(Named::Escape));
         assert!(app.prompt.is_none());
         assert_eq!(app.prompt_side, None);
     }
@@ -702,7 +730,7 @@ mod prompt_routing {
         let mut app = app();
         app.prompt = Some(Prompt::create_dir(PathBuf::from("/tmp")));
         app.prompt_request_id = 7;
-        press(&mut app, Key::Named(Named::Escape));
+        press_and_update(&mut app, Key::Named(Named::Escape));
 
         let stale = Message::PromptFinished {
             prompt: PromptKind::CreateDir,
@@ -796,5 +824,25 @@ mod prompt_end_to_end {
         );
 
         std::fs::remove_dir_all(&base).unwrap();
+    }
+}
+
+#[cfg(test)]
+impl App {
+    /// An app with the create-directory prompt open, for the UI tests. The
+    /// prompt field is private to this module, so the setup lives here.
+    pub fn with_prompt_open(parent: PathBuf) -> Self {
+        let mut app = Self::new().0;
+        app.prompt = Some(Prompt::create_dir(parent));
+        app
+    }
+
+    pub fn set_prompt(&mut self, name: &str, error: Option<&str>) {
+        if let Some(prompt) = self.prompt.as_mut() {
+            prompt.set_name(name.to_string());
+            if let Some(error) = error {
+                prompt.set_error(error.to_string());
+            }
+        }
     }
 }

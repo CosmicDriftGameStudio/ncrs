@@ -12,6 +12,11 @@ use crate::dialog::Prompt;
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 
+/// The text field carries an id, because `TextInput::id` exists and
+/// `iced_selector` can find it. The buttons do not — see the note where they
+/// are built.
+pub const FIELD_ID: &str = "prompt-field";
+
 /// Renders the prompt for `state`, or nothing when there is no prompt.
 ///
 /// `on_input`, `on_submit` and `on_cancel` are passed in rather than built
@@ -32,12 +37,18 @@ pub fn view<'a>(
     };
 
     let field = text_input(label, state.name())
+        .id(FIELD_ID)
         .on_input(on_input)
         .on_submit(on_submit.clone())
         .width(Length::Fill);
 
     // `on_press_maybe(None)` is how iced disables a button: no message, so a
     // keypress while the operation runs does nothing. There is no `disabled`.
+    // The buttons carry no `widget::Id`: `Button::id` does not exist in iced
+    // 0.14, and `iced_selector` can only find widgets by id. So they are found
+    // by their bounds instead — see `ui_tests`, which clicks at the position
+    // the layout reports for them. That is why the layout test and the click
+    // test have to agree about where the buttons are.
     let submit = (!state.busy()).then_some(on_submit);
     let confirm_button = button(text(confirm))
         .on_press_maybe(submit)

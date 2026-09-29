@@ -213,7 +213,7 @@ Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
 
 # Tasks – Basis-Feature
 
-**Stand: 9 von 17 erledigt, 8 offen.** 59 Tests, grün in vier Feature-Kombinationen.
+**Stand: 10 von 17 erledigt, 7 offen.** 67 Tests inkl. 8 UI-Tests mit Pixelvergleich.
 
 | Block | Inhalt | Stand |
 |---|---|---|
@@ -312,8 +312,27 @@ Abhängigkeit, nicht Bequemlichkeit. Jeder Task endet grün: `cargo fmt --check`
   - 23 neue Tests (36 → 59), darunter `an_open_prompt_takes_every_key` (verhindert, dass
     Enter im Textfeld ein Verzeichnis öffnet) und ein Ende-zu-Ende-Test mit echtem
     Dateisystem.
-  **Nicht getestet:** das Aussehen des Dialogs und die Bedienung per Maus. Beides braucht
-  ein Fenster, dafür gibt es hier keinen Harness.
+    **Nicht getestet (Stand vor der Migration):** das Aussehen des Dialogs und die
+  Bedienung per Maus. Beides ist seit T6b über `iced_test` abgedeckt.
+
+- [x] **T6b – iced 0.13 → 0.14, mit `iced_test`**
+  Migriert, um ieds offizielles Test-Werkzeug zu bekommen: `Simulator` (headless, klicken
+  und tippen), `Emulator` (End-to-End), `Snapshot` (echte Pixelvergleiche), `Ice`
+  (versionierbare Testskripte).
+  **Was sich geändert hat:**
+  - `on_key_press(fn)` gibt es nicht mehr. `keyboard::listen()` liefert den Event-Stream,
+    und `Subscription::with(value)` transportiert den Zustand — damit fällt der Umweg über
+    `Message::Typed` weg, den ich in T6 bauen musste, weil 0.13 keine Closures erlaubte.
+  - `iced::application` nimmt `boot` statt `title` + `run_with`. Titel via `.title()`.
+  - `Key::Character` trägt `&str` statt `char`.
+  - `Button` hat keine `id()`-Methode, `iced_selector` findet also nur Widgets mit Id
+    (z. B. `TextInput`). Buttons werden über ihre Layout-Position adressiert.
+  **Ergebnis:** 8 UI-Tests, die echte Klicks und gerenderte Bilder prüfen. Der Test
+  „the prompt changed no pixel" wurde mit absichtlich entferntem Overlay geprüft und
+  schlägt an. 67 Tests gesamt.
+  **Aus dem Weg geräumt:** ein selbstgebauter Layout-Test-Harness über tiny-skia
+  (`src/ui/layout_tests.rs`). Die Crate macht ihn überflüssig, und er lief nur im
+  Software-Build.
 
 - [ ] **T7 – F5 Copy / F6 Move** – nutzt `inactive_panel_mut()`, Reload beider Panels
 - [ ] **T8 – F8 Delete mit Bestätigungsdialog und Papierkorb** – siehe offene Frage unten

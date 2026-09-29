@@ -50,14 +50,6 @@ pub enum Message {
     OpenSelected,
     GoUp,
 
-    /// A key press, unclassified. `iced`'s `on_key_press` only takes a plain
-    /// `fn`, which cannot read app state, so the key arrives raw and
-    /// `App::update` decides whether it belongs to the prompt or the panels.
-    Typed {
-        key: Box<iced::keyboard::Key>,
-        modifiers: iced::keyboard::Modifiers,
-    },
-
     // --- Modal prompt (see crate::dialog) ---
     /// F7: open the create-directory prompt.
     CreateDirPrompt,
