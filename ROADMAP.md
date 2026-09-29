@@ -224,13 +224,37 @@ Abhängigkeit, nicht Bequemlichkeit. Jeder Task endet grün: `cargo fmt --check`
   *Warum zuerst:* jeder spätere Task soll beim PR automatisch grün sein.
 
 - [x] **T2 – Linux-Build ohne GPU-Abhängigkeit klären**
-  `iced` hat per Default **beide** Renderer im Baum (verifiziert in `iced_renderer-0.13.0/src/lib.rs:28,45`:
-  `iced_wgpu` *und* `iced_tiny_skia`). wgpu braucht Vulkan/Metal/DX11 zur Laufzeit, auf
-  CI-Runnern oft nicht vorhanden.
+  `iced` hat per Default **beide** Renderer im Baum (verifiziert in
+  `iced_renderer-0.13.0/src/lib.rs:28,45`: `iced_wgpu` *und* `iced_tiny_skia`). wgpu
+  braucht Vulkan/Metal/DX11 zur Laufzeit, auf CI-Runnern oft nicht vorhanden.
   **Entscheidung:** `default-features = false` + `tiny-skia` (Software-Rendering) als
   Default, wgpu nur als optionales Feature. Ein Dateimanager rendert Text und Rechtecke –
   Software-Rendering reicht und macht Linux-CI, VMs und alte Hardware nutzbar.
   *Risiko:* Renderer-Wechsel ist ein echter Eingriff, erst testen.
+  *Ergebnis:* 428 → 313 Pakete. App startet nachweislich.
+  **Nachtrag:** Software-Rendering ist die Ursache der gemeldeten Navigations-Trägheit
+  (siehe T2b).
+
+- [ ] **T2b – Renderer-Wechsel zu wgpu (offen, eingerüstet)**
+  Gemeldet: die aktive Zeile hinkt beim Navigieren ~1 Sekunde nach. Untersucht und
+  eingegrenzt:
+  - `App::view` ist **nicht** die Ursache: gemessen ~0,1 ms pro Frame bei 200 Entries,
+    16-fach unter dem 60-fps-Budget. Abgedeckt durch `app::render_timing`.
+  - `map_key` ist **nicht** die Ursache: Lookup 65 ns, Neubau der Tabelle 210 ns pro
+    Tastendruck. Der Caching-Fix ist trotzdem geblieben, erklärt die Verzögerung aber nicht.
+  - **Verbleibender Verdacht: die Rasterisierung.** tiny-skia zeichnet in Software; auf
+    einem 2x-Display sind das 3,6 Mio Pixel pro Frame, auf 3x 8,2 Mio. wgpu würde das an
+    die GPU geben.
+  **Warum es noch offen ist:** `iced::application` ist generisch über den Renderer, und
+  die UI-Module waren bisher nur über `M` generisch. Der Wechsel auf einen konkreten
+  Renderer zieht sich durch `app.rs` und alle fünf `ui/*`-Module (Theme-Catalogs,
+  `Font: From<iced::Font>`, ~20 Aufrufstellen). Versuch und Rückbau in einer Runde
+  durchgeführt, nicht zu Ende gebracht — deshalb bewusst offen gelassen statt
+  halbfertig committet.
+  **Nächster Schritt:** als erstes wgpu **zusätzlich** aktivieren, ohne den Renderer
+  festzulegen, und messen ob es automatisch genutzt wird. Das ist ein Einzeiler in
+  `Cargo.toml` gegen eine unknown-unknown-Größe. Erst wenn das nichts bringt, ist der
+  generische Umbau gerechtfertigt.
 
 - [x] **T3 – Release-Pipeline: Binaries für Linux/macOS/Windows**
   `.github/workflows/release.yml`, getriggert per Tag. Cross-Compile per
