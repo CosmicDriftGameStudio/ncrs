@@ -225,6 +225,27 @@ Legende: **[P]** Pflicht für ein benutzbares Basis-Feature, **[S]** später. Re
 Abhängigkeit, nicht Bequemlichkeit. Jeder Task endet grün: `cargo fmt --check`,
 `cargo clippy --all-targets -- -D warnings`, `cargo test`, ein Commit.
 
+## CI-Erkenntnisse (2026-09-29)
+
+Zwei Befunde, die beim ersten CI-Lauf kamen und beide nicht im Review standen:
+
+**softbuffer bricht auf Linux ohne x11/wayland.** `iced_tiny_skia` hängt an `softbuffer`,
+dessen Backend-Enum per `#[cfg]`-Armen erzeugt wird. Ohne die Features `x11`/`wayland`
+greift auf Linux **kein** Arm — android, apple, windows, wasm fallen weg, x11/wayland/kms
+sind nicht aktiv. Übrig bleibt ein Enum, dessen Typ-Parameter `D`, `W` und `'a` nichts
+benutzen: E0392, Build abbrechen.
+*Das ist kein Compiler-Regressionsfehler*, sondern eine fehlende Konfiguration — der
+Toolchain-Pin aus dem Review hätte es nicht verhindert. Fix: `x11` und `wayland` in ieds
+Features. Auf macOS/Windows sind die softbuffer-Backends ohnehin per `cfg` weg, dort kostet
+es nichts.
+*Merksatz für den Split:* `cargo tree -e features | grep softbuffer` muss **nicht leer**
+sein. Ein leeres Ergebnis ist hier kein „kein Fenster", sondern ein leeres Enum.
+
+**Snapshot-Tests sind plattformabhängig, nicht backend-abhängig.** Der Suffix in
+`tests/snapshots/` deckt den Renderer ab, nicht das Betriebssystem. Font-Rasterung
+unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst über
+`--skip ui_tests` auf Nicht-macOS-Runnern plus einem eigenen Schritt für macOS.
+
 ## Block A – CI und Installation (zuerst, weil alles Weitere davon profitiert)
 
 - [x] **T1 – GitHub Actions: fmt + clippy + test auf macOS/Linux/Windows**
