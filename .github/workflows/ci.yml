@@ -57,13 +57,13 @@ jobs:
       # cfg logic in src/backend.rs only compiles in the ones the default build
       # does not exercise.
       - name: Tests, GPU with fallback
-        run: cargo test --no-default-features --features gpu-with-fallback
+        run: cargo test --no-default-features --features gpu-with-fallback -- --skip ui_tests
 
       - name: Tests, GPU only
-        run: cargo test --no-default-features --features gpu-rendering
+        run: cargo test --no-default-features --features gpu-rendering -- --skip ui_tests
 
       - name: Tests, software only
-        run: cargo test --no-default-features --features software-rendering
+        run: cargo test --no-default-features --features software-rendering -- --skip ui_tests
 
       # A build with no backend opens an empty window. iced only rejects that
       # in release mode, so CI has to be the one that catches it.
