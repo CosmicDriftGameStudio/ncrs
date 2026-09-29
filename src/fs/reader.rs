@@ -121,6 +121,8 @@ pub fn start_dir() -> PathBuf {
     clippy::panic,
     clippy::indexing_slicing
 )]
+// reason: a test module belongs next to what it tests
+#[allow(clippy::inline_modules)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,6 +175,8 @@ mod tests {
     clippy::panic,
     clippy::indexing_slicing
 )]
+// reason: a test module belongs next to what it tests
+#[allow(clippy::inline_modules)]
 #[cfg(test)]
 mod start_dir_tests {
     use super::*;

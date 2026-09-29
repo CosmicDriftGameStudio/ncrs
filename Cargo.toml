@@ -157,8 +157,14 @@ default_numeric_fallback = "allow"
 # several of. Said again at the function, because the pattern looks risky.
 string_slice = "allow"
 
-# Two names that clippy 1.90 — the pinned toolchain — does not know yet, so
-# naming them there produced "unknown lint" warnings and an error on every
-# platform. They are in the group by default anyway, so the local 1.98 run
-# stays quiet either way. Re-add when the pin moves.
-#   inline_modules, inline_trait_bounds
+# `inline_modules` off on purpose. A `#[cfg(test)] mod tests` next to the code
+# it tests is the Rust convention and the one this codebase follows; splitting
+# each test module into its own file would move a test away from what it
+# verifies. Same for the named groups in ui/theme.rs, where 31 call sites say
+# `theme::colors::SELECTED_BG` and the module name carries the meaning.
+#
+# The name cannot simply be listed here: 1.90, the pinned toolchain, does not
+# know `inline_modules` and treats an unknown lint name as an error on every
+# platform. An `#[allow]` at the item behaves differently — an unknown name there
+# is only a warning — which is why these two live as attributes and not here.
+# Both go back in this list when the pin moves past 1.90.

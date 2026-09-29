@@ -544,6 +544,8 @@ impl App {
     clippy::panic,
     clippy::indexing_slicing
 )]
+// reason: a test module belongs next to what it tests
+#[allow(clippy::inline_modules)]
 #[cfg(test)]
 mod render_timing {
     use super::*;
@@ -608,6 +610,8 @@ mod render_timing {
     clippy::panic,
     clippy::indexing_slicing
 )]
+// reason: a test module belongs next to what it tests
+#[allow(clippy::inline_modules)]
 #[cfg(test)]
 mod prompt_routing {
     use super::*;
@@ -869,6 +873,8 @@ mod prompt_routing {
     clippy::panic,
     clippy::indexing_slicing
 )]
+// reason: a test module belongs next to what it tests
+#[allow(clippy::inline_modules)]
 #[cfg(test)]
 mod prompt_end_to_end {
     use super::*;
@@ -929,6 +935,8 @@ mod prompt_end_to_end {
     clippy::panic,
     clippy::indexing_slicing
 )]
+// reason: a test module belongs next to what it tests
+#[allow(clippy::inline_modules)]
 #[cfg(test)]
 mod reload_order {
     use super::*;
