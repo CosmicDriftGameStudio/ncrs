@@ -5,7 +5,7 @@ use super::FileEntry;
 
 /// Why a directory read failed, without any user-facing text. The message is
 /// formatted by the UI layer, which owns the language.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReadError {
     /// The OS refused to read the directory. The inner string is the OS message.
     CannotRead { reason: String },

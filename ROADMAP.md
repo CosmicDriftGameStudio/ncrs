@@ -267,6 +267,12 @@ Abhängigkeit, nicht Bequemlichkeit. Jeder Task endet grün: `cargo fmt --check`
 - [ ] **T13 – Sprachauswahl persistent** – `lang = "de"` in der Config, statt F9
 - [ ] **T14 – Quick-Search** – Typen filtert die Liste, `glob`-basiert, logik-testbar
 
+- [x] **T5b – Registry-Pattern für Tasten: eine Aktion, eine Registrierung**
+  Eine Aktion trägt Taste, Message und Übersetzungshinweis. `map_key` *und* die
+  Header-Liste werden daraus abgeleitet, beide können nicht auseinanderlaufen.
+  `Binding::with_modifiers` ist der Erweiterungspunkt für Alt+F1…F10 (Ziel-Panels).
+  6 Tests.
+
 ## Block C – Erweiterung (nicht Basis, aber im Plan)
 
 - [ ] **T15 – Netzwerk-Mounts** (macOS/Linux), **T16 – Archiv-Support lesend**,

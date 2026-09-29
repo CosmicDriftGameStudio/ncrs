@@ -22,7 +22,7 @@ pub struct App {
     visible_rows: usize,
     lang: Language,
     /// Header hints, kept in state so `view` does not allocate per frame.
-    shortcuts: Vec<(&'static str, &'static str)>,
+    shortcuts: Vec<(String, &'static str)>,
 }
 
 impl App {

@@ -23,7 +23,9 @@ impl PanelSide {
     }
 }
 
-#[derive(Debug, Clone)]
+/// PartialEq so bindings can be compared; Eq is not derivable because
+/// WindowResized carries floats.
+#[derive(Debug, Clone, PartialEq)]
 pub enum Message {
     /// Result of an async directory read.
     DirectoryLoaded {
