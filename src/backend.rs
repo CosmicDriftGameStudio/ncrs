@@ -30,13 +30,20 @@ pub enum Backend {
     /// Both compiled in; wgpu is tried first and tiny-skia takes over if the
     /// GPU is unavailable.
     GpuWithSoftwareFallback,
+    /// Neither backend was compiled in. iced only rejects this in release
+    /// builds; the debug build still runs, on a stub renderer.
+    Missing,
 }
 
 impl Backend {
     /// The backend this binary was built with.
+    ///
+    /// Every branch is an exhaustive, mutually exclusive condition. Writing
+    /// them as `not(...)` chains instead looks tidier but breaks: a `#[cfg]`
+    /// that does not apply leaves an empty block, and the const block then
+    /// evaluates to `()` rather than to a `Backend`. That only shows up in the
+    /// configurations the default build does not exercise.
     pub const CURRENT: Self = {
-        // Order matters: `gpu-with-fallback` also enables the other two, so it
-        // has to be checked first.
         #[cfg(feature = "gpu-with-fallback")]
         {
             Self::GpuWithSoftwareFallback
@@ -46,9 +53,9 @@ impl Backend {
             Self::Gpu
         }
         #[cfg(all(
+            feature = "software-rendering",
             not(feature = "gpu-rendering"),
-            not(feature = "gpu-with-fallback"),
-            feature = "software-rendering"
+            not(feature = "gpu-with-fallback")
         ))]
         {
             Self::Software
@@ -59,7 +66,10 @@ impl Backend {
             feature = "gpu-with-fallback"
         )))]
         {
-            Self::Software
+            // No backend feature: iced rejects this in release builds. Reporting
+            // software keeps the debug build running instead of failing to
+            // compile, so the message below can explain the situation.
+            Self::Missing
         }
     };
 
@@ -69,6 +79,7 @@ impl Backend {
             Self::Gpu => "wgpu",
             Self::Software => "tiny-skia",
             Self::GpuWithSoftwareFallback => "wgpu+tiny-skia",
+            Self::Missing => "none (enable software-rendering or gpu-rendering)",
         }
     }
 }
@@ -85,12 +96,10 @@ pub fn log_backend() {
 mod tests {
     use super::*;
 
-    /// Both backends in one build is a deliberate choice, not an accident: it
-    /// keeps a GPU path on desktops while still starting where there is no GPU.
+    /// Mirror of the cfg in `CURRENT`. Both sides have to change together, and
+    /// this is what notices when only one does.
     #[test]
     fn backend_matches_the_build_configuration() {
-        // Mirror of the cfg in `CURRENT`, written out again on purpose: the
-        // point is that both sides have to change together.
         #[cfg(feature = "gpu-with-fallback")]
         assert_eq!(Backend::CURRENT, Backend::GpuWithSoftwareFallback);
 
@@ -98,9 +107,9 @@ mod tests {
         assert_eq!(Backend::CURRENT, Backend::Gpu);
 
         #[cfg(all(
+            feature = "software-rendering",
             not(feature = "gpu-rendering"),
-            not(feature = "gpu-with-fallback"),
-            feature = "software-rendering"
+            not(feature = "gpu-with-fallback")
         ))]
         assert_eq!(Backend::CURRENT, Backend::Software);
 
@@ -109,17 +118,24 @@ mod tests {
             feature = "software-rendering",
             feature = "gpu-with-fallback"
         )))]
-        assert_eq!(Backend::CURRENT, Backend::Software);
+        assert_eq!(Backend::CURRENT, Backend::Missing);
     }
 
-    /// A build with no backend cannot render at all. iced only rejects this at
-    /// release build time, which is too late to catch a broken debug setup.
+    /// A build with no backend draws nothing. iced only rejects that in release
+    /// builds, so the default test run has to be the one that catches it.
     #[test]
-    fn a_backend_is_present() {
+    fn a_backend_is_compiled_in() {
         assert_ne!(
-            Backend::CURRENT.name(),
-            "",
-            "no graphics backend compiled in"
+            Backend::CURRENT,
+            Backend::Missing,
+            "no graphics backend compiled in: the app would open an empty window"
         );
+    }
+
+    /// The name reaches the startup log, where it is the first thing worth
+    /// knowing when a build feels slow.
+    #[test]
+    fn the_backend_has_a_readable_name() {
+        assert!(!Backend::CURRENT.name().is_empty());
     }
 }

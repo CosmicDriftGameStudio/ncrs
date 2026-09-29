@@ -36,10 +36,25 @@ jobs:
       - name: Tests
         run: cargo test
 
-      # The backend differs per feature set, so the app has to build — and its
-      # tests pass — in all three configurations.
-      - name: Tests with GPU rendering
+      # The backend differs per feature set, so the app has to build and its
+      # tests have to pass in every configuration. This is not a formality: the
+      # cfg logic in src/backend.rs only compiles in the ones the default build
+      # does not exercise.
+      - name: Tests, GPU with fallback
         run: cargo test --no-default-features --features gpu-with-fallback
 
-      - name: Tests with GPU rendering only
+      - name: Tests, GPU only
         run: cargo test --no-default-features --features gpu-rendering
+
+      - name: Tests, software only
+        run: cargo test --no-default-features --features software-rendering
+
+      # A build with no backend opens an empty window. iced only rejects that
+      # in release mode, so CI has to be the one that catches it.
+      - name: Tests, no backend must fail
+        run: |
+          if cargo test --no-default-features backend::tests 2>/dev/null; then
+            echo "::error::a build without a graphics backend must not pass its tests"
+            exit 1
+          fi
+          echo "ok: the no-backend build fails its own test"

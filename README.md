@@ -71,9 +71,13 @@ configurations:
 
 | Build | Backend | Use it when |
 |---|---|---|
-| `cargo run` (default) | tiny-skia, software | CI, VMs, machines without a GPU. Slow on high-resolution displays. |
-| `--features gpu-rendering` | wgpu, GPU | Desktop use. Needs Vulkan/Metal/DX11. |
-| `--features gpu-with-fallback` | wgpu, falling back to tiny-skia | Ship to users: fast where a GPU exists, starts where it does not. |
+| `cargo run` (default) | tiny-skia, software | CI, VMs, machines without a GPU. Measured: visibly laggy on a high-resolution display. |
+| `--features gpu-rendering` | wgpu, GPU | Desktop only. Needs Vulkan/Metal/DX11 and has no software fallback. |
+| `--features gpu-with-fallback` | wgpu, falling back to tiny-skia | **Releases.** Fast where a GPU exists, still starts where it does not. |
+
+Measured on a high-resolution display: software rendering took about a second to move the
+highlighted row; the fallback build was immediate. The default stays software so that a
+build without a GPU still works, and release builds pass `--features gpu-with-fallback`.
 
 A debug build prints the backend at startup, and `src/backend.rs` holds the test
 that pins it to the build configuration.

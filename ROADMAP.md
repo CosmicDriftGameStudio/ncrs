@@ -235,25 +235,31 @@ Abhängigkeit, nicht Bequemlichkeit. Jeder Task endet grün: `cargo fmt --check`
   **Nachtrag:** Software-Rendering ist die Ursache der gemeldeten Navigations-Trägheit
   (siehe T2b).
 
-- [x] **T2b – Backend konfigurierbar machen, statt den Renderer festzulegen**
-  Der Renderer stand nirgends im Code — `src/main.rs` enthält keine einzige Zeile
-  mit `wgpu` oder `tiny-skia`. Er wurde allein von ieds Features bestimmt, also
-  unbemerkt änderbar. Zwei falsche cfg-Bedingungen in meinem ersten Test fielen
-  zusätzlich durch.
-  **Gelöst mit Features statt generischem Umbau** (`Cargo.toml`):
-  - `software-rendering` (Default) → tiny-skia, keine GPU nötig
-  - `gpu-rendering` → wgpu
-  - `gpu-with-fallback` → wgpu, tiny-skia als Rückfall
-  ied löst die Kombination selbst auf (`iced_renderer-0.13.0/src/lib.rs:24-59`),
-  deshalb war der geplante generische Umbau durch `app.rs` und alle `ui/*`-Module
-  **nicht nötig** — der Renderer bleibt untypisiert.
-  `src/backend.rs` hält den Test, der den Backend an die Build-Konfiguration bindet,
-  plus eine Startmeldung im Debug-Build. Verifiziert über alle drei Konfigurationen,
-  und durch absichtliches Einbauen eines Fehlers geprüft, dass er anschlägt.
-  CI baut und testet alle drei Varianten.
-  **Offen bleibt nur die Messung:** fühlt sich `--features gpu-with-fallback` auf
-  einem HiDPI-Display spürbar schneller an? Das ist eine Beobachtung, keine
-  automatisierbare Testfrage.
+- [x] **T2b – Backend konfigurierbar machen, und die richtige Vorgabe finden**
+  Der Renderer stand nirgends im Code — `src/main.rs` enthält keine Zeile mit `wgpu`
+  oder `tiny-skia`. Er wurde allein von ieds Features bestimmt, also unbemerkt
+  änderbar. Zwei falsche cfg-Bedingungen in meinem ersten Test fielen zusätzlich durch.
+  **Gelöst mit Features statt generischem Umbau:** `software-rendering` (Default),
+  `gpu-rendering`, `gpu-with-fallback`. ied löst die Kombination selbst auf
+  (`iced_renderer-0.13.0/src/lib.rs:24-59`), der Renderer bleibt untypisiert — der
+  geplante Umbau durch `app.rs` und alle `ui/*`-Module war unnötig.
+  **Gemessen, nicht vermutet** (drei Starts auf deinem Rechner):
+
+  | Build | Backend | Ergebnis |
+  |---|---|---|
+  | `cargo run` | tiny-skia | **unbrauchbar träge** — die HiDPI-Rasterisierung |
+  | `--features gpu-with-fallback` | wgpu + Fallback | **schnell** ← die Vorgabe für Releases |
+  | `--features gpu-rendering` | wgpu | baute nicht: Bug im Test, s. u. |
+
+  **Bug gefunden und behoben:** `gpu-rendering` kompilierte nicht. Ursache war meine
+  `#[cfg]`-Kaskade im `const`-Block: eine nicht zutreffende Bedingung lässt einen leeren
+  Block stehen, der Block ergibt `()` statt `Backend`. Fällt nur in den Konfigurationen auf,
+  die der Default-Build nicht ausführt. Jetzt ein expliziter `Missing`-Zweig plus Test,
+  der ihn fängt; CI prüft alle vier Konfigurationen.
+
+  **Offen:** `default` steht weiterhin auf `software-rendering`, weil das ohne GPU
+  überall startet. Für Releases gehört `gpu-with-fallback` in die Pipeline
+  (T3-Update), damit der Default dem gemessenen Verhalten entspricht.
 
 - [x] **T3 – Release-Pipeline: Binaries für Linux/macOS/Windows**
   `.github/workflows/release.yml`, getriggert per Tag. Cross-Compile per
