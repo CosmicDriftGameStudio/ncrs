@@ -3,9 +3,14 @@
 A fast, keyboard-first **Norton Commander style dual-panel file manager** written in Rust
 with [iced](https://iced.rs) (GPU-accelerated, cross-platform native UI).
 
-This project is intentionally small: it is a **clean, extensible template** with a strict
-separation between UI components, filesystem layer and application state – inspired by
-the architecture principles of editors like Zed (async I/O, message-driven state, pure views).
+The architecture follows the principles of editors like Zed: async I/O, message-driven
+state, pure views, and a strict separation between UI components, filesystem layer and
+application state.
+
+This is a **work in progress**. The dual-panel navigator works, localization with
+per-string translator context works. File operations, archive support, network mounts,
+configurable keymap and theming are planned but not built — see [ROADMAP.md](ROADMAP.md)
+for the state, the licensing audit and the reasoning behind the order.
 
 ## Features
 
@@ -17,6 +22,8 @@ the architecture principles of editors like Zed (async I/O, message-driven state
 - Stale-result protection (fast navigation cannot show an outdated listing)
 - Errors (e.g. *Permission denied*) are shown in the status bar – no panics
 - Mouse click selects a row and activates its panel
+- Localized UI (English/German) with a translator note on every string, so the UI can
+  be translated mechanically without reading the code
 - Runs on Linux, macOS and Windows
 
 ## Keyboard shortcuts
@@ -29,7 +36,32 @@ the architecture principles of editors like Zed (async I/O, message-driven state
 | `Enter`            | Open directory (files: placeholder)      |
 | `Backspace`        | Go to parent directory                   |
 | `Tab`              | Switch active panel                      |
+| `F9`               | Switch language (en/de, temporary)        |
 | `F10` / `Q`        | Quit                                     |
+
+## Install
+
+Pre-built binaries for Linux, macOS and Windows are attached to each
+[release](../../releases). On Linux and macOS:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ncrs/ncrs/main/install.sh | sh
+```
+
+The script installs into `~/.local/bin`, verifies the download checksum when one is
+published, needs no `sudo`, and is safe to re-run. Remove it again with:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ncrs/ncrs/main/install.sh | sh -s -- --uninstall
+```
+
+Set `NCRS_BIN_DIR` to install elsewhere, or `NCRS_REPO` if you fork it.
+
+On Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/ncrs/ncrs/main/install.ps1 | iex
+```
 
 ## Build & run
 
@@ -64,8 +96,12 @@ src/
 │   ├── theme.rs     # Colors, spacing, font sizes, widget style functions
 │   ├── layout.rs    # Fixed metrics (row height, column widths, visible rows)
 │   └── format.rs    # Size / date formatting
+├── i18n/            # Translated UI strings + per-string translator context
+│   ├── mod.rs        # Msg enum, Language, Msg::note() (context for translators)
+│   ├── lang/en.rs    # Source language
+│   └── lang/de.rs    # German
 └── fs/              # Filesystem layer – knows nothing about the UI
-    ├── entry.rs     # FileEntry (name, path, size, modified, is_dir, ...)
+    ├── entry.rs     # FileEntry (name, path, size, modified, is_dir, ...) + sort order
     └── reader.rs    # async read_directory(), home_dir(), root_of()
 ```
 
@@ -98,6 +134,38 @@ src/
    generic `M` – they can be reused in any iced app or in other screens (dialogs, viewers…).
 6. **Minimal exports.** `fs` re-exports only `FileEntry` and the reader functions; the UI
    module exposes components and `PanelState`/`PanelProps`.
+
+### Localization
+
+`strings.json` in the repository root is the **source of truth**. Per string it holds the
+stable key, the English text, the German text and a `context` field: where the string
+appears and what it means, written for someone working from that file alone — because
+"Open" as a button label, as a menu entry and inside an error message are three
+different strings.
+
+`build.rs` generates the Rust modules from it, so text and context cannot drift apart.
+It fails the build when a string has no usable context or is missing a translation.
+
+```bash
+# every string with its context and both translations, for a translator
+cargo test dump -- --nocapture
+```
+
+Adding or changing a string:
+
+1. Edit `strings.json`. `cargo build` regenerates the modules.
+2. A new key becomes a `Msg` variant, so every call site that should use it is a
+   compile error until updated.
+
+Adding a language:
+
+1. Add the language to `strings.json` and to `build.rs`'s language list.
+2. Add the variant to `Language` and its lookup in `src/i18n/mod.rs`.
+3. `cargo test` — placeholder mismatches and untranslated copies fail the build, not the
+   UI. `<DIR>` and `<UP>` are deliberately never translated.
+
+`<DIR>` and `<UP>` are deliberately never translated: they are a Norton Commander
+convention, and the tests enforce it.
 
 ### Scrolling
 
@@ -151,6 +219,9 @@ per frame, independent of directory size.
   `window::resize_events`). iced 0.14 has since been released; migrating mainly touches
   `main.rs` (application builder) and style closures.
 - Font: the built-in monospace font for an authentic commander look.
+- The `advanced` iced feature is **not** enabled: the app uses no `pane_grid`, `tooltip`,
+  `pick_list` or `text::Font` variant. Add it back in `Cargo.toml` when you reach for one
+  of those.
 
 ## License
 

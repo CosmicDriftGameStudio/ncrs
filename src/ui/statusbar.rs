@@ -43,7 +43,7 @@ pub fn view<'a, M: 'a>(panel: &'a PanelState, lang: Language) -> Element<'a, M> 
         .into()
     } else {
         text(if panel.loading {
-            lang.text(Msg::Loading)
+            lang.text(Msg::StatusLoading)
         } else {
             ""
         })

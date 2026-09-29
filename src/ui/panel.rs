@@ -175,11 +175,11 @@ fn column_header<'a, M: 'a>(lang: Language) -> Element<'a, M> {
     let label = |s: &'static str| text(s).size(font_size::COLUMN_HEADER).color(colors::ACCENT);
     container(
         row![
-            label(lang.text(Msg::ColName)).width(Length::Fill),
-            label(lang.text(Msg::ColSize))
+            label(lang.text(Msg::ColumnName)).width(Length::Fill),
+            label(lang.text(Msg::ColumnSize))
                 .width(SIZE_COLUMN_WIDTH)
                 .align_x(alignment::Horizontal::Right),
-            label(lang.text(Msg::ColModified))
+            label(lang.text(Msg::ColumnModified))
                 .width(DATE_COLUMN_WIDTH)
                 .align_x(alignment::Horizontal::Right),
         ]

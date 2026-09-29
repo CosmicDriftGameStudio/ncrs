@@ -1,0 +1,94 @@
+{
+  "_comment": [
+    "Source of truth for all translatable UI strings. build.rs generates",
+    "src/i18n/lang/*.rs from this file; do not edit those by hand.",
+    "",
+    "The 'context' field is the deliverable for translators: it says where the",
+    "string appears and what it means. Strings with identical English text but",
+    "different meanings must stay separate entries.",
+    "",
+    "Placeholders like {path} must be kept verbatim in every language. Word",
+    "order is free to differ per language; a test enforces the placeholders."
+  ],
+  "version": 1,
+  "strings": [
+    {
+      "key": "column.name",
+      "context": "Column header above the file name column. One word, noun.",
+      "en": "Name",
+      "de": "Name"
+    },
+    {
+      "key": "column.size",
+      "context": "Column header above the file size column. One word, noun.",
+      "en": "Size",
+      "de": "Größe"
+    },
+    {
+      "key": "column.modified",
+      "context": "Column header above the modification date. One word; may expand in some languages.",
+      "en": "Modified",
+      "de": "Geändert"
+    },
+    {
+      "key": "marker.dir",
+      "context": "Shown in the size column for directories, like <DIR>. Convention from Norton Commander. Keep the angle brackets; this is deliberately not translated.",
+      "en": "<DIR>",
+      "de": "<DIR>"
+    },
+    {
+      "key": "marker.up",
+      "context": "Shown in the size column for the parent-directory entry '..', like <UP>. Same convention as the directory marker, also not translated.",
+      "en": "<UP>",
+      "de": "<UP>"
+    },
+    {
+      "key": "status.loading",
+      "context": "Status bar text while a directory is being read. The surrounding UI is monospace, so an ellipsis character is fine.",
+      "en": "Loading…",
+      "de": "Lade…"
+    },
+    {
+      "key": "shortcut.switch_panel",
+      "context": "Header hint describing the Tab key. Imperative or infinitive, matching the other hints in this row.",
+      "en": "Switch Panel",
+      "de": "Panel wechseln"
+    },
+    {
+      "key": "shortcut.switch_language",
+      "context": "Header hint describing the F9 key, which switches the interface language. Say 'language', not 'translation' or 'locale'.",
+      "en": "Switch Language",
+      "de": "Sprache wechseln"
+    },
+    {
+      "key": "shortcut.open",
+      "context": "Header hint describing the Enter key, which opens the selected directory.",
+      "en": "Open",
+      "de": "Öffnen"
+    },
+    {
+      "key": "shortcut.up",
+      "context": "Header hint describing the Backspace key, which goes to the parent directory.",
+      "en": "Up",
+      "de": "Zurück"
+    },
+    {
+      "key": "shortcut.quit",
+      "context": "Header hint describing the F10 and Q keys, which quit the app.",
+      "en": "Quit",
+      "de": "Beenden"
+    },
+    {
+      "key": "error.cannot_read",
+      "context": "Status bar error combining the directory path and the OS error message. Both must appear; word order is up to the language (German leads with the path). Keep the {path} and {reason} placeholders exactly as spelled.",
+      "en": "Cannot read {path}: {reason}",
+      "de": "{path} nicht lesbar: {reason}"
+    },
+    {
+      "key": "error.task_failed",
+      "context": "Status bar error shown when the background read task itself failed, not the filesystem. Internal error, users should rarely see it. Keep the {reason} placeholder.",
+      "en": "Directory read task failed: {reason}",
+      "de": "Lesen fehlgeschlagen: {reason}"
+    }
+  ]
+}
