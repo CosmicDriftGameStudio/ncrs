@@ -114,7 +114,6 @@ print_stdout = "allow"
 
 # Style and taste, decided rather than defaulted into. Each of these was in the
 # list after enabling the group; what stays on is the list above this point.
-inline_modules = "allow"
 missing_trait_methods = "allow"
 module_name_repetitions = "allow"
 non_ascii_literal = "allow"
@@ -137,7 +136,6 @@ impl_trait_in_params = "allow"
 
 # `where T: X` on the same line as the item. Both are valid; the codebase uses
 # the short form and that is a decision, not an oversight.
-inline_trait_bounds = "allow"
 
 # `let _ = expr` to drop a must_use value. Clippy wants `let _x: T = expr`,
 # which is longer and says the same thing.
@@ -158,3 +156,9 @@ default_numeric_fallback = "allow"
 # the build with a context full of umlauts and an emoji, which strings.json has
 # several of. Said again at the function, because the pattern looks risky.
 string_slice = "allow"
+
+# Two names that clippy 1.90 — the pinned toolchain — does not know yet, so
+# naming them there produced "unknown lint" warnings and an error on every
+# platform. They are in the group by default anyway, so the local 1.98 run
+# stays quiet either way. Re-add when the pin moves.
+#   inline_modules, inline_trait_bounds
