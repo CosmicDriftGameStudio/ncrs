@@ -56,6 +56,8 @@ pub enum Message {
     /// Ctrl+C or Escape while a job runs: stop it. Its own message rather than
     /// reusing a key binding, because "stop" only exists while a job does.
     AbortJob,
+    /// One tick of a running transfer, sent from the blocking thread.
+    JobProgress(crate::fs::transfer::Tick),
     /// F5 or F6, decided by the action rather than a message each.
     Transfer(TransferKind),
     /// The user answered the conflict dialog.

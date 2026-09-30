@@ -48,7 +48,6 @@ fn simulator(app: &App) -> Simulator<'_, Message, iced::Theme> {
 mod tests {
     use super::*;
     use iced::Point;
-    use std::path::PathBuf;
 
     fn app_with_prompt() -> App {
         App::with_prompt_open()

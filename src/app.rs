@@ -2,6 +2,9 @@
 //! `view` (pure composition of UI components).
 use std::path::PathBuf;
 
+use std::sync::Arc;
+
+use iced::futures;
 use iced::keyboard::{self, key::Named, Key, Modifiers};
 use iced::widget::{column, container, operation, row, Stack};
 use iced::{window, Element, Length, Subscription, Task, Theme};
@@ -16,8 +19,52 @@ use crate::ui::dialog::FIELD_ID;
 use crate::ui::{
     self, conflict, dialog, header, layout, panel, statusbar, theme, PanelProps, PanelState,
 };
+use tokio::sync::mpsc;
 
 const APP_NAME: &str = "NC-rs";
+
+/// Turns the transfer's channel into a stream for `Subscription::run_with`.
+///
+/// Written out rather than pulled in as `tokio-stream`: it is ten lines, and the
+/// dependency would be there only to avoid them. `run_with` takes the receiver by
+/// reference and clones it per event, so the subscription and the app share one
+/// channel.
+/// Turns the transfer's channel into a stream for `Subscription::run_with`.
+///
+/// The receiver sits behind a `tokio::sync::Mutex` because `recv` needs `&mut`
+/// and the stream state has to be `Send`; `tokio`'s mutex is the one that may
+/// hold its guard across an `await`. There is a single consumer, so the lock is
+/// never contended — it is a way of moving the receiver, not of sharing it.
+/// Turns the transfer's channel into a stream `Subscription::run_with` can use.
+///
+/// tokio's Mutex rather than std's, because the guard is held across an await and
+/// a std guard may not do that. There is a single consumer, so the lock is a
+/// way of moving the receiver rather than of sharing it.
+fn receiver_stream(
+    shared: Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<fs::transfer::Tick>>>,
+) -> impl futures::Stream<Item = fs::transfer::Tick> + 'static {
+    futures::stream::poll_fn(move |cx| {
+        // The lock is taken and dropped inside the poll, so nothing is borrowed
+        // across a yield point. Waking on empty rather than blocking is what
+        // `poll_fn` is for: the stream never has a place to `.await`.
+        let mut guard = match shared.try_lock() {
+            Ok(guard) => guard,
+            Err(_) => {
+                // A poll is already inside; ask to be woken rather than spin.
+                cx.waker().wake_by_ref();
+                return std::task::Poll::Pending;
+            }
+        };
+        match guard.try_recv() {
+            Ok(tick) => std::task::Poll::Ready(Some(tick)),
+            Err(mpsc::error::TryRecvError::Empty) => {
+                cx.waker().wake_by_ref();
+                std::task::Poll::Pending
+            }
+            Err(mpsc::error::TryRecvError::Disconnected) => std::task::Poll::Ready(None),
+        }
+    })
+}
 
 /// Whether a failed transfer was a name that is already taken.
 ///
@@ -116,6 +163,15 @@ pub struct App {
     /// The conflict rule from a previous "for all" answer, applied to the rest
     /// without asking again.
     conflict_rule: Option<fs::transfer::OnConflict>,
+    /// How far the running transfer has got, filled from the job's channel.
+    job_progress: Option<fs::transfer::Tick>,
+    /// Receives the transfer's ticks, for the life of the app rather than of
+    /// one transfer. Kept as an `Arc<Mutex<..>>` because a subscription cannot
+    /// borrow the app and a tokio Receiver is neither `Clone` nor `Hash` —
+    /// both of which `Subscription::run_with` needs from its data.
+    progress_rx: Option<Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<fs::transfer::Tick>>>>,
+    /// The sending half, kept so a new transfer can reuse the same channel.
+    progress_tx: Option<tokio::sync::mpsc::UnboundedSender<fs::transfer::Tick>>,
 }
 
 /// The part of the prompt the key routing needs, cheap to clone.
@@ -201,6 +257,9 @@ impl App {
             job_done: 0,
             conflict_all: false,
             conflict_rule: None,
+            job_progress: None,
+            progress_rx: None,
+            progress_tx: None,
         };
 
         let tasks = Task::batch([
@@ -242,6 +301,34 @@ impl App {
                 },
             ),
             window::resize_events().map(|(_id, size)| Message::WindowResized(size)),
+            // The transfer's ticks. Taken out of the app because a subscription
+            // outlives `&self`; the receiver is taken so the subscription
+            // rebuilds itself when a new transfer starts.
+            // The transfer's ticks. The receiver lives in an Arc because a
+            // mpsc Receiver is neither Clone nor Hash, and run_with needs the
+            // data to be both: the Arc for Clone, the newtype for Hash.
+            match &self.progress_rx {
+                None => Subscription::none(),
+                Some(shared) => {
+                    let rx = Arc::clone(shared);
+                    struct ProgressStream(
+                        Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<fs::transfer::Tick>>>,
+                    );
+                    impl std::hash::Hash for ProgressStream {
+                        fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+                            "ncrs-progress".hash(state);
+                        }
+                    }
+                    // The stream yields ticks; the app speaks messages, so
+                    // the mapping happens here rather than in the app.
+                    Subscription::run_with(ProgressStream(rx), |p: &ProgressStream| {
+                        futures::StreamExt::map(
+                            receiver_stream(Arc::clone(&p.0)),
+                            Message::JobProgress,
+                        )
+                    })
+                }
+            },
         ])
     }
 
@@ -262,12 +349,21 @@ impl App {
             // what was asked, so the answer lands on the right file.
             Message::TransferConflict(choice) => self.answer_conflict(choice),
 
+            // A tick from the copy on the blocking thread. The only thing the
+            // status bar needs, and nothing more.
+            Message::JobProgress(tick) => {
+                self.job_progress = Some(tick);
+                Task::none()
+            }
+
             // Stop the running job. Ctrl+C and Escape both, because a long copy
             // that cannot be stopped is the case a queue was supposed to fix.
             Message::AbortJob => {
                 if self.jobs.abort_running() {
                     self.transfer = None;
                     self.job_done = 0;
+                    self.job_progress = None;
+                    self.progress_rx = None;
                 }
                 Task::none()
             }
@@ -747,6 +843,19 @@ impl App {
             ]);
         };
 
+        // One channel per transfer, but the receiving half is created once for
+        // the app (see `progress_rx`) and reused, so `subscription` does not
+        // have to hand out a fresh receiver after every row.
+        let progress_tx = match &self.progress_tx {
+            Some(tx) => tx.clone(),
+            None => {
+                let (created, receiver) = tokio::sync::mpsc::unbounded_channel();
+                self.progress_tx = Some(created.clone());
+                self.progress_rx = Some(Arc::new(tokio::sync::Mutex::new(receiver)));
+                created
+            }
+        };
+
         let target = transfer.target.clone();
         let job = jobs::Job {
             kind: transfer.kind.job_kind(),
@@ -763,7 +872,11 @@ impl App {
                     let from = source.clone();
                     let to = target.clone();
                     let kind = transfer.kind;
-                    move || crate::fs::transfer::run(&from, &to, kind, conflict)
+                    move || {
+                        // Reports as it goes, so the bar moves during a long
+                        // copy rather than jumping at the end.
+                        crate::fs::transfer::run_reporting(&from, &to, kind, conflict, &progress_tx)
+                    }
                 }),
                 move |outcome| {
                     // Two failures collapse into one string here: the join error
@@ -787,10 +900,17 @@ impl App {
     /// along it is, how many wait, and whether Escape will stop it.
     fn job_status(&self) -> Option<statusbar::JobStatus> {
         let running = self.jobs.running()?;
+        // The tick from the blocking thread, not a row counter: F5 on one
+        // directory with fifty thousand files is one row and fifty thousand
+        // items, and the bar has to say the second number.
+        let (done, total) = match self.job_progress {
+            Some(tick) => (tick.done, tick.total),
+            None => (0, running.total.unwrap_or(0)),
+        };
         Some(statusbar::JobStatus {
             label: self.lang.text(running.kind.label()),
-            done: self.job_done,
-            total: running.total.unwrap_or(0),
+            done,
+            total,
             waiting: self.jobs.waiting(),
             // Escape belongs to the prompt while one is open, so the hint is
             // only true when nothing else is claiming the key.
@@ -1446,6 +1566,9 @@ impl App {
             job_done: 0,
             conflict_all: false,
             conflict_rule: None,
+            job_progress: None,
+            progress_rx: None,
+            progress_tx: None,
         };
         for (side, names) in [
             (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
@@ -2098,5 +2221,84 @@ mod conflict_tests {
         assert!(is_conflict("AlreadyExists (os error 17)"));
         assert!(!is_conflict("Permission denied (os error 13)"));
         assert!(!is_conflict("No such file or directory (os error 2)"));
+    }
+}
+
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod progress_bar {
+    use super::*;
+    use crate::fs::FileEntry;
+    use std::ffi::OsString;
+
+    fn app_with_one_file() -> App {
+        let mut app = App::new().0;
+        app.left_panel.path = PathBuf::from("/left");
+        app.right_panel.path = PathBuf::from("/right");
+        app.left_panel.entries = vec![FileEntry {
+            name: OsString::from("a.txt"),
+            path: PathBuf::from("/left/a.txt"),
+            is_dir: false,
+            is_symlink: false,
+            is_parent: false,
+            size: 1,
+            modified: None,
+        }];
+        app.left_panel.selected = 0;
+        app
+    }
+
+    /// A transfer of one file is one job, and the bar has to say so. The count
+    /// that matters is the one from the tick, not the number of rows: one
+    /// directory can hold fifty thousand files.
+    #[tokio::test]
+    async fn the_bar_shows_the_tick_not_the_row_count() {
+        let mut app = app_with_one_file();
+        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        assert!(app.jobs.is_busy(), "nothing to show progress for");
+
+        // What the blocking thread would have sent: 1 of 1 for a single file.
+        let _task = app.update(Message::JobProgress(fs::transfer::Tick {
+            done: 1,
+            total: 1,
+        }));
+
+        let status = app.job_status().expect("a running job should show");
+        assert_eq!((status.done, status.total), (1, 1));
+    }
+
+    /// Before the first tick the bar must not claim to be finished: an unknown
+    /// total shows zero, not a full bar.
+    #[tokio::test]
+    async fn the_bar_does_not_claim_progress_before_the_first_tick() {
+        let mut app = app_with_one_file();
+        let _started = app.update(Message::Transfer(TransferKind::Copy));
+
+        let status = app.job_status().expect("a running job should show");
+        assert_eq!(status.done, 0, "the bar started at the end");
+    }
+
+    /// Stopping clears the progress, so the next job does not inherit a
+    /// previous one's numbers.
+    #[tokio::test]
+    async fn stopping_clears_the_progress() {
+        let mut app = app_with_one_file();
+        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        let _ticked = app.update(Message::JobProgress(fs::transfer::Tick {
+            done: 5,
+            total: 10,
+        }));
+
+        let _stopped = app.update(Message::AbortJob);
+        assert!(
+            app.job_status().is_none(),
+            "the bar still shows a job that was stopped"
+        );
     }
 }

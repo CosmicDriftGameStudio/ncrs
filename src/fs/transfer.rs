@@ -135,7 +135,7 @@ impl Progress for Reporting<'_> {
         // backpressure here to reason about.
         self.sender
             .send(Tick { done, total })
-            .map_err(|_| io::Error::other("the app is gone"))
+            .map_err(|closed| io::Error::other(format!("the app is gone: {closed}")))
     }
 }
 
@@ -313,6 +313,10 @@ pub fn run_reporting(
     }
 }
 
+/// Counts but does not report. For a caller that only wants the work done —
+/// `run_reporting` is what the app uses, and this is what its own tests use to
+/// check that a plain run stays quiet.
+#[allow(dead_code)]
 pub fn run(
     source: &Path,
     target_dir: &Path,
@@ -558,7 +562,6 @@ mod tests {
 mod reporting_tests {
     use super::*;
     use std::fs;
-    use std::path::PathBuf;
 
     fn tree(root: &Path) {
         fs::create_dir_all(root.join("sub/deeper")).unwrap();
@@ -594,11 +597,11 @@ mod reporting_tests {
         )
         .unwrap();
 
-        let mut last = None;
+        let mut newest: Option<Tick> = None;
         while let Ok(tick) = rx.try_recv() {
-            last = Some(tick);
+            newest = Some(tick);
         }
-        let last = last.expect("the copy reported nothing at all");
+        let last = newest.expect("the copy reported nothing at all");
         // src, a.txt, sub, sub/b.txt, sub/deeper, sub/deeper/c.txt
         assert_eq!(last.done, 6, "the final count is wrong");
         assert_eq!(last.total, 6, "the total does not match what was copied");
