@@ -9,7 +9,29 @@ use super::theme::{self, colors, font_size, spacing};
 use crate::fs::ReadError;
 use crate::i18n::{Language, Msg};
 
-pub fn view<'a, M: 'a>(panel: &'a PanelState, lang: Language) -> Element<'a, M> {
+/// What a running job shows in the bar. Built by `App`, which owns the queue.
+pub struct JobStatus {
+    /// The name of what is running, already translated.
+    pub label: &'static str,
+    pub done: usize,
+    pub total: usize,
+    /// How many jobs are waiting behind this one.
+    pub waiting: usize,
+    /// Whether the running job can be stopped. False while a prompt is open,
+    /// where Escape means something else.
+    pub abortable: bool,
+}
+
+/// The bottom bar: path, then the running job, then the selected entry or the
+/// last error.
+///
+/// A running job takes the middle: the file under the cursor is not what the
+/// user is looking at while fifty thousand files are on their way.
+pub fn view<'a, M: 'a>(
+    panel: &'a PanelState,
+    lang: Language,
+    job: Option<JobStatus>,
+) -> Element<'a, M> {
     let path = text(panel.path.display().to_string())
         .size(font_size::STATUS)
         .color(colors::ACCENT)
@@ -52,13 +74,61 @@ pub fn view<'a, M: 'a>(panel: &'a PanelState, lang: Language) -> Element<'a, M> 
         .into()
     };
 
-    let separator = text("│").size(font_size::STATUS).color(colors::DIM_TEXT);
+    let separator = || text("│").size(font_size::STATUS).color(colors::DIM_TEXT);
+    // An invisible separator keeps the columns aligned whether or not a job is
+    // running, so the file info does not jump sideways when one starts.
+    let separator_hidden = || text(" ").size(font_size::STATUS);
+
+    /// The job line: what it is, how far along, and the abort hint. Returns
+    /// None when nothing is running, so the bar falls back to the file info.
+    fn job_text<'a, M: 'a>(job: &JobStatus, lang: Language) -> Element<'a, M> {
+        let counter = lang
+            .text(Msg::JobProgress)
+            .replace("{done}", &job.done.to_string())
+            .replace("{total}", &job.total.to_string());
+
+        let mut line = format!("{}  {counter}", job.label);
+        if job.waiting > 0 {
+            let waiting = lang
+                .text(Msg::JobQueued)
+                .replace("{count}", &job.waiting.to_string());
+            line.push_str("  •  ");
+            line.push_str(&waiting);
+        }
+        if job.abortable {
+            line.push_str("  •  ");
+            line.push_str(lang.text(Msg::JobAbort));
+        }
+        text(line)
+            .size(font_size::STATUS)
+            .color(colors::ACCENT)
+            .wrapping(text::Wrapping::None)
+            .into()
+    }
+
+    // A running job replaces the file info, not the path: the path is where the
+    // operation is going, which is still what the user is watching.
+    let middle: Element<'a, M> = match &job {
+        Some(running) => job_text(running, lang),
+        None => details,
+    };
+    // The path keeps two parts, the middle three, whatever is in the middle.
+    const PATH_PARTS: u16 = 2;
+    const MIDDLE_PARTS: u16 = 3;
 
     container(
         row![
-            container(path).width(Length::FillPortion(2)).clip(true),
-            separator,
-            container(details).width(Length::FillPortion(3)).clip(true),
+            container(path)
+                .width(Length::FillPortion(PATH_PARTS))
+                .clip(true),
+            separator(),
+            match &job {
+                Some(_) => separator(),
+                None => separator_hidden(),
+            },
+            container(middle)
+                .width(Length::FillPortion(MIDDLE_PARTS))
+                .clip(true),
         ]
         .spacing(spacing::CELL_PADDING_X)
         .align_y(alignment::Vertical::Center),

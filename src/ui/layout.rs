@@ -14,6 +14,10 @@ pub const ROW_HEIGHT: f32 = 22.0;
 
 pub const DIALOG_WIDTH: f32 = 420.0;
 
+/// The star column, left of the name. Its own button so a click there tags the
+/// row instead of moving the cursor.
+pub const TAG_COLUMN_WIDTH: f32 = 22.0;
+
 pub const SIZE_COLUMN_WIDTH: f32 = 90.0;
 pub const DATE_COLUMN_WIDTH: f32 = 150.0;
 

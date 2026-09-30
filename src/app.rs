@@ -3,17 +3,47 @@
 use std::path::PathBuf;
 
 use iced::keyboard::{self, key::Named, Key, Modifiers};
-use iced::widget::{column, container, row, Stack};
+use iced::widget::{column, container, operation, row, Stack};
 use iced::{window, Element, Length, Subscription, Task, Theme};
 
 use crate::dialog::{Prompt, PromptKind};
 use crate::fs::{self, CreateDirError};
 use crate::i18n::{Language, Msg};
+use crate::jobs::{self, JobEvent};
 use crate::keymap;
-use crate::messages::{Message, PanelSide};
-use crate::ui::{self, dialog, header, layout, panel, statusbar, theme, PanelProps, PanelState};
+use crate::messages::{ConflictChoice, Message, PanelSide, TransferKind};
+use crate::ui::dialog::FIELD_ID;
+use crate::ui::{
+    self, conflict, dialog, header, layout, panel, statusbar, theme, PanelProps, PanelState,
+};
 
 const APP_NAME: &str = "NC-rs";
+
+/// Whether a failed transfer was a name that is already taken.
+///
+/// The filesystem layer reports the kind as a prefix before the path, so this
+/// looks for the kind rather than for a wording that may change.
+fn is_conflict(reason: &str) -> bool {
+    reason.starts_with("AlreadyExists")
+}
+
+/// Runs one job and reports what happens as messages.
+///
+/// Separate from `App` so the queue can hand it to `Task::abortable` without
+/// borrowing the app. Only `CreateDir` has a filesystem operation behind it so
+/// far; the other kinds arrive with F5/F6/F8 and use the same path.
+fn run_job(job: jobs::Job) -> Task<Message> {
+    match job.kind {
+        jobs::JobKind::CreateDir => {
+            let target = job.path.clone();
+            Task::perform(fs::create_dir(target), move |result| match result {
+                Ok(()) => Message::JobFinished(JobEvent::Done),
+                Err(err) => Message::JobFinished(JobEvent::Failed(err.to_string())),
+            })
+        }
+        _ => Task::done(Message::JobFinished(JobEvent::Done)),
+    }
+}
 
 /// A reload waiting for its operation to finish.
 ///
@@ -25,6 +55,28 @@ struct PendingReload {
     side: PanelSide,
     /// Name to select afterwards, so Enter opens what was just created.
     name: String,
+}
+
+/// What a transfer does, and to which rows.
+///
+/// Carried inside `Message`, so it has to be public — but nothing outside this
+/// module constructs one; `start_transfer` is the only way in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Transfer {
+    kind: TransferKind,
+    /// The rows the user tagged, or the single row under the cursor when nothing
+    /// is tagged. Resolved once at F5, because by the time a conflict dialog is
+    /// up the selection may have moved.
+    sources: Vec<PathBuf>,
+    target: PathBuf,
+}
+
+/// One file waiting for an answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PendingConflict {
+    transfer: Transfer,
+    /// Which of `sources` is in the way.
+    index: usize,
 }
 
 pub struct App {
@@ -46,6 +98,24 @@ pub struct App {
     prompt_request_id: u64,
     /// Reload queued by `PromptSubmit`, run once the create has reported.
     pending_reload: Option<PendingReload>,
+    /// Long-running file operations, one at a time.
+    jobs: jobs::Queue,
+    /// What a transfer works on and where to. Kept so a conflict can resume
+    /// without asking the user to mark the rows again.
+    transfer: Option<Transfer>,
+    /// A transfer paused on a name that is already taken.
+    pending_conflict: Option<PendingConflict>,
+    /// Why the last job failed, in the active language. Shown in the status bar
+    /// until the next thing happens.
+    job_error: Option<String>,
+    /// How many items the running job has finished, for the progress bar.
+    job_done: usize,
+    /// Whether "for all files" is ticked in the conflict dialog. Lives here so
+    /// the tick survives the dialog being rebuilt every frame.
+    conflict_all: bool,
+    /// The conflict rule from a previous "for all" answer, applied to the rest
+    /// without asking again.
+    conflict_rule: Option<fs::transfer::OnConflict>,
 }
 
 /// The part of the prompt the key routing needs, cheap to clone.
@@ -58,6 +128,8 @@ pub struct App {
 pub struct PromptKeyState {
     /// A prompt is open, so keys belong to it.
     pub open: bool,
+    /// A job is running, so Escape stops it rather than doing nothing.
+    pub job_running: bool,
     /// Whether the operation is running; keys are ignored then.
     pub busy: bool,
     /// The name typed so far.
@@ -72,6 +144,13 @@ pub struct PromptKeyState {
 /// walking to the parent.
 pub fn route_key(prompt: &PromptKeyState, key: Key) -> Option<Message> {
     if !prompt.open {
+        // Escape stops a running job, but only then. With nothing running it
+        // stays unbound, rather than bound to something that does nothing —
+        // a key that means different things depending on invisible state is
+        // worse than one that is simply free.
+        if matches!(key.as_ref(), Key::Named(Named::Escape)) {
+            return prompt.job_running.then_some(Message::AbortJob);
+        }
         return keymap::map_key(key, Modifiers::default());
     }
     if prompt.busy {
@@ -115,6 +194,13 @@ impl App {
             prompt_side: None,
             prompt_request_id: 0,
             pending_reload: None,
+            jobs: jobs::Queue::new(),
+            transfer: None,
+            pending_conflict: None,
+            job_error: None,
+            job_done: 0,
+            conflict_all: false,
+            conflict_rule: None,
         };
 
         let tasks = Task::batch([
@@ -169,6 +255,72 @@ impl App {
         match message {
             // A raw key press. Routed here rather than in the subscription,
             // because that one cannot see whether a prompt is open.
+            // --- copy / move ---
+            Message::Transfer(kind) => self.start_transfer(kind),
+
+            // The user answered a conflict. The queue's pending job carries
+            // what was asked, so the answer lands on the right file.
+            Message::TransferConflict(choice) => self.answer_conflict(choice),
+
+            // Stop the running job. Ctrl+C and Escape both, because a long copy
+            // that cannot be stopped is the case a queue was supposed to fix.
+            Message::AbortJob => {
+                if self.jobs.abort_running() {
+                    self.transfer = None;
+                    self.job_done = 0;
+                }
+                Task::none()
+            }
+
+            // One row of a transfer finished. Continue with the next, or ask
+            // about a name that is in the way.
+            Message::TransferRowDone { result, index } => {
+                self.jobs.finish();
+                self.job_done += 1;
+                let Some(transfer) = self.transfer.clone() else {
+                    return Task::none();
+                };
+                match result {
+                    // A remembered "all" answer applies to the rows after this
+                    // one, without asking again.
+                    Ok(done) => {
+                        let rule = self.conflict_rule.unwrap_or(fs::transfer::OnConflict::Fail);
+                        self.run_from(done, index + 1, rule)
+                    }
+                    // A name that is taken is the one the user can answer.
+                    // Matched on the error kind, not on the message text: a
+                    // wording change in the filesystem layer would otherwise
+                    // silently turn every conflict into a hard failure.
+                    Err(reason) => {
+                        if is_conflict(&reason) {
+                            self.pending_conflict = Some(PendingConflict { transfer, index });
+                            Task::none()
+                        } else {
+                            self.transfer = None;
+                            self.set_status_error(&reason);
+                            Task::none()
+                        }
+                    }
+                }
+            }
+
+            // --- job queue ---
+            Message::JobFinished(event) => {
+                // Progress arrives mid-run; only the terminal events free the
+                // slot for the next job.
+                let finished = matches!(
+                    event,
+                    JobEvent::Done | JobEvent::Failed(_) | JobEvent::Aborted
+                );
+                if finished {
+                    self.jobs.finish();
+                }
+                if let Some(next) = self.jobs.start_next(run_job) {
+                    return next;
+                }
+                Task::none()
+            }
+
             // --- modal prompt ---
             // Handled before the panels: while a prompt is open every
             // keystroke belongs to it, and Enter must not open a directory.
@@ -176,7 +328,10 @@ impl App {
                 let parent = self.active_panel().path.clone();
                 self.prompt = Some(Prompt::create_dir(parent));
                 self.prompt_side = Some(self.active_panel);
-                Task::none()
+                // The field has to be focused or the prompt swallows every
+                // keystroke: `TextInput` only takes keys while focused, and
+                // giving it an Id does not focus it.
+                operation::focus(FIELD_ID)
             }
             Message::PromptInput(text) => {
                 if let Some(prompt) = self.prompt.as_mut() {
@@ -347,9 +502,27 @@ impl App {
                 self.shortcuts = keymap::shortcuts(self.lang);
                 Task::none()
             }
-            Message::RowClicked { side, index } => {
+            // A click in the tag column toggles the tag; anywhere else it moves
+            // the cursor. Without this, tagging is keyboard-only, and the
+            // column of stars the view draws cannot be clicked at all.
+            Message::RowClicked {
+                side,
+                index,
+                on_tag,
+            } => {
                 self.active_panel = side;
-                self.panel_mut(side).select(index, rows);
+                let panel = self.panel_mut(side);
+                panel.select(index, rows);
+                if on_tag {
+                    // `..` is not a thing to copy, so it is not taggable — the
+                    // same rule the keyboard path uses.
+                    if let Some(entry) = panel.entries.get(index) {
+                        if !entry.is_parent {
+                            let name = entry.name.clone();
+                            panel.selection.toggle(&name);
+                        }
+                    }
+                }
                 Task::none()
             }
 
@@ -376,7 +549,11 @@ impl App {
                     visible_rows: self.visible_rows,
                 },
                 self.lang,
-                move |index| Message::RowClicked { side, index },
+                move |index, on_tag| Message::RowClicked {
+                    side,
+                    index,
+                    on_tag,
+                },
             )
         };
 
@@ -388,7 +565,7 @@ impl App {
             column![
                 header::view(APP_NAME, &self.shortcuts),
                 panels,
-                statusbar::view(self.active_panel(), self.lang),
+                statusbar::view(self.active_panel(), self.lang, self.job_status()),
             ]
             .spacing(theme::spacing::SECTION_GAP),
         )
@@ -407,13 +584,30 @@ impl App {
             Message::PromptSubmit,
             Message::PromptCancel,
         );
-        let Some(dialog) = overlay else {
+        let Some(prompt_element) = overlay else {
             return root.into();
         };
 
+        // The conflict dialog takes precedence over the prompt: it is asked
+        // while a transfer is running, and a transfer is what the prompt was
+        // waiting for.
+        if let Some(pending) = self.pending_conflict.as_ref() {
+            let name = pending
+                .transfer
+                .sources
+                .get(pending.index)
+                .and_then(|p| p.file_name())
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let conflict_element = conflict::view(&name, self.lang, self.conflict_all, |choice| {
+                Message::TransferConflict(choice)
+            });
+            return Stack::with_children([root.into(), dialog::scrim(conflict_element)]).into();
+        }
+
         // The prompt sits above everything and takes every keystroke; the scrim
         // swallows clicks meant for the panels underneath.
-        Stack::with_children([root.into(), dialog::scrim(dialog)]).into()
+        Stack::with_children([root.into(), dialog::scrim(prompt_element)]).into()
     }
 
     // -----------------------------------------------------------------------
@@ -449,14 +643,166 @@ impl App {
 
     /// The state the key routing needs, cheap to clone.
     fn prompt_key_state(&self) -> PromptKeyState {
+        let job_running = self.jobs.is_busy();
         match &self.prompt {
-            None => PromptKeyState::default(),
+            None => PromptKeyState {
+                job_running,
+                ..PromptKeyState::default()
+            },
             Some(prompt) => PromptKeyState {
                 open: true,
+                job_running,
                 busy: prompt.busy(),
                 typed: prompt.name().into(),
             },
         }
+    }
+
+    /// F5 / F6: resolve what to transfer, then start the first row.
+    ///
+    /// The rows are resolved here rather than later because a conflict dialog
+    /// pauses the operation, and by then the selection may have moved.
+    fn start_transfer(&mut self, kind: TransferKind) -> Task<Message> {
+        // NC's rule: tagged rows win, otherwise the row under the cursor. The
+        // `..` entry is not a thing to copy into the other panel.
+        let source_panel = self.active_panel();
+        let sources: Vec<PathBuf> = if source_panel.selection.any_tagged() {
+            source_panel
+                .selection
+                .ordered(&source_panel.entries)
+                .into_iter()
+                .map(|e| e.path.clone())
+                .collect()
+        } else {
+            source_panel
+                .selected_entry()
+                .filter(|e| !e.is_parent)
+                .map(|e| vec![e.path.clone()])
+                .unwrap_or_default()
+        };
+
+        if sources.is_empty() {
+            return Task::none();
+        }
+
+        let target = self.panel(self.active_panel.other()).path.clone();
+        let transfer = Transfer {
+            kind,
+            sources,
+            target,
+        };
+        self.transfer = Some(transfer.clone());
+        self.run_from(transfer, 0, fs::transfer::OnConflict::Fail)
+    }
+
+    /// Answers a conflict and remembers an "all" answer, so the next
+    /// conflict does not ask again.
+    fn answer_conflict(&mut self, choice: ConflictChoice) -> Task<Message> {
+        let Some(pending) = self.pending_conflict.take() else {
+            return Task::none();
+        };
+        if choice.applies_to_all() {
+            self.conflict_rule = Some(choice.conflict());
+        }
+        // The tick belonged to the question just answered, so it goes with it.
+        self.conflict_all = false;
+        // The task is returned, not dropped: dropping it would leave the
+        // transfer standing still after the user answered, which is the one
+        // thing the dialog must not do.
+        self.resume_transfer(pending, choice)
+    }
+
+    /// Continues a transfer from `index` under the given conflict rule.
+    fn resume_transfer(
+        &mut self,
+        pending: PendingConflict,
+        choice: ConflictChoice,
+    ) -> Task<Message> {
+        let PendingConflict { transfer, index } = pending;
+        self.transfer = Some(transfer.clone());
+        self.run_from(transfer, index, choice.conflict())
+    }
+
+    /// Runs the rows from `index`, on the blocking pool, reporting progress.
+    ///
+    /// One row at a time rather than the whole list, so a conflict can be
+    /// answered between two files and the queue stays one job.
+    fn run_from(
+        &mut self,
+        transfer: Transfer,
+        index: usize,
+        conflict: fs::transfer::OnConflict,
+    ) -> Task<Message> {
+        let Some(source) = transfer.sources.get(index).cloned() else {
+            // Nothing left: clear the transfer and reload both panels, since a
+            // move changes the source directory as well as the target.
+            self.transfer = None;
+            let source_side = self.active_panel;
+            let target_side = source_side.other();
+            let source_path = self.panel(source_side).path.clone();
+            let target_path = self.panel(target_side).path.clone();
+            return Task::batch([
+                self.load(source_side, source_path, None),
+                self.load(target_side, target_path, None),
+            ]);
+        };
+
+        let target = transfer.target.clone();
+        let job = jobs::Job {
+            kind: transfer.kind.job_kind(),
+            path: target.join(source.file_name().unwrap_or_default()),
+            total: None,
+        };
+        // One row per job keeps a conflict answerable between two files.
+        self.jobs.enqueue(job.clone());
+        if let Some(task) = self.jobs.start_next(|_| {
+            // transfer::run is blocking filesystem work, so it goes on the
+            // blocking pool — the same reason read_directory does.
+            Task::perform(
+                tokio::task::spawn_blocking({
+                    let from = source.clone();
+                    let to = target.clone();
+                    let kind = transfer.kind;
+                    move || crate::fs::transfer::run(&from, &to, kind, conflict)
+                }),
+                move |outcome| {
+                    // Two failures collapse into one string here: the join error
+                    // means the blocking task died, the other means the copy
+                    // itself failed. The dialog cannot tell them apart anyway.
+                    let result = match outcome {
+                        Ok(Ok(_)) => Ok(transfer.clone()),
+                        Ok(Err(e)) => Err(e.to_string()),
+                        Err(join) => Err(join.to_string()),
+                    };
+                    Message::TransferRowDone { result, index }
+                },
+            )
+        }) {
+            return task;
+        }
+        Task::none()
+    }
+
+    /// What the status bar shows about the queue: the running job, how far
+    /// along it is, how many wait, and whether Escape will stop it.
+    fn job_status(&self) -> Option<statusbar::JobStatus> {
+        let running = self.jobs.running()?;
+        Some(statusbar::JobStatus {
+            label: self.lang.text(running.kind.label()),
+            done: self.job_done,
+            total: running.total.unwrap_or(0),
+            waiting: self.jobs.waiting(),
+            // Escape belongs to the prompt while one is open, so the hint is
+            // only true when nothing else is claiming the key.
+            abortable: self.prompt.is_none() && self.pending_conflict.is_none(),
+        })
+    }
+
+    /// Records why a job failed. The status bar reads it; nothing else does, so
+    /// it is a string rather than a typed error — the layer that knew the kind
+    /// already wrote the wording.
+    fn set_status_error(&mut self, reason: &str) {
+        self.job_error = Some(reason.to_string());
     }
 
     /// Shows a validation failure in the open prompt.
@@ -1093,6 +1439,13 @@ impl App {
             prompt_side: None,
             prompt_request_id: 0,
             pending_reload: None,
+            jobs: jobs::Queue::new(),
+            transfer: None,
+            pending_conflict: None,
+            job_error: None,
+            job_done: 0,
+            conflict_all: false,
+            conflict_rule: None,
         };
         for (side, names) in [
             (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
@@ -1129,9 +1482,15 @@ impl App {
         app
     }
 
-    pub fn with_prompt_open(parent: PathBuf) -> Self {
+    /// Opens the prompt the way F7 does — through `update` — so the focus Task
+    /// is produced the same way it is in the running app. Setting `prompt`
+    /// directly would skip it.
+    ///
+    /// No parent argument: `update` takes the active panel's path, as it does
+    /// in the app.
+    pub fn with_prompt_open() -> Self {
         let mut app = Self::new().0;
-        app.prompt = Some(Prompt::create_dir(parent));
+        let _task = app.update(crate::messages::Message::CreateDirPrompt);
         app
     }
 
@@ -1176,5 +1535,568 @@ impl App {
     pub fn move_selection_for_test(&mut self, delta: isize) {
         let rows = self.visible_rows;
         self.left_panel.move_selection(delta, rows);
+    }
+}
+
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod transfer_tests {
+    use super::*;
+    use crate::fs::FileEntry;
+    use std::ffi::OsString;
+
+    fn file(name: &str) -> FileEntry {
+        FileEntry {
+            name: OsString::from(name),
+            path: PathBuf::from("/left").join(name),
+            is_dir: false,
+            is_symlink: false,
+            is_parent: false,
+            size: 1,
+            modified: None,
+        }
+    }
+
+    /// An app with three files in the left panel, the right one empty and
+    /// ready to receive.
+    fn app_with_files() -> App {
+        let mut app = App::new().0;
+        app.left_panel.path = PathBuf::from("/left");
+        app.right_panel.path = PathBuf::from("/right");
+        app.left_panel.entries = vec![file("a.txt"), file("b.txt"), file("c.txt")];
+        app
+    }
+
+    /// NC's rule: nothing tagged means the row under the cursor. F5 on one file
+    /// has to work or the key does nothing.
+    #[tokio::test]
+    async fn an_untagged_panel_transfers_the_cursor_row() {
+        let mut app = app_with_files();
+        app.left_panel.selected = 1;
+
+        let _task = app.update(Message::Transfer(TransferKind::Copy));
+
+        let transfer = app.transfer.as_ref().expect("F5 set up nothing");
+        assert_eq!(transfer.sources, vec![PathBuf::from("/left/b.txt")]);
+        assert_eq!(transfer.target, PathBuf::from("/right"));
+    }
+
+    /// Tagged rows win over the cursor. This is the whole point of tagging: the
+    /// cursor is wherever the user last looked, and must not change what F5
+    /// touches.
+    #[tokio::test]
+    async fn tagged_rows_win_over_the_cursor() {
+        let mut app = app_with_files();
+        app.left_panel.selected = 2;
+        app.left_panel.selection.toggle(&OsString::from("a.txt"));
+        app.left_panel.selection.toggle(&OsString::from("c.txt"));
+
+        let _task = app.update(Message::Transfer(TransferKind::Copy));
+
+        let transfer = app.transfer.as_ref().expect("F5 set up nothing");
+        assert_eq!(
+            transfer.sources,
+            vec![PathBuf::from("/left/a.txt"), PathBuf::from("/left/c.txt")],
+            "the tagged rows, in the order they appear, not the cursor row"
+        );
+    }
+
+    /// `..` is not a thing to copy into the other panel.
+    #[test]
+    fn the_parent_entry_is_never_transferred() {
+        let mut app = app_with_files();
+        app.left_panel
+            .entries
+            .get_mut(1)
+            .expect("the fixture has three files")
+            .is_parent = true;
+        app.left_panel.selected = 1;
+
+        let _task = app.update(Message::Transfer(TransferKind::Copy));
+
+        assert!(
+            app.transfer.is_none(),
+            "F5 offered to copy .. into the other panel"
+        );
+    }
+
+    /// The target is the other panel, not the same one. Copying a directory
+    /// into itself is the mistake this prevents.
+    #[tokio::test]
+    async fn the_target_is_the_other_panel() {
+        let mut app = app_with_files();
+        app.left_panel.selected = 0;
+
+        let _task = app.update(Message::Transfer(TransferKind::Copy));
+
+        let transfer = app.transfer.as_ref().expect("F5 set up nothing");
+        assert_eq!(transfer.target, app.right_panel.path);
+        assert_ne!(transfer.target, transfer.sources[0].parent().unwrap());
+    }
+
+    /// Switching the active panel swaps which way the transfer goes.
+    #[tokio::test]
+    async fn the_target_follows_the_active_panel() {
+        let mut app = app_with_files();
+        app.active_panel = PanelSide::Right;
+        // A file in the right panel, so the path matches the panel it is in.
+        let mut x = file("x.txt");
+        x.path = PathBuf::from("/right/x.txt");
+        app.right_panel.entries = vec![x];
+        app.right_panel.selected = 0;
+
+        let _task = app.update(Message::Transfer(TransferKind::Copy));
+
+        let transfer = app.transfer.as_ref().expect("F5 set up nothing");
+        // The source comes from the active panel, which is now the right one,
+        // and the target is the other.
+        assert_eq!(transfer.sources, vec![PathBuf::from("/right/x.txt")]);
+        assert_eq!(transfer.target, PathBuf::from("/left"));
+    }
+}
+
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod mouse_tagging {
+    use super::*;
+    use crate::fs::FileEntry;
+    use std::ffi::OsString;
+
+    fn app_with_files() -> App {
+        let mut app = App::new().0;
+        app.left_panel.path = PathBuf::from("/left");
+        app.right_panel.path = PathBuf::from("/right");
+        app.left_panel.entries = (0..3)
+            .map(|i| FileEntry {
+                name: OsString::from(format!("f{i}.txt")),
+                path: PathBuf::from("/left").join(format!("f{i}.txt")),
+                is_dir: false,
+                is_symlink: false,
+                is_parent: false,
+                size: 1,
+                modified: None,
+            })
+            .collect();
+        app
+    }
+
+    /// A click on the star tags; a click anywhere else does not. Without the
+    /// first, tagging is keyboard-only and the column of stars cannot be used.
+    #[test]
+    fn a_click_on_the_star_tags_the_row() {
+        let mut app = app_with_files();
+
+        let _task = app.update(Message::RowClicked {
+            side: PanelSide::Left,
+            index: 1,
+            on_tag: true,
+        });
+
+        let name = app
+            .left_panel
+            .entries
+            .get(1)
+            .expect("the fixture has three files")
+            .name
+            .clone();
+        assert!(
+            app.left_panel.selection.is_tagged(&name),
+            "clicking the star did not tag the row"
+        );
+    }
+
+    /// Clicking the row moves the cursor and leaves the tags alone — otherwise
+    /// selecting files to copy would tag them as a side effect.
+    #[test]
+    fn a_click_on_the_row_only_moves_the_cursor() {
+        let mut app = app_with_files();
+
+        let _task = app.update(Message::RowClicked {
+            side: PanelSide::Left,
+            index: 2,
+            on_tag: false,
+        });
+
+        assert_eq!(app.left_panel.selected, 2);
+        assert!(
+            app.left_panel.selection.is_empty(),
+            "clicking a row tagged it"
+        );
+    }
+
+    /// The star toggles: clicking it again untags.
+    #[test]
+    fn a_second_click_on_the_star_untags() {
+        let mut app = app_with_files();
+        for _ in 0..2 {
+            let _task = app.update(Message::RowClicked {
+                side: PanelSide::Left,
+                index: 1,
+                on_tag: true,
+            });
+        }
+        assert!(app.left_panel.selection.is_empty());
+    }
+
+    /// `..` has no star to click, and must not be taggable if it somehow is.
+    #[test]
+    fn the_parent_entry_cannot_be_tagged_by_click() {
+        let mut app = app_with_files();
+        app.left_panel
+            .entries
+            .get_mut(0)
+            .expect("the fixture has three files")
+            .is_parent = true;
+
+        let _task = app.update(Message::RowClicked {
+            side: PanelSide::Left,
+            index: 0,
+            on_tag: true,
+        });
+
+        assert!(app.left_panel.selection.is_empty());
+    }
+
+    /// Clicking a row in the other panel makes that panel the source of F5.
+    #[test]
+    fn clicking_a_row_activates_its_panel() {
+        let mut app = app_with_files();
+        app.right_panel.entries = app.left_panel.entries.clone();
+
+        let _task = app.update(Message::RowClicked {
+            side: PanelSide::Right,
+            index: 0,
+            on_tag: false,
+        });
+
+        assert_eq!(app.active_panel, PanelSide::Right);
+    }
+}
+
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod reload_keeps_place {
+    use super::*;
+    use crate::fs::FileEntry;
+    use std::ffi::OsString;
+
+    fn panel_with(names: &[&str]) -> PanelState {
+        let mut p = PanelState::new(PathBuf::from("/left"));
+        p.entries = names
+            .iter()
+            .map(|n| FileEntry {
+                name: OsString::from(*n),
+                path: PathBuf::from("/left").join(n),
+                is_dir: false,
+                is_symlink: false,
+                is_parent: false,
+                size: 1,
+                modified: None,
+            })
+            .collect();
+        p
+    }
+
+    /// Regression: a reload put the cursor back on row 0, so after a file
+    /// operation the list jumped to the top and the tagged rows left the screen.
+    /// The row that was selected stays selected.
+    #[test]
+    fn a_reload_keeps_the_row_under_the_cursor() {
+        let mut p = panel_with(&["a", "b", "c", "d"]);
+        p.selected = 2;
+
+        p.apply_listing(
+            PathBuf::from("/left"),
+            panel_with(&["a", "b", "c", "d"]).entries,
+            None,
+            None,
+            10,
+        );
+
+        assert_eq!(p.selected, 2, "the cursor jumped to the top of the list");
+    }
+
+    /// And it survives the reload that adds a file in front, which shifts every
+    /// position — the name is what has to be kept, not the index.
+    #[test]
+    fn a_reload_keeps_the_file_not_the_index() {
+        let mut p = panel_with(&["a", "b", "c"]);
+        p.selected = 1; // b
+
+        p.apply_listing(
+            PathBuf::from("/left"),
+            panel_with(&["new", "a", "b", "c"]).entries,
+            None,
+            None,
+            10,
+        );
+
+        assert_eq!(
+            p.entries[p.selected].name.to_string_lossy(),
+            "b",
+            "the cursor stayed on the index and now points at a different file"
+        );
+    }
+
+    /// A name the caller asked for still wins over the remembered one — F7
+    /// selects the directory it just created.
+    #[test]
+    fn an_explicit_selection_wins_over_the_remembered_row() {
+        let mut p = panel_with(&["a", "b", "c"]);
+        p.selected = 0;
+
+        p.apply_listing(
+            PathBuf::from("/left"),
+            panel_with(&["a", "b", "c"]).entries,
+            None,
+            Some("c"),
+            10,
+        );
+
+        assert_eq!(p.entries[p.selected].name.to_string_lossy(), "c");
+    }
+
+    /// The tags survive a reload too, so the files marked for copying are still
+    /// marked after it.
+    #[test]
+    fn tags_survive_a_reload() {
+        let mut p = panel_with(&["a", "b", "c"]);
+        p.selection.toggle(&p.entries[1].name.clone());
+
+        p.apply_listing(
+            PathBuf::from("/left"),
+            panel_with(&["a", "b", "c"]).entries,
+            None,
+            None,
+            10,
+        );
+
+        assert_eq!(
+            p.selection.len(),
+            1,
+            "the tag was lost in the reload that followed the operation"
+        );
+    }
+}
+
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod abort_tests {
+    use super::*;
+    use crate::fs::FileEntry;
+    use std::ffi::OsString;
+
+    fn app_with_files() -> App {
+        let mut app = App::new().0;
+        app.left_panel.path = PathBuf::from("/left");
+        app.right_panel.path = PathBuf::from("/right");
+        app.left_panel.entries = (0..3)
+            .map(|i| FileEntry {
+                name: OsString::from(format!("f{i}.txt")),
+                path: PathBuf::from("/left").join(format!("f{i}.txt")),
+                is_dir: false,
+                is_symlink: false,
+                is_parent: false,
+                size: 1,
+                modified: None,
+            })
+            .collect();
+        app.left_panel.selected = 0;
+        app
+    }
+
+    /// Escape has to reach the app even though `route_key` looks at the
+    /// prompt: with none open it falls through to the bindings, and the abort
+    /// binding is what it has to find.
+    #[tokio::test]
+    async fn escape_stops_a_running_job() {
+        let mut app = app_with_files();
+        // Start a transfer, so there is something to stop.
+        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        assert!(app.jobs.is_busy(), "nothing to abort");
+
+        let routed = route_key(&app.prompt_key_state(), Key::Named(Named::Escape));
+        let Some(message) = routed else {
+            panic!("Escape while a job runs produced no message");
+        };
+        let _stopped = app.update(message);
+
+        assert!(!app.jobs.is_busy(), "the job kept running after Escape");
+        assert!(app.transfer.is_none(), "the transfer was left half-done");
+    }
+
+    /// Stopping when nothing runs is harmless, not a panic.
+    #[test]
+    fn aborting_an_idle_app_does_nothing() {
+        let mut app = app_with_files();
+        let _task = app.update(Message::AbortJob);
+        assert!(!app.jobs.is_busy());
+    }
+
+    /// The bar tells the user the job can be stopped, and stops claiming it
+    /// once nothing runs.
+    #[tokio::test]
+    async fn the_bar_mentions_the_abort_key_only_while_a_job_runs() {
+        let mut app = app_with_files();
+        assert!(app.job_status().is_none(), "an idle app shows a job");
+
+        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        let status = app.job_status().expect("a running job should show");
+        assert!(
+            status.abortable,
+            "a running job does not offer a way to stop it"
+        );
+
+        let _task = app.update(Message::AbortJob);
+        assert!(app.job_status().is_none());
+    }
+}
+
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod conflict_tests {
+    use super::*;
+    use crate::fs::FileEntry;
+    use std::ffi::OsString;
+
+    /// Real directories, because the conflict only exists if the target file is
+    /// really there. The scratch directory removes itself.
+    fn with_conflict() -> (App, tempfile::TempDir) {
+        let scratch = tempfile::Builder::new()
+            .prefix("ncrs-conflict-")
+            .tempdir()
+            .expect("a scratch directory");
+        let left = scratch.path().join("left");
+        let right = scratch.path().join("right");
+        std::fs::create_dir_all(&left).unwrap();
+        std::fs::create_dir_all(&right).unwrap();
+
+        for i in 0..3 {
+            std::fs::write(left.join(format!("f{i}.txt")), b"new").unwrap();
+        }
+        // The name the transfer will run into.
+        std::fs::write(right.join("f0.txt"), b"existing").unwrap();
+
+        let mut app = App::new().0;
+        app.left_panel.path = left.clone();
+        app.right_panel.path = right.clone();
+        app.left_panel.entries = (0..3)
+            .map(|i| FileEntry {
+                name: OsString::from(format!("f{i}.txt")),
+                path: left.join(format!("f{i}.txt")),
+                is_dir: false,
+                is_symlink: false,
+                is_parent: false,
+                size: 3,
+                modified: None,
+            })
+            .collect();
+        app.left_panel.selected = 0;
+        (app, scratch)
+    }
+
+    /// A name that is taken opens the dialog rather than failing the row. The
+    /// dialog is the feature: the user gets asked instead of the copy stopping.
+    /// Delivers the message the copy sends when it runs into a taken name.
+    ///
+    /// The real one comes out of a Task, and a Task needs a runtime driving it.
+    /// So the message is spelled out here — the app reads the transfer from its
+    /// own state, exactly as it does in the running app, and only the failure
+    /// string is invented. The alternative is asserting the dialog is absent,
+    /// which would pass even with the whole chain broken.
+    fn deliver_conflict(app: &mut App) {
+        let _task = app.update(Message::TransferRowDone {
+            result: Err("AlreadyExists (os error 17)".to_string()),
+            index: 0,
+        });
+    }
+
+    #[tokio::test]
+    async fn a_taken_name_asks_instead_of_failing() {
+        let (mut app, _scratch) = with_conflict();
+
+        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        deliver_conflict(&mut app);
+
+        let pending = app
+            .pending_conflict
+            .as_ref()
+            .expect("a taken name should open the conflict dialog");
+        assert_eq!(pending.index, 0, "it asked about the wrong file");
+    }
+
+    /// Answering "overwrite for all" remembers the rule, so the next conflict is
+    /// resolved without a second dialog. This is the whole point of the "for all"
+    /// button: fifty files, one question.
+    #[tokio::test]
+    async fn an_all_answer_is_remembered() {
+        let (mut app, _scratch) = with_conflict();
+        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        deliver_conflict(&mut app);
+        assert!(app.pending_conflict.is_some(), "the dialog did not open");
+
+        let _resumed = app.answer_conflict(ConflictChoice::AllOverwrite);
+
+        assert_eq!(
+            app.conflict_rule,
+            Some(fs::transfer::OnConflict::Overwrite),
+            "the answer was not remembered for the remaining files"
+        );
+    }
+
+    /// A single-file answer does not become a standing rule — the next conflict
+    /// asks again.
+    #[tokio::test]
+    async fn a_single_answer_is_not_remembered() {
+        let (mut app, _scratch) = with_conflict();
+        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        deliver_conflict(&mut app);
+
+        let _resumed = app.answer_conflict(ConflictChoice::ThisOverwrite);
+
+        assert_eq!(
+            app.conflict_rule, None,
+            "one file's answer was applied to the rest"
+        );
+    }
+
+    /// The conflict is recognised from the error kind, not from the wording.
+    /// A wording change in the filesystem layer would otherwise turn every
+    /// conflict into a silent failure.
+    #[test]
+    fn a_conflict_is_recognised_by_its_kind() {
+        assert!(is_conflict("AlreadyExists (os error 17)"));
+        assert!(!is_conflict("Permission denied (os error 13)"));
+        assert!(!is_conflict("No such file or directory (os error 2)"));
     }
 }

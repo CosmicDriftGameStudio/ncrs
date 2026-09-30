@@ -51,7 +51,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn app_with_prompt() -> App {
-        App::with_prompt_open(PathBuf::from("/tmp"))
+        App::with_prompt_open()
     }
 
     /// The view renders headless. Everything below depends on this, and a panic

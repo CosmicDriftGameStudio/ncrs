@@ -23,6 +23,7 @@
 
 use std::io;
 use std::path::{Path, PathBuf};
+use tokio::sync::mpsc;
 
 /// What to do with the source after a successful operation.
 ///
@@ -90,6 +91,51 @@ pub struct Counting;
 impl Progress for Counting {
     fn advanced(&mut self, _done: usize, _total: usize) -> io::Result<()> {
         Ok(())
+    }
+}
+
+/// How far a running transfer has got. One tick per change, not per file: a
+/// directory with a thousand entries in it would otherwise send a thousand
+/// messages that all say the same thing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Tick {
+    pub done: usize,
+    pub total: usize,
+}
+
+/// Reports progress over a channel, so a copy on a blocking thread can tell the
+/// UI how far along it is without the UI polling the filesystem.
+///
+/// The channel is the one the app already reads, so a tick is a message like
+/// any other and there is no second path to keep in sync.
+pub struct Reporting<'a> {
+    sender: &'a mpsc::UnboundedSender<Tick>,
+    /// The last count sent, so a tick goes out only when the count changed.
+    last_sent: usize,
+}
+
+impl<'a> Reporting<'a> {
+    pub fn new(sender: &'a mpsc::UnboundedSender<Tick>) -> Self {
+        Self {
+            sender,
+            last_sent: 0,
+        }
+    }
+}
+
+impl Progress for Reporting<'_> {
+    fn advanced(&mut self, done: usize, total: usize) -> io::Result<()> {
+        if done == self.last_sent {
+            return Ok(());
+        }
+        self.last_sent = done;
+        // A closed channel means the app is gone, and that is the one case that
+        // should stop a copy — it is also how a stopped app reaches the blocking
+        // thread. An unbounded channel cannot fill up, so there is no
+        // backpressure here to reason about.
+        self.sender
+            .send(Tick { done, total })
+            .map_err(|_| io::Error::other("the app is gone"))
     }
 }
 
@@ -246,6 +292,27 @@ fn symlink(original: &Path, link: &Path) -> io::Result<()> {
 /// The thin wrapper the app calls: it picks the effect from the kind and the
 /// progress sink that does nothing, because the app reports through the job
 /// queue rather than from inside the walk.
+/// As `run`, but reports progress so the status bar moves while the copy runs.
+/// This is the path the app takes; `run` is for a caller that only wants the
+/// work done.
+pub fn run_reporting(
+    source: &Path,
+    target_dir: &Path,
+    kind: crate::messages::TransferKind,
+    conflict: OnConflict,
+    sender: &mpsc::UnboundedSender<Tick>,
+) -> io::Result<usize> {
+    let mut reporting = Reporting::new(sender);
+    match kind {
+        crate::messages::TransferKind::Copy => {
+            transfer(source, target_dir, &Copy, &mut reporting, conflict)
+        }
+        crate::messages::TransferKind::Move => {
+            transfer(source, target_dir, &Move, &mut reporting, conflict)
+        }
+    }
+}
+
 pub fn run(
     source: &Path,
     target_dir: &Path,
@@ -477,5 +544,139 @@ mod tests {
 
         assert_eq!(conflicts(&src, &dst), Some(dst.join("src")));
         assert_eq!(conflicts(&src, &dir.path().join("empty")), None);
+    }
+}
+
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod reporting_tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn tree(root: &Path) {
+        fs::create_dir_all(root.join("sub/deeper")).unwrap();
+        fs::write(root.join("a.txt"), b"a").unwrap();
+        fs::write(root.join("sub/b.txt"), b"b").unwrap();
+        fs::write(root.join("sub/deeper/c.txt"), b"c").unwrap();
+    }
+
+    fn scratch(label: &str) -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix(&format!("ncrs-report-{label}-"))
+            .tempdir()
+            .expect("a scratch directory")
+    }
+
+    /// The count the bar shows has to be the real one. A line reading "3 of 1"
+    /// is worse than no line at all.
+    #[tokio::test]
+    async fn a_copy_reports_its_progress() {
+        let dir = scratch("progress");
+        let src = dir.path().join("src");
+        let dst = dir.path().join("dst");
+        tree(&src);
+        fs::create_dir_all(&dst).unwrap();
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        run_reporting(
+            &src,
+            &dst,
+            crate::messages::TransferKind::Copy,
+            OnConflict::Fail,
+            &tx,
+        )
+        .unwrap();
+
+        let mut last = None;
+        while let Ok(tick) = rx.try_recv() {
+            last = Some(tick);
+        }
+        let last = last.expect("the copy reported nothing at all");
+        // src, a.txt, sub, sub/b.txt, sub/deeper, sub/deeper/c.txt
+        assert_eq!(last.done, 6, "the final count is wrong");
+        assert_eq!(last.total, 6, "the total does not match what was copied");
+    }
+
+    /// The last tick has to be the finished one, so the bar reaches full rather
+    /// than stopping one short.
+    #[tokio::test]
+    async fn the_last_tick_is_the_finished_one() {
+        let dir = scratch("last");
+        let src = dir.path().join("src");
+        let dst = dir.path().join("dst");
+        tree(&src);
+        fs::create_dir_all(&dst).unwrap();
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        run_reporting(
+            &src,
+            &dst,
+            crate::messages::TransferKind::Copy,
+            OnConflict::Fail,
+            &tx,
+        )
+        .unwrap();
+
+        let ticks: Vec<Tick> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        assert!(
+            ticks.len() >= 2,
+            "expected more than one tick, got {}",
+            ticks.len()
+        );
+        assert_eq!(ticks.last().copied(), Some(Tick { done: 6, total: 6 }));
+    }
+
+    /// An app that is gone stops the copy rather than running to the end into
+    /// nothing. This is also how a stopped app reaches the blocking thread.
+    #[tokio::test]
+    async fn a_closed_channel_stops_the_copy() {
+        let dir = scratch("closed");
+        let src = dir.path().join("src");
+        let dst = dir.path().join("dst");
+        tree(&src);
+        fs::create_dir_all(&dst).unwrap();
+
+        let (tx, rx) = mpsc::unbounded_channel();
+        drop(rx);
+
+        let err = run_reporting(
+            &src,
+            &dst,
+            crate::messages::TransferKind::Copy,
+            OnConflict::Fail,
+            &tx,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("app is gone"), "got {err}");
+    }
+
+    /// A plain `run` reports nothing, so a caller that does not want the bar
+    /// moving does not get messages it has to ignore.
+    #[tokio::test]
+    async fn run_reports_nothing() {
+        let dir = scratch("quiet");
+        let src = dir.path().join("src");
+        let dst = dir.path().join("dst");
+        tree(&src);
+        fs::create_dir_all(&dst).unwrap();
+
+        let (tx, mut rx) = mpsc::unbounded_channel::<Tick>();
+        let done = run(
+            &src,
+            &dst,
+            crate::messages::TransferKind::Copy,
+            OnConflict::Fail,
+        )
+        .unwrap();
+        assert_eq!(done, 6);
+        assert!(rx.try_recv().is_err(), "run sent a tick anyway");
+        let _ = tx;
     }
 }

@@ -155,6 +155,96 @@
       "context": "Shown when the panel's own directory no longer exists: it was deleted, renamed or unmounted while the dialog was open. Tells the user the panel is out of date, not that they typed something wrong.",
       "en": "This folder no longer exists",
       "de": "Dieser Ordner existiert nicht mehr"
+    },
+    {
+      "key": "job.copy",
+      "context": "Status bar while files are being copied. Present continuous. Keep it short — the bar is one line.",
+      "en": "Copying…",
+      "de": "Kopiere…"
+    },
+    {
+      "key": "job.move",
+      "context": "Status bar while files are being moved. Same shape as job.copy, so both fit the bar.",
+      "en": "Moving…",
+      "de": "Verschiebe…"
+    },
+    {
+      "key": "job.delete",
+      "context": "Status bar while files are being deleted. Same shape as job.copy.",
+      "en": "Deleting…",
+      "de": "Lösche…"
+    },
+    {
+      "key": "job.create_dir",
+      "context": "Status bar while a directory is being created. Same shape as job.copy.",
+      "en": "Creating…",
+      "de": "Erstelle…"
+    },
+    {
+      "key": "job.progress",
+      "context": "Progress counter in the status bar while a job runs. Shows done and total. Keep the punctuation minimal; the numbers are what matter.",
+      "en": "{done} of {total}",
+      "de": "{done} von {total}"
+    },
+    {
+      "key": "job.queued",
+      "context": "Shown in the status bar when jobs are waiting behind the running one. Takes the count.",
+      "en": "{count} waiting",
+      "de": "{count} wartend"
+    },
+    {
+      "key": "job.abort",
+      "context": "Key hint for stopping the running job. Verb, matches the other hints in the header row.",
+      "en": "Stop",
+      "de": "Anhalten"
+    },
+    {
+      "key": "shortcut.copy",
+      "context": "Header hint for F5, which copies the tagged rows — or the row under the cursor — into the other panel. Imperative verb, shorter than the noun.",
+      "en": "Copy",
+      "de": "Kopieren"
+    },
+    {
+      "key": "shortcut.move",
+      "context": "Header hint for F6, which moves into the other panel. Imperative verb, same length as shortcut.copy so the header row stays even.",
+      "en": "Move",
+      "de": "Verschieben"
+    },
+    {
+      "key": "conflict.title",
+      "context": "Title of the dialog asking what to do about a file that already exists at the target. Noun phrase, no punctuation.",
+      "en": "File already exists",
+      "de": "Datei existiert bereits"
+    },
+    {
+      "key": "conflict.name",
+      "context": "The name that is taken, shown as the subject of the conflict dialog. Just the name, no quotes needed — the dialog frames it.",
+      "en": "{name}",
+      "de": "{name}"
+    },
+    {
+      "key": "conflict.overwrite",
+      "context": "Button: replace the existing file with the one being copied or moved. Verb.",
+      "en": "Overwrite",
+      "de": "Überschreiben"
+    },
+    {
+      "key": "conflict.keep",
+      "context": "Button: leave the existing file alone and skip this one. Verb. NOT the same as Cancel — Cancel stops the whole operation, this skips one file.",
+      "en": "Keep",
+      "de": "Behalten"
+    },
+    {
+      "key": "conflict.apply_all",
+      "context": "Checkbox or suffix meaning this answer applies to every remaining file, not just this one. Short. Translate as a checkbox label, so an infinitive or a short noun both work.",
+      "en": "For all files",
+      "de": "Für alle Dateien"
+    },
+    {
+      "key": "conflict.cancel",
+      "context": "Button: stop the whole operation, not just this file. Verb. Must be clearly distinct from conflict.keep, which skips one file and continues.",
+      "en": "Cancel operation",
+      "de": "Vorgang abbrechen"
     }
   ]
 }

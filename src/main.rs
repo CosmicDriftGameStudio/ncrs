@@ -11,6 +11,7 @@ mod backend;
 mod dialog;
 mod fs;
 mod i18n;
+mod jobs;
 mod keymap;
 mod messages;
 mod selection;

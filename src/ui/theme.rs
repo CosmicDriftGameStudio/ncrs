@@ -1,6 +1,6 @@
 //! Colors, spacing and reusable widget styles (dark, Norton Commander inspired).
 
-use iced::widget::{button, container};
+use iced::widget::{button, checkbox, container};
 use iced::{Background, Border, Color, Theme};
 
 pub mod colors {
@@ -164,5 +164,50 @@ pub fn dialog_button(primary: bool) -> impl Fn(&Theme, button::Status) -> button
             },
             ..button::Style::default()
         }
+    }
+}
+
+/// The star in front of a row. Flat, so it does not look like a button until it
+/// is one: a tagged row is the only one with a visible mark.
+pub fn tag_button(
+    tagged: bool,
+    _panel_active: bool,
+) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |_theme, _status| button::Style {
+        background: None,
+        // Tagged rows are accent-coloured, an untagged star is dim. Which panel
+        // is active does not change this — the cursor highlight elsewhere says
+        // that.
+        text_color: if tagged {
+            colors::ACCENT
+        } else {
+            colors::DIM_TEXT
+        },
+        border: Border::default(),
+        ..button::Style::default()
+    }
+}
+
+/// The "for all files" checkbox in the conflict dialog.
+pub fn dialog_checkbox(_theme: &Theme, status: checkbox::Status) -> checkbox::Style {
+    let checked = match status {
+        checkbox::Status::Active { is_checked } | checkbox::Status::Hovered { is_checked } => {
+            is_checked
+        }
+        checkbox::Status::Disabled { is_checked } => is_checked,
+    };
+    checkbox::Style {
+        background: Background::Color(if checked {
+            colors::SELECTED_BG
+        } else {
+            colors::PANEL_BACKGROUND
+        }),
+        icon_color: colors::SELECTED_TEXT,
+        border: Border {
+            color: colors::ACTIVE_BORDER,
+            width: 1.0,
+            radius: spacing::BORDER_RADIUS.into(),
+        },
+        text_color: Some(colors::TEXT),
     }
 }
