@@ -213,8 +213,14 @@ jobs:
           #
           # A named pipe is not enough either. `security import` reads the file
           # more than once and a process substitution is not seekable.
+          #
+          # Whitespace is stripped first. Copying a base64 blob through a web
+          # form or a terminal easily brings a line break or a trailing newline
+          # along, and base64 refuses the whole input over one of them — which
+          # surfaces as "error decoding base64 input stream" rather than as the
+          # obvious "the secret has a stray newline in it".
           P12=$(mktemp -t identity).p12
-          printf '%s' "$APPLE_CERTIFICATE_P12" | base64 -D > "$P12"
+          printf '%s' "$APPLE_CERTIFICATE_P12" | tr -d '[:space:]' | base64 -D > "$P12"
           if [ ! -s "$P12" ]; then
             echo "::error::the decoded certificate is empty — APPLE_CERTIFICATE_P12 is not valid base64"
             exit 1
