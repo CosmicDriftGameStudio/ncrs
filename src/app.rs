@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use iced::keyboard::{self, key::Named, Key, Modifiers};
-use iced::widget::{column, container, row, Stack};
+use iced::widget::{column, container, operation, row, Stack};
 use iced::{window, Element, Length, Subscription, Task, Theme};
 
 use crate::dialog::{Prompt, PromptKind};
@@ -11,6 +11,7 @@ use crate::fs::{self, CreateDirError};
 use crate::i18n::{Language, Msg};
 use crate::keymap;
 use crate::messages::{Message, PanelSide};
+use crate::ui::dialog::FIELD_ID;
 use crate::ui::{self, dialog, header, layout, panel, statusbar, theme, PanelProps, PanelState};
 
 const APP_NAME: &str = "NC-rs";
@@ -176,7 +177,10 @@ impl App {
                 let parent = self.active_panel().path.clone();
                 self.prompt = Some(Prompt::create_dir(parent));
                 self.prompt_side = Some(self.active_panel);
-                Task::none()
+                // The field has to be focused or the prompt swallows every
+                // keystroke: `TextInput` only takes keys while focused, and
+                // giving it an Id does not focus it.
+                operation::focus(FIELD_ID)
             }
             Message::PromptInput(text) => {
                 if let Some(prompt) = self.prompt.as_mut() {
@@ -1129,9 +1133,15 @@ impl App {
         app
     }
 
-    pub fn with_prompt_open(parent: PathBuf) -> Self {
+    /// Opens the prompt the way F7 does — through `update` — so the focus Task
+    /// is produced the same way it is in the running app. Setting `prompt`
+    /// directly would skip it.
+    ///
+    /// No parent argument: `update` takes the active panel's path, as it does
+    /// in the app.
+    pub fn with_prompt_open() -> Self {
         let mut app = Self::new().0;
-        app.prompt = Some(Prompt::create_dir(parent));
+        let _task = app.update(crate::messages::Message::CreateDirPrompt);
         app
     }
 

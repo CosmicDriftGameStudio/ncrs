@@ -48,10 +48,9 @@ fn simulator(app: &App) -> Simulator<'_, Message, iced::Theme> {
 mod tests {
     use super::*;
     use iced::Point;
-    use std::path::PathBuf;
 
     fn app_with_prompt() -> App {
-        App::with_prompt_open(PathBuf::from("/tmp"))
+        App::with_prompt_open()
     }
 
     /// The view renders headless. Everything below depends on this, and a panic
@@ -405,5 +404,31 @@ mod tagging {
         );
         app.move_selection_for_test(1);
         assert!(!app.left_panel_selection_tagged_for_test(2));
+    }
+}
+
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod prompt_focus {
+    use super::*;
+
+    /// The name field has to be reachable by id, because that is what
+    /// `operation::focus` targets. If the id were missing the focus would go
+    /// nowhere, and nothing else here would notice.
+    #[test]
+    fn the_name_field_has_the_id_the_focus_targets() {
+        let app = App::with_prompt_open();
+        let mut sim = simulator(&app);
+
+        sim.find(iced_test::selector::id(crate::ui::dialog::FIELD_ID))
+            .expect(
+                "the prompt has no focusable name field — operation::focus has nothing to target",
+            );
     }
 }
