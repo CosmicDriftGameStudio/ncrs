@@ -9,12 +9,31 @@ use iced::{window, Element, Length, Subscription, Task, Theme};
 use crate::dialog::{Prompt, PromptKind};
 use crate::fs::{self, CreateDirError};
 use crate::i18n::{Language, Msg};
+use crate::jobs::{self, JobEvent};
 use crate::keymap;
 use crate::messages::{Message, PanelSide};
 use crate::ui::dialog::FIELD_ID;
 use crate::ui::{self, dialog, header, layout, panel, statusbar, theme, PanelProps, PanelState};
 
 const APP_NAME: &str = "NC-rs";
+
+/// Runs one job and reports what happens as messages.
+///
+/// Separate from `App` so the queue can hand it to `Task::abortable` without
+/// borrowing the app. Only `CreateDir` has a filesystem operation behind it so
+/// far; the other kinds arrive with F5/F6/F8 and use the same path.
+fn run_job(job: jobs::Job) -> Task<Message> {
+    match job.kind {
+        jobs::JobKind::CreateDir => {
+            let target = job.path.clone();
+            Task::perform(fs::create_dir(target), move |result| match result {
+                Ok(()) => Message::JobFinished(JobEvent::Done),
+                Err(err) => Message::JobFinished(JobEvent::Failed(err.to_string())),
+            })
+        }
+        _ => Task::done(Message::JobFinished(JobEvent::Done)),
+    }
+}
 
 /// A reload waiting for its operation to finish.
 ///
@@ -47,6 +66,8 @@ pub struct App {
     prompt_request_id: u64,
     /// Reload queued by `PromptSubmit`, run once the create has reported.
     pending_reload: Option<PendingReload>,
+    /// Long-running file operations, one at a time.
+    jobs: jobs::Queue,
 }
 
 /// The part of the prompt the key routing needs, cheap to clone.
@@ -116,6 +137,7 @@ impl App {
             prompt_side: None,
             prompt_request_id: 0,
             pending_reload: None,
+            jobs: jobs::Queue::new(),
         };
 
         let tasks = Task::batch([
@@ -170,6 +192,23 @@ impl App {
         match message {
             // A raw key press. Routed here rather than in the subscription,
             // because that one cannot see whether a prompt is open.
+            // --- job queue ---
+            Message::JobFinished(event) => {
+                // Progress arrives mid-run; only the terminal events free the
+                // slot for the next job.
+                let finished = matches!(
+                    event,
+                    JobEvent::Done | JobEvent::Failed(_) | JobEvent::Aborted
+                );
+                if finished {
+                    self.jobs.finish();
+                }
+                if let Some(next) = self.jobs.start_next(run_job) {
+                    return next;
+                }
+                Task::none()
+            }
+
             // --- modal prompt ---
             // Handled before the panels: while a prompt is open every
             // keystroke belongs to it, and Enter must not open a directory.
@@ -1097,6 +1136,7 @@ impl App {
             prompt_side: None,
             prompt_request_id: 0,
             pending_reload: None,
+            jobs: jobs::Queue::new(),
         };
         for (side, names) in [
             (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),

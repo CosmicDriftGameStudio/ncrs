@@ -155,6 +155,48 @@
       "context": "Shown when the panel's own directory no longer exists: it was deleted, renamed or unmounted while the dialog was open. Tells the user the panel is out of date, not that they typed something wrong.",
       "en": "This folder no longer exists",
       "de": "Dieser Ordner existiert nicht mehr"
+    },
+    {
+      "key": "job.copy",
+      "context": "Status bar while files are being copied. Present continuous. Keep it short — the bar is one line.",
+      "en": "Copying…",
+      "de": "Kopiere…"
+    },
+    {
+      "key": "job.move",
+      "context": "Status bar while files are being moved. Same shape as job.copy, so both fit the bar.",
+      "en": "Moving…",
+      "de": "Verschiebe…"
+    },
+    {
+      "key": "job.delete",
+      "context": "Status bar while files are being deleted. Same shape as job.copy.",
+      "en": "Deleting…",
+      "de": "Lösche…"
+    },
+    {
+      "key": "job.create_dir",
+      "context": "Status bar while a directory is being created. Same shape as job.copy.",
+      "en": "Creating…",
+      "de": "Erstelle…"
+    },
+    {
+      "key": "job.progress",
+      "context": "Progress counter in the status bar while a job runs. Shows done and total. Keep the punctuation minimal; the numbers are what matter.",
+      "en": "{done} of {total}",
+      "de": "{done} von {total}"
+    },
+    {
+      "key": "job.queued",
+      "context": "Shown in the status bar when jobs are waiting behind the running one. Takes the count.",
+      "en": "{count} waiting",
+      "de": "{count} wartend"
+    },
+    {
+      "key": "job.abort",
+      "context": "Key hint for stopping the running job. Verb, matches the other hints in the header row.",
+      "en": "Stop",
+      "de": "Anhalten"
     }
   ]
 }

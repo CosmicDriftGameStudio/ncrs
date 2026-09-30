@@ -8,6 +8,7 @@ use iced::Size;
 use crate::dialog::PromptKind;
 use crate::fs::CreateDirError;
 use crate::fs::{FileEntry, ReadError};
+use crate::jobs::JobEvent;
 
 /// Identifies one of the two file panels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +50,12 @@ pub enum Message {
     SelectLast,
     OpenSelected,
     GoUp,
+
+    // --- Job queue (see crate::jobs) ---
+    /// A job started, made progress, or finished. One variant for all three:
+    /// they are the same event arriving at different times, and splitting them
+    /// would mean the UI matching on the same enum in three places.
+    JobFinished(JobEvent),
 
     // --- Modal prompt (see crate::dialog) ---
     /// F7: open the create-directory prompt.
