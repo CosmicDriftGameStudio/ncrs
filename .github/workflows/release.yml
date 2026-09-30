@@ -204,8 +204,24 @@ jobs:
           security create-keychain -p "$PASS" "$KEYCHAIN"
           security set-keychain-settings -lut 3600 "$KEYCHAIN"
           security unlock-keychain -p "$PASS" "$KEYCHAIN"
-          security import <(echo "$APPLE_CERTIFICATE_P12" | base64 --decode) \
+
+          # Decode to a real file first. `base64 --decode` is GNU syntax and
+          # does not exist on macOS, where the flag is `-D`: the command failed,
+          # wrote nothing, and `security import` then reported "Unknown format"
+          # on an empty file — a message that points at the certificate rather
+          # than at the shell.
+          #
+          # A named pipe is not enough either. `security import` reads the file
+          # more than once and a process substitution is not seekable.
+          P12=$(mktemp -t identity).p12
+          printf '%s' "$APPLE_CERTIFICATE_P12" | base64 -D > "$P12"
+          if [ ! -s "$P12" ]; then
+            echo "::error::the decoded certificate is empty — APPLE_CERTIFICATE_P12 is not valid base64"
+            exit 1
+          fi
+          security import "$P12" \
             -k "$KEYCHAIN" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm -f "$P12"
           security set-key-partition-list -S apple-tool:,apple:,codesign: \
             -s -k "$PASS" "$KEYCHAIN" > /dev/null
           security list-keychain -d user -s "$KEYCHAIN"
