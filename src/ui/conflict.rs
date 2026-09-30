@@ -18,6 +18,11 @@ use crate::messages::{ConflictChoice, Message};
 /// `name` is the file that is in the way. `all` is whether "for all files" is
 /// ticked; the app holds it so the tick survives the dialog being rebuilt every
 /// frame.
+///
+/// The keys are registered rather than handled here, so the same routing that
+/// sends Enter to a prompt sends it to this dialog: Esc answers "keep", Ctrl+C
+/// answers "cancel the whole operation". Both would otherwise have to be
+/// special-cased, and the second one would fight the abort binding.
 pub fn view<'a>(
     name: &str,
     lang: Language,

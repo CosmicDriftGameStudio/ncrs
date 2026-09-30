@@ -186,6 +186,8 @@ pub struct PromptKeyState {
     pub open: bool,
     /// A job is running, so Escape stops it rather than doing nothing.
     pub job_running: bool,
+    /// The conflict dialog is up, so keys answer it rather than the panels.
+    pub conflict_open: bool,
     /// Whether the operation is running; keys are ignored then.
     pub busy: bool,
     /// The name typed so far.
@@ -198,16 +200,50 @@ pub struct PromptKeyState {
 /// One place, so a binding cannot end up half-modal: with a prompt open, Enter
 /// submits instead of opening a directory, and Backspace edits text instead of
 /// walking to the parent.
-pub fn route_key(prompt: &PromptKeyState, key: Key) -> Option<Message> {
+/// Keys while no prompt is open: the conflict dialog first, then the running
+/// job, then the bindings.
+///
+/// The order matters and is not arbitrary. A conflict is asked *while* a job
+/// runs, so if the job branch came first, Escape would stop the copy instead of
+/// answering the question the app is waiting on.
+fn keys_without_prompt(
+    prompt: &PromptKeyState,
+    key: Key,
+    key_modifiers: Modifiers,
+) -> Option<Message> {
+    if prompt.conflict_open {
+        return match key.as_ref() {
+            // Enter overwrites, which is the answer the button under the cursor
+            // offers and the one a user repeating a dialog expects.
+            Key::Named(Named::Enter) => {
+                Some(Message::TransferConflict(ConflictChoice::ThisOverwrite))
+            }
+            // Escape means "no" to a question, and "keep" is the no that does
+            // not lose data. Cancelling the whole transfer is on Ctrl+C, which
+            // is the key that already aborts a job.
+            Key::Named(Named::Escape) => Some(Message::TransferConflict(ConflictChoice::ThisKeep)),
+            // Ctrl+C cancels the whole operation, the same key that aborts a
+            // job. Enter and Escape already covered the two single-file answers.
+            Key::Character(c) if c == "c" && key_modifiers.contains(Modifiers::CTRL) => {
+                Some(Message::TransferConflict(ConflictChoice::Cancel))
+            }
+            _ => None,
+        };
+    }
+
+    // Escape stops a running job, but only then. With nothing running it stays
+    // unbound, rather than bound to something that does nothing — a key that
+    // means different things depending on invisible state is worse than one
+    // that is simply free.
+    if matches!(key.as_ref(), Key::Named(Named::Escape)) {
+        return prompt.job_running.then_some(Message::AbortJob);
+    }
+    keymap::map_key(key, Modifiers::default())
+}
+
+pub fn route_key(prompt: &PromptKeyState, key: Key, modifiers: Modifiers) -> Option<Message> {
     if !prompt.open {
-        // Escape stops a running job, but only then. With nothing running it
-        // stays unbound, rather than bound to something that does nothing —
-        // a key that means different things depending on invisible state is
-        // worse than one that is simply free.
-        if matches!(key.as_ref(), Key::Named(Named::Escape)) {
-            return prompt.job_running.then_some(Message::AbortJob);
-        }
-        return keymap::map_key(key, Modifiers::default());
+        return keys_without_prompt(prompt, key, modifiers);
     }
     if prompt.busy {
         return None;
@@ -292,10 +328,8 @@ impl App {
             // the original.
             keyboard::listen().with(initial_key_state).filter_map(
                 |(key_state, event)| match event {
-                    keyboard::Event::KeyPressed { key, modifiers, .. }
-                        if modifiers == Modifiers::default() =>
-                    {
-                        route_key(&key_state, key)
+                    keyboard::Event::KeyPressed { key, modifiers, .. } => {
+                        route_key(&key_state, key, modifiers)
                     }
                     _ => None,
                 },
@@ -743,11 +777,16 @@ impl App {
         match &self.prompt {
             None => PromptKeyState {
                 job_running,
+                // A conflict is asked while no prompt is open — the prompt is
+                // gone by then, the transfer is what is running. Without this
+                // the dialog's keys would fall through to the panels.
+                conflict_open: self.pending_conflict.is_some(),
                 ..PromptKeyState::default()
             },
             Some(prompt) => PromptKeyState {
                 open: true,
                 job_running,
+                conflict_open: self.pending_conflict.is_some(),
                 busy: prompt.busy(),
                 typed: prompt.name().into(),
             },
@@ -1092,7 +1131,7 @@ mod prompt_routing {
     /// Routes as the subscription does: build the state, then call the free
     /// function. Same path the real keypress takes.
     fn press(app: &App, key: Key) -> Option<Message> {
-        route_key(&app.prompt_key_state(), key)
+        route_key(&app.prompt_key_state(), key, Modifiers::default())
     }
 
     /// While the prompt is open, F7 must not open a second one and the panel
@@ -1202,7 +1241,7 @@ mod prompt_routing {
     // validation; the directory is checked in the async test below.
 
     fn press_and_update(app: &mut App, key: Key) {
-        if let Some(message) = route_key(&app.prompt_key_state(), key) {
+        if let Some(message) = route_key(&app.prompt_key_state(), key, Modifiers::default()) {
             let _ = app.update(message);
         }
     }
@@ -2062,7 +2101,11 @@ mod abort_tests {
         let _started = app.update(Message::Transfer(TransferKind::Copy));
         assert!(app.jobs.is_busy(), "nothing to abort");
 
-        let routed = route_key(&app.prompt_key_state(), Key::Named(Named::Escape));
+        let routed = route_key(
+            &app.prompt_key_state(),
+            Key::Named(Named::Escape),
+            Modifiers::default(),
+        );
         let Some(message) = routed else {
             panic!("Escape while a job runs produced no message");
         };
@@ -2299,6 +2342,133 @@ mod progress_bar {
         assert!(
             app.job_status().is_none(),
             "the bar still shows a job that was stopped"
+        );
+    }
+}
+
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
+#[cfg(test)]
+mod conflict_keys {
+    use super::*;
+    use crate::fs::FileEntry;
+    use std::ffi::OsString;
+
+    fn app_with_conflict() -> (App, tempfile::TempDir) {
+        let scratch = tempfile::Builder::new()
+            .prefix("ncrs-conflict-keys-")
+            .tempdir()
+            .expect("a scratch directory");
+        let left = scratch.path().join("left");
+        let right = scratch.path().join("right");
+        std::fs::create_dir_all(&left).unwrap();
+        std::fs::create_dir_all(&right).unwrap();
+        std::fs::write(left.join("a.txt"), b"new").unwrap();
+        std::fs::write(right.join("a.txt"), b"old").unwrap();
+
+        let mut app = App::new().0;
+        app.left_panel.path = left.clone();
+        app.right_panel.path = right;
+        app.left_panel.entries = vec![FileEntry {
+            name: OsString::from("a.txt"),
+            path: left.join("a.txt"),
+            is_dir: false,
+            is_symlink: false,
+            is_parent: false,
+            size: 3,
+            modified: None,
+        }];
+        app.left_panel.selected = 0;
+        (app, scratch)
+    }
+
+    fn press(app: &App, key: Key, modifiers: Modifiers) -> Option<Message> {
+        route_key(&app.prompt_key_state(), key, modifiers)
+    }
+
+    /// The dialog has to be answerable without the mouse, and the keys are the
+    /// ones a user expects from a question.
+    #[test]
+    fn enter_overwrites_and_escape_keeps() {
+        let (mut app, _scratch) = app_with_conflict();
+        // The conflict is pending, so the keys answer it rather than the panels.
+        app.pending_conflict = Some(PendingConflict {
+            transfer: Transfer {
+                kind: TransferKind::Copy,
+                sources: vec![PathBuf::from("/left/a.txt")],
+                target: PathBuf::from("/right"),
+            },
+            index: 0,
+        });
+
+        assert_eq!(
+            press(&app, Key::Named(Named::Enter), Modifiers::default()),
+            Some(Message::TransferConflict(ConflictChoice::ThisOverwrite)),
+            "Enter does not answer the question"
+        );
+        assert_eq!(
+            press(&app, Key::Named(Named::Escape), Modifiers::default()),
+            Some(Message::TransferConflict(ConflictChoice::ThisKeep)),
+            "Escape does not answer the question"
+        );
+    }
+
+    /// With the dialog up, Escape must not stop the job instead: the app is
+    /// waiting for an answer, and Escape means "no" to a question.
+    #[tokio::test]
+    async fn escape_does_not_stop_the_job_while_the_dialog_is_up() {
+        let (mut app, _scratch) = app_with_conflict();
+        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        app.pending_conflict = Some(PendingConflict {
+            transfer: Transfer {
+                kind: TransferKind::Copy,
+                sources: vec![PathBuf::from("/left/a.txt")],
+                target: PathBuf::from("/right"),
+            },
+            index: 0,
+        });
+
+        let message = press(&app, Key::Named(Named::Escape), Modifiers::default());
+        assert!(
+            !matches!(message, Some(Message::AbortJob)),
+            "Escape stopped the copy instead of answering the question"
+        );
+    }
+
+    /// Ctrl+C cancels the whole operation — the same key that aborts a job, and
+    /// distinct from Escape so the two answers do not collide.
+    #[test]
+    fn ctrl_c_cancels_the_operation() {
+        let (mut app, _scratch) = app_with_conflict();
+        app.pending_conflict = Some(PendingConflict {
+            transfer: Transfer {
+                kind: TransferKind::Copy,
+                sources: vec![PathBuf::from("/left/a.txt")],
+                target: PathBuf::from("/right"),
+            },
+            index: 0,
+        });
+
+        assert_eq!(
+            press(&app, Key::Character("c".into()), Modifiers::CTRL),
+            Some(Message::TransferConflict(ConflictChoice::Cancel)),
+            "Ctrl+C does not cancel the operation"
+        );
+    }
+
+    /// With no dialog up, the same keys mean what they always meant. Otherwise
+    /// the new branches would have swallowed normal navigation.
+    #[test]
+    fn without_a_dialog_the_keys_are_unchanged() {
+        let (app, _scratch) = app_with_conflict();
+        assert_eq!(
+            press(&app, Key::Named(Named::Enter), Modifiers::default()),
+            Some(Message::OpenSelected),
+            "Enter no longer opens the selected entry"
+        );
+        assert_eq!(
+            press(&app, Key::Named(Named::Escape), Modifiers::default()),
+            None
         );
     }
 }
