@@ -704,6 +704,26 @@ impl App {
         .height(Length::Fill)
         .style(theme::root);
 
+        // The conflict dialog comes first, before the prompt. A conflict is
+        // asked *after* the prompt is gone — the user submitted, and the name
+        // turned out to be taken — so behind the prompt's early return the
+        // dialog was never drawn. That was a real bug, and the snapshot test is
+        // what found it.
+        if let Some(pending) = self.pending_conflict.as_ref() {
+            let name = pending
+                .transfer
+                .sources
+                .get(pending.index)
+                .and_then(|p| p.file_name())
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let conflict_element = conflict::view(&name, self.lang, self.conflict_all, |choice| {
+                Message::TransferConflict(choice)
+            });
+            return Stack::with_children([root.into(), dialog::scrim(conflict_element)]).into();
+        }
+
+        // Then the create-directory prompt, for F7.
         let Some(prompt) = self.prompt.as_ref() else {
             return root.into();
         };
@@ -1698,7 +1718,27 @@ impl App {
         let rows = self.visible_rows;
         self.left_panel.move_selection(delta, rows);
     }
+
+    /// Puts a conflict in front of the user, for the snapshot tests.
+    ///
+    /// The state is set up rather than reached through a real copy: that would
+    /// make the rendered image depend on what happens to be in the directory,
+    /// and the test is about the dialog, not about the copy.
+    pub fn open_conflict_for_test(&mut self, target: PathBuf, name: &str) {
+        self.pending_conflict = Some(PendingConflict {
+            transfer: Transfer {
+                kind: TransferKind::Copy,
+                sources: vec![PathBuf::from("/left").join(name)],
+                target,
+            },
+            index: 0,
+        });
+    }
 }
+
+
+
+
 
 // reason: a failing assertion is the signal in a test, so unwrap belongs here
 #[allow(
