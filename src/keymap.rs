@@ -33,41 +33,6 @@ impl Binding {
     pub fn with_modifiers(key: Key, modifiers: Modifiers) -> Self {
         Self { key, modifiers }
     }
-
-    /// The label shown in the header. Deliberately short: the header has room
-    /// for five or six of these, not twenty.
-    pub fn label(&self) -> String {
-        let mut parts: Vec<String> = Vec::new();
-        if self.modifiers.contains(Modifiers::ALT) {
-            parts.push("Alt".to_string());
-        }
-        if self.modifiers.contains(Modifiers::CTRL) {
-            parts.push("Ctrl".to_string());
-        }
-        if self.modifiers.contains(Modifiers::SHIFT) {
-            parts.push("Shift".to_string());
-        }
-        if self.modifiers.contains(Modifiers::LOGO) {
-            parts.push(
-                if cfg!(target_os = "macos") {
-                    "Cmd"
-                } else {
-                    "Super"
-                }
-                .to_string(),
-            );
-        }
-        parts.push(self.key_label());
-        parts.join("+")
-    }
-
-    fn key_label(&self) -> String {
-        match &self.key {
-            Key::Named(named) => format!("{named:?}"),
-            Key::Character(c) => c.as_str().to_uppercase(),
-            Key::Unidentified => "?".to_string(),
-        }
-    }
 }
 
 /// One action: the key that triggers it, the message it produces, and the
@@ -91,26 +56,26 @@ fn build_actions() -> Vec<Action> {
     use Key::{Character, Named as KeyNamed};
 
     vec![
-        // --- advertised in the header ---
+        // --- Backspace, Enter, Tab and Q are not on the function key bar ---
         Action {
             binding: Binding::key(Character("q".into())),
             message: Message::Quit,
-            hint: Some(Msg::ShortcutQuit),
+            hint: None,
         },
         Action {
             binding: Binding::key(KeyNamed(Backspace)),
             message: Message::GoUp,
-            hint: Some(Msg::ShortcutUp),
+            hint: None,
         },
         Action {
             binding: Binding::key(KeyNamed(Enter)),
             message: Message::OpenSelected,
-            hint: Some(Msg::ShortcutOpen),
+            hint: None,
         },
         Action {
             binding: Binding::key(KeyNamed(Tab)),
             message: Message::SwitchPanel,
-            hint: Some(Msg::ShortcutSwitchPanel),
+            hint: None,
         },
         Action {
             binding: Binding::key(KeyNamed(F9)),
@@ -149,6 +114,18 @@ fn build_actions() -> Vec<Action> {
             binding: Binding::key(KeyNamed(F6)),
             message: Message::Transfer(TransferKind::Move),
             hint: Some(Msg::ShortcutMove),
+        },
+        Action {
+            binding: Binding::key(KeyNamed(F8)),
+            message: Message::Delete { permanent: false },
+            hint: Some(Msg::ShortcutDelete),
+        },
+        // Not advertised: the header has no room, and a key that deletes for
+        // good should be found in the help, not stumbled over.
+        Action {
+            binding: Binding::with_modifiers(KeyNamed(F8), Modifiers::SHIFT),
+            message: Message::Delete { permanent: true },
+            hint: None,
         },
         Action {
             binding: Binding::key(KeyNamed(F7)),
@@ -214,20 +191,41 @@ pub fn map_key(key: Key, modifiers: Modifiers) -> Option<Message> {
         .map(|action| action.message.clone())
 }
 
-/// Shortcuts shown in the header bar, derived from the bindings above:
-/// `(key label, translated description)`.
-pub fn shortcuts(lang: Language) -> Vec<(String, &'static str)> {
-    let mut hints: Vec<_> = actions()
+/// Slots in the function key bar: F1 to F10.
+pub const FUNCTION_KEY_COUNT: usize = 10;
+
+/// The number of a bare function key, 1 to 10.
+fn function_key_number(key: &Key) -> Option<usize> {
+    use key::Named::*;
+    let Key::Named(named) = key else {
+        return None;
+    };
+    [F1, F2, F3, F4, F5, F6, F7, F8, F9, F10]
         .iter()
-        .filter_map(|action| {
-            let hint = action.hint?;
-            Some((action.binding.label(), lang.text(hint)))
-        })
-        .collect();
-    // Stable, readable order regardless of registration order.
-    hints.sort_by(|a, b| a.0.cmp(&b.0));
-    hints.dedup_by(|a, b| a.0 == b.0);
-    hints
+        .position(|candidate| candidate == named)
+        .map(|index| index + 1)
+}
+
+/// The labels of the function key bar, derived from the bindings above: slot
+/// `n - 1` holds the hint of the bare `Fn` binding, `None` for a free key.
+/// Only bare function keys are shown; Shift+F8 and friends are in the help.
+pub fn function_keys(lang: Language) -> [Option<&'static str>; FUNCTION_KEY_COUNT] {
+    let mut slots = [None; FUNCTION_KEY_COUNT];
+    for action in actions() {
+        let Some(hint) = action.hint else {
+            continue;
+        };
+        if action.binding.modifiers != Modifiers::default() {
+            continue;
+        }
+        let Some(number) = function_key_number(&action.binding.key) else {
+            continue;
+        };
+        if let Some(slot) = slots.get_mut(number - 1) {
+            slot.get_or_insert(lang.text(hint));
+        }
+    }
+    slots
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
@@ -243,36 +241,65 @@ mod tests {
     use super::*;
     use iced::keyboard::key::Named;
 
-    /// The point of this module: an advertised binding that no key press
-    /// triggers, or a binding nothing advertises. Both used to be possible.
+    /// The point of this module: a label on the bar whose key does nothing, or
+    /// a binding the bar never shows. Both used to be possible.
     #[test]
-    fn every_advertised_binding_responds_to_its_key() {
-        for (label, _) in shortcuts(Language::English) {
-            let advertised = actions()
-                .iter()
-                .find(|action| action.binding.label() == label);
-            let action = advertised.expect("a header hint without a binding");
-            assert!(action.hint.is_some(), "{label} is advertised with no hint");
+    fn every_labelled_slot_has_a_binding_that_responds() {
+        for (index, label) in function_keys(Language::English).iter().enumerate() {
+            let Some(text) = label else { continue };
+            let number = index + 1;
+            let bound = actions().iter().any(|action| {
+                action.hint.is_some()
+                    && action.binding.modifiers == Modifiers::default()
+                    && function_key_number(&action.binding.key) == Some(number)
+            });
+            assert!(bound, "F{number} is labelled {text:?} with no binding");
         }
     }
 
     #[test]
-    fn quit_is_advertised_once_per_key() {
-        let hints = shortcuts(Language::English);
-        // Q and F10 both quit; each is its own hint, neither appears twice.
-        let q = hints.iter().filter(|(key, _)| key == "Q").count();
-        let f10 = hints.iter().filter(|(key, _)| key == "F10").count();
-        assert_eq!((q, f10), (1, 1), "quit advertised wrongly: {hints:?}");
+    fn the_bar_shows_the_function_keys_and_nothing_else() {
+        let en = function_keys(Language::English);
+        assert_eq!(
+            en,
+            [
+                None,
+                None,
+                None,
+                None,
+                Some("Copy"),
+                Some("Move"),
+                Some("Mkdir"),
+                Some("Delete"),
+                Some("Lang"),
+                Some("Quit"),
+            ]
+        );
     }
 
     #[test]
-    fn navigation_keys_are_bound_but_not_advertised() {
-        let labels: Vec<String> = shortcuts(Language::English)
-            .into_iter()
-            .map(|(key, _)| key)
-            .collect();
-        assert!(!labels.contains(&"ArrowUp".to_string()));
-        assert!(labels.contains(&"Enter".to_string()));
+    fn shift_f8_is_bound_but_has_no_slot() {
+        assert_eq!(
+            map_key(Key::Named(Named::F8), Modifiers::SHIFT),
+            Some(Message::Delete { permanent: true })
+        );
+        assert_eq!(function_keys(Language::English)[7], Some("Delete"));
+    }
+
+    #[test]
+    fn the_labels_are_translated_and_fit_a_slot() {
+        let en = function_keys(Language::English);
+        let de = function_keys(Language::German);
+        assert_eq!(de[7], Some("Löschen"));
+        for (en_label, de_label) in en.iter().zip(de.iter()) {
+            assert_eq!(en_label.is_some(), de_label.is_some());
+            for label in [en_label, de_label].into_iter().flatten() {
+                assert!(
+                    label.chars().count() <= 8,
+                    "{label:?} is too long for a slot"
+                );
+            }
+        }
     }
 
     #[test]
@@ -299,13 +326,5 @@ mod tests {
     #[test]
     fn modifiers_gate_the_lookup() {
         assert_eq!(map_key(Key::Named(Named::Enter), Modifiers::ALT), None);
-    }
-
-    #[test]
-    fn header_hints_are_translated() {
-        let en = shortcuts(Language::English);
-        let de = shortcuts(Language::German);
-        assert_eq!(en.len(), de.len());
-        assert_ne!(en[0].1, de[0].1, "the header hints are not translated");
     }
 }

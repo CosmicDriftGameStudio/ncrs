@@ -410,6 +410,39 @@ fn selected(app: &App, side: PanelSide) -> Option<String> {
         .map(|e| e.name.to_string_lossy().into_owned())
 }
 
+/// Like `session_in`, with a trash of the test's own. The system trash is the
+/// developer's real one, and no test may put anything in it.
+fn session_with_trash(
+    dir: &Path,
+    trash: std::sync::Arc<dyn crate::fs::Trash>,
+) -> Session<impl iced::Program<State = App, Message = Message> + 'static> {
+    let left = std::fs::canonicalize(dir).expect("a canonical scratch path");
+    let right = left.join("home");
+    Session::boot(super::program(move || {
+        let (app, task) = App::starting_in(left.clone(), right.clone());
+        (app.with_trash(std::sync::Arc::clone(&trash)), task)
+    }))
+}
+
+/// A trash that is a folder: an entry "in the trash" is one that moved there.
+struct FolderTrash(std::path::PathBuf);
+
+impl crate::fs::Trash for FolderTrash {
+    fn trash(&self, path: &Path) -> Result<(), String> {
+        let name = path.file_name().ok_or("no file name")?;
+        std::fs::rename(path, self.0.join(name)).map_err(|err| err.to_string())
+    }
+}
+
+/// A trash that refuses everything, like a volume without one.
+struct RefusingTrash;
+
+impl crate::fs::Trash for RefusingTrash {
+    fn trash(&self, _path: &Path) -> Result<(), String> {
+        Err("no trash on this volume".to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -871,5 +904,206 @@ mod tests {
             "Insert tagged nothing; the panel holds {:?}",
             names(&session.app, PanelSide::Left)
         );
+    }
+
+    /// The trash folder and a session that deletes into it.
+    fn trash_session(
+        dir: &Path,
+    ) -> (
+        tempfile::TempDir,
+        Session<impl iced::Program<State = App, Message = Message> + 'static>,
+    ) {
+        let bin = tempfile::Builder::new()
+            .prefix("ncrs-e2e-bin-")
+            .tempdir()
+            .expect("a trash folder");
+        let trash = std::sync::Arc::new(FolderTrash(bin.path().to_path_buf()));
+        (bin, session_with_trash(dir, trash))
+    }
+
+    const SHIFT_F8: (Named, Modifiers) = (Named::F8, Modifiers::SHIFT);
+
+    /// F8 and Enter: the file leaves its place for the trash, and the tagged
+    /// rows are the ones that go, then the tags are gone with them.
+    #[test]
+    fn f8_enter_moves_the_tagged_files_to_the_trash() {
+        let dir = scratch("trash");
+        write(&dir.path().join("alpha.txt"), "a");
+        write(&dir.path().join("beta.txt"), "b");
+        write(&dir.path().join("gamma.txt"), "c");
+        let (bin, mut session) = trash_session(dir.path());
+        for name in ["alpha.txt", "gamma.txt"] {
+            cursor_to(&mut session, name);
+            session.press(Key::Named(Named::Insert));
+        }
+
+        session.press(Key::Named(Named::F8));
+        assert!(session.app.delete_dialog_is_open(), "F8 asked nothing");
+        assert!(
+            dir.path().join("alpha.txt").exists(),
+            "deleted before asking"
+        );
+        session.press(Key::Named(Named::Enter));
+
+        assert!(
+            !dir.path().join("alpha.txt").exists(),
+            "alpha.txt still there"
+        );
+        assert!(
+            !dir.path().join("gamma.txt").exists(),
+            "gamma.txt still there"
+        );
+        assert!(
+            dir.path().join("beta.txt").exists(),
+            "an untagged file went"
+        );
+        assert!(
+            bin.path().join("alpha.txt").is_file(),
+            "alpha.txt not in the trash"
+        );
+        assert!(
+            bin.path().join("gamma.txt").is_file(),
+            "gamma.txt not in the trash"
+        );
+        assert!(!session.app.delete_dialog_is_open());
+        assert!(
+            !session.app.panel(PanelSide::Left).selection.any_tagged(),
+            "the tags outlived the files"
+        );
+        assert!(
+            !names(&session.app, PanelSide::Left).contains(&"alpha.txt".to_string()),
+            "the panel still lists alpha.txt"
+        );
+    }
+
+    #[test]
+    fn escape_cancels_the_delete() {
+        let dir = scratch("del-escape");
+        write(&dir.path().join("alpha.txt"), "a");
+        let (bin, mut session) = trash_session(dir.path());
+        cursor_to(&mut session, "alpha.txt");
+
+        session.press(Key::Named(Named::F8));
+        session.press(Key::Named(Named::Escape));
+
+        assert!(!session.app.delete_dialog_is_open(), "the dialog stayed up");
+        assert!(dir.path().join("alpha.txt").is_file(), "Escape deleted it");
+        assert!(!bin.path().join("alpha.txt").exists());
+    }
+
+    /// Enter is the reflex; in the permanent dialog it must not be a delete.
+    #[test]
+    fn shift_f8_then_enter_deletes_nothing() {
+        let dir = scratch("perm-enter");
+        write(&dir.path().join("alpha.txt"), "a");
+        let (bin, mut session) = trash_session(dir.path());
+        cursor_to(&mut session, "alpha.txt");
+
+        session.press_with(Key::Named(SHIFT_F8.0), SHIFT_F8.1);
+        assert!(
+            session.app.delete_dialog_is_open(),
+            "Shift+F8 asked nothing"
+        );
+        session.press(Key::Named(Named::Enter));
+
+        assert!(!session.app.delete_dialog_is_open(), "the dialog stayed up");
+        assert!(dir.path().join("alpha.txt").is_file(), "Enter deleted it");
+        assert!(!bin.path().join("alpha.txt").exists());
+    }
+
+    /// Confirming Shift+F8 deletes for good: not in the trash either.
+    #[test]
+    fn shift_f8_confirmed_deletes_permanently() {
+        let dir = scratch("perm-confirm");
+        write(&dir.path().join("alpha.txt"), "a");
+        write(&dir.path().join("beta.txt"), "b");
+        let (bin, mut session) = trash_session(dir.path());
+
+        cursor_to(&mut session, "alpha.txt");
+        session.press_with(Key::Named(SHIFT_F8.0), SHIFT_F8.1);
+        session.press_with(Key::Named(SHIFT_F8.0), SHIFT_F8.1);
+        assert!(
+            !dir.path().join("alpha.txt").exists(),
+            "chord did not delete"
+        );
+
+        // The button does the same as the chord.
+        cursor_to(&mut session, "beta.txt");
+        session.press_with(Key::Named(SHIFT_F8.0), SHIFT_F8.1);
+        session.send(Message::DeleteConfirm);
+        assert!(
+            !dir.path().join("beta.txt").exists(),
+            "button did not delete"
+        );
+
+        assert!(
+            std::fs::read_dir(bin.path())
+                .expect("the trash")
+                .next()
+                .is_none(),
+            "a permanent delete went through the trash"
+        );
+    }
+
+    /// A link is removed itself; what it points at is not touched.
+    #[cfg(unix)]
+    #[test]
+    fn a_link_to_a_directory_outside_is_deleted_without_touching_the_target() {
+        let dir = scratch("perm-link");
+        let outside = scratch("perm-outside");
+        write(&outside.path().join("files/keep.txt"), "k");
+        let link = dir.path().join("shortcut");
+        std::os::unix::fs::symlink(outside.path().join("files"), &link).expect("a symlink");
+        let (_bin, mut session) = trash_session(dir.path());
+        cursor_to(&mut session, "shortcut");
+
+        session.press_with(Key::Named(SHIFT_F8.0), SHIFT_F8.1);
+        session.press_with(Key::Named(SHIFT_F8.0), SHIFT_F8.1);
+
+        assert!(
+            std::fs::symlink_metadata(&link).is_err(),
+            "the link remains"
+        );
+        assert!(
+            outside.path().join("files/keep.txt").is_file(),
+            "the delete followed the link into the target"
+        );
+    }
+
+    /// No silent fallback: a refused trash leaves the file, says so, and
+    /// points at Shift+F8.
+    #[test]
+    fn a_refused_trash_deletes_nothing_and_names_shift_f8() {
+        let dir = scratch("trash-refused");
+        write(&dir.path().join("alpha.txt"), "a");
+        let mut session = session_with_trash(dir.path(), std::sync::Arc::new(RefusingTrash));
+        cursor_to(&mut session, "alpha.txt");
+
+        session.press(Key::Named(Named::F8));
+        session.press(Key::Named(Named::Enter));
+
+        assert!(dir.path().join("alpha.txt").is_file(), "deleted anyway");
+        let message = session.app.job_error_for_test().expect("no error shown");
+        assert!(
+            message.contains("alpha.txt") && message.contains("Shift+F8"),
+            "the error does not name the entry and the way out: {message}"
+        );
+    }
+
+    /// `..` is not an entry, so there is nothing to ask about.
+    #[test]
+    fn f8_on_the_parent_row_opens_no_dialog() {
+        let dir = scratch("del-parent");
+        write(&dir.path().join("alpha.txt"), "a");
+        let (_bin, mut session) = trash_session(dir.path());
+        assert_eq!(
+            selected(&session.app, PanelSide::Left).as_deref(),
+            Some("..")
+        );
+
+        session.press(Key::Named(Named::F8));
+        session.press_with(Key::Named(SHIFT_F8.0), SHIFT_F8.1);
+
+        assert!(!session.app.delete_dialog_is_open(), "a dialog for ..");
     }
 }

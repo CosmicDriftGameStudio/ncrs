@@ -22,8 +22,8 @@ pub struct JobStatus {
     pub abortable: bool,
 }
 
-/// The bottom bar: path, then the running job, then the selected entry or the
-/// last error.
+/// The bottom bar: path, then the running job, then the failure of the last
+/// job, the panel's read error, or the selected entry.
 ///
 /// A running job takes the middle: the file under the cursor is not what the
 /// user is looking at while fifty thousand files are on their way.
@@ -31,13 +31,20 @@ pub fn view<'a, M: 'a>(
     panel: &'a PanelState,
     lang: Language,
     job: Option<JobStatus>,
+    failure: Option<&'a str>,
 ) -> Element<'a, M> {
     let path = text(panel.path.display().to_string())
         .size(font_size::STATUS)
         .color(colors::ACCENT)
         .wrapping(text::Wrapping::None);
 
-    let details: Element<'a, M> = if let Some(error) = &panel.error {
+    let details: Element<'a, M> = if let Some(last_failure) = failure {
+        text(last_failure)
+            .size(font_size::STATUS)
+            .color(colors::ERROR)
+            .wrapping(text::Wrapping::None)
+            .into()
+    } else if let Some(error) = &panel.error {
         text(format_error(error, &panel.path, lang))
             .size(font_size::STATUS)
             .color(colors::ERROR)

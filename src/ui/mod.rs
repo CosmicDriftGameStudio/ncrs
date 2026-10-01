@@ -3,7 +3,9 @@
 //! so they can be reused in other contexts.
 
 pub mod conflict;
+pub mod delete;
 pub mod dialog;
+pub mod fkeys;
 pub mod format;
 pub mod header;
 pub mod layout;

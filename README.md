@@ -44,7 +44,10 @@ for the state, the licensing audit and the reasoning behind the order.
 | `Insert`           | Tag / untag the row under the cursor    |
 | `*`                | Tag every row (except `..`)             |
 | `Ctrl`+`*`         | Clear all tags                          |
+| `F5` / `F6`        | Copy / move to the other panel          |
 | `F7`               | Create directory                        |
+| `F8`               | Delete to the trash, after a confirmation |
+| `Shift`+`F8`       | Delete permanently (`Enter` cancels; `Shift`+`F8` again confirms) |
 | `Backspace`        | Go to parent directory                   |
 | `Tab`              | Switch active panel                      |
 | `F9`               | Switch language (en/de, temporary)        |
@@ -292,7 +295,7 @@ per frame, independent of directory size.
 
 ### Ideas for next steps
 
-- F3 view / F4 edit, F5 copy, F6 move, F7 mkdir, F8 delete (with confirm dialog)
+- F3 view / F4 edit
 - Multi-selection (`Insert`), quick search by typing
 - Filesystem watching (`notify` crate) as an iced `Subscription`
 - Configurable keymap and theme (TOML)
