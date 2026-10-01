@@ -364,11 +364,10 @@ fn replace(staged: &Path, target: &Path) -> io::Result<()> {
         let _best_effort = std::fs::rename(&aside, target);
         return Err(e);
     }
-    if let Err(e) = remove_path(&aside) {
-        let _best_effort =
-            std::fs::rename(target, staged).and_then(|()| std::fs::rename(&aside, target));
-        return Err(e);
-    }
+    // The new one is in place now, so there is nothing to roll back to: a failed
+    // removal may already have deleted part of the old tree.
+    // ponytail: the rest stays under the hidden aside name; report it if users trip over it.
+    let _best_effort = remove_path(&aside);
     Ok(())
 }
 
@@ -932,13 +931,13 @@ mod tests {
         assert_eq!(fs::read(&victim).unwrap(), b"untouched");
     }
 
-    /// If the swap fails after a move already renamed the source, the source
-    /// is back under its own name and the old target is as it was.
+    /// Once the new item is in place, an old target that cannot be removed
+    /// does not undo the move: the new one stays, the old one is left aside.
     #[cfg(unix)]
     #[test]
-    fn a_failed_swap_after_a_move_puts_everything_back() {
+    fn an_old_target_that_cannot_be_removed_does_not_undo_the_move() {
         use std::os::unix::fs::PermissionsExt as _;
-        let dir = scratch("swap-fails");
+        let dir = scratch("swap-leftover");
         let src = dir.path().join("item");
         let dst = dir.path().join("dst");
         fs::write(&src, b"new").unwrap();
@@ -950,15 +949,19 @@ mod tests {
 
         let result = transfer(&src, &dst, &Move, &mut Counting, OnConflict::Overwrite);
 
-        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
-        assert!(result.is_err(), "the swap should have failed");
-        assert_eq!(fs::read(&src).unwrap(), b"new", "the source is lost");
-        assert_eq!(fs::read(locked.join("f")).unwrap(), b"old");
-        assert_eq!(
-            fs::read_dir(&dst).unwrap().count(),
-            1,
-            "a staging name is left"
-        );
+        let leftover: Vec<_> = fs::read_dir(&dst)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.file_name() != Some(std::ffi::OsStr::new("item")))
+            .collect();
+        for path in &leftover {
+            let _ = fs::set_permissions(path.join("locked"), fs::Permissions::from_mode(0o755));
+        }
+        assert!(result.is_ok(), "the move itself succeeded: {result:?}");
+        assert!(!src.exists(), "a move keeps no source");
+        assert_eq!(fs::read(dst.join("item")).unwrap(), b"new");
+        assert_eq!(leftover.len(), 1, "the old target is set aside once");
+        assert_eq!(fs::read(leftover[0].join("locked/f")).unwrap(), b"old");
     }
 
     /// The target may be an ancestor of the source: replacing it would set the
