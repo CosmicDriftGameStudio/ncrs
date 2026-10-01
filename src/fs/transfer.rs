@@ -30,7 +30,6 @@ use tokio::sync::mpsc;
 /// Copy and move are the same walk, so they are one function and two of these.
 /// `removes_source` is what separates them: a trait cannot ask "would you
 /// delete this", so it is a method rather than inferred from the type.
-#[allow(dead_code)] // TODO(F5/F6)
 pub trait Source {
     /// Whether a completed transfer deletes the source.
     fn removes_source(&self) -> bool;
@@ -40,7 +39,6 @@ pub trait Source {
 }
 
 /// Leave the source where it is.
-#[allow(dead_code)] // TODO(F5)
 pub struct Copy;
 
 impl Source for Copy {
@@ -58,7 +56,6 @@ impl Source for Copy {
 }
 
 /// Remove the source once the target exists.
-#[allow(dead_code)] // TODO(F6)
 pub struct Move;
 
 impl Source for Move {
@@ -77,7 +74,6 @@ impl Source for Move {
 }
 
 /// Reported as the walk proceeds, so the caller can show progress and abort.
-#[allow(dead_code)] // TODO(F5/F6)
 pub trait Progress {
     /// One more item done. Returning `Err` stops the whole operation with that
     /// error, which is how a cancel arrives.
@@ -85,7 +81,6 @@ pub trait Progress {
 }
 
 /// Counts items and never stops.
-#[allow(dead_code)] // TODO(F5/F6)
 pub struct Counting;
 
 impl Progress for Counting {
@@ -141,7 +136,6 @@ impl Progress for Reporting<'_> {
 
 /// How the operation behaves when the target already exists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[allow(dead_code)] // TODO(F5/F6, with the overwrite dialog)
 pub enum OnConflict {
     /// Stop with an error. The default, because overwriting by accident loses
     /// data and the alternative — asking — is the dialog, which is F5's own
@@ -156,7 +150,6 @@ pub enum OnConflict {
 ///
 /// `total` is the item count for the progress callback, or 0 while it is still
 /// unknown — the callback gets the real number on every call.
-#[allow(dead_code)] // TODO(F5/F6)
 pub fn transfer<S: Source, P: Progress>(
     source: &Path,
     target_dir: &Path,
@@ -201,7 +194,6 @@ pub fn transfer<S: Source, P: Progress>(
 
 /// How many items a directory holds, including the directories themselves.
 /// A file counts as one.
-#[allow(dead_code)] // TODO(F5/F6)
 fn count_items(path: &Path) -> usize {
     let Ok(meta) = std::fs::symlink_metadata(path) else {
         return 0;
@@ -221,7 +213,6 @@ fn count_items(path: &Path) -> usize {
 }
 
 /// The recursion, with the effect and the progress applied at each step.
-#[allow(dead_code)] // TODO(F5/F6)
 fn walk<P: Progress>(
     source: &Path,
     target: &Path,
@@ -260,7 +251,6 @@ fn walk<P: Progress>(
 /// Creates a symlink, or copies its target on platforms that need privilege.
 /// Windows without developer mode cannot create links at all, and a plain copy
 /// is the closest honest fallback.
-#[allow(dead_code)] // TODO(F5/F6)
 fn symlink(original: &Path, link: &Path) -> io::Result<()> {
     #[cfg(unix)]
     {
@@ -335,7 +325,13 @@ pub fn run(
 
 /// The names a transfer would create in `target_dir`, so the caller can show
 /// them before the dialog and detect a name that is already taken.
-#[allow(dead_code)] // TODO(F5/F6, to show a name that is taken)
+///
+/// The app does not use this yet: it asks about a conflict when the walk
+/// reaches it rather than before it starts, which is correct for a tag list of
+/// fifty thousand but means the dialog names a file the user has not seen yet.
+/// Kept because it is the piece that fixes that, and deleting it would lose
+/// the only test that says what it should return.
+#[allow(dead_code)]
 pub fn conflicts(source: &Path, target_dir: &Path) -> Option<PathBuf> {
     let name = source.file_name()?;
     let target = target_dir.join(name);

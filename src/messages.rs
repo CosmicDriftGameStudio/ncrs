@@ -61,11 +61,6 @@ pub enum Message {
     /// F5 or F6, decided by the action rather than a message each.
     Transfer(TransferKind),
     /// The user answered the conflict dialog.
-    ///
-    /// Nothing sends this yet: a taken name fails the row instead of asking.
-    /// The dialog is the next piece; the message and the plumbing are here so
-    /// it is one step, not a rewrite.
-    #[allow(dead_code)]
     TransferConflict(ConflictChoice),
     /// One row of a transfer finished. Carries the whole transfer so the next
     /// row can start without the app keeping it in a field that a later
@@ -150,12 +145,15 @@ impl TransferKind {
 /// The "All" options are the point: answering the same question per file turns
 /// five files into five dialogs and fifty thousand into an afternoon.
 ///
-/// Not constructed yet — nothing sends `TransferConflict`. The dialog is the
-/// next piece; the type and the resume path exist so it is one step.
+/// The two `All` variants are not built yet — the dialog offers only the
+/// single-file answers, which is what it can do honestly today. They are marked
+/// one by one rather than silencing the type, so a variant that *is* reachable
+/// still shows up if it stops being used.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum ConflictChoice {
+    #[allow(dead_code)] // Not offered by the dialog yet.
     AllOverwrite,
+    #[allow(dead_code)] // Not offered by the dialog yet.
     AllKeep,
     ThisOverwrite,
     ThisKeep,
@@ -178,7 +176,6 @@ impl ConflictChoice {
     }
 
     /// Whether the answer also settles every later one.
-    #[allow(dead_code)]
     pub fn applies_to_all(self) -> bool {
         matches!(self, ConflictChoice::AllOverwrite | ConflictChoice::AllKeep)
     }
