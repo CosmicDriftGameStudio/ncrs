@@ -259,6 +259,12 @@
       "de": "{count} Einträge"
     },
     {
+      "key": "delete.more",
+      "context": "Last line of the permanent-delete dialog when more than five entries are affected: how many were not listed. Takes the count, at least one.",
+      "en": "… and {count} more",
+      "de": "… und {count} weitere"
+    },
+    {
       "key": "delete.warning_permanent",
       "context": "Warning in the permanent-delete dialog. Says plainly that the entries do not go to the trash and cannot be restored. One or two short sentences.",
       "en": "This cannot be undone. Nothing goes to the trash.",

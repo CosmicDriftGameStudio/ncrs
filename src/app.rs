@@ -339,10 +339,33 @@ fn keys_without_prompt(
     if matches!(key.as_ref(), Key::Named(Named::Escape)) {
         return prompt.job_running.then_some(Message::AbortJob);
     }
-    // The exact chord first (Shift+F8 is not F8), then the bare key, which is
-    // how a stray Shift or Ctrl has always been treated.
-    keymap::map_key(key.clone(), key_modifiers)
-        .or_else(|| keymap::map_key(key, Modifiers::default()))
+    // The exact chord first (Shift+F8 is not F8). Only Shift may fall back to
+    // the bare key: it changes the character typed (`*` is Shift+8), while Alt,
+    // Ctrl and Super make a different chord that must not trigger the plain one.
+    keymap::map_key(key.clone(), key_modifiers).or_else(|| {
+        (key_modifiers - Modifiers::SHIFT)
+            .is_empty()
+            .then(|| keymap::map_key(key, Modifiers::default()))
+            .flatten()
+    })
+}
+
+/// Whether holding the key down may fire the message again.
+///
+/// Only cursor movement, tagging and typing repeat. An action such as F5 or a
+/// dialog answer must happen once per press: a held Shift+F8 would otherwise
+/// confirm the permanent-delete dialog it has just opened.
+fn repeats(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::MoveSelection(_)
+            | Message::PageUp
+            | Message::PageDown
+            | Message::SelectFirst
+            | Message::SelectLast
+            | Message::ToggleTag
+            | Message::PromptInput(_)
+    )
 }
 
 pub fn route_key(prompt: &PromptKeyState, key: Key, modifiers: Modifiers) -> Option<Message> {
@@ -467,7 +490,12 @@ impl App {
                 .with(key_state)
                 .filter_map(|(cell, event)| {
                     match event {
-                        keyboard::Event::KeyPressed { key, modifiers, .. } => route_key(
+                        keyboard::Event::KeyPressed {
+                            key,
+                            modifiers,
+                            repeat,
+                            ..
+                        } => route_key(
                             // A panic in a key handler would leave the lock
                             // poisoned. The state is a few Copy values and cannot
                             // be half-written, so reading the inner value is safe —
@@ -479,7 +507,8 @@ impl App {
                                 .unwrap_or_else(|poisoned| poisoned.into_inner()),
                             key,
                             modifiers,
-                        ),
+                        )
+                        .filter(|message| !repeat || repeats(message)),
                         _ => None,
                     }
                 }),
@@ -546,6 +575,10 @@ impl App {
 
             // Stop the running job. Ctrl+C and Escape both, because a long copy
             // that cannot be stopped is the case a queue was supposed to fix.
+            //
+            // A delete in flight finishes its current entry even so: it runs in
+            // `spawn_blocking`, which cannot be cancelled, so the panel may
+            // still list that entry for a moment after the abort.
             Message::AbortJob => {
                 if self.jobs.abort_running() {
                     self.job_done = 0;
@@ -1106,7 +1139,17 @@ impl App {
     }
 
     /// The dialog's subject line: the name for one entry, the count for more.
+    ///
+    /// A permanent delete also lists the first names, because tagged rows may
+    /// lie outside the visible part of the panel and the user is about to lose
+    /// them for good.
     fn delete_subject(&self, deletion: &Deletion) -> String {
+        const LISTED: usize = 5;
+        let name_of = |path: &PathBuf| {
+            path.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        };
         match deletion.sources.as_slice() {
             [only] => self.lang.text(Msg::DeleteOne).replace(
                 "{name}",
@@ -1115,10 +1158,23 @@ impl App {
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_default(),
             ),
-            many => self
-                .lang
-                .text(Msg::DeleteMany)
-                .replace("{count}", &many.len().to_string()),
+            many => {
+                let mut lines = vec![self
+                    .lang
+                    .text(Msg::DeleteMany)
+                    .replace("{count}", &many.len().to_string())];
+                if deletion.permanent {
+                    lines.extend(many.iter().take(LISTED).map(name_of));
+                    if many.len() > LISTED {
+                        lines.push(
+                            self.lang
+                                .text(Msg::DeleteMore)
+                                .replace("{count}", &(many.len() - LISTED).to_string()),
+                        );
+                    }
+                }
+                lines.join("\n")
+            }
         }
     }
 
@@ -3183,7 +3239,49 @@ mod delete_tests {
         app.left_panel.selection.toggle(&"b.txt".into());
         let _again = app.update(Message::Delete { permanent: true });
         let many = app.delete_dialog.clone().unwrap();
-        assert_eq!(app.delete_subject(&many), "2 items");
+        assert_eq!(app.delete_subject(&many), "2 items\na.txt\nb.txt");
         assert!(many.permanent);
+
+        // The trash dialog stays short: only the count.
+        let trash = Deletion {
+            permanent: false,
+            ..many.clone()
+        };
+        assert_eq!(app.delete_subject(&trash), "2 items");
+
+        let seven = Deletion {
+            sources: (1..=7)
+                .map(|i| PathBuf::from(format!("/left/f{i}")))
+                .collect(),
+            ..many
+        };
+        assert_eq!(
+            app.delete_subject(&seven),
+            "7 items\nf1\nf2\nf3\nf4\nf5\n… and 2 more"
+        );
+    }
+
+    #[test]
+    fn alt_ctrl_and_super_do_not_fall_back_to_the_bare_key() {
+        let idle = PromptKeyState::default();
+        for modifiers in [Modifiers::ALT, Modifiers::CTRL, Modifiers::LOGO] {
+            assert_eq!(route(&idle, Named::Enter, modifiers), None, "{modifiers:?}");
+            assert_eq!(route(&idle, Named::F5, modifiers), None, "{modifiers:?}");
+        }
+        // Shift alone still reaches the bare key, as `*` needs.
+        assert_eq!(
+            route_key(&idle, Key::Character("*".into()), Modifiers::SHIFT),
+            Some(Message::TagAll)
+        );
+    }
+
+    #[test]
+    fn only_movement_tagging_and_typing_repeat() {
+        assert!(repeats(&Message::MoveSelection(1)));
+        assert!(repeats(&Message::ToggleTag));
+        assert!(repeats(&Message::PromptInput("a".into())));
+        assert!(!repeats(&Message::Delete { permanent: true }));
+        assert!(!repeats(&Message::DeleteConfirm));
+        assert!(!repeats(&Message::Transfer(TransferKind::Copy)));
     }
 }

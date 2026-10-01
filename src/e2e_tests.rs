@@ -165,6 +165,22 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
         self.press_raw(pressed);
     }
 
+    /// A key held down: the same press again with `repeat` set, as the
+    /// operating system sends it.
+    fn press_repeat(&mut self, key: Key, modifiers: Modifiers) {
+        self.press_raw(keyboard::Event::KeyPressed {
+            key: key.clone(),
+            modified_key: key,
+            physical_key: keyboard::key::Physical::Unidentified(
+                keyboard::key::NativeCode::Unidentified,
+            ),
+            location: keyboard::Location::Standard,
+            modifiers,
+            repeat: true,
+            text: None,
+        });
+    }
+
     fn press_raw(&mut self, event: keyboard::Event) {
         self.broadcast(SubEvent::Interaction {
             window: self.window,
@@ -1105,5 +1121,59 @@ mod tests {
         session.press_with(Key::Named(SHIFT_F8.0), SHIFT_F8.1);
 
         assert!(!session.app.delete_dialog_is_open(), "a dialog for ..");
+    }
+
+    /// Holding Shift+F8 must not answer the dialog it opened.
+    #[test]
+    fn a_held_shift_f8_does_not_confirm_the_permanent_delete() {
+        let dir = scratch("perm-held");
+        write(&dir.path().join("alpha.txt"), "a");
+        let (_bin, mut session) = trash_session(dir.path());
+        cursor_to(&mut session, "alpha.txt");
+
+        session.press_with(Key::Named(SHIFT_F8.0), SHIFT_F8.1);
+        session.press_repeat(Key::Named(SHIFT_F8.0), SHIFT_F8.1);
+        session.press_repeat(Key::Named(SHIFT_F8.0), SHIFT_F8.1);
+
+        assert!(
+            dir.path().join("alpha.txt").is_file(),
+            "the repeat deleted it"
+        );
+        assert!(
+            session.app.delete_dialog_is_open(),
+            "the dialog was answered"
+        );
+    }
+
+    /// Navigation still repeats: holding the arrow key keeps moving.
+    #[test]
+    fn a_held_arrow_key_keeps_moving() {
+        let dir = scratch("held-arrow");
+        write(&dir.path().join("alpha.txt"), "a");
+        write(&dir.path().join("beta.txt"), "b");
+        let mut session = session_in(dir.path());
+        let start = selected(&session.app, PanelSide::Left);
+
+        session.press_repeat(Key::Named(Named::ArrowDown), Modifiers::default());
+        let after_one = selected(&session.app, PanelSide::Left);
+        session.press_repeat(Key::Named(Named::ArrowDown), Modifiers::default());
+        let after_two = selected(&session.app, PanelSide::Left);
+
+        assert_ne!(start, after_one, "the first repeat did not move");
+        assert_ne!(after_one, after_two, "the second repeat did not move");
+    }
+
+    /// Alt+Enter is not Enter, and Ctrl+F5 is not F5.
+    #[test]
+    fn modified_keys_do_not_trigger_the_bare_action() {
+        let dir = scratch("mods");
+        let home = dir.path().join("home");
+        write(&dir.path().join("alpha.txt"), "a");
+        let mut session = session_in(dir.path());
+        cursor_to(&mut session, "alpha.txt");
+
+        session.press_with(Key::Named(Named::F5), Modifiers::CTRL);
+
+        assert!(!home.join("alpha.txt").exists(), "Ctrl+F5 copied");
     }
 }
