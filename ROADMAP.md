@@ -190,7 +190,7 @@ Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
 
 1. **Trash oder nicht?** (F8) **Entschieden: `trash`.** F8 geht in den Papierkorb,
    Shift+F8 löscht endgültig; scheitert der Papierkorb, wird nie stillschweigend
-   endgültig gelöscht. Lizenz per `cargo deny check` geprüft.
+   endgültig gelöscht. Lizenzen der Abhängigkeiten per `cargo metadata` gegen deny.toml geprüft; `cargo deny` prüft in der CI.
 2. **Testharness** (3.2): **entschieden, ohne Snapshot-Tests.** 36 Logiktests decken `fs`,
    `i18n`, `keymap`, `backend`, Layout-Arithmetik und Fehler-Rendering. Es gibt kein
    Framework, dessen Ausgabe ich gegen eine echte Referenz geprüft habe — ein
@@ -475,7 +475,7 @@ weiß ich nur durch deine Beobachtung — die steht als Messung im README, nicht
 |---|---|---|
 | T2 | wgpu oder Software-Rendering? | **beides, als Features.** Gemessen: Software ist auf HiDPI unbrauchbar, `gpu-with-fallback` ist schnell. Releases bauen mit Fallback. |
 | T5 | `build.rs` oder Handpflege? | **`build.rs`, gebaut.** Kontext und Text kommen aus `strings.json`. |
-| T8 | Papierkorb? Crate `trash` | **entschieden: `trash`.** F8 geht in den Papierkorb, Shift+F8 löscht endgültig. Lizenz per `cargo deny check` geprüft. |
+| T8 | Papierkorb? Crate `trash` | **entschieden: `trash`.** F8 geht in den Papierkorb, Shift+F8 löscht endgültig. Lizenzen der Abhängigkeiten per `cargo metadata` gegen deny.toml geprüft; `cargo deny` prüft in der CI. |
 | T10 | TOML oder JSON für die Config? | **offen.** Empfehlung: TOML, besser für Handeditierung. |
 | T13 | Sprachauswahl persistent | **teilweise.** `en`/`de` gebaut, F9 schaltet um; die Persistenz hängt an T10. |
 | T14 | Suche: `glob` oder inkrementell? | **offen.** Die Filterlogik ist in beiden testbar, das Timing nicht. |
