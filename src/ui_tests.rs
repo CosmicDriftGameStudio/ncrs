@@ -518,7 +518,7 @@ mod delete_overlay {
     /// The permanent dialog counts several entries and carries the warning.
     #[test]
     fn the_permanent_dialog_counts_the_entries_and_warns() {
-        let matches = simulator(&app_with_delete(3, true))
+        let matches = simulator(&app_with_delete(7, true))
             .snapshot(&iced::Theme::Dark)
             .unwrap()
             .matches_image("tests/snapshots/delete_permanent.png")
