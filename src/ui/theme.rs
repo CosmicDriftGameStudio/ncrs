@@ -25,6 +25,13 @@ pub mod colors {
     pub const DIR_COLOR: Color = Color::from_rgb(1.000, 1.000, 1.000);
     pub const ACCENT: Color = Color::from_rgb(1.000, 0.850, 0.300);
     pub const ERROR: Color = Color::from_rgb(1.000, 0.450, 0.450);
+
+    /// The digit of a function key slot: plain light text on the window
+    /// background, as in Norton Commander.
+    pub const FKEY_NUMBER: Color = Color::from_rgb(0.850, 0.870, 0.920);
+    /// The label box behind a function key's name, with dark text on it.
+    pub const FKEY_LABEL_BG: Color = Color::from_rgb(0.180, 0.690, 0.760);
+    pub const FKEY_LABEL_TEXT: Color = Color::from_rgb(0.020, 0.040, 0.090);
     /// Behind a modal dialog: darkens the panels without hiding them.
     pub const SCRIM: Color = Color {
         r: 0.0,
@@ -70,6 +77,15 @@ pub fn root(_theme: &Theme) -> container::Style {
 
 pub fn header(_theme: &Theme) -> container::Style {
     filled(colors::HEADER_BACKGROUND, colors::SELECTED_TEXT)
+}
+
+/// The label box of a function key slot, filled or empty.
+pub fn fkey_label(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(colors::FKEY_LABEL_BG)),
+        text_color: Some(colors::FKEY_LABEL_TEXT),
+        ..container::Style::default()
+    }
 }
 
 pub fn statusbar(_theme: &Theme) -> container::Style {

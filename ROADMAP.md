@@ -188,9 +188,9 @@ legen ist Absicht, nicht Verseum.
 
 Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
 
-1. **Trash oder nicht?** (F8) Ohne Papierkorb ist F8 unwiderruflich. Die Crate `trash`
-   nennt crates.io als MIT; **lokal verifiziert habe ich das nie**, sie war nicht im
-   Cargo-Cache. Keine Lizenzfrage im Prinzip, sondern eine UX-Frage. Empfehlung: rein.
+1. **Trash oder nicht?** (F8) **Entschieden: `trash`.** F8 geht in den Papierkorb,
+   Shift+F8 löscht endgültig; scheitert der Papierkorb, wird nie stillschweigend
+   endgültig gelöscht. Lizenzen der Abhängigkeiten per `cargo metadata` gegen deny.toml geprüft; `cargo deny` prüft in der CI.
 2. **Testharness** (3.2): **entschieden, ohne Snapshot-Tests.** 36 Logiktests decken `fs`,
    `i18n`, `keymap`, `backend`, Layout-Arithmetik und Fehler-Rendering. Es gibt kein
    Framework, dessen Ausgabe ich gegen eine echte Referenz geprüft habe — ein
@@ -423,7 +423,7 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
   Braucht T6c (Auswahl) und T6d Punkt 2 (Queue, sonst blockiert ein großes Copy).
   Reload beider Panels; F5 kopiert in das inaktive Panel, F6 verschiebt dorthin.
 
-- [ ] **T8 – F8 Delete mit Bestätigungsdialog und Papierkorb** – siehe offene Frage unten
+- [x] **T8 – F8 Delete mit Bestätigungsdialog und Papierkorb** – Crate `trash`, Shift+F8 löscht endgültig
 - [ ] **T9 – F3 View / F4 Edit** – externes Programm, `std::process::Command`
 - [ ] **T10 – Konfigurationsdatei** – `serde` + `toml`, Schema-Validierung, Versionierung
   *Voraussetzung für:* T11, T12, T5-Sprachpersistenz
@@ -475,7 +475,7 @@ weiß ich nur durch deine Beobachtung — die steht als Messung im README, nicht
 |---|---|---|
 | T2 | wgpu oder Software-Rendering? | **beides, als Features.** Gemessen: Software ist auf HiDPI unbrauchbar, `gpu-with-fallback` ist schnell. Releases bauen mit Fallback. |
 | T5 | `build.rs` oder Handpflege? | **`build.rs`, gebaut.** Kontext und Text kommen aus `strings.json`. |
-| T8 | Papierkorb? Crate `trash`, Lizenz ungeprüft | **offen.** Ohne die Crate ist F8 unwiderruflich; die Lizenz ist bis heute nicht lokal verifiziert. |
+| T8 | Papierkorb? Crate `trash` | **entschieden: `trash`.** F8 geht in den Papierkorb, Shift+F8 löscht endgültig. Lizenzen der Abhängigkeiten per `cargo metadata` gegen deny.toml geprüft; `cargo deny` prüft in der CI. |
 | T10 | TOML oder JSON für die Config? | **offen.** Empfehlung: TOML, besser für Handeditierung. |
 | T13 | Sprachauswahl persistent | **teilweise.** `en`/`de` gebaut, F9 schaltet um; die Persistenz hängt an T10. |
 | T14 | Suche: `glob` oder inkrementell? | **offen.** Die Filterlogik ist in beiden testbar, das Timing nicht. |

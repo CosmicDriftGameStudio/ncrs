@@ -167,6 +167,7 @@ mod tests {
                 // A bare placeholder: the dialog frames the name around it, so
                 // there is nothing to translate in the string itself.
                 | Msg::ConflictName
+                | Msg::DeleteOne
         )
     }
 

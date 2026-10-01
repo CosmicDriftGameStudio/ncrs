@@ -25,6 +25,7 @@ iced = { version = "0.14", default-features = false, features = ["tokio", "fira-
 # and wasi — network and signal machinery a file manager has no use for.
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+trash = "5.2.9"
 
 [profile.release]
 opt-level = 3

@@ -12,12 +12,6 @@
 //! One at a time is deliberate. Two simultaneous copies would share the disk,
 //! and the progress line would have to show two bars. Predictable is worth more
 //! here than fast.
-//!
-//! **Not wired up yet.** `App` holds a `Queue` and answers `JobFinished`, but no
-//! key enqueues anything and the status bar does not read it yet — that is F5/F6/F8,
-//! the next task. The parts that exist before their caller are marked below
-//! rather than silenced: a `#[allow(dead_code)]` on a whole type would hide the
-//! same warning on the fields that do get used later.
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -27,23 +21,18 @@ use crate::messages::Message;
 /// What a job does. The label is the i18n key, so the status bar can name it in
 /// the active language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum JobKind {
     Copy,
     Move,
     Delete,
-    CreateDir,
 }
 
 impl JobKind {
-    /// TODO(called by the status bar, next task).
-    #[allow(dead_code)]
     pub fn label(self) -> crate::i18n::Msg {
         match self {
             JobKind::Copy => crate::i18n::Msg::JobCopy,
             JobKind::Move => crate::i18n::Msg::JobMove,
             JobKind::Delete => crate::i18n::Msg::JobDelete,
-            JobKind::CreateDir => crate::i18n::Msg::JobCreateDir,
         }
     }
 }
@@ -62,26 +51,11 @@ pub struct Job {
 
 /// What a job reports while it runs. One `Message` each.
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
 pub enum JobEvent {
-    Started {
-        job: Job,
-    },
-    /// Items done, and how many there are in total.
-    Progress {
-        done: usize,
-        total: usize,
-    },
     Done,
-    /// Failed with a reason, already rendered for the current language: the
-    /// filesystem layer has no language, and formatting an error twice would let
-    /// the two disagree.
-    Failed(String),
-    Aborted,
 }
 
 /// The job in flight.
-#[allow(dead_code)]
 struct Running {
     job: Job,
     /// Kept so Escape can stop the work. `Task` has no abort of its own; the
@@ -105,20 +79,16 @@ impl Queue {
 
     /// True while a job runs or jobs are waiting. A new job cannot be queued
     /// while this holds.
-    #[allow(dead_code)]
     pub fn is_busy(&self) -> bool {
         self.running.is_some() || !self.waiting.is_empty()
     }
 
     /// The job in flight, for the progress line.
-    /// TODO(called by the status bar, F5/F6/F8).
-    #[allow(dead_code)]
     pub fn running(&self) -> Option<&Job> {
         self.running.as_ref().map(|r| &r.job)
     }
 
     /// How many jobs are waiting behind the current one.
-    #[allow(dead_code)]
     pub fn waiting(&self) -> usize {
         self.waiting.len()
     }
@@ -126,8 +96,6 @@ impl Queue {
     /// Adds a job to the waiting list. The caller starts it by handing the
     /// returned task to `update`, which is what keeps the "does something run
     /// now" decision in one place.
-    /// TODO(called when F5/F6/F8 start, next task).
-    #[allow(dead_code)]
     pub fn enqueue(&mut self, job: Job) {
         self.waiting.push_back(job);
     }
@@ -156,8 +124,6 @@ impl Queue {
 
     /// Stops the running job. The queue keeps its state, so the caller decides
     /// whether the job restarts or is dropped.
-    /// TODO(called by Escape, next task).
-    #[allow(dead_code)]
     pub fn abort_running(&mut self) -> bool {
         match &self.running {
             Some(running) => {

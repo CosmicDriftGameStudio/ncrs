@@ -79,6 +79,24 @@ pub enum Message {
         generation: u64,
     },
 
+    // --- delete (F8, Shift+F8) ---
+    /// F8 (`permanent: false`) or Shift+F8: open the confirmation dialog.
+    Delete {
+        permanent: bool,
+    },
+    /// The user confirmed the delete dialog.
+    DeleteConfirm,
+    /// The user dismissed the delete dialog.
+    DeleteCancel,
+    /// One entry of a delete finished.
+    DeleteRowDone {
+        /// The reason, as the OS or the trash worded it; the app adds the name.
+        result: Result<(), String>,
+        index: usize,
+        /// The delete it belongs to; a result from an earlier one is dropped.
+        generation: u64,
+    },
+
     // --- Job queue (see crate::jobs) ---
     /// A job started, made progress, or finished. One variant for all three:
     /// they are the same event arriving at different times, and splitting them
