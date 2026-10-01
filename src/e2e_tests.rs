@@ -43,7 +43,7 @@
     clippy::indexing_slicing
 )]
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use iced::keyboard::{self, Key, Modifiers};
 use iced::window;
@@ -81,16 +81,11 @@ struct Session<P> {
     /// The window the app believes it is in. Subscriptions carry it, so a wrong
     /// id would silently drop every key.
     window: window::Id,
-    /// Set for the whole session: the app's start directory is `current_dir()`,
-    /// and a test must not read the developer's checkout.
-    _restore: Cwd,
 }
 
 impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
-    /// Boots the app inside `dir` and runs the initial directory loads.
-    fn boot(program: P, dir: &Path) -> Self {
-        let restore = Cwd::set(dir);
-
+    /// Boots the app and runs the initial directory loads.
+    fn boot(program: P) -> Self {
         let executor = iced::executor::Default::new().expect("the tokio executor");
         let (action_tx, actions) = mpsc::unbounded();
         let runtime = Runtime::new(executor, action_tx);
@@ -104,7 +99,6 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
             in_flight: 0,
             subscriptions: Vec::new(),
             window: window::Id::unique(),
-            _restore: restore,
         };
         session.resubscribe();
         session.drive(boot);
@@ -334,53 +328,14 @@ enum Outcome {
     Finished,
 }
 
-/// Sets the working directory for as long as it is alive.
-struct Cwd {
-    previous: PathBuf,
-}
-
-impl Cwd {
-    fn set(dir: &Path) -> Self {
-        let previous = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        std::env::set_current_dir(dir)
-            .expect("the test should be able to enter its own scratch directory");
-        Self { previous }
-    }
-}
-
-impl Drop for Cwd {
-    fn drop(&mut self) {
-        let _ignored = std::env::set_current_dir(&self.previous);
-    }
-}
-
-/// Points `$HOME` at a scratch directory for as long as it is alive.
-///
-/// The right panel starts in `$HOME`, so without this a copy test would write
-/// into the developer's real home directory. `set_var` is `unsafe` in Rust
-/// 2024 and this crate forbids `unsafe`, so the variable is changed through
-/// `std::env::set_var` as the OS-level call it is: process-wide, and therefore
-/// only sound because these tests run one at a time (see `Cwd`, which has the
-/// same constraint for the same reason).
-struct Home {
-    previous: Option<std::ffi::OsString>,
-}
-
-impl Home {
-    fn set(dir: &Path) -> Self {
-        let previous = std::env::var_os("HOME");
-        std::env::set_var("HOME", dir);
-        Self { previous }
-    }
-}
-
-impl Drop for Home {
-    fn drop(&mut self) {
-        match self.previous.take() {
-            Some(value) => std::env::set_var("HOME", value),
-            None => std::env::remove_var("HOME"),
-        }
-    }
+/// Boots the real program with the left panel in `dir` and the right one in
+/// its `home` subdirectory, so a test touches nothing outside its scratch tree.
+fn session_in(dir: &Path) -> Session<impl iced::Program<State = App, Message = Message> + 'static> {
+    let left = std::fs::canonicalize(dir).expect("a canonical scratch path");
+    let right = left.join("home");
+    Session::boot(super::program(move || {
+        App::starting_in(left.clone(), right.clone())
+    }))
 }
 
 /// Writes bytes, for a file large enough that copying it takes a moment.
@@ -399,7 +354,7 @@ fn scratch(label: &str) -> tempfile::TempDir {
         .tempdir()
         .expect("a scratch directory");
     // `links` and `files` give a case something to name; `home` is what the
-    // right panel starts in once `Home::set` points `$HOME` at it.
+    // right panel starts in.
     for name in ["links", "files", "home"] {
         std::fs::create_dir_all(dir.path().join(name)).expect("a panel directory");
     }
@@ -462,15 +417,15 @@ mod tests {
     use iced::keyboard::key::Named;
 
     /// The panels have to be pointing at the scratch tree before a key means
-    /// anything. `App::new` reads the working directory, so the scratch tree is
-    /// what the left panel lands on — and the right panel on `$HOME`.
+    /// anything. `App::starting_in` is given the scratch tree for the left panel and its
+    /// `home` subdirectory for the right one.
     #[test]
     fn the_panels_load_the_working_directory() {
         let dir = scratch("panels");
         write(&dir.path().join("alpha.txt"), "a");
         write(&dir.path().join("beta.txt"), "b");
 
-        let session = Session::boot(super::super::program(), dir.path());
+        let session = session_in(dir.path());
 
         assert_eq!(
             session.app.panel(PanelSide::Left).path,
@@ -496,7 +451,7 @@ mod tests {
         write(&dir.path().join("alpha.txt"), "a");
         write(&dir.path().join("beta.txt"), "b");
 
-        let mut session = Session::boot(super::super::program(), dir.path());
+        let mut session = session_in(dir.path());
         assert_eq!(
             selected(&session.app, PanelSide::Left),
             Some("..".to_string()),
@@ -539,9 +494,8 @@ mod tests {
         let home = dir.path().join("home");
         write(&dir.path().join("alpha.txt"), "a");
         write(&dir.path().join("beta.txt"), "b");
-        let _home = Home::set(&home);
 
-        let mut session = Session::boot(super::super::program(), dir.path());
+        let mut session = session_in(dir.path());
         cursor_to(&mut session, "alpha.txt");
         session.press(Key::Named(Named::Insert));
         session.press(Key::Named(Named::F5));
@@ -572,9 +526,8 @@ mod tests {
         let dir = scratch("move");
         let home = dir.path().join("home");
         write(&dir.path().join("alpha.txt"), "a");
-        let _home = Home::set(&home);
 
-        let mut session = Session::boot(super::super::program(), dir.path());
+        let mut session = session_in(dir.path());
         cursor_to(&mut session, "alpha.txt");
         session.press(Key::Named(Named::F6));
 
@@ -597,9 +550,8 @@ mod tests {
         let home = dir.path().join("home");
         write(&dir.path().join("alpha.txt"), "new");
         write(&home.join("alpha.txt"), "old");
-        let _home = Home::set(&home);
 
-        let mut session = Session::boot(super::super::program(), dir.path());
+        let mut session = session_in(dir.path());
         cursor_to(&mut session, "alpha.txt");
         session.press(Key::Named(Named::F5));
 
@@ -622,9 +574,8 @@ mod tests {
         let home = dir.path().join("home");
         write(&dir.path().join("alpha.txt"), "new");
         write(&home.join("alpha.txt"), "old");
-        let _home = Home::set(&home);
 
-        let mut session = Session::boot(super::super::program(), dir.path());
+        let mut session = session_in(dir.path());
         cursor_to(&mut session, "alpha.txt");
         session.press(Key::Named(Named::F5));
         // The answer goes in as a message: `Instruction` cannot carry a
@@ -645,9 +596,8 @@ mod tests {
         let home = dir.path().join("home");
         write(&dir.path().join("alpha.txt"), "new");
         write(&home.join("alpha.txt"), "old");
-        let _home = Home::set(&home);
 
-        let mut session = Session::boot(super::super::program(), dir.path());
+        let mut session = session_in(dir.path());
         cursor_to(&mut session, "alpha.txt");
         session.press(Key::Named(Named::F5));
         session.press(Key::Named(Named::Escape));
@@ -668,14 +618,12 @@ mod tests {
     #[test]
     fn ctrl_c_stops_a_running_copy() {
         let dir = scratch("abort");
-        let home = dir.path().join("home");
-        let _home = Home::set(&home);
         // A big file, so the copy is still going when the key arrives.
         let big = vec![b'x'; 64 * 1024 * 1024];
         write_bytes(&dir.path().join("big.bin"), &big);
         write(&dir.path().join("alpha.txt"), "a");
 
-        let mut session = Session::boot(super::super::program(), dir.path());
+        let mut session = session_in(dir.path());
         cursor_to(&mut session, "big.bin");
         session.press(Key::Named(Named::F5));
         session.press_with(Key::Character("c".into()), Modifiers::CTRL);
@@ -692,10 +640,8 @@ mod tests {
     #[test]
     fn f7_creates_a_directory_and_selects_it() {
         let dir = scratch("mkdir");
-        let home = dir.path().join("home");
-        let _home = Home::set(&home);
 
-        let mut session = Session::boot(super::super::program(), dir.path());
+        let mut session = session_in(dir.path());
         session.press(Key::Named(Named::F7));
         session.type_text("neuer ordner");
         session.press(Key::Named(Named::Enter));
@@ -717,10 +663,8 @@ mod tests {
     #[test]
     fn escape_closes_the_prompt_without_creating_anything() {
         let dir = scratch("cancel-mkdir");
-        let home = dir.path().join("home");
-        let _home = Home::set(&home);
 
-        let mut session = Session::boot(super::super::program(), dir.path());
+        let mut session = session_in(dir.path());
         session.press(Key::Named(Named::F7));
         session.type_text("weg damit");
         session.press(Key::Named(Named::Escape));
@@ -743,7 +687,7 @@ mod tests {
         write(&dir.path().join("alpha.txt"), "a");
         write(&dir.path().join("beta.txt"), "b");
 
-        let mut session = Session::boot(super::super::program(), dir.path());
+        let mut session = session_in(dir.path());
         session.press(Key::Named(Named::ArrowDown));
         session.press(Key::Named(Named::Insert));
 

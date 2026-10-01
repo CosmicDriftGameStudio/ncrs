@@ -321,9 +321,13 @@ impl App {
     /// Left panel starts in the working directory, right in `$HOME`, so the
     /// two panels are not the same directory on launch.
     pub fn new() -> (Self, Task<Message>) {
-        let start = fs::start_dir();
-        let home = fs::home_dir();
+        Self::starting_in(fs::start_dir(), fs::home_dir())
+    }
 
+    /// Like `new`, with both panels' start directories given. Tests use this
+    /// to stay inside their own scratch directory instead of the process-wide
+    /// working directory and `$HOME`.
+    pub fn starting_in(start: PathBuf, home: PathBuf) -> (Self, Task<Message>) {
         let mut app = Self {
             left_panel: PanelState::new(start.clone()),
             right_panel: PanelState::new(home.clone()),

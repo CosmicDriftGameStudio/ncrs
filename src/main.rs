@@ -32,9 +32,13 @@ use std::env;
 ///
 /// Returned as `Application`, not as `impl Program`: `Application::run` is an
 /// inherent method, and an opaque return type would hide it from `main`.
+///
+/// `boot` builds the initial state, so tests can start the app in a scratch
+/// directory while `main` passes `App::new`.
 fn program(
+    boot: impl Fn() -> (App, iced::Task<crate::messages::Message>) + 'static,
 ) -> iced::Application<impl iced::Program<State = App, Message = crate::messages::Message>> {
-    iced::application(App::new, App::update, App::view)
+    iced::application(boot, App::update, App::view)
         .subscription(App::subscription)
         .theme(App::theme)
         .title(App::title)
@@ -89,5 +93,5 @@ fn main() -> iced::Result {
 
     backend::log_backend();
 
-    program().run()
+    program(App::new).run()
 }
