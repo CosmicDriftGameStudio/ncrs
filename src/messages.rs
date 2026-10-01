@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use iced::Size;
 
-use crate::app::Transfer;
+use crate::app::{RowFailure, Transfer};
 use crate::dialog::PromptKind;
 use crate::fs::CreateDirError;
 use crate::fs::{FileEntry, ReadError};
@@ -71,7 +71,11 @@ pub enum Message {
     /// row can start without the app keeping it in a field that a later
     /// message could overwrite.
     TransferRowDone {
-        result: Result<Transfer, String>,
+        /// `Err` carries a typed [`RowFailure`], not a bare string: the app has
+        /// to tell "the name is taken" from any other error, and a message that
+        /// cannot be told apart is the reason the overwrite dialog was
+        /// unreachable.
+        result: Result<Transfer, RowFailure>,
         /// Which row this was, so a conflict on the next one points at it.
         index: usize,
     },

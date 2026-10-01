@@ -408,7 +408,12 @@ mod tagging {
 }
 
 // reason: a failing assertion is the signal in a test, so unwrap belongs here
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod conflict_overlay {
     use super::*;
@@ -458,9 +463,7 @@ mod conflict_overlay {
     #[test]
     fn the_dialog_names_the_file() {
         let app = app_with_conflict();
-        let dialog = simulator(&app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap();
+        let dialog = simulator(&app).snapshot(&iced::Theme::Dark).unwrap();
         dialog
             .matches_image("tests/snapshots/conflict.png")
             .expect("reference for a conflict about a.txt");
@@ -482,4 +485,3 @@ mod conflict_overlay {
         );
     }
 }
-

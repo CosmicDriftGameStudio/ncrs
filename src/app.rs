@@ -2,7 +2,7 @@
 //! `view` (pure composition of UI components).
 use std::path::PathBuf;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use iced::futures;
 use iced::keyboard::{self, key::Named, Key, Modifiers};
@@ -66,12 +66,54 @@ fn receiver_stream(
     })
 }
 
-/// Whether a failed transfer was a name that is already taken.
+/// The routing state, shared with the keyboard subscription.
 ///
-/// The filesystem layer reports the kind as a prefix before the path, so this
-/// looks for the kind rather than for a wording that may change.
-fn is_conflict(reason: &str) -> bool {
-    reason.starts_with("AlreadyExists")
+/// A newtype rather than a bare `Arc<Mutex<..>>`, because a subscription's
+/// identity is its hash, and `Arc` hashes through to what it points at. The
+/// value inside here *changes* on every message, so hashing the `Arc` directly
+/// would change the subscription's identity on every message — the exact bug
+/// this type exists to avoid.
+///
+/// Hashing nothing makes the identity fixed for the life of the app: one cell,
+/// one subscription, and it reads whatever the current value is when a key
+/// arrives.
+struct KeyStateCell(Mutex<PromptKeyState>);
+
+impl std::hash::Hash for KeyStateCell {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // Deliberately content-free. See the type's own comment.
+        "ncrs-key-state".hash(state);
+    }
+}
+
+/// Why one row of a transfer failed.
+///
+/// The failure kind is carried across the task boundary rather than formatted
+/// into the message. It used to be a plain `String`, and the app told "the name
+/// is taken" from a real error by looking for `AlreadyExists` at the start of
+/// that string — which never matches, because `io::Error`'s `Display` is the
+/// *message*, not the kind's name. Every conflict therefore fell through as a
+/// hard error and the overwrite dialog was unreachable.
+///
+/// A typed failure is the fix that cannot rot: a wording change in the
+/// filesystem layer or on the operating system leaves this matching.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RowFailure {
+    /// The target already exists, and the user can say what to do about it.
+    Conflict(String),
+    /// Anything else, shown as it came.
+    Other(String),
+}
+
+impl RowFailure {
+    pub fn from_io(err: std::io::Error) -> Self {
+        use std::io::ErrorKind;
+        if err.kind() == ErrorKind::AlreadyExists {
+            RowFailure::Conflict(err.to_string())
+        } else {
+            RowFailure::Other(err.to_string())
+        }
+    }
 }
 
 /// Runs one job and reports what happens as messages.
@@ -172,6 +214,13 @@ pub struct App {
     progress_rx: Option<Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<fs::transfer::Tick>>>>,
     /// The sending half, kept so a new transfer can reuse the same channel.
     progress_tx: Option<tokio::sync::mpsc::UnboundedSender<fs::transfer::Tick>>,
+    /// The routing state the keyboard subscription reads on every key.
+    ///
+    /// `None` only before the first `subscription()` call. The subscription
+    /// cannot close over `&self`, so this is how the two are connected: the
+    /// subscription puts its cell here, and `update` keeps the value in it
+    /// current after every message.
+    key_state: OnceLock<Arc<KeyStateCell>>,
 }
 
 /// The part of the prompt the key routing needs, cheap to clone.
@@ -296,6 +345,7 @@ impl App {
             job_progress: None,
             progress_rx: None,
             progress_tx: None,
+            key_state: OnceLock::new(),
         };
 
         let tasks = Task::batch([
@@ -314,26 +364,62 @@ impl App {
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        // A subscription outlives the call that created it, so it cannot close
-        // over `&self`. What it needs from the app is the open prompt and
-        // nothing else, and that is two `Copy` values.
-        let initial_key_state = self.prompt_key_state();
+        // `listen` yields the event stream, so the mapping can decide
+        // without routing every key through a message first.
+        //
+        // The routing state is read through a shared cell, deliberately *not*
+        // carried in the stream by `with`. `with` folds its value into the
+        // subscription's hash, and iced's tracker drops any subscription whose
+        // hash changes: every keystroke that opened a prompt, started a job or
+        // raised a conflict killed the keyboard subscription and spawned a
+        // fresh one, so the keys pressed around that moment went to a stream
+        // nobody was listening to. That is why the app looked alive and then
+        // ignored the keyboard, and why no test caught it — the routing itself
+        // was correct.
+        //
+        // A cell instead: the hash stays constant, so this subscription lives
+        // as long as the window does, and it reads the current state on every
+        // key rather than a copy from when it was built.
+        let key_state = Arc::clone(
+            self.key_state
+                .get_or_init(|| Arc::new(KeyStateCell(Mutex::new(self.prompt_key_state())))),
+        );
 
         Subscription::batch([
-            // `listen` yields the event stream, so the mapping can decide
-            // without routing every key through a message first.
+            // `with` is unavoidable: iced requires the `filter_map` closure to
+            // capture nothing, so the cell has to travel as the subscription's
+            // value. What matters is *which* value. The old code carried the
+            // `PromptKeyState` itself, so the hash tracked the state and
+            // changed on every message; iced's tracker drops a subscription
+            // whose hash changes, which killed the keyboard stream at exactly
+            // the moments the app got busy — the keys pressed right after
+            // opening a prompt or starting a copy went nowhere. That is why
+            // the app looked alive and then ignored the keyboard.
             //
-            // `with` moves the state into the stream, so the mapping below reads
-            // the copy that comes back with each event rather than closing over
-            // the original.
-            keyboard::listen().with(initial_key_state).filter_map(
-                |(key_state, event)| match event {
-                    keyboard::Event::KeyPressed { key, modifiers, .. } => {
-                        route_key(&key_state, key, modifiers)
+            // Carrying the cell instead gives a hash that is fixed for the
+            // life of the app: the same `Arc`, hashed by its contents, which
+            // never change. The stream survives every state change and reads
+            // the current state on each key.
+            keyboard::listen()
+                .with(key_state)
+                .filter_map(|(cell, event)| {
+                    match event {
+                        keyboard::Event::KeyPressed { key, modifiers, .. } => route_key(
+                            // A panic in a key handler would leave the lock
+                            // poisoned. The state is a few Copy values and cannot
+                            // be half-written, so reading the inner value is safe —
+                            // and it keeps one panic from silencing every key
+                            // afterwards.
+                            &cell
+                                .0
+                                .lock()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner()),
+                            key,
+                            modifiers,
+                        ),
+                        _ => None,
                     }
-                    _ => None,
-                },
-            ),
+                }),
             window::resize_events().map(|(_id, size)| Message::WindowResized(size)),
             // The transfer's ticks. Taken out of the app because a subscription
             // outlives `&self`; the receiver is taken so the subscription
@@ -373,7 +459,7 @@ impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let rows = self.visible_rows;
 
-        match message {
+        let task = match message {
             // A raw key press. Routed here rather than in the subscription,
             // because that one cannot see whether a prompt is open.
             // --- copy / move ---
@@ -421,15 +507,16 @@ impl App {
                     // Matched on the error kind, not on the message text: a
                     // wording change in the filesystem layer would otherwise
                     // silently turn every conflict into a hard failure.
-                    Err(reason) => {
-                        if is_conflict(&reason) {
-                            self.pending_conflict = Some(PendingConflict { transfer, index });
-                            Task::none()
-                        } else {
-                            self.transfer = None;
-                            self.set_status_error(&reason);
-                            Task::none()
-                        }
+                    // The dialog names the file itself, so the reason travels
+                    // no further; it stays in the payload for the status line.
+                    Err(RowFailure::Conflict(_reason)) => {
+                        self.pending_conflict = Some(PendingConflict { transfer, index });
+                        Task::none()
+                    }
+                    Err(RowFailure::Other(reason)) => {
+                        self.transfer = None;
+                        self.set_status_error(&reason);
+                        Task::none()
                     }
                 }
             }
@@ -663,6 +750,36 @@ impl App {
                 Task::none()
             }
             Message::Quit => iced::exit(),
+        };
+
+        // The keyboard subscription cannot see `&self`, so it reads the routing
+        // state from a cell this method keeps current.
+        //
+        // This runs *after* the match, and that ordering is the point. Published
+        // before it, the cell would always describe the state from before the
+        // message that has just been handled — one step behind — so the keys
+        // that follow a conflict would still be routed as panel keys and the
+        // dialog could not be answered at all.
+        self.publish_key_state();
+        task
+    }
+
+    /// Writes the current routing state into the cell the keyboard reads.
+    ///
+    /// A no-op before the first `subscription()` call, which is the only time
+    /// there is no cell — the subscription creates it.
+    fn publish_key_state(&mut self) {
+        let state = self.prompt_key_state();
+        // `get` rather than `get_or_init`: the cell is created by the
+        // subscription, and `update` must not create it — a cell nothing reads
+        // would just be a value nobody sees. Before the first `subscription()`
+        // call there is nothing to publish to, and that is fine: no keys have
+        // been pressed yet.
+        if let Some(cell) = self.key_state.get() {
+            *cell
+                .0
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = state;
         }
     }
 
@@ -943,8 +1060,13 @@ impl App {
                     // itself failed. The dialog cannot tell them apart anyway.
                     let result = match outcome {
                         Ok(Ok(_)) => Ok(transfer.clone()),
-                        Ok(Err(e)) => Err(e.to_string()),
-                        Err(join) => Err(join.to_string()),
+                        // The kind travels with the message rather than being
+                        // formatted into it: the dialog has to recognise a
+                        // conflict, and it cannot do that from wording.
+                        Ok(Err(e)) => Err(RowFailure::from_io(e)),
+                        // A dead blocking task is not a conflict. Its reason is
+                        // a string already, so it is shown as one.
+                        Err(join) => Err(RowFailure::Other(join.to_string())),
                     };
                     Message::TransferRowDone { result, index }
                 },
@@ -1628,6 +1750,7 @@ impl App {
             job_progress: None,
             progress_rx: None,
             progress_tx: None,
+            key_state: OnceLock::new(),
         };
         for (side, names) in [
             (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
@@ -1693,6 +1816,20 @@ impl App {
         self.visible_rows = rows;
     }
 
+    /// Whether the job queue is empty.
+    ///
+    /// Read by the end-to-end tests, which cannot reach the private field.
+    pub fn job_is_idle(&self) -> bool {
+        !self.jobs.is_busy()
+    }
+
+    /// Whether a transfer is waiting on the overwrite dialog.
+    ///
+    /// Read by the end-to-end tests, which cannot reach the private field.
+    pub fn conflict_is_pending(&self) -> bool {
+        self.pending_conflict.is_some()
+    }
+
     /// Tags the row at `index`, addressed by position the way a keypress is.
     pub fn toggle_tag_for_test(&mut self, index: usize) {
         let Some(name) = self.left_panel.entries.get(index).map(|e| e.name.clone()) else {
@@ -1735,10 +1872,6 @@ impl App {
         });
     }
 }
-
-
-
-
 
 // reason: a failing assertion is the signal in a test, so unwrap belongs here
 #[allow(
@@ -2233,16 +2366,18 @@ mod conflict_tests {
 
     /// A name that is taken opens the dialog rather than failing the row. The
     /// dialog is the feature: the user gets asked instead of the copy stopping.
-    /// Delivers the message the copy sends when it runs into a taken name.
     ///
-    /// The real one comes out of a Task, and a Task needs a runtime driving it.
-    /// So the message is spelled out here — the app reads the transfer from its
-    /// own state, exactly as it does in the running app, and only the failure
-    /// string is invented. The alternative is asserting the dialog is absent,
-    /// which would pass even with the whole chain broken.
+    /// The failure is built the way the operating system builds it and wrapped
+    /// the way the app wraps it, so this exercises the classification and not a
+    /// string that happens to look right. `e2e_tests.rs` covers the same ground
+    /// with a real copy against a real file; this one is here because it also
+    /// covers the "for all" rule, which needs several conflicts in a row.
     fn deliver_conflict(app: &mut App) {
         let _task = app.update(Message::TransferRowDone {
-            result: Err("AlreadyExists (os error 17)".to_string()),
+            result: Err(RowFailure::from_io(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                "alpha.txt already exists",
+            ))),
             index: 0,
         });
     }
@@ -2301,9 +2436,20 @@ mod conflict_tests {
     /// conflict into a silent failure.
     #[test]
     fn a_conflict_is_recognised_by_its_kind() {
-        assert!(is_conflict("AlreadyExists (os error 17)"));
-        assert!(!is_conflict("Permission denied (os error 13)"));
-        assert!(!is_conflict("No such file or directory (os error 2)"));
+        // Built the way the operating system builds them, and matched the way
+        // the app matches them: on the kind, not on the wording. The old test
+        // fed these strings to a `starts_with` that could never be true, which
+        // is why it passed while the dialog never appeared.
+        let conflict = std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "/tmp/dst/alpha.txt already exists",
+        );
+        assert_eq!(
+            RowFailure::from_io(conflict),
+            RowFailure::Conflict("/tmp/dst/alpha.txt already exists".to_string())
+        );
+        let denied = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "Permission denied");
+        assert!(matches!(RowFailure::from_io(denied), RowFailure::Other(_)));
     }
 }
 
@@ -2387,7 +2533,12 @@ mod progress_bar {
 }
 
 // reason: a failing assertion is the signal in a test, so unwrap belongs here
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 #[cfg(test)]
 mod conflict_keys {
     use super::*;
