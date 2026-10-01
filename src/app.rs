@@ -205,6 +205,10 @@ pub struct App {
     /// The conflict rule from a previous "for all" answer, applied to the rest
     /// without asking again.
     conflict_rule: Option<fs::transfer::OnConflict>,
+    /// Which transfer is current. A row's result carries the number it started
+    /// under, and one from an earlier transfer — stopped, then replaced — is
+    /// ignored instead of steering the new one.
+    generation: u64,
     /// How far the running transfer has got, filled from the job's channel.
     job_progress: Option<fs::transfer::Tick>,
     /// Receives the transfer's ticks, for the life of the app rather than of
@@ -346,6 +350,7 @@ impl App {
             job_done: 0,
             conflict_all: false,
             conflict_rule: None,
+            generation: 0,
             job_progress: None,
             progress_rx: None,
             progress_tx: None,
@@ -484,17 +489,30 @@ impl App {
             // that cannot be stopped is the case a queue was supposed to fix.
             Message::AbortJob => {
                 if self.jobs.abort_running() {
-                    self.transfer = None;
                     self.job_done = 0;
                     self.job_progress = None;
+                    // Both halves go together: a sender kept without its
+                    // receiver makes every later transfer fail on a closed
+                    // channel. Dropping the receiver is also what stops the
+                    // blocking copy, whose next tick cannot be sent.
                     self.progress_rx = None;
+                    self.progress_tx = None;
+                    self.end_transfer()
+                } else {
+                    Task::none()
                 }
-                Task::none()
             }
 
             // One row of a transfer finished. Continue with the next, or ask
             // about a name that is in the way.
-            Message::TransferRowDone { result, index } => {
+            Message::TransferRowDone {
+                result,
+                index,
+                generation,
+            } => {
+                if generation != self.generation {
+                    return Task::none();
+                }
                 self.jobs.finish();
                 self.job_done += 1;
                 let Some(transfer) = self.transfer.clone() else {
@@ -517,10 +535,11 @@ impl App {
                         self.pending_conflict = Some(PendingConflict { transfer, index });
                         Task::none()
                     }
+                    // Rows before this one are already done, so the panels are
+                    // reloaded to show them.
                     Err(RowFailure::Other(reason)) => {
-                        self.transfer = None;
                         self.set_status_error(&reason);
-                        Task::none()
+                        self.end_transfer()
                     }
                 }
             }
@@ -968,6 +987,8 @@ impl App {
             target,
         };
         self.transfer = Some(transfer.clone());
+        self.conflict_rule = None;
+        self.generation = self.generation.wrapping_add(1);
         self.run_from(transfer, 0, fs::transfer::OnConflict::Fail)
     }
 
@@ -977,11 +998,15 @@ impl App {
         let Some(pending) = self.pending_conflict.take() else {
             return Task::none();
         };
+        // The tick belonged to the question just answered, so it goes with it.
+        self.conflict_all = false;
+        // Cancel ends the transfer; the rows already done stay done.
+        if choice == ConflictChoice::Cancel {
+            return self.end_transfer();
+        }
         if choice.applies_to_all() {
             self.conflict_rule = Some(choice.conflict());
         }
-        // The tick belonged to the question just answered, so it goes with it.
-        self.conflict_all = false;
         // The task is returned, not dropped: dropping it would leave the
         // transfer standing still after the user answered, which is the one
         // thing the dialog must not do.
@@ -999,6 +1024,23 @@ impl App {
         self.run_from(transfer, index, choice.conflict())
     }
 
+    /// Ends the transfer, finished or not: forgets it and its "for all" rule, and
+    /// reloads both panels, since a move changes the source directory as well as
+    /// the target and rows before a failure or a cancel are already done.
+    fn end_transfer(&mut self) -> Task<Message> {
+        self.transfer = None;
+        self.conflict_rule = None;
+        self.generation = self.generation.wrapping_add(1);
+        let source_side = self.active_panel;
+        let target_side = source_side.other();
+        let source_path = self.panel(source_side).path.clone();
+        let target_path = self.panel(target_side).path.clone();
+        Task::batch([
+            self.load(source_side, source_path, None),
+            self.load(target_side, target_path, None),
+        ])
+    }
+
     /// Runs the rows from `index`, on the blocking pool, reporting progress.
     ///
     /// One row at a time rather than the whole list, so a conflict can be
@@ -1010,17 +1052,7 @@ impl App {
         conflict: fs::transfer::OnConflict,
     ) -> Task<Message> {
         let Some(source) = transfer.sources.get(index).cloned() else {
-            // Nothing left: clear the transfer and reload both panels, since a
-            // move changes the source directory as well as the target.
-            self.transfer = None;
-            let source_side = self.active_panel;
-            let target_side = source_side.other();
-            let source_path = self.panel(source_side).path.clone();
-            let target_path = self.panel(target_side).path.clone();
-            return Task::batch([
-                self.load(source_side, source_path, None),
-                self.load(target_side, target_path, None),
-            ]);
+            return self.end_transfer();
         };
 
         // One channel per transfer, but the receiving half is created once for
@@ -1036,6 +1068,7 @@ impl App {
             }
         };
 
+        let generation = self.generation;
         let target = transfer.target.clone();
         let job = jobs::Job {
             kind: transfer.kind.job_kind(),
@@ -1072,7 +1105,11 @@ impl App {
                         // a string already, so it is shown as one.
                         Err(join) => Err(RowFailure::Other(join.to_string())),
                     };
-                    Message::TransferRowDone { result, index }
+                    Message::TransferRowDone {
+                        result,
+                        index,
+                        generation,
+                    }
                 },
             )
         }) {
@@ -1751,6 +1788,7 @@ impl App {
             job_done: 0,
             conflict_all: false,
             conflict_rule: None,
+            generation: 0,
             job_progress: None,
             progress_rx: None,
             progress_tx: None,
@@ -1798,7 +1836,7 @@ impl App {
     /// No parent argument: `update` takes the active panel's path, as it does
     /// in the app.
     pub fn with_prompt_open() -> Self {
-        let mut app = Self::new().0;
+        let mut app = Self::with_fixed_panels();
         let _task = app.update(crate::messages::Message::CreateDirPrompt);
         app
     }
@@ -2292,6 +2330,21 @@ mod abort_tests {
         assert!(app.transfer.is_none(), "the transfer was left half-done");
     }
 
+    /// After a stop, the next copy gets a channel somebody is listening on. A
+    /// sender kept from before the stop has no receiver, and every tick of the
+    /// next copy would fail on it.
+    #[tokio::test]
+    async fn a_copy_after_a_stop_gets_a_live_progress_channel() {
+        let mut app = app_with_files();
+        let _first = app.update(Message::Transfer(TransferKind::Copy));
+        let _stopped = app.update(Message::AbortJob);
+
+        let _second = app.update(Message::Transfer(TransferKind::Copy));
+
+        let sender = app.progress_tx.as_ref().expect("a channel for the copy");
+        assert!(!sender.is_closed(), "nobody listens to the new copy");
+    }
+
     /// Stopping when nothing runs is harmless, not a panic.
     #[test]
     fn aborting_an_idle_app_does_nothing() {
@@ -2383,6 +2436,7 @@ mod conflict_tests {
                 "alpha.txt already exists",
             ))),
             index: 0,
+            generation: app.generation,
         });
     }
 
@@ -2433,6 +2487,92 @@ mod conflict_tests {
             app.conflict_rule, None,
             "one file's answer was applied to the rest"
         );
+    }
+
+    /// Cancel ends the transfer: no dialog, nothing left to resume, and the
+    /// "for all" rule of that transfer does not leak into the next one.
+    #[tokio::test]
+    async fn cancel_ends_the_transfer() {
+        let (mut app, _scratch) = with_conflict();
+        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        deliver_conflict(&mut app);
+        app.conflict_rule = Some(fs::transfer::OnConflict::Skip);
+
+        let _task = app.answer_conflict(ConflictChoice::Cancel);
+
+        assert!(app.pending_conflict.is_none(), "the dialog is still up");
+        assert!(app.transfer.is_none(), "the transfer is still running");
+        assert_eq!(app.conflict_rule, None, "the rule outlived the transfer");
+    }
+
+    /// "Keep all" is a standing rule to skip, not to ask again or to fail.
+    #[tokio::test]
+    async fn keep_all_skips_instead_of_asking_again() {
+        let (mut app, _scratch) = with_conflict();
+        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        deliver_conflict(&mut app);
+
+        let _task = app.answer_conflict(ConflictChoice::AllKeep);
+
+        assert!(app.pending_conflict.is_none());
+        assert_eq!(app.conflict_rule, Some(fs::transfer::OnConflict::Skip));
+    }
+
+    /// A rule from an earlier transfer must not answer the next transfer's
+    /// conflicts without asking.
+    #[tokio::test]
+    async fn a_new_transfer_forgets_the_old_rule() {
+        let (mut app, _scratch) = with_conflict();
+        app.conflict_rule = Some(fs::transfer::OnConflict::Overwrite);
+
+        let _started = app.update(Message::Transfer(TransferKind::Copy));
+
+        assert_eq!(app.conflict_rule, None);
+    }
+
+    /// A late result from a stopped transfer must not steer the next one: here
+    /// it would otherwise end the new transfer with an error.
+    #[tokio::test]
+    async fn a_late_result_of_a_stopped_transfer_is_ignored() {
+        let (mut app, _scratch) = with_conflict();
+        let _first = app.update(Message::Transfer(TransferKind::Copy));
+        let stale = app.generation;
+        let _stopped = app.update(Message::AbortJob);
+        let _second = app.update(Message::Transfer(TransferKind::Copy));
+        assert!(app.jobs.is_busy());
+
+        let _task = app.update(Message::TransferRowDone {
+            result: Err(RowFailure::Other("the app is gone".to_string())),
+            index: 0,
+            generation: stale,
+        });
+
+        assert!(
+            app.transfer.is_some(),
+            "the old result ended the new transfer"
+        );
+        assert!(
+            app.jobs.is_busy(),
+            "the old result freed the new job's slot"
+        );
+    }
+
+    /// And the rule goes when the last row is done.
+    #[tokio::test]
+    async fn a_finished_transfer_forgets_its_rule() {
+        let (mut app, _scratch) = with_conflict();
+        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        app.conflict_rule = Some(fs::transfer::OnConflict::Overwrite);
+        let transfer = app.transfer.clone().expect("a running transfer");
+
+        let _task = app.update(Message::TransferRowDone {
+            result: Ok(transfer),
+            index: 0,
+            generation: app.generation,
+        });
+
+        assert!(app.transfer.is_none());
+        assert_eq!(app.conflict_rule, None);
     }
 
     /// The conflict is recognised from the error kind, not from the wording.

@@ -15,11 +15,6 @@
 //! Nothing here is async. The caller runs it on a blocking thread; the queue in
 //! `jobs.rs` decides when, and the progress callback is what keeps the window
 //! alive.
-//!
-//! **Not wired up yet.** No key calls this — that is F5/F6, the next task. The
-//! parts with no caller are marked with what needs them rather than silenced
-//! wholesale, so an `#[allow]` on the module does not also hide a field that
-//! does get used later.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -36,6 +31,12 @@ pub trait Source {
 
     /// Deletes the source. Only called when `removes_source` is true.
     fn remove(&self, path: &Path) -> io::Result<()>;
+
+    /// Moves `from` to `to` without copying, if the effect can. `Ok(false)`
+    /// means "not possible here, copy and remove instead".
+    fn relocate(&self, _from: &Path, _to: &Path) -> io::Result<bool> {
+        Ok(false)
+    }
 }
 
 /// Leave the source where it is.
@@ -69,6 +70,16 @@ impl Source for Move {
             std::fs::remove_dir_all(path)
         } else {
             std::fs::remove_file(path)
+        }
+    }
+
+    /// A rename is instant, atomic and cannot lose anything, so it comes first.
+    /// Only a rename across devices falls back to copy and remove.
+    fn relocate(&self, from: &Path, to: &Path) -> io::Result<bool> {
+        match std::fs::rename(from, to) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == io::ErrorKind::CrossesDevices => Ok(false),
+            Err(e) => Err(e),
         }
     }
 }
@@ -144,6 +155,8 @@ pub enum OnConflict {
     Fail,
     /// Replace what is there.
     Overwrite,
+    /// Leave what is there alone and do nothing for this item.
+    Skip,
 }
 
 /// Copies or moves `source` into `target_dir`.
@@ -162,7 +175,16 @@ pub fn transfer<S: Source, P: Progress>(
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "source has no name"))?;
     let target = target_dir.join(name);
 
-    if target.exists() {
+    refuse_onto_itself(source, target_dir, &target)?;
+
+    // `symlink_metadata`, not `exists`: a dangling symlink in the way is still
+    // something in the way, and `exists` follows it and says no.
+    let existed = match std::fs::symlink_metadata(&target) {
+        Ok(_) => true,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => false,
+        Err(e) => return Err(e),
+    };
+    if existed {
         match conflict {
             OnConflict::Fail => {
                 return Err(io::Error::new(
@@ -170,26 +192,119 @@ pub fn transfer<S: Source, P: Progress>(
                     format!("{} already exists", target.display()),
                 ))
             }
-            OnConflict::Overwrite => {
-                let meta = std::fs::symlink_metadata(&target)?;
-                if meta.is_dir() {
-                    std::fs::remove_dir_all(&target)?;
-                } else {
-                    std::fs::remove_file(&target)?;
-                }
-            }
+            OnConflict::Skip => return Ok(0),
+            OnConflict::Overwrite => {}
         }
+    }
+
+    // An overwrite is built next to the target and swapped in at the end, so a
+    // failure halfway leaves the old target untouched.
+    let staged = if existed {
+        unique_sibling(&target)
+    } else {
+        target.clone()
+    };
+
+    if effect.relocate(source, &staged)? {
+        // A rename is one step, however large the tree.
+        progress.advanced(1, 1)?;
+        if existed {
+            replace(&staged, &target)?;
+        }
+        return Ok(1);
     }
 
     let total = count_items(source);
     let mut done = 0;
-    walk(source, &target, progress, &mut done, total)?;
+    if let Err(e) = walk(source, &staged, progress, &mut done, total) {
+        if existed {
+            let _best_effort = remove_path(&staged);
+        }
+        return Err(e);
+    }
+    if existed {
+        replace(&staged, &target)?;
+    }
 
     // Only now, with everything copied, does the source go.
     if effect.removes_source() {
         effect.remove(source)?;
     }
     Ok(done)
+}
+
+/// Rejects the two requests that would destroy or never finish: a path onto
+/// itself, and a directory into itself.
+fn refuse_onto_itself(source: &Path, target_dir: &Path, target: &Path) -> io::Result<()> {
+    // A target directory that does not exist yet can be neither the source's
+    // directory nor inside it.
+    let target_dir_real = match std::fs::canonicalize(target_dir) {
+        Ok(real) => real,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
+    };
+
+    // Compared by the source's parent, so a symlink source is judged by where
+    // the link sits rather than by what it points at.
+    let source_parent = source
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    if std::fs::canonicalize(source_parent)? == target_dir_real {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{} is already in that directory", source.display()),
+        ));
+    }
+
+    let source_is_dir = std::fs::symlink_metadata(source)?.is_dir();
+    if source_is_dir && target_dir_real.starts_with(std::fs::canonicalize(source)?) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("cannot copy {} into itself", target.display()),
+        ));
+    }
+    Ok(())
+}
+
+/// A name next to `target` that does not exist yet.
+fn unique_sibling(target: &Path) -> PathBuf {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    let name = target.file_name().unwrap_or_default().to_string_lossy();
+    loop {
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let candidate = target.with_file_name(format!(".{name}.ncrs-{}-{n}", std::process::id()));
+        if std::fs::symlink_metadata(&candidate).is_err() {
+            return candidate;
+        }
+    }
+}
+
+fn remove_path(path: &Path) -> io::Result<()> {
+    if std::fs::symlink_metadata(path)?.is_dir() {
+        std::fs::remove_dir_all(path)
+    } else {
+        std::fs::remove_file(path)
+    }
+}
+
+/// Puts `staged` where `target` is. Two files swap atomically with one rename;
+/// anything involving a directory moves the old target aside first, and puts it
+/// back if the new one cannot take its place.
+fn replace(staged: &Path, target: &Path) -> io::Result<()> {
+    let is_dir = |p: &Path| std::fs::symlink_metadata(p).map(|m| m.is_dir());
+    if !is_dir(staged)? && !is_dir(target)? {
+        return std::fs::rename(staged, target);
+    }
+    let aside = unique_sibling(target);
+    std::fs::rename(target, &aside)?;
+    if let Err(e) = std::fs::rename(staged, target) {
+        let _best_effort = std::fs::rename(&aside, target);
+        return Err(e);
+    }
+    remove_path(&aside)
 }
 
 /// How many items a directory holds, including the directories themselves.
@@ -240,7 +355,8 @@ fn walk<P: Progress>(
     progress.advanced(*done, total)?;
 
     if meta.is_dir() {
-        for entry in std::fs::read_dir(source)?.filter_map(Result::ok) {
+        for listed in std::fs::read_dir(source)? {
+            let entry = listed?;
             let name = entry.file_name();
             walk(&entry.path(), &target.join(name), progress, done, total)?;
         }
@@ -532,6 +648,195 @@ mod tests {
                 .is_symlink(),
             "the link was followed instead of copied"
         );
+    }
+
+    /// Keep: nothing is touched, and a move does not delete the source it did
+    /// not copy.
+    #[test]
+    fn skip_leaves_both_sides_alone() {
+        let dir = scratch("skip");
+        let src = dir.path().join("src");
+        let dst = dir.path().join("dst");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("a.txt"), b"new").unwrap();
+        fs::create_dir_all(dst.join("src")).unwrap();
+        fs::write(dst.join("src/old.txt"), b"old").unwrap();
+
+        let done = transfer(&src, &dst, &Move, &mut Counting, OnConflict::Skip).unwrap();
+
+        assert_eq!(done, 0);
+        assert!(
+            src.join("a.txt").exists(),
+            "a skipped move removed the source"
+        );
+        assert_eq!(fs::read(dst.join("src/old.txt")).unwrap(), b"old");
+        assert!(!dst.join("src/a.txt").exists(), "a skipped item was copied");
+    }
+
+    /// Both panels in one directory: overwriting would delete the source before
+    /// copying it.
+    #[test]
+    fn a_file_onto_itself_is_refused_and_survives() {
+        let dir = scratch("onto-itself");
+        fs::write(dir.path().join("a.txt"), b"precious").unwrap();
+
+        for conflict in [OnConflict::Overwrite, OnConflict::Fail] {
+            let err = transfer(
+                &dir.path().join("a.txt"),
+                dir.path(),
+                &Move,
+                &mut Counting,
+                conflict,
+            )
+            .unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+            assert_eq!(fs::read(dir.path().join("a.txt")).unwrap(), b"precious");
+        }
+    }
+
+    /// A directory into itself would recurse until the path got too long.
+    #[test]
+    fn a_directory_into_itself_or_below_is_refused() {
+        let dir = scratch("into-itself");
+        let src = dir.path().join("src");
+        tree(&src);
+
+        for target_dir in [src.clone(), src.join("sub/deeper")] {
+            let err =
+                transfer(&src, &target_dir, &Copy, &mut Counting, OnConflict::Fail).unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        }
+        assert!(
+            !src.join("src").exists(),
+            "something was copied before refusing"
+        );
+        assert!(!src.join("sub/deeper/src").exists());
+    }
+
+    /// The old target stays until the new one is complete. A copy that dies
+    /// halfway must not have taken the old one with it.
+    #[test]
+    fn a_failed_overwrite_keeps_the_old_target() {
+        let dir = scratch("failed-overwrite");
+        let src = dir.path().join("src");
+        let dst = dir.path().join("dst");
+        tree(&src);
+        fs::create_dir_all(dst.join("src")).unwrap();
+        fs::write(dst.join("src/old.txt"), b"old").unwrap();
+
+        let mut progress = Cancelled { after: 3, seen: 0 };
+        let err = transfer(&src, &dst, &Copy, &mut progress, OnConflict::Overwrite).unwrap_err();
+
+        assert_eq!(err.to_string(), "cancelled");
+        assert_eq!(fs::read(dst.join("src/old.txt")).unwrap(), b"old");
+        let leftovers: Vec<_> = fs::read_dir(&dst).unwrap().collect();
+        assert_eq!(leftovers.len(), 1, "a half-built copy was left behind");
+    }
+
+    /// A finished overwrite replaces the old tree entirely, for every pairing of
+    /// file and directory, and leaves no scratch name behind.
+    #[test]
+    fn an_overwrite_replaces_whatever_was_there() {
+        for (source_is_dir, target_is_dir) in
+            [(false, false), (true, true), (false, true), (true, false)]
+        {
+            let dir = scratch("replace");
+            let src = dir.path().join("src");
+            let dst = dir.path().join("dst");
+            fs::create_dir_all(&dst).unwrap();
+            if source_is_dir {
+                fs::create_dir_all(&src).unwrap();
+                fs::write(src.join("new.txt"), b"new").unwrap();
+            } else {
+                fs::write(&src, b"new").unwrap();
+            }
+            if target_is_dir {
+                fs::create_dir_all(dst.join("src")).unwrap();
+                fs::write(dst.join("src/old.txt"), b"old").unwrap();
+            } else {
+                fs::write(dst.join("src"), b"old").unwrap();
+            }
+
+            transfer(&src, &dst, &Copy, &mut Counting, OnConflict::Overwrite).unwrap();
+
+            if source_is_dir {
+                assert_eq!(fs::read(dst.join("src/new.txt")).unwrap(), b"new");
+                assert!(!dst.join("src/old.txt").exists(), "old contents survived");
+            } else {
+                assert_eq!(fs::read(dst.join("src")).unwrap(), b"new");
+            }
+            assert_eq!(
+                fs::read_dir(&dst).unwrap().count(),
+                1,
+                "a scratch name is left"
+            );
+        }
+    }
+
+    /// A dangling symlink is in the way: copying through it would create the
+    /// file it points at.
+    #[cfg(unix)]
+    #[test]
+    fn a_dangling_symlink_counts_as_taken() {
+        let dir = scratch("dangling");
+        let src = dir.path().join("src.txt");
+        let dst = dir.path().join("dst");
+        fs::write(&src, b"new").unwrap();
+        fs::create_dir_all(&dst).unwrap();
+        let missing = dir.path().join("missing");
+        std::os::unix::fs::symlink(&missing, dst.join("src.txt")).unwrap();
+
+        let err = transfer(&src, &dst, &Copy, &mut Counting, OnConflict::Fail).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+        assert!(
+            !missing.exists(),
+            "the copy wrote through the dangling link"
+        );
+    }
+
+    /// A move on one device is a rename: the file keeps its inode. A copy and
+    /// delete would give it a new one.
+    #[cfg(unix)]
+    #[test]
+    fn a_move_renames_when_it_can() {
+        use std::os::unix::fs::MetadataExt as _;
+        let dir = scratch("rename");
+        let src = dir.path().join("src");
+        let dst = dir.path().join("dst");
+        tree(&src);
+        fs::create_dir_all(&dst).unwrap();
+        let before = fs::metadata(src.join("a.txt")).unwrap().ino();
+
+        transfer(&src, &dst, &Move, &mut Counting, OnConflict::Fail).unwrap();
+
+        assert!(!src.exists());
+        assert_eq!(fs::metadata(dst.join("src/a.txt")).unwrap().ino(), before);
+    }
+
+    /// Moving across devices cannot rename; the effect says so and the walk
+    /// copies and removes instead.
+    #[test]
+    fn a_move_that_cannot_rename_copies_and_removes() {
+        struct AcrossDevices;
+        impl Source for AcrossDevices {
+            fn removes_source(&self) -> bool {
+                true
+            }
+            fn remove(&self, path: &Path) -> io::Result<()> {
+                Move.remove(path)
+            }
+        }
+        let dir = scratch("exdev");
+        let src = dir.path().join("src");
+        let dst = dir.path().join("dst");
+        tree(&src);
+        fs::create_dir_all(&dst).unwrap();
+
+        transfer(&src, &dst, &AcrossDevices, &mut Counting, OnConflict::Fail).unwrap();
+
+        assert!(!src.exists());
+        assert_eq!(fs::read(dst.join("src/sub/deeper/c.txt")).unwrap(), b"c");
     }
 
     #[test]

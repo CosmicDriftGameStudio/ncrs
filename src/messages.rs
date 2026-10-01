@@ -73,6 +73,8 @@ pub enum Message {
         result: Result<Transfer, RowFailure>,
         /// Which row this was, so a conflict on the next one points at it.
         index: usize,
+        /// The transfer it belongs to; a result from an earlier one is dropped.
+        generation: u64,
     },
 
     // --- Job queue (see crate::jobs) ---
@@ -145,15 +147,15 @@ impl TransferKind {
 /// The "All" options are the point: answering the same question per file turns
 /// five files into five dialogs and fifty thousand into an afternoon.
 ///
-/// The two `All` variants are not built yet — the dialog offers only the
-/// single-file answers, which is what it can do honestly today. They are marked
-/// one by one rather than silencing the type, so a variant that *is* reachable
-/// still shows up if it stops being used.
+/// The two `All` variants are handled by the app but not offered by the dialog
+/// yet, so nothing outside the tests builds them. They are marked one by one
+/// rather than silencing the type, so a variant that *is* reachable still shows
+/// up if it stops being used.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConflictChoice {
-    #[allow(dead_code)] // Not offered by the dialog yet.
+    #[allow(dead_code)] // The dialog has no "for all" button yet; only tests build it.
     AllOverwrite,
-    #[allow(dead_code)] // Not offered by the dialog yet.
+    #[allow(dead_code)] // The dialog has no "for all" button yet; only tests build it.
     AllKeep,
     ThisOverwrite,
     ThisKeep,
@@ -167,11 +169,12 @@ impl ConflictChoice {
             ConflictChoice::AllOverwrite | ConflictChoice::ThisOverwrite => {
                 crate::fs::transfer::OnConflict::Overwrite
             }
-            // Keeping is "stop with an error", which the caller turns into the
-            // next question rather than into a failure.
-            ConflictChoice::AllKeep | ConflictChoice::ThisKeep | ConflictChoice::Cancel => {
-                crate::fs::transfer::OnConflict::Fail
+            // Cancel never reaches the filesystem; `Fail` is the rule that
+            // would refuse rather than touch anything.
+            ConflictChoice::AllKeep | ConflictChoice::ThisKeep => {
+                crate::fs::transfer::OnConflict::Skip
             }
+            ConflictChoice::Cancel => crate::fs::transfer::OnConflict::Fail,
         }
     }
 

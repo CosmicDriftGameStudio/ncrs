@@ -421,7 +421,7 @@ mod conflict_overlay {
 
     /// An app with a conflict waiting, so the dialog is part of the view.
     fn app_with_conflict() -> App {
-        let mut app = App::new().0;
+        let mut app = App::with_fixed_panels();
         app.open_conflict_for_test(PathBuf::from("/right"), "a.txt");
         app
     }

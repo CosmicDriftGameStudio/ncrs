@@ -414,6 +414,7 @@ fn selected(app: &App, side: PanelSide) -> Option<String> {
 mod tests {
     use super::*;
 
+    use crate::messages::ConflictChoice;
     use iced::keyboard::key::Named;
 
     /// The panels have to be pointing at the scratch tree before a key means
@@ -607,6 +608,129 @@ mod tests {
             "old",
             "keeping still overwrote the target"
         );
+        assert!(
+            !session.app.conflict_is_pending(),
+            "the dialog opened again on the file that was just kept"
+        );
+        assert!(session.app.job_is_idle(), "the transfer never ended");
+    }
+
+    /// Tags the named rows, in the order given, and starts `key` on them.
+    fn tag_and_press(
+        session: &mut Session<impl iced::Program<State = App, Message = Message> + 'static>,
+        rows: &[&str],
+        key: Named,
+    ) {
+        for row in rows {
+            cursor_to(session, row);
+            session.press(Key::Named(Named::Insert));
+        }
+        session.press(Key::Named(key));
+    }
+
+    /// Keep skips one file and the transfer goes on with the next.
+    #[test]
+    fn keeping_one_file_goes_on_to_the_next() {
+        let dir = scratch("keep-next");
+        let home = dir.path().join("home");
+        write(&dir.path().join("alpha.txt"), "new");
+        write(&dir.path().join("beta.txt"), "b");
+        write(&home.join("alpha.txt"), "old");
+
+        let mut session = session_in(dir.path());
+        tag_and_press(&mut session, &["alpha.txt", "beta.txt"], Named::F5);
+        assert!(session.app.conflict_is_pending(), "no question about alpha");
+        session.press(Key::Named(Named::Escape));
+
+        assert!(
+            !session.app.conflict_is_pending(),
+            "asked about alpha twice"
+        );
+        assert_eq!(
+            std::fs::read_to_string(home.join("alpha.txt")).unwrap(),
+            "old"
+        );
+        assert!(
+            home.join("beta.txt").is_file(),
+            "the transfer stopped after keep"
+        );
+    }
+
+    /// "Keep all" answers every later conflict the same way, without asking.
+    #[test]
+    fn keep_all_does_not_ask_again() {
+        let dir = scratch("keep-all");
+        let home = dir.path().join("home");
+        for name in ["alpha.txt", "beta.txt", "gamma.txt"] {
+            write(&dir.path().join(name), "new");
+            write(&home.join(name), "old");
+        }
+        write(&dir.path().join("zeta.txt"), "z");
+
+        let mut session = session_in(dir.path());
+        tag_and_press(
+            &mut session,
+            &["alpha.txt", "beta.txt", "gamma.txt", "zeta.txt"],
+            Named::F5,
+        );
+        session.send(Message::TransferConflict(ConflictChoice::AllKeep));
+
+        assert!(
+            !session.app.conflict_is_pending(),
+            "asked again after keep all"
+        );
+        for name in ["alpha.txt", "beta.txt", "gamma.txt"] {
+            assert_eq!(std::fs::read_to_string(home.join(name)).unwrap(), "old");
+        }
+        assert!(home.join("zeta.txt").is_file(), "the rest was not copied");
+    }
+
+    /// Cancel ends the whole transfer: the rows after the conflict are not
+    /// touched and the dialog does not come back.
+    #[test]
+    fn cancel_ends_the_transfer() {
+        let dir = scratch("cancel-dialog");
+        let home = dir.path().join("home");
+        write(&dir.path().join("alpha.txt"), "new");
+        write(&dir.path().join("beta.txt"), "b");
+        write(&home.join("alpha.txt"), "old");
+
+        let mut session = session_in(dir.path());
+        tag_and_press(&mut session, &["alpha.txt", "beta.txt"], Named::F5);
+        session.press_with(Key::Character("c".into()), Modifiers::CTRL);
+
+        assert!(!session.app.conflict_is_pending(), "the dialog is still up");
+        assert!(session.app.job_is_idle());
+        assert_eq!(
+            std::fs::read_to_string(home.join("alpha.txt")).unwrap(),
+            "old"
+        );
+        assert!(!home.join("beta.txt").exists(), "cancel went on copying");
+    }
+
+    /// A multi-file transfer that fails on a later row still shows the rows
+    /// that were done: the panels are reloaded.
+    #[cfg(unix)]
+    #[test]
+    fn a_failure_midway_reloads_the_panels() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = scratch("fail-midway");
+        write(&dir.path().join("alpha.txt"), "a");
+        write(&dir.path().join("beta.txt"), "b");
+        std::fs::set_permissions(
+            dir.path().join("beta.txt"),
+            std::fs::Permissions::from_mode(0o000),
+        )
+        .unwrap();
+
+        let mut session = session_in(dir.path());
+        tag_and_press(&mut session, &["alpha.txt", "beta.txt"], Named::F5);
+
+        assert!(
+            names(&session.app, PanelSide::Right).contains(&"alpha.txt".to_string()),
+            "the target panel does not show the file that was copied; it holds {:?}",
+            names(&session.app, PanelSide::Right)
+        );
     }
 
     /// Ctrl+C stops a running job — the fourth reported symptom was that the
@@ -634,7 +758,7 @@ mod tests {
         );
     }
 
-    /// F7 creates a directory.    /// F7 creates a directory. Typing needs two separate abilities — a key
+    /// F7 creates a directory. Typing needs two separate abilities — a key
     /// that carries a character, and text typed as a burst — and both go
     /// through the app's real routing rather than a message.
     #[test]
@@ -680,7 +804,7 @@ mod tests {
         );
     }
 
-    /// Tagging is what a multi-file copy is built on.    /// Tagging is what a multi-file copy is built on.    /// Tagging is what a multi-file copy is built on.
+    /// Tagging is what a multi-file copy is built on.
     #[test]
     fn insert_tags_the_row_under_the_cursor() {
         let dir = scratch("tag");
