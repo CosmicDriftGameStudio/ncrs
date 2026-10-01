@@ -15,9 +15,10 @@ use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
 use crate::keymap;
 use crate::messages::{ConflictChoice, Message, PanelSide, TransferKind};
+use crate::ui::delete as delete_dialog_view;
 use crate::ui::dialog::FIELD_ID;
 use crate::ui::{
-    self, conflict, dialog, header, layout, panel, statusbar, theme, PanelProps, PanelState,
+    self, conflict, dialog, fkeys, header, layout, panel, statusbar, theme, PanelProps, PanelState,
 };
 use tokio::sync::mpsc;
 
@@ -119,19 +120,10 @@ impl RowFailure {
 /// Runs one job and reports what happens as messages.
 ///
 /// Separate from `App` so the queue can hand it to `Task::abortable` without
-/// borrowing the app. Only `CreateDir` has a filesystem operation behind it so
-/// far; the other kinds arrive with F5/F6/F8 and use the same path.
-fn run_job(job: jobs::Job) -> Task<Message> {
-    match job.kind {
-        jobs::JobKind::CreateDir => {
-            let target = job.path.clone();
-            Task::perform(fs::create_dir(target), move |result| match result {
-                Ok(()) => Message::JobFinished(JobEvent::Done),
-                Err(err) => Message::JobFinished(JobEvent::Failed(err.to_string())),
-            })
-        }
-        _ => Task::done(Message::JobFinished(JobEvent::Done)),
-    }
+/// borrowing the app. The real work of F5/F6/F8 runs per row in `App`; a job
+/// that reaches the queue's `start_next` here has nothing left to do.
+fn run_job(_job: jobs::Job) -> Task<Message> {
+    Task::done(Message::JobFinished(JobEvent::Done))
 }
 
 /// A reload waiting for its operation to finish.
@@ -160,6 +152,29 @@ pub struct Transfer {
     target: PathBuf,
 }
 
+/// What a delete works on, resolved once when F8 is pressed: by the time the
+/// user has answered the dialog the cursor may have moved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Deletion {
+    sources: Vec<PathBuf>,
+    /// Shift+F8: no trash.
+    permanent: bool,
+    /// The panel the entries came from, which is cleared and reloaded at the
+    /// end even if the user switches panels meanwhile.
+    side: PanelSide,
+}
+
+/// Which keys the open delete dialog answers to.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum DeleteKeys {
+    #[default]
+    Closed,
+    /// Enter confirms.
+    Trash,
+    /// Enter cancels; only Shift+F8 pressed again confirms.
+    Permanent,
+}
+
 /// One file waiting for an answer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PendingConflict {
@@ -175,8 +190,9 @@ pub struct App {
     /// Number of file rows that fit into a panel (derived from window size).
     visible_rows: usize,
     lang: Language,
-    /// Header hints, kept in state so `view` does not allocate per frame.
-    shortcuts: Vec<(String, &'static str)>,
+    /// Function key bar labels, kept in state so `view` does not look them up
+    /// per frame.
+    function_keys: [Option<&'static str>; keymap::FUNCTION_KEY_COUNT],
     /// The open modal prompt, if any. Mutated only here.
     prompt: Option<Prompt>,
     /// Panel the prompt belongs to, so a panel switch while it is open cannot
@@ -194,6 +210,12 @@ pub struct App {
     transfer: Option<Transfer>,
     /// A transfer paused on a name that is already taken.
     pending_conflict: Option<PendingConflict>,
+    /// The delete confirmation dialog, while it is up.
+    delete_dialog: Option<Deletion>,
+    /// The delete that is running.
+    deleting: Option<Deletion>,
+    /// Where F8 sends entries. Injected so tests never touch the real trash.
+    trash: Arc<dyn fs::Trash>,
     /// Why the last job failed, in the active language. Shown in the status bar
     /// until the next thing happens.
     job_error: Option<String>,
@@ -241,6 +263,8 @@ pub struct PromptKeyState {
     pub job_running: bool,
     /// The conflict dialog is up, so keys answer it rather than the panels.
     pub conflict_open: bool,
+    /// The delete dialog is up, so keys answer it.
+    pub delete_dialog: DeleteKeys,
     /// Whether the operation is running; keys are ignored then.
     pub busy: bool,
     /// The name typed so far.
@@ -264,6 +288,28 @@ fn keys_without_prompt(
     key: Key,
     key_modifiers: Modifiers,
 ) -> Option<Message> {
+    // Before the conflict dialog and the job: a delete is only offered when
+    // neither is there, so there is nothing to disambiguate, but it must not
+    // be possible for Escape to mean "stop the job" while a question is open.
+    if prompt.delete_dialog != DeleteKeys::Closed {
+        let permanent = prompt.delete_dialog == DeleteKeys::Permanent;
+        return match key.as_ref() {
+            // The default button. In the permanent dialog that is "Cancel", so
+            // a reflex Enter never deletes for good.
+            Key::Named(Named::Enter) => Some(if permanent {
+                Message::DeleteCancel
+            } else {
+                Message::DeleteConfirm
+            }),
+            Key::Named(Named::Escape) => Some(Message::DeleteCancel),
+            // The deliberate chord that started the permanent delete confirms it.
+            Key::Named(Named::F8) if permanent && key_modifiers == Modifiers::SHIFT => {
+                Some(Message::DeleteConfirm)
+            }
+            _ => None,
+        };
+    }
+
     if prompt.conflict_open {
         return match key.as_ref() {
             // Enter overwrites, which is the answer the button under the cursor
@@ -293,7 +339,42 @@ fn keys_without_prompt(
     if matches!(key.as_ref(), Key::Named(Named::Escape)) {
         return prompt.job_running.then_some(Message::AbortJob);
     }
-    keymap::map_key(key, Modifiers::default())
+    // The exact chord first (Shift+F8 is not F8). Only Shift may fall back to
+    // the bare key: it changes the character typed (`*` is Shift+8), while Alt,
+    // Ctrl and Super make a different chord that must not trigger the plain one.
+    //
+    // For a character, Shift is already in the character (`*` needs it on the
+    // US and German layouts), so Ctrl+`*` arrives as CTRL|SHIFT and has to be
+    // looked up as Ctrl. Named keys keep it: Shift+F8 is not F8.
+    let modifiers = if matches!(key, Key::Character(_)) {
+        key_modifiers - Modifiers::SHIFT
+    } else {
+        key_modifiers
+    };
+    keymap::map_key(key.clone(), modifiers).or_else(|| {
+        (modifiers - Modifiers::SHIFT)
+            .is_empty()
+            .then(|| keymap::map_key(key, Modifiers::default()))
+            .flatten()
+    })
+}
+
+/// Whether holding the key down may fire the message again.
+///
+/// Only cursor movement, tagging and typing repeat. An action such as F5 or a
+/// dialog answer must happen once per press: a held Shift+F8 would otherwise
+/// confirm the permanent-delete dialog it has just opened.
+fn repeats(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::MoveSelection(_)
+            | Message::PageUp
+            | Message::PageDown
+            | Message::SelectFirst
+            | Message::SelectLast
+            | Message::ToggleTag
+            | Message::PromptInput(_)
+    )
 }
 
 pub fn route_key(prompt: &PromptKeyState, key: Key, modifiers: Modifiers) -> Option<Message> {
@@ -340,7 +421,7 @@ impl App {
             active_panel: PanelSide::Left,
             visible_rows: layout::visible_rows(layout::INITIAL_WINDOW_SIZE),
             lang: Language::default(),
-            shortcuts: keymap::shortcuts(Language::default()),
+            function_keys: keymap::function_keys(Language::default()),
             prompt: None,
             prompt_side: None,
             prompt_request_id: 0,
@@ -348,6 +429,9 @@ impl App {
             jobs: jobs::Queue::new(),
             transfer: None,
             pending_conflict: None,
+            delete_dialog: None,
+            deleting: None,
+            trash: Arc::new(fs::SystemTrash),
             job_error: None,
             job_done: 0,
             conflict_all: false,
@@ -415,7 +499,12 @@ impl App {
                 .with(key_state)
                 .filter_map(|(cell, event)| {
                     match event {
-                        keyboard::Event::KeyPressed { key, modifiers, .. } => route_key(
+                        keyboard::Event::KeyPressed {
+                            key,
+                            modifiers,
+                            repeat,
+                            ..
+                        } => route_key(
                             // A panic in a key handler would leave the lock
                             // poisoned. The state is a few Copy values and cannot
                             // be half-written, so reading the inner value is safe —
@@ -427,7 +516,8 @@ impl App {
                                 .unwrap_or_else(|poisoned| poisoned.into_inner()),
                             key,
                             modifiers,
-                        ),
+                        )
+                        .filter(|message| !repeat || repeats(message)),
                         _ => None,
                     }
                 }),
@@ -494,6 +584,10 @@ impl App {
 
             // Stop the running job. Ctrl+C and Escape both, because a long copy
             // that cannot be stopped is the case a queue was supposed to fix.
+            //
+            // A delete in flight finishes its current entry even so: it runs in
+            // `spawn_blocking`, which cannot be cancelled, so the panel may
+            // still list that entry for a moment after the abort.
             Message::AbortJob => {
                 if self.jobs.abort_running() {
                     self.job_done = 0;
@@ -504,7 +598,11 @@ impl App {
                     // blocking copy, whose next tick cannot be sent.
                     self.progress_rx = None;
                     self.progress_tx = None;
-                    self.end_transfer()
+                    if self.deleting.is_some() {
+                        self.end_delete()
+                    } else {
+                        self.end_transfer()
+                    }
                 } else {
                     Task::none()
                 }
@@ -551,14 +649,37 @@ impl App {
                 }
             }
 
+            // --- delete ---
+            Message::Delete { permanent } => self.open_delete_dialog(permanent),
+            Message::DeleteCancel => {
+                self.delete_dialog = None;
+                Task::none()
+            }
+            Message::DeleteConfirm => self.confirm_delete(),
+            Message::DeleteRowDone {
+                result,
+                index,
+                generation,
+            } => {
+                if generation != self.generation {
+                    return Task::none();
+                }
+                self.jobs.finish();
+                match result {
+                    Ok(()) => self.run_delete_row(index + 1),
+                    Err(reason) => {
+                        let text = self.delete_failure(index, &reason);
+                        self.set_status_error(&text);
+                        self.end_delete()
+                    }
+                }
+            }
+
             // --- job queue ---
             Message::JobFinished(event) => {
                 // Progress arrives mid-run; only the terminal events free the
                 // slot for the next job.
-                let finished = matches!(
-                    event,
-                    JobEvent::Done | JobEvent::Failed(_) | JobEvent::Aborted
-                );
+                let finished = matches!(event, JobEvent::Done);
                 if finished {
                     self.jobs.finish();
                 }
@@ -676,6 +797,7 @@ impl App {
             }
 
             Message::MoveSelection(delta) => {
+                self.job_error = None;
                 self.active_panel_mut().move_selection(delta, rows);
                 Task::none()
             }
@@ -746,7 +868,7 @@ impl App {
             }
             Message::SwitchLanguage => {
                 self.lang = self.lang.other();
-                self.shortcuts = keymap::shortcuts(self.lang);
+                self.function_keys = keymap::function_keys(self.lang);
                 Task::none()
             }
             // A click in the tag column toggles the tag; anywhere else it moves
@@ -840,9 +962,15 @@ impl App {
 
         let root = container(
             column![
-                header::view(APP_NAME, &self.shortcuts),
+                header::view(APP_NAME),
                 panels,
-                statusbar::view(self.active_panel(), self.lang, self.job_status()),
+                statusbar::view(
+                    self.active_panel(),
+                    self.lang,
+                    self.job_status(),
+                    self.job_error.as_deref(),
+                ),
+                fkeys::view(&self.function_keys),
             ]
             .spacing(theme::spacing::SECTION_GAP),
         )
@@ -850,6 +978,15 @@ impl App {
         .width(Length::Fill)
         .height(Length::Fill)
         .style(theme::root);
+
+        if let Some(deletion) = self.delete_dialog.as_ref() {
+            let dialog_element = delete_dialog_view::view(
+                self.delete_subject(deletion),
+                deletion.permanent,
+                self.lang,
+            );
+            return Stack::with_children([root.into(), dialog::scrim(dialog_element)]).into();
+        }
 
         // The conflict dialog comes first, before the prompt. A conflict is
         // asked *after* the prompt is gone — the user submitted, and the name
@@ -941,9 +1078,15 @@ impl App {
     /// The state the key routing needs, cheap to clone.
     fn prompt_key_state(&self) -> PromptKeyState {
         let job_running = self.jobs.is_busy();
+        let delete_dialog = match &self.delete_dialog {
+            None => DeleteKeys::Closed,
+            Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
+            Some(_) => DeleteKeys::Trash,
+        };
         match &self.prompt {
             None => PromptKeyState {
                 job_running,
+                delete_dialog,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
                 // the dialog's keys would fall through to the panels.
@@ -953,6 +1096,7 @@ impl App {
             Some(prompt) => PromptKeyState {
                 open: true,
                 job_running,
+                delete_dialog,
                 conflict_open: self.pending_conflict.is_some(),
                 busy: prompt.busy(),
                 typed: prompt.name().into(),
@@ -960,28 +1104,180 @@ impl App {
         }
     }
 
+    /// NC's rule for F5, F6 and F8: tagged rows win, otherwise the row under
+    /// the cursor. The `..` entry is never a thing to act on.
+    fn action_sources(&self) -> Vec<PathBuf> {
+        let panel = self.active_panel();
+        if panel.selection.any_tagged() {
+            panel
+                .selection
+                .ordered(&panel.entries)
+                .into_iter()
+                .map(|e| e.path.clone())
+                .collect()
+        } else {
+            panel
+                .selected_entry()
+                .filter(|e| !e.is_parent)
+                .map(|e| vec![e.path.clone()])
+                .unwrap_or_default()
+        }
+    }
+
+    /// F8 / Shift+F8: ask before deleting. Nothing to act on, or something
+    /// else already holding the keyboard or the queue, means nothing happens.
+    fn open_delete_dialog(&mut self, permanent: bool) -> Task<Message> {
+        if self.jobs.is_busy()
+            || self.prompt.is_some()
+            || self.pending_conflict.is_some()
+            || self.delete_dialog.is_some()
+        {
+            return Task::none();
+        }
+        let sources = self.action_sources();
+        if sources.is_empty() {
+            return Task::none();
+        }
+        self.job_error = None;
+        self.delete_dialog = Some(Deletion {
+            sources,
+            permanent,
+            side: self.active_panel,
+        });
+        Task::none()
+    }
+
+    /// The dialog's subject line: the name for one entry, the count for more.
+    ///
+    /// A permanent delete also lists the first names, because tagged rows may
+    /// lie outside the visible part of the panel and the user is about to lose
+    /// them for good.
+    fn delete_subject(&self, deletion: &Deletion) -> String {
+        const LISTED: usize = 5;
+        let name_of = |path: &PathBuf| {
+            path.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        };
+        match deletion.sources.as_slice() {
+            [only] => self.lang.text(Msg::DeleteOne).replace(
+                "{name}",
+                &only
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+            ),
+            many => {
+                let mut lines = vec![self
+                    .lang
+                    .text(Msg::DeleteMany)
+                    .replace("{count}", &many.len().to_string())];
+                if deletion.permanent {
+                    lines.extend(many.iter().take(LISTED).map(name_of));
+                    if many.len() > LISTED {
+                        lines.push(
+                            self.lang
+                                .text(Msg::DeleteMore)
+                                .replace("{count}", &(many.len() - LISTED).to_string()),
+                        );
+                    }
+                }
+                lines.join("\n")
+            }
+        }
+    }
+
+    /// The dialog was confirmed: start on the first entry.
+    fn confirm_delete(&mut self) -> Task<Message> {
+        let Some(deletion) = self.delete_dialog.take() else {
+            return Task::none();
+        };
+        self.deleting = Some(deletion);
+        self.generation = self.generation.wrapping_add(1);
+        self.run_delete_row(0)
+    }
+
+    /// Deletes the entry at `index` on the blocking pool, or finishes when
+    /// there is none. One entry per job, so Escape works between two entries.
+    fn run_delete_row(&mut self, index: usize) -> Task<Message> {
+        let Some(deletion) = self.deleting.clone() else {
+            return Task::none();
+        };
+        let Some(path) = deletion.sources.get(index).cloned() else {
+            return self.end_delete();
+        };
+        let total = deletion.sources.len();
+        self.job_progress = Some(fs::transfer::Tick { done: index, total });
+        self.jobs.enqueue(jobs::Job {
+            kind: jobs::JobKind::Delete,
+            path: path.clone(),
+            total: Some(total),
+        });
+        let generation = self.generation;
+        let trash = Arc::clone(&self.trash);
+        self.jobs
+            .start_next(|_| {
+                Task::perform(
+                    tokio::task::spawn_blocking(move || {
+                        if deletion.permanent {
+                            fs::remove_permanently(&path).map_err(|err| err.to_string())
+                        } else {
+                            trash.trash(&path)
+                        }
+                    }),
+                    move |outcome| Message::DeleteRowDone {
+                        result: outcome.unwrap_or_else(|join| Err(join.to_string())),
+                        index,
+                        generation,
+                    },
+                )
+            })
+            .unwrap_or_else(Task::none)
+    }
+
+    /// Ends the delete, finished, failed or stopped: the tags refer to entries
+    /// that may be gone, so they go, and both panels are re-read.
+    fn end_delete(&mut self) -> Task<Message> {
+        let side = self.deleting.take().map_or(self.active_panel, |d| d.side);
+        self.generation = self.generation.wrapping_add(1);
+        self.job_progress = None;
+        self.panel_mut(side).selection.clear();
+        let tasks = [PanelSide::Left, PanelSide::Right].map(|each| {
+            let path = self.panel(each).path.clone();
+            self.load(each, path, None)
+        });
+        Task::batch(tasks)
+    }
+
+    /// The status line for an entry that could not be deleted. A failed trash
+    /// points at Shift+F8 rather than falling back to it: deleting for good is
+    /// the user's decision, not the app's.
+    fn delete_failure(&self, index: usize, reason: &str) -> String {
+        let permanent = self.deleting.as_ref().is_some_and(|d| d.permanent);
+        let name = self
+            .deleting
+            .as_ref()
+            .and_then(|d| d.sources.get(index))
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let template = if permanent {
+            Msg::ErrorDeleteFailed
+        } else {
+            Msg::ErrorTrashFailed
+        };
+        self.lang
+            .text(template)
+            .replace("{name}", &name)
+            .replace("{reason}", reason)
+    }
+
     /// F5 / F6: resolve what to transfer, then start the first row.
     ///
     /// The rows are resolved here rather than later because a conflict dialog
     /// pauses the operation, and by then the selection may have moved.
     fn start_transfer(&mut self, kind: TransferKind) -> Task<Message> {
-        // NC's rule: tagged rows win, otherwise the row under the cursor. The
-        // `..` entry is not a thing to copy into the other panel.
-        let source_panel = self.active_panel();
-        let sources: Vec<PathBuf> = if source_panel.selection.any_tagged() {
-            source_panel
-                .selection
-                .ordered(&source_panel.entries)
-                .into_iter()
-                .map(|e| e.path.clone())
-                .collect()
-        } else {
-            source_panel
-                .selected_entry()
-                .filter(|e| !e.is_parent)
-                .map(|e| vec![e.path.clone()])
-                .unwrap_or_default()
-        };
+        let sources = self.action_sources();
 
         if sources.is_empty() {
             return Task::none();
@@ -1422,10 +1718,8 @@ mod prompt_routing {
             Some(Message::CreateDirPrompt)
         );
         assert!(
-            keymap::shortcuts(Language::English)
-                .iter()
-                .any(|(key, _)| key == "F7"),
-            "F7 opens the prompt but the header does not show it"
+            keymap::function_keys(Language::English)[6].is_some(),
+            "F7 opens the prompt but the function key bar does not show it"
         );
     }
 
@@ -1788,7 +2082,7 @@ impl App {
             active_panel: PanelSide::Left,
             visible_rows: 12,
             lang: Language::default(),
-            shortcuts: keymap::shortcuts(Language::default()),
+            function_keys: keymap::function_keys(Language::default()),
             prompt: None,
             prompt_side: None,
             prompt_request_id: 0,
@@ -1796,6 +2090,9 @@ impl App {
             jobs: jobs::Queue::new(),
             transfer: None,
             pending_conflict: None,
+            delete_dialog: None,
+            deleting: None,
+            trash: Arc::new(fs::SystemTrash),
             job_error: None,
             job_done: 0,
             conflict_all: false,
@@ -1908,6 +2205,34 @@ impl App {
     pub fn move_selection_for_test(&mut self, delta: isize) {
         let rows = self.visible_rows;
         self.left_panel.move_selection(delta, rows);
+    }
+
+    /// Whether the delete confirmation is up.
+    pub fn delete_dialog_is_open(&self) -> bool {
+        self.delete_dialog.is_some()
+    }
+
+    /// Replaces the trash, so a test never fills the developer's real one.
+    pub fn with_trash(mut self, trash: Arc<dyn fs::Trash>) -> Self {
+        self.trash = trash;
+        self
+    }
+
+    /// Puts the delete dialog in front of the user for `count` fixed entries,
+    /// for the snapshot tests.
+    pub fn open_delete_dialog_for_test(&mut self, count: usize, permanent: bool) {
+        self.delete_dialog = Some(Deletion {
+            sources: (0..count)
+                .map(|i| PathBuf::from("/left").join(format!("entry-{}.txt", i + 1)))
+                .collect(),
+            permanent,
+            side: PanelSide::Left,
+        });
+    }
+
+    /// The text of the status-line error, for the end-to-end tests.
+    pub fn job_error_for_test(&self) -> Option<&str> {
+        self.job_error.as_deref()
     }
 
     /// Puts a conflict in front of the user, for the snapshot tests.
@@ -2817,5 +3142,164 @@ mod conflict_keys {
             press(&app, Key::Named(Named::Escape), Modifiers::default()),
             None
         );
+    }
+}
+
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod delete_tests {
+    use super::*;
+    use iced::keyboard::key::Named;
+
+    fn keys(delete_dialog: DeleteKeys) -> PromptKeyState {
+        PromptKeyState {
+            delete_dialog,
+            ..PromptKeyState::default()
+        }
+    }
+
+    fn route(state: &PromptKeyState, named: Named, modifiers: Modifiers) -> Option<Message> {
+        route_key(state, Key::Named(named), modifiers)
+    }
+
+    #[test]
+    fn f8_and_shift_f8_are_different_keys() {
+        let idle = PromptKeyState::default();
+        assert_eq!(
+            route(&idle, Named::F8, Modifiers::default()),
+            Some(Message::Delete { permanent: false })
+        );
+        assert_eq!(
+            route(&idle, Named::F8, Modifiers::SHIFT),
+            Some(Message::Delete { permanent: true })
+        );
+    }
+
+    #[test]
+    fn enter_confirms_the_trash_dialog_and_escape_cancels() {
+        let state = keys(DeleteKeys::Trash);
+        assert_eq!(
+            route(&state, Named::Enter, Modifiers::default()),
+            Some(Message::DeleteConfirm)
+        );
+        assert_eq!(
+            route(&state, Named::Escape, Modifiers::default()),
+            Some(Message::DeleteCancel)
+        );
+        // Nothing else reaches the panels behind the dialog.
+        assert_eq!(route(&state, Named::ArrowDown, Modifiers::default()), None);
+    }
+
+    #[test]
+    fn enter_cancels_the_permanent_dialog() {
+        let state = keys(DeleteKeys::Permanent);
+        assert_eq!(
+            route(&state, Named::Enter, Modifiers::default()),
+            Some(Message::DeleteCancel)
+        );
+        assert_eq!(
+            route(&state, Named::F8, Modifiers::SHIFT),
+            Some(Message::DeleteConfirm)
+        );
+        assert_eq!(route(&state, Named::F8, Modifiers::default()), None);
+    }
+
+    fn app_with_entries(names: &[&str]) -> App {
+        let mut app = App::new().0;
+        app.left_panel.path = PathBuf::from("/left");
+        app.left_panel.entries = names
+            .iter()
+            .map(|name| fs::FileEntry {
+                name: (*name).into(),
+                path: PathBuf::from("/left").join(name),
+                is_dir: false,
+                is_symlink: false,
+                is_parent: *name == "..",
+                size: 1,
+                modified: None,
+            })
+            .collect();
+        app
+    }
+
+    #[tokio::test]
+    async fn an_empty_panel_opens_no_dialog() {
+        let mut app = app_with_entries(&[]);
+        let _task = app.update(Message::Delete { permanent: false });
+        assert!(app.delete_dialog.is_none());
+    }
+
+    #[tokio::test]
+    async fn the_subject_is_the_name_for_one_and_the_count_for_many() {
+        let mut app = app_with_entries(&["a.txt", "b.txt"]);
+        app.left_panel.selected = 0;
+        let _task = app.update(Message::Delete { permanent: false });
+        let one = app.delete_dialog.clone().unwrap();
+        assert_eq!(app.delete_subject(&one), "a.txt");
+
+        app.delete_dialog = None;
+        app.left_panel.selection.toggle(&"a.txt".into());
+        app.left_panel.selection.toggle(&"b.txt".into());
+        let _again = app.update(Message::Delete { permanent: true });
+        let many = app.delete_dialog.clone().unwrap();
+        assert_eq!(app.delete_subject(&many), "2 items\na.txt\nb.txt");
+        assert!(many.permanent);
+
+        // The trash dialog stays short: only the count.
+        let trash = Deletion {
+            permanent: false,
+            ..many.clone()
+        };
+        assert_eq!(app.delete_subject(&trash), "2 items");
+
+        let seven = Deletion {
+            sources: (1..=7)
+                .map(|i| PathBuf::from(format!("/left/f{i}")))
+                .collect(),
+            ..many
+        };
+        assert_eq!(
+            app.delete_subject(&seven),
+            "7 items\nf1\nf2\nf3\nf4\nf5\n… and 2 more"
+        );
+    }
+
+    #[test]
+    fn alt_ctrl_and_super_do_not_fall_back_to_the_bare_key() {
+        let idle = PromptKeyState::default();
+        for modifiers in [Modifiers::ALT, Modifiers::CTRL, Modifiers::LOGO] {
+            assert_eq!(route(&idle, Named::Enter, modifiers), None, "{modifiers:?}");
+            assert_eq!(route(&idle, Named::F5, modifiers), None, "{modifiers:?}");
+        }
+        // Ctrl+* is CTRL|SHIFT on a real keyboard, since `*` needs Shift.
+        assert_eq!(
+            route_key(
+                &idle,
+                Key::Character("*".into()),
+                Modifiers::CTRL | Modifiers::SHIFT
+            ),
+            Some(Message::ClearTags)
+        );
+        // Shift alone still reaches the bare key, as `*` needs.
+        assert_eq!(
+            route_key(&idle, Key::Character("*".into()), Modifiers::SHIFT),
+            Some(Message::TagAll)
+        );
+    }
+
+    #[test]
+    fn only_movement_tagging_and_typing_repeat() {
+        assert!(repeats(&Message::MoveSelection(1)));
+        assert!(repeats(&Message::ToggleTag));
+        assert!(repeats(&Message::PromptInput("a".into())));
+        assert!(!repeats(&Message::Delete { permanent: true }));
+        assert!(!repeats(&Message::DeleteConfirm));
+        assert!(!repeats(&Message::Transfer(TransferKind::Copy)));
     }
 }

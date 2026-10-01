@@ -63,8 +63,15 @@ KEYS:
     PgUp/PgDn  page                Backspace go up
     Home/End   first/last          Enter    open
     Insert     tag a row           *        tag all
-    F7         create directory    F9       switch language (en/de)
+    F5 / F6    copy / move         F7       create directory
+    F8         delete (to trash)   Shift+F8 delete permanently
+    F9         switch language (en/de)
     F10 / Q    quit
+
+DELETE:
+    F8 asks, then moves the tagged rows (or the row under the cursor) to the
+    trash. If the trash cannot take them, nothing is deleted. Shift+F8 deletes
+    for good: Enter cancels there, Shift+F8 again confirms.
 
 Run ncrs without arguments; a GUI application with no arguments and no
 files to open.";
