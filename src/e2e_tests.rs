@@ -225,6 +225,18 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
         self.settle();
     }
 
+    /// Runs `update` for `message` but holds back the task it returns, so the
+    /// work it would start has not begun. Lets a test act while a job is
+    /// certainly still in flight.
+    fn send_held(&mut self, message: Message) -> Task<Message> {
+        let program = &self.program;
+        let task = self
+            .runtime
+            .enter(|| program.update(&mut self.app, message));
+        self.resubscribe();
+        task
+    }
+
     /// Delivers a message with no keyboard event behind it.
     fn send(&mut self, message: Message) {
         let program = &self.program;
@@ -352,14 +364,6 @@ fn session_in(dir: &Path) -> Session<impl iced::Program<State = App, Message = M
     Session::boot(super::program(move || {
         App::starting_in(left.clone(), right.clone())
     }))
-}
-
-/// Writes bytes, for a file large enough that copying it takes a moment.
-fn write_bytes(path: &Path, contents: &[u8]) {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).expect("a parent directory");
-    }
-    std::fs::write(path, contents).expect("a test file");
 }
 
 /// A scratch tree with a source and a target directory — the two panels, and
@@ -836,26 +840,35 @@ mod tests {
     /// Ctrl+C stops a running job — the fourth reported symptom was that the
     /// queue could not be steered at all.
     ///
-    /// The copy here is large enough that it cannot have finished by the time
-    /// the abort is pressed, and the assertion is that the operation stops
-    /// rather than running on.
+    /// Deterministic: F5 is sent but its task is held back, so the job is
+    /// registered and certainly not finished when Ctrl+C arrives. The queue
+    /// must be idle right after the key, which only an abort achieves; a copy
+    /// left running would still hold its slot. The aborted task is released
+    /// afterwards and must not revive anything.
+    ///
+    /// The file itself is not asserted: the blocking copy starts when the task
+    /// is built and stops only at its next progress tick, so whether a small
+    /// file lands is a race the abort does not promise to win.
     #[test]
     fn ctrl_c_stops_a_running_copy() {
         let dir = scratch("abort");
-        // A big file, so the copy is still going when the key arrives.
-        let big = vec![b'x'; 64 * 1024 * 1024];
-        write_bytes(&dir.path().join("big.bin"), &big);
         write(&dir.path().join("alpha.txt"), "a");
 
         let mut session = session_in(dir.path());
-        cursor_to(&mut session, "big.bin");
-        session.press(Key::Named(Named::F5));
-        session.press_with(Key::Character("c".into()), Modifiers::CTRL);
+        cursor_to(&mut session, "alpha.txt");
+        let held = session.send_held(Message::Transfer(crate::messages::TransferKind::Copy));
+        assert!(!session.app.job_is_idle(), "F5 did not start a job");
 
+        session.press_with(Key::Character("c".into()), Modifiers::CTRL);
         assert!(
             session.app.job_is_idle(),
             "the copy is still running after Ctrl+C"
         );
+
+        session.drive(held);
+        session.settle();
+        assert!(session.app.job_is_idle(), "the aborted job came back");
+        assert!(!session.app.conflict_is_pending());
     }
 
     /// F7 creates a directory. Typing needs two separate abilities — a key

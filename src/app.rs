@@ -342,8 +342,17 @@ fn keys_without_prompt(
     // The exact chord first (Shift+F8 is not F8). Only Shift may fall back to
     // the bare key: it changes the character typed (`*` is Shift+8), while Alt,
     // Ctrl and Super make a different chord that must not trigger the plain one.
-    keymap::map_key(key.clone(), key_modifiers).or_else(|| {
-        (key_modifiers - Modifiers::SHIFT)
+    //
+    // For a character, Shift is already in the character (`*` needs it on the
+    // US and German layouts), so Ctrl+`*` arrives as CTRL|SHIFT and has to be
+    // looked up as Ctrl. Named keys keep it: Shift+F8 is not F8.
+    let modifiers = if matches!(key, Key::Character(_)) {
+        key_modifiers - Modifiers::SHIFT
+    } else {
+        key_modifiers
+    };
+    keymap::map_key(key.clone(), modifiers).or_else(|| {
+        (modifiers - Modifiers::SHIFT)
             .is_empty()
             .then(|| keymap::map_key(key, Modifiers::default()))
             .flatten()
@@ -3268,6 +3277,15 @@ mod delete_tests {
             assert_eq!(route(&idle, Named::Enter, modifiers), None, "{modifiers:?}");
             assert_eq!(route(&idle, Named::F5, modifiers), None, "{modifiers:?}");
         }
+        // Ctrl+* is CTRL|SHIFT on a real keyboard, since `*` needs Shift.
+        assert_eq!(
+            route_key(
+                &idle,
+                Key::Character("*".into()),
+                Modifiers::CTRL | Modifiers::SHIFT
+            ),
+            Some(Message::ClearTags)
+        );
         // Shift alone still reaches the bare key, as `*` needs.
         assert_eq!(
             route_key(&idle, Key::Character("*".into()), Modifiers::SHIFT),
