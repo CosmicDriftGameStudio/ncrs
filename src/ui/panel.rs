@@ -3,12 +3,13 @@
 //! only mutated from `App::update`.
 use std::path::PathBuf;
 
-use iced::widget::{button, column, container, row, text, Column};
+use iced::widget::{button, column, container, row, text, Column, Row};
 use iced::{alignment, Element, Font, Length};
 
 use super::format;
 use super::layout::{
     COLUMN_HEADER_HEIGHT, DATE_COLUMN_WIDTH, PANEL_TITLE_HEIGHT, ROW_HEIGHT, SIZE_COLUMN_WIDTH,
+    TAG_COLUMN_WIDTH,
 };
 use super::theme::{self, colors, font_size, spacing};
 use crate::fs::{FileEntry, ReadError};
@@ -75,6 +76,14 @@ impl PanelState {
         visible_rows: usize,
     ) {
         self.path = path;
+        // Read the name under the cursor *before* the rows are replaced. After
+        // `self.entries = entries` this would read the new list and remember the
+        // file at that position, not the file the cursor was on.
+        let previous: Option<String> = self
+            .entries
+            .get(self.selected)
+            .map(|e| e.name.to_string_lossy().into_owned());
+
         // A reload replaces the rows. A tag whose name is still there stays; one
         // whose file is gone is dropped — the safe direction, since a forgotten
         // file in a copy is worse than a tag the user has to set again.
@@ -82,8 +91,15 @@ impl PanelState {
         self.entries = entries;
         self.error = error;
         self.loading = false;
+
+        // A reload must not move the cursor. Falling back to row 0 threw the
+        // user back to the top of the list after every file operation, and
+        // scrolled the tagged rows out of sight. Prefer, in order: the name the
+        // caller asked for, the name that was under the cursor, then the top.
         self.scroll_offset = 0;
-        let index = select
+        let wanted = select.map(str::to_string).or(previous);
+        let index = wanted
+            .as_deref()
             .and_then(|name| self.entries.iter().position(|e| e.name == name))
             .unwrap_or(0);
         self.select(index, visible_rows);
@@ -131,11 +147,17 @@ pub struct PanelProps {
 
 /// Renders a file panel. Generic over the message type: the caller decides
 /// which message a row click produces, keeping the component reusable.
+/// Renders one panel.
+///
+/// `on_row_click` is called with the row index and whether the click landed in
+/// the tag column: the star toggles the tag, the rest of the row moves the
+/// cursor. One callback with a flag rather than two callbacks, because a row is
+/// one clickable thing with two meanings.
 pub fn view<'a, M: Clone + 'a>(
     state: &'a PanelState,
     props: PanelProps,
     lang: Language,
-    on_row_click: impl Fn(usize) -> M,
+    on_row_click: impl Fn(usize, bool) -> M,
 ) -> Element<'a, M> {
     let rows = state
         .entries
@@ -147,7 +169,34 @@ pub fn view<'a, M: Clone + 'a>(
             let mark = state
                 .selection
                 .state_of(index, &state.entries, state.selected);
-            file_row(entry, mark, props.is_active, on_row_click(index))
+            // Two targets per row, as in NC: the star itself toggles the tag,
+            // the rest of the row moves the cursor. iced gives a button one
+            // message and no click position, so the star has to be its own
+            // button rather than a region of the row button.
+            let mut row = Row::new();
+            row = row.push(
+                button(
+                    text(if mark.tagged { "*" } else { " " })
+                        .size(font_size::ROW)
+                        .color(if mark.tagged {
+                            colors::ACCENT
+                        } else {
+                            colors::DIM_TEXT
+                        })
+                        .wrapping(iced::widget::text::Wrapping::None),
+                )
+                .width(Length::Fixed(TAG_COLUMN_WIDTH))
+                .height(ROW_HEIGHT)
+                .style(theme::tag_button(mark.tagged, props.is_active))
+                .on_press(on_row_click(index, true)),
+            );
+            file_row(
+                entry,
+                mark,
+                props.is_active,
+                on_row_click(index, false),
+                row,
+            )
         });
 
     column![
@@ -198,11 +247,16 @@ fn column_header<'a, M: 'a>(lang: Language) -> Element<'a, M> {
     .into()
 }
 
+/// One file row: the name, size and date, clickable as a whole.
+///
+/// `prefix` is the tag button, built by the caller because it needs its own
+/// message; the row itself is one button around the rest.
 fn file_row<'a, M: Clone + 'a>(
     entry: &'a FileEntry,
     mark: Selection,
     panel_active: bool,
     on_press: M,
+    prefix: Row<'a, M>,
 ) -> Element<'a, M> {
     // The cursor row of the active panel is the one drawn as highlighted; a
     // tagged row is marked in its own column and tinted by the row style.
@@ -237,13 +291,8 @@ fn file_row<'a, M: Clone + 'a>(
             .wrapping(text::Wrapping::None)
     };
 
-    // The tag marker, in its own column. Norton Commander puts it left of the
-    // name; without it a tagged row would look the same as an untagged one and
-    // the selection would be invisible.
-    let mark_cell = cell(if mark.tagged { "*" } else { " " }.to_string());
-
     let content = row![
-        container(mark_cell).width(spacing::CELL_PADDING_X * 2.0),
+        prefix,
         container(cell(name)).width(Length::Fill).clip(true),
         cell(format::entry_size(entry))
             .width(SIZE_COLUMN_WIDTH)

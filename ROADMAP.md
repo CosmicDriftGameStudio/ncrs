@@ -419,7 +419,7 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
   Beide brauchen einen Stack, aber unterschiedliche. **Empfehlung:** Historie zuerst, weil
   sie ohne Konfiguration auskommt. Favoriten als reine Config-Liste darüber.
 
-- [ ] **T7 – F5 Copy / F6 Move** — nutzt `SelectionSet` und `inactive_panel_mut()`
+- [x] **T7 – F5 Copy / F6 Move** — nutzt `SelectionSet` und `inactive_panel_mut()`
   Braucht T6c (Auswahl) und T6d Punkt 2 (Queue, sonst blockiert ein großes Copy).
   Reload beider Panels; F5 kopiert in das inaktive Panel, F6 verschiebt dorthin.
 

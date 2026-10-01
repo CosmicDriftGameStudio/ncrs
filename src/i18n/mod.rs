@@ -160,7 +160,13 @@ mod tests {
     fn is_allowed_identical(msg: Msg) -> bool {
         matches!(
             msg,
-            Msg::ColumnName | Msg::MarkerDir | Msg::MarkerUp | Msg::DialogMkdirLabel
+            Msg::ColumnName
+                | Msg::MarkerDir
+                | Msg::MarkerUp
+                | Msg::DialogMkdirLabel
+                // A bare placeholder: the dialog frames the name around it, so
+                // there is nothing to translate in the string itself.
+                | Msg::ConflictName
         )
     }
 

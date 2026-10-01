@@ -16,7 +16,10 @@ license = "MIT"
 #
 # They are ignored on macOS and Windows, where the softbuffer backends are
 # cfg'd out anyway, so enabling them costs nothing there.
-iced = { version = "0.14", default-features = false, features = ["tokio", "fira-sans", "x11", "wayland"] }
+# "advanced" is what re-exports iced's `Program` trait. It is the trait the
+# end-to-end tests drive the app through, so without it `tests/` could not use
+# the real `main` wiring and would have to duplicate it.
+iced = { version = "0.14", default-features = false, features = ["tokio", "fira-sans", "x11", "wayland", "advanced"] }
 # Only what the code uses: spawn_blocking, #[tokio::test] and the multi-thread
 # runtime iced's executor needs. "full" also pulls mio, socket2, signal-hook-registry
 # and wasi — network and signal machinery a file manager has no use for.

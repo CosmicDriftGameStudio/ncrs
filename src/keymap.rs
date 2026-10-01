@@ -7,6 +7,7 @@ use iced::keyboard::{key, Key, Modifiers};
 
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
+use crate::messages::TransferKind;
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,6 +132,23 @@ fn build_actions() -> Vec<Action> {
             binding: Binding::with_modifiers(Character("*".into()), Modifiers::CTRL),
             message: Message::ClearTags,
             hint: None,
+        },
+        // Ctrl+C stops a running job. Registered here rather than handled
+        // ad hoc so it shows up in the bindings like every other key.
+        Action {
+            binding: Binding::with_modifiers(Key::Character("c".into()), Modifiers::CTRL),
+            message: Message::AbortJob,
+            hint: None,
+        },
+        Action {
+            binding: Binding::key(KeyNamed(F5)),
+            message: Message::Transfer(TransferKind::Copy),
+            hint: Some(Msg::ShortcutCopy),
+        },
+        Action {
+            binding: Binding::key(KeyNamed(F6)),
+            message: Message::Transfer(TransferKind::Move),
+            hint: Some(Msg::ShortcutMove),
         },
         Action {
             binding: Binding::key(KeyNamed(F7)),

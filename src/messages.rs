@@ -5,9 +5,11 @@ use std::path::PathBuf;
 
 use iced::Size;
 
+use crate::app::{RowFailure, Transfer};
 use crate::dialog::PromptKind;
 use crate::fs::CreateDirError;
 use crate::fs::{FileEntry, ReadError};
+use crate::jobs::JobEvent;
 
 /// Identifies one of the two file panels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +52,39 @@ pub enum Message {
     OpenSelected,
     GoUp,
 
+    // --- copy / move (F5, F6) ---
+    /// Ctrl+C or Escape while a job runs: stop it. Its own message rather than
+    /// reusing a key binding, because "stop" only exists while a job does.
+    AbortJob,
+    /// One tick of a running transfer, sent from the blocking thread.
+    JobProgress(crate::fs::transfer::Tick),
+    /// F5 or F6, decided by the action rather than a message each.
+    Transfer(TransferKind),
+    /// The user answered the conflict dialog.
+    TransferConflict(ConflictChoice),
+    /// Ticks or unticks "for all files" in the conflict dialog.
+    ToggleConflictAll,
+    /// One row of a transfer finished. Carries the whole transfer so the next
+    /// row can start without the app keeping it in a field that a later
+    /// message could overwrite.
+    TransferRowDone {
+        /// `Err` carries a typed [`RowFailure`], not a bare string: the app has
+        /// to tell "the name is taken" from any other error, and a message that
+        /// cannot be told apart is the reason the overwrite dialog was
+        /// unreachable.
+        result: Result<Transfer, RowFailure>,
+        /// Which row this was, so a conflict on the next one points at it.
+        index: usize,
+        /// The transfer it belongs to; a result from an earlier one is dropped.
+        generation: u64,
+    },
+
+    // --- Job queue (see crate::jobs) ---
+    /// A job started, made progress, or finished. One variant for all three:
+    /// they are the same event arriving at different times, and splitting them
+    /// would mean the UI matching on the same enum in three places.
+    JobFinished(JobEvent),
+
     // --- Modal prompt (see crate::dialog) ---
     /// F7: open the create-directory prompt.
     CreateDirPrompt,
@@ -79,13 +114,79 @@ pub enum Message {
     SwitchPanel,
     /// Temporarily switches the UI language. Not yet persisted in config.
     SwitchLanguage,
-    /// Mouse click on a row of a panel.
+    /// Mouse click on a row of a panel.  is true when the click landed in
+    /// the tag column, which toggles the tag instead of moving the cursor.
     RowClicked {
         side: PanelSide,
         index: usize,
+        on_tag: bool,
     },
 
     // --- Window / app ---
     WindowResized(Size),
     Quit,
+}
+
+/// Copy or move. One message with the kind inside, so the keymap and the job
+/// queue do not each need a variant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransferKind {
+    Copy,
+    Move,
+}
+
+impl TransferKind {
+    pub fn job_kind(self) -> crate::jobs::JobKind {
+        match self {
+            TransferKind::Copy => crate::jobs::JobKind::Copy,
+            TransferKind::Move => crate::jobs::JobKind::Move,
+        }
+    }
+}
+
+/// What to do about a name that is already taken.
+///
+/// The "All" options are the point: answering the same question per file turns
+/// five files into five dialogs and fifty thousand into an afternoon.
+///
+/// The two `All` variants are what the single-file answers become when "for all
+/// files" is ticked; see `App::answer_conflict`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConflictChoice {
+    AllOverwrite,
+    AllKeep,
+    ThisOverwrite,
+    ThisKeep,
+    Cancel,
+}
+
+impl ConflictChoice {
+    /// What to do with this one file.
+    pub fn conflict(self) -> crate::fs::transfer::OnConflict {
+        match self {
+            ConflictChoice::AllOverwrite | ConflictChoice::ThisOverwrite => {
+                crate::fs::transfer::OnConflict::Overwrite
+            }
+            // Cancel never reaches the filesystem; `Fail` is the rule that
+            // would refuse rather than touch anything.
+            ConflictChoice::AllKeep | ConflictChoice::ThisKeep => {
+                crate::fs::transfer::OnConflict::Skip
+            }
+            ConflictChoice::Cancel => crate::fs::transfer::OnConflict::Fail,
+        }
+    }
+
+    /// The same answer, applied to every later conflict too.
+    pub fn for_all(self) -> Self {
+        match self {
+            ConflictChoice::ThisOverwrite => ConflictChoice::AllOverwrite,
+            ConflictChoice::ThisKeep => ConflictChoice::AllKeep,
+            other => other,
+        }
+    }
+
+    /// Whether the answer also settles every later one.
+    pub fn applies_to_all(self) -> bool {
+        matches!(self, ConflictChoice::AllOverwrite | ConflictChoice::AllKeep)
+    }
 }

@@ -4,6 +4,9 @@
 //! run every `Task` on a tokio runtime, so no `#[tokio::main]` is needed here.
 
 #[cfg(test)]
+mod e2e_tests;
+
+#[cfg(test)]
 mod ui_tests;
 
 mod app;
@@ -11,6 +14,7 @@ mod backend;
 mod dialog;
 mod fs;
 mod i18n;
+mod jobs;
 mod keymap;
 mod messages;
 mod selection;
@@ -18,6 +22,30 @@ mod ui;
 
 use app::App;
 use std::env;
+
+/// The application as iced runs it, window settings and all.
+///
+/// One definition, shared with the end-to-end tests in `e2e_tests.rs`. A test
+/// that wires `update` differently from `main` proves nothing about the app the
+/// user runs; the subscription is the part that matters most, because it is
+/// what routes keys.
+///
+/// Returned as `Application`, not as `impl Program`: `Application::run` is an
+/// inherent method, and an opaque return type would hide it from `main`.
+///
+/// `boot` builds the initial state, so tests can start the app in a scratch
+/// directory while `main` passes `App::new`.
+fn program(
+    boot: impl Fn() -> (App, iced::Task<crate::messages::Message>) + 'static,
+) -> iced::Application<impl iced::Program<State = App, Message = crate::messages::Message>> {
+    iced::application(boot, App::update, App::view)
+        .subscription(App::subscription)
+        .theme(App::theme)
+        .title(App::title)
+        .window_size(ui::layout::INITIAL_WINDOW_SIZE)
+        .default_font(iced::Font::MONOSPACE)
+        .antialiasing(true)
+}
 
 /// `-V` / `--version` / `--help` print and exit without opening a window.
 ///
@@ -65,12 +93,5 @@ fn main() -> iced::Result {
 
     backend::log_backend();
 
-    iced::application(App::new, App::update, App::view)
-        .subscription(App::subscription)
-        .theme(App::theme)
-        .title(App::title)
-        .window_size(ui::layout::INITIAL_WINDOW_SIZE)
-        .default_font(iced::Font::MONOSPACE)
-        .antialiasing(true)
-        .run()
+    program(App::new).run()
 }
