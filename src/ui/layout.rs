@@ -8,6 +8,7 @@ pub const INITIAL_WINDOW_SIZE: Size = Size::new(1200.0, 760.0);
 
 pub const HEADER_HEIGHT: f32 = 30.0;
 pub const STATUSBAR_HEIGHT: f32 = 28.0;
+pub const FKEYBAR_HEIGHT: f32 = 24.0;
 pub const PANEL_TITLE_HEIGHT: f32 = 28.0;
 pub const COLUMN_HEADER_HEIGHT: f32 = 24.0;
 pub const ROW_HEIGHT: f32 = 22.0;
@@ -21,6 +22,10 @@ pub const TAG_COLUMN_WIDTH: f32 = 22.0;
 pub const SIZE_COLUMN_WIDTH: f32 = 90.0;
 pub const DATE_COLUMN_WIDTH: f32 = 150.0;
 
+/// Gaps between the four stacked bars of the window: header, panels, status
+/// bar and function key bar.
+const COLUMN_GAPS: f32 = 3.0;
+
 /// Vertical space the panel chrome occupies: everything above and below the
 /// file rows.
 ///
@@ -30,10 +35,11 @@ pub const DATE_COLUMN_WIDTH: f32 = 150.0;
 /// shorten the list, which is what the tests below guard against.
 const CHROME: f32 = HEADER_HEIGHT
     + STATUSBAR_HEIGHT
+    + FKEYBAR_HEIGHT
     + PANEL_TITLE_HEIGHT
     + COLUMN_HEADER_HEIGHT
     + 2.0 * spacing::OUTER_PADDING
-    + 2.0 * spacing::SECTION_GAP
+    + COLUMN_GAPS * spacing::SECTION_GAP
     + 2.0 * spacing::BORDER_WIDTH;
 
 /// Number of file rows that fit into a panel for a given window size.
@@ -66,8 +72,10 @@ mod tests {
     #[test]
     fn a_full_height_window_fits_the_expected_rows() {
         let window = Size::new(1200.0, 760.0);
-        // 760 - 136 chrome = 624; 624 / 22 = 28.36 -> 28 rows.
-        assert_eq!(visible_rows(window), 28);
+        // Chrome: header 30 + status 28 + function keys 24 + title 28 + column
+        // header 24 + padding 12 + three gaps 18 + borders 2 = 166.
+        // 760 - 166 = 594; 594 / 22 = 27 rows exactly.
+        assert_eq!(visible_rows(window), 27);
     }
 
     /// The window height the app is opened with, so the number in the startup
@@ -76,7 +84,7 @@ mod tests {
     fn the_initial_window_shows_the_same_rows() {
         assert_eq!(
             visible_rows(INITIAL_WINDOW_SIZE),
-            28,
+            27,
             "the initial size no longer matches the documented row count"
         );
     }
@@ -99,10 +107,11 @@ mod tests {
     fn chrome_matches_the_constants_the_view_uses() {
         let expected = HEADER_HEIGHT
             + STATUSBAR_HEIGHT
+            + FKEYBAR_HEIGHT
             + PANEL_TITLE_HEIGHT
             + COLUMN_HEADER_HEIGHT
             + 2.0 * spacing::OUTER_PADDING
-            + 2.0 * spacing::SECTION_GAP
+            + 3.0 * spacing::SECTION_GAP
             + 2.0 * spacing::BORDER_WIDTH;
         assert_eq!(
             CHROME, expected,
@@ -115,7 +124,7 @@ mod tests {
     /// and a zero would make an empty list impossible to leave.
     #[test]
     fn a_tiny_window_still_shows_one_row() {
-        for height in [0.0, 10.0, 100.0, 136.0] {
+        for height in [0.0, 10.0, 100.0, 136.0, 166.0] {
             assert_eq!(
                 visible_rows(Size::new(400.0, height)),
                 1,
