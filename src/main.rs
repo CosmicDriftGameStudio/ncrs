@@ -62,7 +62,7 @@ KEYS:
     up/down    move selection      Tab       switch panel
     PgUp/PgDn  page                Backspace go up
     Home/End   first/last          Enter    open
-    Insert     tag a row           *        tag all
+    Ins/Space  tag a row           *        tag all
     F5 / F6    copy / move         F7       create directory
     F8         delete (to trash)   Shift+F8 delete permanently
     F9         switch language (en/de)

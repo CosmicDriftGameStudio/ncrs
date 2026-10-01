@@ -19,14 +19,15 @@ use crate::messages::{ConflictChoice, Message};
 /// ticked; the app holds it so the tick survives the dialog being rebuilt every
 /// frame.
 ///
-/// The keys are registered rather than handled here, so the same routing that
-/// sends Enter to a prompt sends it to this dialog: Esc answers "keep", Ctrl+C
-/// answers "cancel the whole operation", Space ticks "for all files". Both would otherwise have to be
-/// special-cased, and the second one would fight the abort binding.
+/// `focus` is the button Enter would press: 0 overwrite, 1 keep, 2 cancel.
+///
+/// The keys are routed in `app`, not here: Esc answers "keep", Ctrl+C answers
+/// "cancel the whole operation", Space ticks "for all files".
 pub fn view<'a>(
     name: &str,
     lang: Language,
     all: bool,
+    focus: usize,
     on_choice: impl Fn(ConflictChoice) -> Message + 'a,
 ) -> Element<'a, Message> {
     let title = text(lang.text(Msg::ConflictTitle))
@@ -54,12 +55,15 @@ pub fn view<'a>(
     let button_row = Row::with_children([
         button(text(lang.text(Msg::ConflictOverwrite)))
             .on_press(on_choice(ConflictChoice::ThisOverwrite))
+            .style(theme::dialog_button(focus == 0))
             .into(),
         button(text(lang.text(Msg::ConflictKeep)))
             .on_press(on_choice(ConflictChoice::ThisKeep))
+            .style(theme::dialog_button(focus == 1))
             .into(),
         button(text(lang.text(Msg::ConflictCancel)))
             .on_press(on_choice(ConflictChoice::Cancel))
+            .style(theme::dialog_button(focus == 2))
             .into(),
     ])
     .spacing(spacing::CELL_PADDING_X);

@@ -20,7 +20,7 @@ for the state, the licensing audit and the reasoning behind the order.
 ## Features
 
 - Two side-by-side file panels (left starts in the working directory, right at `$HOME`)
-- Multi-selection: tag rows with `Insert`, an operation applies to the tagged rows, or to
+- Multi-selection: tag rows with `Insert` or `Space` (or `Shift`+`Up`/`Down`, or Cmd/Ctrl-click), an operation applies to the tagged rows, or to
   the single row under the cursor when nothing is tagged
 - Keyboard navigation, selection highlighting, auto-scrolling
 - Name / Size / Modified columns, directories first, case-insensitive sort
@@ -41,7 +41,8 @@ for the state, the licensing audit and the reasoning behind the order.
 | `PgUp` / `PgDn`    | Move selection by one page               |
 | `Home` / `End`     | First / last entry                       |
 | `Enter`            | Open directory (files: placeholder)      |
-| `Insert`           | Tag / untag the row under the cursor    |
+| `Insert` / `Space` | Tag / untag the row, move down one      |
+| `Shift`+`Up`/`Down`| Tag / untag the row, move up / down     |
 | `*`                | Tag every row (except `..`)             |
 | `Ctrl`+`*`         | Clear all tags                          |
 | `F5` / `F6`        | Copy / move to the other panel          |

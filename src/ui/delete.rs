@@ -12,9 +12,16 @@ use super::theme::{self, colors, font_size, spacing};
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 
+/// `focus` is the button Enter would press: 0 confirms, 1 cancels.
+///
 /// `subject` is the entry name or the count line, already worded by the caller
 /// because it needs the number of entries.
-pub fn view<'a>(subject: String, permanent: bool, lang: Language) -> Element<'a, Message> {
+pub fn view<'a>(
+    subject: String,
+    permanent: bool,
+    focus: usize,
+    lang: Language,
+) -> Element<'a, Message> {
     let (title, confirm_label) = if permanent {
         (
             lang.text(Msg::DeleteTitlePermanent),
@@ -29,10 +36,10 @@ pub fn view<'a>(subject: String, permanent: bool, lang: Language) -> Element<'a,
 
     let confirm = button(text(confirm_label))
         .on_press(Message::DeleteConfirm)
-        .style(theme::dialog_button(!permanent));
+        .style(theme::dialog_button(focus == 0));
     let cancel = button(text(lang.text(Msg::DialogCancel)))
         .on_press(Message::DeleteCancel)
-        .style(theme::dialog_button(permanent));
+        .style(theme::dialog_button(focus == 1));
 
     let mut body = column![
         text(title).size(font_size::TITLE).color(colors::ACCENT),

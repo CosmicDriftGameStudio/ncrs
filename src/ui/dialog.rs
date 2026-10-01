@@ -109,6 +109,8 @@ pub fn scrim<'a>(content: Element<'a, Message>) -> Element<'a, Message> {
     container(content)
         .width(Length::Fill)
         .height(Length::Fill)
+        .align_x(alignment::Horizontal::Center)
+        .align_y(alignment::Vertical::Center)
         .style(|_theme| container::Style {
             background: Some(Background::Color(colors::SCRIM)),
             ..container::Style::default()
