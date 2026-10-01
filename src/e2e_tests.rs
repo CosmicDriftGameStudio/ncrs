@@ -685,6 +685,57 @@ mod tests {
         assert!(home.join("zeta.txt").is_file(), "the rest was not copied");
     }
 
+    /// Four rows, three of them already in the target, the dialog up on the
+    /// first conflict, and "for all files" ticked with Space.
+    fn all_ticked_on_three_conflicts() -> (
+        tempfile::TempDir,
+        std::path::PathBuf,
+        Session<impl iced::Program<State = App, Message = Message> + 'static>,
+    ) {
+        let dir = scratch("for-all");
+        let home = dir.path().join("home");
+        for name in ["alpha.txt", "beta.txt", "gamma.txt"] {
+            write(&dir.path().join(name), "new");
+            write(&home.join(name), "old");
+        }
+        write(&dir.path().join("zeta.txt"), "z");
+        let mut session = session_in(dir.path());
+        for row in ["alpha.txt", "beta.txt", "gamma.txt", "zeta.txt"] {
+            cursor_to(&mut session, row);
+            session.press(Key::Named(Named::Insert));
+        }
+        session.press(Key::Named(Named::F5));
+        assert!(session.app.conflict_is_pending(), "no question about alpha");
+        session.press(Key::Named(Named::Space));
+        (dir, home, session)
+    }
+
+    /// The tick is wired: Keep with it set keeps every later conflict too,
+    /// without a second question.
+    #[test]
+    fn keep_with_for_all_ticked_does_not_ask_again() {
+        let (_dir, home, mut session) = all_ticked_on_three_conflicts();
+        session.press(Key::Named(Named::Escape));
+
+        assert!(!session.app.conflict_is_pending(), "asked again");
+        for name in ["alpha.txt", "beta.txt", "gamma.txt"] {
+            assert_eq!(std::fs::read_to_string(home.join(name)).unwrap(), "old");
+        }
+        assert!(home.join("zeta.txt").is_file(), "the rest was not copied");
+    }
+
+    #[test]
+    fn overwrite_with_for_all_ticked_does_not_ask_again() {
+        let (_dir, home, mut session) = all_ticked_on_three_conflicts();
+        session.press(Key::Named(Named::Enter));
+
+        assert!(!session.app.conflict_is_pending(), "asked again");
+        for name in ["alpha.txt", "beta.txt", "gamma.txt"] {
+            assert_eq!(std::fs::read_to_string(home.join(name)).unwrap(), "new");
+        }
+        assert!(home.join("zeta.txt").is_file());
+    }
+
     /// Cancel ends the whole transfer: the rows after the conflict are not
     /// touched and the dialog does not come back.
     #[test]

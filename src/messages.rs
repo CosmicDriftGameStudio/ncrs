@@ -62,6 +62,8 @@ pub enum Message {
     Transfer(TransferKind),
     /// The user answered the conflict dialog.
     TransferConflict(ConflictChoice),
+    /// Ticks or unticks "for all files" in the conflict dialog.
+    ToggleConflictAll,
     /// One row of a transfer finished. Carries the whole transfer so the next
     /// row can start without the app keeping it in a field that a later
     /// message could overwrite.
@@ -147,15 +149,11 @@ impl TransferKind {
 /// The "All" options are the point: answering the same question per file turns
 /// five files into five dialogs and fifty thousand into an afternoon.
 ///
-/// The two `All` variants are handled by the app but not offered by the dialog
-/// yet, so nothing outside the tests builds them. They are marked one by one
-/// rather than silencing the type, so a variant that *is* reachable still shows
-/// up if it stops being used.
+/// The two `All` variants are what the single-file answers become when "for all
+/// files" is ticked; see `App::answer_conflict`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConflictChoice {
-    #[allow(dead_code)] // The dialog has no "for all" button yet; only tests build it.
     AllOverwrite,
-    #[allow(dead_code)] // The dialog has no "for all" button yet; only tests build it.
     AllKeep,
     ThisOverwrite,
     ThisKeep,
@@ -175,6 +173,15 @@ impl ConflictChoice {
                 crate::fs::transfer::OnConflict::Skip
             }
             ConflictChoice::Cancel => crate::fs::transfer::OnConflict::Fail,
+        }
+    }
+
+    /// The same answer, applied to every later conflict too.
+    pub fn for_all(self) -> Self {
+        match self {
+            ConflictChoice::ThisOverwrite => ConflictChoice::AllOverwrite,
+            ConflictChoice::ThisKeep => ConflictChoice::AllKeep,
+            other => other,
         }
     }
 

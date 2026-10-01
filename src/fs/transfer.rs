@@ -197,33 +197,52 @@ pub fn transfer<S: Source, P: Progress>(
         }
     }
 
+    std::fs::create_dir_all(target_dir)?;
+
     // An overwrite is built next to the target and swapped in at the end, so a
     // failure halfway leaves the old target untouched.
-    let staged = if existed {
-        unique_sibling(&target)
-    } else {
-        target.clone()
-    };
-
-    if effect.relocate(source, &staged)? {
-        // A rename is one step, however large the tree.
-        progress.advanced(1, 1)?;
-        if existed {
-            replace(&staged, &target)?;
+    //
+    // A rename cannot be told to refuse an existing name (that would be
+    // `renameat2(RENAME_NOREPLACE)`, which is Linux-only), so for a move the
+    // staging name is only checked free, not claimed. The residual race is
+    // someone creating that exact name in the target directory between the
+    // check and the rename.
+    if effect.removes_source() {
+        let staged = if existed {
+            free_sibling(&target)
+        } else {
+            target.clone()
+        };
+        if effect.relocate(source, &staged)? {
+            // A rename is one step, however large the tree.
+            progress.advanced(1, 1)?;
+            if existed {
+                if let Err(e) = replace(&staged, &target) {
+                    // Put the source back rather than leave it hidden under
+                    // the staging name.
+                    let _best_effort = std::fs::rename(&staged, source);
+                    return Err(e);
+                }
+            }
+            return Ok(1);
         }
-        return Ok(1);
     }
 
+    let meta = std::fs::symlink_metadata(source)?;
+    let staged = claim_entry(source, &meta, &target, existed)?;
     let total = count_items(source);
     let mut done = 0;
-    if let Err(e) = walk(source, &staged, progress, &mut done, total) {
+    if let Err(e) = descend(source, &staged, &meta, progress, &mut done, total) {
         if existed {
             let _best_effort = remove_path(&staged);
         }
         return Err(e);
     }
     if existed {
-        replace(&staged, &target)?;
+        if let Err(e) = replace(&staged, &target) {
+            let _best_effort = remove_path(&staged);
+            return Err(e);
+        }
     }
 
     // Only now, with everything copied, does the source go.
@@ -231,6 +250,32 @@ pub fn transfer<S: Source, P: Progress>(
         effect.remove(source)?;
     }
     Ok(done)
+}
+
+/// Creates the first entry of a copy under a name nobody else holds.
+///
+/// With nothing in the way that is `target` itself. When overwriting it is a
+/// fresh sibling, created exclusively (`create_new` / `create_dir` fail if the
+/// name exists), so a name an attacker planted in a shared directory is never
+/// written through; a taken name just moves on to the next one.
+fn claim_entry(
+    source: &Path,
+    meta: &std::fs::Metadata,
+    target: &Path,
+    existed: bool,
+) -> io::Result<PathBuf> {
+    if !existed {
+        create_entry(source, meta, target)?;
+        return Ok(target.to_path_buf());
+    }
+    loop {
+        let candidate = free_sibling(target);
+        match create_entry(source, meta, &candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e),
+        }
+    }
 }
 
 /// Rejects the two requests that would destroy or never finish: a path onto
@@ -257,6 +302,20 @@ fn refuse_onto_itself(source: &Path, target_dir: &Path, target: &Path) -> io::Re
         ));
     }
 
+    // The target (this name inside the target directory) may be an ancestor of
+    // the source: replacing it would set the source aside and delete it.
+    if let (Ok(target_real), Some(name)) = (std::fs::canonicalize(target), source.file_name()) {
+        if std::fs::canonicalize(source_parent)?
+            .join(name)
+            .starts_with(&target_real)
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("{} contains {}", target.display(), source.display()),
+            ));
+        }
+    }
+
     let source_is_dir = std::fs::symlink_metadata(source)?.is_dir();
     if source_is_dir && target_dir_real.starts_with(std::fs::canonicalize(source)?) {
         return Err(io::Error::new(
@@ -267,8 +326,8 @@ fn refuse_onto_itself(source: &Path, target_dir: &Path, target: &Path) -> io::Re
     Ok(())
 }
 
-/// A name next to `target` that does not exist yet.
-fn unique_sibling(target: &Path) -> PathBuf {
+/// A name next to `target` that does not exist yet. Checked, not claimed.
+fn free_sibling(target: &Path) -> PathBuf {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -291,20 +350,26 @@ fn remove_path(path: &Path) -> io::Result<()> {
 }
 
 /// Puts `staged` where `target` is. Two files swap atomically with one rename;
-/// anything involving a directory moves the old target aside first, and puts it
-/// back if the new one cannot take its place.
+/// anything involving a directory moves the old target aside first. If the new
+/// one cannot take its place, or the old one cannot be deleted, everything goes
+/// back and `staged` is where it was.
 fn replace(staged: &Path, target: &Path) -> io::Result<()> {
     let is_dir = |p: &Path| std::fs::symlink_metadata(p).map(|m| m.is_dir());
     if !is_dir(staged)? && !is_dir(target)? {
         return std::fs::rename(staged, target);
     }
-    let aside = unique_sibling(target);
+    let aside = free_sibling(target);
     std::fs::rename(target, &aside)?;
     if let Err(e) = std::fs::rename(staged, target) {
         let _best_effort = std::fs::rename(&aside, target);
         return Err(e);
     }
-    remove_path(&aside)
+    if let Err(e) = remove_path(&aside) {
+        let _best_effort =
+            std::fs::rename(target, staged).and_then(|()| std::fs::rename(&aside, target));
+        return Err(e);
+    }
+    Ok(())
 }
 
 /// How many items a directory holds, including the directories themselves.
@@ -336,20 +401,76 @@ fn walk<P: Progress>(
     total: usize,
 ) -> io::Result<()> {
     let meta = std::fs::symlink_metadata(source)?;
+    create_entry(source, &meta, target)?;
+    descend(source, target, &meta, progress, done, total)
+}
 
+/// Makes one new entry at `target`, failing if the name is already taken.
+fn create_entry(source: &Path, meta: &std::fs::Metadata, target: &Path) -> io::Result<()> {
     if meta.is_dir() {
-        std::fs::create_dir_all(target)?;
-    } else {
+        std::fs::create_dir(target)
+    } else if meta.file_type().is_symlink() {
         // A symlink is copied as a symlink, not followed: following it would
         // copy whatever it points at, possibly outside the tree the user marked.
-        if meta.file_type().is_symlink() {
-            let link = std::fs::read_link(source)?;
-            symlink(&link, target)?;
-        } else {
-            std::fs::copy(source, target)?;
+        let link = std::fs::read_link(source)?;
+        symlink(source, &link, target)
+    } else {
+        refuse_special_file(meta)?;
+        // `create_new`, not `fs::copy`: copy opens an existing path and writes
+        // through whatever is there, including a symlink.
+        let mut from = std::fs::File::open(source)?;
+        let mut to = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(target)?;
+        io::copy(&mut from, &mut to)?;
+        to.set_permissions(copied_permissions(meta))
+    }
+}
+
+/// A FIFO would block the job forever when opened for reading, and sockets and
+/// devices are not data to copy.
+fn refuse_special_file(meta: &std::fs::Metadata) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::FileTypeExt as _;
+        let kind = meta.file_type();
+        if kind.is_fifo() || kind.is_socket() || kind.is_block_device() || kind.is_char_device() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "not a regular file (FIFO, socket or device)",
+            ));
         }
     }
+    #[cfg(not(unix))]
+    let _ = meta;
+    Ok(())
+}
 
+/// The source's permissions for the copy. On Unix without setuid, setgid and
+/// sticky: a copy must not hand a privilege bit to a file the user did not
+/// mark as such.
+fn copied_permissions(meta: &std::fs::Metadata) -> std::fs::Permissions {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::Permissions::from_mode(meta.permissions().mode() & 0o777)
+    }
+    #[cfg(not(unix))]
+    {
+        meta.permissions()
+    }
+}
+
+/// Counts the entry just created and walks into it if it is a directory.
+fn descend<P: Progress>(
+    source: &Path,
+    target: &Path,
+    meta: &std::fs::Metadata,
+    progress: &mut P,
+    done: &mut usize,
+    total: usize,
+) -> io::Result<()> {
     *done += 1;
     // A cancel arrives as an error here and stops the walk.
     progress.advanced(*done, total)?;
@@ -364,40 +485,37 @@ fn walk<P: Progress>(
     Ok(())
 }
 
-/// Creates a symlink, or copies its target on platforms that need privilege.
-/// Windows without developer mode cannot create links at all, and a plain copy
-/// is the closest honest fallback.
-fn symlink(original: &Path, link: &Path) -> io::Result<()> {
+/// Creates `link` as a symlink to `original`, the target `source` points at.
+///
+/// Never copies what the link points at: a refused link is an error, because
+/// following it could pull in files from outside the tree the user marked.
+fn symlink(source: &Path, original: &Path, link: &Path) -> io::Result<()> {
     #[cfg(unix)]
     {
+        let _ = source;
         std::os::unix::fs::symlink(original, link)
     }
     #[cfg(windows)]
     {
-        // `original` is the link target as stored; for a relative link the
-        // target has to be resolved against the link's own directory.
+        // Windows has two kinds of link. A relative target is relative to the
+        // directory the original link sits in, so that is where it is resolved
+        // to find out which kind it is.
         let resolved = if original.is_absolute() {
             original.to_path_buf()
         } else {
-            link.parent()
+            source
+                .parent()
                 .map(|dir| dir.join(original))
                 .unwrap_or_else(|| original.to_path_buf())
         };
-        match std::fs::copy(&resolved, link) {
-            Ok(_) => Ok(()),
-            Err(e) if e.kind() == io::ErrorKind::InvalidInput => {
-                std::os::windows::fs::symlink_file(&resolved, link)
-            }
-            Err(e) => Err(e),
+        if resolved.is_dir() {
+            std::os::windows::fs::symlink_dir(original, link)
+        } else {
+            std::os::windows::fs::symlink_file(original, link)
         }
     }
 }
 
-/// Copies or moves one path into `target_dir`, applying the conflict rule.
-///
-/// The thin wrapper the app calls: it picks the effect from the kind and the
-/// progress sink that does nothing, because the app reports through the job
-/// queue rather than from inside the walk.
 /// As `run`, but reports progress so the status bar moves while the copy runs.
 /// This is the path the app takes; `run` is for a caller that only wants the
 /// work done.
@@ -793,6 +911,113 @@ mod tests {
             !missing.exists(),
             "the copy wrote through the dangling link"
         );
+    }
+
+    /// The staging entry is created, never opened: a planted symlink at the
+    /// name must not be written through.
+    #[cfg(unix)]
+    #[test]
+    fn a_new_entry_is_never_written_through_a_symlink() {
+        let dir = scratch("exclusive");
+        let src = dir.path().join("src.txt");
+        fs::write(&src, b"new").unwrap();
+        let victim = dir.path().join("victim.txt");
+        fs::write(&victim, b"untouched").unwrap();
+        let planted = dir.path().join("planted");
+        std::os::unix::fs::symlink(&victim, &planted).unwrap();
+
+        let err = create_entry(&src, &fs::symlink_metadata(&src).unwrap(), &planted).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(fs::read(&victim).unwrap(), b"untouched");
+    }
+
+    /// If the swap fails after a move already renamed the source, the source
+    /// is back under its own name and the old target is as it was.
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_swap_after_a_move_puts_everything_back() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = scratch("swap-fails");
+        let src = dir.path().join("item");
+        let dst = dir.path().join("dst");
+        fs::write(&src, b"new").unwrap();
+        // The old target is a directory that cannot be emptied.
+        let locked = dst.join("item/locked");
+        fs::create_dir_all(&locked).unwrap();
+        fs::write(locked.join("f"), b"old").unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o555)).unwrap();
+
+        let result = transfer(&src, &dst, &Move, &mut Counting, OnConflict::Overwrite);
+
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(result.is_err(), "the swap should have failed");
+        assert_eq!(fs::read(&src).unwrap(), b"new", "the source is lost");
+        assert_eq!(fs::read(locked.join("f")).unwrap(), b"old");
+        assert_eq!(
+            fs::read_dir(&dst).unwrap().count(),
+            1,
+            "a staging name is left"
+        );
+    }
+
+    /// The target may be an ancestor of the source: replacing it would set the
+    /// source aside with it and delete both.
+    #[test]
+    fn a_target_that_contains_the_source_is_refused() {
+        let dir = scratch("ancestor");
+        let outer = dir.path().join("q");
+        fs::create_dir_all(&outer).unwrap();
+        fs::write(outer.join("q"), b"precious").unwrap();
+
+        let err = transfer(
+            &outer.join("q"),
+            dir.path(),
+            &Copy,
+            &mut Counting,
+            OnConflict::Overwrite,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(fs::read(outer.join("q")).unwrap(), b"precious");
+    }
+
+    /// A FIFO opened for reading blocks forever, so it is refused up front.
+    #[cfg(unix)]
+    #[test]
+    fn a_fifo_is_refused_not_opened() {
+        let dir = scratch("fifo");
+        let src = dir.path().join("pipe");
+        let dst = dir.path().join("dst");
+        let made = std::process::Command::new("mkfifo")
+            .arg(&src)
+            .status()
+            .unwrap();
+        assert!(made.success(), "mkfifo failed");
+        fs::create_dir_all(&dst).unwrap();
+
+        let err = transfer(&src, &dst, &Copy, &mut Counting, OnConflict::Fail).unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    }
+
+    /// A copy is not a way to hand out a privilege bit.
+    #[cfg(unix)]
+    #[test]
+    fn a_copy_drops_setuid_and_keeps_the_ordinary_bits() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = scratch("setuid");
+        let src = dir.path().join("tool");
+        let dst = dir.path().join("dst");
+        fs::write(&src, b"x").unwrap();
+        fs::set_permissions(&src, fs::Permissions::from_mode(0o4755)).unwrap();
+        fs::create_dir_all(&dst).unwrap();
+
+        transfer(&src, &dst, &Copy, &mut Counting, OnConflict::Fail).unwrap();
+
+        let mode = fs::metadata(dst.join("tool")).unwrap().permissions().mode();
+        assert_eq!(mode & 0o7777, 0o755);
     }
 
     /// A move on one device is a rename: the file keeps its inode. A copy and

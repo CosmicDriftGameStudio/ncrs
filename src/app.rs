@@ -275,6 +275,8 @@ fn keys_without_prompt(
             // not lose data. Cancelling the whole transfer is on Ctrl+C, which
             // is the key that already aborts a job.
             Key::Named(Named::Escape) => Some(Message::TransferConflict(ConflictChoice::ThisKeep)),
+            // Space ticks "for all files", as it ticks a checkbox elsewhere.
+            Key::Named(Named::Space) => Some(Message::ToggleConflictAll),
             // Ctrl+C cancels the whole operation, the same key that aborts a
             // job. Enter and Escape already covered the two single-file answers.
             Key::Character(c) if c == "c" && key_modifiers.contains(Modifiers::CTRL) => {
@@ -473,6 +475,11 @@ impl App {
             // because that one cannot see whether a prompt is open.
             // --- copy / move ---
             Message::Transfer(kind) => self.start_transfer(kind),
+
+            Message::ToggleConflictAll => {
+                self.conflict_all = !self.conflict_all;
+                Task::none()
+            }
 
             // The user answered a conflict. The queue's pending job carries
             // what was asked, so the answer lands on the right file.
@@ -994,11 +1001,16 @@ impl App {
 
     /// Answers a conflict and remembers an "all" answer, so the next
     /// conflict does not ask again.
-    fn answer_conflict(&mut self, choice: ConflictChoice) -> Task<Message> {
+    fn answer_conflict(&mut self, clicked: ConflictChoice) -> Task<Message> {
         let Some(pending) = self.pending_conflict.take() else {
             return Task::none();
         };
         // The tick belonged to the question just answered, so it goes with it.
+        let choice = if self.conflict_all {
+            clicked.for_all()
+        } else {
+            clicked
+        };
         self.conflict_all = false;
         // Cancel ends the transfer; the rows already done stay done.
         if choice == ConflictChoice::Cancel {

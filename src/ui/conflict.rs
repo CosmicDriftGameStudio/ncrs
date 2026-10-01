@@ -21,7 +21,7 @@ use crate::messages::{ConflictChoice, Message};
 ///
 /// The keys are registered rather than handled here, so the same routing that
 /// sends Enter to a prompt sends it to this dialog: Esc answers "keep", Ctrl+C
-/// answers "cancel the whole operation". Both would otherwise have to be
+/// answers "cancel the whole operation", Space ticks "for all files". Both would otherwise have to be
 /// special-cased, and the second one would fight the abort binding.
 pub fn view<'a>(
     name: &str,
@@ -40,7 +40,10 @@ pub fn view<'a>(
     // The checkbox state comes from the app, not from here: the view is pure,
     // and the tick has to survive the dialog being rebuilt every frame.
     let all_row = Row::with_children([
-        checkbox(all).style(theme::dialog_checkbox).into(),
+        checkbox(all)
+            .on_toggle(|_| Message::ToggleConflictAll)
+            .style(theme::dialog_checkbox)
+            .into(),
         text(lang.text(Msg::ConflictApplyAll))
             .size(font_size::STATUS)
             .into(),
