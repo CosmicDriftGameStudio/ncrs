@@ -89,6 +89,21 @@ fn build_actions() -> Vec<Action> {
             hint: None,
         },
         Action {
+            binding: Binding::key(KeyNamed(Space)),
+            message: Message::ToggleTag,
+            hint: None,
+        },
+        Action {
+            binding: Binding::with_modifiers(KeyNamed(ArrowDown), Modifiers::SHIFT),
+            message: Message::TagMove(1),
+            hint: None,
+        },
+        Action {
+            binding: Binding::with_modifiers(KeyNamed(ArrowUp), Modifiers::SHIFT),
+            message: Message::TagMove(-1),
+            hint: None,
+        },
+        Action {
             binding: Binding::key(Character("*".into())),
             message: Message::TagAll,
             hint: None,

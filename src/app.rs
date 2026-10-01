@@ -214,6 +214,10 @@ pub struct App {
     delete_dialog: Option<Deletion>,
     /// The delete that is running.
     deleting: Option<Deletion>,
+    /// The button the open dialog has focused, counted from the left.
+    dialog_focus: usize,
+    /// Modifiers held right now, for Cmd/Ctrl-click on a row.
+    modifiers: Modifiers,
     /// Where F8 sends entries. Injected so tests never touch the real trash.
     trash: Arc<dyn fs::Trash>,
     /// Why the last job failed, in the active language. Shown in the status bar
@@ -294,29 +298,17 @@ fn keys_without_prompt(
     if prompt.delete_dialog != DeleteKeys::Closed {
         let permanent = prompt.delete_dialog == DeleteKeys::Permanent;
         return match key.as_ref() {
-            // The default button. In the permanent dialog that is "Cancel", so
-            // a reflex Enter never deletes for good.
-            Key::Named(Named::Enter) => Some(if permanent {
-                Message::DeleteCancel
-            } else {
-                Message::DeleteConfirm
-            }),
             Key::Named(Named::Escape) => Some(Message::DeleteCancel),
             // The deliberate chord that started the permanent delete confirms it.
             Key::Named(Named::F8) if permanent && key_modifiers == Modifiers::SHIFT => {
                 Some(Message::DeleteConfirm)
             }
-            _ => None,
+            _ => dialog_focus_key(key, key_modifiers),
         };
     }
 
     if prompt.conflict_open {
         return match key.as_ref() {
-            // Enter overwrites, which is the answer the button under the cursor
-            // offers and the one a user repeating a dialog expects.
-            Key::Named(Named::Enter) => {
-                Some(Message::TransferConflict(ConflictChoice::ThisOverwrite))
-            }
             // Escape means "no" to a question, and "keep" is the no that does
             // not lose data. Cancelling the whole transfer is on Ctrl+C, which
             // is the key that already aborts a job.
@@ -328,7 +320,7 @@ fn keys_without_prompt(
             Key::Character(c) if c == "c" && key_modifiers.contains(Modifiers::CTRL) => {
                 Some(Message::TransferConflict(ConflictChoice::Cancel))
             }
-            _ => None,
+            _ => dialog_focus_key(key, key_modifiers),
         };
     }
 
@@ -359,6 +351,19 @@ fn keys_without_prompt(
     })
 }
 
+/// The keys every button dialog shares: arrows and Tab move the focus, Enter
+/// presses the focused button.
+fn dialog_focus_key(key: Key, modifiers: Modifiers) -> Option<Message> {
+    match key.as_ref() {
+        Key::Named(Named::Enter) => Some(Message::DialogActivate),
+        Key::Named(Named::ArrowLeft) => Some(Message::DialogFocus(-1)),
+        Key::Named(Named::ArrowRight) => Some(Message::DialogFocus(1)),
+        Key::Named(Named::Tab) if modifiers.shift() => Some(Message::DialogFocus(-1)),
+        Key::Named(Named::Tab) => Some(Message::DialogFocus(1)),
+        _ => None,
+    }
+}
+
 /// Whether holding the key down may fire the message again.
 ///
 /// Only cursor movement, tagging and typing repeat. An action such as F5 or a
@@ -373,6 +378,7 @@ fn repeats(message: &Message) -> bool {
             | Message::SelectFirst
             | Message::SelectLast
             | Message::ToggleTag
+            | Message::TagMove(_)
             | Message::PromptInput(_)
     )
 }
@@ -397,6 +403,11 @@ pub fn route_key(prompt: &PromptKeyState, key: Key, modifiers: Modifiers) -> Opt
         // separator, and `Prompt::validate` reports the rest.
         Key::Character(c) => {
             name.push_str(c);
+            Some(Message::PromptInput(name))
+        }
+        // iced delivers the space bar as a named key, not as a character.
+        Key::Named(Named::Space) => {
+            name.push(' ');
             Some(Message::PromptInput(name))
         }
         _ => None,
@@ -431,6 +442,8 @@ impl App {
             pending_conflict: None,
             delete_dialog: None,
             deleting: None,
+            dialog_focus: 0,
+            modifiers: Modifiers::default(),
             trash: Arc::new(fs::SystemTrash),
             job_error: None,
             job_done: 0,
@@ -518,6 +531,9 @@ impl App {
                             modifiers,
                         )
                         .filter(|message| !repeat || repeats(message)),
+                        keyboard::Event::ModifiersChanged(modifiers) => {
+                            Some(Message::ModifiersChanged(modifiers))
+                        }
                         _ => None,
                     }
                 }),
@@ -566,6 +582,20 @@ impl App {
             // --- copy / move ---
             Message::Transfer(kind) => self.start_transfer(kind),
 
+            Message::ModifiersChanged(modifiers) => {
+                self.modifiers = modifiers;
+                Task::none()
+            }
+            Message::DialogFocus(step) => {
+                let buttons = self.dialog_button_count();
+                if buttons > 0 {
+                    // `buttons` is 2 or 3 and `step` is -1 or 1.
+                    self.dialog_focus =
+                        (self.dialog_focus + buttons).wrapping_add_signed(step) % buttons;
+                }
+                Task::none()
+            }
+            Message::DialogActivate => self.activate_dialog_button(),
             Message::ToggleConflictAll => {
                 self.conflict_all = !self.conflict_all;
                 Task::none()
@@ -637,6 +667,7 @@ impl App {
                     // The dialog names the file itself, so the reason travels
                     // no further; it stays in the payload for the status line.
                     Err(RowFailure::Conflict(_reason)) => {
+                        self.dialog_focus = 0;
                         self.pending_conflict = Some(PendingConflict { transfer, index });
                         Task::none()
                     }
@@ -836,19 +867,8 @@ impl App {
             Message::GoUp => self.go_up(self.active_panel),
 
             // --- selection ---
-            Message::ToggleTag => {
-                let panel = self.active_panel_mut();
-                // The `..` entry is not a thing to copy, so it cannot be tagged.
-                let Some(entry) = panel.selected_entry() else {
-                    return Task::none();
-                };
-                if entry.is_parent {
-                    return Task::none();
-                }
-                let name = entry.name.clone();
-                panel.selection.toggle(&name);
-                Task::none()
-            }
+            Message::ToggleTag => self.tag_and_move(1),
+            Message::TagMove(delta) => self.tag_and_move(delta),
             Message::TagAll => {
                 // Split borrow: the set is filled while the entries are read.
                 let panel = self.active_panel_mut();
@@ -880,9 +900,10 @@ impl App {
                 on_tag,
             } => {
                 self.active_panel = side;
+                let toggle = on_tag || self.modifiers.command();
                 let panel = self.panel_mut(side);
                 panel.select(index, rows);
-                if on_tag {
+                if toggle {
                     // `..` is not a thing to copy, so it is not taggable — the
                     // same rule the keyboard path uses.
                     if let Some(entry) = panel.entries.get(index) {
@@ -983,6 +1004,7 @@ impl App {
             let dialog_element = delete_dialog_view::view(
                 self.delete_subject(deletion),
                 deletion.permanent,
+                self.dialog_focus,
                 self.lang,
             );
             return Stack::with_children([root.into(), dialog::scrim(dialog_element)]).into();
@@ -1001,9 +1023,13 @@ impl App {
                 .and_then(|p| p.file_name())
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            let conflict_element = conflict::view(&name, self.lang, self.conflict_all, |choice| {
-                Message::TransferConflict(choice)
-            });
+            let conflict_element = conflict::view(
+                &name,
+                self.lang,
+                self.conflict_all,
+                self.dialog_focus,
+                Message::TransferConflict,
+            );
             return Stack::with_children([root.into(), dialog::scrim(conflict_element)]).into();
         }
 
@@ -1021,23 +1047,6 @@ impl App {
         let Some(prompt_element) = overlay else {
             return root.into();
         };
-
-        // The conflict dialog takes precedence over the prompt: it is asked
-        // while a transfer is running, and a transfer is what the prompt was
-        // waiting for.
-        if let Some(pending) = self.pending_conflict.as_ref() {
-            let name = pending
-                .transfer
-                .sources
-                .get(pending.index)
-                .and_then(|p| p.file_name())
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let conflict_element = conflict::view(&name, self.lang, self.conflict_all, |choice| {
-                Message::TransferConflict(choice)
-            });
-            return Stack::with_children([root.into(), dialog::scrim(conflict_element)]).into();
-        }
 
         // The prompt sits above everything and takes every keystroke; the scrim
         // swallows clicks meant for the panels underneath.
@@ -1124,6 +1133,52 @@ impl App {
         }
     }
 
+    fn dialog_button_count(&self) -> usize {
+        if self.delete_dialog.is_some() {
+            2
+        } else if self.pending_conflict.is_some() {
+            3
+        } else {
+            0
+        }
+    }
+
+    /// Enter in a button dialog: whatever the focused button does.
+    fn activate_dialog_button(&mut self) -> Task<Message> {
+        if self.delete_dialog.is_some() {
+            return if self.dialog_focus == 0 {
+                self.confirm_delete()
+            } else {
+                self.delete_dialog = None;
+                Task::none()
+            };
+        }
+        if self.pending_conflict.is_some() {
+            let choice = match self.dialog_focus {
+                0 => ConflictChoice::ThisOverwrite,
+                1 => ConflictChoice::ThisKeep,
+                _ => ConflictChoice::Cancel,
+            };
+            return self.answer_conflict(choice);
+        }
+        Task::none()
+    }
+
+    /// Toggles the tag on the cursor row and moves by `delta`, as NC does. The
+    /// `..` entry cannot be tagged but the cursor still moves past it.
+    fn tag_and_move(&mut self, delta: isize) -> Task<Message> {
+        let rows = self.visible_rows;
+        let panel = self.active_panel_mut();
+        if let Some(entry) = panel.selected_entry() {
+            if !entry.is_parent {
+                let name = entry.name.clone();
+                panel.selection.toggle(&name);
+            }
+        }
+        panel.move_selection(delta, rows);
+        Task::none()
+    }
+
     /// F8 / Shift+F8: ask before deleting. Nothing to act on, or something
     /// else already holding the keyboard or the queue, means nothing happens.
     fn open_delete_dialog(&mut self, permanent: bool) -> Task<Message> {
@@ -1139,6 +1194,9 @@ impl App {
             return Task::none();
         }
         self.job_error = None;
+        // The permanent dialog starts on "Cancel", so a reflex Enter never
+        // deletes for good.
+        self.dialog_focus = usize::from(permanent);
         self.delete_dialog = Some(Deletion {
             sources,
             permanent,
@@ -1676,6 +1734,10 @@ mod prompt_routing {
             Some(Message::PromptInput("abcd".into()))
         );
         assert_eq!(
+            press(&app, Key::Named(Named::Space)),
+            Some(Message::PromptInput("abc ".into()))
+        );
+        assert_eq!(
             press(&app, Key::Named(Named::Backspace)),
             Some(Message::PromptInput("ab".into()))
         );
@@ -2092,6 +2154,8 @@ impl App {
             pending_conflict: None,
             delete_dialog: None,
             deleting: None,
+            dialog_focus: 0,
+            modifiers: Modifiers::default(),
             trash: Arc::new(fs::SystemTrash),
             job_error: None,
             job_done: 0,
@@ -2221,6 +2285,7 @@ impl App {
     /// Puts the delete dialog in front of the user for `count` fixed entries,
     /// for the snapshot tests.
     pub fn open_delete_dialog_for_test(&mut self, count: usize, permanent: bool) {
+        self.dialog_focus = usize::from(permanent);
         self.delete_dialog = Some(Deletion {
             sources: (0..count)
                 .map(|i| PathBuf::from("/left").join(format!("entry-{}.txt", i + 1)))
@@ -3075,8 +3140,8 @@ mod conflict_keys {
 
         assert_eq!(
             press(&app, Key::Named(Named::Enter), Modifiers::default()),
-            Some(Message::TransferConflict(ConflictChoice::ThisOverwrite)),
-            "Enter does not answer the question"
+            Some(Message::DialogActivate),
+            "Enter does not press the focused button"
         );
         assert_eq!(
             press(&app, Key::Named(Named::Escape), Modifiers::default()),
@@ -3182,11 +3247,11 @@ mod delete_tests {
     }
 
     #[test]
-    fn enter_confirms_the_trash_dialog_and_escape_cancels() {
+    fn enter_presses_the_focused_button_and_escape_cancels() {
         let state = keys(DeleteKeys::Trash);
         assert_eq!(
             route(&state, Named::Enter, Modifiers::default()),
-            Some(Message::DeleteConfirm)
+            Some(Message::DialogActivate)
         );
         assert_eq!(
             route(&state, Named::Escape, Modifiers::default()),
@@ -3197,17 +3262,142 @@ mod delete_tests {
     }
 
     #[test]
-    fn enter_cancels_the_permanent_dialog() {
+    fn the_permanent_dialog_still_confirms_on_a_second_shift_f8() {
         let state = keys(DeleteKeys::Permanent);
-        assert_eq!(
-            route(&state, Named::Enter, Modifiers::default()),
-            Some(Message::DeleteCancel)
-        );
         assert_eq!(
             route(&state, Named::F8, Modifiers::SHIFT),
             Some(Message::DeleteConfirm)
         );
         assert_eq!(route(&state, Named::F8, Modifiers::default()), None);
+    }
+
+    #[test]
+    fn arrows_and_tab_move_the_focus_in_both_dialogs() {
+        let conflict = PromptKeyState {
+            conflict_open: true,
+            ..PromptKeyState::default()
+        };
+        for state in [
+            keys(DeleteKeys::Trash),
+            keys(DeleteKeys::Permanent),
+            conflict,
+        ] {
+            assert_eq!(
+                route(&state, Named::ArrowRight, Modifiers::default()),
+                Some(Message::DialogFocus(1))
+            );
+            assert_eq!(
+                route(&state, Named::ArrowLeft, Modifiers::default()),
+                Some(Message::DialogFocus(-1))
+            );
+            assert_eq!(
+                route(&state, Named::Tab, Modifiers::default()),
+                Some(Message::DialogFocus(1))
+            );
+            assert_eq!(
+                route(&state, Named::Tab, Modifiers::SHIFT),
+                Some(Message::DialogFocus(-1))
+            );
+        }
+    }
+
+    #[test]
+    fn space_and_shift_arrows_tag() {
+        let idle = PromptKeyState::default();
+        assert_eq!(
+            route(&idle, Named::Space, Modifiers::default()),
+            Some(Message::ToggleTag)
+        );
+        assert_eq!(
+            route(&idle, Named::ArrowDown, Modifiers::SHIFT),
+            Some(Message::TagMove(1))
+        );
+        assert_eq!(
+            route(&idle, Named::ArrowUp, Modifiers::SHIFT),
+            Some(Message::TagMove(-1))
+        );
+        assert_eq!(
+            route(&idle, Named::ArrowDown, Modifiers::default()),
+            Some(Message::MoveSelection(1))
+        );
+    }
+
+    #[test]
+    fn a_held_enter_does_not_press_a_button() {
+        assert!(!repeats(&Message::DialogActivate));
+        assert!(!repeats(&Message::DialogFocus(1)));
+    }
+
+    #[tokio::test]
+    async fn focus_wraps_and_enter_presses_the_focused_button() {
+        let mut app = app_with_entries(&["a.txt"]);
+        let _open = app.update(Message::Delete { permanent: true });
+        assert_eq!(
+            app.dialog_focus, 1,
+            "the permanent dialog must start on Cancel"
+        );
+
+        let _wrap = app.update(Message::DialogFocus(1));
+        assert_eq!(app.dialog_focus, 0);
+        let _back = app.update(Message::DialogFocus(-1));
+        assert_eq!(app.dialog_focus, 1);
+        let _cancel = app.update(Message::DialogActivate);
+        assert!(
+            app.delete_dialog.is_none(),
+            "Enter on Cancel kept the dialog"
+        );
+
+        let _again = app.update(Message::Delete { permanent: false });
+        assert_eq!(app.dialog_focus, 0, "the trash dialog starts on Delete");
+        let _move = app.update(Message::DialogFocus(1));
+        let _enter = app.update(Message::DialogActivate);
+        assert!(app.delete_dialog.is_none());
+        assert!(app.deleting.is_none(), "Enter on Cancel started a delete");
+    }
+
+    #[tokio::test]
+    async fn a_command_click_tags_the_row() {
+        let mut app = app_with_entries(&["a.txt", "b.txt"]);
+        let click = |target: &mut App| {
+            let _task = target.update(Message::RowClicked {
+                side: PanelSide::Left,
+                index: 1,
+                on_tag: false,
+            });
+        };
+        click(&mut app);
+        assert!(
+            !app.left_panel.selection.any_tagged(),
+            "a plain click tagged"
+        );
+
+        let _held = app.update(Message::ModifiersChanged(Modifiers::COMMAND));
+        click(&mut app);
+        assert!(
+            app.left_panel.selection.any_tagged(),
+            "Cmd-click did not tag"
+        );
+    }
+
+    #[tokio::test]
+    async fn space_tags_and_moves_down_but_skips_the_parent_entry() {
+        let mut app = app_with_entries(&["..", "a.txt", "b.txt"]);
+        app.left_panel.selected = 0;
+        let _parent = app.update(Message::ToggleTag);
+        assert!(!app.left_panel.selection.any_tagged(), "`..` was tagged");
+        assert_eq!(app.left_panel.selected, 1);
+
+        let _tag = app.update(Message::ToggleTag);
+        assert_eq!(app.left_panel.selected, 2);
+        let _up = app.update(Message::TagMove(-1));
+        assert_eq!(app.left_panel.selected, 1);
+        assert_eq!(
+            app.left_panel
+                .selection
+                .ordered(&app.left_panel.entries)
+                .len(),
+            2
+        );
     }
 
     fn app_with_entries(names: &[&str]) -> App {

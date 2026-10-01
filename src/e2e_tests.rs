@@ -552,6 +552,9 @@ mod tests {
         let mut session = session_in(dir.path());
         cursor_to(&mut session, "alpha.txt");
         session.press(Key::Named(Named::Insert));
+        // Insert moves on to the next row; the copy must leave the cursor
+        // wherever it is, so put it back on alpha.txt first.
+        session.press(Key::Named(Named::ArrowUp));
         session.press(Key::Named(Named::F5));
 
         assert!(
@@ -1038,6 +1041,91 @@ mod tests {
         assert!(!session.app.delete_dialog_is_open(), "the dialog stayed up");
         assert!(dir.path().join("alpha.txt").is_file(), "Enter deleted it");
         assert!(!bin.path().join("alpha.txt").exists());
+    }
+
+    /// Space and Shift+Down tag without an Insert key, and F8 then takes every
+    /// tagged entry.
+    #[test]
+    fn space_and_shift_down_tag_and_f8_deletes_them_all() {
+        let dir = scratch("tag-keys");
+        for name in ["alpha.txt", "beta.txt", "gamma.txt", "omega.txt"] {
+            write(&dir.path().join(name), "x");
+        }
+        let (bin, mut session) = trash_session(dir.path());
+        cursor_to(&mut session, "alpha.txt");
+        session.press(Key::Named(Named::Space));
+        session.press_with(Key::Named(Named::ArrowDown), Modifiers::SHIFT);
+
+        session.press(Key::Named(Named::F8));
+        session.press(Key::Named(Named::Enter));
+
+        for name in ["alpha.txt", "beta.txt"] {
+            assert!(!dir.path().join(name).exists(), "{name} still there");
+            assert!(bin.path().join(name).is_file(), "{name} not in the trash");
+        }
+        for name in ["gamma.txt", "omega.txt"] {
+            assert!(dir.path().join(name).is_file(), "{name} went too");
+        }
+    }
+
+    /// Focus moved to "Delete" on purpose: Enter deletes, a held Enter does not.
+    #[test]
+    fn the_permanent_dialog_needs_a_deliberate_focus_change_and_a_fresh_enter() {
+        let dir = scratch("perm-focus");
+        write(&dir.path().join("alpha.txt"), "a");
+        let (_bin, mut session) = trash_session(dir.path());
+        cursor_to(&mut session, "alpha.txt");
+
+        session.press_with(Key::Named(SHIFT_F8.0), SHIFT_F8.1);
+        session.press(Key::Named(Named::ArrowLeft));
+        session.press_repeat(Key::Named(Named::Enter), Modifiers::default());
+        assert!(
+            dir.path().join("alpha.txt").is_file() && session.app.delete_dialog_is_open(),
+            "a held Enter pressed the button"
+        );
+
+        session.press(Key::Named(Named::Enter));
+        assert!(
+            !dir.path().join("alpha.txt").exists(),
+            "Enter on the focused Delete did not delete"
+        );
+    }
+
+    /// Tab and Shift+Tab walk the three conflict buttons; Enter presses the
+    /// focused one.
+    #[test]
+    fn the_conflict_dialog_is_answered_with_focus_and_enter() {
+        for (keys, expected) in [
+            (vec![(Named::Tab, Modifiers::default())], "old"),
+            (vec![(Named::Tab, Modifiers::SHIFT)], "old"),
+            (
+                vec![
+                    (Named::ArrowRight, Modifiers::default()),
+                    (Named::ArrowRight, Modifiers::default()),
+                ],
+                "old",
+            ),
+            (vec![], "new"),
+        ] {
+            let dir = scratch("conflict-focus");
+            let home = dir.path().join("home");
+            write(&dir.path().join("alpha.txt"), "new");
+            write(&home.join("alpha.txt"), "old");
+            let mut session = session_in(dir.path());
+            cursor_to(&mut session, "alpha.txt");
+            session.press(Key::Named(Named::F5));
+            for (named, modifiers) in &keys {
+                session.press_with(Key::Named(*named), *modifiers);
+            }
+            session.press(Key::Named(Named::Enter));
+
+            assert_eq!(
+                std::fs::read_to_string(home.join("alpha.txt")).expect("the file"),
+                expected,
+                "after {keys:?}"
+            );
+            assert!(!session.app.conflict_is_pending(), "after {keys:?}");
+        }
     }
 
     /// Confirming Shift+F8 deletes for good: not in the trash either.

@@ -79,6 +79,13 @@ pub enum Message {
         generation: u64,
     },
 
+    /// Left/Right/Tab in a button dialog: move the focus by one.
+    DialogFocus(isize),
+    /// Enter in a button dialog: press the focused button.
+    DialogActivate,
+    /// A modifier key went down or up.
+    ModifiersChanged(iced::keyboard::Modifiers),
+
     // --- delete (F8, Shift+F8) ---
     /// F8 (`permanent: false`) or Shift+F8: open the confirmation dialog.
     Delete {
@@ -121,8 +128,10 @@ pub enum Message {
     },
 
     // --- Selection ---
-    /// Insert: tag or untag the row under the cursor.
+    /// Insert or Space: tag or untag the row under the cursor and go down one.
     ToggleTag,
+    /// Shift+Up/Down: tag or untag the row under the cursor, then move.
+    TagMove(isize),
     /// `*`: tag everything except `..`.
     TagAll,
     /// Ctrl+`*`: drop every tag.
