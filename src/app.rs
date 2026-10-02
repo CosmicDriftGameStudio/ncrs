@@ -220,6 +220,9 @@ pub struct App {
     modifiers: Modifiers,
     /// Where F8 sends entries. Injected so tests never touch the real trash.
     trash: Arc<dyn fs::Trash>,
+    /// Starts the external program of F3 and F4. Injected so tests never
+    /// launch a real viewer.
+    launcher: Arc<dyn fs::Launcher>,
     /// Why the last job failed, in the active language. Shown in the status bar
     /// until the next thing happens.
     job_error: Option<String>,
@@ -445,6 +448,7 @@ impl App {
             dialog_focus: 0,
             modifiers: Modifiers::default(),
             trash: Arc::new(fs::SystemTrash),
+            launcher: Arc::new(fs::SystemLauncher),
             job_error: None,
             job_done: 0,
             conflict_all: false,
@@ -678,6 +682,11 @@ impl App {
                         self.end_transfer()
                     }
                 }
+            }
+
+            Message::OpenExternal(kind) => {
+                self.open_external(kind);
+                Task::none()
             }
 
             // --- delete ---
@@ -1305,6 +1314,41 @@ impl App {
             self.load(each, path, None)
         });
         Task::batch(tasks)
+    }
+
+    /// F3 / F4: the row under the cursor goes to the external program. Tags
+    /// are ignored, as in Norton Commander; `..` and directories have nothing
+    /// to view or edit.
+    fn open_external(&mut self, kind: fs::OpenKind) {
+        let Some(entry) = self.active_panel().selected_entry() else {
+            return;
+        };
+        if entry.is_parent || entry.is_dir {
+            return;
+        }
+        let path = entry.path.clone();
+        self.job_error = None;
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let executable = fs::could_execute(&path);
+        if fs::open_command(kind, &path, executable).is_none() {
+            let message = self
+                .lang
+                .text(Msg::ErrorOpenRefused)
+                .replace("{name}", &name);
+            self.set_status_error(&message);
+            return;
+        }
+        if let Err(reason) = self.launcher.launch(kind, &path, executable) {
+            let message = self
+                .lang
+                .text(Msg::ErrorOpenFailed)
+                .replace("{name}", &name)
+                .replace("{reason}", &reason);
+            self.set_status_error(&message);
+        }
     }
 
     /// The status line for an entry that could not be deleted. A failed trash
@@ -2157,6 +2201,7 @@ impl App {
             dialog_focus: 0,
             modifiers: Modifiers::default(),
             trash: Arc::new(fs::SystemTrash),
+            launcher: Arc::new(fs::SystemLauncher),
             job_error: None,
             job_done: 0,
             conflict_all: false,
@@ -2274,6 +2319,12 @@ impl App {
     /// Whether the delete confirmation is up.
     pub fn delete_dialog_is_open(&self) -> bool {
         self.delete_dialog.is_some()
+    }
+
+    /// Replaces the launcher, so a test never starts a real program.
+    pub fn with_launcher(mut self, launcher: Arc<dyn fs::Launcher>) -> Self {
+        self.launcher = launcher;
+        self
     }
 
     /// Replaces the trash, so a test never fills the developer's real one.

@@ -63,10 +63,17 @@ KEYS:
     PgUp/PgDn  page                Backspace go up
     Home/End   first/last          Enter    open
     Ins/Space  tag a row           *        tag all
-    F5 / F6    copy / move         F7       create directory
+    F3 / F4    view / edit         F5 / F6  copy / move
+    F7         create directory
     F8         delete (to trash)   Shift+F8 delete permanently
     F9         switch language (en/de)
     F10 / Q    quit
+
+VIEW / EDIT:
+    F3 and F4 open the file under the cursor (tags are ignored) in the system
+    viewer and editor: open / open -t on macOS, xdg-open on Linux, explorer /
+    notepad on Windows. $EDITOR is not used; the programs become configurable
+    with the config file.
 
 DELETE:
     F8 asks, then moves the tagged rows (or the row under the cursor) to the

@@ -86,6 +86,10 @@ pub enum Message {
     /// A modifier key went down or up.
     ModifiersChanged(iced::keyboard::Modifiers),
 
+    // --- view / edit (F3, F4) ---
+    /// F3 or F4: hand the file under the cursor to an external program.
+    OpenExternal(crate::fs::OpenKind),
+
     // --- delete (F8, Shift+F8) ---
     /// F8 (`permanent: false`) or Shift+F8: open the confirmation dialog.
     Delete {

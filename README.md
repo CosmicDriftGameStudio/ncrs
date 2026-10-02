@@ -45,6 +45,7 @@ for the state, the licensing audit and the reasoning behind the order.
 | `Shift`+`Up`/`Down`| Tag / untag the row, move up / down     |
 | `*`                | Tag every row (except `..`)             |
 | `Ctrl`+`*`         | Clear all tags                          |
+| `F3` / `F4`        | View / edit the file under the cursor in an external program |
 | `F5` / `F6`        | Copy / move to the other panel          |
 | `F7`               | Create directory                        |
 | `F8`               | Delete to the trash, after a confirmation |
@@ -296,7 +297,6 @@ per frame, independent of directory size.
 
 ### Ideas for next steps
 
-- F3 view / F4 edit
 - Multi-selection (`Insert`), quick search by typing
 - Filesystem watching (`notify` crate) as an iced `Subscription`
 - Configurable keymap and theme (TOML)

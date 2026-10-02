@@ -463,6 +463,57 @@ impl crate::fs::Trash for RefusingTrash {
     }
 }
 
+/// Like `session_in`, with a launcher of the test's own: no test may start a
+/// real viewer.
+fn session_with_launcher(
+    dir: &Path,
+    launcher: std::sync::Arc<dyn crate::fs::Launcher>,
+) -> Session<impl iced::Program<State = App, Message = Message> + 'static> {
+    let left = std::fs::canonicalize(dir).expect("a canonical scratch path");
+    let right = left.join("home");
+    Session::boot(super::program(move || {
+        let (app, task) = App::starting_in(left.clone(), right.clone());
+        (app.with_launcher(std::sync::Arc::clone(&launcher)), task)
+    }))
+}
+
+/// A launcher that only writes down what it was asked to start.
+#[derive(Default)]
+struct RecordingLauncher(std::sync::Mutex<Vec<(crate::fs::OpenKind, std::path::PathBuf, bool)>>);
+
+impl RecordingLauncher {
+    fn calls(&self) -> Vec<(crate::fs::OpenKind, std::path::PathBuf, bool)> {
+        self.0.lock().expect("the call log").clone()
+    }
+}
+
+impl crate::fs::Launcher for RecordingLauncher {
+    fn launch(
+        &self,
+        kind: crate::fs::OpenKind,
+        path: &Path,
+        executable: bool,
+    ) -> Result<(), String> {
+        let mut log = self.0.lock().map_err(|err| err.to_string())?;
+        log.push((kind, path.to_path_buf(), executable));
+        Ok(())
+    }
+}
+
+/// A launcher whose program is missing.
+struct MissingProgramLauncher;
+
+impl crate::fs::Launcher for MissingProgramLauncher {
+    fn launch(
+        &self,
+        _kind: crate::fs::OpenKind,
+        _path: &Path,
+        _executable: bool,
+    ) -> Result<(), String> {
+        Err("xdg-open: No such file or directory".to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1276,5 +1327,139 @@ mod tests {
         session.press_with(Key::Named(Named::F5), Modifiers::CTRL);
 
         assert!(!home.join("alpha.txt").exists(), "Ctrl+F5 copied");
+    }
+
+    // --- F3 view / F4 edit ---
+
+    fn launcher_session(
+        dir: &Path,
+    ) -> (
+        std::sync::Arc<RecordingLauncher>,
+        Session<impl iced::Program<State = App, Message = Message> + 'static>,
+    ) {
+        let launcher = std::sync::Arc::new(RecordingLauncher::default());
+        let recorder = std::sync::Arc::clone(&launcher);
+        let shared: std::sync::Arc<dyn crate::fs::Launcher> = recorder;
+        let session = session_with_launcher(dir, shared);
+        (launcher, session)
+    }
+
+    #[test]
+    fn f3_and_f4_hand_the_file_under_the_cursor_to_the_launcher() {
+        use crate::fs::OpenKind;
+        let dir = scratch("open-file");
+        write(&dir.path().join("alpha.txt"), "a");
+        write(&dir.path().join("beta.txt"), "b");
+        let (launcher, mut session) = launcher_session(dir.path());
+        cursor_to(&mut session, "beta.txt");
+        let beta = std::fs::canonicalize(dir.path().join("beta.txt")).expect("beta");
+
+        session.press(Key::Named(Named::F3));
+        session.press(Key::Named(Named::F4));
+
+        assert_eq!(
+            launcher.calls(),
+            vec![
+                (OpenKind::View, beta.clone(), false),
+                (OpenKind::Edit, beta, false)
+            ]
+        );
+    }
+
+    /// As in NC: tagged rows do not turn F3 into "view all of them".
+    #[test]
+    fn tags_do_not_change_what_f3_opens() {
+        let dir = scratch("open-tagged");
+        write(&dir.path().join("alpha.txt"), "a");
+        write(&dir.path().join("beta.txt"), "b");
+        let (launcher, mut session) = launcher_session(dir.path());
+        cursor_to(&mut session, "alpha.txt");
+        session.press(Key::Named(Named::Insert));
+        cursor_to(&mut session, "beta.txt");
+
+        session.press(Key::Named(Named::F3));
+
+        let calls = launcher.calls();
+        assert_eq!(calls.len(), 1);
+        assert!(calls[0].1.ends_with("beta.txt"), "opened {:?}", calls[0].1);
+    }
+
+    #[test]
+    fn f3_and_f4_on_a_directory_or_the_parent_row_start_nothing() {
+        let dir = scratch("open-dir");
+        let (launcher, mut session) = launcher_session(dir.path());
+        assert_eq!(
+            selected(&session.app, PanelSide::Left).as_deref(),
+            Some("..")
+        );
+        session.press(Key::Named(Named::F3));
+        session.press(Key::Named(Named::F4));
+
+        cursor_to(&mut session, "files");
+        session.press(Key::Named(Named::F3));
+        session.press(Key::Named(Named::F4));
+
+        assert!(launcher.calls().is_empty(), "{:?}", launcher.calls());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn f3_on_a_symlink_passes_the_link_path() {
+        let dir = scratch("open-link");
+        write(&dir.path().join("target.txt"), "t");
+        let root = std::fs::canonicalize(dir.path()).expect("root");
+        std::os::unix::fs::symlink(root.join("target.txt"), root.join("link.txt")).expect("link");
+        let (launcher, mut session) = launcher_session(dir.path());
+        cursor_to(&mut session, "link.txt");
+
+        session.press(Key::Named(Named::F3));
+
+        assert_eq!(
+            launcher.calls(),
+            vec![(crate::fs::OpenKind::View, root.join("link.txt"), false)]
+        );
+    }
+
+    /// The system opener would run a script. Where there is a text editor the
+    /// file goes there (flagged executable), elsewhere nothing starts.
+    #[cfg(unix)]
+    #[test]
+    fn f3_on_an_executable_never_reaches_the_opener_as_a_plain_file() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = scratch("open-exec");
+        let script = dir.path().join("tool");
+        write(&script, "#!/bin/sh\n");
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        let (launcher, mut session) = launcher_session(dir.path());
+        cursor_to(&mut session, "tool");
+
+        session.press(Key::Named(Named::F3));
+
+        let calls = launcher.calls();
+        if cfg!(any(target_os = "macos", windows)) {
+            assert_eq!(calls.len(), 1);
+            assert!(calls[0].2, "launched without the executable flag");
+        } else {
+            assert!(calls.is_empty(), "started {calls:?}");
+            let message = session.app.job_error_for_test().expect("no refusal shown");
+            assert!(message.contains("tool"), "{message}");
+        }
+    }
+
+    #[test]
+    fn a_launcher_failure_shows_in_the_status_line() {
+        let dir = scratch("open-fail");
+        write(&dir.path().join("alpha.txt"), "a");
+        let mut session =
+            session_with_launcher(dir.path(), std::sync::Arc::new(MissingProgramLauncher));
+        cursor_to(&mut session, "alpha.txt");
+
+        session.press(Key::Named(Named::F4));
+
+        let message = session.app.job_error_for_test().expect("no error shown");
+        assert!(
+            message.contains("alpha.txt") && message.contains("No such file"),
+            "the error does not name the file and the reason: {message}"
+        );
     }
 }

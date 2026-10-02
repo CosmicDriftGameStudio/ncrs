@@ -464,9 +464,10 @@ mod conflict_overlay {
     fn the_dialog_names_the_file() {
         let app = app_with_conflict();
         let dialog = simulator(&app).snapshot(&iced::Theme::Dark).unwrap();
-        dialog
+        let matches = dialog
             .matches_image("tests/snapshots/conflict.png")
             .expect("reference for a conflict about a.txt");
+        assert!(matches, "the conflict dialog does not match conflict.png");
     }
 
     /// One dialog, not two: the prompt underneath must not show through.

@@ -424,7 +424,8 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
   Reload beider Panels; F5 kopiert in das inaktive Panel, F6 verschiebt dorthin.
 
 - [x] **T8 – F8 Delete mit Bestätigungsdialog und Papierkorb** – Crate `trash`, Shift+F8 löscht endgültig
-- [ ] **T9 – F3 View / F4 Edit** – externes Programm, `std::process::Command`
+- [x] **T9 – F3 View / F4 Edit** – externes Programm, `std::process::Command`
+  Getestet: Befehlsbau pro OS (`open_command`), Routing F3/F4 mit Fake-Launcher inkl. Fehleranzeige, Erkennung ausführbarer Dateien (Exec-Bit, Endungsliste; die öffnen nie per Standardaktion, sondern im Texteditor bzw. gar nicht unter Linux); kein echter Programmstart in CI. Programme fest verdrahtet, konfigurierbar mit T10.
 - [ ] **T10 – Konfigurationsdatei** – `serde` + `toml`, Schema-Validierung, Versionierung
   *Voraussetzung für:* T11, T12, T5-Sprachpersistenz
 - [ ] **T11 – Keymap aus Config** – `Msg` bleibt, Tasten kommen aus der Datei
@@ -479,4 +480,4 @@ weiß ich nur durch deine Beobachtung — die steht als Messung im README, nicht
 | T10 | TOML oder JSON für die Config? | **offen.** Empfehlung: TOML, besser für Handeditierung. |
 | T13 | Sprachauswahl persistent | **teilweise.** `en`/`de` gebaut, F9 schaltet um; die Persistenz hängt an T10. |
 | T14 | Suche: `glob` oder inkrementell? | **offen.** Die Filterlogik ist in beiden testbar, das Timing nicht. |
-| T15 | Settings | **offen.** Wichtige Sachen soll sich das program merken |
+| T18 | Settings | **offen.** Wichtige Sachen soll sich das program merken |
