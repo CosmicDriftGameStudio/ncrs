@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.90%2B-orange.svg)](rust-toolchain.toml)
 
-A fast, keyboard-first **Norton Commander style dual-panel file manager** written in Rust
+A fast, keyboard-first **dual-panel file manager inspired by Norton Commander**, written in Rust
 with [iced](https://iced.rs) 0.14 (GPU-accelerated, cross-platform native UI).
 
 The architecture follows the principles of editors like Zed: async I/O, message-driven
@@ -19,7 +19,7 @@ for the state, the licensing audit and the reasoning behind the order.
 
 ## Features
 
-- Two side-by-side file panels (left starts in the working directory, right at `$HOME`)
+- Two side-by-side file panels (left starts in the working directory, or `$HOME` when launched from Finder; right at `$HOME`)
 - Multi-selection: tag rows with `Insert` or `Space` (or `Shift`+`Up`/`Down`, or Cmd/Ctrl-click), an operation applies to the tagged rows, or to
   the single row under the cursor when nothing is tagged
 - Keyboard navigation, selection highlighting, auto-scrolling
@@ -64,22 +64,19 @@ Pre-built binaries for Linux, macOS and Windows are attached to each
 curl -fsSL https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/install.sh | sh
 ```
 
-On macOS, Homebrew is the better choice — it is what a package manager is for,
-and it keeps the binary up to date:
+On macOS, Homebrew is the better choice: it installs `ncrs.app` into
+Applications (Launchpad, Dock, Spotlight) and puts `ncrs` on your `PATH`:
 
 ```bash
-brew install --cask ./Casks/ncrs.rb
+brew install --cask cosmicdriftgamestudio/ncrs/ncrs
 ```
 
-The cask lives in this repository at [`Casks/ncrs.rb`](Casks/ncrs.rb); run the
-command from a clone, or point at the file directly:
+The cask lives in the tap
+[`CosmicDriftGameStudio/homebrew-ncrs`](https://github.com/CosmicDriftGameStudio/homebrew-ncrs).
+It is not in homebrew-cask upstream.
 
-```bash
-brew install --cask https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/Casks/ncrs.rb
-```
-
-It is not in homebrew-cask upstream yet. Once it is, `brew install --cask ncrs`
-will work without a path.
+Started from Finder, the Dock or Launchpad, the left panel opens in `$HOME`
+instead of `/`. From a terminal it still opens in the working directory.
 
 `install.sh` installs into `~/.local/bin`, verifies the download checksum,
 needs no `sudo`, and is safe to re-run. Remove it again with:
@@ -311,6 +308,11 @@ per frame, independent of directory size.
   under **rustup**. A Homebrew-installed Rust ignores the file, so a local
   `cargo test` can run a different compiler than CI. `thiserror` and `softbuffer`,
   both pulled in by iced, have each broken the build on a brand-new stable.
+
+## Trademark
+
+Norton Commander is a trademark of its respective owner. ncrs is not affiliated
+with or endorsed by it.
 
 ## License
 
