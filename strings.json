@@ -193,6 +193,18 @@
       "de": "Versch."
     },
     {
+      "key": "shortcut.view",
+      "context": "Label of the F3 slot in the function key bar at the bottom of the window. The key opens the file under the cursor in an external viewer; imperative verb, at most 8 characters.",
+      "en": "View",
+      "de": "Ansehen"
+    },
+    {
+      "key": "shortcut.edit",
+      "context": "Label of the F4 slot in the function key bar at the bottom of the window. The key opens the file under the cursor in an external editor; imperative verb, at most 8 characters.",
+      "en": "Edit",
+      "de": "Bearb."
+    },
+    {
       "key": "conflict.title",
       "context": "Title of the dialog asking what to do about a file that already exists at the target. Noun phrase, no punctuation.",
       "en": "File already exists",
@@ -293,6 +305,18 @@
       "context": "Status bar when deleting an entry permanently failed. Takes the name and the OS reason.",
       "en": "Could not delete {name}: {reason}",
       "de": "{name} konnte nicht gelöscht werden: {reason}"
+    },
+    {
+      "key": "error.open_failed",
+      "context": "Status bar when the external program for F3 or F4 could not be started. Takes the file name and the OS reason.",
+      "en": "Could not open {name}: {reason}",
+      "de": "{name} konnte nicht geöffnet werden: {reason}"
+    },
+    {
+      "key": "error.open_refused",
+      "context": "Status bar when F3 or F4 refuses a file because opening it with the system could run it (script, app, shortcut). Takes the file name.",
+      "en": "{name} could be executed, F3/F4 do not open it",
+      "de": "{name} könnte ausgeführt werden, F3/F4 öffnen es nicht"
     }
   ]
 }

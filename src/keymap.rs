@@ -5,6 +5,7 @@
 //! the other. This is the extension point a plugin would use.
 use iced::keyboard::{key, Key, Modifiers};
 
+use crate::fs::OpenKind;
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::messages::TransferKind;
@@ -119,6 +120,16 @@ fn build_actions() -> Vec<Action> {
             binding: Binding::with_modifiers(Key::Character("c".into()), Modifiers::CTRL),
             message: Message::AbortJob,
             hint: None,
+        },
+        Action {
+            binding: Binding::key(KeyNamed(F3)),
+            message: Message::OpenExternal(OpenKind::View),
+            hint: Some(Msg::ShortcutView),
+        },
+        Action {
+            binding: Binding::key(KeyNamed(F4)),
+            message: Message::OpenExternal(OpenKind::Edit),
+            hint: Some(Msg::ShortcutEdit),
         },
         Action {
             binding: Binding::key(KeyNamed(F5)),
@@ -280,8 +291,8 @@ mod tests {
             [
                 None,
                 None,
-                None,
-                None,
+                Some("View"),
+                Some("Edit"),
                 Some("Copy"),
                 Some("Move"),
                 Some("Mkdir"),
