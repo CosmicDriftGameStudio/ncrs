@@ -8,6 +8,8 @@
 A fast, keyboard-first **dual-panel file manager inspired by Norton Commander**, written in Rust
 with [iced](https://iced.rs) 0.14 (GPU-accelerated, cross-platform native UI).
 
+![NC-rs with two panels](docs/screenshots/main.png)
+
 The architecture follows the principles of editors like Zed: async I/O, message-driven
 state, pure views, and a strict separation between UI components, filesystem layer and
 application state.
@@ -16,6 +18,20 @@ This is a **work in progress**. The dual-panel navigator works, localization wit
 per-string translator context works. File operations, archive support, network mounts,
 configurable keymap and theming are planned but not built — see [ROADMAP.md](ROADMAP.md)
 for the state, the licensing audit and the reasoning behind the order.
+
+## Screenshots
+
+![The drive menu on Alt+F1](docs/screenshots/drive-menu.png)
+
+The drive menu (`Alt+F1` for the left panel, `Alt+F2` for the right).
+
+![The delete dialog](docs/screenshots/delete.png)
+
+F8 asks before it moves the tagged rows to the trash.
+
+![The German interface](docs/screenshots/main-de.png)
+
+The same window in German, switched with F9.
 
 ## Features
 
