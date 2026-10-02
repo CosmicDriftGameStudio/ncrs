@@ -8,6 +8,52 @@ All notable changes to this project are documented here. The format follows
 
 Nothing yet.
 
+## [0.2.0] — 2026-10-02
+
+The file operations: copy, move, delete, view and edit.
+
+### Added
+
+- F5 copies and F6 moves into the other panel, as a job in a queue with a
+  progress line. Ctrl+C or Escape stops it. The window stays usable while it
+  runs.
+- When the target already exists, a dialog asks: overwrite, keep or cancel,
+  optionally for all files. Overwrite builds the copy next to the target and
+  swaps it in at the end, so a failed copy leaves the old target in place.
+- Move renames where it can and copies only across devices. Copying a
+  directory into itself, a path onto itself and special files (FIFOs,
+  sockets, devices) is refused. Copies lose setuid, setgid and sticky bits;
+  symlinks are copied as links.
+- F8 moves to the trash. Shift+F8 deletes for good, behind a warning that
+  names the entries and is confirmed only by a second Shift+F8 or a
+  deliberate Enter on the delete button. A failing trash never falls back to
+  a permanent delete.
+- F3 views and F4 edits the file under the cursor in the system's program.
+  A file that could run (exec bit, or an extension such as `.app`,
+  `.command`, `.exe`, `.bat`) opens in the text editor on macOS and Windows
+  and is refused on Linux.
+- A Norton-style function key bar at the bottom.
+- Tagging with Space and Shift+arrows, and Cmd/Ctrl-click, since Macs have
+  no Insert key.
+- Dialogs are centred and work from the keyboard: arrows and Tab move the
+  focus, Enter presses the focused button, Escape cancels.
+
+### Fixed
+
+- Keys were lost whenever the app state changed, because the keyboard
+  subscription was rebuilt with it.
+- A held key no longer repeats actions such as F8 or a dialog answer; only
+  movement, tagging and typing repeat.
+- Ctrl+`*` works on layouts where `*` needs Shift.
+- A space can be typed in the F7 directory name.
+
+### Known issues
+
+- F4 does not use `$EDITOR`: the app has no terminal. Configurable programs
+  come with the configuration file.
+- An aborted copy still finishes the entry it is working on.
+- A move across devices loses files created in the source while it runs.
+
 ## [0.1.0] — 2026-09-29
 
 First public release. A dual-panel file manager: navigate, select, create a
