@@ -178,7 +178,7 @@ pub enum Message {
     Quit,
 }
 
-/// What Ctrl+Alt+C and Ctrl+Shift+C put on the clipboard.
+/// What the copy chords put on the clipboard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClipboardKind {
     Path,

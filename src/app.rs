@@ -1835,6 +1835,7 @@ impl App {
     /// already wrote the wording.
     fn set_status_error(&mut self, reason: &str) {
         self.job_error = Some(reason.to_string());
+        self.notice = None;
     }
 
     /// Shows a validation failure in the open prompt.
