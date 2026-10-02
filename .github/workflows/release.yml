@@ -253,15 +253,16 @@ jobs:
               --identifier dev.cosmicdrift.ncrs "$binary"
             codesign --verify --strict --verbose=2 "$binary"
 
-            # The ticket goes onto the binary, not the archive: Gatekeeper
-            # inspects the file the user launches, and stapling is what makes
-            # that work with no network access.
-            xcrun notarytool submit "$binary" \
+            # notarytool accepts only zip, pkg or dmg, so the signed binary is
+            # submitted in a zip. A bare Mach-O cannot carry a stapled ticket;
+            # Gatekeeper fetches it online on first launch instead.
+            submission="$workdir/ncrs-notarize.zip"
+            ditto -c -k --keepParent "$binary" "$submission"
+            xcrun notarytool submit "$submission" \
               --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
               --password "$APPLE_APP_SPECIFIC_PASSWORD" \
               --wait --timeout 20m
-            xcrun stapler staple "$binary"
-            xcrun stapler validate "$binary"
+            rm "$submission"
 
             # Repack, so the notarized binary is what users download. The
             # checksum step below runs after this, so it covers this file.
