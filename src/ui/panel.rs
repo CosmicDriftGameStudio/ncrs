@@ -80,10 +80,12 @@ impl PanelState {
         select: Option<&str>,
         visible_rows: usize,
     ) {
+        let same_directory = self.path == path;
         self.path = path;
         // Read the name under the cursor *before* the rows are replaced. After
         // `self.entries = entries` this would read the new list and remember the
         // file at that position, not the file the cursor was on.
+        let previous_index = self.selected;
         let previous: Option<String> = self
             .entries
             .get(self.selected)
@@ -100,13 +102,20 @@ impl PanelState {
         // A reload must not move the cursor. Falling back to row 0 threw the
         // user back to the top of the list after every file operation, and
         // scrolled the tagged rows out of sight. Prefer, in order: the name the
-        // caller asked for, the name that was under the cursor, then the top.
-        self.scroll_offset = 0;
+        // caller asked for, the name that was under the cursor, then — in the
+        // same directory, when that file is gone — the row now at the same
+        // position, which is the next file (`select` clamps to the last). The
+        // scroll offset stays too, so the list does not re-centre. Another
+        // directory starts at the top.
+        let fallback = if same_directory { previous_index } else { 0 };
+        if !same_directory {
+            self.scroll_offset = 0;
+        }
         let wanted = select.map(str::to_string).or(previous);
         let index = wanted
             .as_deref()
             .and_then(|name| self.entries.iter().position(|e| e.name == name))
-            .unwrap_or(0);
+            .unwrap_or(fallback);
         self.select(index, visible_rows);
     }
 

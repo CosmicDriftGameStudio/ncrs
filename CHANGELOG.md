@@ -8,6 +8,17 @@ All notable changes to this project are documented here. The format follows
 
 Nothing yet.
 
+## [0.2.2] — 2026-10-02
+
+### Fixed
+
+- The drive menu hides mounts the Finder hides (temporary disk images and
+  other helper mounts), instead of listing every entry of `/Volumes`.
+  macFUSE mounts name their origin, e.g. `UzeN1wWoFdWU (Cryptomator)`.
+- After a delete, move or other reload of the same folder, the cursor stays
+  where it was (on the next file when its own is gone) instead of jumping to
+  the top of the list.
+
 ## [0.2.1] — 2026-10-02
 
 ### Added

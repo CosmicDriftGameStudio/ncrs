@@ -1082,6 +1082,39 @@ mod tests {
         );
     }
 
+    /// Deleting one file and answering the dialog reloads through the real read
+    /// task; the cursor must end up on the file that moved up into its place.
+    fn delete_under_the_cursor(label: &str, name: &str) -> Option<String> {
+        let dir = scratch(label);
+        for file in ["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"] {
+            write(&dir.path().join(file), file);
+        }
+        let (_bin, mut session) = trash_session(dir.path());
+        cursor_to(&mut session, name);
+
+        session.press(Key::Named(Named::F8));
+        session.press(Key::Named(Named::Enter));
+
+        assert!(!dir.path().join(name).exists(), "{name} was not deleted");
+        selected(&session.app, PanelSide::Left)
+    }
+
+    #[test]
+    fn deleting_the_middle_file_leaves_the_cursor_on_the_next_one() {
+        assert_eq!(
+            delete_under_the_cursor("del-cursor-mid", "c.txt").as_deref(),
+            Some("d.txt")
+        );
+    }
+
+    #[test]
+    fn deleting_the_last_file_leaves_the_cursor_on_the_new_last() {
+        assert_eq!(
+            delete_under_the_cursor("del-cursor-last", "e.txt").as_deref(),
+            Some("d.txt")
+        );
+    }
+
     #[test]
     fn escape_cancels_the_delete() {
         let dir = scratch("del-escape");
