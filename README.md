@@ -152,6 +152,7 @@ Requirements: Rust (stable, 1.80+) via [rustup](https://rustup.rs).
 ```bash
 cargo run            # debug build
 cargo run --release  # optimized build
+cargo run --release --features gpu-with-fallback  # smooth on a high-resolution display
 cargo test           # unit tests (fs reader, formatting, panel selection logic)
 ```
 
