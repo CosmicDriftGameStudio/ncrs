@@ -6,7 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- The drive menu hides mounts the Finder hides (temporary disk images and
+  other helper mounts), instead of listing every entry of `/Volumes`.
 
 ## [0.2.1] — 2026-10-02
 

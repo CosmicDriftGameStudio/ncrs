@@ -54,7 +54,10 @@ pub fn list_volumes() -> Vec<Volume> {
 
 #[cfg(target_os = "macos")]
 fn platform_volumes() -> Vec<Volume> {
-    let (mounted, root_name) = scan_volumes_dir(Path::new("/Volumes"));
+    let (scanned, root_name) = scan_volumes_dir(Path::new("/Volumes"));
+    let mounted = mount_output()
+        .and_then(|output| browsable_volumes(&output, root_name.as_deref()))
+        .unwrap_or(scanned);
     let mut volumes = vec![Volume::new(
         root_name.unwrap_or_else(|| "Macintosh HD".to_string()),
         "/",
@@ -121,6 +124,89 @@ fn scan_volumes_dir(dir: &Path) -> (Vec<Volume>, Option<String>) {
     }
     volumes.sort_by_cached_key(|volume| volume.name.to_lowercase());
     (volumes, root_name)
+}
+
+/// One line of `mount` output, as far as the drive menu needs it.
+#[cfg(any(target_os = "macos", test))]
+#[derive(Debug)]
+struct MountEntry {
+    mount_point: PathBuf,
+    fs_type: String,
+    from: String,
+    hidden: bool,
+}
+
+/// `<from> on <mount point> (<fstype>, <option>, ...)`. The option list is cut
+/// off from the right, because a mount point may contain spaces and parentheses;
+/// the source is whatever precedes the first ` on `. `nobrowse` among the
+/// options is what the Finder honours to leave a mount out of its sidebar.
+#[cfg(any(target_os = "macos", test))]
+fn parse_mount_line(line: &str) -> Option<MountEntry> {
+    let without_paren = line.trim_end().strip_suffix(')')?;
+    let (head, option_list) = without_paren.rsplit_once(" (")?;
+    let (from, mount_point) = head.split_once(" on ")?;
+    let mut fields = option_list.split(',').map(str::trim);
+    let fs_type = fields.next()?.to_string();
+    let hidden = fields.any(|option| option == "nobrowse");
+    Some(MountEntry {
+        mount_point: PathBuf::from(mount_point),
+        fs_type,
+        from: from.to_string(),
+        hidden,
+    })
+}
+
+/// A macFUSE volume is named after its mount point, which for Cryptomator is a
+/// random string. Its source reads `Cryptomator@macfuse0`: the part before the
+/// `@` says what mounted it.
+#[cfg(any(target_os = "macos", test))]
+fn display_name(entry: &MountEntry, name: String) -> String {
+    match entry.from.split_once('@') {
+        Some((origin, _)) if entry.fs_type == "macfuse" && !origin.is_empty() => {
+            format!("{name} ({origin})")
+        }
+        _ => name,
+    }
+}
+
+/// The volumes among the lines of `mount`'s output that the Finder would show:
+/// under `/Volumes`, not nobrowse, and not named like the link to the system
+/// volume. Sorted by name. `None` if no line could be read at all.
+#[cfg(any(target_os = "macos", test))]
+fn browsable_volumes(mount_output: &str, system_link: Option<&str>) -> Option<Vec<Volume>> {
+    let entries: Vec<MountEntry> = mount_output.lines().filter_map(parse_mount_line).collect();
+    if entries.is_empty() {
+        return None;
+    }
+    let mut volumes: Vec<Volume> = entries
+        .into_iter()
+        .filter(|entry| !entry.hidden)
+        .filter(|entry| {
+            entry.mount_point.starts_with("/Volumes") && entry.mount_point != Path::new("/Volumes")
+        })
+        .filter_map(|entry| {
+            let name = last_component(&entry.mount_point)?;
+            (system_link != Some(name.as_str())).then(|| {
+                let shown = display_name(&entry, name);
+                Volume::new(shown, entry.mount_point)
+            })
+        })
+        .collect();
+    volumes.sort_by_cached_key(|volume| volume.name.to_lowercase());
+    Some(volumes)
+}
+
+/// The output of `/sbin/mount` without arguments. It lists the kernel's mount
+/// table through `getfsstat(MNT_NOWAIT)`: cached data, no file system is asked,
+/// so a dead share cannot hang it. Full path and no shell, so nothing on `PATH`
+/// is run instead. `None` if it did not run or failed.
+#[cfg(target_os = "macos")]
+fn mount_output() -> Option<String> {
+    let output = std::process::Command::new("/sbin/mount").output().ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 #[cfg(target_os = "linux")]
@@ -253,6 +339,69 @@ tmpfs /run/user/1000 tmpfs rw 0 0
         let names: Vec<_> = volumes.iter().map(|v| v.name.as_str()).collect();
         assert_eq!(names, ["alias", "Backup", "usb"]);
         assert_eq!(volumes[2].path, dir.path().join("usb"));
+    }
+
+    const MOUNT_OUTPUT: &str = "\
+/dev/disk3s1s1 on / (apfs, sealed, local, read-only, journaled)
+/dev/disk3s5 on /System/Volumes/Data (apfs, local, journaled, nobrowse, protect, root data)
+map auto_home on /System/Volumes/Data/home (autofs, automounted, nobrowse)
+Cryptomator@macfuse0 on /Volumes/UzeN1wWoFdWU (macfuse, nodev, nosuid, synchronous, mounted by marc)
+/dev/disk10s1 on /Volumes/dmg.tLR3n9 (hfs, local, nodev, nosuid, noowners, nobrowse, mounted by marc)
+//me@nas.local/share on /Volumes/share (smbfs, nodev, nosuid, mounted by marc)
+/dev/disk4s1 on /Volumes/My (Backup) on disk (apfs, local, nodev, nosuid, journaled)
+/dev/disk5s1 on /Volumes/Macintosh HD (apfs, local)
+";
+
+    #[test]
+    fn hidden_and_foreign_mounts_are_not_volumes() {
+        let volumes = browsable_volumes(MOUNT_OUTPUT, Some("Macintosh HD")).unwrap();
+        assert_eq!(
+            pairs(&volumes),
+            [
+                ("My (Backup) on disk", "/Volumes/My (Backup) on disk"),
+                ("share", "/Volumes/share"),
+                ("UzeN1wWoFdWU (Cryptomator)", "/Volumes/UzeN1wWoFdWU"),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_mount_point_with_spaces_and_parentheses_is_kept_whole() {
+        let entry = parse_mount_line("/dev/d on /Volumes/A (b) c (apfs, local)").unwrap();
+        assert_eq!(entry.mount_point, Path::new("/Volumes/A (b) c"));
+        assert_eq!(entry.fs_type, "apfs");
+        assert!(!entry.hidden);
+    }
+
+    #[test]
+    fn only_macfuse_sources_with_an_origin_extend_the_name() {
+        let named = |line: &str| {
+            let volumes = browsable_volumes(line, None).unwrap();
+            volumes[0].name.clone()
+        };
+        assert_eq!(named("@macfuse1 on /Volumes/bare (macfuse, local)"), "bare");
+        assert_eq!(
+            named("macfuse2 on /Volumes/plain (macfuse, local)"),
+            "plain"
+        );
+        assert_eq!(named("a@b on /Volumes/other (smbfs, local)"), "other");
+    }
+
+    #[test]
+    fn garbage_output_is_no_answer() {
+        assert!(browsable_volumes("", None).is_none());
+        assert!(browsable_volumes("not a mount line\n", None).is_none());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_real_mount_output_has_the_root() {
+        let output = mount_output().expect("mount failed");
+        assert!(output
+            .lines()
+            .filter_map(parse_mount_line)
+            .any(|entry| entry.mount_point == Path::new("/")));
+        assert!(browsable_volumes(&output, None).is_some());
     }
 
     #[test]
