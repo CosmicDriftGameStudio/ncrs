@@ -34,6 +34,7 @@ cargo test                                    # the default feature set
 cargo test --no-default-features --features gpu-with-fallback
 cargo clippy --all-targets -- -D warnings
 cargo fmt --all --check
+cargo test readme_screenshots -- --ignored   # regenerates docs/screenshots/*.png for the README
 ```
 
 CI runs the tests in every backend combination, because the backend is chosen
