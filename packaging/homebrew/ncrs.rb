@@ -12,8 +12,7 @@ cask "ncrs" do
   # Rust target triple.
   arch arm: "aarch64", intel: "x86_64"
 
-  url "https://github.com/CosmicDriftGameStudio/ncrs/releases/download/v#{version}/ncrs-#{arch}-apple-darwin.app.zip",
-      verified: "github.com/CosmicDriftGameStudio/ncrs/"
+  url "https://github.com/CosmicDriftGameStudio/ncrs/releases/download/v#{version}/ncrs-#{arch}-apple-darwin.app.zip"
   name "ncrs"
   desc "Dual-panel file manager inspired by Norton Commander"
   homepage "https://github.com/CosmicDriftGameStudio/ncrs"

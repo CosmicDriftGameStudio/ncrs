@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.2.1] — 2026-10-02
+
 ### Added
 
 - macOS: a notarized `ncrs.app` (`ncrs-<target>.app.zip`) with an app icon, so
