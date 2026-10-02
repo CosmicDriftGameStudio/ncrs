@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.2.2] — 2026-10-02
+
 ### Fixed
 
 - The drive menu hides mounts the Finder hides (temporary disk images and

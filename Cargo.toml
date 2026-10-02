@@ -1,6 +1,6 @@
 [package]
 name = "ncrs"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 # Matches rust-toolchain.toml. One place decides the compiler; this makes the
 # requirement visible to anything reading the manifest instead of the file.
