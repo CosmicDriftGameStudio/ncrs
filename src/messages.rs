@@ -108,6 +108,19 @@ pub enum Message {
         generation: u64,
     },
 
+    // --- drive menu (Alt+F1, Alt+F2) ---
+    /// Alt+F1 or Alt+F2: choose the drive of that panel.
+    VolumeMenu(PanelSide),
+    /// Up or Down in the open menu.
+    VolumeMenuMove(isize),
+    VolumeMenuFirst,
+    VolumeMenuLast,
+    /// Enter in the open menu: go to the highlighted drive.
+    VolumeMenuActivate,
+    /// A click on the entry at this index: highlight it and go there.
+    VolumeMenuClick(usize),
+    VolumeMenuClose,
+
     // --- Job queue (see crate::jobs) ---
     /// A job started, made progress, or finished. One variant for all three:
     /// they are the same event arriving at different times, and splitting them
@@ -142,6 +155,11 @@ pub enum Message {
     ClearTags,
 
     // --- Panel handling ---
+    /// Wheel or trackpad over a panel.
+    PanelScrolled {
+        side: PanelSide,
+        delta: iced::mouse::ScrollDelta,
+    },
     SwitchPanel,
     /// Temporarily switches the UI language. Not yet persisted in config.
     SwitchLanguage,

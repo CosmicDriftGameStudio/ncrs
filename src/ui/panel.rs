@@ -3,7 +3,8 @@
 //! only mutated from `App::update`.
 use std::path::PathBuf;
 
-use iced::widget::{button, column, container, row, text, Column, Row};
+use iced::mouse::ScrollDelta;
+use iced::widget::{button, column, container, mouse_area, row, text, Column, Row};
 use iced::{alignment, Element, Font, Length};
 
 use super::format;
@@ -39,6 +40,9 @@ pub struct PanelState {
     pub loading: bool,
     /// Id of the latest load request; older results are ignored.
     pub request_id: u64,
+    /// Trackpad pixels scrolled that do not yet add up to a whole row, in the
+    /// direction of the list (down is positive).
+    pub scroll_remainder: f32,
 }
 
 impl PanelState {
@@ -52,6 +56,7 @@ impl PanelState {
             error: None,
             loading: false,
             request_id: 0,
+            scroll_remainder: 0.0,
         }
     }
 
@@ -121,6 +126,43 @@ impl PanelState {
         self.ensure_visible(visible_rows);
     }
 
+    /// Scrolls the window by a wheel or trackpad movement, in the direction iced
+    /// reports it (positive `y` is towards the top of the list).
+    ///
+    /// Trackpad pixels are collected until they make a whole row, so a slow
+    /// gesture of many small events still moves; the wheel's lines count as
+    /// rows. The cursor stays where it is while it is in view and is otherwise
+    /// held at the edge, so the highlighted row never leaves the screen.
+    pub fn scroll(&mut self, delta: ScrollDelta, visible_rows: usize) {
+        let rows_down = match delta {
+            ScrollDelta::Lines { y, .. } => -y,
+            ScrollDelta::Pixels { y, .. } => -y / ROW_HEIGHT,
+        } + self.scroll_remainder;
+        let whole = rows_down.trunc();
+        self.scroll_remainder = rows_down - whole;
+        self.scroll_rows(whole as isize, visible_rows);
+    }
+
+    fn scroll_rows(&mut self, rows_down: isize, visible_rows: usize) {
+        let rows = visible_rows.max(1);
+        let max_offset = self.entries.len().saturating_sub(rows);
+        self.scroll_offset = self
+            .scroll_offset
+            .saturating_add_signed(rows_down)
+            .min(max_offset);
+        // At either end the rest of the gesture is spent, not saved up.
+        let at_top = self.scroll_offset == 0 && rows_down < 0;
+        let at_bottom = self.scroll_offset == max_offset && rows_down > 0;
+        if at_top || at_bottom {
+            self.scroll_remainder = 0.0;
+        }
+        let last_visible = self.scroll_offset + rows - 1;
+        self.selected = self
+            .selected
+            .clamp(self.scroll_offset, last_visible)
+            .min(self.entries.len().saturating_sub(1));
+    }
+
     /// Adjusts `scroll_offset` so the selected row is visible.
     pub fn ensure_visible(&mut self, visible_rows: usize) {
         let rows = visible_rows.max(1);
@@ -158,6 +200,7 @@ pub fn view<'a, M: Clone + 'a>(
     props: PanelProps,
     lang: Language,
     on_row_click: impl Fn(usize, bool) -> M,
+    on_scroll: impl Fn(ScrollDelta) -> M + 'a,
 ) -> Element<'a, M> {
     let rows = state
         .entries
@@ -199,12 +242,19 @@ pub fn view<'a, M: Clone + 'a>(
             )
         });
 
-    column![
-        title_bar(state, props.is_active),
-        column_header(lang),
-        Column::with_children(rows).height(Length::Fill),
-    ]
-    .apply_frame(props.is_active)
+    // The wheel belongs to the panel under the pointer. The rows are drawn from
+    // the window `scroll_offset` selects, not by a `scrollable`, so the panel
+    // has to ask for the wheel itself.
+    mouse_area(
+        column![
+            title_bar(state, props.is_active),
+            column_header(lang),
+            Column::with_children(rows).height(Length::Fill),
+        ]
+        .apply_frame(props.is_active),
+    )
+    .on_scroll(on_scroll)
+    .into()
 }
 
 fn title_bar<'a, M: 'a>(state: &'a PanelState, active: bool) -> Element<'a, M> {

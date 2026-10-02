@@ -162,7 +162,7 @@ Nicht nach Feature-Reihenfolge, sondern nach Abhängigkeit:
 **Phase 1 — Der File-Manager-Kern**
 4. View/Edit (F3/F4) mit externem Editor
 5. Copy/Move/Rename/MkDir/Delete (F5/F6/F7/F8)
-6. Panels: Ziel-Panels (Alt+F1–F10), Quick-Search
+6. Panels: Ziel-Panels (Alt+F1/F2 erledigt, Rest offen), Quick-Search
 7. User-Menu (F2), Help (F1)
 
 **Phase 2 — Konfiguration wird nutzbar**
@@ -441,6 +441,7 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
 
 ## Block C – Erweiterung (nicht Basis, aber im Plan)
 
+- [x] **Alt+F1 / Alt+F2 – Laufwerksmenü** – wählt das Ziel des linken bzw. rechten Panels aus den Orten der Finder-Seitenleiste (macOS: `/`, `/Volumes`, Home, iCloud Drive; Linux: `/`, Home, Mounts unter `/media`, `/run/media`, `/mnt`; Windows: Laufwerksbuchstaben). Listet nur Namen, kein `stat`, damit ein toter Mount nicht hängt. Alt+F3…F10 sind noch frei.
 - [ ] **T15 – Netzwerk-Mounts** (macOS/Linux), **T16 – Archiv-Support lesend**,
   **T17 – Archiv-Support schreibend** – Umfang siehe Abschnitt 4
 

@@ -6,12 +6,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.2.1] — 2026-10-02
+
 ### Added
 
 - macOS: a notarized `ncrs.app` (`ncrs-<target>.app.zip`) with an app icon, so
   ncrs shows up in Applications, Launchpad and the Dock. The Homebrew cask
   installs it and keeps `ncrs` on the `PATH`.
 - A window icon on Linux and Windows.
+- Alt+F1 and Alt+F2 (Option on macOS) open a drive menu for the left or right
+  panel, listing the places of the Finder sidebar: the system volume, home,
+  iCloud Drive and mounted volumes (macOS), mounts under `/media`,
+  `/run/media` and `/mnt` (Linux), drive letters (Windows). Arrows, Home and
+  End move, Enter or a click goes there, Escape closes. Listing never touches
+  a mount, so a dead network share cannot freeze it.
+- The mouse wheel and the trackpad scroll the panel under the pointer. The
+  cursor stays while it is in view and is held at the edge otherwise. A
+  dialog or the drive menu keeps the panels behind it still.
+- Cmd+Up and Cmd+Down page through the active panel (Ctrl on Linux and
+  Windows), next to PageUp and PageDown.
 
 ### Changed
 

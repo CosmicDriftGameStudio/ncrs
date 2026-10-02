@@ -28,7 +28,9 @@ for the state, the licensing audit and the reasoning behind the order.
 - Async directory loading (tokio blocking pool) – the UI never blocks
 - Stale-result protection (fast navigation cannot show an outdated listing)
 - Errors (e.g. *Permission denied*) are shown in the status bar – no panics
-- Mouse click selects a row and activates its panel
+- Mouse click selects a row and activates its panel; the wheel and the trackpad scroll the panel under the pointer
+- Drive menu (`Alt`+`F1` / `Alt`+`F2`): jump a panel to the system volume, home, iCloud Drive (macOS),
+  mounted volumes or drive letters, the same places as in the Finder sidebar
 - Localized UI (English/German) with a translator note on every string, so the UI can
   be translated mechanically without reading the code
 - Runs on Linux, macOS and Windows
@@ -38,7 +40,8 @@ for the state, the licensing audit and the reasoning behind the order.
 | Key                | Action                                   |
 |--------------------|------------------------------------------|
 | `↑` / `↓`          | Move selection                           |
-| `PgUp` / `PgDn`    | Move selection by one page               |
+| `PgUp` / `PgDn`    | Move selection by one page (`Fn`+`↑`/`↓` on a Mac)  |
+| `Cmd`+`↑` / `Cmd`+`↓` | Page up / down (`Ctrl` on Linux and Windows) |
 | `Home` / `End`     | First / last entry                       |
 | `Enter`            | Open directory (files: placeholder)      |
 | `Insert` / `Space` | Tag / untag the row, move down one      |
@@ -50,6 +53,7 @@ for the state, the licensing audit and the reasoning behind the order.
 | `F7`               | Create directory                        |
 | `F8`               | Delete to the trash, after a confirmation |
 | `Shift`+`F8`       | Delete permanently (`Enter` cancels; `Shift`+`F8` again confirms) |
+| `Alt`+`F1` / `Alt`+`F2` | Drive menu for the left / right panel (`↑`/`↓`, `Home`/`End`, `Enter` goes, `Esc` closes; `Option` on macOS) |
 | `Backspace`        | Go to parent directory                   |
 | `Tab`              | Switch active panel                      |
 | `F9`               | Switch language (en/de, temporary)        |

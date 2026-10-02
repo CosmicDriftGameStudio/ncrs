@@ -12,5 +12,6 @@ pub mod layout;
 pub mod panel;
 pub mod statusbar;
 pub mod theme;
+pub mod volumes;
 
 pub use panel::{PanelProps, PanelState};
