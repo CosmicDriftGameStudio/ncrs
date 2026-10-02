@@ -12,6 +12,12 @@ All notable changes to this project are documented here. The format follows
   ncrs shows up in Applications, Launchpad and the Dock. The Homebrew cask
   installs it and keeps `ncrs` on the `PATH`.
 - A window icon on Linux and Windows.
+- Alt+F1 and Alt+F2 (Option on macOS) open a drive menu for the left or right
+  panel, listing the places of the Finder sidebar: the system volume, home,
+  iCloud Drive and mounted volumes (macOS), mounts under `/media`,
+  `/run/media` and `/mnt` (Linux), drive letters (Windows). Arrows, Home and
+  End move, Enter or a click goes there, Escape closes. Listing never touches
+  a mount, so a dead network share cannot freeze it.
 
 ### Changed
 

@@ -8,7 +8,7 @@ use iced::keyboard::{key, Key, Modifiers};
 use crate::fs::OpenKind;
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
-use crate::messages::TransferKind;
+use crate::messages::{PanelSide, TransferKind};
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,10 +27,6 @@ impl Binding {
     }
 
     /// A key that only triggers together with a modifier, e.g. Alt+F1.
-    ///
-    /// Unused until the target-panel bindings land (F6-T7 in the roadmap); the
-    /// modifier is carried through `label()` and the lookup already.
-    #[allow(dead_code)]
     pub fn with_modifiers(key: Key, modifiers: Modifiers) -> Self {
         Self { key, modifiers }
     }
@@ -157,6 +153,19 @@ fn build_actions() -> Vec<Action> {
             binding: Binding::key(KeyNamed(F7)),
             message: Message::CreateDirPrompt,
             hint: Some(Msg::ShortcutMkdir),
+        },
+        // Alt (Option on macOS) with F1 or F2 picks the drive of the left or
+        // right panel, as in Norton Commander. Not advertised: the bar shows
+        // bare keys only, and NC does not list these either.
+        Action {
+            binding: Binding::with_modifiers(KeyNamed(F1), Modifiers::ALT),
+            message: Message::VolumeMenu(PanelSide::Left),
+            hint: None,
+        },
+        Action {
+            binding: Binding::with_modifiers(KeyNamed(F2), Modifiers::ALT),
+            message: Message::VolumeMenu(PanelSide::Right),
+            hint: None,
         },
         // Quit is also F10, the Norton Commander convention.
         Action {
@@ -346,6 +355,22 @@ mod tests {
             map_key(Key::Character("x".into()), Modifiers::default()),
             None
         );
+    }
+
+    #[test]
+    fn alt_f1_and_alt_f2_open_the_drive_menu_of_their_panel() {
+        assert_eq!(
+            map_key(Key::Named(Named::F1), Modifiers::ALT),
+            Some(Message::VolumeMenu(PanelSide::Left))
+        );
+        assert_eq!(
+            map_key(Key::Named(Named::F2), Modifiers::ALT),
+            Some(Message::VolumeMenu(PanelSide::Right))
+        );
+        assert_eq!(map_key(Key::Named(Named::F1), Modifiers::default()), None);
+        assert_eq!(map_key(Key::Named(Named::F2), Modifiers::SHIFT), None);
+        // Not on the bar: bare F1 and F2 stay free for help and the user menu.
+        assert_eq!(function_keys(Language::English)[..2], [None, None]);
     }
 
     /// A modifier must actually gate the binding: Alt+Enter is not Enter.

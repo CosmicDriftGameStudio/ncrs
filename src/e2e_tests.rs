@@ -463,6 +463,29 @@ impl crate::fs::Trash for RefusingTrash {
     }
 }
 
+/// Like `session_in`, offering `Scratch`, `Files` and `Links` of the scratch
+/// tree as the drives. The right panel starts in `home`, which is on `Scratch`.
+fn session_with_drives(
+    dir: &Path,
+) -> Session<impl iced::Program<State = App, Message = Message> + 'static> {
+    let left = std::fs::canonicalize(dir).expect("a canonical scratch path");
+    let right = left.join("home");
+    Session::boot(super::program(move || {
+        let (app, task) = App::starting_in(left.clone(), right.clone());
+        let root = left.clone();
+        let with_drives = app.with_volumes(move || {
+            ["", "files", "links"]
+                .iter()
+                .map(|name| crate::fs::Volume {
+                    name: if name.is_empty() { "Scratch" } else { name }.to_string(),
+                    path: root.join(name),
+                })
+                .collect()
+        });
+        (with_drives, task)
+    }))
+}
+
 /// Like `session_in`, with a launcher of the test's own: no test may start a
 /// real viewer.
 fn session_with_launcher(
@@ -1444,6 +1467,109 @@ mod tests {
             let message = session.app.job_error_for_test().expect("no refusal shown");
             assert!(message.contains("tool"), "{message}");
         }
+    }
+
+    /// Alt+F2 offers the drives for the right panel, Enter takes it to the
+    /// highlighted one, and the panel really lists that directory afterwards.
+    #[test]
+    fn alt_f2_then_arrows_and_enter_change_the_right_panel_drive() {
+        let dir = scratch("drive-enter");
+        write(&dir.path().join("files").join("inside.txt"), "x");
+        let mut session = session_with_drives(dir.path());
+
+        session.press_with(Key::Named(Named::F2), Modifiers::ALT);
+        assert!(session.app.volume_menu_is_open(), "Alt+F2 opened nothing");
+        assert_eq!(
+            session.app.volume_menu_selected(),
+            Some(0),
+            "the drive the panel is on was not highlighted"
+        );
+        session.press(Key::Named(Named::ArrowDown));
+        assert_eq!(session.app.volume_menu_selected(), Some(1));
+        session.press(Key::Named(Named::Enter));
+
+        assert!(!session.app.volume_menu_is_open(), "Enter left the menu up");
+        let canonical = std::fs::canonicalize(dir.path()).unwrap();
+        assert_eq!(
+            session.app.panel(PanelSide::Right).path,
+            canonical.join("files")
+        );
+        assert!(names(&session.app, PanelSide::Right).contains(&"inside.txt".to_string()));
+        assert_eq!(
+            session.app.panel(PanelSide::Left).path,
+            canonical,
+            "the other panel moved"
+        );
+    }
+
+    #[test]
+    fn alt_f1_changes_the_left_panel_and_end_goes_to_the_last_drive() {
+        let dir = scratch("drive-left");
+        let mut session = session_with_drives(dir.path());
+
+        session.press_with(Key::Named(Named::F1), Modifiers::ALT);
+        session.press(Key::Named(Named::End));
+        assert_eq!(session.app.volume_menu_selected(), Some(2));
+        session.press(Key::Named(Named::Home));
+        assert_eq!(session.app.volume_menu_selected(), Some(0));
+        session.press(Key::Named(Named::End));
+        session.press(Key::Named(Named::Enter));
+
+        let canonical = std::fs::canonicalize(dir.path()).unwrap();
+        assert_eq!(
+            session.app.panel(PanelSide::Left).path,
+            canonical.join("links")
+        );
+    }
+
+    #[test]
+    fn escape_closes_the_drive_menu_and_the_panel_stays() {
+        let dir = scratch("drive-escape");
+        let mut session = session_with_drives(dir.path());
+        let before = selected(&session.app, PanelSide::Left);
+
+        session.press_with(Key::Named(Named::F1), Modifiers::ALT);
+        session.press(Key::Named(Named::ArrowDown));
+        session.press(Key::Named(Named::Escape));
+
+        assert!(!session.app.volume_menu_is_open());
+        assert_eq!(
+            session.app.panel(PanelSide::Left).path,
+            std::fs::canonicalize(dir.path()).unwrap()
+        );
+        assert_eq!(
+            selected(&session.app, PanelSide::Left),
+            before,
+            "the arrow moved the panel behind the menu"
+        );
+    }
+
+    /// Held arrow keys repeat in the menu; Enter held down does not go twice.
+    #[test]
+    fn a_held_arrow_repeats_in_the_drive_menu() {
+        let dir = scratch("drive-repeat");
+        let mut session = session_with_drives(dir.path());
+
+        session.press_with(Key::Named(Named::F1), Modifiers::ALT);
+        session.press_repeat(Key::Named(Named::ArrowDown), Modifiers::default());
+        assert_eq!(session.app.volume_menu_selected(), Some(1));
+        session.press_repeat(Key::Named(Named::Enter), Modifiers::default());
+        assert!(session.app.volume_menu_is_open(), "a held Enter chose");
+    }
+
+    #[test]
+    fn a_click_on_a_drive_chooses_it() {
+        let dir = scratch("drive-click");
+        let mut session = session_with_drives(dir.path());
+
+        session.press_with(Key::Named(Named::F2), Modifiers::ALT);
+        session.send(Message::VolumeMenuClick(2));
+
+        assert!(!session.app.volume_menu_is_open());
+        assert_eq!(
+            session.app.panel(PanelSide::Right).path,
+            std::fs::canonicalize(dir.path()).unwrap().join("links")
+        );
     }
 
     #[test]

@@ -1,6 +1,6 @@
 //! Root application: state, `update` (the only place state changes) and
 //! `view` (pure composition of UI components).
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -17,6 +17,7 @@ use crate::keymap;
 use crate::messages::{ConflictChoice, Message, PanelSide, TransferKind};
 use crate::ui::delete as delete_dialog_view;
 use crate::ui::dialog::FIELD_ID;
+use crate::ui::volumes as volumes_view;
 use crate::ui::{
     self, conflict, dialog, fkeys, header, layout, panel, statusbar, theme, PanelProps, PanelState,
 };
@@ -183,6 +184,40 @@ struct PendingConflict {
     index: usize,
 }
 
+/// The open drive menu. The list is read when the menu opens, so a drive
+/// plugged in a moment ago is there and one removed since is gone.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct VolumeMenu {
+    /// The panel that changes drive.
+    side: PanelSide,
+    volumes: Vec<fs::Volume>,
+    /// The highlighted row, the one Enter goes to.
+    selected: usize,
+}
+
+impl VolumeMenu {
+    /// Opens on the drive `current` lives on: the volume with the longest path
+    /// that `current` starts with.
+    fn new(side: PanelSide, volumes: Vec<fs::Volume>, current: &Path) -> Self {
+        let selected = volumes
+            .iter()
+            .enumerate()
+            .filter(|(_, volume)| current.starts_with(&volume.path))
+            .max_by_key(|(index, volume)| (volume.path.components().count(), usize::MAX - index))
+            .map_or(0, |(index, _)| index);
+        Self {
+            side,
+            volumes,
+            selected,
+        }
+    }
+
+    fn move_by(&mut self, delta: isize) {
+        let last = self.volumes.len().saturating_sub(1);
+        self.selected = self.selected.saturating_add_signed(delta).min(last);
+    }
+}
+
 pub struct App {
     left_panel: PanelState,
     right_panel: PanelState,
@@ -254,6 +289,11 @@ pub struct App {
     /// subscription puts its cell here, and `update` keeps the value in it
     /// current after every message.
     key_state: OnceLock<Arc<KeyStateCell>>,
+    /// The drive menu, while it is up.
+    volume_menu: Option<VolumeMenu>,
+    /// Where the drive menu gets its list. Injected so tests offer their own
+    /// directories instead of the machine's disks.
+    list_volumes: Arc<dyn Fn() -> Vec<fs::Volume> + Send + Sync>,
 }
 
 /// The part of the prompt the key routing needs, cheap to clone.
@@ -272,6 +312,8 @@ pub struct PromptKeyState {
     pub conflict_open: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
+    /// The drive menu is up, so keys move its highlight.
+    pub volume_menu: bool,
     /// Whether the operation is running; keys are ignored then.
     pub busy: bool,
     /// The name typed so far.
@@ -295,6 +337,20 @@ fn keys_without_prompt(
     key: Key,
     key_modifiers: Modifiers,
 ) -> Option<Message> {
+    // The menu takes the arrows and Enter that would otherwise move the panel
+    // behind it; any other key does nothing until it is closed.
+    if prompt.volume_menu {
+        return match key.as_ref() {
+            Key::Named(Named::Escape) => Some(Message::VolumeMenuClose),
+            Key::Named(Named::Enter) => Some(Message::VolumeMenuActivate),
+            Key::Named(Named::ArrowUp) => Some(Message::VolumeMenuMove(-1)),
+            Key::Named(Named::ArrowDown) => Some(Message::VolumeMenuMove(1)),
+            Key::Named(Named::Home) => Some(Message::VolumeMenuFirst),
+            Key::Named(Named::End) => Some(Message::VolumeMenuLast),
+            _ => None,
+        };
+    }
+
     // Before the conflict dialog and the job: a delete is only offered when
     // neither is there, so there is nothing to disambiguate, but it must not
     // be possible for Escape to mean "stop the job" while a question is open.
@@ -383,6 +439,9 @@ fn repeats(message: &Message) -> bool {
             | Message::ToggleTag
             | Message::TagMove(_)
             | Message::PromptInput(_)
+            | Message::VolumeMenuMove(_)
+            | Message::VolumeMenuFirst
+            | Message::VolumeMenuLast
     )
 }
 
@@ -458,6 +517,8 @@ impl App {
             progress_rx: None,
             progress_tx: None,
             key_state: OnceLock::new(),
+            volume_menu: None,
+            list_volumes: Arc::new(fs::list_volumes),
         };
 
         let tasks = Task::batch([
@@ -686,6 +747,41 @@ impl App {
 
             Message::OpenExternal(kind) => {
                 self.open_external(kind);
+                Task::none()
+            }
+
+            // --- drive menu ---
+            Message::VolumeMenu(side) => {
+                self.open_volume_menu(side);
+                Task::none()
+            }
+            Message::VolumeMenuMove(delta) => {
+                if let Some(menu) = self.volume_menu.as_mut() {
+                    menu.move_by(delta);
+                }
+                Task::none()
+            }
+            Message::VolumeMenuFirst => {
+                if let Some(menu) = self.volume_menu.as_mut() {
+                    menu.selected = 0;
+                }
+                Task::none()
+            }
+            Message::VolumeMenuLast => {
+                if let Some(menu) = self.volume_menu.as_mut() {
+                    menu.selected = menu.volumes.len().saturating_sub(1);
+                }
+                Task::none()
+            }
+            Message::VolumeMenuActivate => self.go_to_selected_volume(),
+            Message::VolumeMenuClick(index) => {
+                if let Some(menu) = self.volume_menu.as_mut() {
+                    menu.selected = index;
+                }
+                self.go_to_selected_volume()
+            }
+            Message::VolumeMenuClose => {
+                self.volume_menu = None;
                 Task::none()
             }
 
@@ -1009,6 +1105,12 @@ impl App {
         .height(Length::Fill)
         .style(theme::root);
 
+        if let Some(menu) = self.volume_menu.as_ref() {
+            let menu_element =
+                volumes_view::view(menu.side, &menu.volumes, menu.selected, self.lang);
+            return Stack::with_children([root.into(), dialog::scrim(menu_element)]).into();
+        }
+
         if let Some(deletion) = self.delete_dialog.as_ref() {
             let dialog_element = delete_dialog_view::view(
                 self.delete_subject(deletion),
@@ -1096,6 +1198,7 @@ impl App {
     /// The state the key routing needs, cheap to clone.
     fn prompt_key_state(&self) -> PromptKeyState {
         let job_running = self.jobs.is_busy();
+        let volume_menu = self.volume_menu.is_some();
         let delete_dialog = match &self.delete_dialog {
             None => DeleteKeys::Closed,
             Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
@@ -1105,6 +1208,7 @@ impl App {
             None => PromptKeyState {
                 job_running,
                 delete_dialog,
+                volume_menu,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
                 // the dialog's keys would fall through to the panels.
@@ -1115,6 +1219,7 @@ impl App {
                 open: true,
                 job_running,
                 delete_dialog,
+                volume_menu,
                 conflict_open: self.pending_conflict.is_some(),
                 busy: prompt.busy(),
                 typed: prompt.name().into(),
@@ -1171,6 +1276,37 @@ impl App {
             return self.answer_conflict(choice);
         }
         Task::none()
+    }
+
+    /// Alt+F1 / Alt+F2: list the drives and highlight the one `side` is on.
+    /// Does nothing while a prompt or dialog holds the keyboard.
+    fn open_volume_menu(&mut self, side: PanelSide) {
+        if self.prompt.is_some()
+            || self.pending_conflict.is_some()
+            || self.delete_dialog.is_some()
+            || self.volume_menu.is_some()
+        {
+            return;
+        }
+        let volumes = (self.list_volumes)();
+        if volumes.is_empty() {
+            return;
+        }
+        self.volume_menu = Some(VolumeMenu::new(side, volumes, &self.panel(side).path));
+    }
+
+    /// Closes the menu and takes its panel to the highlighted drive, as any
+    /// directory change does: a failing read shows its error in the status bar.
+    fn go_to_selected_volume(&mut self) -> Task<Message> {
+        let Some(menu) = self.volume_menu.take() else {
+            return Task::none();
+        };
+        let Some(volume) = menu.volumes.get(menu.selected) else {
+            return Task::none();
+        };
+        self.job_error = None;
+        self.active_panel = menu.side;
+        self.load(menu.side, volume.path.clone(), None)
     }
 
     /// Toggles the tag on the cursor row and moves by `delta`, as NC does. The
@@ -2211,6 +2347,8 @@ impl App {
             progress_rx: None,
             progress_tx: None,
             key_state: OnceLock::new(),
+            volume_menu: None,
+            list_volumes: Arc::new(fs::list_volumes),
         };
         for (side, names) in [
             (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
@@ -2325,6 +2463,32 @@ impl App {
     pub fn with_launcher(mut self, launcher: Arc<dyn fs::Launcher>) -> Self {
         self.launcher = launcher;
         self
+    }
+
+    /// Replaces the drive list, so a test offers its own directories.
+    pub fn with_volumes(
+        mut self,
+        list: impl Fn() -> Vec<fs::Volume> + Send + Sync + 'static,
+    ) -> Self {
+        self.list_volumes = Arc::new(list);
+        self
+    }
+
+    /// Whether the drive menu is up.
+    pub fn volume_menu_is_open(&self) -> bool {
+        self.volume_menu.is_some()
+    }
+
+    /// The highlighted row of the open drive menu.
+    pub fn volume_menu_selected(&self) -> Option<usize> {
+        self.volume_menu.as_ref().map(|menu| menu.selected)
+    }
+
+    /// Puts the drive menu in front of the user with a fixed list, for the
+    /// snapshot tests.
+    pub fn open_volume_menu_for_test(&mut self, side: PanelSide, volumes: Vec<fs::Volume>) {
+        let current = self.panel(side).path.clone();
+        self.volume_menu = Some(VolumeMenu::new(side, volumes, &current));
     }
 
     /// Replaces the trash, so a test never fills the developer's real one.
@@ -3542,5 +3706,139 @@ mod delete_tests {
         assert!(!repeats(&Message::Delete { permanent: true }));
         assert!(!repeats(&Message::DeleteConfirm));
         assert!(!repeats(&Message::Transfer(TransferKind::Copy)));
+    }
+}
+
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod volume_menu_tests {
+    use super::*;
+
+    fn volume(name: &str, path: &str) -> fs::Volume {
+        fs::Volume {
+            name: name.to_string(),
+            path: PathBuf::from(path),
+        }
+    }
+
+    fn drives() -> Vec<fs::Volume> {
+        vec![
+            volume("Root", "/"),
+            volume("Home", "/home/test"),
+            volume("Stick", "/media/stick"),
+        ]
+    }
+
+    fn route(named: Named, modifiers: Modifiers) -> Option<Message> {
+        route_key(&PromptKeyState::default(), Key::Named(named), modifiers)
+    }
+
+    fn open_menu() -> PromptKeyState {
+        PromptKeyState {
+            volume_menu: true,
+            ..PromptKeyState::default()
+        }
+    }
+
+    /// On macOS the Option key arrives as the ALT modifier, and F1 stays the
+    /// named key: function keys have no character for Option to change.
+    #[test]
+    fn alt_f1_and_alt_f2_open_the_menu_for_their_panel() {
+        let alt = Modifiers::ALT;
+        assert!(alt.alt());
+        assert_eq!(
+            route(Named::F1, alt),
+            Some(Message::VolumeMenu(PanelSide::Left))
+        );
+        assert_eq!(
+            route(Named::F2, alt),
+            Some(Message::VolumeMenu(PanelSide::Right))
+        );
+        assert_eq!(route(Named::F1, Modifiers::default()), None);
+        assert_eq!(route(Named::F1, Modifiers::CTRL), None);
+    }
+
+    #[test]
+    fn an_open_menu_takes_the_movement_keys_and_nothing_else() {
+        let menu = open_menu();
+        let key = |named| route_key(&menu, Key::Named(named), Modifiers::default());
+        assert_eq!(key(Named::ArrowDown), Some(Message::VolumeMenuMove(1)));
+        assert_eq!(key(Named::ArrowUp), Some(Message::VolumeMenuMove(-1)));
+        assert_eq!(key(Named::Home), Some(Message::VolumeMenuFirst));
+        assert_eq!(key(Named::End), Some(Message::VolumeMenuLast));
+        assert_eq!(key(Named::Enter), Some(Message::VolumeMenuActivate));
+        assert_eq!(key(Named::Escape), Some(Message::VolumeMenuClose));
+        for ignored in [Named::F5, Named::F8, Named::Tab, Named::Backspace] {
+            assert_eq!(key(ignored), None, "{ignored:?} reached the panels");
+        }
+    }
+
+    #[test]
+    fn movement_repeats_but_choosing_does_not() {
+        assert!(repeats(&Message::VolumeMenuMove(1)));
+        assert!(repeats(&Message::VolumeMenuFirst));
+        assert!(repeats(&Message::VolumeMenuLast));
+        assert!(!repeats(&Message::VolumeMenuActivate));
+        assert!(!repeats(&Message::VolumeMenu(PanelSide::Left)));
+    }
+
+    #[test]
+    fn the_menu_opens_on_the_longest_matching_drive() {
+        let menu = |current: &str| VolumeMenu::new(PanelSide::Left, drives(), Path::new(current));
+        assert_eq!(menu("/home/test/docs").selected, 1);
+        assert_eq!(menu("/home/other").selected, 0);
+        assert_eq!(menu("/media/stick").selected, 2);
+        // `/home/tester` is not below `/home/test`.
+        assert_eq!(menu("/home/tester").selected, 0);
+        assert_eq!(menu("/elsewhere").selected, 0);
+    }
+
+    #[test]
+    fn the_highlight_stops_at_both_ends() {
+        let mut menu = VolumeMenu::new(PanelSide::Left, drives(), Path::new("/"));
+        menu.move_by(-1);
+        assert_eq!(menu.selected, 0);
+        menu.move_by(5);
+        assert_eq!(menu.selected, 2);
+    }
+
+    #[test]
+    fn the_menu_opens_for_the_panel_that_asked() {
+        let mut app = App::with_fixed_panels().with_volumes(drives);
+        let _open = app.update(Message::VolumeMenu(PanelSide::Right));
+        assert_eq!(app.volume_menu.as_ref().unwrap().side, PanelSide::Right);
+        // `/home/test/files` is the right panel's path.
+        assert_eq!(app.volume_menu_selected(), Some(1));
+        assert!(app.prompt_key_state().volume_menu);
+
+        let _close = app.update(Message::VolumeMenuClose);
+        assert!(!app.volume_menu_is_open());
+        assert!(!app.prompt_key_state().volume_menu);
+    }
+
+    #[test]
+    fn a_dialog_keeps_the_menu_from_opening() {
+        let mut app = App::with_fixed_panels().with_volumes(drives);
+        app.open_delete_dialog_for_test(1, false);
+        let _open = app.update(Message::VolumeMenu(PanelSide::Left));
+        assert!(!app.volume_menu_is_open());
+    }
+
+    #[tokio::test]
+    async fn choosing_a_drive_loads_it_and_activates_its_panel() {
+        let mut app = App::with_fixed_panels().with_volumes(drives);
+        let _open = app.update(Message::VolumeMenu(PanelSide::Right));
+        let _down = app.update(Message::VolumeMenuMove(1));
+        let _enter = app.update(Message::VolumeMenuActivate);
+        assert!(!app.volume_menu_is_open());
+        assert_eq!(app.active_panel, PanelSide::Right);
+        assert!(app.panel(PanelSide::Right).loading);
+        assert!(!app.panel(PanelSide::Left).loading);
     }
 }

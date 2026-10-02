@@ -301,6 +301,18 @@
       "de": "{name} konnte nicht in den Papierkorb: {reason}. Shift+F8 löscht endgültig."
     },
     {
+      "key": "volumes.title_left",
+      "context": "Title of the drive menu opened with Alt+F1, which picks the place the left panel shows. Imperative; the word 'drive' stands for a disk, a mounted volume or another place such as the home folder.",
+      "en": "Choose drive (left)",
+      "de": "Laufwerk wählen (links)"
+    },
+    {
+      "key": "volumes.title_right",
+      "context": "Title of the drive menu opened with Alt+F2, which picks the place the right panel shows. Imperative; same meaning of 'drive' as in volumes.title_left.",
+      "en": "Choose drive (right)",
+      "de": "Laufwerk wählen (rechts)"
+    },
+    {
       "key": "error.delete_failed",
       "context": "Status bar when deleting an entry permanently failed. Takes the name and the OS reason.",
       "en": "Could not delete {name}: {reason}",
