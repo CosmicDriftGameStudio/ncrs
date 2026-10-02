@@ -14,7 +14,7 @@ use crate::fs::{self, CreateDirError};
 use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
 use crate::keymap;
-use crate::messages::{ConflictChoice, Message, PanelSide, TransferKind};
+use crate::messages::{ClipboardKind, ConflictChoice, Message, PanelSide, TransferKind};
 use crate::ui::delete as delete_dialog_view;
 use crate::ui::dialog::FIELD_ID;
 use crate::ui::volumes as volumes_view;
@@ -261,6 +261,8 @@ pub struct App {
     /// Why the last job failed, in the active language. Shown in the status bar
     /// until the next thing happens.
     job_error: Option<String>,
+    /// A neutral confirmation, such as "Path copied". Goes the way of `job_error`.
+    notice: Option<String>,
     /// How many items the running job has finished, for the progress bar.
     job_done: usize,
     /// Whether "for all files" is ticked in the conflict dialog. Lives here so
@@ -397,6 +399,14 @@ fn keys_without_prompt(
     // For a character, Shift is already in the character (`*` needs it on the
     // US and German layouts), so Ctrl+`*` arrives as CTRL|SHIFT and has to be
     // looked up as Ctrl. Named keys keep it: Shift+F8 is not F8.
+    //
+    // Except for a chord that names Shift itself (Ctrl+Shift+C): tried first,
+    // with the letter lowercased, because Shift made it a capital.
+    if key_modifiers.shift() {
+        if let Some(message) = keymap::map_key(lowercase_character(&key), key_modifiers) {
+            return Some(message);
+        }
+    }
     let modifiers = if matches!(key, Key::Character(_)) {
         key_modifiers - Modifiers::SHIFT
     } else {
@@ -408,6 +418,55 @@ fn keys_without_prompt(
             .then(|| keymap::map_key(key, Modifiers::default()))
             .flatten()
     })
+}
+
+fn lowercase_character(key: &Key) -> Key {
+    match key {
+        Key::Character(c) => Key::Character(c.to_lowercase().into()),
+        other => other.clone(),
+    }
+}
+
+/// The key a binding is written against.
+///
+/// With Option held a Mac types another character: Option+C is "ç", and with
+/// Ctrl it can be a control character. The binding is for the letter on the
+/// key, so a letter key whose character is not that letter is taken from the
+/// physical key instead.
+fn binding_key(key: Key, physical_key: keyboard::key::Physical) -> Key {
+    use keyboard::key::{Code, Physical};
+    let is_plain_letter = matches!(&key, Key::Character(c)
+        if c.chars().count() == 1 && c.chars().all(|ch| ch.is_ascii_alphabetic()));
+    if is_plain_letter || !matches!(key, Key::Character(_)) {
+        return key;
+    }
+    let Physical::Code(code) = physical_key else {
+        return key;
+    };
+    let letter = match code {
+        Code::KeyC => "c",
+        _ => return key,
+    };
+    Key::Character(letter.into())
+}
+
+/// A key press as the subscription sees it: the routed message, unless the
+/// press is a key repeat of something that must happen once.
+pub fn route_press(
+    prompt: &PromptKeyState,
+    key: Key,
+    physical_key: keyboard::key::Physical,
+    modifiers: Modifiers,
+    repeat: bool,
+) -> Option<Message> {
+    // A text prompt types what the key produced, so only the bindings see the
+    // physical letter.
+    let routed_key = if prompt.open {
+        key
+    } else {
+        binding_key(key, physical_key)
+    };
+    route_key(prompt, routed_key, modifiers).filter(|message| !repeat || repeats(message))
 }
 
 /// The keys every button dialog shares: arrows and Tab move the focus, Enter
@@ -476,6 +535,43 @@ pub fn route_key(prompt: &PromptKeyState, key: Key, modifiers: Modifiers) -> Opt
     }
 }
 
+/// What goes on the clipboard, and for how many rows.
+#[derive(Debug, PartialEq, Eq)]
+struct ClipboardText {
+    text: String,
+    count: usize,
+}
+
+/// The tagged rows, else the cursor row, one per line in listing order. On `..`
+/// without tags the directory of the panel itself; the root has no file name,
+/// so its path is its name. Paths are joined, not canonicalised.
+fn clipboard_text(panel: &PanelState, kind: ClipboardKind) -> Option<ClipboardText> {
+    let render = |path: &std::path::Path, name: &std::ffi::OsStr| match kind {
+        ClipboardKind::Path => path.to_string_lossy().into_owned(),
+        ClipboardKind::Name => name.to_string_lossy().into_owned(),
+    };
+    let lines: Vec<String> = if panel.selection.any_tagged() {
+        panel
+            .selection
+            .ordered(&panel.entries)
+            .into_iter()
+            .map(|entry| render(&panel.path.join(&entry.name), &entry.name))
+            .collect()
+    } else {
+        let entry = panel.selected_entry()?;
+        if entry.is_parent {
+            let own_name = panel.path.file_name().unwrap_or(panel.path.as_os_str());
+            vec![render(&panel.path, own_name)]
+        } else {
+            vec![render(&panel.path.join(&entry.name), &entry.name)]
+        }
+    };
+    (!lines.is_empty()).then(|| ClipboardText {
+        count: lines.len(),
+        text: lines.join("\n"),
+    })
+}
+
 impl App {
     /// Initial state plus tasks that load both panels.
     /// Left panel starts in the working directory, right in `$HOME`, so the
@@ -509,6 +605,7 @@ impl App {
             trash: Arc::new(fs::SystemTrash),
             launcher: Arc::new(fs::SystemLauncher),
             job_error: None,
+            notice: None,
             job_done: 0,
             conflict_all: false,
             conflict_rule: None,
@@ -579,10 +676,11 @@ impl App {
                     match event {
                         keyboard::Event::KeyPressed {
                             key,
+                            physical_key,
                             modifiers,
                             repeat,
                             ..
-                        } => route_key(
+                        } => route_press(
                             // A panic in a key handler would leave the lock
                             // poisoned. The state is a few Copy values and cannot
                             // be half-written, so reading the inner value is safe —
@@ -593,9 +691,10 @@ impl App {
                                 .lock()
                                 .unwrap_or_else(|poisoned| poisoned.into_inner()),
                             key,
+                            physical_key,
                             modifiers,
-                        )
-                        .filter(|message| !repeat || repeats(message)),
+                            repeat,
+                        ),
                         keyboard::Event::ModifiersChanged(modifiers) => {
                             Some(Message::ModifiersChanged(modifiers))
                         }
@@ -787,6 +886,7 @@ impl App {
 
             // --- delete ---
             Message::Delete { permanent } => self.open_delete_dialog(permanent),
+            Message::CopyToClipboard(kind) => self.copy_to_clipboard(kind),
             Message::DeleteCancel => {
                 self.delete_dialog = None;
                 Task::none()
@@ -934,6 +1034,7 @@ impl App {
 
             Message::MoveSelection(delta) => {
                 self.job_error = None;
+                self.notice = None;
                 self.active_panel_mut().move_selection(delta, rows);
                 Task::none()
             }
@@ -1104,6 +1205,7 @@ impl App {
                     self.lang,
                     self.job_status(),
                     self.job_error.as_deref(),
+                    self.notice.as_deref(),
                 ),
                 fkeys::view(&self.function_keys),
             ]
@@ -1256,6 +1358,32 @@ impl App {
         }
     }
 
+    /// Puts the path or name of the target on the clipboard and says so in the
+    /// status bar. Nothing happens under an overlay or with nothing to copy.
+    fn copy_to_clipboard(&mut self, kind: ClipboardKind) -> Task<Message> {
+        if self.overlay_is_open() {
+            return Task::none();
+        }
+        let Some(copied) = clipboard_text(self.active_panel(), kind) else {
+            return Task::none();
+        };
+        self.job_error = None;
+        self.notice = Some(self.copied_notice(kind, copied.count));
+        iced::clipboard::write(copied.text)
+    }
+
+    fn copied_notice(&self, kind: ClipboardKind, count: usize) -> String {
+        let (one, many) = match kind {
+            ClipboardKind::Path => (Msg::StatusPathCopied, Msg::StatusPathsCopied),
+            ClipboardKind::Name => (Msg::StatusNameCopied, Msg::StatusNamesCopied),
+        };
+        if count == 1 {
+            self.lang.text(one).to_string()
+        } else {
+            self.lang.text(many).replace("{count}", &count.to_string())
+        }
+    }
+
     fn dialog_button_count(&self) -> usize {
         if self.delete_dialog.is_some() {
             2
@@ -1318,6 +1446,7 @@ impl App {
             return Task::none();
         };
         self.job_error = None;
+        self.notice = None;
         self.active_panel = menu.side;
         self.load(menu.side, volume.path.clone(), None)
     }
@@ -1352,6 +1481,7 @@ impl App {
             return Task::none();
         }
         self.job_error = None;
+        self.notice = None;
         // The permanent dialog starts on "Cancel", so a reflex Enter never
         // deletes for good.
         self.dialog_focus = usize::from(permanent);
@@ -1477,6 +1607,7 @@ impl App {
         }
         let path = entry.path.clone();
         self.job_error = None;
+        self.notice = None;
         let name = path
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
@@ -2352,6 +2483,7 @@ impl App {
             trash: Arc::new(fs::SystemTrash),
             launcher: Arc::new(fs::SystemLauncher),
             job_error: None,
+            notice: None,
             job_done: 0,
             conflict_all: false,
             conflict_rule: None,
@@ -4080,5 +4212,179 @@ mod scroll_tests {
         let _up = app.update(Message::PageUp);
         assert_eq!(app.left_panel.selected, 0);
         assert_eq!(app.left_panel.scroll_offset, 0);
+    }
+}
+
+#[cfg(test)]
+mod copy_to_clipboard_tests {
+    use super::*;
+    use crate::fs::FileEntry;
+    use iced::keyboard::key::{Code, Physical};
+    use std::ffi::OsString;
+
+    fn entry(name: &str, is_parent: bool) -> FileEntry {
+        FileEntry {
+            name: OsString::from(name),
+            path: PathBuf::from("/left").join(name),
+            is_dir: false,
+            is_symlink: false,
+            is_parent,
+            size: 0,
+            modified: None,
+        }
+    }
+
+    fn panel() -> PanelState {
+        let mut panel = PanelState::new(PathBuf::from("/left/dir"));
+        panel.entries = vec![
+            entry("..", true),
+            entry("zulu.txt", false),
+            entry("alpha.txt", false),
+        ];
+        panel
+    }
+
+    fn text(panel: &PanelState, kind: ClipboardKind) -> Option<String> {
+        clipboard_text(panel, kind).map(|copied| copied.text)
+    }
+
+    #[test]
+    fn the_cursor_row_is_copied_as_path_or_name() {
+        let mut panel = panel();
+        panel.selected = 1;
+        assert_eq!(
+            text(&panel, ClipboardKind::Path).as_deref(),
+            Some("/left/dir/zulu.txt")
+        );
+        assert_eq!(
+            text(&panel, ClipboardKind::Name).as_deref(),
+            Some("zulu.txt")
+        );
+    }
+
+    #[test]
+    fn tagged_rows_win_one_per_line_in_listing_order_without_trailing_newline() {
+        let mut panel = panel();
+        panel.selected = 0;
+        panel.selection.toggle(&OsString::from("alpha.txt"));
+        panel.selection.toggle(&OsString::from("zulu.txt"));
+        assert_eq!(
+            clipboard_text(&panel, ClipboardKind::Path),
+            Some(ClipboardText {
+                text: "/left/dir/zulu.txt\n/left/dir/alpha.txt".to_string(),
+                count: 2,
+            })
+        );
+        assert_eq!(
+            text(&panel, ClipboardKind::Name).as_deref(),
+            Some("zulu.txt\nalpha.txt")
+        );
+    }
+
+    #[test]
+    fn the_parent_row_copies_the_panel_directory_itself() {
+        let panel = panel();
+        assert_eq!(
+            text(&panel, ClipboardKind::Path).as_deref(),
+            Some("/left/dir")
+        );
+        assert_eq!(text(&panel, ClipboardKind::Name).as_deref(), Some("dir"));
+    }
+
+    #[test]
+    fn at_the_root_the_path_is_the_name() {
+        let mut panel = panel();
+        panel.path = PathBuf::from("/");
+        assert_eq!(text(&panel, ClipboardKind::Name).as_deref(), Some("/"));
+    }
+
+    #[test]
+    fn an_empty_panel_has_nothing_to_copy() {
+        let panel = PanelState::new(PathBuf::from("/left"));
+        assert_eq!(clipboard_text(&panel, ClipboardKind::Path), None);
+    }
+
+    fn path_chord_routes(key: &str, physical: Code, modifiers: Modifiers) -> Option<Message> {
+        route_press(
+            &PromptKeyState::default(),
+            Key::Character(key.into()),
+            Physical::Code(physical),
+            modifiers,
+            false,
+        )
+    }
+
+    #[test]
+    fn the_path_chord_routes_on_every_platform() {
+        assert_eq!(
+            path_chord_routes("c", Code::KeyC, Modifiers::ALT | Modifiers::COMMAND),
+            Some(Message::CopyToClipboard(ClipboardKind::Path))
+        );
+    }
+
+    /// Option+C types "ç" on a Mac; the binding has to follow the key.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn option_cmd_c_works_although_the_mac_types_a_cedilla() {
+        assert_eq!(
+            path_chord_routes("ç", Code::KeyC, Modifiers::ALT | Modifiers::LOGO),
+            Some(Message::CopyToClipboard(ClipboardKind::Path))
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn ctrl_cmd_c_works_although_the_mac_may_type_a_control_character() {
+        for typed in ["c", "\u{3}"] {
+            assert_eq!(
+                path_chord_routes(typed, Code::KeyC, Modifiers::CTRL | Modifiers::LOGO),
+                Some(Message::CopyToClipboard(ClipboardKind::Name)),
+                "{typed:?}"
+            );
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn ctrl_shift_c_copies_the_name_and_ctrl_c_still_aborts() {
+        assert_eq!(
+            path_chord_routes("C", Code::KeyC, Modifiers::CTRL | Modifiers::SHIFT),
+            Some(Message::CopyToClipboard(ClipboardKind::Name))
+        );
+        assert_eq!(
+            path_chord_routes("c", Code::KeyC, Modifiers::CTRL),
+            Some(Message::AbortJob)
+        );
+    }
+
+    #[test]
+    fn a_held_key_does_not_copy_again() {
+        let routed = route_press(
+            &PromptKeyState::default(),
+            Key::Character("c".into()),
+            Physical::Code(Code::KeyC),
+            Modifiers::ALT | Modifiers::COMMAND,
+            true,
+        );
+        assert_eq!(routed, None);
+    }
+
+    #[tokio::test]
+    async fn copying_says_so_in_the_status_bar_and_an_overlay_blocks_it() {
+        let mut app = App::new().0;
+        app.left_panel.path = PathBuf::from("/left");
+        app.left_panel.entries = vec![entry("a.txt", false)];
+        app.left_panel.selected = 0;
+
+        let _open = app.update(Message::Delete { permanent: false });
+        assert!(app.overlay_is_open(), "the delete dialog did not open");
+        let _blocked = app.update(Message::CopyToClipboard(ClipboardKind::Path));
+        assert_eq!(app.notice, None);
+        let _closed = app.update(Message::DeleteCancel);
+
+        let _path = app.update(Message::CopyToClipboard(ClipboardKind::Path));
+        assert_eq!(app.notice.as_deref(), Some("Path copied"));
+        let _name = app.update(Message::CopyToClipboard(ClipboardKind::Name));
+        assert_eq!(app.notice.as_deref(), Some("Name copied"));
     }
 }

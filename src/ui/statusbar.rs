@@ -32,6 +32,7 @@ pub fn view<'a, M: 'a>(
     lang: Language,
     job: Option<JobStatus>,
     failure: Option<&'a str>,
+    notice: Option<&'a str>,
 ) -> Element<'a, M> {
     let path = text(panel.path.display().to_string())
         .size(font_size::STATUS)
@@ -42,6 +43,12 @@ pub fn view<'a, M: 'a>(
         text(last_failure)
             .size(font_size::STATUS)
             .color(colors::ERROR)
+            .wrapping(text::Wrapping::None)
+            .into()
+    } else if let Some(confirmation) = notice {
+        text(confirmation)
+            .size(font_size::STATUS)
+            .color(colors::ACCENT)
             .wrapping(text::Wrapping::None)
             .into()
     } else if let Some(error) = &panel.error {

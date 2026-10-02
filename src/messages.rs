@@ -60,6 +60,8 @@ pub enum Message {
     JobProgress(crate::fs::transfer::Tick),
     /// F5 or F6, decided by the action rather than a message each.
     Transfer(TransferKind),
+    /// Path or name of the tagged rows, else the cursor row, to the clipboard.
+    CopyToClipboard(ClipboardKind),
     /// The user answered the conflict dialog.
     TransferConflict(ConflictChoice),
     /// Ticks or unticks "for all files" in the conflict dialog.
@@ -174,6 +176,13 @@ pub enum Message {
     // --- Window / app ---
     WindowResized(Size),
     Quit,
+}
+
+/// What Ctrl+Alt+C and Ctrl+Shift+C put on the clipboard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClipboardKind {
+    Path,
+    Name,
 }
 
 /// Copy or move. One message with the kind inside, so the keymap and the job

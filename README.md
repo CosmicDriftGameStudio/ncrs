@@ -64,6 +64,8 @@ The same window in German, switched with F9.
 | `Shift`+`Up`/`Down`| Tag / untag the row, move up / down     |
 | `*`                | Tag every row (except `..`)             |
 | `Ctrl`+`*`         | Clear all tags                          |
+| `Option`+`Cmd`+`C` / `Ctrl`+`Alt`+`C` | Copy the path of the tagged rows (else the cursor row) to the clipboard |
+| `Ctrl`+`Cmd`+`C` / `Ctrl`+`Shift`+`C` | Copy the name of the tagged rows (else the cursor row) to the clipboard |
 | `F3` / `F4`        | View / edit the file under the cursor in an external program |
 | `F5` / `F6`        | Copy / move to the other panel          |
 | `F7`               | Create directory                        |
