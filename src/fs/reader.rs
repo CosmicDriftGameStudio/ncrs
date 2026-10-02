@@ -107,10 +107,14 @@ pub fn root_of(path: &Path) -> PathBuf {
 /// The directory the app should start in when the user has no better idea:
 /// the working directory, falling back to the home directory.
 pub fn start_dir() -> PathBuf {
-    std::env::current_dir()
-        .ok()
-        .filter(|p| p.is_dir())
-        .unwrap_or_else(home_dir)
+    start_dir_from(std::env::current_dir().ok(), home_dir())
+}
+
+/// A launch from Finder or the Dock has `/` as working directory, which says
+/// nothing about what the user wants to see, so it counts as no directory.
+pub fn start_dir_from(cwd: Option<PathBuf>, home: PathBuf) -> PathBuf {
+    cwd.filter(|dir| dir.parent().is_some() && dir.is_dir())
+        .unwrap_or(home)
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
@@ -194,6 +198,24 @@ mod start_dir_tests {
             None,
             "start_dir should not be the filesystem root"
         );
+    }
+
+    #[test]
+    fn start_dir_from_uses_home_when_launched_from_the_filesystem_root() {
+        let home = PathBuf::from("/home-stand-in");
+        assert_eq!(start_dir_from(Some(PathBuf::from("/")), home.clone()), home);
+    }
+
+    #[test]
+    fn start_dir_from_uses_home_without_a_working_directory() {
+        let home = PathBuf::from("/home-stand-in");
+        assert_eq!(start_dir_from(None, home.clone()), home);
+    }
+
+    #[test]
+    fn start_dir_from_keeps_a_real_working_directory() {
+        let cwd = std::env::temp_dir();
+        assert_eq!(start_dir_from(Some(cwd.clone()), PathBuf::from("/h")), cwd);
     }
 
     #[test]

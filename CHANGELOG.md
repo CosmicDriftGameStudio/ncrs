@@ -6,7 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- macOS: a notarized `ncrs.app` (`ncrs-<target>.app.zip`) with an app icon, so
+  ncrs shows up in Applications, Launchpad and the Dock. The Homebrew cask
+  installs it and keeps `ncrs` on the `PATH`.
+- A window icon on Linux and Windows.
+
+### Changed
+
+- Started from Finder (working directory `/`), the left panel opens in `$HOME`.
+- ncrs is described as "inspired by Norton Commander", with a trademark notice
+  in the README.
 
 ## [0.2.0] — 2026-10-02
 

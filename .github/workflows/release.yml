@@ -145,6 +145,17 @@ jobs:
     # is built, and that needs the macOS tooling.
     runs-on: macos-latest
     steps:
+      # Only for the app bundle: its Info.plist template, the icon and the
+      # version in Cargo.toml. No build happens in this job.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            Cargo.toml
+            packaging/macos
+            assets/ncrs.icns
+          sparse-checkout-cone-mode: false
+
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           path: artifacts
@@ -157,7 +168,7 @@ jobs:
           done
           ls -la dist/
 
-      - name: Sign and notarize the macOS binaries
+      - name: Sign and notarize the macOS binaries and apps
         # Without this, Gatekeeper refuses the binary with "cannot be opened
         # because it is from a developer who cannot be verified", and the only
         # way out is System Settings > Privacy > Open Anyway. That is the
@@ -182,6 +193,9 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          # Through env, never interpolated into the script: the ref name is
+          # input from outside the repository's control.
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
 
@@ -195,6 +209,17 @@ jobs:
             echo "**unsigned**, and Gatekeeper will warn on first launch." >> "$GITHUB_STEP_SUMMARY"
             echo "::notice::Apple secrets not set; publishing unsigned binaries."
             exit 0
+          fi
+
+          # The app's version: the tag without its `v`. A manual re-run from
+          # main has no tag, so Cargo.toml says what is being built then.
+          case "$REF_NAME" in
+            v[0-9]*) VERSION="${REF_NAME#v}" ;;
+            *) VERSION=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1) ;;
+          esac
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.+-][0-9A-Za-z.+-]+)?$'; then
+            echo "::error::not a usable app version: $VERSION"
+            exit 1
           fi
 
           # A throwaway keychain: the runner is shared state, and leaving a
@@ -267,17 +292,73 @@ jobs:
             # Repack, so the notarized binary is what users download. The
             # checksum step below runs after this, so it covers this file.
             tar -czf "$archive" -C "$workdir" "$(basename "$dir")"
+
+            # The app bundle holds that same binary. Signing the bundle signs
+            # the executable again, this time bound to Info.plist and the
+            # resources, which changes its CDHash. The ticket for the bare
+            # binary therefore does not cover the one in the bundle, and the
+            # bundle is notarized on its own. The tarball keeps the bare
+            # binary, which `install.sh` and Windows-style users rely on.
+            target=$(basename "$dir")
+            target=${target#ncrs-}
+            case "$target" in
+              aarch64-*) min_macos=11.0 ;;
+              *) min_macos=10.13 ;;
+            esac
+            app="$workdir/ncrs.app"
+            mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+            cp "$binary" "$app/Contents/MacOS/ncrs"
+            cp assets/ncrs.icns "$app/Contents/Resources/ncrs.icns"
+            cp packaging/macos/Info.plist "$app/Contents/Info.plist"
+            plutil -replace CFBundleShortVersionString -string "$VERSION" "$app/Contents/Info.plist"
+            plutil -replace CFBundleVersion -string "$VERSION" "$app/Contents/Info.plist"
+            plutil -replace LSMinimumSystemVersion -string "$min_macos" "$app/Contents/Info.plist"
+
+            codesign --force --sign "$APPLE_TEAM_ID" \
+              --options runtime --timestamp "$app"
+            codesign --verify --deep --strict --verbose=2 "$app"
+
+            ditto -c -k --keepParent "$app" "$workdir/ncrs-app-notarize.zip"
+            xcrun notarytool submit "$workdir/ncrs-app-notarize.zip" \
+              --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --wait --timeout 20m
+
+            # A bundle, unlike a bare binary, can carry the ticket, so the app
+            # opens without a network lookup.
+            xcrun stapler staple "$app"
+            xcrun stapler validate "$app"
+
+            # ditto, not zip: it keeps the signature's extended attributes and
+            # symlinks. The checksum step below covers this file too.
+            ditto -c -k --keepParent "$app" "dist/ncrs-$target.app.zip"
             rm -rf "$workdir"
             echo "::endgroup::"
           done
 
-          # Proof rather than hope: this is the same check the user's Mac
-          # makes, and it fails the job if the binary would be rejected.
+          # Proof rather than hope: this is the check the user's Mac makes on
+          # an app, and it fails the job if the app would be rejected.
+          # `spctl -a -t exec` on a bare binary reports "does not seem to be
+          # an app", so only the bundle goes through it; the binary is
+          # checked for a valid signature instead.
+          for app_zip in dist/ncrs-*-apple-darwin.app.zip; do
+            [ -e "$app_zip" ] || continue
+            workdir=$(mktemp -d)
+            ditto -x -k "$app_zip" "$workdir"
+            verdict=$(spctl -a -t exec -vv "$workdir/ncrs.app" 2>&1) || true
+            echo "$(basename "$app_zip"): $verdict"
+            printf '%s\n' "$verdict" | grep -q 'accepted' \
+              || { echo "::error::Gatekeeper does not accept $(basename "$app_zip")"; exit 1; }
+            printf '%s\n' "$verdict" | grep -q 'source=Notarized Developer ID' \
+              || { echo "::error::$(basename "$app_zip") is not notarized"; exit 1; }
+            xcrun stapler validate "$workdir/ncrs.app"
+            rm -rf "$workdir"
+          done
           for archive in dist/ncrs-*-apple-darwin.tar.gz; do
             [ -e "$archive" ] || continue
             workdir=$(mktemp -d); tar -xzf "$archive" -C "$workdir"
             binary=$(find "$workdir" -name ncrs -type f | head -n 1)
-            echo "$(basename "$archive"): $(spctl -a -t exec -v "$binary" 2>&1)"
+            codesign --verify --strict --verbose=2 "$binary"
             rm -rf "$workdir"
           done
 

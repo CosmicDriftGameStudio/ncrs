@@ -1,4 +1,4 @@
-//! NC-rs – a Norton Commander style dual-panel file manager.
+//! NC-rs – a dual-panel file manager inspired by Norton Commander.
 //!
 //! The async runtime is tokio: iced's `tokio` feature makes the iced executor
 //! run every `Task` on a tokio runtime, so no `#[tokio::main]` is needed here.
@@ -42,9 +42,26 @@ fn program(
         .subscription(App::subscription)
         .theme(App::theme)
         .title(App::title)
-        .window_size(ui::layout::INITIAL_WINDOW_SIZE)
+        .window(iced::window::Settings {
+            size: ui::layout::INITIAL_WINDOW_SIZE,
+            icon: window_icon(),
+            ..iced::window::Settings::default()
+        })
         .default_font(iced::Font::MONOSPACE)
         .antialiasing(true)
+}
+
+const WINDOW_ICON_SIZE: u32 = 128;
+const WINDOW_ICON_RGBA: &[u8] = include_bytes!("../assets/icon-128.rgba");
+
+/// Used by Linux and Windows; macOS takes the icon from the app bundle.
+fn window_icon() -> Option<iced::window::Icon> {
+    iced::window::icon::from_rgba(
+        WINDOW_ICON_RGBA.to_vec(),
+        WINDOW_ICON_SIZE,
+        WINDOW_ICON_SIZE,
+    )
+    .ok()
 }
 
 /// `-V` / `--version` / `--help` print and exit without opening a window.
@@ -53,7 +70,7 @@ fn program(
 /// up. `--help` lives here too because this is the only place that knows the
 /// binary's name and the graphics backend it was built with.
 const HELP: &str = "\
-ncrs - a Norton Commander style dual-panel file manager
+ncrs - a dual-panel file manager inspired by Norton Commander
 
 USAGE:
     ncrs
