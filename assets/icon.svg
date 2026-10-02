@@ -26,15 +26,15 @@
     <rect x="566" y="585" width="190" height="32" fill="#ffffff"/>
     <rect x="566" y="655" width="170" height="32" fill="#55ffff"/>
     <rect x="100" y="796" width="824" height="128" fill="#000000"/>
-    <rect x="190" y="822" width="24" height="46" fill="#ffffff"/>
-    <rect x="224" y="822" width="90" height="46" fill="#55ffff"/>
-    <rect x="330" y="822" width="24" height="46" fill="#ffffff"/>
-    <rect x="364" y="822" width="90" height="46" fill="#55ffff"/>
-    <rect x="470" y="822" width="24" height="46" fill="#ffffff"/>
-    <rect x="504" y="822" width="90" height="46" fill="#55ffff"/>
-    <rect x="610" y="822" width="24" height="46" fill="#ffffff"/>
-    <rect x="644" y="822" width="90" height="46" fill="#55ffff"/>
-    <rect x="750" y="822" width="24" height="46" fill="#ffffff"/>
-    <rect x="784" y="822" width="90" height="46" fill="#55ffff"/>
+    <rect x="195" y="822" width="24" height="46" fill="#ffffff"/>
+    <rect x="229" y="822" width="80" height="46" fill="#55ffff"/>
+    <rect x="325" y="822" width="24" height="46" fill="#ffffff"/>
+    <rect x="359" y="822" width="80" height="46" fill="#55ffff"/>
+    <rect x="455" y="822" width="24" height="46" fill="#ffffff"/>
+    <rect x="489" y="822" width="80" height="46" fill="#55ffff"/>
+    <rect x="585" y="822" width="24" height="46" fill="#ffffff"/>
+    <rect x="619" y="822" width="80" height="46" fill="#55ffff"/>
+    <rect x="715" y="822" width="24" height="46" fill="#ffffff"/>
+    <rect x="749" y="822" width="80" height="46" fill="#55ffff"/>
   </g>
 </svg>
