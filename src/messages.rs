@@ -155,6 +155,11 @@ pub enum Message {
     ClearTags,
 
     // --- Panel handling ---
+    /// Wheel or trackpad over a panel.
+    PanelScrolled {
+        side: PanelSide,
+        delta: iced::mouse::ScrollDelta,
+    },
     SwitchPanel,
     /// Temporarily switches the UI language. Not yet persisted in config.
     SwitchLanguage,

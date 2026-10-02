@@ -194,6 +194,18 @@ fn build_actions() -> Vec<Action> {
             message: Message::PageDown,
             hint: None,
         },
+        // Cmd+Up/Down page on a Mac, where there is no PageUp key; `COMMAND`
+        // is Ctrl elsewhere.
+        Action {
+            binding: Binding::with_modifiers(KeyNamed(ArrowUp), Modifiers::COMMAND),
+            message: Message::PageUp,
+            hint: None,
+        },
+        Action {
+            binding: Binding::with_modifiers(KeyNamed(ArrowDown), Modifiers::COMMAND),
+            message: Message::PageDown,
+            hint: None,
+        },
         Action {
             binding: Binding::key(KeyNamed(Home)),
             message: Message::SelectFirst,

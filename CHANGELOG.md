@@ -18,6 +18,11 @@ All notable changes to this project are documented here. The format follows
   `/run/media` and `/mnt` (Linux), drive letters (Windows). Arrows, Home and
   End move, Enter or a click goes there, Escape closes. Listing never touches
   a mount, so a dead network share cannot freeze it.
+- The mouse wheel and the trackpad scroll the panel under the pointer. The
+  cursor stays while it is in view and is held at the edge otherwise. A
+  dialog or the drive menu keeps the panels behind it still.
+- Cmd+Up and Cmd+Down page through the active panel (Ctrl on Linux and
+  Windows), next to PageUp and PageDown.
 
 ### Changed
 

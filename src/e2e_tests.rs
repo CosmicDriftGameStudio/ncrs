@@ -1572,6 +1572,37 @@ mod tests {
         );
     }
 
+    /// Paging through the real key routing: PageDown, and Cmd+Down (Ctrl on
+    /// Linux and Windows), each move the cursor a page and keep it in view.
+    #[test]
+    fn page_down_and_cmd_down_turn_a_page() {
+        let dir = scratch("paging");
+        for i in 0..80 {
+            write(&dir.path().join(format!("f{i:03}.txt")), "x");
+        }
+        let mut session = session_in(dir.path());
+        let rows = crate::ui::layout::visible_rows(crate::ui::layout::INITIAL_WINDOW_SIZE);
+        assert_eq!(
+            selected(&session.app, PanelSide::Left).as_deref(),
+            Some("..")
+        );
+
+        session.press(Key::Named(Named::PageDown));
+        let first_page = session.app.panel(PanelSide::Left).selected;
+        assert_eq!(first_page, rows, "PageDown did not move a page");
+
+        session.press_with(Key::Named(Named::ArrowDown), Modifiers::COMMAND);
+        let panel = session.app.panel(PanelSide::Left);
+        assert_eq!(panel.selected, 2 * rows, "Cmd+Down did not move a page");
+        assert!(
+            panel.selected >= panel.scroll_offset && panel.selected < panel.scroll_offset + rows
+        );
+
+        session.press_with(Key::Named(Named::ArrowUp), Modifiers::COMMAND);
+        session.press(Key::Named(Named::PageUp));
+        assert_eq!(session.app.panel(PanelSide::Left).selected, 0);
+    }
+
     #[test]
     fn a_launcher_failure_shows_in_the_status_line() {
         let dir = scratch("open-fail");
