@@ -48,10 +48,14 @@ use std::path::Path;
 use iced::keyboard::{self, Key, Modifiers};
 use iced::window;
 use iced_test::core::event::Status;
+use iced_test::core::renderer::Headless as _;
+use iced_test::core::widget::operation::Outcome as OperationOutcome;
+use iced_test::core::{mouse, Point, Size};
 use iced_test::futures::futures::channel::mpsc;
 use iced_test::futures::futures::{self as futures, StreamExt};
 use iced_test::futures::subscription::{self, Event as SubEvent};
 use iced_test::futures::Runtime;
+use iced_test::runtime::user_interface::{self, UserInterface};
 use iced_test::runtime::{task, Action, Task};
 
 use crate::app::App;
@@ -63,7 +67,7 @@ use crate::messages::{Message, PanelSide};
 /// produce, so it has to outlive every step. It runs on the tokio executor the
 /// app itself uses, which is what makes a `spawn_blocking` copy run for real
 /// rather than being simulated.
-struct Session<P> {
+struct Session<P: iced::Program> {
     app: App,
     /// The program under test — the one `main` builds, so a test cannot pass
     /// while the binary is wired differently.
@@ -81,6 +85,36 @@ struct Session<P> {
     /// The window the app believes it is in. Subscriptions carry it, so a wrong
     /// id would silently drop every key.
     window: window::Id,
+    /// What the widgets see: the real view, laid out and drawn headless, so a
+    /// click reaches the widget under it and a field can really be focused.
+    widgets: Widgets<P::Renderer>,
+}
+
+/// The widget side of a session. Widget state, such as which text field has the
+/// focus, lives in the cache between interactions, as it does in the window.
+struct Widgets<R> {
+    renderer: R,
+    cache: Option<user_interface::Cache>,
+    cursor: mouse::Cursor,
+    clipboard: TestClipboard,
+}
+
+/// The size the view is laid out in.
+const WINDOW: Size = Size::new(1200.0, 760.0);
+
+#[derive(Default)]
+struct TestClipboard {
+    content: Option<String>,
+}
+
+impl iced_test::core::Clipboard for TestClipboard {
+    fn read(&self, _kind: iced_test::core::clipboard::Kind) -> Option<String> {
+        self.content.clone()
+    }
+
+    fn write(&mut self, _kind: iced_test::core::clipboard::Kind, contents: String) {
+        self.content = Some(contents);
+    }
 }
 
 impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
@@ -88,10 +122,22 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
     fn boot(program: P) -> Self {
         let executor = iced::executor::Default::new().expect("the tokio executor");
         let (action_tx, actions) = mpsc::unbounded();
-        let runtime = Runtime::new(executor, action_tx);
+        let mut runtime = Runtime::new(executor, action_tx);
 
         let (app, boot) = program.boot();
+        let settings = program.settings();
+        let renderer = runtime
+            .block_on(async {
+                P::Renderer::new(settings.default_font, settings.default_text_size, None).await
+            })
+            .expect("a headless renderer");
         let mut session = Self {
+            widgets: Widgets {
+                renderer,
+                cache: Some(user_interface::Cache::default()),
+                cursor: mouse::Cursor::Unavailable,
+                clipboard: TestClipboard::default(),
+            },
             app,
             program,
             runtime,
@@ -128,6 +174,93 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
                 }
             })
             .collect();
+    }
+
+    /// Runs a widget operation on the current view, as the runtime does after
+    /// the update that asked for it.
+    fn operate(&mut self, operation: Box<dyn iced_test::core::widget::Operation>) {
+        let mut interface = UserInterface::build(
+            self.program.view(&self.app, self.window),
+            WINDOW,
+            self.widgets.cache.take().unwrap_or_default(),
+            &mut self.widgets.renderer,
+        );
+        let mut next = Some(operation);
+        while let Some(mut current) = next.take() {
+            interface.operate(&self.widgets.renderer, current.as_mut());
+            if let OperationOutcome::Chain(chained) = current.finish() {
+                next = Some(chained);
+            }
+        }
+        self.widgets.cache = Some(interface.into_cache());
+    }
+
+    /// Delivers events to the view's widgets, then to the subscriptions with the
+    /// status the widgets gave them, then applies what the widgets published:
+    /// the order of the real event loop.
+    fn interact(&mut self, events: Vec<iced_test::core::Event>) {
+        for event in &events {
+            if let iced_test::core::Event::Mouse(mouse::Event::CursorMoved { position }) = event {
+                self.widgets.cursor = mouse::Cursor::Available(*position);
+            }
+        }
+        let mut interface = UserInterface::build(
+            self.program.view(&self.app, self.window),
+            WINDOW,
+            self.widgets.cache.take().unwrap_or_default(),
+            &mut self.widgets.renderer,
+        );
+        let mut messages = Vec::new();
+        let (_state, statuses) = interface.update(
+            &events,
+            self.widgets.cursor,
+            &mut self.widgets.renderer,
+            &mut self.widgets.clipboard,
+            &mut messages,
+        );
+        self.widgets.cache = Some(interface.into_cache());
+        for (event, status) in events.into_iter().zip(statuses) {
+            self.broadcast(SubEvent::Interaction {
+                window: self.window,
+                event,
+                status,
+            });
+        }
+        for message in messages {
+            self.send(message);
+        }
+    }
+
+    /// A left click at `point`.
+    fn click_at(&mut self, point: Point) {
+        use iced_test::core::Event;
+        self.interact(vec![
+            Event::Mouse(mouse::Event::CursorMoved { position: point }),
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+        ]);
+    }
+
+    /// Types `text` the way the keyboard does: a key press with its text.
+    fn type_into_widgets(&mut self, text: &str) {
+        self.interact(iced_test::simulator::typewrite(text).collect());
+    }
+
+    /// One key press with `modifiers`, to the widgets first.
+    fn press_in_widgets(&mut self, key: Key, modifiers: Modifiers) {
+        self.interact(vec![iced_test::core::Event::Keyboard(
+            keyboard::Event::KeyPressed {
+                key: key.clone(),
+                modified_key: key,
+                physical_key: keyboard::key::Physical::Unidentified(
+                    keyboard::key::NativeCode::Unidentified,
+                ),
+                location: keyboard::Location::Standard,
+                modifiers,
+                repeat: false,
+                text: None,
+            },
+        )]);
     }
 
     /// Presses and releases one key, then runs everything that follows.
@@ -264,16 +397,11 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
         // test cannot be flaky because a sleep was too short.
         let mapped = StreamExt::map(stream, |action| match action {
             Action::Output(message) => Outcome::Message(message),
-            // F7 returns `operation::focus(FIELD_ID)`, which is a widget
-            // operation rather than a message: it tells the runtime to focus a
-            // text input, and there is no `Message` for it because nothing in
-            // the app needs to know. The same goes for a font load or a
-            // clipboard read, neither of which this app performs.
-            //
-            // Dropped rather than turned into a message. Faking one here — a
-            // `Quit`, say — would let a real problem reach `update` as
-            // something harmless; and failing instead would make every test that
-            // presses F7 fail for a reason that is not about F7.
+            Action::Widget(operation) => Outcome::Widget(operation),
+            // Widget operations, such as focusing a text field, run on the
+            // widgets below. A font load or a clipboard read, which this app
+            // does not perform, are dropped rather than turned into a
+            // message: a faked one could reach `update` as something harmless.
             _other => Outcome::Ignored,
         })
         .chain(iced_test::futures::futures::stream::once(async {
@@ -308,6 +436,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
             let outcome = self.next_outcome();
             match outcome {
                 Some(Outcome::Message(message)) => self.send(message),
+                Some(Outcome::Widget(operation)) => self.operate(operation),
                 Some(Outcome::Ignored) => {}
                 Some(Outcome::Finished) => self.in_flight -= 1,
                 None => return,
@@ -351,7 +480,9 @@ struct SubscriptionStream {
 /// is not something the app should have to know about.
 enum Outcome {
     Message(Message),
-    /// A runtime action with no message behind it, such as focusing a field.
+    /// A widget operation, such as focusing a field.
+    Widget(Box<dyn iced_test::core::widget::Operation>),
+    /// A runtime action with no message behind it.
     Ignored,
     Finished,
 }
@@ -1652,4 +1783,83 @@ mod tests {
             "the error does not name the file and the reason: {message}"
         );
     }
+}
+
+/// Where the path sits in the status bar of a 1200 x 760 window.
+const PATH_IN_STATUS_BAR: Point = Point::new(60.0, 710.0);
+
+#[test]
+fn clicking_the_path_then_typing_and_enter_goes_to_that_directory() {
+    let dir = scratch("path-field");
+    let mut session = session_in(dir.path());
+
+    session.click_at(PATH_IN_STATUS_BAR);
+    assert!(
+        session.app.path_field_for_test().is_some(),
+        "the field did not open"
+    );
+
+    session.interact(vec![
+        iced_test::core::Event::Window(window::Event::Focused),
+        iced_test::core::Event::Window(window::Event::RedrawRequested(
+            iced_test::core::time::Instant::now(),
+        )),
+        iced_test::core::Event::Mouse(mouse::Event::CursorMoved {
+            position: Point::new(70.0, 711.0),
+        }),
+    ]);
+    // No second click into the field: the field has to take the focus itself.
+    session.type_into_widgets("/links");
+    let left = std::fs::canonicalize(dir.path()).unwrap();
+    assert_eq!(
+        session.app.path_field_for_test(),
+        Some(format!("{}/links", left.display()).as_str()),
+        "typing did not reach the field"
+    );
+
+    session.press_in_widgets(
+        Key::Named(keyboard::key::Named::Enter),
+        Modifiers::default(),
+    );
+    assert_eq!(
+        session.app.active_panel().path,
+        left.join("links"),
+        "Enter did not open the typed directory"
+    );
+    assert_eq!(session.app.path_field_for_test(), None);
+}
+
+#[test]
+fn pasting_into_the_path_field_with_the_command_key_works() {
+    let dir = scratch("path-paste");
+    let mut session = session_in(dir.path());
+    let left = std::fs::canonicalize(dir.path()).unwrap();
+    session.widgets.clipboard.content = Some("/links".to_string());
+
+    session.click_at(PATH_IN_STATUS_BAR);
+    // The operating system reports the held key first; the field reads it from
+    // there rather than from the key press.
+    session.interact(vec![iced_test::core::Event::Keyboard(
+        keyboard::Event::ModifiersChanged(Modifiers::COMMAND),
+    )]);
+    session.press_in_widgets(Key::Character("v".into()), Modifiers::COMMAND);
+    assert_eq!(
+        session.app.path_field_for_test(),
+        Some(format!("{}/links", left.display()).as_str()),
+        "Cmd+V did not paste into the field"
+    );
+}
+
+#[test]
+fn clicking_the_path_line_right_of_the_text_opens_the_field() {
+    // A short path, so the click lands in the line but past the text.
+    let mut session = Session::boot(super::program(|| {
+        App::starting_in("/usr".into(), "/usr".into())
+    }));
+
+    session.click_at(Point::new(350.0, 710.0));
+    assert!(
+        session.app.path_field_for_test().is_some(),
+        "a click on the path line, right of the text, did not open the field"
+    );
 }

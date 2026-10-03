@@ -65,11 +65,16 @@ fn path_bar<'a, M: Clone + 'a>(
             .padding([0.0, 4.0])
             .style(theme::path_input)
             .into(),
+        // The whole line is the click target, not just the glyphs: a short
+        // path would leave most of the cell dead.
         None => mouse_area(
-            text(panel.path.display().to_string())
-                .size(font_size::STATUS)
-                .color(colors::ACCENT)
-                .wrapping(text::Wrapping::None),
+            container(
+                text(panel.path.display().to_string())
+                    .size(font_size::STATUS)
+                    .color(colors::ACCENT)
+                    .wrapping(text::Wrapping::None),
+            )
+            .width(Length::Fill),
         )
         .on_press(bar.on_open)
         .interaction(mouse::Interaction::Text)

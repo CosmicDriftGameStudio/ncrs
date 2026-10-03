@@ -3113,6 +3113,10 @@ impl App {
     }
 
     /// Replaces the clock type-ahead reads.
+    pub fn path_field_for_test(&self) -> Option<&str> {
+        self.path_field.as_deref()
+    }
+
     pub fn with_clock(
         mut self,
         clock: impl Fn() -> std::time::Instant + Send + Sync + 'static,
