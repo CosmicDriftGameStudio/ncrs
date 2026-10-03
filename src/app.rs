@@ -110,6 +110,55 @@ impl std::hash::Hash for InputCell {
     }
 }
 
+/// How long a typed character still belongs to the same prefix.
+const TYPE_AHEAD_WINDOW: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// What has been typed to jump to an entry.
+#[derive(Debug, Default)]
+struct TypeAhead {
+    prefix: String,
+    last_typed: Option<std::time::Instant>,
+}
+
+impl TypeAhead {
+    /// The prefix after `typed` arrives at `now`: it extends the previous one
+    /// within the window and starts a new one after it.
+    fn extend(&mut self, typed: &str, now: std::time::Instant) -> &str {
+        let continues = self
+            .last_typed
+            .is_some_and(|last| now.saturating_duration_since(last) <= TYPE_AHEAD_WINDOW);
+        if !continues {
+            self.prefix.clear();
+        }
+        self.prefix.push_str(typed);
+        self.last_typed = Some(now);
+        &self.prefix
+    }
+
+    fn reset(&mut self) {
+        self.prefix.clear();
+        self.last_typed = None;
+    }
+}
+
+/// Moving the cursor or the focus by other means ends a prefix.
+fn resets_type_ahead(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::MoveSelection(_)
+            | Message::PageUp
+            | Message::PageDown
+            | Message::SelectFirst
+            | Message::SelectLast
+            | Message::SwitchPanel
+            | Message::RowClicked { .. }
+            | Message::TagMove(_)
+            | Message::ToggleTag
+            | Message::OpenSelected
+            | Message::GoUp
+    )
+}
+
 /// Ctrl+click is the Mac's right click.
 fn is_context_click(modifiers: Modifiers) -> bool {
     cfg!(target_os = "macos") && modifiers.control()
@@ -322,6 +371,9 @@ pub struct App {
     volume_menu: Option<VolumeMenu>,
     /// The context menu, while it is up.
     context_menu: Option<ContextMenu>,
+    type_ahead: TypeAhead,
+    /// The time type-ahead measures against. Injected so tests control it.
+    clock: Arc<dyn Fn() -> std::time::Instant + Send + Sync>,
     /// The window's size, for keeping the context menu inside it.
     window_size: Size,
     /// The pointer and the Option tap, fed by the raw event subscription.
@@ -458,12 +510,24 @@ fn keys_without_prompt(
     } else {
         key_modifiers
     };
-    keymap::map_key(key.clone(), modifiers).or_else(|| {
-        (modifiers - Modifiers::SHIFT)
-            .is_empty()
-            .then(|| keymap::map_key(key, Modifiers::default()))
-            .flatten()
-    })
+    keymap::map_key(key.clone(), modifiers)
+        .or_else(|| {
+            (modifiers - Modifiers::SHIFT)
+                .is_empty()
+                .then(|| keymap::map_key(key.clone(), Modifiers::default()))
+                .flatten()
+        })
+        .or_else(|| type_ahead_message(&key, key_modifiers))
+}
+
+/// A printable character with at most Shift held. With Option held a Mac types
+/// another character, so Alt, Ctrl and Cmd all rule it out.
+fn type_ahead_message(key: &Key, modifiers: Modifiers) -> Option<Message> {
+    let Key::Character(typed) = key else {
+        return None;
+    };
+    ((modifiers - Modifiers::SHIFT).is_empty() && typed.chars().all(|c| !c.is_control()))
+        .then(|| Message::TypeAhead(typed.to_string()))
 }
 
 fn lowercase_character(key: &Key) -> Key {
@@ -665,6 +729,8 @@ impl App {
             key_state: OnceLock::new(),
             volume_menu: None,
             context_menu: None,
+            type_ahead: TypeAhead::default(),
+            clock: Arc::new(std::time::Instant::now),
             window_size: layout::INITIAL_WINDOW_SIZE,
             input: Arc::default(),
             list_volumes: Arc::new(fs::list_volumes),
@@ -795,6 +861,13 @@ impl App {
     // -----------------------------------------------------------------------
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
+        if resets_type_ahead(&message) {
+            self.type_ahead.reset();
+        }
+        self.apply(message)
+    }
+
+    fn apply(&mut self, message: Message) -> Task<Message> {
         let rows = self.visible_rows;
 
         let task = match message {
@@ -1139,6 +1212,10 @@ impl App {
                 }
             }
             Message::GoUp => self.go_up(self.active_panel),
+            Message::TypeAhead(typed) => {
+                self.jump_to_typed(&typed);
+                Task::none()
+            }
 
             // --- selection ---
             Message::ToggleTag => self.tag_and_move(1),
@@ -1279,6 +1356,29 @@ impl App {
                 Task::none()
             }
             _ => Task::none(),
+        }
+    }
+
+    /// Moves the cursor to the first entry named like what has been typed.
+    /// Nothing happens under an overlay or when no entry matches.
+    fn jump_to_typed(&mut self, typed: &str) {
+        if self.overlay_is_open() {
+            return;
+        }
+        let rows = self.visible_rows;
+        let now = (self.clock)();
+        let prefix = self.type_ahead.extend(typed, now).to_lowercase();
+        let panel = self.active_panel_mut();
+        let found = panel.entries.iter().position(|entry| {
+            !entry.is_parent
+                && entry
+                    .name
+                    .to_string_lossy()
+                    .to_lowercase()
+                    .starts_with(&prefix)
+        });
+        if let Some(index) = found {
+            panel.select(index, rows);
         }
     }
 
@@ -2716,6 +2816,8 @@ impl App {
             key_state: OnceLock::new(),
             volume_menu: None,
             context_menu: None,
+            type_ahead: TypeAhead::default(),
+            clock: Arc::new(std::time::Instant::now),
             window_size: layout::INITIAL_WINDOW_SIZE,
             input: Arc::default(),
             list_volumes: Arc::new(fs::list_volumes),
@@ -2827,6 +2929,15 @@ impl App {
     /// Whether the delete confirmation is up.
     pub fn delete_dialog_is_open(&self) -> bool {
         self.delete_dialog.is_some()
+    }
+
+    /// Replaces the clock type-ahead reads.
+    pub fn with_clock(
+        mut self,
+        clock: impl Fn() -> std::time::Instant + Send + Sync + 'static,
+    ) -> Self {
+        self.clock = Arc::new(clock);
+        self
     }
 
     /// Replaces the launcher, so a test never starts a real program.
@@ -5013,5 +5124,171 @@ mod context_menu_tests {
         assert!(app.prompt_key_state().context_menu);
         drop(app.update(Message::VolumeMenu(LEFT)));
         assert!(!app.volume_menu_is_open());
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod type_ahead_tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    /// An app on a panel of `names` (after `..`) and a clock the test moves.
+    fn app_with(names: &[&str]) -> (App, Arc<Mutex<Instant>>) {
+        let now = Arc::new(Mutex::new(Instant::now()));
+        let clock = Arc::clone(&now);
+        let mut app = App::with_fixed_panels().with_clock(move || *clock.lock().unwrap());
+        app.panel_mut(PanelSide::Left).entries = std::iter::once("..")
+            .chain(names.iter().copied())
+            .enumerate()
+            .map(|(index, name)| fs::FileEntry {
+                name: name.into(),
+                path: PathBuf::from("/home/test").join(name),
+                is_dir: false,
+                is_symlink: false,
+                is_parent: index == 0,
+                size: 0,
+                modified: None,
+            })
+            .collect();
+        (app, now)
+    }
+
+    fn type_key(app: &mut App, typed: &str) {
+        drop(app.update(Message::TypeAhead(typed.to_string())));
+    }
+
+    fn advance(clock: &Arc<Mutex<Instant>>, by: Duration) {
+        *clock.lock().unwrap() += by;
+    }
+
+    fn cursor(app: &App) -> usize {
+        app.panel(PanelSide::Left).selected
+    }
+
+    const SECOND: Duration = Duration::from_secs(1);
+
+    #[test]
+    fn a_character_jumps_to_the_first_entry_it_starts_ignoring_case() {
+        let (mut app, _clock) = app_with(&["alpha", "Beta", "bravo"]);
+        type_key(&mut app, "b");
+        assert_eq!(cursor(&app), 2);
+        type_key(&mut app, "r");
+        assert_eq!(cursor(&app), 3, "br extends the prefix");
+    }
+
+    #[test]
+    fn a_character_within_a_second_extends_the_prefix_and_later_starts_anew() {
+        let (mut app, clock) = app_with(&["ab", "ac", "ba", "bc"]);
+        type_key(&mut app, "b");
+        assert_eq!(cursor(&app), 3);
+        advance(&clock, SECOND);
+        type_key(&mut app, "c");
+        assert_eq!(cursor(&app), 4, "bc, one second after b");
+        advance(&clock, SECOND + Duration::from_millis(1));
+        type_key(&mut app, "a");
+        assert_eq!(cursor(&app), 1, "a on its own, not bca");
+    }
+
+    #[test]
+    fn no_match_leaves_the_cursor() {
+        let (mut app, _clock) = app_with(&["alpha", "beta"]);
+        type_key(&mut app, "b");
+        assert_eq!(cursor(&app), 2);
+        type_key(&mut app, "z");
+        assert_eq!(cursor(&app), 2);
+    }
+
+    #[test]
+    fn the_parent_row_does_not_count() {
+        let (mut app, _clock) = app_with(&["alpha"]);
+        type_key(&mut app, ".");
+        assert_eq!(cursor(&app), 0);
+    }
+
+    #[test]
+    fn moving_the_cursor_or_the_panel_ends_the_prefix() {
+        for reset in [
+            Message::MoveSelection(1),
+            Message::SwitchPanel,
+            Message::SelectFirst,
+            Message::PageDown,
+        ] {
+            let (mut app, _clock) = app_with(&["ab", "ba", "bb", "ca"]);
+            type_key(&mut app, "b");
+            drop(app.update(reset.clone()));
+            app.active_panel = PanelSide::Left;
+            type_key(&mut app, "a");
+            assert_eq!(cursor(&app), 1, "{reset:?} did not end the prefix");
+        }
+    }
+
+    #[test]
+    fn the_view_follows_the_cursor() {
+        let names: Vec<String> = (0..40).map(|i| format!("file{i:02}")).collect();
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        let (mut app, _clock) = app_with(&refs);
+        app.set_visible_rows_for_test(5);
+        type_key(&mut app, "f");
+        for digit in ["i", "l", "e", "3", "5"] {
+            type_key(&mut app, digit);
+        }
+        assert_eq!(cursor(&app), 36);
+        let panel = app.panel(PanelSide::Left);
+        assert!(panel.scroll_offset <= 36 && 36 < panel.scroll_offset + 5);
+    }
+
+    #[test]
+    fn nothing_happens_under_an_overlay() {
+        let (mut app, _clock) = app_with(&["alpha", "beta"]);
+        app.open_delete_dialog_for_test(1, false);
+        type_key(&mut app, "b");
+        assert_eq!(cursor(&app), 0);
+    }
+
+    #[test]
+    fn printable_keys_route_to_type_ahead_but_not_with_option_ctrl_or_cmd() {
+        let route = |key: &str, modifiers: Modifiers| {
+            route_key(
+                &PromptKeyState::default(),
+                Key::Character(key.into()),
+                modifiers,
+            )
+        };
+        assert_eq!(
+            route("a", Modifiers::default()),
+            Some(Message::TypeAhead("a".into()))
+        );
+        assert_eq!(
+            route("A", Modifiers::SHIFT),
+            Some(Message::TypeAhead("A".into()))
+        );
+        assert_eq!(route("ç", Modifiers::ALT), None);
+        assert_eq!(route("a", Modifiers::CTRL), None);
+        assert_eq!(route("a", Modifiers::LOGO), None);
+        assert_eq!(route("*", Modifiers::SHIFT), Some(Message::TagAll));
+        assert_eq!(
+            route_key(
+                &PromptKeyState::default(),
+                Key::Named(Named::Space),
+                Modifiers::default()
+            ),
+            Some(Message::ToggleTag)
+        );
+        let prompt = PromptKeyState {
+            open: true,
+            ..PromptKeyState::default()
+        };
+        assert_eq!(
+            route_key(&prompt, Key::Character("a".into()), Modifiers::default()),
+            Some(Message::PromptInput("a".into()))
+        );
     }
 }

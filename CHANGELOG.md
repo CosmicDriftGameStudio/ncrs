@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Type-ahead: typing a letter or digit jumps to the first entry whose name starts
+  with it, ignoring case; a character typed within a second extends the prefix.
 - Copy the path or the name of the selection to the clipboard: `Option`+`Cmd`+`C`
   / `Ctrl`+`Alt`+`C` for the path, `Ctrl`+`Cmd`+`C` / `Ctrl`+`Shift`+`C` for the
   name.

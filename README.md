@@ -65,6 +65,7 @@ The same window in German, switched with F9.
 | `Cmd`+`↑` / `Cmd`+`↓` | Page up / down (`Ctrl` on Linux and Windows) |
 | `Home` / `End`     | First / last entry                       |
 | `Enter`            | Open directory (files: placeholder)      |
+| Any letter or digit | Jump to the first entry whose name starts with what you type (a character within one second extends the prefix; `Q` still quits) |
 | `Insert` / `Space` | Tag / untag the row, move down one      |
 | `Shift`+`Up`/`Down`| Tag / untag the row, move up / down     |
 | `*`                | Tag every row (except `..`)             |

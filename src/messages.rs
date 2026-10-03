@@ -51,6 +51,9 @@ pub enum Message {
     SelectLast,
     OpenSelected,
     GoUp,
+    /// A printable key: jump to the first entry that starts with what was
+    /// typed in the last second.
+    TypeAhead(String),
 
     // --- copy / move (F5, F6) ---
     /// Ctrl+C or Escape while a job runs: stop it. Its own message rather than
