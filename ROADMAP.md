@@ -213,13 +213,14 @@ Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
 
 # Tasks – Basis-Feature
 
-**Stand: 11 von 17 erledigt, 6 offen.** 85 Tests inkl. 12 UI-Tests mit Pixelvergleich.
+**Stand 2026-10-03: T1–T9 erledigt, T6d teilweise, T10–T18 offen.** Release 0.2.2,
+376 `#[test]`-Funktionen inkl. UI-Tests mit Pixelvergleich.
 
 | Block | Inhalt | Stand |
 |---|---|---|
-| A | CI, Installer, Release, `strings.json` | ✅ fertig (T1–T5, T5b) |
-| B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | 🔶 MkDir fertig — **T7 (Copy/Move) ist der nächste Task** |
-| C | Netzwerk-Mounts, Archive | ⬜ offen, hängt an B |
+| A | CI, Installer, Release, `strings.json` | ✅ fertig (T1–T5, T5b), dazu signierte und notarisierte macOS-App |
+| B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | 🔶 F3–F8 fertig, T6d teilweise — **T10 (Config, TOML) ist der nächste Task** |
+| C | Netzwerk-Mounts, Archive | 🔶 Laufwerksmenü fertig, T15–T17 offen |
 
 Legende: **[P]** Pflicht für ein benutzbares Basis-Feature, **[S]** später. Reihenfolge =
 Abhängigkeit, nicht Bequemlichkeit. Jeder Task endet grün: `cargo fmt --check`,
@@ -378,6 +379,9 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
 - [ ] **T6d – Bedienungsleisten und Ablage (Architektur, vor F5/F6/F8)**
   Fünf Anforderungen, die zusammen eine Struktur brauchen. Hier aufgenommen, weil drei
   davon den Kopier-Vorgang und die Tastatur betreffen und nicht später unterzuschieben sind.
+  **Stand:** Punkt 2 (Queue mit Fortschritt) und 3 (Konfliktdialog mit „Für alle“) kamen mit T7,
+  Punkt 4 (Sortierung nach Name/Size/Modified, ohne Extension) mit #24. Von Punkt 1 gibt
+  es nur die editierbare Pfadzeile (#24), keine Kommandozeile. Punkt 5 ist offen.
 
   **1. Command-Line unten (ersetzt die Statusbar)**
   In NC ist die untere Leiste die *Kommandozeile*, nicht eine Statusanzeige: man tippt
@@ -426,6 +430,10 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
 - [x] **T8 – F8 Delete mit Bestätigungsdialog und Papierkorb** – Crate `trash`, Shift+F8 löscht endgültig
 - [x] **T9 – F3 View / F4 Edit** – externes Programm, `std::process::Command`
   Getestet: Befehlsbau pro OS (`open_command`), Routing F3/F4 mit Fake-Launcher inkl. Fehleranzeige, Erkennung ausführbarer Dateien (Exec-Bit, Endungsliste; die öffnen nie per Standardaktion, sondern im Texteditor bzw. gar nicht unter Linux); kein echter Programmstart in CI. Programme fest verdrahtet, konfigurierbar mit T10.
+- [x] **Pfad/Name kopieren** (#23) – Option+Cmd+C kopiert Pfade, Ctrl+Cmd+C Namen der Auswahl
+- [x] **Kontextmenü, Type-ahead, Pfadzeile, Sortierung** (#24) – Rechtsklick/Shift+F10;
+  Buchstaben springen zum ersten passenden Eintrag (springt, filtert nicht, ersetzt T14
+  also nicht); Cmd+Q statt `q`; Spaltensortierung per Klick und Cmd+1/2/3
 - [ ] **T10 – Konfigurationsdatei** – `serde` + `toml`, Schema-Validierung, Versionierung
   *Voraussetzung für:* T11, T12, T5-Sprachpersistenz
 - [ ] **T11 – Keymap aus Config** – `Msg` bleibt, Tasten kommen aus der Datei
@@ -478,7 +486,7 @@ weiß ich nur durch deine Beobachtung — die steht als Messung im README, nicht
 | T2 | wgpu oder Software-Rendering? | **beides, als Features.** Gemessen: Software ist auf HiDPI unbrauchbar, `gpu-with-fallback` ist schnell. Releases bauen mit Fallback. |
 | T5 | `build.rs` oder Handpflege? | **`build.rs`, gebaut.** Kontext und Text kommen aus `strings.json`. |
 | T8 | Papierkorb? Crate `trash` | **entschieden: `trash`.** F8 geht in den Papierkorb, Shift+F8 löscht endgültig. Lizenzen der Abhängigkeiten per `cargo metadata` gegen deny.toml geprüft; `cargo deny` prüft in der CI. |
-| T10 | TOML oder JSON für die Config? | **offen.** Empfehlung: TOML, besser für Handeditierung. |
+| T10 | TOML oder JSON für die Config? | **entschieden: TOML**, besser für Handeditierung. |
 | T13 | Sprachauswahl persistent | **teilweise.** `en`/`de` gebaut, F9 schaltet um; die Persistenz hängt an T10. |
 | T14 | Suche: `glob` oder inkrementell? | **offen.** Die Filterlogik ist in beiden testbar, das Timing nicht. |
 | T18 | Settings | **offen.** Wichtige Sachen soll sich das program merken |
