@@ -1803,8 +1803,11 @@ fn path_session(
     (dir, session)
 }
 
-/// What the user types after the panel's own path to end in `lib`.
-const TYPED_LIB: &str = "/lib";
+/// What the user types after the panel's own path to end in `lib`. The
+/// platform's separator: in a Windows `\\?\` path a `/` is no separator.
+fn typed_lib() -> String {
+    format!("{}lib", std::path::MAIN_SEPARATOR)
+}
 
 /// The scratch tree's `lib` as the app spells it (the canonical path).
 fn lib_of(app: &App) -> std::path::PathBuf {
@@ -1839,7 +1842,7 @@ fn clicking_the_path_then_typing_and_enter_goes_to_that_directory() {
 
     click_into_the_path(&mut session);
     focus_the_window(&mut session);
-    session.type_into_widgets(TYPED_LIB);
+    session.type_into_widgets(&typed_lib());
     assert_eq!(
         session.app.path_field_for_test().map(Path::new),
         Some(lib.as_path()),
@@ -1867,7 +1870,7 @@ fn clicking_the_path_then_typing_and_enter_goes_to_that_directory() {
 fn pasting_into_the_path_field_with_the_command_key_works() {
     let (_dir, mut session) = path_session("path-paste");
     let lib = lib_of(&session.app);
-    session.widgets.clipboard.content = Some(TYPED_LIB.to_string());
+    session.widgets.clipboard.content = Some(typed_lib());
 
     click_into_the_path(&mut session);
     // The operating system reports the held key first; the field reads it from
@@ -1890,7 +1893,7 @@ fn keys_go_to_the_panels_until_the_path_is_clicked_and_back_after_escape() {
     assert_eq!(session.app.path_field_for_test(), None);
 
     click_into_the_path(&mut session);
-    session.type_into_widgets(TYPED_LIB);
+    session.type_into_widgets(&typed_lib());
     assert!(session.app.path_field_for_test().is_some());
 
     session.press_in_widgets(
@@ -1914,7 +1917,7 @@ fn keys_go_to_the_panels_until_the_path_is_clicked_and_back_after_escape() {
 fn clicking_a_panel_after_editing_restores_the_path() {
     let (_dir, mut session) = path_session("path-click-away");
     click_into_the_path(&mut session);
-    session.type_into_widgets(TYPED_LIB);
+    session.type_into_widgets(&typed_lib());
     session.click_at(Point::new(300.0, 300.0));
     assert_eq!(session.app.path_field_for_test(), None);
     session.type_into_widgets("l");
@@ -1929,7 +1932,7 @@ fn clicking_a_panel_after_editing_restores_the_path() {
 fn clicking_a_column_title_while_editing_the_path_ends_the_editing() {
     let (_dir, mut session) = path_session("path-sort-click");
     click_into_the_path(&mut session);
-    session.type_into_widgets(TYPED_LIB);
+    session.type_into_widgets(&typed_lib());
     assert!(session.app.path_field_for_test().is_some());
     session.click_at(LEFT_SIZE_HEADER);
     assert_eq!(session.app.path_field_for_test(), None);

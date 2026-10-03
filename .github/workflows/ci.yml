@@ -64,8 +64,9 @@ jobs:
       - name: Tests, GPU with fallback
         run: cargo test --no-default-features --features gpu-with-fallback -- --skip ui_tests
 
+      # The e2e tests render the real view headless, and a runner has no GPU.
       - name: Tests, GPU only
-        run: cargo test --no-default-features --features gpu-rendering -- --skip ui_tests
+        run: cargo test --no-default-features --features gpu-rendering -- --skip ui_tests --skip e2e_tests
 
       - name: Tests, software only
         run: cargo test --no-default-features --features software-rendering -- --skip ui_tests
