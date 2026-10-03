@@ -72,6 +72,7 @@ The same window in German, switched with F9.
 | `Ctrl`+`*`         | Clear all tags                          |
 | `Option`+`Cmd`+`C` / `Ctrl`+`Alt`+`C` | Copy the path of the tagged rows (else the cursor row) to the clipboard |
 | `Ctrl`+`Cmd`+`C` / `Ctrl`+`Shift`+`C` | Copy the name of the tagged rows (else the cursor row) to the clipboard |
+| Click the path in the status bar | Edit the path (`Enter` goes there, `~` is home, `Esc` puts the current path back); the icon beside it copies the folder path |
 | `F3` / `F4`        | View / edit the file under the cursor in an external program |
 | `F5` / `F6`        | Copy / move to the other panel          |
 | `F7`               | Create directory                        |

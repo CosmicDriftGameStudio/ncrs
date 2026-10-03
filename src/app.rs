@@ -159,6 +159,19 @@ fn resets_type_ahead(message: &Message) -> bool {
     )
 }
 
+/// Other things the user does end the editing of the path: the text field
+/// loses the focus to them without telling the app.
+fn leaves_path_field(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::RowClicked { .. }
+            | Message::ContextMenuAt { .. }
+            | Message::ContextMenuKey
+            | Message::CopyToClipboard(_)
+            | Message::SwitchPanel
+    )
+}
+
 /// Ctrl+click is the Mac's right click.
 fn is_context_click(modifiers: Modifiers) -> bool {
     cfg!(target_os = "macos") && modifiers.control()
@@ -372,6 +385,10 @@ pub struct App {
     /// The context menu, while it is up.
     context_menu: Option<ContextMenu>,
     type_ahead: TypeAhead,
+    /// The path as typed while the status bar's path field is being edited.
+    path_field: Option<String>,
+    /// What a leading `~` in a typed path stands for.
+    home: PathBuf,
     /// The time type-ahead measures against. Injected so tests control it.
     clock: Arc<dyn Fn() -> std::time::Instant + Send + Sync>,
     /// The window's size, for keeping the context menu inside it.
@@ -397,6 +414,8 @@ pub struct PromptKeyState {
     pub job_running: bool,
     /// The conflict dialog is up, so keys answer it rather than the panels.
     pub conflict_open: bool,
+    /// The path field is being edited: its keys are the text field's.
+    pub path_editing: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
     /// The drive menu is up, so keys move its highlight.
@@ -480,6 +499,15 @@ fn keys_without_prompt(
                 Some(Message::TransferConflict(ConflictChoice::Cancel))
             }
             _ => dialog_focus_key(key, key_modifiers),
+        };
+    }
+
+    // The text field takes the typing and Enter on its own; here only what it
+    // does not use: Escape and Tab leave it, nothing else reaches the panels.
+    if prompt.path_editing {
+        return match key.as_ref() {
+            Key::Named(Named::Escape | Named::Tab) => Some(Message::PathFieldCancel),
+            _ => None,
         };
     }
 
@@ -659,9 +687,15 @@ struct ClipboardText {
 /// without tags the directory of the panel itself; the root has no file name,
 /// so its path is its name. Paths are joined, not canonicalised.
 fn clipboard_text(panel: &PanelState, kind: ClipboardKind) -> Option<ClipboardText> {
+    if kind == ClipboardKind::Directory {
+        return Some(ClipboardText {
+            count: 1,
+            text: panel.path.to_string_lossy().into_owned(),
+        });
+    }
     let render = |path: &std::path::Path, name: &std::ffi::OsStr| match kind {
-        ClipboardKind::Path => path.to_string_lossy().into_owned(),
         ClipboardKind::Name => name.to_string_lossy().into_owned(),
+        ClipboardKind::Path | ClipboardKind::Directory => path.to_string_lossy().into_owned(),
     };
     let lines: Vec<String> = if panel.selection.any_tagged() {
         panel
@@ -730,6 +764,8 @@ impl App {
             volume_menu: None,
             context_menu: None,
             type_ahead: TypeAhead::default(),
+            path_field: None,
+            home: home.clone(),
             clock: Arc::new(std::time::Instant::now),
             window_size: layout::INITIAL_WINDOW_SIZE,
             input: Arc::default(),
@@ -863,6 +899,9 @@ impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         if resets_type_ahead(&message) {
             self.type_ahead.reset();
+        }
+        if leaves_path_field(&message) {
+            self.path_field = None;
         }
         self.apply(message)
     }
@@ -1024,6 +1063,13 @@ impl App {
             | Message::ContextMenuActivate
             | Message::ContextMenuClick(_)
             | Message::ContextMenuClose) => self.update_context_menu(menu_message),
+
+            // --- path field ---
+            path_message @ (Message::PathFieldOpen
+            | Message::PathFieldInput(_)
+            | Message::PathFieldSubmit
+            | Message::PathFieldCancel
+            | Message::ClickedOutside) => self.update_path_field(path_message),
 
             // --- delete ---
             Message::Delete { permanent } => self.open_delete_dialog(permanent),
@@ -1359,6 +1405,100 @@ impl App {
         }
     }
 
+    fn update_path_field(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::PathFieldOpen if !self.overlay_is_open() => {
+                self.path_field = Some(self.active_panel().path.display().to_string());
+                operation::focus(ui::statusbar::PATH_FIELD_ID)
+                    .chain(operation::move_cursor_to_end(ui::statusbar::PATH_FIELD_ID))
+            }
+            Message::PathFieldInput(typed) => {
+                if self.path_field.is_some() {
+                    self.path_field = Some(typed);
+                }
+                Task::none()
+            }
+            Message::PathFieldSubmit => self.go_to_typed_path(),
+            Message::PathFieldCancel => {
+                self.path_field = None;
+                Task::none()
+            }
+            Message::ClickedOutside => {
+                self.context_menu = None;
+                self.path_field = None;
+                Task::none()
+            }
+            _ => Task::none(),
+        }
+    }
+
+    /// The typed path as an absolute one: `~` is the home directory, a
+    /// relative path starts in the active panel's directory.
+    fn resolve_typed_path(&self, typed: &str) -> PathBuf {
+        let expanded = if typed == "~" {
+            self.home.clone()
+        } else if let Some(rest) = typed.strip_prefix("~/") {
+            self.home.join(rest)
+        } else {
+            PathBuf::from(typed)
+        };
+        // Joins with the panel's path unless absolute; `components` drops a
+        // trailing slash and doubled ones.
+        self.active_panel()
+            .path
+            .join(expanded)
+            .components()
+            .collect()
+    }
+
+    /// Where the typed path leads: the directory to show and the entry to put
+    /// the cursor on (a file is shown in its folder). `Err` carries the
+    /// absolute path that is not there.
+    fn typed_destination(&self, typed: &str) -> Result<(PathBuf, Option<String>), PathBuf> {
+        let target = self.resolve_typed_path(typed);
+        // A blocking stat: the path was just typed, and the answer decides
+        // whether the field stays open.
+        let Ok(metadata) = std::fs::metadata(&target) else {
+            return Err(target);
+        };
+        match target.parent().zip(target.file_name()) {
+            Some((parent, name)) if !metadata.is_dir() => Ok((
+                parent.to_path_buf(),
+                Some(name.to_string_lossy().into_owned()),
+            )),
+            _ => Ok((target, None)),
+        }
+    }
+
+    /// Enter in the path field: opens the destination in the active panel. A
+    /// path that is not there is reported and leaves the field open.
+    fn go_to_typed_path(&mut self) -> Task<Message> {
+        let Some(raw_path) = self.path_field.clone() else {
+            return Task::none();
+        };
+        let typed = raw_path.trim();
+        if typed.is_empty() {
+            self.path_field = None;
+            return Task::none();
+        }
+        match self.typed_destination(typed) {
+            Ok((directory, select)) => {
+                self.path_field = None;
+                self.job_error = None;
+                self.notice = None;
+                self.load(self.active_panel, directory, select)
+            }
+            Err(missing) => {
+                let reason = self
+                    .lang
+                    .text(Msg::StatusPathMissing)
+                    .replace("{path}", &missing.display().to_string());
+                self.set_status_error(&reason);
+                Task::none()
+            }
+        }
+    }
+
     /// Moves the cursor to the first entry named like what has been typed.
     /// Nothing happens under an overlay or when no entry matches.
     fn jump_to_typed(&mut self, typed: &str) {
@@ -1388,6 +1528,7 @@ impl App {
     /// there is no cell — the subscription creates it.
     fn publish_key_state(&mut self) {
         let state = self.prompt_key_state();
+        self.input.lock().path_editing = state.path_editing;
         // `get` rather than `get_or_init`: the cell is created by the
         // subscription, and `update` must not create it — a cell nothing reads
         // would just be a value nobody sees. Before the first `subscription()`
@@ -1438,6 +1579,13 @@ impl App {
                     self.job_status(),
                     self.job_error.as_deref(),
                     self.notice.as_deref(),
+                    statusbar::PathBar {
+                        editing: self.path_field.as_deref(),
+                        on_open: Message::PathFieldOpen,
+                        on_input: Message::PathFieldInput,
+                        on_submit: Message::PathFieldSubmit,
+                        on_copy: Message::CopyToClipboard(ClipboardKind::Directory),
+                    },
                 ),
                 fkeys::view(&self.function_keys),
             ]
@@ -1548,6 +1696,7 @@ impl App {
         let job_running = self.jobs.is_busy();
         let volume_menu = self.volume_menu.is_some();
         let context_menu = self.context_menu.is_some();
+        let path_editing = self.path_field.is_some();
         let delete_dialog = match &self.delete_dialog {
             None => DeleteKeys::Closed,
             Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
@@ -1559,6 +1708,7 @@ impl App {
                 delete_dialog,
                 volume_menu,
                 context_menu,
+                path_editing,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
                 // the dialog's keys would fall through to the panels.
@@ -1571,6 +1721,7 @@ impl App {
                 delete_dialog,
                 volume_menu,
                 context_menu,
+                path_editing,
                 conflict_open: self.pending_conflict.is_some(),
                 busy: prompt.busy(),
                 typed: prompt.name().into(),
@@ -1614,7 +1765,9 @@ impl App {
 
     fn copied_notice(&self, kind: ClipboardKind, count: usize) -> String {
         let (one, many) = match kind {
-            ClipboardKind::Path => (Msg::StatusPathCopied, Msg::StatusPathsCopied),
+            ClipboardKind::Path | ClipboardKind::Directory => {
+                (Msg::StatusPathCopied, Msg::StatusPathsCopied)
+            }
             ClipboardKind::Name => (Msg::StatusNameCopied, Msg::StatusNamesCopied),
         };
         if count == 1 {
@@ -2817,6 +2970,8 @@ impl App {
             volume_menu: None,
             context_menu: None,
             type_ahead: TypeAhead::default(),
+            path_field: None,
+            home: PathBuf::from("/home/test"),
             clock: Arc::new(std::time::Instant::now),
             window_size: layout::INITIAL_WINDOW_SIZE,
             input: Arc::default(),
@@ -5290,5 +5445,167 @@ mod type_ahead_tests {
             route_key(&prompt, Key::Character("a".into()), Modifiers::default()),
             Some(Message::PromptInput("a".into()))
         );
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod path_field_tests {
+    use super::*;
+
+    fn open(app: &mut App) {
+        drop(app.update(Message::PathFieldOpen));
+    }
+
+    fn type_path(app: &mut App, typed: &str) {
+        drop(app.update(Message::PathFieldInput(typed.to_string())));
+    }
+
+    fn scratch() -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix("ncrs-pathfield-")
+            .tempdir()
+            .expect("a scratch directory")
+    }
+
+    #[test]
+    fn opening_starts_from_the_active_panels_path() {
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        assert_eq!(app.path_field.as_deref(), Some("/home/test/links"));
+        type_path(&mut app, "/home/test/links/Docu");
+        assert_eq!(app.path_field.as_deref(), Some("/home/test/links/Docu"));
+    }
+
+    #[test]
+    fn typing_without_an_open_field_does_nothing() {
+        let mut app = App::with_fixed_panels();
+        type_path(&mut app, "/tmp");
+        assert_eq!(app.path_field, None);
+    }
+
+    #[test]
+    fn a_directory_is_opened_and_a_file_is_shown_in_its_folder() {
+        let dir = scratch();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        std::fs::write(dir.path().join("sub/file.txt"), "x").unwrap();
+        let app = App::with_fixed_panels();
+        let sub = dir.path().join("sub");
+        assert_eq!(
+            app.typed_destination(&sub.display().to_string()),
+            Ok((sub.clone(), None))
+        );
+        assert_eq!(
+            app.typed_destination(&format!("{}/", sub.display())),
+            Ok((sub.clone(), None)),
+            "a trailing slash is the same directory"
+        );
+        assert_eq!(
+            app.typed_destination(&sub.join("file.txt").display().to_string()),
+            Ok((sub, Some("file.txt".to_string())))
+        );
+    }
+
+    #[test]
+    fn a_leading_tilde_is_the_home_directory() {
+        let dir = scratch();
+        std::fs::create_dir(dir.path().join("docs")).unwrap();
+        let mut app = App::with_fixed_panels();
+        app.home = dir.path().to_path_buf();
+        assert_eq!(
+            app.typed_destination("~"),
+            Ok((dir.path().to_path_buf(), None))
+        );
+        assert_eq!(
+            app.typed_destination("~/docs"),
+            Ok((dir.path().join("docs"), None))
+        );
+    }
+
+    #[test]
+    fn a_relative_path_starts_in_the_active_panels_directory() {
+        let dir = scratch();
+        std::fs::create_dir(dir.path().join("docs")).unwrap();
+        let mut app = App::with_fixed_panels();
+        app.active_panel_mut().path = dir.path().to_path_buf();
+        assert_eq!(
+            app.typed_destination("docs"),
+            Ok((dir.path().join("docs"), None))
+        );
+    }
+
+    #[test]
+    fn enter_on_a_directory_closes_the_field_and_loads_it() {
+        let dir = scratch();
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        type_path(&mut app, &dir.path().display().to_string());
+        let before = app.active_panel().request_id;
+        drop(app.update(Message::PathFieldSubmit));
+        assert_eq!(app.path_field, None);
+        assert_ne!(app.active_panel().request_id, before, "a load started");
+    }
+
+    #[test]
+    fn a_missing_path_is_reported_and_the_field_stays_open() {
+        let dir = scratch();
+        let missing = dir.path().join("nowhere");
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        type_path(&mut app, &missing.display().to_string());
+        let before = app.active_panel().request_id;
+        drop(app.update(Message::PathFieldSubmit));
+        assert_eq!(app.path_field, Some(missing.display().to_string()));
+        assert_eq!(app.active_panel().request_id, before, "nothing was loaded");
+        assert!(app
+            .job_error
+            .as_deref()
+            .is_some_and(|error| error.contains("nowhere")));
+    }
+
+    #[test]
+    fn escape_click_outside_and_other_actions_end_the_editing() {
+        for leave in [
+            Message::PathFieldCancel,
+            Message::ClickedOutside,
+            Message::SwitchPanel,
+            Message::RowClicked {
+                side: PanelSide::Left,
+                index: 1,
+                on_tag: false,
+            },
+        ] {
+            let mut app = App::with_fixed_panels();
+            open(&mut app);
+            drop(app.update(leave));
+            assert_eq!(app.path_field, None);
+        }
+    }
+
+    #[test]
+    fn while_editing_the_panels_get_no_keys_but_escape_and_tab_leave() {
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        let state = app.prompt_key_state();
+        assert!(state.path_editing);
+        let none = Modifiers::default();
+        assert_eq!(route_key(&state, Key::Named(Named::ArrowDown), none), None);
+        assert_eq!(
+            route_key(&state, Key::Named(Named::Escape), none),
+            Some(Message::PathFieldCancel)
+        );
+    }
+
+    #[test]
+    fn the_copy_icon_copies_the_active_panels_directory() {
+        let app = App::with_fixed_panels();
+        let copied = clipboard_text(app.active_panel(), ClipboardKind::Directory).unwrap();
+        assert_eq!(copied.text, "/home/test/links");
+        assert_eq!(copied.count, 1);
     }
 }

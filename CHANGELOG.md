@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- The path in the status bar can be edited: click it, type or paste a path and
+  press `Enter` (a folder opens in the active panel, a file is shown in its
+  folder; `~` is the home directory). `Esc` or a click elsewhere puts the
+  current path back. The icon next to it copies the panel's folder path.
 - Type-ahead: typing a letter or digit jumps to the first entry whose name starts
   with it, ignoring case; a character typed within a second extends the prefix.
 - Copy the path or the name of the selection to the clipboard: `Option`+`Cmd`+`C`

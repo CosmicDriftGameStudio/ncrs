@@ -1,6 +1,6 @@
 //! Colors, spacing and reusable widget styles (dark, Norton Commander inspired).
 
-use iced::widget::{button, checkbox, container};
+use iced::widget::{button, checkbox, container, text_input};
 use iced::{Background, Border, Color, Theme};
 
 pub mod colors {
@@ -243,4 +243,47 @@ pub fn menu_item(selected: bool) -> impl Fn(&Theme, button::Status) -> button::S
 /// The line between two groups of the context menu.
 pub fn menu_separator(_theme: &Theme) -> container::Style {
     filled(colors::ACTIVE_BORDER, colors::TEXT)
+}
+
+/// The path field in the status bar while it is being edited.
+pub fn path_input(_theme: &Theme, _status: text_input::Status) -> text_input::Style {
+    text_input::Style {
+        background: Background::Color(colors::PANEL_BACKGROUND),
+        border: Border {
+            color: colors::ACTIVE_BORDER,
+            width: spacing::BORDER_WIDTH,
+            radius: spacing::BORDER_RADIUS.into(),
+        },
+        icon: colors::ACCENT,
+        placeholder: colors::DIM_TEXT,
+        value: colors::ACCENT,
+        selection: colors::SELECTED_BG,
+    }
+}
+
+/// A flat icon button; lit while the pointer is over it.
+pub fn icon_button(_theme: &Theme, status: button::Status) -> button::Style {
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+    button::Style {
+        background: hovered.then_some(Background::Color(colors::PANEL_TITLE_ACTIVE_BG)),
+        text_color: colors::ACCENT,
+        border: Border {
+            radius: spacing::BORDER_RADIUS.into(),
+            ..Border::default()
+        },
+        ..button::Style::default()
+    }
+}
+
+/// One square of the copy icon; `filled` hides what lies behind it.
+pub fn icon_square(filled: bool) -> impl Fn(&Theme) -> container::Style {
+    move |_theme| container::Style {
+        background: filled.then_some(Background::Color(colors::STATUSBAR_BACKGROUND)),
+        border: Border {
+            color: colors::ACCENT,
+            width: spacing::BORDER_WIDTH,
+            radius: 1.0.into(),
+        },
+        ..container::Style::default()
+    }
 }

@@ -145,6 +145,17 @@ pub enum Message {
     ContextMenuHover(usize),
     ContextMenuClose,
 
+    // --- path field in the status bar ---
+    /// A click on the path: show it as a text field with the focus.
+    PathFieldOpen,
+    PathFieldInput(String),
+    /// Enter in the field: go to the typed path.
+    PathFieldSubmit,
+    /// Escape, Tab or a click elsewhere: back to the panel's own path.
+    PathFieldCancel,
+    /// A mouse press that no widget took.
+    ClickedOutside,
+
     // --- Job queue (see crate::jobs) ---
     /// A job started, made progress, or finished. One variant for all three:
     /// they are the same event arriving at different times, and splitting them
@@ -205,6 +216,8 @@ pub enum Message {
 pub enum ClipboardKind {
     Path,
     Name,
+    /// The directory the active panel shows, not a row in it.
+    Directory,
 }
 
 /// Copy or move. One message with the kind inside, so the keymap and the job

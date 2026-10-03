@@ -259,6 +259,18 @@
       "de": "Endgültig löschen"
     },
     {
+      "key": "status.copy_path_tooltip",
+      "context": "Tooltip of the small copy icon at the right end of the path field in the status bar. The icon copies the path of the directory shown in the active panel to the clipboard. Verb, imperative.",
+      "en": "Copy path",
+      "de": "Pfad kopieren"
+    },
+    {
+      "key": "status.path_missing",
+      "context": "Status bar error after the user typed a path into the path field and pressed Enter, but nothing exists there. {path} is the path as typed, after expanding a leading ~. Keep the placeholder verbatim.",
+      "en": "{path} does not exist",
+      "de": "{path} existiert nicht"
+    },
+    {
       "key": "job.abort",
       "context": "Key hint for stopping the running job. Verb, matches the other hints in the header row.",
       "en": "Stop",

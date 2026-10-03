@@ -251,6 +251,9 @@ impl AltTap {
 pub struct InputState {
     pub pointer: Point,
     pub alt_tap: AltTap,
+    /// The path field is being edited, so Escape and Tab leave it. Kept here
+    /// because the text field captures those keys before the key routing.
+    pub path_editing: bool,
 }
 
 impl InputState {
@@ -262,13 +265,14 @@ impl InputState {
             }
             event::Event::Mouse(mouse::Event::ButtonPressed(_)) => {
                 self.alt_tap.cancel();
-                // A press nothing took (not a row, not the menu) is a click
-                // beside the menu.
-                (status == event::Status::Ignored).then_some(Message::ContextMenuClose)
+                // A press nothing took (not a row, not a menu, not the field)
+                // is a click elsewhere.
+                (status == event::Status::Ignored).then_some(Message::ClickedOutside)
             }
             event::Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => {
                 self.alt_tap.key_pressed(key);
-                None
+                let leaves_field = matches!(key, Key::Named(Named::Escape | Named::Tab));
+                (self.path_editing && leaves_field).then_some(Message::PathFieldCancel)
             }
             event::Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => self
                 .alt_tap
@@ -527,7 +531,23 @@ mod tests {
         let click = event::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Right));
         assert_eq!(
             input.handle(&click, event::Status::Ignored),
-            Some(Message::ContextMenuClose)
+            Some(Message::ClickedOutside)
         );
+    }
+
+    #[test]
+    fn escape_and_tab_leave_the_path_field_whatever_captured_them() {
+        let mut input = InputState::default();
+        let escape = key_pressed(Key::Named(Named::Escape));
+        assert_eq!(input.handle(&escape, event::Status::Captured), None);
+        input.path_editing = true;
+        for key in [Named::Escape, Named::Tab] {
+            assert_eq!(
+                input.handle(&key_pressed(Key::Named(key)), event::Status::Captured),
+                Some(Message::PathFieldCancel)
+            );
+        }
+        let letter = key_pressed(Key::Character("a".into()));
+        assert_eq!(input.handle(&letter, event::Status::Ignored), None);
     }
 }
