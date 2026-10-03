@@ -13,7 +13,7 @@ All notable changes to this project are documented here. The format follows
   sets the programs for `F3` (`view`) and `F4` (`edit`, also used for files that
   could run); without it the system programs apply. A missing file is fine; an
   invalid one is ignored as a whole, with the file and line shown in the status
-  bar.
+  bar until `Esc` dismisses it.
 - Confirmations such as "Path copied" now show on the right of the title bar with
   a green check mark and go away after three seconds; failures stay red in the
   status bar.

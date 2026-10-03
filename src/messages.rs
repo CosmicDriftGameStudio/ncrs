@@ -61,6 +61,8 @@ pub enum Message {
     /// Ctrl+C or Escape while a job runs: stop it. Its own message rather than
     /// reusing a key binding, because "stop" only exists while a job does.
     AbortJob,
+    /// Escape with the config error up: take it off the status line.
+    DismissConfigError,
     /// One tick of a running transfer, sent from the blocking thread.
     JobProgress(crate::fs::transfer::Tick),
     /// F5 or F6, decided by the action rather than a message each.

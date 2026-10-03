@@ -1733,10 +1733,32 @@ mod tests {
         let (launcher, mut session) =
             recording_session(dir.path(), move || crate::config::load(&config_path));
 
-        let message = session.app.job_error_for_test().expect("no error shown");
+        let message = session
+            .app
+            .config_error_for_test()
+            .expect("no error shown")
+            .to_owned();
         assert!(message.contains(&shown_path), "{message}");
         assert!(message.contains("line 3"), "{message}");
+        assert_eq!(session.app.status_error(), Some(message.as_str()));
 
+        // Cursor, panel switch and type-ahead do not take it away.
+        session.press(Key::Named(Named::ArrowDown));
+        session.press(Key::Named(Named::Tab));
+        session.press(Key::Character("a".into()));
+        assert_eq!(session.app.status_error(), Some(message.as_str()));
+
+        // Escape closes the menu first and leaves the message, the next one
+        // dismisses it.
+        session.press_with(Key::Named(Named::F10), Modifiers::SHIFT);
+        assert!(session.app.context_menu_for_test().is_some());
+        session.press(Key::Named(Named::Escape));
+        assert!(session.app.context_menu_for_test().is_none());
+        assert_eq!(session.app.status_error(), Some(message.as_str()));
+        session.press(Key::Named(Named::Escape));
+        assert_eq!(session.app.status_error(), None);
+
+        session.press(Key::Named(Named::Tab));
         cursor_to(&mut session, "alpha.txt");
         session.press(Key::Named(Named::F3));
 

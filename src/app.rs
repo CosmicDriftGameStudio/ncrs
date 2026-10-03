@@ -361,6 +361,9 @@ pub struct App {
     /// The `[open]` programs from the config. What it leaves out is filled in
     /// per OS by `open_command`.
     open_programs: config::OpenPrograms,
+    /// Why the config file was not used. Stays until Escape; moving the cursor
+    /// does not clear it, and a job error covers it while that is shown.
+    config_error: Option<String>,
     /// Why the last job failed, in the active language. Shown in the status bar
     /// until the next thing happens.
     job_error: Option<String>,
@@ -430,6 +433,8 @@ pub struct PromptKeyState {
     pub open: bool,
     /// A job is running, so Escape stops it rather than doing nothing.
     pub job_running: bool,
+    /// The config error is up, so Escape dismisses it.
+    pub config_error: bool,
     /// The conflict dialog is up, so keys answer it rather than the panels.
     pub conflict_open: bool,
     /// The path field is being edited: its keys are the text field's.
@@ -528,12 +533,16 @@ fn keys_without_prompt(
         return keymap::map_key(key, key_modifiers).filter(|message| *message == Message::Quit);
     }
 
-    // Escape stops a running job, but only then. With nothing running it stays
-    // unbound, rather than bound to something that does nothing — a key that
-    // means different things depending on invisible state is worse than one
-    // that is simply free.
+    // Escape stops a running job, else dismisses the config error, and is free
+    // when neither exists. Unbound rather than bound to something that does
+    // nothing — a key that means different things depending on invisible state
+    // is worse than one that is simply free.
     if matches!(key.as_ref(), Key::Named(Named::Escape)) {
-        return prompt.job_running.then_some(Message::AbortJob);
+        return if prompt.job_running {
+            Some(Message::AbortJob)
+        } else {
+            prompt.config_error.then_some(Message::DismissConfigError)
+        };
     }
     // The exact chord first (Shift+F8 is not F8). Only Shift may fall back to
     // the bare key: it changes the character typed (`*` is Shift+8), while Alt,
@@ -757,7 +766,7 @@ impl App {
             Ok(config) => self.open_programs = config.open,
             Err(err) => {
                 let text = self.config_error_text(&err);
-                self.set_status_error(&text);
+                self.config_error = Some(text);
             }
         }
         self
@@ -805,6 +814,7 @@ impl App {
             trash: Arc::new(fs::SystemTrash),
             launcher: Arc::new(fs::SystemLauncher),
             open_programs: config::OpenPrograms::default(),
+            config_error: None,
             job_error: None,
             notice: None,
             notice_generation: 0,
@@ -1004,6 +1014,11 @@ impl App {
             // status bar needs, and nothing more.
             Message::JobProgress(tick) => {
                 self.job_progress = Some(tick);
+                Task::none()
+            }
+
+            Message::DismissConfigError => {
+                self.config_error = None;
                 Task::none()
             }
 
@@ -1682,7 +1697,7 @@ impl App {
                     self.active_panel(),
                     self.lang,
                     self.job_status(),
-                    self.job_error.as_deref(),
+                    self.status_error(),
                     statusbar::PathBar {
                         editing: self.path_field.as_deref(),
                         on_input: Message::PathFieldInput,
@@ -1808,9 +1823,15 @@ impl App {
         self.panel_mut(self.active_panel.other())
     }
 
+    /// The error the status line shows: a job's, else the config's.
+    pub fn status_error(&self) -> Option<&str> {
+        self.job_error.as_deref().or(self.config_error.as_deref())
+    }
+
     /// The state the key routing needs, cheap to clone.
     fn prompt_key_state(&self) -> PromptKeyState {
         let job_running = self.jobs.is_busy();
+        let config_error = self.config_error.is_some();
         let volume_menu = self.volume_menu.is_some();
         let context_menu = self.context_menu.is_some();
         let path_editing = self.path_field.is_some();
@@ -1822,6 +1843,7 @@ impl App {
         match &self.prompt {
             None => PromptKeyState {
                 job_running,
+                config_error,
                 delete_dialog,
                 volume_menu,
                 context_menu,
@@ -1835,6 +1857,7 @@ impl App {
             Some(prompt) => PromptKeyState {
                 open: true,
                 job_running,
+                config_error,
                 delete_dialog,
                 volume_menu,
                 context_menu,
@@ -3089,6 +3112,7 @@ impl App {
             trash: Arc::new(fs::SystemTrash),
             launcher: Arc::new(fs::SystemLauncher),
             open_programs: config::OpenPrograms::default(),
+            config_error: None,
             job_error: None,
             notice: None,
             notice_generation: 0,
@@ -3322,6 +3346,11 @@ impl App {
     /// The text of the status-line error, for the end-to-end tests.
     pub fn job_error_for_test(&self) -> Option<&str> {
         self.job_error.as_deref()
+    }
+
+    /// The config error alone, for the end-to-end tests.
+    pub fn config_error_for_test(&self) -> Option<&str> {
+        self.config_error.as_deref()
     }
 
     /// Puts a conflict in front of the user, for the snapshot tests.
@@ -5922,7 +5951,7 @@ mod config_status_tests {
     #[test]
     fn an_error_with_a_line_names_path_line_and_reason() {
         let app = App::with_fixed_panels().with_config(Err(invalid(Some(3))));
-        let shown = app.job_error.as_deref().unwrap_or_default();
+        let shown = app.status_error().unwrap_or_default();
         assert!(shown.contains("/cfg/ncrs/config.toml"), "{shown}");
         assert!(shown.contains("line 3"), "{shown}");
         assert!(shown.contains("unknown field `colour`"), "{shown}");
@@ -5935,7 +5964,7 @@ mod config_status_tests {
             reason: "not a regular file".to_string(),
         };
         let app = App::with_fixed_panels().with_config(Err(err));
-        let shown = app.job_error.as_deref().unwrap_or_default();
+        let shown = app.status_error().unwrap_or_default();
         assert!(shown.contains("/cfg/ncrs/config.toml"), "{shown}");
         assert!(shown.contains("not a regular file"), "{shown}");
     }
@@ -5943,7 +5972,7 @@ mod config_status_tests {
     #[test]
     fn an_error_without_a_line_still_reports() {
         let app = App::with_fixed_panels().with_config(Err(invalid(None)));
-        let shown = app.job_error.as_deref().unwrap_or_default();
+        let shown = app.status_error().unwrap_or_default();
         assert!(shown.contains("unknown field"), "{shown}");
         assert!(!shown.contains("line"), "{shown}");
     }
@@ -5953,7 +5982,56 @@ mod config_status_tests {
         let mut config = Config::default();
         config.open.view = Some(config::ProgramLine::new("viewer", &[]));
         let app = App::with_fixed_panels().with_config(Ok(config.clone()));
-        assert_eq!(app.job_error, None);
+        assert_eq!(app.status_error(), None);
         assert_eq!(app.open_programs, config.open);
+    }
+
+    #[test]
+    fn a_config_error_is_its_own_field_and_shows_in_the_status_line() {
+        let app = App::with_fixed_panels().with_config(Err(invalid(Some(3))));
+        assert_eq!(app.job_error, None);
+        assert!(app.config_error.is_some());
+        assert_eq!(app.status_error(), app.config_error.as_deref());
+    }
+
+    #[test]
+    fn a_job_error_covers_the_config_error_until_it_goes() {
+        let mut app = App::with_fixed_panels().with_config(Err(invalid(Some(3))));
+        let config_text = app.config_error.clone();
+        app.set_status_error("x");
+        assert_eq!(app.status_error(), Some("x"));
+
+        drop(app.update(Message::MoveSelection(1)));
+
+        assert_eq!(app.status_error(), config_text.as_deref());
+    }
+
+    #[test]
+    fn escape_dismisses_the_config_error_and_a_job_comes_first() {
+        let escape = Key::Named(Named::Escape);
+        let state = |job_running, config_error| PromptKeyState {
+            job_running,
+            config_error,
+            ..PromptKeyState::default()
+        };
+        assert_eq!(
+            route_key(&state(false, true), escape.clone(), Modifiers::default()),
+            Some(Message::DismissConfigError)
+        );
+        assert_eq!(
+            route_key(&state(true, true), escape.clone(), Modifiers::default()),
+            Some(Message::AbortJob)
+        );
+        assert_eq!(
+            route_key(&state(false, false), escape, Modifiers::default()),
+            None
+        );
+    }
+
+    #[test]
+    fn dismissing_clears_the_config_error() {
+        let mut app = App::with_fixed_panels().with_config(Err(invalid(Some(3))));
+        drop(app.update(Message::DismissConfigError));
+        assert_eq!(app.status_error(), None);
     }
 }

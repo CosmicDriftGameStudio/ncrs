@@ -151,7 +151,7 @@ edit = ["open", "-t"]
   apply (the ones in the example are the macOS defaults).
 - Unknown keys are errors, so a typo cannot go unnoticed. On any error the whole
   file is ignored: ncrs starts with the defaults and shows the file and line in
-  the status bar.
+  the status bar until `Esc` dismisses it.
 - A program is a name looked up in `PATH` or an absolute path, followed by its
   arguments. No shell is involved. A relative path such as `bin/edit` is
   rejected, because it would depend on where ncrs was started.
