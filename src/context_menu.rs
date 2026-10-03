@@ -274,10 +274,16 @@ impl InputState {
                 let leaves_field = matches!(key, Key::Named(Named::Escape | Named::Tab));
                 (self.path_editing && leaves_field).then_some(Message::PathFieldCancel)
             }
-            event::Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => self
-                .alt_tap
-                .modifiers_changed(*modifiers)
-                .then_some(Message::ContextMenuKey),
+            event::Event::Mouse(mouse::Event::WheelScrolled { .. }) => {
+                self.alt_tap.cancel();
+                None
+            }
+            event::Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
+                // Still fed, so the tap's bookkeeping stays right, but a tap
+                // while a path is being typed opens nothing.
+                let tapped = self.alt_tap.modifiers_changed(*modifiers);
+                (tapped && !self.path_editing).then_some(Message::ContextMenuKey)
+            }
             event::Event::Window(window::Event::Unfocused) => {
                 self.alt_tap.cancel();
                 None
@@ -518,6 +524,46 @@ mod tests {
             &[event::Event::Window(window::Event::Unfocused)],
         );
         assert!(feed(&mut input, &[modifiers(Modifiers::empty())]).is_empty());
+    }
+
+    #[test]
+    fn a_wheel_turn_while_option_is_held_spoils_the_tap() {
+        let mut input = InputState::default();
+        let wheel = event::Event::Mouse(mouse::Event::WheelScrolled {
+            delta: mouse::ScrollDelta::Lines { x: 0.0, y: 1.0 },
+        });
+        let messages = feed(
+            &mut input,
+            &[
+                modifiers(Modifiers::ALT),
+                wheel,
+                modifiers(Modifiers::empty()),
+            ],
+        );
+        assert!(messages.is_empty(), "{messages:?}");
+    }
+
+    #[test]
+    fn a_tap_while_the_path_is_edited_opens_nothing() {
+        let mut input = InputState {
+            path_editing: true,
+            ..InputState::default()
+        };
+        let while_editing = feed(
+            &mut input,
+            &[modifiers(Modifiers::ALT), modifiers(Modifiers::empty())],
+        );
+        assert!(while_editing.is_empty(), "{while_editing:?}");
+        input.path_editing = false;
+        let after_editing = feed(
+            &mut input,
+            &[modifiers(Modifiers::ALT), modifiers(Modifiers::empty())],
+        );
+        assert_eq!(
+            after_editing,
+            [Message::ContextMenuKey],
+            "the next tap still works"
+        );
     }
 
     #[test]

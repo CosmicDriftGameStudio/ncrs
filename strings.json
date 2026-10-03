@@ -271,6 +271,12 @@
       "de": "{path} existiert nicht"
     },
     {
+      "key": "status.path_unreadable",
+      "context": "Status bar error after the user typed a path into the path field and pressed Enter, but the system would not say whether it exists (no permission, a mount that does not answer). {path} is the path as typed, after expanding a leading ~. {reason} is the system's own message, in the system's language. Keep both placeholders verbatim.",
+      "en": "Cannot read {path}: {reason}",
+      "de": "{path} kann nicht gelesen werden: {reason}"
+    },
+    {
       "key": "job.abort",
       "context": "Key hint for stopping the running job. Verb, matches the other hints in the header row.",
       "en": "Stop",

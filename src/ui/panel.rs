@@ -87,16 +87,34 @@ impl PanelState {
         self.request_id
     }
 
-    /// Replaces the content with a freshly loaded listing.
+    /// Replaces the content with a listing in no particular order.
+    #[cfg(test)]
     pub fn apply_listing(
+        &mut self,
+        path: PathBuf,
+        entries: Vec<FileEntry>,
+        error: Option<ReadError>,
+        select: Option<&str>,
+        visible_rows: usize,
+    ) {
+        self.apply_sorted_listing(path, entries, error, select, visible_rows, None);
+    }
+
+    /// Replaces the content with a freshly loaded listing that the reader
+    /// sorted by `sorted_by`. It is sorted again only when the panel's own key
+    /// has changed since the read began.
+    pub fn apply_sorted_listing(
         &mut self,
         path: PathBuf,
         mut entries: Vec<FileEntry>,
         error: Option<ReadError>,
         select: Option<&str>,
         visible_rows: usize,
+        sorted_by: Option<SortKey>,
     ) {
-        sort_entries(&mut entries, self.sort);
+        if sorted_by != Some(self.sort) {
+            sort_entries(&mut entries, self.sort);
+        }
         let same_directory = self.path == path;
         self.path = path;
         // Read the name under the cursor *before* the rows are replaced. After

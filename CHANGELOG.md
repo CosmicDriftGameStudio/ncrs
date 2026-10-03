@@ -13,8 +13,11 @@ All notable changes to this project are documented here. The format follows
   status bar.
 - The path in the status bar can be edited: click it, type or paste a path and
   press `Enter` (a folder opens in the active panel, a file is shown in its
-  folder; `~` is the home directory). `Esc` or a click elsewhere puts the
-  current path back. The icon next to it copies the panel's folder path.
+  folder; `~` is the home directory, `.` and `..` are folded without following
+  links; a path that is missing or unreadable is reported and the field stays
+  open). `Esc`, `Tab` or a click elsewhere puts the current path back and the
+  keys go to the panel again; `Cmd`+`Q` / `Ctrl`+`Q` and `F10` still quit. The
+  icon next to it copies the panel's folder path.
 - Type-ahead: typing a letter or digit jumps to the first entry whose name starts
   with it, ignoring case; a character typed within a second extends the prefix.
 - Copy the path or the name of the selection to the clipboard: `Option`+`Cmd`+`C`

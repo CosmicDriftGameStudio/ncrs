@@ -1789,29 +1789,60 @@ mod tests {
 /// the caret lands at its end.
 const PATH_LINE: Point = Point::new(350.0, 710.0);
 
-/// Both panels in `/usr`, a path short enough to click past its end.
-fn short_path_session() -> Session<impl iced::Program<State = App, Message = Message> + 'static> {
-    Session::boot(super::program(|| {
-        App::starting_in("/usr".into(), "/usr".into())
-    }))
+/// Both panels in a scratch tree that holds a `lib` directory with two files.
+fn path_session(
+    label: &str,
+) -> (
+    tempfile::TempDir,
+    Session<impl iced::Program<State = App, Message = Message> + 'static>,
+) {
+    let dir = scratch(label);
+    write(&dir.path().join("lib").join("alpha.txt"), "a");
+    write(&dir.path().join("lib").join("beta.txt"), "b");
+    let session = session_in(dir.path());
+    (dir, session)
 }
 
-#[test]
-fn clicking_the_path_then_typing_and_enter_goes_to_that_directory() {
-    let mut session = short_path_session();
-    assert_eq!(session.app.path_field_for_test(), None);
+/// What the user types after the panel's own path to end in `lib`.
+const TYPED_LIB: &str = "/lib";
 
+/// The scratch tree's `lib` as the app spells it (the canonical path).
+fn lib_of(app: &App) -> std::path::PathBuf {
+    app.active_panel().path.join("lib")
+}
+
+/// Clicks into the field and puts the caret at the end: the scratch path is
+/// longer than the click point is far from the field's start.
+fn click_into_the_path<P: iced::Program<State = App, Message = Message> + 'static>(
+    session: &mut Session<P>,
+) {
     session.click_at(PATH_LINE);
+    session.press_in_widgets(Key::Named(keyboard::key::Named::End), Modifiers::default());
+}
+
+fn focus_the_window<P: iced::Program<State = App, Message = Message> + 'static>(
+    session: &mut Session<P>,
+) {
     session.interact(vec![
         iced_test::core::Event::Window(window::Event::Focused),
         iced_test::core::Event::Window(window::Event::RedrawRequested(
             iced_test::core::time::Instant::now(),
         )),
     ]);
-    session.type_into_widgets("/lib");
+}
+
+#[test]
+fn clicking_the_path_then_typing_and_enter_goes_to_that_directory() {
+    let (_dir, mut session) = path_session("path-enter");
+    let lib = lib_of(&session.app);
+    assert_eq!(session.app.path_field_for_test(), None);
+
+    click_into_the_path(&mut session);
+    focus_the_window(&mut session);
+    session.type_into_widgets(TYPED_LIB);
     assert_eq!(
         session.app.path_field_for_test(),
-        Some("/usr/lib"),
+        Some(lib.to_string_lossy().as_ref()),
         "typing did not reach the field"
     );
 
@@ -1819,34 +1850,47 @@ fn clicking_the_path_then_typing_and_enter_goes_to_that_directory() {
         Key::Named(keyboard::key::Named::Enter),
         Modifiers::default(),
     );
-    assert_eq!(session.app.active_panel().path, Path::new("/usr/lib"));
+    session.settle();
+    assert_eq!(session.app.active_panel().path, lib);
     assert_eq!(session.app.path_field_for_test(), None);
+
+    // The field gave the focus back: a letter is type-ahead in the panel.
+    session.type_into_widgets("b");
+    assert_eq!(session.app.path_field_for_test(), None);
+    assert_eq!(
+        selected(&session.app, PanelSide::Left).as_deref(),
+        Some("beta.txt")
+    );
 }
 
 #[test]
 fn pasting_into_the_path_field_with_the_command_key_works() {
-    let mut session = short_path_session();
-    session.widgets.clipboard.content = Some("/lib".to_string());
+    let (_dir, mut session) = path_session("path-paste");
+    let lib = lib_of(&session.app);
+    session.widgets.clipboard.content = Some(TYPED_LIB.to_string());
 
-    session.click_at(PATH_LINE);
+    click_into_the_path(&mut session);
     // The operating system reports the held key first; the field reads it from
     // there rather than from the key press.
     session.interact(vec![iced_test::core::Event::Keyboard(
         keyboard::Event::ModifiersChanged(Modifiers::COMMAND),
     )]);
     session.press_in_widgets(Key::Character("v".into()), Modifiers::COMMAND);
-    assert_eq!(session.app.path_field_for_test(), Some("/usr/lib"));
+    assert_eq!(
+        session.app.path_field_for_test(),
+        Some(lib.to_string_lossy().as_ref())
+    );
 }
 
 #[test]
 fn keys_go_to_the_panels_until_the_path_is_clicked_and_back_after_escape() {
-    let mut session = short_path_session();
+    let (_dir, mut session) = path_session("path-escape");
     // Not focused: a letter is type-ahead, not path text.
     session.type_text("l");
     assert_eq!(session.app.path_field_for_test(), None);
 
-    session.click_at(PATH_LINE);
-    session.type_into_widgets("/lib");
+    click_into_the_path(&mut session);
+    session.type_into_widgets(TYPED_LIB);
     assert!(session.app.path_field_for_test().is_some());
 
     session.press_in_widgets(
@@ -1868,9 +1912,9 @@ fn keys_go_to_the_panels_until_the_path_is_clicked_and_back_after_escape() {
 
 #[test]
 fn clicking_a_panel_after_editing_restores_the_path() {
-    let mut session = short_path_session();
-    session.click_at(PATH_LINE);
-    session.type_into_widgets("/lib");
+    let (_dir, mut session) = path_session("path-click-away");
+    click_into_the_path(&mut session);
+    session.type_into_widgets(TYPED_LIB);
     session.click_at(Point::new(300.0, 300.0));
     assert_eq!(session.app.path_field_for_test(), None);
     session.type_into_widgets("l");
@@ -1879,6 +1923,25 @@ fn clicking_a_panel_after_editing_restores_the_path() {
         None,
         "the field gave the focus back"
     );
+}
+
+#[test]
+fn clicking_a_column_title_while_editing_the_path_ends_the_editing() {
+    let (_dir, mut session) = path_session("path-sort-click");
+    click_into_the_path(&mut session);
+    session.type_into_widgets(TYPED_LIB);
+    assert!(session.app.path_field_for_test().is_some());
+    session.click_at(LEFT_SIZE_HEADER);
+    assert_eq!(session.app.path_field_for_test(), None);
+}
+
+#[test]
+fn a_click_into_the_path_field_with_a_context_menu_open_closes_the_menu() {
+    let (_dir, mut session) = path_session("path-menu");
+    session.press_with(Key::Named(keyboard::key::Named::F10), Modifiers::SHIFT);
+    assert!(session.app.context_menu_for_test().is_some());
+    session.click_at(PATH_LINE);
+    assert!(session.app.context_menu_for_test().is_none());
 }
 
 const LEFT_NAME_HEADER: Point = Point::new(50.0, 83.0);

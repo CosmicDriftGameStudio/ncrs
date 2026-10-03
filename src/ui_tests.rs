@@ -712,13 +712,41 @@ mod context_menu_overlay {
 
     #[test]
     fn a_greyed_out_entry_does_not_answer_a_click() {
+        use crate::context_menu::MenuEntry;
+        use crate::ui::layout::{
+            MENU_ITEM_HEIGHT, MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_WIDTH,
+        };
+
         let mut app = App::with_fixed_panels();
+        app.set_pointer_for_test(Point::new(150.0, 130.0));
         drop(app.update(Message::ContextMenuAt {
             side: PanelSide::Left,
             index: 1,
         }));
+        let menu = app.context_menu_for_test().unwrap();
+        let mut top = menu.origin().y + MENU_PADDING;
+        let mut view_row = None;
+        for entry in menu.entries() {
+            match entry {
+                MenuEntry::Separator => top += MENU_SEPARATOR_HEIGHT,
+                MenuEntry::Item { action, enabled } => {
+                    if *action == ContextAction::View {
+                        assert!(!enabled, "View is greyed out on a directory");
+                        view_row = Some(top + MENU_ITEM_HEIGHT / 2.0);
+                    }
+                    top += MENU_ITEM_HEIGHT;
+                }
+            }
+        }
+        let point = Point::new(
+            menu.origin().x + MENU_WIDTH / 2.0,
+            view_row.expect("a View entry"),
+        );
         let mut sim = simulator(&app);
-        sim.click("View").expect("the View entry");
+        sim.point_at(point);
+        sim.simulate([Event::Mouse(mouse::Event::ButtonPressed(
+            mouse::Button::Left,
+        ))]);
         assert_eq!(sim.into_messages().count(), 0);
     }
 }
@@ -753,13 +781,38 @@ mod title_notice {
         );
     }
 
+    const NOTICE_TEXT: &str = "\u{2713} Path copied";
+
+    fn render(view: iced::Element<'_, Message>) -> Simulator<'_, Message, iced::Theme> {
+        Simulator::with_size(
+            iced::Settings::default(),
+            iced::Size::new(1200.0, 40.0),
+            view,
+        )
+    }
+
     #[test]
-    fn the_notice_is_not_in_the_status_bar() {
-        let with_notice = copied();
-        let mut sim = simulator(&with_notice);
-        sim.find("\u{2713} Path copied").unwrap();
-        let without_notice = App::with_fixed_panels();
-        let mut plain = simulator(&without_notice);
-        plain.find("\u{2713} Path copied").unwrap_err();
+    fn the_notice_is_in_the_title_bar_and_not_in_the_status_bar() {
+        let app = copied();
+        let notice = app.notice_for_test().expect("a notice after copying");
+        render(crate::ui::header::view("NC-rs", Some(notice)))
+            .find(NOTICE_TEXT)
+            .expect("the title bar shows the notice");
+
+        let status_bar = crate::ui::statusbar::view(
+            app.active_panel(),
+            crate::i18n::Language::English,
+            None,
+            None,
+            crate::ui::statusbar::PathBar {
+                editing: None,
+                on_input: Message::PathFieldInput,
+                on_submit: Message::PathFieldSubmit,
+                on_copy: Message::PathFieldCancel,
+            },
+        );
+        render(status_bar)
+            .find(NOTICE_TEXT)
+            .expect_err("the status bar does not show the notice");
     }
 }

@@ -8,7 +8,7 @@ use iced::Size;
 use crate::app::{RowFailure, Transfer};
 use crate::dialog::PromptKind;
 use crate::fs::CreateDirError;
-use crate::fs::{FileEntry, ReadError, SortColumn};
+use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
 use crate::jobs::JobEvent;
 
 /// Identifies one of the two file panels.
@@ -39,6 +39,8 @@ pub enum Message {
         path: PathBuf,
         entries: Vec<FileEntry>,
         error: Option<ReadError>,
+        /// The order the reader put `entries` in.
+        sorted_by: SortKey,
         /// Entry name to select after loading (e.g. the dir we came from).
         select: Option<String>,
     },
@@ -154,6 +156,14 @@ pub enum Message {
     PathFieldInput(String),
     /// Enter in the field: go to the typed path.
     PathFieldSubmit,
+    /// The background look at the path that Enter submitted. A result whose
+    /// `request_id` is not the latest is dropped.
+    PathChecked {
+        request_id: u64,
+        side: PanelSide,
+        target: PathBuf,
+        result: Result<Destination, PathProblem>,
+    },
     /// Escape, Tab or a click elsewhere: back to the panel's own path.
     PathFieldCancel,
     /// A mouse press that no widget took.
