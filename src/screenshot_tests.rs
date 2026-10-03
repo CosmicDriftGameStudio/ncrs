@@ -206,6 +206,14 @@ mod tests {
         menu.open_volume_menu_for_test(PanelSide::Left, drives());
         write_screenshot(&menu, "drive-menu.png");
 
+        let mut context = showcase_app();
+        context.set_pointer_for_test(iced::Point::new(260.0, 150.0));
+        drop(context.update(Message::ContextMenuAt {
+            side: PanelSide::Left,
+            index: 5,
+        }));
+        write_screenshot(&context, "context-menu.png");
+
         let mut delete = showcase_app();
         drop(delete.update(Message::Delete { permanent: false }));
         write_screenshot(&delete, "delete.png");

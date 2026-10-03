@@ -13,6 +13,7 @@ mod ui_tests;
 
 mod app;
 mod backend;
+mod context_menu;
 mod dialog;
 mod fs;
 mod i18n;

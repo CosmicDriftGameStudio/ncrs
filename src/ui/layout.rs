@@ -1,6 +1,6 @@
 //! Fixed layout metrics. Rows have a fixed height so the number of visible
 //! rows can be derived from the window height (used for scrolling).
-use iced::Size;
+use iced::{Point, Size};
 
 use super::theme::spacing;
 
@@ -14,6 +14,11 @@ pub const COLUMN_HEADER_HEIGHT: f32 = 24.0;
 pub const ROW_HEIGHT: f32 = 22.0;
 
 pub const DIALOG_WIDTH: f32 = 420.0;
+
+pub const MENU_WIDTH: f32 = 300.0;
+pub const MENU_ITEM_HEIGHT: f32 = 24.0;
+pub const MENU_SEPARATOR_HEIGHT: f32 = 7.0;
+pub const MENU_PADDING: f32 = 4.0;
 
 /// The star column, left of the name. Its own button so a click there tags the
 /// row instead of moving the cursor.
@@ -48,6 +53,30 @@ pub fn visible_rows(window: Size) -> usize {
     // `max(1)`: a window too small for the chrome still has to show one row,
     // otherwise the panel renders nothing and the user cannot move the cursor.
     (rows as isize).max(1) as usize
+}
+
+/// Where the context menu opens for the cursor row of a panel when it is
+/// opened from the keyboard: just below the row, a little into the name column.
+///
+/// `row_in_view` is the row's position counted from the first visible row.
+pub fn cursor_row_anchor(right_panel: bool, row_in_view: usize, window: Size) -> Point {
+    let panel_width = (window.width - 2.0 * spacing::OUTER_PADDING - spacing::PANEL_GAP) / 2.0;
+    let panel_left = spacing::OUTER_PADDING
+        + if right_panel {
+            panel_width + spacing::PANEL_GAP
+        } else {
+            0.0
+        };
+    let rows_top = spacing::OUTER_PADDING
+        + HEADER_HEIGHT
+        + spacing::SECTION_GAP
+        + spacing::BORDER_WIDTH
+        + PANEL_TITLE_HEIGHT
+        + COLUMN_HEADER_HEIGHT;
+    Point::new(
+        panel_left + 3.0 * TAG_COLUMN_WIDTH,
+        rows_top + (row_in_view + 1) as f32 * ROW_HEIGHT,
+    )
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
@@ -116,6 +145,20 @@ mod tests {
         assert_eq!(
             CHROME, expected,
             "CHROME and the view's constants have drifted apart"
+        );
+    }
+
+    #[test]
+    fn the_keyboard_anchor_is_below_the_row_in_the_right_panel() {
+        let window = Size::new(1200.0, 760.0);
+        let left = cursor_row_anchor(false, 0, window);
+        let right = cursor_row_anchor(true, 0, window);
+        // 6 + 30 + 6 + 1 + 28 + 24 = 95 is where the first row starts.
+        assert_eq!(left.y, 95.0 + ROW_HEIGHT);
+        assert!(right.x > window.width / 2.0);
+        assert_eq!(
+            cursor_row_anchor(false, 2, window).y,
+            left.y + 2.0 * ROW_HEIGHT
         );
     }
 

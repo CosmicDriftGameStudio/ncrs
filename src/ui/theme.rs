@@ -21,6 +21,7 @@ pub mod colors {
     pub const INACTIVE_BORDER: Color = Color::from_rgb(0.165, 0.210, 0.390);
 
     pub const TEXT: Color = Color::from_rgb(0.800, 0.840, 0.940);
+    pub const DISABLED_TEXT: Color = Color::from_rgb(0.330, 0.380, 0.520);
     pub const DIM_TEXT: Color = Color::from_rgb(0.450, 0.500, 0.640);
     pub const DIR_COLOR: Color = Color::from_rgb(1.000, 1.000, 1.000);
     pub const ACCENT: Color = Color::from_rgb(1.000, 0.850, 0.300);
@@ -226,4 +227,20 @@ pub fn dialog_checkbox(_theme: &Theme, status: checkbox::Status) -> checkbox::St
         },
         text_color: Some(colors::TEXT),
     }
+}
+
+/// One entry of the context menu: flat, the highlighted one filled like the
+/// cursor row of a panel.
+pub fn menu_item(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |_theme, _status| button::Style {
+        background: selected.then_some(Background::Color(colors::SELECTED_BG)),
+        text_color: colors::TEXT,
+        border: Border::default(),
+        ..button::Style::default()
+    }
+}
+
+/// The line between two groups of the context menu.
+pub fn menu_separator(_theme: &Theme) -> container::Style {
+    filled(colors::ACTIVE_BORDER, colors::TEXT)
 }

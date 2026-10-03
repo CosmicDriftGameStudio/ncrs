@@ -123,6 +123,25 @@ pub enum Message {
     VolumeMenuClick(usize),
     VolumeMenuClose,
 
+    // --- context menu (right click, Option tap, Shift+F10) ---
+    /// Right click (or Ctrl+click on a Mac) on a row: open the menu at the pointer.
+    ContextMenuAt {
+        side: PanelSide,
+        index: usize,
+    },
+    /// Shift+F10 or a tap of Option: open the menu at the cursor row.
+    ContextMenuKey,
+    ContextMenuMove(isize),
+    ContextMenuFirst,
+    ContextMenuLast,
+    /// Enter in the open menu: run the highlighted entry.
+    ContextMenuActivate,
+    /// A click on the entry at this index: run it.
+    ContextMenuClick(usize),
+    /// The pointer is over the entry at this index.
+    ContextMenuHover(usize),
+    ContextMenuClose,
+
     // --- Job queue (see crate::jobs) ---
     /// A job started, made progress, or finished. One variant for all three:
     /// they are the same event arriving at different times, and splitting them

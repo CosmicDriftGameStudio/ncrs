@@ -25,6 +25,11 @@ for the state, the licensing audit and the reasoning behind the order.
 
 The drive menu (`Alt+F1` for the left panel, `Alt+F2` for the right).
 
+![The context menu](docs/screenshots/context-menu.png)
+
+The context menu: right-click a row (`Ctrl`+click on a Mac), tap `Option` on its
+own, or press `Shift`+`F10`. It acts on the tagged rows, else the cursor row.
+
 ![The delete dialog](docs/screenshots/delete.png)
 
 F8 asks before it moves the tagged rows to the trash.
@@ -72,6 +77,7 @@ The same window in German, switched with F9.
 | `F8`               | Delete to the trash, after a confirmation |
 | `Shift`+`F8`       | Delete permanently (`Enter` cancels; `Shift`+`F8` again confirms) |
 | `Alt`+`F1` / `Alt`+`F2` | Drive menu for the left / right panel (`↑`/`↓`, `Home`/`End`, `Enter` goes, `Esc` closes; `Option` on macOS) |
+| Right click / `Shift`+`F10` / `Option` tapped alone | Context menu at the pointer or the cursor row (`↑`/`↓`, `Home`/`End`, `Enter` runs, `Esc` closes; `Ctrl`+click also on a Mac) |
 | `Backspace`        | Go to parent directory                   |
 | `Tab`              | Switch active panel                      |
 | `F9`               | Switch language (en/de, temporary)        |

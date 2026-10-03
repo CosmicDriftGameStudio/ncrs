@@ -11,6 +11,10 @@ All notable changes to this project are documented here. The format follows
 - Copy the path or the name of the selection to the clipboard: `Option`+`Cmd`+`C`
   / `Ctrl`+`Alt`+`C` for the path, `Ctrl`+`Cmd`+`C` / `Ctrl`+`Shift`+`C` for the
   name.
+- A context menu on the panel rows, as in Zed: right click (`Ctrl`+click on a
+  Mac), `Shift`+`F10`, or a tap of `Option` on its own. It offers the existing
+  actions with their keys, acts on the tagged rows like `F5` and `F8`, and
+  greys out what does not apply, for example View on a folder.
 
 ## [0.2.2] — 2026-10-02
 

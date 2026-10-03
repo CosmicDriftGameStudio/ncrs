@@ -203,12 +203,14 @@ pub struct PanelProps {
 /// `on_row_click` is called with the row index and whether the click landed in
 /// the tag column: the star toggles the tag, the rest of the row moves the
 /// cursor. One callback with a flag rather than two callbacks, because a row is
-/// one clickable thing with two meanings.
+/// one clickable thing with two meanings. `on_row_context` is called with the
+/// row index when the row is right-clicked.
 pub fn view<'a, M: Clone + 'a>(
     state: &'a PanelState,
     props: PanelProps,
     lang: Language,
     on_row_click: impl Fn(usize, bool) -> M,
+    on_row_context: impl Fn(usize) -> M,
     on_scroll: impl Fn(ScrollDelta) -> M + 'a,
 ) -> Element<'a, M> {
     let rows = state
@@ -242,13 +244,17 @@ pub fn view<'a, M: Clone + 'a>(
                 .style(theme::tag_button(mark.tagged, props.is_active))
                 .on_press(on_row_click(index, true)),
             );
-            file_row(
+            // A button takes only the left button, so the right press reaches
+            // the area around it.
+            mouse_area(file_row(
                 entry,
                 mark,
                 props.is_active,
                 on_row_click(index, false),
                 row,
-            )
+            ))
+            .on_right_press(on_row_context(index))
+            .into()
         });
 
     // The wheel belongs to the panel under the pointer. The rows are drawn from

@@ -199,6 +199,66 @@
       "de": "{count} Namen kopiert"
     },
     {
+      "key": "context_menu.open",
+      "context": "Entry of the context menu on a file or folder: enters the folder under the cursor. Shown with its key (Enter) on the right. Verb, imperative.",
+      "en": "Open",
+      "de": "Öffnen"
+    },
+    {
+      "key": "context_menu.view",
+      "context": "Entry of the context menu: opens the file under the cursor in an external viewer (key F3). Verb, imperative; the function key bar has a shorter label.",
+      "en": "View",
+      "de": "Ansehen"
+    },
+    {
+      "key": "context_menu.edit",
+      "context": "Entry of the context menu: opens the file under the cursor in an external editor (key F4). Verb, imperative; the function key bar has a shorter label.",
+      "en": "Edit",
+      "de": "Bearbeiten"
+    },
+    {
+      "key": "context_menu.copy",
+      "context": "Entry of the context menu: copies the tagged rows, or the cursor row, into the other panel (key F5). Verb, imperative.",
+      "en": "Copy",
+      "de": "Kopieren"
+    },
+    {
+      "key": "context_menu.move",
+      "context": "Entry of the context menu: moves the tagged rows, or the cursor row, into the other panel (key F6). Verb, imperative.",
+      "en": "Move",
+      "de": "Verschieben"
+    },
+    {
+      "key": "context_menu.new_folder",
+      "context": "Entry of the context menu: asks for a name and creates a folder in the current directory (key F7). Noun phrase.",
+      "en": "New folder",
+      "de": "Neuer Ordner"
+    },
+    {
+      "key": "context_menu.copy_path",
+      "context": "Entry of the context menu: puts the full path of the tagged rows, or the cursor row, on the clipboard. Verb, imperative.",
+      "en": "Copy path",
+      "de": "Pfad kopieren"
+    },
+    {
+      "key": "context_menu.copy_name",
+      "context": "Entry of the context menu: puts the name (without the folder) of the tagged rows, or the cursor row, on the clipboard. Verb, imperative.",
+      "en": "Copy name",
+      "de": "Name kopieren"
+    },
+    {
+      "key": "context_menu.trash",
+      "context": "Entry of the context menu: moves the tagged rows, or the cursor row, to the trash after a confirmation (key F8). The German text is a prepositional phrase because the entry reads as an action on the selection.",
+      "en": "Move to trash",
+      "de": "In den Papierkorb"
+    },
+    {
+      "key": "context_menu.delete_permanently",
+      "context": "Entry of the context menu: deletes the tagged rows, or the cursor row, for good, bypassing the trash, after a confirmation (key Shift+F8). Verb phrase, imperative.",
+      "en": "Delete permanently",
+      "de": "Endgültig löschen"
+    },
+    {
       "key": "job.abort",
       "context": "Key hint for stopping the running job. Verb, matches the other hints in the header row.",
       "en": "Stop",
