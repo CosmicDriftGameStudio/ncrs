@@ -431,6 +431,18 @@
       "context": "Status bar when F3 or F4 refuses a file because opening it with the system could run it (script, app, shortcut). Takes the file name.",
       "en": "{name} could be executed, F3/F4 do not open it",
       "de": "{name} könnte ausgeführt werden, F3/F4 öffnen es nicht"
+    },
+    {
+      "key": "error.config_at_line",
+      "context": "Status bar at startup when the config file could not be read: it has an error at a known line. Takes the file path, the line number and the reason. The reason is the English message of the TOML parser and stays untranslated. The app runs on with the default settings.",
+      "en": "Config file {path}, line {line}: {reason}. Using the defaults.",
+      "de": "Konfigurationsdatei {path}, Zeile {line}: {reason}. Es gelten die Standardwerte."
+    },
+    {
+      "key": "error.config",
+      "context": "Status bar at startup when the config file could not be used and no line applies: the file is unreadable, not a regular file, too big, or the error has no position. Takes the file path and the reason, which is English and stays untranslated. The app runs on with the default settings.",
+      "en": "Config file {path}: {reason}. Using the defaults.",
+      "de": "Konfigurationsdatei {path}: {reason}. Es gelten die Standardwerte."
     }
   ]
 }

@@ -9,6 +9,7 @@ use iced::keyboard::{self, key::Named, Key, Modifiers};
 use iced::widget::{column, container, mouse_area, operation, row, Space, Stack};
 use iced::{event, window, Element, Length, Point, Size, Subscription, Task, Theme};
 
+use crate::config::{self, Config, ConfigError};
 use crate::context_menu::{ContextAction, ContextMenu, InputState};
 use crate::dialog::{Prompt, PromptKind};
 use crate::fs::{self, CreateDirError};
@@ -357,6 +358,14 @@ pub struct App {
     /// Starts the external program of F3 and F4. Injected so tests never
     /// launch a real viewer.
     launcher: Arc<dyn fs::Launcher>,
+    /// The `[open]` programs from the config. What it leaves out is filled in
+    /// per OS by `open_command`.
+    open_programs: config::OpenPrograms,
+    /// Why the config file was not used. Stays until Escape; moving the cursor
+    /// does not clear it, and a job error covers it while that is shown.
+    config_error: Option<String>,
+    /// The error behind `config_error`, kept to word it again after F9.
+    config_problem: Option<ConfigError>,
     /// Why the last job failed, in the active language. Shown in the status bar
     /// until the next thing happens.
     job_error: Option<String>,
@@ -426,6 +435,8 @@ pub struct PromptKeyState {
     pub open: bool,
     /// A job is running, so Escape stops it rather than doing nothing.
     pub job_running: bool,
+    /// The config error is up, so Escape dismisses it.
+    pub config_error: bool,
     /// The conflict dialog is up, so keys answer it rather than the panels.
     pub conflict_open: bool,
     /// The path field is being edited: its keys are the text field's.
@@ -524,12 +535,16 @@ fn keys_without_prompt(
         return keymap::map_key(key, key_modifiers).filter(|message| *message == Message::Quit);
     }
 
-    // Escape stops a running job, but only then. With nothing running it stays
-    // unbound, rather than bound to something that does nothing — a key that
-    // means different things depending on invisible state is worse than one
-    // that is simply free.
+    // Escape stops a running job, else dismisses the config error, and is free
+    // when neither exists. Unbound rather than bound to something that does
+    // nothing — a key that means different things depending on invisible state
+    // is worse than one that is simply free.
     if matches!(key.as_ref(), Key::Named(Named::Escape)) {
-        return prompt.job_running.then_some(Message::AbortJob);
+        return if prompt.job_running {
+            Some(Message::AbortJob)
+        } else {
+            prompt.config_error.then_some(Message::DismissConfigError)
+        };
     }
     // The exact chord first (Shift+F8 is not F8). Only Shift may fall back to
     // the bare key: it changes the character typed (`*` is Shift+8), while Alt,
@@ -737,7 +752,52 @@ impl App {
     /// Left panel starts in the working directory, right in `$HOME`, so the
     /// two panels are not the same directory on launch.
     pub fn new() -> (Self, Task<Message>) {
-        Self::starting_in(fs::start_dir(), fs::home_dir())
+        let loaded = config::default_path()
+            .map_or_else(|| Ok(Config::default()), |path| config::load(&path));
+        if let Err(err) = &loaded {
+            eprintln!("ncrs: {err}");
+        }
+        let (app, task) = Self::starting_in(fs::start_dir(), fs::home_dir());
+        (app.with_config(loaded), task)
+    }
+
+    /// Applies a loaded config. A broken one leaves the defaults and says why
+    /// in the status line.
+    pub fn with_config(mut self, loaded: Result<Config, ConfigError>) -> Self {
+        match loaded {
+            Ok(config) => self.open_programs = config.open,
+            Err(err) => {
+                self.config_error = Some(self.config_error_text(&err));
+                self.config_problem = Some(err);
+            }
+        }
+        self
+    }
+
+    /// F9. A config error still up is worded again in the new language.
+    fn switch_language(&mut self) {
+        self.lang = self.lang.other();
+        self.function_keys = keymap::function_keys(self.lang);
+        if let Some(problem) = &self.config_problem {
+            self.config_error = Some(self.config_error_text(problem));
+        }
+    }
+
+    fn config_error_text(&self, err: &ConfigError) -> String {
+        let path = err.path().display().to_string();
+        match err.line() {
+            Some(line) => self
+                .lang
+                .text(Msg::ErrorConfigAtLine)
+                .replace("{path}", &path)
+                .replace("{line}", &line.to_string())
+                .replace("{reason}", err.reason()),
+            None => self
+                .lang
+                .text(Msg::ErrorConfig)
+                .replace("{path}", &path)
+                .replace("{reason}", err.reason()),
+        }
     }
 
     /// Like `new`, with both panels' start directories given. Tests use this
@@ -764,6 +824,9 @@ impl App {
             modifiers: Modifiers::default(),
             trash: Arc::new(fs::SystemTrash),
             launcher: Arc::new(fs::SystemLauncher),
+            open_programs: config::OpenPrograms::default(),
+            config_error: None,
+            config_problem: None,
             job_error: None,
             notice: None,
             notice_generation: 0,
@@ -963,6 +1026,12 @@ impl App {
             // status bar needs, and nothing more.
             Message::JobProgress(tick) => {
                 self.job_progress = Some(tick);
+                Task::none()
+            }
+
+            Message::DismissConfigError => {
+                self.config_error = None;
+                self.config_problem = None;
                 Task::none()
             }
 
@@ -1323,8 +1392,7 @@ impl App {
             }
             Message::SortBy { .. } | Message::SortActive(_) => self.update_sort(message),
             Message::SwitchLanguage => {
-                self.lang = self.lang.other();
-                self.function_keys = keymap::function_keys(self.lang);
+                self.switch_language();
                 Task::none()
             }
             // A click in the tag column toggles the tag; anywhere else it moves
@@ -1641,7 +1709,7 @@ impl App {
                     self.active_panel(),
                     self.lang,
                     self.job_status(),
-                    self.job_error.as_deref(),
+                    self.status_error(),
                     statusbar::PathBar {
                         editing: self.path_field.as_deref(),
                         on_input: Message::PathFieldInput,
@@ -1767,9 +1835,15 @@ impl App {
         self.panel_mut(self.active_panel.other())
     }
 
+    /// The error the status line shows: a job's, else the config's.
+    pub fn status_error(&self) -> Option<&str> {
+        self.job_error.as_deref().or(self.config_error.as_deref())
+    }
+
     /// The state the key routing needs, cheap to clone.
     fn prompt_key_state(&self) -> PromptKeyState {
         let job_running = self.jobs.is_busy();
+        let config_error = self.config_error.is_some();
         let volume_menu = self.volume_menu.is_some();
         let context_menu = self.context_menu.is_some();
         let path_editing = self.path_field.is_some();
@@ -1781,6 +1855,7 @@ impl App {
         match &self.prompt {
             None => PromptKeyState {
                 job_running,
+                config_error,
                 delete_dialog,
                 volume_menu,
                 context_menu,
@@ -1794,6 +1869,7 @@ impl App {
             Some(prompt) => PromptKeyState {
                 open: true,
                 job_running,
+                config_error,
                 delete_dialog,
                 volume_menu,
                 context_menu,
@@ -2175,15 +2251,15 @@ impl App {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
         let executable = fs::could_execute(&path);
-        if fs::open_command(kind, &path, executable).is_none() {
+        let Some(command) = fs::open_command(&self.open_programs, kind, &path, executable) else {
             let message = self
                 .lang
                 .text(Msg::ErrorOpenRefused)
                 .replace("{name}", &name);
             self.set_status_error(&message);
             return;
-        }
-        if let Err(reason) = self.launcher.launch(kind, &path, executable) {
+        };
+        if let Err(reason) = self.launcher.launch(&command) {
             let message = self
                 .lang
                 .text(Msg::ErrorOpenFailed)
@@ -3047,6 +3123,9 @@ impl App {
             modifiers: Modifiers::default(),
             trash: Arc::new(fs::SystemTrash),
             launcher: Arc::new(fs::SystemLauncher),
+            open_programs: config::OpenPrograms::default(),
+            config_error: None,
+            config_problem: None,
             job_error: None,
             notice: None,
             notice_generation: 0,
@@ -3280,6 +3359,11 @@ impl App {
     /// The text of the status-line error, for the end-to-end tests.
     pub fn job_error_for_test(&self) -> Option<&str> {
         self.job_error.as_deref()
+    }
+
+    /// The config error alone, for the end-to-end tests.
+    pub fn config_error_for_test(&self) -> Option<&str> {
+        self.config_error.as_deref()
     }
 
     /// Puts a conflict in front of the user, for the snapshot tests.
@@ -5862,5 +5946,113 @@ mod notice_tests {
         app.set_status_error("it failed");
         assert_eq!(app.notice, None);
         assert_eq!(app.job_error.as_deref(), Some("it failed"));
+    }
+}
+
+#[cfg(test)]
+mod config_status_tests {
+    use super::*;
+
+    fn invalid(line: Option<usize>) -> ConfigError {
+        ConfigError::Invalid {
+            path: PathBuf::from("/cfg/ncrs/config.toml"),
+            line,
+            reason: "unknown field `colour`".to_string(),
+        }
+    }
+
+    #[test]
+    fn an_error_with_a_line_names_path_line_and_reason() {
+        let app = App::with_fixed_panels().with_config(Err(invalid(Some(3))));
+        let shown = app.status_error().unwrap_or_default();
+        assert!(shown.contains("/cfg/ncrs/config.toml"), "{shown}");
+        assert!(shown.contains("line 3"), "{shown}");
+        assert!(shown.contains("unknown field `colour`"), "{shown}");
+    }
+
+    #[test]
+    fn an_unreadable_file_names_path_and_reason() {
+        let err = ConfigError::Unreadable {
+            path: PathBuf::from("/cfg/ncrs/config.toml"),
+            reason: "not a regular file".to_string(),
+        };
+        let app = App::with_fixed_panels().with_config(Err(err));
+        let shown = app.status_error().unwrap_or_default();
+        assert!(shown.contains("/cfg/ncrs/config.toml"), "{shown}");
+        assert!(shown.contains("not a regular file"), "{shown}");
+    }
+
+    #[test]
+    fn an_error_without_a_line_still_reports() {
+        let app = App::with_fixed_panels().with_config(Err(invalid(None)));
+        let shown = app.status_error().unwrap_or_default();
+        assert!(shown.contains("unknown field"), "{shown}");
+        assert!(!shown.contains("line"), "{shown}");
+    }
+
+    #[test]
+    fn a_good_config_shows_nothing_and_is_applied() {
+        let mut config = Config::default();
+        config.open.view = Some(config::ProgramLine::new("viewer", &[]));
+        let app = App::with_fixed_panels().with_config(Ok(config.clone()));
+        assert_eq!(app.status_error(), None);
+        assert_eq!(app.open_programs, config.open);
+    }
+
+    #[test]
+    fn a_config_error_is_its_own_field_and_shows_in_the_status_line() {
+        let app = App::with_fixed_panels().with_config(Err(invalid(Some(3))));
+        assert_eq!(app.job_error, None);
+        assert!(app.config_error.is_some());
+        assert_eq!(app.status_error(), app.config_error.as_deref());
+    }
+
+    #[test]
+    fn a_job_error_covers_the_config_error_until_it_goes() {
+        let mut app = App::with_fixed_panels().with_config(Err(invalid(Some(3))));
+        let config_text = app.config_error.clone();
+        app.set_status_error("x");
+        assert_eq!(app.status_error(), Some("x"));
+
+        drop(app.update(Message::MoveSelection(1)));
+
+        assert_eq!(app.status_error(), config_text.as_deref());
+    }
+
+    #[test]
+    fn escape_dismisses_the_config_error_and_a_job_comes_first() {
+        let escape = Key::Named(Named::Escape);
+        let state = |job_running, config_error| PromptKeyState {
+            job_running,
+            config_error,
+            ..PromptKeyState::default()
+        };
+        assert_eq!(
+            route_key(&state(false, true), escape.clone(), Modifiers::default()),
+            Some(Message::DismissConfigError)
+        );
+        assert_eq!(
+            route_key(&state(true, true), escape.clone(), Modifiers::default()),
+            Some(Message::AbortJob)
+        );
+        assert_eq!(
+            route_key(&state(false, false), escape, Modifiers::default()),
+            None
+        );
+    }
+
+    #[test]
+    fn the_config_error_follows_a_language_switch() {
+        let mut app = App::with_fixed_panels().with_config(Err(invalid(Some(3))));
+        drop(app.update(Message::SwitchLanguage));
+        let shown = app.status_error().unwrap_or_default();
+        assert!(shown.contains("Zeile 3"), "{shown}");
+    }
+
+    #[test]
+    fn dismissing_clears_the_config_error() {
+        let mut app = App::with_fixed_panels().with_config(Err(invalid(Some(3))));
+        drop(app.update(Message::DismissConfigError));
+        assert_eq!(app.status_error(), None);
     }
 }

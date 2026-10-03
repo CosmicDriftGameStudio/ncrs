@@ -197,7 +197,7 @@ Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
    Snapshot-Test ohne Wahrheitswert ist eine Datei, die immer grün ist. Falls sich das
    ändert, wäre `insta` der erste Kandidat.
 3. **Sprach-Set**: `en`/`de` sind gebaut, Kontext liegt in `strings.json`, F9 schaltet um.
-   Offen ist nur die **Persistenz** (T13), und die hängt an der Config (T10).
+   Offen ist nur die **Persistenz** (T13); die Config dafür steht seit T10.
 
 ## 7. Nicht im Plan, mit Begründung
 
@@ -213,13 +213,13 @@ Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
 
 # Tasks – Basis-Feature
 
-**Stand 2026-10-03: T1–T9 erledigt, T6d teilweise, T10–T18 offen.** Release 0.2.2,
-376 `#[test]`-Funktionen inkl. UI-Tests mit Pixelvergleich.
+**Stand 2026-10-03: T1–T10 erledigt, T6d teilweise, T11–T18 offen.** Release 0.2.2,
+405 `#[test]`-Funktionen inkl. UI-Tests mit Pixelvergleich.
 
 | Block | Inhalt | Stand |
 |---|---|---|
 | A | CI, Installer, Release, `strings.json` | ✅ fertig (T1–T5, T5b), dazu signierte und notarisierte macOS-App |
-| B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | 🔶 F3–F8 fertig, T6d teilweise — **T10 (Config, TOML) ist der nächste Task** |
+| B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | 🔶 F3–F8 und Config fertig, T6d teilweise — **T11 (Keymap aus Config) ist der nächste Task** |
 | C | Netzwerk-Mounts, Archive | 🔶 Laufwerksmenü fertig, T15–T17 offen |
 
 Legende: **[P]** Pflicht für ein benutzbares Basis-Feature, **[S]** später. Reihenfolge =
@@ -429,12 +429,13 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
 
 - [x] **T8 – F8 Delete mit Bestätigungsdialog und Papierkorb** – Crate `trash`, Shift+F8 löscht endgültig
 - [x] **T9 – F3 View / F4 Edit** – externes Programm, `std::process::Command`
-  Getestet: Befehlsbau pro OS (`open_command`), Routing F3/F4 mit Fake-Launcher inkl. Fehleranzeige, Erkennung ausführbarer Dateien (Exec-Bit, Endungsliste; die öffnen nie per Standardaktion, sondern im Texteditor bzw. gar nicht unter Linux); kein echter Programmstart in CI. Programme fest verdrahtet, konfigurierbar mit T10.
+  Getestet: Befehlsbau pro OS (`open_command`), Routing F3/F4 mit Fake-Launcher inkl. Fehleranzeige, Erkennung ausführbarer Dateien (Exec-Bit, Endungsliste; die öffnen nie per Standardaktion, sondern im Texteditor bzw. gar nicht unter Linux); kein echter Programmstart in CI. Programme seit T10 konfigurierbar (`[open]`).
 - [x] **Pfad/Name kopieren** (#23) – Option+Cmd+C kopiert Pfade, Ctrl+Cmd+C Namen der Auswahl
 - [x] **Kontextmenü, Type-ahead, Pfadzeile, Sortierung** (#24) – Rechtsklick/Shift+F10;
   Buchstaben springen zum ersten passenden Eintrag (springt, filtert nicht, ersetzt T14
   also nicht); Cmd+Q statt `q`; Spaltensortierung per Klick und Cmd+1/2/3
-- [ ] **T10 – Konfigurationsdatei** – `serde` + `toml`, Schema-Validierung, Versionierung
+- [x] **T10 – Konfigurationsdatei** – `serde` + `toml_edit`, Schema-Validierung, Versionierung
+  Ergebnis: `~/.config/ncrs/config.toml` (Windows `%APPDATA%\ncrs\config.toml`), unbekannte Felder abgelehnt, `version = 1`; fehlt die Datei, gelten Defaults, ist sie kaputt, ebenfalls, mit Pfad und Zeile in der Statuszeile. Erster Nutzer: `[open] view/edit` für F3/F4.
   *Voraussetzung für:* T11, T12, T5-Sprachpersistenz
 - [ ] **T11 – Keymap aus Config** – `Msg` bleibt, Tasten kommen aus der Datei
 - [ ] **T12 – Theming aus Config** – `theme.rs` liest Colors aus TOML
@@ -487,6 +488,6 @@ weiß ich nur durch deine Beobachtung — die steht als Messung im README, nicht
 | T5 | `build.rs` oder Handpflege? | **`build.rs`, gebaut.** Kontext und Text kommen aus `strings.json`. |
 | T8 | Papierkorb? Crate `trash` | **entschieden: `trash`.** F8 geht in den Papierkorb, Shift+F8 löscht endgültig. Lizenzen der Abhängigkeiten per `cargo metadata` gegen deny.toml geprüft; `cargo deny` prüft in der CI. |
 | T10 | TOML oder JSON für die Config? | **entschieden: TOML**, besser für Handeditierung. |
-| T13 | Sprachauswahl persistent | **teilweise.** `en`/`de` gebaut, F9 schaltet um; die Persistenz hängt an T10. |
+| T13 | Sprachauswahl persistent | **teilweise.** `en`/`de` gebaut, F9 schaltet um; die Persistenz fehlt, die Config dafür steht seit T10. |
 | T14 | Suche: `glob` oder inkrementell? | **offen.** Die Filterlogik ist in beiden testbar, das Timing nicht. |
 | T18 | Settings | **offen.** Wichtige Sachen soll sich das program merken |

@@ -1,10 +1,14 @@
 //! Handing a file to an external program, for F3 (view) and F4 (edit).
 //!
+//! The programs are configurable (`[open]` in the config file); the system's
+//! own are the defaults.
+//!
 //! Opening must never run anything. The system opener performs the default
 //! action, and for a script, an app bundle or a shortcut that is "run it".
-//! Such a file (`could_execute`) goes to a text editor instead, or is refused
-//! where there is no safe editor. An extension list is never complete: on
-//! Unix the exec bit catches the rest, Windows depends on the list alone.
+//! Such a file (`could_execute`) goes to the edit program instead, which is
+//! therefore expected to be a text editor, or is refused where there is none.
+//! An extension list is never complete: on Unix the exec bit catches the
+//! rest, Windows depends on the list alone.
 //!
 //! Starting is not blocking: the program is spawned and reaped on a thread of
 //! its own, so the window stays usable while a viewer is open.
@@ -13,6 +17,8 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use crate::config::{OpenPrograms, ProgramLine};
+
 /// What the user wants done with the file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenKind {
@@ -20,32 +26,38 @@ pub enum OpenKind {
     Edit,
 }
 
+/// A program and its arguments, ready to start. Built by `open_command`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenCommand {
+    pub program: OsString,
+    pub args: Vec<OsString>,
+}
+
 /// Where F3 and F4 start a program. A trait so the end-to-end tests can hand
 /// the app a launcher of their own: a test must never open a real window.
 pub trait Launcher: Send + Sync {
-    /// Starts the program for `path` and returns without waiting for it. The
-    /// error is already text, for the status line.
+    /// Starts `command` and returns without waiting for it. The error is
+    /// already text, for the status line.
     ///
-    /// `executable` is `could_execute(path)`, passed in so the caller has
-    /// already decided about refusing and the launcher stays free of the
-    /// filesystem.
-    fn launch(&self, kind: OpenKind, path: &Path, executable: bool) -> Result<(), String>;
+    /// Refusing a file is decided before, in `open_command`: the launcher
+    /// starts what it is given.
+    fn launch(&self, command: &OpenCommand) -> Result<(), String>;
 }
 
-/// The operating system's opener, through `std::process::Command`.
+/// The operating system's way to start a program, through
+/// `std::process::Command`.
+#[derive(Debug)]
 pub struct SystemLauncher;
 
 impl Launcher for SystemLauncher {
-    fn launch(&self, kind: OpenKind, path: &Path, executable: bool) -> Result<(), String> {
-        let (program, args) = open_command(kind, path, executable)
-            .ok_or_else(|| "refusing to open an executable".to_string())?;
-        let mut child = Command::new(&program)
-            .args(&args)
+    fn launch(&self, command: &OpenCommand) -> Result<(), String> {
+        let mut child = Command::new(&command.program)
+            .args(&command.args)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .map_err(|err| format!("{}: {err}", program.to_string_lossy()))?;
+            .map_err(|err| format!("{}: {err}", command.program.to_string_lossy()))?;
         // Reaped on a thread, or every opened file would leave a zombie.
         std::thread::spawn(move || {
             let _ = child.wait();
@@ -122,51 +134,71 @@ fn has_exec_bit(_path: &Path) -> bool {
     false
 }
 
-/// The program and arguments that open `path`, or `None` when nothing safe
-/// exists. Never a shell: the path is one argument of its own, so `&` or a
-/// space in a name cannot become a command.
+/// The system's own view and edit programs, used where the config names none.
+/// Linux has no generic editor, so there it is `None`.
+fn default_programs() -> (ProgramLine, Option<ProgramLine>) {
+    #[cfg(target_os = "macos")]
+    {
+        (
+            ProgramLine::new("open", &[]),
+            Some(ProgramLine::new("open", &["-t"])),
+        )
+    }
+    #[cfg(windows)]
+    {
+        (
+            ProgramLine::new("explorer", &[]),
+            Some(ProgramLine::new("notepad", &[])),
+        )
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
+    {
+        (ProgramLine::new("xdg-open", &[]), None)
+    }
+}
+
+/// The command that opens `path`, or `None` when nothing safe exists. Never a
+/// shell: the path is one argument of its own, so `&` or a space in a name
+/// cannot become a command.
 ///
-/// With `executable` set, macOS and Windows show the content in a text editor
-/// for both kinds; Linux has no generic editor, so it opens nothing.
+/// The programs come from the config, the system's own fill in what it leaves
+/// out. With `executable` set the file goes to the edit program for both
+/// kinds, never to the view program: the system opener would run it, so the
+/// edit program has to be a text editor. Without one (Linux default) nothing
+/// is opened. Edit without an edit program falls back to the view program.
 ///
 /// A relative path is anchored with `./`, so a name that starts with `-` is
 /// not read as an option.
 // ponytail: no $EDITOR/$VISUAL, the app is a GUI without a terminal and vim
-// would start into nothing. T10 makes the programs configurable.
+// would start into nothing.
 pub fn open_command(
+    programs: &OpenPrograms,
     kind: OpenKind,
     path: &Path,
     executable: bool,
-) -> Option<(OsString, Vec<OsString>)> {
+) -> Option<OpenCommand> {
+    let (default_view, default_edit) = default_programs();
+    let view = programs.view.clone().unwrap_or(default_view);
+    let edit = programs.edit.clone().or(default_edit);
+    let chosen = if executable {
+        edit?
+    } else {
+        match kind {
+            OpenKind::View => view,
+            OpenKind::Edit => edit.unwrap_or(view),
+        }
+    };
     let anchored: PathBuf = if path.is_absolute() {
         path.to_path_buf()
     } else {
         Path::new(".").join(path)
     };
-    let argument = anchored.into_os_string();
-
-    #[cfg(target_os = "macos")]
-    {
-        let as_text = executable || kind == OpenKind::Edit;
-        Some(if as_text {
-            ("open".into(), vec!["-t".into(), argument])
-        } else {
-            ("open".into(), vec![argument])
-        })
-    }
-    #[cfg(windows)]
-    {
-        Some(if executable || kind == OpenKind::Edit {
-            ("notepad".into(), vec![argument])
-        } else {
-            ("explorer".into(), vec![argument])
-        })
-    }
-    #[cfg(not(any(target_os = "macos", windows)))]
-    {
-        let _ = kind;
-        (!executable).then(|| ("xdg-open".into(), vec![argument]))
-    }
+    let mut args: Vec<OsString> = chosen.args().iter().map(OsString::from).collect();
+    args.push(anchored.into_os_string());
+    Some(OpenCommand {
+        program: chosen.program().into(),
+        args,
+    })
 }
 
 // reason: a failing assertion is the signal in a test
@@ -180,8 +212,21 @@ pub fn open_command(
 mod tests {
     use super::*;
 
-    fn command(kind: OpenKind, path: &Path, executable: bool) -> Option<(OsString, Vec<OsString>)> {
-        open_command(kind, path, executable)
+    fn command(kind: OpenKind, path: &Path, executable: bool) -> Option<OpenCommand> {
+        open_command(&OpenPrograms::default(), kind, path, executable)
+    }
+
+    fn with(program: &str, args: &[&str], path: &Path) -> OpenCommand {
+        let mut all: Vec<OsString> = args.iter().map(OsString::from).collect();
+        all.push(path.as_os_str().to_owned());
+        OpenCommand {
+            program: program.into(),
+            args: all,
+        }
+    }
+
+    fn configured(view: Option<ProgramLine>, edit: Option<ProgramLine>) -> OpenPrograms {
+        OpenPrograms { view, edit }
     }
 
     #[cfg(target_os = "macos")]
@@ -190,14 +235,11 @@ mod tests {
         let path = Path::new("/tmp/a & b.txt");
         assert_eq!(
             command(OpenKind::View, path, false),
-            Some(("open".into(), vec![path.as_os_str().to_owned()]))
+            Some(with("open", &[], path))
         );
         assert_eq!(
             command(OpenKind::Edit, path, false),
-            Some((
-                "open".into(),
-                vec!["-t".into(), path.as_os_str().to_owned()]
-            ))
+            Some(with("open", &["-t"], path))
         );
     }
 
@@ -206,13 +248,7 @@ mod tests {
     fn macos_shows_an_executable_as_text_for_both_kinds() {
         let path = Path::new("/tmp/run.command");
         for kind in [OpenKind::View, OpenKind::Edit] {
-            assert_eq!(
-                command(kind, path, true),
-                Some((
-                    "open".into(),
-                    vec!["-t".into(), path.as_os_str().to_owned()]
-                ))
-            );
+            assert_eq!(command(kind, path, true), Some(with("open", &["-t"], path)));
         }
     }
 
@@ -223,7 +259,7 @@ mod tests {
         for kind in [OpenKind::View, OpenKind::Edit] {
             assert_eq!(
                 command(kind, path, false),
-                Some(("xdg-open".into(), vec![path.as_os_str().to_owned()]))
+                Some(with("xdg-open", &[], path))
             );
             assert_eq!(command(kind, path, true), None);
         }
@@ -235,18 +271,83 @@ mod tests {
         let path = Path::new(r"C:\tmp\a & b.txt");
         assert_eq!(
             command(OpenKind::View, path, false),
-            Some(("explorer".into(), vec![path.as_os_str().to_owned()]))
+            Some(with("explorer", &[], path))
         );
         for kind in [OpenKind::View, OpenKind::Edit] {
-            assert_eq!(
-                command(kind, path, true),
-                Some(("notepad".into(), vec![path.as_os_str().to_owned()]))
-            );
+            assert_eq!(command(kind, path, true), Some(with("notepad", &[], path)));
         }
         assert_eq!(
             command(OpenKind::Edit, path, false),
-            Some(("notepad".into(), vec![path.as_os_str().to_owned()]))
+            Some(with("notepad", &[], path))
         );
+    }
+
+    #[test]
+    fn configured_programs_get_their_arguments_then_the_path() {
+        let programs = configured(
+            Some(ProgramLine::new("viewer", &["--x", "-y"])),
+            Some(ProgramLine::new("editor", &["-n"])),
+        );
+        let path = Path::new("/tmp/a.txt");
+        assert_eq!(
+            open_command(&programs, OpenKind::View, path, false),
+            Some(with("viewer", &["--x", "-y"], path))
+        );
+        assert_eq!(
+            open_command(&programs, OpenKind::Edit, path, false),
+            Some(with("editor", &["-n"], path))
+        );
+    }
+
+    #[test]
+    fn an_executable_goes_to_the_configured_editor_for_both_kinds() {
+        let programs = configured(
+            Some(ProgramLine::new("viewer", &[])),
+            Some(ProgramLine::new("editor", &["-n"])),
+        );
+        let path = Path::new("/tmp/run.sh");
+        for kind in [OpenKind::View, OpenKind::Edit] {
+            assert_eq!(
+                open_command(&programs, kind, path, true),
+                Some(with("editor", &["-n"], path))
+            );
+        }
+    }
+
+    /// A configured viewer must never receive a file that could run.
+    #[test]
+    fn an_executable_never_goes_to_the_configured_viewer() {
+        let programs = configured(Some(ProgramLine::new("viewer", &[])), None);
+        let path = Path::new("/tmp/run.sh");
+        let found = open_command(&programs, OpenKind::View, path, true);
+        #[cfg(target_os = "macos")]
+        assert_eq!(found, Some(with("open", &["-t"], path)));
+        #[cfg(windows)]
+        assert_eq!(found, Some(with("notepad", &[], path)));
+        #[cfg(not(any(target_os = "macos", windows)))]
+        assert_eq!(found, None);
+    }
+
+    #[test]
+    fn edit_without_an_edit_program_falls_back_to_the_configured_viewer() {
+        // Linux has no default editor; elsewhere the default editor applies.
+        let programs = configured(Some(ProgramLine::new("viewer", &["--x"])), None);
+        let path = Path::new("/tmp/a.txt");
+        let found = open_command(&programs, OpenKind::Edit, path, false);
+        #[cfg(not(any(target_os = "macos", windows)))]
+        assert_eq!(found, Some(with("viewer", &["--x"], path)));
+        #[cfg(target_os = "macos")]
+        assert_eq!(found, Some(with("open", &["-t"], path)));
+        #[cfg(windows)]
+        assert_eq!(found, Some(with("notepad", &[], path)));
+    }
+
+    #[test]
+    fn a_relative_path_is_anchored_for_a_configured_program() {
+        let programs = configured(Some(ProgramLine::new("viewer", &["--x"])), None);
+        let found = open_command(&programs, OpenKind::View, Path::new("-rf"), false).unwrap();
+        let anchored = Path::new(".").join("-rf").into_os_string();
+        assert_eq!(found.args, [OsString::from("--x"), anchored]);
     }
 
     #[test]
@@ -281,10 +382,10 @@ mod tests {
     #[test]
     fn the_path_is_one_argument_and_never_an_option() {
         for kind in [OpenKind::View, OpenKind::Edit] {
-            let (_, args) = command(kind, Path::new("-rf evil"), false).unwrap();
+            let args = command(kind, Path::new("-rf evil"), false).unwrap().args;
             let last = args.last().unwrap().to_string_lossy().into_owned();
             assert!(last.starts_with("./-rf evil"), "got {last:?}");
-            let (_, absolute) = command(kind, Path::new("/tmp/-x"), false).unwrap();
+            let absolute = command(kind, Path::new("/tmp/-x"), false).unwrap().args;
             assert_eq!(absolute.last().unwrap(), "/tmp/-x");
         }
     }
