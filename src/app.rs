@@ -4249,14 +4249,16 @@ mod copy_to_clipboard_tests {
         clipboard_text(panel, kind).map(|copied| copied.text)
     }
 
+    /// Joined as the code joins, so Windows gets its own separator.
+    fn in_dir(name: &str) -> String {
+        PathBuf::from("/left/dir").join(name).display().to_string()
+    }
+
     #[test]
     fn the_cursor_row_is_copied_as_path_or_name() {
         let mut panel = panel();
         panel.selected = 1;
-        assert_eq!(
-            text(&panel, ClipboardKind::Path).as_deref(),
-            Some("/left/dir/zulu.txt")
-        );
+        assert_eq!(text(&panel, ClipboardKind::Path), Some(in_dir("zulu.txt")));
         assert_eq!(
             text(&panel, ClipboardKind::Name).as_deref(),
             Some("zulu.txt")
@@ -4272,7 +4274,7 @@ mod copy_to_clipboard_tests {
         assert_eq!(
             clipboard_text(&panel, ClipboardKind::Path),
             Some(ClipboardText {
-                text: "/left/dir/zulu.txt\n/left/dir/alpha.txt".to_string(),
+                text: format!("{}\n{}", in_dir("zulu.txt"), in_dir("alpha.txt")),
                 count: 2,
             })
         );
