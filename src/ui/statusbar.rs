@@ -5,9 +5,10 @@ use iced::{alignment, Element, Length, Padding};
 use super::format;
 use super::layout::{DATE_COLUMN_WIDTH, SIZE_COLUMN_WIDTH, STATUSBAR_HEIGHT};
 use super::panel::PanelState;
-use super::theme::{self, colors, font_size, spacing};
+use super::theme::{self, font_size, spacing};
 use crate::fs::ReadError;
 use crate::i18n::{Language, Msg};
+use crate::palette::Palette;
 
 /// The path at the left of the bar: a text field, with a button that copies
 /// the panel's path. The messages are the caller's, so
@@ -24,13 +25,13 @@ const COPY_ICON_SIZE: f32 = 14.0;
 const COPY_ICON_SQUARE: f32 = 9.0;
 
 /// Two overlapping squares, drawn from widgets so no font or image is needed.
-fn copy_icon<'a, M: 'a>() -> Element<'a, M> {
+fn copy_icon<'a, M: 'a>(palette: &Palette) -> Element<'a, M> {
     let square = |filled: bool, offset: f32| {
         container(
             container(column![])
                 .width(COPY_ICON_SQUARE)
                 .height(COPY_ICON_SQUARE)
-                .style(theme::icon_square(filled)),
+                .style(theme::icon_square(palette, filled)),
         )
         .padding(Padding {
             top: offset,
@@ -50,6 +51,7 @@ fn copy_icon<'a, M: 'a>() -> Element<'a, M> {
 fn path_bar<'a, M: Clone + 'a>(
     panel: &'a PanelState,
     lang: Language,
+    palette: &Palette,
     bar: PathBar<'a, M>,
 ) -> Element<'a, M> {
     // Always a text field: a click puts the caret where it landed, and what it
@@ -62,20 +64,20 @@ fn path_bar<'a, M: Clone + 'a>(
         .on_submit(bar.on_submit)
         .size(font_size::STATUS)
         .padding(0.0)
-        .style(theme::path_input)
+        .style(theme::path_input(palette))
         .into();
     let copy = tooltip(
-        button(copy_icon())
+        button(copy_icon(palette))
             .on_press(bar.on_copy)
             .padding(3.0)
-            .style(theme::icon_button),
+            .style(theme::icon_button(palette)),
         container(
             text(lang.text(Msg::StatusCopyPathTooltip))
                 .size(font_size::STATUS)
                 .wrapping(text::Wrapping::None),
         )
         .padding([2.0, 6.0])
-        .style(theme::dialog),
+        .style(theme::dialog(palette)),
         tooltip::Position::Top,
     );
     row![container(path).width(Length::Fill).clip(true), copy]
@@ -105,22 +107,23 @@ pub struct JobStatus {
 pub fn view<'a, M: Clone + 'a>(
     panel: &'a PanelState,
     lang: Language,
+    palette: &Palette,
     job: Option<JobStatus>,
     failure: Option<&'a str>,
     path_bar_input: PathBar<'a, M>,
 ) -> Element<'a, M> {
-    let path = path_bar(panel, lang, path_bar_input);
+    let path = path_bar(panel, lang, palette, path_bar_input);
 
     let details: Element<'a, M> = if let Some(last_failure) = failure {
         text(last_failure)
             .size(font_size::STATUS)
-            .color(colors::ERROR)
+            .color(palette.error)
             .wrapping(text::Wrapping::None)
             .into()
     } else if let Some(error) = &panel.error {
         text(format_error(error, &panel.path, lang))
             .size(font_size::STATUS)
-            .color(colors::ERROR)
+            .color(palette.error)
             .wrapping(text::Wrapping::None)
             .into()
     } else if let Some(entry) = panel.selected_entry() {
@@ -150,18 +153,18 @@ pub fn view<'a, M: Clone + 'a>(
             ""
         })
         .size(font_size::STATUS)
-        .color(colors::DIM_TEXT)
+        .color(palette.dim_text)
         .into()
     };
 
-    let separator = || text("│").size(font_size::STATUS).color(colors::DIM_TEXT);
+    let separator = || text("│").size(font_size::STATUS).color(palette.dim_text);
     // An invisible separator keeps the columns aligned whether or not a job is
     // running, so the file info does not jump sideways when one starts.
     let separator_hidden = || text(" ").size(font_size::STATUS);
 
     /// The job line: what it is, how far along, and the abort hint. Returns
     /// None when nothing is running, so the bar falls back to the file info.
-    fn job_text<'a, M: 'a>(job: &JobStatus, lang: Language) -> Element<'a, M> {
+    fn job_text<'a, M: 'a>(job: &JobStatus, lang: Language, palette: &Palette) -> Element<'a, M> {
         let counter = lang
             .text(Msg::JobProgress)
             .replace("{done}", &job.done.to_string())
@@ -181,7 +184,7 @@ pub fn view<'a, M: Clone + 'a>(
         }
         text(line)
             .size(font_size::STATUS)
-            .color(colors::ACCENT)
+            .color(palette.accent)
             .wrapping(text::Wrapping::None)
             .into()
     }
@@ -189,7 +192,7 @@ pub fn view<'a, M: Clone + 'a>(
     // A running job replaces the file info, not the path: the path is where the
     // operation is going, which is still what the user is watching.
     let middle: Element<'a, M> = match &job {
-        Some(running) => job_text(running, lang),
+        Some(running) => job_text(running, lang, palette),
         None => details,
     };
     // The path keeps two parts, the middle three, whatever is in the middle.
@@ -217,7 +220,7 @@ pub fn view<'a, M: Clone + 'a>(
     .height(STATUSBAR_HEIGHT)
     .width(Length::Fill)
     .align_y(alignment::Vertical::Center)
-    .style(theme::statusbar)
+    .style(theme::statusbar(palette))
     .into()
 }
 

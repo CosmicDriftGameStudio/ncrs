@@ -9,9 +9,10 @@ use iced::widget::{button, checkbox, column, container, text, Row};
 use iced::{alignment, Element};
 
 use super::layout::DIALOG_WIDTH;
-use super::theme::{self, colors, font_size, spacing};
+use super::theme::{self, font_size, spacing};
 use crate::i18n::{Language, Msg};
 use crate::messages::{ConflictChoice, Message};
+use crate::palette::Palette;
 
 /// Renders the conflict dialog.
 ///
@@ -26,24 +27,25 @@ use crate::messages::{ConflictChoice, Message};
 pub fn view<'a>(
     name: &str,
     lang: Language,
+    palette: &Palette,
     all: bool,
     focus: usize,
     on_choice: impl Fn(ConflictChoice) -> Message + 'a,
 ) -> Element<'a, Message> {
     let title = text(lang.text(Msg::ConflictTitle))
         .size(font_size::TITLE)
-        .color(colors::ACCENT);
+        .color(palette.accent);
 
     let subject = text(lang.text(Msg::ConflictName).replace("{name}", name))
         .size(font_size::STATUS)
-        .color(colors::TEXT);
+        .color(palette.text);
 
     // The checkbox state comes from the app, not from here: the view is pure,
     // and the tick has to survive the dialog being rebuilt every frame.
     let all_row = Row::with_children([
         checkbox(all)
             .on_toggle(|_| Message::ToggleConflictAll)
-            .style(theme::dialog_checkbox)
+            .style(theme::dialog_checkbox(palette))
             .into(),
         text(lang.text(Msg::ConflictApplyAll))
             .size(font_size::STATUS)
@@ -55,15 +57,15 @@ pub fn view<'a>(
     let button_row = Row::with_children([
         button(text(lang.text(Msg::ConflictOverwrite)))
             .on_press(on_choice(ConflictChoice::ThisOverwrite))
-            .style(theme::dialog_button(focus == 0))
+            .style(theme::dialog_button(palette, focus == 0))
             .into(),
         button(text(lang.text(Msg::ConflictKeep)))
             .on_press(on_choice(ConflictChoice::ThisKeep))
-            .style(theme::dialog_button(focus == 1))
+            .style(theme::dialog_button(palette, focus == 1))
             .into(),
         button(text(lang.text(Msg::ConflictCancel)))
             .on_press(on_choice(ConflictChoice::Cancel))
-            .style(theme::dialog_button(focus == 2))
+            .style(theme::dialog_button(palette, focus == 2))
             .into(),
     ])
     .spacing(spacing::CELL_PADDING_X);
@@ -71,6 +73,6 @@ pub fn view<'a>(
     container(column![title, subject, all_row, button_row].spacing(spacing::SECTION_GAP))
         .padding(spacing::OUTER_PADDING * 2.0)
         .width(DIALOG_WIDTH)
-        .style(theme::dialog)
+        .style(theme::dialog(palette))
         .into()
 }

@@ -455,6 +455,18 @@
       "context": "Status bar at startup when the config file could not be used and no line applies: the file is unreadable, not a regular file, too big, or the error has no position. Takes the file path and the reason, which is English and stays untranslated. The app runs on with the default settings.",
       "en": "Config file {path}: {reason}. Using the defaults.",
       "de": "Konfigurationsdatei {path}: {reason}. Es gelten die Standardwerte."
+    },
+    {
+      "key": "error.contrast_at_line",
+      "context": "Status bar at startup when the colors in the config file are valid and in use, but a text color is hard to read on its background. Takes the file path, the line number, the names of the two color roles (they are the config keys and stay untranslated) and the contrast ratio, a number with one decimal place.",
+      "en": "Config file {path}, line {line}: {foreground} on {background} has a contrast of only {ratio}:1 and may be hard to read.",
+      "de": "Konfigurationsdatei {path}, Zeile {line}: {foreground} auf {background} hat nur ein Kontrastverhältnis von {ratio}:1 und ist womöglich schwer lesbar."
+    },
+    {
+      "key": "error.contrast",
+      "context": "Same as the contrast warning with a line, for when no line applies: the colors come from the built-in palette only. Takes the file path, the names of the two color roles (config keys, untranslated) and the contrast ratio with one decimal place.",
+      "en": "Config file {path}: {foreground} on {background} has a contrast of only {ratio}:1 and may be hard to read.",
+      "de": "Konfigurationsdatei {path}: {foreground} auf {background} hat nur ein Kontrastverhältnis von {ratio}:1 und ist womöglich schwer lesbar."
     }
   ]
 }

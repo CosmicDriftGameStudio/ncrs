@@ -21,6 +21,7 @@ mod i18n;
 mod jobs;
 mod keymap;
 mod messages;
+mod palette;
 mod selection;
 mod ui;
 
@@ -112,6 +113,15 @@ CONFIG:
     One key on two actions, Escape, and letters or digits without ctrl, alt
     or cmd (they jump to a file name) are errors. The full list of actions
     is in the README.
+
+    [theme] picks a palette (preset \"default\" or \"classic\") and sets single
+    colors on top of it as \"#rrggbb\" or \"#rgb\":
+        [theme]
+        preset = \"classic\"
+        directory = \"#ffff55\"
+    Roles: background, panel, text, dim_text, directory, cursor, cursor_text,
+    tagged, border, bar, bar_inactive, status_bar, dialog, menu, accent,
+    success, error. Read at start; text below 3:1 contrast is reported.
 
 DELETE:
     F8 asks, then moves the tagged rows (or the row under the cursor) to the

@@ -211,6 +211,48 @@ Actions: `quit`, `open`, `go_up`, `switch_panel`, `switch_language`,
 `sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`. Their
 default keys are in [Keyboard shortcuts](#keyboard-shortcuts).
 
+### Colors
+
+`[theme]` picks a ready-made palette and changes single colors on top of it:
+
+```toml
+[theme]
+# "default" (the dark teal look) or "classic" (Norton Commander blue).
+preset = "classic"
+# Then single roles, as "#rrggbb" or "#rgb".
+directory = "#ffff55"
+tagged = "#a50"
+```
+
+| Role | What it colors |
+|---|---|
+| `background` | The window around the panels and behind the function keys |
+| `panel` | The file panels |
+| `text` | File names and plain text, the function key digits |
+| `dim_text` | Secondary text: inactive panel title, untagged star, greyed-out menu entries |
+| `directory` | Directory names |
+| `cursor` | The cursor row, the highlighted menu entry, the default button, the function key labels |
+| `cursor_text` | Text on the cursor row, on the title bars and on the function key labels |
+| `tagged` | Tagged rows, in both panels |
+| `border` | The frame of the active panel, of dialogs and menus |
+| `bar` | The top bar and the title of the active panel |
+| `bar_inactive` | Title and frame of the inactive panel |
+| `status_bar` | The status bar |
+| `dialog` | Dialogs |
+| `menu` | The context menu |
+| `accent` | Column titles, the path, dialog titles, tag stars, menu shortcuts |
+| `success` | Confirmations in the title bar |
+| `error` | Errors |
+
+- Roles not listed keep the preset's colors; without `[theme]` nothing changes.
+  The order in the file does not matter, `preset` always applies first.
+- An unknown role or preset and a color in another form (names, `#rrggbbaa`) are
+  errors with the line, handled like any other config error.
+- A color that makes text hard to read (text on `panel`, `status_bar`, `dialog`
+  or `menu`, directory names on `panel`, `cursor_text` on `cursor`, below 3:1) is
+  applied anyway; the status bar says which pair and where, until `Esc`.
+- Colors are read at start; restart ncrs after editing the file.
+
 ## Graphics backend
 
 The renderer is chosen by cargo features, not in code — `src/main.rs` contains no
