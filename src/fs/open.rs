@@ -346,7 +346,8 @@ mod tests {
     fn a_relative_path_is_anchored_for_a_configured_program() {
         let programs = configured(Some(ProgramLine::new("viewer", &["--x"])), None);
         let found = open_command(&programs, OpenKind::View, Path::new("-rf"), false).unwrap();
-        assert_eq!(found.args, ["--x", "./-rf"]);
+        let anchored = Path::new(".").join("-rf").into_os_string();
+        assert_eq!(found.args, [OsString::from("--x"), anchored]);
     }
 
     #[test]
