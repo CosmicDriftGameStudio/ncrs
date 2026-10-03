@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Confirmations such as "Path copied" now show on the right of the title bar with
+  a green check mark and go away after three seconds; failures stay red in the
+  status bar.
 - The path in the status bar can be edited: click it, type or paste a path and
   press `Enter` (a folder opens in the active panel, a file is shown in its
   folder; `~` is the home directory). `Esc` or a click elsewhere puts the

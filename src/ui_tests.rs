@@ -722,3 +722,44 @@ mod context_menu_overlay {
         assert_eq!(sim.into_messages().count(), 0);
     }
 }
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod title_notice {
+    use super::*;
+    use crate::messages::ClipboardKind;
+
+    fn copied() -> App {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::CopyToClipboard(ClipboardKind::Path)));
+        app
+    }
+
+    #[test]
+    fn the_notice_is_drawn_in_the_title_bar() {
+        let matches = simulator(&copied())
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/title_notice.png")
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the title bar notice does not match title_notice.png"
+        );
+    }
+
+    #[test]
+    fn the_notice_is_not_in_the_status_bar() {
+        let with_notice = copied();
+        let mut sim = simulator(&with_notice);
+        sim.find("\u{2713} Path copied").unwrap();
+        let without_notice = App::with_fixed_panels();
+        let mut plain = simulator(&without_notice);
+        plain.find("\u{2713} Path copied").unwrap_err();
+    }
+}

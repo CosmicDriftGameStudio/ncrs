@@ -63,6 +63,9 @@ pub enum Message {
     JobProgress(crate::fs::transfer::Tick),
     /// F5 or F6, decided by the action rather than a message each.
     Transfer(TransferKind),
+    /// The title bar's notice of this generation has been up long enough. An
+    /// older timer finds a newer notice and leaves it.
+    NoticeExpired(u64),
     /// Path or name of the tagged rows, else the cursor row, to the clipboard.
     CopyToClipboard(ClipboardKind),
     /// The user answered the conflict dialog.

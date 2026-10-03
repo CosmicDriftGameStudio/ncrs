@@ -25,6 +25,9 @@ use crate::ui::{
 };
 use tokio::sync::mpsc;
 
+/// How long a confirmation stays in the title bar.
+const NOTICE_DURATION: std::time::Duration = std::time::Duration::from_secs(3);
+
 const APP_NAME: &str = "NC-rs";
 
 /// Turns the transfer's channel into a stream for `Subscription::run_with`.
@@ -352,6 +355,8 @@ pub struct App {
     job_error: Option<String>,
     /// A neutral confirmation, such as "Path copied". Goes the way of `job_error`.
     notice: Option<String>,
+    /// Counts the notices shown, so a timer can tell if it is still the latest.
+    notice_generation: u64,
     /// How many items the running job has finished, for the progress bar.
     job_done: usize,
     /// Whether "for all files" is ticked in the conflict dialog. Lives here so
@@ -753,6 +758,7 @@ impl App {
             launcher: Arc::new(fs::SystemLauncher),
             job_error: None,
             notice: None,
+            notice_generation: 0,
             job_done: 0,
             conflict_all: false,
             conflict_rule: None,
@@ -899,6 +905,12 @@ impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         if resets_type_ahead(&message) {
             self.type_ahead.reset();
+        }
+        if let Message::NoticeExpired(generation) = message {
+            if generation == self.notice_generation {
+                self.notice = None;
+            }
+            return Task::none();
         }
         if leaves_path_field(&message) {
             self.path_field = None;
@@ -1339,6 +1351,8 @@ impl App {
                 Task::none()
             }
             Message::Quit => iced::exit(),
+            // Handled in `update`, which owns the timer's generation check.
+            Message::NoticeExpired(_) => Task::none(),
         };
 
         // The keyboard subscription cannot see `&self`, so it reads the routing
@@ -1571,14 +1585,13 @@ impl App {
 
         let root = container(
             column![
-                header::view(APP_NAME),
+                header::view(APP_NAME, self.notice.as_deref()),
                 panels,
                 statusbar::view(
                     self.active_panel(),
                     self.lang,
                     self.job_status(),
                     self.job_error.as_deref(),
-                    self.notice.as_deref(),
                     statusbar::PathBar {
                         editing: self.path_field.as_deref(),
                         on_open: Message::PathFieldOpen,
@@ -1759,8 +1772,20 @@ impl App {
             return Task::none();
         };
         self.job_error = None;
-        self.notice = Some(self.copied_notice(kind, copied.count));
-        iced::clipboard::write(copied.text)
+        let shown = self.show_notice(self.copied_notice(kind, copied.count));
+        Task::batch([iced::clipboard::write(copied.text), shown])
+    }
+
+    /// Shows `text` in the title bar for [`NOTICE_DURATION`]. The timer carries
+    /// the generation, so it cannot clear a notice that came after it.
+    fn show_notice(&mut self, text: String) -> Task<Message> {
+        self.notice_generation = self.notice_generation.wrapping_add(1);
+        self.notice = Some(text);
+        let generation = self.notice_generation;
+        Task::perform(
+            async { tokio::time::sleep(NOTICE_DURATION).await },
+            move |()| Message::NoticeExpired(generation),
+        )
     }
 
     fn copied_notice(&self, kind: ClipboardKind, count: usize) -> String {
@@ -2959,6 +2984,7 @@ impl App {
             launcher: Arc::new(fs::SystemLauncher),
             job_error: None,
             notice: None,
+            notice_generation: 0,
             job_done: 0,
             conflict_all: false,
             conflict_rule: None,
@@ -5607,5 +5633,53 @@ mod path_field_tests {
         let copied = clipboard_text(app.active_panel(), ClipboardKind::Directory).unwrap();
         assert_eq!(copied.text, "/home/test/links");
         assert_eq!(copied.count, 1);
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod notice_tests {
+    use super::*;
+
+    fn copy_path(app: &mut App) {
+        drop(app.update(Message::CopyToClipboard(ClipboardKind::Path)));
+    }
+
+    #[test]
+    fn the_notice_goes_when_its_own_timer_fires() {
+        let mut app = App::with_fixed_panels();
+        copy_path(&mut app);
+        assert_eq!(app.notice.as_deref(), Some("Path copied"));
+        drop(app.update(Message::NoticeExpired(app.notice_generation)));
+        assert_eq!(app.notice, None);
+    }
+
+    #[test]
+    fn an_older_timer_leaves_a_newer_notice_alone() {
+        let mut app = App::with_fixed_panels();
+        copy_path(&mut app);
+        let first = app.notice_generation;
+        drop(app.update(Message::CopyToClipboard(ClipboardKind::Name)));
+        assert_ne!(app.notice_generation, first);
+
+        drop(app.update(Message::NoticeExpired(first)));
+        assert_eq!(app.notice.as_deref(), Some("Name copied"));
+
+        drop(app.update(Message::NoticeExpired(app.notice_generation)));
+        assert_eq!(app.notice, None);
+    }
+
+    #[test]
+    fn a_failure_replaces_the_notice() {
+        let mut app = App::with_fixed_panels();
+        copy_path(&mut app);
+        app.set_status_error("it failed");
+        assert_eq!(app.notice, None);
+        assert_eq!(app.job_error.as_deref(), Some("it failed"));
     }
 }

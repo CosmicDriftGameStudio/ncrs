@@ -49,6 +49,7 @@ The same window in German, switched with F9.
 - Async directory loading (tokio blocking pool) – the UI never blocks
 - Stale-result protection (fast navigation cannot show an outdated listing)
 - Errors (e.g. *Permission denied*) are shown in the status bar – no panics
+- Confirmations (e.g. *Path copied*) appear at the right of the title bar for three seconds
 - Mouse click selects a row and activates its panel; the wheel and the trackpad scroll the panel under the pointer
 - Drive menu (`Alt`+`F1` / `Alt`+`F2`): jump a panel to the system volume, home, iCloud Drive (macOS),
   mounted volumes or drive letters, the same places as in the Finder sidebar

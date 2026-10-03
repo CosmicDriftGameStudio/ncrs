@@ -23,7 +23,7 @@ iced = { version = "0.14", default-features = false, features = ["tokio", "fira-
 # Only what the code uses: spawn_blocking, #[tokio::test] and the multi-thread
 # runtime iced's executor needs. "full" also pulls mio, socket2, signal-hook-registry
 # and wasi — network and signal machinery a file manager has no use for.
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 trash = "5.2.9"
 

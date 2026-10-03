@@ -118,7 +118,6 @@ pub fn view<'a, M: Clone + 'a>(
     lang: Language,
     job: Option<JobStatus>,
     failure: Option<&'a str>,
-    notice: Option<&'a str>,
     path_bar_input: PathBar<'a, M>,
 ) -> Element<'a, M> {
     let path = path_bar(panel, lang, path_bar_input);
@@ -127,12 +126,6 @@ pub fn view<'a, M: Clone + 'a>(
         text(last_failure)
             .size(font_size::STATUS)
             .color(colors::ERROR)
-            .wrapping(text::Wrapping::None)
-            .into()
-    } else if let Some(confirmation) = notice {
-        text(confirmation)
-            .size(font_size::STATUS)
-            .color(colors::ACCENT)
             .wrapping(text::Wrapping::None)
             .into()
     } else if let Some(error) = &panel.error {

@@ -25,6 +25,8 @@ pub mod colors {
     pub const DIM_TEXT: Color = Color::from_rgb(0.450, 0.500, 0.640);
     pub const DIR_COLOR: Color = Color::from_rgb(1.000, 1.000, 1.000);
     pub const ACCENT: Color = Color::from_rgb(1.000, 0.850, 0.300);
+    /// Confirmations, drawn on the title bar.
+    pub const SUCCESS: Color = Color::from_rgb(0.600, 1.000, 0.650);
     pub const ERROR: Color = Color::from_rgb(1.000, 0.450, 0.450);
 
     /// The digit of a function key slot: plain light text on the window
