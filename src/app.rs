@@ -1330,14 +1330,15 @@ impl App {
             // A click in the tag column toggles the tag; anywhere else it moves
             // the cursor. Without this, tagging is keyboard-only, and the
             // column of stars the view draws cannot be clicked at all.
-            Message::RowClicked { .. } if self.context_menu.is_some() => {
-                // A click beside the menu only closes it.
-                self.context_menu = None;
-                Task::none()
-            }
+            // A Ctrl+click is a right click: it replaces an open menu.
             Message::RowClicked { side, index, .. } if is_context_click(self.modifiers) => {
                 let pointer = self.input.lock().pointer;
                 self.open_context_menu(side, index, Some(pointer));
+                Task::none()
+            }
+            Message::RowClicked { .. } if self.context_menu.is_some() => {
+                // A click beside the menu only closes it.
+                self.context_menu = None;
                 Task::none()
             }
             Message::RowClicked {
@@ -1662,8 +1663,12 @@ impl App {
             // and the column titles included: those take their own clicks and
             // would never report one. A right press passes through, so another
             // row's menu replaces this one.
-            let click_catcher = mouse_area(Space::new().width(Length::Fill).height(Length::Fill))
-                .on_press(Message::ContextMenuClose);
+            // A Ctrl+click on a Mac is a right click and passes through too.
+            let mut click_catcher =
+                mouse_area(Space::new().width(Length::Fill).height(Length::Fill));
+            if !is_context_click(self.modifiers) {
+                click_catcher = click_catcher.on_press(Message::ContextMenuClose);
+            }
             return Stack::with_children([
                 root.into(),
                 click_catcher.into(),
@@ -5068,6 +5073,23 @@ mod context_menu_tests {
         let active = loaded(&app, LEFT);
         drop(app.update(active));
         assert!(app.context_menu_for_test().is_none(), "its rows are gone");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_control_click_on_another_row_replaces_the_menu() {
+        let mut app = App::with_fixed_panels();
+        open_at(&mut app, LEFT, FILE);
+        let first = enabled_actions(&app);
+        app.set_modifiers_for_test(Modifiers::CTRL);
+        drop(app.update(Message::RowClicked {
+            side: LEFT,
+            index: DIRECTORY,
+            on_tag: false,
+        }));
+        assert!(app.context_menu_for_test().is_some(), "a new menu");
+        let second = enabled_actions(&app);
+        assert_ne!(first, second, "the directory's menu, not the file's");
     }
 
     #[test]

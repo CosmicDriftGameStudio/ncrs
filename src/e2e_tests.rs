@@ -1841,8 +1841,8 @@ fn clicking_the_path_then_typing_and_enter_goes_to_that_directory() {
     focus_the_window(&mut session);
     session.type_into_widgets(TYPED_LIB);
     assert_eq!(
-        session.app.path_field_for_test(),
-        Some(lib.to_string_lossy().as_ref()),
+        session.app.path_field_for_test().map(Path::new),
+        Some(lib.as_path()),
         "typing did not reach the field"
     );
 
@@ -1877,8 +1877,8 @@ fn pasting_into_the_path_field_with_the_command_key_works() {
     )]);
     session.press_in_widgets(Key::Character("v".into()), Modifiers::COMMAND);
     assert_eq!(
-        session.app.path_field_for_test(),
-        Some(lib.to_string_lossy().as_ref())
+        session.app.path_field_for_test().map(Path::new),
+        Some(lib.as_path())
     );
 }
 
