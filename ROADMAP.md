@@ -213,13 +213,13 @@ Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
 
 # Tasks – Basis-Feature
 
-**Stand 2026-10-03: T1–T10 erledigt, T6d teilweise, T11–T18 offen.** Release 0.2.2,
-405 `#[test]`-Funktionen inkl. UI-Tests mit Pixelvergleich.
+**Stand 2026-10-03: T1–T11 erledigt, T6d teilweise, T12–T18 offen.** Release 0.2.2,
+439 `#[test]`-Funktionen inkl. UI-Tests mit Pixelvergleich.
 
 | Block | Inhalt | Stand |
 |---|---|---|
 | A | CI, Installer, Release, `strings.json` | ✅ fertig (T1–T5, T5b), dazu signierte und notarisierte macOS-App |
-| B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | 🔶 F3–F8 und Config fertig, T6d teilweise — **T11 (Keymap aus Config) ist der nächste Task** |
+| B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | 🔶 F3–F8, Config und Keymap fertig, T6d teilweise — **T12 (Theming aus Config) ist der nächste Task** |
 | C | Netzwerk-Mounts, Archive | 🔶 Laufwerksmenü fertig, T15–T17 offen |
 
 Legende: **[P]** Pflicht für ein benutzbares Basis-Feature, **[S]** später. Reihenfolge =
@@ -437,7 +437,8 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
 - [x] **T10 – Konfigurationsdatei** – `serde` + `toml_edit`, Schema-Validierung, Versionierung
   Ergebnis: `~/.config/ncrs/config.toml` (Windows `%APPDATA%\ncrs\config.toml`), unbekannte Felder abgelehnt, `version = 1`; fehlt die Datei, gelten Defaults, ist sie kaputt, ebenfalls, mit Pfad und Zeile in der Statuszeile. Erster Nutzer: `[open] view/edit` für F3/F4.
   *Voraussetzung für:* T11, T12, T5-Sprachpersistenz
-- [ ] **T11 – Keymap aus Config** – `Msg` bleibt, Tasten kommen aus der Datei
+- [x] **T11 – Keymap aus Config** – `Msg` bleibt, Tasten kommen aus der Datei
+  Ergebnis: `[keys]` Aktion → Taste(n), `primary` = Cmd/Ctrl, nicht genannte Aktionen behalten ihre Defaults; Konflikte (auch mit verdrängten Defaults), unbekannte Aktionen/Tasten, Escape und nackte Buchstaben/Ziffern sind Config-Fehler mit Zeile. Leiste, Kontextmenü und Statustexte zeigen die wirksame Belegung.
 - [ ] **T12 – Theming aus Config** – `theme.rs` liest Colors aus TOML
 - [ ] **T13 – Sprachauswahl persistent** – `lang = "de"` in der Config, statt F9
 - [ ] **T14 – Quick-Search** – Typen filtert die Liste, `glob`-basiert, logik-testbar

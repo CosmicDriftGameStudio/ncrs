@@ -16,7 +16,7 @@ application state.
 
 This is a **work in progress**. The dual-panel navigator, the file operations and
 localization with per-string translator context work, and there is a
-[config file](#configuration). Archive support, network mounts, a configurable keymap
+[config file](#configuration) with programs and keys. Archive support, network mounts
 and theming are planned but not built — see [ROADMAP.md](ROADMAP.md)
 for the state, the licensing audit and the reasoning behind the order.
 
@@ -59,6 +59,8 @@ The same window in German, switched with F9.
 - Runs on Linux, macOS and Windows
 
 ## Keyboard shortcuts
+
+The defaults. Most of them can be changed in the config file, see [Keys](#keys).
 
 | Key                | Action                                   |
 |--------------------|------------------------------------------|
@@ -158,6 +160,56 @@ edit = ["open", "-t"]
 - An app started from the Dock or Finder has a minimal `PATH`: give Homebrew or
   VS Code command-line tools by absolute path, or use
   `["open", "-a", "Visual Studio Code"]`.
+
+### Keys
+
+`[keys]` rebinds actions. Each entry names an action and gives one key or a list
+of keys:
+
+```toml
+[keys]
+# F2 copies, F5 does nothing any more.
+copy = "F2"
+# Several keys for one action.
+quit = ["F10", "primary+q"]
+# No key at all; the context menu still offers it.
+delete_permanently = []
+# A key that belongs to another action has to be freed there too:
+# F3 and F4 swapped.
+view = "F4"
+edit = "F3"
+```
+
+- An entry replaces all keys of that action (at most 16); actions not listed keep theirs.
+  The function key bar and the context menu show the keys in effect.
+- A key is modifiers and a key name joined by `+`, case does not matter:
+  `primary` (`Cmd` on macOS, `Ctrl` elsewhere), `ctrl`, `alt` (or `option`),
+  `shift`, `cmd` (or `super`); `F1`–`F12`, `Enter`, `Tab`, `Backspace`, `Space`,
+  `Insert`, `Delete`, `Home`, `End`, `PageUp`, `PageDown`, `Up`, `Down`, `Left`,
+  `Right`, `plus` for `+`, or a single character such as `*` or `c`.
+- One key, two actions is an error, also when the other action only has the key
+  by default: say what the other action gets instead, or `[]`. `primary+q` and
+  `ctrl+q` are the same key on Linux and Windows, so a file can be fine on a Mac
+  and conflict elsewhere.
+- Not allowed: `Escape` (it closes dialogs and menus and stops jobs); letters and
+  digits without `ctrl`, `alt`, `cmd` or `primary`, because they jump to a file
+  name; `shift` with a character that is not a letter (`shift+8` arrives as `*`,
+  write `*`).
+- Fixed: the keys inside dialogs, menus, the name prompt and the path field
+  (`Enter`, `Esc`, arrows, `Tab`), and the `Option` tap for the context menu.
+  In the path field only a `quit` key on an F-key, with `cmd`, or with `ctrl`
+  but not `alt` gets through (`alt` and `AltGr` type characters there).
+- `alt` (Option) with a letter follows the US key positions on a Mac, so on
+  a German or French layout `alt+y` is the key labelled Z. A character bound
+  without a modifier, such as `*`, no longer reaches type-ahead.
+
+Actions: `quit`, `open`, `go_up`, `switch_panel`, `switch_language`,
+`cursor_up`, `cursor_down`, `page_up`, `page_down`, `first`, `last`,
+`toggle_tag`, `tag_up`, `tag_down`, `tag_all`, `clear_tags`, `view`, `edit`,
+`copy`, `move`, `mkdir`, `delete`, `delete_permanently`, `abort_job`,
+`copy_path`, `copy_name`, `drive_menu_left`, `drive_menu_right`,
+`sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`. Their
+default keys are in [Keyboard shortcuts](#keyboard-shortcuts).
 
 ## Graphics backend
 
@@ -363,7 +415,7 @@ per frame, independent of directory size.
 
 - Multi-selection (`Insert`), quick search by typing
 - Filesystem watching (`notify` crate) as an iced `Subscription`
-- Configurable keymap and theme (in the existing config file)
+- Configurable theme (in the existing config file)
 
 ## Tech notes
 
