@@ -364,6 +364,8 @@ pub struct App {
     /// Why the config file was not used. Stays until Escape; moving the cursor
     /// does not clear it, and a job error covers it while that is shown.
     config_error: Option<String>,
+    /// The error behind `config_error`, kept to word it again after F9.
+    config_problem: Option<ConfigError>,
     /// Why the last job failed, in the active language. Shown in the status bar
     /// until the next thing happens.
     job_error: Option<String>,
@@ -765,11 +767,20 @@ impl App {
         match loaded {
             Ok(config) => self.open_programs = config.open,
             Err(err) => {
-                let text = self.config_error_text(&err);
-                self.config_error = Some(text);
+                self.config_error = Some(self.config_error_text(&err));
+                self.config_problem = Some(err);
             }
         }
         self
+    }
+
+    /// F9. A config error still up is worded again in the new language.
+    fn switch_language(&mut self) {
+        self.lang = self.lang.other();
+        self.function_keys = keymap::function_keys(self.lang);
+        if let Some(problem) = &self.config_problem {
+            self.config_error = Some(self.config_error_text(problem));
+        }
     }
 
     fn config_error_text(&self, err: &ConfigError) -> String {
@@ -815,6 +826,7 @@ impl App {
             launcher: Arc::new(fs::SystemLauncher),
             open_programs: config::OpenPrograms::default(),
             config_error: None,
+            config_problem: None,
             job_error: None,
             notice: None,
             notice_generation: 0,
@@ -1019,6 +1031,7 @@ impl App {
 
             Message::DismissConfigError => {
                 self.config_error = None;
+                self.config_problem = None;
                 Task::none()
             }
 
@@ -1379,8 +1392,7 @@ impl App {
             }
             Message::SortBy { .. } | Message::SortActive(_) => self.update_sort(message),
             Message::SwitchLanguage => {
-                self.lang = self.lang.other();
-                self.function_keys = keymap::function_keys(self.lang);
+                self.switch_language();
                 Task::none()
             }
             // A click in the tag column toggles the tag; anywhere else it moves
@@ -3113,6 +3125,7 @@ impl App {
             launcher: Arc::new(fs::SystemLauncher),
             open_programs: config::OpenPrograms::default(),
             config_error: None,
+            config_problem: None,
             job_error: None,
             notice: None,
             notice_generation: 0,
@@ -6026,6 +6039,14 @@ mod config_status_tests {
             route_key(&state(false, false), escape, Modifiers::default()),
             None
         );
+    }
+
+    #[test]
+    fn the_config_error_follows_a_language_switch() {
+        let mut app = App::with_fixed_panels().with_config(Err(invalid(Some(3))));
+        drop(app.update(Message::SwitchLanguage));
+        let shown = app.status_error().unwrap_or_default();
+        assert!(shown.contains("Zeile 3"), "{shown}");
     }
 
     #[test]

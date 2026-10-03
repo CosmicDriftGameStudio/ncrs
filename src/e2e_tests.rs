@@ -1755,11 +1755,20 @@ mod tests {
         session.press(Key::Named(Named::Escape));
         assert!(session.app.context_menu_for_test().is_none());
         assert_eq!(session.app.status_error(), Some(message.as_str()));
+
+        // So does a dialog: Escape answers it and the message stays.
+        session.press(Key::Named(Named::Tab));
+        cursor_to(&mut session, "alpha.txt");
+        session.press(Key::Named(Named::F8));
+        assert!(session.app.delete_dialog_is_open(), "F8 opened no dialog");
+        session.press(Key::Named(Named::Escape));
+        assert!(!session.app.delete_dialog_is_open());
+        assert!(dir.path().join("alpha.txt").exists());
+        assert_eq!(session.app.status_error(), Some(message.as_str()));
+
         session.press(Key::Named(Named::Escape));
         assert_eq!(session.app.status_error(), None);
 
-        session.press(Key::Named(Named::Tab));
-        cursor_to(&mut session, "alpha.txt");
         session.press(Key::Named(Named::F3));
 
         let calls = launcher.calls();
