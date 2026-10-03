@@ -9,6 +9,7 @@ use iced::keyboard::{self, key::Named, Key, Modifiers};
 use iced::widget::{column, container, mouse_area, operation, row, Space, Stack};
 use iced::{event, window, Element, Length, Point, Size, Subscription, Task, Theme};
 
+use crate::config::{self, Config, ConfigError};
 use crate::context_menu::{ContextAction, ContextMenu, InputState};
 use crate::dialog::{Prompt, PromptKind};
 use crate::fs::{self, CreateDirError};
@@ -357,6 +358,9 @@ pub struct App {
     /// Starts the external program of F3 and F4. Injected so tests never
     /// launch a real viewer.
     launcher: Arc<dyn fs::Launcher>,
+    /// The `[open]` programs from the config. What it leaves out is filled in
+    /// per OS by `open_command`.
+    open_programs: config::OpenPrograms,
     /// Why the last job failed, in the active language. Shown in the status bar
     /// until the next thing happens.
     job_error: Option<String>,
@@ -737,7 +741,43 @@ impl App {
     /// Left panel starts in the working directory, right in `$HOME`, so the
     /// two panels are not the same directory on launch.
     pub fn new() -> (Self, Task<Message>) {
-        Self::starting_in(fs::start_dir(), fs::home_dir())
+        let loaded = config::default_path()
+            .map_or_else(|| Ok(Config::default()), |path| config::load(&path));
+        if let Err(err) = &loaded {
+            eprintln!("ncrs: {err}");
+        }
+        let (app, task) = Self::starting_in(fs::start_dir(), fs::home_dir());
+        (app.with_config(loaded), task)
+    }
+
+    /// Applies a loaded config. A broken one leaves the defaults and says why
+    /// in the status line.
+    pub fn with_config(mut self, loaded: Result<Config, ConfigError>) -> Self {
+        match loaded {
+            Ok(config) => self.open_programs = config.open,
+            Err(err) => {
+                let text = self.config_error_text(&err);
+                self.set_status_error(&text);
+            }
+        }
+        self
+    }
+
+    fn config_error_text(&self, err: &ConfigError) -> String {
+        let path = err.path().display().to_string();
+        match err.line() {
+            Some(line) => self
+                .lang
+                .text(Msg::ErrorConfigAtLine)
+                .replace("{path}", &path)
+                .replace("{line}", &line.to_string())
+                .replace("{reason}", err.reason()),
+            None => self
+                .lang
+                .text(Msg::ErrorConfig)
+                .replace("{path}", &path)
+                .replace("{reason}", err.reason()),
+        }
     }
 
     /// Like `new`, with both panels' start directories given. Tests use this
@@ -764,6 +804,7 @@ impl App {
             modifiers: Modifiers::default(),
             trash: Arc::new(fs::SystemTrash),
             launcher: Arc::new(fs::SystemLauncher),
+            open_programs: config::OpenPrograms::default(),
             job_error: None,
             notice: None,
             notice_generation: 0,
@@ -2175,15 +2216,15 @@ impl App {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
         let executable = fs::could_execute(&path);
-        if fs::open_command(kind, &path, executable).is_none() {
+        let Some(command) = fs::open_command(&self.open_programs, kind, &path, executable) else {
             let message = self
                 .lang
                 .text(Msg::ErrorOpenRefused)
                 .replace("{name}", &name);
             self.set_status_error(&message);
             return;
-        }
-        if let Err(reason) = self.launcher.launch(kind, &path, executable) {
+        };
+        if let Err(reason) = self.launcher.launch(&command) {
             let message = self
                 .lang
                 .text(Msg::ErrorOpenFailed)
@@ -3047,6 +3088,7 @@ impl App {
             modifiers: Modifiers::default(),
             trash: Arc::new(fs::SystemTrash),
             launcher: Arc::new(fs::SystemLauncher),
+            open_programs: config::OpenPrograms::default(),
             job_error: None,
             notice: None,
             notice_generation: 0,
@@ -5862,5 +5904,56 @@ mod notice_tests {
         app.set_status_error("it failed");
         assert_eq!(app.notice, None);
         assert_eq!(app.job_error.as_deref(), Some("it failed"));
+    }
+}
+
+#[cfg(test)]
+mod config_status_tests {
+    use super::*;
+
+    fn invalid(line: Option<usize>) -> ConfigError {
+        ConfigError::Invalid {
+            path: PathBuf::from("/cfg/ncrs/config.toml"),
+            line,
+            reason: "unknown field `colour`".to_string(),
+        }
+    }
+
+    #[test]
+    fn an_error_with_a_line_names_path_line_and_reason() {
+        let app = App::with_fixed_panels().with_config(Err(invalid(Some(3))));
+        let shown = app.job_error.as_deref().unwrap_or_default();
+        assert!(shown.contains("/cfg/ncrs/config.toml"), "{shown}");
+        assert!(shown.contains("line 3"), "{shown}");
+        assert!(shown.contains("unknown field `colour`"), "{shown}");
+    }
+
+    #[test]
+    fn an_unreadable_file_names_path_and_reason() {
+        let err = ConfigError::Unreadable {
+            path: PathBuf::from("/cfg/ncrs/config.toml"),
+            reason: "not a regular file".to_string(),
+        };
+        let app = App::with_fixed_panels().with_config(Err(err));
+        let shown = app.job_error.as_deref().unwrap_or_default();
+        assert!(shown.contains("/cfg/ncrs/config.toml"), "{shown}");
+        assert!(shown.contains("not a regular file"), "{shown}");
+    }
+
+    #[test]
+    fn an_error_without_a_line_still_reports() {
+        let app = App::with_fixed_panels().with_config(Err(invalid(None)));
+        let shown = app.job_error.as_deref().unwrap_or_default();
+        assert!(shown.contains("unknown field"), "{shown}");
+        assert!(!shown.contains("line"), "{shown}");
+    }
+
+    #[test]
+    fn a_good_config_shows_nothing_and_is_applied() {
+        let mut config = Config::default();
+        config.open.view = Some(config::ProgramLine::new("viewer", &[]));
+        let app = App::with_fixed_panels().with_config(Ok(config.clone()));
+        assert_eq!(app.job_error, None);
+        assert_eq!(app.open_programs, config.open);
     }
 }

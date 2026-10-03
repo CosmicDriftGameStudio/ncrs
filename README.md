@@ -14,9 +14,10 @@ The architecture follows the principles of editors like Zed: async I/O, message-
 state, pure views, and a strict separation between UI components, filesystem layer and
 application state.
 
-This is a **work in progress**. The dual-panel navigator works, localization with
-per-string translator context works. File operations, archive support, network mounts,
-configurable keymap and theming are planned but not built — see [ROADMAP.md](ROADMAP.md)
+This is a **work in progress**. The dual-panel navigator, the file operations and
+localization with per-string translator context work, and there is a
+[config file](#configuration). Archive support, network mounts, a configurable keymap
+and theming are planned but not built — see [ROADMAP.md](ROADMAP.md)
 for the state, the licensing audit and the reasoning behind the order.
 
 ## Screenshots
@@ -74,7 +75,7 @@ The same window in German, switched with F9.
 | `Option`+`Cmd`+`C` / `Ctrl`+`Alt`+`C` | Copy the path of the tagged rows (else the cursor row) to the clipboard |
 | `Ctrl`+`Cmd`+`C` / `Ctrl`+`Shift`+`C` | Copy the name of the tagged rows (else the cursor row) to the clipboard |
 | Click the path in the status bar | Edit the path (`Enter` goes there, `~` is home, `Esc` puts the current path back); the icon beside it copies the folder path |
-| `F3` / `F4`        | View / edit the file under the cursor in an external program |
+| `F3` / `F4`        | View / edit the file under the cursor in an external program (programs configurable, see [Configuration](#configuration)) |
 | `F5` / `F6`        | Copy / move to the other panel          |
 | `F7`               | Create directory                        |
 | `F8`               | Delete to the trash, after a confirmation |
@@ -125,6 +126,38 @@ On Windows (PowerShell):
 ```powershell
 irm https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/install.ps1 | iex
 ```
+
+## Configuration
+
+ncrs reads an optional TOML file:
+
+| System | Location |
+|---|---|
+| macOS | `~/.config/ncrs/config.toml` (`XDG_CONFIG_HOME` is ignored, so a start from the Dock and from a terminal read the same file) |
+| Linux and other Unix | `$XDG_CONFIG_HOME/ncrs/config.toml` if set and absolute, else `~/.config/ncrs/config.toml` |
+| Windows | `%APPDATA%\ncrs\config.toml` |
+
+```toml
+version = 1
+
+[open]
+# F3. The file is added as the last argument.
+view = ["open"]
+# F4, and F3 on files that could run (scripts, apps): must be a text editor.
+edit = ["open", "-t"]
+```
+
+- The file is optional. Without it, or without a key, the system's own programs
+  apply (the ones in the example are the macOS defaults).
+- Unknown keys are errors, so a typo cannot go unnoticed. On any error the whole
+  file is ignored: ncrs starts with the defaults and shows the file and line in
+  the status bar.
+- A program is a name looked up in `PATH` or an absolute path, followed by its
+  arguments. No shell is involved. A relative path such as `bin/edit` is
+  rejected, because it would depend on where ncrs was started.
+- An app started from the Dock or Finder has a minimal `PATH`: give Homebrew or
+  VS Code command-line tools by absolute path, or use
+  `["open", "-a", "Visual Studio Code"]`.
 
 ## Graphics backend
 
@@ -330,7 +363,7 @@ per frame, independent of directory size.
 
 - Multi-selection (`Insert`), quick search by typing
 - Filesystem watching (`notify` crate) as an iced `Subscription`
-- Configurable keymap and theme (TOML)
+- Configurable keymap and theme (in the existing config file)
 
 ## Tech notes
 

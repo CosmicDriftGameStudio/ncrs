@@ -12,6 +12,8 @@ mod volumes;
 
 pub use delete::{remove_permanently, SystemTrash, Trash};
 pub use entry::FileEntry;
+#[cfg(test)]
+pub use open::OpenCommand;
 pub use open::{could_execute, open_command, Launcher, OpenKind, SystemLauncher};
 pub use ops::{create_dir, CreateDirError};
 pub use reader::{home_dir, read_directory, start_dir, ReadError};

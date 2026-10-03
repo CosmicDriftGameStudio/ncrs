@@ -13,6 +13,7 @@ mod ui_tests;
 
 mod app;
 mod backend;
+mod config;
 mod context_menu;
 mod dialog;
 mod fs;
@@ -90,10 +91,17 @@ KEYS:
     F10 / Cmd+Q  quit
 
 VIEW / EDIT:
-    F3 and F4 open the file under the cursor (tags are ignored) in the system
+    F3 and F4 open the file under the cursor (tags are ignored). The programs
+    come from [open] view / edit in the config file; without them the system
     viewer and editor: open / open -t on macOS, xdg-open on Linux, explorer /
-    notepad on Windows. $EDITOR is not used; the programs become configurable
-    with the config file.
+    notepad on Windows. $EDITOR is not used. edit must be a text editor: files
+    that could run (scripts, apps) go there instead of being run.
+
+CONFIG:
+    ~/.config/ncrs/config.toml on macOS and Linux ($XDG_CONFIG_HOME/ncrs/
+    config.toml on Linux if set), %APPDATA%\\ncrs\\config.toml on Windows. A
+    missing file means the defaults; an invalid one means the defaults plus the
+    file and line in the status bar.
 
 DELETE:
     F8 asks, then moves the tagged rows (or the row under the cursor) to the
