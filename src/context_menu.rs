@@ -435,7 +435,9 @@ mod tests {
         );
         for action in GROUPS.iter().flat_map(|group| group.iter()) {
             assert!(
-                crate::keymap::shortcut_label(&action.message()).is_some(),
+                crate::keymap::Keymap::built_in()
+                    .shortcut_label(&action.message())
+                    .is_some(),
                 "{action:?} has no key to show"
             );
         }

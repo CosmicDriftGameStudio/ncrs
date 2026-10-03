@@ -9,10 +9,10 @@ use super::layout::{MENU_ITEM_HEIGHT, MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_
 use super::theme::{self, colors, font_size, spacing};
 use crate::context_menu::{ContextMenu, MenuEntry};
 use crate::i18n::Language;
-use crate::keymap;
+use crate::keymap::Keymap;
 use crate::messages::Message;
 
-pub fn view(menu: &ContextMenu, lang: Language) -> Element<'_, Message> {
+pub fn view<'a>(menu: &'a ContextMenu, lang: Language, keymap: &Keymap) -> Element<'a, Message> {
     let entries = menu
         .entries()
         .iter()
@@ -31,7 +31,7 @@ pub fn view(menu: &ContextMenu, lang: Language) -> Element<'_, Message> {
                     (true, true) => colors::MENU_SHORTCUT_SELECTED,
                     (true, false) => colors::MENU_SHORTCUT,
                 };
-                let shortcut = keymap::shortcut_label(&action.message()).unwrap_or_default();
+                let shortcut = keymap.shortcut_label(&action.message()).unwrap_or_default();
                 let content = row![
                     text(lang.text(action.label()))
                         .size(font_size::ROW)

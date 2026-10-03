@@ -15,7 +15,7 @@ use crate::dialog::{Prompt, PromptKind};
 use crate::fs::{self, CreateDirError};
 use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
-use crate::keymap;
+use crate::keymap::{self, Keymap};
 use crate::messages::{ClipboardKind, ConflictChoice, Message, PanelSide, TransferKind};
 use crate::ui::context_menu as context_menu_view;
 use crate::ui::delete as delete_dialog_view;
@@ -258,7 +258,7 @@ pub struct Transfer {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Deletion {
     sources: Vec<PathBuf>,
-    /// Shift+F8: no trash.
+    /// The permanent-delete key (Shift+F8 by default): no trash.
     permanent: bool,
     /// The panel the entries came from, which is cleared and reloaded at the
     /// end even if the user switches panels meanwhile.
@@ -272,7 +272,7 @@ pub enum DeleteKeys {
     Closed,
     /// Enter confirms.
     Trash,
-    /// Enter cancels; only Shift+F8 pressed again confirms.
+    /// Enter cancels; only the permanent-delete key (Shift+F8) pressed again confirms.
     Permanent,
 }
 
@@ -328,6 +328,8 @@ pub struct App {
     /// Function key bar labels, kept in state so `view` does not look them up
     /// per frame.
     function_keys: [Option<&'static str>; keymap::FUNCTION_KEY_COUNT],
+    /// The keys in effect: the built-in ones, or those of the config file.
+    keymap: Arc<Keymap>,
     /// The open modal prompt, if any. Mutated only here.
     prompt: Option<Prompt>,
     /// Panel the prompt belongs to, so a panel switch while it is open cannot
@@ -429,8 +431,11 @@ pub struct App {
 /// app. It gets this instead: two flags and the name typed so far. `Arc<str>`
 /// rather than `&'static str` because leaking a copy per keypress would grow
 /// without bound, and a `String` per keypress is what this avoids.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PromptKeyState {
+    /// The keys in effect. A shared handle: cloning the state per message
+    /// must not copy the table.
+    pub keymap: Arc<Keymap>,
     /// A prompt is open, so keys belong to it.
     pub open: bool,
     /// A job is running, so Escape stops it rather than doing nothing.
@@ -451,6 +456,24 @@ pub struct PromptKeyState {
     pub busy: bool,
     /// The name typed so far.
     pub typed: std::sync::Arc<str>,
+}
+
+impl Default for PromptKeyState {
+    fn default() -> Self {
+        Self {
+            keymap: Keymap::built_in(),
+            open: false,
+            job_running: false,
+            config_error: false,
+            conflict_open: false,
+            path_editing: false,
+            delete_dialog: DeleteKeys::default(),
+            volume_menu: false,
+            context_menu: false,
+            busy: false,
+            typed: Arc::default(),
+        }
+    }
 }
 
 /// Decides who a key press belongs to: the open prompt, or the bindings.
@@ -503,7 +526,10 @@ fn keys_without_prompt(
         return match key.as_ref() {
             Key::Named(Named::Escape) => Some(Message::DeleteCancel),
             // The deliberate chord that started the permanent delete confirms it.
-            Key::Named(Named::F8) if permanent && key_modifiers == Modifiers::SHIFT => {
+            _ if permanent
+                && bound_message(&prompt.keymap, &key, key_modifiers)
+                    == Some(Message::Delete { permanent: true }) =>
+            {
                 Some(Message::DeleteConfirm)
             }
             _ => dialog_focus_key(key, key_modifiers),
@@ -513,14 +539,14 @@ fn keys_without_prompt(
     if prompt.conflict_open {
         return match key.as_ref() {
             // Escape means "no" to a question, and "keep" is the no that does
-            // not lose data. Cancelling the whole transfer is on Ctrl+C, which
-            // is the key that already aborts a job.
+            // not lose data. Cancelling the whole transfer is on the key that
+            // already aborts a job (Ctrl+C unless rebound).
             Key::Named(Named::Escape) => Some(Message::TransferConflict(ConflictChoice::ThisKeep)),
             // Space ticks "for all files", as it ticks a checkbox elsewhere.
             Key::Named(Named::Space) => Some(Message::ToggleConflictAll),
-            // Ctrl+C cancels the whole operation, the same key that aborts a
-            // job. Enter and Escape already covered the two single-file answers.
-            Key::Character(c) if c == "c" && key_modifiers.contains(Modifiers::CTRL) => {
+            // The key that aborts a job cancels the whole operation. Enter and
+            // Escape already covered the two single-file answers.
+            _ if bound_message(&prompt.keymap, &key, key_modifiers) == Some(Message::AbortJob) => {
                 Some(Message::TransferConflict(ConflictChoice::Cancel))
             }
             _ => dialog_focus_key(key, key_modifiers),
@@ -530,9 +556,13 @@ fn keys_without_prompt(
     // The text field takes the typing and Enter on its own, and `InputState`
     // sees Escape and Tab leave it. Of the bindings only quitting reaches past
     // it: the field has no use for F10 or Cmd+Q, and a program that cannot be
-    // closed while a path is half typed is a trap.
+    // closed while a path is half typed is a trap. Only a key the field does
+    // not type: a quit rebound to `*` or Backspace must not end the program in
+    // the middle of a path.
     if prompt.path_editing {
-        return keymap::map_key(key, key_modifiers).filter(|message| *message == Message::Quit);
+        return bound_message(&prompt.keymap, &key, key_modifiers)
+            .filter(|message| *message == Message::Quit)
+            .filter(|_| is_not_typed_by_text_field(&key, key_modifiers));
     }
 
     // Escape stops a running job, else dismisses the config error, and is free
@@ -546,6 +576,13 @@ fn keys_without_prompt(
             prompt.config_error.then_some(Message::DismissConfigError)
         };
     }
+    bound_message(&prompt.keymap, &key, key_modifiers)
+        .or_else(|| type_ahead_message(&key, key_modifiers))
+}
+
+/// The binding a press hits, with the Shift rules of the panels: see the
+/// comments inside.
+fn bound_message(keymap: &Keymap, key: &Key, key_modifiers: Modifiers) -> Option<Message> {
     // The exact chord first (Shift+F8 is not F8). Only Shift may fall back to
     // the bare key: it changes the character typed (`*` is Shift+8), while Alt,
     // Ctrl and Super make a different chord that must not trigger the plain one.
@@ -557,7 +594,7 @@ fn keys_without_prompt(
     // Except for a chord that names Shift itself (Ctrl+Shift+C): tried first,
     // with the letter lowercased, because Shift made it a capital.
     if key_modifiers.shift() {
-        if let Some(message) = keymap::map_key(lowercase_character(&key), key_modifiers) {
+        if let Some(message) = keymap.map_key(&lowercase_character(key), key_modifiers) {
             return Some(message);
         }
     }
@@ -566,14 +603,59 @@ fn keys_without_prompt(
     } else {
         key_modifiers
     };
-    keymap::map_key(key.clone(), modifiers)
-        .or_else(|| {
-            (modifiers - Modifiers::SHIFT)
-                .is_empty()
-                .then(|| keymap::map_key(key.clone(), Modifiers::default()))
-                .flatten()
-        })
-        .or_else(|| type_ahead_message(&key, key_modifiers))
+    keymap.map_key(key, modifiers).or_else(|| {
+        (modifiers - Modifiers::SHIFT)
+            .is_empty()
+            .then(|| keymap.map_key(key, Modifiers::default()))
+            .flatten()
+    })
+}
+
+/// Fills the placeholders of a translated template in one pass, so a value
+/// that itself contains `{key}` or `{reason}` (a file named `{key}.txt`) is
+/// shown as it is and not filled again.
+fn fill_template(template: &str, values: &[(&str, &str)]) -> String {
+    let mut filled = String::with_capacity(template.len());
+    let mut rest = template;
+    while !rest.is_empty() {
+        let placeholder = values
+            .iter()
+            .find_map(|(name, value)| rest.strip_prefix(name).map(|after| (value, after)));
+        if let Some((value, after)) = placeholder {
+            filled.push_str(value);
+            rest = after;
+        } else {
+            let mut chars = rest.chars();
+            filled.extend(chars.next());
+            rest = chars.as_str();
+        }
+    }
+    filled
+}
+
+/// A function key, or a chord with Super or Ctrl (without Alt): nothing a
+/// text field would type.
+fn is_not_typed_by_text_field(key: &Key, modifiers: Modifiers) -> bool {
+    let is_function_key = matches!(
+        key,
+        Key::Named(
+            Named::F1
+                | Named::F2
+                | Named::F3
+                | Named::F4
+                | Named::F5
+                | Named::F6
+                | Named::F7
+                | Named::F8
+                | Named::F9
+                | Named::F10
+                | Named::F11
+                | Named::F12
+        )
+    );
+    // Alt types characters on a Mac, and AltGr arrives as Ctrl+Alt on Windows.
+    let is_chord = modifiers.logo() || (modifiers.control() && !modifiers.alt());
+    is_function_key || is_chord
 }
 
 /// A printable character with at most Shift held. With Option held a Mac types
@@ -596,24 +678,73 @@ fn lowercase_character(key: &Key) -> Key {
 /// The key a binding is written against.
 ///
 /// With Option held a Mac types another character: Option+C is "ç", and with
-/// Ctrl it can be a control character. The binding is for the letter on the
-/// key, so a letter key whose character is not that letter is taken from the
-/// physical key instead.
-fn binding_key(key: Key, physical_key: keyboard::key::Physical) -> Key {
+/// Ctrl it can be a control character (Ctrl+X types U+0018). The binding is
+/// for the letter or digit on the key, so such a press is taken from the
+/// control character or, for a non-ASCII character, the physical key instead.
+///
+/// Only with Ctrl, Alt or Super held, and never for printable ASCII: that is
+/// what the user typed (`*` on Ctrl+Shift+8, punctuation on the AZERTY digit
+/// row), and the binding is written against it.
+fn binding_key(key: Key, physical_key: keyboard::key::Physical, modifiers: Modifiers) -> Key {
     use keyboard::key::{Code, Physical};
-    let is_plain_letter = matches!(&key, Key::Character(c)
-        if c.chars().count() == 1 && c.chars().all(|ch| ch.is_ascii_alphabetic()));
-    if is_plain_letter || !matches!(key, Key::Character(_)) {
+    let Key::Character(typed) = &key else {
+        return key;
+    };
+    if !modifiers.intersects(Modifiers::CTRL | Modifiers::ALT | Modifiers::LOGO) {
+        return key;
+    }
+    let mut typed_chars = typed.chars();
+    if let (Some(control @ '\u{1}'..='\u{1a}'), None) = (typed_chars.next(), typed_chars.next()) {
+        if let Some(letter) = char::from_u32('a' as u32 + control as u32 - 1) {
+            return Key::Character(letter.to_string().into());
+        }
+    }
+    if typed.is_ascii() {
         return key;
     }
     let Physical::Code(code) = physical_key else {
         return key;
     };
-    let letter = match code {
+    let character = match code {
+        Code::KeyA => "a",
+        Code::KeyB => "b",
         Code::KeyC => "c",
+        Code::KeyD => "d",
+        Code::KeyE => "e",
+        Code::KeyF => "f",
+        Code::KeyG => "g",
+        Code::KeyH => "h",
+        Code::KeyI => "i",
+        Code::KeyJ => "j",
+        Code::KeyK => "k",
+        Code::KeyL => "l",
+        Code::KeyM => "m",
+        Code::KeyN => "n",
+        Code::KeyO => "o",
+        Code::KeyP => "p",
+        Code::KeyQ => "q",
+        Code::KeyR => "r",
+        Code::KeyS => "s",
+        Code::KeyT => "t",
+        Code::KeyU => "u",
+        Code::KeyV => "v",
+        Code::KeyW => "w",
+        Code::KeyX => "x",
+        Code::KeyY => "y",
+        Code::KeyZ => "z",
+        Code::Digit0 => "0",
+        Code::Digit1 => "1",
+        Code::Digit2 => "2",
+        Code::Digit3 => "3",
+        Code::Digit4 => "4",
+        Code::Digit5 => "5",
+        Code::Digit6 => "6",
+        Code::Digit7 => "7",
+        Code::Digit8 => "8",
+        Code::Digit9 => "9",
         _ => return key,
     };
-    Key::Character(letter.into())
+    Key::Character(character.into())
 }
 
 /// A key press as the subscription sees it: the routed message, unless the
@@ -630,7 +761,7 @@ pub fn route_press(
     let routed_key = if prompt.open {
         key
     } else {
-        binding_key(key, physical_key)
+        binding_key(key, physical_key, modifiers)
     };
     route_key(prompt, routed_key, modifiers).filter(|message| !repeat || repeats(message))
 }
@@ -765,7 +896,11 @@ impl App {
     /// in the status line.
     pub fn with_config(mut self, loaded: Result<Config, ConfigError>) -> Self {
         match loaded {
-            Ok(config) => self.open_programs = config.open,
+            Ok(config) => {
+                self.open_programs = config.open;
+                self.keymap = config.keymap;
+                self.function_keys = self.keymap.function_keys(self.lang);
+            }
             Err(err) => {
                 self.config_error = Some(self.config_error_text(&err));
                 self.config_problem = Some(err);
@@ -777,7 +912,7 @@ impl App {
     /// F9. A config error still up is worded again in the new language.
     fn switch_language(&mut self) {
         self.lang = self.lang.other();
-        self.function_keys = keymap::function_keys(self.lang);
+        self.function_keys = self.keymap.function_keys(self.lang);
         if let Some(problem) = &self.config_problem {
             self.config_error = Some(self.config_error_text(problem));
         }
@@ -786,17 +921,18 @@ impl App {
     fn config_error_text(&self, err: &ConfigError) -> String {
         let path = err.path().display().to_string();
         match err.line() {
-            Some(line) => self
-                .lang
-                .text(Msg::ErrorConfigAtLine)
-                .replace("{path}", &path)
-                .replace("{line}", &line.to_string())
-                .replace("{reason}", err.reason()),
-            None => self
-                .lang
-                .text(Msg::ErrorConfig)
-                .replace("{path}", &path)
-                .replace("{reason}", err.reason()),
+            Some(line) => fill_template(
+                self.lang.text(Msg::ErrorConfigAtLine),
+                &[
+                    ("{path}", &path),
+                    ("{line}", &line.to_string()),
+                    ("{reason}", err.reason()),
+                ],
+            ),
+            None => fill_template(
+                self.lang.text(Msg::ErrorConfig),
+                &[("{path}", &path), ("{reason}", err.reason())],
+            ),
         }
     }
 
@@ -810,7 +946,8 @@ impl App {
             active_panel: PanelSide::Left,
             visible_rows: layout::visible_rows(layout::INITIAL_WINDOW_SIZE),
             lang: Language::default(),
-            function_keys: keymap::function_keys(Language::default()),
+            function_keys: Keymap::built_in().function_keys(Language::default()),
+            keymap: Keymap::built_in(),
             prompt: None,
             prompt_side: None,
             prompt_request_id: 0,
@@ -1740,7 +1877,7 @@ impl App {
             return Stack::with_children([
                 root.into(),
                 click_catcher.into(),
-                context_menu_view::view(menu, self.lang),
+                context_menu_view::view(menu, self.lang, &self.keymap),
             ])
             .into();
         }
@@ -1854,6 +1991,7 @@ impl App {
         };
         match &self.prompt {
             None => PromptKeyState {
+                keymap: Arc::clone(&self.keymap),
                 job_running,
                 config_error,
                 delete_dialog,
@@ -1867,6 +2005,7 @@ impl App {
                 ..PromptKeyState::default()
             },
             Some(prompt) => PromptKeyState {
+                keymap: Arc::clone(&self.keymap),
                 open: true,
                 job_running,
                 config_error,
@@ -2252,10 +2391,24 @@ impl App {
             .unwrap_or_default();
         let executable = fs::could_execute(&path);
         let Some(command) = fs::open_command(&self.open_programs, kind, &path, executable) else {
-            let message = self
-                .lang
-                .text(Msg::ErrorOpenRefused)
-                .replace("{name}", &name);
+            let keys: Vec<String> = [
+                Message::OpenExternal(fs::OpenKind::View),
+                Message::OpenExternal(fs::OpenKind::Edit),
+            ]
+            .iter()
+            .filter_map(|opener| self.keymap.shortcut_label(opener))
+            .collect();
+            let message = if keys.is_empty() {
+                fill_template(
+                    self.lang.text(Msg::ErrorOpenRefusedNoKey),
+                    &[("{name}", &name)],
+                )
+            } else {
+                fill_template(
+                    self.lang.text(Msg::ErrorOpenRefused),
+                    &[("{name}", &name), ("{keys}", &keys.join("/"))],
+                )
+            };
             self.set_status_error(&message);
             return;
         };
@@ -2270,8 +2423,8 @@ impl App {
     }
 
     /// The status line for an entry that could not be deleted. A failed trash
-    /// points at Shift+F8 rather than falling back to it: deleting for good is
-    /// the user's decision, not the app's.
+    /// points at the permanent-delete key rather than falling back to it:
+    /// deleting for good is the user's decision, not the app's.
     fn delete_failure(&self, index: usize, reason: &str) -> String {
         let permanent = self.deleting.as_ref().is_some_and(|d| d.permanent);
         let name = self
@@ -2281,15 +2434,22 @@ impl App {
             .and_then(|p| p.file_name())
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let template = if permanent {
-            Msg::ErrorDeleteFailed
-        } else {
-            Msg::ErrorTrashFailed
+        let permanent_key = self
+            .keymap
+            .shortcut_label(&Message::Delete { permanent: true });
+        let template = match (permanent, &permanent_key) {
+            (true, _) => Msg::ErrorDeleteFailed,
+            (false, Some(_)) => Msg::ErrorTrashFailed,
+            (false, None) => Msg::ErrorTrashFailedNoKey,
         };
-        self.lang
-            .text(template)
-            .replace("{name}", &name)
-            .replace("{reason}", reason)
+        fill_template(
+            self.lang.text(template),
+            &[
+                ("{name}", &name),
+                ("{reason}", reason),
+                ("{key}", permanent_key.as_deref().unwrap_or_default()),
+            ],
+        )
     }
 
     /// F5 / F6: resolve what to transfer, then start the first row.
@@ -2745,7 +2905,7 @@ mod prompt_routing {
             Some(Message::CreateDirPrompt)
         );
         assert!(
-            keymap::function_keys(Language::English)[6].is_some(),
+            Keymap::built_in().function_keys(Language::English)[6].is_some(),
             "F7 opens the prompt but the function key bar does not show it"
         );
     }
@@ -3109,7 +3269,8 @@ impl App {
             active_panel: PanelSide::Left,
             visible_rows: 12,
             lang: Language::default(),
-            function_keys: keymap::function_keys(Language::default()),
+            function_keys: Keymap::built_in().function_keys(Language::default()),
+            keymap: Keymap::built_in(),
             prompt: None,
             prompt_side: None,
             prompt_request_id: 0,
@@ -6054,5 +6215,295 @@ mod config_status_tests {
         let mut app = App::with_fixed_panels().with_config(Err(invalid(Some(3))));
         drop(app.update(Message::DismissConfigError));
         assert_eq!(app.status_error(), None);
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod configured_keys_tests {
+    use super::*;
+    use keyboard::key::{Code, Physical};
+
+    fn config_with(content: &str) -> Config {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, content).unwrap();
+        config::load(&path).unwrap()
+    }
+
+    fn state_for(content: &str) -> PromptKeyState {
+        PromptKeyState {
+            keymap: config_with(content).keymap,
+            ..PromptKeyState::default()
+        }
+    }
+
+    fn named(key: Named) -> Key {
+        Key::Named(key)
+    }
+
+    fn character(text: &str) -> Key {
+        Key::Character(text.into())
+    }
+
+    #[test]
+    fn a_rebound_action_routes_on_the_new_key_only() {
+        let state = state_for("[keys]\ncopy = \"F2\"\n");
+        assert_eq!(
+            route_key(&state, named(Named::F2), Modifiers::default()),
+            Some(Message::Transfer(TransferKind::Copy))
+        );
+        assert_eq!(
+            route_key(&state, named(Named::F5), Modifiers::default()),
+            None
+        );
+    }
+
+    #[test]
+    fn the_bar_and_the_context_menu_show_the_configured_key() {
+        let config = config_with("[keys]\ncopy = \"F2\"\n");
+        let mut app = App::with_fixed_panels().with_config(Ok(config));
+        assert_eq!(app.function_keys[1], Some("Copy"));
+        assert_eq!(app.function_keys[4], None);
+        assert_eq!(
+            app.keymap
+                .shortcut_label(&ContextAction::Copy.message())
+                .as_deref(),
+            Some("F2")
+        );
+
+        drop(app.update(Message::SwitchLanguage));
+        assert_eq!(app.lang, Language::German);
+        assert!(app.function_keys[1].is_some());
+        assert_eq!(app.function_keys[4], None);
+    }
+
+    #[test]
+    fn a_failed_config_leaves_the_built_in_keys() {
+        let app = App::with_fixed_panels().with_config(Err(ConfigError::Unreadable {
+            path: PathBuf::from("/cfg"),
+            reason: "x".into(),
+        }));
+        assert_eq!(*app.keymap, *Keymap::built_in());
+        assert_eq!(app.function_keys[4], Some("Copy"));
+    }
+
+    #[test]
+    fn the_configured_permanent_delete_key_confirms_its_dialog() {
+        let state = PromptKeyState {
+            delete_dialog: DeleteKeys::Permanent,
+            ..state_for("[keys]\ndelete_permanently = \"ctrl+d\"\n")
+        };
+        assert_eq!(
+            route_key(&state, character("d"), Modifiers::CTRL),
+            Some(Message::DeleteConfirm)
+        );
+        assert_eq!(route_key(&state, named(Named::F8), Modifiers::SHIFT), None);
+    }
+
+    #[test]
+    fn the_built_in_permanent_delete_key_still_confirms_its_dialog() {
+        let state = PromptKeyState {
+            delete_dialog: DeleteKeys::Permanent,
+            ..PromptKeyState::default()
+        };
+        assert_eq!(
+            route_key(&state, named(Named::F8), Modifiers::SHIFT),
+            Some(Message::DeleteConfirm)
+        );
+    }
+
+    #[test]
+    fn the_configured_abort_key_cancels_a_conflict() {
+        let state = PromptKeyState {
+            conflict_open: true,
+            ..state_for("[keys]\nabort_job = \"ctrl+k\"\n")
+        };
+        assert_eq!(
+            route_key(&state, character("k"), Modifiers::CTRL),
+            Some(Message::TransferConflict(ConflictChoice::Cancel))
+        );
+        assert_eq!(route_key(&state, character("c"), Modifiers::CTRL), None);
+    }
+
+    #[test]
+    fn quitting_from_the_path_field_needs_a_key_the_field_does_not_type() {
+        let state = PromptKeyState {
+            path_editing: true,
+            ..state_for("[keys]\nquit = [\"*\", \"backspace\", \"F10\", \"primary+q\"]\ntag_all = []\ngo_up = []\n")
+        };
+        assert_eq!(
+            route_key(&state, character("*"), Modifiers::default()),
+            None
+        );
+        assert_eq!(
+            route_key(&state, named(Named::Backspace), Modifiers::default()),
+            None
+        );
+        assert_eq!(
+            route_key(&state, named(Named::F10), Modifiers::default()),
+            Some(Message::Quit)
+        );
+        assert_eq!(
+            route_key(&state, character("q"), Modifiers::COMMAND),
+            Some(Message::Quit)
+        );
+    }
+
+    #[test]
+    fn a_failed_trash_names_the_configured_key_or_none() {
+        let deleting = Deletion {
+            sources: vec![PathBuf::from("/left/a.txt")],
+            permanent: false,
+            side: PanelSide::Left,
+        };
+        let mut app = App::with_fixed_panels()
+            .with_config(Ok(config_with("[keys]\ndelete_permanently = \"ctrl+d\"\n")));
+        app.deleting = Some(deleting.clone());
+        let shown = app.delete_failure(0, "denied");
+        assert!(
+            shown.contains("a.txt") && shown.contains("denied"),
+            "{shown}"
+        );
+        assert!(
+            shown.contains(
+                &app.keymap
+                    .shortcut_label(&Message::Delete { permanent: true })
+                    .unwrap()
+            ),
+            "{shown}"
+        );
+        assert!(!shown.contains("Shift+F8"), "{shown}");
+
+        let mut unbound = App::with_fixed_panels()
+            .with_config(Ok(config_with("[keys]\ndelete_permanently = []\n")));
+        unbound.deleting = Some(deleting);
+        let shown_unbound = unbound.delete_failure(0, "denied");
+        assert!(shown_unbound.contains("denied"), "{shown_unbound}");
+        assert!(
+            !shown_unbound.contains("{key}") && !shown_unbound.contains("permanently"),
+            "{shown_unbound}"
+        );
+    }
+
+    fn binding_key_of(typed: &str, physical: Code, modifiers: Modifiers) -> Key {
+        binding_key(character(typed), Physical::Code(physical), modifiers)
+    }
+
+    #[test]
+    fn a_control_character_with_ctrl_becomes_its_letter() {
+        assert_eq!(
+            binding_key_of("\u{18}", Code::KeyX, Modifiers::CTRL),
+            character("x")
+        );
+        assert_eq!(
+            binding_key_of("\u{18}", Code::KeyQ, Modifiers::CTRL),
+            character("x"),
+            "the layout wins over the physical position"
+        );
+    }
+
+    fn press_physical(typed: &str, physical: Code, modifiers: Modifiers) -> Option<Message> {
+        route_press(
+            &PromptKeyState::default(),
+            character(typed),
+            Physical::Code(physical),
+            modifiers,
+            false,
+        )
+    }
+
+    #[test]
+    fn a_typed_star_with_ctrl_still_clears_the_tags() {
+        assert_eq!(
+            press_physical("*", Code::Digit8, Modifiers::CTRL | Modifiers::SHIFT),
+            Some(Message::ClearTags)
+        );
+    }
+
+    #[test]
+    fn option_c_cedilla_still_copies_the_path() {
+        assert_eq!(
+            press_physical("ç", Code::KeyC, Modifiers::ALT | Modifiers::COMMAND),
+            Some(Message::CopyToClipboard(ClipboardKind::Path))
+        );
+    }
+
+    #[test]
+    fn the_sort_chord_routes_by_its_digit_or_function_key() {
+        let binding = keymap::sort_binding(crate::fs::SortColumn::Name);
+        let routed = match &binding.key {
+            Key::Character(digit) => press_physical(digit, Code::Digit1, binding.modifiers),
+            other => route_key(&PromptKeyState::default(), other.clone(), binding.modifiers),
+        };
+        assert_eq!(
+            routed,
+            Some(Message::SortActive(crate::fs::SortColumn::Name))
+        );
+    }
+
+    #[test]
+    fn a_name_with_a_placeholder_in_it_is_shown_as_written() {
+        let mut app = App::with_fixed_panels();
+        app.deleting = Some(Deletion {
+            sources: vec![PathBuf::from("/left/{key}.txt")],
+            permanent: false,
+            side: PanelSide::Left,
+        });
+        let shown = app.delete_failure(0, "{name}");
+        assert!(shown.contains("{key}.txt"), "{shown}");
+        assert!(shown.contains("{name}"), "{shown}");
+
+        let err = ConfigError::Invalid {
+            path: PathBuf::from("/cfg/{reason}/config.toml"),
+            line: Some(2),
+            reason: "bad {line}".into(),
+        };
+        let config_shown = app.config_error_text(&err);
+        assert!(
+            config_shown.contains("/cfg/{reason}/config.toml"),
+            "{config_shown}"
+        );
+        assert!(config_shown.contains("bad {line}"), "{config_shown}");
+    }
+
+    #[test]
+    fn quit_on_alt_does_not_end_the_program_from_the_path_field() {
+        let state = PromptKeyState {
+            path_editing: true,
+            ..state_for("[keys]\nquit = [\"alt+q\", \"primary+q\"]\n")
+        };
+        assert_eq!(route_key(&state, character("q"), Modifiers::ALT), None);
+        assert_eq!(
+            route_key(&state, character("q"), Modifiers::COMMAND),
+            Some(Message::Quit)
+        );
+    }
+
+    #[test]
+    fn without_ctrl_alt_or_super_a_typed_character_is_left_alone() {
+        assert_eq!(
+            binding_key_of("&", Code::Digit1, Modifiers::default()),
+            character("&")
+        );
+        assert_eq!(
+            binding_key_of("!", Code::Digit1, Modifiers::SHIFT),
+            character("!")
+        );
+        assert_eq!(
+            binding_key_of("¡", Code::Digit1, Modifiers::ALT),
+            character("1")
+        );
+        assert_eq!(
+            binding_key_of("*", Code::Digit8, Modifiers::CTRL | Modifiers::SHIFT),
+            character("*")
+        );
     }
 }

@@ -14,9 +14,13 @@ use std::ffi::OsString;
 use std::fmt;
 use std::io::Read as _;
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
 
-use serde::de::{Deserializer, Error as _};
+use serde::de::{Deserializer, Error as _, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
+use serde_spanned::Spanned;
+
+use crate::keymap::Keymap;
 
 /// The only version this build reads.
 pub const CURRENT_VERSION: u32 = 1;
@@ -32,6 +36,91 @@ pub struct Config {
     pub version: Version,
     #[serde(default)]
     pub open: OpenPrograms,
+    /// The `[keys]` section as written; `load` turns it into `keymap`.
+    #[serde(default)]
+    pub keys: KeySection,
+    /// The keys in effect: the built-in ones with `keys` applied.
+    #[serde(skip)]
+    pub keymap: Arc<Keymap>,
+}
+
+/// One line of `[keys]`: an action and the keys written for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyEntry {
+    pub action: Spanned<String>,
+    pub chords: Vec<Spanned<String>>,
+}
+
+/// The `[keys]` section, unchecked. Names and keys stay text with their
+/// position, so a wrong one is reported at its own line once the keymap has
+/// looked at it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct KeySection {
+    pub entries: Vec<KeyEntry>,
+}
+
+/// A single key or a list of them.
+enum Chords {
+    One(String),
+    Many(Vec<Spanned<String>>),
+}
+
+impl<'de> Deserialize<'de> for Chords {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct ChordsVisitor;
+
+        impl<'de> Visitor<'de> for ChordsVisitor {
+            type Value = Chords;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a key such as \"F5\" or a list of keys")
+            }
+
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Chords, E> {
+                Ok(Chords::One(v.to_owned()))
+            }
+
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Chords, A::Error> {
+                let mut chords = Vec::new();
+                while let Some(chord) = seq.next_element::<Spanned<String>>()? {
+                    chords.push(chord);
+                }
+                Ok(Chords::Many(chords))
+            }
+        }
+
+        deserializer.deserialize_any(ChordsVisitor)
+    }
+}
+
+impl<'de> Deserialize<'de> for KeySection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct KeySectionVisitor;
+
+        impl<'de> Visitor<'de> for KeySectionVisitor {
+            type Value = KeySection;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a table of action names")
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<KeySection, A::Error> {
+                let mut entries = Vec::new();
+                while let Some(action) = map.next_key::<Spanned<String>>()? {
+                    let value = map.next_value::<Spanned<Chords>>()?;
+                    let span = value.span();
+                    let chords = match value.into_inner() {
+                        Chords::One(text) => vec![Spanned::new(span, text)],
+                        Chords::Many(texts) => texts,
+                    };
+                    entries.push(KeyEntry { action, chords });
+                }
+                Ok(KeySection { entries })
+            }
+        }
+
+        deserializer.deserialize_map(KeySectionVisitor)
+    }
 }
 
 /// The `version` key. Anything but `CURRENT_VERSION` is refused, so a file
@@ -265,13 +354,26 @@ pub fn load(path: &Path) -> Result<Config, ConfigError> {
             });
         }
     };
-    toml_edit::de::from_str::<Config>(&source).map_err(|err| ConfigError::Invalid {
-        path: path.to_path_buf(),
-        line: err
-            .span()
-            .and_then(|span| line_at(source.as_bytes(), span.start)),
-        reason: err.message().trim().to_owned(),
-    })
+    let mut config =
+        toml_edit::de::from_str::<Config>(&source).map_err(|err| ConfigError::Invalid {
+            path: path.to_path_buf(),
+            line: err
+                .span()
+                .and_then(|span| line_at(source.as_bytes(), span.start)),
+            reason: err.message().trim().to_owned(),
+        })?;
+    // Not part of the parse: a key that clashes with another is only known
+    // once all of `[keys]` is there. It fails the whole file like any other
+    // error, so `[open]` is not half applied next to a rejected keymap.
+    if !config.keys.entries.is_empty() {
+        let keymap = Keymap::with_overrides(&config.keys).map_err(|err| ConfigError::Invalid {
+            path: path.to_path_buf(),
+            line: line_at(source.as_bytes(), err.span.start),
+            reason: err.reason,
+        })?;
+        config.keymap = Arc::new(keymap);
+    }
+    Ok(config)
 }
 
 /// 1-based line of the byte at `offset`.
