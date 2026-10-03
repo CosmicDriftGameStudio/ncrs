@@ -5,10 +5,11 @@ use iced::widget::{button, column, container, text, Column, Row};
 use iced::{Element, Length};
 
 use super::layout::DIALOG_WIDTH;
-use super::theme::{self, colors, font_size, spacing};
+use super::theme::{self, font_size, spacing};
 use crate::fs::Volume;
 use crate::i18n::{Language, Msg};
 use crate::messages::{Message, PanelSide};
+use crate::palette::Palette;
 
 /// Rows shown at once. A list longer than this scrolls with the highlight, so
 /// the dialog stays inside the window with many mounts.
@@ -25,6 +26,7 @@ pub fn view<'a>(
     volumes: &'a [Volume],
     selected: usize,
     lang: Language,
+    palette: &Palette,
 ) -> Element<'a, Message> {
     let title = match side {
         PanelSide::Left => Msg::VolumesTitleLeft,
@@ -39,14 +41,14 @@ pub fn view<'a>(
         .map(|(index, volume)| {
             let is_selected = index == selected;
             let name_color = if is_selected {
-                colors::SELECTED_TEXT
+                palette.cursor_text
             } else {
-                colors::DIR_COLOR
+                palette.directory
             };
             let path_color = if is_selected {
-                colors::SELECTED_TEXT
+                palette.cursor_text
             } else {
-                colors::DIM_TEXT
+                palette.dim_text
             };
             let content = Row::with_children([
                 container(
@@ -72,14 +74,14 @@ pub fn view<'a>(
             button(content)
                 .on_press(Message::VolumeMenuClick(index))
                 .width(Length::Fill)
-                .style(theme::row(is_selected, true))
+                .style(theme::row(palette, false, is_selected, true))
                 .into()
         });
 
     let body = column![
         text(lang.text(title))
             .size(font_size::TITLE)
-            .color(colors::ACCENT),
+            .color(palette.accent),
         Column::with_children(rows)
     ]
     .spacing(spacing::SECTION_GAP);
@@ -87,6 +89,6 @@ pub fn view<'a>(
     container(body)
         .padding(spacing::OUTER_PADDING * 2.0)
         .width(DIALOG_WIDTH)
-        .style(theme::dialog)
+        .style(theme::dialog(palette))
         .into()
 }

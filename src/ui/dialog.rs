@@ -7,10 +7,11 @@ use iced::widget::{button, column, container, text, text_input, Row};
 use iced::{alignment, Background, Element, Length};
 
 use super::layout::DIALOG_WIDTH;
-use super::theme::{self, colors, font_size, spacing};
+use super::theme::{self, font_size, spacing};
 use crate::dialog::Prompt;
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
+use crate::palette::Palette;
 
 /// The text field carries an id, because `TextInput::id` exists and
 /// `iced_selector` can find it. The buttons do not — see the note where they
@@ -24,6 +25,7 @@ pub const FIELD_ID: &str = "prompt-field";
 pub fn view<'a>(
     state: &'a Prompt,
     lang: Language,
+    palette: &Palette,
     on_input: impl Fn(String) -> Message + 'a,
     on_submit: Message,
     on_cancel: Message,
@@ -52,14 +54,14 @@ pub fn view<'a>(
     let submit = (!state.busy()).then_some(on_submit);
     let confirm_button = button(text(confirm))
         .on_press_maybe(submit)
-        .style(theme::dialog_button(true));
+        .style(theme::dialog_button(palette, true));
 
     let cancel_button = button(text(lang.text(Msg::DialogCancel)))
         .on_press_maybe((!state.busy()).then_some(on_cancel))
-        .style(theme::dialog_button(false));
+        .style(theme::dialog_button(palette, false));
 
     let mut body = column![
-        text(title).size(font_size::TITLE).color(colors::ACCENT),
+        text(title).size(font_size::TITLE).color(palette.accent),
         container(field).padding([4.0, 0.0]),
         container(
             Row::with_children([confirm_button.into(), cancel_button.into()])
@@ -80,7 +82,7 @@ pub fn view<'a>(
         body = body.push(
             text(message)
                 .size(font_size::STATUS)
-                .color(colors::ERROR)
+                .color(palette.error)
                 .wrapping(iced::widget::text::Wrapping::Word),
         );
     }
@@ -88,7 +90,7 @@ pub fn view<'a>(
         container(body)
             .padding(spacing::OUTER_PADDING * 2.0)
             .width(DIALOG_WIDTH)
-            .style(theme::dialog)
+            .style(theme::dialog(palette))
             .into(),
     )
 }
@@ -112,7 +114,7 @@ pub fn scrim<'a>(content: Element<'a, Message>) -> Element<'a, Message> {
         .align_x(alignment::Horizontal::Center)
         .align_y(alignment::Vertical::Center)
         .style(|_theme| container::Style {
-            background: Some(Background::Color(colors::SCRIM)),
+            background: Some(Background::Color(theme::SCRIM)),
             ..container::Style::default()
         })
         .into()

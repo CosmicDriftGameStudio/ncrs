@@ -9,14 +9,18 @@ use iced::widget::{container, row, text, Row};
 use iced::{alignment, Element, Length};
 
 use super::layout::FKEYBAR_HEIGHT;
-use super::theme::{self, colors, font_size, spacing};
+use super::theme::{self, font_size, spacing};
 use crate::keymap::FUNCTION_KEY_COUNT;
+use crate::palette::Palette;
 
-pub fn view<'a, M: 'a>(labels: &[Option<&'a str>; FUNCTION_KEY_COUNT]) -> Element<'a, M> {
+pub fn view<'a, M: 'a>(
+    labels: &[Option<&'a str>; FUNCTION_KEY_COUNT],
+    palette: &Palette,
+) -> Element<'a, M> {
     let slots = labels.iter().enumerate().map(|(index, label)| {
         let number = text((index + 1).to_string())
             .size(font_size::STATUS)
-            .color(colors::FKEY_NUMBER)
+            .color(palette.fkey_number)
             .wrapping(text::Wrapping::None);
         let label_box = container(
             text(label.unwrap_or(""))
@@ -28,7 +32,7 @@ pub fn view<'a, M: 'a>(labels: &[Option<&'a str>; FUNCTION_KEY_COUNT]) -> Elemen
         .height(Length::Fill)
         .clip(true)
         .align_y(alignment::Vertical::Center)
-        .style(theme::fkey_label);
+        .style(theme::fkey_label(palette));
 
         // Equal portions: the ten slots share the full width evenly.
         row![number, label_box]

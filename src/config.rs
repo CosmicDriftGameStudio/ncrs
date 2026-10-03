@@ -21,6 +21,7 @@ use serde::Deserialize;
 use serde_spanned::Spanned;
 
 use crate::keymap::Keymap;
+use crate::palette::{ColorRole, Palette};
 
 /// The only version this build reads.
 pub const CURRENT_VERSION: u32 = 1;
@@ -29,7 +30,7 @@ pub const CURRENT_VERSION: u32 = 1;
 /// only delay the start.
 const SIZE_LIMIT: u64 = 1024 * 1024;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     #[serde(default)]
@@ -42,6 +43,65 @@ pub struct Config {
     /// The keys in effect: the built-in ones with `keys` applied.
     #[serde(skip)]
     pub keymap: Arc<Keymap>,
+    /// The `[theme]` section as written; `load` turns it into `palette`.
+    #[serde(default)]
+    pub theme: ThemeSection,
+    /// The colors in effect: the built-in ones with `theme` applied.
+    #[serde(skip)]
+    pub palette: Palette,
+    /// Set when the palette is legal but hard to read. It does not stop the
+    /// palette from being used.
+    #[serde(skip)]
+    pub contrast_warning: Option<ContrastWarning>,
+}
+
+/// A text and its ground in the `[theme]` palette whose contrast is low.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContrastWarning {
+    pub path: PathBuf,
+    pub line: Option<usize>,
+    pub foreground: ColorRole,
+    pub background: ColorRole,
+    pub ratio: f32,
+}
+
+/// One line of `[theme]`: a role (or `preset`) and the text written for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThemeEntry {
+    pub key: Spanned<String>,
+    pub value: Spanned<String>,
+}
+
+/// The `[theme]` section, unchecked. Like `KeySection`, it keeps the text with
+/// its position so a wrong color is reported at its own line.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ThemeSection {
+    pub entries: Vec<ThemeEntry>,
+}
+
+impl<'de> Deserialize<'de> for ThemeSection {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct ThemeSectionVisitor;
+
+        impl<'de> Visitor<'de> for ThemeSectionVisitor {
+            type Value = ThemeSection;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a table of color roles")
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<ThemeSection, A::Error> {
+                let mut entries = Vec::new();
+                while let Some(key) = map.next_key::<Spanned<String>>()? {
+                    let value = map.next_value::<Spanned<String>>()?;
+                    entries.push(ThemeEntry { key, value });
+                }
+                Ok(ThemeSection { entries })
+            }
+        }
+
+        deserializer.deserialize_map(ThemeSectionVisitor)
+    }
 }
 
 /// One line of `[keys]`: an action and the keys written for it.
@@ -372,6 +432,28 @@ pub fn load(path: &Path) -> Result<Config, ConfigError> {
             reason: err.reason,
         })?;
         config.keymap = Arc::new(keymap);
+    }
+    if !config.theme.entries.is_empty() {
+        let configured =
+            Palette::from_section(&config.theme).map_err(|err| ConfigError::Invalid {
+                path: path.to_path_buf(),
+                line: line_at(source.as_bytes(), err.span.start),
+                reason: err.reason,
+            })?;
+        config.contrast_warning = configured.palette.weakest_contrast().map(|weak| {
+            let found = configured
+                .span_of(weak.foreground)
+                .or_else(|| configured.span_of(weak.background))
+                .or_else(|| configured.preset_span.clone());
+            ContrastWarning {
+                path: path.to_path_buf(),
+                line: found.and_then(|span| line_at(source.as_bytes(), span.start)),
+                foreground: weak.foreground,
+                background: weak.background,
+                ratio: weak.ratio,
+            }
+        });
+        config.palette = configured.palette;
     }
     Ok(config)
 }

@@ -3,51 +3,16 @@
 use iced::widget::{button, checkbox, container, text_input};
 use iced::{Background, Border, Color, Theme};
 
-pub mod colors {
-    use iced::Color;
+use crate::palette::Palette;
 
-    pub const BACKGROUND: Color = Color::from_rgb(0.035, 0.047, 0.098);
-    pub const PANEL_BACKGROUND: Color = Color::from_rgb(0.047, 0.086, 0.200);
-    pub const PANEL_TITLE_BG: Color = Color::from_rgb(0.070, 0.125, 0.270);
-    pub const PANEL_TITLE_ACTIVE_BG: Color = Color::from_rgb(0.110, 0.420, 0.520);
-    pub const HEADER_BACKGROUND: Color = Color::from_rgb(0.110, 0.420, 0.520);
-    pub const STATUSBAR_BACKGROUND: Color = Color::from_rgb(0.070, 0.125, 0.270);
-
-    pub const SELECTED_BG: Color = Color::from_rgb(0.180, 0.690, 0.760);
-    pub const SELECTED_INACTIVE_BG: Color = Color::from_rgb(0.130, 0.210, 0.360);
-    pub const SELECTED_TEXT: Color = Color::from_rgb(0.020, 0.040, 0.090);
-
-    pub const ACTIVE_BORDER: Color = Color::from_rgb(0.310, 0.840, 0.910);
-    pub const INACTIVE_BORDER: Color = Color::from_rgb(0.165, 0.210, 0.390);
-
-    pub const TEXT: Color = Color::from_rgb(0.800, 0.840, 0.940);
-    pub const DIM_TEXT: Color = Color::from_rgb(0.450, 0.500, 0.640);
-    /// Behind the context menu: darker than the dialog box so the dimmed texts
-    /// on it stay legible.
-    pub const MENU_BACKGROUND: Color = Color::from_rgb(0.070, 0.125, 0.270);
-    pub const MENU_SHORTCUT: Color = Color::from_rgb(0.560, 0.800, 0.880);
-    pub const MENU_SHORTCUT_SELECTED: Color = Color::from_rgb(0.040, 0.100, 0.180);
-    pub const MENU_DISABLED_TEXT: Color = Color::from_rgb(0.560, 0.610, 0.730);
-    pub const DIR_COLOR: Color = Color::from_rgb(1.000, 1.000, 1.000);
-    pub const ACCENT: Color = Color::from_rgb(1.000, 0.850, 0.300);
-    /// Confirmations, drawn on the title bar.
-    pub const SUCCESS: Color = Color::from_rgb(0.600, 1.000, 0.650);
-    pub const ERROR: Color = Color::from_rgb(1.000, 0.450, 0.450);
-
-    /// The digit of a function key slot: plain light text on the window
-    /// background, as in Norton Commander.
-    pub const FKEY_NUMBER: Color = Color::from_rgb(0.850, 0.870, 0.920);
-    /// The label box behind a function key's name, with dark text on it.
-    pub const FKEY_LABEL_BG: Color = Color::from_rgb(0.180, 0.690, 0.760);
-    pub const FKEY_LABEL_TEXT: Color = Color::from_rgb(0.020, 0.040, 0.090);
-    /// Behind a modal dialog: darkens the panels without hiding them.
-    pub const SCRIM: Color = Color {
-        r: 0.0,
-        g: 0.0,
-        b: 0.0,
-        a: 0.65,
-    };
-}
+/// Behind a modal dialog: darkens the panels without hiding them. Not part of
+/// the palette, so a theme cannot make the dialog's surroundings opaque.
+pub const SCRIM: Color = Color {
+    r: 0.0,
+    g: 0.0,
+    b: 0.0,
+    a: 0.65,
+};
 
 pub mod spacing {
     pub const OUTER_PADDING: f32 = 6.0;
@@ -79,64 +44,78 @@ fn filled(bg: Color, text: Color) -> container::Style {
     }
 }
 
-pub fn root(_theme: &Theme) -> container::Style {
-    filled(colors::BACKGROUND, colors::TEXT)
+pub fn root(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
+    move |_theme| filled(colors.background, colors.text)
 }
 
-pub fn header(_theme: &Theme) -> container::Style {
-    filled(colors::HEADER_BACKGROUND, colors::SELECTED_TEXT)
+pub fn header(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
+    move |_theme| filled(colors.header, colors.cursor_text)
 }
 
 /// The label box of a function key slot, filled or empty.
-pub fn fkey_label(_theme: &Theme) -> container::Style {
-    container::Style {
-        background: Some(Background::Color(colors::FKEY_LABEL_BG)),
-        text_color: Some(colors::FKEY_LABEL_TEXT),
+pub fn fkey_label(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
+    move |_theme| container::Style {
+        background: Some(Background::Color(colors.fkey_label)),
+        text_color: Some(colors.fkey_label_text),
         ..container::Style::default()
     }
 }
 
-pub fn statusbar(_theme: &Theme) -> container::Style {
-    filled(colors::STATUSBAR_BACKGROUND, colors::TEXT)
+pub fn statusbar(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
+    move |_theme| filled(colors.status_bar, colors.text)
 }
 
 /// Outer frame of a file panel; highlighted border when active.
-pub fn panel(active: bool) -> impl Fn(&Theme) -> container::Style {
+pub fn panel(palette: &Palette, active: bool) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
     move |_theme| container::Style {
         border: Border {
             color: if active {
-                colors::ACTIVE_BORDER
+                colors.border
             } else {
-                colors::INACTIVE_BORDER
+                colors.border_inactive
             },
             width: spacing::BORDER_WIDTH,
             radius: spacing::BORDER_RADIUS.into(),
         },
-        ..filled(colors::PANEL_BACKGROUND, colors::TEXT)
+        ..filled(colors.panel, colors.text)
     }
 }
 
-pub fn panel_title(active: bool) -> impl Fn(&Theme) -> container::Style {
+pub fn panel_title(palette: &Palette, active: bool) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
     move |_theme| {
         if active {
-            filled(colors::PANEL_TITLE_ACTIVE_BG, colors::SELECTED_TEXT)
+            filled(colors.title, colors.cursor_text)
         } else {
-            filled(colors::PANEL_TITLE_BG, colors::DIM_TEXT)
+            filled(colors.title_inactive, colors.dim_text)
         }
     }
 }
 
-/// Background of a file row (flat button, no hover chrome).
-pub fn row(selected: bool, panel_active: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+/// Background of a file row (flat button, no hover chrome). The cursor only
+/// shows in the active panel; a tagged row is tinted in either.
+pub fn row(
+    palette: &Palette,
+    tagged: bool,
+    cursor: bool,
+    panel_active: bool,
+) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
     move |_theme, _status| {
-        let background = match (selected, panel_active) {
-            (true, true) => Some(Background::Color(colors::SELECTED_BG)),
-            (true, false) => Some(Background::Color(colors::SELECTED_INACTIVE_BG)),
-            _ => None,
+        let background = match (cursor && panel_active, tagged, panel_active) {
+            (true, _, _) => Some(Background::Color(colors.cursor)),
+            (false, true, true) => Some(Background::Color(colors.tagged)),
+            (false, true, false) => Some(Background::Color(colors.tagged_inactive)),
+            (false, false, _) => None,
         };
         button::Style {
             background,
-            text_color: colors::TEXT,
+            text_color: colors.text,
             border: Border::default(),
             ..button::Style::default()
         }
@@ -144,21 +123,22 @@ pub fn row(selected: bool, panel_active: bool) -> impl Fn(&Theme, button::Status
 }
 
 /// Text color for a row depending on entry kind and selection state.
-pub fn row_text_color(is_dir: bool, selected: bool, panel_active: bool) -> Color {
+pub fn row_text_color(colors: &Palette, is_dir: bool, selected: bool, panel_active: bool) -> Color {
     match (selected && panel_active, is_dir) {
-        (true, _) => colors::SELECTED_TEXT,
-        (false, true) => colors::DIR_COLOR,
-        (false, false) => colors::TEXT,
+        (true, _) => colors.cursor_text,
+        (false, true) => colors.directory,
+        (false, false) => colors.text,
     }
 }
 
 /// The prompt panel: a raised box over the scrim.
-pub fn dialog(_theme: &Theme) -> container::Style {
-    container::Style {
-        background: Some(Background::Color(colors::PANEL_TITLE_ACTIVE_BG)),
-        text_color: Some(colors::TEXT),
+pub fn dialog(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
+    move |_theme| container::Style {
+        background: Some(Background::Color(colors.dialog)),
+        text_color: Some(colors.text),
         border: Border {
-            color: colors::ACTIVE_BORDER,
+            color: colors.border,
             width: 2.0,
             radius: spacing::BORDER_RADIUS.into(),
         },
@@ -167,21 +147,25 @@ pub fn dialog(_theme: &Theme) -> container::Style {
 }
 
 /// Buttons in the prompt. `primary` is the action the user most likely wants.
-pub fn dialog_button(primary: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+pub fn dialog_button(
+    palette: &Palette,
+    primary: bool,
+) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
     move |_theme, _status| {
-        let background = primary.then_some(Background::Color(colors::SELECTED_BG));
+        let background = primary.then_some(Background::Color(colors.cursor));
         button::Style {
             background,
             text_color: if primary {
-                colors::SELECTED_TEXT
+                colors.cursor_text
             } else {
-                colors::DIM_TEXT
+                colors.dim_text
             },
             border: Border {
                 color: if primary {
-                    colors::ACTIVE_BORDER
+                    colors.border
                 } else {
-                    colors::INACTIVE_BORDER
+                    colors.border_inactive
                 },
                 width: 1.0,
                 radius: spacing::BORDER_RADIUS.into(),
@@ -194,18 +178,18 @@ pub fn dialog_button(primary: bool) -> impl Fn(&Theme, button::Status) -> button
 /// The star in front of a row. Flat, so it does not look like a button until it
 /// is one: a tagged row is the only one with a visible mark.
 pub fn tag_button(
+    palette: &Palette,
     tagged: bool,
-    _panel_active: bool,
 ) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    // Tagged rows are accent-coloured, an untagged star is dim. Which panel is
+    // active does not change this — the cursor highlight elsewhere says that.
     move |_theme, _status| button::Style {
         background: None,
-        // Tagged rows are accent-coloured, an untagged star is dim. Which panel
-        // is active does not change this — the cursor highlight elsewhere says
-        // that.
         text_color: if tagged {
-            colors::ACCENT
+            colors.accent
         } else {
-            colors::DIM_TEXT
+            colors.dim_text
         },
         border: Border::default(),
         ..button::Style::default()
@@ -213,86 +197,96 @@ pub fn tag_button(
 }
 
 /// The "for all files" checkbox in the conflict dialog.
-pub fn dialog_checkbox(_theme: &Theme, status: checkbox::Status) -> checkbox::Style {
-    let checked = match status {
-        checkbox::Status::Active { is_checked } | checkbox::Status::Hovered { is_checked } => {
-            is_checked
+pub fn dialog_checkbox(palette: &Palette) -> impl Fn(&Theme, checkbox::Status) -> checkbox::Style {
+    let colors = *palette;
+    move |_theme, status| {
+        let checked = match status {
+            checkbox::Status::Active { is_checked }
+            | checkbox::Status::Hovered { is_checked }
+            | checkbox::Status::Disabled { is_checked } => is_checked,
+        };
+        checkbox::Style {
+            background: Background::Color(if checked { colors.cursor } else { colors.panel }),
+            icon_color: colors.cursor_text,
+            border: Border {
+                color: colors.border,
+                width: 1.0,
+                radius: spacing::BORDER_RADIUS.into(),
+            },
+            text_color: Some(colors.text),
         }
-        checkbox::Status::Disabled { is_checked } => is_checked,
-    };
-    checkbox::Style {
-        background: Background::Color(if checked {
-            colors::SELECTED_BG
-        } else {
-            colors::PANEL_BACKGROUND
-        }),
-        icon_color: colors::SELECTED_TEXT,
-        border: Border {
-            color: colors::ACTIVE_BORDER,
-            width: 1.0,
-            radius: spacing::BORDER_RADIUS.into(),
-        },
-        text_color: Some(colors::TEXT),
     }
 }
 
 /// The box of the context menu.
-pub fn menu(theme: &Theme) -> container::Style {
-    container::Style {
-        background: Some(Background::Color(colors::MENU_BACKGROUND)),
+pub fn menu(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
+    let dialog = dialog(&colors);
+    move |theme| container::Style {
+        background: Some(Background::Color(colors.menu)),
         ..dialog(theme)
     }
 }
 
 /// One entry of the context menu: flat, the highlighted one filled like the
 /// cursor row of a panel.
-pub fn menu_item(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+pub fn menu_item(
+    palette: &Palette,
+    selected: bool,
+) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
     move |_theme, _status| button::Style {
-        background: selected.then_some(Background::Color(colors::SELECTED_BG)),
-        text_color: colors::TEXT,
+        background: selected.then_some(Background::Color(colors.cursor)),
+        text_color: colors.text,
         border: Border::default(),
         ..button::Style::default()
     }
 }
 
 /// The line between two groups of the context menu.
-pub fn menu_separator(_theme: &Theme) -> container::Style {
-    filled(colors::ACTIVE_BORDER, colors::TEXT)
+pub fn menu_separator(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
+    move |_theme| filled(colors.border, colors.text)
 }
 
 /// The path field in the status bar: it looks like the plain text it replaces,
 /// focused or not. Only the caret and the selection show that it is a field.
-pub fn path_input(_theme: &Theme, _status: text_input::Status) -> text_input::Style {
-    text_input::Style {
+pub fn path_input(palette: &Palette) -> impl Fn(&Theme, text_input::Status) -> text_input::Style {
+    let colors = *palette;
+    move |_theme, _status| text_input::Style {
         background: Background::Color(Color::TRANSPARENT),
         border: Border::default(),
-        icon: colors::ACCENT,
-        placeholder: colors::DIM_TEXT,
-        value: colors::ACCENT,
-        selection: colors::SELECTED_BG,
+        icon: colors.accent,
+        placeholder: colors.dim_text,
+        value: colors.accent,
+        selection: colors.cursor,
     }
 }
 
 /// A flat icon button; lit while the pointer is over it.
-pub fn icon_button(_theme: &Theme, status: button::Status) -> button::Style {
-    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-    button::Style {
-        background: hovered.then_some(Background::Color(colors::PANEL_TITLE_ACTIVE_BG)),
-        text_color: colors::ACCENT,
-        border: Border {
-            radius: spacing::BORDER_RADIUS.into(),
-            ..Border::default()
-        },
-        ..button::Style::default()
+pub fn icon_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    move |_theme, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: hovered.then_some(Background::Color(colors.title)),
+            text_color: colors.accent,
+            border: Border {
+                radius: spacing::BORDER_RADIUS.into(),
+                ..Border::default()
+            },
+            ..button::Style::default()
+        }
     }
 }
 
 /// One square of the copy icon; `filled` hides what lies behind it.
-pub fn icon_square(filled: bool) -> impl Fn(&Theme) -> container::Style {
+pub fn icon_square(palette: &Palette, filled: bool) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
     move |_theme| container::Style {
-        background: filled.then_some(Background::Color(colors::STATUSBAR_BACKGROUND)),
+        background: filled.then_some(Background::Color(colors.status_bar)),
         border: Border {
-            color: colors::ACCENT,
+            color: colors.accent,
             width: spacing::BORDER_WIDTH,
             radius: 1.0.into(),
         },
@@ -302,37 +296,161 @@ pub fn icon_square(filled: bool) -> impl Fn(&Theme) -> container::Style {
 
 #[cfg(test)]
 mod tests {
-    use super::colors::*;
-    use iced::Color;
+    use super::*;
+    use crate::palette::{contrast_ratio, ThemePreset};
 
-    fn linear(channel: f32) -> f32 {
-        if channel <= 0.03928 {
-            channel / 12.92
-        } else {
-            ((channel + 0.055) / 1.055).powf(2.4)
+    fn rgb(r: f32, g: f32, b: f32) -> Color {
+        Color::from_rgb(r, g, b)
+    }
+
+    fn fill_of(style: &container::Style) -> Option<Color> {
+        match style.background {
+            Some(Background::Color(color)) => Some(color),
+            _ => None,
         }
     }
 
-    fn luminance(color: Color) -> f32 {
-        0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b)
-    }
-
-    fn contrast(a: Color, b: Color) -> f32 {
-        let (first, second) = (luminance(a), luminance(b));
-        (first.max(second) + 0.05) / (first.min(second) + 0.05)
+    fn row_fill(style: &button::Style) -> Option<Color> {
+        match style.background {
+            Some(Background::Color(color)) => Some(color),
+            _ => None,
+        }
     }
 
     #[test]
     fn menu_shortcuts_are_legible_and_quieter_than_labels() {
-        assert!(contrast(MENU_SHORTCUT, MENU_BACKGROUND) >= 4.5);
-        assert!(contrast(MENU_SHORTCUT_SELECTED, SELECTED_BG) >= 4.5);
-        assert!(contrast(MENU_SHORTCUT, MENU_BACKGROUND) < contrast(TEXT, MENU_BACKGROUND));
+        for preset in ThemePreset::ALL {
+            let p = preset.palette();
+            assert!(contrast_ratio(p.menu_shortcut, p.menu) >= 4.5, "{preset:?}");
+            assert!(
+                contrast_ratio(p.menu_shortcut_on_cursor, p.cursor) >= 4.5,
+                "{preset:?}"
+            );
+            assert!(
+                contrast_ratio(p.menu_shortcut, p.menu) < contrast_ratio(p.text, p.menu),
+                "{preset:?}"
+            );
+        }
     }
 
     #[test]
     fn disabled_menu_entries_are_legible_but_dimmer_than_shortcuts() {
-        let disabled = contrast(MENU_DISABLED_TEXT, MENU_BACKGROUND);
-        assert!(disabled >= 3.0);
-        assert!(disabled < contrast(MENU_SHORTCUT, MENU_BACKGROUND));
+        for preset in ThemePreset::ALL {
+            let p = preset.palette();
+            let disabled = contrast_ratio(p.menu_disabled, p.menu);
+            assert!(disabled >= 3.0, "{preset:?}");
+            assert!(
+                disabled < contrast_ratio(p.menu_shortcut, p.menu),
+                "{preset:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_default_palette_styles_the_window_as_it_always_looked() {
+        let p = Palette::default();
+        let theme = Theme::Dark;
+        let background = rgb(0.035, 0.047, 0.098);
+        let panel_fill = rgb(0.047, 0.086, 0.200);
+        let text = rgb(0.800, 0.840, 0.940);
+        let dark_text = rgb(0.020, 0.040, 0.090);
+        let teal = rgb(0.110, 0.420, 0.520);
+        let bar = rgb(0.070, 0.125, 0.270);
+        let cursor = rgb(0.180, 0.690, 0.760);
+        let border = rgb(0.310, 0.840, 0.910);
+        let border_inactive = rgb(0.165, 0.210, 0.390);
+
+        let style_root = root(&p)(&theme);
+        assert_eq!(
+            (fill_of(&style_root), style_root.text_color),
+            (Some(background), Some(text))
+        );
+        let style_header_bar = header(&p)(&theme);
+        assert_eq!(
+            (fill_of(&style_header_bar), style_header_bar.text_color),
+            (Some(teal), Some(dark_text))
+        );
+        let style_fkey = fkey_label(&p)(&theme);
+        assert_eq!(
+            (fill_of(&style_fkey), style_fkey.text_color),
+            (Some(cursor), Some(dark_text))
+        );
+        let style_status = statusbar(&p)(&theme);
+        assert_eq!(
+            (fill_of(&style_status), style_status.text_color),
+            (Some(bar), Some(text))
+        );
+
+        let style_panel_active = panel(&p, true)(&theme);
+        assert_eq!(
+            (
+                fill_of(&style_panel_active),
+                style_panel_active.text_color,
+                style_panel_active.border.color
+            ),
+            (Some(panel_fill), Some(text), border)
+        );
+        let style_panel_inactive = panel(&p, false)(&theme);
+        assert_eq!(style_panel_inactive.border.color, border_inactive);
+
+        let style_title_active = panel_title(&p, true)(&theme);
+        assert_eq!(
+            (fill_of(&style_title_active), style_title_active.text_color),
+            (Some(teal), Some(dark_text))
+        );
+        let style_title_inactive = panel_title(&p, false)(&theme);
+        assert_eq!(
+            (
+                fill_of(&style_title_inactive),
+                style_title_inactive.text_color
+            ),
+            (Some(bar), Some(rgb(0.450, 0.500, 0.640)))
+        );
+
+        let status = button::Status::Active;
+        let inactive_tint = rgb(0.130, 0.210, 0.360);
+        assert_eq!(
+            row_fill(&row(&p, false, true, true)(&theme, status)),
+            Some(cursor)
+        );
+        assert_eq!(
+            row_fill(&row(&p, true, false, true)(&theme, status)),
+            Some(cursor)
+        );
+        assert_eq!(
+            row_fill(&row(&p, true, true, true)(&theme, status)),
+            Some(cursor)
+        );
+        assert_eq!(
+            row_fill(&row(&p, true, false, false)(&theme, status)),
+            Some(inactive_tint)
+        );
+        assert_eq!(row_fill(&row(&p, false, true, false)(&theme, status)), None);
+        assert_eq!(row_fill(&row(&p, false, false, true)(&theme, status)), None);
+        assert_eq!(row(&p, false, false, true)(&theme, status).text_color, text);
+
+        assert_eq!(row_text_color(&p, false, true, true), dark_text);
+        assert_eq!(row_text_color(&p, true, false, true), rgb(1.0, 1.0, 1.0));
+        assert_eq!(row_text_color(&p, false, false, true), text);
+        assert_eq!(row_text_color(&p, false, true, false), text);
+
+        let style_dialog_box = dialog(&p)(&theme);
+        assert_eq!(
+            (
+                fill_of(&style_dialog_box),
+                style_dialog_box.text_color,
+                style_dialog_box.border.color
+            ),
+            (Some(teal), Some(text), border)
+        );
+        let style_menu_box = menu(&p)(&theme);
+        assert_eq!(
+            (
+                fill_of(&style_menu_box),
+                style_menu_box.text_color,
+                style_menu_box.border.color
+            ),
+            (Some(bar), Some(text), border)
+        );
     }
 }

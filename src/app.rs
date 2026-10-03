@@ -9,7 +9,7 @@ use iced::keyboard::{self, key::Named, Key, Modifiers};
 use iced::widget::{column, container, mouse_area, operation, row, Space, Stack};
 use iced::{event, window, Element, Length, Point, Size, Subscription, Task, Theme};
 
-use crate::config::{self, Config, ConfigError};
+use crate::config::{self, Config, ConfigError, ContrastWarning};
 use crate::context_menu::{ContextAction, ContextMenu, InputState};
 use crate::dialog::{Prompt, PromptKind};
 use crate::fs::{self, CreateDirError};
@@ -17,6 +17,7 @@ use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
 use crate::keymap::{self, Keymap};
 use crate::messages::{ClipboardKind, ConflictChoice, Message, PanelSide, TransferKind};
+use crate::palette::Palette;
 use crate::ui::context_menu as context_menu_view;
 use crate::ui::delete as delete_dialog_view;
 use crate::ui::dialog::FIELD_ID;
@@ -318,6 +319,15 @@ impl VolumeMenu {
     }
 }
 
+/// What is wrong with the config, kept to word it again after F9.
+#[derive(Debug)]
+enum ConfigProblem {
+    /// The file was not used; the defaults apply.
+    Invalid(ConfigError),
+    /// The file is in use, but one pairing of colors is hard to read.
+    LowContrast(ContrastWarning),
+}
+
 pub struct App {
     left_panel: PanelState,
     right_panel: PanelState,
@@ -367,7 +377,9 @@ pub struct App {
     /// does not clear it, and a job error covers it while that is shown.
     config_error: Option<String>,
     /// The error behind `config_error`, kept to word it again after F9.
-    config_problem: Option<ConfigError>,
+    config_problem: Option<ConfigProblem>,
+    /// The colors every view draws with.
+    palette: Palette,
     /// Why the last job failed, in the active language. Shown in the status bar
     /// until the next thing happens.
     job_error: Option<String>,
@@ -902,11 +914,12 @@ impl App {
                 self.open_programs = config.open;
                 self.keymap = config.keymap;
                 self.function_keys = self.keymap.function_keys(self.lang);
+                self.palette = config.palette;
+                if let Some(warning) = config.contrast_warning {
+                    self.report(ConfigProblem::LowContrast(warning));
+                }
             }
-            Err(err) => {
-                self.config_error = Some(self.config_error_text(&err));
-                self.config_problem = Some(err);
-            }
+            Err(err) => self.report(ConfigProblem::Invalid(err)),
         }
         self
     }
@@ -920,21 +933,49 @@ impl App {
         }
     }
 
-    fn config_error_text(&self, err: &ConfigError) -> String {
-        let path = err.path().display().to_string();
-        match err.line() {
-            Some(line) => fill_template(
-                self.lang.text(Msg::ErrorConfigAtLine),
-                &[
-                    ("{path}", &path),
-                    ("{line}", &line.to_string()),
-                    ("{reason}", err.reason()),
-                ],
-            ),
-            None => fill_template(
-                self.lang.text(Msg::ErrorConfig),
-                &[("{path}", &path), ("{reason}", err.reason())],
-            ),
+    fn report(&mut self, problem: ConfigProblem) {
+        self.config_error = Some(self.config_error_text(&problem));
+        self.config_problem = Some(problem);
+    }
+
+    fn config_error_text(&self, problem: &ConfigProblem) -> String {
+        match problem {
+            ConfigProblem::Invalid(err) => {
+                let path = err.path().display().to_string();
+                match err.line() {
+                    Some(line) => fill_template(
+                        self.lang.text(Msg::ErrorConfigAtLine),
+                        &[
+                            ("{path}", &path),
+                            ("{line}", &line.to_string()),
+                            ("{reason}", err.reason()),
+                        ],
+                    ),
+                    None => fill_template(
+                        self.lang.text(Msg::ErrorConfig),
+                        &[("{path}", &path), ("{reason}", err.reason())],
+                    ),
+                }
+            }
+            ConfigProblem::LowContrast(warning) => {
+                let path = warning.path.display().to_string();
+                let ratio = format!("{:.1}", warning.ratio);
+                let colors = [
+                    ("{path}", path.as_str()),
+                    ("{foreground}", warning.foreground.name()),
+                    ("{background}", warning.background.name()),
+                    ("{ratio}", ratio.as_str()),
+                ];
+                match warning.line {
+                    Some(number) => {
+                        let line = number.to_string();
+                        let mut values = colors.to_vec();
+                        values.push(("{line}", line.as_str()));
+                        fill_template(self.lang.text(Msg::ErrorContrastAtLine), &values)
+                    }
+                    None => fill_template(self.lang.text(Msg::ErrorContrast), &colors),
+                }
+            }
         }
     }
 
@@ -966,6 +1007,7 @@ impl App {
             open_programs: config::OpenPrograms::default(),
             config_error: None,
             config_problem: None,
+            palette: Palette::default(),
             job_error: None,
             notice: None,
             notice_generation: 0,
@@ -1823,6 +1865,7 @@ impl App {
                 PanelProps {
                     is_active: self.active_panel == side,
                     visible_rows: self.visible_rows,
+                    palette: self.palette,
                 },
                 self.lang,
                 move |index, on_tag| Message::RowClicked {
@@ -1842,11 +1885,12 @@ impl App {
 
         let root = container(
             column![
-                header::view(APP_NAME, self.notice.as_deref()),
+                header::view(APP_NAME, self.notice.as_deref(), &self.palette),
                 panels,
                 statusbar::view(
                     self.active_panel(),
                     self.lang,
+                    &self.palette,
                     self.job_status(),
                     self.status_error(),
                     statusbar::PathBar {
@@ -1856,14 +1900,14 @@ impl App {
                         on_copy: Message::CopyToClipboard(ClipboardKind::Directory),
                     },
                 ),
-                fkeys::view(&self.function_keys),
+                fkeys::view(&self.function_keys, &self.palette),
             ]
             .spacing(theme::spacing::SECTION_GAP),
         )
         .padding(theme::spacing::OUTER_PADDING)
         .width(Length::Fill)
         .height(Length::Fill)
-        .style(theme::root);
+        .style(theme::root(&self.palette));
 
         if let Some(menu) = self.context_menu.as_ref() {
             // A left press anywhere beside the menu closes it, the path field
@@ -1879,14 +1923,19 @@ impl App {
             return Stack::with_children([
                 root.into(),
                 click_catcher.into(),
-                context_menu_view::view(menu, self.lang, &self.keymap),
+                context_menu_view::view(menu, self.lang, &self.keymap, &self.palette),
             ])
             .into();
         }
 
         if let Some(menu) = self.volume_menu.as_ref() {
-            let menu_element =
-                volumes_view::view(menu.side, &menu.volumes, menu.selected, self.lang);
+            let menu_element = volumes_view::view(
+                menu.side,
+                &menu.volumes,
+                menu.selected,
+                self.lang,
+                &self.palette,
+            );
             return Stack::with_children([root.into(), dialog::scrim(menu_element)]).into();
         }
 
@@ -1896,6 +1945,7 @@ impl App {
                 deletion.permanent,
                 self.dialog_focus,
                 self.lang,
+                &self.palette,
             );
             return Stack::with_children([root.into(), dialog::scrim(dialog_element)]).into();
         }
@@ -1916,6 +1966,7 @@ impl App {
             let conflict_element = conflict::view(
                 &name,
                 self.lang,
+                &self.palette,
                 self.conflict_all,
                 self.dialog_focus,
                 Message::TransferConflict,
@@ -1930,6 +1981,7 @@ impl App {
         let overlay = dialog::view(
             prompt,
             self.lang,
+            &self.palette,
             Message::PromptInput,
             Message::PromptSubmit,
             Message::PromptCancel,
@@ -3289,6 +3341,7 @@ impl App {
             open_programs: config::OpenPrograms::default(),
             config_error: None,
             config_problem: None,
+            palette: Palette::default(),
             job_error: None,
             notice: None,
             notice_generation: 0,
@@ -6112,6 +6165,8 @@ mod notice_tests {
     }
 }
 
+// reason: a failing assertion is the signal in a test
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #[cfg(test)]
 mod config_status_tests {
     use super::*;
@@ -6210,6 +6265,47 @@ mod config_status_tests {
         drop(app.update(Message::SwitchLanguage));
         let shown = app.status_error().unwrap_or_default();
         assert!(shown.contains("Zeile 3"), "{shown}");
+    }
+
+    fn loaded(content: &str) -> Config {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, content).unwrap();
+        config::load(&path).unwrap()
+    }
+
+    #[test]
+    fn a_configured_color_reaches_the_app() {
+        let app =
+            App::with_fixed_panels().with_config(Ok(loaded("[theme]\nerror = \"#102030\"\n")));
+        assert_eq!(app.palette.error, iced::Color::from_rgb8(0x10, 0x20, 0x30));
+        assert_eq!(app.status_error(), None);
+    }
+
+    #[test]
+    fn a_low_contrast_is_shown_follows_the_language_and_is_dismissed() {
+        let mut app =
+            App::with_fixed_panels().with_config(Ok(loaded("[theme]\npanel = \"#ccddee\"\n")));
+        assert_eq!(app.palette.panel, iced::Color::from_rgb8(0xCC, 0xDD, 0xEE));
+        let shown = app.status_error().unwrap_or_default();
+        assert!(shown.contains("line 2"), "{shown}");
+        assert!(
+            shown.contains("text on panel has a contrast of only"),
+            "{shown}"
+        );
+        assert!(!shown.contains("Using the defaults"), "{shown}");
+
+        drop(app.update(Message::SwitchLanguage));
+        let german = app.status_error().unwrap_or_default();
+        assert!(german.contains("Zeile 2"), "{german}");
+        assert!(
+            german.contains("text auf panel hat nur ein Kontrastverhältnis"),
+            "{german}"
+        );
+
+        drop(app.update(Message::DismissConfigError));
+        assert_eq!(app.status_error(), None);
+        assert_eq!(app.palette.panel, iced::Color::from_rgb8(0xCC, 0xDD, 0xEE));
     }
 
     #[test]
@@ -6492,7 +6588,7 @@ mod configured_keys_tests {
             line: Some(2),
             reason: "bad {line}".into(),
         };
-        let config_shown = app.config_error_text(&err);
+        let config_shown = app.config_error_text(&ConfigProblem::Invalid(err));
         assert!(
             config_shown.contains("/cfg/{reason}/config.toml"),
             "{config_shown}"

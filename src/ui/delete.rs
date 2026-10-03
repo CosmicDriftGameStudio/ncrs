@@ -8,9 +8,10 @@ use iced::widget::{button, column, container, text, Row};
 use iced::Element;
 
 use super::layout::DIALOG_WIDTH;
-use super::theme::{self, colors, font_size, spacing};
+use super::theme::{self, font_size, spacing};
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
+use crate::palette::Palette;
 
 /// `focus` is the button Enter would press: 0 confirms, 1 cancels.
 ///
@@ -21,6 +22,7 @@ pub fn view<'a>(
     permanent: bool,
     focus: usize,
     lang: Language,
+    palette: &Palette,
 ) -> Element<'a, Message> {
     let (title, confirm_label) = if permanent {
         (
@@ -36,21 +38,21 @@ pub fn view<'a>(
 
     let confirm = button(text(confirm_label))
         .on_press(Message::DeleteConfirm)
-        .style(theme::dialog_button(focus == 0));
+        .style(theme::dialog_button(palette, focus == 0));
     let cancel = button(text(lang.text(Msg::DialogCancel)))
         .on_press(Message::DeleteCancel)
-        .style(theme::dialog_button(focus == 1));
+        .style(theme::dialog_button(palette, focus == 1));
 
     let mut body = column![
-        text(title).size(font_size::TITLE).color(colors::ACCENT),
-        text(subject).size(font_size::STATUS).color(colors::TEXT),
+        text(title).size(font_size::TITLE).color(palette.accent),
+        text(subject).size(font_size::STATUS).color(palette.text),
     ]
     .spacing(spacing::SECTION_GAP);
     if permanent {
         body = body.push(
             text(lang.text(Msg::DeleteWarningPermanent))
                 .size(font_size::STATUS)
-                .color(colors::ERROR),
+                .color(palette.error),
         );
     }
     body = body
@@ -59,6 +61,6 @@ pub fn view<'a>(
     container(body)
         .padding(spacing::OUTER_PADDING * 2.0)
         .width(DIALOG_WIDTH)
-        .style(theme::dialog)
+        .style(theme::dialog(palette))
         .into()
 }

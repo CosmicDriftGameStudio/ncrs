@@ -196,6 +196,23 @@ mod tests {
         );
     }
 
+    /// A configured color changes the picture. Compared with the committed
+    /// reference, as `the_dialog_is_drawn_over_the_panels` does, so no new
+    /// reference is written.
+    #[test]
+    fn a_configured_color_changes_the_picture() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[theme]\npanel = \"#ff0000\"\n").unwrap();
+        let app = App::with_fixed_panels().with_config(crate::config::load(&path));
+        let same = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/two_panels.png")
+            .expect("compare with the panels");
+        assert!(!same, "a red panel looks like the default one");
+    }
+
     /// Same for the prompt's own reference. Both are in the repo, so this
     /// compares against a real image rather than writing one.
     #[test]
@@ -795,13 +812,18 @@ mod title_notice {
     fn the_notice_is_in_the_title_bar_and_not_in_the_status_bar() {
         let app = copied();
         let notice = app.notice_for_test().expect("a notice after copying");
-        render(crate::ui::header::view("NC-rs", Some(notice)))
-            .find(NOTICE_TEXT)
-            .expect("the title bar shows the notice");
+        render(crate::ui::header::view(
+            "NC-rs",
+            Some(notice),
+            &crate::palette::Palette::default(),
+        ))
+        .find(NOTICE_TEXT)
+        .expect("the title bar shows the notice");
 
         let status_bar = crate::ui::statusbar::view(
             app.active_panel(),
             crate::i18n::Language::English,
+            &crate::palette::Palette::default(),
             None,
             None,
             crate::ui::statusbar::PathBar {

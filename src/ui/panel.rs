@@ -12,9 +12,10 @@ use super::layout::{
     COLUMN_HEADER_HEIGHT, DATE_COLUMN_WIDTH, PANEL_TITLE_HEIGHT, ROW_HEIGHT, SIZE_COLUMN_WIDTH,
     TAG_COLUMN_WIDTH,
 };
-use super::theme::{self, colors, font_size, spacing};
+use super::theme::{self, font_size, spacing};
 use crate::fs::{sort_entries, FileEntry, ReadError, SortColumn, SortKey};
 use crate::i18n::{Language, Msg};
+use crate::palette::Palette;
 use crate::selection::{Selection, SelectionSet};
 
 // ---------------------------------------------------------------------------
@@ -229,6 +230,7 @@ impl PanelState {
 pub struct PanelProps {
     pub is_active: bool,
     pub visible_rows: usize,
+    pub palette: Palette,
 }
 
 /// Renders a file panel. Generic over the message type: the caller decides
@@ -249,6 +251,7 @@ pub fn view<'a, M: Clone + 'a>(
     on_sort: impl Fn(SortColumn) -> M + 'a,
     on_scroll: impl Fn(ScrollDelta) -> M + 'a,
 ) -> Element<'a, M> {
+    let palette = &props.palette;
     let rows = state
         .entries
         .iter()
@@ -269,15 +272,15 @@ pub fn view<'a, M: Clone + 'a>(
                     text(if mark.tagged { "*" } else { " " })
                         .size(font_size::ROW)
                         .color(if mark.tagged {
-                            colors::ACCENT
+                            palette.accent
                         } else {
-                            colors::DIM_TEXT
+                            palette.dim_text
                         })
                         .wrapping(iced::widget::text::Wrapping::None),
                 )
                 .width(Length::Fixed(TAG_COLUMN_WIDTH))
                 .height(ROW_HEIGHT)
-                .style(theme::tag_button(mark.tagged, props.is_active))
+                .style(theme::tag_button(palette, mark.tagged))
                 .on_press(on_row_click(index, true)),
             );
             // A button takes only the left button, so the right press reaches
@@ -286,6 +289,7 @@ pub fn view<'a, M: Clone + 'a>(
                 entry,
                 mark,
                 props.is_active,
+                palette,
                 on_row_click(index, false),
                 row,
             ))
@@ -298,17 +302,17 @@ pub fn view<'a, M: Clone + 'a>(
     // has to ask for the wheel itself.
     mouse_area(
         column![
-            title_bar(state, props.is_active),
-            column_header(lang, state.sort, on_sort),
+            title_bar(state, palette, props.is_active),
+            column_header(lang, palette, state.sort, on_sort),
             Column::with_children(rows).height(Length::Fill),
         ]
-        .apply_frame(props.is_active),
+        .apply_frame(palette, props.is_active),
     )
     .on_scroll(on_scroll)
     .into()
 }
 
-fn title_bar<'a, M: 'a>(state: &'a PanelState, active: bool) -> Element<'a, M> {
+fn title_bar<'a, M: 'a>(state: &'a PanelState, palette: &Palette, active: bool) -> Element<'a, M> {
     let mut title = state.path.display().to_string();
     if state.loading {
         title.push_str("  …");
@@ -323,7 +327,7 @@ fn title_bar<'a, M: 'a>(state: &'a PanelState, active: bool) -> Element<'a, M> {
     .width(Length::Fill)
     .align_y(alignment::Vertical::Center)
     .clip(true)
-    .style(theme::panel_title(active))
+    .style(theme::panel_title(palette, active))
     .into()
 }
 
@@ -331,6 +335,7 @@ fn title_bar<'a, M: 'a>(state: &'a PanelState, active: bool) -> Element<'a, M> {
 /// one carries an arrow for the direction.
 fn column_header<'a, M: Clone + 'a>(
     lang: Language,
+    palette: &Palette,
     sort: SortKey,
     on_sort: impl Fn(SortColumn) -> M + 'a,
 ) -> Element<'a, M> {
@@ -343,7 +348,7 @@ fn column_header<'a, M: Clone + 'a>(
         mouse_area(
             text(format!("{}{arrow}", lang.text(msg)))
                 .size(font_size::COLUMN_HEADER)
-                .color(colors::ACCENT)
+                .color(palette.accent)
                 .wrapping(text::Wrapping::None),
         )
         .interaction(iced::mouse::Interaction::Pointer)
@@ -378,13 +383,14 @@ fn file_row<'a, M: Clone + 'a>(
     entry: &'a FileEntry,
     mark: Selection,
     panel_active: bool,
+    palette: &Palette,
     on_press: M,
     prefix: Row<'a, M>,
 ) -> Element<'a, M> {
     // The cursor row of the active panel is the one drawn as highlighted; a
     // tagged row is marked in its own column and tinted by the row style.
     let highlighted = mark.cursor && panel_active;
-    let color = theme::row_text_color(entry.is_dir, highlighted, panel_active);
+    let color = theme::row_text_color(palette, entry.is_dir, highlighted, panel_active);
     let font = if entry.is_dir || (highlighted && panel_active) {
         Font {
             weight: iced::font::Weight::Bold,
@@ -431,22 +437,22 @@ fn file_row<'a, M: Clone + 'a>(
         .padding([0.0, spacing::CELL_PADDING_X])
         .height(ROW_HEIGHT)
         .width(Length::Fill)
-        .style(theme::row(mark.tagged || highlighted, panel_active))
+        .style(theme::row(palette, mark.tagged, highlighted, panel_active))
         .into()
 }
 
 /// Small extension to wrap the panel content in its styled frame.
 trait ApplyFrame<'a, M> {
-    fn apply_frame(self, active: bool) -> Element<'a, M>;
+    fn apply_frame(self, palette: &Palette, active: bool) -> Element<'a, M>;
 }
 
 impl<'a, M: 'a> ApplyFrame<'a, M> for Column<'a, M> {
-    fn apply_frame(self, active: bool) -> Element<'a, M> {
+    fn apply_frame(self, palette: &Palette, active: bool) -> Element<'a, M> {
         container(self)
             .padding(spacing::BORDER_WIDTH)
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(theme::panel(active))
+            .style(theme::panel(palette, active))
             .into()
     }
 }
