@@ -6,7 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- Copy the path or the name of the selection to the clipboard: `Option`+`Cmd`+`C`
+  / `Ctrl`+`Alt`+`C` for the path, `Ctrl`+`Cmd`+`C` / `Ctrl`+`Shift`+`C` for the
+  name.
 
 ## [0.2.2] — 2026-10-02
 

@@ -175,6 +175,30 @@
       "de": "{count} wartend"
     },
     {
+      "key": "status.path_copied",
+      "context": "Status bar confirmation after the user copied the full path of one file or folder to the clipboard. Past participle, short.",
+      "en": "Path copied",
+      "de": "Pfad kopiert"
+    },
+    {
+      "key": "status.paths_copied",
+      "context": "Status bar confirmation after the user copied the full paths of several files or folders to the clipboard. Takes the count, which is always two or more.",
+      "en": "{count} paths copied",
+      "de": "{count} Pfade kopiert"
+    },
+    {
+      "key": "status.name_copied",
+      "context": "Status bar confirmation after the user copied the name (without the folder) of one file or folder to the clipboard. Past participle, short.",
+      "en": "Name copied",
+      "de": "Name kopiert"
+    },
+    {
+      "key": "status.names_copied",
+      "context": "Status bar confirmation after the user copied the names (without the folder) of several files or folders to the clipboard. Takes the count, which is always two or more.",
+      "en": "{count} names copied",
+      "de": "{count} Namen kopiert"
+    },
+    {
       "key": "job.abort",
       "context": "Key hint for stopping the running job. Verb, matches the other hints in the header row.",
       "en": "Stop",

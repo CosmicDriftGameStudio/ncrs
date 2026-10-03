@@ -8,7 +8,7 @@ use iced::keyboard::{key, Key, Modifiers};
 use crate::fs::OpenKind;
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
-use crate::messages::{PanelSide, TransferKind};
+use crate::messages::{ClipboardKind, PanelSide, TransferKind};
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,6 +115,28 @@ fn build_actions() -> Vec<Action> {
         Action {
             binding: Binding::with_modifiers(Key::Character("c".into()), Modifiers::CTRL),
             message: Message::AbortJob,
+            hint: None,
+        },
+        // Option+Cmd+C and Ctrl+Cmd+C on a Mac; Ctrl+Alt+C and Ctrl+Shift+C
+        // elsewhere. Plain Ctrl+C stays "stop the job".
+        Action {
+            binding: Binding::with_modifiers(
+                Character("c".into()),
+                Modifiers::ALT | Modifiers::COMMAND,
+            ),
+            message: Message::CopyToClipboard(ClipboardKind::Path),
+            hint: None,
+        },
+        Action {
+            binding: Binding::with_modifiers(
+                Character("c".into()),
+                if cfg!(target_os = "macos") {
+                    Modifiers::CTRL | Modifiers::COMMAND
+                } else {
+                    Modifiers::CTRL | Modifiers::SHIFT
+                },
+            ),
+            message: Message::CopyToClipboard(ClipboardKind::Name),
             hint: None,
         },
         Action {
