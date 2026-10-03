@@ -13,7 +13,7 @@
 use std::ffi::OsString;
 use std::fmt;
 use std::io::Read as _;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use serde::de::{Deserializer, Error as _};
 use serde::Deserialize;
@@ -106,7 +106,7 @@ impl ProgramLine {
         if program.contains('\0') || words.iter().any(|arg| arg.contains('\0')) {
             return Err("contains a NUL character");
         }
-        if !Path::new(&program).is_absolute() && program.contains(is_separator) {
+        if depends_on_working_directory(&program) {
             return Err("use a program name from PATH or an absolute path");
         }
         Ok(Self {
@@ -116,8 +116,17 @@ impl ProgramLine {
     }
 }
 
-/// A relative program with a separator would depend on the directory ncrs
-/// happened to start in.
+/// A relative program with a separator, or on Windows a drive-relative one
+/// such as `C:edit.exe` or `\tools\edit.exe`, would depend on the directory
+/// ncrs happened to start in.
+fn depends_on_working_directory(program: &str) -> bool {
+    let path = Path::new(program);
+    let anchored_elsewhere = path
+        .components()
+        .any(|part| matches!(part, Component::Prefix(_) | Component::RootDir));
+    !path.is_absolute() && (program.contains(is_separator) || anchored_elsewhere)
+}
+
 fn is_separator(c: char) -> bool {
     c == '/' || (cfg!(windows) && c == '\\')
 }
@@ -368,6 +377,12 @@ mod tests {
                 3,
             ),
             ("NUL", "version = 1\n[open]\nedit = [\"a\\u0000b\"]\n", 3),
+            #[cfg(windows)]
+            (
+                "drive-relative path",
+                "version = 1\n[open]\nedit = [\"C:edit.exe\"]\n",
+                3,
+            ),
             ("version", "# comment\nversion = 2\n", 2),
             ("syntax", "version = 1\n\n[open\n", 3),
         ];

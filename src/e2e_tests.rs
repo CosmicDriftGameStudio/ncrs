@@ -1644,6 +1644,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     fn executable_script(label: &str) -> tempfile::TempDir {
         use std::os::unix::fs::PermissionsExt as _;
         let dir = scratch(label);
