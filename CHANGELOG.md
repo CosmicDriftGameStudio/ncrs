@@ -8,6 +8,23 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Colors from the config file: `[theme]` picks a palette with
+  `preset = "default"` or `"classic"` (Norton Commander blue) and changes single
+  roles on top of it as `"#rrggbb"` or `"#rgb"`:
+
+  ```toml
+  [theme]
+  preset = "classic"
+  directory = "#ffff55"
+  tagged = "#a50"
+  ```
+
+  The roles are `background`, `panel`, `text`, `dim_text`, `directory`, `cursor`,
+  `cursor_text`, `tagged`, `border`, `bar`, `bar_inactive`, `status_bar`,
+  `dialog`, `menu`, `accent`, `success` and `error`. Without `[theme]` nothing
+  changes. An unknown role or preset and an invalid color are errors with the
+  line; a color that leaves text below 3:1 contrast is applied, and the status
+  bar names the pair and the line until `Esc`.
 - Keys from the config file: `[keys]` gives an action one key or a list of keys
   (`copy = "F2"`, `quit = ["F10", "primary+q"]`, `delete_permanently = []`),
   with `primary` for `Cmd` on macOS and `Ctrl` elsewhere. Actions not listed
