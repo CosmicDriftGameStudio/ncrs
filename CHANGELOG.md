@@ -24,6 +24,15 @@ All notable changes to this project are documented here. The format follows
   Mac), `Shift`+`F10`, or a tap of `Option` on its own. It offers the existing
   actions with their keys, acts on the tagged rows like `F5` and `F8`, and
   greys out what does not apply, for example View on a folder.
+- Sort a panel by clicking Name, Size or Modified (a second click reverses it,
+  ▲ / ▼ marks the column) or with `Ctrl`+`F3` / `F5` / `F6`. Each panel has its
+  own order, kept across reloads and folder changes; `..` and folders stay on
+  top. macOS may take `Ctrl`+`F3` for keyboard navigation.
+
+### Changed
+
+- The context menu is darker, and its keys and greyed-out entries are easier to
+  read.
 
 ## [0.2.2] — 2026-10-02
 

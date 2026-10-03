@@ -70,11 +70,6 @@ fn read_sync(path: &Path) -> io::Result<Vec<FileEntry>> {
     if let Some(parent) = path.parent() {
         entries.push(FileEntry::parent(parent));
     }
-    // `sort_by_cached_key`, not `sort_by(listing_order)`: the key is computed
-    // once per entry instead of once per comparison. `listing_order` allocates
-    // a lowercased name, so sorting that way costs O(n log n) allocations
-    // instead of O(n).
-    entries.sort_by_cached_key(|e| e.sort_key());
     Ok(entries)
 }
 
@@ -147,7 +142,8 @@ mod tests {
         std::fs::write(dir.join("b.txt"), b"hello").unwrap();
         std::fs::write(dir.join("A.txt"), b"").unwrap();
 
-        let listing = read_directory(dir.clone()).await;
+        let mut listing = read_directory(dir.clone()).await;
+        crate::fs::sort_entries(&mut listing.entries, crate::fs::SortKey::default());
         let names: Vec<_> = listing
             .entries
             .iter()

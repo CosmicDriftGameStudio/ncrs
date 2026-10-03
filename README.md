@@ -81,6 +81,8 @@ The same window in German, switched with F9.
 | `Shift`+`F8`       | Delete permanently (`Enter` cancels; `Shift`+`F8` again confirms) |
 | `Alt`+`F1` / `Alt`+`F2` | Drive menu for the left / right panel (`↑`/`↓`, `Home`/`End`, `Enter` goes, `Esc` closes; `Option` on macOS) |
 | Right click / `Shift`+`F10` / `Option` tapped alone | Context menu at the pointer or the cursor row (`↑`/`↓`, `Home`/`End`, `Enter` runs, `Esc` closes; `Ctrl`+click also on a Mac) |
+| Click a column title | Sort that panel by Name / Size / Modified; a second click reverses the order (▲ / ▼). `..` and folders stay on top |
+| `Ctrl`+`F3` / `Ctrl`+`F5` / `Ctrl`+`F6` | Sort the active panel by name / modification time / size; again reverses. macOS may take `Ctrl`+`F2`/`F3` for keyboard navigation (System Settings → Keyboard) |
 | `Backspace`        | Go to parent directory                   |
 | `Tab`              | Switch active panel                      |
 | `F9`               | Switch language (en/de, temporary)        |

@@ -5,7 +5,7 @@
 //! the other. This is the extension point a plugin would use.
 use iced::keyboard::{key, Key, Modifiers};
 
-use crate::fs::OpenKind;
+use crate::fs::{OpenKind, SortColumn};
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::messages::{ClipboardKind, PanelSide, TransferKind};
@@ -188,6 +188,23 @@ fn build_actions() -> Vec<Action> {
         Action {
             binding: Binding::with_modifiers(KeyNamed(F2), Modifiers::ALT),
             message: Message::VolumeMenu(PanelSide::Right),
+            hint: None,
+        },
+        // Sorting as in Norton Commander. macOS may claim Ctrl+F2/F3 for
+        // keyboard navigation before the app sees them.
+        Action {
+            binding: Binding::with_modifiers(KeyNamed(F3), Modifiers::CTRL),
+            message: Message::SortActive(SortColumn::Name),
+            hint: None,
+        },
+        Action {
+            binding: Binding::with_modifiers(KeyNamed(F5), Modifiers::CTRL),
+            message: Message::SortActive(SortColumn::Modified),
+            hint: None,
+        },
+        Action {
+            binding: Binding::with_modifiers(KeyNamed(F6), Modifiers::CTRL),
+            message: Message::SortActive(SortColumn::Size),
             hint: None,
         },
         // Shift+F10 is the context menu key on Windows and Linux. Registered so

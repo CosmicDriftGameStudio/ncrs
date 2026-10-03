@@ -1302,6 +1302,7 @@ impl App {
                 self.active_panel = self.active_panel.other();
                 Task::none()
             }
+            Message::SortBy { .. } | Message::SortActive(_) => self.update_sort(message),
             Message::SwitchLanguage => {
                 self.lang = self.lang.other();
                 self.function_keys = keymap::function_keys(self.lang);
@@ -1364,6 +1365,21 @@ impl App {
         // dialog could not be answered at all.
         self.publish_key_state();
         task
+    }
+
+    fn update_sort(&mut self, message: Message) -> Task<Message> {
+        let rows = self.visible_rows;
+        match message {
+            // A click beside an open menu only closes it.
+            Message::SortBy { .. } if self.context_menu.is_some() => self.context_menu = None,
+            Message::SortBy { side, column } => {
+                self.active_panel = side;
+                self.panel_mut(side).request_sort(column, rows);
+            }
+            Message::SortActive(column) => self.active_panel_mut().request_sort(column, rows),
+            _ => {}
+        }
+        Task::none()
     }
 
     fn update_context_menu(&mut self, message: Message) -> Task<Message> {
@@ -1567,6 +1583,7 @@ impl App {
                     on_tag,
                 },
                 move |index| Message::ContextMenuAt { side, index },
+                move |column| Message::SortBy { side, column },
                 move |delta| Message::PanelScrolled { side, delta },
             )
         };
@@ -4436,7 +4453,7 @@ mod delete_tests {
         let idle = PromptKeyState::default();
         for modifiers in [Modifiers::ALT, Modifiers::CTRL, Modifiers::LOGO] {
             assert_eq!(route(&idle, Named::Enter, modifiers), None, "{modifiers:?}");
-            assert_eq!(route(&idle, Named::F5, modifiers), None, "{modifiers:?}");
+            assert_eq!(route(&idle, Named::F7, modifiers), None, "{modifiers:?}");
         }
         // Ctrl+* is CTRL|SHIFT on a real keyboard, since `*` needs Shift.
         assert_eq!(

@@ -8,7 +8,7 @@ use iced::Size;
 use crate::app::{RowFailure, Transfer};
 use crate::dialog::PromptKind;
 use crate::fs::CreateDirError;
-use crate::fs::{FileEntry, ReadError};
+use crate::fs::{FileEntry, ReadError, SortColumn};
 use crate::jobs::JobEvent;
 
 /// Identifies one of the two file panels.
@@ -208,6 +208,14 @@ pub enum Message {
         index: usize,
         on_tag: bool,
     },
+
+    /// A click on a column title: sort that panel by the column.
+    SortBy {
+        side: PanelSide,
+        column: SortColumn,
+    },
+    /// Ctrl+F3, Ctrl+F5 or Ctrl+F6: sort the active panel.
+    SortActive(SortColumn),
 
     // --- Window / app ---
     WindowResized(Size),

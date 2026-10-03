@@ -1880,3 +1880,119 @@ fn clicking_a_panel_after_editing_restores_the_path() {
         "the field gave the focus back"
     );
 }
+
+const LEFT_NAME_HEADER: Point = Point::new(25.0, 83.0);
+const LEFT_SIZE_HEADER: Point = Point::new(415.0, 83.0);
+const LEFT_MODIFIED_HEADER: Point = Point::new(540.0, 83.0);
+
+fn sorting_session(
+    label: &str,
+) -> (
+    tempfile::TempDir,
+    Session<impl iced::Program<State = App, Message = Message> + 'static>,
+) {
+    let dir = scratch(label);
+    write(&dir.path().join("a.txt"), "a");
+    write(&dir.path().join("b.txt"), &"b".repeat(300));
+    write(&dir.path().join("c.txt"), &"c".repeat(20));
+    let session = session_in(dir.path());
+    (dir, session)
+}
+
+fn text_files(app: &App, side: PanelSide) -> Vec<String> {
+    names(app, side)
+        .into_iter()
+        .filter(|name| name.ends_with(".txt"))
+        .collect()
+}
+
+#[test]
+fn clicking_a_column_title_sorts_that_panel_and_a_second_click_reverses_it() {
+    let (_dir, mut session) = sorting_session("sort-click");
+    assert_eq!(
+        text_files(&session.app, PanelSide::Left),
+        ["a.txt", "b.txt", "c.txt"]
+    );
+
+    session.click_at(LEFT_SIZE_HEADER);
+    assert_eq!(
+        text_files(&session.app, PanelSide::Left),
+        ["a.txt", "c.txt", "b.txt"]
+    );
+    assert_eq!(names(&session.app, PanelSide::Left)[0], "..");
+
+    session.click_at(LEFT_SIZE_HEADER);
+    assert_eq!(
+        text_files(&session.app, PanelSide::Left),
+        ["b.txt", "c.txt", "a.txt"]
+    );
+    let left = names(&session.app, PanelSide::Left);
+    assert_eq!(left[0], "..");
+    assert!(
+        left[1..4].iter().all(|name| !name.ends_with(".txt")),
+        "directories stay before the files: {left:?}"
+    );
+
+    session.click_at(LEFT_NAME_HEADER);
+    assert_eq!(
+        text_files(&session.app, PanelSide::Left),
+        ["a.txt", "b.txt", "c.txt"]
+    );
+
+    assert_eq!(
+        session.app.panel(PanelSide::Right).sort,
+        crate::fs::SortKey::default(),
+        "the other panel is not sorted"
+    );
+}
+
+#[test]
+fn sorting_keeps_the_cursor_on_its_entry() {
+    let (_dir, mut session) = sorting_session("sort-cursor");
+    cursor_to(&mut session, "c.txt");
+
+    session.click_at(LEFT_MODIFIED_HEADER);
+    session.click_at(LEFT_SIZE_HEADER);
+
+    assert_eq!(
+        selected(&session.app, PanelSide::Left).as_deref(),
+        Some("c.txt")
+    );
+}
+
+#[test]
+fn ctrl_f3_f5_and_f6_sort_the_active_panel() {
+    use crate::fs::{SortColumn, SortKey};
+    let (_dir, mut session) = sorting_session("sort-keys");
+    let sort_of = |running: &Session<_>| running.app.panel(PanelSide::Left).sort;
+    let f6 = Key::Named(keyboard::key::Named::F6);
+    let f5 = Key::Named(keyboard::key::Named::F5);
+    let f3 = Key::Named(keyboard::key::Named::F3);
+
+    session.press_with(f6.clone(), Modifiers::CTRL);
+    assert_eq!(
+        sort_of(&session),
+        SortKey {
+            column: SortColumn::Size,
+            descending: false
+        }
+    );
+    session.press_with(f6, Modifiers::CTRL);
+    assert_eq!(
+        sort_of(&session),
+        SortKey {
+            column: SortColumn::Size,
+            descending: true
+        }
+    );
+    assert_eq!(
+        text_files(&session.app, PanelSide::Left),
+        ["b.txt", "c.txt", "a.txt"]
+    );
+
+    session.press_with(f5, Modifiers::CTRL);
+    assert_eq!(sort_of(&session).column, SortColumn::Modified);
+    session.press_with(f3, Modifiers::CTRL);
+    assert_eq!(sort_of(&session), SortKey::default());
+    assert_eq!(session.app.panel(PanelSide::Right).sort, SortKey::default());
+}
