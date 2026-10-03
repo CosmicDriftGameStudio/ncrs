@@ -214,7 +214,7 @@ Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
 # Tasks – Basis-Feature
 
 **Stand 2026-10-03: T1–T11 erledigt, T6d teilweise, T12–T18 offen.** Release 0.2.2,
-439 `#[test]`-Funktionen inkl. UI-Tests mit Pixelvergleich.
+440 `#[test]`-Funktionen inkl. UI-Tests mit Pixelvergleich.
 
 | Block | Inhalt | Stand |
 |---|---|---|

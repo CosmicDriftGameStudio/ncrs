@@ -525,14 +525,15 @@ fn keys_without_prompt(
         let permanent = prompt.delete_dialog == DeleteKeys::Permanent;
         return match key.as_ref() {
             Key::Named(Named::Escape) => Some(Message::DeleteCancel),
-            // The deliberate chord that started the permanent delete confirms it.
-            _ if permanent
-                && bound_message(&prompt.keymap, &key, key_modifiers)
-                    == Some(Message::Delete { permanent: true }) =>
-            {
-                Some(Message::DeleteConfirm)
-            }
-            _ => dialog_focus_key(key, key_modifiers),
+            // The fixed dialog keys come first: a configured chord must not
+            // take Enter or an arrow, or one press could confirm a deletion.
+            // Only then the chord that started the permanent delete confirms it.
+            _ => dialog_focus_key(key.clone(), key_modifiers).or_else(|| {
+                (permanent
+                    && bound_message(&prompt.keymap, &key, key_modifiers)
+                        == Some(Message::Delete { permanent: true }))
+                .then_some(Message::DeleteConfirm)
+            }),
         };
     }
 
@@ -544,12 +545,13 @@ fn keys_without_prompt(
             Key::Named(Named::Escape) => Some(Message::TransferConflict(ConflictChoice::ThisKeep)),
             // Space ticks "for all files", as it ticks a checkbox elsewhere.
             Key::Named(Named::Space) => Some(Message::ToggleConflictAll),
-            // The key that aborts a job cancels the whole operation. Enter and
-            // Escape already covered the two single-file answers.
-            _ if bound_message(&prompt.keymap, &key, key_modifiers) == Some(Message::AbortJob) => {
-                Some(Message::TransferConflict(ConflictChoice::Cancel))
-            }
-            _ => dialog_focus_key(key, key_modifiers),
+            // The fixed dialog keys before the configured one, so a rebound
+            // abort key cannot take Enter or an arrow. The key that aborts a
+            // job then cancels the whole operation.
+            _ => dialog_focus_key(key.clone(), key_modifiers).or_else(|| {
+                (bound_message(&prompt.keymap, &key, key_modifiers) == Some(Message::AbortJob))
+                    .then_some(Message::TransferConflict(ConflictChoice::Cancel))
+            }),
         };
     }
 
@@ -6306,6 +6308,30 @@ mod configured_keys_tests {
             Some(Message::DeleteConfirm)
         );
         assert_eq!(route_key(&state, named(Named::F8), Modifiers::SHIFT), None);
+    }
+
+    #[test]
+    fn a_configured_key_cannot_take_the_fixed_dialog_keys() {
+        let delete = PromptKeyState {
+            delete_dialog: DeleteKeys::Permanent,
+            ..state_for("[keys]\ndelete_permanently = \"right\"\n")
+        };
+        assert_eq!(
+            route_key(&delete, named(Named::ArrowRight), Modifiers::default()),
+            Some(Message::DialogFocus(1))
+        );
+        assert_eq!(
+            route_key(&delete, named(Named::Enter), Modifiers::default()),
+            Some(Message::DialogActivate)
+        );
+        let conflict = PromptKeyState {
+            conflict_open: true,
+            ..state_for("[keys]\nabort_job = \"left\"\n")
+        };
+        assert_eq!(
+            route_key(&conflict, named(Named::ArrowLeft), Modifiers::default()),
+            Some(Message::DialogFocus(-1))
+        );
     }
 
     #[test]
