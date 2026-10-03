@@ -190,20 +190,18 @@ fn build_actions() -> Vec<Action> {
             message: Message::VolumeMenu(PanelSide::Right),
             hint: None,
         },
-        // Sorting as in Norton Commander. macOS may claim Ctrl+F2/F3 for
-        // keyboard navigation before the app sees them.
         Action {
-            binding: Binding::with_modifiers(KeyNamed(F3), Modifiers::CTRL),
+            binding: sort_binding(SortColumn::Name),
             message: Message::SortActive(SortColumn::Name),
             hint: None,
         },
         Action {
-            binding: Binding::with_modifiers(KeyNamed(F5), Modifiers::CTRL),
+            binding: sort_binding(SortColumn::Modified),
             message: Message::SortActive(SortColumn::Modified),
             hint: None,
         },
         Action {
-            binding: Binding::with_modifiers(KeyNamed(F6), Modifiers::CTRL),
+            binding: sort_binding(SortColumn::Size),
             message: Message::SortActive(SortColumn::Size),
             hint: None,
         },
@@ -264,6 +262,27 @@ fn build_actions() -> Vec<Action> {
             hint: None,
         },
     ]
+}
+
+/// Ctrl+F3, Ctrl+F5 and Ctrl+F6 as in Norton Commander. A Mac takes Ctrl+F-keys
+/// for itself, so there it is Cmd+1 (name), Cmd+2 (size) and Cmd+3 (modified).
+pub fn sort_binding(column: SortColumn) -> Binding {
+    use key::Named::{F3, F5, F6};
+    if cfg!(target_os = "macos") {
+        let digit = match column {
+            SortColumn::Name => "1",
+            SortColumn::Size => "2",
+            SortColumn::Modified => "3",
+        };
+        Binding::with_modifiers(Key::Character(digit.into()), Modifiers::COMMAND)
+    } else {
+        let function_key = match column {
+            SortColumn::Name => F3,
+            SortColumn::Modified => F5,
+            SortColumn::Size => F6,
+        };
+        Binding::with_modifiers(Key::Named(function_key), Modifiers::CTRL)
+    }
 }
 
 /// The binding table, built once on first use.
@@ -374,6 +393,54 @@ pub fn function_keys(lang: Language) -> [Option<&'static str>; FUNCTION_KEY_COUN
 mod tests {
     use super::*;
     use iced::keyboard::key::Named;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn cmd_1_2_3_sort_by_name_size_modified() {
+        for (digit, column) in [
+            ("1", SortColumn::Name),
+            ("2", SortColumn::Size),
+            ("3", SortColumn::Modified),
+        ] {
+            assert_eq!(
+                map_key(Key::Character(digit.into()), Modifiers::COMMAND),
+                Some(Message::SortActive(column))
+            );
+            assert_eq!(
+                map_key(Key::Character(digit.into()), Modifiers::default()),
+                None
+            );
+        }
+        assert_eq!(map_key(Key::Named(Named::F3), Modifiers::CTRL), None);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn ctrl_f3_f5_f6_sort_by_name_modified_size() {
+        for (function_key, column) in [
+            (Named::F3, SortColumn::Name),
+            (Named::F5, SortColumn::Modified),
+            (Named::F6, SortColumn::Size),
+        ] {
+            assert_eq!(
+                map_key(Key::Named(function_key), Modifiers::CTRL),
+                Some(Message::SortActive(column))
+            );
+        }
+        assert_eq!(
+            map_key(Key::Character("1".into()), Modifiers::COMMAND),
+            None
+        );
+    }
+
+    /// The bare function keys keep their meaning whatever the sort chords are.
+    #[test]
+    fn the_sort_chords_leave_the_bare_keys_alone() {
+        assert_eq!(
+            map_key(Key::Named(Named::F5), Modifiers::default()),
+            Some(Message::Transfer(TransferKind::Copy))
+        );
+    }
 
     /// The point of this module: a label on the bar whose key does nothing, or
     /// a binding the bar never shows. Both used to be possible.

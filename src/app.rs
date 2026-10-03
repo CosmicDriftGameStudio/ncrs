@@ -4449,6 +4449,15 @@ mod delete_tests {
     }
 
     #[test]
+    fn the_sort_chord_is_routed_and_not_taken_for_type_ahead() {
+        let binding = keymap::sort_binding(crate::fs::SortColumn::Size);
+        assert_eq!(
+            route_key(&PromptKeyState::default(), binding.key, binding.modifiers),
+            Some(Message::SortActive(crate::fs::SortColumn::Size))
+        );
+    }
+
+    #[test]
     fn alt_ctrl_and_super_do_not_fall_back_to_the_bare_key() {
         let idle = PromptKeyState::default();
         for modifiers in [Modifiers::ALT, Modifiers::CTRL, Modifiers::LOGO] {

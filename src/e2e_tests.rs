@@ -1961,15 +1961,16 @@ fn sorting_keeps_the_cursor_on_its_entry() {
 }
 
 #[test]
-fn ctrl_f3_f5_and_f6_sort_the_active_panel() {
+fn the_sort_keys_sort_the_active_panel_and_a_second_press_reverses() {
     use crate::fs::{SortColumn, SortKey};
     let (_dir, mut session) = sorting_session("sort-keys");
+    let press_sort = |running: &mut Session<_>, column| {
+        let binding = crate::keymap::sort_binding(column);
+        running.press_with(binding.key, binding.modifiers);
+    };
     let sort_of = |running: &Session<_>| running.app.panel(PanelSide::Left).sort;
-    let f6 = Key::Named(keyboard::key::Named::F6);
-    let f5 = Key::Named(keyboard::key::Named::F5);
-    let f3 = Key::Named(keyboard::key::Named::F3);
 
-    session.press_with(f6.clone(), Modifiers::CTRL);
+    press_sort(&mut session, SortColumn::Size);
     assert_eq!(
         sort_of(&session),
         SortKey {
@@ -1977,7 +1978,7 @@ fn ctrl_f3_f5_and_f6_sort_the_active_panel() {
             descending: false
         }
     );
-    session.press_with(f6, Modifiers::CTRL);
+    press_sort(&mut session, SortColumn::Size);
     assert_eq!(
         sort_of(&session),
         SortKey {
@@ -1990,9 +1991,9 @@ fn ctrl_f3_f5_and_f6_sort_the_active_panel() {
         ["b.txt", "c.txt", "a.txt"]
     );
 
-    session.press_with(f5, Modifiers::CTRL);
+    press_sort(&mut session, SortColumn::Modified);
     assert_eq!(sort_of(&session).column, SortColumn::Modified);
-    session.press_with(f3, Modifiers::CTRL);
+    press_sort(&mut session, SortColumn::Name);
     assert_eq!(sort_of(&session), SortKey::default());
     assert_eq!(session.app.panel(PanelSide::Right).sort, SortKey::default());
 }
