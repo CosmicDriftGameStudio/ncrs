@@ -149,8 +149,8 @@ pub enum Message {
     ContextMenuClose,
 
     // --- path field in the status bar ---
-    /// A click on the path: show it as a text field with the focus.
-    PathFieldOpen,
+    /// The path field's text changed: from then on it shows what was typed
+    /// instead of the panel's path.
     PathFieldInput(String),
     /// Enter in the field: go to the typed path.
     PathFieldSubmit,

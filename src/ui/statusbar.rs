@@ -1,6 +1,6 @@
 //! Bottom bar: active path, selected entry info, or the last error.
-use iced::widget::{button, column, container, mouse_area, row, text, text_input, tooltip, Stack};
-use iced::{alignment, mouse, Element, Length, Padding};
+use iced::widget::{button, column, container, row, text, text_input, tooltip, Stack};
+use iced::{alignment, Element, Length, Padding};
 
 use super::format;
 use super::layout::{DATE_COLUMN_WIDTH, SIZE_COLUMN_WIDTH, STATUSBAR_HEIGHT};
@@ -9,16 +9,12 @@ use super::theme::{self, colors, font_size, spacing};
 use crate::fs::ReadError;
 use crate::i18n::{Language, Msg};
 
-/// The text field the path turns into when it is clicked.
-pub const PATH_FIELD_ID: &str = "path-field";
-
-/// The path at the left of the bar: plain text that becomes a text field when
-/// clicked, with a button that copies it. The messages are the caller's, so
+/// The path at the left of the bar: a text field, with a button that copies
+/// the panel's path. The messages are the caller's, so
 /// this stays a view.
 pub struct PathBar<'a, M> {
     /// The text being edited; `None` shows the panel's own path.
     pub editing: Option<&'a str>,
-    pub on_open: M,
     pub on_input: fn(String) -> M,
     pub on_submit: M,
     pub on_copy: M,
@@ -56,30 +52,18 @@ fn path_bar<'a, M: Clone + 'a>(
     lang: Language,
     bar: PathBar<'a, M>,
 ) -> Element<'a, M> {
-    let path: Element<'a, M> = match bar.editing {
-        Some(typed) => text_input("", typed)
-            .id(PATH_FIELD_ID)
-            .on_input(bar.on_input)
-            .on_submit(bar.on_submit)
-            .size(font_size::STATUS)
-            .padding([0.0, 4.0])
-            .style(theme::path_input)
-            .into(),
-        // The whole line is the click target, not just the glyphs: a short
-        // path would leave most of the cell dead.
-        None => mouse_area(
-            container(
-                text(panel.path.display().to_string())
-                    .size(font_size::STATUS)
-                    .color(colors::ACCENT)
-                    .wrapping(text::Wrapping::None),
-            )
-            .width(Length::Fill),
-        )
-        .on_press(bar.on_open)
-        .interaction(mouse::Interaction::Text)
-        .into(),
-    };
+    // Always a text field: a click puts the caret where it landed, and what it
+    // shows is the panel's path until the user types something else.
+    let shown = bar
+        .editing
+        .map_or_else(|| panel.path.display().to_string(), str::to_owned);
+    let path: Element<'a, M> = text_input("", &shown)
+        .on_input(bar.on_input)
+        .on_submit(bar.on_submit)
+        .size(font_size::STATUS)
+        .padding(0.0)
+        .style(theme::path_input)
+        .into();
     let copy = tooltip(
         button(copy_icon())
             .on_press(bar.on_copy)

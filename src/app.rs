@@ -1077,8 +1077,7 @@ impl App {
             | Message::ContextMenuClose) => self.update_context_menu(menu_message),
 
             // --- path field ---
-            path_message @ (Message::PathFieldOpen
-            | Message::PathFieldInput(_)
+            path_message @ (Message::PathFieldInput(_)
             | Message::PathFieldSubmit
             | Message::PathFieldCancel
             | Message::ClickedOutside) => self.update_path_field(path_message),
@@ -1421,15 +1420,8 @@ impl App {
 
     fn update_path_field(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::PathFieldOpen if !self.overlay_is_open() => {
-                self.path_field = Some(self.active_panel().path.display().to_string());
-                operation::focus(ui::statusbar::PATH_FIELD_ID)
-                    .chain(operation::move_cursor_to_end(ui::statusbar::PATH_FIELD_ID))
-            }
             Message::PathFieldInput(typed) => {
-                if self.path_field.is_some() {
-                    self.path_field = Some(typed);
-                }
+                self.path_field = Some(typed);
                 Task::none()
             }
             Message::PathFieldSubmit => self.go_to_typed_path(),
@@ -1594,7 +1586,6 @@ impl App {
                     self.job_error.as_deref(),
                     statusbar::PathBar {
                         editing: self.path_field.as_deref(),
-                        on_open: Message::PathFieldOpen,
                         on_input: Message::PathFieldInput,
                         on_submit: Message::PathFieldSubmit,
                         on_copy: Message::CopyToClipboard(ClipboardKind::Directory),
@@ -5503,8 +5494,10 @@ mod type_ahead_tests {
 mod path_field_tests {
     use super::*;
 
+    /// Edits the field: its first keystroke, with the panel's path as it was.
     fn open(app: &mut App) {
-        drop(app.update(Message::PathFieldOpen));
+        let shown = app.active_panel().path.display().to_string();
+        drop(app.update(Message::PathFieldInput(shown)));
     }
 
     fn type_path(app: &mut App, typed: &str) {
@@ -5519,18 +5512,12 @@ mod path_field_tests {
     }
 
     #[test]
-    fn opening_starts_from_the_active_panels_path() {
+    fn typing_replaces_what_the_field_shows_and_a_cancel_restores_the_panels_path() {
         let mut app = App::with_fixed_panels();
-        open(&mut app);
-        assert_eq!(app.path_field.as_deref(), Some("/home/test/links"));
+        assert_eq!(app.path_field, None, "unedited, the field shows the panel");
         type_path(&mut app, "/home/test/links/Docu");
         assert_eq!(app.path_field.as_deref(), Some("/home/test/links/Docu"));
-    }
-
-    #[test]
-    fn typing_without_an_open_field_does_nothing() {
-        let mut app = App::with_fixed_panels();
-        type_path(&mut app, "/tmp");
+        drop(app.update(Message::PathFieldCancel));
         assert_eq!(app.path_field, None);
     }
 

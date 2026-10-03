@@ -1785,35 +1785,33 @@ mod tests {
     }
 }
 
-/// Where the path sits in the status bar of a 1200 x 760 window.
-const PATH_IN_STATUS_BAR: Point = Point::new(60.0, 710.0);
+/// A point on the path line of a 1200 x 760 window, right of a short path, so
+/// the caret lands at its end.
+const PATH_LINE: Point = Point::new(350.0, 710.0);
+
+/// Both panels in `/usr`, a path short enough to click past its end.
+fn short_path_session() -> Session<impl iced::Program<State = App, Message = Message> + 'static> {
+    Session::boot(super::program(|| {
+        App::starting_in("/usr".into(), "/usr".into())
+    }))
+}
 
 #[test]
 fn clicking_the_path_then_typing_and_enter_goes_to_that_directory() {
-    let dir = scratch("path-field");
-    let mut session = session_in(dir.path());
+    let mut session = short_path_session();
+    assert_eq!(session.app.path_field_for_test(), None);
 
-    session.click_at(PATH_IN_STATUS_BAR);
-    assert!(
-        session.app.path_field_for_test().is_some(),
-        "the field did not open"
-    );
-
+    session.click_at(PATH_LINE);
     session.interact(vec![
         iced_test::core::Event::Window(window::Event::Focused),
         iced_test::core::Event::Window(window::Event::RedrawRequested(
             iced_test::core::time::Instant::now(),
         )),
-        iced_test::core::Event::Mouse(mouse::Event::CursorMoved {
-            position: Point::new(70.0, 711.0),
-        }),
     ]);
-    // No second click into the field: the field has to take the focus itself.
-    session.type_into_widgets("/links");
-    let left = std::fs::canonicalize(dir.path()).unwrap();
+    session.type_into_widgets("/lib");
     assert_eq!(
         session.app.path_field_for_test(),
-        Some(format!("{}/links", left.display()).as_str()),
+        Some("/usr/lib"),
         "typing did not reach the field"
     );
 
@@ -1821,45 +1819,64 @@ fn clicking_the_path_then_typing_and_enter_goes_to_that_directory() {
         Key::Named(keyboard::key::Named::Enter),
         Modifiers::default(),
     );
-    assert_eq!(
-        session.app.active_panel().path,
-        left.join("links"),
-        "Enter did not open the typed directory"
-    );
+    assert_eq!(session.app.active_panel().path, Path::new("/usr/lib"));
     assert_eq!(session.app.path_field_for_test(), None);
 }
 
 #[test]
 fn pasting_into_the_path_field_with_the_command_key_works() {
-    let dir = scratch("path-paste");
-    let mut session = session_in(dir.path());
-    let left = std::fs::canonicalize(dir.path()).unwrap();
-    session.widgets.clipboard.content = Some("/links".to_string());
+    let mut session = short_path_session();
+    session.widgets.clipboard.content = Some("/lib".to_string());
 
-    session.click_at(PATH_IN_STATUS_BAR);
+    session.click_at(PATH_LINE);
     // The operating system reports the held key first; the field reads it from
     // there rather than from the key press.
     session.interact(vec![iced_test::core::Event::Keyboard(
         keyboard::Event::ModifiersChanged(Modifiers::COMMAND),
     )]);
     session.press_in_widgets(Key::Character("v".into()), Modifiers::COMMAND);
+    assert_eq!(session.app.path_field_for_test(), Some("/usr/lib"));
+}
+
+#[test]
+fn keys_go_to_the_panels_until_the_path_is_clicked_and_back_after_escape() {
+    let mut session = short_path_session();
+    // Not focused: a letter is type-ahead, not path text.
+    session.type_text("l");
+    assert_eq!(session.app.path_field_for_test(), None);
+
+    session.click_at(PATH_LINE);
+    session.type_into_widgets("/lib");
+    assert!(session.app.path_field_for_test().is_some());
+
+    session.press_in_widgets(
+        Key::Named(keyboard::key::Named::Escape),
+        Modifiers::default(),
+    );
     assert_eq!(
         session.app.path_field_for_test(),
-        Some(format!("{}/links", left.display()).as_str()),
-        "Cmd+V did not paste into the field"
+        None,
+        "Escape restores the path"
+    );
+    session.type_into_widgets("l");
+    assert_eq!(
+        session.app.path_field_for_test(),
+        None,
+        "the field gave the focus back"
     );
 }
 
 #[test]
-fn clicking_the_path_line_right_of_the_text_opens_the_field() {
-    // A short path, so the click lands in the line but past the text.
-    let mut session = Session::boot(super::program(|| {
-        App::starting_in("/usr".into(), "/usr".into())
-    }));
-
-    session.click_at(Point::new(350.0, 710.0));
-    assert!(
-        session.app.path_field_for_test().is_some(),
-        "a click on the path line, right of the text, did not open the field"
+fn clicking_a_panel_after_editing_restores_the_path() {
+    let mut session = short_path_session();
+    session.click_at(PATH_LINE);
+    session.type_into_widgets("/lib");
+    session.click_at(Point::new(300.0, 300.0));
+    assert_eq!(session.app.path_field_for_test(), None);
+    session.type_into_widgets("l");
+    assert_eq!(
+        session.app.path_field_for_test(),
+        None,
+        "the field gave the focus back"
     );
 }

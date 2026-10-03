@@ -247,15 +247,12 @@ pub fn menu_separator(_theme: &Theme) -> container::Style {
     filled(colors::ACTIVE_BORDER, colors::TEXT)
 }
 
-/// The path field in the status bar while it is being edited.
+/// The path field in the status bar: it looks like the plain text it replaces,
+/// focused or not. Only the caret and the selection show that it is a field.
 pub fn path_input(_theme: &Theme, _status: text_input::Status) -> text_input::Style {
     text_input::Style {
-        background: Background::Color(colors::PANEL_BACKGROUND),
-        border: Border {
-            color: colors::ACTIVE_BORDER,
-            width: spacing::BORDER_WIDTH,
-            radius: spacing::BORDER_RADIUS.into(),
-        },
+        background: Background::Color(Color::TRANSPARENT),
+        border: Border::default(),
         icon: colors::ACCENT,
         placeholder: colors::DIM_TEXT,
         value: colors::ACCENT,
