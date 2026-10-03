@@ -1548,6 +1548,7 @@ dependencies = [
  "iced_selector",
  "iced_test",
  "serde",
+ "serde_spanned",
  "tempfile",
  "tokio",
  "toml_edit",

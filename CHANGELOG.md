@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Keys from the config file: `[keys]` gives an action one key or a list of keys
+  (`copy = "F2"`, `quit = ["F10", "primary+q"]`, `delete_permanently = []`),
+  with `primary` for `Cmd` on macOS and `Ctrl` elsewhere. Actions not listed
+  keep their keys. The function key bar, the context menu and the status
+  messages that name a key follow the keys in effect. One key on two actions,
+  an unknown action or key, `Escape`, and bare letters or digits (type-ahead)
+  are errors with the line, handled like any other config error.
 - A config file (TOML) at `~/.config/ncrs/config.toml` (macOS, Linux; Linux
   honours `$XDG_CONFIG_HOME`) or `%APPDATA%\ncrs\config.toml` (Windows). `[open]`
   sets the programs for `F3` (`view`) and `F4` (`edit`, also used for files that

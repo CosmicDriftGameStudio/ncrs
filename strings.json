@@ -398,9 +398,15 @@
     },
     {
       "key": "error.trash_failed",
-      "context": "Status bar when the trash could not take an entry (no trash on this volume, a network drive, no permission). Takes the name and the reason. Must tell the user that Shift+F8 deletes without the trash. Keep the key name Shift+F8 as is.",
-      "en": "Could not move {name} to the trash: {reason}. Shift+F8 deletes permanently.",
-      "de": "{name} konnte nicht in den Papierkorb: {reason}. Shift+F8 löscht endgültig."
+      "context": "Status bar when the trash could not take an entry (no trash on this volume, a network drive, no permission). Takes the name, the reason and {key}, the key that deletes without the trash, spelled as the app spells keys (e.g. Shift+F8); keep {key} as is. Must tell the user that this key deletes permanently.",
+      "en": "Could not move {name} to the trash: {reason}. {key} deletes permanently.",
+      "de": "{name} konnte nicht in den Papierkorb: {reason}. {key} löscht endgültig."
+    },
+    {
+      "key": "error.trash_failed_no_key",
+      "context": "Like error.trash_failed, for when the user has no key for deleting permanently: no hint about a key. Takes the name and the reason.",
+      "en": "Could not move {name} to the trash: {reason}.",
+      "de": "{name} konnte nicht in den Papierkorb: {reason}."
     },
     {
       "key": "volumes.title_left",
@@ -428,9 +434,15 @@
     },
     {
       "key": "error.open_refused",
-      "context": "Status bar when F3 or F4 refuses a file because opening it with the system could run it (script, app, shortcut). Takes the file name.",
-      "en": "{name} could be executed, F3/F4 do not open it",
-      "de": "{name} könnte ausgeführt werden, F3/F4 öffnen es nicht"
+      "context": "Status bar when the view or edit key refuses a file because opening it with the system could run it (script, app, shortcut). Takes the file name and {keys}, the view and edit keys joined with a slash, spelled as the app spells keys (e.g. F3/F4); keep {keys} as is.",
+      "en": "{name} could be executed, so {keys} will not open it",
+      "de": "{name} könnte ausgeführt werden und wird mit {keys} nicht geöffnet"
+    },
+    {
+      "key": "error.open_refused_no_key",
+      "context": "Like error.open_refused, for when the user has no key for viewing or editing: no key names. Takes the file name.",
+      "en": "{name} could be executed, ncrs does not open it",
+      "de": "{name} könnte ausgeführt werden, ncrs öffnet es nicht"
     },
     {
       "key": "error.config_at_line",

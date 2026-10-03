@@ -1443,8 +1443,11 @@ mod tests {
 
         assert!(dir.path().join("alpha.txt").is_file(), "deleted anyway");
         let message = session.app.job_error_for_test().expect("no error shown");
+        let permanent_key = crate::keymap::Keymap::built_in()
+            .shortcut_label(&Message::Delete { permanent: true })
+            .expect("the permanent delete has a key");
         assert!(
-            message.contains("alpha.txt") && message.contains("Shift+F8"),
+            message.contains("alpha.txt") && message.contains(&permanent_key),
             "the error does not name the entry and the way out: {message}"
         );
     }

@@ -79,7 +79,7 @@ ncrs - a dual-panel file manager inspired by Norton Commander
 USAGE:
     ncrs
 
-KEYS:
+KEYS (the defaults; [keys] in the config file changes them):
     up/down    move selection      Tab       switch panel
     PgUp/PgDn  page                Backspace go up
     Home/End   first/last          Enter    open
@@ -102,6 +102,16 @@ CONFIG:
     config.toml on Linux if set), %APPDATA%\\ncrs\\config.toml on Windows. A
     missing file means the defaults; an invalid one means the defaults plus the
     file and line in the status bar.
+
+    [keys] gives an action one key or a list of keys; actions not listed keep
+    their defaults, [] leaves an action without a key:
+        [keys]
+        copy = \"F2\"
+        quit = [\"F10\", \"primary+q\"]
+    primary is Cmd on macOS and Ctrl elsewhere; also ctrl, alt, shift, cmd.
+    One key on two actions, Escape, and letters or digits without ctrl, alt
+    or cmd (they jump to a file name) are errors. The full list of actions
+    is in the README.
 
 DELETE:
     F8 asks, then moves the tagged rows (or the row under the cursor) to the
