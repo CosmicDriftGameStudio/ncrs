@@ -199,6 +199,84 @@
       "de": "{count} Namen kopiert"
     },
     {
+      "key": "context_menu.open",
+      "context": "Entry of the context menu on a file or folder: enters the folder under the cursor. Shown with its key (Enter) on the right. Verb, imperative.",
+      "en": "Open",
+      "de": "Öffnen"
+    },
+    {
+      "key": "context_menu.view",
+      "context": "Entry of the context menu: opens the file under the cursor in an external viewer (key F3). Verb, imperative; the function key bar has a shorter label.",
+      "en": "View",
+      "de": "Ansehen"
+    },
+    {
+      "key": "context_menu.edit",
+      "context": "Entry of the context menu: opens the file under the cursor in an external editor (key F4). Verb, imperative; the function key bar has a shorter label.",
+      "en": "Edit",
+      "de": "Bearbeiten"
+    },
+    {
+      "key": "context_menu.copy",
+      "context": "Entry of the context menu: copies the tagged rows, or the cursor row, into the other panel (key F5). Verb, imperative.",
+      "en": "Copy",
+      "de": "Kopieren"
+    },
+    {
+      "key": "context_menu.move",
+      "context": "Entry of the context menu: moves the tagged rows, or the cursor row, into the other panel (key F6). Verb, imperative.",
+      "en": "Move",
+      "de": "Verschieben"
+    },
+    {
+      "key": "context_menu.new_folder",
+      "context": "Entry of the context menu: asks for a name and creates a folder in the current directory (key F7). Noun phrase.",
+      "en": "New folder",
+      "de": "Neuer Ordner"
+    },
+    {
+      "key": "context_menu.copy_path",
+      "context": "Entry of the context menu: puts the full path of the tagged rows, or the cursor row, on the clipboard. Verb, imperative.",
+      "en": "Copy path",
+      "de": "Pfad kopieren"
+    },
+    {
+      "key": "context_menu.copy_name",
+      "context": "Entry of the context menu: puts the name (without the folder) of the tagged rows, or the cursor row, on the clipboard. Verb, imperative.",
+      "en": "Copy name",
+      "de": "Name kopieren"
+    },
+    {
+      "key": "context_menu.trash",
+      "context": "Entry of the context menu: moves the tagged rows, or the cursor row, to the trash after a confirmation (key F8). The German text is a prepositional phrase because the entry reads as an action on the selection.",
+      "en": "Move to trash",
+      "de": "In den Papierkorb"
+    },
+    {
+      "key": "context_menu.delete_permanently",
+      "context": "Entry of the context menu: deletes the tagged rows, or the cursor row, for good, bypassing the trash, after a confirmation (key Shift+F8). Verb phrase, imperative.",
+      "en": "Delete permanently",
+      "de": "Endgültig löschen"
+    },
+    {
+      "key": "status.copy_path_tooltip",
+      "context": "Tooltip of the small copy icon at the right end of the path field in the status bar. The icon copies the path of the directory shown in the active panel to the clipboard. Verb, imperative.",
+      "en": "Copy path",
+      "de": "Pfad kopieren"
+    },
+    {
+      "key": "status.path_missing",
+      "context": "Status bar error after the user typed a path into the path field and pressed Enter, but nothing exists there. {path} is the path as typed, after expanding a leading ~. Keep the placeholder verbatim.",
+      "en": "{path} does not exist",
+      "de": "{path} existiert nicht"
+    },
+    {
+      "key": "status.path_unreadable",
+      "context": "Status bar error after the user typed a path into the path field and pressed Enter, but the system would not say whether it exists (no permission, a mount that does not answer). {path} is the path as typed, after expanding a leading ~. {reason} is the system's own message, in the system's language. Keep both placeholders verbatim.",
+      "en": "Cannot read {path}: {reason}",
+      "de": "{path} kann nicht gelesen werden: {reason}"
+    },
+    {
       "key": "job.abort",
       "context": "Key hint for stopping the running job. Verb, matches the other hints in the header row.",
       "en": "Stop",

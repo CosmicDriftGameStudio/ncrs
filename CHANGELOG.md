@@ -8,9 +8,35 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Confirmations such as "Path copied" now show on the right of the title bar with
+  a green check mark and go away after three seconds; failures stay red in the
+  status bar.
+- The path in the status bar can be edited: click it, type or paste a path and
+  press `Enter` (a folder opens in the active panel, a file is shown in its
+  folder; `~` is the home directory, `.` and `..` are folded without following
+  links; a path that is missing or unreadable is reported and the field stays
+  open). `Esc`, `Tab` or a click elsewhere puts the current path back and the
+  keys go to the panel again; `Cmd`+`Q` / `Ctrl`+`Q` and `F10` still quit. The
+  icon next to it copies the panel's folder path.
+- Type-ahead: typing a letter or digit jumps to the first entry whose name starts
+  with it, ignoring case; a character typed within a second extends the prefix.
 - Copy the path or the name of the selection to the clipboard: `Option`+`Cmd`+`C`
   / `Ctrl`+`Alt`+`C` for the path, `Ctrl`+`Cmd`+`C` / `Ctrl`+`Shift`+`C` for the
   name.
+- A context menu on the panel rows, as in Zed: right click (`Ctrl`+click on a
+  Mac), `Shift`+`F10`, or a tap of `Option` on its own. It offers the existing
+  actions with their keys, acts on the tagged rows like `F5` and `F8`, and
+  greys out what does not apply, for example View on a folder.
+- Sort a panel by clicking Name, Size or Modified (a second click reverses it,
+  ▲ / ▼ marks the column) or with `Ctrl`+`F3` / `F5` / `F6` (name / modified /
+  size; on a Mac `Cmd`+`1` / `3` / `2`, as the system takes the `Ctrl` chords).
+  Each panel has its own order, kept across reloads and folder changes; `..`
+  and folders stay on top.
+
+### Changed
+
+- The context menu is darker, and its keys and greyed-out entries are easier to
+  read.
 
 ## [0.2.2] — 2026-10-02
 
@@ -45,6 +71,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Quit is `F10` or `Cmd`+`Q` (`Ctrl`+`Q` on Linux and Windows); a bare `Q` no
+  longer quits and takes part in type-ahead like any other letter.
 - Started from Finder (working directory `/`), the left panel opens in `$HOME`.
 - ncrs is described as "inspired by Norton Commander", with a trademark notice
   in the README.

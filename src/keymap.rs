@@ -5,7 +5,7 @@
 //! the other. This is the extension point a plugin would use.
 use iced::keyboard::{key, Key, Modifiers};
 
-use crate::fs::OpenKind;
+use crate::fs::{OpenKind, SortColumn};
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::messages::{ClipboardKind, PanelSide, TransferKind};
@@ -53,9 +53,10 @@ fn build_actions() -> Vec<Action> {
     use Key::{Character, Named as KeyNamed};
 
     vec![
-        // --- Backspace, Enter, Tab and Q are not on the function key bar ---
+        // --- Backspace, Enter, Tab and Cmd+Q are not on the function key bar ---
         Action {
-            binding: Binding::key(Character("q".into())),
+            // Not a bare Q: that letter belongs to type-ahead.
+            binding: Binding::with_modifiers(Character("q".into()), Modifiers::COMMAND),
             message: Message::Quit,
             hint: None,
         },
@@ -189,6 +190,28 @@ fn build_actions() -> Vec<Action> {
             message: Message::VolumeMenu(PanelSide::Right),
             hint: None,
         },
+        Action {
+            binding: sort_binding(SortColumn::Name),
+            message: Message::SortActive(SortColumn::Name),
+            hint: None,
+        },
+        Action {
+            binding: sort_binding(SortColumn::Modified),
+            message: Message::SortActive(SortColumn::Modified),
+            hint: None,
+        },
+        Action {
+            binding: sort_binding(SortColumn::Size),
+            message: Message::SortActive(SortColumn::Size),
+            hint: None,
+        },
+        // Shift+F10 is the context menu key on Windows and Linux. Registered so
+        // the exact chord wins over the fall-back to bare F10, which quits.
+        Action {
+            binding: Binding::with_modifiers(KeyNamed(F10), Modifiers::SHIFT),
+            message: Message::ContextMenuKey,
+            hint: None,
+        },
         // Quit is also F10, the Norton Commander convention.
         Action {
             binding: Binding::key(KeyNamed(F10)),
@@ -241,6 +264,27 @@ fn build_actions() -> Vec<Action> {
     ]
 }
 
+/// Ctrl+F3, Ctrl+F5 and Ctrl+F6 as in Norton Commander. A Mac takes Ctrl+F-keys
+/// for itself, so there it is Cmd+1 (name), Cmd+2 (size) and Cmd+3 (modified).
+pub fn sort_binding(column: SortColumn) -> Binding {
+    use key::Named::{F3, F5, F6};
+    if cfg!(target_os = "macos") {
+        let digit = match column {
+            SortColumn::Name => "1",
+            SortColumn::Size => "2",
+            SortColumn::Modified => "3",
+        };
+        Binding::with_modifiers(Key::Character(digit.into()), Modifiers::COMMAND)
+    } else {
+        let function_key = match column {
+            SortColumn::Name => F3,
+            SortColumn::Modified => F5,
+            SortColumn::Size => F6,
+        };
+        Binding::with_modifiers(Key::Named(function_key), Modifiers::CTRL)
+    }
+}
+
 /// The binding table, built once on first use.
 ///
 /// `map_key` runs on every key press, and `Action` owns a `Key`, which owns a
@@ -258,6 +302,46 @@ pub fn map_key(key: Key, modifiers: Modifiers) -> Option<Message> {
         .iter()
         .find(|action| action.binding.key == key && action.binding.modifiers == modifiers)
         .map(|action| action.message.clone())
+}
+
+/// The key that sends `message`, spelled for this platform: `F5`, `⇧F8`,
+/// `⌥⌘C` on a Mac, `Ctrl+Alt+C` elsewhere. `None` for a message no key sends.
+pub fn shortcut_label(message: &Message) -> Option<String> {
+    let action = actions().iter().find(|action| action.message == *message)?;
+    let Binding { key, modifiers } = &action.binding;
+    let key_name = match key {
+        Key::Named(named) => format!("{named:?}"),
+        Key::Character(character) => character.to_uppercase(),
+        _ => return None,
+    };
+    let mut label = String::new();
+    if cfg!(target_os = "macos") {
+        for (held, symbol) in [
+            (modifiers.control(), "⌃"),
+            (modifiers.alt(), "⌥"),
+            (modifiers.shift(), "⇧"),
+            (modifiers.logo(), "⌘"),
+        ] {
+            if held {
+                label.push_str(symbol);
+            }
+        }
+        label.push_str(&key_name);
+    } else {
+        for (held, name) in [
+            (modifiers.control(), "Ctrl"),
+            (modifiers.alt(), "Alt"),
+            (modifiers.shift(), "Shift"),
+            (modifiers.logo(), "Super"),
+        ] {
+            if held {
+                label.push_str(name);
+                label.push('+');
+            }
+        }
+        label.push_str(&key_name);
+    }
+    Some(label)
 }
 
 /// Slots in the function key bar: F1 to F10.
@@ -309,6 +393,54 @@ pub fn function_keys(lang: Language) -> [Option<&'static str>; FUNCTION_KEY_COUN
 mod tests {
     use super::*;
     use iced::keyboard::key::Named;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn cmd_1_2_3_sort_by_name_size_modified() {
+        for (digit, column) in [
+            ("1", SortColumn::Name),
+            ("2", SortColumn::Size),
+            ("3", SortColumn::Modified),
+        ] {
+            assert_eq!(
+                map_key(Key::Character(digit.into()), Modifiers::COMMAND),
+                Some(Message::SortActive(column))
+            );
+            assert_eq!(
+                map_key(Key::Character(digit.into()), Modifiers::default()),
+                None
+            );
+        }
+        assert_eq!(map_key(Key::Named(Named::F3), Modifiers::CTRL), None);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn ctrl_f3_f5_f6_sort_by_name_modified_size() {
+        for (function_key, column) in [
+            (Named::F3, SortColumn::Name),
+            (Named::F5, SortColumn::Modified),
+            (Named::F6, SortColumn::Size),
+        ] {
+            assert_eq!(
+                map_key(Key::Named(function_key), Modifiers::CTRL),
+                Some(Message::SortActive(column))
+            );
+        }
+        assert_eq!(
+            map_key(Key::Character("1".into()), Modifiers::COMMAND),
+            None
+        );
+    }
+
+    /// The bare function keys keep their meaning whatever the sort chords are.
+    #[test]
+    fn the_sort_chords_leave_the_bare_keys_alone() {
+        assert_eq!(
+            map_key(Key::Named(Named::F5), Modifiers::default()),
+            Some(Message::Transfer(TransferKind::Copy))
+        );
+    }
 
     /// The point of this module: a label on the bar whose key does nothing, or
     /// a binding the bar never shows. Both used to be possible.
@@ -382,8 +514,13 @@ mod tests {
             Some(Message::Quit)
         );
         assert_eq!(
-            map_key(Key::Character("q".into()), Modifiers::default()),
+            map_key(Key::Character("q".into()), Modifiers::COMMAND),
             Some(Message::Quit)
+        );
+        assert_eq!(
+            map_key(Key::Character("q".into()), Modifiers::default()),
+            None,
+            "a bare q is type-ahead now"
         );
         assert_eq!(
             map_key(Key::Character("x".into()), Modifiers::default()),
@@ -405,6 +542,42 @@ mod tests {
         assert_eq!(map_key(Key::Named(Named::F2), Modifiers::SHIFT), None);
         // Not on the bar: bare F1 and F2 stay free for help and the user menu.
         assert_eq!(function_keys(Language::English)[..2], [None, None]);
+    }
+
+    #[test]
+    fn shift_f10_opens_the_context_menu_and_does_not_quit() {
+        assert_eq!(
+            map_key(Key::Named(Named::F10), Modifiers::SHIFT),
+            Some(Message::ContextMenuKey)
+        );
+        assert_eq!(
+            map_key(Key::Named(Named::F10), Modifiers::default()),
+            Some(Message::Quit)
+        );
+    }
+
+    #[test]
+    fn shortcuts_are_spelled_for_the_platform() {
+        let label = |message: Message| shortcut_label(&message).unwrap();
+        assert_eq!(label(Message::OpenSelected), "Enter");
+        assert_eq!(label(Message::Transfer(TransferKind::Copy)), "F5");
+        if cfg!(target_os = "macos") {
+            assert_eq!(label(Message::Delete { permanent: true }), "⇧F8");
+            assert_eq!(label(Message::CopyToClipboard(ClipboardKind::Path)), "⌥⌘C");
+            assert_eq!(label(Message::CopyToClipboard(ClipboardKind::Name)), "⌃⌘C");
+        } else {
+            assert_eq!(label(Message::Delete { permanent: true }), "Shift+F8");
+            assert_eq!(
+                label(Message::CopyToClipboard(ClipboardKind::Path)),
+                "Ctrl+Alt+C"
+            );
+            assert_eq!(
+                label(Message::CopyToClipboard(ClipboardKind::Name)),
+                "Ctrl+Shift+C"
+            );
+        }
+        assert_eq!(shortcut_label(&Message::SwitchLanguage), Some("F9".into()));
+        assert_eq!(shortcut_label(&Message::ContextMenuClose), None);
     }
 
     /// A modifier must actually gate the binding: Alt+Enter is not Enter.

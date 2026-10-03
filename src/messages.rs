@@ -8,7 +8,7 @@ use iced::Size;
 use crate::app::{RowFailure, Transfer};
 use crate::dialog::PromptKind;
 use crate::fs::CreateDirError;
-use crate::fs::{FileEntry, ReadError};
+use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
 use crate::jobs::JobEvent;
 
 /// Identifies one of the two file panels.
@@ -39,6 +39,8 @@ pub enum Message {
         path: PathBuf,
         entries: Vec<FileEntry>,
         error: Option<ReadError>,
+        /// The order the reader put `entries` in.
+        sorted_by: SortKey,
         /// Entry name to select after loading (e.g. the dir we came from).
         select: Option<String>,
     },
@@ -51,6 +53,9 @@ pub enum Message {
     SelectLast,
     OpenSelected,
     GoUp,
+    /// A printable key: jump to the first entry that starts with what was
+    /// typed in the last second.
+    TypeAhead(String),
 
     // --- copy / move (F5, F6) ---
     /// Ctrl+C or Escape while a job runs: stop it. Its own message rather than
@@ -60,6 +65,9 @@ pub enum Message {
     JobProgress(crate::fs::transfer::Tick),
     /// F5 or F6, decided by the action rather than a message each.
     Transfer(TransferKind),
+    /// The title bar's notice of this generation has been up long enough. An
+    /// older timer finds a newer notice and leaves it.
+    NoticeExpired(u64),
     /// Path or name of the tagged rows, else the cursor row, to the clipboard.
     CopyToClipboard(ClipboardKind),
     /// The user answered the conflict dialog.
@@ -123,6 +131,44 @@ pub enum Message {
     VolumeMenuClick(usize),
     VolumeMenuClose,
 
+    // --- context menu (right click, Option tap, Shift+F10) ---
+    /// Right click (or Ctrl+click on a Mac) on a row: open the menu at the pointer.
+    ContextMenuAt {
+        side: PanelSide,
+        index: usize,
+    },
+    /// Shift+F10 or a tap of Option: open the menu at the cursor row.
+    ContextMenuKey,
+    ContextMenuMove(isize),
+    ContextMenuFirst,
+    ContextMenuLast,
+    /// Enter in the open menu: run the highlighted entry.
+    ContextMenuActivate,
+    /// A click on the entry at this index: run it.
+    ContextMenuClick(usize),
+    /// The pointer is over the entry at this index.
+    ContextMenuHover(usize),
+    ContextMenuClose,
+
+    // --- path field in the status bar ---
+    /// The path field's text changed: from then on it shows what was typed
+    /// instead of the panel's path.
+    PathFieldInput(String),
+    /// Enter in the field: go to the typed path.
+    PathFieldSubmit,
+    /// The background look at the path that Enter submitted. A result whose
+    /// `request_id` is not the latest is dropped.
+    PathChecked {
+        request_id: u64,
+        side: PanelSide,
+        target: PathBuf,
+        result: Result<Destination, PathProblem>,
+    },
+    /// Escape, Tab or a click elsewhere: back to the panel's own path.
+    PathFieldCancel,
+    /// A mouse press that no widget took.
+    ClickedOutside,
+
     // --- Job queue (see crate::jobs) ---
     /// A job started, made progress, or finished. One variant for all three:
     /// they are the same event arriving at different times, and splitting them
@@ -173,6 +219,14 @@ pub enum Message {
         on_tag: bool,
     },
 
+    /// A click on a column title: sort that panel by the column.
+    SortBy {
+        side: PanelSide,
+        column: SortColumn,
+    },
+    /// Ctrl+F3, Ctrl+F5 or Ctrl+F6: sort the active panel.
+    SortActive(SortColumn),
+
     // --- Window / app ---
     WindowResized(Size),
     Quit,
@@ -183,6 +237,8 @@ pub enum Message {
 pub enum ClipboardKind {
     Path,
     Name,
+    /// The directory the active panel shows, not a row in it.
+    Directory,
 }
 
 /// Copy or move. One message with the kind inside, so the keymap and the job

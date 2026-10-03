@@ -3,6 +3,7 @@
 //! so they can be reused in other contexts.
 
 pub mod conflict;
+pub mod context_menu;
 pub mod delete;
 pub mod dialog;
 pub mod fkeys;

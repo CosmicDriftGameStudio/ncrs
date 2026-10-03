@@ -13,7 +13,7 @@ use super::layout::{
     TAG_COLUMN_WIDTH,
 };
 use super::theme::{self, colors, font_size, spacing};
-use crate::fs::{FileEntry, ReadError};
+use crate::fs::{sort_entries, FileEntry, ReadError, SortColumn, SortKey};
 use crate::i18n::{Language, Msg};
 use crate::selection::{Selection, SelectionSet};
 
@@ -43,6 +43,9 @@ pub struct PanelState {
     /// Trackpad pixels scrolled that do not yet add up to a whole row, in the
     /// direction of the list (down is positive).
     pub scroll_remainder: f32,
+    /// How the rows are ordered. Belongs to the panel, so it outlives a reload
+    /// and a change of directory.
+    pub sort: SortKey,
 }
 
 impl PanelState {
@@ -57,7 +60,20 @@ impl PanelState {
             loading: false,
             request_id: 0,
             scroll_remainder: 0.0,
+            sort: SortKey::default(),
         }
+    }
+
+    /// Orders the rows by `column`, or reverses them when the panel is already
+    /// sorted by it. The cursor stays on the same entry and in view.
+    pub fn request_sort(&mut self, column: SortColumn, visible_rows: usize) {
+        self.sort = self.sort.requested(column);
+        let cursor_name = self.selected_entry().map(|entry| entry.name.clone());
+        sort_entries(&mut self.entries, self.sort);
+        let index = cursor_name
+            .and_then(|name| self.entries.iter().position(|entry| entry.name == name))
+            .unwrap_or(self.selected);
+        self.select(index, visible_rows);
     }
 
     pub fn selected_entry(&self) -> Option<&FileEntry> {
@@ -71,7 +87,8 @@ impl PanelState {
         self.request_id
     }
 
-    /// Replaces the content with a freshly loaded listing.
+    /// Replaces the content with a listing in no particular order.
+    #[cfg(test)]
     pub fn apply_listing(
         &mut self,
         path: PathBuf,
@@ -80,6 +97,24 @@ impl PanelState {
         select: Option<&str>,
         visible_rows: usize,
     ) {
+        self.apply_sorted_listing(path, entries, error, select, visible_rows, None);
+    }
+
+    /// Replaces the content with a freshly loaded listing that the reader
+    /// sorted by `sorted_by`. It is sorted again only when the panel's own key
+    /// has changed since the read began.
+    pub fn apply_sorted_listing(
+        &mut self,
+        path: PathBuf,
+        mut entries: Vec<FileEntry>,
+        error: Option<ReadError>,
+        select: Option<&str>,
+        visible_rows: usize,
+        sorted_by: Option<SortKey>,
+    ) {
+        if sorted_by != Some(self.sort) {
+            sort_entries(&mut entries, self.sort);
+        }
         let same_directory = self.path == path;
         self.path = path;
         // Read the name under the cursor *before* the rows are replaced. After
@@ -203,12 +238,15 @@ pub struct PanelProps {
 /// `on_row_click` is called with the row index and whether the click landed in
 /// the tag column: the star toggles the tag, the rest of the row moves the
 /// cursor. One callback with a flag rather than two callbacks, because a row is
-/// one clickable thing with two meanings.
+/// one clickable thing with two meanings. `on_row_context` is called with the
+/// row index when the row is right-clicked.
 pub fn view<'a, M: Clone + 'a>(
     state: &'a PanelState,
     props: PanelProps,
     lang: Language,
     on_row_click: impl Fn(usize, bool) -> M,
+    on_row_context: impl Fn(usize) -> M,
+    on_sort: impl Fn(SortColumn) -> M + 'a,
     on_scroll: impl Fn(ScrollDelta) -> M + 'a,
 ) -> Element<'a, M> {
     let rows = state
@@ -242,13 +280,17 @@ pub fn view<'a, M: Clone + 'a>(
                 .style(theme::tag_button(mark.tagged, props.is_active))
                 .on_press(on_row_click(index, true)),
             );
-            file_row(
+            // A button takes only the left button, so the right press reaches
+            // the area around it.
+            mouse_area(file_row(
                 entry,
                 mark,
                 props.is_active,
                 on_row_click(index, false),
                 row,
-            )
+            ))
+            .on_right_press(on_row_context(index))
+            .into()
         });
 
     // The wheel belongs to the panel under the pointer. The rows are drawn from
@@ -257,7 +299,7 @@ pub fn view<'a, M: Clone + 'a>(
     mouse_area(
         column![
             title_bar(state, props.is_active),
-            column_header(lang),
+            column_header(lang, state.sort, on_sort),
             Column::with_children(rows).height(Length::Fill),
         ]
         .apply_frame(props.is_active),
@@ -285,15 +327,37 @@ fn title_bar<'a, M: 'a>(state: &'a PanelState, active: bool) -> Element<'a, M> {
     .into()
 }
 
-fn column_header<'a, M: 'a>(lang: Language) -> Element<'a, M> {
-    let label = |s: &'static str| text(s).size(font_size::COLUMN_HEADER).color(colors::ACCENT);
+/// The column titles, each a click target that sorts by its column; the sorted
+/// one carries an arrow for the direction.
+fn column_header<'a, M: Clone + 'a>(
+    lang: Language,
+    sort: SortKey,
+    on_sort: impl Fn(SortColumn) -> M + 'a,
+) -> Element<'a, M> {
+    let title = |column: SortColumn, msg: Msg| {
+        let arrow = match (sort.column == column, sort.descending) {
+            (false, _) => "",
+            (true, false) => " ▲",
+            (true, true) => " ▼",
+        };
+        mouse_area(
+            text(format!("{}{arrow}", lang.text(msg)))
+                .size(font_size::COLUMN_HEADER)
+                .color(colors::ACCENT)
+                .wrapping(text::Wrapping::None),
+        )
+        .interaction(iced::mouse::Interaction::Pointer)
+        .on_press(on_sort(column))
+    };
     container(
         row![
-            label(lang.text(Msg::ColumnName)).width(Length::Fill),
-            label(lang.text(Msg::ColumnSize))
+            container(title(SortColumn::Name, Msg::ColumnName))
+                .padding(iced::Padding::ZERO.left(TAG_COLUMN_WIDTH))
+                .width(Length::Fill),
+            container(title(SortColumn::Size, Msg::ColumnSize))
                 .width(SIZE_COLUMN_WIDTH)
                 .align_x(alignment::Horizontal::Right),
-            label(lang.text(Msg::ColumnModified))
+            container(title(SortColumn::Modified, Msg::ColumnModified))
                 .width(DATE_COLUMN_WIDTH)
                 .align_x(alignment::Horizontal::Right),
         ]
@@ -564,5 +628,77 @@ mod tagging_tests {
         );
 
         assert!(p.selection.is_tagged(&std::ffi::OsString::from("a")));
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod sort_tests {
+    use super::*;
+    use std::time::SystemTime;
+
+    fn file(name: &str, size: u64) -> FileEntry {
+        FileEntry {
+            name: name.into(),
+            path: PathBuf::from("/d").join(name),
+            is_dir: false,
+            is_symlink: false,
+            is_parent: false,
+            size,
+            modified: Some(SystemTime::UNIX_EPOCH),
+        }
+    }
+
+    fn files() -> Vec<FileEntry> {
+        vec![file("a", 30), file("b", 10), file("c", 20)]
+    }
+
+    fn loaded(rows: usize) -> PanelState {
+        let mut panel = PanelState::new(PathBuf::from("/d"));
+        panel.apply_listing(PathBuf::from("/d"), files(), None, None, rows);
+        panel
+    }
+
+    fn names(panel: &PanelState) -> Vec<String> {
+        panel
+            .entries
+            .iter()
+            .map(|e| e.name.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn the_cursor_follows_its_entry_and_stays_in_view() {
+        let mut panel = loaded(2);
+        panel.select(0, 2);
+        panel.request_sort(SortColumn::Size, 2);
+        assert_eq!(names(&panel), ["b", "c", "a"]);
+        assert_eq!(panel.selected_entry().unwrap().name, "a");
+        assert_eq!(panel.selected, 2);
+        assert!(panel.scroll_offset <= panel.selected && panel.selected < panel.scroll_offset + 2);
+    }
+
+    #[test]
+    fn tags_survive_a_sort() {
+        let mut panel = loaded(5);
+        panel.selection.toggle(&"b".into());
+        panel.request_sort(SortColumn::Size, 5);
+        panel.request_sort(SortColumn::Size, 5);
+        assert!(panel.selection.is_tagged(&"b".into()));
+    }
+
+    #[test]
+    fn the_sort_outlives_a_reload_and_a_change_of_directory() {
+        let mut panel = loaded(5);
+        panel.request_sort(SortColumn::Size, 5);
+        panel.apply_listing(PathBuf::from("/d"), files(), None, None, 5);
+        assert_eq!(names(&panel), ["b", "c", "a"]);
+        panel.apply_listing(PathBuf::from("/e"), files(), None, None, 5);
+        assert_eq!(names(&panel), ["b", "c", "a"]);
     }
 }

@@ -1,6 +1,6 @@
 //! Bottom bar: active path, selected entry info, or the last error.
-use iced::widget::{container, row, text};
-use iced::{alignment, Element, Length};
+use iced::widget::{button, column, container, row, text, text_input, tooltip, Stack};
+use iced::{alignment, Element, Length, Padding};
 
 use super::format;
 use super::layout::{DATE_COLUMN_WIDTH, SIZE_COLUMN_WIDTH, STATUSBAR_HEIGHT};
@@ -8,6 +8,81 @@ use super::panel::PanelState;
 use super::theme::{self, colors, font_size, spacing};
 use crate::fs::ReadError;
 use crate::i18n::{Language, Msg};
+
+/// The path at the left of the bar: a text field, with a button that copies
+/// the panel's path. The messages are the caller's, so
+/// this stays a view.
+pub struct PathBar<'a, M> {
+    /// The text being edited; `None` shows the panel's own path.
+    pub editing: Option<&'a str>,
+    pub on_input: fn(String) -> M,
+    pub on_submit: M,
+    pub on_copy: M,
+}
+
+const COPY_ICON_SIZE: f32 = 14.0;
+const COPY_ICON_SQUARE: f32 = 9.0;
+
+/// Two overlapping squares, drawn from widgets so no font or image is needed.
+fn copy_icon<'a, M: 'a>() -> Element<'a, M> {
+    let square = |filled: bool, offset: f32| {
+        container(
+            container(column![])
+                .width(COPY_ICON_SQUARE)
+                .height(COPY_ICON_SQUARE)
+                .style(theme::icon_square(filled)),
+        )
+        .padding(Padding {
+            top: offset,
+            left: offset,
+            ..Padding::ZERO
+        })
+    };
+    Stack::with_children([
+        square(false, COPY_ICON_SIZE - COPY_ICON_SQUARE).into(),
+        square(true, 0.0).into(),
+    ])
+    .width(COPY_ICON_SIZE)
+    .height(COPY_ICON_SIZE)
+    .into()
+}
+
+fn path_bar<'a, M: Clone + 'a>(
+    panel: &'a PanelState,
+    lang: Language,
+    bar: PathBar<'a, M>,
+) -> Element<'a, M> {
+    // Always a text field: a click puts the caret where it landed, and what it
+    // shows is the panel's path until the user types something else.
+    let shown = bar
+        .editing
+        .map_or_else(|| panel.path.display().to_string(), str::to_owned);
+    let path: Element<'a, M> = text_input("", &shown)
+        .on_input(bar.on_input)
+        .on_submit(bar.on_submit)
+        .size(font_size::STATUS)
+        .padding(0.0)
+        .style(theme::path_input)
+        .into();
+    let copy = tooltip(
+        button(copy_icon())
+            .on_press(bar.on_copy)
+            .padding(3.0)
+            .style(theme::icon_button),
+        container(
+            text(lang.text(Msg::StatusCopyPathTooltip))
+                .size(font_size::STATUS)
+                .wrapping(text::Wrapping::None),
+        )
+        .padding([2.0, 6.0])
+        .style(theme::dialog),
+        tooltip::Position::Top,
+    );
+    row![container(path).width(Length::Fill).clip(true), copy]
+        .spacing(spacing::CELL_PADDING_X / 2.0)
+        .align_y(alignment::Vertical::Center)
+        .into()
+}
 
 /// What a running job shows in the bar. Built by `App`, which owns the queue.
 pub struct JobStatus {
@@ -27,28 +102,19 @@ pub struct JobStatus {
 ///
 /// A running job takes the middle: the file under the cursor is not what the
 /// user is looking at while fifty thousand files are on their way.
-pub fn view<'a, M: 'a>(
+pub fn view<'a, M: Clone + 'a>(
     panel: &'a PanelState,
     lang: Language,
     job: Option<JobStatus>,
     failure: Option<&'a str>,
-    notice: Option<&'a str>,
+    path_bar_input: PathBar<'a, M>,
 ) -> Element<'a, M> {
-    let path = text(panel.path.display().to_string())
-        .size(font_size::STATUS)
-        .color(colors::ACCENT)
-        .wrapping(text::Wrapping::None);
+    let path = path_bar(panel, lang, path_bar_input);
 
     let details: Element<'a, M> = if let Some(last_failure) = failure {
         text(last_failure)
             .size(font_size::STATUS)
             .color(colors::ERROR)
-            .wrapping(text::Wrapping::None)
-            .into()
-    } else if let Some(confirmation) = notice {
-        text(confirmation)
-            .size(font_size::STATUS)
-            .color(colors::ACCENT)
             .wrapping(text::Wrapping::None)
             .into()
     } else if let Some(error) = &panel.error {

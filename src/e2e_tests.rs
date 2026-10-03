@@ -48,10 +48,14 @@ use std::path::Path;
 use iced::keyboard::{self, Key, Modifiers};
 use iced::window;
 use iced_test::core::event::Status;
+use iced_test::core::renderer::Headless as _;
+use iced_test::core::widget::operation::Outcome as OperationOutcome;
+use iced_test::core::{mouse, Point, Size};
 use iced_test::futures::futures::channel::mpsc;
 use iced_test::futures::futures::{self as futures, StreamExt};
 use iced_test::futures::subscription::{self, Event as SubEvent};
 use iced_test::futures::Runtime;
+use iced_test::runtime::user_interface::{self, UserInterface};
 use iced_test::runtime::{task, Action, Task};
 
 use crate::app::App;
@@ -63,7 +67,7 @@ use crate::messages::{Message, PanelSide};
 /// produce, so it has to outlive every step. It runs on the tokio executor the
 /// app itself uses, which is what makes a `spawn_blocking` copy run for real
 /// rather than being simulated.
-struct Session<P> {
+struct Session<P: iced::Program> {
     app: App,
     /// The program under test — the one `main` builds, so a test cannot pass
     /// while the binary is wired differently.
@@ -81,6 +85,36 @@ struct Session<P> {
     /// The window the app believes it is in. Subscriptions carry it, so a wrong
     /// id would silently drop every key.
     window: window::Id,
+    /// What the widgets see: the real view, laid out and drawn headless, so a
+    /// click reaches the widget under it and a field can really be focused.
+    widgets: Widgets<P::Renderer>,
+}
+
+/// The widget side of a session. Widget state, such as which text field has the
+/// focus, lives in the cache between interactions, as it does in the window.
+struct Widgets<R> {
+    renderer: R,
+    cache: Option<user_interface::Cache>,
+    cursor: mouse::Cursor,
+    clipboard: TestClipboard,
+}
+
+/// The size the view is laid out in.
+const WINDOW: Size = Size::new(1200.0, 760.0);
+
+#[derive(Default)]
+struct TestClipboard {
+    content: Option<String>,
+}
+
+impl iced_test::core::Clipboard for TestClipboard {
+    fn read(&self, _kind: iced_test::core::clipboard::Kind) -> Option<String> {
+        self.content.clone()
+    }
+
+    fn write(&mut self, _kind: iced_test::core::clipboard::Kind, contents: String) {
+        self.content = Some(contents);
+    }
 }
 
 impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
@@ -88,10 +122,22 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
     fn boot(program: P) -> Self {
         let executor = iced::executor::Default::new().expect("the tokio executor");
         let (action_tx, actions) = mpsc::unbounded();
-        let runtime = Runtime::new(executor, action_tx);
+        let mut runtime = Runtime::new(executor, action_tx);
 
         let (app, boot) = program.boot();
+        let settings = program.settings();
+        let renderer = runtime
+            .block_on(async {
+                P::Renderer::new(settings.default_font, settings.default_text_size, None).await
+            })
+            .expect("a headless renderer");
         let mut session = Self {
+            widgets: Widgets {
+                renderer,
+                cache: Some(user_interface::Cache::default()),
+                cursor: mouse::Cursor::Unavailable,
+                clipboard: TestClipboard::default(),
+            },
             app,
             program,
             runtime,
@@ -128,6 +174,93 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
                 }
             })
             .collect();
+    }
+
+    /// Runs a widget operation on the current view, as the runtime does after
+    /// the update that asked for it.
+    fn operate(&mut self, operation: Box<dyn iced_test::core::widget::Operation>) {
+        let mut interface = UserInterface::build(
+            self.program.view(&self.app, self.window),
+            WINDOW,
+            self.widgets.cache.take().unwrap_or_default(),
+            &mut self.widgets.renderer,
+        );
+        let mut next = Some(operation);
+        while let Some(mut current) = next.take() {
+            interface.operate(&self.widgets.renderer, current.as_mut());
+            if let OperationOutcome::Chain(chained) = current.finish() {
+                next = Some(chained);
+            }
+        }
+        self.widgets.cache = Some(interface.into_cache());
+    }
+
+    /// Delivers events to the view's widgets, then to the subscriptions with the
+    /// status the widgets gave them, then applies what the widgets published:
+    /// the order of the real event loop.
+    fn interact(&mut self, events: Vec<iced_test::core::Event>) {
+        for event in &events {
+            if let iced_test::core::Event::Mouse(mouse::Event::CursorMoved { position }) = event {
+                self.widgets.cursor = mouse::Cursor::Available(*position);
+            }
+        }
+        let mut interface = UserInterface::build(
+            self.program.view(&self.app, self.window),
+            WINDOW,
+            self.widgets.cache.take().unwrap_or_default(),
+            &mut self.widgets.renderer,
+        );
+        let mut messages = Vec::new();
+        let (_state, statuses) = interface.update(
+            &events,
+            self.widgets.cursor,
+            &mut self.widgets.renderer,
+            &mut self.widgets.clipboard,
+            &mut messages,
+        );
+        self.widgets.cache = Some(interface.into_cache());
+        for (event, status) in events.into_iter().zip(statuses) {
+            self.broadcast(SubEvent::Interaction {
+                window: self.window,
+                event,
+                status,
+            });
+        }
+        for message in messages {
+            self.send(message);
+        }
+    }
+
+    /// A left click at `point`.
+    fn click_at(&mut self, point: Point) {
+        use iced_test::core::Event;
+        self.interact(vec![
+            Event::Mouse(mouse::Event::CursorMoved { position: point }),
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+        ]);
+    }
+
+    /// Types `text` the way the keyboard does: a key press with its text.
+    fn type_into_widgets(&mut self, text: &str) {
+        self.interact(iced_test::simulator::typewrite(text).collect());
+    }
+
+    /// One key press with `modifiers`, to the widgets first.
+    fn press_in_widgets(&mut self, key: Key, modifiers: Modifiers) {
+        self.interact(vec![iced_test::core::Event::Keyboard(
+            keyboard::Event::KeyPressed {
+                key: key.clone(),
+                modified_key: key,
+                physical_key: keyboard::key::Physical::Unidentified(
+                    keyboard::key::NativeCode::Unidentified,
+                ),
+                location: keyboard::Location::Standard,
+                modifiers,
+                repeat: false,
+                text: None,
+            },
+        )]);
     }
 
     /// Presses and releases one key, then runs everything that follows.
@@ -264,16 +397,11 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
         // test cannot be flaky because a sleep was too short.
         let mapped = StreamExt::map(stream, |action| match action {
             Action::Output(message) => Outcome::Message(message),
-            // F7 returns `operation::focus(FIELD_ID)`, which is a widget
-            // operation rather than a message: it tells the runtime to focus a
-            // text input, and there is no `Message` for it because nothing in
-            // the app needs to know. The same goes for a font load or a
-            // clipboard read, neither of which this app performs.
-            //
-            // Dropped rather than turned into a message. Faking one here — a
-            // `Quit`, say — would let a real problem reach `update` as
-            // something harmless; and failing instead would make every test that
-            // presses F7 fail for a reason that is not about F7.
+            Action::Widget(operation) => Outcome::Widget(operation),
+            // Widget operations, such as focusing a text field, run on the
+            // widgets below. A font load or a clipboard read, which this app
+            // does not perform, are dropped rather than turned into a
+            // message: a faked one could reach `update` as something harmless.
             _other => Outcome::Ignored,
         })
         .chain(iced_test::futures::futures::stream::once(async {
@@ -308,6 +436,7 @@ impl<P: iced::Program<State = App, Message = Message> + 'static> Session<P> {
             let outcome = self.next_outcome();
             match outcome {
                 Some(Outcome::Message(message)) => self.send(message),
+                Some(Outcome::Widget(operation)) => self.operate(operation),
                 Some(Outcome::Ignored) => {}
                 Some(Outcome::Finished) => self.in_flight -= 1,
                 None => return,
@@ -351,7 +480,9 @@ struct SubscriptionStream {
 /// is not something the app should have to know about.
 enum Outcome {
     Message(Message),
-    /// A runtime action with no message behind it, such as focusing a field.
+    /// A widget operation, such as focusing a field.
+    Widget(Box<dyn iced_test::core::widget::Operation>),
+    /// A runtime action with no message behind it.
     Ignored,
     Finished,
 }
@@ -1652,4 +1783,283 @@ mod tests {
             "the error does not name the file and the reason: {message}"
         );
     }
+}
+
+/// A point on the path line of a 1200 x 760 window, right of a short path, so
+/// the caret lands at its end.
+const PATH_LINE: Point = Point::new(350.0, 710.0);
+
+/// Both panels in a scratch tree that holds a `lib` directory with two files.
+fn path_session(
+    label: &str,
+) -> (
+    tempfile::TempDir,
+    Session<impl iced::Program<State = App, Message = Message> + 'static>,
+) {
+    let dir = scratch(label);
+    write(&dir.path().join("lib").join("alpha.txt"), "a");
+    write(&dir.path().join("lib").join("beta.txt"), "b");
+    let session = session_in(dir.path());
+    (dir, session)
+}
+
+/// What the user types after the panel's own path to end in `lib`. The
+/// platform's separator: in a Windows `\\?\` path a `/` is no separator.
+fn typed_lib() -> String {
+    format!("{}lib", std::path::MAIN_SEPARATOR)
+}
+
+/// The scratch tree's `lib` as the app spells it (the canonical path).
+fn lib_of(app: &App) -> std::path::PathBuf {
+    app.active_panel().path.join("lib")
+}
+
+/// Clicks into the field and puts the caret at the end: the scratch path is
+/// longer than the click point is far from the field's start.
+fn click_into_the_path<P: iced::Program<State = App, Message = Message> + 'static>(
+    session: &mut Session<P>,
+) {
+    session.click_at(PATH_LINE);
+    session.press_in_widgets(Key::Named(keyboard::key::Named::End), Modifiers::default());
+}
+
+fn focus_the_window<P: iced::Program<State = App, Message = Message> + 'static>(
+    session: &mut Session<P>,
+) {
+    session.interact(vec![
+        iced_test::core::Event::Window(window::Event::Focused),
+        iced_test::core::Event::Window(window::Event::RedrawRequested(
+            iced_test::core::time::Instant::now(),
+        )),
+    ]);
+}
+
+#[test]
+fn clicking_the_path_then_typing_and_enter_goes_to_that_directory() {
+    let (_dir, mut session) = path_session("path-enter");
+    let lib = lib_of(&session.app);
+    assert_eq!(session.app.path_field_for_test(), None);
+
+    click_into_the_path(&mut session);
+    focus_the_window(&mut session);
+    session.type_into_widgets(&typed_lib());
+    assert_eq!(
+        session.app.path_field_for_test().map(Path::new),
+        Some(lib.as_path()),
+        "typing did not reach the field"
+    );
+
+    session.press_in_widgets(
+        Key::Named(keyboard::key::Named::Enter),
+        Modifiers::default(),
+    );
+    session.settle();
+    assert_eq!(session.app.active_panel().path, lib);
+    assert_eq!(session.app.path_field_for_test(), None);
+
+    // The field gave the focus back: a letter is type-ahead in the panel.
+    session.type_into_widgets("b");
+    assert_eq!(session.app.path_field_for_test(), None);
+    assert_eq!(
+        selected(&session.app, PanelSide::Left).as_deref(),
+        Some("beta.txt")
+    );
+}
+
+#[test]
+fn pasting_into_the_path_field_with_the_command_key_works() {
+    let (_dir, mut session) = path_session("path-paste");
+    let lib = lib_of(&session.app);
+    session.widgets.clipboard.content = Some(typed_lib());
+
+    click_into_the_path(&mut session);
+    // The operating system reports the held key first; the field reads it from
+    // there rather than from the key press.
+    session.interact(vec![iced_test::core::Event::Keyboard(
+        keyboard::Event::ModifiersChanged(Modifiers::COMMAND),
+    )]);
+    session.press_in_widgets(Key::Character("v".into()), Modifiers::COMMAND);
+    assert_eq!(
+        session.app.path_field_for_test().map(Path::new),
+        Some(lib.as_path())
+    );
+}
+
+#[test]
+fn keys_go_to_the_panels_until_the_path_is_clicked_and_back_after_escape() {
+    let (_dir, mut session) = path_session("path-escape");
+    // Not focused: a letter is type-ahead, not path text.
+    session.type_text("l");
+    assert_eq!(session.app.path_field_for_test(), None);
+
+    click_into_the_path(&mut session);
+    session.type_into_widgets(&typed_lib());
+    assert!(session.app.path_field_for_test().is_some());
+
+    session.press_in_widgets(
+        Key::Named(keyboard::key::Named::Escape),
+        Modifiers::default(),
+    );
+    assert_eq!(
+        session.app.path_field_for_test(),
+        None,
+        "Escape restores the path"
+    );
+    session.type_into_widgets("l");
+    assert_eq!(
+        session.app.path_field_for_test(),
+        None,
+        "the field gave the focus back"
+    );
+}
+
+#[test]
+fn clicking_a_panel_after_editing_restores_the_path() {
+    let (_dir, mut session) = path_session("path-click-away");
+    click_into_the_path(&mut session);
+    session.type_into_widgets(&typed_lib());
+    session.click_at(Point::new(300.0, 300.0));
+    assert_eq!(session.app.path_field_for_test(), None);
+    session.type_into_widgets("l");
+    assert_eq!(
+        session.app.path_field_for_test(),
+        None,
+        "the field gave the focus back"
+    );
+}
+
+#[test]
+fn clicking_a_column_title_while_editing_the_path_ends_the_editing() {
+    let (_dir, mut session) = path_session("path-sort-click");
+    click_into_the_path(&mut session);
+    session.type_into_widgets(&typed_lib());
+    assert!(session.app.path_field_for_test().is_some());
+    session.click_at(LEFT_SIZE_HEADER);
+    assert_eq!(session.app.path_field_for_test(), None);
+}
+
+#[test]
+fn a_click_into_the_path_field_with_a_context_menu_open_closes_the_menu() {
+    let (_dir, mut session) = path_session("path-menu");
+    session.press_with(Key::Named(keyboard::key::Named::F10), Modifiers::SHIFT);
+    assert!(session.app.context_menu_for_test().is_some());
+    session.click_at(PATH_LINE);
+    assert!(session.app.context_menu_for_test().is_none());
+}
+
+const LEFT_NAME_HEADER: Point = Point::new(50.0, 83.0);
+const LEFT_SIZE_HEADER: Point = Point::new(415.0, 83.0);
+const LEFT_MODIFIED_HEADER: Point = Point::new(540.0, 83.0);
+
+fn sorting_session(
+    label: &str,
+) -> (
+    tempfile::TempDir,
+    Session<impl iced::Program<State = App, Message = Message> + 'static>,
+) {
+    let dir = scratch(label);
+    write(&dir.path().join("a.txt"), "a");
+    write(&dir.path().join("b.txt"), &"b".repeat(300));
+    write(&dir.path().join("c.txt"), &"c".repeat(20));
+    let session = session_in(dir.path());
+    (dir, session)
+}
+
+fn text_files(app: &App, side: PanelSide) -> Vec<String> {
+    names(app, side)
+        .into_iter()
+        .filter(|name| name.ends_with(".txt"))
+        .collect()
+}
+
+#[test]
+fn clicking_a_column_title_sorts_that_panel_and_a_second_click_reverses_it() {
+    let (_dir, mut session) = sorting_session("sort-click");
+    assert_eq!(
+        text_files(&session.app, PanelSide::Left),
+        ["a.txt", "b.txt", "c.txt"]
+    );
+
+    session.click_at(LEFT_SIZE_HEADER);
+    assert_eq!(
+        text_files(&session.app, PanelSide::Left),
+        ["a.txt", "c.txt", "b.txt"]
+    );
+    assert_eq!(names(&session.app, PanelSide::Left)[0], "..");
+
+    session.click_at(LEFT_SIZE_HEADER);
+    assert_eq!(
+        text_files(&session.app, PanelSide::Left),
+        ["b.txt", "c.txt", "a.txt"]
+    );
+    let left = names(&session.app, PanelSide::Left);
+    assert_eq!(left[0], "..");
+    assert!(
+        left[1..4].iter().all(|name| !name.ends_with(".txt")),
+        "directories stay before the files: {left:?}"
+    );
+
+    session.click_at(LEFT_NAME_HEADER);
+    assert_eq!(
+        text_files(&session.app, PanelSide::Left),
+        ["a.txt", "b.txt", "c.txt"]
+    );
+
+    assert_eq!(
+        session.app.panel(PanelSide::Right).sort,
+        crate::fs::SortKey::default(),
+        "the other panel is not sorted"
+    );
+}
+
+#[test]
+fn sorting_keeps_the_cursor_on_its_entry() {
+    let (_dir, mut session) = sorting_session("sort-cursor");
+    cursor_to(&mut session, "c.txt");
+
+    session.click_at(LEFT_MODIFIED_HEADER);
+    session.click_at(LEFT_SIZE_HEADER);
+
+    assert_eq!(
+        selected(&session.app, PanelSide::Left).as_deref(),
+        Some("c.txt")
+    );
+}
+
+#[test]
+fn the_sort_keys_sort_the_active_panel_and_a_second_press_reverses() {
+    use crate::fs::{SortColumn, SortKey};
+    let (_dir, mut session) = sorting_session("sort-keys");
+    let press_sort = |running: &mut Session<_>, column| {
+        let binding = crate::keymap::sort_binding(column);
+        running.press_with(binding.key, binding.modifiers);
+    };
+    let sort_of = |running: &Session<_>| running.app.panel(PanelSide::Left).sort;
+
+    press_sort(&mut session, SortColumn::Size);
+    assert_eq!(
+        sort_of(&session),
+        SortKey {
+            column: SortColumn::Size,
+            descending: false
+        }
+    );
+    press_sort(&mut session, SortColumn::Size);
+    assert_eq!(
+        sort_of(&session),
+        SortKey {
+            column: SortColumn::Size,
+            descending: true
+        }
+    );
+    assert_eq!(
+        text_files(&session.app, PanelSide::Left),
+        ["b.txt", "c.txt", "a.txt"]
+    );
+
+    press_sort(&mut session, SortColumn::Modified);
+    assert_eq!(sort_of(&session).column, SortColumn::Modified);
+    press_sort(&mut session, SortColumn::Name);
+    assert_eq!(sort_of(&session), SortKey::default());
+    assert_eq!(session.app.panel(PanelSide::Right).sort, SortKey::default());
 }

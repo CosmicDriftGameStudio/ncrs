@@ -6,15 +6,17 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use iced::futures;
 use iced::keyboard::{self, key::Named, Key, Modifiers};
-use iced::widget::{column, container, operation, row, Stack};
-use iced::{window, Element, Length, Subscription, Task, Theme};
+use iced::widget::{column, container, mouse_area, operation, row, Space, Stack};
+use iced::{event, window, Element, Length, Point, Size, Subscription, Task, Theme};
 
+use crate::context_menu::{ContextAction, ContextMenu, InputState};
 use crate::dialog::{Prompt, PromptKind};
 use crate::fs::{self, CreateDirError};
 use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
 use crate::keymap;
 use crate::messages::{ClipboardKind, ConflictChoice, Message, PanelSide, TransferKind};
+use crate::ui::context_menu as context_menu_view;
 use crate::ui::delete as delete_dialog_view;
 use crate::ui::dialog::FIELD_ID;
 use crate::ui::volumes as volumes_view;
@@ -22,6 +24,9 @@ use crate::ui::{
     self, conflict, dialog, fkeys, header, layout, panel, statusbar, theme, PanelProps, PanelState,
 };
 use tokio::sync::mpsc;
+
+/// How long a confirmation stays in the title bar.
+const NOTICE_DURATION: std::time::Duration = std::time::Duration::from_secs(3);
 
 const APP_NAME: &str = "NC-rs";
 
@@ -86,6 +91,100 @@ impl std::hash::Hash for KeyStateCell {
         // Deliberately content-free. See the type's own comment.
         "ncrs-key-state".hash(state);
     }
+}
+
+/// The pointer position and the Option tap, shared with the raw event
+/// subscription. Like [`KeyStateCell`], hashed by nothing so the subscription
+/// keeps its identity while the contents change.
+#[derive(Debug, Default)]
+struct InputCell(Mutex<InputState>);
+
+impl InputCell {
+    fn lock(&self) -> std::sync::MutexGuard<'_, InputState> {
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+impl std::hash::Hash for InputCell {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        "ncrs-input-state".hash(state);
+    }
+}
+
+/// How long a typed character still belongs to the same prefix.
+const TYPE_AHEAD_WINDOW: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// What has been typed to jump to an entry.
+#[derive(Debug, Default)]
+struct TypeAhead {
+    prefix: String,
+    last_typed: Option<std::time::Instant>,
+}
+
+impl TypeAhead {
+    /// The prefix after `typed` arrives at `now`: it extends the previous one
+    /// within the window and starts a new one after it.
+    fn extend(&mut self, typed: &str, now: std::time::Instant) -> &str {
+        let continues = self
+            .last_typed
+            .is_some_and(|last| now.saturating_duration_since(last) <= TYPE_AHEAD_WINDOW);
+        if !continues {
+            self.prefix.clear();
+        }
+        self.prefix.push_str(typed);
+        self.last_typed = Some(now);
+        &self.prefix
+    }
+
+    fn reset(&mut self) {
+        self.prefix.clear();
+        self.last_typed = None;
+    }
+}
+
+/// Moving the cursor or the focus by other means ends a prefix.
+fn resets_type_ahead(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::MoveSelection(_)
+            | Message::PageUp
+            | Message::PageDown
+            | Message::SelectFirst
+            | Message::SelectLast
+            | Message::SwitchPanel
+            | Message::RowClicked { .. }
+            | Message::TagMove(_)
+            | Message::ToggleTag
+            | Message::OpenSelected
+            | Message::GoUp
+    )
+}
+
+/// Other things the user does end the editing of the path: the text field
+/// loses the focus to them without telling the app.
+fn leaves_path_field(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::RowClicked { .. }
+            | Message::ContextMenuAt { .. }
+            | Message::ContextMenuKey
+            | Message::CopyToClipboard(_)
+            | Message::SwitchPanel
+            | Message::SortBy { .. }
+    )
+}
+
+/// Takes the keyboard focus from the path field, so the keys go to the panels
+/// again once the editing is over.
+fn release_focus() -> Task<Message> {
+    iced::advanced::widget::operate(iced::advanced::widget::operation::focusable::unfocus())
+}
+
+/// Ctrl+click is the Mac's right click.
+fn is_context_click(modifiers: Modifiers) -> bool {
+    cfg!(target_os = "macos") && modifiers.control()
 }
 
 /// Why one row of a transfer failed.
@@ -263,6 +362,8 @@ pub struct App {
     job_error: Option<String>,
     /// A neutral confirmation, such as "Path copied". Goes the way of `job_error`.
     notice: Option<String>,
+    /// Counts the notices shown, so a timer can tell if it is still the latest.
+    notice_generation: u64,
     /// How many items the running job has finished, for the progress bar.
     job_done: usize,
     /// Whether "for all files" is ticked in the conflict dialog. Lives here so
@@ -293,6 +394,21 @@ pub struct App {
     key_state: OnceLock<Arc<KeyStateCell>>,
     /// The drive menu, while it is up.
     volume_menu: Option<VolumeMenu>,
+    /// The context menu, while it is up.
+    context_menu: Option<ContextMenu>,
+    type_ahead: TypeAhead,
+    /// The path as typed while the status bar's path field is being edited.
+    path_field: Option<String>,
+    /// Id of the latest path check; an older answer is ignored.
+    path_check_id: u64,
+    /// What a leading `~` in a typed path stands for.
+    home: PathBuf,
+    /// The time type-ahead measures against. Injected so tests control it.
+    clock: Arc<dyn Fn() -> std::time::Instant + Send + Sync>,
+    /// The window's size, for keeping the context menu inside it.
+    window_size: Size,
+    /// The pointer and the Option tap, fed by the raw event subscription.
+    input: Arc<InputCell>,
     /// Where the drive menu gets its list. Injected so tests offer their own
     /// directories instead of the machine's disks.
     list_volumes: Arc<dyn Fn() -> Vec<fs::Volume> + Send + Sync>,
@@ -312,10 +428,14 @@ pub struct PromptKeyState {
     pub job_running: bool,
     /// The conflict dialog is up, so keys answer it rather than the panels.
     pub conflict_open: bool,
+    /// The path field is being edited: its keys are the text field's.
+    pub path_editing: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
     /// The drive menu is up, so keys move its highlight.
     pub volume_menu: bool,
+    /// The context menu is up, so keys move its highlight.
+    pub context_menu: bool,
     /// Whether the operation is running; keys are ignored then.
     pub busy: bool,
     /// The name typed so far.
@@ -352,6 +472,17 @@ fn keys_without_prompt(
             _ => None,
         };
     }
+    if prompt.context_menu {
+        return match key.as_ref() {
+            Key::Named(Named::Escape) => Some(Message::ContextMenuClose),
+            Key::Named(Named::Enter) => Some(Message::ContextMenuActivate),
+            Key::Named(Named::ArrowUp) => Some(Message::ContextMenuMove(-1)),
+            Key::Named(Named::ArrowDown) => Some(Message::ContextMenuMove(1)),
+            Key::Named(Named::Home) => Some(Message::ContextMenuFirst),
+            Key::Named(Named::End) => Some(Message::ContextMenuLast),
+            _ => None,
+        };
+    }
 
     // Before the conflict dialog and the job: a delete is only offered when
     // neither is there, so there is nothing to disambiguate, but it must not
@@ -385,6 +516,14 @@ fn keys_without_prompt(
         };
     }
 
+    // The text field takes the typing and Enter on its own, and `InputState`
+    // sees Escape and Tab leave it. Of the bindings only quitting reaches past
+    // it: the field has no use for F10 or Cmd+Q, and a program that cannot be
+    // closed while a path is half typed is a trap.
+    if prompt.path_editing {
+        return keymap::map_key(key, key_modifiers).filter(|message| *message == Message::Quit);
+    }
+
     // Escape stops a running job, but only then. With nothing running it stays
     // unbound, rather than bound to something that does nothing — a key that
     // means different things depending on invisible state is worse than one
@@ -412,12 +551,24 @@ fn keys_without_prompt(
     } else {
         key_modifiers
     };
-    keymap::map_key(key.clone(), modifiers).or_else(|| {
-        (modifiers - Modifiers::SHIFT)
-            .is_empty()
-            .then(|| keymap::map_key(key, Modifiers::default()))
-            .flatten()
-    })
+    keymap::map_key(key.clone(), modifiers)
+        .or_else(|| {
+            (modifiers - Modifiers::SHIFT)
+                .is_empty()
+                .then(|| keymap::map_key(key.clone(), Modifiers::default()))
+                .flatten()
+        })
+        .or_else(|| type_ahead_message(&key, key_modifiers))
+}
+
+/// A printable character with at most Shift held. With Option held a Mac types
+/// another character, so Alt, Ctrl and Cmd all rule it out.
+fn type_ahead_message(key: &Key, modifiers: Modifiers) -> Option<Message> {
+    let Key::Character(typed) = key else {
+        return None;
+    };
+    ((modifiers - Modifiers::SHIFT).is_empty() && typed.chars().all(|c| !c.is_control()))
+        .then(|| Message::TypeAhead(typed.to_string()))
 }
 
 fn lowercase_character(key: &Key) -> Key {
@@ -501,6 +652,9 @@ fn repeats(message: &Message) -> bool {
             | Message::VolumeMenuMove(_)
             | Message::VolumeMenuFirst
             | Message::VolumeMenuLast
+            | Message::ContextMenuMove(_)
+            | Message::ContextMenuFirst
+            | Message::ContextMenuLast
     )
 }
 
@@ -546,9 +700,15 @@ struct ClipboardText {
 /// without tags the directory of the panel itself; the root has no file name,
 /// so its path is its name. Paths are joined, not canonicalised.
 fn clipboard_text(panel: &PanelState, kind: ClipboardKind) -> Option<ClipboardText> {
+    if kind == ClipboardKind::Directory {
+        return Some(ClipboardText {
+            count: 1,
+            text: panel.path.to_string_lossy().into_owned(),
+        });
+    }
     let render = |path: &std::path::Path, name: &std::ffi::OsStr| match kind {
-        ClipboardKind::Path => path.to_string_lossy().into_owned(),
         ClipboardKind::Name => name.to_string_lossy().into_owned(),
+        ClipboardKind::Path | ClipboardKind::Directory => path.to_string_lossy().into_owned(),
     };
     let lines: Vec<String> = if panel.selection.any_tagged() {
         panel
@@ -606,6 +766,7 @@ impl App {
             launcher: Arc::new(fs::SystemLauncher),
             job_error: None,
             notice: None,
+            notice_generation: 0,
             job_done: 0,
             conflict_all: false,
             conflict_rule: None,
@@ -615,6 +776,14 @@ impl App {
             progress_tx: None,
             key_state: OnceLock::new(),
             volume_menu: None,
+            context_menu: None,
+            type_ahead: TypeAhead::default(),
+            path_field: None,
+            path_check_id: 0,
+            home: home.clone(),
+            clock: Arc::new(std::time::Instant::now),
+            window_size: layout::INITIAL_WINDOW_SIZE,
+            input: Arc::default(),
             list_volumes: Arc::new(fs::list_volumes),
         };
 
@@ -701,6 +870,11 @@ impl App {
                         _ => None,
                     }
                 }),
+            // Mouse, focus and modifier events of every status: widgets capture
+            // the clicks and the pointer moves the menu has to know about.
+            event::listen_with(|event, status, _window| Some((event, status)))
+                .with(Arc::clone(&self.input))
+                .filter_map(|(input, (event, status))| input.lock().handle(&event, status)),
             window::resize_events().map(|(_id, size)| Message::WindowResized(size)),
             // The transfer's ticks. Taken out of the app because a subscription
             // outlives `&self`; the receiver is taken so the subscription
@@ -738,6 +912,22 @@ impl App {
     // -----------------------------------------------------------------------
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
+        if resets_type_ahead(&message) {
+            self.type_ahead.reset();
+        }
+        if let Message::NoticeExpired(generation) = message {
+            if generation == self.notice_generation {
+                self.notice = None;
+            }
+            return Task::none();
+        }
+        if leaves_path_field(&message) {
+            self.set_path_field(None);
+        }
+        self.apply(message)
+    }
+
+    fn apply(&mut self, message: Message) -> Task<Message> {
         let rows = self.visible_rows;
 
         let task = match message {
@@ -884,6 +1074,24 @@ impl App {
                 Task::none()
             }
 
+            // --- context menu ---
+            menu_message @ (Message::ContextMenuAt { .. }
+            | Message::ContextMenuKey
+            | Message::ContextMenuMove(_)
+            | Message::ContextMenuFirst
+            | Message::ContextMenuLast
+            | Message::ContextMenuHover(_)
+            | Message::ContextMenuActivate
+            | Message::ContextMenuClick(_)
+            | Message::ContextMenuClose) => self.update_context_menu(menu_message),
+
+            // --- path field ---
+            path_message @ (Message::PathFieldInput(_)
+            | Message::PathFieldSubmit
+            | Message::PathFieldCancel
+            | Message::PathChecked { .. }
+            | Message::ClickedOutside) => self.update_path_field(path_message),
+
             // --- delete ---
             Message::Delete { permanent } => self.open_delete_dialog(permanent),
             Message::CopyToClipboard(kind) => self.copy_to_clipboard(kind),
@@ -1023,11 +1231,20 @@ impl App {
                 path,
                 entries,
                 error,
+                sorted_by,
                 select,
             } => {
                 let panel = self.panel_mut(side);
                 if panel.request_id == request_id {
-                    panel.apply_listing(path, entries, error, select.as_deref(), rows);
+                    panel.apply_sorted_listing(
+                        path,
+                        entries,
+                        error,
+                        select.as_deref(),
+                        rows,
+                        Some(sorted_by),
+                    );
+                    self.close_menu_of_reloaded(side);
                 }
                 Task::none()
             }
@@ -1071,6 +1288,10 @@ impl App {
                 }
             }
             Message::GoUp => self.go_up(self.active_panel),
+            Message::TypeAhead(typed) => {
+                self.jump_to_typed(&typed);
+                Task::none()
+            }
 
             // --- selection ---
             Message::ToggleTag => self.tag_and_move(1),
@@ -1100,6 +1321,7 @@ impl App {
                 self.active_panel = self.active_panel.other();
                 Task::none()
             }
+            Message::SortBy { .. } | Message::SortActive(_) => self.update_sort(message),
             Message::SwitchLanguage => {
                 self.lang = self.lang.other();
                 self.function_keys = keymap::function_keys(self.lang);
@@ -1108,6 +1330,17 @@ impl App {
             // A click in the tag column toggles the tag; anywhere else it moves
             // the cursor. Without this, tagging is keyboard-only, and the
             // column of stars the view draws cannot be clicked at all.
+            // A Ctrl+click is a right click: it replaces an open menu.
+            Message::RowClicked { side, index, .. } if is_context_click(self.modifiers) => {
+                let pointer = self.input.lock().pointer;
+                self.open_context_menu(side, index, Some(pointer));
+                Task::none()
+            }
+            Message::RowClicked { .. } if self.context_menu.is_some() => {
+                // A click beside the menu only closes it.
+                self.context_menu = None;
+                Task::none()
+            }
             Message::RowClicked {
                 side,
                 index,
@@ -1131,12 +1364,15 @@ impl App {
             }
 
             Message::WindowResized(size) => {
+                self.window_size = size;
                 self.visible_rows = layout::visible_rows(size);
                 self.left_panel.ensure_visible(self.visible_rows);
                 self.right_panel.ensure_visible(self.visible_rows);
                 Task::none()
             }
             Message::Quit => iced::exit(),
+            // Handled in `update`, which owns the timer's generation check.
+            Message::NoticeExpired(_) => Task::none(),
         };
 
         // The keyboard subscription cannot see `&self`, so it reads the routing
@@ -1151,12 +1387,211 @@ impl App {
         task
     }
 
+    fn update_sort(&mut self, message: Message) -> Task<Message> {
+        let rows = self.visible_rows;
+        match message {
+            // A click beside an open menu only closes it.
+            Message::SortBy { .. } if self.context_menu.is_some() => self.context_menu = None,
+            Message::SortBy { side, column } => {
+                self.active_panel = side;
+                self.panel_mut(side).request_sort(column, rows);
+            }
+            Message::SortActive(column) => self.active_panel_mut().request_sort(column, rows),
+            _ => {}
+        }
+        Task::none()
+    }
+
+    fn update_context_menu(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::ContextMenuAt { side, index } => {
+                let pointer = self.input.lock().pointer;
+                self.open_context_menu(side, index, Some(pointer));
+                Task::none()
+            }
+            Message::ContextMenuKey => {
+                let side = self.active_panel;
+                let index = self.panel(side).selected;
+                self.open_context_menu(side, index, None);
+                Task::none()
+            }
+            Message::ContextMenuMove(delta) => {
+                if let Some(menu) = self.context_menu.as_mut() {
+                    menu.move_by(delta);
+                }
+                Task::none()
+            }
+            Message::ContextMenuFirst => {
+                if let Some(menu) = self.context_menu.as_mut() {
+                    menu.select_first();
+                }
+                Task::none()
+            }
+            Message::ContextMenuLast => {
+                if let Some(menu) = self.context_menu.as_mut() {
+                    menu.select_last();
+                }
+                Task::none()
+            }
+            Message::ContextMenuHover(index) => {
+                if let Some(menu) = self.context_menu.as_mut() {
+                    menu.select(index);
+                }
+                Task::none()
+            }
+            Message::ContextMenuActivate => self.run_context_menu_entry(),
+            Message::ContextMenuClick(index) => {
+                if let Some(menu) = self.context_menu.as_mut() {
+                    menu.select(index);
+                }
+                self.run_context_menu_entry()
+            }
+            Message::ContextMenuClose => {
+                self.context_menu = None;
+                Task::none()
+            }
+            _ => Task::none(),
+        }
+    }
+
+    fn update_path_field(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::PathFieldInput(typed) => {
+                self.set_path_field(Some(typed));
+                Task::none()
+            }
+            Message::PathFieldSubmit => self.go_to_typed_path(),
+            Message::PathChecked {
+                request_id,
+                side,
+                target,
+                result,
+            } => self.finish_path_check(request_id, side, &target, result),
+            Message::PathFieldCancel => {
+                self.set_path_field(None);
+                release_focus()
+            }
+            Message::ClickedOutside => {
+                self.context_menu = None;
+                self.set_path_field(None);
+                Task::none()
+            }
+            _ => Task::none(),
+        }
+    }
+
+    /// The rows the menu was opened on are gone. It acts on the active panel,
+    /// so only that panel's reload closes it.
+    fn close_menu_of_reloaded(&mut self, side: PanelSide) {
+        if side == self.active_panel {
+            self.context_menu = None;
+        }
+    }
+
+    /// Sets what the path field shows, or ends the editing with `None`. Any
+    /// change makes an answer still on its way stale.
+    fn set_path_field(&mut self, value: Option<String>) {
+        self.path_check_id = self.path_check_id.wrapping_add(1);
+        self.path_field = value;
+    }
+
+    /// Enter in the path field: looks at the typed path on the blocking pool and
+    /// opens it in the active panel once the answer is in.
+    fn go_to_typed_path(&mut self) -> Task<Message> {
+        let Some(raw_path) = self.path_field.clone() else {
+            return Task::none();
+        };
+        let typed = raw_path.trim();
+        if typed.is_empty() {
+            self.set_path_field(None);
+            return release_focus();
+        }
+        let side = self.active_panel;
+        let target = fs::resolve_typed_path(&self.active_panel().path, &self.home, typed);
+        self.path_check_id = self.path_check_id.wrapping_add(1);
+        let request_id = self.path_check_id;
+        Task::perform(fs::locate(target.clone()), move |result| {
+            Message::PathChecked {
+                request_id,
+                side,
+                target: target.clone(),
+                result,
+            }
+        })
+    }
+
+    /// The answer to [`Self::go_to_typed_path`]: a destination closes the field
+    /// and loads it, a problem is reported and leaves the field open. An answer
+    /// to text that has since changed, or to a field that is closed, is dropped.
+    fn finish_path_check(
+        &mut self,
+        request_id: u64,
+        side: PanelSide,
+        target: &Path,
+        result: Result<fs::Destination, fs::PathProblem>,
+    ) -> Task<Message> {
+        if request_id != self.path_check_id || self.path_field.is_none() {
+            return Task::none();
+        }
+        match result {
+            Ok(destination) => {
+                self.set_path_field(None);
+                self.job_error = None;
+                self.notice = None;
+                Task::batch([
+                    self.load(side, destination.directory, destination.select),
+                    release_focus(),
+                ])
+            }
+            Err(problem) => {
+                let shown = target.display().to_string();
+                let reason = match problem {
+                    fs::PathProblem::Missing => self
+                        .lang
+                        .text(Msg::StatusPathMissing)
+                        .replace("{path}", &shown),
+                    fs::PathProblem::Unreadable { reason } => self
+                        .lang
+                        .text(Msg::StatusPathUnreadable)
+                        .replace("{path}", &shown)
+                        .replace("{reason}", &reason),
+                };
+                self.set_status_error(&reason);
+                Task::none()
+            }
+        }
+    }
+
+    /// Moves the cursor to the first entry named like what has been typed.
+    /// Nothing happens under an overlay or when no entry matches.
+    fn jump_to_typed(&mut self, typed: &str) {
+        if self.overlay_is_open() {
+            return;
+        }
+        let rows = self.visible_rows;
+        let now = (self.clock)();
+        let prefix = self.type_ahead.extend(typed, now).to_lowercase();
+        let panel = self.active_panel_mut();
+        let found = panel.entries.iter().position(|entry| {
+            !entry.is_parent
+                && entry
+                    .name
+                    .to_string_lossy()
+                    .to_lowercase()
+                    .starts_with(&prefix)
+        });
+        if let Some(index) = found {
+            panel.select(index, rows);
+        }
+    }
+
     /// Writes the current routing state into the cell the keyboard reads.
     ///
     /// A no-op before the first `subscription()` call, which is the only time
     /// there is no cell — the subscription creates it.
     fn publish_key_state(&mut self) {
         let state = self.prompt_key_state();
+        self.input.lock().path_editing = state.path_editing;
         // `get` rather than `get_or_init`: the cell is created by the
         // subscription, and `update` must not create it — a cell nothing reads
         // would just be a value nobody sees. Before the first `subscription()`
@@ -1188,6 +1623,8 @@ impl App {
                     index,
                     on_tag,
                 },
+                move |index| Message::ContextMenuAt { side, index },
+                move |column| Message::SortBy { side, column },
                 move |delta| Message::PanelScrolled { side, delta },
             )
         };
@@ -1198,14 +1635,19 @@ impl App {
 
         let root = container(
             column![
-                header::view(APP_NAME),
+                header::view(APP_NAME, self.notice.as_deref()),
                 panels,
                 statusbar::view(
                     self.active_panel(),
                     self.lang,
                     self.job_status(),
                     self.job_error.as_deref(),
-                    self.notice.as_deref(),
+                    statusbar::PathBar {
+                        editing: self.path_field.as_deref(),
+                        on_input: Message::PathFieldInput,
+                        on_submit: Message::PathFieldSubmit,
+                        on_copy: Message::CopyToClipboard(ClipboardKind::Directory),
+                    },
                 ),
                 fkeys::view(&self.function_keys),
             ]
@@ -1215,6 +1657,25 @@ impl App {
         .width(Length::Fill)
         .height(Length::Fill)
         .style(theme::root);
+
+        if let Some(menu) = self.context_menu.as_ref() {
+            // A left press anywhere beside the menu closes it, the path field
+            // and the column titles included: those take their own clicks and
+            // would never report one. A right press passes through, so another
+            // row's menu replaces this one.
+            // A Ctrl+click on a Mac is a right click and passes through too.
+            let mut click_catcher =
+                mouse_area(Space::new().width(Length::Fill).height(Length::Fill));
+            if !is_context_click(self.modifiers) {
+                click_catcher = click_catcher.on_press(Message::ContextMenuClose);
+            }
+            return Stack::with_children([
+                root.into(),
+                click_catcher.into(),
+                context_menu_view::view(menu, self.lang),
+            ])
+            .into();
+        }
 
         if let Some(menu) = self.volume_menu.as_ref() {
             let menu_element =
@@ -1310,6 +1771,8 @@ impl App {
     fn prompt_key_state(&self) -> PromptKeyState {
         let job_running = self.jobs.is_busy();
         let volume_menu = self.volume_menu.is_some();
+        let context_menu = self.context_menu.is_some();
+        let path_editing = self.path_field.is_some();
         let delete_dialog = match &self.delete_dialog {
             None => DeleteKeys::Closed,
             Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
@@ -1320,6 +1783,8 @@ impl App {
                 job_running,
                 delete_dialog,
                 volume_menu,
+                context_menu,
+                path_editing,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
                 // the dialog's keys would fall through to the panels.
@@ -1331,6 +1796,8 @@ impl App {
                 job_running,
                 delete_dialog,
                 volume_menu,
+                context_menu,
+                path_editing,
                 conflict_open: self.pending_conflict.is_some(),
                 busy: prompt.busy(),
                 typed: prompt.name().into(),
@@ -1368,13 +1835,27 @@ impl App {
             return Task::none();
         };
         self.job_error = None;
-        self.notice = Some(self.copied_notice(kind, copied.count));
-        iced::clipboard::write(copied.text)
+        let shown = self.show_notice(self.copied_notice(kind, copied.count));
+        Task::batch([iced::clipboard::write(copied.text), shown])
+    }
+
+    /// Shows `text` in the title bar for [`NOTICE_DURATION`]. The timer carries
+    /// the generation, so it cannot clear a notice that came after it.
+    fn show_notice(&mut self, text: String) -> Task<Message> {
+        self.notice_generation = self.notice_generation.wrapping_add(1);
+        self.notice = Some(text);
+        let generation = self.notice_generation;
+        Task::perform(
+            async { tokio::time::sleep(NOTICE_DURATION).await },
+            move |()| Message::NoticeExpired(generation),
+        )
     }
 
     fn copied_notice(&self, kind: ClipboardKind, count: usize) -> String {
         let (one, many) = match kind {
-            ClipboardKind::Path => (Msg::StatusPathCopied, Msg::StatusPathsCopied),
+            ClipboardKind::Path | ClipboardKind::Directory => {
+                (Msg::StatusPathCopied, Msg::StatusPathsCopied)
+            }
             ClipboardKind::Name => (Msg::StatusNameCopied, Msg::StatusNamesCopied),
         };
         if count == 1 {
@@ -1415,12 +1896,93 @@ impl App {
         Task::none()
     }
 
-    /// A prompt, dialog or the drive menu is on top of the panels.
+    /// A prompt, dialog or menu is on top of the panels.
     fn overlay_is_open(&self) -> bool {
+        self.blocking_overlay_is_open() || self.context_menu.is_some()
+    }
+
+    /// Everything on top of the panels except the context menu, which a new
+    /// right click may replace.
+    fn blocking_overlay_is_open(&self) -> bool {
         self.prompt.is_some()
             || self.pending_conflict.is_some()
             || self.delete_dialog.is_some()
             || self.volume_menu.is_some()
+    }
+
+    /// Whether the context menu entry can do something for the current
+    /// cursor row and tags.
+    fn context_action_enabled(&self, action: ContextAction) -> bool {
+        let panel = self.active_panel();
+        let cursor_row = panel.selected_entry();
+        match action {
+            ContextAction::Open => cursor_row.is_some(),
+            ContextAction::View | ContextAction::Edit => {
+                cursor_row.is_some_and(|entry| !entry.is_dir && !entry.is_parent)
+            }
+            ContextAction::Copy
+            | ContextAction::Move
+            | ContextAction::Trash
+            | ContextAction::DeletePermanently => !self.action_sources().is_empty(),
+            ContextAction::NewFolder => true,
+            ContextAction::CopyPath => clipboard_text(panel, ClipboardKind::Path).is_some(),
+            ContextAction::CopyName => clipboard_text(panel, ClipboardKind::Name).is_some(),
+        }
+    }
+
+    /// Opens the context menu on row `index` of `side`, at `anchor` or, without
+    /// one, below that row. The cursor goes to the row; tags stay, so the menu
+    /// acts on them as F5 and F8 do.
+    fn open_context_menu(&mut self, side: PanelSide, index: usize, anchor: Option<Point>) {
+        if self.blocking_overlay_is_open() {
+            return;
+        }
+        // An open menu is replaced by a right click and left alone by the keys.
+        if anchor.is_none() && self.context_menu.is_some() {
+            return;
+        }
+        let rows = self.visible_rows;
+        self.active_panel = side;
+        self.job_error = None;
+        self.notice = None;
+        let panel = self.panel_mut(side);
+        // As in the Finder: a click on a row outside the tags drops them, so
+        // the menu cannot act on rows the user did not point at.
+        let on_untagged_row = panel
+            .entries
+            .get(index)
+            .is_some_and(|entry| !panel.selection.is_tagged(&entry.name));
+        if anchor.is_some() && on_untagged_row {
+            panel.selection.clear();
+        }
+        panel.select(index, rows);
+        let window = self.window_size;
+        let cursor_panel = self.panel(side);
+        let place_at = anchor.unwrap_or_else(|| {
+            layout::cursor_row_anchor(
+                side == PanelSide::Right,
+                cursor_panel
+                    .selected
+                    .saturating_sub(cursor_panel.scroll_offset),
+                window,
+            )
+        });
+        self.context_menu = Some(ContextMenu::new(place_at, self.window_size, |action| {
+            self.context_action_enabled(action)
+        }));
+    }
+
+    /// Closes the menu and sends the message its highlighted entry stands for,
+    /// the same one its key sends. Closed first: the actions refuse to run
+    /// under an overlay.
+    fn run_context_menu_entry(&mut self) -> Task<Message> {
+        let Some(menu) = self.context_menu.take() else {
+            return Task::none();
+        };
+        match menu.selected_action() {
+            Some(action) => self.update(action.message()),
+            None => Task::none(),
+        }
     }
 
     /// Alt+F1 / Alt+F2: list the drives and highlight the one `side` is on.
@@ -1901,14 +2463,16 @@ impl App {
 
     /// Starts an async directory read for `side`.
     fn load(&mut self, side: PanelSide, path: PathBuf, select: Option<String>) -> Task<Message> {
-        let request_id = self.panel_mut(side).begin_load();
-        Task::perform(fs::read_directory(path), move |listing| {
+        let panel = self.panel_mut(side);
+        let request_id = panel.begin_load();
+        Task::perform(fs::read_directory(path, panel.sort), move |listing| {
             Message::DirectoryLoaded {
                 side,
                 request_id,
                 path: listing.path,
                 entries: listing.entries,
                 error: listing.error,
+                sorted_by: listing.sorted_by,
                 select: select.clone(),
             }
         })
@@ -2485,6 +3049,7 @@ impl App {
             launcher: Arc::new(fs::SystemLauncher),
             job_error: None,
             notice: None,
+            notice_generation: 0,
             job_done: 0,
             conflict_all: false,
             conflict_rule: None,
@@ -2494,6 +3059,14 @@ impl App {
             progress_tx: None,
             key_state: OnceLock::new(),
             volume_menu: None,
+            context_menu: None,
+            type_ahead: TypeAhead::default(),
+            path_field: None,
+            path_check_id: 0,
+            home: PathBuf::from("/home/test"),
+            clock: Arc::new(std::time::Instant::now),
+            window_size: layout::INITIAL_WINDOW_SIZE,
+            input: Arc::default(),
             list_volumes: Arc::new(fs::list_volumes),
         };
         for (side, names) in [
@@ -2605,6 +3178,24 @@ impl App {
         self.delete_dialog.is_some()
     }
 
+    /// Replaces the clock type-ahead reads.
+    pub fn path_field_for_test(&self) -> Option<&str> {
+        self.path_field.as_deref()
+    }
+
+    /// The title bar's notice, for the snapshot tests.
+    pub fn notice_for_test(&self) -> Option<&str> {
+        self.notice.as_deref()
+    }
+
+    pub fn with_clock(
+        mut self,
+        clock: impl Fn() -> std::time::Instant + Send + Sync + 'static,
+    ) -> Self {
+        self.clock = Arc::new(clock);
+        self
+    }
+
     /// Replaces the launcher, so a test never starts a real program.
     pub fn with_launcher(mut self, launcher: Arc<dyn fs::Launcher>) -> Self {
         self.launcher = launcher;
@@ -2635,6 +3226,36 @@ impl App {
     pub fn open_volume_menu_for_test(&mut self, side: PanelSide, volumes: Vec<fs::Volume>) {
         let current = self.panel(side).path.clone();
         self.volume_menu = Some(VolumeMenu::new(side, volumes, &current));
+    }
+
+    /// Whether the context menu is up.
+    pub fn context_menu_is_open(&self) -> bool {
+        self.context_menu.is_some()
+    }
+
+    /// The entry Enter would run in the open context menu.
+    pub fn context_menu_selected_action(&self) -> Option<ContextAction> {
+        self.context_menu
+            .as_ref()
+            .and_then(ContextMenu::selected_action)
+    }
+
+    pub fn context_menu_for_test(&self) -> Option<&ContextMenu> {
+        self.context_menu.as_ref()
+    }
+
+    /// Where the pointer is for the next right click, as the raw event
+    /// subscription would have recorded it.
+    pub fn set_pointer_for_test(&self, position: Point) {
+        self.input.lock().pointer = position;
+    }
+
+    pub fn set_modifiers_for_test(&mut self, modifiers: Modifiers) {
+        self.modifiers = modifiers;
+    }
+
+    pub fn active_panel_side_for_test(&self) -> PanelSide {
+        self.active_panel
     }
 
     /// Replaces the trash, so a test never fills the developer's real one.
@@ -3891,11 +4512,20 @@ mod delete_tests {
     }
 
     #[test]
+    fn the_sort_chord_is_routed_and_not_taken_for_type_ahead() {
+        let binding = keymap::sort_binding(crate::fs::SortColumn::Size);
+        assert_eq!(
+            route_key(&PromptKeyState::default(), binding.key, binding.modifiers),
+            Some(Message::SortActive(crate::fs::SortColumn::Size))
+        );
+    }
+
+    #[test]
     fn alt_ctrl_and_super_do_not_fall_back_to_the_bare_key() {
         let idle = PromptKeyState::default();
         for modifiers in [Modifiers::ALT, Modifiers::CTRL, Modifiers::LOGO] {
             assert_eq!(route(&idle, Named::Enter, modifiers), None, "{modifiers:?}");
-            assert_eq!(route(&idle, Named::F5, modifiers), None, "{modifiers:?}");
+            assert_eq!(route(&idle, Named::F7, modifiers), None, "{modifiers:?}");
         }
         // Ctrl+* is CTRL|SHIFT on a real keyboard, since `*` needs Shift.
         assert_eq!(
@@ -4389,5 +5019,848 @@ mod copy_to_clipboard_tests {
         assert_eq!(app.notice.as_deref(), Some("Path copied"));
         let _name = app.update(Message::CopyToClipboard(ClipboardKind::Name));
         assert_eq!(app.notice.as_deref(), Some("Name copied"));
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod context_menu_tests {
+    use super::*;
+    use crate::context_menu::MenuEntry;
+
+    const LEFT: PanelSide = PanelSide::Left;
+    // Rows of the fixed left panel: `..`, a directory, two files.
+    const PARENT: usize = 0;
+    const DIRECTORY: usize = 1;
+    const FILE: usize = 2;
+
+    fn open_at(app: &mut App, side: PanelSide, index: usize) {
+        drop(app.update(Message::ContextMenuAt { side, index }));
+    }
+
+    fn loaded(app: &App, side: PanelSide) -> Message {
+        Message::DirectoryLoaded {
+            side,
+            request_id: app.panel(side).request_id,
+            path: app.panel(side).path.clone(),
+            entries: Vec::new(),
+            error: None,
+            sorted_by: fs::SortKey::default(),
+            select: None,
+        }
+    }
+
+    #[test]
+    fn a_reload_of_the_active_panel_closes_the_menu_and_the_other_ones_does_not() {
+        let mut app = App::with_fixed_panels();
+        open_at(&mut app, LEFT, FILE);
+        assert!(app.context_menu_for_test().is_some());
+
+        let other = loaded(&app, PanelSide::Right);
+        drop(app.update(other));
+        assert!(
+            app.context_menu_for_test().is_some(),
+            "the other side loaded"
+        );
+
+        let active = loaded(&app, LEFT);
+        drop(app.update(active));
+        assert!(app.context_menu_for_test().is_none(), "its rows are gone");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_control_click_on_another_row_replaces_the_menu() {
+        let mut app = App::with_fixed_panels();
+        open_at(&mut app, LEFT, FILE);
+        let first = enabled_actions(&app);
+        app.set_modifiers_for_test(Modifiers::CTRL);
+        drop(app.update(Message::RowClicked {
+            side: LEFT,
+            index: DIRECTORY,
+            on_tag: false,
+        }));
+        assert!(app.context_menu_for_test().is_some(), "a new menu");
+        let second = enabled_actions(&app);
+        assert_ne!(first, second, "the directory's menu, not the file's");
+    }
+
+    #[test]
+    fn a_stale_reload_leaves_the_menu_open() {
+        let mut app = App::with_fixed_panels();
+        open_at(&mut app, LEFT, FILE);
+        let mut stale = loaded(&app, LEFT);
+        if let Message::DirectoryLoaded { request_id, .. } = &mut stale {
+            *request_id = request_id.wrapping_add(1);
+        }
+        drop(app.update(stale));
+        assert!(app.context_menu_for_test().is_some());
+    }
+
+    fn enabled_actions(app: &App) -> Vec<ContextAction> {
+        app.context_menu_for_test()
+            .unwrap()
+            .entries()
+            .iter()
+            .filter_map(|entry| match entry {
+                MenuEntry::Item {
+                    action,
+                    enabled: true,
+                } => Some(*action),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn index_of(app: &App, wanted: ContextAction) -> usize {
+        app.context_menu_for_test()
+            .unwrap()
+            .entries()
+            .iter()
+            .position(|entry| matches!(entry, MenuEntry::Item { action, .. } if *action == wanted))
+            .unwrap()
+    }
+
+    fn route(menu_open: bool, named: Named, modifiers: Modifiers) -> Option<Message> {
+        let state = PromptKeyState {
+            context_menu: menu_open,
+            ..PromptKeyState::default()
+        };
+        route_key(&state, Key::Named(named), modifiers)
+    }
+
+    #[test]
+    fn a_right_click_on_an_untagged_row_moves_the_cursor_and_the_pointer_places_the_menu() {
+        let mut app = App::with_fixed_panels();
+        app.set_pointer_for_test(Point::new(100.0, 120.0));
+        app.active_panel = PanelSide::Right;
+        open_at(&mut app, LEFT, FILE);
+
+        assert!(app.context_menu_is_open());
+        assert_eq!(app.active_panel_side_for_test(), LEFT);
+        assert_eq!(app.panel(LEFT).selected, FILE);
+        assert_eq!(
+            app.context_menu_for_test().unwrap().origin(),
+            Point::new(100.0, 120.0)
+        );
+    }
+
+    #[test]
+    fn a_right_click_on_a_tagged_row_keeps_the_tags_and_acts_on_all_of_them() {
+        let mut app = App::with_fixed_panels();
+        app.toggle_tag_for_test(DIRECTORY);
+        app.toggle_tag_for_test(3);
+        open_at(&mut app, LEFT, 3);
+
+        assert!(app.left_panel_selection_tagged_for_test(DIRECTORY));
+        assert!(app.left_panel_selection_tagged_for_test(3));
+        let trash = index_of(&app, ContextAction::Trash);
+        drop(app.update(Message::ContextMenuClick(trash)));
+
+        assert!(!app.context_menu_is_open());
+        assert_eq!(app.delete_dialog.as_ref().unwrap().sources.len(), 2);
+    }
+
+    #[test]
+    fn the_parent_row_offers_only_what_makes_sense() {
+        let mut app = App::with_fixed_panels();
+        open_at(&mut app, LEFT, PARENT);
+        assert_eq!(
+            enabled_actions(&app),
+            [
+                ContextAction::Open,
+                ContextAction::NewFolder,
+                ContextAction::CopyPath,
+                ContextAction::CopyName
+            ]
+        );
+    }
+
+    #[test]
+    fn a_right_click_outside_the_tags_drops_them_and_acts_on_the_clicked_row_only() {
+        let mut app = App::with_fixed_panels();
+        app.toggle_tag_for_test(DIRECTORY);
+        app.toggle_tag_for_test(3);
+        open_at(&mut app, LEFT, FILE);
+
+        assert!(!app.left_panel_selection_tagged_for_test(DIRECTORY));
+        assert!(!app.left_panel_selection_tagged_for_test(3));
+        let trash = index_of(&app, ContextAction::Trash);
+        drop(app.update(Message::ContextMenuClick(trash)));
+        assert_eq!(app.delete_dialog.as_ref().unwrap().sources.len(), 1);
+    }
+
+    #[test]
+    fn the_parent_row_outside_the_tags_offers_the_parent_actions_only() {
+        let mut app = App::with_fixed_panels();
+        app.toggle_tag_for_test(FILE);
+        open_at(&mut app, LEFT, PARENT);
+        assert!(!enabled_actions(&app).contains(&ContextAction::Copy));
+        assert!(!enabled_actions(&app).contains(&ContextAction::Trash));
+    }
+
+    #[test]
+    fn the_keyboard_keeps_the_tags() {
+        let mut app = App::with_fixed_panels();
+        app.toggle_tag_for_test(DIRECTORY);
+        app.panel_mut(LEFT).selected = FILE;
+        drop(app.update(Message::ContextMenuKey));
+        assert!(app.left_panel_selection_tagged_for_test(DIRECTORY));
+    }
+
+    #[test]
+    fn a_directory_cannot_be_viewed_or_edited_but_a_file_can() {
+        let mut app = App::with_fixed_panels();
+        open_at(&mut app, LEFT, DIRECTORY);
+        let on_directory = enabled_actions(&app);
+        assert!(!on_directory.contains(&ContextAction::View));
+        assert!(!on_directory.contains(&ContextAction::Edit));
+        assert!(on_directory.contains(&ContextAction::Copy));
+
+        open_at(&mut app, LEFT, FILE);
+        let on_file = enabled_actions(&app);
+        assert!(on_file.contains(&ContextAction::View));
+        assert!(on_file.contains(&ContextAction::Edit));
+    }
+
+    #[test]
+    fn an_empty_panel_still_offers_a_new_folder() {
+        let mut app = App::with_fixed_panels();
+        app.panel_mut(LEFT).entries.clear();
+        open_at(&mut app, LEFT, 0);
+        assert_eq!(enabled_actions(&app), [ContextAction::NewFolder]);
+    }
+
+    #[test]
+    fn enter_runs_the_highlighted_entry_after_closing_the_menu() {
+        let mut app = App::with_fixed_panels();
+        open_at(&mut app, LEFT, FILE);
+        let copy_path = index_of(&app, ContextAction::CopyPath);
+        drop(app.update(Message::ContextMenuHover(copy_path)));
+        assert_eq!(
+            app.context_menu_selected_action(),
+            Some(ContextAction::CopyPath)
+        );
+        drop(app.update(Message::ContextMenuActivate));
+
+        assert!(!app.context_menu_is_open());
+        assert_eq!(app.notice.as_deref(), Some("Path copied"));
+    }
+
+    #[test]
+    fn an_entry_runs_the_same_message_as_its_key() {
+        let mut app = App::with_fixed_panels();
+        open_at(&mut app, LEFT, FILE);
+        let new_folder = index_of(&app, ContextAction::NewFolder);
+        drop(app.update(Message::ContextMenuClick(new_folder)));
+        assert!(app.prompt.is_some(), "F7 opens the create-directory prompt");
+    }
+
+    #[test]
+    fn arrows_skip_what_cannot_be_chosen() {
+        let mut app = App::with_fixed_panels();
+        open_at(&mut app, LEFT, PARENT);
+        // Open, then the next usable entry is the new folder: View, Edit, Copy
+        // and Move are greyed out and the separator is not an entry.
+        drop(app.update(Message::ContextMenuMove(1)));
+        assert_eq!(
+            app.context_menu_selected_action(),
+            Some(ContextAction::NewFolder)
+        );
+        drop(app.update(Message::ContextMenuLast));
+        assert_eq!(
+            app.context_menu_selected_action(),
+            Some(ContextAction::CopyName)
+        );
+        drop(app.update(Message::ContextMenuFirst));
+        assert_eq!(
+            app.context_menu_selected_action(),
+            Some(ContextAction::Open)
+        );
+    }
+
+    #[test]
+    fn the_keys_of_the_open_menu() {
+        assert_eq!(
+            route(true, Named::Escape, Modifiers::default()),
+            Some(Message::ContextMenuClose)
+        );
+        assert_eq!(
+            route(true, Named::Enter, Modifiers::default()),
+            Some(Message::ContextMenuActivate)
+        );
+        assert_eq!(
+            route(true, Named::ArrowDown, Modifiers::default()),
+            Some(Message::ContextMenuMove(1))
+        );
+        assert_eq!(
+            route(true, Named::ArrowUp, Modifiers::default()),
+            Some(Message::ContextMenuMove(-1))
+        );
+        assert_eq!(
+            route(true, Named::Home, Modifiers::default()),
+            Some(Message::ContextMenuFirst)
+        );
+        assert_eq!(
+            route(true, Named::End, Modifiers::default()),
+            Some(Message::ContextMenuLast)
+        );
+        assert_eq!(route(true, Named::F5, Modifiers::default()), None);
+        assert!(repeats(&Message::ContextMenuMove(1)));
+        assert!(!repeats(&Message::ContextMenuActivate));
+    }
+
+    #[test]
+    fn shift_f10_opens_the_menu_and_does_not_quit() {
+        assert_eq!(
+            route(false, Named::F10, Modifiers::SHIFT),
+            Some(Message::ContextMenuKey)
+        );
+        assert_eq!(
+            route(false, Named::F10, Modifiers::default()),
+            Some(Message::Quit)
+        );
+    }
+
+    #[test]
+    fn escape_closes_and_the_cursor_stays() {
+        let mut app = App::with_fixed_panels();
+        open_at(&mut app, LEFT, FILE);
+        drop(app.update(Message::ContextMenuClose));
+        assert!(!app.context_menu_is_open());
+        assert_eq!(app.panel(LEFT).selected, FILE);
+    }
+
+    #[test]
+    fn the_keyboard_opens_the_menu_at_the_cursor_row_of_the_active_panel() {
+        let mut app = App::with_fixed_panels();
+        app.active_panel = PanelSide::Right;
+        app.panel_mut(PanelSide::Right).selected = 2;
+        drop(app.update(Message::ContextMenuKey));
+
+        let menu = app.context_menu_for_test().unwrap();
+        let anchor = layout::cursor_row_anchor(true, 2, app.window_size);
+        assert_eq!(menu.origin(), anchor);
+        assert_eq!(app.active_panel_side_for_test(), PanelSide::Right);
+        assert_eq!(app.panel(PanelSide::Right).selected, 2);
+    }
+
+    #[test]
+    fn the_keyboard_does_nothing_under_an_overlay_or_a_menu_that_is_already_up() {
+        let mut prompt = App::with_prompt_open();
+        drop(prompt.update(Message::ContextMenuKey));
+        assert!(!prompt.context_menu_is_open());
+
+        let mut delete = App::with_fixed_panels();
+        delete.open_delete_dialog_for_test(1, false);
+        drop(delete.update(Message::ContextMenuKey));
+        assert!(!delete.context_menu_is_open());
+        drop(delete.update(Message::ContextMenuAt {
+            side: LEFT,
+            index: FILE,
+        }));
+        assert!(!delete.context_menu_is_open());
+
+        let mut open = App::with_fixed_panels();
+        open_at(&mut open, LEFT, FILE);
+        let before = open.context_menu_for_test().cloned();
+        drop(open.update(Message::ContextMenuKey));
+        assert_eq!(open.context_menu_for_test().cloned(), before);
+    }
+
+    #[test]
+    fn a_right_click_on_another_row_reopens_the_menu_there() {
+        let mut app = App::with_fixed_panels();
+        open_at(&mut app, LEFT, DIRECTORY);
+        app.set_pointer_for_test(Point::new(300.0, 200.0));
+        open_at(&mut app, PanelSide::Right, 1);
+
+        assert!(app.context_menu_is_open());
+        assert_eq!(app.active_panel_side_for_test(), PanelSide::Right);
+        assert_eq!(app.panel(PanelSide::Right).selected, 1);
+        assert_eq!(
+            app.context_menu_for_test().unwrap().origin(),
+            Point::new(300.0, 200.0)
+        );
+    }
+
+    #[test]
+    fn a_left_click_on_a_row_only_closes_the_menu() {
+        let mut app = App::with_fixed_panels();
+        open_at(&mut app, LEFT, DIRECTORY);
+        drop(app.update(Message::RowClicked {
+            side: LEFT,
+            index: FILE,
+            on_tag: false,
+        }));
+        assert!(!app.context_menu_is_open());
+        assert_eq!(app.panel(LEFT).selected, DIRECTORY);
+    }
+
+    #[test]
+    fn control_click_is_a_right_click_on_a_mac_only() {
+        assert_eq!(is_context_click(Modifiers::CTRL), cfg!(target_os = "macos"));
+        assert!(!is_context_click(Modifiers::default()));
+        assert!(!is_context_click(Modifiers::SHIFT));
+
+        let mut app = App::with_fixed_panels();
+        app.set_modifiers_for_test(Modifiers::CTRL);
+        drop(app.update(Message::RowClicked {
+            side: LEFT,
+            index: FILE,
+            on_tag: false,
+        }));
+        assert_eq!(app.context_menu_is_open(), cfg!(target_os = "macos"));
+        assert_eq!(app.panel(LEFT).selected, FILE);
+    }
+
+    #[test]
+    fn the_panels_do_not_scroll_under_the_menu() {
+        let wheel = Message::PanelScrolled {
+            side: LEFT,
+            delta: iced::mouse::ScrollDelta::Lines { x: 0.0, y: -1.0 },
+        };
+        let mut app = App::with_fixed_panels();
+        app.set_visible_rows_for_test(2);
+        drop(app.update(wheel.clone()));
+        assert_eq!(app.panel(LEFT).scroll_offset, 1, "the wheel scrolls");
+
+        let mut covered = App::with_fixed_panels();
+        covered.set_visible_rows_for_test(2);
+        open_at(&mut covered, LEFT, 0);
+        drop(covered.update(wheel));
+        assert_eq!(covered.panel(LEFT).scroll_offset, 0);
+    }
+
+    #[test]
+    fn the_menu_is_an_overlay() {
+        let mut app = App::with_fixed_panels();
+        assert!(!app.overlay_is_open());
+        open_at(&mut app, LEFT, FILE);
+        assert!(app.overlay_is_open());
+        assert!(app.prompt_key_state().context_menu);
+        drop(app.update(Message::VolumeMenu(LEFT)));
+        assert!(!app.volume_menu_is_open());
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod type_ahead_tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    /// An app on a panel of `names` (after `..`) and a clock the test moves.
+    fn app_with(names: &[&str]) -> (App, Arc<Mutex<Instant>>) {
+        let now = Arc::new(Mutex::new(Instant::now()));
+        let clock = Arc::clone(&now);
+        let mut app = App::with_fixed_panels().with_clock(move || *clock.lock().unwrap());
+        app.panel_mut(PanelSide::Left).entries = std::iter::once("..")
+            .chain(names.iter().copied())
+            .enumerate()
+            .map(|(index, name)| fs::FileEntry {
+                name: name.into(),
+                path: PathBuf::from("/home/test").join(name),
+                is_dir: false,
+                is_symlink: false,
+                is_parent: index == 0,
+                size: 0,
+                modified: None,
+            })
+            .collect();
+        (app, now)
+    }
+
+    fn type_key(app: &mut App, typed: &str) {
+        drop(app.update(Message::TypeAhead(typed.to_string())));
+    }
+
+    fn advance(clock: &Arc<Mutex<Instant>>, by: Duration) {
+        *clock.lock().unwrap() += by;
+    }
+
+    fn cursor(app: &App) -> usize {
+        app.panel(PanelSide::Left).selected
+    }
+
+    const SECOND: Duration = Duration::from_secs(1);
+
+    #[test]
+    fn q_is_type_ahead_and_only_command_q_quits() {
+        let (mut app, _clock) = app_with(&["alpha", "quarry"]);
+        let state = app.prompt_key_state();
+        let q = || Key::Character("q".into());
+        let typed = route_key(&state, q(), Modifiers::default());
+        assert_eq!(typed, Some(Message::TypeAhead("q".to_string())));
+        drop(app.update(typed.unwrap()));
+        assert_eq!(cursor(&app), 2);
+        assert_eq!(
+            route_key(&state, q(), Modifiers::COMMAND),
+            Some(Message::Quit)
+        );
+    }
+
+    #[test]
+    fn a_character_jumps_to_the_first_entry_it_starts_ignoring_case() {
+        let (mut app, _clock) = app_with(&["alpha", "Beta", "bravo"]);
+        type_key(&mut app, "b");
+        assert_eq!(cursor(&app), 2);
+        type_key(&mut app, "r");
+        assert_eq!(cursor(&app), 3, "br extends the prefix");
+    }
+
+    #[test]
+    fn a_character_within_a_second_extends_the_prefix_and_later_starts_anew() {
+        let (mut app, clock) = app_with(&["ab", "ac", "ba", "bc"]);
+        type_key(&mut app, "b");
+        assert_eq!(cursor(&app), 3);
+        advance(&clock, SECOND);
+        type_key(&mut app, "c");
+        assert_eq!(cursor(&app), 4, "bc, one second after b");
+        advance(&clock, SECOND + Duration::from_millis(1));
+        type_key(&mut app, "a");
+        assert_eq!(cursor(&app), 1, "a on its own, not bca");
+    }
+
+    #[test]
+    fn no_match_leaves_the_cursor() {
+        let (mut app, _clock) = app_with(&["alpha", "beta"]);
+        type_key(&mut app, "b");
+        assert_eq!(cursor(&app), 2);
+        type_key(&mut app, "z");
+        assert_eq!(cursor(&app), 2);
+    }
+
+    #[test]
+    fn the_parent_row_does_not_count() {
+        let (mut app, _clock) = app_with(&["alpha"]);
+        type_key(&mut app, ".");
+        assert_eq!(cursor(&app), 0);
+    }
+
+    #[test]
+    fn moving_the_cursor_or_the_panel_ends_the_prefix() {
+        for reset in [
+            Message::MoveSelection(1),
+            Message::SwitchPanel,
+            Message::SelectFirst,
+            Message::PageDown,
+        ] {
+            let (mut app, _clock) = app_with(&["ab", "ba", "bb", "ca"]);
+            type_key(&mut app, "b");
+            drop(app.update(reset.clone()));
+            app.active_panel = PanelSide::Left;
+            type_key(&mut app, "a");
+            assert_eq!(cursor(&app), 1, "{reset:?} did not end the prefix");
+        }
+    }
+
+    #[test]
+    fn the_view_follows_the_cursor() {
+        let names: Vec<String> = (0..40).map(|i| format!("file{i:02}")).collect();
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        let (mut app, _clock) = app_with(&refs);
+        app.set_visible_rows_for_test(5);
+        type_key(&mut app, "f");
+        for digit in ["i", "l", "e", "3", "5"] {
+            type_key(&mut app, digit);
+        }
+        assert_eq!(cursor(&app), 36);
+        let panel = app.panel(PanelSide::Left);
+        assert!(panel.scroll_offset <= 36 && 36 < panel.scroll_offset + 5);
+    }
+
+    #[test]
+    fn nothing_happens_under_an_overlay() {
+        let (mut app, _clock) = app_with(&["alpha", "beta"]);
+        app.open_delete_dialog_for_test(1, false);
+        type_key(&mut app, "b");
+        assert_eq!(cursor(&app), 0);
+    }
+
+    #[test]
+    fn printable_keys_route_to_type_ahead_but_not_with_option_ctrl_or_cmd() {
+        let route = |key: &str, modifiers: Modifiers| {
+            route_key(
+                &PromptKeyState::default(),
+                Key::Character(key.into()),
+                modifiers,
+            )
+        };
+        assert_eq!(
+            route("a", Modifiers::default()),
+            Some(Message::TypeAhead("a".into()))
+        );
+        assert_eq!(
+            route("A", Modifiers::SHIFT),
+            Some(Message::TypeAhead("A".into()))
+        );
+        assert_eq!(route("ç", Modifiers::ALT), None);
+        assert_eq!(route("a", Modifiers::CTRL), None);
+        assert_eq!(route("a", Modifiers::LOGO), None);
+        assert_eq!(route("*", Modifiers::SHIFT), Some(Message::TagAll));
+        assert_eq!(
+            route_key(
+                &PromptKeyState::default(),
+                Key::Named(Named::Space),
+                Modifiers::default()
+            ),
+            Some(Message::ToggleTag)
+        );
+        let prompt = PromptKeyState {
+            open: true,
+            ..PromptKeyState::default()
+        };
+        assert_eq!(
+            route_key(&prompt, Key::Character("a".into()), Modifiers::default()),
+            Some(Message::PromptInput("a".into()))
+        );
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod path_field_tests {
+    use super::*;
+
+    /// Edits the field: its first keystroke, with the panel's path as it was.
+    fn open(app: &mut App) {
+        let shown = app.active_panel().path.display().to_string();
+        drop(app.update(Message::PathFieldInput(shown)));
+    }
+
+    fn type_path(app: &mut App, typed: &str) {
+        drop(app.update(Message::PathFieldInput(typed.to_string())));
+    }
+
+    #[test]
+    fn typing_replaces_what_the_field_shows_and_a_cancel_restores_the_panels_path() {
+        let mut app = App::with_fixed_panels();
+        assert_eq!(app.path_field, None, "unedited, the field shows the panel");
+        type_path(&mut app, "/home/test/links/Docu");
+        assert_eq!(app.path_field.as_deref(), Some("/home/test/links/Docu"));
+        drop(app.update(Message::PathFieldCancel));
+        assert_eq!(app.path_field, None);
+    }
+
+    fn submit(app: &mut App, typed: &str) -> u64 {
+        open(app);
+        type_path(app, typed);
+        drop(app.update(Message::PathFieldSubmit));
+        app.path_check_id
+    }
+
+    fn checked(app: &mut App, request_id: u64, result: Result<fs::Destination, fs::PathProblem>) {
+        drop(app.update(Message::PathChecked {
+            request_id,
+            side: PanelSide::Left,
+            target: PathBuf::from("/typed/path"),
+            result,
+        }));
+    }
+
+    #[test]
+    fn submitting_does_not_touch_the_field_or_the_panel_until_the_answer_is_in() {
+        let mut app = App::with_fixed_panels();
+        let before = app.active_panel().request_id;
+        submit(&mut app, "/typed/path");
+        assert_eq!(app.path_field.as_deref(), Some("/typed/path"));
+        assert_eq!(app.active_panel().request_id, before);
+    }
+
+    #[test]
+    fn a_destination_closes_the_field_and_loads_it() {
+        let mut app = App::with_fixed_panels();
+        let id = submit(&mut app, "/typed/path");
+        let before = app.active_panel().request_id;
+        checked(
+            &mut app,
+            id,
+            Ok(fs::Destination {
+                directory: PathBuf::from("/typed/path"),
+                select: None,
+            }),
+        );
+        assert_eq!(app.path_field, None);
+        assert_ne!(app.active_panel().request_id, before, "a load started");
+    }
+
+    #[test]
+    fn a_missing_path_is_reported_and_the_field_stays_open() {
+        let mut app = App::with_fixed_panels();
+        let id = submit(&mut app, "/typed/path");
+        let before = app.active_panel().request_id;
+        checked(&mut app, id, Err(fs::PathProblem::Missing));
+        assert_eq!(app.path_field.as_deref(), Some("/typed/path"));
+        assert_eq!(app.active_panel().request_id, before, "nothing was loaded");
+        assert!(app
+            .job_error
+            .as_deref()
+            .is_some_and(|error| error.contains("/typed/path") && error.contains("exist")));
+    }
+
+    #[test]
+    fn an_unreadable_path_says_why_and_is_not_called_missing() {
+        let mut app = App::with_fixed_panels();
+        let id = submit(&mut app, "/typed/path");
+        checked(
+            &mut app,
+            id,
+            Err(fs::PathProblem::Unreadable {
+                reason: "Permission denied".to_string(),
+            }),
+        );
+        let error = app.job_error.clone().unwrap();
+        assert!(error.contains("Permission denied"), "{error}");
+        assert!(!error.contains("does not exist"), "{error}");
+    }
+
+    #[test]
+    fn an_answer_to_text_that_has_changed_or_closed_is_dropped() {
+        let destination = || {
+            Ok(fs::Destination {
+                directory: PathBuf::from("/typed/path"),
+                select: None,
+            })
+        };
+        let mut app = App::with_fixed_panels();
+        let first_id = submit(&mut app, "/typed/path");
+        type_path(&mut app, "/typed/path/more");
+        let before = app.active_panel().request_id;
+        checked(&mut app, first_id, destination());
+        assert_eq!(app.path_field.as_deref(), Some("/typed/path/more"));
+        assert_eq!(app.active_panel().request_id, before);
+
+        let second_id = submit(&mut app, "/typed/path");
+        drop(app.update(Message::PathFieldCancel));
+        checked(&mut app, second_id, destination());
+        assert_eq!(
+            app.active_panel().request_id,
+            before,
+            "the field was closed"
+        );
+    }
+
+    #[test]
+    fn escape_click_outside_and_other_actions_end_the_editing() {
+        for leave in [
+            Message::PathFieldCancel,
+            Message::ClickedOutside,
+            Message::SwitchPanel,
+            Message::RowClicked {
+                side: PanelSide::Left,
+                index: 1,
+                on_tag: false,
+            },
+            Message::SortBy {
+                side: PanelSide::Left,
+                column: fs::SortColumn::Size,
+            },
+        ] {
+            let mut app = App::with_fixed_panels();
+            open(&mut app);
+            drop(app.update(leave));
+            assert_eq!(app.path_field, None);
+        }
+    }
+
+    #[test]
+    fn while_editing_the_panels_get_no_keys_but_quit() {
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        let state = app.prompt_key_state();
+        assert!(state.path_editing);
+        let none = Modifiers::default();
+        assert_eq!(route_key(&state, Key::Named(Named::ArrowDown), none), None);
+        // Escape and Tab reach the app from the input state, not from here.
+        assert_eq!(route_key(&state, Key::Named(Named::Escape), none), None);
+        assert_eq!(
+            route_key(&state, Key::Named(Named::F10), none),
+            Some(Message::Quit)
+        );
+        let quit_chord = if cfg!(target_os = "macos") {
+            Modifiers::COMMAND
+        } else {
+            Modifiers::CTRL
+        };
+        assert_eq!(
+            route_key(&state, Key::Character("q".into()), quit_chord),
+            Some(Message::Quit)
+        );
+    }
+
+    #[test]
+    fn the_copy_icon_copies_the_active_panels_directory() {
+        let app = App::with_fixed_panels();
+        let copied = clipboard_text(app.active_panel(), ClipboardKind::Directory).unwrap();
+        assert_eq!(copied.text, "/home/test/links");
+        assert_eq!(copied.count, 1);
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod notice_tests {
+    use super::*;
+
+    fn copy_path(app: &mut App) {
+        drop(app.update(Message::CopyToClipboard(ClipboardKind::Path)));
+    }
+
+    #[test]
+    fn the_notice_goes_when_its_own_timer_fires() {
+        let mut app = App::with_fixed_panels();
+        copy_path(&mut app);
+        assert_eq!(app.notice.as_deref(), Some("Path copied"));
+        drop(app.update(Message::NoticeExpired(app.notice_generation)));
+        assert_eq!(app.notice, None);
+    }
+
+    #[test]
+    fn an_older_timer_leaves_a_newer_notice_alone() {
+        let mut app = App::with_fixed_panels();
+        copy_path(&mut app);
+        let first = app.notice_generation;
+        drop(app.update(Message::CopyToClipboard(ClipboardKind::Name)));
+        assert_ne!(app.notice_generation, first);
+
+        drop(app.update(Message::NoticeExpired(first)));
+        assert_eq!(app.notice.as_deref(), Some("Name copied"));
+
+        drop(app.update(Message::NoticeExpired(app.notice_generation)));
+        assert_eq!(app.notice, None);
+    }
+
+    #[test]
+    fn a_failure_replaces_the_notice() {
+        let mut app = App::with_fixed_panels();
+        copy_path(&mut app);
+        app.set_status_error("it failed");
+        assert_eq!(app.notice, None);
+        assert_eq!(app.job_error.as_deref(), Some("it failed"));
     }
 }

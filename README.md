@@ -25,6 +25,11 @@ for the state, the licensing audit and the reasoning behind the order.
 
 The drive menu (`Alt+F1` for the left panel, `Alt+F2` for the right).
 
+![The context menu](docs/screenshots/context-menu.png)
+
+The context menu: right-click a row (`Ctrl`+click on a Mac), tap `Option` on its
+own, or press `Shift`+`F10`. It acts on the tagged rows, else the cursor row.
+
 ![The delete dialog](docs/screenshots/delete.png)
 
 F8 asks before it moves the tagged rows to the trash.
@@ -44,6 +49,7 @@ The same window in German, switched with F9.
 - Async directory loading (tokio blocking pool) – the UI never blocks
 - Stale-result protection (fast navigation cannot show an outdated listing)
 - Errors (e.g. *Permission denied*) are shown in the status bar – no panics
+- Confirmations (e.g. *Path copied*) appear at the right of the title bar for three seconds
 - Mouse click selects a row and activates its panel; the wheel and the trackpad scroll the panel under the pointer
 - Drive menu (`Alt`+`F1` / `Alt`+`F2`): jump a panel to the system volume, home, iCloud Drive (macOS),
   mounted volumes or drive letters, the same places as in the Finder sidebar
@@ -60,22 +66,27 @@ The same window in German, switched with F9.
 | `Cmd`+`↑` / `Cmd`+`↓` | Page up / down (`Ctrl` on Linux and Windows) |
 | `Home` / `End`     | First / last entry                       |
 | `Enter`            | Open directory (files: placeholder)      |
+| Any letter or digit | Jump to the first entry whose name starts with what you type (a character within one second extends the prefix, `Q` included) |
 | `Insert` / `Space` | Tag / untag the row, move down one      |
 | `Shift`+`Up`/`Down`| Tag / untag the row, move up / down     |
 | `*`                | Tag every row (except `..`)             |
 | `Ctrl`+`*`         | Clear all tags                          |
 | `Option`+`Cmd`+`C` / `Ctrl`+`Alt`+`C` | Copy the path of the tagged rows (else the cursor row) to the clipboard |
 | `Ctrl`+`Cmd`+`C` / `Ctrl`+`Shift`+`C` | Copy the name of the tagged rows (else the cursor row) to the clipboard |
+| Click the path in the status bar | Edit the path (`Enter` goes there, `~` is home, `Esc` puts the current path back); the icon beside it copies the folder path |
 | `F3` / `F4`        | View / edit the file under the cursor in an external program |
 | `F5` / `F6`        | Copy / move to the other panel          |
 | `F7`               | Create directory                        |
 | `F8`               | Delete to the trash, after a confirmation |
 | `Shift`+`F8`       | Delete permanently (`Enter` cancels; `Shift`+`F8` again confirms) |
 | `Alt`+`F1` / `Alt`+`F2` | Drive menu for the left / right panel (`↑`/`↓`, `Home`/`End`, `Enter` goes, `Esc` closes; `Option` on macOS) |
+| Right click / `Shift`+`F10` / `Option` tapped alone | Context menu at the pointer or the cursor row (`↑`/`↓`, `Home`/`End`, `Enter` runs, `Esc` closes; `Ctrl`+click also on a Mac) |
+| Click a column title | Sort that panel by Name / Size / Modified; a second click reverses the order (▲ / ▼). `..` and folders stay on top |
+| `Ctrl`+`F3` / `Ctrl`+`F5` / `Ctrl`+`F6` (macOS: `Cmd`+`1` / `Cmd`+`3` / `Cmd`+`2`) | Sort the active panel by name / modification time / size; again reverses. macOS uses `Cmd`+digit because the system takes `Ctrl`+`F`-keys |
 | `Backspace`        | Go to parent directory                   |
 | `Tab`              | Switch active panel                      |
 | `F9`               | Switch language (en/de, temporary)        |
-| `F10` / `Q`        | Quit                                     |
+| `F10` / `Cmd`+`Q` / `Ctrl`+`Q` | Quit                                     |
 
 ## Install
 

@@ -1,6 +1,6 @@
 //! Colors, spacing and reusable widget styles (dark, Norton Commander inspired).
 
-use iced::widget::{button, checkbox, container};
+use iced::widget::{button, checkbox, container, text_input};
 use iced::{Background, Border, Color, Theme};
 
 pub mod colors {
@@ -22,8 +22,16 @@ pub mod colors {
 
     pub const TEXT: Color = Color::from_rgb(0.800, 0.840, 0.940);
     pub const DIM_TEXT: Color = Color::from_rgb(0.450, 0.500, 0.640);
+    /// Behind the context menu: darker than the dialog box so the dimmed texts
+    /// on it stay legible.
+    pub const MENU_BACKGROUND: Color = Color::from_rgb(0.070, 0.125, 0.270);
+    pub const MENU_SHORTCUT: Color = Color::from_rgb(0.560, 0.800, 0.880);
+    pub const MENU_SHORTCUT_SELECTED: Color = Color::from_rgb(0.040, 0.100, 0.180);
+    pub const MENU_DISABLED_TEXT: Color = Color::from_rgb(0.560, 0.610, 0.730);
     pub const DIR_COLOR: Color = Color::from_rgb(1.000, 1.000, 1.000);
     pub const ACCENT: Color = Color::from_rgb(1.000, 0.850, 0.300);
+    /// Confirmations, drawn on the title bar.
+    pub const SUCCESS: Color = Color::from_rgb(0.600, 1.000, 0.650);
     pub const ERROR: Color = Color::from_rgb(1.000, 0.450, 0.450);
 
     /// The digit of a function key slot: plain light text on the window
@@ -225,5 +233,106 @@ pub fn dialog_checkbox(_theme: &Theme, status: checkbox::Status) -> checkbox::St
             radius: spacing::BORDER_RADIUS.into(),
         },
         text_color: Some(colors::TEXT),
+    }
+}
+
+/// The box of the context menu.
+pub fn menu(theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(colors::MENU_BACKGROUND)),
+        ..dialog(theme)
+    }
+}
+
+/// One entry of the context menu: flat, the highlighted one filled like the
+/// cursor row of a panel.
+pub fn menu_item(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
+    move |_theme, _status| button::Style {
+        background: selected.then_some(Background::Color(colors::SELECTED_BG)),
+        text_color: colors::TEXT,
+        border: Border::default(),
+        ..button::Style::default()
+    }
+}
+
+/// The line between two groups of the context menu.
+pub fn menu_separator(_theme: &Theme) -> container::Style {
+    filled(colors::ACTIVE_BORDER, colors::TEXT)
+}
+
+/// The path field in the status bar: it looks like the plain text it replaces,
+/// focused or not. Only the caret and the selection show that it is a field.
+pub fn path_input(_theme: &Theme, _status: text_input::Status) -> text_input::Style {
+    text_input::Style {
+        background: Background::Color(Color::TRANSPARENT),
+        border: Border::default(),
+        icon: colors::ACCENT,
+        placeholder: colors::DIM_TEXT,
+        value: colors::ACCENT,
+        selection: colors::SELECTED_BG,
+    }
+}
+
+/// A flat icon button; lit while the pointer is over it.
+pub fn icon_button(_theme: &Theme, status: button::Status) -> button::Style {
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+    button::Style {
+        background: hovered.then_some(Background::Color(colors::PANEL_TITLE_ACTIVE_BG)),
+        text_color: colors::ACCENT,
+        border: Border {
+            radius: spacing::BORDER_RADIUS.into(),
+            ..Border::default()
+        },
+        ..button::Style::default()
+    }
+}
+
+/// One square of the copy icon; `filled` hides what lies behind it.
+pub fn icon_square(filled: bool) -> impl Fn(&Theme) -> container::Style {
+    move |_theme| container::Style {
+        background: filled.then_some(Background::Color(colors::STATUSBAR_BACKGROUND)),
+        border: Border {
+            color: colors::ACCENT,
+            width: spacing::BORDER_WIDTH,
+            radius: 1.0.into(),
+        },
+        ..container::Style::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::colors::*;
+    use iced::Color;
+
+    fn linear(channel: f32) -> f32 {
+        if channel <= 0.03928 {
+            channel / 12.92
+        } else {
+            ((channel + 0.055) / 1.055).powf(2.4)
+        }
+    }
+
+    fn luminance(color: Color) -> f32 {
+        0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b)
+    }
+
+    fn contrast(a: Color, b: Color) -> f32 {
+        let (first, second) = (luminance(a), luminance(b));
+        (first.max(second) + 0.05) / (first.min(second) + 0.05)
+    }
+
+    #[test]
+    fn menu_shortcuts_are_legible_and_quieter_than_labels() {
+        assert!(contrast(MENU_SHORTCUT, MENU_BACKGROUND) >= 4.5);
+        assert!(contrast(MENU_SHORTCUT_SELECTED, SELECTED_BG) >= 4.5);
+        assert!(contrast(MENU_SHORTCUT, MENU_BACKGROUND) < contrast(TEXT, MENU_BACKGROUND));
+    }
+
+    #[test]
+    fn disabled_menu_entries_are_legible_but_dimmer_than_shortcuts() {
+        let disabled = contrast(MENU_DISABLED_TEXT, MENU_BACKGROUND);
+        assert!(disabled >= 3.0);
+        assert!(disabled < contrast(MENU_SHORTCUT, MENU_BACKGROUND));
     }
 }

@@ -1,7 +1,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use super::FileEntry;
+use super::{sort_entries, FileEntry, SortKey};
 
 /// Why a directory read failed, without any user-facing text. The message is
 /// formatted by the UI layer, which owns the language.
@@ -31,18 +31,22 @@ pub struct Listing {
     pub path: PathBuf,
     pub entries: Vec<FileEntry>,
     pub error: Option<ReadError>,
+    /// The order `entries` was sorted in, so a panel can tell whether its own
+    /// key has changed since the read began.
+    pub sorted_by: SortKey,
 }
 
 /// Reads `path` on tokio's blocking thread pool so the UI never blocks.
-pub async fn read_directory(path: PathBuf) -> Listing {
+pub async fn read_directory(path: PathBuf, sorted_by: SortKey) -> Listing {
     let target = path.clone();
-    let result = tokio::task::spawn_blocking(move || read_sync(&target)).await;
+    let result = tokio::task::spawn_blocking(move || read_sync(&target, sorted_by)).await;
 
     match result {
         Ok(Ok(entries)) => Listing {
             path,
             entries,
             error: None,
+            sorted_by,
         },
         Ok(Err(err)) => Listing {
             entries: parent_only(&path),
@@ -50,6 +54,7 @@ pub async fn read_directory(path: PathBuf) -> Listing {
                 reason: err.to_string(),
             }),
             path,
+            sorted_by,
         },
         Err(join_err) => Listing {
             entries: parent_only(&path),
@@ -57,11 +62,12 @@ pub async fn read_directory(path: PathBuf) -> Listing {
                 reason: join_err.to_string(),
             }),
             path,
+            sorted_by,
         },
     }
 }
 
-fn read_sync(path: &Path) -> io::Result<Vec<FileEntry>> {
+fn read_sync(path: &Path, sorted_by: SortKey) -> io::Result<Vec<FileEntry>> {
     let mut entries: Vec<FileEntry> = std::fs::read_dir(path)?
         .filter_map(Result::ok)
         .map(|e| FileEntry::from_dir_entry(&e))
@@ -70,11 +76,7 @@ fn read_sync(path: &Path) -> io::Result<Vec<FileEntry>> {
     if let Some(parent) = path.parent() {
         entries.push(FileEntry::parent(parent));
     }
-    // `sort_by_cached_key`, not `sort_by(listing_order)`: the key is computed
-    // once per entry instead of once per comparison. `listing_order` allocates
-    // a lowercased name, so sorting that way costs O(n log n) allocations
-    // instead of O(n).
-    entries.sort_by_cached_key(|e| e.sort_key());
+    sort_entries(&mut entries, sorted_by);
     Ok(entries)
 }
 
@@ -147,7 +149,7 @@ mod tests {
         std::fs::write(dir.join("b.txt"), b"hello").unwrap();
         std::fs::write(dir.join("A.txt"), b"").unwrap();
 
-        let listing = read_directory(dir.clone()).await;
+        let listing = read_directory(dir.clone(), SortKey::default()).await;
         let names: Vec<_> = listing
             .entries
             .iter()
@@ -162,7 +164,8 @@ mod tests {
 
     #[tokio::test]
     async fn missing_directory_yields_error_not_panic() {
-        let listing = read_directory(PathBuf::from("/definitely/not/here")).await;
+        let listing =
+            read_directory(PathBuf::from("/definitely/not/here"), SortKey::default()).await;
         assert!(listing.error.is_some());
         assert_eq!(listing.entries.len(), 1);
         assert!(listing.entries[0].is_parent);
@@ -228,7 +231,7 @@ mod start_dir_tests {
     /// fresh panel shows entries rather than an error.
     #[tokio::test]
     async fn start_dir_is_readable() {
-        let listing = read_directory(start_dir()).await;
+        let listing = read_directory(start_dir(), SortKey::default()).await;
         assert!(
             listing.error.is_none(),
             "start_dir could not be read: {:?}",
