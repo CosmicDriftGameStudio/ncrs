@@ -5357,6 +5357,21 @@ mod type_ahead_tests {
     const SECOND: Duration = Duration::from_secs(1);
 
     #[test]
+    fn q_is_type_ahead_and_only_command_q_quits() {
+        let (mut app, _clock) = app_with(&["alpha", "quarry"]);
+        let state = app.prompt_key_state();
+        let q = || Key::Character("q".into());
+        let typed = route_key(&state, q(), Modifiers::default());
+        assert_eq!(typed, Some(Message::TypeAhead("q".to_string())));
+        drop(app.update(typed.unwrap()));
+        assert_eq!(cursor(&app), 2);
+        assert_eq!(
+            route_key(&state, q(), Modifiers::COMMAND),
+            Some(Message::Quit)
+        );
+    }
+
+    #[test]
     fn a_character_jumps_to_the_first_entry_it_starts_ignoring_case() {
         let (mut app, _clock) = app_with(&["alpha", "Beta", "bravo"]);
         type_key(&mut app, "b");

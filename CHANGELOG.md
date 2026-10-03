@@ -58,6 +58,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Quit is `F10` or `Cmd`+`Q` (`Ctrl`+`Q` on Linux and Windows); a bare `Q` no
+  longer quits and takes part in type-ahead like any other letter.
 - Started from Finder (working directory `/`), the left panel opens in `$HOME`.
 - ncrs is described as "inspired by Norton Commander", with a trademark notice
   in the README.

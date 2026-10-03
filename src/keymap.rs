@@ -53,9 +53,10 @@ fn build_actions() -> Vec<Action> {
     use Key::{Character, Named as KeyNamed};
 
     vec![
-        // --- Backspace, Enter, Tab and Q are not on the function key bar ---
+        // --- Backspace, Enter, Tab and Cmd+Q are not on the function key bar ---
         Action {
-            binding: Binding::key(Character("q".into())),
+            // Not a bare Q: that letter belongs to type-ahead.
+            binding: Binding::with_modifiers(Character("q".into()), Modifiers::COMMAND),
             message: Message::Quit,
             hint: None,
         },
@@ -429,8 +430,13 @@ mod tests {
             Some(Message::Quit)
         );
         assert_eq!(
-            map_key(Key::Character("q".into()), Modifiers::default()),
+            map_key(Key::Character("q".into()), Modifiers::COMMAND),
             Some(Message::Quit)
+        );
+        assert_eq!(
+            map_key(Key::Character("q".into()), Modifiers::default()),
+            None,
+            "a bare q is type-ahead now"
         );
         assert_eq!(
             map_key(Key::Character("x".into()), Modifiers::default()),

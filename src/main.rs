@@ -87,7 +87,7 @@ KEYS:
     F7         create directory
     F8         delete (to trash)   Shift+F8 delete permanently
     F9         switch language (en/de)
-    F10 / Q    quit
+    F10 / Cmd+Q  quit
 
 VIEW / EDIT:
     F3 and F4 open the file under the cursor (tags are ignored) in the system
