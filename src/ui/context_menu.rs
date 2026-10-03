@@ -22,14 +22,14 @@ pub fn view(menu: &ContextMenu, lang: Language) -> Element<'_, Message> {
             MenuEntry::Item { action, enabled } => {
                 let is_selected = index == menu.selected();
                 let label_color = match (*enabled, is_selected) {
-                    (false, _) => colors::DISABLED_TEXT,
+                    (false, _) => colors::MENU_DISABLED_TEXT,
                     (true, true) => colors::SELECTED_TEXT,
                     (true, false) => colors::TEXT,
                 };
                 let shortcut_color = match (*enabled, is_selected) {
-                    (false, _) => colors::DISABLED_TEXT,
-                    (true, true) => colors::SELECTED_TEXT,
-                    (true, false) => colors::DIM_TEXT,
+                    (false, _) => colors::MENU_DISABLED_TEXT,
+                    (true, true) => colors::MENU_SHORTCUT_SELECTED,
+                    (true, false) => colors::MENU_SHORTCUT,
                 };
                 let shortcut = keymap::shortcut_label(&action.message()).unwrap_or_default();
                 let content = row![
@@ -63,7 +63,7 @@ pub fn view(menu: &ContextMenu, lang: Language) -> Element<'_, Message> {
     let body = container(Column::with_children(entries))
         .padding(MENU_PADDING)
         .width(MENU_WIDTH)
-        .style(theme::dialog);
+        .style(theme::menu);
 
     // `opaque` so a click on the menu's own padding is not taken for a click
     // beside it.

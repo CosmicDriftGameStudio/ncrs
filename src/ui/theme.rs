@@ -21,8 +21,13 @@ pub mod colors {
     pub const INACTIVE_BORDER: Color = Color::from_rgb(0.165, 0.210, 0.390);
 
     pub const TEXT: Color = Color::from_rgb(0.800, 0.840, 0.940);
-    pub const DISABLED_TEXT: Color = Color::from_rgb(0.330, 0.380, 0.520);
     pub const DIM_TEXT: Color = Color::from_rgb(0.450, 0.500, 0.640);
+    /// Behind the context menu: darker than the dialog box so the dimmed texts
+    /// on it stay legible.
+    pub const MENU_BACKGROUND: Color = Color::from_rgb(0.070, 0.125, 0.270);
+    pub const MENU_SHORTCUT: Color = Color::from_rgb(0.560, 0.800, 0.880);
+    pub const MENU_SHORTCUT_SELECTED: Color = Color::from_rgb(0.040, 0.100, 0.180);
+    pub const MENU_DISABLED_TEXT: Color = Color::from_rgb(0.560, 0.610, 0.730);
     pub const DIR_COLOR: Color = Color::from_rgb(1.000, 1.000, 1.000);
     pub const ACCENT: Color = Color::from_rgb(1.000, 0.850, 0.300);
     /// Confirmations, drawn on the title bar.
@@ -231,6 +236,14 @@ pub fn dialog_checkbox(_theme: &Theme, status: checkbox::Status) -> checkbox::St
     }
 }
 
+/// The box of the context menu.
+pub fn menu(theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(colors::MENU_BACKGROUND)),
+        ..dialog(theme)
+    }
+}
+
 /// One entry of the context menu: flat, the highlighted one filled like the
 /// cursor row of a panel.
 pub fn menu_item(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
@@ -284,5 +297,42 @@ pub fn icon_square(filled: bool) -> impl Fn(&Theme) -> container::Style {
             radius: 1.0.into(),
         },
         ..container::Style::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::colors::*;
+    use iced::Color;
+
+    fn linear(channel: f32) -> f32 {
+        if channel <= 0.03928 {
+            channel / 12.92
+        } else {
+            ((channel + 0.055) / 1.055).powf(2.4)
+        }
+    }
+
+    fn luminance(color: Color) -> f32 {
+        0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b)
+    }
+
+    fn contrast(a: Color, b: Color) -> f32 {
+        let (first, second) = (luminance(a), luminance(b));
+        (first.max(second) + 0.05) / (first.min(second) + 0.05)
+    }
+
+    #[test]
+    fn menu_shortcuts_are_legible_and_quieter_than_labels() {
+        assert!(contrast(MENU_SHORTCUT, MENU_BACKGROUND) >= 4.5);
+        assert!(contrast(MENU_SHORTCUT_SELECTED, SELECTED_BG) >= 4.5);
+        assert!(contrast(MENU_SHORTCUT, MENU_BACKGROUND) < contrast(TEXT, MENU_BACKGROUND));
+    }
+
+    #[test]
+    fn disabled_menu_entries_are_legible_but_dimmer_than_shortcuts() {
+        let disabled = contrast(MENU_DISABLED_TEXT, MENU_BACKGROUND);
+        assert!(disabled >= 3.0);
+        assert!(disabled < contrast(MENU_SHORTCUT, MENU_BACKGROUND));
     }
 }
