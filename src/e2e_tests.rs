@@ -1881,7 +1881,7 @@ fn clicking_a_panel_after_editing_restores_the_path() {
     );
 }
 
-const LEFT_NAME_HEADER: Point = Point::new(25.0, 83.0);
+const LEFT_NAME_HEADER: Point = Point::new(50.0, 83.0);
 const LEFT_SIZE_HEADER: Point = Point::new(415.0, 83.0);
 const LEFT_MODIFIED_HEADER: Point = Point::new(540.0, 83.0);
 

@@ -333,7 +333,9 @@ fn column_header<'a, M: Clone + 'a>(
     };
     container(
         row![
-            container(title(SortColumn::Name, Msg::ColumnName)).width(Length::Fill),
+            container(title(SortColumn::Name, Msg::ColumnName))
+                .padding(iced::Padding::ZERO.left(TAG_COLUMN_WIDTH))
+                .width(Length::Fill),
             container(title(SortColumn::Size, Msg::ColumnSize))
                 .width(SIZE_COLUMN_WIDTH)
                 .align_x(alignment::Horizontal::Right),
