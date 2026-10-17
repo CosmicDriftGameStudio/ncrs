@@ -443,7 +443,7 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
   Ergebnis: `[theme]` mit `preset = "default"` oder `"classic"` (NC-Blau) und 17 semantischen Rollen (`panel`, `text`, `cursor`, `tagged`, `directory`, `status_bar`, `dialog`, `error`, …) als `"#rrggbb"`/`"#rgb"`; ohne Eintrag pixelgleich zu vorher. Unbekannte Rollen und Presets und ungültige Farben sind Config-Fehler mit Zeile; Text unter 3:1 Kontrast lädt trotzdem und nennt Paar und Zeile in der Statuszeile.
 - [x] **T13 – Sprachauswahl persistent** – `lang = "de"` in der Config, statt F9
   Ergebnis: `lang = "en"|"de"` auf oberster Ebene setzt die Startsprache; fehlt der Schlüssel, bleibt es Englisch. F9 schaltet nur die laufende Sitzung um, die Config wird nie zurückgeschrieben (bewusst read-only). Ein anderer Wert ist ein Config-Fehler mit Zeile, der die erlaubten Werte nennt.
-- [ ] **T14 – Quick-Search** – Typen filtert die Liste, `glob`-basiert, logik-testbar
+- [ ] **T14 – Suche über Dateien und Inhalte (VS-Code-Stil)**, Tracking #36: T14a Suchmaschine (#33, erledigt), T14b Suchansicht (#34), T14c Quick Open (#35)
 
 - [x] **T5b – Registry-Pattern für Tasten: eine Aktion, eine Registrierung**
   Eine Aktion trägt Taste, Message und Übersetzungshinweis. `map_key` *und* die

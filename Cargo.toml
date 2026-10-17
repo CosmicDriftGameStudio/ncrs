@@ -35,6 +35,15 @@ serde = { version = "1", features = ["derive"] }
 # Spanned: a config error names the line of the key that is wrong, and the
 # keymap only learns that after parsing. toml_edit does not re-export it.
 serde_spanned = { version = "1.1", features = ["serde"] }
+# The crates behind ripgrep, so walking, patterns and content search behave the
+# same on all three systems. unicode-normalization is there because macOS hands
+# out file names decomposed (NFD) while patterns are typed composed (NFC).
+ignore = "0.4.33"
+globset = "0.4.20"
+grep-regex = "0.1.14"
+grep-searcher = "0.1.17"
+grep-matcher = "0.1.9"
+unicode-normalization = "0.1.26"
 
 [profile.release]
 opt-level = 3

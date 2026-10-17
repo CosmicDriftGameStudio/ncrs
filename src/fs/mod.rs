@@ -5,6 +5,7 @@ mod entry;
 mod open;
 mod ops;
 mod reader;
+pub mod search;
 mod sort;
 pub mod transfer;
 mod typed_path;
