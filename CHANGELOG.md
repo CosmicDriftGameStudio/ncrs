@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.3.0] — 2026-10-17
+
 ### Added
 
 - Quick Open: `Cmd`+`P` (`Ctrl`+`P` on Linux and Windows, `quick_open` in
