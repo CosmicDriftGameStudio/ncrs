@@ -20,6 +20,7 @@ use serde::de::{Deserializer, Error as _, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use serde_spanned::Spanned;
 
+use crate::i18n::Language;
 use crate::keymap::Keymap;
 use crate::palette::{ColorRole, Palette};
 
@@ -35,6 +36,10 @@ const SIZE_LIMIT: u64 = 1024 * 1024;
 pub struct Config {
     #[serde(default)]
     pub version: Version,
+    /// The language the session starts in; F9 switches it for the session
+    /// only, nothing is written back.
+    #[serde(default)]
+    pub lang: Option<Language>,
     #[serde(default)]
     pub open: OpenPrograms,
     /// The `[keys]` section as written; `load` turns it into `keymap`.
@@ -204,6 +209,19 @@ impl<'de> Deserialize<'de> for Version {
                 "unsupported version {number}, this ncrs reads version {CURRENT_VERSION}"
             )))
         }
+    }
+}
+
+impl<'de> Deserialize<'de> for Language {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let code = String::deserialize(deserializer)?;
+        Language::from_code(&code).ok_or_else(|| {
+            let allowed = Language::ALL.map(|lang| format!("\"{}\"", lang.code()));
+            D::Error::custom(format!(
+                "unknown language \"{code}\", use one of {}",
+                allowed.join(", ")
+            ))
+        })
     }
 }
 
@@ -524,6 +542,21 @@ mod tests {
     fn a_missing_version_means_the_current_one() {
         let config = load_text("[open]\nview = [\"viewer\"]\n");
         assert_eq!(config.version, Version::default());
+    }
+
+    #[test]
+    fn the_start_language_is_read_and_optional() {
+        assert_eq!(load_text("lang = \"de\"\n").lang, Some(Language::German));
+        assert_eq!(load_text("lang = \"en\"\n").lang, Some(Language::English));
+        assert_eq!(load_text("").lang, None);
+    }
+
+    #[test]
+    fn an_unknown_language_names_its_line_and_the_allowed_values() {
+        let (line, reason) = error_line("version = 1\nlang = \"fr\"\n");
+        assert_eq!(line, Some(2));
+        assert!(reason.contains("\"fr\""), "{reason}");
+        assert!(reason.contains("\"en\", \"de\""), "{reason}");
     }
 
     #[test]

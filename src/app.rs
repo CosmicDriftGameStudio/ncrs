@@ -911,6 +911,10 @@ impl App {
     pub fn with_config(mut self, loaded: Result<Config, ConfigError>) -> Self {
         match loaded {
             Ok(config) => {
+                // First: `function_keys` and `report` word themselves in `self.lang`.
+                if let Some(lang) = config.lang {
+                    self.lang = lang;
+                }
                 self.open_programs = config.open;
                 self.keymap = config.keymap;
                 self.function_keys = self.keymap.function_keys(self.lang);
@@ -6280,6 +6284,17 @@ mod config_status_tests {
             App::with_fixed_panels().with_config(Ok(loaded("[theme]\nerror = \"#102030\"\n")));
         assert_eq!(app.palette.error, iced::Color::from_rgb8(0x10, 0x20, 0x30));
         assert_eq!(app.status_error(), None);
+    }
+
+    #[test]
+    fn the_configured_start_language_words_the_first_message() {
+        let app = App::with_fixed_panels()
+            .with_config(Ok(loaded("lang = \"de\"\n[theme]\npanel = \"#ccddee\"\n")));
+        assert_eq!(app.lang, Language::German);
+        let shown = app.status_error().unwrap_or_default();
+        assert!(shown.contains("Zeile 3"), "{shown}");
+        let english = App::with_fixed_panels().with_config(Ok(loaded("")));
+        assert_eq!(english.lang, Language::English);
     }
 
     #[test]

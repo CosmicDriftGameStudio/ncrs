@@ -88,7 +88,7 @@ The defaults. Most of them can be changed in the config file, see [Keys](#keys).
 | `Ctrl`+`F3` / `Ctrl`+`F5` / `Ctrl`+`F6` (macOS: `Cmd`+`1` / `Cmd`+`3` / `Cmd`+`2`) | Sort the active panel by name / modification time / size; again reverses. macOS uses `Cmd`+digit because the system takes `Ctrl`+`F`-keys |
 | `Backspace`        | Go to parent directory                   |
 | `Tab`              | Switch active panel                      |
-| `F9`               | Switch language (en/de, temporary)        |
+| `F9`               | Switch language for this session (start: `lang`) |
 | `F10` / `Cmd`+`Q` / `Ctrl`+`Q` | Quit                                     |
 
 ## Install
@@ -141,6 +141,9 @@ ncrs reads an optional TOML file:
 
 ```toml
 version = 1
+# Start language: "en" or "de". F9 switches it for the running session only;
+# ncrs never writes the config file.
+lang = "de"
 
 [open]
 # F3. The file is added as the last argument.
@@ -407,7 +410,9 @@ Adding or changing a string:
 Adding a language:
 
 1. Add the language to `strings.json` and to `build.rs`'s language list.
-2. Add the variant to `Language` and its lookup in `src/i18n/mod.rs`.
+2. Add the variant to `Language` and its lookup in `src/i18n/mod.rs`, with its config
+   code in `Language::code()` and an entry in `Language::ALL`; the compiler does not check
+   `ALL`, and a language missing there cannot be set with `lang`.
 3. `cargo test` — placeholder mismatches and untranslated copies fail the build, not the
    UI. `<DIR>` and `<UP>` are deliberately never translated.
 

@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Start language from the config file: `lang = "en"` or `lang = "de"` at the top
+  level. Without it the start language stays English. `F9` still switches the
+  language for the running session only; nothing is written back to the file.
+  Any other value is an error with the line that names the allowed ones, handled
+  like any other config error.
 - Colors from the config file: `[theme]` picks a palette with
   `preset = "default"` or `"classic"` (Norton Commander blue) and changes single
   roles on top of it as `"#rrggbb"` or `"#rgb"`:
