@@ -12,6 +12,7 @@ pub mod header;
 pub mod key_intercept;
 pub mod layout;
 pub mod panel;
+pub mod quick_open;
 pub mod search;
 pub mod statusbar;
 pub mod theme;

@@ -245,6 +245,21 @@ pub fn compile(query: &SearchQuery) -> Result<CompiledSearch, SearchError> {
     })
 }
 
+/// Every file below `root`, hidden ones included, as a name search without a
+/// pattern. Stops and reports `truncated` after `limit` files.
+pub fn all_files(root: PathBuf, same_file_system: bool, limit: usize) -> CompiledSearch {
+    CompiledSearch {
+        root,
+        include: None,
+        exclude: GlobSet::empty(),
+        exclude_dirs: GlobSet::empty(),
+        content: None,
+        case_sensitive: true,
+        same_file_system,
+        match_limit: limit,
+    }
+}
+
 /// globset folds case for ASCII only, so `*ä*` would miss `Ä`. Both sides are
 /// lowercased here instead and the glob itself stays case-sensitive.
 fn fold(text: &str, case_sensitive: bool) -> String {
@@ -1001,6 +1016,31 @@ mod tests {
         assert!(!outcome.truncated);
         assert_eq!(outcome.matches, 1);
         assert_eq!(outcome.skipped, 0);
+    }
+
+    #[test]
+    fn all_files_lists_hidden_files_and_stops_at_the_limit() {
+        let dir = tree();
+        write(dir.path(), ".hidden/a.txt", "x");
+        write(dir.path(), "src/config.rs", "x");
+        write(dir.path(), "b.txt", "x");
+        let outcome = run_compiled(all_files(dir.path().to_path_buf(), true, 100));
+        assert_eq!(names(&outcome), [".hidden/a.txt", "b.txt", "src/config.rs"]);
+        assert!(!outcome.truncated);
+
+        let limited = run_compiled(all_files(dir.path().to_path_buf(), true, 2));
+        assert!(limited.truncated);
+        assert_eq!(limited.files.len(), 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn all_files_does_not_follow_a_symlinked_directory() {
+        let dir = tree();
+        write(dir.path(), "real/a.txt", "x");
+        std::os::unix::fs::symlink(dir.path().join("real"), dir.path().join("link")).unwrap();
+        let outcome = run_compiled(all_files(dir.path().to_path_buf(), true, 100));
+        assert_eq!(names(&outcome), ["link", "real/a.txt"]);
     }
 
     #[tokio::test]

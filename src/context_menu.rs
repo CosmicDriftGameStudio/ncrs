@@ -6,7 +6,7 @@ use iced::{event, mouse, window, Point, Size};
 
 use crate::fs::OpenKind;
 use crate::i18n::Msg;
-use crate::messages::{ClipboardKind, Message, SearchMessage, TransferKind};
+use crate::messages::{ClipboardKind, Message, QuickOpenMessage, SearchMessage, TransferKind};
 use crate::ui::layout::{MENU_ITEM_HEIGHT, MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_WIDTH};
 
 /// What an entry does. Each one is exactly the message its key sends.
@@ -259,6 +259,9 @@ pub struct InputState {
     pub search_open: bool,
     /// A job is running, so Escape stops it before it closes the search.
     pub job_running: bool,
+    /// Quick Open is up: Escape closes it, even with a job running, and an
+    /// Option tap opens no menu.
+    pub quick_open: bool,
 }
 
 impl InputState {
@@ -280,6 +283,9 @@ impl InputState {
                 if self.path_editing && leaves_field {
                     return Some(Message::PathFieldCancel);
                 }
+                if self.quick_open && matches!(key, Key::Named(Named::Escape)) {
+                    return Some(Message::QuickOpen(QuickOpenMessage::Close));
+                }
                 // The search's text fields capture Escape, so the routing
                 // never sees it there.
                 if !(self.search_open && matches!(key, Key::Named(Named::Escape))) {
@@ -299,7 +305,7 @@ impl InputState {
                 // Still fed, so the tap's bookkeeping stays right, but a tap
                 // while a path is being typed opens nothing.
                 let tapped = self.alt_tap.modifiers_changed(*modifiers);
-                (tapped && !self.path_editing && !self.search_open)
+                (tapped && !self.path_editing && !self.search_open && !self.quick_open)
                     .then_some(Message::ContextMenuKey)
             }
             event::Event::Window(window::Event::Unfocused) => {
@@ -608,6 +614,25 @@ mod tests {
         input.job_running = false;
         let letter = key_pressed(Key::Character("a".into()));
         assert_eq!(input.handle(&letter, event::Status::Ignored), None);
+        let tap = feed(
+            &mut input,
+            &[modifiers(Modifiers::ALT), modifiers(Modifiers::empty())],
+        );
+        assert!(tap.is_empty(), "{tap:?}");
+    }
+
+    #[test]
+    fn escape_closes_quick_open_even_with_a_job_running_and_a_tap_opens_no_menu() {
+        let mut input = InputState::default();
+        let escape = key_pressed(Key::Named(Named::Escape));
+        input.quick_open = true;
+        input.job_running = true;
+        for status in [event::Status::Captured, event::Status::Ignored] {
+            assert_eq!(
+                input.handle(&escape, status),
+                Some(Message::QuickOpen(QuickOpenMessage::Close))
+            );
+        }
         let tap = feed(
             &mut input,
             &[modifiers(Modifiers::ALT), modifiers(Modifiers::empty())],

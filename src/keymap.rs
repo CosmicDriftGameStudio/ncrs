@@ -14,7 +14,7 @@ use crate::config::KeySection;
 use crate::fs::{OpenKind, SortColumn};
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
-use crate::messages::{ClipboardKind, PanelSide, SearchMessage, TransferKind};
+use crate::messages::{ClipboardKind, PanelSide, QuickOpenMessage, SearchMessage, TransferKind};
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -102,6 +102,7 @@ key_actions! {
     First => "first",
     Last => "last",
     Search => "search",
+    QuickOpen => "quick_open",
     SearchCase => "search_case",
     SearchWholeWord => "search_whole_word",
     SearchRegex => "search_regex",
@@ -172,6 +173,7 @@ impl KeyAction {
             | Self::CopyPath
             | Self::CopyName
             | Self::Mkdir
+            | Self::QuickOpen
             | Self::DriveMenuLeft
             | Self::DriveMenuRight
             | Self::SortByName
@@ -230,6 +232,7 @@ impl KeyAction {
             Self::First => Message::SelectFirst,
             Self::Last => Message::SelectLast,
             Self::Search => Message::OpenSearch,
+            Self::QuickOpen => Message::QuickOpen(QuickOpenMessage::Open),
             Self::SearchCase => Message::Search(SearchMessage::ToggleCase),
             Self::SearchWholeWord => Message::Search(SearchMessage::ToggleWholeWord),
             Self::SearchRegex => Message::Search(SearchMessage::ToggleRegex),
@@ -374,6 +377,11 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
         (
             A::Search,
             Binding::with_modifiers(Character("f".into()), Modifiers::COMMAND | Modifiers::SHIFT),
+        ),
+        // VS Code's Go to File.
+        (
+            A::QuickOpen,
+            Binding::with_modifiers(Character("p".into()), Modifiers::COMMAND),
         ),
         // The toggles of the search fields, as in VS Code. On a Mac Option types
         // other characters, so these are only found through the physical key.
@@ -830,6 +838,25 @@ mod tests {
             Some(Message::CreateDirPrompt)
         );
         assert!(shortcut_label(&Message::OpenSearch).is_some());
+    }
+
+    #[test]
+    fn primary_p_opens_quick_open_in_the_panel_and_not_in_the_search() {
+        let message = Some(Message::QuickOpen(QuickOpenMessage::Open));
+        assert_eq!(
+            map_key(Key::Character("p".into()), Modifiers::COMMAND),
+            message
+        );
+        let keymap = Keymap::default();
+        assert_eq!(
+            keymap.map_key(
+                &Key::Character("p".into()),
+                Modifiers::COMMAND,
+                KeyScope::Search
+            ),
+            None
+        );
+        assert!(shortcut_label(&Message::QuickOpen(QuickOpenMessage::Open)).is_some());
     }
 
     #[cfg(target_os = "macos")]

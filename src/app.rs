@@ -17,13 +17,16 @@ use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
 use crate::keymap::{self, KeyScope, Keymap};
 use crate::messages::{
-    ClipboardKind, ConflictChoice, Message, PanelSide, SearchMessage, TransferKind,
+    ClipboardKind, ConflictChoice, Message, PanelSide, QuickOpenMessage, SearchMessage,
+    TransferKind,
 };
 use crate::palette::Palette;
-use crate::search_view::{SearchField, SearchView};
+use crate::quick_open::{QuickOpen, QUICK_OPEN_FILE_LIMIT};
+use crate::search_view::{stays_on_file_system, SearchField, SearchView};
 use crate::ui::context_menu as context_menu_view;
 use crate::ui::delete as delete_dialog_view;
 use crate::ui::dialog::FIELD_ID;
+use crate::ui::quick_open as quick_open_ui;
 use crate::ui::search as search_ui;
 use crate::ui::volumes as volumes_view;
 use crate::ui::{
@@ -38,6 +41,14 @@ const SEARCH_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(25
 /// files does not make thousands of updates.
 const SEARCH_BATCH: usize = 256;
 
+fn search_batch(generation: u64, events: Vec<fs::search::SearchEvent>) -> Message {
+    Message::Search(SearchMessage::Events { generation, events })
+}
+
+fn quick_open_batch(generation: u64, events: Vec<fs::search::SearchEvent>) -> Message {
+    Message::QuickOpen(QuickOpenMessage::Events { generation, events })
+}
+
 /// The messages of one search, in batches. Ends when the engine is done or the
 /// task is aborted.
 ///
@@ -46,6 +57,7 @@ const SEARCH_BATCH: usize = 256;
 fn search_events(
     compiled: fs::search::CompiledSearch,
     generation: u64,
+    to_message: fn(u64, Vec<fs::search::SearchEvent>) -> Message,
 ) -> impl futures::Stream<Item = Message> + Send + 'static {
     use futures::StreamExt as _;
     futures::stream::once(async move { fs::search::spawn(compiled) })
@@ -53,10 +65,7 @@ fn search_events(
             futures::stream::unfold(receiver, move |mut open| async move {
                 let mut events = Vec::new();
                 let received = open.recv_many(&mut events, SEARCH_BATCH).await;
-                (received > 0).then(|| {
-                    let message = Message::Search(SearchMessage::Events { generation, events });
-                    (message, open)
-                })
+                (received > 0).then(|| (to_message(generation, events), open))
             })
         })
         .flatten()
@@ -206,6 +215,7 @@ fn leaves_path_field(message: &Message) -> bool {
         message,
         Message::RowClicked { .. }
             | Message::OpenSearch
+            | Message::QuickOpen(QuickOpenMessage::Open)
             | Message::ContextMenuAt { .. }
             | Message::ContextMenuKey
             | Message::CopyToClipboard(_)
@@ -488,6 +498,12 @@ pub struct App {
     /// Stops the running search when dropped, which also drops the receiver
     /// the engine's worker sends into.
     search_handle: Option<iced::task::Handle>,
+    /// Quick Open (Cmd/Ctrl+P), while its box is up.
+    quick_open: Option<QuickOpen>,
+    /// Counts the walks started, so the late batches of a closed one are dropped.
+    quick_open_walk_generation: u64,
+    /// Stops the file walk when dropped.
+    quick_open_walk: Option<iced::task::Handle>,
 }
 
 /// The part of the prompt the key routing needs, cheap to clone.
@@ -513,6 +529,8 @@ pub struct PromptKeyState {
     pub path_editing: bool,
     /// The search view is up, so the cursor keys move in its results.
     pub search: bool,
+    /// Quick Open is up, so the up and down keys move in its hits.
+    pub quick_open: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
     /// The drive menu is up, so keys move its highlight.
@@ -535,6 +553,7 @@ impl Default for PromptKeyState {
             conflict_open: false,
             path_editing: false,
             search: false,
+            quick_open: false,
             delete_dialog: DeleteKeys::default(),
             volume_menu: false,
             context_menu: false,
@@ -626,6 +645,23 @@ fn keys_without_prompt(
                     == Some(Message::AbortJob))
                 .then_some(Message::TransferConflict(ConflictChoice::Cancel))
             }),
+        };
+    }
+
+    // The field takes the typing, Enter and Escape (`InputState`); the arrows
+    // are the hits'. Of the bindings only quitting reaches past it, as it does
+    // for the path field.
+    if prompt.quick_open {
+        return match key.as_ref() {
+            Key::Named(Named::ArrowUp) if key_modifiers.is_empty() => {
+                Some(Message::QuickOpen(QuickOpenMessage::Move(-1)))
+            }
+            Key::Named(Named::ArrowDown) if key_modifiers.is_empty() => {
+                Some(Message::QuickOpen(QuickOpenMessage::Move(1)))
+            }
+            _ => bound_message(&prompt.keymap, &key, key_modifiers, scope)
+                .filter(|message| *message == Message::Quit)
+                .filter(|_| is_not_typed_by_text_field(&key, key_modifiers)),
         };
     }
 
@@ -957,6 +993,7 @@ fn repeats(message: &Message) -> bool {
             | Message::ContextMenuMove(_)
             | Message::ContextMenuFirst
             | Message::ContextMenuLast
+            | Message::QuickOpen(QuickOpenMessage::Move(_))
             | Message::Search(
                 SearchMessage::ToggleTag
                     | SearchMessage::TagMove(_)
@@ -1197,6 +1234,9 @@ impl App {
             search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE),
             search_generation: 0,
             search_handle: None,
+            quick_open: None,
+            quick_open_walk_generation: 0,
+            quick_open_walk: None,
         };
 
         let tasks = Task::batch([
@@ -1448,7 +1488,8 @@ impl App {
                     Err(RowFailure::Conflict(_reason)) => {
                         self.dialog_focus = 0;
                         self.pending_conflict = Some(PendingConflict { transfer, index });
-                        Task::none()
+                        // Else the dialog would be asked behind the box.
+                        self.close_quick_open()
                     }
                     // Rows before this one are already done, so the panels are
                     // reloaded to show them.
@@ -1797,6 +1838,7 @@ impl App {
             }
             Message::OpenSearch => self.open_search(),
             Message::Search(search) => self.update_search(search),
+            Message::QuickOpen(quick_open) => self.update_quick_open(quick_open),
             Message::Quit => iced::exit(),
             // Handled in `update`, which owns the timer's generation check.
             Message::NoticeExpired(_) => Task::none(),
@@ -2025,6 +2067,7 @@ impl App {
         input.path_editing = state.path_editing;
         input.search_open = search_open;
         input.job_running = job_running;
+        input.quick_open = self.quick_open.is_some();
         drop(input);
         // `get` rather than `get_or_init`: the cell is created by the
         // subscription, and `update` must not create it — a cell nothing reads
@@ -2180,6 +2223,11 @@ impl App {
             return Stack::with_children([root.into(), dialog::scrim(conflict_element)]).into();
         }
 
+        if let Some(quick_open) = self.quick_open.as_ref() {
+            let box_element = quick_open_ui::view(quick_open, self.lang, &self.palette);
+            return Stack::with_children([root.into(), dialog::scrim(box_element)]).into();
+        }
+
         // Then the create-directory prompt, for F7.
         let Some(prompt) = self.prompt.as_ref() else {
             return root.into();
@@ -2264,6 +2312,7 @@ impl App {
         let context_menu = self.context_menu.is_some();
         let path_editing = self.path_field.is_some();
         let search = self.search_has_keys();
+        let quick_open = self.quick_open.is_some();
         let delete_dialog = match &self.delete_dialog {
             None => DeleteKeys::Closed,
             Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
@@ -2279,6 +2328,7 @@ impl App {
                 context_menu,
                 path_editing,
                 search,
+                quick_open,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
                 // the dialog's keys would fall through to the panels.
@@ -2295,6 +2345,7 @@ impl App {
                 context_menu,
                 path_editing,
                 search,
+                quick_open,
                 conflict_open: self.pending_conflict.is_some(),
                 busy: prompt.busy(),
                 typed: prompt.name().into(),
@@ -2409,6 +2460,7 @@ impl App {
             || self.pending_conflict.is_some()
             || self.delete_dialog.is_some()
             || self.volume_menu.is_some()
+            || self.quick_open.is_some()
     }
 
     /// Whether the context menu entry can do something for the current
@@ -3120,9 +3172,11 @@ impl App {
             }
             Ok(compiled) => {
                 view.begin(generation);
-                let (task, handle) =
-                    Task::run(search_events(compiled, generation), std::convert::identity)
-                        .abortable();
+                let (task, handle) = Task::run(
+                    search_events(compiled, generation, search_batch),
+                    std::convert::identity,
+                )
+                .abortable();
                 self.search_handle = Some(handle.abort_on_drop());
                 task
             }
@@ -3309,6 +3363,110 @@ impl App {
                 )
             }
         }
+    }
+
+    /// Cmd/Ctrl+P: lists the files below the active panel's directory. Pressed
+    /// while the box is up, it only gives the field the focus again.
+    fn open_quick_open(&mut self) -> Task<Message> {
+        let focus = operation::focus(quick_open_ui::QUICK_OPEN_ID);
+        if self.quick_open.is_some() {
+            return focus;
+        }
+        if self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        self.context_menu = None;
+        let root = self.active_panel().path.clone();
+        self.quick_open_walk_generation = self.quick_open_walk_generation.wrapping_add(1);
+        let generation = self.quick_open_walk_generation;
+        let walk = fs::search::all_files(
+            root.clone(),
+            stays_on_file_system(&root),
+            QUICK_OPEN_FILE_LIMIT,
+        );
+        let (task, handle) = Task::run(
+            search_events(walk, generation, quick_open_batch),
+            std::convert::identity,
+        )
+        .abortable();
+        self.quick_open_walk = Some(handle.abort_on_drop());
+        self.quick_open = Some(QuickOpen::new(root, generation));
+        Task::batch([focus, task])
+    }
+
+    /// Closes the box and stops its walk.
+    fn close_quick_open(&mut self) -> Task<Message> {
+        self.quick_open_walk = None;
+        if self.quick_open.take().is_some() {
+            release_focus()
+        } else {
+            Task::none()
+        }
+    }
+
+    fn update_quick_open(&mut self, message: QuickOpenMessage) -> Task<Message> {
+        match message {
+            QuickOpenMessage::Open => return self.open_quick_open(),
+            QuickOpenMessage::Close => return self.close_quick_open(),
+            _ => {}
+        }
+        let Some(quick_open) = self.quick_open.as_mut() else {
+            return Task::none();
+        };
+        match message {
+            QuickOpenMessage::QueryChanged(text) => match quick_open.set_query(text) {
+                Some(ranking) => Task::perform(ranking.run_in_background(), std::convert::identity),
+                None => Task::none(),
+            },
+            QuickOpenMessage::Events { generation, events } => {
+                if generation == quick_open.walk_generation() {
+                    quick_open.apply_events(events);
+                    if !quick_open.walking() {
+                        self.quick_open_walk = None;
+                    }
+                }
+                Task::none()
+            }
+            QuickOpenMessage::Ranked {
+                walk_generation,
+                generation,
+                hits,
+                chunks_scored,
+            } => {
+                quick_open.apply_ranked(walk_generation, generation, hits, chunks_scored);
+                Task::none()
+            }
+            QuickOpenMessage::Move(delta) => {
+                quick_open.move_cursor(delta);
+                Task::none()
+            }
+            QuickOpenMessage::Activate => self.activate_quick_open(),
+            QuickOpenMessage::RowActivated(index) => {
+                quick_open.select(index);
+                self.activate_quick_open()
+            }
+            QuickOpenMessage::Open | QuickOpenMessage::Close => Task::none(),
+        }
+    }
+
+    /// Enter on a hit: the active panel shows the file's directory with the
+    /// cursor on the file.
+    fn activate_quick_open(&mut self) -> Task<Message> {
+        // Typed fast, Enter before the background ranking is back.
+        if let Some(quick_open) = self.quick_open.as_mut() {
+            quick_open.rank_now();
+        }
+        let Some(path) = self.quick_open.as_ref().and_then(QuickOpen::selected_path) else {
+            return Task::none();
+        };
+        let (Some(parent), Some(file)) = (path.parent(), path.file_name()) else {
+            return Task::none();
+        };
+        let directory = parent.to_path_buf();
+        let name = file.to_string_lossy().into_owned();
+        let closed = self.close_quick_open();
+        let loaded = self.load(self.active_panel, directory, Some(name));
+        Task::batch([closed, loaded])
     }
 
     /// Starts an async directory read for `side`.
@@ -3956,6 +4114,9 @@ impl App {
             search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE),
             search_generation: 0,
             search_handle: None,
+            quick_open: None,
+            quick_open_walk_generation: 0,
+            quick_open_walk: None,
         };
         for (side, names) in [
             (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
@@ -4058,6 +4219,47 @@ impl App {
 
     pub fn search_is_open_for_test(&self) -> bool {
         self.search_open
+    }
+
+    pub fn quick_open_for_test(&self) -> Option<&QuickOpen> {
+        self.quick_open.as_ref()
+    }
+
+    /// Opens Quick Open as Cmd/Ctrl+P does and fills it as a finished walk
+    /// over `files` (relative to the active panel's directory) would, ranked
+    /// for `query` at once.
+    pub fn open_quick_open_for_test(&mut self, files: &[&str], query: &str) {
+        use crate::fs::search::{SearchEvent, SearchTotals};
+        drop(self.update(Message::QuickOpen(QuickOpenMessage::Open)));
+        let Some(quick_open) = self.quick_open.as_mut() else {
+            return;
+        };
+        let mut events: Vec<SearchEvent> = files
+            .iter()
+            .map(|file| SearchEvent::File {
+                path: quick_open.root().join(file),
+                lines: Vec::new(),
+            })
+            .collect();
+        events.push(SearchEvent::Finished(SearchTotals {
+            scanned: files.len(),
+            files: files.len(),
+            matches: files.len(),
+            skipped: 0,
+            truncated: false,
+        }));
+        quick_open.apply_events(events);
+        if let Some(ranking) = quick_open.set_query(query.to_string()) {
+            if let QuickOpenMessage::Ranked {
+                walk_generation,
+                generation,
+                hits,
+                chunks_scored,
+            } = ranking.run()
+            {
+                quick_open.apply_ranked(walk_generation, generation, hits, chunks_scored);
+            }
+        }
     }
 
     pub fn panel_mut_for_test(&mut self, side: PanelSide) -> &mut PanelState {
@@ -7936,5 +8138,158 @@ mod search_tests {
         );
         drop(app.update(Message::Search(SearchMessage::ToggleGroup(0))));
         assert_eq!(app.search_for_test().unwrap().rows(), [SearchRow::File(0)]);
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod quick_open_tests {
+    use super::*;
+
+    fn route(state: &PromptKeyState, key: Named, modifiers: Modifiers) -> Option<Message> {
+        route_key(state, Key::Named(key), modifiers)
+    }
+
+    fn open_state() -> PromptKeyState {
+        PromptKeyState {
+            quick_open: true,
+            ..PromptKeyState::default()
+        }
+    }
+
+    fn ctrl_p(state: &PromptKeyState) -> Option<Message> {
+        route_key(state, Key::Character("p".into()), Modifiers::COMMAND)
+    }
+
+    #[test]
+    fn the_arrows_move_the_hits_and_the_panel_keys_are_dead_while_it_is_open() {
+        let state = open_state();
+        let none = Modifiers::default();
+        assert_eq!(
+            route(&state, Named::ArrowDown, none),
+            Some(Message::QuickOpen(QuickOpenMessage::Move(1)))
+        );
+        assert_eq!(
+            route(&state, Named::ArrowUp, none),
+            Some(Message::QuickOpen(QuickOpenMessage::Move(-1)))
+        );
+        assert_eq!(route(&state, Named::F7, none), None);
+        assert_eq!(route(&state, Named::F5, none), None);
+        assert_eq!(route(&state, Named::Backspace, none), None);
+        assert_eq!(route(&state, Named::F10, none), Some(Message::Quit));
+    }
+
+    #[test]
+    fn the_chord_opens_it_over_the_panels_and_not_over_the_search() {
+        let panel = PromptKeyState::default();
+        assert_eq!(
+            ctrl_p(&panel),
+            Some(Message::QuickOpen(QuickOpenMessage::Open))
+        );
+        let search = PromptKeyState {
+            search: true,
+            ..PromptKeyState::default()
+        };
+        assert_eq!(ctrl_p(&search), None);
+    }
+
+    #[test]
+    fn opening_lists_below_the_active_panel_and_takes_the_keys() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::QuickOpen(QuickOpenMessage::Open)));
+        let quick_open = app.quick_open_for_test().unwrap();
+        assert_eq!(quick_open.root(), app.panel(PanelSide::Left).path);
+        assert!(app.prompt_key_state().quick_open);
+        assert!(app.blocking_overlay_is_open());
+    }
+
+    #[test]
+    fn it_does_not_open_over_a_dialog() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::CreateDirPrompt));
+        drop(app.update(Message::QuickOpen(QuickOpenMessage::Open)));
+        assert!(app.quick_open_for_test().is_none());
+    }
+
+    #[test]
+    fn a_batch_of_a_closed_walk_is_dropped() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::QuickOpen(QuickOpenMessage::Open)));
+        let old = app.quick_open_for_test().unwrap().walk_generation();
+        drop(app.update(Message::QuickOpen(QuickOpenMessage::Close)));
+        drop(app.update(Message::QuickOpen(QuickOpenMessage::Open)));
+        let root = app.quick_open_for_test().unwrap().root().to_path_buf();
+        drop(app.update(Message::QuickOpen(QuickOpenMessage::Events {
+            generation: old,
+            events: vec![crate::fs::search::SearchEvent::File {
+                path: root.join("late.txt"),
+                lines: Vec::new(),
+            }],
+        })));
+        assert_eq!(app.quick_open_for_test().unwrap().file_count(), 0);
+    }
+
+    #[test]
+    fn enter_closes_it_and_loads_the_hit_into_the_active_panel() {
+        let mut app = App::with_fixed_panels();
+        app.open_quick_open_for_test(&["src/config.rs", "README.md"], "cfgrs");
+        assert_eq!(app.quick_open_for_test().unwrap().hits().len(), 1);
+        let before = app.panel(PanelSide::Left).request_id;
+        drop(app.update(Message::QuickOpen(QuickOpenMessage::Activate)));
+        assert!(app.quick_open_for_test().is_none());
+        assert!(app.quick_open_walk.is_none());
+        assert!(app.panel(PanelSide::Left).loading);
+        assert_ne!(app.panel(PanelSide::Left).request_id, before);
+    }
+
+    #[test]
+    fn enter_before_the_background_ranking_is_back_still_loads_the_hit() {
+        let mut app = App::with_fixed_panels();
+        app.open_quick_open_for_test(&["src/config.rs", "README.md"], "");
+        // The task that would rank in the background is dropped unrun.
+        drop(
+            app.update(Message::QuickOpen(QuickOpenMessage::QueryChanged(
+                "cfgrs".to_string(),
+            ))),
+        );
+        assert!(app.quick_open_for_test().unwrap().hits().is_empty());
+        let before = app.panel(PanelSide::Left).request_id;
+        drop(app.update(Message::QuickOpen(QuickOpenMessage::Activate)));
+        assert!(app.quick_open_for_test().is_none());
+        assert_ne!(app.panel(PanelSide::Left).request_id, before);
+    }
+
+    #[test]
+    fn enter_without_a_hit_does_nothing() {
+        let mut app = App::with_fixed_panels();
+        app.open_quick_open_for_test(&["README.md"], "zzz");
+        drop(app.update(Message::QuickOpen(QuickOpenMessage::Activate)));
+        assert!(app.quick_open_for_test().is_some());
+    }
+
+    #[test]
+    fn a_conflict_closes_it() {
+        let mut app = App::with_fixed_panels();
+        app.open_quick_open_for_test(&["a.txt"], "a");
+        let transfer = Transfer {
+            kind: TransferKind::Copy,
+            sources: vec![PathBuf::from("/left/a.txt")],
+            target: PathBuf::from("/right"),
+        };
+        app.transfer = Some(transfer);
+        drop(app.update(Message::TransferRowDone {
+            result: Err(RowFailure::Conflict("exists".to_string())),
+            index: 0,
+            generation: app.generation,
+        }));
+        assert!(app.pending_conflict.is_some());
+        assert!(app.quick_open_for_test().is_none());
     }
 }

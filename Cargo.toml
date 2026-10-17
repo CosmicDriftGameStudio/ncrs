@@ -44,6 +44,7 @@ grep-regex = "0.1.14"
 grep-searcher = "0.1.17"
 grep-matcher = "0.1.9"
 unicode-normalization = "0.1.26"
+nucleo-matcher = "0.3.1"
 
 [profile.release]
 opt-level = 3

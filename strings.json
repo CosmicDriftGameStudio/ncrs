@@ -575,6 +575,42 @@
       "context": "Summary line of the search view in red when the text is not a valid regular expression. Takes the reason, which is English text of the regex parser and stays untranslated.",
       "en": "Invalid regular expression: {reason}",
       "de": "Ungültiger regulärer Ausdruck: {reason}"
+    },
+    {
+      "key": "quickopen.title",
+      "context": "Title of the Quick Open box (Ctrl+P / Cmd+P) in which a file name is typed to jump to the file. Takes {dir}, the name of the directory the files are listed from.",
+      "en": "Go to file in {dir}",
+      "de": "Zu Datei in {dir}"
+    },
+    {
+      "key": "quickopen.placeholder",
+      "context": "Placeholder of the text field of the Quick Open box, shown while it is empty. A short instruction.",
+      "en": "Type part of a file name",
+      "de": "Teil eines Dateinamens tippen"
+    },
+    {
+      "key": "quickopen.status_walking",
+      "context": "Status line of the Quick Open box while the directory tree is still being read. Takes the number of files found so far.",
+      "en": "Searching… {count} files",
+      "de": "Suche läuft … {count} Dateien"
+    },
+    {
+      "key": "quickopen.status_done",
+      "context": "Status line of the Quick Open box once the whole directory tree is read. Takes the number of files.",
+      "en": "{count} files",
+      "de": "{count} Dateien"
+    },
+    {
+      "key": "quickopen.status_truncated",
+      "context": "Status line of the Quick Open box when the tree has more files than are listed. Takes the number of files that were listed.",
+      "en": "First {count} files",
+      "de": "Die ersten {count} Dateien"
+    },
+    {
+      "key": "quickopen.no_match",
+      "context": "Status line of the Quick Open box when nothing that was typed matches a file name.",
+      "en": "No matching files",
+      "de": "Keine passenden Dateien"
     }
   ]
 }

@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Quick Open: `Cmd`+`P` (`Ctrl`+`P` on Linux and Windows, `quick_open` in
+  `[keys]`) opens a box in which a few letters of a path find a file below the
+  active panel's directory (`cfgrs` finds `src/config.rs`), hidden files
+  included, up to 250,000 files. `↑`/`↓` pick a hit, `Enter` shows it in the
+  active panel with the cursor on it, `Esc` closes the box.
 - Search in the panel, the way VS Code does it: `Alt`+`F7` or `Cmd`+`Shift`+`F`
   (`Ctrl`+`Shift`+`F` on Linux and Windows, `search` in `[keys]`) replaces the
   active panel with a search below its directory. It runs as you type, and a new
