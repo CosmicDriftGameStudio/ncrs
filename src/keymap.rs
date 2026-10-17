@@ -14,7 +14,7 @@ use crate::config::KeySection;
 use crate::fs::{OpenKind, SortColumn};
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
-use crate::messages::{ClipboardKind, PanelSide, TransferKind};
+use crate::messages::{ClipboardKind, PanelSide, SearchMessage, TransferKind};
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -102,6 +102,9 @@ key_actions! {
     First => "first",
     Last => "last",
     Search => "search",
+    SearchCase => "search_case",
+    SearchWholeWord => "search_whole_word",
+    SearchRegex => "search_regex",
 }
 
 impl KeyAction {
@@ -142,6 +145,9 @@ impl KeyAction {
             Self::First => Message::SelectFirst,
             Self::Last => Message::SelectLast,
             Self::Search => Message::OpenSearch,
+            Self::SearchCase => Message::Search(SearchMessage::ToggleCase),
+            Self::SearchWholeWord => Message::Search(SearchMessage::ToggleWholeWord),
+            Self::SearchRegex => Message::Search(SearchMessage::ToggleRegex),
         }
     }
 
@@ -283,6 +289,20 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
         (
             A::Search,
             Binding::with_modifiers(Character("f".into()), Modifiers::COMMAND | Modifiers::SHIFT),
+        ),
+        // The toggles of the search fields, as in VS Code. On a Mac Option types
+        // other characters, so these are only found through the physical key.
+        (
+            A::SearchCase,
+            Binding::with_modifiers(Character("c".into()), Modifiers::ALT),
+        ),
+        (
+            A::SearchWholeWord,
+            Binding::with_modifiers(Character("w".into()), Modifiers::ALT),
+        ),
+        (
+            A::SearchRegex,
+            Binding::with_modifiers(Character("r".into()), Modifiers::ALT),
         ),
     ]
 }
@@ -499,8 +519,21 @@ impl Keymap {
     /// `n - 1` holds the hint of the bare `Fn` binding, `None` for a free key.
     /// Only bare function keys are shown; Shift+F8 and friends are in the help.
     pub fn function_keys(&self, lang: Language) -> [Option<&'static str>; FUNCTION_KEY_COUNT] {
+        self.function_keys_where(lang, |_| true)
+    }
+
+    /// [`Self::function_keys`], with the slots whose message `keep` rejects
+    /// left free: the bar while a view allows only some of the actions.
+    pub fn function_keys_where(
+        &self,
+        lang: Language,
+        keep: impl Fn(&Message) -> bool,
+    ) -> [Option<&'static str>; FUNCTION_KEY_COUNT] {
         let mut slots = [None; FUNCTION_KEY_COUNT];
         for (action, binding) in &self.bindings {
+            if !keep(&action.message()) {
+                continue;
+            }
             let Some(hint) = action.hint() else {
                 continue;
             };
@@ -1148,7 +1181,7 @@ mod tests {
     fn too_many_keys_for_one_action_are_refused_at_the_first_excess_one() {
         let keys: Vec<String> = (0..=MAX_KEYS_PER_ACTION)
             .filter_map(|index| char::from_u32(u32::from(b'a') + index as u32))
-            .map(|letter| format!("alt+{letter}"))
+            .map(|letter| format!("alt+shift+{letter}"))
             .collect();
         let list = keys
             .iter()

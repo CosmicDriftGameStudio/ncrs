@@ -374,6 +374,8 @@ pub struct App {
     /// Function key bar labels, kept in state so `view` does not look them up
     /// per frame.
     function_keys: [Option<&'static str>; keymap::FUNCTION_KEY_COUNT],
+    /// The bar while the search has the keys: only the actions that work there.
+    search_function_keys: [Option<&'static str>; keymap::FUNCTION_KEY_COUNT],
     /// The keys in effect: the built-in ones, or those of the config file.
     keymap: Arc<Keymap>,
     /// The open modal prompt, if any. Mutated only here.
@@ -650,7 +652,10 @@ fn keys_without_prompt(
             prompt.config_error.then_some(Message::DismissConfigError)
         };
     }
+    // The search toggles belong to the search view: without it a press of one
+    // is not theirs to swallow, and type-ahead sees it as before.
     bound_message(&prompt.keymap, &key, key_modifiers)
+        .filter(|message| !matches!(message, Message::Search(toggle) if is_search_toggle(toggle)))
         .or_else(|| type_ahead_message(&key, key_modifiers))
 }
 
@@ -659,6 +664,14 @@ fn keys_without_prompt(
 /// field has no focus, and then the result list has the keys.
 fn search_key(prompt: &PromptKeyState, key: &Key, key_modifiers: Modifiers) -> Option<Message> {
     let search = |message| Some(Message::Search(message));
+    let bound = bound_message(&prompt.keymap, key, key_modifiers);
+    // Tagging and the toggles skip the filter below, which would drop Space,
+    // `*` and the Alt chords as typing: a key only gets here when no text field
+    // took it. Before the arrow match too, which ignores Shift and would turn
+    // Shift+arrows into plain moves.
+    if let Some(message) = bound.as_ref().and_then(tag_or_toggle) {
+        return search(message);
+    }
     if (key_modifiers - Modifiers::SHIFT).is_empty() {
         match key.as_ref() {
             Key::Named(Named::ArrowUp) => return search(SearchMessage::Move(-1)),
@@ -673,13 +686,47 @@ fn search_key(prompt: &PromptKeyState, key: &Key, key_modifiers: Modifiers) -> O
             _ => {}
         }
     }
-    bound_message(&prompt.keymap, key, key_modifiers)
+    bound
         .filter(works_during_search)
         .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
         .or_else(|| match type_ahead_message(key, key_modifiers) {
             Some(Message::TypeAhead(typed)) => search(SearchMessage::AppendToQuery(typed)),
             _ => None,
         })
+}
+
+fn is_search_toggle(message: &SearchMessage) -> bool {
+    matches!(
+        message,
+        SearchMessage::ToggleCase | SearchMessage::ToggleWholeWord | SearchMessage::ToggleRegex
+    )
+}
+
+/// The search's version of a bound tagging or toggle message.
+fn tag_or_toggle(message: &Message) -> Option<SearchMessage> {
+    match message {
+        Message::ToggleTag => Some(SearchMessage::ToggleTag),
+        Message::TagMove(delta) => Some(SearchMessage::TagMove(*delta)),
+        Message::TagAll => Some(SearchMessage::TagAll),
+        Message::ClearTags => Some(SearchMessage::ClearTags),
+        Message::Search(toggle) if is_search_toggle(toggle) => Some(toggle.clone()),
+        _ => None,
+    }
+}
+
+/// The search toggle a press is bound to, resolved as the key routing does it.
+/// The search fields use it to claim the press before they type its character.
+pub fn search_toggle_for_press(
+    keymap: &Keymap,
+    key: Key,
+    physical_key: keyboard::key::Physical,
+    modifiers: Modifiers,
+) -> Option<SearchMessage> {
+    let bound_key = binding_key(key, physical_key, modifiers);
+    match bound_message(keymap, &bound_key, modifiers)? {
+        Message::Search(toggle) if is_search_toggle(&toggle) => Some(toggle),
+        _ => None,
+    }
 }
 
 /// What the keys may do while the search view hides a panel: the actions on
@@ -920,7 +967,9 @@ fn repeats(message: &Message) -> bool {
             | Message::ContextMenuFirst
             | Message::ContextMenuLast
             | Message::Search(
-                SearchMessage::Move(_)
+                SearchMessage::ToggleTag
+                    | SearchMessage::TagMove(_)
+                    | SearchMessage::Move(_)
                     | SearchMessage::Page(_)
                     | SearchMessage::First
                     | SearchMessage::Last
@@ -1028,7 +1077,7 @@ impl App {
                 }
                 self.open_programs = config.open;
                 self.keymap = config.keymap;
-                self.function_keys = self.keymap.function_keys(self.lang);
+                self.refresh_function_keys();
                 self.palette = config.palette;
                 if let Some(warning) = config.contrast_warning {
                     self.report(ConfigProblem::LowContrast(warning));
@@ -1042,10 +1091,17 @@ impl App {
     /// F9. A config error still up is worded again in the new language.
     fn switch_language(&mut self) {
         self.lang = self.lang.other();
-        self.function_keys = self.keymap.function_keys(self.lang);
+        self.refresh_function_keys();
         if let Some(problem) = &self.config_problem {
             self.config_error = Some(self.config_error_text(problem));
         }
+    }
+
+    fn refresh_function_keys(&mut self) {
+        self.function_keys = self.keymap.function_keys(self.lang);
+        self.search_function_keys = self
+            .keymap
+            .function_keys_where(self.lang, works_during_search);
     }
 
     fn report(&mut self, problem: ConfigProblem) {
@@ -1105,6 +1161,8 @@ impl App {
             visible_rows: layout::visible_rows(layout::INITIAL_WINDOW_SIZE),
             lang: Language::default(),
             function_keys: Keymap::built_in().function_keys(Language::default()),
+            search_function_keys: Keymap::built_in()
+                .function_keys_where(Language::default(), works_during_search),
             keymap: Keymap::built_in(),
             prompt: None,
             prompt_side: None,
@@ -2024,6 +2082,8 @@ impl App {
                 self.active_panel == side,
                 self.lang,
                 &self.palette,
+                &self.keymap,
+                &self.toggle_shortcuts(),
             ),
             _ => panel_view(side),
         };
@@ -2050,7 +2110,14 @@ impl App {
                         on_copy: Message::CopyToClipboard(ClipboardKind::Directory),
                     },
                 ),
-                fkeys::view(&self.function_keys, &self.palette),
+                fkeys::view(
+                    if self.search_has_keys() {
+                        &self.search_function_keys
+                    } else {
+                        &self.function_keys
+                    },
+                    &self.palette,
+                ),
             ]
             .spacing(theme::spacing::SECTION_GAP),
         )
@@ -2247,10 +2314,11 @@ impl App {
     }
 
     /// NC's rule for F5, F6 and F8: tagged rows win, otherwise the row under
-    /// the cursor. The `..` entry is never a thing to act on.
+    /// the cursor. The `..` entry is never a thing to act on. In the search
+    /// view the same holds for its files, and never for all files found.
     fn action_sources(&self) -> Vec<PathBuf> {
         if let Some(search) = self.open_search_view() {
-            return search.found_files();
+            return search.action_files();
         }
         let panel = self.active_panel();
         if panel.selection.any_tagged() {
@@ -2937,6 +3005,15 @@ impl App {
         self.load(side, parent, came_from)
     }
 
+    fn toggle_shortcuts(&self) -> search_ui::ToggleShortcuts {
+        let label = |toggle| self.keymap.shortcut_label(&Message::Search(toggle));
+        search_ui::ToggleShortcuts {
+            case: label(SearchMessage::ToggleCase),
+            whole_word: label(SearchMessage::ToggleWholeWord),
+            regex: label(SearchMessage::ToggleRegex),
+        }
+    }
+
     /// The search view, while it is up.
     fn open_search_view(&self) -> Option<&SearchView> {
         self.search.as_ref().filter(|_| self.search_has_keys())
@@ -3067,6 +3144,19 @@ impl App {
         if !self.search_open {
             return Task::none();
         }
+        // Tagging comes from the keys only, and the keys are the panel's when
+        // the other one is active. The toggles are not guarded the same way: a
+        // click on one has to work from the other panel and activates this one.
+        if matches!(
+            message,
+            SearchMessage::ToggleTag
+                | SearchMessage::TagMove(_)
+                | SearchMessage::TagAll
+                | SearchMessage::ClearTags
+        ) && !self.search_has_keys()
+        {
+            return Task::none();
+        }
         // Using the view makes its panel the active one; what runs by itself
         // does not.
         if !matches!(
@@ -3119,6 +3209,22 @@ impl App {
             SearchMessage::ToggleRegex => {
                 view.regex = !view.regex;
                 self.schedule_search()
+            }
+            SearchMessage::ToggleTag => {
+                view.tag_and_move(1, rows);
+                Task::none()
+            }
+            SearchMessage::TagMove(delta) => {
+                view.tag_and_move(delta, rows);
+                Task::none()
+            }
+            SearchMessage::TagAll => {
+                view.tag_all();
+                Task::none()
+            }
+            SearchMessage::ClearTags => {
+                view.tagged.clear();
+                Task::none()
             }
             SearchMessage::Debounced(generation) => {
                 if generation == view.generation {
@@ -3814,6 +3920,8 @@ impl App {
             visible_rows: 12,
             lang: Language::default(),
             function_keys: Keymap::built_in().function_keys(Language::default()),
+            search_function_keys: Keymap::built_in()
+                .function_keys_where(Language::default(), works_during_search),
             keymap: Keymap::built_in(),
             prompt: None,
             prompt_side: None,
@@ -3921,6 +4029,10 @@ impl App {
         let mut app = Self::with_fixed_panels();
         let root = app.panel(PanelSide::Left).path.clone();
         app.show_search_results_for_test("hello", fixed_search_results(&root));
+        // One tagged file next to the cursor, so the reference shows the tint.
+        if let Some(view) = app.search.as_mut() {
+            view.tagged.insert(root.join("notes.txt"));
+        }
         app
     }
 
@@ -7327,8 +7439,6 @@ mod search_tests {
         for key in [
             named(Named::Backspace),
             named(Named::Tab),
-            named(Named::Space),
-            named(Named::Insert),
             named(Named::Escape),
             named(Named::F7),
         ] {
@@ -7441,19 +7551,221 @@ mod search_tests {
         assert!(app.context_menu_for_test().is_none());
     }
 
+    fn search_message(message: SearchMessage) -> Message {
+        Message::Search(message)
+    }
+
     #[test]
-    fn file_actions_take_every_file_found() {
+    fn file_actions_take_the_tagged_files_else_the_cursors_file() {
         let mut app = app_with_results(&[
             ("/home/test/links/b.txt", &[2]),
-            ("/home/test/links/a.txt", &[1]),
+            ("/home/test/links/a.txt", &[1, 3]),
+            ("/home/test/links/c.txt", &[]),
         ]);
-        let found = [
-            PathBuf::from("/home/test/links/a.txt"),
-            PathBuf::from("/home/test/links/b.txt"),
-        ];
-        assert_eq!(app.action_sources(), found);
+        let a = PathBuf::from("/home/test/links/a.txt");
+        let c = PathBuf::from("/home/test/links/c.txt");
+        assert_eq!(
+            app.action_sources(),
+            std::slice::from_ref(&a),
+            "not every file found"
+        );
+
+        // On a line of a file, the file is the source.
+        drop(app.update(search_message(SearchMessage::Move(1))));
+        assert_eq!(app.action_sources(), std::slice::from_ref(&a));
+
+        // Tagged files win over the cursor, in display order.
+        drop(app.update(search_message(SearchMessage::Last)));
+        drop(app.update(search_message(SearchMessage::ToggleTag)));
+        drop(app.update(search_message(SearchMessage::First)));
+        drop(app.update(search_message(SearchMessage::ToggleTag)));
+        assert_eq!(app.action_sources(), [a, c]);
+
         drop(app.update(Message::Search(SearchMessage::Close)));
-        assert_ne!(app.action_sources(), found);
+        assert_ne!(app.action_sources().len(), 3);
+    }
+
+    #[test]
+    fn without_a_cursor_and_tags_f8_opens_no_dialog() {
+        let mut app = app_with_results(&[]);
+        assert!(app.action_sources().is_empty());
+        drop(app.update(Message::Delete { permanent: false }));
+        assert!(app.delete_dialog.is_none());
+        drop(app.update(Message::Delete { permanent: true }));
+        assert!(app.delete_dialog.is_none());
+    }
+
+    #[test]
+    fn f8_over_tagged_results_asks_about_exactly_those() {
+        let mut app = app_with_results(&[
+            ("/home/test/links/a.txt", &[]),
+            ("/home/test/links/b.txt", &[]),
+            ("/home/test/links/c.txt", &[]),
+        ]);
+        drop(app.update(search_message(SearchMessage::ToggleTag)));
+        drop(app.update(search_message(SearchMessage::ToggleTag)));
+        drop(app.update(Message::Delete { permanent: false }));
+        assert_eq!(app.delete_dialog.as_ref().unwrap().sources.len(), 2);
+    }
+
+    #[test]
+    fn tagging_in_the_results_moves_on_and_a_new_search_forgets_the_tags() {
+        let mut app = app_with_results(&[
+            ("/home/test/links/a.txt", &[]),
+            ("/home/test/links/b.txt", &[]),
+        ]);
+        drop(app.update(search_message(SearchMessage::ToggleTag)));
+        let view = app.search_for_test().unwrap();
+        assert!(view.is_tagged(0));
+        assert_eq!(view.cursor, Some(SearchRow::File(1)));
+
+        drop(app.update(search_message(SearchMessage::TagAll)));
+        assert_eq!(app.search_for_test().unwrap().tagged.len(), 2);
+        drop(app.update(search_message(SearchMessage::ClearTags)));
+        assert!(app.search_for_test().unwrap().tagged.is_empty());
+
+        drop(app.update(search_message(SearchMessage::TagAll)));
+        drop(app.update(search_message(SearchMessage::QueryChanged("x".to_string()))));
+        let generation = app.search_for_test().unwrap().generation;
+        drop(app.update(search_message(SearchMessage::Debounced(generation))));
+        assert!(app.search_for_test().unwrap().tagged.is_empty());
+    }
+
+    #[test]
+    fn the_tag_keys_tag_in_the_results_instead_of_typing() {
+        let none = Modifiers::default();
+        let search = |message| Some(search_message(message));
+        assert_eq!(
+            route(true, named(Named::Space), none),
+            search(SearchMessage::ToggleTag)
+        );
+        assert_eq!(
+            route(true, named(Named::Insert), none),
+            search(SearchMessage::ToggleTag)
+        );
+        assert_eq!(
+            route(true, named(Named::ArrowDown), Modifiers::SHIFT),
+            search(SearchMessage::TagMove(1))
+        );
+        assert_eq!(
+            route(true, named(Named::ArrowUp), Modifiers::SHIFT),
+            search(SearchMessage::TagMove(-1))
+        );
+        assert_eq!(
+            route(true, character("*"), Modifiers::SHIFT),
+            search(SearchMessage::TagAll)
+        );
+        assert_eq!(
+            route(true, character("*"), Modifiers::CTRL | Modifiers::SHIFT),
+            search(SearchMessage::ClearTags)
+        );
+        assert_eq!(
+            route(true, named(Named::ArrowDown), none),
+            search(SearchMessage::Move(1)),
+            "plain arrows still move"
+        );
+    }
+
+    fn press(
+        search: bool,
+        typed: &str,
+        physical: keyboard::key::Code,
+        modifiers: Modifiers,
+    ) -> Option<Message> {
+        let state = PromptKeyState {
+            search,
+            ..PromptKeyState::default()
+        };
+        route_press(
+            &state,
+            character(typed),
+            keyboard::key::Physical::Code(physical),
+            modifiers,
+            false,
+        )
+    }
+
+    #[test]
+    fn alt_c_w_r_toggle_the_options_while_the_results_have_the_keys() {
+        use keyboard::key::Code;
+        // "ç" is what Option+C types on a Mac.
+        assert_eq!(
+            press(true, "ç", Code::KeyC, Modifiers::ALT),
+            Some(search_message(SearchMessage::ToggleCase))
+        );
+        assert_eq!(
+            press(true, "w", Code::KeyW, Modifiers::ALT),
+            Some(search_message(SearchMessage::ToggleWholeWord))
+        );
+        assert_eq!(
+            press(true, "®", Code::KeyR, Modifiers::ALT),
+            Some(search_message(SearchMessage::ToggleRegex))
+        );
+    }
+
+    #[test]
+    fn ctrl_alt_c_is_altgr_on_windows_and_no_toggle() {
+        use keyboard::key::Code;
+        let altgr = Modifiers::CTRL | Modifiers::ALT;
+        for typed in ["c", "ć"] {
+            assert_ne!(
+                press(true, typed, Code::KeyC, altgr),
+                Some(search_message(SearchMessage::ToggleCase)),
+                "{typed}"
+            );
+        }
+    }
+
+    #[test]
+    fn alt_c_w_r_are_not_swallowed_in_panel_mode() {
+        use keyboard::key::Code;
+        for (typed, code) in [("ç", Code::KeyC), ("w", Code::KeyW), ("®", Code::KeyR)] {
+            assert_eq!(press(false, typed, code, Modifiers::ALT), None, "{typed}");
+        }
+    }
+
+    #[test]
+    fn the_toggle_lookup_of_a_field_is_the_routings_and_leaves_option_characters_alone() {
+        use keyboard::key::{Code, Physical};
+        let keymap = Keymap::built_in();
+        assert_eq!(
+            search_toggle_for_press(
+                &keymap,
+                character("ç"),
+                Physical::Code(Code::KeyC),
+                Modifiers::ALT
+            ),
+            Some(SearchMessage::ToggleCase)
+        );
+        // Option+5 types "[" on a German Mac, and a regex needs it.
+        assert_eq!(
+            search_toggle_for_press(
+                &keymap,
+                character("["),
+                Physical::Code(Code::Digit5),
+                Modifiers::ALT
+            ),
+            None
+        );
+        assert_eq!(
+            search_toggle_for_press(
+                &keymap,
+                character("c"),
+                Physical::Code(Code::KeyC),
+                Modifiers::default()
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn the_function_key_bar_of_the_search_drops_what_does_nothing_there() {
+        let app = App::with_fixed_panels();
+        assert!(app.function_keys[6].is_some());
+        for slot in [2, 3, 4, 5, 7, 8, 9] {
+            assert!(app.search_function_keys[slot].is_some(), "F{}", slot + 1);
+        }
+        assert_eq!(app.search_function_keys[6], None, "F7 makes no directory");
     }
 
     #[test]

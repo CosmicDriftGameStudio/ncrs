@@ -17,8 +17,14 @@ All notable changes to this project are documented here. The format follows
   Results are grouped by file and can be folded, with the line number and the
   match highlighted; an invalid pattern or expression is shown in place.
   `Enter` on a file shows it in the other panel, `Enter` on a line opens the
-  editor at that line. `F5`, `F6` and `F8` act on all files found. `Esc` brings
-  the panel back and keeps the fields for the next search.
+  editor at that line. Files are tagged as in the panel (`Insert`, `Space`,
+  `*`); `F5`, `F6` and `F8` act on the tagged files, else on the file under the
+  cursor, and the function key bar shows only what works there. `Alt`+`C`,
+  `Alt`+`W` and `Alt`+`R` (`search_case`, `search_whole_word`, `search_regex`)
+  switch the three options from the keyboard. A config file that already
+  binds `alt+c`, `alt+w` or `alt+r` to another action now reports the key as
+  taken; give that search action other keys, or `[]`. `Esc` brings the panel
+  back and keeps the fields for the next search.
 - `{path}` and `{line}` in the `[open]` programs: `edit = ["code", "--goto",
   "{path}:{line}"]` opens a search result at its line. Without `{path}` the file
   is still added as the last argument.

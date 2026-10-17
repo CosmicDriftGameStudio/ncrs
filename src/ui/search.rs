@@ -6,11 +6,13 @@ use iced::widget::{button, column, container, mouse_area, rich_text, row, span, 
 use iced::widget::{tooltip, Column};
 use iced::{alignment, Element, Font, Length};
 
-use super::layout::{PANEL_TITLE_HEIGHT, ROW_HEIGHT, SEARCH_HEADER_HEIGHT};
+use super::key_intercept::key_intercept;
+use super::layout::{PANEL_TITLE_HEIGHT, ROW_HEIGHT, SEARCH_HEADER_HEIGHT, TAG_COLUMN_WIDTH};
 use super::theme::{self, font_size, spacing};
-use crate::app::fill_template;
+use crate::app::{fill_template, search_toggle_for_press};
 use crate::fs::search::{LineMatch, SearchError};
 use crate::i18n::{Language, Msg};
+use crate::keymap::Keymap;
 use crate::messages::{Message, SearchMessage};
 use crate::palette::Palette;
 use crate::search_view::{SearchField, SearchRow, SearchView};
@@ -36,12 +38,23 @@ fn to_search(message: SearchMessage) -> Message {
     Message::Search(message)
 }
 
+/// The keys of the three toggles as the keymap spells them, for the tooltips.
+/// `None` for a toggle without a key.
+#[derive(Debug, Clone, Default)]
+pub struct ToggleShortcuts {
+    pub case: Option<String>,
+    pub whole_word: Option<String>,
+    pub regex: Option<String>,
+}
+
 pub fn view<'a>(
     search: &'a SearchView,
     visible_rows: usize,
     is_active: bool,
     lang: Language,
     palette: &Palette,
+    keymap: &'a Keymap,
+    shortcuts: &ToggleShortcuts,
 ) -> Element<'a, Message> {
     let rows = search
         .rows_iter()
@@ -50,7 +63,16 @@ pub fn view<'a>(
         .take(visible_rows)
         .filter_map(|(index, search_row)| {
             let cursor = search.cursor == Some(search_row);
-            result_row(search, search_row, index, cursor && is_active, palette)
+            result_row(
+                search,
+                search_row,
+                index,
+                RowMarks {
+                    highlighted: cursor && is_active,
+                    panel_active: is_active,
+                },
+                palette,
+            )
         });
 
     let body: Element<'a, Message> = if search.results.is_empty() {
@@ -67,7 +89,7 @@ pub fn view<'a>(
 
     let framed = column![
         title_bar(search, lang, palette, is_active),
-        header(search, lang, palette),
+        header(search, lang, palette, keymap, shortcuts),
         container(body).height(Length::Fill).width(Length::Fill),
     ];
     mouse_area(
@@ -101,20 +123,42 @@ fn title_bar<'a>(
         .into()
 }
 
-fn header<'a>(search: &'a SearchView, lang: Language, palette: &Palette) -> Element<'a, Message> {
+fn header<'a>(
+    search: &'a SearchView,
+    lang: Language,
+    palette: &Palette,
+    keymap: &'a Keymap,
+    shortcuts: &ToggleShortcuts,
+) -> Element<'a, Message> {
+    // Wrapped so the toggle keys act in the field: it would type their
+    // character (Option+C is a "ç" on a Mac) before any key routing sees them.
     let field = |placeholder: &'a str,
                  value: &'a str,
                  id: &'static str,
                  changed: fn(String) -> SearchMessage| {
-        text_input(placeholder, value)
-            .id(id)
-            .on_input(move |text| to_search(changed(text)))
-            .on_submit(to_search(SearchMessage::Activate))
-            .size(font_size::ROW)
-            .padding([3.0, 6.0])
-            .style(theme::search_input(palette))
+        key_intercept(
+            text_input(placeholder, value)
+                .id(id)
+                .on_input(move |text| to_search(changed(text)))
+                .on_submit(to_search(SearchMessage::Activate))
+                .size(font_size::ROW)
+                .padding([3.0, 6.0])
+                .style(theme::search_input(palette))
+                .width(Length::Fill),
+            move |key, physical_key, modifiers| {
+                search_toggle_for_press(keymap, key.clone(), physical_key, modifiers).map(to_search)
+            },
+        )
     };
-    let toggle = |label: &'static str, tip: Msg, on: bool, message: SearchMessage| {
+    let toggle = |label: &'static str,
+                  tip: Msg,
+                  shortcut: &Option<String>,
+                  on: bool,
+                  message: SearchMessage| {
+        let tip_text = match shortcut {
+            Some(keys) => format!("{} ({keys})", lang.text(tip)),
+            None => lang.text(tip).to_owned(),
+        };
         tooltip(
             button(
                 text(label)
@@ -127,7 +171,7 @@ fn header<'a>(search: &'a SearchView, lang: Language, palette: &Palette) -> Elem
             .padding(3.0)
             .style(theme::search_toggle(palette, on))
             .on_press(to_search(message)),
-            container(text(lang.text(tip)).size(font_size::COLUMN_HEADER))
+            container(text(tip_text).size(font_size::COLUMN_HEADER))
                 .padding(4.0)
                 .style(theme::menu(palette)),
             tooltip::Position::Bottom,
@@ -150,23 +194,25 @@ fn header<'a>(search: &'a SearchView, lang: Language, palette: &Palette) -> Elem
             &search.query,
             QUERY_ID,
             SearchMessage::QueryChanged,
-        )
-        .width(Length::Fill),
+        ),
         toggle(
             "Aa",
             Msg::SearchTooltipCase,
+            &shortcuts.case,
             search.case_sensitive,
             SearchMessage::ToggleCase
         ),
         toggle(
             "ab",
             Msg::SearchTooltipWord,
+            &shortcuts.whole_word,
             search.whole_word,
             SearchMessage::ToggleWholeWord
         ),
         toggle(
             ".*",
             Msg::SearchTooltipRegex,
+            &shortcuts.regex,
             search.regex,
             SearchMessage::ToggleRegex
         ),
@@ -179,22 +225,20 @@ fn header<'a>(search: &'a SearchView, lang: Language, palette: &Palette) -> Elem
         &search.include,
         INCLUDE_ID,
         SearchMessage::IncludeChanged,
-    )
-    .width(Length::Fill);
+    );
     let exclude = field(
         lang.text(Msg::SearchExcludePlaceholder),
         &search.exclude,
         EXCLUDE_ID,
         SearchMessage::ExcludeChanged,
-    )
-    .width(Length::Fill);
+    );
 
     let (status, status_color) = status_line(search, lang, palette);
     container(
         column![
             container(query_row).height(FIELD_ROW_HEIGHT),
-            container(labelled(Msg::SearchFilesLabel, include.into())).height(FIELD_ROW_HEIGHT),
-            container(labelled(Msg::SearchExcludeLabel, exclude.into())).height(FIELD_ROW_HEIGHT),
+            container(labelled(Msg::SearchFilesLabel, include)).height(FIELD_ROW_HEIGHT),
+            container(labelled(Msg::SearchExcludeLabel, exclude)).height(FIELD_ROW_HEIGHT),
             text(status)
                 .size(font_size::COLUMN_HEADER)
                 .color(status_color)
@@ -272,29 +316,59 @@ fn empty_text(search: &SearchView, lang: Language) -> &'static str {
     }
 }
 
+/// How a result row is drawn besides its content.
+#[derive(Clone, Copy)]
+struct RowMarks {
+    /// The cursor is on the row and its panel is the active one.
+    highlighted: bool,
+    panel_active: bool,
+}
+
 fn result_row<'a>(
     search: &'a SearchView,
     kind: SearchRow,
     index: usize,
-    highlighted: bool,
+    marks: RowMarks,
     palette: &Palette,
 ) -> Option<Element<'a, Message>> {
-    let content: Element<'a, Message> = match kind {
-        SearchRow::File(file) => file_row(search, file, highlighted, palette)?,
+    let RowMarks {
+        highlighted,
+        panel_active,
+    } = marks;
+    // Every row starts with the tag column, so the lines stay under the names.
+    let (tagged, content): (bool, Element<'a, Message>) = match kind {
+        SearchRow::File(file) => (
+            search.is_tagged(file),
+            file_row(search, file, highlighted, search.is_tagged(file), palette)?,
+        ),
         SearchRow::Line(file, line) => {
             let matched = search.results.get(file)?.lines.get(line)?;
-            line_row(matched, highlighted, palette)
+            (false, line_row(matched, highlighted, palette))
         }
     };
+    let star = text(if tagged { "*" } else { " " })
+        .size(font_size::ROW)
+        .color(if tagged {
+            palette.accent
+        } else {
+            palette.dim_text
+        })
+        .width(TAG_COLUMN_WIDTH)
+        .wrapping(Wrapping::None);
     Some(
         mouse_area(
-            container(content)
+            container(row![star, content].align_y(alignment::Vertical::Center))
                 .padding([0.0, spacing::CELL_PADDING_X])
                 .height(ROW_HEIGHT)
                 .width(Length::Fill)
                 .align_y(alignment::Vertical::Center)
                 .clip(true)
-                .style(theme::search_row(palette, highlighted)),
+                .style(theme::search_row(
+                    palette,
+                    highlighted,
+                    tagged,
+                    panel_active,
+                )),
         )
         .on_press(to_search(SearchMessage::RowClicked(index)))
         .on_double_click(to_search(SearchMessage::RowActivated(index)))
@@ -306,6 +380,7 @@ fn file_row<'a>(
     search: &'a SearchView,
     file: usize,
     highlighted: bool,
+    tagged: bool,
     palette: &Palette,
 ) -> Option<Element<'a, Message>> {
     let result = search.results.get(file)?;
@@ -334,12 +409,16 @@ fn file_row<'a>(
         .width(INDENT)
         .height(ROW_HEIGHT)
         .padding(0.0)
-        .style(theme::chevron_button(palette, highlighted))
+        .style(theme::chevron_button(palette, highlighted, tagged))
         .on_press(to_search(SearchMessage::ToggleGroup(file)))
         .into()
     };
+    // The tint of a tagged row is the panel's, where the text on it is the
+    // plain one: the dim colour nearly vanishes on it.
     let dim = if highlighted {
         palette.cursor_text
+    } else if tagged {
+        palette.text
     } else {
         palette.dim_text
     };
