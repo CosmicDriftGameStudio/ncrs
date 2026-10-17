@@ -110,6 +110,7 @@ pub fn view<'a, M: Clone + 'a>(
     palette: &Palette,
     job: Option<JobStatus>,
     failure: Option<&'a str>,
+    search_file: Option<String>,
     path_bar_input: PathBar<'a, M>,
 ) -> Element<'a, M> {
     let path = path_bar(panel, lang, palette, path_bar_input);
@@ -124,6 +125,11 @@ pub fn view<'a, M: Clone + 'a>(
         text(format_error(error, &panel.path, lang))
             .size(font_size::STATUS)
             .color(palette.error)
+            .wrapping(text::Wrapping::None)
+            .into()
+    } else if let Some(file) = search_file {
+        text(file)
+            .size(font_size::STATUS)
             .wrapping(text::Wrapping::None)
             .into()
     } else if let Some(entry) = panel.selected_entry() {

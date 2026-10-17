@@ -213,13 +213,13 @@ Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
 
 # Tasks – Basis-Feature
 
-**Stand 2026-10-17: T1–T13 erledigt, T6d teilweise, T14–T18 offen.** Release 0.2.2,
+**Stand 2026-10-17: T1–T13 erledigt, T14a/b erledigt, T6d teilweise, T14c–T18 offen.** Release 0.2.2,
 455 `#[test]`-Funktionen inkl. UI-Tests mit Pixelvergleich.
 
 | Block | Inhalt | Stand |
 |---|---|---|
 | A | CI, Installer, Release, `strings.json` | ✅ fertig (T1–T5, T5b), dazu signierte und notarisierte macOS-App |
-| B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | 🔶 F3–F8, Config, Keymap, Theme und Startsprache fertig, T6d teilweise — **T14 (Quick-Search) ist der nächste Task** |
+| B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | 🔶 F3–F8, Config, Keymap, Theme und Startsprache fertig, T6d teilweise — T14a/b (Suche) fertig — **T14c (Quick Open) ist der nächste Task** |
 | C | Netzwerk-Mounts, Archive | 🔶 Laufwerksmenü fertig, T15–T17 offen |
 
 Legende: **[P]** Pflicht für ein benutzbares Basis-Feature, **[S]** später. Reihenfolge =
@@ -443,7 +443,9 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
   Ergebnis: `[theme]` mit `preset = "default"` oder `"classic"` (NC-Blau) und 17 semantischen Rollen (`panel`, `text`, `cursor`, `tagged`, `directory`, `status_bar`, `dialog`, `error`, …) als `"#rrggbb"`/`"#rgb"`; ohne Eintrag pixelgleich zu vorher. Unbekannte Rollen und Presets und ungültige Farben sind Config-Fehler mit Zeile; Text unter 3:1 Kontrast lädt trotzdem und nennt Paar und Zeile in der Statuszeile.
 - [x] **T13 – Sprachauswahl persistent** – `lang = "de"` in der Config, statt F9
   Ergebnis: `lang = "en"|"de"` auf oberster Ebene setzt die Startsprache; fehlt der Schlüssel, bleibt es Englisch. F9 schaltet nur die laufende Sitzung um, die Config wird nie zurückgeschrieben (bewusst read-only). Ein anderer Wert ist ein Config-Fehler mit Zeile, der die erlaubten Werte nennt.
-- [ ] **T14 – Suche über Dateien und Inhalte (VS-Code-Stil)**, Tracking #36: T14a Suchmaschine (#33, erledigt), T14b Suchansicht (#34), T14c Quick Open (#35)
+- [ ] **T14 – Suche über Dateien und Inhalte (VS-Code-Stil)**, Tracking #36: T14a Suchmaschine (#33, erledigt), T14b Suchansicht (#34, erledigt), T14c Quick Open (#35)
+  - [x] **T14b – Suchansicht im Panel** – `Alt`+`F7` / `Cmd`+`Shift`+`F` (`search` in `[keys]`) öffnet die Suche im aktiven Panel, Wurzel ist dessen Verzeichnis.
+    Ergebnis: live mit 250 ms Debounce, eine neue Eingabe bricht die laufende Suche ab; Schalter Aa/ab/.*, Felder „Dateien“ und „Ohne“, nur „Dateien“ ist eine Namensuche. Treffer nach Datei gruppiert und einklappbar, Fundstelle hervorgehoben, Fehler inline. `Enter` auf einer Datei zeigt sie im anderen Panel, auf einer Zeile öffnet es den Editor an der Zeile (`{path}`/`{line}` in `[open]`). F5/F6/F8 wirken auf alle gefundenen Dateien. `Esc` bringt das Panel zurück, die Felder bleiben; beim Wiederöffnen läuft die Suche neu, damit keine veralteten Treffer stehen.
 
 - [x] **T5b – Registry-Pattern für Tasten: eine Aktion, eine Registrierung**
   Eine Aktion trägt Taste, Message und Übersetzungshinweis. `map_key` *und* die

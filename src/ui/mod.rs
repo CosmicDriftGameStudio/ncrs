@@ -11,6 +11,7 @@ pub mod format;
 pub mod header;
 pub mod layout;
 pub mod panel;
+pub mod search;
 pub mod statusbar;
 pub mod theme;
 pub mod volumes;

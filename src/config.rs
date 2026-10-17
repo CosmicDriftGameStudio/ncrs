@@ -236,8 +236,9 @@ pub struct OpenPrograms {
     pub edit: Option<ProgramLine>,
 }
 
-/// Program plus leading arguments; the file is always appended as the last
-/// argument by `open_command`.
+/// Program plus leading arguments. `{path}` and `{line}` in an argument are
+/// replaced by the file and the line to jump to; only when no argument has
+/// `{path}` is the file appended as the last argument (see `open_command`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProgramLine {
     program: String,

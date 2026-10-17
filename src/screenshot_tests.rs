@@ -12,6 +12,7 @@ use chrono::{Local, TimeZone as _};
 use iced_test::Simulator;
 
 use crate::app::App;
+use crate::fs::search::LineMatch;
 use crate::fs::{FileEntry, Volume};
 use crate::messages::{Message, PanelSide};
 
@@ -149,6 +150,32 @@ fn showcase_app() -> App {
     app
 }
 
+fn showcase_search_results() -> Vec<(PathBuf, Vec<LineMatch>)> {
+    let root = PathBuf::from(PROJECT_DIRECTORY);
+    let hit = |number: u64, text: &str, from: usize, to: usize| LineMatch {
+        number,
+        text: text.to_string(),
+        ranges: std::iter::once(from..to).collect(),
+    };
+    vec![
+        (
+            root.join("README.md"),
+            vec![hit(12, "Say hello to a two-panel file manager.", 4, 9)],
+        ),
+        (
+            root.join("src/main.rs"),
+            vec![
+                hit(8, "    println!(\"hello, world\");", 14, 19),
+                hit(41, "    // hello from the main window", 7, 12),
+            ],
+        ),
+        (
+            root.join("docs/guide.md"),
+            vec![hit(3, "A first hello for new users.", 8, 13)],
+        ),
+    ]
+}
+
 fn drives() -> Vec<Volume> {
     [
         ("Macintosh HD", "/"),
@@ -217,5 +244,9 @@ mod tests {
         let mut delete = showcase_app();
         drop(delete.update(Message::Delete { permanent: false }));
         write_screenshot(&delete, "delete.png");
+
+        let mut search = showcase_app();
+        search.show_search_results_for_test("hello", showcase_search_results());
+        write_screenshot(&search, "search.png");
     }
 }

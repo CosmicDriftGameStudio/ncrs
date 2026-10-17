@@ -101,6 +101,7 @@ key_actions! {
     PageDown => "page_down",
     First => "first",
     Last => "last",
+    Search => "search",
 }
 
 impl KeyAction {
@@ -140,6 +141,7 @@ impl KeyAction {
             Self::PageDown => Message::PageDown,
             Self::First => Message::SelectFirst,
             Self::Last => Message::SelectLast,
+            Self::Search => Message::OpenSearch,
         }
     }
 
@@ -272,6 +274,16 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
         ),
         (A::First, Binding::key(KeyNamed(Home))),
         (A::Last, Binding::key(KeyNamed(End))),
+        // Alt+F7 is Norton Commander's file search. Cmd+Shift+F (Ctrl+Shift+F
+        // elsewhere) is VS Code's search in files.
+        (
+            A::Search,
+            Binding::with_modifiers(KeyNamed(F7), Modifiers::ALT),
+        ),
+        (
+            A::Search,
+            Binding::with_modifiers(Character("f".into()), Modifiers::COMMAND | Modifiers::SHIFT),
+        ),
     ]
 }
 
@@ -675,6 +687,24 @@ mod tests {
 
     fn named(key: Named) -> Key {
         Key::Named(key)
+    }
+
+    #[test]
+    fn alt_f7_and_the_find_chord_open_the_search_and_f7_alone_still_makes_a_directory() {
+        let find = Modifiers::COMMAND | Modifiers::SHIFT;
+        assert_eq!(
+            map_key(named(Named::F7), Modifiers::ALT),
+            Some(Message::OpenSearch)
+        );
+        assert_eq!(
+            map_key(Key::Character("f".into()), find),
+            Some(Message::OpenSearch)
+        );
+        assert_eq!(
+            map_key(named(Named::F7), Modifiers::default()),
+            Some(Message::CreateDirPrompt)
+        );
+        assert!(shortcut_label(&Message::OpenSearch).is_some());
     }
 
     #[cfg(target_os = "macos")]

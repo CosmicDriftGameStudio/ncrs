@@ -169,6 +169,11 @@ fn default_programs() -> (ProgramLine, Option<ProgramLine>) {
 ///
 /// A relative path is anchored with `./`, so a name that starts with `-` is
 /// not read as an option.
+///
+/// An argument of the chosen program may contain `{path}` and `{line}`, which
+/// become the (anchored) path and the line to jump to, `1` without one. A
+/// program with no `{path}` in any argument gets the path appended, as before;
+/// one without `{line}` simply opens the file.
 // ponytail: no $EDITOR/$VISUAL, the app is a GUI without a terminal and vim
 // would start into nothing.
 pub fn open_command(
@@ -176,6 +181,7 @@ pub fn open_command(
     kind: OpenKind,
     path: &Path,
     executable: bool,
+    line: Option<u64>,
 ) -> Option<OpenCommand> {
     let (default_view, default_edit) = default_programs();
     let view = programs.view.clone().unwrap_or(default_view);
@@ -193,12 +199,48 @@ pub fn open_command(
     } else {
         Path::new(".").join(path)
     };
-    let mut args: Vec<OsString> = chosen.args().iter().map(OsString::from).collect();
-    args.push(anchored.into_os_string());
+    let line_number = line.unwrap_or(1);
+    let mut args: Vec<OsString> = chosen
+        .args()
+        .iter()
+        .map(|template| substitute(template, anchored.as_os_str(), line_number))
+        .collect();
+    if !chosen
+        .args()
+        .iter()
+        .any(|arg| arg.contains(PATH_PLACEHOLDER))
+    {
+        args.push(anchored.into_os_string());
+    }
     Some(OpenCommand {
         program: chosen.program().into(),
         args,
     })
+}
+
+const PATH_PLACEHOLDER: &str = "{path}";
+
+/// `template` with `{path}` and `{line}` filled in one pass, so a path that
+/// itself contains `{line}` stays as it is. Built piece by piece as an
+/// `OsString`: a path need not be valid UTF-8.
+fn substitute(template: &str, path: &std::ffi::OsStr, line: u64) -> OsString {
+    let mut filled = OsString::new();
+    let mut rest = template;
+    while let Some((before, after_brace)) = rest.split_once('{') {
+        filled.push(before);
+        if let Some(tail) = after_brace.strip_prefix("path}") {
+            filled.push(path);
+            rest = tail;
+        } else if let Some(tail) = after_brace.strip_prefix("line}") {
+            filled.push(line.to_string());
+            rest = tail;
+        } else {
+            filled.push("{");
+            rest = after_brace;
+        }
+    }
+    filled.push(rest);
+    filled
 }
 
 // reason: a failing assertion is the signal in a test
@@ -213,7 +255,7 @@ mod tests {
     use super::*;
 
     fn command(kind: OpenKind, path: &Path, executable: bool) -> Option<OpenCommand> {
-        open_command(&OpenPrograms::default(), kind, path, executable)
+        open_command(&OpenPrograms::default(), kind, path, executable, None)
     }
 
     fn with(program: &str, args: &[&str], path: &Path) -> OpenCommand {
@@ -290,11 +332,11 @@ mod tests {
         );
         let path = Path::new("/tmp/a.txt");
         assert_eq!(
-            open_command(&programs, OpenKind::View, path, false),
+            open_command(&programs, OpenKind::View, path, false, None),
             Some(with("viewer", &["--x", "-y"], path))
         );
         assert_eq!(
-            open_command(&programs, OpenKind::Edit, path, false),
+            open_command(&programs, OpenKind::Edit, path, false, None),
             Some(with("editor", &["-n"], path))
         );
     }
@@ -308,7 +350,7 @@ mod tests {
         let path = Path::new("/tmp/run.sh");
         for kind in [OpenKind::View, OpenKind::Edit] {
             assert_eq!(
-                open_command(&programs, kind, path, true),
+                open_command(&programs, kind, path, true, None),
                 Some(with("editor", &["-n"], path))
             );
         }
@@ -319,7 +361,7 @@ mod tests {
     fn an_executable_never_goes_to_the_configured_viewer() {
         let programs = configured(Some(ProgramLine::new("viewer", &[])), None);
         let path = Path::new("/tmp/run.sh");
-        let found = open_command(&programs, OpenKind::View, path, true);
+        let found = open_command(&programs, OpenKind::View, path, true, None);
         #[cfg(target_os = "macos")]
         assert_eq!(found, Some(with("open", &["-t"], path)));
         #[cfg(windows)]
@@ -333,7 +375,7 @@ mod tests {
         // Linux has no default editor; elsewhere the default editor applies.
         let programs = configured(Some(ProgramLine::new("viewer", &["--x"])), None);
         let path = Path::new("/tmp/a.txt");
-        let found = open_command(&programs, OpenKind::Edit, path, false);
+        let found = open_command(&programs, OpenKind::Edit, path, false, None);
         #[cfg(not(any(target_os = "macos", windows)))]
         assert_eq!(found, Some(with("viewer", &["--x"], path)));
         #[cfg(target_os = "macos")]
@@ -345,9 +387,115 @@ mod tests {
     #[test]
     fn a_relative_path_is_anchored_for_a_configured_program() {
         let programs = configured(Some(ProgramLine::new("viewer", &["--x"])), None);
-        let found = open_command(&programs, OpenKind::View, Path::new("-rf"), false).unwrap();
+        let found = open_command(&programs, OpenKind::View, Path::new("-rf"), false, None).unwrap();
         let anchored = Path::new(".").join("-rf").into_os_string();
         assert_eq!(found.args, [OsString::from("--x"), anchored]);
+    }
+
+    fn code_goto() -> OpenPrograms {
+        configured(
+            Some(ProgramLine::new("code", &["--goto", "{path}:{line}"])),
+            Some(ProgramLine::new("code", &["--goto", "{path}:{line}"])),
+        )
+    }
+
+    #[test]
+    fn the_line_and_path_placeholders_are_filled_in() {
+        let found = open_command(
+            &code_goto(),
+            OpenKind::Edit,
+            Path::new("/a/b.rs"),
+            false,
+            Some(26),
+        )
+        .unwrap();
+        assert_eq!(found.program, OsString::from("code"));
+        assert_eq!(
+            found.args,
+            [OsString::from("--goto"), OsString::from("/a/b.rs:26")]
+        );
+    }
+
+    #[test]
+    fn without_a_line_the_placeholder_is_one() {
+        let found = open_command(
+            &code_goto(),
+            OpenKind::View,
+            Path::new("/a/b.rs"),
+            false,
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            found.args,
+            [OsString::from("--goto"), OsString::from("/a/b.rs:1")]
+        );
+    }
+
+    #[test]
+    fn a_program_without_the_path_placeholder_gets_the_path_appended() {
+        let programs = configured(Some(ProgramLine::new("viewer", &["+{line}"])), None);
+        let path = Path::new("/a/b.rs");
+        let found = open_command(&programs, OpenKind::View, path, false, Some(7)).unwrap();
+        assert_eq!(
+            found.args,
+            [OsString::from("+7"), path.as_os_str().to_owned()]
+        );
+    }
+
+    #[test]
+    fn a_program_without_the_line_placeholder_just_opens_the_file() {
+        let programs = configured(Some(ProgramLine::new("viewer", &["{path}"])), None);
+        let found = open_command(
+            &programs,
+            OpenKind::View,
+            Path::new("/a/b.rs"),
+            false,
+            Some(7),
+        )
+        .unwrap();
+        assert_eq!(found.args, [OsString::from("/a/b.rs")]);
+    }
+
+    /// Substitution is a single pass: a file named like a placeholder is not
+    /// filled in again.
+    #[test]
+    fn a_placeholder_in_the_file_name_stays_literal() {
+        let found = open_command(
+            &code_goto(),
+            OpenKind::Edit,
+            Path::new("/a/{line}{path}.txt"),
+            false,
+            Some(3),
+        )
+        .unwrap();
+        assert_eq!(
+            found.args,
+            [
+                OsString::from("--goto"),
+                OsString::from("/a/{line}{path}.txt:3")
+            ]
+        );
+    }
+
+    #[test]
+    fn a_relative_path_is_anchored_inside_the_placeholder() {
+        let found = open_command(
+            &code_goto(),
+            OpenKind::Edit,
+            Path::new("-rf"),
+            false,
+            Some(2),
+        )
+        .unwrap();
+        let anchored = Path::new(".").join("-rf");
+        assert_eq!(
+            found.args,
+            [
+                OsString::from("--goto"),
+                OsString::from(format!("{}:2", anchored.display()))
+            ]
+        );
     }
 
     #[test]
