@@ -2322,9 +2322,9 @@ mod quick_open {
         session.settle();
 
         let quick_open = session.app.quick_open_for_test().expect("the box");
-        assert!(!quick_open.walking, "the walk did not finish");
+        assert!(!quick_open.walking(), "the walk did not finish");
         let shown: Vec<&str> = quick_open
-            .hits
+            .hits()
             .iter()
             .map(|hit| quick_open.relative_path(hit))
             .collect();

@@ -136,7 +136,7 @@ panel back; the next search starts with the same fields.
 
 `Cmd`+`P` (`Ctrl`+`P` on Linux and Windows) opens a box over the panels, as in
 VS Code. Type letters of a file's path and the best matches are listed with the
-matching characters underlined: `cfgrs` finds `src/config.rs`. It lists the
+matching characters highlighted: `cfgrs` finds `src/config.rs`. It lists the
 files below the active panel's directory, hidden ones too and without following
 links, up to 250,000 files (the status line says when it stopped there).
 `↑`/`↓` pick a hit, `Enter` (or a click) shows its directory in the active panel

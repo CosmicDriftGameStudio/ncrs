@@ -301,8 +301,9 @@ pub enum QuickOpenMessage {
         events: Vec<SearchEvent>,
     },
     /// The background ranking of `chunks_scored` chunks for the query of
-    /// `generation` is done.
+    /// `generation` in the box of `walk_generation` is done.
     Ranked {
+        walk_generation: u64,
         generation: u64,
         hits: Vec<crate::quick_open::Hit>,
         chunks_scored: usize,

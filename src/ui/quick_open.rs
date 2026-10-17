@@ -27,13 +27,13 @@ pub fn view<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let directory = quick_open.root.file_name().map_or_else(
-        || quick_open.root.display().to_string(),
+    let directory = quick_open.root().file_name().map_or_else(
+        || quick_open.root().display().to_string(),
         |name| name.to_string_lossy().into_owned(),
     );
     let title = fill_template(lang.text(Msg::QuickopenTitle), &[("{dir}", &directory)]);
 
-    let field = text_input(lang.text(Msg::QuickopenPlaceholder), &quick_open.query)
+    let field = text_input(lang.text(Msg::QuickopenPlaceholder), quick_open.query())
         .id(QUICK_OPEN_ID)
         .on_input(|text| to_quick_open(QuickOpenMessage::QueryChanged(text)))
         .on_submit(to_quick_open(QuickOpenMessage::Activate))
@@ -43,7 +43,7 @@ pub fn view<'a>(
         .width(Length::Fill);
 
     let rows = quick_open
-        .hits
+        .hits()
         .iter()
         .enumerate()
         .map(|(index, hit)| hit_row(quick_open, hit, index, palette));
@@ -69,13 +69,13 @@ pub fn view<'a>(
 }
 
 fn status(quick_open: &QuickOpen, lang: Language) -> String {
-    let count = quick_open.file_count.to_string();
+    let count = quick_open.file_count().to_string();
     let filled = |message| fill_template(lang.text(message), &[("{count}", &count)]);
-    if quick_open.has_query() && !quick_open.is_ranking() && quick_open.hits.is_empty() {
+    if quick_open.has_query() && !quick_open.is_ranking() && quick_open.hits().is_empty() {
         lang.text(Msg::QuickopenNoMatch).to_owned()
-    } else if quick_open.walking {
+    } else if quick_open.walking() {
         filled(Msg::QuickopenStatusWalking)
-    } else if quick_open.truncated {
+    } else if quick_open.truncated() {
         filled(Msg::QuickopenStatusTruncated)
     } else {
         filled(Msg::QuickopenStatusDone)
@@ -88,7 +88,7 @@ fn hit_row<'a>(
     index: usize,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let selected = index == quick_open.cursor;
+    let selected = index == quick_open.cursor();
     let path = quick_open.relative_path(hit);
     let spans = path_spans(path, &hit.highlight, selected, palette);
     button(

@@ -4,7 +4,7 @@
 
 use std::cmp::Ordering;
 use std::ops::Range;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{self, AtomicU64};
 use std::sync::Arc;
 
@@ -41,15 +41,15 @@ pub struct Hit {
 
 #[derive(Debug)]
 pub struct QuickOpen {
-    pub root: PathBuf,
-    pub query: String,
-    pub hits: Vec<Hit>,
-    pub cursor: usize,
-    pub walking: bool,
-    pub truncated: bool,
-    pub file_count: usize,
+    root: PathBuf,
+    query: String,
+    hits: Vec<Hit>,
+    cursor: usize,
+    walking: bool,
+    truncated: bool,
+    file_count: usize,
     /// The walk these events belong to; a batch of another walk is dropped.
-    pub walk_generation: u64,
+    walk_generation: u64,
     candidates: Vec<Chunk>,
     /// Counts the queries; a ranking of an older one is dropped.
     query_generation: u64,
@@ -65,6 +65,7 @@ pub struct QuickOpen {
 /// A full ranking over a snapshot of the candidates, for a worker thread.
 #[derive(Debug)]
 pub struct Rescore {
+    walk_generation: u64,
     generation: u64,
     query: String,
     chunks: Vec<Chunk>,
@@ -72,24 +73,31 @@ pub struct Rescore {
 }
 
 impl Rescore {
+    /// A ranking that was cancelled reports nothing scored.
     pub fn run(self) -> QuickOpenMessage {
         let current = &self.current_generation;
         let generation = self.generation;
         let cancelled = || current.load(atomic::Ordering::Relaxed) != generation;
+        let (hits, chunks_scored) = match rank(&self.query, &self.chunks, 0, &cancelled) {
+            Some(hits) => (hits, self.chunks.len()),
+            None => (Vec::new(), 0),
+        };
         QuickOpenMessage::Ranked {
+            walk_generation: self.walk_generation,
             generation,
-            hits: rank(&self.query, &self.chunks, 0, &cancelled),
-            chunks_scored: self.chunks.len(),
+            hits,
+            chunks_scored,
         }
     }
 
     /// On the blocking pool. Should that fail, an empty ranking comes back and
     /// the receiver ranks everything itself.
     pub async fn run_in_background(self) -> Message {
-        let generation = self.generation;
+        let (walk_generation, generation) = (self.walk_generation, self.generation);
         let ranked = tokio::task::spawn_blocking(move || self.run())
             .await
             .unwrap_or(QuickOpenMessage::Ranked {
+                walk_generation,
                 generation,
                 hits: Vec::new(),
                 chunks_scored: 0,
@@ -153,17 +161,17 @@ fn byte_ranges(text: &str, char_positions: &[u32]) -> Vec<Range<usize>> {
 }
 
 /// The best [`MAX_HITS`] paths of `chunks` from `start_chunk` on, in order.
-/// `cancelled` is asked every few thousand paths; once it says yes the result
-/// is whatever was found so far and is not meant to be used.
+/// `cancelled` is asked every few thousand paths; once it says yes there is no
+/// result.
 pub fn rank(
     query: &str,
     chunks: &[Chunk],
     start_chunk: usize,
     cancelled: &dyn Fn() -> bool,
-) -> Vec<Hit> {
+) -> Option<Vec<Hit>> {
     let pattern = pattern_for(query);
     if pattern.atoms.is_empty() {
-        return Vec::new();
+        return Some(Vec::new());
     }
     let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
     let mut buffer = Vec::new();
@@ -173,7 +181,7 @@ pub fn rank(
         for (index, path) in paths.iter().enumerate() {
             seen += 1;
             if seen.is_multiple_of(CANCEL_CHECK_INTERVAL) && cancelled() {
-                return Vec::new();
+                return None;
             }
             let Some(score) = pattern.score(Utf32Str::new(path, &mut buffer), &mut matcher) else {
                 continue;
@@ -203,7 +211,7 @@ pub fn rank(
         );
         hit.highlight = byte_ranges(path, &positions);
     }
-    best
+    Some(best)
 }
 
 /// The best [`MAX_HITS`] of both lists.
@@ -239,6 +247,38 @@ impl QuickOpen {
             scored_chunks: 0,
             pending_rescore: None,
         }
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn query(&self) -> &str {
+        &self.query
+    }
+
+    pub fn hits(&self) -> &[Hit] {
+        &self.hits
+    }
+
+    pub fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    pub fn walking(&self) -> bool {
+        self.walking
+    }
+
+    pub fn truncated(&self) -> bool {
+        self.truncated
+    }
+
+    pub fn file_count(&self) -> usize {
+        self.file_count
+    }
+
+    pub fn walk_generation(&self) -> u64 {
+        self.walk_generation
     }
 
     /// The path of a hit, relative to the root.
@@ -317,6 +357,7 @@ impl QuickOpen {
         self.pending_rescore = Some(self.query_generation);
         self.scored_chunks = 0;
         Some(Rescore {
+            walk_generation: self.walk_generation,
             generation: self.query_generation,
             query: self.query.clone(),
             chunks: self.candidates.clone(),
@@ -326,8 +367,17 @@ impl QuickOpen {
 
     /// The result of a background ranking. One of an older query is dropped;
     /// chunks that came in meanwhile are ranked here and merged.
-    pub fn apply_ranked(&mut self, generation: u64, hits: Vec<Hit>, chunks_scored: usize) {
-        if generation != self.query_generation || self.pending_rescore != Some(generation) {
+    pub fn apply_ranked(
+        &mut self,
+        walk_generation: u64,
+        generation: u64,
+        hits: Vec<Hit>,
+        chunks_scored: usize,
+    ) {
+        if walk_generation != self.walk_generation
+            || generation != self.query_generation
+            || self.pending_rescore != Some(generation)
+        {
             return;
         }
         self.pending_rescore = None;
@@ -337,8 +387,22 @@ impl QuickOpen {
         self.score_unscored_chunks();
     }
 
+    /// Ranks everything now, on this thread, instead of waiting for the
+    /// background ranking, whose late result is then dropped. For Enter pressed
+    /// before the hits are there.
+    pub fn rank_now(&mut self) {
+        if self.pending_rescore.take().is_none() {
+            return;
+        }
+        self.scored_chunks = 0;
+        self.hits.clear();
+        self.cursor = 0;
+        self.score_unscored_chunks();
+    }
+
     fn score_unscored_chunks(&mut self) {
-        let found = rank(&self.query, &self.candidates, self.scored_chunks, &|| false);
+        let found =
+            rank(&self.query, &self.candidates, self.scored_chunks, &|| false).unwrap_or_default();
         self.scored_chunks = self.candidates.len();
         if found.is_empty() {
             return;
@@ -371,6 +435,15 @@ mod tests {
         paths.iter().map(|path| Box::<str>::from(*path)).collect()
     }
 
+    fn ranked(
+        query: &str,
+        chunks: &[Chunk],
+        start_chunk: usize,
+        cancelled: &dyn Fn() -> bool,
+    ) -> Vec<Hit> {
+        rank(query, chunks, start_chunk, cancelled).unwrap()
+    }
+
     fn never() -> bool {
         false
     }
@@ -400,6 +473,7 @@ mod tests {
     fn type_and_rank(quick_open: &mut QuickOpen, query: &str) {
         let job = quick_open.set_query(query.to_owned()).unwrap();
         let QuickOpenMessage::Ranked {
+            walk_generation,
             generation,
             hits,
             chunks_scored,
@@ -407,7 +481,7 @@ mod tests {
         else {
             panic!("a ranking answers with Ranked");
         };
-        quick_open.apply_ranked(generation, hits, chunks_scored);
+        quick_open.apply_ranked(walk_generation, generation, hits, chunks_scored);
     }
 
     #[test]
@@ -418,7 +492,7 @@ mod tests {
             "src/main.rs",
             "docs/guide.md",
         ])];
-        let hits = rank("cfgrs", &chunks, 0, &never);
+        let hits = ranked("cfgrs", &chunks, 0, &never);
         assert_eq!(texts(&chunks, &hits), ["src/config.rs"]);
         assert!(!hits[0].highlight.is_empty());
     }
@@ -426,7 +500,7 @@ mod tests {
     #[test]
     fn the_highlight_cuts_at_characters_not_at_bytes() {
         let chunks = [chunk(&["docs/Ärger.rs"])];
-        let hits = rank("ärg", &chunks, 0, &never);
+        let hits = ranked("ärg", &chunks, 0, &never);
         let path = path_of(&chunks, 0, 0);
         let marked: Vec<&str> = hits[0]
             .highlight
@@ -439,7 +513,7 @@ mod tests {
     #[test]
     fn separated_matches_become_separate_ranges() {
         let chunks = [chunk(&["src/config.rs"])];
-        let hits = rank("cfg", &chunks, 0, &never);
+        let hits = ranked("cfg", &chunks, 0, &never);
         let path = path_of(&chunks, 0, 0);
         let marked: Vec<&str> = hits[0]
             .highlight
@@ -452,15 +526,15 @@ mod tests {
     #[test]
     fn query_characters_that_mean_something_to_fzf_match_literally() {
         let chunks = [chunk(&["notes/!todo^.txt", "notes/todo.txt"])];
-        let hits = rank("!todo^", &chunks, 0, &never);
+        let hits = ranked("!todo^", &chunks, 0, &never);
         assert_eq!(texts(&chunks, &hits), ["notes/!todo^.txt"]);
     }
 
     #[test]
     fn equal_scores_are_ordered_by_length_then_alphabet() {
         let chunks = [chunk(&["b/mod.rs", "a/mod.rs", "mod.rs"])];
-        let first = rank("mod", &chunks, 0, &never);
-        let second = rank("mod", &chunks, 0, &never);
+        let first = ranked("mod", &chunks, 0, &never);
+        let second = ranked("mod", &chunks, 0, &never);
         assert_eq!(first, second);
         let shown = texts(&chunks, &first);
         assert_eq!(shown.first(), Some(&"mod.rs"));
@@ -473,7 +547,7 @@ mod tests {
         let names: Vec<String> = (0..40).map(|i| format!("dir{i}/file{i}.txt")).collect();
         let refs: Vec<&str> = names.iter().map(String::as_str).collect();
         let chunks = [chunk(&refs[..20]), chunk(&refs[20..])];
-        let hits = rank("file", &chunks, 0, &never);
+        let hits = ranked("file", &chunks, 0, &never);
         assert_eq!(hits.len(), MAX_HITS);
         let ordered = merge_hits(&chunks, hits.clone(), Vec::new());
         assert_eq!(hits, ordered);
@@ -491,7 +565,7 @@ mod tests {
             .map(|hit| quick_open.relative_path(hit))
             .collect();
         assert_eq!(shown.len(), 3);
-        let all_at_once = rank("cfg", &quick_open.candidates, 0, &never);
+        let all_at_once = ranked("cfg", &quick_open.candidates, 0, &never);
         assert_eq!(quick_open.hits, all_at_once);
     }
 
@@ -511,6 +585,7 @@ mod tests {
         let old = quick_open.set_query("cfg".to_owned()).unwrap().run();
         let _newer = quick_open.set_query("readme".to_owned()).unwrap();
         let QuickOpenMessage::Ranked {
+            walk_generation,
             generation,
             hits,
             chunks_scored,
@@ -518,7 +593,7 @@ mod tests {
         else {
             panic!("Ranked expected");
         };
-        quick_open.apply_ranked(generation, hits, chunks_scored);
+        quick_open.apply_ranked(walk_generation, generation, hits, chunks_scored);
         assert!(quick_open.hits.is_empty());
         assert!(quick_open.is_ranking());
     }
@@ -530,6 +605,7 @@ mod tests {
         quick_open.apply_events(file_events("/r", &["b/cfg.txt"]));
         assert!(quick_open.hits.is_empty(), "waits while the ranking runs");
         let QuickOpenMessage::Ranked {
+            walk_generation,
             generation,
             hits,
             chunks_scored,
@@ -538,9 +614,85 @@ mod tests {
             panic!("Ranked expected");
         };
         assert_eq!(chunks_scored, 1);
-        quick_open.apply_ranked(generation, hits, chunks_scored);
+        quick_open.apply_ranked(walk_generation, generation, hits, chunks_scored);
         assert_eq!(quick_open.hits.len(), 2);
         assert!(!quick_open.is_ranking());
+    }
+
+    #[test]
+    fn a_ranking_of_an_earlier_box_does_not_land_in_a_later_one() {
+        let mut first_box = QuickOpen::new(PathBuf::from("/r"), 1);
+        first_box.apply_events(file_events("/r", &["src/config.rs"]));
+        let late = first_box.set_query("cfg".to_owned()).unwrap();
+
+        let mut second_box = QuickOpen::new(PathBuf::from("/r"), 2);
+        second_box.apply_events(file_events("/r", &["README.md"]));
+        let waiting = second_box.set_query("cfg".to_owned());
+        assert!(waiting.is_some());
+
+        let QuickOpenMessage::Ranked {
+            walk_generation,
+            generation,
+            hits,
+            chunks_scored,
+        } = late.run()
+        else {
+            panic!("Ranked expected");
+        };
+        second_box.apply_ranked(walk_generation, generation, hits, chunks_scored);
+        assert!(second_box.hits.is_empty());
+        assert!(second_box.is_ranking());
+        assert_eq!(second_box.scored_chunks, 0);
+    }
+
+    #[test]
+    fn a_cancelled_rescore_reports_nothing_scored() {
+        let mut quick_open = open("/r", &["a/config.rs"]);
+        let stale = quick_open.set_query("cfg".to_owned()).unwrap();
+        let _newer = quick_open.set_query("conf".to_owned()).unwrap();
+        let names: Vec<String> = (0..CANCEL_CHECK_INTERVAL * 2)
+            .map(|i| format!("file{i}.txt"))
+            .collect();
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        quick_open.apply_events(file_events("/r", &refs));
+        let cancelled = Rescore {
+            chunks: quick_open.candidates.clone(),
+            ..stale
+        };
+        let QuickOpenMessage::Ranked {
+            hits,
+            chunks_scored,
+            ..
+        } = cancelled.run()
+        else {
+            panic!("Ranked expected");
+        };
+        assert!(hits.is_empty());
+        assert_eq!(chunks_scored, 0);
+    }
+
+    #[test]
+    fn ranking_now_gives_the_hits_and_drops_the_late_background_result() {
+        let mut quick_open = open("/r", &["src/config.rs", "README.md"]);
+        let background = quick_open.set_query("cfgrs".to_owned()).unwrap();
+        assert!(quick_open.hits.is_empty());
+        quick_open.rank_now();
+        assert!(!quick_open.is_ranking());
+        assert_eq!(
+            quick_open.selected_path(),
+            Some(PathBuf::from("/r").join("src/config.rs"))
+        );
+        let QuickOpenMessage::Ranked {
+            walk_generation,
+            generation,
+            hits,
+            chunks_scored,
+        } = background.run()
+        else {
+            panic!("Ranked expected");
+        };
+        quick_open.apply_ranked(walk_generation, generation, hits, chunks_scored);
+        assert_eq!(quick_open.hits.len(), 1);
     }
 
     #[test]
@@ -550,7 +702,7 @@ mod tests {
             .collect();
         let refs: Vec<&str> = names.iter().map(String::as_str).collect();
         let chunks = [chunk(&refs)];
-        assert!(rank("file", &chunks, 0, &|| true).is_empty());
+        assert_eq!(rank("file", &chunks, 0, &|| true), None);
     }
 
     #[test]
@@ -587,7 +739,7 @@ mod tests {
         );
     }
 
-    /// `cargo test --release quick_open_timing -- --ignored --nocapture`
+    /// Run with `cargo test --release quick_open_timing -- --ignored --nocapture`.
     #[test]
     #[ignore = "a measurement, not a check"]
     fn quick_open_timing_with_the_file_limit() {
@@ -596,7 +748,7 @@ mod tests {
             .collect();
         let chunks: Vec<Chunk> = names.chunks(256).map(|part| part.to_vec().into()).collect();
         let started = std::time::Instant::now();
-        let hits = rank("a", &chunks, 0, &never);
+        let hits = ranked("a", &chunks, 0, &never);
         println!(
             "ranked {} paths for 'a' in {} ms",
             QUICK_OPEN_FILE_LIMIT,

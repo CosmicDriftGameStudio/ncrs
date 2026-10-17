@@ -1028,9 +1028,9 @@ mod tests {
         assert_eq!(names(&outcome), [".hidden/a.txt", "b.txt", "src/config.rs"]);
         assert!(!outcome.truncated);
 
-        let outcome = run_compiled(all_files(dir.path().to_path_buf(), true, 2));
-        assert!(outcome.truncated);
-        assert_eq!(outcome.files.len(), 2);
+        let limited = run_compiled(all_files(dir.path().to_path_buf(), true, 2));
+        assert!(limited.truncated);
+        assert_eq!(limited.files.len(), 2);
     }
 
     #[cfg(unix)]

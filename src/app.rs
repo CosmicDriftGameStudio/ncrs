@@ -3419,20 +3419,21 @@ impl App {
                 None => Task::none(),
             },
             QuickOpenMessage::Events { generation, events } => {
-                if generation == quick_open.walk_generation {
+                if generation == quick_open.walk_generation() {
                     quick_open.apply_events(events);
-                    if !quick_open.walking {
+                    if !quick_open.walking() {
                         self.quick_open_walk = None;
                     }
                 }
                 Task::none()
             }
             QuickOpenMessage::Ranked {
+                walk_generation,
                 generation,
                 hits,
                 chunks_scored,
             } => {
-                quick_open.apply_ranked(generation, hits, chunks_scored);
+                quick_open.apply_ranked(walk_generation, generation, hits, chunks_scored);
                 Task::none()
             }
             QuickOpenMessage::Move(delta) => {
@@ -3451,13 +3452,17 @@ impl App {
     /// Enter on a hit: the active panel shows the file's directory with the
     /// cursor on the file.
     fn activate_quick_open(&mut self) -> Task<Message> {
+        // Typed fast, Enter before the background ranking is back.
+        if let Some(quick_open) = self.quick_open.as_mut() {
+            quick_open.rank_now();
+        }
         let Some(path) = self.quick_open.as_ref().and_then(QuickOpen::selected_path) else {
             return Task::none();
         };
-        let (Some(directory), Some(file)) = (path.parent(), path.file_name()) else {
+        let (Some(parent), Some(file)) = (path.parent(), path.file_name()) else {
             return Task::none();
         };
-        let directory = directory.to_path_buf();
+        let directory = parent.to_path_buf();
         let name = file.to_string_lossy().into_owned();
         let closed = self.close_quick_open();
         let loaded = self.load(self.active_panel, directory, Some(name));
@@ -4232,7 +4237,7 @@ impl App {
         let mut events: Vec<SearchEvent> = files
             .iter()
             .map(|file| SearchEvent::File {
-                path: quick_open.root.join(file),
+                path: quick_open.root().join(file),
                 lines: Vec::new(),
             })
             .collect();
@@ -4244,15 +4249,15 @@ impl App {
             truncated: false,
         }));
         quick_open.apply_events(events);
-        quick_open.query = query.to_string();
         if let Some(ranking) = quick_open.set_query(query.to_string()) {
             if let QuickOpenMessage::Ranked {
+                walk_generation,
                 generation,
                 hits,
                 chunks_scored,
             } = ranking.run()
             {
-                quick_open.apply_ranked(generation, hits, chunks_scored);
+                quick_open.apply_ranked(walk_generation, generation, hits, chunks_scored);
             }
         }
     }
@@ -8200,7 +8205,7 @@ mod quick_open_tests {
         let mut app = App::with_fixed_panels();
         drop(app.update(Message::QuickOpen(QuickOpenMessage::Open)));
         let quick_open = app.quick_open_for_test().unwrap();
-        assert_eq!(quick_open.root, app.panel(PanelSide::Left).path);
+        assert_eq!(quick_open.root(), app.panel(PanelSide::Left).path);
         assert!(app.prompt_key_state().quick_open);
         assert!(app.blocking_overlay_is_open());
     }
@@ -8217,10 +8222,10 @@ mod quick_open_tests {
     fn a_batch_of_a_closed_walk_is_dropped() {
         let mut app = App::with_fixed_panels();
         drop(app.update(Message::QuickOpen(QuickOpenMessage::Open)));
-        let old = app.quick_open_for_test().unwrap().walk_generation;
+        let old = app.quick_open_for_test().unwrap().walk_generation();
         drop(app.update(Message::QuickOpen(QuickOpenMessage::Close)));
         drop(app.update(Message::QuickOpen(QuickOpenMessage::Open)));
-        let root = app.quick_open_for_test().unwrap().root.clone();
+        let root = app.quick_open_for_test().unwrap().root().to_path_buf();
         drop(app.update(Message::QuickOpen(QuickOpenMessage::Events {
             generation: old,
             events: vec![crate::fs::search::SearchEvent::File {
@@ -8228,19 +8233,36 @@ mod quick_open_tests {
                 lines: Vec::new(),
             }],
         })));
-        assert_eq!(app.quick_open_for_test().unwrap().file_count, 0);
+        assert_eq!(app.quick_open_for_test().unwrap().file_count(), 0);
     }
 
     #[test]
     fn enter_closes_it_and_loads_the_hit_into_the_active_panel() {
         let mut app = App::with_fixed_panels();
         app.open_quick_open_for_test(&["src/config.rs", "README.md"], "cfgrs");
-        assert_eq!(app.quick_open_for_test().unwrap().hits.len(), 1);
+        assert_eq!(app.quick_open_for_test().unwrap().hits().len(), 1);
         let before = app.panel(PanelSide::Left).request_id;
         drop(app.update(Message::QuickOpen(QuickOpenMessage::Activate)));
         assert!(app.quick_open_for_test().is_none());
         assert!(app.quick_open_walk.is_none());
         assert!(app.panel(PanelSide::Left).loading);
+        assert_ne!(app.panel(PanelSide::Left).request_id, before);
+    }
+
+    #[test]
+    fn enter_before_the_background_ranking_is_back_still_loads_the_hit() {
+        let mut app = App::with_fixed_panels();
+        app.open_quick_open_for_test(&["src/config.rs", "README.md"], "");
+        // The task that would rank in the background is dropped unrun.
+        drop(
+            app.update(Message::QuickOpen(QuickOpenMessage::QueryChanged(
+                "cfgrs".to_string(),
+            ))),
+        );
+        assert!(app.quick_open_for_test().unwrap().hits().is_empty());
+        let before = app.panel(PanelSide::Left).request_id;
+        drop(app.update(Message::QuickOpen(QuickOpenMessage::Activate)));
+        assert!(app.quick_open_for_test().is_none());
         assert_ne!(app.panel(PanelSide::Left).request_id, before);
     }
 
