@@ -1047,7 +1047,7 @@ mod tests {
     #[test]
     fn a_name_that_is_not_utf8_is_found_by_its_lossy_form() {
         use std::ffi::OsStr;
-        use std::os::unix::ffi::OsStrExt;
+        use std::os::unix::ffi::OsStrExt as _;
         let dir = tree();
         fs::write(dir.path().join(OsStr::from_bytes(b"caf\xe9.txt")), "x").unwrap();
         let (sender, mut receiver) = mpsc::channel(100);
