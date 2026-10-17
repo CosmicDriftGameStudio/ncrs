@@ -55,6 +55,19 @@ pub fn visible_rows(window: Size) -> usize {
     (rows as isize).max(1) as usize
 }
 
+/// The three fields and the summary line of the search view, between the
+/// panel title and the result rows. Fixed, like the column header it replaces.
+pub const SEARCH_HEADER_HEIGHT: f32 = 124.0;
+
+/// Number of result rows that fit into the search view: the panel's rows,
+/// less the difference between the search header and the column header.
+pub fn search_visible_rows(window: Size) -> usize {
+    let rows = ((window.height - CHROME + COLUMN_HEADER_HEIGHT - SEARCH_HEADER_HEIGHT)
+        / ROW_HEIGHT)
+        .floor();
+    (rows as isize).max(1) as usize
+}
+
 /// Where the context menu opens for the cursor row of a panel when it is
 /// opened from the keyboard: just below the row, a little into the name column.
 ///
@@ -105,6 +118,14 @@ mod tests {
         // header 24 + padding 12 + three gaps 18 + borders 2 = 166.
         // 760 - 166 = 594; 594 / 22 = 27 rows exactly.
         assert_eq!(visible_rows(window), 27);
+    }
+
+    #[test]
+    fn the_search_view_gives_its_extra_header_the_rows_it_needs() {
+        let window = Size::new(1200.0, 760.0);
+        // (594 + 24 - 124) / 22 = 22.45
+        assert_eq!(search_visible_rows(window), 22);
+        assert_eq!(search_visible_rows(Size::new(1200.0, 10.0)), 1);
     }
 
     /// The window height the app is opened with, so the number in the startup

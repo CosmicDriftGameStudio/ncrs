@@ -230,6 +230,22 @@ mod tests {
             "the prompt does not match tests/snapshots/prompt.png"
         );
     }
+
+    #[test]
+    fn the_search_view_matches_its_snapshot() {
+        let app = App::with_fixed_search();
+        let mut sim = simulator(&app);
+        let matches = sim
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/search.png")
+            .expect("snapshot comparison");
+
+        assert!(
+            matches,
+            "the search view does not match tests/snapshots/search.png"
+        );
+    }
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
@@ -824,6 +840,7 @@ mod title_notice {
             app.active_panel(),
             crate::i18n::Language::English,
             &crate::palette::Palette::default(),
+            None,
             None,
             None,
             crate::ui::statusbar::PathBar {

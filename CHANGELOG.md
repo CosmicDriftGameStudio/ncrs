@@ -8,6 +8,20 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Search in the panel, the way VS Code does it: `Alt`+`F7` or `Cmd`+`Shift`+`F`
+  (`Ctrl`+`Shift`+`F` on Linux and Windows, `search` in `[keys]`) replaces the
+  active panel with a search below its directory. It runs as you type, and a new
+  input stops the search still running. **Aa**, **ab** and **.\*** switch on
+  case, whole words and regular expressions; **Files** and **Exclude** take
+  `;`-separated patterns, and **Files** without a search text is a name search.
+  Results are grouped by file and can be folded, with the line number and the
+  match highlighted; an invalid pattern or expression is shown in place.
+  `Enter` on a file shows it in the other panel, `Enter` on a line opens the
+  editor at that line. `F5`, `F6` and `F8` act on all files found. `Esc` brings
+  the panel back and keeps the fields for the next search.
+- `{path}` and `{line}` in the `[open]` programs: `edit = ["code", "--goto",
+  "{path}:{line}"]` opens a search result at its line. Without `{path}` the file
+  is still added as the last argument.
 - Start language from the config file: `lang = "en"` or `lang = "de"` at the top
   level. Without it the start language stays English. `F9` still switches the
   language for the running session only; nothing is written back to the file.

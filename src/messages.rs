@@ -7,6 +7,7 @@ use iced::Size;
 
 use crate::app::{RowFailure, Transfer};
 use crate::dialog::PromptKind;
+use crate::fs::search::SearchEvent;
 use crate::fs::CreateDirError;
 use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
 use crate::jobs::JobEvent;
@@ -229,9 +230,54 @@ pub enum Message {
     /// Ctrl+F3, Ctrl+F5 or Ctrl+F6: sort the active panel.
     SortActive(SortColumn),
 
+    // --- Search (Alt+F7, Cmd/Ctrl+Shift+F) ---
+    /// Show the search in the active panel, or move on to its next field when
+    /// it is already there.
+    OpenSearch,
+    Search(SearchMessage),
+
     // --- Window / app ---
     WindowResized(Size),
     Quit,
+}
+
+/// Everything the search view sends. Its own enum so the panel messages stay
+/// the panels': the same key means "move the cursor" in both.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SearchMessage {
+    QueryChanged(String),
+    IncludeChanged(String),
+    ExcludeChanged(String),
+    /// A printable key typed while the result list has the keys: it goes to the
+    /// end of the query, as in VS Code.
+    AppendToQuery(String),
+    ToggleCase,
+    ToggleWholeWord,
+    ToggleRegex,
+    /// The typing pause of this generation is over. An older timer finds a
+    /// newer generation and does nothing.
+    Debounced(u64),
+    /// A batch of what the running search found. Dropped when `generation` is
+    /// not the current search's.
+    Events {
+        generation: u64,
+        events: Vec<SearchEvent>,
+    },
+    Close,
+    Move(isize),
+    Page(isize),
+    First,
+    Last,
+    /// Right (`true`) or Left (`false`) on the cursor's file.
+    Expand(bool),
+    /// Enter: open the file in the other panel, or the line in the editor.
+    Activate,
+    RowClicked(usize),
+    /// Double click on a row.
+    RowActivated(usize),
+    /// The chevron of the file at this index in the results.
+    ToggleGroup(usize),
+    Scrolled(iced::mouse::ScrollDelta),
 }
 
 /// What the copy chords put on the clipboard.

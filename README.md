@@ -31,6 +31,11 @@ The drive menu (`Alt+F1` for the left panel, `Alt+F2` for the right).
 The context menu: right-click a row (`Ctrl`+click on a Mac), tap `Option` on its
 own, or press `Shift`+`F10`. It acts on the tagged rows, else the cursor row.
 
+![The search view](docs/screenshots/search.png)
+
+The search (`Alt`+`F7` or `Cmd`+`Shift`+`F`, `Ctrl`+`Shift`+`F` on Linux and
+Windows) takes the place of the active panel and searches below its directory.
+
 ![The delete dialog](docs/screenshots/delete.png)
 
 F8 asks before it moves the tagged rows to the trash.
@@ -54,6 +59,8 @@ The same window in German, switched with F9.
 - Mouse click selects a row and activates its panel; the wheel and the trackpad scroll the panel under the pointer
 - Drive menu (`Alt`+`F1` / `Alt`+`F2`): jump a panel to the system volume, home, iCloud Drive (macOS),
   mounted volumes or drive letters, the same places as in the Finder sidebar
+- Search in file names and contents below a directory, in the panel, the way
+  VS Code does it: see [Search](#search)
 - Localized UI (English/German) with a translator note on every string, so the UI can
   be translated mechanically without reading the code
 - Runs on Linux, macOS and Windows
@@ -86,10 +93,34 @@ The defaults. Most of them can be changed in the config file, see [Keys](#keys).
 | Right click / `Shift`+`F10` / `Option` tapped alone | Context menu at the pointer or the cursor row (`↑`/`↓`, `Home`/`End`, `Enter` runs, `Esc` closes; `Ctrl`+click also on a Mac) |
 | Click a column title | Sort that panel by Name / Size / Modified; a second click reverses the order (▲ / ▼). `..` and folders stay on top |
 | `Ctrl`+`F3` / `Ctrl`+`F5` / `Ctrl`+`F6` (macOS: `Cmd`+`1` / `Cmd`+`3` / `Cmd`+`2`) | Sort the active panel by name / modification time / size; again reverses. macOS uses `Cmd`+digit because the system takes `Ctrl`+`F`-keys |
+| `Alt`+`F7` / `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) | Search below the directory of the active panel; pressed again, it moves to the next field. See [Search](#search) |
 | `Backspace`        | Go to parent directory                   |
 | `Tab`              | Switch active panel                      |
 | `F9`               | Switch language for this session (start: `lang`) |
 | `F10` / `Cmd`+`Q` / `Ctrl`+`Q` | Quit                                     |
+
+## Search
+
+`Alt`+`F7` or `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) opens
+the search in the active panel. It searches below that panel's directory, starts
+as you type and stops a search still running when you type on. `Esc` brings the
+panel back; the next search starts with the same fields.
+
+- **Aa**, **ab** and **.\*** switch on case, whole words and regular
+  expressions.
+- **Files** and **Exclude** take patterns separated by `;`. A pattern without
+  `/` matches the name at any depth (`*.rs`), one with `/` the path below the
+  search directory (`src/*.rs`). A trailing `/` means a directory with
+  everything in it (`target/`). `*.*` is every file, as in Norton Commander.
+- With no search text, **Files** alone lists the matching names.
+- Hidden files are searched too; `.gitignore` is not read. Binary files and
+  cloud files that are not downloaded are skipped, and the search stops after
+  20,000 matching lines.
+- `↑`/`↓`, `PgUp`/`PgDn` and `Home`/`End` move through the results, `←`/`→`
+  fold and unfold a file. Typing goes to the search text.
+- `Enter` on a file shows it in the other panel. `Enter` on a line, or `F4`,
+  opens the editor at that line, see [Configuration](#configuration).
+- `F5`, `F6` and `F8` copy, move and delete all files found.
 
 ## Install
 
@@ -146,10 +177,12 @@ version = 1
 lang = "de"
 
 [open]
-# F3. The file is added as the last argument.
+# F3. Without {path} the file is added as the last argument.
 view = ["open"]
 # F4, and F3 on files that could run (scripts, apps): must be a text editor.
 edit = ["open", "-t"]
+# To open a search result at its line instead:
+# edit = ["code", "--goto", "{path}:{line}"]
 ```
 
 - The file is optional. Without it, or without a key, the system's own programs
@@ -163,6 +196,12 @@ edit = ["open", "-t"]
 - An app started from the Dock or Finder has a minimal `PATH`: give Homebrew or
   VS Code command-line tools by absolute path, or use
   `["open", "-a", "Visual Studio Code"]`.
+- `{path}` and `{line}` in an argument are replaced by the file and the line
+  number. Without `{path}` the file is added as the last argument. `{line}` is
+  the line of a search result, and `1` for `F3` and `F4` in a panel. A program
+  without `{line}` opens a search result at the top: the macOS default
+  `open -t` cannot go to a line, `code --goto {path}:{line}`,
+  `subl {path}:{line}` and `zed {path}:{line}` can.
 
 ### Keys
 
@@ -211,7 +250,7 @@ Actions: `quit`, `open`, `go_up`, `switch_panel`, `switch_language`,
 `toggle_tag`, `tag_up`, `tag_down`, `tag_all`, `clear_tags`, `view`, `edit`,
 `copy`, `move`, `mkdir`, `delete`, `delete_permanently`, `abort_job`,
 `copy_path`, `copy_name`, `drive_menu_left`, `drive_menu_right`,
-`sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`. Their
+`sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`, `search`. Their
 default keys are in [Keyboard shortcuts](#keyboard-shortcuts).
 
 ### Colors

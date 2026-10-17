@@ -16,16 +16,51 @@ use crate::fs::{self, CreateDirError};
 use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
 use crate::keymap::{self, Keymap};
-use crate::messages::{ClipboardKind, ConflictChoice, Message, PanelSide, TransferKind};
+use crate::messages::{
+    ClipboardKind, ConflictChoice, Message, PanelSide, SearchMessage, TransferKind,
+};
 use crate::palette::Palette;
+use crate::search_view::{SearchField, SearchView};
 use crate::ui::context_menu as context_menu_view;
 use crate::ui::delete as delete_dialog_view;
 use crate::ui::dialog::FIELD_ID;
+use crate::ui::search as search_ui;
 use crate::ui::volumes as volumes_view;
 use crate::ui::{
     self, conflict, dialog, fkeys, header, layout, panel, statusbar, theme, PanelProps, PanelState,
 };
 use tokio::sync::mpsc;
+
+/// How long the search view waits for the next keystroke before it searches.
+const SEARCH_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// The most events one message carries, so a search that finds thousands of
+/// files does not make thousands of updates.
+const SEARCH_BATCH: usize = 256;
+
+/// The messages of one search, in batches. Ends when the engine is done or the
+/// task is aborted.
+///
+/// The engine is started inside the stream: it spawns onto the blocking pool,
+/// which needs the runtime a task runs in, and `update` does not run in one.
+fn search_events(
+    compiled: fs::search::CompiledSearch,
+    generation: u64,
+) -> impl futures::Stream<Item = Message> + Send + 'static {
+    use futures::StreamExt as _;
+    futures::stream::once(async move { fs::search::spawn(compiled) })
+        .map(move |receiver| {
+            futures::stream::unfold(receiver, move |mut open| async move {
+                let mut events = Vec::new();
+                let received = open.recv_many(&mut events, SEARCH_BATCH).await;
+                (received > 0).then(|| {
+                    let message = Message::Search(SearchMessage::Events { generation, events });
+                    (message, open)
+                })
+            })
+        })
+        .flatten()
+}
 
 /// How long a confirmation stays in the title bar.
 const NOTICE_DURATION: std::time::Duration = std::time::Duration::from_secs(3);
@@ -170,6 +205,7 @@ fn leaves_path_field(message: &Message) -> bool {
     matches!(
         message,
         Message::RowClicked { .. }
+            | Message::OpenSearch
             | Message::ContextMenuAt { .. }
             | Message::ContextMenuKey
             | Message::CopyToClipboard(_)
@@ -435,6 +471,21 @@ pub struct App {
     /// Where the drive menu gets its list. Injected so tests offer their own
     /// directories instead of the machine's disks.
     list_volumes: Arc<dyn Fn() -> Vec<fs::Volume> + Send + Sync>,
+    /// The search view. Kept when it is closed, so reopening shows the last
+    /// results and fields again.
+    search: Option<SearchView>,
+    /// Whether the search view is up, in place of the panel on `search_side`.
+    search_open: bool,
+    search_side: PanelSide,
+    /// Result rows that fit into the search view.
+    search_rows: usize,
+    /// Counts the searches started, so a late timer or batch can tell it is
+    /// not the latest. Never reset: a closed view must not accept the events
+    /// of a search it abandoned.
+    search_generation: u64,
+    /// Stops the running search when dropped, which also drops the receiver
+    /// the engine's worker sends into.
+    search_handle: Option<iced::task::Handle>,
 }
 
 /// The part of the prompt the key routing needs, cheap to clone.
@@ -458,6 +509,8 @@ pub struct PromptKeyState {
     pub conflict_open: bool,
     /// The path field is being edited: its keys are the text field's.
     pub path_editing: bool,
+    /// The search view is up, so the cursor keys move in its results.
+    pub search: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
     /// The drive menu is up, so keys move its highlight.
@@ -479,6 +532,7 @@ impl Default for PromptKeyState {
             config_error: false,
             conflict_open: false,
             path_editing: false,
+            search: false,
             delete_dialog: DeleteKeys::default(),
             volume_menu: false,
             context_menu: false,
@@ -579,6 +633,12 @@ fn keys_without_prompt(
             .filter(|_| is_not_typed_by_text_field(&key, key_modifiers));
     }
 
+    // Escape is `InputState`'s: the text fields capture it, so it only ever
+    // reaches the routing when no field has the focus.
+    if prompt.search {
+        return search_key(prompt, &key, key_modifiers);
+    }
+
     // Escape stops a running job, else dismisses the config error, and is free
     // when neither exists. Unbound rather than bound to something that does
     // nothing — a key that means different things depending on invisible state
@@ -592,6 +652,50 @@ fn keys_without_prompt(
     }
     bound_message(&prompt.keymap, &key, key_modifiers)
         .or_else(|| type_ahead_message(&key, key_modifiers))
+}
+
+/// Keys while the search view is up. A text field captures what it types, so
+/// what arrives here is either not text (arrows, function keys, chords) or the
+/// field has no focus, and then the result list has the keys.
+fn search_key(prompt: &PromptKeyState, key: &Key, key_modifiers: Modifiers) -> Option<Message> {
+    let search = |message| Some(Message::Search(message));
+    if (key_modifiers - Modifiers::SHIFT).is_empty() {
+        match key.as_ref() {
+            Key::Named(Named::ArrowUp) => return search(SearchMessage::Move(-1)),
+            Key::Named(Named::ArrowDown) => return search(SearchMessage::Move(1)),
+            Key::Named(Named::PageUp) => return search(SearchMessage::Page(-1)),
+            Key::Named(Named::PageDown) => return search(SearchMessage::Page(1)),
+            Key::Named(Named::Home) => return search(SearchMessage::First),
+            Key::Named(Named::End) => return search(SearchMessage::Last),
+            Key::Named(Named::ArrowLeft) => return search(SearchMessage::Expand(false)),
+            Key::Named(Named::ArrowRight) => return search(SearchMessage::Expand(true)),
+            Key::Named(Named::Enter) => return search(SearchMessage::Activate),
+            _ => {}
+        }
+    }
+    bound_message(&prompt.keymap, key, key_modifiers)
+        .filter(works_during_search)
+        .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
+        .or_else(|| match type_ahead_message(key, key_modifiers) {
+            Some(Message::TypeAhead(typed)) => search(SearchMessage::AppendToQuery(typed)),
+            _ => None,
+        })
+}
+
+/// What the keys may do while the search view hides a panel: the actions on
+/// the file under its cursor, and the ones about the whole program.
+fn works_during_search(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::Quit
+            | Message::OpenSearch
+            | Message::OpenExternal(_)
+            | Message::Transfer(_)
+            | Message::Delete { .. }
+            | Message::AbortJob
+            | Message::SwitchLanguage
+            | Message::SwitchPanel
+    )
 }
 
 /// The binding a press hits, with the Shift rules of the panels: see the
@@ -628,7 +732,7 @@ fn bound_message(keymap: &Keymap, key: &Key, key_modifiers: Modifiers) -> Option
 /// Fills the placeholders of a translated template in one pass, so a value
 /// that itself contains `{key}` or `{reason}` (a file named `{key}.txt`) is
 /// shown as it is and not filled again.
-fn fill_template(template: &str, values: &[(&str, &str)]) -> String {
+pub fn fill_template(template: &str, values: &[(&str, &str)]) -> String {
     let mut filled = String::with_capacity(template.len());
     let mut rest = template;
     while !rest.is_empty() {
@@ -815,6 +919,13 @@ fn repeats(message: &Message) -> bool {
             | Message::ContextMenuMove(_)
             | Message::ContextMenuFirst
             | Message::ContextMenuLast
+            | Message::Search(
+                SearchMessage::Move(_)
+                    | SearchMessage::Page(_)
+                    | SearchMessage::First
+                    | SearchMessage::Last
+                    | SearchMessage::AppendToQuery(_),
+            )
     )
 }
 
@@ -1033,6 +1144,12 @@ impl App {
             window_size: layout::INITIAL_WINDOW_SIZE,
             input: Arc::default(),
             list_volumes: Arc::new(fs::list_volumes),
+            search: None,
+            search_open: false,
+            search_side: PanelSide::Left,
+            search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE),
+            search_generation: 0,
+            search_handle: None,
         };
 
         let tasks = Task::batch([
@@ -1172,7 +1289,14 @@ impl App {
         if leaves_path_field(&message) {
             self.set_path_field(None);
         }
-        self.apply(message)
+        let had_search_keys = self.search_has_keys();
+        let task = self.apply(message);
+        // The text field keeps typing into the query until it is told to let
+        // go, so leaving the search's panel releases it.
+        if had_search_keys && !self.search_has_keys() {
+            return Task::batch([task, release_focus()]);
+        }
+        task
     }
 
     fn apply(&mut self, message: Message) -> Task<Message> {
@@ -1619,10 +1743,13 @@ impl App {
             Message::WindowResized(size) => {
                 self.window_size = size;
                 self.visible_rows = layout::visible_rows(size);
+                self.resize_search(size);
                 self.left_panel.ensure_visible(self.visible_rows);
                 self.right_panel.ensure_visible(self.visible_rows);
                 Task::none()
             }
+            Message::OpenSearch => self.open_search(),
+            Message::Search(search) => self.update_search(search),
             Message::Quit => iced::exit(),
             // Handled in `update`, which owns the timer's generation check.
             Message::NoticeExpired(_) => Task::none(),
@@ -1844,7 +1971,14 @@ impl App {
     /// there is no cell — the subscription creates it.
     fn publish_key_state(&mut self) {
         let state = self.prompt_key_state();
-        self.input.lock().path_editing = state.path_editing;
+        // An overlay answers Escape itself.
+        let search_open = self.search_has_keys() && !self.overlay_is_open();
+        let job_running = state.job_running;
+        let mut input = self.input.lock();
+        input.path_editing = state.path_editing;
+        input.search_open = search_open;
+        input.job_running = job_running;
+        drop(input);
         // `get` rather than `get_or_init`: the cell is created by the
         // subscription, and `update` must not create it — a cell nothing reads
         // would just be a value nobody sees. Before the first `subscription()`
@@ -1883,7 +2017,18 @@ impl App {
             )
         };
 
-        let panels = row![panel_view(PanelSide::Left), panel_view(PanelSide::Right)]
+        let side_view = |side: PanelSide| match self.search.as_ref() {
+            Some(search) if self.search_open && side == self.search_side => search_ui::view(
+                search,
+                self.search_rows,
+                self.active_panel == side,
+                self.lang,
+                &self.palette,
+            ),
+            _ => panel_view(side),
+        };
+
+        let panels = row![side_view(PanelSide::Left), side_view(PanelSide::Right)]
             .spacing(ui::theme::spacing::PANEL_GAP)
             .height(Length::Fill);
 
@@ -1897,6 +2042,7 @@ impl App {
                     &self.palette,
                     self.job_status(),
                     self.status_error(),
+                    self.search_status(),
                     statusbar::PathBar {
                         editing: self.path_field.as_deref(),
                         on_input: Message::PathFieldInput,
@@ -2035,6 +2181,25 @@ impl App {
         self.job_error.as_deref().or(self.config_error.as_deref())
     }
 
+    /// What the status bar shows instead of the panel's entry while the search
+    /// has the keys: the cursor's file below the root, with `:line` on a line.
+    /// Empty without a cursor, so the panel's entry does not pose as the
+    /// search's.
+    fn search_status(&self) -> Option<String> {
+        if !self.search_has_keys() {
+            return None;
+        }
+        let view = self.search.as_ref()?;
+        let Some((path, line)) = view.cursor_target() else {
+            return Some(String::new());
+        };
+        let relative = path.strip_prefix(&view.root).unwrap_or(&path);
+        Some(match line {
+            Some(number) => format!("{}:{number}", relative.display()),
+            None => relative.display().to_string(),
+        })
+    }
+
     /// The state the key routing needs, cheap to clone.
     fn prompt_key_state(&self) -> PromptKeyState {
         let job_running = self.jobs.is_busy();
@@ -2042,6 +2207,7 @@ impl App {
         let volume_menu = self.volume_menu.is_some();
         let context_menu = self.context_menu.is_some();
         let path_editing = self.path_field.is_some();
+        let search = self.search_has_keys();
         let delete_dialog = match &self.delete_dialog {
             None => DeleteKeys::Closed,
             Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
@@ -2056,6 +2222,7 @@ impl App {
                 volume_menu,
                 context_menu,
                 path_editing,
+                search,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
                 // the dialog's keys would fall through to the panels.
@@ -2071,6 +2238,7 @@ impl App {
                 volume_menu,
                 context_menu,
                 path_editing,
+                search,
                 conflict_open: self.pending_conflict.is_some(),
                 busy: prompt.busy(),
                 typed: prompt.name().into(),
@@ -2081,6 +2249,9 @@ impl App {
     /// NC's rule for F5, F6 and F8: tagged rows win, otherwise the row under
     /// the cursor. The `..` entry is never a thing to act on.
     fn action_sources(&self) -> Vec<PathBuf> {
+        if let Some(search) = self.open_search_view() {
+            return search.found_files();
+        }
         let panel = self.active_panel();
         if panel.selection.any_tagged() {
             panel
@@ -2207,7 +2378,7 @@ impl App {
     /// one, below that row. The cursor goes to the row; tags stay, so the menu
     /// acts on them as F5 and F8 do.
     fn open_context_menu(&mut self, side: PanelSide, index: usize, anchor: Option<Point>) {
-        if self.blocking_overlay_is_open() {
+        if self.blocking_overlay_is_open() || (self.search_open && side == self.search_side) {
             return;
         }
         // An open menu is replaced by a right click and left alone by the keys.
@@ -2323,7 +2494,7 @@ impl App {
         self.delete_dialog = Some(Deletion {
             sources,
             permanent,
-            side: self.active_panel,
+            side: self.source_side(),
         });
         Task::none()
     }
@@ -2419,7 +2590,7 @@ impl App {
     /// Ends the delete, finished, failed or stopped: the tags refer to entries
     /// that may be gone, so they go, and both panels are re-read.
     fn end_delete(&mut self) -> Task<Message> {
-        let side = self.deleting.take().map_or(self.active_panel, |d| d.side);
+        let side = self.deleting.take().map_or(self.source_side(), |d| d.side);
         self.generation = self.generation.wrapping_add(1);
         self.job_progress = None;
         self.panel_mut(side).selection.clear();
@@ -2427,20 +2598,29 @@ impl App {
             let path = self.panel(each).path.clone();
             self.load(each, path, None)
         });
-        Task::batch(tasks)
+        Task::batch(tasks.into_iter().chain([self.restart_search()]))
     }
 
     /// F3 / F4: the row under the cursor goes to the external program. Tags
     /// are ignored, as in Norton Commander; `..` and directories have nothing
     /// to view or edit.
     fn open_external(&mut self, kind: fs::OpenKind) {
-        let Some(entry) = self.active_panel().selected_entry() else {
-            return;
+        let target = match self.open_search_view() {
+            Some(search) => search.cursor_target().filter(|(path, _)| !path.is_dir()),
+            None => self
+                .active_panel()
+                .selected_entry()
+                .filter(|entry| !entry.is_parent && !entry.is_dir)
+                .map(|entry| (entry.path.clone(), None)),
         };
-        if entry.is_parent || entry.is_dir {
-            return;
+        if let Some((path, line)) = target {
+            self.launch_external(kind, path, line);
         }
-        let path = entry.path.clone();
+    }
+
+    /// Hands `path` to the program for `kind`, at `line` when the program
+    /// takes one.
+    fn launch_external(&mut self, kind: fs::OpenKind, path: PathBuf, line: Option<u64>) {
         self.job_error = None;
         self.notice = None;
         let name = path
@@ -2448,7 +2628,8 @@ impl App {
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
         let executable = fs::could_execute(&path);
-        let Some(command) = fs::open_command(&self.open_programs, kind, &path, executable) else {
+        let Some(command) = fs::open_command(&self.open_programs, kind, &path, executable, line)
+        else {
             let keys: Vec<String> = [
                 Message::OpenExternal(fs::OpenKind::View),
                 Message::OpenExternal(fs::OpenKind::Edit),
@@ -2521,7 +2702,7 @@ impl App {
             return Task::none();
         }
 
-        let target = self.panel(self.active_panel.other()).path.clone();
+        let target = self.panel(self.source_side().other()).path.clone();
         let transfer = Transfer {
             kind,
             sources,
@@ -2577,13 +2758,14 @@ impl App {
         self.transfer = None;
         self.conflict_rule = None;
         self.generation = self.generation.wrapping_add(1);
-        let source_side = self.active_panel;
+        let source_side = self.source_side();
         let target_side = source_side.other();
         let source_path = self.panel(source_side).path.clone();
         let target_path = self.panel(target_side).path.clone();
         Task::batch([
             self.load(source_side, source_path, None),
             self.load(target_side, target_path, None),
+            self.restart_search(),
         ])
     }
 
@@ -2753,6 +2935,285 @@ impl App {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned());
         self.load(side, parent, came_from)
+    }
+
+    /// The search view, while it is up.
+    fn open_search_view(&self) -> Option<&SearchView> {
+        self.search.as_ref().filter(|_| self.search_has_keys())
+    }
+
+    /// The search view is up and its panel is the active one: the keys and the
+    /// file actions are the search's. After Tab or a click on the other panel
+    /// they are that panel's again, while the search stays on screen.
+    fn search_has_keys(&self) -> bool {
+        self.search_open && self.active_panel == self.search_side
+    }
+
+    /// The panel that file actions take their files from: the one the search
+    /// view stands in for, else the active one.
+    fn source_side(&self) -> PanelSide {
+        if self.search_has_keys() {
+            self.search_side
+        } else {
+            self.active_panel
+        }
+    }
+
+    fn resize_search(&mut self, window: Size) {
+        self.search_rows = layout::search_visible_rows(window);
+        if let Some(view) = self.search.as_mut() {
+            view.ensure_visible(self.search_rows);
+        }
+    }
+
+    fn focus_search_field(&self) -> Task<Message> {
+        let id = self.search.as_ref().map_or(search_ui::QUERY_ID, |view| {
+            search_ui::field_id(view.focused)
+        });
+        operation::focus(id).chain(operation::select_all(id))
+    }
+
+    /// Shows the search view in place of the active panel, below that panel's
+    /// directory. A view kept from before keeps its fields and options, and
+    /// searches anew, so no result is older than the files. Pressed while it is
+    /// up, the key moves to the next field.
+    fn open_search(&mut self) -> Task<Message> {
+        if self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        if self.search_open {
+            if self.search_has_keys() {
+                if let Some(view) = self.search.as_mut() {
+                    view.focused = view.focused.next();
+                }
+            } else {
+                self.active_panel = self.search_side;
+            }
+            return self.focus_search_field();
+        }
+        self.context_menu = None;
+        self.job_error = None;
+        self.notice = None;
+        let side = self.active_panel;
+        let root = self.panel(side).path.clone();
+        self.search_side = side;
+        self.search_open = true;
+        self.search_rows = layout::search_visible_rows(self.window_size);
+        match self.search.as_mut() {
+            Some(view) => view.root = root,
+            None => self.search = Some(SearchView::new(root)),
+        }
+        let search = self.restart_search();
+        Task::batch([self.focus_search_field(), search])
+    }
+
+    fn next_search_generation(&mut self) -> u64 {
+        self.search_generation = self.search_generation.wrapping_add(1);
+        self.search_generation
+    }
+
+    /// Searches again once the typing pauses; the running search stops now.
+    fn schedule_search(&mut self) -> Task<Message> {
+        self.search_handle = None;
+        let generation = self.next_search_generation();
+        if let Some(view) = self.search.as_mut() {
+            view.generation = generation;
+            view.running = false;
+        }
+        Task::perform(
+            async { tokio::time::sleep(SEARCH_DEBOUNCE).await },
+            move |()| Message::Search(SearchMessage::Debounced(generation)),
+        )
+    }
+
+    /// Searches again now, for when the files changed under the results.
+    fn restart_search(&mut self) -> Task<Message> {
+        if !self.search_open {
+            return Task::none();
+        }
+        self.search_handle = None;
+        let generation = self.next_search_generation();
+        self.start_search(generation)
+    }
+
+    fn start_search(&mut self, generation: u64) -> Task<Message> {
+        let Some(view) = self.search.as_mut() else {
+            return Task::none();
+        };
+        view.generation = generation;
+        match fs::search::compile(&view.query_for_engine()) {
+            // Nothing to look for yet: the empty list is the answer.
+            Err(fs::search::SearchError::Empty) => {
+                view.clear_results();
+                Task::none()
+            }
+            Err(error) => {
+                view.clear_results();
+                view.error = Some(error);
+                Task::none()
+            }
+            Ok(compiled) => {
+                view.begin(generation);
+                let (task, handle) =
+                    Task::run(search_events(compiled, generation), std::convert::identity)
+                        .abortable();
+                self.search_handle = Some(handle.abort_on_drop());
+                task
+            }
+        }
+    }
+
+    fn update_search(&mut self, message: SearchMessage) -> Task<Message> {
+        if !self.search_open {
+            return Task::none();
+        }
+        // Using the view makes its panel the active one; what runs by itself
+        // does not.
+        if !matches!(
+            message,
+            SearchMessage::Events { .. }
+                | SearchMessage::Debounced(_)
+                | SearchMessage::Close
+                | SearchMessage::Scrolled(_)
+        ) {
+            self.active_panel = self.search_side;
+        }
+        let rows = self.search_rows;
+        let Some(view) = self.search.as_mut() else {
+            return Task::none();
+        };
+        match message {
+            SearchMessage::QueryChanged(text) => {
+                view.query = text;
+                view.focused = SearchField::Query;
+                self.schedule_search()
+            }
+            SearchMessage::IncludeChanged(text) => {
+                view.include = text;
+                view.focused = SearchField::Include;
+                self.schedule_search()
+            }
+            SearchMessage::ExcludeChanged(text) => {
+                view.exclude = text;
+                view.focused = SearchField::Exclude;
+                self.schedule_search()
+            }
+            SearchMessage::AppendToQuery(typed) => {
+                view.query.push_str(&typed);
+                view.focused = SearchField::Query;
+                let search = self.schedule_search();
+                let id = search_ui::QUERY_ID;
+                Task::batch([
+                    search,
+                    operation::focus(id).chain(operation::move_cursor_to_end(id)),
+                ])
+            }
+            SearchMessage::ToggleCase => {
+                view.case_sensitive = !view.case_sensitive;
+                self.schedule_search()
+            }
+            SearchMessage::ToggleWholeWord => {
+                view.whole_word = !view.whole_word;
+                self.schedule_search()
+            }
+            SearchMessage::ToggleRegex => {
+                view.regex = !view.regex;
+                self.schedule_search()
+            }
+            SearchMessage::Debounced(generation) => {
+                if generation == view.generation {
+                    self.start_search(generation)
+                } else {
+                    Task::none()
+                }
+            }
+            SearchMessage::Events { generation, events } => {
+                if generation == view.generation {
+                    for event in events {
+                        view.apply_event(event);
+                    }
+                    view.ensure_visible(rows);
+                    if !view.running {
+                        self.search_handle = None;
+                    }
+                }
+                Task::none()
+            }
+            SearchMessage::Close => {
+                // Late timers and batches of the stopped search find another
+                // generation and are dropped.
+                view.running = false;
+                self.search_open = false;
+                self.search_handle = None;
+                let generation = self.next_search_generation();
+                if let Some(kept) = self.search.as_mut() {
+                    kept.generation = generation;
+                }
+                release_focus()
+            }
+            SearchMessage::Move(delta) => {
+                view.move_cursor(delta, rows);
+                Task::none()
+            }
+            SearchMessage::Page(direction) => {
+                view.page(direction, rows);
+                Task::none()
+            }
+            SearchMessage::First => {
+                view.first(rows);
+                Task::none()
+            }
+            SearchMessage::Last => {
+                view.last(rows);
+                Task::none()
+            }
+            SearchMessage::Expand(expanded) => {
+                view.set_expanded(expanded, rows);
+                Task::none()
+            }
+            SearchMessage::Activate => self.activate_search_cursor(),
+            SearchMessage::RowClicked(index) => {
+                view.select_row(index, rows);
+                release_focus()
+            }
+            SearchMessage::RowActivated(index) => {
+                view.select_row(index, rows);
+                self.activate_search_cursor()
+            }
+            SearchMessage::ToggleGroup(file) => {
+                view.toggle_group(file, rows);
+                Task::none()
+            }
+            SearchMessage::Scrolled(delta) => {
+                view.scroll(delta, rows);
+                Task::none()
+            }
+        }
+    }
+
+    /// Enter on a result: a file is shown in the other panel, a line is opened
+    /// in the editor at that line.
+    fn activate_search_cursor(&mut self) -> Task<Message> {
+        let Some(target) = self.open_search_view().and_then(SearchView::cursor_target) else {
+            return Task::none();
+        };
+        match target {
+            (path, Some(line)) => {
+                self.launch_external(fs::OpenKind::Edit, path, Some(line));
+                Task::none()
+            }
+            (path, None) => {
+                let (Some(directory), Some(file)) = (path.parent(), path.file_name()) else {
+                    return Task::none();
+                };
+                let name = file.to_string_lossy().into_owned();
+                self.load(
+                    self.search_side.other(),
+                    directory.to_path_buf(),
+                    Some(name),
+                )
+            }
+        }
     }
 
     /// Starts an async directory read for `side`.
@@ -3308,6 +3769,31 @@ mod reload_order {
     }
 }
 
+/// What the snapshot of the search view shows: a plain file and a source file
+/// with two hits.
+#[cfg(test)]
+fn fixed_search_results(root: &Path) -> Vec<(PathBuf, Vec<crate::fs::search::LineMatch>)> {
+    use crate::fs::search::LineMatch;
+    let hit = |number: u64, text: &str, from: usize, to: usize| LineMatch {
+        number,
+        text: text.to_string(),
+        ranges: std::iter::once(from..to).collect(),
+    };
+    vec![
+        (
+            root.join("notes.txt"),
+            vec![hit(3, "say hello to the world", 4, 9)],
+        ),
+        (
+            root.join("src/main.rs"),
+            vec![
+                hit(1, "// hello world example", 3, 8),
+                hit(12, "println!(\"hello\");", 10, 15),
+            ],
+        ),
+    ]
+}
+
 #[cfg(test)]
 // Test-only constructors and helpers. One block rather than four: they were
 // appended as tests were written, and a reader had to hunt for them.
@@ -3367,6 +3853,12 @@ impl App {
             window_size: layout::INITIAL_WINDOW_SIZE,
             input: Arc::default(),
             list_volumes: Arc::new(fs::list_volumes),
+            search: None,
+            search_open: false,
+            search_side: PanelSide::Left,
+            search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE),
+            search_generation: 0,
+            search_handle: None,
         };
         for (side, names) in [
             (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
@@ -3424,6 +3916,49 @@ impl App {
             open.set_error(message.to_string());
         }
     }
+    /// An app with the search view up on fixed results, for the snapshot.
+    pub fn with_fixed_search() -> Self {
+        let mut app = Self::with_fixed_panels();
+        let root = app.panel(PanelSide::Left).path.clone();
+        app.show_search_results_for_test("hello", fixed_search_results(&root));
+        app
+    }
+
+    /// Opens the search view the way Alt+F7 does and fills it with `files`, as
+    /// a finished search for `query` would, with the cursor on the second row.
+    pub fn show_search_results_for_test(
+        &mut self,
+        query: &str,
+        files: Vec<(PathBuf, Vec<crate::fs::search::LineMatch>)>,
+    ) {
+        use crate::fs::search::{SearchEvent, SearchTotals};
+        drop(self.update(Message::OpenSearch));
+        let totals = SearchTotals {
+            scanned: 14,
+            files: files.len(),
+            matches: files.iter().map(|(_, lines)| lines.len()).sum(),
+            skipped: 0,
+            truncated: false,
+        };
+        if let Some(view) = self.search.as_mut() {
+            view.query = query.to_string();
+            view.begin(1);
+            for (path, lines) in files {
+                view.apply_event(SearchEvent::File { path, lines });
+            }
+            view.apply_event(SearchEvent::Finished(totals));
+            view.select_row(2, self.search_rows);
+        }
+    }
+
+    pub fn search_for_test(&self) -> Option<&SearchView> {
+        self.search.as_ref()
+    }
+
+    pub fn search_is_open_for_test(&self) -> bool {
+        self.search_open
+    }
+
     pub fn panel_mut_for_test(&mut self, side: PanelSide) -> &mut PanelState {
         self.panel_mut(side)
     }
@@ -4829,7 +5364,7 @@ mod delete_tests {
         let idle = PromptKeyState::default();
         for modifiers in [Modifiers::ALT, Modifiers::CTRL, Modifiers::LOGO] {
             assert_eq!(route(&idle, Named::Enter, modifiers), None, "{modifiers:?}");
-            assert_eq!(route(&idle, Named::F7, modifiers), None, "{modifiers:?}");
+            assert_eq!(route(&idle, Named::F8, modifiers), None, "{modifiers:?}");
         }
         // Ctrl+* is CTRL|SHIFT on a real keyboard, since `*` needs Shift.
         assert_eq!(
@@ -6642,5 +7177,423 @@ mod configured_keys_tests {
             binding_key_of("*", Code::Digit8, Modifiers::CTRL | Modifiers::SHIFT),
             character("*")
         );
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod search_tests {
+    use super::*;
+    use crate::fs::search::{LineMatch, SearchEvent};
+    use crate::search_view::SearchRow;
+
+    fn route(search_open: bool, key: Key, modifiers: Modifiers) -> Option<Message> {
+        let state = PromptKeyState {
+            search: search_open,
+            ..PromptKeyState::default()
+        };
+        route_key(&state, key, modifiers)
+    }
+
+    fn named(named: Named) -> Key {
+        Key::Named(named)
+    }
+
+    fn character(typed: &str) -> Key {
+        Key::Character(typed.into())
+    }
+
+    fn found(path: &str, lines: &[u64]) -> SearchEvent {
+        SearchEvent::File {
+            path: PathBuf::from(path),
+            lines: lines
+                .iter()
+                .map(|&number| LineMatch {
+                    number,
+                    text: format!("line {number}"),
+                    ranges: std::iter::once(0..4).collect(),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn the_status_bar_names_the_cursor_file_only_while_the_search_has_the_keys() {
+        let mut app = App::with_fixed_search();
+        let shown = app.search_status().unwrap();
+        assert!(!shown.is_empty() && !shown.starts_with('/'), "{shown}");
+
+        drop(app.update(Message::SwitchPanel));
+        assert_eq!(app.search_status(), None);
+    }
+
+    fn app_with_results(files: &[(&str, &[u64])]) -> App {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::OpenSearch));
+        let generation = app.search_for_test().unwrap().generation;
+        let events = files
+            .iter()
+            .map(|(path, lines)| found(path, lines))
+            .collect();
+        drop(app.update(Message::Search(SearchMessage::Events {
+            generation,
+            events,
+        })));
+        app
+    }
+
+    #[derive(Default)]
+    struct RecordingLauncher(Mutex<Vec<fs::OpenCommand>>);
+
+    impl fs::Launcher for RecordingLauncher {
+        fn launch(&self, command: &fs::OpenCommand) -> Result<(), String> {
+            self.0
+                .lock()
+                .map_err(|poisoned| poisoned.to_string())?
+                .push(command.clone());
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn the_cursor_keys_move_in_the_results_while_the_search_is_up() {
+        let search = |message| Some(Message::Search(message));
+        let none = Modifiers::default();
+        assert_eq!(
+            route(true, named(Named::ArrowDown), none),
+            search(SearchMessage::Move(1))
+        );
+        assert_eq!(
+            route(true, named(Named::ArrowUp), none),
+            search(SearchMessage::Move(-1))
+        );
+        assert_eq!(
+            route(true, named(Named::PageDown), none),
+            search(SearchMessage::Page(1))
+        );
+        assert_eq!(
+            route(true, named(Named::Home), none),
+            search(SearchMessage::First)
+        );
+        assert_eq!(
+            route(true, named(Named::End), none),
+            search(SearchMessage::Last)
+        );
+        assert_eq!(
+            route(true, named(Named::ArrowRight), none),
+            search(SearchMessage::Expand(true))
+        );
+        assert_eq!(
+            route(true, named(Named::ArrowLeft), none),
+            search(SearchMessage::Expand(false))
+        );
+        assert_eq!(
+            route(true, named(Named::Enter), none),
+            search(SearchMessage::Activate)
+        );
+        assert_eq!(
+            route(false, named(Named::ArrowDown), none),
+            Some(Message::MoveSelection(1)),
+            "without the search the arrows are the panel's"
+        );
+    }
+
+    #[test]
+    fn a_printable_key_without_a_focused_field_goes_to_the_query() {
+        assert_eq!(
+            route(true, character("a"), Modifiers::default()),
+            Some(Message::Search(SearchMessage::AppendToQuery(
+                "a".to_string()
+            )))
+        );
+        assert_eq!(
+            route(true, character("A"), Modifiers::SHIFT),
+            Some(Message::Search(SearchMessage::AppendToQuery(
+                "A".to_string()
+            )))
+        );
+    }
+
+    #[test]
+    fn the_keys_that_would_act_on_the_hidden_panel_do_nothing() {
+        let none = Modifiers::default();
+        for key in [
+            named(Named::Backspace),
+            named(Named::Tab),
+            named(Named::Space),
+            named(Named::Insert),
+            named(Named::Escape),
+            named(Named::F7),
+        ] {
+            assert_eq!(route(true, key.clone(), none), None, "{key:?}");
+        }
+    }
+
+    #[test]
+    fn the_file_actions_and_quit_still_work_over_the_search() {
+        let none = Modifiers::default();
+        assert_eq!(
+            route(true, named(Named::F5), none),
+            Some(Message::Transfer(TransferKind::Copy))
+        );
+        assert_eq!(
+            route(true, named(Named::F3), none),
+            Some(Message::OpenExternal(fs::OpenKind::View))
+        );
+        assert_eq!(
+            route(true, named(Named::F4), none),
+            Some(Message::OpenExternal(fs::OpenKind::Edit))
+        );
+        assert_eq!(route(true, named(Named::F10), none), Some(Message::Quit));
+    }
+
+    #[test]
+    fn alt_f7_and_the_find_chord_open_the_search_also_over_it() {
+        let find = Modifiers::COMMAND | Modifiers::SHIFT;
+        for open in [false, true] {
+            assert_eq!(
+                route(open, named(Named::F7), Modifiers::ALT),
+                Some(Message::OpenSearch)
+            );
+            assert_eq!(route(open, character("F"), find), Some(Message::OpenSearch));
+            assert_eq!(route(open, character("f"), find), Some(Message::OpenSearch));
+        }
+    }
+
+    #[test]
+    fn opening_the_search_covers_the_active_panel_and_gives_it_the_keys() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::OpenSearch));
+        let view = app.search_for_test().unwrap();
+        assert_eq!(view.root, app.panel(PanelSide::Left).path);
+        assert!(app.search_is_open_for_test());
+        assert!(app.prompt_key_state().search);
+    }
+
+    #[test]
+    fn closing_keeps_the_fields_and_results_and_stops_taking_batches() {
+        let mut app = app_with_results(&[("/home/test/links/a.txt", &[1])]);
+        drop(app.update(Message::Search(SearchMessage::QueryChanged(
+            "line".to_string(),
+        ))));
+        let generation = app.search_for_test().unwrap().generation;
+        drop(app.update(Message::Search(SearchMessage::Close)));
+
+        assert!(!app.search_is_open_for_test());
+        assert!(!app.prompt_key_state().search);
+        let view = app.search_for_test().unwrap();
+        assert_eq!(view.query, "line");
+        assert_eq!(view.results.len(), 1);
+
+        drop(app.update(Message::Search(SearchMessage::Events {
+            generation,
+            events: vec![found("/home/test/links/late.txt", &[1])],
+        })));
+        assert_eq!(app.search_for_test().unwrap().results.len(), 1);
+    }
+
+    #[test]
+    fn a_batch_of_an_older_search_is_dropped() {
+        let mut app = app_with_results(&[("/home/test/links/a.txt", &[1])]);
+        let current = app.search_for_test().unwrap().generation;
+        drop(app.update(Message::Search(SearchMessage::Events {
+            generation: current + 7,
+            events: vec![found("/home/test/links/b.txt", &[1])],
+        })));
+        assert_eq!(app.search_for_test().unwrap().results.len(), 1);
+    }
+
+    #[test]
+    fn a_pause_that_a_later_keystroke_overtook_starts_nothing() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::OpenSearch));
+        drop(app.update(Message::Search(SearchMessage::QueryChanged(
+            "h".to_string(),
+        ))));
+        let first = app.search_for_test().unwrap().generation;
+        drop(app.update(Message::Search(SearchMessage::QueryChanged(
+            "he".to_string(),
+        ))));
+        assert_ne!(app.search_for_test().unwrap().generation, first);
+
+        drop(app.update(Message::Search(SearchMessage::Debounced(first))));
+        assert!(
+            !app.search_for_test().unwrap().running,
+            "the old timer started a search"
+        );
+    }
+
+    #[test]
+    fn the_right_click_menu_does_not_open_over_the_search() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::OpenSearch));
+        drop(app.update(Message::ContextMenuAt {
+            side: PanelSide::Left,
+            index: 1,
+        }));
+        assert!(app.context_menu_for_test().is_none());
+    }
+
+    #[test]
+    fn file_actions_take_every_file_found() {
+        let mut app = app_with_results(&[
+            ("/home/test/links/b.txt", &[2]),
+            ("/home/test/links/a.txt", &[1]),
+        ]);
+        let found = [
+            PathBuf::from("/home/test/links/a.txt"),
+            PathBuf::from("/home/test/links/b.txt"),
+        ];
+        assert_eq!(app.action_sources(), found);
+        drop(app.update(Message::Search(SearchMessage::Close)));
+        assert_ne!(app.action_sources(), found);
+    }
+
+    #[test]
+    fn after_a_switch_to_the_other_panel_the_keys_and_actions_are_the_panels() {
+        let mut app = app_with_results(&[("/home/test/links/a.txt", &[1])]);
+        drop(app.update(Message::SwitchPanel));
+
+        assert!(!app.prompt_key_state().search);
+        assert_eq!(
+            route_key(
+                &app.prompt_key_state(),
+                named(Named::ArrowDown),
+                Modifiers::default()
+            ),
+            Some(Message::MoveSelection(1))
+        );
+        let other_cursor = app
+            .panel(PanelSide::Right)
+            .selected_entry()
+            .unwrap()
+            .path
+            .clone();
+        assert!(
+            app.panel(PanelSide::Right)
+                .selected_entry()
+                .unwrap()
+                .is_parent
+        );
+        app.panel_mut_for_test(PanelSide::Right).selected = 1;
+        let expected = app
+            .panel(PanelSide::Right)
+            .selected_entry()
+            .unwrap()
+            .path
+            .clone();
+        assert_ne!(other_cursor, expected);
+        assert_eq!(app.action_sources(), [expected]);
+
+        drop(app.update(Message::ContextMenuAt {
+            side: PanelSide::Right,
+            index: 1,
+        }));
+        assert!(app.context_menu_for_test().is_some());
+        assert!(app.search_is_open_for_test(), "the search stays up");
+    }
+
+    #[test]
+    fn opening_the_search_again_brings_the_keys_back_without_changing_the_field() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::OpenSearch));
+        drop(app.update(Message::OpenSearch));
+        assert_eq!(app.search_for_test().unwrap().focused, SearchField::Include);
+        drop(app.update(Message::SwitchPanel));
+        assert!(!app.prompt_key_state().search);
+
+        drop(app.update(Message::OpenSearch));
+
+        assert!(app.prompt_key_state().search);
+        assert_eq!(app.search_for_test().unwrap().focused, SearchField::Include);
+    }
+
+    #[test]
+    fn using_the_search_makes_its_panel_active_again() {
+        let mut app = app_with_results(&[("/home/test/links/a.txt", &[1])]);
+        drop(app.update(Message::SwitchPanel));
+        drop(app.update(Message::Search(SearchMessage::RowClicked(0))));
+        assert!(app.prompt_key_state().search);
+
+        drop(app.update(Message::SwitchPanel));
+        drop(app.update(Message::Search(SearchMessage::ToggleCase)));
+        assert!(app.prompt_key_state().search);
+
+        drop(app.update(Message::SwitchPanel));
+        let generation = app.search_for_test().unwrap().generation;
+        drop(app.update(Message::Search(SearchMessage::Debounced(generation))));
+        assert!(
+            !app.prompt_key_state().search,
+            "a timer is no use of the view"
+        );
+    }
+
+    #[test]
+    fn pressing_the_search_key_again_moves_to_the_next_field() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::OpenSearch));
+        assert_eq!(app.search_for_test().unwrap().focused, SearchField::Query);
+        drop(app.update(Message::OpenSearch));
+        assert_eq!(app.search_for_test().unwrap().focused, SearchField::Include);
+        drop(app.update(Message::OpenSearch));
+        drop(app.update(Message::OpenSearch));
+        assert_eq!(app.search_for_test().unwrap().focused, SearchField::Query);
+    }
+
+    #[test]
+    fn reopening_searches_again_with_the_same_fields() {
+        let mut app = app_with_results(&[("/home/test/links/a.txt", &[1])]);
+        drop(app.update(Message::Search(SearchMessage::QueryChanged(
+            "line".to_string(),
+        ))));
+        drop(app.update(Message::Search(SearchMessage::Close)));
+        drop(app.update(Message::OpenSearch));
+        let view = app.search_for_test().unwrap();
+        assert_eq!(view.query, "line");
+        assert!(view.running, "the old results are not trusted");
+        assert!(view.results.is_empty());
+    }
+
+    #[test]
+    fn enter_on_a_line_opens_the_editor_at_that_line() {
+        let launcher = Arc::new(RecordingLauncher::default());
+        let mut app = app_with_results(&[("/home/test/links/a.txt", &[7])])
+            .with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>);
+        app.open_programs = config::OpenPrograms {
+            edit: Some(config::ProgramLine::new("editor", &["+{line}"])),
+            ..config::OpenPrograms::default()
+        };
+        drop(app.update(Message::Search(SearchMessage::Move(1))));
+        assert_eq!(
+            app.search_for_test().unwrap().cursor,
+            Some(SearchRow::Line(0, 0))
+        );
+
+        drop(app.update(Message::Search(SearchMessage::Activate)));
+
+        let calls = launcher.0.lock().unwrap().clone();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].program, "editor");
+        assert_eq!(calls[0].args[0], "+7");
+        assert_eq!(calls[0].args.last().unwrap(), "/home/test/links/a.txt");
+    }
+
+    #[test]
+    fn a_click_selects_the_row_and_the_chevron_folds_the_file() {
+        let mut app = app_with_results(&[("/home/test/links/a.txt", &[1, 2])]);
+        drop(app.update(Message::Search(SearchMessage::RowClicked(2))));
+        assert_eq!(
+            app.search_for_test().unwrap().cursor,
+            Some(SearchRow::Line(0, 1))
+        );
+        drop(app.update(Message::Search(SearchMessage::ToggleGroup(0))));
+        assert_eq!(app.search_for_test().unwrap().rows(), [SearchRow::File(0)]);
     }
 }

@@ -6,7 +6,7 @@ use iced::{event, mouse, window, Point, Size};
 
 use crate::fs::OpenKind;
 use crate::i18n::Msg;
-use crate::messages::{ClipboardKind, Message, TransferKind};
+use crate::messages::{ClipboardKind, Message, SearchMessage, TransferKind};
 use crate::ui::layout::{MENU_ITEM_HEIGHT, MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_WIDTH};
 
 /// What an entry does. Each one is exactly the message its key sends.
@@ -254,6 +254,11 @@ pub struct InputState {
     /// The path field is being edited, so Escape and Tab leave it. Kept here
     /// because the text field captures those keys before the key routing.
     pub path_editing: bool,
+    /// The search view is up and nothing is on top of it: Escape closes it,
+    /// and an Option tap opens no menu on the panel it hides.
+    pub search_open: bool,
+    /// A job is running, so Escape stops it before it closes the search.
+    pub job_running: bool,
 }
 
 impl InputState {
@@ -272,7 +277,19 @@ impl InputState {
             event::Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => {
                 self.alt_tap.key_pressed(key);
                 let leaves_field = matches!(key, Key::Named(Named::Escape | Named::Tab));
-                (self.path_editing && leaves_field).then_some(Message::PathFieldCancel)
+                if self.path_editing && leaves_field {
+                    return Some(Message::PathFieldCancel);
+                }
+                // The search's text fields capture Escape, so the routing
+                // never sees it there.
+                if !(self.search_open && matches!(key, Key::Named(Named::Escape))) {
+                    return None;
+                }
+                Some(if self.job_running {
+                    Message::AbortJob
+                } else {
+                    Message::Search(SearchMessage::Close)
+                })
             }
             event::Event::Mouse(mouse::Event::WheelScrolled { .. }) => {
                 self.alt_tap.cancel();
@@ -282,7 +299,8 @@ impl InputState {
                 // Still fed, so the tap's bookkeeping stays right, but a tap
                 // while a path is being typed opens nothing.
                 let tapped = self.alt_tap.modifiers_changed(*modifiers);
-                (tapped && !self.path_editing).then_some(Message::ContextMenuKey)
+                (tapped && !self.path_editing && !self.search_open)
+                    .then_some(Message::ContextMenuKey)
             }
             event::Event::Window(window::Event::Unfocused) => {
                 self.alt_tap.cancel();
@@ -566,6 +584,35 @@ mod tests {
             [Message::ContextMenuKey],
             "the next tap still works"
         );
+    }
+
+    #[test]
+    fn escape_closes_the_search_whatever_captured_it_and_a_tap_opens_no_menu_over_it() {
+        let mut input = InputState::default();
+        let escape = key_pressed(Key::Named(Named::Escape));
+        assert_eq!(input.handle(&escape, event::Status::Captured), None);
+
+        input.search_open = true;
+        for status in [event::Status::Captured, event::Status::Ignored] {
+            assert_eq!(
+                input.handle(&escape, status),
+                Some(Message::Search(SearchMessage::Close))
+            );
+        }
+        input.job_running = true;
+        assert_eq!(
+            input.handle(&escape, event::Status::Ignored),
+            Some(Message::AbortJob),
+            "a running job is stopped before the search is closed"
+        );
+        input.job_running = false;
+        let letter = key_pressed(Key::Character("a".into()));
+        assert_eq!(input.handle(&letter, event::Status::Ignored), None);
+        let tap = feed(
+            &mut input,
+            &[modifiers(Modifiers::ALT), modifiers(Modifiers::empty())],
+        );
+        assert!(tap.is_empty(), "{tap:?}");
     }
 
     #[test]

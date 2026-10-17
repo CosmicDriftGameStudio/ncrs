@@ -1,6 +1,5 @@
 //! Recursive file-name and file-content search, the way VS Code does it.
 //! No UI: events go out through a bounded channel and the caller renders them.
-#![cfg_attr(not(test), allow(dead_code))]
 
 use std::fmt;
 use std::fs::{File, Metadata};
@@ -28,10 +27,14 @@ const PREVIEW_LEAD_CHARS: usize = 40;
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 const PROGRESS_FILES: usize = 500;
 
+#[cfg(any(windows, test))]
 const WINDOWS_ATTRIBUTE_OFFLINE: u32 = 0x1000;
+#[cfg(any(windows, test))]
 const WINDOWS_ATTRIBUTE_RECALL_ON_OPEN: u32 = 0x4_0000;
+#[cfg(any(windows, test))]
 const WINDOWS_ATTRIBUTE_RECALL_ON_DATA_ACCESS: u32 = 0x40_0000;
 /// `SF_DATALESS` from macOS `sys/stat.h`.
+#[cfg(any(target_os = "macos", test))]
 const MACOS_FLAG_DATALESS: u32 = 0x4000_0000;
 
 #[derive(Debug, Clone)]
@@ -49,6 +52,7 @@ pub struct SearchQuery {
 }
 
 impl SearchQuery {
+    #[cfg(test)]
     pub fn new(root: PathBuf, text: impl Into<String>) -> Self {
         Self {
             root,
@@ -264,6 +268,7 @@ fn comparable_path(root: &Path, path: &Path, case_sensitive: bool) -> String {
     fold(&joined, case_sensitive)
 }
 
+#[cfg(any(windows, test))]
 pub fn windows_attributes_are_cloud_placeholder(attributes: u32) -> bool {
     attributes
         & (WINDOWS_ATTRIBUTE_OFFLINE
@@ -272,6 +277,7 @@ pub fn windows_attributes_are_cloud_placeholder(attributes: u32) -> bool {
         != 0
 }
 
+#[cfg(any(target_os = "macos", test))]
 pub fn macos_flags_are_cloud_placeholder(st_flags: u32) -> bool {
     st_flags & MACOS_FLAG_DATALESS != 0
 }

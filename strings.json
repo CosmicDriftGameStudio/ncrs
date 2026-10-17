@@ -467,6 +467,114 @@
       "context": "Same as the contrast warning with a line, for when no line applies: the colors come from the built-in palette only. Takes the file path, the names of the two color roles (config keys, untranslated) and the contrast ratio with one decimal place.",
       "en": "Config file {path}: {foreground} on {background} has a contrast of only {ratio}:1 and may be hard to read.",
       "de": "Konfigurationsdatei {path}: {foreground} auf {background} hat nur ein Kontrastverhältnis von {ratio}:1 und ist womöglich schwer lesbar."
+    },
+    {
+      "key": "search.title",
+      "context": "Title bar of the search view that replaces a file panel. Takes {path}, the directory the search runs in.",
+      "en": "Search in {path}",
+      "de": "Suche in {path}"
+    },
+    {
+      "key": "search.query_placeholder",
+      "context": "Placeholder of the search text field at the top of the search view, shown while it is empty. A short verb or noun.",
+      "en": "Search",
+      "de": "Suchen"
+    },
+    {
+      "key": "search.files_label",
+      "context": "Label in front of the field that limits the search to file names matching patterns (the include field). Ends with a colon, kept short: the label column is narrow.",
+      "en": "Files:",
+      "de": "Dateien:"
+    },
+    {
+      "key": "search.exclude_label",
+      "context": "Label in front of the field that lists patterns of files and directories to leave out of the search. Ends with a colon, kept short: the label column is narrow.",
+      "en": "Exclude:",
+      "de": "Ohne:"
+    },
+    {
+      "key": "search.include_placeholder",
+      "context": "Placeholder of the Files field in the search view: an example of patterns separated by semicolons. Patterns are globs, a trailing slash means a directory.",
+      "en": "e.g. *.rs; src/",
+      "de": "z. B. *.rs; src/"
+    },
+    {
+      "key": "search.exclude_placeholder",
+      "context": "Placeholder of the Exclude field in the search view: an example of patterns separated by semicolons. Patterns are globs, a trailing slash means a directory with everything in it.",
+      "en": "e.g. target/; *.min.js",
+      "de": "z. B. target/; *.min.js"
+    },
+    {
+      "key": "search.tooltip_case",
+      "context": "Tooltip of the Aa toggle button next to the search field. Turning it on makes upper and lower case letters different.",
+      "en": "Match case",
+      "de": "Groß-/Kleinschreibung beachten"
+    },
+    {
+      "key": "search.tooltip_word",
+      "context": "Tooltip of the ab toggle button next to the search field. Turning it on finds the text only as a whole word.",
+      "en": "Match whole word",
+      "de": "Nur ganze Wörter"
+    },
+    {
+      "key": "search.tooltip_regex",
+      "context": "Tooltip of the .* toggle button next to the search field. Turning it on reads the text as a regular expression.",
+      "en": "Use regular expression",
+      "de": "Regulären Ausdruck verwenden"
+    },
+    {
+      "key": "search.summary_content",
+      "context": "Summary line of a search in file contents, under the search fields. Takes the number of files with a match and the number of matching lines.",
+      "en": "Files: {files} · Lines: {lines}",
+      "de": "Dateien: {files} · Zeilen: {lines}"
+    },
+    {
+      "key": "search.summary_names",
+      "context": "Summary line of a search by file name only (the search field is empty), under the search fields. Takes the number of files found.",
+      "en": "Files: {files}",
+      "de": "Dateien: {files}"
+    },
+    {
+      "key": "search.skipped",
+      "context": "Appended to the summary line of the search view when some files could not be searched (unreadable, too big, binary or offline). Starts with a separator and a space; takes the count.",
+      "en": " · skipped: {count}",
+      "de": " · übersprungen: {count}"
+    },
+    {
+      "key": "search.truncated",
+      "context": "Appended to the summary line of the search view when the search stopped because it reached the maximum number of matches. Starts with a separator and a space.",
+      "en": " · limit reached",
+      "de": " · Limit erreicht"
+    },
+    {
+      "key": "search.running",
+      "context": "Summary line of the search view while the search is still running. Takes the number of files looked at so far.",
+      "en": "Searching… {scanned} files scanned",
+      "de": "Suche läuft … {scanned} Dateien durchsucht"
+    },
+    {
+      "key": "search.no_results",
+      "context": "Summary line of the search view when a finished search found nothing.",
+      "en": "No results",
+      "de": "Keine Treffer"
+    },
+    {
+      "key": "search.hint",
+      "context": "Summary line of the search view while both the search field and the Files field are empty: tells what typing does.",
+      "en": "Type to search file contents, or fill in Files for a name search",
+      "de": "Tippen sucht in Dateiinhalten, nur „Dateien“ ausgefüllt sucht nach Namen"
+    },
+    {
+      "key": "search.error_pattern",
+      "context": "Summary line of the search view in red when a pattern of the Files or Exclude field is not valid. Takes the pattern and the reason, which is English text of the glob parser and stays untranslated.",
+      "en": "Invalid pattern {pattern}: {reason}",
+      "de": "Ungültiges Muster {pattern}: {reason}"
+    },
+    {
+      "key": "search.error_regex",
+      "context": "Summary line of the search view in red when the text is not a valid regular expression. Takes the reason, which is English text of the regex parser and stays untranslated.",
+      "en": "Invalid regular expression: {reason}",
+      "de": "Ungültiger regulärer Ausdruck: {reason}"
     }
   ]
 }

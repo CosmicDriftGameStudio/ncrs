@@ -196,6 +196,25 @@ pub fn tag_button(
     }
 }
 
+/// The fold chevron of a result group: it follows the row's text colour, so it
+/// stays readable on the cursor row's fill.
+pub fn chevron_button(
+    palette: &Palette,
+    highlighted: bool,
+) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    move |_theme, _status| button::Style {
+        background: None,
+        text_color: if highlighted {
+            colors.cursor_text
+        } else {
+            colors.dim_text
+        },
+        border: Border::default(),
+        ..button::Style::default()
+    }
+}
+
 /// The "for all files" checkbox in the conflict dialog.
 pub fn dialog_checkbox(palette: &Palette) -> impl Fn(&Theme, checkbox::Status) -> checkbox::Style {
     let colors = *palette;
@@ -260,6 +279,76 @@ pub fn path_input(palette: &Palette) -> impl Fn(&Theme, text_input::Status) -> t
         placeholder: colors.dim_text,
         value: colors.accent,
         selection: colors.cursor,
+    }
+}
+
+/// A text field of the search view: a plain box, so it reads as an input among
+/// the flat rows around it.
+pub fn search_input(palette: &Palette) -> impl Fn(&Theme, text_input::Status) -> text_input::Style {
+    let colors = *palette;
+    move |_theme, status| text_input::Style {
+        background: Background::Color(colors.status_bar),
+        border: Border {
+            color: if matches!(status, text_input::Status::Focused { .. }) {
+                colors.accent
+            } else {
+                colors.border_inactive
+            },
+            width: spacing::BORDER_WIDTH,
+            radius: spacing::BORDER_RADIUS.into(),
+        },
+        icon: colors.accent,
+        placeholder: colors.dim_text,
+        value: colors.text,
+        selection: colors.cursor,
+    }
+}
+
+/// One of the match options next to the search field; lit while it is on.
+pub fn search_toggle(
+    palette: &Palette,
+    on: bool,
+) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    move |_theme, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: (on || hovered).then_some(Background::Color(if on {
+                colors.cursor
+            } else {
+                colors.title
+            })),
+            text_color: if on {
+                colors.cursor_text
+            } else {
+                colors.accent
+            },
+            border: Border {
+                radius: spacing::BORDER_RADIUS.into(),
+                ..Border::default()
+            },
+            ..button::Style::default()
+        }
+    }
+}
+
+/// A row of the search results. Not a button: a button captures the press, and
+/// the double click of the area around it would never be reported.
+pub fn search_row(palette: &Palette, cursor: bool) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
+    move |_theme| {
+        if cursor {
+            filled(colors.cursor, colors.cursor_text)
+        } else {
+            filled_text_only(colors.text)
+        }
+    }
+}
+
+fn filled_text_only(text: Color) -> container::Style {
+    container::Style {
+        text_color: Some(text),
+        ..container::Style::default()
     }
 }
 
