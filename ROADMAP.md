@@ -75,8 +75,8 @@ zweite ist der wichtigere:
 
 **Was noch fehlt, bevor „fertig":**
 
-- **Persistenz der Sprache.** F9 schaltet nur zur Laufzeit um; die Auswahl gehört in die
-  Config (3.1). Das ist der eigentliche offene Punkt.
+- ~~Persistenz der Sprache.~~ Erledigt mit T13: `lang` in der Config setzt die Startsprache,
+  F9 schaltet nur die laufende Sitzung um; zurückgeschrieben wird nichts.
 - **Der Export-Pfad für Übersetzer.** Heute liegt der Kontext in Rust-Sourcen. Damit
   jemand ohne Rust-Kenntnisse übersetzen kann, braucht es eine Datendatei im Repo plus
   Generierung. **Offene Frage: `build.rs`, das die Sprachmodule aus `strings.json`
@@ -196,8 +196,8 @@ Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
    Framework, dessen Ausgabe ich gegen eine echte Referenz geprüft habe — ein
    Snapshot-Test ohne Wahrheitswert ist eine Datei, die immer grün ist. Falls sich das
    ändert, wäre `insta` der erste Kandidat.
-3. **Sprach-Set**: `en`/`de` sind gebaut, Kontext liegt in `strings.json`, F9 schaltet um.
-   Offen ist nur die **Persistenz** (T13); die Config dafür steht seit T10.
+3. **Sprach-Set**: `en`/`de` sind gebaut, Kontext liegt in `strings.json`, F9 schaltet um,
+   `lang` in der Config setzt die Startsprache (T13). Die Config bleibt read-only.
 
 ## 7. Nicht im Plan, mit Begründung
 
@@ -213,13 +213,13 @@ Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
 
 # Tasks – Basis-Feature
 
-**Stand 2026-10-03: T1–T12 erledigt, T6d teilweise, T13–T18 offen.** Release 0.2.2,
+**Stand 2026-10-17: T1–T13 erledigt, T6d teilweise, T14–T18 offen.** Release 0.2.2,
 455 `#[test]`-Funktionen inkl. UI-Tests mit Pixelvergleich.
 
 | Block | Inhalt | Stand |
 |---|---|---|
 | A | CI, Installer, Release, `strings.json` | ✅ fertig (T1–T5, T5b), dazu signierte und notarisierte macOS-App |
-| B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | 🔶 F3–F8, Config, Keymap und Theme fertig, T6d teilweise — **T13 (Sprachauswahl persistent) ist der nächste Task** |
+| B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | 🔶 F3–F8, Config, Keymap, Theme und Startsprache fertig, T6d teilweise — **T14 (Quick-Search) ist der nächste Task** |
 | C | Netzwerk-Mounts, Archive | 🔶 Laufwerksmenü fertig, T15–T17 offen |
 
 Legende: **[P]** Pflicht für ein benutzbares Basis-Feature, **[S]** später. Reihenfolge =
@@ -441,7 +441,8 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
   Ergebnis: `[keys]` Aktion → Taste(n), `primary` = Cmd/Ctrl, nicht genannte Aktionen behalten ihre Defaults; Konflikte (auch mit verdrängten Defaults), unbekannte Aktionen/Tasten, Escape und nackte Buchstaben/Ziffern sind Config-Fehler mit Zeile. Leiste, Kontextmenü und Statustexte zeigen die wirksame Belegung.
 - [x] **T12 – Theming aus Config** – `theme.rs` liest Colors aus TOML
   Ergebnis: `[theme]` mit `preset = "default"` oder `"classic"` (NC-Blau) und 17 semantischen Rollen (`panel`, `text`, `cursor`, `tagged`, `directory`, `status_bar`, `dialog`, `error`, …) als `"#rrggbb"`/`"#rgb"`; ohne Eintrag pixelgleich zu vorher. Unbekannte Rollen und Presets und ungültige Farben sind Config-Fehler mit Zeile; Text unter 3:1 Kontrast lädt trotzdem und nennt Paar und Zeile in der Statuszeile.
-- [ ] **T13 – Sprachauswahl persistent** – `lang = "de"` in der Config, statt F9
+- [x] **T13 – Sprachauswahl persistent** – `lang = "de"` in der Config, statt F9
+  Ergebnis: `lang = "en"|"de"` auf oberster Ebene setzt die Startsprache; fehlt der Schlüssel, bleibt es Englisch. F9 schaltet nur die laufende Sitzung um, die Config wird nie zurückgeschrieben (bewusst read-only). Ein anderer Wert ist ein Config-Fehler mit Zeile, der die erlaubten Werte nennt.
 - [ ] **T14 – Quick-Search** – Typen filtert die Liste, `glob`-basiert, logik-testbar
 
 - [x] **T5b – Registry-Pattern für Tasten: eine Aktion, eine Registrierung**
@@ -490,6 +491,6 @@ weiß ich nur durch deine Beobachtung — die steht als Messung im README, nicht
 | T5 | `build.rs` oder Handpflege? | **`build.rs`, gebaut.** Kontext und Text kommen aus `strings.json`. |
 | T8 | Papierkorb? Crate `trash` | **entschieden: `trash`.** F8 geht in den Papierkorb, Shift+F8 löscht endgültig. Lizenzen der Abhängigkeiten per `cargo metadata` gegen deny.toml geprüft; `cargo deny` prüft in der CI. |
 | T10 | TOML oder JSON für die Config? | **entschieden: TOML**, besser für Handeditierung. |
-| T13 | Sprachauswahl persistent | **teilweise.** `en`/`de` gebaut, F9 schaltet um; die Persistenz fehlt, die Config dafür steht seit T10. |
+| T13 | Sprachauswahl persistent | **entschieden und gebaut:** `lang` in der Config setzt die Startsprache, F9 schaltet nur die Sitzung um; die Config bleibt read-only, es wird nichts zurückgeschrieben. |
 | T14 | Suche: `glob` oder inkrementell? | **offen.** Die Filterlogik ist in beiden testbar, das Timing nicht. |
 | T18 | Settings | **offen.** Wichtige Sachen soll sich das program merken |

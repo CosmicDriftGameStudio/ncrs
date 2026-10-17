@@ -78,6 +78,21 @@ impl Language {
         }
     }
 
+    /// Every language, in the order the config error lists them.
+    pub const ALL: [Language; 2] = [Language::English, Language::German];
+
+    /// The code written in the config file and shown for the language.
+    pub fn code(self) -> &'static str {
+        match self {
+            Language::English => "en",
+            Language::German => "de",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|lang| lang.code() == code)
+    }
+
     /// Switches to the next language, for the temporary key binding.
     pub fn other(self) -> Self {
         match self {
@@ -98,10 +113,7 @@ impl fmt::Display for Msg {
 
 impl fmt::Display for Language {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Language::English => "en",
-            Language::German => "de",
-        })
+        f.write_str(self.code())
     }
 }
 
