@@ -7720,22 +7720,28 @@ mod search_tests {
         let path = dir.path().join("config.toml");
         std::fs::write(&path, "[keys]\nmkdir = \"alt+c\"\n").unwrap();
         let keymap = crate::config::load(&path).unwrap().keymap;
-        let route = |search| {
+        let route = |search, typed| {
             let state = PromptKeyState {
-                keymap: keymap.clone(),
+                keymap: Arc::clone(&keymap),
                 search,
                 ..PromptKeyState::default()
             };
             route_press(
                 &state,
-                character("c"),
+                character(typed),
                 Physical::Code(Code::KeyC),
                 Modifiers::ALT,
                 false,
             )
         };
-        assert_eq!(route(false), Some(Message::CreateDirPrompt));
-        assert_eq!(route(true), Some(search_message(SearchMessage::ToggleCase)));
+        // Option+C types `ç` on a Mac; the physical key decides.
+        for typed in ["c", "ç"] {
+            assert_eq!(route(false, typed), Some(Message::CreateDirPrompt));
+            assert_eq!(
+                route(true, typed),
+                Some(search_message(SearchMessage::ToggleCase))
+            );
+        }
         assert_eq!(
             search_toggle_for_press(
                 &keymap,

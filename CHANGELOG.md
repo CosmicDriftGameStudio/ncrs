@@ -22,9 +22,11 @@ All notable changes to this project are documented here. The format follows
   cursor, and the function key bar shows only what works there. `Alt`+`C`,
   `Alt`+`W` and `Alt`+`R` (`search_case`, `search_whole_word`, `search_regex`)
   switch the three options from the keyboard. They only count inside the
-  search, so a config file that binds `alt+c`, `alt+w` or `alt+r` to a panel
-  action keeps working. `Esc` brings the panel
-  back and keeps the fields for the next search.
+  search, so a config file that gives `alt+c`, `alt+w` or `alt+r` to an action
+  that only works in the panel, such as `mkdir`, keeps working. They cannot
+  take the keys the search uses itself: `Enter`, the arrows, `PageUp`,
+  `PageDown`, `Home` and `End`. `Esc` brings the panel back and keeps the
+  fields for the next search.
 - `{path}` and `{line}` in the `[open]` programs: `edit = ["code", "--goto",
   "{path}:{line}"]` opens a search result at its line. Without `{path}` the file
   is still added as the last argument.
