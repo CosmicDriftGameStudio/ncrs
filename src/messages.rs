@@ -254,6 +254,12 @@ pub enum SearchMessage {
     ToggleCase,
     ToggleWholeWord,
     ToggleRegex,
+    /// Tag the cursor's file and move to the next file row.
+    ToggleTag,
+    /// Tag the cursor's file and move to the next (`1`) or previous (`-1`) file row.
+    TagMove(isize),
+    TagAll,
+    ClearTags,
     /// The typing pause of this generation is over. An older timer finds a
     /// newer generation and does nothing.
     Debounced(u64),

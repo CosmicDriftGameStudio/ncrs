@@ -107,7 +107,12 @@ as you type and stops a search still running when you type on. `Esc` brings the
 panel back; the next search starts with the same fields.
 
 - **Aa**, **ab** and **.\*** switch on case, whole words and regular
-  expressions.
+  expressions, also by keyboard: `Alt`+`C`, `Alt`+`W` and `Alt`+`R`, in the
+  fields and in the results. On a Mac layout that types letters with `Option`
+  plus `C`, `W` or `R` (Polish Pro: `ć`, for one), those letters cannot be
+  typed into the search fields unless `search_case`, `search_whole_word` and
+  `search_regex` are bound to other keys. `AltGr` on Windows and Linux is not
+  affected.
 - **Files** and **Exclude** take patterns separated by `;`. A pattern without
   `/` matches the name at any depth (`*.rs`), one with `/` the path below the
   search directory (`src/*.rs`). A trailing `/` means a directory with
@@ -117,10 +122,14 @@ panel back; the next search starts with the same fields.
   cloud files that are not downloaded are skipped, and the search stops after
   20,000 matching lines.
 - `↑`/`↓`, `PgUp`/`PgDn` and `Home`/`End` move through the results, `←`/`→`
-  fold and unfold a file. Typing goes to the search text.
+  fold and unfold a file. Typing goes to the search text, except `Space` and
+  `*`, which tag (see below).
 - `Enter` on a file shows it in the other panel. `Enter` on a line, or `F4`,
   opens the editor at that line, see [Configuration](#configuration).
-- `F5`, `F6` and `F8` copy, move and delete all files found.
+- `Insert` or `Space` tags the file under the cursor and moves to the next file,
+  `Shift`+`↑`/`↓` tag and move either way, `*` tags all files found and
+  `Ctrl`+`*` clears the tags. `F5`, `F6` and `F8` copy, move and delete the
+  tagged files, else the file under the cursor.
 
 ## Install
 
@@ -250,7 +259,8 @@ Actions: `quit`, `open`, `go_up`, `switch_panel`, `switch_language`,
 `toggle_tag`, `tag_up`, `tag_down`, `tag_all`, `clear_tags`, `view`, `edit`,
 `copy`, `move`, `mkdir`, `delete`, `delete_permanently`, `abort_job`,
 `copy_path`, `copy_name`, `drive_menu_left`, `drive_menu_right`,
-`sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`, `search`. Their
+`sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`, `search`, `search_case`,
+`search_whole_word`, `search_regex`. Their
 default keys are in [Keyboard shortcuts](#keyboard-shortcuts).
 
 ### Colors

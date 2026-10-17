@@ -201,12 +201,15 @@ pub fn tag_button(
 pub fn chevron_button(
     palette: &Palette,
     highlighted: bool,
+    tagged: bool,
 ) -> impl Fn(&Theme, button::Status) -> button::Style {
     let colors = *palette;
     move |_theme, _status| button::Style {
         background: None,
         text_color: if highlighted {
             colors.cursor_text
+        } else if tagged {
+            colors.text
         } else {
             colors.dim_text
         },
@@ -334,11 +337,25 @@ pub fn search_toggle(
 
 /// A row of the search results. Not a button: a button captures the press, and
 /// the double click of the area around it would never be reported.
-pub fn search_row(palette: &Palette, cursor: bool) -> impl Fn(&Theme) -> container::Style {
+pub fn search_row(
+    palette: &Palette,
+    cursor: bool,
+    tagged: bool,
+    panel_active: bool,
+) -> impl Fn(&Theme) -> container::Style {
     let colors = *palette;
     move |_theme| {
+        // As in [`row`]: the cursor wins over the tint, and shows in the active
+        // panel only.
         if cursor {
             filled(colors.cursor, colors.cursor_text)
+        } else if tagged {
+            let tint = if panel_active {
+                colors.tagged
+            } else {
+                colors.tagged_inactive
+            };
+            filled(tint, colors.text)
         } else {
             filled_text_only(colors.text)
         }

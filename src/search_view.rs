@@ -69,6 +69,9 @@ pub struct SearchView {
     /// Files whose lines are folded away. Survives a new search, so a file the
     /// user folded stays folded when the query changes.
     pub collapsed: HashSet<PathBuf>,
+    /// The files F5, F6 and F8 act on. By path, as in the panels, so a result
+    /// that sorts in front does not shift a tag onto another file.
+    pub tagged: HashSet<PathBuf>,
     pub cursor: Option<SearchRow>,
     /// Until the user moves the cursor it stays on the first row, however many
     /// files sort in front of it; afterwards it stays on the item it is on.
@@ -106,6 +109,7 @@ impl SearchView {
             focused: SearchField::Query,
             results: Vec::new(),
             collapsed: HashSet::new(),
+            tagged: HashSet::new(),
             cursor: None,
             cursor_moved_by_user: false,
             scroll_offset: 0,
@@ -276,6 +280,7 @@ impl SearchView {
     /// Forgets the results of the search before, keeping what the user set.
     pub fn clear_results(&mut self) {
         self.results.clear();
+        self.tagged.clear();
         self.cursor = None;
         self.cursor_moved_by_user = false;
         self.scroll_offset = 0;
@@ -345,12 +350,60 @@ impl SearchView {
         }
     }
 
-    /// Every file found, in display order: what F5, F6 and F8 act on.
+    /// Every file found, in display order.
     pub fn found_files(&self) -> Vec<PathBuf> {
         self.results
             .iter()
             .map(|result| result.path.clone())
             .collect()
+    }
+
+    /// What F5, F6 and F8 act on: the tagged files in display order, else the
+    /// file under the cursor, else nothing. Never every file found.
+    pub fn action_files(&self) -> Vec<PathBuf> {
+        let tagged: Vec<PathBuf> = self
+            .results
+            .iter()
+            .filter(|result| self.tagged.contains(&result.path))
+            .map(|result| result.path.clone())
+            .collect();
+        if !tagged.is_empty() {
+            return tagged;
+        }
+        self.cursor_target()
+            .map(|(path, _)| vec![path])
+            .unwrap_or_default()
+    }
+
+    pub fn is_tagged(&self, file: usize) -> bool {
+        self.results
+            .get(file)
+            .is_some_and(|result| self.tagged.contains(&result.path))
+    }
+
+    /// Toggles the tag on the cursor's file and moves the cursor to the next
+    /// file row (`delta` > 0) or the previous one. A cursor on a line tags its
+    /// file. At either end the cursor stays.
+    pub fn tag_and_move(&mut self, delta: isize, visible_rows: usize) {
+        let Some(file) = self.cursor.map(SearchRow::file) else {
+            return;
+        };
+        let Some(result) = self.results.get(file) else {
+            return;
+        };
+        if !self.tagged.remove(&result.path) {
+            self.tagged.insert(result.path.clone());
+        }
+        let neighbour = file.checked_add_signed(delta.signum());
+        if neighbour.is_some_and(|next| next < self.results.len()) {
+            self.cursor = neighbour.map(SearchRow::File);
+            self.cursor_moved_by_user = true;
+            self.ensure_visible(visible_rows);
+        }
+    }
+
+    pub fn tag_all(&mut self) {
+        self.tagged = self.found_files().into_iter().collect();
     }
 
     /// The file under the cursor, and the line when the cursor is on one.
@@ -424,6 +477,85 @@ mod tests {
             view.found_files(),
             [PathBuf::from("/root/a.txt"), PathBuf::from("/root/b.txt")]
         );
+    }
+
+    fn three_files() -> SearchView {
+        view_with(vec![
+            found("/root/a.txt", &[1, 2]),
+            found("/root/b.txt", &[3]),
+            found("/root/c.txt", &[]),
+        ])
+    }
+
+    #[test]
+    fn without_tags_the_actions_take_the_cursors_file_even_on_a_line() {
+        let mut view = three_files();
+        view.select_row(1, 10);
+        assert_eq!(view.cursor, Some(SearchRow::Line(0, 0)));
+        assert_eq!(view.action_files(), [PathBuf::from("/root/a.txt")]);
+    }
+
+    #[test]
+    fn with_tags_the_actions_take_exactly_the_tagged_files_in_display_order() {
+        let mut view = three_files();
+        view.tagged.insert(PathBuf::from("/root/c.txt"));
+        view.tagged.insert(PathBuf::from("/root/a.txt"));
+        assert_eq!(
+            view.action_files(),
+            [PathBuf::from("/root/a.txt"), PathBuf::from("/root/c.txt")]
+        );
+    }
+
+    #[test]
+    fn without_a_cursor_and_tags_the_actions_take_nothing() {
+        let mut view = three_files();
+        view.cursor = None;
+        assert!(view.action_files().is_empty());
+    }
+
+    #[test]
+    fn tagging_moves_to_the_next_file_row_and_skips_the_lines() {
+        let mut view = three_files();
+        view.tag_and_move(1, 10);
+        assert_eq!(view.cursor, Some(SearchRow::File(1)));
+        view.tag_and_move(1, 10);
+        assert_eq!(view.cursor, Some(SearchRow::File(2)));
+        assert!(view.is_tagged(0) && view.is_tagged(1) && !view.is_tagged(2));
+        // At the last file the tag still toggles and the cursor stays.
+        view.tag_and_move(1, 10);
+        assert_eq!(view.cursor, Some(SearchRow::File(2)));
+        assert!(view.is_tagged(2));
+    }
+
+    #[test]
+    fn tagging_upwards_from_a_line_goes_to_the_previous_file() {
+        let mut view = three_files();
+        view.select_row(4, 10);
+        assert_eq!(view.cursor, Some(SearchRow::Line(1, 0)));
+        view.tag_and_move(-1, 10);
+        assert_eq!(view.cursor, Some(SearchRow::File(0)));
+        assert!(view.is_tagged(1));
+    }
+
+    #[test]
+    fn tagging_twice_removes_the_tag() {
+        let mut view = three_files();
+        view.tag_and_move(1, 10);
+        view.first(10);
+        view.tag_and_move(1, 10);
+        assert!(!view.is_tagged(0));
+    }
+
+    #[test]
+    fn tag_all_and_a_new_search_clear_it() {
+        let mut view = three_files();
+        view.tag_all();
+        assert_eq!(view.tagged.len(), 3);
+        view.tagged.clear();
+        assert_eq!(view.action_files().len(), 1);
+        view.tag_all();
+        view.begin(2);
+        assert!(view.tagged.is_empty());
     }
 
     #[test]

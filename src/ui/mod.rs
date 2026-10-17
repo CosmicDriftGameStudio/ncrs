@@ -9,6 +9,7 @@ pub mod dialog;
 pub mod fkeys;
 pub mod format;
 pub mod header;
+pub mod key_intercept;
 pub mod layout;
 pub mod panel;
 pub mod search;
