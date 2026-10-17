@@ -238,16 +238,22 @@ edit = "F3"
   `shift`, `cmd` (or `super`); `F1`–`F12`, `Enter`, `Tab`, `Backspace`, `Space`,
   `Insert`, `Delete`, `Home`, `End`, `PageUp`, `PageDown`, `Up`, `Down`, `Left`,
   `Right`, `plus` for `+`, or a single character such as `*` or `c`.
-- One key, two actions is an error, also when the other action only has the key
-  by default: say what the other action gets instead, or `[]`. `primary+q` and
-  `ctrl+q` are the same key on Linux and Windows, so a file can be fine on a Mac
-  and conflict elsewhere.
+- One key, two actions in one area is an error, also when the other action only
+  has the key by default: say what the other action gets instead, or `[]`. The
+  panel and the search count apart. `search_case`, `search_whole_word` and
+  `search_regex` work only in the search; `quit`, `search`, `view`, `edit`,
+  `copy`, `move`, `delete`, `delete_permanently`, `abort_job`, `switch_language`,
+  `switch_panel` and the tag actions in both; the rest only in the panel.
+  `primary+q` and `ctrl+q` are the same key on Linux and Windows, so a file can
+  be fine on a Mac and conflict elsewhere.
 - Not allowed: `Escape` (it closes dialogs and menus and stops jobs); letters and
   digits without `ctrl`, `alt`, `cmd` or `primary`, because they jump to a file
   name; `shift` with a character that is not a letter (`shift+8` arrives as `*`,
   write `*`).
 - Fixed: the keys inside dialogs, menus, the name prompt and the path field
   (`Enter`, `Esc`, arrows, `Tab`), and the `Option` tap for the context menu.
+  In the search `Enter`, the arrows, `PageUp`, `PageDown`, `Home` and `End`, also
+  with `shift`, cannot be given to the three search options.
   In the path field only a `quit` key on an F-key, with `cmd`, or with `ctrl`
   but not `alt` gets through (`alt` and `AltGr` type characters there).
 - `alt` (Option) with a letter follows the US key positions on a Mac, so on

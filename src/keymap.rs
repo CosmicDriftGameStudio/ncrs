@@ -107,7 +107,92 @@ key_actions! {
     SearchRegex => "search_regex",
 }
 
+/// An area of the window with its own keys: the panels, or the search view
+/// that hides them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyScope {
+    Panel,
+    Search,
+}
+
+/// Where an action can be triggered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Reach {
+    PanelOnly,
+    SearchOnly,
+    Both,
+}
+
+/// Two actions may share a key only when they have no area in common, so one
+/// press never triggers two actions that are active at the same time.
+fn shares_a_scope(first: KeyAction, second: KeyAction) -> bool {
+    [KeyScope::Panel, KeyScope::Search]
+        .into_iter()
+        .any(|scope| first.works_in(scope) && second.works_in(scope))
+}
+
+/// Keys of the search view that no configured chord can take: the search
+/// handles them itself, and a search-only action on one would steal it.
+fn is_fixed_in_search(binding: &Binding) -> bool {
+    use key::Named::*;
+    let Key::Named(named) = &binding.key else {
+        return false;
+    };
+    (binding.modifiers - Modifiers::SHIFT).is_empty()
+        && matches!(
+            named,
+            Enter | ArrowUp | ArrowDown | ArrowLeft | ArrowRight | PageUp | PageDown | Home | End
+        )
+}
+
 impl KeyAction {
+    /// Whether the action can be triggered in `scope`. No catch-all arm: a new
+    /// action has to say where it works.
+    pub fn works_in(self, scope: KeyScope) -> bool {
+        let reach = match self {
+            Self::SearchCase | Self::SearchWholeWord | Self::SearchRegex => Reach::SearchOnly,
+            Self::Quit
+            | Self::Search
+            | Self::View
+            | Self::Edit
+            | Self::Copy
+            | Self::Move
+            | Self::Delete
+            | Self::DeletePermanently
+            | Self::AbortJob
+            | Self::SwitchLanguage
+            | Self::SwitchPanel
+            | Self::ToggleTag
+            | Self::TagDown
+            | Self::TagUp
+            | Self::TagAll
+            | Self::ClearTags => Reach::Both,
+            Self::GoUp
+            | Self::Open
+            | Self::CopyPath
+            | Self::CopyName
+            | Self::Mkdir
+            | Self::DriveMenuLeft
+            | Self::DriveMenuRight
+            | Self::SortByName
+            | Self::SortByModified
+            | Self::SortBySize
+            | Self::ContextMenu
+            | Self::CursorUp
+            | Self::CursorDown
+            | Self::PageUp
+            | Self::PageDown
+            | Self::First
+            | Self::Last => Reach::PanelOnly,
+        };
+        match (reach, scope) {
+            (Reach::Both, _)
+            | (Reach::PanelOnly, KeyScope::Panel)
+            | (Reach::SearchOnly, KeyScope::Search) => true,
+            (Reach::PanelOnly, KeyScope::Search) | (Reach::SearchOnly, KeyScope::Panel) => false,
+        }
+    }
+
     /// The message the key sends. Derived rather than stored next to the key,
     /// so a rebound key cannot send anything but its action.
     pub fn message(self) -> Message {
@@ -389,8 +474,9 @@ impl Keymap {
     /// The built-in table with the actions named in `overrides` rebound. A
     /// named action loses all its built-in keys and gets exactly the listed
     /// ones; `[]` leaves it without a key. Two actions on one key are an
-    /// error, also when the other one only has its built-in key: silently
-    /// letting one win would hide the other action without a word.
+    /// error when both work in the same area (panel or search), also when the
+    /// other one only has its built-in key: silently letting one win would
+    /// hide the other action without a word.
     pub fn with_overrides(overrides: &KeySection) -> Result<Self, KeymapError> {
         let mut rebound: Vec<KeyAction> = Vec::new();
         for entry in &overrides.entries {
@@ -429,7 +515,16 @@ impl Keymap {
                         reason: format!("{text:?} is listed twice for {name}"),
                     });
                 }
-                if let Some((other, _)) = taken.iter().find(|(_, held)| *held == binding) {
+                if !action.works_in(KeyScope::Panel) && is_fixed_in_search(&binding) {
+                    return Err(KeymapError {
+                        span: chord.span(),
+                        reason: format!("{text:?} is fixed in the search view"),
+                    });
+                }
+                if let Some((other, _)) = taken
+                    .iter()
+                    .find(|(other, held)| *held == binding && shares_a_scope(*other, action))
+                {
                     let advice = if rebound.contains(other) {
                         String::new()
                     } else {
@@ -463,11 +558,13 @@ impl Keymap {
         Ok(Self { bindings })
     }
 
-    /// Maps a key press to a message.
-    pub fn map_key(&self, key: &Key, modifiers: Modifiers) -> Option<Message> {
+    /// Maps a key press to a message, among the actions that work in `scope`.
+    pub fn map_key(&self, key: &Key, modifiers: Modifiers, scope: KeyScope) -> Option<Message> {
         self.bindings
             .iter()
-            .find(|(_, binding)| binding.key == *key && binding.modifiers == modifiers)
+            .find(|(action, binding)| {
+                action.works_in(scope) && binding.key == *key && binding.modifiers == modifiers
+            })
             .map(|(action, _)| action.message())
     }
 
@@ -518,20 +615,15 @@ impl Keymap {
     /// The labels of the function key bar, derived from the bindings: slot
     /// `n - 1` holds the hint of the bare `Fn` binding, `None` for a free key.
     /// Only bare function keys are shown; Shift+F8 and friends are in the help.
-    pub fn function_keys(&self, lang: Language) -> [Option<&'static str>; FUNCTION_KEY_COUNT] {
-        self.function_keys_where(lang, |_| true)
-    }
-
-    /// [`Self::function_keys`], with the slots whose message `keep` rejects
-    /// left free: the bar while a view allows only some of the actions.
-    pub fn function_keys_where(
+    /// Actions that do not work in `scope` leave their slot free.
+    pub fn function_keys(
         &self,
         lang: Language,
-        keep: impl Fn(&Message) -> bool,
+        scope: KeyScope,
     ) -> [Option<&'static str>; FUNCTION_KEY_COUNT] {
         let mut slots = [None; FUNCTION_KEY_COUNT];
         for (action, binding) in &self.bindings {
-            if !keep(&action.message()) {
+            if !action.works_in(scope) {
                 continue;
             }
             let Some(hint) = action.hint() else {
@@ -680,11 +772,11 @@ mod tests {
     use iced::keyboard::key::Named;
 
     fn map_key(key: Key, modifiers: Modifiers) -> Option<Message> {
-        Keymap::built_in().map_key(&key, modifiers)
+        Keymap::built_in().map_key(&key, modifiers, KeyScope::Panel)
     }
 
     fn function_keys(lang: Language) -> [Option<&'static str>; FUNCTION_KEY_COUNT] {
-        Keymap::built_in().function_keys(lang)
+        Keymap::built_in().function_keys(lang, KeyScope::Panel)
     }
 
     fn shortcut_label(message: &Message) -> Option<String> {
@@ -715,7 +807,7 @@ mod tests {
     }
 
     fn press(keymap: &Keymap, key: Key, modifiers: Modifiers) -> Option<Message> {
-        keymap.map_key(&key, modifiers)
+        keymap.map_key(&key, modifiers, KeyScope::Panel)
     }
 
     fn named(key: Named) -> Key {
@@ -1000,7 +1092,7 @@ mod tests {
             Some("F2".into())
         );
         assert_eq!(
-            keymap.function_keys(Language::English)[..5],
+            keymap.function_keys(Language::English, KeyScope::Panel)[..5],
             [None, Some("Copy"), Some("View"), Some("Edit"), None]
         );
     }
@@ -1033,7 +1125,7 @@ mod tests {
             Some(Message::OpenExternal(OpenKind::View))
         );
         assert_eq!(
-            keymap.function_keys(Language::English)[2..4],
+            keymap.function_keys(Language::English, KeyScope::Panel)[2..4],
             [Some("Edit"), Some("View")]
         );
     }
@@ -1210,6 +1302,52 @@ mod tests {
         assert_eq!(
             press(&keymap, Key::Character("+".into()), Modifiers::default()),
             Some(Message::Transfer(TransferKind::Move))
+        );
+    }
+
+    #[test]
+    fn a_panel_action_may_take_a_key_the_search_toggle_has() {
+        let keymap = rebound("[keys]\nmkdir = \"alt+c\"\n");
+        let c = Key::Character("c".into());
+        assert_eq!(
+            keymap.map_key(&c, Modifiers::ALT, KeyScope::Panel),
+            Some(Message::CreateDirPrompt)
+        );
+        assert_eq!(
+            keymap.map_key(&c, Modifiers::ALT, KeyScope::Search),
+            Some(Message::Search(SearchMessage::ToggleCase))
+        );
+    }
+
+    #[test]
+    fn two_panel_actions_cannot_share_a_key() {
+        let (_, reason) = failure("[keys]\nmkdir = \"alt+x\"\ngo_up = \"alt+x\"\n");
+        assert!(reason.contains("already bound"), "{reason}");
+    }
+
+    #[test]
+    fn an_action_that_works_in_both_areas_conflicts_with_a_search_toggle() {
+        let (_, reason) = failure("[keys]\nview = \"alt+c\"\n");
+        assert!(reason.contains("search_case"), "{reason}");
+    }
+
+    #[test]
+    fn a_search_toggle_cannot_take_the_fixed_keys_of_the_search_view() {
+        for keys in [
+            "search_case = \"enter\"",
+            "search_regex = \"shift+up\"",
+            "search_whole_word = \"pagedown\"",
+        ] {
+            let (_, reason) = failure(&format!("[keys]\n{keys}\n"));
+            assert!(
+                reason.contains("fixed in the search view"),
+                "{keys}: {reason}"
+            );
+        }
+        let keymap = rebound("[keys]\nsearch_case = \"alt+enter\"\n");
+        assert_eq!(
+            keymap.map_key(&named(Named::Enter), Modifiers::ALT, KeyScope::Search),
+            Some(Message::Search(SearchMessage::ToggleCase))
         );
     }
 }

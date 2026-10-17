@@ -15,7 +15,7 @@ use crate::dialog::{Prompt, PromptKind};
 use crate::fs::{self, CreateDirError};
 use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
-use crate::keymap::{self, Keymap};
+use crate::keymap::{self, KeyScope, Keymap};
 use crate::messages::{
     ClipboardKind, ConflictChoice, Message, PanelSide, SearchMessage, TransferKind,
 };
@@ -561,6 +561,11 @@ fn keys_without_prompt(
     key: Key,
     key_modifiers: Modifiers,
 ) -> Option<Message> {
+    let scope = if prompt.search {
+        KeyScope::Search
+    } else {
+        KeyScope::Panel
+    };
     // The menu takes the arrows and Enter that would otherwise move the panel
     // behind it; any other key does nothing until it is closed.
     if prompt.volume_menu {
@@ -598,7 +603,7 @@ fn keys_without_prompt(
             // Only then the chord that started the permanent delete confirms it.
             _ => dialog_focus_key(key.clone(), key_modifiers).or_else(|| {
                 (permanent
-                    && bound_message(&prompt.keymap, &key, key_modifiers)
+                    && bound_message(&prompt.keymap, &key, key_modifiers, scope)
                         == Some(Message::Delete { permanent: true }))
                 .then_some(Message::DeleteConfirm)
             }),
@@ -617,8 +622,9 @@ fn keys_without_prompt(
             // abort key cannot take Enter or an arrow. The key that aborts a
             // job then cancels the whole operation.
             _ => dialog_focus_key(key.clone(), key_modifiers).or_else(|| {
-                (bound_message(&prompt.keymap, &key, key_modifiers) == Some(Message::AbortJob))
-                    .then_some(Message::TransferConflict(ConflictChoice::Cancel))
+                (bound_message(&prompt.keymap, &key, key_modifiers, scope)
+                    == Some(Message::AbortJob))
+                .then_some(Message::TransferConflict(ConflictChoice::Cancel))
             }),
         };
     }
@@ -630,7 +636,7 @@ fn keys_without_prompt(
     // not type: a quit rebound to `*` or Backspace must not end the program in
     // the middle of a path.
     if prompt.path_editing {
-        return bound_message(&prompt.keymap, &key, key_modifiers)
+        return bound_message(&prompt.keymap, &key, key_modifiers, scope)
             .filter(|message| *message == Message::Quit)
             .filter(|_| is_not_typed_by_text_field(&key, key_modifiers));
     }
@@ -652,10 +658,7 @@ fn keys_without_prompt(
             prompt.config_error.then_some(Message::DismissConfigError)
         };
     }
-    // The search toggles belong to the search view: without it a press of one
-    // is not theirs to swallow, and type-ahead sees it as before.
-    bound_message(&prompt.keymap, &key, key_modifiers)
-        .filter(|message| !matches!(message, Message::Search(toggle) if is_search_toggle(toggle)))
+    bound_message(&prompt.keymap, &key, key_modifiers, scope)
         .or_else(|| type_ahead_message(&key, key_modifiers))
 }
 
@@ -664,7 +667,7 @@ fn keys_without_prompt(
 /// field has no focus, and then the result list has the keys.
 fn search_key(prompt: &PromptKeyState, key: &Key, key_modifiers: Modifiers) -> Option<Message> {
     let search = |message| Some(Message::Search(message));
-    let bound = bound_message(&prompt.keymap, key, key_modifiers);
+    let bound = bound_message(&prompt.keymap, key, key_modifiers, KeyScope::Search);
     // Tagging and the toggles skip the filter below, which would drop Space,
     // `*` and the Alt chords as typing: a key only gets here when no text field
     // took it. Before the arrow match too, which ignores Shift and would turn
@@ -687,7 +690,6 @@ fn search_key(prompt: &PromptKeyState, key: &Key, key_modifiers: Modifiers) -> O
         }
     }
     bound
-        .filter(works_during_search)
         .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
         .or_else(|| match type_ahead_message(key, key_modifiers) {
             Some(Message::TypeAhead(typed)) => search(SearchMessage::AppendToQuery(typed)),
@@ -723,31 +725,20 @@ pub fn search_toggle_for_press(
     modifiers: Modifiers,
 ) -> Option<SearchMessage> {
     let bound_key = binding_key(key, physical_key, modifiers);
-    match bound_message(keymap, &bound_key, modifiers)? {
+    match bound_message(keymap, &bound_key, modifiers, KeyScope::Search)? {
         Message::Search(toggle) if is_search_toggle(&toggle) => Some(toggle),
         _ => None,
     }
 }
 
-/// What the keys may do while the search view hides a panel: the actions on
-/// the file under its cursor, and the ones about the whole program.
-fn works_during_search(message: &Message) -> bool {
-    matches!(
-        message,
-        Message::Quit
-            | Message::OpenSearch
-            | Message::OpenExternal(_)
-            | Message::Transfer(_)
-            | Message::Delete { .. }
-            | Message::AbortJob
-            | Message::SwitchLanguage
-            | Message::SwitchPanel
-    )
-}
-
 /// The binding a press hits, with the Shift rules of the panels: see the
 /// comments inside.
-fn bound_message(keymap: &Keymap, key: &Key, key_modifiers: Modifiers) -> Option<Message> {
+fn bound_message(
+    keymap: &Keymap,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
     // The exact chord first (Shift+F8 is not F8). Only Shift may fall back to
     // the bare key: it changes the character typed (`*` is Shift+8), while Alt,
     // Ctrl and Super make a different chord that must not trigger the plain one.
@@ -759,7 +750,7 @@ fn bound_message(keymap: &Keymap, key: &Key, key_modifiers: Modifiers) -> Option
     // Except for a chord that names Shift itself (Ctrl+Shift+C): tried first,
     // with the letter lowercased, because Shift made it a capital.
     if key_modifiers.shift() {
-        if let Some(message) = keymap.map_key(&lowercase_character(key), key_modifiers) {
+        if let Some(message) = keymap.map_key(&lowercase_character(key), key_modifiers, scope) {
             return Some(message);
         }
     }
@@ -768,10 +759,10 @@ fn bound_message(keymap: &Keymap, key: &Key, key_modifiers: Modifiers) -> Option
     } else {
         key_modifiers
     };
-    keymap.map_key(key, modifiers).or_else(|| {
+    keymap.map_key(key, modifiers, scope).or_else(|| {
         (modifiers - Modifiers::SHIFT)
             .is_empty()
-            .then(|| keymap.map_key(key, Modifiers::default()))
+            .then(|| keymap.map_key(key, Modifiers::default(), scope))
             .flatten()
     })
 }
@@ -1098,10 +1089,8 @@ impl App {
     }
 
     fn refresh_function_keys(&mut self) {
-        self.function_keys = self.keymap.function_keys(self.lang);
-        self.search_function_keys = self
-            .keymap
-            .function_keys_where(self.lang, works_during_search);
+        self.function_keys = self.keymap.function_keys(self.lang, KeyScope::Panel);
+        self.search_function_keys = self.keymap.function_keys(self.lang, KeyScope::Search);
     }
 
     fn report(&mut self, problem: ConfigProblem) {
@@ -1160,9 +1149,9 @@ impl App {
             active_panel: PanelSide::Left,
             visible_rows: layout::visible_rows(layout::INITIAL_WINDOW_SIZE),
             lang: Language::default(),
-            function_keys: Keymap::built_in().function_keys(Language::default()),
+            function_keys: Keymap::built_in().function_keys(Language::default(), KeyScope::Panel),
             search_function_keys: Keymap::built_in()
-                .function_keys_where(Language::default(), works_during_search),
+                .function_keys(Language::default(), KeyScope::Search),
             keymap: Keymap::built_in(),
             prompt: None,
             prompt_side: None,
@@ -3530,7 +3519,7 @@ mod prompt_routing {
             Some(Message::CreateDirPrompt)
         );
         assert!(
-            Keymap::built_in().function_keys(Language::English)[6].is_some(),
+            Keymap::built_in().function_keys(Language::English, KeyScope::Panel)[6].is_some(),
             "F7 opens the prompt but the function key bar does not show it"
         );
     }
@@ -3919,9 +3908,9 @@ impl App {
             active_panel: PanelSide::Left,
             visible_rows: 12,
             lang: Language::default(),
-            function_keys: Keymap::built_in().function_keys(Language::default()),
+            function_keys: Keymap::built_in().function_keys(Language::default(), KeyScope::Panel),
             search_function_keys: Keymap::built_in()
-                .function_keys_where(Language::default(), works_during_search),
+                .function_keys(Language::default(), KeyScope::Search),
             keymap: Keymap::built_in(),
             prompt: None,
             prompt_side: None,
@@ -7722,6 +7711,46 @@ mod search_tests {
         for (typed, code) in [("ç", Code::KeyC), ("w", Code::KeyW), ("®", Code::KeyR)] {
             assert_eq!(press(false, typed, code, Modifiers::ALT), None, "{typed}");
         }
+    }
+
+    #[test]
+    fn a_panel_action_on_alt_c_and_the_case_toggle_each_fire_in_their_own_area() {
+        use keyboard::key::{Code, Physical};
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[keys]\nmkdir = \"alt+c\"\n").unwrap();
+        let keymap = crate::config::load(&path).unwrap().keymap;
+        let route = |search, typed| {
+            let state = PromptKeyState {
+                keymap: Arc::clone(&keymap),
+                search,
+                ..PromptKeyState::default()
+            };
+            route_press(
+                &state,
+                character(typed),
+                Physical::Code(Code::KeyC),
+                Modifiers::ALT,
+                false,
+            )
+        };
+        // Option+C types `ç` on a Mac; the physical key decides.
+        for typed in ["c", "ç"] {
+            assert_eq!(route(false, typed), Some(Message::CreateDirPrompt));
+            assert_eq!(
+                route(true, typed),
+                Some(search_message(SearchMessage::ToggleCase))
+            );
+        }
+        assert_eq!(
+            search_toggle_for_press(
+                &keymap,
+                character("c"),
+                Physical::Code(Code::KeyC),
+                Modifiers::ALT
+            ),
+            Some(SearchMessage::ToggleCase)
+        );
     }
 
     #[test]
