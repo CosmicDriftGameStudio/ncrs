@@ -94,6 +94,7 @@ The defaults. Most of them can be changed in the config file, see [Keys](#keys).
 | Click a column title | Sort that panel by Name / Size / Modified; a second click reverses the order (▲ / ▼). `..` and folders stay on top |
 | `Ctrl`+`F3` / `Ctrl`+`F5` / `Ctrl`+`F6` (macOS: `Cmd`+`1` / `Cmd`+`3` / `Cmd`+`2`) | Sort the active panel by name / modification time / size; again reverses. macOS uses `Cmd`+digit because the system takes `Ctrl`+`F`-keys |
 | `Alt`+`F7` / `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) | Search below the directory of the active panel; pressed again, it moves to the next field. See [Search](#search) |
+| `Cmd`+`P` / `Ctrl`+`P` | Quick Open: jump to a file by a few letters of its path. See [Quick Open](#quick-open) |
 | `Backspace`        | Go to parent directory                   |
 | `Tab`              | Switch active panel                      |
 | `F9`               | Switch language for this session (start: `lang`) |
@@ -130,6 +131,16 @@ panel back; the next search starts with the same fields.
   `Shift`+`↑`/`↓` tag and move either way, `*` tags all files found and
   `Ctrl`+`*` clears the tags. `F5`, `F6` and `F8` copy, move and delete the
   tagged files, else the file under the cursor.
+
+## Quick Open
+
+`Cmd`+`P` (`Ctrl`+`P` on Linux and Windows) opens a box over the panels, as in
+VS Code. Type letters of a file's path and the best matches are listed with the
+matching characters underlined: `cfgrs` finds `src/config.rs`. It lists the
+files below the active panel's directory, hidden ones too and without following
+links, up to 250,000 files (the status line says when it stopped there).
+`↑`/`↓` pick a hit, `Enter` (or a click) shows its directory in the active panel
+with the cursor on the file, and `Esc` closes the box.
 
 ## Install
 
@@ -265,7 +276,7 @@ Actions: `quit`, `open`, `go_up`, `switch_panel`, `switch_language`,
 `toggle_tag`, `tag_up`, `tag_down`, `tag_all`, `clear_tags`, `view`, `edit`,
 `copy`, `move`, `mkdir`, `delete`, `delete_permanently`, `abort_job`,
 `copy_path`, `copy_name`, `drive_menu_left`, `drive_menu_right`,
-`sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`, `search`, `search_case`,
+`sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`, `search`, `quick_open`, `search_case`,
 `search_whole_word`, `search_regex`. Their
 default keys are in [Keyboard shortcuts](#keyboard-shortcuts).
 

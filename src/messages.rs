@@ -236,6 +236,9 @@ pub enum Message {
     OpenSearch,
     Search(SearchMessage),
 
+    // --- Quick Open (Cmd/Ctrl+P) ---
+    QuickOpen(QuickOpenMessage),
+
     // --- Window / app ---
     WindowResized(Size),
     Quit,
@@ -284,6 +287,30 @@ pub enum SearchMessage {
     /// The chevron of the file at this index in the results.
     ToggleGroup(usize),
     Scrolled(iced::mouse::ScrollDelta),
+}
+
+/// Everything Quick Open sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum QuickOpenMessage {
+    Open,
+    QueryChanged(String),
+    /// A batch of the file walk. Dropped when `generation` is not the current
+    /// walk's.
+    Events {
+        generation: u64,
+        events: Vec<SearchEvent>,
+    },
+    /// The background ranking of `chunks_scored` chunks for the query of
+    /// `generation` is done.
+    Ranked {
+        generation: u64,
+        hits: Vec<crate::quick_open::Hit>,
+        chunks_scored: usize,
+    },
+    Move(isize),
+    Activate,
+    RowActivated(usize),
+    Close,
 }
 
 /// What the copy chords put on the clipboard.

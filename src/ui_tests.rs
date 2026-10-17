@@ -246,6 +246,32 @@ mod tests {
             "the search view does not match tests/snapshots/search.png"
         );
     }
+
+    #[test]
+    fn quick_open_matches_its_snapshot() {
+        let mut app = App::with_fixed_panels();
+        app.open_quick_open_for_test(
+            &[
+                "README.md",
+                "docs/Ärger.rs",
+                "src/config.rs",
+                "src/main.rs",
+                "tests/config_rs_test.rs",
+            ],
+            "cfgrs",
+        );
+        let mut sim = simulator(&app);
+        let matches = sim
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/quick_open.png")
+            .expect("snapshot comparison");
+
+        assert!(
+            matches,
+            "quick open does not match tests/snapshots/quick_open.png"
+        );
+    }
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the

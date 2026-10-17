@@ -22,6 +22,7 @@ mod jobs;
 mod keymap;
 mod messages;
 mod palette;
+mod quick_open;
 mod search_view;
 mod selection;
 mod ui;
