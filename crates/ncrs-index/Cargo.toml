@@ -1,0 +1,32 @@
+[package]
+name = "ncrs-index"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "Encrypted workspace index for ncrs"
+license = "MIT"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# bundled-sqlcipher-vendored-openssl builds SQLCipher and its OpenSSL from
+# source, so no system library is needed. Windows has no system OpenSSL, and
+# the aarch64 Linux release is cross-compiled.
+rusqlite = { version = "0.40", features = ["bundled-sqlcipher-vendored-openssl"] }
+# The default feature (v1) picks the platform store: Keychain on macOS,
+# Credential Manager on Windows, Secret Service over pure-Rust zbus on Linux
+# (no libdbus, no pkg-config; the store's crypto is RustCrypto, not a second
+# OpenSSL). The kernel keyutils store is deliberately not enabled: it does not
+# survive a reboot, and a lost key means a lost database.
+keyring = "4.2"
+# The key comes from the OS random number generator, never from a seeded one.
+getrandom = "0.4"
+
+[dev-dependencies]
+tempfile = "3.27"
+# #[tokio::test(flavor = "multi_thread")] for the real-keystore test: the app
+# calls the key store from inside a tokio context.
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

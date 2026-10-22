@@ -1,3 +1,7 @@
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
 [package]
 name = "ncrs"
 version = "0.3.1"
@@ -7,6 +11,9 @@ edition = "2021"
 rust-version = "1.98"
 description = "A dual-panel file manager inspired by Norton Commander, built with iced"
 license = "MIT"
+
+[lints]
+workspace = true
 
 [dependencies]
 # x11 and wayland are not optional in practice: iced_tiny_skia depends on
@@ -71,13 +78,15 @@ tempfile = "3.27"
 iced_test = "0.14"
 iced_selector = "0.14"
 
-[lints.rust]
+[workspace.lints.rust]
 # A file manager must never execute unchecked code: the whole point is to touch
 # the filesystem, and the unsafe surface there is not worth the review.
 unsafe_code = "forbid"
 missing_debug_implementations = "warn"
 
-[lints.clippy]
+[workspace.lints.clippy]
+# This list applies to every crate in the workspace; comments that name a file
+# (build.rs, layout.rs, the test fixtures) describe the ncrs package.
 # `unwrap_used`, `expect_used` and `panic` are clippy restriction lints. They
 # cannot be switched on one by one: naming them below without the group on top
 # does nothing at all, silently. Enabling the group brings ~1000 further

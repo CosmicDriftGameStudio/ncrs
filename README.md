@@ -345,6 +345,8 @@ that pins it to the build configuration.
 cargo build --features gpu-with-fallback --release
 ```
 
+The repository is a Cargo workspace (`ncrs` plus the crates under `crates/`); `cargo test --workspace` checks all of it.
+
 ## Tests
 
 ```bash
