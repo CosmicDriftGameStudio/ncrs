@@ -50,7 +50,7 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       # Pixel comparisons are only meaningful where the reference images were
       # produced. Font rasterisation differs per operating system, so a
@@ -58,7 +58,7 @@ jobs:
       # there would be asserting nothing. The snapshot tests are therefore
       # skipped away from macOS; everything else runs everywhere.
       - name: Tests
-        run: cargo test -- --skip ui_tests
+        run: cargo test --workspace -- --skip ui_tests
 
       # The snapshot tests run only here, where the reference images in
       # tests/snapshots/ were produced. They are skipped above so a font
@@ -92,3 +92,58 @@ jobs:
             exit 1
           fi
           echo "ok: the no-backend build fails its own test"
+
+  # The release builds five targets, and ncrs-index compiles SQLCipher and
+  # OpenSSL from C source for each. A missing compiler, header or linker should
+  # fail on the pull request, not at the release tag. Same matrix and setup as
+  # `build` in release.yml, without signing, packing or upload.
+  #
+  # Do not test release.yml itself with workflow_dispatch or a probe tag: that
+  # publishes the assets again and breaks the Homebrew cask.
+  targets:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-apple-darwin
+            # `macos-latest` is arm64; Intel has its own label.
+            os: macos-15-intel
+          - target: aarch64-apple-darwin
+            os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add ${{ matrix.target }}
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config libxkbcommon-dev libwayland-dev libx11-dev libfontconfig1-dev
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: ${{ matrix.target }}
+
+      # aarch64 Linux is cross-compiled on the x86_64 runner.
+      - name: Add cross linker for aarch64 Linux
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: cargo build --workspace --release --target ${{ matrix.target }} --features ncrs/gpu-with-fallback
