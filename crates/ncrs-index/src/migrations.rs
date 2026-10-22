@@ -3,7 +3,10 @@ use rusqlite::Connection;
 use crate::error::IndexError;
 
 /// Schema steps, applied in order.
-pub const MIGRATIONS: &[&str] = &[include_str!("migrations/001_documents.sql")];
+pub const MIGRATIONS: &[&str] = &[
+    include_str!("migrations/001_documents.sql"),
+    include_str!("migrations/002_locations.sql"),
+];
 
 /// Step `n` (1-based) runs in one transaction together with the bump of
 /// `user_version` to `n`, so a failing step leaves the previous state intact.

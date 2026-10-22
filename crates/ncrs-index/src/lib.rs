@@ -6,6 +6,7 @@ mod error;
 mod index;
 mod key;
 mod key_store;
+mod locations;
 mod migrations;
 mod model;
 mod names;
@@ -20,6 +21,6 @@ pub use key::RecoveryKey;
 pub use key_store::{InMemoryKeyStore, KeyStore, KeyringKeyStore};
 pub use model::{
     Amount, ContentHash, Currency, Document, DocumentFields, DocumentId, DocumentSource,
-    DocumentStatus, Field, NewDocument, ReviewEntry, ReviewEntryId, ReviewReason, Rule, RuleId,
-    RuleSpec, TaxContext, TextMatch,
+    DocumentStatus, Field, FileStamp, NewDocument, ReviewEntry, ReviewEntryId, ReviewReason, Rule,
+    RuleId, RuleSpec, TaxContext, TextMatch,
 };

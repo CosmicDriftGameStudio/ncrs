@@ -510,6 +510,44 @@ mod tests {
     }
 
     #[test]
+    fn a_version_1_database_keeps_its_documents_and_gains_the_location_columns() {
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let store = InMemoryKeyStore::empty();
+        let (old, _) =
+            Index::create_encrypted_with_migrations(&path, &store, &MIGRATIONS[..1]).unwrap();
+        assert_eq!(user_version(&old), 1);
+        old.conn
+            .execute(
+                "INSERT INTO document (hash, path, source, received_at, status)
+                 VALUES (zeroblob(32), 'inbox/a.pdf', 'inbox', 1, 'new')",
+                [],
+            )
+            .unwrap();
+        drop(old);
+
+        let index = Index::open(&path, &store).unwrap();
+
+        assert_eq!(user_version(&index), 2);
+        let document = index
+            .document_by_path(std::path::Path::new("inbox/a.pdf"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(document.stamp, None);
+        assert!(table_exists(&index, "duplicate_path"));
+        index
+            .record_duplicate_path(
+                document.id,
+                std::path::Path::new("inbox/b.pdf"),
+                crate::FileStamp {
+                    size: 1,
+                    mtime: std::time::UNIX_EPOCH,
+                },
+            )
+            .unwrap();
+    }
+
+    #[test]
     fn empty_a1_database_gains_the_document_schema_on_open() {
         let dir = TempDir::new().unwrap();
         let path = db_in(&dir);
