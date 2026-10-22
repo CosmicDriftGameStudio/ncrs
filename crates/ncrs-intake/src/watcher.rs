@@ -14,8 +14,8 @@ use crate::location::Location;
 pub enum WatchEvent {
     File(PathBuf),
     /// The watcher backend failed for this location (event overflow, FSEvents
-    /// errors). The runner must rescan the location, because events may have
-    /// been lost.
+    /// errors), or a folder that appeared in it could not be read. The runner
+    /// must rescan the location, because files may have been missed.
     Error {
         location: PathBuf,
         message: String,
@@ -101,16 +101,25 @@ impl LocationWatcher {
 /// A folder that is created or moved in brings files the backend may never
 /// report one by one: a moved folder is a single event, and on Linux the watch
 /// on a new folder starts after files may already have been written into it.
+/// notify adds that watch only after this handler returns, so a file written
+/// between the walk and the watch is left to the next scan.
 fn forward_files(location: &Location, path: &Path, forward: &Sender<WatchEvent>) {
     let is_folder = fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir());
     let files: Vec<PathBuf> = if is_folder {
-        WalkDir::new(path)
-            .follow_links(false)
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|entry| !entry.file_type().is_dir())
-            .map(walkdir::DirEntry::into_path)
-            .collect()
+        let mut found = Vec::new();
+        for step in WalkDir::new(path).follow_links(false) {
+            match step {
+                Ok(entry) if !entry.file_type().is_dir() => found.push(entry.into_path()),
+                Ok(_folder) => {}
+                Err(err) => {
+                    let _ = forward.send(WatchEvent::Error {
+                        location: location.path.clone(),
+                        message: err.to_string(),
+                    });
+                }
+            }
+        }
+        found
     } else {
         vec![path.to_path_buf()]
     };

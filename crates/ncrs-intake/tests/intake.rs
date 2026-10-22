@@ -745,7 +745,7 @@ mod tests {
         assert!(seen.iter().all(|path| *path == first), "{seen:?}");
 
         let hidden = put(&inbox, ".hidden.pdf", REMINDER);
-        let barrier = put(&inbox, "sub/barrier.pdf", b"barrier");
+        let barrier = put(&inbox, "barrier.pdf", b"barrier");
         let after_hidden = receive_until(&receiver, &barrier);
         assert!(!after_hidden.contains(&hidden), "{after_hidden:?}");
     }
