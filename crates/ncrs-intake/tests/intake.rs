@@ -98,7 +98,9 @@ mod tests {
             .into_iter()
             .map(|step| {
                 let entry = step.unwrap();
-                let metadata = entry.metadata().unwrap();
+                // Not `entry.metadata()`: on Windows that is the directory
+                // listing's copy, which NTFS updates late.
+                let metadata = fs::symlink_metadata(entry.path()).unwrap();
                 Entry {
                     path: entry.path().to_path_buf(),
                     is_dir: metadata.is_dir(),
