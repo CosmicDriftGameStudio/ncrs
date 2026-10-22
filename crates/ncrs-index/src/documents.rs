@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection, OptionalExtension as _};
 
@@ -7,14 +7,14 @@ use crate::error::IndexError;
 use crate::index::Index;
 use crate::model::{
     currency_from_column, date_from_column, hash_from_column, timestamp_from_column, Amount,
-    ContentHash, Document, DocumentFields, DocumentId, DocumentSource, DocumentStatus, NewDocument,
-    TaxContext,
+    ContentHash, Document, DocumentFields, DocumentId, DocumentSource, DocumentStatus, FileStamp,
+    NewDocument, TaxContext,
 };
 use crate::names::{name_id, optional_name_id, NameTable};
 
 const DOCUMENT_COLUMNS: &str = "SELECT d.id, d.hash, d.path, d.source, d.received_at, d.status,
         s.name, k.name, d.tax_context, d.document_date, d.document_number,
-        d.amount_minor, d.currency
+        d.amount_minor, d.currency, d.file_size, d.file_mtime, d.missing_since
     FROM document d
     LEFT JOIN sender s ON s.id = d.sender_id
     LEFT JOIN document_kind k ON k.id = d.kind_id";
@@ -34,6 +34,9 @@ struct DocumentRow {
     number: Option<String>,
     amount_minor: Option<i64>,
     currency: Option<String>,
+    file_size: Option<i64>,
+    file_mtime: Option<i64>,
+    missing_since: Option<i64>,
 }
 
 impl DocumentRow {
@@ -52,6 +55,9 @@ impl DocumentRow {
             number: row.get(10)?,
             amount_minor: row.get(11)?,
             currency: row.get(12)?,
+            file_size: row.get(13)?,
+            file_mtime: row.get(14)?,
+            missing_since: row.get(15)?,
         })
     }
 
@@ -83,6 +89,11 @@ impl DocumentRow {
                 amount,
                 tags,
             },
+            stamp: FileStamp::from_columns(self.file_size, self.file_mtime)?,
+            missing_since: self
+                .missing_since
+                .map(|seconds| timestamp_from_column("document.missing_since", seconds))
+                .transpose()?,
         })
     }
 }
@@ -96,14 +107,16 @@ impl Index {
             .to_str()
             .ok_or_else(|| IndexError::NonUtf8Path(document.path.clone()))?;
         let inserted = self.connection().execute(
-            "INSERT INTO document (hash, path, source, received_at, status)
-             VALUES (?1, ?2, ?3, ?4, ?5) ON CONFLICT (hash) DO NOTHING",
+            "INSERT INTO document (hash, path, source, received_at, status, file_size, file_mtime)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT (hash) DO NOTHING",
             params![
                 document.hash.0.as_slice(),
                 path,
                 document.source.as_str(),
                 document.received_at.timestamp(),
                 DocumentStatus::New.as_str(),
+                document.stamp.map(FileStamp::size_column),
+                document.stamp.map(FileStamp::mtime_nanos),
             ],
         )?;
         if inserted == 0 {
@@ -121,6 +134,18 @@ impl Index {
         self.load_document(
             &format!("{DOCUMENT_COLUMNS} WHERE d.hash = ?1"),
             hash.0.as_slice(),
+        )
+    }
+
+    /// `None` for a path that is only recorded as a copy (see
+    /// `document_by_duplicate_path`) and for a missing document.
+    pub fn document_by_path(&self, path: &Path) -> Result<Option<Document>, IndexError> {
+        let path_text = path
+            .to_str()
+            .ok_or_else(|| IndexError::NonUtf8Path(path.to_path_buf()))?;
+        self.load_document(
+            &format!("{DOCUMENT_COLUMNS} WHERE d.path = ?1 AND d.missing_since IS NULL ORDER BY d.id LIMIT 1"),
+            path_text,
         )
     }
 
@@ -314,6 +339,8 @@ mod tests {
             received_at: new.received_at,
             status: DocumentStatus::New,
             fields,
+            stamp: None,
+            missing_since: None,
         };
         assert_eq!(
             index.document_by_hash(&new.hash).unwrap(),

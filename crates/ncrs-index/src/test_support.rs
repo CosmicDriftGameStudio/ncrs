@@ -31,6 +31,7 @@ pub fn new_document(seed: u8) -> NewDocument {
         path: PathBuf::from(format!("inbox/scan-{seed}.pdf")),
         source: DocumentSource::Inbox,
         received_at: Utc.with_ymd_and_hms(2026, 3, 14, 9, 30, 0).unwrap(),
+        stamp: None,
     }
 }
 

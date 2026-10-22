@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::fmt;
 use std::path::PathBuf;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chrono::{DateTime, NaiveDate, Utc};
 
@@ -47,18 +48,22 @@ fn corrupt(column: &'static str, value: &str) -> IndexError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DocumentSource {
     Inbox,
+    /// Indexed where it lies; the scan never moves or changes it.
+    Archive,
 }
 
 impl DocumentSource {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Inbox => "inbox",
+            Self::Archive => "archive",
         }
     }
 
     pub(crate) fn parse(value: &str) -> Result<Self, IndexError> {
         match value {
             "inbox" => Ok(Self::Inbox),
+            "archive" => Ok(Self::Archive),
             other => Err(corrupt("document.source", other)),
         }
     }
@@ -205,12 +210,54 @@ pub struct Amount {
     pub currency: Currency,
 }
 
+/// Size and modification time of a file when it was read. Equal stamps let a
+/// scan skip hashing an unchanged file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileStamp {
+    pub size: u64,
+    pub mtime: SystemTime,
+}
+
+impl FileStamp {
+    /// Nanoseconds since the epoch, negative before it.
+    pub(crate) fn mtime_nanos(self) -> i64 {
+        match self.mtime.duration_since(UNIX_EPOCH) {
+            Ok(after) => i64::try_from(after.as_nanos()).unwrap_or(i64::MAX),
+            Err(before) => -i64::try_from(before.duration().as_nanos()).unwrap_or(i64::MAX),
+        }
+    }
+
+    pub(crate) fn size_column(self) -> i64 {
+        i64::try_from(self.size).unwrap_or(i64::MAX)
+    }
+
+    pub(crate) fn from_columns(
+        size_column: Option<i64>,
+        mtime_column: Option<i64>,
+    ) -> Result<Option<Self>, IndexError> {
+        let (Some(stored_size), Some(nanos)) = (size_column, mtime_column) else {
+            return Ok(None);
+        };
+        let offset = Duration::from_nanos(nanos.unsigned_abs());
+        let mtime = if nanos >= 0 {
+            UNIX_EPOCH.checked_add(offset)
+        } else {
+            UNIX_EPOCH.checked_sub(offset)
+        }
+        .ok_or_else(|| corrupt("document.file_mtime", &nanos.to_string()))?;
+        let size = u64::try_from(stored_size)
+            .map_err(|_negative| corrupt("document.file_size", &stored_size.to_string()))?;
+        Ok(Some(Self { size, mtime }))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewDocument {
     pub hash: ContentHash,
     pub path: PathBuf,
     pub source: DocumentSource,
     pub received_at: DateTime<Utc>,
+    pub stamp: Option<FileStamp>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -233,6 +280,10 @@ pub struct Document {
     pub received_at: DateTime<Utc>,
     pub status: DocumentStatus,
     pub fields: DocumentFields,
+    pub stamp: Option<FileStamp>,
+    /// Set when the file is gone or no longer has this content. A missing
+    /// document is not found by path; its hash still is.
+    pub missing_since: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

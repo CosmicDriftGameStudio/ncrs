@@ -1,0 +1,30 @@
+[package]
+name = "ncrs-intake"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "Scan locations, file watcher and duplicate detection for ncrs"
+license = "MIT"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+ncrs-index = { path = "../ncrs-index" }
+sha2 = "0.10"
+walkdir = "2.5"
+same-file = "1.0"
+# One recursive watcher per location; the backends (FSEvents, inotify,
+# ReadDirectoryChanges) do the per-directory work.
+notify = "8"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+# O_NOFOLLOW and O_NONBLOCK for opening a file that may have been swapped for
+# a link or a FIFO since it was looked at. Already in the lock through notify.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3.27"
