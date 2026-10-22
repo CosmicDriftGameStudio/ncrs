@@ -611,6 +611,216 @@
       "context": "Status line of the Quick Open box when nothing that was typed matches a file name.",
       "en": "No matching files",
       "de": "Keine passenden Dateien"
+    },
+    {
+      "key": "filing.encryption_title",
+      "context": "Title of the card that asks whether the document index is encrypted. Shown once, when the index does not exist yet.",
+      "en": "Create the document index",
+      "de": "Dokumentenindex anlegen"
+    },
+    {
+      "key": "filing.encryption_encrypted",
+      "context": "Radio option in the index card: the index database is encrypted with a key held by the operating system. Marked as the recommended choice.",
+      "en": "Encrypted index (recommended)",
+      "de": "Verschlüsselter Index (empfohlen)"
+    },
+    {
+      "key": "filing.encryption_plain",
+      "context": "Radio option in the index card: the index database is stored without encryption.",
+      "en": "Unencrypted index",
+      "de": "Unverschlüsselter Index"
+    },
+    {
+      "key": "filing.encryption_note_files",
+      "context": "First explanation paragraph in the index card: encryption of the index does not affect the filed PDF files themselves.",
+      "en": "The filed PDFs stay unencrypted in their folders.",
+      "de": "Die abgelegten PDFs bleiben unverschlüsselt in ihren Ordnern."
+    },
+    {
+      "key": "filing.encryption_note_index",
+      "context": "Second explanation paragraph in the index card: the index contains the full text of every document, which matters when the file is backed up or synced.",
+      "en": "The index holds the full text of all documents in a single file. Keep that in mind for backups and cloud sync.",
+      "de": "Der Index enthält den Volltext aller Dokumente in einer einzigen Datei. Das ist bei Backups und Cloud-Synchronisierung wichtig."
+    },
+    {
+      "key": "filing.encryption_note_vault",
+      "context": "Third explanation paragraph in the index card: a warning about folders on encrypted drives such as a mounted Cryptomator vault when the index is not encrypted.",
+      "en": "With an unencrypted index, do not add folders from an encrypted drive (for example a mounted Cryptomator vault): their text would end up in the index in plain form. ncrs does not detect such drives.",
+      "de": "Bei einem unverschlüsselten Index keine Ordner von einem verschlüsselten Laufwerk hinzufügen (zum Beispiel einen eingebundenen Cryptomator-Tresor): Deren Text landet sonst unverschlüsselt im Index. ncrs erkennt solche Laufwerke nicht."
+    },
+    {
+      "key": "filing.encryption_create",
+      "context": "Button in the index card that creates the index with the chosen option. Verb phrase.",
+      "en": "Create index",
+      "de": "Index anlegen"
+    },
+    {
+      "key": "filing.not_now",
+      "context": "Button in the filing cards that closes the card without doing anything. Filing stays off for this session.",
+      "en": "Not now",
+      "de": "Jetzt nicht"
+    },
+    {
+      "key": "filing.create_failed",
+      "context": "Error line in the index card when the index could not be created. Takes the technical reason.",
+      "en": "The index could not be created: {reason}",
+      "de": "Der Index konnte nicht angelegt werden: {reason}"
+    },
+    {
+      "key": "filing.key_title",
+      "context": "Title of the card that shows the recovery key of a new encrypted index.",
+      "en": "Your recovery key",
+      "de": "Wiederherstellungsschlüssel"
+    },
+    {
+      "key": "filing.key_explain",
+      "context": "Explanation in the recovery key card: the key is shown only once and must be stored safely.",
+      "en": "This key is shown only once. Store it somewhere safe: you need it if the system keystore ever loses the index key.",
+      "de": "Dieser Schlüssel wird nur einmal angezeigt. Bitte sicher aufbewahren: Er wird gebraucht, falls der Schlüsselbund des Systems den Indexschlüssel verliert."
+    },
+    {
+      "key": "filing.key_copy",
+      "context": "Button in the recovery key card that copies the key to the clipboard. One word, verb.",
+      "en": "Copy",
+      "de": "Kopieren"
+    },
+    {
+      "key": "filing.key_copied",
+      "context": "Short confirmation in the title bar after the recovery key was copied to the clipboard. Must not contain the key.",
+      "en": "Recovery key copied",
+      "de": "Wiederherstellungsschlüssel kopiert"
+    },
+    {
+      "key": "filing.key_group_prompt",
+      "context": "Label above the field in the recovery key card. Asks the user to type one group of four characters of the key. Takes the group number, counted from 1.",
+      "en": "Type group {group} of the key to continue",
+      "de": "Zum Fortfahren Gruppe {group} des Schlüssels eingeben"
+    },
+    {
+      "key": "filing.key_continue",
+      "context": "Button in the recovery key card that confirms the typed group and goes on.",
+      "en": "Continue",
+      "de": "Weiter"
+    },
+    {
+      "key": "filing.key_group_wrong",
+      "context": "Error line in the recovery key card when the typed group is not the requested one. Takes the group number, counted from 1.",
+      "en": "That is not group {group} of the key.",
+      "de": "Das ist nicht Gruppe {group} des Schlüssels."
+    },
+    {
+      "key": "filing.restore_title",
+      "context": "Title of the card that asks for the recovery key because the index cannot be opened with the system keystore.",
+      "en": "Recovery key needed",
+      "de": "Wiederherstellungsschlüssel erforderlich"
+    },
+    {
+      "key": "filing.restore_missing",
+      "context": "Explanation in the restore card: the system keystore holds no key for the existing encrypted index.",
+      "en": "The key for the index is not in the system keystore. Enter the recovery key to open the index.",
+      "de": "Der Schlüssel für den Index ist nicht im Schlüsselbund des Systems. Zum Öffnen des Index den Wiederherstellungsschlüssel eingeben."
+    },
+    {
+      "key": "filing.restore_mismatch",
+      "context": "Explanation in the restore card: the system keystore holds a key that does not open the existing encrypted index.",
+      "en": "A key is stored, but it does not open this index. The stored key is replaced only if the recovery key you enter opens the index.",
+      "de": "Es ist ein Schlüssel gespeichert, er öffnet diesen Index aber nicht. Der gespeicherte Schlüssel wird nur ersetzt, wenn der eingegebene Wiederherstellungsschlüssel den Index öffnet."
+    },
+    {
+      "key": "filing.restore_replace_checkbox",
+      "context": "Checkbox label in the restore card: the user agrees that the key in the system keystore is replaced.",
+      "en": "Replace the stored key",
+      "de": "Gespeicherten Schlüssel ersetzen"
+    },
+    {
+      "key": "filing.restore_field",
+      "context": "Placeholder of the text field in the restore card where the recovery key is typed.",
+      "en": "Recovery key",
+      "de": "Wiederherstellungsschlüssel"
+    },
+    {
+      "key": "filing.restore_button",
+      "context": "Button in the restore card that puts the typed recovery key into the empty system keystore. Verb.",
+      "en": "Restore",
+      "de": "Wiederherstellen"
+    },
+    {
+      "key": "filing.replace_button",
+      "context": "Button in the restore card that replaces the stored key by the typed recovery key. Verb phrase.",
+      "en": "Replace key",
+      "de": "Schlüssel ersetzen"
+    },
+    {
+      "key": "filing.error_key_format",
+      "context": "Error line in the restore card when the typed text is not a recovery key.",
+      "en": "That is not a valid recovery key (52 letters and digits, in groups of four).",
+      "de": "Das ist kein gültiger Wiederherstellungsschlüssel (52 Buchstaben und Ziffern in Vierergruppen)."
+    },
+    {
+      "key": "filing.error_key_does_not_open",
+      "context": "Error line in the restore card when the typed recovery key does not open the index.",
+      "en": "This recovery key does not open the index.",
+      "de": "Dieser Wiederherstellungsschlüssel öffnet den Index nicht."
+    },
+    {
+      "key": "filing.error_confirm_first",
+      "context": "Error line in the restore card when the user submits before ticking the checkbox that allows replacing the stored key.",
+      "en": "Tick \"Replace the stored key\" first.",
+      "de": "Zuerst den Haken bei \"Gespeicherten Schlüssel ersetzen\" setzen."
+    },
+    {
+      "key": "filing.error_key_other",
+      "context": "Error line in the restore card when applying the recovery key failed for another reason. Takes the technical reason.",
+      "en": "The key could not be applied: {reason}",
+      "de": "Der Schlüssel konnte nicht übernommen werden: {reason}"
+    },
+    {
+      "key": "filing.plain_title",
+      "context": "Title of the warning card shown when the index file is not encrypted although a key is stored for it.",
+      "en": "Index file is not encrypted",
+      "de": "Indexdatei ist nicht verschlüsselt"
+    },
+    {
+      "key": "filing.plain_warning",
+      "context": "Warning in the plain file card: the file may have been swapped for an unencrypted one; nothing is taken in until the user confirms.",
+      "en": "The index file is not encrypted, although a key is stored for it. It may have been replaced by an unencrypted file. Nothing is taken in until you confirm.",
+      "de": "Die Indexdatei ist nicht verschlüsselt, obwohl dafür ein Schlüssel gespeichert ist. Sie wurde möglicherweise durch eine unverschlüsselte Datei ersetzt. Bis zur Bestätigung wird nichts aufgenommen."
+    },
+    {
+      "key": "filing.plain_use",
+      "context": "Button in the plain file card that accepts the unencrypted index file for this session.",
+      "en": "Use this file",
+      "de": "Diese Datei verwenden"
+    },
+    {
+      "key": "filing.failed_title",
+      "context": "Title of the card shown when the index could not be opened at all.",
+      "en": "Filing is unavailable",
+      "de": "Ablage nicht verfügbar"
+    },
+    {
+      "key": "filing.failed_reason",
+      "context": "Line in the failure card. Takes the technical reason.",
+      "en": "The index could not be opened: {reason}",
+      "de": "Der Index konnte nicht geöffnet werden: {reason}"
+    },
+    {
+      "key": "filing.failed_no_data_dir",
+      "context": "Reason in the failure card when the operating system gives no place to keep the index.",
+      "en": "No data directory could be determined.",
+      "de": "Es konnte kein Datenverzeichnis ermittelt werden."
+    },
+    {
+      "key": "filing.failed_close",
+      "context": "Button in the failure card that closes it. One word, verb.",
+      "en": "Close",
+      "de": "Schließen"
+    },
+    {
+      "key": "filing.locations_skipped",
+      "context": "Notice in the title bar after the filing module started: some configured folders cannot be used. Takes the number of folders.",
+      "en": "{count} filing locations skipped: not reachable or overlapping",
+      "de": "{count} Ablageorte übersprungen: nicht erreichbar oder überlappend"
     }
   ]
 }

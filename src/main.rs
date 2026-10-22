@@ -16,6 +16,7 @@ mod backend;
 mod config;
 mod context_menu;
 mod dialog;
+mod filing;
 mod fs;
 mod i18n;
 mod jobs;

@@ -7,6 +7,7 @@ use iced::Size;
 
 use crate::app::{RowFailure, Transfer};
 use crate::dialog::PromptKind;
+use crate::filing::FilingMessage;
 use crate::fs::search::SearchEvent;
 use crate::fs::CreateDirError;
 use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
@@ -235,6 +236,9 @@ pub enum Message {
     /// it is already there.
     OpenSearch,
     Search(SearchMessage),
+
+    // --- Filing module: the index and its first-start questions ---
+    Filing(FilingMessage),
 
     // --- Quick Open (Cmd/Ctrl+P) ---
     QuickOpen(QuickOpenMessage),

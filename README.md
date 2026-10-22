@@ -322,6 +322,49 @@ tagged = "#a50"
   applied anyway; the status bar says which pair and where, until `Esc`.
 - Colors are read at start; restart ncrs after editing the file.
 
+## What ncrs encrypts
+
+This applies to the filing module (`[modules.filing] enabled = true`). With the
+module off, ncrs opens and creates no index.
+
+ncrs is a file manager with a convenience index for your documents. It is not a
+high-security application, and it does not try to be one.
+
+**Encrypted:** the index, `index.db` in the data directory
+(`~/Library/Application Support/ncrs` on macOS, `$XDG_DATA_HOME/ncrs` or
+`~/.local/share/ncrs` on Linux, `%APPDATA%\ncrs` on Windows). It is a SQLCipher
+database (AES-256). The key is kept in the operating system's credential store
+(Keychain, Credential Manager or Secret Service). When the index is created,
+ncrs shows a recovery key once. You need it if the credential store loses the
+key, for example on a new machine or after a reinstall. Without it the index
+cannot be read again.
+
+**Not encrypted:**
+
+- The filed documents. PDFs and images stay as they are, in their folders.
+- The config file.
+- An index you chose to create unencrypted. ncrs asks at the first start of the
+  module; "encrypted" is preselected.
+
+**Why the index matters:** it holds the full text of all your documents in one
+file. Keep that in mind for backups and cloud sync.
+
+**Encrypted drives:** ncrs does not detect whether a folder lies on an encrypted
+drive, such as a mounted Cryptomator vault. Add folders from such a drive only
+to an encrypted index. With an unencrypted index, their text would end up in
+plain form in a file outside the vault.
+
+**Warnings at start:**
+
+- *Recovery key needed.* The index is encrypted, but the credential store has no
+  key for it. Enter the recovery key, and ncrs saves the key again.
+- *Stored key does not open the index.* ncrs replaces the stored key only after
+  you confirm it and the recovery key you enter has opened the index.
+- *Index file is unencrypted although a key is stored.* The file may have been
+  swapped for an unencrypted one. Nothing is taken in until you confirm. The
+  confirmation lasts for the running session, and the stored key is never
+  removed.
+
 ## Graphics backend
 
 The renderer is chosen by cargo features, not in code — `src/main.rs` contains no

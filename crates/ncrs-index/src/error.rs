@@ -40,6 +40,8 @@ pub enum IndexError {
     KeyMissing,
     /// The stored key does not open the database.
     WrongKey,
+    /// `replace_key` was pointed at a plain database, which has no key.
+    NotEncrypted,
     /// The stored entry is not a 32 byte key.
     InvalidKeyLength {
         found: usize,
@@ -93,6 +95,10 @@ impl fmt::Display for IndexError {
             }
             Self::KeyMissing => write!(f, "the index database exists but its key is missing"),
             Self::WrongKey => write!(f, "the stored key does not open the index database"),
+            Self::NotEncrypted => write!(
+                f,
+                "the index database is not encrypted, so it has no key to replace"
+            ),
             Self::InvalidKeyLength { found } => {
                 write!(f, "the stored index key is {found} bytes, expected 32")
             }

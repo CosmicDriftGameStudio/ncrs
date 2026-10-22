@@ -56,6 +56,32 @@ impl Index {
         store_and_verify(store, key)
     }
 
+    /// Overwrites the stored key with a recovery key the user typed. The store
+    /// is only touched after that key has opened the database.
+    pub fn replace_key(
+        db_path: &Path,
+        recovery_key: &RecoveryKey,
+        store: &dyn KeyStore,
+    ) -> Result<(), IndexError> {
+        require_existing_file(db_path)?;
+        if starts_with_plaintext_header(db_path)? {
+            return Err(IndexError::NotEncrypted);
+        }
+        let key = recovery_key.key();
+        let conn = Connection::open(db_path)?;
+        unlock(&conn, key)?;
+        drop(conn);
+        store.replace(key.as_bytes())?;
+        let read_back = store
+            .load()?
+            .ok_or(IndexError::KeyStoreVerificationFailed)?;
+        if read_back == key.as_bytes() {
+            Ok(())
+        } else {
+            Err(IndexError::KeyStoreVerificationFailed)
+        }
+    }
+
     pub fn is_encrypted(&self) -> bool {
         self.encrypted
     }
@@ -452,6 +478,63 @@ mod tests {
         let err = Index::restore_key(&path, &recovery_key, &store).unwrap_err();
 
         assert!(matches!(err, IndexError::KeyStoreNotEmpty), "{err}");
+        assert_eq!(store.snapshot().unwrap(), vec![4; 32]);
+    }
+
+    #[test]
+    fn replace_key_with_the_right_key_replaces_a_different_entry() {
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let recovery_key = create_encrypted_db(&path, &InMemoryKeyStore::empty());
+        let file_before = fs::read(&path).unwrap();
+
+        let store = InMemoryKeyStore::with_entry(vec![4; 32]);
+        Index::replace_key(&path, &recovery_key, &store).unwrap();
+
+        assert_eq!(store.snapshot().unwrap(), recovery_key.key().as_bytes());
+        assert!(Index::open(&path, &store).unwrap().is_encrypted());
+        assert_eq!(fs::read(&path).unwrap(), file_before);
+    }
+
+    #[test]
+    fn replace_key_with_a_wrong_key_keeps_the_entry() {
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        create_encrypted_db(&path, &InMemoryKeyStore::empty());
+        let wrong = RecoveryKey::from_str_for_test(&[3; 32]);
+
+        let store = InMemoryKeyStore::with_entry(vec![4; 32]);
+        let err = Index::replace_key(&path, &wrong, &store).unwrap_err();
+
+        assert!(matches!(err, IndexError::WrongKey), "{err}");
+        assert_eq!(store.snapshot().unwrap(), vec![4; 32]);
+    }
+
+    #[test]
+    fn replace_key_on_a_plain_file_is_refused_and_keeps_the_entry() {
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        drop(Index::create_plain(&path).unwrap());
+        let some_key = RecoveryKey::from_str_for_test(&[3; 32]);
+
+        let store = InMemoryKeyStore::with_entry(vec![4; 32]);
+        let err = Index::replace_key(&path, &some_key, &store).unwrap_err();
+
+        assert!(matches!(err, IndexError::NotEncrypted), "{err}");
+        assert_eq!(store.snapshot().unwrap(), vec![4; 32]);
+    }
+
+    #[test]
+    fn replace_key_on_a_missing_file_creates_nothing() {
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let some_key = RecoveryKey::from_str_for_test(&[3; 32]);
+
+        let store = InMemoryKeyStore::with_entry(vec![4; 32]);
+        let err = Index::replace_key(&path, &some_key, &store).unwrap_err();
+
+        assert!(matches!(err, IndexError::NotFound), "{err}");
+        assert!(!path.exists());
         assert_eq!(store.snapshot().unwrap(), vec![4; 32]);
     }
 
