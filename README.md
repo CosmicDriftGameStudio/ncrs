@@ -587,6 +587,10 @@ with or endorsed by it.
 
 MIT
 
+Release archives and the macOS app include `THIRD_PARTY_LICENSES.html` with the
+licenses of the dependencies and of the embedded Fira Sans font. To generate it
+locally: `cargo install cargo-about --locked --features cli && cargo about generate about.hbs -o THIRD_PARTY_LICENSES.html`
+
 ## Contributing, security, changes
 
 - [CONTRIBUTING.md](CONTRIBUTING.md) — the rules the code follows, and how to

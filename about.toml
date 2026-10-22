@@ -1,0 +1,42 @@
+# cargo-about configuration: produces THIRD_PARTY_LICENSES.html for releases.
+#
+# The permissive licenses require their text and copyright notice to travel
+# with a binary, so every release archive carries this file. Generated in CI
+# (see release.yml), not checked in: Cargo.lock moves with every Dependabot
+# bump and a committed copy would be stale on arrival.
+#
+# Run locally: cargo install cargo-about --locked --features cli
+#              cargo about generate about.hbs -o THIRD_PARTY_LICENSES.html
+
+# Same list as `[licenses] allow` in deny.toml. BSL-1.0 is accepted
+# additionally because deny.toml makes a per-crate exception for
+# clipboard-win and error-code, which are shipped in the Windows build.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "Unlicense",
+    "CC0-1.0",
+    "Unicode-3.0",
+    "MPL-2.0",
+    "BSL-1.0",
+]
+
+# All release targets, so one file covers every archive; Windows-only crates
+# would otherwise be missing from a file generated on Linux.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+
+# Build and test tooling is not shipped.
+ignore-dev-dependencies = true
+ignore-build-dependencies = true

@@ -36,6 +36,16 @@ jobs:
           cargo install cargo-deny --locked
           cargo deny check advisories licenses bans sources
 
+      # The release generates THIRD_PARTY_LICENSES.html from about.toml. A
+      # dependency under a license about.toml does not accept would only fail
+      # at the release tag; here it fails on the pull request that adds it.
+      # Once is enough: about.toml covers all release targets.
+      - name: Third-party licenses
+        if: runner.os == 'Linux'
+        run: |
+          cargo install cargo-about --locked --version 0.9.2 --features cli
+          cargo about generate about.hbs -o /dev/null
+
       - name: Formatting
         run: cargo fmt --all --check
 

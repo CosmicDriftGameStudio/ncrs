@@ -6,7 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- Release archives and the macOS app include `THIRD_PARTY_LICENSES.html`: the
+  licenses and copyright notices of every dependency built into ncrs, and of
+  the embedded Fira Sans font.
 
 ## [0.3.0] — 2026-10-17
 
