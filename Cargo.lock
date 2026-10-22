@@ -2188,6 +2188,7 @@ dependencies = [
  "iced_selector",
  "iced_test",
  "ignore",
+ "ncrs-intake",
  "nucleo-matcher",
  "serde",
  "serde_spanned",

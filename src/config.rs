@@ -13,9 +13,11 @@
 use std::ffi::OsString;
 use std::fmt;
 use std::io::Read as _;
+use std::ops::Range;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
+use ncrs_intake::LocationMode;
 use serde::de::{Deserializer, Error as _, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use serde_spanned::Spanned;
@@ -58,6 +60,87 @@ pub struct Config {
     /// palette from being used.
     #[serde(skip)]
     pub contrast_warning: Option<ContrastWarning>,
+    /// The `[modules]` sections as written; `load` turns `filing` into the
+    /// field of the same name below.
+    #[serde(default)]
+    pub modules: ModulesSection,
+    /// The filing module as `load` checked it: text rules only, the folders
+    /// may not exist.
+    #[serde(skip)]
+    pub filing: Filing,
+}
+
+/// The `[modules]` table: one sub-table per module.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModulesSection {
+    #[serde(default)]
+    pub filing: FilingSection,
+}
+
+/// The `[modules.filing]` section, unchecked.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FilingSection {
+    #[serde(default)]
+    pub enabled: bool,
+    /// Keeps the position of the whole array for the "no target" error.
+    #[serde(default)]
+    pub locations: Option<Spanned<Vec<LocationEntry>>>,
+}
+
+/// One `[[modules.filing.locations]]` table, unchecked.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LocationEntry {
+    pub path: Spanned<String>,
+    pub mode: Spanned<LocationModeName>,
+    #[serde(default)]
+    pub images: bool,
+    #[serde(default)]
+    pub target: Option<Spanned<bool>>,
+}
+
+/// The spelling of a mode in the file; `load` maps it to `LocationMode`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LocationModeName {
+    Inbox,
+    Archive,
+}
+
+impl From<LocationModeName> for LocationMode {
+    fn from(name: LocationModeName) -> Self {
+        match name {
+            LocationModeName::Inbox => Self::Inbox,
+            LocationModeName::Archive => Self::Archive,
+        }
+    }
+}
+
+/// The filing module's settings in effect.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Filing {
+    pub enabled: bool,
+    pub locations: Vec<FilingLocation>,
+}
+
+impl Filing {
+    /// The archive new documents are filed into. `load` guarantees exactly
+    /// one when there are locations.
+    pub fn target(&self) -> Option<&FilingLocation> {
+        self.locations.iter().find(|location| location.is_target)
+    }
+}
+
+/// A location with an expanded, absolute, `..`-free path. Not looked up on
+/// disk: whether the folder exists is for the module to find out when it starts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilingLocation {
+    pub path: PathBuf,
+    pub mode: LocationMode,
+    pub images: bool,
+    pub is_target: bool,
 }
 
 /// A text and its ground in the `[theme]` palette whose contrast is low.
@@ -390,8 +473,22 @@ fn home_config(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
     absolute(var("HOME")).map(|home| home.join(".config").join("ncrs").join("config.toml"))
 }
 
+/// The home directory `~` stands for. Like the config path, only an absolute
+/// one counts.
+fn home_from_env() -> Option<PathBuf> {
+    #[cfg(windows)]
+    let variable = "USERPROFILE";
+    #[cfg(not(windows))]
+    let variable = "HOME";
+    absolute(std::env::var_os(variable))
+}
+
 /// Reads the config at `path`. A missing file gives the defaults.
 pub fn load(path: &Path) -> Result<Config, ConfigError> {
+    load_with_home(path, home_from_env().as_deref())
+}
+
+fn load_with_home(path: &Path, home: Option<&Path>) -> Result<Config, ConfigError> {
     let unreadable = |reason: String| ConfigError::Unreadable {
         path: path.to_path_buf(),
         reason,
@@ -474,7 +571,111 @@ pub fn load(path: &Path) -> Result<Config, ConfigError> {
         });
         config.palette = configured.palette;
     }
+    config.filing =
+        resolve_filing(&config.modules.filing, home).map_err(|err| ConfigError::Invalid {
+            path: path.to_path_buf(),
+            line: line_at(source.as_bytes(), err.span.start),
+            reason: err.reason,
+        })?;
     Ok(config)
+}
+
+struct FilingError {
+    span: Range<usize>,
+    reason: String,
+}
+
+/// Text rules only, no file system access: a dead mount must not block the
+/// start or cost the user the rest of the config.
+fn resolve_filing(section: &FilingSection, home: Option<&Path>) -> Result<Filing, FilingError> {
+    let mut filing = Filing {
+        enabled: section.enabled,
+        locations: Vec::new(),
+    };
+    let Some(listed) = &section.locations else {
+        return Ok(filing);
+    };
+    let mut path_spans = Vec::new();
+    for entry in listed.get_ref() {
+        let path_error = |reason: String| FilingError {
+            span: entry.path.span(),
+            reason,
+        };
+        let path = expand_location_path(entry.path.get_ref(), home).map_err(path_error)?;
+        let mode = LocationMode::from(*entry.mode.get_ref());
+        let is_target = match &entry.target {
+            Some(flag) if *flag.get_ref() => {
+                if mode == LocationMode::Inbox {
+                    return Err(FilingError {
+                        span: flag.span(),
+                        reason: "an inbox cannot be the target, set `target = true` on an archive"
+                            .to_owned(),
+                    });
+                }
+                if filing.target().is_some() {
+                    return Err(FilingError {
+                        span: flag.span(),
+                        reason: "only one location can have `target = true`".to_owned(),
+                    });
+                }
+                true
+            }
+            _ => false,
+        };
+        path_spans.push(entry.path.span());
+        filing.locations.push(FilingLocation {
+            path,
+            mode,
+            images: entry.images,
+            is_target,
+        });
+    }
+    if !filing.locations.is_empty() && filing.target().is_none() {
+        return Err(FilingError {
+            span: listed.span(),
+            reason: "no location has `target = true`, one archive must be the target".to_owned(),
+        });
+    }
+    for ((later_index, later), span) in filing.locations.iter().enumerate().zip(&path_spans) {
+        let overlapped = filing.locations.iter().take(later_index).find(|earlier| {
+            later.path.starts_with(&earlier.path) || earlier.path.starts_with(&later.path)
+        });
+        if let Some(earlier) = overlapped {
+            return Err(FilingError {
+                span: span.clone(),
+                reason: format!(
+                    "{} and {} overlap, a location cannot be the same folder as another or lie inside it",
+                    earlier.path.display(),
+                    later.path.display()
+                ),
+            });
+        }
+    }
+    Ok(filing)
+}
+
+/// `~` and `~/rest` become the home directory; everything else must already
+/// be absolute. A `..` component would make the overlap check wrong.
+fn expand_location_path(text: &str, home: Option<&Path>) -> Result<PathBuf, String> {
+    let expanded = match text.strip_prefix('~') {
+        Some(rest) if rest.is_empty() || rest.starts_with(is_separator) => {
+            let known_home = home.ok_or("no home directory to expand `~`")?;
+            known_home.join(rest.trim_start_matches(is_separator))
+        }
+        _ => PathBuf::from(text),
+    };
+    if !expanded.is_absolute() {
+        return Err(format!(
+            "the path \"{text}\" must be absolute or start with `~/`"
+        ));
+    }
+    if expanded
+        .components()
+        .any(|part| matches!(part, Component::ParentDir))
+    {
+        return Err(format!("the path \"{text}\" must not contain `..`"));
+    }
+    Ok(expanded)
 }
 
 /// 1-based line of the byte at `offset`.
@@ -730,5 +931,281 @@ mod tests {
         );
         assert_eq!(path_from_env(env(&[("APPDATA", "rel")])), None);
         assert_eq!(path_from_env(env(&[])), None);
+    }
+
+    fn load_filing(content: &str, home: Option<&Path>) -> Result<Config, ConfigError> {
+        let dir = tempfile::tempdir().map_err(|err| ConfigError::Unreadable {
+            path: PathBuf::new(),
+            reason: err.to_string(),
+        })?;
+        load_with_home(&write(&dir, content.as_bytes()), home)
+    }
+
+    /// A TOML literal string, so Windows backslashes stay as they are.
+    fn quoted(path: &Path) -> String {
+        format!("'{}'", path.display())
+    }
+
+    fn location(path: &str, rest: &str) -> String {
+        format!("[[modules.filing.locations]]\npath = {path}\n{rest}\n")
+    }
+
+    fn filing_text(enabled: bool, locations: &[String]) -> String {
+        let mut text = format!("[modules.filing]\nenabled = {enabled}\n");
+        text.extend(locations.iter().map(String::as_str));
+        text
+    }
+
+    /// 1-based number of the last line that contains `needle`.
+    fn last_line_with(text: &str, needle: &str) -> usize {
+        text.lines()
+            .enumerate()
+            .filter(|(_, line)| line.contains(needle))
+            .last()
+            .unwrap()
+            .0
+            + 1
+    }
+
+    fn filing_error(content: &str, home: Option<&Path>) -> (Option<usize>, String) {
+        let err = load_filing(content, home).unwrap_err();
+        assert!(matches!(err, ConfigError::Invalid { .. }), "{err:?}");
+        (err.line(), err.reason().to_owned())
+    }
+
+    #[test]
+    fn a_full_filing_section_is_read() {
+        let base = tempfile::tempdir().unwrap();
+        let (inbox, archive_a, archive_b) = (
+            base.path().join("inbox"),
+            base.path().join("archive-a"),
+            base.path().join("archive-b"),
+        );
+        let text = filing_text(
+            true,
+            &[
+                location(&quoted(&inbox), "mode = \"inbox\""),
+                location(
+                    &quoted(&archive_a),
+                    "mode = \"archive\"\nimages = true\ntarget = true",
+                ),
+                location(&quoted(&archive_b), "mode = \"archive\"\ntarget = false"),
+            ],
+        );
+        let filing = load_filing(&text, None).unwrap().filing;
+        assert!(filing.enabled);
+        let found: Vec<_> = filing
+            .locations
+            .iter()
+            .map(|l| (l.path.clone(), l.mode, l.images, l.is_target))
+            .collect();
+        assert_eq!(
+            found,
+            [
+                (inbox, LocationMode::Inbox, false, false),
+                (archive_a.clone(), LocationMode::Archive, true, true),
+                (archive_b, LocationMode::Archive, false, false),
+            ]
+        );
+        assert_eq!(filing.target().unwrap().path, archive_a);
+    }
+
+    #[test]
+    fn folders_that_do_not_exist_load_without_error() {
+        let base = tempfile::tempdir().unwrap();
+        let gone = base.path().join("unplugged").join("archive-a");
+        for enabled in [true, false] {
+            let text = filing_text(
+                enabled,
+                &[location(
+                    &quoted(&gone),
+                    "mode = \"archive\"\ntarget = true",
+                )],
+            );
+            let filing = load_filing(&text, None).unwrap().filing;
+            assert_eq!(filing.enabled, enabled);
+            assert_eq!(filing.target().unwrap().path, gone);
+        }
+    }
+
+    #[test]
+    fn a_missing_section_means_disabled_without_locations() {
+        let filing = load_text("version = 1\n").filing;
+        assert!(!filing.enabled);
+        assert!(filing.locations.is_empty());
+        assert!(filing.target().is_none());
+    }
+
+    #[test]
+    fn enabled_without_locations_loads() {
+        let filing = load_filing("[modules.filing]\nenabled = true\n", None)
+            .unwrap()
+            .filing;
+        assert!(filing.enabled);
+        assert!(filing.locations.is_empty());
+    }
+
+    #[test]
+    fn a_leading_tilde_is_the_home_directory() {
+        let home = tempfile::tempdir().unwrap();
+        let archive = "mode = \"archive\"\ntarget = true";
+        let in_home = filing_text(true, &[location("'~/archive-a'", archive)]);
+        let filing = load_filing(&in_home, Some(home.path())).unwrap().filing;
+        assert_eq!(filing.locations[0].path, home.path().join("archive-a"));
+
+        let home_itself = filing_text(true, &[location("'~'", archive)]);
+        let bare = load_filing(&home_itself, Some(home.path())).unwrap().filing;
+        assert_eq!(bare.locations[0].path, home.path());
+
+        let climbing = filing_text(true, &[location("'~/../x'", archive)]);
+        let (line, _) = filing_error(&climbing, Some(home.path()));
+        assert_eq!(line, Some(4));
+    }
+
+    #[test]
+    fn filing_errors_name_the_exact_line() {
+        let base = tempfile::tempdir().unwrap();
+        let at = |name: &str| quoted(&base.path().join(name));
+        let archive = |name: &str| location(&at(name), "mode = \"archive\"\ntarget = true");
+        let plain_archive = |name: &str| location(&at(name), "mode = \"archive\"");
+        let with_slash = quoted(&base.path().join("archive-a").join(""));
+        let cases: Vec<(&str, String, &str)> = vec![
+            (
+                "relative path",
+                filing_text(true, &[location("'archive-a'", "mode = \"archive\"")]),
+                "archive-a",
+            ),
+            (
+                "tilde without home",
+                filing_text(true, &[location("'~/archive-a'", "mode = \"archive\"")]),
+                "~/archive-a",
+            ),
+            (
+                "parent component",
+                filing_text(
+                    true,
+                    &[location(
+                        &quoted(&base.path().join("..").join("x")),
+                        "mode = \"archive\"",
+                    )],
+                ),
+                "..",
+            ),
+            (
+                "unknown mode",
+                filing_text(true, &[location(&at("a"), "mode = \"outbox\"")]),
+                "outbox",
+            ),
+            (
+                "unknown field in a location",
+                filing_text(
+                    true,
+                    &[location(&at("a"), "mode = \"archive\"\ncolour = 1")],
+                ),
+                "colour",
+            ),
+            (
+                "unknown field in the section",
+                "[modules.filing]\nenabled = true\nnope = 1\n".to_owned(),
+                "nope",
+            ),
+            (
+                "target on an inbox",
+                filing_text(
+                    true,
+                    &[
+                        archive("archive-a"),
+                        location(&at("inbox"), "mode = \"inbox\"\ntarget = true"),
+                    ],
+                ),
+                "target = true",
+            ),
+            (
+                "two targets",
+                filing_text(true, &[archive("archive-a"), archive("archive-b")]),
+                "target = true",
+            ),
+            (
+                "no target",
+                filing_text(false, &[plain_archive("archive-a")]),
+                "[[modules.filing.locations]]",
+            ),
+            (
+                "nested locations",
+                filing_text(
+                    true,
+                    &[archive("archive-a"), plain_archive("archive-a/inside")],
+                ),
+                "inside",
+            ),
+            (
+                "outer after inner",
+                filing_text(
+                    true,
+                    &[archive("archive-a/inside"), plain_archive("archive-a")],
+                ),
+                "archive-a'",
+            ),
+            (
+                "the same folder twice",
+                filing_text(true, &[archive("archive-a"), plain_archive("archive-a")]),
+                "archive-a'",
+            ),
+            (
+                "the same folder twice with a trailing slash",
+                filing_text(
+                    true,
+                    &[
+                        archive("archive-a"),
+                        location(&with_slash, "mode = \"archive\""),
+                    ],
+                ),
+                "archive-a",
+            ),
+        ];
+        for (name, text, marker) in &cases {
+            let (found, reason) = filing_error(text, None);
+            let expected = match *name {
+                "no target" => 3,
+                _ => last_line_with(text, marker),
+            };
+            assert_eq!(found, Some(expected), "{name}: {reason}\n{text}");
+        }
+    }
+
+    #[test]
+    fn filing_reasons_say_what_is_wrong() {
+        let base = tempfile::tempdir().unwrap();
+        let path = quoted(&base.path().join("a"));
+        let cases = [
+            (
+                filing_text(true, &[location("'rel'", "mode = \"archive\"")]),
+                "must be absolute",
+            ),
+            (
+                filing_text(true, &[location("'~/a'", "mode = \"archive\"")]),
+                "no home directory to expand `~`",
+            ),
+            (
+                filing_text(true, &[location(&path, "mode = \"outbox\"")]),
+                "inbox",
+            ),
+            (
+                filing_text(true, &[location(&path, "mode = \"outbox\"")]),
+                "archive",
+            ),
+            (
+                filing_text(true, &[location(&path, "mode = \"inbox\"\ntarget = true")]),
+                "inbox cannot be the target",
+            ),
+            (
+                filing_text(true, &[location(&path, "mode = \"archive\"")]),
+                "no location has `target = true`",
+            ),
+        ];
+        for (text, expected) in cases {
+            let (_, found) = filing_error(&text, None);
+            assert!(found.contains(expected), "{found}");
+        }
     }
 }
