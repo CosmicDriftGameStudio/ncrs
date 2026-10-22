@@ -374,6 +374,43 @@ Two limits of iced 0.14 worth knowing: `iced_selector` finds widgets by `widget:
 `Button` has no `id` method — so buttons are addressed by the position the layout reports
 for them. And `Snapshot` offers no bytes, only a comparison against a file.
 
+## Performance
+
+One ignored test measures loading a large directory and moving through it, and
+prints a Markdown table you can paste into an issue:
+
+```bash
+cargo test --release --bin ncrs perf_numbers -- --ignored --nocapture
+```
+
+It creates directories of 1,000, 10,000 and 100,000 entries (one in twenty a
+directory, files up to 4 KiB), reads each through the same code a panel uses,
+and drives the app with the same messages a key press sends. The key columns
+are the mean of 1,000 presses, the others the median of seven runs, warm page
+cache. Apple M4 Pro, 48 GB, macOS 26.6:
+
+| Entries | Open directory | Sort by name / size / date | Hand to panel | Build view | ↓ + view | PgDn + view |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1,000 | 1.6–3.1 ms | 33 µs / 31 µs / 29 µs | 14 µs | 34 µs | 30 µs | 29 µs |
+| 10,000 | 22–28 ms | 0.33 ms / 0.42 ms / 0.31 ms | 0.14 ms | 29 µs | 29 µs | 30 µs |
+| 100,000 | 258–346 ms | 3.2 ms / 6.5 ms / 3.1 ms | 1.4 ms | 28 µs | 29 µs | 29 µs |
+
+What the columns are, and what they leave out:
+
+- **Open directory** is `readdir`, one `stat` per entry and the sort by name, on
+  tokio's blocking pool. The `stat` calls are nearly all of it; the range is
+  three runs. The UI stays responsive meanwhile: the panel keeps the old
+  listing, marked as loading, until the new one arrives.
+- **Hand to panel** is what happens when the listing arrives: tags kept,
+  cursor placed.
+- **Build view** and the key columns are the widget tree `view` returns,
+  rebuilt on every key press. Only the visible rows are built, so the cost
+  does not grow with the directory. Rasterising that tree on the GPU or CPU
+  happens afterwards in iced and is **not** in these numbers; see
+  [Graphics backend](#graphics-backend) for what that costs in practice.
+- A cold cache, a network drive or a slow disk change **Open directory** and
+  nothing else.
+
 ## Build & run
 
 Requirements: Rust (stable, 1.80+) via [rustup](https://rustup.rs).
