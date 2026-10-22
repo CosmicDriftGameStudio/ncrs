@@ -1,8 +1,10 @@
-use std::path::PathBuf;
-use std::sync::mpsc::{self, Receiver};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver, Sender};
 
 use notify::event::{ModifyKind, RenameMode};
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher as _};
+use walkdir::WalkDir;
 
 use crate::classify::classify;
 use crate::error::IntakeError;
@@ -70,10 +72,7 @@ impl LocationWatcher {
                     return;
                 }
                 for path in event_targets(&event) {
-                    if classify(&watched, path).is_ok() {
-                        // The receiver is gone when the app shuts down.
-                        let _ = forward.send(WatchEvent::File(path.clone()));
-                    }
+                    forward_files(&watched, path, &forward);
                 }
             };
             // Not following links: a linked directory could lead out of the
@@ -96,6 +95,30 @@ impl LocationWatcher {
             receiver,
             failed,
         )
+    }
+}
+
+/// A folder that is created or moved in brings files the backend may never
+/// report one by one: a moved folder is a single event, and on Linux the watch
+/// on a new folder starts after files may already have been written into it.
+fn forward_files(location: &Location, path: &Path, forward: &Sender<WatchEvent>) {
+    let is_folder = fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir());
+    let files: Vec<PathBuf> = if is_folder {
+        WalkDir::new(path)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|entry| !entry.file_type().is_dir())
+            .map(walkdir::DirEntry::into_path)
+            .collect()
+    } else {
+        vec![path.to_path_buf()]
+    };
+    for file in files {
+        if classify(location, &file).is_ok() {
+            // The receiver is gone when the app shuts down.
+            let _ = forward.send(WatchEvent::File(file));
+        }
     }
 }
 

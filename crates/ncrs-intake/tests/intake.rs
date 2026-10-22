@@ -749,6 +749,29 @@ mod tests {
     }
 
     #[test]
+    fn the_watcher_forwards_the_files_of_a_folder_moved_in() {
+        let outside = TempDir::new().unwrap();
+        let folder = outside.path().join("batch");
+        fs::create_dir_all(folder.join("nested")).unwrap();
+        fs::write(folder.join("a.pdf"), INVOICE).unwrap();
+        fs::write(folder.join("nested/b.pdf"), REMINDER).unwrap();
+        let dir = TempDir::new().unwrap();
+        let inbox = location(&dir, LocationMode::Inbox, false);
+        let (_watcher, receiver, failed) = LocationWatcher::start(std::slice::from_ref(&inbox));
+        assert!(failed.is_empty());
+
+        fs::rename(&folder, inbox.path.join("batch")).unwrap();
+
+        let first = inbox.path.join("batch/a.pdf");
+        let nested = inbox.path.join("batch/nested/b.pdf");
+        let mut seen = receive_until(&receiver, &nested);
+        if !seen.contains(&first) {
+            seen.extend(receive_until(&receiver, &first));
+        }
+        assert!(seen.contains(&first) && seen.contains(&nested), "{seen:?}");
+    }
+
+    #[test]
     fn a_location_that_cannot_be_watched_is_reported_and_the_others_carry_on() {
         let gone_dir = TempDir::new().unwrap();
         let gone = location(&gone_dir, LocationMode::Archive, false);
