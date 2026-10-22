@@ -36,7 +36,20 @@ yanked = "deny"
 # re-checked whenever the lockfile moves. The practical exposure is small: it
 # parses font outlines, we only use it to measure text, and no untrusted input
 # reaches it. If ied ever ships a version that drops cosmic-text, this goes.
-ignore = ["RUSTSEC-2026-0192"]
+#
+# RUSTSEC-2026-0370, -0371, -0372: zvariant, zbus_names and zvariant_derive
+# are no longer released on their own; they were merged into zbus 6. They
+# arrive through keyring -> secret-service -> zbus 5, the Linux Secret Service
+# backend that holds the index key. Nothing is known to be wrong with them,
+# and there is no upgrade until secret-service moves to zbus 6. They only
+# speak D-Bus with the local session bus. When keyring ships a zbus 6 backend,
+# these go.
+ignore = [
+    "RUSTSEC-2026-0192",
+    "RUSTSEC-2026-0370",
+    "RUSTSEC-2026-0371",
+    "RUSTSEC-2026-0372",
+]
 
 [licenses]
 version = 2

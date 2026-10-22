@@ -52,7 +52,7 @@ grep-searcher = "0.1.17"
 grep-matcher = "0.1.9"
 unicode-normalization = "0.1.26"
 nucleo-matcher = "0.3.1"
-ncrs-intake = { path = "crates/ncrs-intake" }
+ncrs-intake = { path = "crates/ncrs-intake", version = "0.0.0" }
 
 [profile.release]
 opt-level = 3

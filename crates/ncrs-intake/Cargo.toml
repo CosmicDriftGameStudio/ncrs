@@ -12,7 +12,7 @@ publish = false
 workspace = true
 
 [dependencies]
-ncrs-index = { path = "../ncrs-index" }
+ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 sha2 = "0.10"
 walkdir = "2.5"
 same-file = "1.0"
