@@ -1,4 +1,7 @@
 use std::fmt;
+use std::path::PathBuf;
+
+use crate::model::{DocumentId, ReviewEntryId, RuleId};
 
 /// Failures of the credential store, without ever carrying the secret.
 #[derive(Debug, PartialEq, Eq)]
@@ -48,6 +51,28 @@ pub enum IndexError {
         found: u32,
         supported: u32,
     },
+    /// `PRAGMA foreign_key_check` found rows after a migration ran.
+    ForeignKeyViolation,
+    /// A value read from the database is not one the code writes.
+    CorruptValue {
+        column: &'static str,
+        value: String,
+    },
+    /// The path is not UTF-8. It is never stored lossily, because moves and
+    /// filing rely on the stored path being the real one.
+    NonUtf8Path(PathBuf),
+    EmptyName {
+        what: &'static str,
+    },
+    RuleWithoutCondition,
+    /// A document with this content hash is already indexed.
+    DuplicateHash(DocumentId),
+    DocumentNotFound(DocumentId),
+    RuleNotFound(RuleId),
+    /// The document already has an unresolved review entry.
+    ReviewAlreadyOpen(ReviewEntryId),
+    /// Unknown, or already resolved.
+    ReviewNotFound(ReviewEntryId),
     KeyStore(KeyStoreError),
     RecoveryKey(RecoveryKeyError),
     Random(String),
@@ -81,6 +106,28 @@ impl fmt::Display for IndexError {
                 f,
                 "the index schema is version {found}, this build supports up to {supported}"
             ),
+            Self::ForeignKeyViolation => {
+                write!(f, "a migration left rows that violate a foreign key")
+            }
+            Self::CorruptValue { column, value } => {
+                write!(f, "the index holds an unknown value '{value}' in {column}")
+            }
+            Self::NonUtf8Path(path) => write!(f, "the path {} is not valid UTF-8", path.display()),
+            Self::EmptyName { what } => write!(f, "a {what} name must not be empty"),
+            Self::RuleWithoutCondition => {
+                write!(f, "a rule needs a text match or a sender to match")
+            }
+            Self::DuplicateHash(id) => {
+                write!(f, "a document with this content is already indexed ({id})")
+            }
+            Self::DocumentNotFound(id) => write!(f, "there is no document {id}"),
+            Self::RuleNotFound(id) => write!(f, "there is no rule {id}"),
+            Self::ReviewAlreadyOpen(id) => {
+                write!(f, "the document already has an open review entry ({id})")
+            }
+            Self::ReviewNotFound(id) => {
+                write!(f, "there is no open review entry {id}")
+            }
             Self::KeyStore(err) => err.fmt(f),
             Self::RecoveryKey(err) => err.fmt(f),
             Self::Random(reason) => write!(f, "no random bytes available: {reason}"),
