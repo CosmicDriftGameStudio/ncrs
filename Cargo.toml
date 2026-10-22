@@ -153,6 +153,14 @@ pub_use = "allow"
 std_instead_of_alloc = "allow"
 str_to_string = "allow"
 
+# Every workspace crate is internal (`publish = false`) and used only by ncrs.
+# `#[non_exhaustive]` would force wildcard arms in the app, so a new variant
+# would no longer break the build where it has to be handled. `Index` keeps its
+# methods in one module per area.
+exhaustive_enums = "allow"
+exhaustive_structs = "allow"
+multiple_inherent_impl = "allow"
+
 # Pixel arithmetic. `layout.rs` computes chrome heights and row counts in f32
 # because iced does; `floating_point_arithmetic` would ask for integer maths on
 # values that are never integers. The places it is right to be careful —

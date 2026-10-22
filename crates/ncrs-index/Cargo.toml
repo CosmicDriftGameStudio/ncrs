@@ -22,6 +22,7 @@ rusqlite = { version = "0.40", features = ["bundled-sqlcipher-vendored-openssl"]
 # OpenSSL). The kernel keyutils store is deliberately not enabled: it does not
 # survive a reboot, and a lost key means a lost database.
 keyring = "4.2"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 # The key comes from the OS random number generator, never from a seeded one.
 getrandom = "0.4"
 
