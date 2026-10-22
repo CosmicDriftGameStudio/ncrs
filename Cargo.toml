@@ -53,6 +53,11 @@ grep-matcher = "0.1.9"
 unicode-normalization = "0.1.26"
 nucleo-matcher = "0.3.1"
 ncrs-intake = { path = "crates/ncrs-intake", version = "0.0.0" }
+# The filing module opens the index and holds its key in the credential store.
+ncrs-index = { path = "crates/ncrs-index", version = "0.0.0" }
+# Folders that overlap are found by file identity, which holds for symlinks and
+# case-insensitive file systems where comparing paths would not.
+same-file = "1.0"
 
 [profile.release]
 opt-level = 3

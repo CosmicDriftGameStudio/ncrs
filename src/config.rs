@@ -473,6 +473,38 @@ fn home_config(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
     absolute(var("HOME")).map(|home| home.join(".config").join("ncrs").join("config.toml"))
 }
 
+/// Where the index database lives on this machine, or `None` when the
+/// variables that say so are missing.
+pub fn default_index_path() -> Option<PathBuf> {
+    index_path_from_env(|name| std::env::var_os(name))
+}
+
+/// Windows: `%APPDATA%\ncrs\index.db`.
+#[cfg(windows)]
+fn index_path_from_env(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    absolute(var("APPDATA")).map(|dir| dir.join("ncrs").join("index.db"))
+}
+
+/// macOS: always `~/Library/Application Support`, for the same reason the
+/// config ignores `XDG_CONFIG_HOME`.
+#[cfg(target_os = "macos")]
+fn index_path_from_env(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    absolute(var("HOME")).map(|home| {
+        home.join("Library")
+            .join("Application Support")
+            .join("ncrs")
+            .join("index.db")
+    })
+}
+
+/// Other Unix: `$XDG_DATA_HOME` if set and absolute, else `~/.local/share`.
+#[cfg(not(any(target_os = "macos", windows)))]
+fn index_path_from_env(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    absolute(var("XDG_DATA_HOME"))
+        .or_else(|| absolute(var("HOME")).map(|home| home.join(".local").join("share")))
+        .map(|dir| dir.join("ncrs").join("index.db"))
+}
+
 /// The home directory `~` stands for. Like the config path, only an absolute
 /// one counts.
 fn home_from_env() -> Option<PathBuf> {
@@ -931,6 +963,54 @@ mod tests {
         );
         assert_eq!(path_from_env(env(&[("APPDATA", "rel")])), None);
         assert_eq!(path_from_env(env(&[])), None);
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
+    #[test]
+    fn linux_index_prefers_an_absolute_xdg_data_home() {
+        let found = index_path_from_env(env(&[("XDG_DATA_HOME", "/x/data"), ("HOME", "/h")]));
+        assert_eq!(found, Some(PathBuf::from("/x/data/ncrs/index.db")));
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
+    #[test]
+    fn linux_index_falls_back_to_home_when_xdg_is_relative_or_empty() {
+        for xdg in ["rel/data", ""] {
+            let found = index_path_from_env(env(&[("XDG_DATA_HOME", xdg), ("HOME", "/h")]));
+            assert_eq!(found, Some(PathBuf::from("/h/.local/share/ncrs/index.db")));
+        }
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn no_usable_home_means_no_index_path() {
+        assert_eq!(index_path_from_env(env(&[])), None);
+        assert_eq!(index_path_from_env(env(&[("HOME", "")])), None);
+        assert_eq!(index_path_from_env(env(&[("HOME", "rel")])), None);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_index_lives_in_application_support_and_ignores_xdg() {
+        let found = index_path_from_env(env(&[("XDG_DATA_HOME", "/x/data"), ("HOME", "/h")]));
+        assert_eq!(
+            found,
+            Some(PathBuf::from(
+                "/h/Library/Application Support/ncrs/index.db"
+            ))
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_index_uses_appdata() {
+        let found = index_path_from_env(env(&[("APPDATA", r"C:\Users\u\AppData\Roaming")]));
+        assert_eq!(
+            found,
+            Some(PathBuf::from(r"C:\Users\u\AppData\Roaming\ncrs\index.db"))
+        );
+        assert_eq!(index_path_from_env(env(&[("APPDATA", "rel")])), None);
+        assert_eq!(index_path_from_env(env(&[])), None);
     }
 
     fn load_filing(content: &str, home: Option<&Path>) -> Result<Config, ConfigError> {

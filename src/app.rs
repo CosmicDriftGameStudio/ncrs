@@ -6,12 +6,13 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use iced::futures;
 use iced::keyboard::{self, key::Named, Key, Modifiers};
-use iced::widget::{column, container, mouse_area, operation, row, Space, Stack};
+use iced::widget::{column, container, mouse_area, opaque, operation, row, Space, Stack};
 use iced::{event, window, Element, Length, Point, Size, Subscription, Task, Theme};
 
-use crate::config::{self, Config, ConfigError, ContrastWarning};
+use crate::config::{self, Config, ConfigError, ContrastWarning, Filing};
 use crate::context_menu::{ContextAction, ContextMenu, InputState};
 use crate::dialog::{Prompt, PromptKind};
+use crate::filing::{FilingMessage, FilingModule, LocationStatus, Phase, Work, WorkOutcome};
 use crate::fs::{self, CreateDirError};
 use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
@@ -26,12 +27,14 @@ use crate::search_view::{stays_on_file_system, SearchField, SearchView};
 use crate::ui::context_menu as context_menu_view;
 use crate::ui::delete as delete_dialog_view;
 use crate::ui::dialog::FIELD_ID;
+use crate::ui::filing as filing_ui;
 use crate::ui::quick_open as quick_open_ui;
 use crate::ui::search as search_ui;
 use crate::ui::volumes as volumes_view;
 use crate::ui::{
     self, conflict, dialog, fkeys, header, layout, panel, statusbar, theme, PanelProps, PanelState,
 };
+use ncrs_index::{KeyStore, KeyringKeyStore};
 use tokio::sync::mpsc;
 
 /// How long the search view waits for the next keystroke before it searches.
@@ -228,6 +231,39 @@ fn leaves_path_field(message: &Message) -> bool {
 /// again once the editing is over.
 fn release_focus() -> Task<Message> {
     iced::advanced::widget::operate(iced::advanced::widget::operation::focusable::unfocus())
+}
+
+/// Runs one blocking step of the filing module off the UI thread.
+fn run_filing_work(work: Work) -> Task<Message> {
+    let generation = work.generation();
+    Task::perform(
+        tokio::task::spawn_blocking(move || work.run()),
+        move |joined| {
+            Message::Filing(joined.unwrap_or_else(|join| FilingMessage::WorkDone {
+                generation,
+                outcome: WorkOutcome::Crashed(join.to_string()),
+            }))
+        },
+    )
+}
+
+/// Bottom-center, above the status and function key bars. No scrim, and
+/// `opaque` only on the card itself, so clicks beside it reach the panels.
+fn filing_card_layer(card: Element<'_, Message>) -> Element<'_, Message> {
+    let bars = layout::STATUSBAR_HEIGHT
+        + layout::FKEYBAR_HEIGHT
+        + 2.0 * theme::spacing::SECTION_GAP
+        + theme::spacing::OUTER_PADDING;
+    container(opaque(card))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(iced::alignment::Horizontal::Center)
+        .align_y(iced::alignment::Vertical::Bottom)
+        .padding(iced::Padding {
+            bottom: bars + theme::spacing::SECTION_GAP,
+            ..iced::Padding::ZERO
+        })
+        .into()
 }
 
 /// Ctrl+click is the Mac's right click.
@@ -504,6 +540,8 @@ pub struct App {
     quick_open_walk_generation: u64,
     /// Stops the file walk when dropped.
     quick_open_walk: Option<iced::task::Handle>,
+    /// The filing module, when the config switches it on.
+    filing: Option<FilingModule>,
 }
 
 /// The part of the prompt the key routing needs, cheap to clone.
@@ -1090,8 +1128,33 @@ impl App {
         if let Err(err) = &loaded {
             eprintln!("ncrs: {err}");
         }
-        let (app, task) = Self::starting_in(fs::start_dir(), fs::home_dir());
-        (app.with_config(loaded), task)
+        let filing = loaded
+            .as_ref()
+            .map(|config| config.filing.clone())
+            .unwrap_or_default();
+        let (panels, panel_loads) = Self::starting_in(fs::start_dir(), fs::home_dir());
+        let (app, filing_start) = panels.with_config(loaded).with_filing(
+            &filing,
+            config::default_index_path(),
+            Arc::new(KeyringKeyStore::new()),
+        );
+        (app, Task::batch([panel_loads, filing_start]))
+    }
+
+    /// Starts the filing module when `filing` switches it on. The database
+    /// and its directory are not created here: only after the user chose at
+    /// the encryption question.
+    pub fn with_filing(
+        mut self,
+        filing: &Filing,
+        db_path: Option<PathBuf>,
+        store: Arc<dyn KeyStore + Send + Sync>,
+    ) -> (Self, Task<Message>) {
+        let Some((module, work)) = FilingModule::start(filing, db_path, store) else {
+            return (self, Task::none());
+        };
+        self.filing = Some(module);
+        (self, work.map_or_else(Task::none, run_filing_work))
     }
 
     /// Applies a loaded config. A broken one leaves the defaults and says why
@@ -1237,6 +1300,7 @@ impl App {
             quick_open: None,
             quick_open_walk_generation: 0,
             quick_open_walk: None,
+            filing: None,
         };
 
         let tasks = Task::batch([
@@ -1839,6 +1903,7 @@ impl App {
             Message::OpenSearch => self.open_search(),
             Message::Search(search) => self.update_search(search),
             Message::QuickOpen(quick_open) => self.update_quick_open(quick_open),
+            Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::Quit => iced::exit(),
             // Handled in `update`, which owns the timer's generation check.
             Message::NoticeExpired(_) => Task::none(),
@@ -2124,7 +2189,7 @@ impl App {
             .spacing(ui::theme::spacing::PANEL_GAP)
             .height(Length::Fill);
 
-        let root = container(
+        let window = container(
             column![
                 header::view(APP_NAME, self.notice.as_deref(), &self.palette),
                 panels,
@@ -2158,6 +2223,18 @@ impl App {
         .height(Length::Fill)
         .style(theme::root(&self.palette));
 
+        // The card has no scrim: the panels stay usable around it. Every modal
+        // below stacks on this base, so it stays above the card.
+        let root: Element<'_, Message> = match self
+            .filing
+            .as_ref()
+            .filter(|module| module.has_card())
+            .and_then(|module| filing_ui::view(module, self.lang, &self.palette))
+        {
+            Some(card) => Stack::with_children([window.into(), filing_card_layer(card)]).into(),
+            None => window.into(),
+        };
+
         if let Some(menu) = self.context_menu.as_ref() {
             // A left press anywhere beside the menu closes it, the path field
             // and the column titles included: those take their own clicks and
@@ -2170,7 +2247,7 @@ impl App {
                 click_catcher = click_catcher.on_press(Message::ContextMenuClose);
             }
             return Stack::with_children([
-                root.into(),
+                root,
                 click_catcher.into(),
                 context_menu_view::view(menu, self.lang, &self.keymap, &self.palette),
             ])
@@ -2185,7 +2262,7 @@ impl App {
                 self.lang,
                 &self.palette,
             );
-            return Stack::with_children([root.into(), dialog::scrim(menu_element)]).into();
+            return Stack::with_children([root, dialog::scrim(menu_element)]).into();
         }
 
         if let Some(deletion) = self.delete_dialog.as_ref() {
@@ -2196,7 +2273,7 @@ impl App {
                 self.lang,
                 &self.palette,
             );
-            return Stack::with_children([root.into(), dialog::scrim(dialog_element)]).into();
+            return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
         }
 
         // The conflict dialog comes first, before the prompt. A conflict is
@@ -2220,17 +2297,17 @@ impl App {
                 self.dialog_focus,
                 Message::TransferConflict,
             );
-            return Stack::with_children([root.into(), dialog::scrim(conflict_element)]).into();
+            return Stack::with_children([root, dialog::scrim(conflict_element)]).into();
         }
 
         if let Some(quick_open) = self.quick_open.as_ref() {
             let box_element = quick_open_ui::view(quick_open, self.lang, &self.palette);
-            return Stack::with_children([root.into(), dialog::scrim(box_element)]).into();
+            return Stack::with_children([root, dialog::scrim(box_element)]).into();
         }
 
         // Then the create-directory prompt, for F7.
         let Some(prompt) = self.prompt.as_ref() else {
-            return root.into();
+            return root;
         };
         let overlay = dialog::view(
             prompt,
@@ -2241,12 +2318,12 @@ impl App {
             Message::PromptCancel,
         );
         let Some(prompt_element) = overlay else {
-            return root.into();
+            return root;
         };
 
         // The prompt sits above everything and takes every keystroke; the scrim
         // swallows clicks meant for the panels underneath.
-        Stack::with_children([root.into(), dialog::scrim(prompt_element)]).into()
+        Stack::with_children([root, dialog::scrim(prompt_element)]).into()
     }
 
     // -----------------------------------------------------------------------
@@ -2389,6 +2466,47 @@ impl App {
         self.job_error = None;
         let shown = self.show_notice(self.copied_notice(kind, copied.count));
         Task::batch([iced::clipboard::write(copied.text), shown])
+    }
+
+    fn update_filing(&mut self, message: FilingMessage) -> Task<Message> {
+        let Some(module) = self.filing.as_mut() else {
+            return Task::none();
+        };
+        if matches!(message, FilingMessage::CopyRecoveryKey) {
+            let Some(key_text) = module.recovery_key_text() else {
+                return Task::none();
+            };
+            let copied = self.show_notice(self.lang.text(Msg::FilingKeyCopied).to_owned());
+            return Task::batch([iced::clipboard::write(key_text), copied]);
+        }
+        let work_finished = matches!(message, FilingMessage::WorkDone { .. });
+        let was_starting = matches!(module.phase(), Phase::Starting);
+        let work = module.update(message);
+        let skipped = if was_starting && !matches!(module.phase(), Phase::Starting) {
+            module
+                .locations()
+                .iter()
+                .filter(|entry| !matches!(entry.status, LocationStatus::Ready(_)))
+                .count()
+        } else {
+            0
+        };
+        // A text field only gets the keys once it has the focus.
+        let field = match module.phase() {
+            Phase::ShowRecoveryKey { .. } if work_finished => Some(filing_ui::GROUP_FIELD_ID),
+            Phase::AskRecoveryKey { .. } if work_finished => Some(filing_ui::KEY_FIELD_ID),
+            _ => None,
+        };
+        let mut tasks: Vec<Task<Message>> = work.map(run_filing_work).into_iter().collect();
+        tasks.extend(field.map(operation::focus));
+        if skipped > 0 {
+            let text = fill_template(
+                self.lang.text(Msg::FilingLocationsSkipped),
+                &[("{count}", &skipped.to_string())],
+            );
+            tasks.push(self.show_notice(text));
+        }
+        Task::batch(tasks)
     }
 
     /// Shows `text` in the title bar for [`NOTICE_DURATION`]. The timer carries
@@ -4312,6 +4430,7 @@ impl App {
             quick_open: None,
             quick_open_walk_generation: 0,
             quick_open_walk: None,
+            filing: None,
         };
         for (side, names) in [
             (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
@@ -4335,6 +4454,14 @@ impl App {
                 })
                 .collect();
         }
+        app
+    }
+
+    /// Fixed panels with the filing card of `phase` up. The module is not
+    /// running: no work, an in-memory store, no file anywhere.
+    pub fn with_fixed_filing(phase: Phase) -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.filing = Some(FilingModule::in_phase(phase));
         app
     }
 
@@ -8486,5 +8613,52 @@ mod quick_open_tests {
         }));
         assert!(app.pending_conflict.is_some());
         assert!(app.quick_open_for_test().is_none());
+    }
+}
+
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod filing_tests {
+    use super::*;
+    use ncrs_index::InMemoryKeyStore;
+
+    #[test]
+    fn a_module_that_is_off_leaves_no_module_and_no_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("data").join("index.db");
+        let store = Arc::new(InMemoryKeyStore::empty());
+        let off = Filing {
+            enabled: false,
+            locations: Vec::new(),
+        };
+
+        let (app, _task) = App::with_fixed_panels().with_filing(&off, Some(db.clone()), store);
+
+        assert!(app.filing.is_none());
+        assert!(!db.exists());
+        assert!(!dir.path().join("data").exists());
+    }
+
+    #[test]
+    fn copying_the_recovery_key_needs_a_shown_key() {
+        let mut without_card = App::with_fixed_panels();
+        let _nothing = without_card.update(Message::Filing(FilingMessage::CopyRecoveryKey));
+        assert!(without_card.notice.is_none());
+
+        let mut app = App::with_fixed_filing(Phase::ShowRecoveryKey {
+            key: FilingModule::fixed_recovery_key(),
+            group: 2,
+            typed: crate::filing::SecretText::default(),
+            mismatch: false,
+        });
+        let _task = app.update(Message::Filing(FilingMessage::CopyRecoveryKey));
+        let notice = app.notice.clone().unwrap();
+        assert!(!notice.contains("AAAA"), "{notice}");
     }
 }

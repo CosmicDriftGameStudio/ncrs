@@ -11,6 +11,11 @@ pub trait KeyStore {
     /// Must fail with `AlreadyExists` instead of replacing an existing entry:
     /// the old key may be the only way to read a database.
     fn store_new(&self, key: &[u8]) -> Result<(), KeyStoreError>;
+
+    /// The single exception to `store_new`'s rule: overwrites unconditionally.
+    /// Called only from `Index::replace_key`, after the new key has proven
+    /// that it opens the database.
+    fn replace(&self, key: &[u8]) -> Result<(), KeyStoreError>;
 }
 
 /// The operating system's credential store: Keychain, Credential Manager or
@@ -65,6 +70,10 @@ impl KeyStore for KeyringKeyStore {
         }
         self.entry()?.set_secret(key).map_err(unavailable)
     }
+
+    fn replace(&self, key: &[u8]) -> Result<(), KeyStoreError> {
+        self.entry()?.set_secret(key).map_err(unavailable)
+    }
 }
 
 /// For tests; keeps the key in memory only.
@@ -108,6 +117,11 @@ impl KeyStore for InMemoryKeyStore {
         *entry = Some(key.to_vec());
         Ok(())
     }
+
+    fn replace(&self, key: &[u8]) -> Result<(), KeyStoreError> {
+        *self.lock() = Some(key.to_vec());
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -137,7 +151,22 @@ mod tests {
         assert_eq!(store.store_new(&[1; 32]), Err(KeyStoreError::AlreadyExists));
         assert_eq!(store.load().unwrap().unwrap(), key);
 
+        let replacement: [u8; 32] = [0x6b; 32];
+        store.replace(&replacement).unwrap();
+        assert_eq!(store.load().unwrap().unwrap(), replacement);
+
         store.entry().unwrap().delete_credential().unwrap();
         assert_eq!(store.load().unwrap(), None);
+    }
+
+    #[test]
+    fn in_memory_replace_overwrites_an_entry() {
+        let store = InMemoryKeyStore::with_entry(vec![1; 32]);
+        store.replace(&[2; 32]).unwrap();
+        assert_eq!(store.snapshot().unwrap(), vec![2; 32]);
+
+        let empty = InMemoryKeyStore::empty();
+        empty.replace(&[3; 32]).unwrap();
+        assert_eq!(empty.snapshot().unwrap(), vec![3; 32]);
     }
 }

@@ -6,6 +6,7 @@ pub mod conflict;
 pub mod context_menu;
 pub mod delete;
 pub mod dialog;
+pub mod filing;
 pub mod fkeys;
 pub mod format;
 pub mod header;
