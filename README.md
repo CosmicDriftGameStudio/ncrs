@@ -390,18 +390,21 @@ next start of ncrs.
 If a folder named `data` sits next to the ncrs executable, ncrs is portable:
 `data/config.toml` and `data/index.db` are used instead of the locations above,
 for the config and the index alike. Inside a macOS `.app` bundle the folder is
-ignored. The Windows ZIP ships with a `data` folder; delete it to use
-`%APPDATA%\ncrs` again.
+ignored. The Windows release has two ZIPs: `ncrs-x86_64-pc-windows-msvc.zip` uses
+`%APPDATA%\ncrs`, `ncrs-x86_64-pc-windows-msvc-portable.zip` ships with the
+`data` folder. Delete the folder to use `%APPDATA%\ncrs` again.
 
 The key of an encrypted index stays in the operating system's credential store
 (on Windows the Credential Manager), under an entry of its own per data folder,
 so portable copies and an installed ncrs do not overwrite each other's key. The
-entry belongs to the folder's path: on another computer, after moving the
-folder, or when a USB drive gets another drive letter, the index needs the
+entry is named by a random ID in `data/key-id`, which ncrs creates when it first
+stores a key. Moving the folder or a different drive letter changes nothing; on
+another computer the index needs the recovery key. Copies of the folder share
+the entry. If `key-id` gets damaged, delete the file; ncrs then asks for the
 recovery key.
 
-Upgrading: unpacking the new Windows ZIP over an old install makes it portable.
-Copy the old `%APPDATA%\ncrs\config.toml` into `data\` to keep your settings.
+To make an existing installation portable, copy `%APPDATA%\ncrs\config.toml`
+to `data\`.
 
 ## What ncrs encrypts
 
