@@ -1226,9 +1226,27 @@
     },
     {
       "key": "filing_status.step_counts",
-      "context": "One line per pipeline step. The step name is an identifier and stays untranslated. Takes the step name and four counts of files.",
+      "context": "One line per pipeline step. Takes the visible name of the step and four counts of files.",
       "en": "{name}: {waiting} waiting, {done} done, {failed} failed, {unchanged} unchanged",
       "de": "{name}: {waiting} wartend, {done} fertig, {failed} fehlgeschlagen, {unchanged} unverändert"
+    },
+    {
+      "key": "filing_status.step_intake",
+      "context": "Visible name of the pipeline step that takes documents into the index, in the step lines, the worker lines and the error list of the inspection page. Themed name.",
+      "en": "Intake",
+      "de": "Annahme"
+    },
+    {
+      "key": "filing_status.step_review",
+      "context": "Visible name of the pipeline step that decides which documents need the user's review. Themed name, the same word as the Pending label.",
+      "en": "Pending",
+      "de": "Wiedervorlage"
+    },
+    {
+      "key": "filing_status.first_minute",
+      "context": "Dimmed, instead of a throughput or time-left figure, while documents are waiting but no full minute of work has been measured yet.",
+      "en": "after the first full minute",
+      "de": "ab der ersten vollen Minute"
     },
     {
       "key": "filing_status.throughput_label",
@@ -1328,9 +1346,15 @@
     },
     {
       "key": "filing_status.index_reviews",
-      "context": "Label for the number of documents waiting for the user's review. Pending is the themed name; the part in brackets says what it means.",
-      "en": "Pending (documents Hermes asks you about)",
-      "de": "Wiedervorlage (Dokumente mit Rückfragen)"
+      "context": "Label for the number of documents waiting for the user's review. Pending is the themed name; the explanation follows the number in its own text.",
+      "en": "Pending",
+      "de": "Wiedervorlage"
+    },
+    {
+      "key": "filing_status.index_reviews_explain",
+      "context": "Dimmed explanation after the number of documents waiting for the user's review, in the same line as the Pending label and the number. Lower case start.",
+      "en": "documents Hermes asks you about",
+      "de": "Dokumente, zu denen Hermes dich fragt"
     },
     {
       "key": "filing_status.index_unavailable",

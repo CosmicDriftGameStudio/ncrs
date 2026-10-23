@@ -5277,6 +5277,19 @@ impl App {
         app
     }
 
+    /// Like [`Self::with_filing_status_page`], with the index open and
+    /// `figures` read from it.
+    pub fn with_filing_inspection(
+        snapshot: ncrs_pipeline::Snapshot,
+        taken_at: std::time::SystemTime,
+        figures: crate::filing::IndexFigures,
+    ) -> Self {
+        let mut app = Self::with_filing_status_page(snapshot, taken_at);
+        app.filing = Some(FilingModule::in_phase(Phase::Ready));
+        app.filing_status.figures_arrived(Ok(figures));
+        app
+    }
+
     /// A prompt on fixed data, for the prompt's own reference image.
     pub fn with_fixed_prompt() -> Self {
         let mut app = Self::with_fixed_panels();

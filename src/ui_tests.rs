@@ -1220,6 +1220,7 @@ mod filing_status_page {
     };
 
     use super::*;
+    use crate::i18n::Language;
     use crate::messages::FilingStatusMessage;
 
     const ERROR_FILE: &str = "/tmp/inbox/company-a-invoice.pdf";
@@ -1259,6 +1260,98 @@ mod filing_status_page {
 
     fn page_message(message: FilingStatusMessage) -> Message {
         Message::FilingStatus(message)
+    }
+
+    /// Two files open, none finished yet: the state in which throughput and
+    /// time left have nothing to show.
+    fn inspection_snapshot() -> Snapshot {
+        let mut snapshot = snapshot(RunnerState::Running, 0, 0);
+        snapshot.steps = vec![
+            StepSnapshot {
+                name: "intake",
+                waiting: 2,
+                done: 5,
+                failed: 0,
+                unchanged: 1,
+            },
+            StepSnapshot {
+                name: "review",
+                waiting: 0,
+                done: 3,
+                failed: 1,
+                unchanged: 0,
+            },
+        ];
+        snapshot.workers = vec![
+            WorkerSnapshot {
+                id: 0,
+                busy: Some(Busy {
+                    file: PathBuf::from("/home/user/inbox/invoice.pdf"),
+                    task: Task::Step("intake"),
+                    started_at: taken_at() - Duration::from_secs(12),
+                }),
+            },
+            WorkerSnapshot { id: 1, busy: None },
+        ];
+        snapshot
+    }
+
+    fn inspection(language: Language) -> App {
+        let figures = crate::filing::IndexFigures {
+            path: PathBuf::from("/home/user/.local/share/ncrs/index.db"),
+            file_bytes: Some(2 * 1024 * 1024),
+            encrypted: true,
+            statistics: ncrs_index::IndexStatistics {
+                schema_version: 3,
+                document_count: 240,
+                open_reviews: 12,
+                full_text_bytes: 512 * 1024,
+            },
+        };
+        App::with_filing_inspection(inspection_snapshot(), taken_at(), figures)
+            .in_language(language)
+    }
+
+    #[test]
+    fn the_inspection_matches_its_snapshots() {
+        for (language, name) in [
+            (Language::English, "inspection_en"),
+            (Language::German, "inspection_de"),
+        ] {
+            let matches = simulator(&inspection(language))
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(
+                matches,
+                "the inspection does not match tests/snapshots/{name}.png"
+            );
+        }
+    }
+
+    #[test]
+    fn the_inspection_uses_the_visible_names_and_says_when_figures_come() {
+        let english = inspection(Language::English);
+        for label in [
+            "Intake: 2 waiting, 5 done, 0 failed, 1 unchanged",
+            "Pending: 0 waiting, 3 done, 1 failed, 0 unchanged",
+            "Pending",
+            "documents Hermes asks you about",
+        ] {
+            assert!(shows(&english, label), "{label}");
+        }
+        assert!(shows(&english, "after the first full minute"));
+        let german = inspection(Language::German);
+        assert!(shows(
+            &german,
+            "Annahme: 2 wartend, 5 fertig, 0 fehlgeschlagen, 1 unverändert"
+        ));
+        assert!(shows(&german, "Wiedervorlage"));
+        assert!(shows(&german, "ab der ersten vollen Minute"));
+
+        let idle = page(snapshot(RunnerState::Idle, 0, 0));
+        assert!(!shows(&idle, "after the first full minute"));
     }
 
     #[test]
