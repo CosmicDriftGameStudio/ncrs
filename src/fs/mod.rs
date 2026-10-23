@@ -13,6 +13,8 @@ mod volumes;
 
 pub use delete::{remove_permanently, SystemTrash, Trash};
 pub use entry::FileEntry;
+#[cfg(target_os = "macos")]
+pub use open::privacy_settings_command;
 #[cfg(test)]
 pub use open::OpenCommand;
 pub use open::{could_execute, open_command, Launcher, OpenKind, SystemLauncher};

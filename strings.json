@@ -67,6 +67,12 @@
       "de": "{path} nicht lesbar: {reason}"
     },
     {
+      "key": "error.access_blocked",
+      "context": "Status bar error when macOS privacy protection refused to read the directory shown at the left of the bar, so no path in the text. The line is cut off at the window edge: keep it short. On macOS the line is a button that opens the Full Disk Access page of System Settings; use the name macOS gives that setting in the language.",
+      "en": "macOS blocks access. Give ncrs, or the terminal that started it, Full Disk Access (click to open)",
+      "de": "macOS sperrt den Zugriff. ncrs oder dem Terminal, aus dem es gestartet wurde, Festplattenvollzugriff geben (Klick öffnet)"
+    },
+    {
       "key": "error.task_failed",
       "context": "Status bar error shown when the background read task itself failed, not the filesystem. Internal error, users should rarely see it. Keep the {reason} placeholder.",
       "en": "Directory read task failed: {reason}",
@@ -431,6 +437,12 @@
       "context": "Status bar when the external program for F3 or F4 could not be started. Takes the file name and the OS reason.",
       "en": "Could not open {name}: {reason}",
       "de": "{name} konnte nicht geöffnet werden: {reason}"
+    },
+    {
+      "key": "status.system_settings",
+      "context": "Name of the macOS System Settings app, filled into the {name} of error.open_failed when its Full Disk Access page could not be opened. Use the name macOS gives the app in the language.",
+      "en": "System Settings",
+      "de": "Systemeinstellungen"
     },
     {
       "key": "error.open_refused",

@@ -9,6 +9,10 @@ use super::{sort_entries, FileEntry, SortKey};
 pub enum ReadError {
     /// The OS refused to read the directory. The inner string is the OS message.
     CannotRead { reason: String },
+    /// macOS privacy protection (TCC) refused access; ordinary Unix
+    /// permissions give EACCES instead, which stays `CannotRead`. The inner
+    /// string is the OS message.
+    AccessBlocked { reason: String },
     /// The background task itself failed, not the filesystem operation.
     TaskFailed { reason: String },
 }
@@ -16,9 +20,9 @@ pub enum ReadError {
 impl std::fmt::Display for ReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ReadError::CannotRead { reason } | ReadError::TaskFailed { reason } => {
-                f.write_str(reason)
-            }
+            ReadError::CannotRead { reason }
+            | ReadError::AccessBlocked { reason }
+            | ReadError::TaskFailed { reason } => f.write_str(reason),
         }
     }
 }
@@ -50,9 +54,7 @@ pub async fn read_directory(path: PathBuf, sorted_by: SortKey) -> Listing {
         },
         Ok(Err(err)) => Listing {
             entries: parent_only(&path),
-            error: Some(ReadError::CannotRead {
-                reason: err.to_string(),
-            }),
+            error: Some(read_error(&err)),
             path,
             sorted_by,
         },
@@ -64,6 +66,20 @@ pub async fn read_directory(path: PathBuf, sorted_by: SortKey) -> Listing {
             path,
             sorted_by,
         },
+    }
+}
+
+/// `EPERM`, the code macOS answers with when privacy protection refuses a
+/// read. `ErrorKind::PermissionDenied` cannot tell it from `EACCES`, so the
+/// raw code is compared.
+const EPERM: i32 = 1;
+
+fn read_error(err: &io::Error) -> ReadError {
+    let reason = err.to_string();
+    if cfg!(target_os = "macos") && err.raw_os_error() == Some(EPERM) {
+        ReadError::AccessBlocked { reason }
+    } else {
+        ReadError::CannotRead { reason }
     }
 }
 
@@ -160,6 +176,32 @@ mod tests {
         assert_eq!(listing.entries[3].size, 5);
 
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn ordinary_permission_denied_stays_cannot_read() {
+        assert!(matches!(
+            read_error(&io::Error::from_raw_os_error(13)),
+            ReadError::CannotRead { .. }
+        ));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn eperm_on_macos_means_access_blocked() {
+        assert!(matches!(
+            read_error(&io::Error::from_raw_os_error(EPERM)),
+            ReadError::AccessBlocked { .. }
+        ));
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn eperm_elsewhere_stays_cannot_read() {
+        assert!(matches!(
+            read_error(&io::Error::from_raw_os_error(EPERM)),
+            ReadError::CannotRead { .. }
+        ));
     }
 
     #[tokio::test]

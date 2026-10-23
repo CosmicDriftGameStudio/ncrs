@@ -110,6 +110,9 @@ pub struct FilingBadge<M> {
 pub struct Activity<M> {
     pub job: Option<JobStatus>,
     pub filing: Option<FilingBadge<M>>,
+    /// Makes the "access blocked" error a button. `None` where there is no
+    /// settings page to open.
+    pub on_blocked_press: Option<M>,
 }
 
 /// The bottom bar: path, then the running job, then the failure of the last
@@ -126,7 +129,11 @@ pub fn view<'a, M: Clone + 'a>(
     search_file: Option<String>,
     path_bar_input: PathBar<'a, M>,
 ) -> Element<'a, M> {
-    let Activity { job, filing } = activity;
+    let Activity {
+        job,
+        filing,
+        on_blocked_press,
+    } = activity;
     let path = path_bar(panel, lang, palette, path_bar_input);
 
     let details: Element<'a, M> = if let Some(last_failure) = failure {
@@ -136,11 +143,18 @@ pub fn view<'a, M: Clone + 'a>(
             .wrapping(text::Wrapping::None)
             .into()
     } else if let Some(error) = &panel.error {
-        text(format_error(error, &panel.path, lang))
+        let line = text(format_error(error, &panel.path, lang))
             .size(font_size::STATUS)
             .color(palette.error)
-            .wrapping(text::Wrapping::None)
-            .into()
+            .wrapping(text::Wrapping::None);
+        match (error, on_blocked_press) {
+            (ReadError::AccessBlocked { .. }, Some(open_settings)) => button(line)
+                .padding(0)
+                .style(theme::icon_button(palette))
+                .on_press(open_settings)
+                .into(),
+            _ => line.into(),
+        }
     } else if let Some(file) = search_file {
         text(file)
             .size(font_size::STATUS)
@@ -263,10 +277,13 @@ pub fn view<'a, M: Clone + 'a>(
 fn format_error(error: &ReadError, path: &std::path::Path, lang: Language) -> String {
     let msg = match error {
         ReadError::CannotRead { .. } => Msg::ErrorCannotRead,
+        ReadError::AccessBlocked { .. } => Msg::ErrorAccessBlocked,
         ReadError::TaskFailed { .. } => Msg::ErrorTaskFailed,
     };
     let reason = match error {
-        ReadError::CannotRead { reason } | ReadError::TaskFailed { reason } => reason.as_str(),
+        ReadError::CannotRead { reason }
+        | ReadError::AccessBlocked { reason }
+        | ReadError::TaskFailed { reason } => reason.as_str(),
     };
     lang.text(msg)
         .replace("{path}", &path.display().to_string())
@@ -306,6 +323,22 @@ mod tests {
         assert_eq!(
             format_error(&cannot_read(), path, Language::German),
             "/etc/shadow nicht lesbar: Permission denied"
+        );
+    }
+
+    #[test]
+    fn blocked_access_names_the_settings_without_a_path() {
+        let err = ReadError::AccessBlocked {
+            reason: "Operation not permitted".to_string(),
+        };
+        let path = Path::new("/Volumes/Vault");
+        assert_eq!(
+            format_error(&err, path, Language::English),
+            "macOS blocks access. Give ncrs, or the terminal that started it, Full Disk Access (click to open)"
+        );
+        assert_eq!(
+            format_error(&err, path, Language::German),
+            "macOS sperrt den Zugriff. ncrs oder dem Terminal, aus dem es gestartet wurde, Festplattenvollzugriff geben (Klick öffnet)"
         );
     }
 

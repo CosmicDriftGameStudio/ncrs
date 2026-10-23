@@ -26,5 +26,17 @@
 	<true/>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>ncrs lists and copies the files on network volumes you open in it.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>ncrs lists and copies the files on removable volumes you open in it.</string>
+	<key>NSFileProviderDomainUsageDescription</key>
+	<string>ncrs lists and copies the files in cloud storage folders (iCloud Drive, Google Drive, OneDrive and others) you open in it.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>ncrs lists and copies the files in your Desktop folder you open in it.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>ncrs lists and copies the files in your Documents folder you open in it.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>ncrs lists and copies the files in your Downloads folder you open in it.</string>
 </dict>
 </plist>
