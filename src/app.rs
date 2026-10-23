@@ -5242,6 +5242,7 @@ impl App {
     /// The same app, worded in `lang`.
     pub fn in_language(mut self, lang: Language) -> Self {
         self.lang = lang;
+        self.refresh_function_keys();
         self
     }
 

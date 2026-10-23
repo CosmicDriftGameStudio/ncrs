@@ -272,7 +272,11 @@ pub fn view<'a, M: Clone + 'a>(
                     text(if mark.tagged { "*" } else { " " })
                         .size(font_size::ROW)
                         .color(if mark.tagged {
-                            palette.accent
+                            theme::tag_star_color(
+                                palette,
+                                mark.cursor && props.is_active,
+                                props.is_active,
+                            )
                         } else {
                             palette.dim_text
                         })

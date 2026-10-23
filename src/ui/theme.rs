@@ -141,6 +141,17 @@ pub fn row_text_color(
     }
 }
 
+/// The star in front of a tagged row. The tint of the tagged row in the
+/// active panel has its own color; on the cursor row and in the inactive panel
+/// the star keeps the accent.
+pub fn tag_star_color(colors: &Palette, cursor_row: bool, panel_active: bool) -> Color {
+    if panel_active && !cursor_row {
+        colors.tagged_mark
+    } else {
+        colors.accent
+    }
+}
+
 /// Plain text on a tagged row: the tint of the active panel needs its own
 /// color, the inactive one keeps the normal text.
 pub fn tagged_text_color(colors: &Palette, panel_active: bool) -> Color {

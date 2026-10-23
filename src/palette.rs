@@ -36,6 +36,8 @@ pub struct Palette {
     /// Names on a tagged row of the active panel, when the cursor is elsewhere.
     pub tagged_text: Color,
     pub tagged_directory: Color,
+    /// The star of a tagged row of the active panel, when the cursor is elsewhere.
+    pub tagged_mark: Color,
     pub border: Color,
     pub border_inactive: Color,
     pub header: Color,
@@ -109,6 +111,7 @@ impl ThemePreset {
                 tagged_inactive: Color::from_rgb8(0x3D, 0x36, 0x50),
                 tagged_text: Color::from_rgb8(0x14, 0x13, 0x18),
                 tagged_directory: Color::from_rgb8(0x14, 0x13, 0x18),
+                tagged_mark: Color::from_rgb8(0x14, 0x13, 0x18),
                 border: Color::from_rgb8(0x55, 0x52, 0x6A),
                 border_inactive: Color::from_rgb8(0x1E, 0x1D, 0x25),
                 header: Color::from_rgb8(0x24, 0x22, 0x2D),
@@ -140,6 +143,7 @@ impl ThemePreset {
                 tagged_inactive: Color::from_rgb(0.130, 0.210, 0.360),
                 tagged_text: Color::from_rgb(0.800, 0.840, 0.940),
                 tagged_directory: Color::from_rgb(1.000, 1.000, 1.000),
+                tagged_mark: Color::from_rgb(1.000, 0.850, 0.300),
                 border: Color::from_rgb(0.310, 0.840, 0.910),
                 border_inactive: Color::from_rgb(0.165, 0.210, 0.390),
                 header: Color::from_rgb(0.110, 0.420, 0.520),
@@ -171,6 +175,7 @@ impl ThemePreset {
                 tagged_inactive: Color::from_rgb8(0x00, 0x00, 0x80),
                 tagged_text: Color::from_rgb8(0x55, 0xFF, 0xFF),
                 tagged_directory: Color::from_rgb8(0xFF, 0xFF, 0xFF),
+                tagged_mark: Color::from_rgb8(0xFF, 0xFF, 0x55),
                 border: Color::from_rgb8(0x55, 0xFF, 0xFF),
                 border_inactive: Color::from_rgb8(0x00, 0xAA, 0xAA),
                 header: Color::from_rgb8(0x00, 0xAA, 0xAA),
@@ -203,6 +208,7 @@ impl ThemePreset {
                 tagged_inactive: Color::from_rgb8(0x6E, 0x3F, 0x63),
                 tagged_text: Color::from_rgb8(0x28, 0x2A, 0x36),
                 tagged_directory: Color::from_rgb8(0x28, 0x2A, 0x36),
+                tagged_mark: Color::from_rgb8(0x28, 0x2A, 0x36),
                 border: Color::from_rgb8(0xBD, 0x93, 0xF9),
                 border_inactive: Color::from_rgb8(0x44, 0x47, 0x5A),
                 header: Color::from_rgb8(0x44, 0x47, 0x5A),
@@ -516,7 +522,7 @@ mod tests {
     use crate::config::{load, ConfigError};
     use std::path::PathBuf;
 
-    fn slots(palette: &Palette) -> [(&'static str, Color); 29] {
+    fn slots(palette: &Palette) -> [(&'static str, Color); 30] {
         [
             ("background", palette.background),
             ("panel", palette.panel),
@@ -529,6 +535,7 @@ mod tests {
             ("tagged_inactive", palette.tagged_inactive),
             ("tagged_text", palette.tagged_text),
             ("tagged_directory", palette.tagged_directory),
+            ("tagged_mark", palette.tagged_mark),
             ("border", palette.border),
             ("border_inactive", palette.border_inactive),
             ("header", palette.header),
@@ -601,6 +608,7 @@ mod tests {
             ("tagged_inactive", rgb(0.130, 0.210, 0.360)),
             ("tagged_text", rgb(0.800, 0.840, 0.940)),
             ("tagged_directory", rgb(1.000, 1.000, 1.000)),
+            ("tagged_mark", rgb(1.000, 0.850, 0.300)),
             ("border", rgb(0.310, 0.840, 0.910)),
             ("border_inactive", rgb(0.165, 0.210, 0.390)),
             ("header", rgb(0.110, 0.420, 0.520)),
@@ -757,6 +765,7 @@ mod tests {
                 ("title_text on header", p.title_text, p.header),
                 ("tagged_text on tagged", p.tagged_text, p.tagged),
                 ("tagged_directory on tagged", p.tagged_directory, p.tagged),
+                ("tagged_mark on tagged", p.tagged_mark, p.tagged),
             ] {
                 assert!(
                     contrast_ratio(text, fill) >= READABLE_CONTRAST,
@@ -773,6 +782,7 @@ mod tests {
             assert_eq!(p.title_text, p.cursor_text, "{preset:?}");
             assert_eq!(p.tagged_text, p.text, "{preset:?}");
             assert_eq!(p.tagged_directory, p.directory, "{preset:?}");
+            assert_eq!(p.tagged_mark, p.accent, "{preset:?}");
         }
     }
 

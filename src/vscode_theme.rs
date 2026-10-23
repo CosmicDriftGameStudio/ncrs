@@ -186,6 +186,7 @@ impl VscodeTheme {
             palette.tagged_text = most_readable(palette.tagged, [palette.text, palette.background]);
             palette.tagged_directory =
                 most_readable(palette.tagged, [palette.directory, palette.background]);
+            palette.tagged_mark = palette.tagged_text;
         }
     }
 }
@@ -562,6 +563,7 @@ mod tests {
                "terminal.ansiBrightWhite": "#ededed", "sideBar.background": "#ffffff"}}"##,
         );
         assert_eq!(dark_tag.tagged_text, rgb(0xFFFFFF));
+        assert_eq!(dark_tag.tagged_mark, dark_tag.tagged_text);
         assert_eq!(dark_tag.tagged_directory, rgb(0xFFFFFF));
         let light_tag = applied(
             r##"{"colors": {"terminal.ansiMagenta": "#f0f0f0", "editor.foreground": "#101010",

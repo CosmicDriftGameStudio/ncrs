@@ -358,7 +358,7 @@ fn result_row<'a>(
     let star = text(if tagged { "*" } else { " " })
         .size(font_size::ROW)
         .color(if tagged {
-            palette.accent
+            theme::tag_star_color(palette, highlighted, panel_active)
         } else {
             palette.dim_text
         })
