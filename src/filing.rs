@@ -2,11 +2,12 @@
 //! the user (encrypted or not, the recovery key) and hands the index to the
 //! intake only when nothing is left open.
 //!
-//! The index is reachable through `FilingModule::with_index_for_intake` and
-//! nowhere else. It is open only in the `Ready` phase; the slot may already
-//! hold an index in other phases (a freshly created one whose recovery key has
-//! not been confirmed, a plain file nobody has accepted yet), and those are
-//! held back by the phase, not by the slot being empty.
+//! The index reaches the intake only through `FilingModule::start_pipeline`.
+//! The handle it gives the runner is issued only in the `Ready` phase, and
+//! `Ready` is terminal, so the guarantee holds for the runner's lifetime. The
+//! slot may already hold an index in other phases (a freshly created one whose
+//! recovery key has not been confirmed, a plain file nobody has accepted yet),
+//! and those are held back by the phase, not by the slot being empty.
 //!
 //! Everything that touches the disk, the credential store or a mount runs in a
 //! `Work`, on a blocking thread. `update` itself only moves between phases.
@@ -14,12 +15,15 @@
 use std::collections::hash_map::RandomState;
 use std::fmt;
 use std::hash::{BuildHasher as _, Hasher as _};
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::str::FromStr as _;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::thread;
 
 use ncrs_index::{Index, IndexError, KeyStore, RecoveryKey};
 use ncrs_intake::Location;
+use ncrs_pipeline::{intake_steps, IndexAccess, Load, Runner, Settings, SystemClock};
 
 use crate::config::{Filing, FilingLocation};
 
@@ -256,7 +260,6 @@ impl Phase {
 
 /// Why the intake does not get the index right now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(not(test), allow(dead_code))] // read by the pipeline runner before it takes anything in
 pub enum HeldReason {
     Starting,
     WaitingForUser,
@@ -271,6 +274,7 @@ pub struct FilingModule {
     index: IndexSlot,
     locations: Vec<ResolvedLocation>,
     phase: Phase,
+    load: Load,
     /// Bumps with every new `Work` and with a dismissal: a result of an older
     /// generation is ignored.
     generation: u64,
@@ -402,6 +406,28 @@ fn lock(slot: &IndexSlot) -> MutexGuard<'_, Option<Index>> {
     slot.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// What the runner works through. Private to this module so that nothing else
+/// can build one around the slot.
+struct IntakeIndex(IndexSlot);
+
+impl fmt::Debug for IntakeIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("IntakeIndex")
+    }
+}
+
+impl IndexAccess for IntakeIndex {
+    fn with_index(&self, work: &mut dyn FnMut(&mut Index)) -> bool {
+        match lock(&self.0).as_mut() {
+            Some(index) => {
+                work(index);
+                true
+            }
+            None => false,
+        }
+    }
+}
+
 fn put_index(slot: &IndexSlot, index: Index) {
     *lock(slot) = Some(index);
 }
@@ -500,6 +526,7 @@ impl FilingModule {
             index: Arc::default(),
             locations: Vec::new(),
             phase: Phase::Starting,
+            load: filing.load,
             generation: 0,
             pick_group,
         };
@@ -522,7 +549,6 @@ impl FilingModule {
     }
 
     /// The folders the intake may read.
-    #[cfg_attr(not(test), allow(dead_code))] // read by the pipeline runner before it takes anything in
     pub fn reachable_locations(&self) -> impl Iterator<Item = &Location> {
         self.locations
             .iter()
@@ -532,13 +558,22 @@ impl FilingModule {
             })
     }
 
-    /// The only way to the index. Open in exactly one case: the module is
-    /// `Ready` and the index is there.
-    #[cfg_attr(not(test), allow(dead_code))] // read by the pipeline runner before it takes anything in
-    pub fn with_index_for_intake<R>(
-        &self,
-        take_in: impl FnOnce(&mut Index) -> R,
-    ) -> Result<R, HeldReason> {
+    /// Starts the pipeline on the reachable locations. The only way to the
+    /// index: it is handed over in exactly one case, the module is `Ready` and
+    /// the index is there.
+    pub fn start_pipeline(&self) -> Result<Runner, HeldReason> {
+        let handle = self.intake_index()?;
+        let locations: Vec<Location> = self.reachable_locations().cloned().collect();
+        let logical_cores = thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
+        Ok(Runner::start(
+            Settings::new(self.load, logical_cores),
+            intake_steps(Arc::new(handle)),
+            locations,
+            Arc::new(SystemClock),
+        ))
+    }
+
+    fn intake_index(&self) -> Result<IntakeIndex, HeldReason> {
         match &self.phase {
             Phase::Ready => {}
             Phase::Starting => return Err(HeldReason::Starting),
@@ -549,10 +584,10 @@ impl FilingModule {
             Phase::Dismissed => return Err(HeldReason::Dismissed),
             Phase::Failed(_) => return Err(HeldReason::Failed),
         }
-        match lock(&self.index).as_mut() {
-            Some(index) => Ok(take_in(index)),
-            None => Err(HeldReason::Failed),
+        if lock(&self.index).is_none() {
+            return Err(HeldReason::Failed);
         }
+        Ok(IntakeIndex(Arc::clone(&self.index)))
     }
 
     pub fn has_card(&self) -> bool {
@@ -841,6 +876,7 @@ impl FilingModule {
             index: Arc::default(),
             locations: Vec::new(),
             phase,
+            load: Load::default(),
             generation: 0,
             pick_group: random_group,
         }
@@ -904,6 +940,7 @@ mod tests {
         Filing {
             enabled: true,
             locations,
+            load: Load::default(),
         }
     }
 
@@ -964,7 +1001,7 @@ mod tests {
     }
 
     fn is_open(module: &FilingModule) -> bool {
-        module.with_index_for_intake(|_| ()).is_ok()
+        module.start_pipeline().is_ok()
     }
 
     #[derive(Debug)]
@@ -985,6 +1022,141 @@ mod tests {
     }
 
     #[test]
+    fn the_pipeline_is_refused_in_every_phase_but_ready() {
+        let held = [
+            (Phase::Starting, HeldReason::Starting),
+            (
+                Phase::AskEncryption {
+                    encrypted: true,
+                    busy: false,
+                    error: None,
+                },
+                HeldReason::WaitingForUser,
+            ),
+            (
+                Phase::ShowRecoveryKey {
+                    key: FilingModule::fixed_recovery_key(),
+                    group: 0,
+                    typed: SecretText::default(),
+                    mismatch: false,
+                },
+                HeldReason::WaitingForUser,
+            ),
+            (
+                ask_recovery_key(KeyProblem::Missing),
+                HeldReason::WaitingForUser,
+            ),
+            (Phase::PlainFileWarning, HeldReason::PlainFileUnconfirmed),
+            (Phase::Dismissed, HeldReason::Dismissed),
+            (Phase::Failed("no".to_owned()), HeldReason::Failed),
+            (Phase::Ready, HeldReason::Failed),
+        ];
+        for (phase, reason) in held {
+            let module = FilingModule::in_phase(phase);
+            put_plain_index_unless_ready_is_empty(&module);
+            assert_eq!(
+                module.start_pipeline().err(),
+                Some(reason),
+                "{:?}",
+                module.phase()
+            );
+        }
+    }
+
+    /// Every phase but the last holds an index in the slot, to show that the
+    /// phase alone keeps the pipeline away; `Ready` gets an empty slot.
+    fn put_plain_index_unless_ready_is_empty(module: &FilingModule) {
+        if module.phase() == &Phase::Ready {
+            return;
+        }
+        let dir = TempDir::new().unwrap();
+        put_index(
+            &module.index,
+            Index::create_plain(&dir.path().join("index.db")).unwrap(),
+        );
+    }
+
+    #[test]
+    fn a_ready_module_with_an_index_starts_a_pipeline_that_stops_on_drop() {
+        let dir = TempDir::new().unwrap();
+        let module = FilingModule::in_phase(Phase::Ready);
+        put_index(
+            &module.index,
+            Index::create_plain(&dir.path().join("index.db")).unwrap(),
+        );
+
+        let runner = module.start_pipeline().unwrap();
+
+        assert_ne!(runner.snapshot().state, ncrs_pipeline::RunnerState::Off);
+        drop(runner);
+    }
+
+    #[test]
+    fn a_ready_module_stays_ready_whatever_it_is_sent() {
+        let outcomes = [
+            WorkOutcome::Started {
+                locations: Vec::new(),
+                opened: OpenOutcome::NoIndexYet,
+            },
+            WorkOutcome::Started {
+                locations: Vec::new(),
+                opened: OpenOutcome::Opened,
+            },
+            WorkOutcome::Started {
+                locations: Vec::new(),
+                opened: OpenOutcome::PlainFileWithKeyEntry,
+            },
+            WorkOutcome::Started {
+                locations: Vec::new(),
+                opened: OpenOutcome::KeyMissing,
+            },
+            WorkOutcome::Started {
+                locations: Vec::new(),
+                opened: OpenOutcome::KeyMismatch,
+            },
+            WorkOutcome::Started {
+                locations: Vec::new(),
+                opened: OpenOutcome::Failed("broken".to_owned()),
+            },
+            WorkOutcome::Created(Ok(None)),
+            WorkOutcome::Created(Ok(Some(FilingModule::fixed_recovery_key()))),
+            WorkOutcome::Created(Err("broken".to_owned())),
+            WorkOutcome::KeyApplied(Ok(OpenOutcome::Opened)),
+            WorkOutcome::KeyApplied(Ok(OpenOutcome::KeyMismatch)),
+            WorkOutcome::KeyApplied(Err(KeyError::DoesNotOpen)),
+            WorkOutcome::Crashed("broken".to_owned()),
+        ];
+        let mut messages = vec![
+            FilingMessage::ChooseEncrypted(true),
+            FilingMessage::ChooseEncrypted(false),
+            FilingMessage::CreateIndex,
+            FilingMessage::CopyRecoveryKey,
+            FilingMessage::GroupInput(SecretText::from("ZZZZ")),
+            FilingMessage::GroupSubmit,
+            FilingMessage::KeyInput(SecretText::from("A")),
+            FilingMessage::ConfirmReplace(true),
+            FilingMessage::KeySubmit,
+            FilingMessage::ConfirmPlainFile,
+            FilingMessage::Dismiss,
+        ];
+        let mut module = FilingModule::in_phase(Phase::Ready);
+        for outcome in outcomes {
+            for generation in [module.generation, module.generation.wrapping_sub(1)] {
+                messages.push(FilingMessage::WorkDone {
+                    generation,
+                    outcome: outcome.clone(),
+                });
+            }
+        }
+
+        for message in messages {
+            let label = format!("{message:?}");
+            let _ = module.update(message);
+            assert_eq!(module.phase(), &Phase::Ready, "{label}");
+        }
+    }
+
+    #[test]
     fn a_module_that_is_off_opens_and_creates_nothing() {
         let dir = TempDir::new().unwrap();
         let db = db_in(&dir);
@@ -992,6 +1164,7 @@ mod tests {
         let off = Filing {
             enabled: false,
             locations: vec![location(dir.path())],
+            load: Load::default(),
         };
 
         assert!(FilingModule::start(&off, Some(db.clone()), shared(&store)).is_none());
@@ -1098,10 +1271,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(module.phase(), &Phase::Starting);
-        assert_eq!(
-            module.with_index_for_intake(|_| ()),
-            Err(HeldReason::Starting)
-        );
+        assert_eq!(module.start_pipeline().err(), Some(HeldReason::Starting));
         settle(&mut module, work);
 
         assert!(matches!(
@@ -1115,8 +1285,8 @@ mod tests {
         assert!(!db.exists());
         assert!(!data_dir(&dir).exists());
         assert_eq!(
-            module.with_index_for_intake(|_| ()),
-            Err(HeldReason::WaitingForUser)
+            module.start_pipeline().err(),
+            Some(HeldReason::WaitingForUser)
         );
 
         send(&mut module, FilingMessage::CreateIndex);
@@ -1125,8 +1295,8 @@ mod tests {
             Phase::ShowRecoveryKey { group: 4, .. }
         ));
         assert_eq!(
-            module.with_index_for_intake(|_| ()),
-            Err(HeldReason::WaitingForUser)
+            module.start_pipeline().err(),
+            Some(HeldReason::WaitingForUser)
         );
 
         send(
@@ -1150,9 +1320,10 @@ mod tests {
 
         assert_eq!(module.phase(), &Phase::Ready);
         assert_eq!(module.recovery_key_text(), None);
+        module.start_pipeline().unwrap();
         assert_eq!(
-            module.with_index_for_intake(|index| index.is_encrypted()),
-            Ok(true)
+            lock(&module.index).as_ref().map(Index::is_encrypted),
+            Some(true)
         );
         assert_eq!(store.snapshot().unwrap().len(), 32);
         assert!(Index::open(&db, store.as_ref()).unwrap().is_encrypted());
@@ -1291,8 +1462,8 @@ mod tests {
 
         assert_eq!(module.phase(), &Phase::PlainFileWarning);
         assert_eq!(
-            module.with_index_for_intake(|_| ()),
-            Err(HeldReason::PlainFileUnconfirmed)
+            module.start_pipeline().err(),
+            Some(HeldReason::PlainFileUnconfirmed)
         );
         send(&mut module, FilingMessage::ConfirmPlainFile);
         assert!(is_open(&module));
@@ -1348,10 +1519,7 @@ mod tests {
         settle(&mut module, work);
 
         assert_eq!(module.phase(), &Phase::Dismissed);
-        assert_eq!(
-            module.with_index_for_intake(|_| ()),
-            Err(HeldReason::Dismissed)
-        );
+        assert_eq!(module.start_pipeline().err(), Some(HeldReason::Dismissed));
     }
 
     #[test]

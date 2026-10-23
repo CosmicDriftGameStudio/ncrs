@@ -542,6 +542,8 @@ pub struct App {
     quick_open_walk: Option<iced::task::Handle>,
     /// The filing module, when the config switches it on.
     filing: Option<FilingModule>,
+    /// Started once the filing module is ready; dropping it stops the workers.
+    pipeline: Option<ncrs_pipeline::Runner>,
 }
 
 /// The part of the prompt the key routing needs, cheap to clone.
@@ -1301,6 +1303,7 @@ impl App {
             quick_open_walk_generation: 0,
             quick_open_walk: None,
             filing: None,
+            pipeline: None,
         };
 
         let tasks = Task::batch([
@@ -2482,6 +2485,9 @@ impl App {
         let work_finished = matches!(message, FilingMessage::WorkDone { .. });
         let was_starting = matches!(module.phase(), Phase::Starting);
         let work = module.update(message);
+        if self.pipeline.is_none() && matches!(module.phase(), Phase::Ready) {
+            self.pipeline = module.start_pipeline().ok();
+        }
         let skipped = if was_starting && !matches!(module.phase(), Phase::Starting) {
             module
                 .locations()
@@ -4431,6 +4437,7 @@ impl App {
             quick_open_walk_generation: 0,
             quick_open_walk: None,
             filing: None,
+            pipeline: None,
         };
         for (side, names) in [
             (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
@@ -8636,11 +8643,13 @@ mod filing_tests {
         let off = Filing {
             enabled: false,
             locations: Vec::new(),
+            load: ncrs_pipeline::Load::default(),
         };
 
         let (app, _task) = App::with_fixed_panels().with_filing(&off, Some(db.clone()), store);
 
         assert!(app.filing.is_none());
+        assert!(app.pipeline.is_none());
         assert!(!db.exists());
         assert!(!dir.path().join("data").exists());
     }
