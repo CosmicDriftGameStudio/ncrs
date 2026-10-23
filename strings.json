@@ -821,6 +821,264 @@
       "context": "Notice in the title bar after the filing module started: some configured folders cannot be used. Takes the number of folders.",
       "en": "{count} filing locations skipped: not reachable or overlapping",
       "de": "{count} Ablageorte übersprungen: nicht erreichbar oder überlappend"
+    },
+    {
+      "key": "filing.progress",
+      "context": "Filing progress at the right end of the status bar while files are in the pipeline; pressing it opens the filing status page. Takes the number of files done and the number of files in this stretch of work.",
+      "en": "Filing {done} / {total}",
+      "de": "Ablage {done} / {total}"
+    },
+    {
+      "key": "filing.progress_paused",
+      "context": "Like the filing progress in the status bar, shown while the pipeline is paused with files left.",
+      "en": "Filing paused {done} / {total}",
+      "de": "Ablage pausiert {done} / {total}"
+    },
+    {
+      "key": "filing_status.title",
+      "context": "Title of the filing status page, a box over the panels that shows what the filing module is doing.",
+      "en": "Filing status",
+      "de": "Ablage-Status"
+    },
+    {
+      "key": "filing_status.close",
+      "context": "Button on the filing status page that closes it. One word, verb.",
+      "en": "Close",
+      "de": "Schließen"
+    },
+    {
+      "key": "filing_status.section_pipeline",
+      "context": "Heading of the section with the state, the load and the steps of the filing pipeline.",
+      "en": "Pipeline",
+      "de": "Verarbeitung"
+    },
+    {
+      "key": "filing_status.section_workers",
+      "context": "Heading of the section that lists what each worker thread of the pipeline is doing right now.",
+      "en": "Workers",
+      "de": "Worker"
+    },
+    {
+      "key": "filing_status.section_index",
+      "context": "Heading of the section with figures about the document index.",
+      "en": "Index",
+      "de": "Dokumentenindex"
+    },
+    {
+      "key": "filing_status.section_errors",
+      "context": "Heading of the list of the latest errors of the pipeline.",
+      "en": "Errors",
+      "de": "Fehler"
+    },
+    {
+      "key": "filing_status.state_label",
+      "context": "Label in front of the state of the pipeline on the filing status page.",
+      "en": "State",
+      "de": "Zustand"
+    },
+    {
+      "key": "filing_status.state_running",
+      "context": "State of the pipeline: it is working on files.",
+      "en": "Running",
+      "de": "Läuft"
+    },
+    {
+      "key": "filing_status.state_paused",
+      "context": "State of the pipeline: the user paused it; running files still finish their steps.",
+      "en": "Paused",
+      "de": "Pausiert"
+    },
+    {
+      "key": "filing_status.state_idle",
+      "context": "State of the pipeline: it runs but has nothing to do.",
+      "en": "Idle",
+      "de": "Leerlauf"
+    },
+    {
+      "key": "filing_status.state_off",
+      "context": "State of the pipeline: it is not running, for example because the index is not open.",
+      "en": "Off",
+      "de": "Aus"
+    },
+    {
+      "key": "filing_status.pause",
+      "context": "Button on the filing status page that pauses the pipeline. Verb.",
+      "en": "Pause",
+      "de": "Pausieren"
+    },
+    {
+      "key": "filing_status.resume",
+      "context": "Button on the filing status page that continues a paused pipeline. Verb.",
+      "en": "Resume",
+      "de": "Fortsetzen"
+    },
+    {
+      "key": "filing_status.load_label",
+      "context": "Label in front of the three load buttons on the filing status page. The load says how many workers the pipeline may use.",
+      "en": "Load",
+      "de": "Last"
+    },
+    {
+      "key": "filing_status.load_gentle",
+      "context": "Button for the lowest load of the pipeline: few workers, so the computer stays usable. Lower case adjective.",
+      "en": "gentle",
+      "de": "schonend"
+    },
+    {
+      "key": "filing_status.load_balanced",
+      "context": "Button for the middle load of the pipeline. Lower case adjective.",
+      "en": "balanced",
+      "de": "ausgewogen"
+    },
+    {
+      "key": "filing_status.load_full",
+      "context": "Button for the highest load of the pipeline: one worker per processor core. Lower case adjective.",
+      "en": "full",
+      "de": "volle Kante"
+    },
+    {
+      "key": "filing_status.workers_label",
+      "context": "Label in front of the buttons that raise or lower the number of workers by one, followed by the current number.",
+      "en": "Worker count",
+      "de": "Anzahl Worker"
+    },
+    {
+      "key": "filing_status.load_note",
+      "context": "Note under the load buttons: a change made on the page is not written to the configuration file.",
+      "en": "A change applies until ncrs is restarted; config.toml is not changed.",
+      "de": "Eine Änderung gilt bis zum Neustart von ncrs; config.toml wird nicht geändert."
+    },
+    {
+      "key": "filing_status.step_counts",
+      "context": "One line per pipeline step. The step name is an identifier and stays untranslated. Takes the step name and four counts of files.",
+      "en": "{name}: {waiting} waiting, {done} done, {failed} failed, {unchanged} unchanged",
+      "de": "{name}: {waiting} wartend, {done} fertig, {failed} fehlgeschlagen, {unchanged} unverändert"
+    },
+    {
+      "key": "filing_status.throughput_label",
+      "context": "Label in front of the number of documents the pipeline filed per minute.",
+      "en": "Throughput",
+      "de": "Durchsatz"
+    },
+    {
+      "key": "filing_status.throughput",
+      "context": "Documents per minute. Takes the number.",
+      "en": "{count} documents/min",
+      "de": "{count} Dokumente/Min."
+    },
+    {
+      "key": "filing_status.remaining_label",
+      "context": "Label in front of the estimated time until the files in the pipeline are done.",
+      "en": "Time left",
+      "de": "Restzeit"
+    },
+    {
+      "key": "filing_status.remaining",
+      "context": "Estimated time left. Takes the number of minutes.",
+      "en": "about {minutes} min",
+      "de": "etwa {minutes} Min."
+    },
+    {
+      "key": "filing_status.worker_idle",
+      "context": "Shown for a worker that has no job right now. Lower case.",
+      "en": "idle",
+      "de": "untätig"
+    },
+    {
+      "key": "filing_status.task_workers",
+      "context": "What a worker does: it starts the other worker threads. Lower case, short.",
+      "en": "starting workers",
+      "de": "startet Worker"
+    },
+    {
+      "key": "filing_status.task_watch",
+      "context": "What a worker does: it sets up the watching of the filing folders. Lower case, short.",
+      "en": "watching folders",
+      "de": "überwacht Ordner"
+    },
+    {
+      "key": "filing_status.task_scan",
+      "context": "What a worker does: it looks through a filing folder for files. Lower case, short.",
+      "en": "scanning",
+      "de": "durchsucht Ordner"
+    },
+    {
+      "key": "filing_status.index_path",
+      "context": "Label for the path of the index file on the filing status page.",
+      "en": "Path",
+      "de": "Pfad"
+    },
+    {
+      "key": "filing_status.index_size",
+      "context": "Label for the size of the index file on disk.",
+      "en": "File size",
+      "de": "Dateigröße"
+    },
+    {
+      "key": "filing_status.index_encrypted",
+      "context": "Label for whether the index file is encrypted.",
+      "en": "Encrypted",
+      "de": "Verschlüsselt"
+    },
+    {
+      "key": "filing_status.yes",
+      "context": "Answer on the filing status page. Lower case.",
+      "en": "yes",
+      "de": "ja"
+    },
+    {
+      "key": "filing_status.no",
+      "context": "Answer on the filing status page. Lower case.",
+      "en": "no",
+      "de": "nein"
+    },
+    {
+      "key": "filing_status.index_schema",
+      "context": "Label for the version of the index database schema.",
+      "en": "Schema version",
+      "de": "Schema-Version"
+    },
+    {
+      "key": "filing_status.index_documents",
+      "context": "Label for the number of documents in the index.",
+      "en": "Documents",
+      "de": "Dokumente"
+    },
+    {
+      "key": "filing_status.index_full_text",
+      "context": "Label for the disk space used by the full text search part of the index.",
+      "en": "Full text size",
+      "de": "Volltextgröße"
+    },
+    {
+      "key": "filing_status.index_reviews",
+      "context": "Label for the number of documents waiting for the user's review.",
+      "en": "Open reviews",
+      "de": "Offene Prüffälle"
+    },
+    {
+      "key": "filing_status.index_unavailable",
+      "context": "Shown instead of the index figures when they could not be read. Takes the reason.",
+      "en": "Index figures unavailable: {reason}",
+      "de": "Indexkennzahlen nicht verfügbar: {reason}"
+    },
+    {
+      "key": "filing_status.index_not_open",
+      "context": "Shown instead of the index figures while the index is not open.",
+      "en": "Index not open",
+      "de": "Index nicht geöffnet"
+    },
+    {
+      "key": "filing_status.errors_none",
+      "context": "Shown in the error list of the filing status page when there are no errors.",
+      "en": "No errors",
+      "de": "Keine Fehler"
+    },
+    {
+      "key": "filing_status.hint",
+      "context": "Key hints at the bottom of the filing status page. Keep the key names.",
+      "en": "Esc closes · P pause · 1/2/3 load · +/- workers · Up/Down, Enter errors",
+      "de": "Esc schließt · P Pause · 1/2/3 Last · +/- Worker · Auf/Ab, Enter Fehler"
     }
   ]
 }

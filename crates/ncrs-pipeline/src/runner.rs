@@ -109,6 +109,9 @@ pub struct Snapshot {
     pub documents_per_minute: Vec<usize>,
     /// Newest last.
     pub errors: Vec<ErrorEntry>,
+    /// Files that left the pipeline since the start: finished, unchanged,
+    /// failed, or passed the last step.
+    pub left_pipeline: usize,
 }
 
 impl Snapshot {
@@ -121,7 +124,25 @@ impl Snapshot {
             steps: Vec::new(),
             documents_per_minute: vec![0; RATE_MINUTES],
             errors: Vec::new(),
+            left_pipeline: 0,
         }
+    }
+
+    /// Files in the pipeline right now: waiting at a step or being worked on
+    /// by one. Scans and the watcher are not files.
+    pub fn open_files(&self) -> usize {
+        let waiting: usize = self.steps.iter().map(|step| step.waiting).sum();
+        let running = self
+            .workers
+            .iter()
+            .filter(|worker| {
+                worker
+                    .busy
+                    .as_ref()
+                    .is_some_and(|busy| matches!(busy.task, Task::Step(_)))
+            })
+            .count();
+        waiting + running
     }
 }
 
@@ -204,6 +225,7 @@ struct State {
     counts: Vec<StepCounts>,
     rate: VecDeque<SystemTime>,
     errors: VecDeque<ErrorEntry>,
+    left_pipeline: usize,
 }
 
 impl State {
@@ -507,6 +529,7 @@ impl Shared {
             steps,
             documents_per_minute,
             errors: state.errors.iter().cloned().collect(),
+            left_pipeline: state.left_pipeline,
         }
     }
 
@@ -755,6 +778,7 @@ impl State {
             Ok(StepOutcome::Continue) => {
                 counts.done += 1;
                 if last_step {
+                    self.left_pipeline += 1;
                     self.record_document(at);
                 } else {
                     self.continuations.push_back(Continuation {
@@ -765,9 +789,13 @@ impl State {
             }
             Ok(StepOutcome::Finished) => {
                 counts.done += 1;
+                self.left_pipeline += 1;
                 self.record_document(at);
             }
-            Ok(StepOutcome::Unchanged) => counts.unchanged += 1,
+            Ok(StepOutcome::Unchanged) => {
+                counts.unchanged += 1;
+                self.left_pipeline += 1;
+            }
             Ok(StepOutcome::NotReady) => {
                 // A change that arrived while this ran is already queued and
                 // covers the retry.
@@ -781,6 +809,7 @@ impl State {
             }
             Err(message) => {
                 counts.failed += 1;
+                self.left_pipeline += 1;
                 self.push_error(item.path, Task::Step(name), message, at);
             }
         }
@@ -874,6 +903,7 @@ impl Runner {
             counts: vec![StepCounts::default(); steps.len()],
             rate: VecDeque::new(),
             errors: VecDeque::new(),
+            left_pipeline: 0,
         };
         let shared = Arc::new(Shared {
             state: Mutex::new(state),
@@ -1275,6 +1305,8 @@ mod tests {
         assert_eq!(error.at, epoch());
         assert_eq!(report.documents_per_minute[0], 2);
         assert_eq!(report.documents_per_minute.len(), RATE_MINUTES);
+        assert_eq!(report.left_pipeline, 3);
+        assert_eq!(report.open_files(), 0);
     }
 
     fn leave_the_second_file_unchanged(path: &Path) -> Result<StepOutcome, String> {
@@ -1298,6 +1330,37 @@ mod tests {
         assert_eq!((counts.done, counts.failed, counts.unchanged), (1, 0, 1));
         assert_eq!(report.documents_per_minute[0], 1);
         assert!(report.errors.is_empty());
+        assert_eq!(report.left_pipeline, 2);
+        assert_eq!(report.open_files(), 0);
+    }
+
+    #[test]
+    fn open_files_count_waiting_and_step_work_but_not_scans() {
+        let busy = |task| WorkerSnapshot {
+            id: 0,
+            busy: Some(Busy {
+                file: PathBuf::from("/tmp/inbox/company-a-invoice.pdf"),
+                task,
+                started_at: epoch(),
+            }),
+        };
+        let step = |waiting| StepSnapshot {
+            name: "probe",
+            waiting,
+            done: 0,
+            failed: 0,
+            unchanged: 0,
+        };
+        let mut snapshot = Snapshot::off();
+        snapshot.steps = vec![step(3), step(2)];
+        snapshot.workers = vec![
+            busy(Task::Scan),
+            busy(Task::Watch),
+            busy(Task::Workers),
+            busy(Task::Step("probe")),
+            WorkerSnapshot { id: 4, busy: None },
+        ];
+        assert_eq!(snapshot.open_files(), 6);
     }
 
     fn panic_on_the_second_file(path: &Path) -> Result<StepOutcome, String> {

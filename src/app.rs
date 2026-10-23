@@ -1,5 +1,6 @@
 //! Root application: state, `update` (the only place state changes) and
 //! `view` (pure composition of UI components).
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
 use std::sync::{Arc, Mutex, OnceLock};
@@ -13,13 +14,14 @@ use crate::config::{self, Config, ConfigError, ContrastWarning, Filing};
 use crate::context_menu::{ContextAction, ContextMenu, InputState};
 use crate::dialog::{Prompt, PromptKind};
 use crate::filing::{FilingMessage, FilingModule, LocationStatus, Phase, Work, WorkOutcome};
+use crate::filing_status::{FilingStatus, SNAPSHOT_EVERY};
 use crate::fs::{self, CreateDirError};
 use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
 use crate::keymap::{self, KeyScope, Keymap};
 use crate::messages::{
-    ClipboardKind, ConflictChoice, Message, PanelSide, QuickOpenMessage, SearchMessage,
-    TransferKind,
+    ClipboardKind, ConflictChoice, FilingStatusMessage, Message, PanelSide, QuickOpenMessage,
+    SearchMessage, TransferKind,
 };
 use crate::palette::Palette;
 use crate::quick_open::{QuickOpen, QUICK_OPEN_FILE_LIMIT};
@@ -28,6 +30,7 @@ use crate::ui::context_menu as context_menu_view;
 use crate::ui::delete as delete_dialog_view;
 use crate::ui::dialog::FIELD_ID;
 use crate::ui::filing as filing_ui;
+use crate::ui::filing_status as filing_status_ui;
 use crate::ui::quick_open as quick_open_ui;
 use crate::ui::search as search_ui;
 use crate::ui::volumes as volumes_view;
@@ -35,6 +38,7 @@ use crate::ui::{
     self, conflict, dialog, fkeys, header, layout, panel, statusbar, theme, PanelProps, PanelState,
 };
 use ncrs_index::{KeyStore, KeyringKeyStore};
+use ncrs_pipeline::Load;
 use tokio::sync::mpsc;
 
 /// How long the search view waits for the next keystroke before it searches.
@@ -219,6 +223,7 @@ fn leaves_path_field(message: &Message) -> bool {
         Message::RowClicked { .. }
             | Message::OpenSearch
             | Message::QuickOpen(QuickOpenMessage::Open)
+            | Message::FilingStatus(FilingStatusMessage::Open)
             | Message::ContextMenuAt { .. }
             | Message::ContextMenuKey
             | Message::CopyToClipboard(_)
@@ -544,6 +549,10 @@ pub struct App {
     filing: Option<FilingModule>,
     /// Started once the filing module is ready; dropping it stops the workers.
     pipeline: Option<ncrs_pipeline::Runner>,
+    /// What the filing status page and the status bar show of the pipeline.
+    filing_status: FilingStatus,
+    /// The time the status page measures how long a worker has been busy by.
+    wall_clock: Arc<dyn ncrs_pipeline::Clock>,
 }
 
 /// The part of the prompt the key routing needs, cheap to clone.
@@ -571,6 +580,8 @@ pub struct PromptKeyState {
     pub search: bool,
     /// Quick Open is up, so the up and down keys move in its hits.
     pub quick_open: bool,
+    /// The filing status page is up, so its keys act on the pipeline.
+    pub filing_status: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
     /// The drive menu is up, so keys move its highlight.
@@ -594,6 +605,7 @@ impl Default for PromptKeyState {
             path_editing: false,
             search: false,
             quick_open: false,
+            filing_status: false,
             delete_dialog: DeleteKeys::default(),
             volume_menu: false,
             context_menu: false,
@@ -703,6 +715,12 @@ fn keys_without_prompt(
                 .filter(|message| *message == Message::Quit)
                 .filter(|_| is_not_typed_by_text_field(&key, key_modifiers)),
         };
+    }
+
+    // The page owns the keyboard; of the bindings only its own key (which
+    // closes it) and quitting reach past it.
+    if prompt.filing_status {
+        return filing_status_key(prompt, &key, key_modifiers, scope);
     }
 
     // The text field takes the typing and Enter on its own, and `InputState`
@@ -1011,6 +1029,35 @@ fn dialog_focus_key(key: Key, modifiers: Modifiers) -> Option<Message> {
     }
 }
 
+fn filing_status_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    use FilingStatusMessage as Page;
+    let page = |message| Some(Message::FilingStatus(message));
+    // Shift only changes the character typed (`+` is Shift+= on many layouts).
+    let plain = (key_modifiers - Modifiers::SHIFT).is_empty();
+    match key.as_ref() {
+        Key::Named(Named::Escape) => page(Page::Close),
+        Key::Named(Named::ArrowUp) if key_modifiers.is_empty() => page(Page::MoveError(-1)),
+        Key::Named(Named::ArrowDown) if key_modifiers.is_empty() => page(Page::MoveError(1)),
+        Key::Named(Named::Enter) if key_modifiers.is_empty() => page(Page::ActivateSelectedError),
+        Key::Character("p" | "P") if plain => page(Page::TogglePause),
+        Key::Character("1") if plain => page(Page::SetLoad(Load::Gentle)),
+        Key::Character("2") if plain => page(Page::SetLoad(Load::Balanced)),
+        Key::Character("3") if plain => page(Page::SetLoad(Load::Full)),
+        Key::Character("+") if plain => page(Page::StepWorkers(1)),
+        Key::Character("-") if plain => page(Page::StepWorkers(-1)),
+        _ => match bound_message(&prompt.keymap, key, key_modifiers, scope) {
+            Some(Message::FilingStatus(Page::Toggle)) => page(Page::Close),
+            Some(Message::Quit) => Some(Message::Quit),
+            _ => None,
+        },
+    }
+}
+
 /// Whether holding the key down may fire the message again.
 ///
 /// Only cursor movement, tagging and typing repeat. An action such as F5 or a
@@ -1034,6 +1081,7 @@ fn repeats(message: &Message) -> bool {
             | Message::ContextMenuFirst
             | Message::ContextMenuLast
             | Message::QuickOpen(QuickOpenMessage::Move(_))
+            | Message::FilingStatus(FilingStatusMessage::MoveError(_))
             | Message::Search(
                 SearchMessage::ToggleTag
                     | SearchMessage::TagMove(_)
@@ -1304,6 +1352,8 @@ impl App {
             quick_open_walk: None,
             filing: None,
             pipeline: None,
+            filing_status: FilingStatus::default(),
+            wall_clock: Arc::new(ncrs_pipeline::SystemClock),
         };
 
         let tasks = Task::batch([
@@ -1389,6 +1439,13 @@ impl App {
                         _ => None,
                     }
                 }),
+            // Keeps the status bar's progress and the open page current.
+            if self.pipeline.is_some() || self.filing_status.page_open() {
+                iced::time::every(SNAPSHOT_EVERY)
+                    .map(|_| Message::FilingStatus(FilingStatusMessage::Tick))
+            } else {
+                Subscription::none()
+            },
             // Mouse, focus and modifier events of every status: widgets capture
             // the clicks and the pointer moves the menu has to know about.
             event::listen_with(|event, status, _window| Some((event, status)))
@@ -1907,6 +1964,7 @@ impl App {
             Message::Search(search) => self.update_search(search),
             Message::QuickOpen(quick_open) => self.update_quick_open(quick_open),
             Message::Filing(filing_message) => self.update_filing(filing_message),
+            Message::FilingStatus(page_message) => self.update_filing_status(page_message),
             Message::Quit => iced::exit(),
             // Handled in `update`, which owns the timer's generation check.
             Message::NoticeExpired(_) => Task::none(),
@@ -2200,7 +2258,10 @@ impl App {
                     self.active_panel(),
                     self.lang,
                     &self.palette,
-                    self.job_status(),
+                    statusbar::Activity {
+                        job: self.job_status(),
+                        filing: self.filing_badge(),
+                    },
                     self.status_error(),
                     self.search_status(),
                     statusbar::PathBar {
@@ -2303,6 +2364,21 @@ impl App {
             return Stack::with_children([root, dialog::scrim(conflict_element)]).into();
         }
 
+        if self.filing_status.page_open() {
+            let index_open = self
+                .filing
+                .as_ref()
+                .is_some_and(|module| matches!(module.phase(), Phase::Ready));
+            let page = filing_status_ui::view(
+                &self.filing_status,
+                self.filing.as_ref().map(FilingModule::load),
+                index_open,
+                self.lang,
+                &self.palette,
+            );
+            return Stack::with_children([root, dialog::scrim(page)]).into();
+        }
+
         if let Some(quick_open) = self.quick_open.as_ref() {
             let box_element = quick_open_ui::view(quick_open, self.lang, &self.palette);
             return Stack::with_children([root, dialog::scrim(box_element)]).into();
@@ -2393,6 +2469,7 @@ impl App {
         let path_editing = self.path_field.is_some();
         let search = self.search_has_keys();
         let quick_open = self.quick_open.is_some();
+        let filing_status = self.filing_status.page_open();
         let delete_dialog = match &self.delete_dialog {
             None => DeleteKeys::Closed,
             Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
@@ -2409,6 +2486,7 @@ impl App {
                 path_editing,
                 search,
                 quick_open,
+                filing_status,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
                 // the dialog's keys would fall through to the panels.
@@ -2426,6 +2504,7 @@ impl App {
                 path_editing,
                 search,
                 quick_open,
+                filing_status,
                 conflict_open: self.pending_conflict.is_some(),
                 busy: prompt.busy(),
                 typed: prompt.name().into(),
@@ -2585,6 +2664,7 @@ impl App {
             || self.delete_dialog.is_some()
             || self.volume_menu.is_some()
             || self.quick_open.is_some()
+            || self.filing_status.page_open()
     }
 
     /// Whether the context menu entry can do something for the current
@@ -3583,14 +3663,180 @@ impl App {
         let Some(path) = self.quick_open.as_ref().and_then(QuickOpen::selected_path) else {
             return Task::none();
         };
+        let closed = self.close_quick_open();
+        let revealed = self.reveal_file(&path);
+        Task::batch([closed, revealed])
+    }
+
+    /// The active panel shows the file's directory with the cursor on the file.
+    /// Only navigates: the file is never opened or run.
+    fn reveal_file(&mut self, path: &Path) -> Task<Message> {
         let (Some(parent), Some(file)) = (path.parent(), path.file_name()) else {
             return Task::none();
         };
         let directory = parent.to_path_buf();
         let name = file.to_string_lossy().into_owned();
-        let closed = self.close_quick_open();
-        let loaded = self.load(self.active_panel, directory, Some(name));
-        Task::batch([closed, loaded])
+        self.load(self.active_panel, directory, Some(name))
+    }
+
+    fn filing_badge(&self) -> Option<statusbar::FilingBadge<Message>> {
+        let progress = self.filing_status.progress()?;
+        let template = if progress.paused {
+            Msg::FilingProgressPaused
+        } else {
+            Msg::FilingProgress
+        };
+        Some(statusbar::FilingBadge {
+            text: fill_template(
+                self.lang.text(template),
+                &[
+                    ("{done}", &progress.done.to_string()),
+                    ("{total}", &progress.total.to_string()),
+                ],
+            ),
+            on_press: Message::FilingStatus(FilingStatusMessage::Open),
+        })
+    }
+
+    fn refresh_filing_snapshot(&mut self) {
+        let snapshot = self.pipeline.as_ref().map_or_else(
+            ncrs_pipeline::Snapshot::off,
+            ncrs_pipeline::Runner::snapshot,
+        );
+        self.filing_status
+            .set_snapshot(snapshot, self.wall_clock.now());
+    }
+
+    /// The pipeline, unless it is stopped.
+    fn live_pipeline(&self) -> Option<&ncrs_pipeline::Runner> {
+        self.pipeline
+            .as_ref()
+            .filter(|runner| runner.snapshot().state != ncrs_pipeline::RunnerState::Off)
+    }
+
+    /// Reads the figures on the blocking pool: the intake may hold the index
+    /// for as long as it hashes a large file.
+    fn request_index_figures(&mut self) -> Task<Message> {
+        let Some(reader) = self
+            .filing
+            .as_ref()
+            .and_then(FilingModule::index_figures_reader)
+        else {
+            return Task::none();
+        };
+        self.filing_status.figures_requested();
+        Task::perform(
+            tokio::task::spawn_blocking(move || reader.read()),
+            |joined| {
+                Message::FilingStatus(FilingStatusMessage::IndexFigures(
+                    joined.unwrap_or_else(|err| Err(err.to_string())),
+                ))
+            },
+        )
+    }
+
+    fn open_filing_status(&mut self) -> Task<Message> {
+        if self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        self.context_menu = None;
+        self.filing_status.open_page();
+        self.refresh_filing_snapshot();
+        self.request_index_figures()
+    }
+
+    fn set_pipeline_load(&mut self, load: Load) {
+        let Some(runner) = self.live_pipeline() else {
+            return;
+        };
+        runner.set_load(load);
+        if let Some(module) = self.filing.as_mut() {
+            module.set_load(load);
+        }
+        self.refresh_filing_snapshot();
+    }
+
+    fn update_filing_status(&mut self, message: FilingStatusMessage) -> Task<Message> {
+        match message {
+            FilingStatusMessage::Open => self.open_filing_status(),
+            FilingStatusMessage::Close => {
+                self.filing_status.close_page();
+                Task::none()
+            }
+            FilingStatusMessage::Toggle => {
+                if self.filing_status.page_open() {
+                    self.filing_status.close_page();
+                    Task::none()
+                } else {
+                    self.open_filing_status()
+                }
+            }
+            FilingStatusMessage::Tick => {
+                self.refresh_filing_snapshot();
+                if self.filing_status.tick_wants_figures() {
+                    self.request_index_figures()
+                } else {
+                    Task::none()
+                }
+            }
+            FilingStatusMessage::TogglePause => {
+                if let Some(runner) = self.live_pipeline() {
+                    match runner.snapshot().state {
+                        ncrs_pipeline::RunnerState::Paused => runner.resume(),
+                        ncrs_pipeline::RunnerState::Running | ncrs_pipeline::RunnerState::Idle => {
+                            runner.pause();
+                        }
+                        ncrs_pipeline::RunnerState::Off => {}
+                    }
+                    self.refresh_filing_snapshot();
+                }
+                Task::none()
+            }
+            FilingStatusMessage::SetLoad(load) => {
+                self.set_pipeline_load(load);
+                Task::none()
+            }
+            FilingStatusMessage::StepWorkers(delta) => {
+                let Some(runner) = self.live_pipeline() else {
+                    return Task::none();
+                };
+                let current = match self.filing.as_ref().map(FilingModule::load) {
+                    Some(Load::Workers(count)) => count.get(),
+                    _ => runner.snapshot().worker_target,
+                };
+                let most = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
+                let wanted = current
+                    .saturating_add_signed(isize::from(delta))
+                    .clamp(1, most);
+                if let Some(count) = NonZeroUsize::new(wanted) {
+                    self.set_pipeline_load(Load::Workers(count));
+                }
+                Task::none()
+            }
+            FilingStatusMessage::IndexFigures(figures) => {
+                self.filing_status.figures_arrived(figures);
+                Task::none()
+            }
+            FilingStatusMessage::ErrorActivated(path) => {
+                self.filing_status.close_page();
+                self.reveal_file(&path)
+            }
+            FilingStatusMessage::MoveError(delta) => {
+                self.filing_status.move_error_selection(delta);
+                Task::none()
+            }
+            FilingStatusMessage::ActivateSelectedError => {
+                let Some(path) = self
+                    .filing_status
+                    .selected_error_file()
+                    .map(Path::to_path_buf)
+                else {
+                    return Task::none();
+                };
+                self.filing_status.close_page();
+                self.reveal_file(&path)
+            }
+        }
     }
 
     /// Starts an async directory read for `side`.
@@ -4438,6 +4684,8 @@ impl App {
             quick_open_walk: None,
             filing: None,
             pipeline: None,
+            filing_status: FilingStatus::default(),
+            wall_clock: Arc::new(ncrs_pipeline::SystemClock),
         };
         for (side, names) in [
             (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
@@ -4469,6 +4717,38 @@ impl App {
     pub fn with_fixed_filing(phase: Phase) -> Self {
         let mut app = Self::with_fixed_panels();
         app.filing = Some(FilingModule::in_phase(phase));
+        app
+    }
+
+    /// Fixed panels that have been shown `snapshot` of a pipeline at
+    /// `taken_at`; no runner exists.
+    pub fn with_filing_snapshot(
+        snapshot: ncrs_pipeline::Snapshot,
+        taken_at: std::time::SystemTime,
+    ) -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.filing_status.set_snapshot(snapshot, taken_at);
+        app
+    }
+
+    /// Fixed panels that saw `began` and then `now`, so progress has moved.
+    pub fn with_filing_progress(
+        began: ncrs_pipeline::Snapshot,
+        now: ncrs_pipeline::Snapshot,
+        taken_at: std::time::SystemTime,
+    ) -> Self {
+        let mut app = Self::with_filing_snapshot(began, taken_at);
+        app.filing_status.set_snapshot(now, taken_at);
+        app
+    }
+
+    /// Like [`Self::with_filing_snapshot`], with the status page open.
+    pub fn with_filing_status_page(
+        snapshot: ncrs_pipeline::Snapshot,
+        taken_at: std::time::SystemTime,
+    ) -> Self {
+        let mut app = Self::with_filing_snapshot(snapshot, taken_at);
+        app.filing_status.open_page();
         app
     }
 
@@ -8669,5 +8949,259 @@ mod filing_tests {
         let _task = app.update(Message::Filing(FilingMessage::CopyRecoveryKey));
         let notice = app.notice.clone().unwrap();
         assert!(!notice.contains("AAAA"), "{notice}");
+    }
+}
+
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod filing_status_tests {
+    use std::time::SystemTime;
+
+    use super::*;
+    use crate::filing_status::INDEX_FIGURES_EVERY_TICKS;
+    use ncrs_pipeline::{
+        ErrorEntry, RunnerState, Settings, Snapshot, SystemClock, Task as PipelineTask,
+    };
+
+    fn status(message: FilingStatusMessage) -> Message {
+        Message::FilingStatus(message)
+    }
+
+    fn tick(app: &mut App) {
+        drop(app.update(status(FilingStatusMessage::Tick)));
+    }
+
+    /// An app whose pipeline has no steps and no folders, standing on 8 cores.
+    fn app_with_empty_pipeline() -> App {
+        let mut app = App::with_fixed_filing(Phase::Ready);
+        app.pipeline = Some(ncrs_pipeline::Runner::start(
+            Settings::new(Load::Gentle, NonZeroUsize::new(8).unwrap()),
+            Vec::new(),
+            Vec::new(),
+            Arc::new(SystemClock),
+        ));
+        app
+    }
+
+    fn worker_target(app: &App) -> usize {
+        app.pipeline.as_ref().unwrap().snapshot().worker_target
+    }
+
+    fn runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn pause_and_resume_act_on_the_pipeline_at_once() {
+        let mut app = app_with_empty_pipeline();
+
+        drop(app.update(status(FilingStatusMessage::TogglePause)));
+        assert_eq!(
+            app.pipeline.as_ref().unwrap().snapshot().state,
+            RunnerState::Paused
+        );
+
+        drop(app.update(status(FilingStatusMessage::TogglePause)));
+        assert_ne!(
+            app.pipeline.as_ref().unwrap().snapshot().state,
+            RunnerState::Paused
+        );
+    }
+
+    #[test]
+    fn the_load_is_set_on_the_pipeline_and_remembered_by_the_module() {
+        let mut app = app_with_empty_pipeline();
+        assert_eq!(worker_target(&app), 2);
+
+        drop(app.update(status(FilingStatusMessage::SetLoad(Load::Full))));
+        assert_eq!(worker_target(&app), 8);
+        assert_eq!(app.filing.as_ref().unwrap().load(), Load::Full);
+
+        drop(app.update(status(FilingStatusMessage::SetLoad(Load::Gentle))));
+        assert_eq!(worker_target(&app), 2);
+        assert_eq!(app.filing.as_ref().unwrap().load(), Load::Gentle);
+    }
+
+    #[test]
+    fn stepping_the_workers_never_goes_below_one() {
+        let mut app = app_with_empty_pipeline();
+
+        drop(app.update(status(FilingStatusMessage::StepWorkers(-1))));
+        assert_eq!(worker_target(&app), 1);
+        assert_eq!(
+            app.filing.as_ref().unwrap().load(),
+            Load::Workers(NonZeroUsize::MIN)
+        );
+
+        drop(app.update(status(FilingStatusMessage::StepWorkers(-1))));
+        assert_eq!(worker_target(&app), 1);
+    }
+
+    #[test]
+    fn without_a_pipeline_pause_and_load_do_nothing() {
+        let mut app = App::with_fixed_filing(Phase::Ready);
+
+        drop(app.update(status(FilingStatusMessage::TogglePause)));
+        drop(app.update(status(FilingStatusMessage::SetLoad(Load::Full))));
+        drop(app.update(status(FilingStatusMessage::StepWorkers(1))));
+
+        assert!(app.pipeline.is_none());
+        assert_eq!(app.filing.as_ref().unwrap().load(), Load::default());
+    }
+
+    #[test]
+    fn index_figures_are_asked_for_on_opening_and_then_every_fifth_tick() {
+        let runtime = runtime();
+        let _inside = runtime.enter();
+        let mut app = App::with_fixed_filing(Phase::Ready);
+
+        drop(app.update(status(FilingStatusMessage::Open)));
+        assert!(app.filing_status.figures_in_flight());
+
+        for _ in 0..2 * INDEX_FIGURES_EVERY_TICKS {
+            tick(&mut app);
+        }
+        assert!(app.filing_status.figures_in_flight());
+
+        drop(app.update(status(FilingStatusMessage::IndexFigures(Err(
+            "index not open".to_owned(),
+        )))));
+        assert!(!app.filing_status.figures_in_flight());
+        for _ in 1..INDEX_FIGURES_EVERY_TICKS {
+            tick(&mut app);
+            assert!(!app.filing_status.figures_in_flight());
+        }
+        tick(&mut app);
+        assert!(app.filing_status.figures_in_flight());
+    }
+
+    #[test]
+    fn index_figures_are_never_asked_for_while_the_page_is_closed() {
+        let runtime = runtime();
+        let _inside = runtime.enter();
+        let mut app = App::with_fixed_filing(Phase::Ready);
+
+        for _ in 0..3 * INDEX_FIGURES_EVERY_TICKS {
+            tick(&mut app);
+        }
+        assert!(!app.filing_status.figures_in_flight());
+
+        drop(app.update(status(FilingStatusMessage::Open)));
+        drop(app.update(status(FilingStatusMessage::Close)));
+        drop(app.update(status(FilingStatusMessage::IndexFigures(Err(
+            "x".to_owned(),
+        )))));
+        for _ in 0..3 * INDEX_FIGURES_EVERY_TICKS {
+            tick(&mut app);
+        }
+        assert!(!app.filing_status.figures_in_flight());
+    }
+
+    #[test]
+    fn opening_the_page_is_refused_under_another_overlay() {
+        let mut app = App::with_fixed_prompt();
+
+        drop(app.update(status(FilingStatusMessage::Open)));
+
+        assert!(!app.filing_status.page_open());
+    }
+
+    #[test]
+    fn the_page_owns_the_keys_while_it_is_open() {
+        let open = PromptKeyState {
+            filing_status: true,
+            ..PromptKeyState::default()
+        };
+        let route = |key| route_key(&open, key, Modifiers::default());
+
+        assert_eq!(
+            route(Key::Named(Named::Escape)),
+            Some(status(FilingStatusMessage::Close))
+        );
+        assert_eq!(
+            route(Key::Character("p".into())),
+            Some(status(FilingStatusMessage::TogglePause))
+        );
+        assert_eq!(
+            route(Key::Character("2".into())),
+            Some(status(FilingStatusMessage::SetLoad(Load::Balanced)))
+        );
+        assert_eq!(
+            route(Key::Named(Named::ArrowDown)),
+            Some(status(FilingStatusMessage::MoveError(1)))
+        );
+        assert_eq!(route(Key::Named(Named::F5)), None);
+        for chord in [Modifiers::COMMAND, Modifiers::CTRL, Modifiers::ALT] {
+            for character in ["p", "1", "+"] {
+                assert_eq!(
+                    route_key(&open, Key::Character(character.into()), chord),
+                    None,
+                    "{chord:?}+{character}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_binding_toggles_the_page_and_closes_it_again() {
+        let chord = Modifiers::COMMAND | Modifiers::SHIFT;
+        let key = || Key::Character("d".into());
+
+        assert_eq!(
+            route_key(&PromptKeyState::default(), key(), chord),
+            Some(status(FilingStatusMessage::Toggle))
+        );
+        let open = PromptKeyState {
+            filing_status: true,
+            ..PromptKeyState::default()
+        };
+        assert_eq!(
+            route_key(&open, key(), chord),
+            Some(status(FilingStatusMessage::Close))
+        );
+    }
+
+    #[test]
+    fn an_error_row_closes_the_page_and_shows_the_file_in_the_active_panel() {
+        let mut app = App::with_filing_status_page(Snapshot::off(), SystemTime::UNIX_EPOCH);
+        let before = app.panel(PanelSide::Left).request_id;
+
+        drop(
+            app.update(status(FilingStatusMessage::ErrorActivated(PathBuf::from(
+                "/tmp/inbox/company-a-invoice.pdf",
+            )))),
+        );
+
+        assert!(!app.filing_status.page_open());
+        assert!(app.panel(PanelSide::Left).loading);
+        assert_ne!(app.panel(PanelSide::Left).request_id, before);
+    }
+
+    #[test]
+    fn enter_shows_the_selected_error_and_does_nothing_without_one() {
+        let mut snapshot = Snapshot::off();
+        snapshot.errors = vec![ErrorEntry {
+            file: PathBuf::from("/tmp/inbox/company-a-invoice.pdf"),
+            task: PipelineTask::Step("probe"),
+            message: "the step stopped unexpectedly".to_owned(),
+            at: SystemTime::UNIX_EPOCH,
+        }];
+        let mut app = App::with_filing_status_page(snapshot, SystemTime::UNIX_EPOCH);
+
+        drop(app.update(status(FilingStatusMessage::ActivateSelectedError)));
+        assert!(app.filing_status.page_open());
+
+        drop(app.update(status(FilingStatusMessage::MoveError(1))));
+        drop(app.update(status(FilingStatusMessage::ActivateSelectedError)));
+        assert!(!app.filing_status.page_open());
+        assert!(app.panel(PanelSide::Left).loading);
     }
 }

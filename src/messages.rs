@@ -3,11 +3,13 @@
 
 use std::path::PathBuf;
 
+use ncrs_pipeline::Load;
+
 use iced::Size;
 
 use crate::app::{RowFailure, Transfer};
 use crate::dialog::PromptKind;
-use crate::filing::FilingMessage;
+use crate::filing::{FilingMessage, IndexFigures};
 use crate::fs::search::SearchEvent;
 use crate::fs::CreateDirError;
 use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
@@ -240,6 +242,9 @@ pub enum Message {
     // --- Filing module: the index and its first-start questions ---
     Filing(FilingMessage),
 
+    // --- Filing status page ---
+    FilingStatus(FilingStatusMessage),
+
     // --- Quick Open (Cmd/Ctrl+P) ---
     QuickOpen(QuickOpenMessage),
 
@@ -291,6 +296,25 @@ pub enum SearchMessage {
     /// The chevron of the file at this index in the results.
     ToggleGroup(usize),
     Scrolled(iced::mouse::ScrollDelta),
+}
+
+/// Everything the filing status page sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FilingStatusMessage {
+    Open,
+    Close,
+    Toggle,
+    /// The once-a-second look at the pipeline.
+    Tick,
+    TogglePause,
+    SetLoad(Load),
+    /// One worker more (`1`) or fewer (`-1`) than now.
+    StepWorkers(i8),
+    IndexFigures(Result<IndexFigures, String>),
+    /// An error row was pressed: show its file in the panel.
+    ErrorActivated(PathBuf),
+    MoveError(i32),
+    ActivateSelectedError,
 }
 
 /// Everything Quick Open sends.

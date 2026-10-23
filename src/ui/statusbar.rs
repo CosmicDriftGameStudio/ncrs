@@ -99,6 +99,19 @@ pub struct JobStatus {
     pub abortable: bool,
 }
 
+/// The filing progress at the right end of the bar; pressing it opens the
+/// filing status page. The text is the caller's, already translated.
+pub struct FilingBadge<M> {
+    pub text: String,
+    pub on_press: M,
+}
+
+/// What goes on in the background, at the right of the bar.
+pub struct Activity<M> {
+    pub job: Option<JobStatus>,
+    pub filing: Option<FilingBadge<M>>,
+}
+
 /// The bottom bar: path, then the running job, then the failure of the last
 /// job, the panel's read error, or the selected entry.
 ///
@@ -108,11 +121,12 @@ pub fn view<'a, M: Clone + 'a>(
     panel: &'a PanelState,
     lang: Language,
     palette: &Palette,
-    job: Option<JobStatus>,
+    activity: Activity<M>,
     failure: Option<&'a str>,
     search_file: Option<String>,
     path_bar_input: PathBar<'a, M>,
 ) -> Element<'a, M> {
+    let Activity { job, filing } = activity;
     let path = path_bar(panel, lang, palette, path_bar_input);
 
     let details: Element<'a, M> = if let Some(last_failure) = failure {
@@ -205,29 +219,42 @@ pub fn view<'a, M: Clone + 'a>(
     const PATH_PARTS: u16 = 2;
     const MIDDLE_PARTS: u16 = 3;
 
-    container(
-        row![
-            container(path)
-                .width(Length::FillPortion(PATH_PARTS))
-                .clip(true),
-            separator(),
-            match &job {
-                Some(_) => separator(),
-                None => separator_hidden(),
-            },
-            container(middle)
-                .width(Length::FillPortion(MIDDLE_PARTS))
-                .clip(true),
-        ]
-        .spacing(spacing::CELL_PADDING_X)
-        .align_y(alignment::Vertical::Center),
-    )
-    .padding([0.0, spacing::CELL_PADDING_X * 1.5])
-    .height(STATUSBAR_HEIGHT)
-    .width(Length::Fill)
-    .align_y(alignment::Vertical::Center)
-    .style(theme::statusbar(palette))
-    .into()
+    let mut bar = row![
+        container(path)
+            .width(Length::FillPortion(PATH_PARTS))
+            .clip(true),
+        separator(),
+        match &job {
+            Some(_) => separator(),
+            None => separator_hidden(),
+        },
+        container(middle)
+            .width(Length::FillPortion(MIDDLE_PARTS))
+            .clip(true),
+    ]
+    .spacing(spacing::CELL_PADDING_X)
+    .align_y(alignment::Vertical::Center);
+    if let Some(badge) = filing {
+        bar = bar.push(
+            button(
+                text(badge.text)
+                    .size(font_size::STATUS)
+                    .color(palette.accent)
+                    .wrapping(text::Wrapping::None),
+            )
+            .on_press(badge.on_press)
+            .padding([0.0, 3.0])
+            .style(theme::icon_button(palette)),
+        );
+    }
+
+    container(bar)
+        .padding([0.0, spacing::CELL_PADDING_X * 1.5])
+        .height(STATUSBAR_HEIGHT)
+        .width(Length::Fill)
+        .align_y(alignment::Vertical::Center)
+        .style(theme::statusbar(palette))
+        .into()
 }
 
 /// Renders a read error in the current language. The path comes from the panel

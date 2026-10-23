@@ -14,7 +14,9 @@ use crate::config::KeySection;
 use crate::fs::{OpenKind, SortColumn};
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
-use crate::messages::{ClipboardKind, PanelSide, QuickOpenMessage, SearchMessage, TransferKind};
+use crate::messages::{
+    ClipboardKind, FilingStatusMessage, PanelSide, QuickOpenMessage, SearchMessage, TransferKind,
+};
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -103,6 +105,7 @@ key_actions! {
     Last => "last",
     Search => "search",
     QuickOpen => "quick_open",
+    FilingStatus => "filing_status",
     SearchCase => "search_case",
     SearchWholeWord => "search_whole_word",
     SearchRegex => "search_regex",
@@ -174,6 +177,7 @@ impl KeyAction {
             | Self::CopyName
             | Self::Mkdir
             | Self::QuickOpen
+            | Self::FilingStatus
             | Self::DriveMenuLeft
             | Self::DriveMenuRight
             | Self::SortByName
@@ -233,6 +237,7 @@ impl KeyAction {
             Self::Last => Message::SelectLast,
             Self::Search => Message::OpenSearch,
             Self::QuickOpen => Message::QuickOpen(QuickOpenMessage::Open),
+            Self::FilingStatus => Message::FilingStatus(FilingStatusMessage::Toggle),
             Self::SearchCase => Message::Search(SearchMessage::ToggleCase),
             Self::SearchWholeWord => Message::Search(SearchMessage::ToggleWholeWord),
             Self::SearchRegex => Message::Search(SearchMessage::ToggleRegex),
@@ -382,6 +387,11 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
         (
             A::QuickOpen,
             Binding::with_modifiers(Character("p".into()), Modifiers::COMMAND),
+        ),
+        // The filing status page; Cmd+Shift+D, Ctrl+Shift+D elsewhere.
+        (
+            A::FilingStatus,
+            Binding::with_modifiers(Character("d".into()), Modifiers::COMMAND | Modifiers::SHIFT),
         ),
         // The toggles of the search fields, as in VS Code. On a Mac Option types
         // other characters, so these are only found through the physical key.

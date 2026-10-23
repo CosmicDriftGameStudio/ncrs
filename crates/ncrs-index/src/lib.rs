@@ -21,6 +21,6 @@ pub use key::RecoveryKey;
 pub use key_store::{InMemoryKeyStore, KeyStore, KeyringKeyStore};
 pub use model::{
     Amount, ContentHash, Currency, Document, DocumentFields, DocumentId, DocumentSource,
-    DocumentStatus, Field, FileStamp, NewDocument, ReviewEntry, ReviewEntryId, ReviewReason, Rule,
-    RuleId, RuleSpec, TaxContext, TextMatch,
+    DocumentStatus, Field, FileStamp, IndexStatistics, NewDocument, ReviewEntry, ReviewEntryId,
+    ReviewReason, Rule, RuleId, RuleSpec, TaxContext, TextMatch,
 };
