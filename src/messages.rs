@@ -3,6 +3,7 @@
 
 use std::path::PathBuf;
 
+use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
 
 use iced::Size;
@@ -11,7 +12,6 @@ use crate::app::{RowFailure, Transfer};
 use crate::config::{Filing, FilingWriteError};
 use crate::dialog::PromptKind;
 use crate::filing::{FilingMessage, IndexFigures};
-use crate::filing_setup::LocationKind;
 use crate::fs::search::SearchEvent;
 use crate::fs::CreateDirError;
 use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
@@ -333,15 +333,26 @@ pub enum FilingStatusMessage {
 pub enum FilingSetupMessage {
     Toggle,
     Close,
-    /// Add the active panel's folder as this kind of location.
-    Add(LocationKind),
-    /// The folder of an `Add`, looked up on disk: its canonical path, or why
-    /// it cannot be used.
+    /// Open the system folder dialog to add a folder of this mode.
+    PickFolder(LocationMode),
+    /// What the dialog returned; `None` when it was cancelled or could not open.
+    FolderPicked {
+        mode: LocationMode,
+        folder: Option<PathBuf>,
+    },
+    /// Add the active panel's folder: the fallback for keyboard use and for
+    /// systems without a dialog.
+    AddPanelFolder(LocationMode),
+    /// The folder of a pick or a panel add, looked up on disk: its canonical
+    /// path, or why it cannot be used.
     Added {
-        kind: LocationKind,
+        mode: LocationMode,
         folder: PathBuf,
         resolved: Result<PathBuf, String>,
     },
+    /// Make the document folder at this index of the chosen list the Central
+    /// Filing.
+    SetTarget(usize),
     ToggleImages(usize),
     Remove(usize),
     Save,

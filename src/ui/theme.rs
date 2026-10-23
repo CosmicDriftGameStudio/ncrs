@@ -152,17 +152,19 @@ pub fn dialog_button(
     primary: bool,
 ) -> impl Fn(&Theme, button::Status) -> button::Style {
     let colors = *palette;
-    move |_theme, _status| {
-        let background = primary.then_some(Background::Color(colors.cursor));
+    move |_theme, status| {
+        // Drawn in the accent colour, a disabled primary button looks pressable.
+        let accented = primary && status != button::Status::Disabled;
+        let background = accented.then_some(Background::Color(colors.cursor));
         button::Style {
             background,
-            text_color: if primary {
+            text_color: if accented {
                 colors.cursor_text
             } else {
                 colors.dim_text
             },
             border: Border {
-                color: if primary {
+                color: if accented {
                     colors.border
                 } else {
                     colors.border_inactive

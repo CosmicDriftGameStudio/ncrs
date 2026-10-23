@@ -4,25 +4,41 @@
 use std::path::Path;
 
 use iced::widget::text::Wrapping;
-use iced::widget::{button, checkbox, column, container, text, Column, Row};
+use iced::widget::{button, checkbox, column, container, radio, text, Column, Row};
 use iced::{Alignment, Element, Length};
+use ncrs_intake::LocationMode;
 
-use super::filing::{buttons, error_line, paragraph, title};
+use super::filing::{buttons, error_line, paragraph, radio_look, title};
 use super::theme::{self, font_size, spacing};
 use crate::app::fill_template;
 use crate::config::{ConfigError, FilingLocation, FilingRuleViolation, FilingWriteError};
-use crate::filing_setup::{shown_path, FilingSetup, LocationKind, SetupNote};
+use crate::filing_setup::{shown_path, FilingSetup, SetupNote, SetupProblem};
 use crate::i18n::{Language, Msg};
 use crate::messages::{FilingSetupMessage, Message};
 use crate::palette::Palette;
 
 /// Wider than the filing cards: a row holds a path next to its controls.
 const CARD_WIDTH: f32 = 640.0;
-const KIND_WIDTH: f32 = 90.0;
+const KIND_WIDTH: f32 = 130.0;
+
+/// Wrap the two add buttons of each section, so a test can tell the sections
+/// apart: both carry the same labels.
+pub const ADD_TUBES_FOLDER_ID: &str = "filing-setup-add-tubes-folder";
+pub const ADD_DOCUMENT_FOLDER_ID: &str = "filing-setup-add-document-folder";
+pub const USE_PANEL_FOR_TUBES_ID: &str = "filing-setup-use-panel-for-tubes";
+pub const USE_PANEL_FOR_DOCUMENTS_ID: &str = "filing-setup-use-panel-for-documents";
+
+/// The id of the radio button that makes the document folder at `index` of the
+/// chosen list the Central Filing. A radio button's label is not a text a test
+/// can find, so it is addressed by this.
+pub fn target_choice_id(index: usize) -> String {
+    format!("filing-setup-target-{index}")
+}
 
 /// What the card shows besides the setup's own state.
 pub struct SetupContext<'a> {
-    /// The folder the add buttons add: the active panel's.
+    /// The folder the "use the folder in the panel" buttons add: the active
+    /// panel's.
     pub current_folder: &'a Path,
     /// Paths below it are shown with `~`.
     pub home: &'a Path,
@@ -38,40 +54,46 @@ pub fn view<'a>(
 ) -> Element<'a, Message> {
     let lang = context.lang;
     let busy = setup.is_busy();
-    let add = |label: Msg, kind: LocationKind| {
-        action(
-            lang.text(label),
-            (!busy).then_some(FilingSetupMessage::Add(kind)),
-            false,
-            palette,
-        )
+    let muted = |label: Msg| {
+        text(lang.text(label))
+            .size(font_size::STATUS)
+            .color(palette.dim_text)
+            .wrapping(Wrapping::Word)
     };
+    let heading = |label: Msg| {
+        text(lang.text(label))
+            .size(font_size::ROW)
+            .color(palette.accent)
+    };
+
+    let tubes = column![
+        heading(Msg::FilingSetupTubesHeading),
+        paragraph(lang.text(Msg::FilingSetupTubesExplain), palette),
+        muted(Msg::FilingSetupTubesExample),
+        section_rows(setup, LocationMode::Inbox, busy, context, palette,),
+        add_buttons(LocationMode::Inbox, busy, context, palette),
+    ]
+    .spacing(spacing::CELL_PADDING_X);
+    let documents = column![
+        heading(Msg::FilingSetupDocumentsHeading),
+        paragraph(lang.text(Msg::FilingSetupDocumentsExplain), palette),
+        muted(Msg::FilingSetupDocumentsKinds),
+        section_rows(setup, LocationMode::Archive, busy, context, palette,),
+        add_buttons(LocationMode::Archive, busy, context, palette),
+    ]
+    .spacing(spacing::CELL_PADDING_X);
+
     let mut body = column![
         title(lang.text(Msg::FilingSetupTitle), palette),
         paragraph(lang.text(Msg::FilingSetupExplain), palette),
-        paragraph(
-            fill_template(
-                lang.text(Msg::FilingSetupCurrentFolder),
-                &[("{path}", &shown_path(context.current_folder, context.home))],
-            ),
-            palette,
-        ),
-        buttons(vec![
-            add(Msg::FilingSetupAddInbox, LocationKind::Inbox),
-            add(Msg::FilingSetupAddArchive, LocationKind::Archive),
-            add(Msg::FilingSetupAddTarget, LocationKind::Target),
-        ]),
+        tubes,
+        documents,
     ]
     .spacing(spacing::SECTION_GAP);
 
-    body = body.push(if setup.chosen().is_empty() {
-        paragraph(lang.text(Msg::FilingSetupEmpty), palette)
-    } else {
-        locations(setup.chosen(), busy, context, palette)
-    });
-    if let Some(violation) = setup.violation() {
+    if let Some(problem) = setup.problem() {
         body = body.push(error_line(
-            rule_text(violation, setup.chosen(), context),
+            problem_text(problem, setup.chosen(), context),
             palette,
         ));
     }
@@ -91,15 +113,15 @@ pub fn view<'a>(
     }
     body = body.push(buttons(vec![
         action(
-            lang.text(Msg::FilingSetupSave),
-            setup.can_save().then_some(FilingSetupMessage::Save),
-            true,
+            lang.text(Msg::FilingSetupCancel),
+            Some(FilingSetupMessage::Close),
+            false,
             palette,
         ),
         action(
-            lang.text(Msg::FilingSetupClose),
-            Some(FilingSetupMessage::Close),
-            false,
+            lang.text(Msg::FilingSetupSave),
+            setup.can_save().then_some(FilingSetupMessage::Save),
+            true,
             palette,
         ),
     ]));
@@ -126,59 +148,164 @@ fn action<'a>(
         .into()
 }
 
-fn kind_label(kind: LocationKind) -> Msg {
-    match kind {
-        LocationKind::Inbox => Msg::FilingSetupKindInbox,
-        LocationKind::Archive => Msg::FilingSetupKindArchive,
-        LocationKind::Target => Msg::FilingSetupKindTarget,
-    }
-}
-
-fn locations<'a>(
-    chosen: &[FilingLocation],
+fn add_buttons<'a>(
+    mode: LocationMode,
     busy: bool,
     context: &SetupContext<'_>,
     palette: &Palette,
 ) -> Element<'a, Message> {
     let lang = context.lang;
-    let rows = chosen.iter().enumerate().map(|(index, location)| {
-        Row::with_children([
-            text(lang.text(kind_label(LocationKind::of(location))))
-                .size(font_size::STATUS)
-                .color(palette.accent)
-                .width(KIND_WIDTH)
-                .into(),
-            text(shown_path(&location.path, context.home))
-                .size(font_size::STATUS)
-                .color(palette.text)
-                .wrapping(Wrapping::Glyph)
-                .width(Length::Fill)
-                .into(),
-            checkbox(location.images)
-                .on_toggle_maybe(
-                    (!busy)
-                        .then_some(move |_| setup_message(FilingSetupMessage::ToggleImages(index))),
-                )
-                .style(theme::dialog_checkbox(palette))
-                .into(),
-            text(lang.text(Msg::FilingSetupImages))
-                .size(font_size::STATUS)
-                .color(palette.text)
-                .into(),
-            action(
-                lang.text(Msg::FilingSetupRemove),
-                (!busy).then_some(FilingSetupMessage::Remove(index)),
-                false,
-                palette,
-            ),
-        ])
-        .spacing(spacing::CELL_PADDING_X)
-        .align_y(Alignment::Center)
-        .into()
-    });
+    let (pick_id, panel_id) = match mode {
+        LocationMode::Inbox => (ADD_TUBES_FOLDER_ID, USE_PANEL_FOR_TUBES_ID),
+        LocationMode::Archive => (ADD_DOCUMENT_FOLDER_ID, USE_PANEL_FOR_DOCUMENTS_ID),
+    };
+    Row::with_children([
+        container(action(
+            lang.text(Msg::FilingSetupAddFolder),
+            (!busy).then_some(FilingSetupMessage::PickFolder(mode)),
+            false,
+            palette,
+        ))
+        .id(pick_id)
+        .into(),
+        container(action(
+            lang.text(Msg::FilingSetupUsePanelFolder),
+            (!busy).then_some(FilingSetupMessage::AddPanelFolder(mode)),
+            false,
+            palette,
+        ))
+        .id(panel_id)
+        .into(),
+        text(shown_path(context.current_folder, context.home))
+            .size(font_size::STATUS)
+            .color(palette.dim_text)
+            .wrapping(Wrapping::Glyph)
+            .width(Length::Fill)
+            .into(),
+    ])
+    .spacing(spacing::CELL_PADDING_X)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+/// The entries of one section. The indices they send point into the whole
+/// chosen list, not into the section.
+fn section_rows<'a>(
+    setup: &'a FilingSetup,
+    mode: LocationMode,
+    busy: bool,
+    context: &SetupContext<'_>,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let lang = context.lang;
+    let rows: Vec<Element<'a, Message>> = setup
+        .chosen()
+        .iter()
+        .enumerate()
+        .filter(|(_, location)| location.mode == mode)
+        .map(|(index, location)| entry_row(setup, index, location, busy, context, palette))
+        .collect();
+    if rows.is_empty() {
+        return text(lang.text(Msg::FilingSetupEmptySection))
+            .size(font_size::STATUS)
+            .color(palette.dim_text)
+            .into();
+    }
     Column::with_children(rows)
         .spacing(spacing::CELL_PADDING_X)
         .into()
+}
+
+fn entry_row<'a>(
+    setup: &FilingSetup,
+    index: usize,
+    location: &FilingLocation,
+    busy: bool,
+    context: &SetupContext<'_>,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let lang = context.lang;
+    let shown = shown_path(&location.path, context.home);
+    let mut row = Row::new()
+        .spacing(spacing::CELL_PADDING_X)
+        .align_y(Alignment::Center);
+    if location.mode == LocationMode::Archive {
+        let is_central = setup.target_index() == Some(index);
+        row = row.push(if setup.chooses_target() {
+            container(
+                radio(shown, index, setup.target_index(), |chosen| {
+                    setup_message(FilingSetupMessage::SetTarget(chosen))
+                })
+                .size(font_size::STATUS)
+                .text_size(font_size::STATUS)
+                .style(radio_look(palette))
+                .width(Length::Fill),
+            )
+            .width(Length::Fill)
+            .id(target_choice_id(index))
+            .into()
+        } else {
+            path_text(shown, palette)
+        });
+        row = row.push(
+            text(lang.text(if is_central {
+                Msg::FilingSetupKindCentral
+            } else {
+                Msg::FilingSetupKindRecords
+            }))
+            .size(font_size::STATUS)
+            .color(palette.accent)
+            .width(KIND_WIDTH),
+        );
+    } else {
+        row = row.push(path_text(shown, palette));
+    }
+    row.push(
+        checkbox(location.images)
+            .on_toggle_maybe(
+                (!busy).then_some(move |_| setup_message(FilingSetupMessage::ToggleImages(index))),
+            )
+            .style(theme::dialog_checkbox(palette)),
+    )
+    .push(
+        text(lang.text(Msg::FilingSetupImages))
+            .size(font_size::STATUS)
+            .color(palette.text),
+    )
+    .push(action(
+        lang.text(Msg::FilingSetupRemove),
+        (!busy).then_some(FilingSetupMessage::Remove(index)),
+        false,
+        palette,
+    ))
+    .into()
+}
+
+fn path_text<'a>(shown: String, palette: &Palette) -> Element<'a, Message> {
+    text(shown)
+        .size(font_size::STATUS)
+        .color(palette.text)
+        .wrapping(Wrapping::Glyph)
+        .width(Length::Fill)
+        .into()
+}
+
+fn problem_text(
+    problem: SetupProblem,
+    chosen: &[FilingLocation],
+    context: &SetupContext<'_>,
+) -> String {
+    match problem {
+        SetupProblem::NoDocumentFolder => context
+            .lang
+            .text(Msg::FilingSetupProblemNoDocumentFolder)
+            .to_owned(),
+        SetupProblem::ChooseCentralFiling => context
+            .lang
+            .text(Msg::FilingSetupProblemChooseCentral)
+            .to_owned(),
+        SetupProblem::Rule(violation) => rule_text(violation, chosen, context),
+    }
 }
 
 fn rule_text(
@@ -220,8 +347,13 @@ fn note_text(
     let lang = context.lang;
     let shown = |path: &Path| shown_path(path, context.home);
     match note {
-        SetupNote::Applied => (lang.text(Msg::FilingSetupApplied).to_owned(), false),
-        SetupNote::AppliesAtNextStart => (lang.text(Msg::FilingSetupNextStart).to_owned(), false),
+        SetupNote::AlreadyAdded { folder } => (
+            fill_template(
+                lang.text(Msg::FilingSetupAlreadyAdded),
+                &[("{path}", &shown(folder))],
+            ),
+            false,
+        ),
         SetupNote::NoConfigPath => (lang.text(Msg::FilingSetupNoConfigPath).to_owned(), true),
         SetupNote::FolderUnusable { folder, reason } => (
             fill_template(

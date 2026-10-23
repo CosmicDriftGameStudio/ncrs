@@ -64,6 +64,11 @@ same-file = "1.0"
 # The config written back by the filing setup goes to a temporary file in the
 # same folder first and is then renamed over the old one.
 tempfile = "3.27"
+# The system folder dialog of the filing setup. No default features: xdg-portal
+# talks to the desktop portal through libdbus loaded at runtime (zenity as its
+# own fallback), so Linux needs neither GTK nor an async runtime. "wayland" only
+# serves a parent window, and the dialog is opened without one.
+rfd = { version = "=0.17.2", default-features = false, features = ["xdg-portal"] }
 
 [profile.release]
 opt-level = 3

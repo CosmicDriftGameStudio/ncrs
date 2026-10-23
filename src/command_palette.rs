@@ -330,22 +330,22 @@ mod tests {
     #[test]
     fn typing_filters_and_marks_the_matched_letters() {
         let mut palette = palette(KeyScope::Panel, Language::English);
-        palette.set_query("filst".to_owned());
-        assert_eq!(labels(&palette), ["Filing status"]);
+        palette.set_query("insp".to_owned());
+        assert_eq!(labels(&palette), ["Inspection: Hermes status and errors"]);
         let hit = &palette.hits()[0];
         let marked: Vec<&str> = hit
             .highlight
             .iter()
             .map(|range| &palette.entry(hit).unwrap().label[range.clone()])
             .collect();
-        assert_eq!(marked, ["Fil", "st"]);
+        assert_eq!(marked, ["Insp"]);
     }
 
     #[test]
     fn two_words_both_have_to_match() {
         let mut palette = palette(KeyScope::Panel, Language::English);
-        palette.set_query("filing status".to_owned());
-        assert_eq!(labels(&palette), ["Filing status"]);
+        palette.set_query("inspection errors".to_owned());
+        assert_eq!(labels(&palette), ["Inspection: Hermes status and errors"]);
     }
 
     #[test]
