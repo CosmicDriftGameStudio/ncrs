@@ -79,6 +79,12 @@
       "de": "Lesen fehlgeschlagen: {reason}"
     },
     {
+      "key": "shortcut.commands",
+      "context": "Label of the F1 slot in the function key bar at the bottom of the window. The key opens the command palette; at most 8 characters.",
+      "en": "Commands",
+      "de": "Befehle"
+    },
+    {
       "key": "shortcut.mkdir",
       "context": "Label of the F7 slot in the function key bar at the bottom of the window. The key asks for a new directory name; at most 8 characters, like Norton Commander's MkDir.",
       "en": "Mkdir",
