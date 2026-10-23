@@ -168,14 +168,6 @@ pub struct Filing {
     pub load: Load,
 }
 
-impl Filing {
-    /// The archive new documents are filed into. `load` guarantees exactly
-    /// one when there are locations.
-    pub fn target(&self) -> Option<&FilingLocation> {
-        self.locations.iter().find(|location| location.is_target)
-    }
-}
-
 /// A location with an expanded, absolute, `..`-free path. Not looked up on
 /// disk: whether the folder exists is for the module to find out when it starts.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -432,7 +424,7 @@ impl<'de> Deserialize<'de> for ProgramLine {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfigError {
     /// Not read at all: an I/O error other than "not found", not a regular
     /// file, or too big.
@@ -564,6 +556,14 @@ pub fn load(path: &Path) -> Result<Config, ConfigError> {
 }
 
 fn load_with_home(path: &Path, home: Option<&Path>) -> Result<Config, ConfigError> {
+    match read_source(path)? {
+        Some(source) => parse_config(&source, path, home),
+        None => Ok(Config::default()),
+    }
+}
+
+/// The text of the config at `path`, or `None` when there is no file.
+fn read_source(path: &Path) -> Result<Option<String>, ConfigError> {
     let unreadable = |reason: String| ConfigError::Unreadable {
         path: path.to_path_buf(),
         reason,
@@ -574,7 +574,7 @@ fn load_with_home(path: &Path, home: Option<&Path>) -> Result<Config, ConfigErro
     match std::fs::metadata(path) {
         Ok(meta) if meta.is_file() => {}
         Ok(_) => return Err(not_regular()),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Config::default()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(err) => return Err(unreadable(err.to_string())),
     }
     let file = std::fs::File::open(path).map_err(|err| unreadable(err.to_string()))?;
@@ -594,19 +594,23 @@ fn load_with_home(path: &Path, home: Option<&Path>) -> Result<Config, ConfigErro
     if bytes.len() as u64 > SIZE_LIMIT {
         return Err(too_big());
     }
-    let source = match String::from_utf8(bytes) {
-        Ok(source) => source,
+    match String::from_utf8(bytes) {
+        Ok(source) => Ok(Some(source)),
         Err(err) => {
             let valid = err.utf8_error().valid_up_to();
-            return Err(ConfigError::Invalid {
+            Err(ConfigError::Invalid {
                 path: path.to_path_buf(),
                 line: line_at(err.as_bytes(), valid),
                 reason: "not valid UTF-8".to_owned(),
-            });
+            })
         }
-    };
+    }
+}
+
+/// Every check `load` makes on the text; `path` only names the file in errors.
+fn parse_config(source: &str, path: &Path, home: Option<&Path>) -> Result<Config, ConfigError> {
     let mut config =
-        toml_edit::de::from_str::<Config>(&source).map_err(|err| ConfigError::Invalid {
+        toml_edit::de::from_str::<Config>(source).map_err(|err| ConfigError::Invalid {
             path: path.to_path_buf(),
             line: err
                 .span()
@@ -671,63 +675,303 @@ fn resolve_filing(section: &FilingSection, home: Option<&Path>) -> Result<Filing
     let Some(listed) = &section.locations else {
         return Ok(filing);
     };
-    let mut path_spans = Vec::new();
-    for entry in listed.get_ref() {
+    let entries = listed.get_ref();
+    for entry in entries {
         let path_error = |reason: String| FilingError {
             span: entry.path.span(),
             reason,
         };
         let path = expand_location_path(entry.path.get_ref(), home).map_err(path_error)?;
-        let mode = LocationMode::from(*entry.mode.get_ref());
-        let is_target = match &entry.target {
-            Some(flag) if *flag.get_ref() => {
-                if mode == LocationMode::Inbox {
-                    return Err(FilingError {
-                        span: flag.span(),
-                        reason: "an inbox cannot be the target, set `target = true` on an archive"
-                            .to_owned(),
-                    });
-                }
-                if filing.target().is_some() {
-                    return Err(FilingError {
-                        span: flag.span(),
-                        reason: "only one location can have `target = true`".to_owned(),
-                    });
-                }
-                true
-            }
-            _ => false,
-        };
-        path_spans.push(entry.path.span());
         filing.locations.push(FilingLocation {
             path,
-            mode,
+            mode: LocationMode::from(*entry.mode.get_ref()),
             images: entry.images,
-            is_target,
+            is_target: entry.target.as_ref().is_some_and(|flag| *flag.get_ref()),
         });
     }
-    if !filing.locations.is_empty() && filing.target().is_none() {
-        return Err(FilingError {
-            span: listed.span(),
-            reason: "no location has `target = true`, one archive must be the target".to_owned(),
-        });
-    }
-    for ((later_index, later), span) in filing.locations.iter().enumerate().zip(&path_spans) {
-        let overlapped = filing.locations.iter().take(later_index).find(|earlier| {
-            later.path.starts_with(&earlier.path) || earlier.path.starts_with(&later.path)
-        });
-        if let Some(earlier) = overlapped {
-            return Err(FilingError {
-                span: span.clone(),
+    check_filing_rules(&filing.locations).map_err(|violation| {
+        let target_flag_span = |index: usize| {
+            entries
+                .get(index)
+                .and_then(|entry| entry.target.as_ref())
+                .map_or_else(|| listed.span(), Spanned::span)
+        };
+        let path_of = |index: usize| {
+            filing
+                .locations
+                .get(index)
+                .map(|location| location.path.display().to_string())
+                .unwrap_or_default()
+        };
+        match violation {
+            FilingRuleViolation::InboxAsTarget { index } => FilingError {
+                span: target_flag_span(index),
+                reason: "an inbox cannot be the target, set `target = true` on an archive"
+                    .to_owned(),
+            },
+            FilingRuleViolation::SecondTarget { index } => FilingError {
+                span: target_flag_span(index),
+                reason: "only one location can have `target = true`".to_owned(),
+            },
+            FilingRuleViolation::NoTarget => FilingError {
+                span: listed.span(),
+                reason: "no location has `target = true`, one archive must be the target"
+                    .to_owned(),
+            },
+            FilingRuleViolation::Overlap { earlier, later } => FilingError {
+                span: entries
+                    .get(later)
+                    .map_or_else(|| listed.span(), |entry| entry.path.span()),
                 reason: format!(
                     "{} and {} overlap, a location cannot be the same folder as another or lie inside it",
-                    earlier.path.display(),
-                    later.path.display()
+                    path_of(earlier),
+                    path_of(later)
                 ),
-            });
+            },
+        }
+    })?;
+    Ok(filing)
+}
+
+/// A rule a list of filing locations breaks. Indices point into that list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilingRuleViolation {
+    InboxAsTarget {
+        index: usize,
+    },
+    SecondTarget {
+        index: usize,
+    },
+    /// There are locations, but none is the target.
+    NoTarget,
+    /// Same folder, or one inside the other.
+    Overlap {
+        earlier: usize,
+        later: usize,
+    },
+}
+
+/// The rules every list of locations obeys, in the config and in the setup
+/// alike. Paths are compared as they are: the config compares the spelling,
+/// the setup canonical paths.
+pub fn check_filing_rules(locations: &[FilingLocation]) -> Result<(), FilingRuleViolation> {
+    let mut target_seen = false;
+    for (index, location) in locations.iter().enumerate() {
+        if !location.is_target {
+            continue;
+        }
+        if location.mode == LocationMode::Inbox {
+            return Err(FilingRuleViolation::InboxAsTarget { index });
+        }
+        if target_seen {
+            return Err(FilingRuleViolation::SecondTarget { index });
+        }
+        target_seen = true;
+    }
+    if !locations.is_empty() && !target_seen {
+        return Err(FilingRuleViolation::NoTarget);
+    }
+    for (later, later_location) in locations.iter().enumerate() {
+        let overlapping = locations.iter().take(later).position(|earlier_location| {
+            later_location.path.starts_with(&earlier_location.path)
+                || earlier_location.path.starts_with(&later_location.path)
+        });
+        if let Some(earlier) = overlapping {
+            return Err(FilingRuleViolation::Overlap { earlier, later });
         }
     }
-    Ok(filing)
+    Ok(())
+}
+
+/// Why the setup's locations were not written. The file is unchanged in
+/// every case.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FilingWriteError {
+    /// The choice breaks a rule; an empty choice counts as `NoTarget`.
+    Rule(FilingRuleViolation),
+    /// TOML has no way to spell a path that is not UTF-8.
+    PathNotText(PathBuf),
+    /// The file as it is now does not load, or the result would not.
+    Config(ConfigError),
+    Io {
+        path: PathBuf,
+        reason: String,
+    },
+}
+
+/// Turns the filing module on and replaces its locations in the config at
+/// `path`, keeping every other line, comment and section as written. Returns
+/// the config read back from disk.
+pub fn write_filing_locations(
+    path: &Path,
+    locations: &[FilingLocation],
+) -> Result<Config, FilingWriteError> {
+    write_filing_locations_with_home(path, locations, home_from_env().as_deref())
+}
+
+fn write_filing_locations_with_home(
+    path: &Path,
+    locations: &[FilingLocation],
+    home: Option<&Path>,
+) -> Result<Config, FilingWriteError> {
+    if locations.is_empty() {
+        return Err(FilingWriteError::Rule(FilingRuleViolation::NoTarget));
+    }
+    check_filing_rules(locations).map_err(FilingWriteError::Rule)?;
+    let target = resolve_write_target(path)?;
+    let source = read_source(&target).map_err(FilingWriteError::Config)?;
+    // The edit is based on exactly this text, so a mistake in it would be
+    // carried into the new file or, worse, papered over.
+    if let Some(text) = &source {
+        parse_config(text, path, home).map_err(FilingWriteError::Config)?;
+    }
+    let edited = with_filing_locations(source.as_deref().unwrap_or_default(), path, locations)?;
+    parse_config(&edited, path, home).map_err(FilingWriteError::Config)?;
+    replace_file(&target, &edited)?;
+    load_with_home(path, home).map_err(FilingWriteError::Config)
+}
+
+fn io_error(path: &Path) -> impl FnOnce(std::io::Error) -> FilingWriteError + '_ {
+    move |err| FilingWriteError::Io {
+        path: path.to_path_buf(),
+        reason: err.to_string(),
+    }
+}
+
+/// The file a write replaces. A symlinked config stays a symlink: the file it
+/// points to gets the new text. A missing config is created with its folders.
+fn resolve_write_target(path: &Path) -> Result<PathBuf, FilingWriteError> {
+    match std::fs::symlink_metadata(path) {
+        Ok(_) => std::fs::canonicalize(path).map_err(io_error(path)),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            if let Some(folder) = path.parent() {
+                std::fs::create_dir_all(folder).map_err(io_error(folder))?;
+            }
+            Ok(path.to_path_buf())
+        }
+        Err(err) => Err(io_error(path)(err)),
+    }
+}
+
+/// `source` with `enabled = true` and `locations` in `[modules.filing]`.
+fn with_filing_locations(
+    source: &str,
+    path: &Path,
+    locations: &[FilingLocation],
+) -> Result<String, FilingWriteError> {
+    let not_a_table = |key: &str| {
+        FilingWriteError::Config(ConfigError::Invalid {
+            path: path.to_path_buf(),
+            line: None,
+            reason: format!("`{key}` is not a table"),
+        })
+    };
+    let mut document = source.parse::<toml_edit::DocumentMut>().map_err(|err| {
+        FilingWriteError::Config(ConfigError::Invalid {
+            path: path.to_path_buf(),
+            line: err
+                .span()
+                .and_then(|span| line_at(source.as_bytes(), span.start)),
+            reason: err.message().trim().to_owned(),
+        })
+    })?;
+    let modules = sub_table(document.as_table_mut(), "modules", true)
+        .ok_or_else(|| not_a_table("modules"))?;
+    let filing =
+        sub_table(modules, "filing", false).ok_or_else(|| not_a_table("modules.filing"))?;
+    match filing
+        .get_mut("enabled")
+        .and_then(toml_edit::Item::as_value_mut)
+    {
+        Some(enabled) => {
+            let decor = enabled.decor().clone();
+            *enabled = toml_edit::Value::from(true);
+            *enabled.decor_mut() = decor;
+        }
+        None => {
+            filing.insert("enabled", toml_edit::value(true));
+        }
+    }
+    // A comment above the first location belongs to the list, not to the
+    // entry that is replaced.
+    let first_prefix = filing
+        .get("locations")
+        .and_then(toml_edit::Item::as_array_of_tables)
+        .and_then(|old| old.get(0))
+        .and_then(|first| first.decor().prefix().cloned());
+    let mut entries = toml_edit::ArrayOfTables::new();
+    for location in locations {
+        let text = location
+            .path
+            .to_str()
+            .ok_or_else(|| FilingWriteError::PathNotText(location.path.clone()))?;
+        let mut entry = toml_edit::Table::new();
+        entry.insert("path", toml_edit::value(text));
+        let mode = match location.mode {
+            LocationMode::Inbox => "inbox",
+            LocationMode::Archive => "archive",
+        };
+        entry.insert("mode", toml_edit::value(mode));
+        entry.insert("images", toml_edit::value(location.images));
+        if location.is_target {
+            entry.insert("target", toml_edit::value(true));
+        }
+        if entries.is_empty() {
+            if let Some(prefix) = first_prefix.clone() {
+                entry.decor_mut().set_prefix(prefix);
+            }
+        }
+        entries.push(entry);
+    }
+    filing.insert("locations", toml_edit::Item::ArrayOfTables(entries));
+    Ok(document.to_string())
+}
+
+/// The table `key` in `parent`, created when missing. An inline table becomes
+/// a regular one, since an array of tables cannot sit inside it. `None` when
+/// `key` holds something else, which `load` would have rejected.
+fn sub_table<'a>(
+    parent: &'a mut toml_edit::Table,
+    key: &str,
+    implicit: bool,
+) -> Option<&'a mut toml_edit::Table> {
+    let item = parent.entry(key).or_insert_with(|| {
+        let mut created = toml_edit::Table::new();
+        created.set_implicit(implicit);
+        toml_edit::Item::Table(created)
+    });
+    if item.is_inline_table() {
+        if let Ok(table) = std::mem::take(item).into_table() {
+            *item = toml_edit::Item::Table(table);
+        }
+    }
+    item.as_table_mut()
+}
+
+/// A temporary file next to `target`, renamed over it: a crash leaves the old
+/// file or the new one, never half of either.
+fn replace_file(target: &Path, content: &str) -> Result<(), FilingWriteError> {
+    use std::io::Write as _;
+    let folder = target.parent().unwrap_or_else(|| Path::new("."));
+    let mut temporary = tempfile::Builder::new()
+        .prefix(".config.toml.")
+        .suffix(".tmp")
+        .tempfile_in(folder)
+        .map_err(io_error(folder))?;
+    if let Ok(previous) = std::fs::metadata(target) {
+        temporary
+            .as_file()
+            .set_permissions(previous.permissions())
+            .map_err(io_error(target))?;
+    }
+    temporary
+        .write_all(content.as_bytes())
+        .and_then(|()| temporary.as_file().sync_all())
+        .map_err(io_error(target))?;
+    temporary
+        .persist(target)
+        .map_err(|err| io_error(target)(err.error))?;
+    Ok(())
 }
 
 fn resolve_load(value: Option<&Spanned<LoadValue>>) -> Result<Load, FilingError> {
@@ -798,6 +1042,10 @@ mod tests {
         let path = dir.path().join("config.toml");
         std::fs::write(&path, content).unwrap();
         path
+    }
+
+    fn target_of(filing: &Filing) -> Option<&FilingLocation> {
+        filing.locations.iter().find(|location| location.is_target)
     }
 
     fn load_text(content: &str) -> Config {
@@ -1154,7 +1402,7 @@ mod tests {
                 (archive_b, LocationMode::Archive, false, false),
             ]
         );
-        assert_eq!(filing.target().unwrap().path, archive_a);
+        assert_eq!(target_of(&filing).unwrap().path, archive_a);
     }
 
     #[test]
@@ -1171,7 +1419,7 @@ mod tests {
             );
             let filing = load_filing(&text, None).unwrap().filing;
             assert_eq!(filing.enabled, enabled);
-            assert_eq!(filing.target().unwrap().path, gone);
+            assert_eq!(target_of(&filing).unwrap().path, gone);
         }
     }
 
@@ -1180,7 +1428,7 @@ mod tests {
         let filing = load_text("version = 1\n").filing;
         assert!(!filing.enabled);
         assert!(filing.locations.is_empty());
-        assert!(filing.target().is_none());
+        assert!(target_of(&filing).is_none());
     }
 
     #[test]
@@ -1380,5 +1628,235 @@ mod tests {
             let (_, found) = filing_error(&text, None);
             assert!(found.contains(expected), "{found}");
         }
+    }
+
+    /// Three existing folders below a temporary directory, canonical the way
+    /// the setup hands them over.
+    struct SetupFolders {
+        base: tempfile::TempDir,
+        inbox: PathBuf,
+        archive: PathBuf,
+        target: PathBuf,
+    }
+
+    fn setup_folders() -> SetupFolders {
+        let base = tempfile::tempdir().unwrap();
+        let canonical = |name: &str| {
+            let folder = base.path().join(name);
+            std::fs::create_dir(&folder).unwrap();
+            std::fs::canonicalize(folder).unwrap()
+        };
+        let (inbox, archive, target) = (
+            canonical("inbox"),
+            canonical("archive"),
+            canonical("target"),
+        );
+        SetupFolders {
+            base,
+            inbox,
+            archive,
+            target,
+        }
+    }
+
+    fn chosen(path: &Path, mode: LocationMode, images: bool, is_target: bool) -> FilingLocation {
+        FilingLocation {
+            path: path.to_path_buf(),
+            mode,
+            images,
+            is_target,
+        }
+    }
+
+    fn one_of_each(folders: &SetupFolders) -> Vec<FilingLocation> {
+        vec![
+            chosen(&folders.inbox, LocationMode::Inbox, true, false),
+            chosen(&folders.archive, LocationMode::Archive, false, false),
+            chosen(&folders.target, LocationMode::Archive, true, true),
+        ]
+    }
+
+    #[test]
+    fn the_setup_writes_the_locations_and_they_load_back() {
+        let folders = setup_folders();
+        let path = folders.base.path().join("config.toml");
+        std::fs::write(&path, "lang = \"de\"\n").unwrap();
+        let chosen = one_of_each(&folders);
+
+        let written = write_filing_locations_with_home(&path, &chosen, None).unwrap();
+
+        assert!(written.filing.enabled);
+        assert_eq!(written.filing.locations, chosen);
+        assert_eq!(written.lang, Some(Language::German));
+        let reloaded = load_with_home(&path, None).unwrap();
+        assert_eq!(reloaded, written);
+    }
+
+    #[test]
+    fn comments_and_other_sections_survive_the_write() {
+        let folders = setup_folders();
+        let path = folders.base.path().join("config.toml");
+        let old_location = folders.base.path().join("old");
+        let original = format!(
+            "# my settings\nlang = \"en\" # English for now\n\n\
+             [open]\n# the viewer I like\nview = [\"viewer\"]\n\n\
+             [modules.filing]\n# off until the drive is set up\nenabled = false # later\n\
+             load = \"gentle\"\n\n\
+             # where documents live\n[[modules.filing.locations]]\npath = {}\nmode = \"archive\"\ntarget = true\n\n\
+             [theme]\n# the older look\npreset = \"classic\"\n",
+            quoted(&old_location)
+        );
+        std::fs::write(&path, &original).unwrap();
+
+        let written =
+            write_filing_locations_with_home(&path, &one_of_each(&folders), None).unwrap();
+
+        let text = std::fs::read_to_string(&path).unwrap();
+        for kept in [
+            "# my settings\n",
+            "lang = \"en\" # English for now\n",
+            "[open]\n# the viewer I like\nview = [\"viewer\"]\n",
+            "# off until the drive is set up\nenabled = true # later\n",
+            "load = \"gentle\"\n",
+            "# where documents live\n[[modules.filing.locations]]\n",
+            "[theme]\n# the older look\npreset = \"classic\"\n",
+        ] {
+            assert!(text.contains(kept), "{kept:?} is gone from:\n{text}");
+        }
+        assert!(
+            !text.contains(&old_location.display().to_string()),
+            "{text}"
+        );
+        assert_eq!(written.filing.load, Load::Gentle);
+        assert_eq!(written.filing.locations, one_of_each(&folders));
+        assert_eq!(written.open.view.unwrap().program(), "viewer");
+    }
+
+    #[test]
+    fn a_filing_section_written_inline_becomes_a_table() {
+        let folders = setup_folders();
+        let path = folders.base.path().join("config.toml");
+        std::fs::write(&path, "modules = { filing = { enabled = false } }\n").unwrap();
+
+        let written =
+            write_filing_locations_with_home(&path, &one_of_each(&folders), None).unwrap();
+
+        assert!(written.filing.enabled);
+        assert_eq!(written.filing.locations, one_of_each(&folders));
+    }
+
+    #[test]
+    fn an_invalid_choice_is_rejected_before_writing() {
+        let folders = setup_folders();
+        let path = folders.base.path().join("config.toml");
+        let original = "# untouched\nlang = \"en\"\n";
+        std::fs::write(&path, original).unwrap();
+        let nested = folders.target.join("inside");
+        std::fs::create_dir(&nested).unwrap();
+        let cases = [
+            (Vec::new(), FilingRuleViolation::NoTarget),
+            (
+                vec![
+                    chosen(&folders.inbox, LocationMode::Inbox, false, false),
+                    chosen(&folders.archive, LocationMode::Archive, false, false),
+                ],
+                FilingRuleViolation::NoTarget,
+            ),
+            (
+                vec![
+                    chosen(&folders.archive, LocationMode::Archive, false, true),
+                    chosen(&folders.target, LocationMode::Archive, false, true),
+                ],
+                FilingRuleViolation::SecondTarget { index: 1 },
+            ),
+            (
+                vec![chosen(&folders.inbox, LocationMode::Inbox, false, true)],
+                FilingRuleViolation::InboxAsTarget { index: 0 },
+            ),
+            (
+                vec![
+                    chosen(&folders.target, LocationMode::Archive, false, true),
+                    chosen(&nested, LocationMode::Inbox, false, false),
+                ],
+                FilingRuleViolation::Overlap {
+                    earlier: 0,
+                    later: 1,
+                },
+            ),
+        ];
+        for (locations, expected) in cases {
+            let result = write_filing_locations_with_home(&path, &locations, None);
+            assert_eq!(result, Err(FilingWriteError::Rule(expected)));
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        }
+    }
+
+    #[test]
+    fn a_config_that_does_not_load_is_not_overwritten() {
+        let folders = setup_folders();
+        let path = folders.base.path().join("config.toml");
+        for broken in [
+            "[open\nview = [\"viewer\"]\n",
+            "lang = \"xx\"\n",
+            "colour = 1\n",
+        ] {
+            std::fs::write(&path, broken).unwrap();
+            let result = write_filing_locations_with_home(&path, &one_of_each(&folders), None);
+            assert!(
+                matches!(
+                    result,
+                    Err(FilingWriteError::Config(ConfigError::Invalid { .. }))
+                ),
+                "{broken:?}: {result:?}"
+            );
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), broken);
+        }
+    }
+
+    #[test]
+    fn a_missing_config_is_created_with_its_folder() {
+        let folders = setup_folders();
+        let path = folders.base.path().join("ncrs").join("config.toml");
+
+        let written =
+            write_filing_locations_with_home(&path, &one_of_each(&folders), None).unwrap();
+
+        assert_eq!(written.filing.locations, one_of_each(&folders));
+        assert_eq!(load_with_home(&path, None).unwrap(), written);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_config_stays_a_symlink_and_its_target_is_written() {
+        let folders = setup_folders();
+        let real = folders.base.path().join("dotfiles").join("config.toml");
+        std::fs::create_dir(real.parent().unwrap()).unwrap();
+        std::fs::write(&real, "lang = \"en\"\n").unwrap();
+        let link = folders.base.path().join("config.toml");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        write_filing_locations_with_home(&link, &one_of_each(&folders), None).unwrap();
+
+        assert!(std::fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        let reloaded = load_with_home(&real, None).unwrap();
+        assert_eq!(reloaded.filing.locations, one_of_each(&folders));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_permissions_of_the_old_file_are_kept() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let folders = setup_folders();
+        let path = folders.base.path().join("config.toml");
+        std::fs::write(&path, "").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
+
+        write_filing_locations_with_home(&path, &one_of_each(&folders), None).unwrap();
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o640);
     }
 }

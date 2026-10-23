@@ -1322,3 +1322,177 @@ mod filing_status_page {
         }
     }
 }
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod filing_setup_card {
+    use std::path::PathBuf;
+
+    use ncrs_intake::LocationMode;
+
+    use super::*;
+    use crate::config::FilingLocation;
+    use crate::filing_setup::LocationKind;
+    use crate::messages::FilingSetupMessage;
+
+    const NO_TARGET: &str = "One archive must be the target: add a folder as target.";
+    const SECOND_TARGET: &str = "Only one location can be the target: remove one of them.";
+    const VAULT_NOTE: &str = "With an unencrypted index, do not add folders from an encrypted drive (for example a mounted Cryptomator vault): their text would end up in the index in plain form. ncrs does not detect such drives.";
+
+    fn location(path: &str, mode: LocationMode, is_target: bool) -> FilingLocation {
+        FilingLocation {
+            path: PathBuf::from(path),
+            mode,
+            images: false,
+            is_target,
+        }
+    }
+
+    fn inbox() -> FilingLocation {
+        location("/home/test/inbox", LocationMode::Inbox, false)
+    }
+
+    fn target() -> FilingLocation {
+        location("/home/test/target", LocationMode::Archive, true)
+    }
+
+    fn one_of_each() -> Vec<FilingLocation> {
+        vec![
+            inbox(),
+            location("/home/test/archive/company-a", LocationMode::Archive, false),
+            target(),
+        ]
+    }
+
+    fn shows(app: &App, label: &str) -> bool {
+        simulator(app).find(label).is_ok()
+    }
+
+    fn messages_after_click(app: &App, label: &str) -> Vec<Message> {
+        let mut sim = simulator(app);
+        sim.click(label).expect("the clicked label");
+        sim.into_messages().collect()
+    }
+
+    fn setup_message(message: FilingSetupMessage) -> Message {
+        Message::FilingSetup(message)
+    }
+
+    #[test]
+    fn the_locations_step_lists_one_entry_of_each_kind() {
+        let app = App::with_filing_setup(&one_of_each(), false);
+
+        for label in [
+            "Inbox",
+            "Archive",
+            "Target",
+            "~/inbox",
+            "~/archive/company-a",
+            "~/target",
+        ] {
+            assert!(shows(&app, label), "{label}");
+        }
+        assert!(!shows(&app, NO_TARGET));
+        assert!(!shows(&app, VAULT_NOTE));
+        assert!(!shows(&app, "No locations yet."));
+    }
+
+    #[test]
+    fn the_locations_step_matches_its_snapshot() {
+        let app = App::with_filing_setup(&one_of_each(), true);
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/filing_setup.png")
+            .expect("snapshot comparison");
+
+        assert!(
+            matches,
+            "the filing setup does not match tests/snapshots/filing_setup.png"
+        );
+    }
+
+    #[test]
+    fn the_add_buttons_add_the_active_folder_as_their_kind() {
+        let app = App::with_filing_setup(&[], false);
+
+        assert!(shows(&app, "No locations yet."));
+        for (label, kind) in [
+            ("Add as inbox", LocationKind::Inbox),
+            ("Add as archive", LocationKind::Archive),
+            ("Add as target", LocationKind::Target),
+        ] {
+            assert_eq!(
+                messages_after_click(&app, label),
+                [setup_message(FilingSetupMessage::Add(kind))],
+                "{label}"
+            );
+        }
+    }
+
+    #[test]
+    fn remove_takes_the_entry_off_the_list() {
+        let mut app = App::with_filing_setup(&one_of_each(), false);
+
+        let clicked = messages_after_click(&app, "Remove");
+        assert_eq!(clicked, [setup_message(FilingSetupMessage::Remove(0))]);
+        for message in clicked {
+            drop(app.update(message));
+        }
+
+        assert!(!shows(&app, "~/inbox"));
+        assert!(shows(&app, "~/archive/company-a"));
+        assert!(shows(&app, "~/target"));
+    }
+
+    #[test]
+    fn a_list_without_one_target_says_why_and_cannot_be_saved() {
+        let without_target = App::with_filing_setup(&[inbox()], false);
+        assert!(shows(&without_target, NO_TARGET));
+        assert!(messages_after_click(&without_target, "Save").is_empty());
+
+        let second = location("/home/test/second", LocationMode::Archive, true);
+        let two_targets = App::with_filing_setup(&[target(), second], false);
+        assert!(shows(&two_targets, SECOND_TARGET));
+        assert!(!shows(&two_targets, NO_TARGET));
+
+        let fine = App::with_filing_setup(&[inbox(), target()], false);
+        assert_eq!(
+            messages_after_click(&fine, "Save"),
+            [setup_message(FilingSetupMessage::Save)]
+        );
+    }
+
+    #[test]
+    fn an_unencrypted_index_repeats_the_vault_note() {
+        assert!(shows(
+            &App::with_filing_setup(&[target()], true),
+            VAULT_NOTE
+        ));
+    }
+
+    #[test]
+    fn the_panels_stay_usable_while_the_setup_is_up() {
+        let row_click = |app: &App| -> Vec<Message> {
+            let mut sim = simulator(app);
+            // Directories are drawn with a leading slash.
+            sim.click("/Documents").expect("a panel row");
+            sim.into_messages().collect()
+        };
+        let without_setup = row_click(&App::with_fixed_panels());
+        assert!(
+            matches!(without_setup.as_slice(), [Message::RowClicked { .. }]),
+            "the click misses the row: {without_setup:?}"
+        );
+
+        assert_eq!(
+            row_click(&App::with_filing_setup(&one_of_each(), false)),
+            without_setup
+        );
+    }
+}

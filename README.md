@@ -97,6 +97,7 @@ The defaults. Most of them can be changed in the config file, see [Keys](#keys).
 | `Alt`+`F7` / `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) | Search below the directory of the active panel; pressed again, it moves to the next field. See [Search](#search) |
 | `Cmd`+`P` / `Ctrl`+`P` | Quick Open: jump to a file by a few letters of its path. See [Quick Open](#quick-open) |
 | `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D`, or click the filing progress in the status bar | Filing status page (filing module on): pipeline state, load, workers, index figures and the last errors. `P` pauses or resumes, `1`/`2`/`3` set the load gentle / balanced / full for this session, `+`/`-` change the worker count, `↑`/`↓` and `Enter` show the file of an error, `Esc` closes |
+| `Cmd`+`Shift`+`L` / `Ctrl`+`Shift`+`L` | Filing setup: add the folder of the active panel as inbox, archive or target and save the locations to the config file. See [Filing](#filing). `Esc` closes |
 | `Backspace`        | Go to parent directory                   |
 | `Tab`              | Switch active panel                      |
 | `F9`               | Switch language for this session (start: `lang`) |
@@ -211,7 +212,7 @@ ncrs reads an optional TOML file:
 ```toml
 version = 1
 # Start language: "en" or "de". F9 switches it for the running session only;
-# ncrs never writes the config file.
+# ncrs writes the config file only from the filing setup.
 lang = "de"
 
 [open]
@@ -295,7 +296,7 @@ Actions: `quit`, `open`, `go_up`, `switch_panel`, `switch_language`,
 `copy`, `move`, `mkdir`, `delete`, `delete_permanently`, `abort_job`,
 `copy_path`, `copy_name`, `drive_menu_left`, `drive_menu_right`,
 `sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`, `search`, `quick_open`, `search_case`,
-`search_whole_word`, `search_regex`, `filing_status`. Their
+`search_whole_word`, `search_regex`, `filing_status`, `filing_setup`. Their
 default keys are in [Keyboard shortcuts](#keyboard-shortcuts).
 
 ### Colors
@@ -339,6 +340,49 @@ tagged = "#a50"
   or `menu`, directory names on `panel`, `cursor_text` on `cursor`, below 3:1) is
   applied anyway; the status bar says which pair and where, until `Esc`.
 - Colors are read at start; restart ncrs after editing the file.
+
+### Filing
+
+`[modules.filing]` switches the filing module on and lists the folders it works
+on:
+
+```toml
+[modules.filing]
+enabled = true
+# "gentle", "balanced", "full" or a number of workers.
+load = "balanced"
+
+[[modules.filing.locations]]
+path = "~/Inbox"
+mode = "inbox"
+images = false
+
+[[modules.filing.locations]]
+path = "~/Documents/Archive"
+mode = "archive"
+images = true
+target = true
+```
+
+- An `inbox` is emptied into the target. An `archive` is indexed where it is.
+  `images` also takes in images, not only PDFs.
+- Exactly one archive is the `target`, the archive filed documents go to. An
+  inbox cannot be the target, and no location may be the same folder as another
+  or lie inside it.
+
+**Setup.** `Cmd`+`Shift`+`L` (`Ctrl`+`Shift`+`L` on Linux and Windows,
+`filing_setup` in `[keys]`) opens the setup. It also opens on its own when the
+module is on and no locations are listed. Go to a folder in the active panel
+and add it as inbox, archive or target; the card stays open and the panels stay
+usable. Each entry has its images switch and can be removed. A list that breaks
+a rule says so and cannot be saved.
+
+Saving writes the locations by their real paths (symlinks resolved) to
+`[modules.filing]` and sets `enabled = true`. The rest of the file, comments
+included, stays as it is. A config file that does not load is not touched: fix
+it first, the setup shows the error. If no filing runs on configured locations
+yet, filing starts at once with the saved ones; otherwise they apply from the
+next start of ncrs.
 
 ## What ncrs encrypts
 

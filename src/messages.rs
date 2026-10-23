@@ -8,8 +8,10 @@ use ncrs_pipeline::Load;
 use iced::Size;
 
 use crate::app::{RowFailure, Transfer};
+use crate::config::{Filing, FilingWriteError};
 use crate::dialog::PromptKind;
 use crate::filing::{FilingMessage, IndexFigures};
+use crate::filing_setup::LocationKind;
 use crate::fs::search::SearchEvent;
 use crate::fs::CreateDirError;
 use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
@@ -248,6 +250,9 @@ pub enum Message {
     // --- Filing status page ---
     FilingStatus(FilingStatusMessage),
 
+    // --- Filing setup: the locations, written to the config ---
+    FilingSetup(FilingSetupMessage),
+
     // --- Quick Open (Cmd/Ctrl+P) ---
     QuickOpen(QuickOpenMessage),
 
@@ -318,6 +323,27 @@ pub enum FilingStatusMessage {
     ErrorActivated(PathBuf),
     MoveError(i32),
     ActivateSelectedError,
+}
+
+/// Everything the filing setup sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FilingSetupMessage {
+    Toggle,
+    Close,
+    /// Add the active panel's folder as this kind of location.
+    Add(LocationKind),
+    /// The folder of an `Add`, looked up on disk: its canonical path, or why
+    /// it cannot be used.
+    Added {
+        kind: LocationKind,
+        folder: PathBuf,
+        resolved: Result<PathBuf, String>,
+    },
+    ToggleImages(usize),
+    Remove(usize),
+    Save,
+    /// The filing settings read back from the written file.
+    Saved(Result<Filing, FilingWriteError>),
 }
 
 /// Everything Quick Open sends.
