@@ -374,13 +374,15 @@ configurations:
 
 | Build | Backend | Use it when |
 |---|---|---|
-| `cargo run` (default) | tiny-skia, software | CI, VMs, machines without a GPU. Measured: visibly laggy on a high-resolution display. |
-| `--features gpu-rendering` | wgpu, GPU | Desktop only. Needs Vulkan/Metal/DX11, no software fallback. Add `--no-default-features`, otherwise the default feature is still on and you get the fallback renderer. |
-| `--features gpu-with-fallback` | wgpu, falling back to tiny-skia | **Releases.** Fast where a GPU exists, still starts where it does not. |
+| `cargo run` (default, `gpu-with-fallback`) | wgpu, falling back to tiny-skia | **Default and releases.** Fast where a GPU exists, still starts where it does not. |
+| `--no-default-features --features gpu-rendering` | wgpu, GPU | Desktop only. Needs Vulkan/Metal/DX11, no software fallback. |
+| `--no-default-features --features software-rendering` | tiny-skia, software | Machines without a GPU, to rule the GPU out. Measured: visibly laggy on a high-resolution display. |
 
 Measured on a high-resolution display: software rendering took about a second to move the
-highlighted row; the fallback build was immediate. The default stays software so that a
-build without a GPU still works, and release builds pass `--features gpu-with-fallback`.
+highlighted row; the fallback build was immediate. That is why the fallback build is the
+default, and release builds pass `--features gpu-with-fallback` explicitly as well.
+`--features` adds to the default set, so the single-backend builds need
+`--no-default-features`.
 
 A debug build prints the backend at startup, and `src/backend.rs` holds the test
 that pins it to the build configuration.
@@ -394,9 +396,12 @@ The repository is a Cargo workspace (`ncrs` plus the crates under `crates/`); `c
 ## Tests
 
 ```bash
-cargo test                                      # 85 tests
-cargo test --features gpu-with-fallback        # the release backend
+cargo test                                      # the default, release backend
+cargo test --no-default-features --features software-rendering
 ```
+
+The snapshot tests render with tiny-skia in every build, because their references are
+tiny-skia images; `.cargo/config.toml` sets `ICED_TEST_BACKEND` for that.
 
 Three layers, and they cover different things:
 
@@ -464,7 +469,6 @@ Requirements: Rust (stable, 1.80+) via [rustup](https://rustup.rs).
 ```bash
 cargo run            # debug build
 cargo run --release  # optimized build
-cargo run --release --features gpu-with-fallback  # smooth on a high-resolution display
 cargo test           # unit tests (fs reader, formatting, panel selection logic)
 ```
 

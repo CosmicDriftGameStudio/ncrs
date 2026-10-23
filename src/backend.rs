@@ -28,9 +28,9 @@ pub enum Backend {
     Software,
     /// Both compiled in. `gpu-with-fallback` asks for this deliberately.
     GpuWithSoftwareFallback,
-    /// Both compiled in because `gpu-rendering` was added to the default
-    /// feature set. Draws on the GPU, falls back to software if unavailable —
-    /// the same renderer as above, reached by accident.
+    /// Both compiled in because `gpu-rendering` and `software-rendering` were
+    /// asked for separately. Draws on the GPU, falls back to software if
+    /// unavailable — the same renderer as above, reached by accident.
     SoftwareWithGpuFallback,
     /// Neither backend was compiled in. iced only rejects this in release
     /// builds; the debug build still runs, on a stub renderer.
@@ -76,7 +76,7 @@ impl Backend {
             Self::Gpu => "wgpu",
             Self::Software => "tiny-skia",
             Self::GpuWithSoftwareFallback => "wgpu+tiny-skia",
-            Self::SoftwareWithGpuFallback => "wgpu+tiny-skia (via default feature)",
+            Self::SoftwareWithGpuFallback => "wgpu+tiny-skia (via both single features)",
             Self::Missing => "none (enable software-rendering or gpu-rendering)",
         }
     }
@@ -154,16 +154,16 @@ mod tests {
     }
 
     /// `--features` adds to the default set, it does not replace it. Asking for
-    /// `gpu-rendering` on top of the default therefore yields the fallback
-    /// renderer, not a pure GPU one — surprising enough to pin down.
+    /// `gpu-rendering` without `--no-default-features` keeps `gpu-with-fallback`
+    /// on, so the build is still the fallback renderer, not a pure GPU one —
+    /// surprising enough to pin down.
     #[test]
     fn requesting_a_feature_adds_to_the_default() {
         let gpu = cfg!(feature = "gpu-rendering");
-        let software = cfg!(feature = "software-rendering");
         let fallback = cfg!(feature = "gpu-with-fallback");
 
-        if gpu && software && !fallback {
-            assert_eq!(Backend::CURRENT, Backend::SoftwareWithGpuFallback);
+        if gpu && fallback {
+            assert_eq!(Backend::CURRENT, Backend::GpuWithSoftwareFallback);
         }
     }
 }

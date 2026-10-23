@@ -289,9 +289,11 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
   die der Default-Build nicht ausführt. Jetzt ein expliziter `Missing`-Zweig plus Test,
   der ihn fängt; CI prüft alle vier Konfigurationen.
 
-  **Offen:** `default` steht weiterhin auf `software-rendering`, weil das ohne GPU
-  überall startet. Für Releases gehört `gpu-with-fallback` in die Pipeline
-  (T3-Update), damit der Default dem gemessenen Verhalten entspricht.
+  **Erledigt:** Releases bauen mit `gpu-with-fallback` (T3), und seit 2026-10-23 ist
+  das auch der `default`, weil `cargo run` mit Software-Rendering auf HiDPI nicht
+  bedienbar war. Der Fallback startet ohne GPU trotzdem. Die Snapshot-Tests rendern
+  über `ICED_TEST_BACKEND` in `.cargo/config.toml` immer mit tiny-skia, weil ihre
+  Referenzen tiny-skia-Bilder sind.
 
 - [x] **T3 – Release-Pipeline: Binaries für Linux/macOS/Windows**
   `.github/workflows/release.yml`, getriggert per Tag. Cross-Compile per
