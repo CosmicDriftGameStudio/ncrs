@@ -1258,10 +1258,12 @@ impl App {
             .unwrap_or_default();
         let (mut panels, panel_loads) = Self::starting_in(fs::start_dir(), fs::home_dir());
         panels.config_path = config_path;
+        let key_store = config::portable_data_dir()
+            .map_or_else(KeyringKeyStore::new, |dir| KeyringKeyStore::portable(&dir));
         let (app, filing_start) = panels.with_config(loaded).with_filing(
             &filing,
             config::default_index_path(),
-            Arc::new(KeyringKeyStore::new()),
+            Arc::new(key_store),
         );
         (app, Task::batch([panel_loads, filing_start]))
     }

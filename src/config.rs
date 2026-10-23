@@ -473,7 +473,64 @@ impl std::error::Error for ConfigError {}
 /// Where the config file lives on this machine, or `None` when the variables
 /// that say so are missing.
 pub fn default_path() -> Option<PathBuf> {
-    path_from_env(|name| std::env::var_os(name))
+    config_path_in(portable_data_dir(), |name| std::env::var_os(name))
+}
+
+const PORTABLE_DIR: &str = "data";
+
+/// The `data` folder next to the executable, when there is one: it makes
+/// this copy of ncrs portable, and config and index live there instead of in
+/// the user's profile. `None` means the normal layout. The executable path
+/// should be canonical, so the result can serve as a stable key.
+pub fn portable_data_dir_of(exe: &Path, is_dir: impl Fn(&Path) -> bool) -> Option<PathBuf> {
+    let dir = exe.parent()?;
+    if is_inside_app_bundle(dir) {
+        return None;
+    }
+    let data = dir.join(PORTABLE_DIR);
+    is_dir(&data).then_some(data)
+}
+
+/// `Foo.app/Contents/MacOS`: the bundle is replaced on update and may sit in
+/// a read-only place, so a `data` folder there is not a portable marker.
+fn is_inside_app_bundle(exe_dir: &Path) -> bool {
+    let contents = exe_dir.parent();
+    exe_dir.file_name() == Some("MacOS".as_ref())
+        && contents.and_then(Path::file_name) == Some("Contents".as_ref())
+        && contents
+            .and_then(Path::parent)
+            .and_then(Path::extension)
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("app"))
+}
+
+/// The portable data directory of the running executable. A failing
+/// `current_exe` or `canonicalize` means the normal layout.
+pub fn portable_data_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe()
+        .and_then(std::fs::canonicalize)
+        .ok()?;
+    portable_data_dir_of(&exe, Path::is_dir)
+}
+
+/// Config and index both ask this, so they never end up in different modes.
+fn config_path_in(
+    portable: Option<PathBuf>,
+    var: impl Fn(&str) -> Option<OsString>,
+) -> Option<PathBuf> {
+    match portable {
+        Some(dir) => Some(dir.join("config.toml")),
+        None => path_from_env(var),
+    }
+}
+
+fn index_path_in(
+    portable: Option<PathBuf>,
+    var: impl Fn(&str) -> Option<OsString>,
+) -> Option<PathBuf> {
+    match portable {
+        Some(dir) => Some(dir.join("index.db")),
+        None => index_path_from_env(var),
+    }
 }
 
 fn absolute(value: Option<OsString>) -> Option<PathBuf> {
@@ -511,7 +568,7 @@ fn home_config(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
 /// Where the index database lives on this machine, or `None` when the
 /// variables that say so are missing.
 pub fn default_index_path() -> Option<PathBuf> {
-    index_path_from_env(|name| std::env::var_os(name))
+    index_path_in(portable_data_dir(), |name| std::env::var_os(name))
 }
 
 /// Windows: `%APPDATA%\ncrs\index.db`.
@@ -1233,6 +1290,86 @@ mod tests {
                 .find(|(key, _)| *key == name)
                 .map(|(_, value)| OsString::from(*value))
         }
+    }
+
+    fn dirs<'a>(existing: &'a [&'a str]) -> impl Fn(&Path) -> bool + 'a {
+        move |path| existing.iter().any(|dir| Path::new(dir) == path)
+    }
+
+    #[test]
+    fn a_data_folder_next_to_the_exe_makes_it_portable() {
+        let exe = Path::new("/home/user/ncrs/ncrs");
+        assert_eq!(
+            portable_data_dir_of(exe, dirs(&["/home/user/ncrs/data"])),
+            Some(PathBuf::from("/home/user/ncrs/data"))
+        );
+        assert_eq!(portable_data_dir_of(exe, dirs(&[])), None);
+    }
+
+    #[test]
+    fn a_data_file_or_a_data_folder_elsewhere_is_not_a_marker() {
+        let exe = Path::new("/home/user/ncrs/ncrs");
+        // A file named `data` is not a directory, and is_dir says so.
+        assert_eq!(portable_data_dir_of(exe, dirs(&[])), None);
+        assert_eq!(
+            portable_data_dir_of(exe, dirs(&["/home/user/data", "/home/user/ncrs/sub/data"])),
+            None
+        );
+    }
+
+    #[test]
+    fn a_real_file_named_data_does_not_count() {
+        let dir = std::env::temp_dir().join(format!("ncrs-portable-file-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("data"), b"x").unwrap();
+        let found = portable_data_dir_of(&dir.join("ncrs"), Path::is_dir);
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(found, None);
+    }
+
+    #[test]
+    fn inside_a_macos_app_bundle_a_data_folder_is_ignored() {
+        let exe = Path::new("/Applications/ncrs.app/Contents/MacOS/ncrs");
+        let everything = |_: &Path| true;
+        assert_eq!(portable_data_dir_of(exe, everything), None);
+        let plain = Path::new("/home/user/MacOS/ncrs");
+        assert!(portable_data_dir_of(plain, everything).is_some());
+    }
+
+    #[test]
+    fn portable_mode_wins_over_the_profile_directories() {
+        let portable = Some(PathBuf::from("/home/user/ncrs/data"));
+        let vars = [
+            ("APPDATA", r"C:\Users\user\AppData\Roaming"),
+            ("XDG_CONFIG_HOME", "/home/user/cfg"),
+            ("XDG_DATA_HOME", "/home/user/share"),
+            ("HOME", "/home/user"),
+        ];
+        assert_eq!(
+            config_path_in(portable.clone(), env(&vars)),
+            Some(PathBuf::from("/home/user/ncrs/data/config.toml"))
+        );
+        assert_eq!(
+            index_path_in(portable, env(&vars)),
+            Some(PathBuf::from("/home/user/ncrs/data/index.db"))
+        );
+    }
+
+    #[test]
+    fn config_and_index_share_the_mode() {
+        let vars = [
+            ("HOME", "/home/user"),
+            ("APPDATA", r"C:\Users\user\AppData\Roaming"),
+        ];
+        let normal_config = config_path_in(None, env(&vars)).unwrap();
+        let normal_index = index_path_in(None, env(&vars)).unwrap();
+        assert!(!normal_config.starts_with("/home/user/ncrs/data"));
+        assert!(!normal_index.starts_with("/home/user/ncrs/data"));
+
+        let portable = Some(PathBuf::from("/home/user/ncrs/data"));
+        let config = config_path_in(portable.clone(), env(&vars)).unwrap();
+        let index = index_path_in(portable, env(&vars)).unwrap();
+        assert_eq!(config.parent(), index.parent());
     }
 
     #[cfg(not(any(target_os = "macos", windows)))]

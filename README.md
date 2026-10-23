@@ -385,6 +385,24 @@ it first, the setup shows the error. If no filing runs on configured locations
 yet, filing starts at once with the saved ones; otherwise they apply from the
 next start of ncrs.
 
+### Portable mode
+
+If a folder named `data` sits next to the ncrs executable, ncrs is portable:
+`data/config.toml` and `data/index.db` are used instead of the locations above,
+for the config and the index alike. Inside a macOS `.app` bundle the folder is
+ignored. The Windows ZIP ships with a `data` folder; delete it to use
+`%APPDATA%\ncrs` again.
+
+The key of an encrypted index stays in the operating system's credential store
+(on Windows the Credential Manager), under an entry of its own per data folder,
+so portable copies and an installed ncrs do not overwrite each other's key. The
+entry belongs to the folder's path: on another computer, after moving the
+folder, or when a USB drive gets another drive letter, the index needs the
+recovery key.
+
+Upgrading: unpacking the new Windows ZIP over an old install makes it portable.
+Copy the old `%APPDATA%\ncrs\config.toml` into `data\` to keep your settings.
+
 ## What ncrs encrypts
 
 This applies to the filing module (`[modules.filing] enabled = true`). With the
