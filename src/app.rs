@@ -1253,12 +1253,66 @@ fn clipboard_text(panel: &PanelState, kind: ClipboardKind) -> Option<ClipboardTe
     })
 }
 
+/// Where the app finds its config and index and what holds the index key.
+pub struct Environment {
+    pub config_path: Option<PathBuf>,
+    pub index_path: Option<PathBuf>,
+    pub key_store: Arc<dyn KeyStore + Send + Sync>,
+}
+
+impl std::fmt::Debug for Environment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Environment")
+            .field("config_path", &self.config_path)
+            .field("index_path", &self.index_path)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Environment {
+    /// The config, index and keychain of the person running ncrs.
+    fn of_the_user() -> Self {
+        Self {
+            config_path: config::default_path(),
+            index_path: config::default_index_path(),
+            key_store: Arc::new(user_key_store()),
+        }
+    }
+
+    /// No config file, no index, a key store in memory: nothing outside the
+    /// test.
+    #[cfg(test)]
+    pub fn isolated() -> Self {
+        Self {
+            config_path: None,
+            index_path: None,
+            key_store: Arc::new(ncrs_index::InMemoryKeyStore::empty()),
+        }
+    }
+}
+
+/// The one place the app builds the system keychain store.
+fn user_key_store() -> KeyringKeyStore {
+    config::forbid_user_machine_in_tests("the system keychain");
+    config::portable_data_dir()
+        .map_or_else(KeyringKeyStore::new, |dir| KeyringKeyStore::portable(&dir))
+}
+
 impl App {
     /// Initial state plus tasks that load both panels.
     /// Left panel starts in the working directory, right in `$HOME`, so the
     /// two panels are not the same directory on launch.
     pub fn new() -> (Self, Task<Message>) {
-        let config_path = config::default_path();
+        Self::with_environment(Environment::of_the_user())
+    }
+
+    /// `new` with the places it reads and writes given instead of looked up.
+    pub fn with_environment(environment: Environment) -> (Self, Task<Message>) {
+        let Environment {
+            config_path,
+            index_path,
+            key_store,
+        } = environment;
         let loaded = config_path
             .as_deref()
             .map_or_else(|| Ok(Config::default()), config::load);
@@ -1271,13 +1325,9 @@ impl App {
             .unwrap_or_default();
         let (mut panels, panel_loads) = Self::starting_in(fs::start_dir(), fs::home_dir());
         panels.config_path = config_path;
-        let key_store = config::portable_data_dir()
-            .map_or_else(KeyringKeyStore::new, |dir| KeyringKeyStore::portable(&dir));
-        let (app, filing_start) = panels.with_config(loaded).with_filing(
-            &filing,
-            config::default_index_path(),
-            Arc::new(key_store),
-        );
+        let (app, filing_start) = panels
+            .with_config(loaded)
+            .with_filing(&filing, index_path, key_store);
         (app, Task::batch([panel_loads, filing_start]))
     }
 
@@ -4311,7 +4361,7 @@ mod render_timing {
     }
 
     fn app_with_rows(n: usize) -> App {
-        let mut app = App::new().0;
+        let mut app = App::with_environment(Environment::isolated()).0;
         app.left_panel.entries = entries(n);
         app.right_panel.entries = entries(n);
         app.visible_rows = 35;
@@ -4508,7 +4558,7 @@ mod perf_numbers {
             let by_size = sort_by(SortColumn::Size);
             let by_date = sort_by(SortColumn::Modified);
 
-            let mut app = App::new().0;
+            let mut app = App::with_environment(Environment::isolated()).0;
             app.visible_rows = 35;
             let hand_to_panel =
                 median_time(|| entries.clone(), |listing| enter(&mut app, path, listing));
@@ -4553,7 +4603,7 @@ mod prompt_routing {
     use iced::keyboard::key::Named;
 
     fn app() -> App {
-        App::new().0
+        App::with_environment(Environment::isolated()).0
     }
 
     fn with_prompt() -> App {
@@ -4897,7 +4947,7 @@ mod reload_order {
         let base = scratch.path().to_path_buf();
         std::fs::create_dir_all(&base).unwrap();
 
-        let mut app = App::new().0;
+        let mut app = App::with_environment(Environment::isolated()).0;
         app.left_panel.path = base.clone();
         app.prompt = Some(Prompt::create_dir(base.clone()));
         app.prompt.as_mut().unwrap().set_name("neu".into());
@@ -4924,7 +4974,7 @@ mod reload_order {
         let base = scratch.path().to_path_buf();
         std::fs::create_dir_all(&base).unwrap();
 
-        let mut app = App::new().0;
+        let mut app = App::with_environment(Environment::isolated()).0;
         app.left_panel.path = base.clone();
         app.prompt = Some(Prompt::create_dir(base.clone()));
         app.prompt.as_mut().unwrap().set_name("spaet".into());
@@ -4955,7 +5005,7 @@ mod reload_order {
         let base = scratch.path().to_path_buf();
         std::fs::create_dir_all(&base).unwrap();
 
-        let mut app = App::new().0;
+        let mut app = App::with_environment(Environment::isolated()).0;
         app.left_panel.path = base.clone();
         app.prompt = Some(Prompt::create_dir(base.clone()));
         app.prompt.as_mut().unwrap().set_name("weg".into());
@@ -4989,7 +5039,7 @@ mod reload_order {
     /// prompt, and not a queued reload either.
     #[test]
     fn a_stale_result_touches_neither() {
-        let mut app = App::new().0;
+        let mut app = App::with_environment(Environment::isolated()).0;
         app.prompt_request_id = 5;
         app.pending_reload = Some(PendingReload {
             side: PanelSide::Left,
@@ -5531,7 +5581,7 @@ mod transfer_tests {
     /// An app with three files in the left panel, the right one empty and
     /// ready to receive.
     fn app_with_files() -> App {
-        let mut app = App::new().0;
+        let mut app = App::with_environment(Environment::isolated()).0;
         app.left_panel.path = PathBuf::from("/left");
         app.right_panel.path = PathBuf::from("/right");
         app.left_panel.entries = vec![file("a.txt"), file("b.txt"), file("c.txt")];
@@ -5640,7 +5690,7 @@ mod mouse_tagging {
     use std::ffi::OsString;
 
     fn app_with_files() -> App {
-        let mut app = App::new().0;
+        let mut app = App::with_environment(Environment::isolated()).0;
         app.left_panel.path = PathBuf::from("/left");
         app.right_panel.path = PathBuf::from("/right");
         app.left_panel.entries = (0..3)
@@ -5945,7 +5995,7 @@ mod abort_tests {
     use std::ffi::OsString;
 
     fn app_with_files() -> App {
-        let mut app = App::new().0;
+        let mut app = App::with_environment(Environment::isolated()).0;
         app.left_panel.path = PathBuf::from("/left");
         app.right_panel.path = PathBuf::from("/right");
         app.left_panel.entries = (0..3)
@@ -6060,7 +6110,7 @@ mod conflict_tests {
         // The name the transfer will run into.
         std::fs::write(right.join("f0.txt"), b"existing").unwrap();
 
-        let mut app = App::new().0;
+        let mut app = App::with_environment(Environment::isolated()).0;
         app.left_panel.path = left.clone();
         app.right_panel.path = right.clone();
         app.left_panel.entries = (0..3)
@@ -6268,7 +6318,7 @@ mod progress_bar {
     use std::ffi::OsString;
 
     fn app_with_one_file() -> App {
-        let mut app = App::new().0;
+        let mut app = App::with_environment(Environment::isolated()).0;
         app.left_panel.path = PathBuf::from("/left");
         app.right_panel.path = PathBuf::from("/right");
         app.left_panel.entries = vec![FileEntry {
@@ -6358,7 +6408,7 @@ mod conflict_keys {
         std::fs::write(left.join("a.txt"), b"new").unwrap();
         std::fs::write(right.join("a.txt"), b"old").unwrap();
 
-        let mut app = App::new().0;
+        let mut app = App::with_environment(Environment::isolated()).0;
         app.left_panel.path = left.clone();
         app.right_panel.path = right;
         app.left_panel.entries = vec![FileEntry {
@@ -6656,7 +6706,7 @@ mod delete_tests {
     }
 
     fn app_with_entries(names: &[&str]) -> App {
-        let mut app = App::new().0;
+        let mut app = App::with_environment(Environment::isolated()).0;
         app.left_panel.path = PathBuf::from("/left");
         app.left_panel.entries = names
             .iter()
@@ -7211,7 +7261,7 @@ mod copy_to_clipboard_tests {
 
     #[tokio::test]
     async fn copying_says_so_in_the_status_bar_and_an_overlay_blocks_it() {
-        let mut app = App::new().0;
+        let mut app = App::with_environment(Environment::isolated()).0;
         app.left_panel.path = PathBuf::from("/left");
         app.left_panel.entries = vec![entry("a.txt", false)];
         app.left_panel.selected = 0;
@@ -10060,7 +10110,7 @@ mod command_palette_tests {
     }
 
     fn app_with_files() -> App {
-        let mut app = App::new().0;
+        let mut app = App::with_environment(Environment::isolated()).0;
         app.left_panel.path = PathBuf::from("/left");
         app.right_panel.path = PathBuf::from("/right");
         app.left_panel.entries = (0..3)

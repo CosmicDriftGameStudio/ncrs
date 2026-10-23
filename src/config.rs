@@ -470,9 +470,23 @@ impl fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
+/// Everything that finds the user's own config, index or keychain calls this
+/// first: a test that got there would read or change the real data of whoever
+/// runs it.
+#[allow(clippy::panic, reason = "the guard is the failure, and only in tests")]
+pub fn forbid_user_machine_in_tests(what: &str) {
+    if cfg!(test) {
+        panic!(
+            "{what} reaches the user's config, index or keychain. Tests build the app with \
+             App::with_environment(Environment::isolated()) and never touch those."
+        );
+    }
+}
+
 /// Where the config file lives on this machine, or `None` when the variables
 /// that say so are missing.
 pub fn default_path() -> Option<PathBuf> {
+    forbid_user_machine_in_tests("config::default_path");
     config_path_in(portable_data_dir(), |name| std::env::var_os(name))
 }
 
@@ -506,6 +520,7 @@ fn is_inside_app_bundle(exe_dir: &Path) -> bool {
 /// The portable data directory of the running executable. A failing
 /// `current_exe` or `canonicalize` means the normal layout.
 pub fn portable_data_dir() -> Option<PathBuf> {
+    forbid_user_machine_in_tests("config::portable_data_dir");
     let exe = std::env::current_exe()
         .and_then(std::fs::canonicalize)
         .ok()?;
@@ -568,6 +583,7 @@ fn home_config(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
 /// Where the index database lives on this machine, or `None` when the
 /// variables that say so are missing.
 pub fn default_index_path() -> Option<PathBuf> {
+    forbid_user_machine_in_tests("config::default_index_path");
     index_path_in(portable_data_dir(), |name| std::env::var_os(name))
 }
 
