@@ -8258,7 +8258,7 @@ mod config_status_tests {
         let shown = app.status_error().unwrap_or_default();
         assert!(shown.contains("line 2"), "{shown}");
         assert!(
-            shown.contains("text on panel has a contrast of only"),
+            shown.contains("directory on panel has a contrast of only"),
             "{shown}"
         );
         assert!(!shown.contains("Using the defaults"), "{shown}");
@@ -8267,7 +8267,7 @@ mod config_status_tests {
         let german = app.status_error().unwrap_or_default();
         assert!(german.contains("Zeile 2"), "{german}");
         assert!(
-            german.contains("text auf panel hat nur ein Kontrastverhältnis"),
+            german.contains("directory auf panel hat nur ein Kontrastverhältnis"),
             "{german}"
         );
 

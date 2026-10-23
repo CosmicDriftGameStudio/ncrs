@@ -303,8 +303,8 @@ default keys are in [Keyboard shortcuts](#keyboard-shortcuts).
 ### Colors
 
 `[theme]` picks a ready-made palette and changes single colors on top of it.
-There are three: `cosmic` is the default, a dark violet look with orange and
-green accents; `default` is the earlier dark teal look; `classic` is Norton
+There are three: `cosmic` is the default, a calm, almost neutral dark grey with
+muted accents; `default` is the earlier dark teal look; `classic` is Norton
 Commander blue.
 
 ```toml

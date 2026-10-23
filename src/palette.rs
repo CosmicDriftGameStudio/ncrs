@@ -30,10 +30,15 @@ pub struct Palette {
     pub cursor_text: Color,
     pub tagged: Color,
     pub tagged_inactive: Color,
+    /// Names on a tagged row of the active panel, when the cursor is elsewhere.
+    pub tagged_text: Color,
+    pub tagged_directory: Color,
     pub border: Color,
     pub border_inactive: Color,
     pub header: Color,
     pub title: Color,
+    /// Text on the active panel title and on the header bar.
+    pub title_text: Color,
     pub title_inactive: Color,
     pub status_bar: Color,
     pub dialog: Color,
@@ -88,32 +93,35 @@ impl ThemePreset {
     pub fn palette(self) -> Palette {
         match self {
             Self::Cosmic => Palette {
-                background: Color::from_rgb8(0x17, 0x12, 0x2B),
-                panel: Color::from_rgb8(0x21, 0x1A, 0x3A),
-                text: Color::from_rgb8(0xE4, 0xDD, 0xFF),
-                dim_text: Color::from_rgb8(0xA5, 0x9B, 0xD0),
-                directory: Color::from_rgb8(0xFF, 0xD2, 0x3F),
-                cursor: Color::from_rgb8(0x5F, 0xB8, 0x4A),
-                cursor_text: Color::from_rgb8(0x0E, 0x0A, 0x1C),
-                tagged: Color::from_rgb8(0x84, 0x45, 0xD0),
-                tagged_inactive: Color::from_rgb8(0x4B, 0x35, 0x78),
-                border: Color::from_rgb8(0x9F, 0x8F, 0xFF),
-                border_inactive: Color::from_rgb8(0x4A, 0x3D, 0x80),
-                header: Color::from_rgb8(0x8F, 0x7A, 0xE8),
-                title: Color::from_rgb8(0x8F, 0x7A, 0xE8),
-                title_inactive: Color::from_rgb8(0x2E, 0x25, 0x52),
-                status_bar: Color::from_rgb8(0x2E, 0x25, 0x52),
-                dialog: Color::from_rgb8(0x3A, 0x2D, 0x66),
-                menu: Color::from_rgb8(0x2E, 0x25, 0x52),
-                menu_shortcut: Color::from_rgb8(0xFF, 0x8C, 0x42),
-                menu_shortcut_on_cursor: Color::from_rgb8(0x0E, 0x0A, 0x1C),
-                menu_disabled: Color::from_rgb8(0xA5, 0x9B, 0xD0),
-                accent: Color::from_rgb8(0xFF, 0x8C, 0x42),
-                success: Color::from_rgb8(0x0E, 0x3D, 0x12),
-                error: Color::from_rgb8(0xFF, 0x5A, 0x5F),
-                fkey_number: Color::from_rgb8(0xE4, 0xDD, 0xFF),
-                fkey_label: Color::from_rgb8(0x5F, 0xB8, 0x4A),
-                fkey_label_text: Color::from_rgb8(0x0E, 0x0A, 0x1C),
+                background: Color::from_rgb8(0x14, 0x13, 0x18),
+                panel: Color::from_rgb8(0x1A, 0x19, 0x20),
+                text: Color::from_rgb8(0xCF, 0xCD, 0xD6),
+                dim_text: Color::from_rgb8(0x85, 0x82, 0x8F),
+                directory: Color::from_rgb8(0xF0, 0xEE, 0xF5),
+                cursor: Color::from_rgb8(0x7F, 0xA8, 0x8A),
+                cursor_text: Color::from_rgb8(0x14, 0x13, 0x18),
+                tagged: Color::from_rgb8(0xB3, 0x9D, 0xDB),
+                tagged_inactive: Color::from_rgb8(0x3D, 0x36, 0x50),
+                tagged_text: Color::from_rgb8(0x14, 0x13, 0x18),
+                tagged_directory: Color::from_rgb8(0x14, 0x13, 0x18),
+                border: Color::from_rgb8(0x55, 0x52, 0x6A),
+                border_inactive: Color::from_rgb8(0x1E, 0x1D, 0x25),
+                header: Color::from_rgb8(0x24, 0x22, 0x2D),
+                title: Color::from_rgb8(0x24, 0x22, 0x2D),
+                title_text: Color::from_rgb8(0xCF, 0xCD, 0xD6),
+                title_inactive: Color::from_rgb8(0x1E, 0x1D, 0x25),
+                status_bar: Color::from_rgb8(0x18, 0x17, 0x1D),
+                dialog: Color::from_rgb8(0x24, 0x22, 0x2D),
+                menu: Color::from_rgb8(0x24, 0x22, 0x2D),
+                menu_shortcut: Color::from_rgb8(0xD4, 0xA3, 0x73),
+                menu_shortcut_on_cursor: Color::from_rgb8(0x14, 0x13, 0x18),
+                menu_disabled: Color::from_rgb8(0x85, 0x82, 0x8F),
+                accent: Color::from_rgb8(0xD4, 0xA3, 0x73),
+                success: Color::from_rgb8(0x8F, 0xB9, 0x96),
+                error: Color::from_rgb8(0xD9, 0x7A, 0x7A),
+                fkey_number: Color::from_rgb8(0xCF, 0xCD, 0xD6),
+                fkey_label: Color::from_rgb8(0x7F, 0xA8, 0x8A),
+                fkey_label_text: Color::from_rgb8(0x14, 0x13, 0x18),
             },
             Self::Teal => Palette {
                 background: Color::from_rgb(0.035, 0.047, 0.098),
@@ -125,10 +133,13 @@ impl ThemePreset {
                 cursor_text: Color::from_rgb(0.020, 0.040, 0.090),
                 tagged: Color::from_rgb(0.180, 0.690, 0.760),
                 tagged_inactive: Color::from_rgb(0.130, 0.210, 0.360),
+                tagged_text: Color::from_rgb(0.800, 0.840, 0.940),
+                tagged_directory: Color::from_rgb(1.000, 1.000, 1.000),
                 border: Color::from_rgb(0.310, 0.840, 0.910),
                 border_inactive: Color::from_rgb(0.165, 0.210, 0.390),
                 header: Color::from_rgb(0.110, 0.420, 0.520),
                 title: Color::from_rgb(0.110, 0.420, 0.520),
+                title_text: Color::from_rgb(0.020, 0.040, 0.090),
                 title_inactive: Color::from_rgb(0.070, 0.125, 0.270),
                 status_bar: Color::from_rgb(0.070, 0.125, 0.270),
                 dialog: Color::from_rgb(0.110, 0.420, 0.520),
@@ -153,10 +164,13 @@ impl ThemePreset {
                 cursor_text: Color::from_rgb8(0x00, 0x00, 0x00),
                 tagged: Color::from_rgb8(0x55, 0x55, 0xFF),
                 tagged_inactive: Color::from_rgb8(0x00, 0x00, 0x80),
+                tagged_text: Color::from_rgb8(0x55, 0xFF, 0xFF),
+                tagged_directory: Color::from_rgb8(0xFF, 0xFF, 0xFF),
                 border: Color::from_rgb8(0x55, 0xFF, 0xFF),
                 border_inactive: Color::from_rgb8(0x00, 0xAA, 0xAA),
                 header: Color::from_rgb8(0x00, 0xAA, 0xAA),
                 title: Color::from_rgb8(0x00, 0xAA, 0xAA),
+                title_text: Color::from_rgb8(0x00, 0x00, 0x00),
                 title_inactive: Color::from_rgb8(0x00, 0x00, 0xAA),
                 status_bar: Color::from_rgb8(0x00, 0x00, 0x00),
                 dialog: Color::from_rgb8(0x00, 0x00, 0x80),
@@ -245,6 +259,7 @@ impl Palette {
             }
             ColorRole::CursorText => {
                 self.cursor_text = color;
+                self.title_text = color;
                 self.fkey_label_text = color;
                 self.menu_shortcut_on_cursor = color;
             }
@@ -450,7 +465,7 @@ mod tests {
     use crate::config::{load, ConfigError};
     use std::path::PathBuf;
 
-    fn slots(palette: &Palette) -> [(&'static str, Color); 26] {
+    fn slots(palette: &Palette) -> [(&'static str, Color); 29] {
         [
             ("background", palette.background),
             ("panel", palette.panel),
@@ -461,10 +476,13 @@ mod tests {
             ("cursor_text", palette.cursor_text),
             ("tagged", palette.tagged),
             ("tagged_inactive", palette.tagged_inactive),
+            ("tagged_text", palette.tagged_text),
+            ("tagged_directory", palette.tagged_directory),
             ("border", palette.border),
             ("border_inactive", palette.border_inactive),
             ("header", palette.header),
             ("title", palette.title),
+            ("title_text", palette.title_text),
             ("title_inactive", palette.title_inactive),
             ("status_bar", palette.status_bar),
             ("dialog", palette.dialog),
@@ -530,10 +548,13 @@ mod tests {
             ("cursor_text", rgb(0.020, 0.040, 0.090)),
             ("tagged", rgb(0.180, 0.690, 0.760)),
             ("tagged_inactive", rgb(0.130, 0.210, 0.360)),
+            ("tagged_text", rgb(0.800, 0.840, 0.940)),
+            ("tagged_directory", rgb(1.000, 1.000, 1.000)),
             ("border", rgb(0.310, 0.840, 0.910)),
             ("border_inactive", rgb(0.165, 0.210, 0.390)),
             ("header", rgb(0.110, 0.420, 0.520)),
             ("title", rgb(0.110, 0.420, 0.520)),
+            ("title_text", rgb(0.020, 0.040, 0.090)),
             ("title_inactive", rgb(0.070, 0.125, 0.270)),
             ("status_bar", rgb(0.070, 0.125, 0.270)),
             ("dialog", rgb(0.110, 0.420, 0.520)),
@@ -562,7 +583,12 @@ mod tests {
             (ColorRole::Cursor, &["cursor", "fkey_label"]),
             (
                 ColorRole::CursorText,
-                &["cursor_text", "fkey_label_text", "menu_shortcut_on_cursor"],
+                &[
+                    "cursor_text",
+                    "title_text",
+                    "fkey_label_text",
+                    "menu_shortcut_on_cursor",
+                ],
             ),
             (ColorRole::Tagged, &["tagged", "tagged_inactive"]),
             (ColorRole::Border, &["border"]),
@@ -672,11 +698,34 @@ mod tests {
     }
 
     #[test]
-    fn a_light_panel_under_the_default_text_is_reported_but_kept() {
+    fn title_and_tagged_text_are_readable_on_their_fills_in_cosmic() {
+        let p = ThemePreset::Cosmic.palette();
+        for (name, text, fill) in [
+            ("title_text on title", p.title_text, p.title),
+            ("title_text on header", p.title_text, p.header),
+            ("tagged_text on tagged", p.tagged_text, p.tagged),
+            ("tagged_directory on tagged", p.tagged_directory, p.tagged),
+        ] {
+            assert!(contrast_ratio(text, fill) >= READABLE_CONTRAST, "{name}");
+        }
+    }
+
+    #[test]
+    fn teal_and_classic_keep_their_old_title_and_tagged_text() {
+        for preset in [ThemePreset::Teal, ThemePreset::Classic] {
+            let p = preset.palette();
+            assert_eq!(p.title_text, p.cursor_text, "{preset:?}");
+            assert_eq!(p.tagged_text, p.text, "{preset:?}");
+            assert_eq!(p.tagged_directory, p.directory, "{preset:?}");
+        }
+    }
+
+    #[test]
+    fn a_light_panel_under_the_default_colors_is_reported_but_kept() {
         let config = load_text("[open]\n\n[theme]\npanel = \"#f4f0ff\"\n");
         assert_eq!(config.palette.panel, Color::from_rgb8(0xF4, 0xF0, 0xFF));
         let warning = config.contrast_warning.unwrap();
-        assert_eq!(warning.foreground, ColorRole::Text);
+        assert_eq!(warning.foreground, ColorRole::Directory);
         assert_eq!(warning.background, ColorRole::Panel);
         assert_eq!(warning.line, Some(4));
         assert!(warning.ratio < READABLE_CONTRAST);

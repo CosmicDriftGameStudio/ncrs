@@ -32,8 +32,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
-- The `cosmic` color preset is the new default, a dark violet look. To keep
-  the earlier look, write `[theme]` with `preset = "default"` in the config.
+- The `cosmic` color preset is the new default, a calm, almost neutral dark
+  grey with muted accents. To keep the earlier look, write `[theme]` with
+  `preset = "default"` in the config.
 - The filing module is called Hermes in the app: Tubes (inbox), Central Filing
   (target archive), Records (other archives), the Inspection (status page),
   Pending (review list) and the load levels "By the book", "Business as usual"
