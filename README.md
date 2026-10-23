@@ -347,7 +347,8 @@ tagged = "#a50"
 - An unknown role or preset and a color in another form (names, `#rrggbbaa`) are
   errors with the line, handled like any other config error.
 - A color that makes text hard to read (text on `panel`, `status_bar`, `dialog`
-  or `menu`, directory names on `panel`, `cursor_text` on `cursor`, below 3:1) is
+  or `menu`, `error` and `success` on `status_bar`, directory names on `panel`,
+  `cursor_text` on `cursor`, below 3:1) is
   applied anyway; the status bar says which pair and where, until `Esc`.
 - Colors are read at start; restart ncrs after editing the file.
 

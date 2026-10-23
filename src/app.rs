@@ -5472,6 +5472,12 @@ impl App {
         self.path_field.as_deref()
     }
 
+    /// A config warning in the status bar, for the snapshot tests.
+    pub fn with_config_warning(mut self, text: &str) -> Self {
+        self.config_error = Some(text.to_owned());
+        self
+    }
+
     /// The status bar's notice, for the snapshot tests.
     pub fn notice_for_test(&self) -> Option<&str> {
         self.notice.as_deref()
@@ -8150,6 +8156,21 @@ mod notice_tests {
 
         drop(app.update(Message::NoticeExpired(app.notice_generation)));
         assert_eq!(app.notice, None);
+    }
+
+    #[test]
+    fn a_config_warning_stays_while_the_notice_comes_and_goes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[theme]\npanel = \"#f4f0ff\"\n").unwrap();
+        let mut app = App::with_fixed_panels().with_config(config::load(&path));
+        assert!(app.status_error().is_some());
+        copy_path(&mut app);
+        assert_eq!(app.notice.as_deref(), Some("Path copied"));
+        assert!(app.status_error().is_some());
+        drop(app.update(Message::NoticeExpired(app.notice_generation)));
+        assert_eq!(app.notice, None);
+        assert!(app.status_error().is_some());
     }
 
     #[test]

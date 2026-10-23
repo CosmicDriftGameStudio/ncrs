@@ -114,7 +114,7 @@ pub struct Activity<'a, M> {
     /// settings page to open.
     pub on_blocked_press: Option<M>,
     /// A confirmation that goes away by itself. It takes the right end of the
-    /// bar from the filing progress, and an error in the bar hides it.
+    /// bar from the filing progress and stands beside an error.
     pub notice: Option<&'a str>,
 }
 
@@ -139,7 +139,6 @@ pub fn view<'a, M: Clone + 'a>(
         on_blocked_press,
         notice,
     } = activity;
-    let error_shown = failure.is_some() || panel.error.is_some();
     let path = path_bar(panel, lang, palette, path_bar_input);
 
     let details: Element<'a, M> = if let Some(last_failure) = failure {
@@ -254,7 +253,7 @@ pub fn view<'a, M: Clone + 'a>(
     ]
     .spacing(spacing::CELL_PADDING_X)
     .align_y(alignment::Vertical::Center);
-    if let Some(shown) = notice.filter(|_| !error_shown) {
+    if let Some(shown) = notice {
         bar = bar.push(
             text(format!("\u{2713} {shown}"))
                 .size(font_size::STATUS)

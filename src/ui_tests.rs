@@ -905,10 +905,28 @@ mod status_notice {
     }
 
     #[test]
-    fn the_status_bar_shows_the_notice_until_an_error_takes_its_place() {
+    fn the_status_bar_shows_the_notice_beside_an_error() {
         let app = copied();
         assert!(shows_notice(status_bar(&app, None)));
-        assert!(!shows_notice(status_bar(&app, Some("Copy failed"))));
+        assert!(shows_notice(status_bar(&app, Some("Copy failed"))));
+    }
+
+    #[test]
+    fn a_config_warning_and_a_notice_are_drawn_together() {
+        let mut app = App::with_fixed_panels().with_config_warning(
+            "Config file config.toml, line 2: directory on panel is hard to read",
+        );
+        assert!(app.status_error().is_some());
+        drop(app.update(Message::CopyToClipboard(ClipboardKind::Path)));
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/status_notice_with_error.png")
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the status bar does not match status_notice_with_error.png"
+        );
     }
 }
 
