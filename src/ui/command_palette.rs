@@ -74,6 +74,7 @@ pub fn view<'a>(
     };
     picker::frame(
         lang.text(Msg::CommandPaletteTitle).to_owned(),
+        lang.text(Msg::CommandPaletteSubtitle).to_owned(),
         field,
         status.to_owned(),
         rows,

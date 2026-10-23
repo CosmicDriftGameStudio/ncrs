@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Playful names, each with its plain description next to it: the command
+  palette is the Lab, Quick Open the Dark Matter Drive, the search the
+  Smell-o-scope, the drive menu Planets, the file exists dialog a Time paradox,
+  tagging stamps, and the trash dialog says "Off to the garbage ball". The
+  function key bar, the context menu and the config names are unchanged.
+- The command palette also finds an entry by its old name or its config name,
+  e.g. "quick open" or "drive menu".
 - A separate portable Windows ZIP (`ncrs-x86_64-pc-windows-msvc-portable.zip`)
   with a `data` folder. A `data` folder next to the executable holds
   `config.toml` and `index.db` instead of the usual locations, everywhere except
@@ -25,6 +32,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The `cosmic` color preset is the new default, a dark violet look. To keep
+  the earlier look, write `[theme]` with `preset = "default"` in the config.
 - The filing module is called Hermes in the app: Tubes (inbox), Central Filing
   (target archive), Records (other archives), the Inspection (status page),
   Pending (review list) and the load levels "By the book", "Business as usual"

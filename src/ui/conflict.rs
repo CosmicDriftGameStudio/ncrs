@@ -36,6 +36,10 @@ pub fn view<'a>(
         .size(font_size::TITLE)
         .color(palette.accent);
 
+    let subtitle = text(lang.text(Msg::ConflictSubtitle))
+        .size(font_size::STATUS)
+        .color(palette.dim_text);
+
     let subject = text(lang.text(Msg::ConflictName).replace("{name}", name))
         .size(font_size::STATUS)
         .color(palette.text);
@@ -70,7 +74,7 @@ pub fn view<'a>(
     ])
     .spacing(spacing::CELL_PADDING_X);
 
-    container(column![title, subject, all_row, button_row].spacing(spacing::SECTION_GAP))
+    container(column![title, subtitle, subject, all_row, button_row].spacing(spacing::SECTION_GAP))
         .padding(spacing::OUTER_PADDING * 2.0)
         .width(DIALOG_WIDTH)
         .style(theme::dialog(palette))

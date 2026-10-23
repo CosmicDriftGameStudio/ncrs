@@ -18,6 +18,7 @@ const WIDTH: f32 = 560.0;
 /// The box around the field and the rows, which get room for `row_count`.
 pub fn frame<'a>(
     title: String,
+    subtitle: String,
     field: Element<'a, Message>,
     status: String,
     rows: impl Iterator<Item = Element<'a, Message>>,
@@ -26,6 +27,9 @@ pub fn frame<'a>(
 ) -> Element<'a, Message> {
     let body = column![
         text(title).size(font_size::TITLE).color(palette.accent),
+        text(subtitle)
+            .size(font_size::STATUS)
+            .color(palette.dim_text),
         field,
         text(status)
             .size(font_size::STATUS)

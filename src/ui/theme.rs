@@ -456,8 +456,33 @@ mod tests {
     }
 
     #[test]
-    fn the_default_palette_styles_the_window_as_it_always_looked() {
-        let p = Palette::default();
+    fn the_four_dialog_button_states_look_different_in_every_preset() {
+        for preset in ThemePreset::ALL {
+            let p = preset.palette();
+            let theme = Theme::Dark;
+            let look = |primary: bool, status: button::Status| {
+                let style = dialog_button(&p, primary)(&theme, status);
+                (style.background, style.text_color, style.border.color)
+            };
+            let states = [
+                look(true, button::Status::Active),
+                look(false, button::Status::Active),
+                look(false, button::Status::Hovered),
+                look(false, button::Status::Disabled),
+            ];
+            for (index, first) in states.iter().enumerate() {
+                for second in states.iter().skip(index + 1) {
+                    assert_ne!(first, second, "{preset:?}");
+                }
+            }
+            let outline = look(false, button::Status::Active).2;
+            assert!(contrast_ratio(outline, p.dialog) >= 3.0, "{preset:?}");
+        }
+    }
+
+    #[test]
+    fn the_default_preset_styles_the_window_as_it_always_looked() {
+        let p = ThemePreset::Teal.palette();
         let theme = Theme::Dark;
         let background = rgb(0.035, 0.047, 0.098);
         let panel_fill = rgb(0.047, 0.086, 0.200);

@@ -24,7 +24,7 @@ for the state, the licensing audit and the reasoning behind the order.
 
 ![The drive menu on Alt+F1](docs/screenshots/drive-menu.png)
 
-The drive menu (`Alt+F1` for the left panel, `Alt+F2` for the right).
+The drive menu, called Planets in the app (`Alt+F1` for the left panel, `Alt+F2` for the right).
 
 ![The context menu](docs/screenshots/context-menu.png)
 
@@ -57,10 +57,10 @@ The same window in German, switched with F9.
 - Errors (e.g. *Permission denied*) are shown in the status bar – no panics
 - Confirmations (e.g. *Path copied*) appear at the right of the title bar for three seconds
 - Mouse click selects a row and activates its panel; the wheel and the trackpad scroll the panel under the pointer
-- Drive menu (`Alt`+`F1` / `Alt`+`F2`): jump a panel to the system volume, home, iCloud Drive and
+- Planets (drive menu, `Alt`+`F1` / `Alt`+`F2`): jump a panel to the system volume, home, iCloud Drive and
   cloud storage folders such as Google Drive, OneDrive or Dropbox (macOS), mounted volumes or
   drive letters, the same places as in the Finder sidebar; see [Drives on macOS](#drives-on-macos)
-- Search in file names and contents below a directory, in the panel, the way
+- Smell-o-scope (search) in file names and contents below a directory, in the panel, the way
   VS Code does it: see [Search](#search)
 - Localized UI (English/German) with a translator note on every string, so the UI can
   be translated mechanically without reading the code
@@ -90,13 +90,13 @@ The defaults. Most of them can be changed in the config file, see [Keys](#keys).
 | `F7`               | Create directory                        |
 | `F8`               | Delete to the trash, after a confirmation |
 | `Shift`+`F8`       | Delete permanently (`Enter` cancels; `Shift`+`F8` again confirms) |
-| `Alt`+`F1` / `Alt`+`F2` | Drive menu for the left / right panel (`↑`/`↓`, `Home`/`End`, `Enter` goes, `Esc` closes; `Option` on macOS) |
+| `Alt`+`F1` / `Alt`+`F2` | Planets (drive menu) for the left / right panel (`↑`/`↓`, `Home`/`End`, `Enter` goes, `Esc` closes; `Option` on macOS) |
 | Right click / `Shift`+`F10` / `Option` tapped alone | Context menu at the pointer or the cursor row (`↑`/`↓`, `Home`/`End`, `Enter` runs, `Esc` closes; `Ctrl`+click also on a Mac) |
 | Click a column title | Sort that panel by Name / Size / Modified; a second click reverses the order (▲ / ▼). `..` and folders stay on top |
 | `Ctrl`+`F3` / `Ctrl`+`F5` / `Ctrl`+`F6` (macOS: `Cmd`+`1` / `Cmd`+`3` / `Cmd`+`2`) | Sort the active panel by name / modification time / size; again reverses. macOS uses `Cmd`+digit because the system takes `Ctrl`+`F`-keys |
-| `Alt`+`F7` / `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) | Search below the directory of the active panel; pressed again, it moves to the next field. See [Search](#search) |
-| `F1` / `Cmd`+`Shift`+`P` / `Ctrl`+`Shift`+`P` | Command palette: lists the actions that work where you are, with their keys; type to filter, `↑`/`↓` move, `Enter` runs, `Esc` closes |
-| `Cmd`+`P` / `Ctrl`+`P` | Quick Open: jump to a file by a few letters of its path. See [Quick Open](#quick-open) |
+| `Alt`+`F7` / `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) | Smell-o-scope (search) below the directory of the active panel; pressed again, it moves to the next field. See [Search](#search) |
+| `F1` / `Cmd`+`Shift`+`P` / `Ctrl`+`Shift`+`P` | Lab (command palette): lists the actions that work where you are, with their keys; type to filter, `↑`/`↓` move, `Enter` runs, `Esc` closes |
+| `Cmd`+`P` / `Ctrl`+`P` | Dark Matter Drive (Quick Open): jump to a file by a few letters of its path. See [Quick Open](#quick-open) |
 | `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D`, or click the filing progress in the status bar | Inspection, the filing status page (filing module on, Hermes): pipeline state, load, workers, index figures and the last errors. `P` pauses or resumes, `1`/`2`/`3` set the load gentle ("By the book") / balanced ("Business as usual") / full ("Grade 36") for this session, `+`/`-` change the worker count, `↑`/`↓` and `Enter` show the file of an error, `Esc` closes |
 | `Cmd`+`Shift`+`L` / `Ctrl`+`Shift`+`L` | Hermes setup: choose the Tubes and document folders and save them to the config file. See [Filing](#filing). `Esc` closes |
 | `Backspace`        | Go to parent directory                   |
@@ -106,7 +106,7 @@ The defaults. Most of them can be changed in the config file, see [Keys](#keys).
 
 ## Search
 
-`Alt`+`F7` or `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) opens
+The Smell-o-scope: `Alt`+`F7` or `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) opens
 the search in the active panel. It searches below that panel's directory, starts
 as you type and stops a search still running when you type on. `Esc` brings the
 panel back; the next search starts with the same fields.
@@ -138,7 +138,7 @@ panel back; the next search starts with the same fields.
 
 ## Quick Open
 
-`Cmd`+`P` (`Ctrl`+`P` on Linux and Windows) opens a box over the panels, as in
+The Dark Matter Drive: `Cmd`+`P` (`Ctrl`+`P` on Linux and Windows) opens a box over the panels, as in
 VS Code. Type letters of a file's path and the best matches are listed with the
 matching characters highlighted: `cfgrs` finds `src/config.rs`. It lists the
 files below the active panel's directory, hidden ones too and without following
@@ -302,11 +302,15 @@ default keys are in [Keyboard shortcuts](#keyboard-shortcuts).
 
 ### Colors
 
-`[theme]` picks a ready-made palette and changes single colors on top of it:
+`[theme]` picks a ready-made palette and changes single colors on top of it.
+There are three: `cosmic` is the default, a dark violet look with orange and
+green accents; `default` is the earlier dark teal look; `classic` is Norton
+Commander blue.
 
 ```toml
 [theme]
-# "default" (the dark teal look) or "classic" (Norton Commander blue).
+# "cosmic" (the default), "default" (the earlier dark teal look) or "classic"
+# (Norton Commander blue).
 preset = "classic"
 # Then single roles, as "#rrggbb" or "#rgb".
 directory = "#ffff55"
@@ -333,7 +337,8 @@ tagged = "#a50"
 | `success` | Confirmations in the title bar |
 | `error` | Errors |
 
-- Roles not listed keep the preset's colors; without `[theme]` nothing changes.
+- Roles not listed keep the preset's colors; without `[theme]` the `cosmic` preset applies.
+  To keep the earlier look, write `[theme]` with `preset = "default"`.
   The order in the file does not matter, `preset` always applies first.
 - An unknown role or preset and a color in another form (names, `#rrggbbaa`) are
   errors with the line, handled like any other config error.

@@ -56,23 +56,27 @@ pub struct Palette {
 
 impl Default for Palette {
     fn default() -> Self {
-        ThemePreset::Default.palette()
+        ThemePreset::Cosmic.palette()
     }
 }
 
 /// A complete palette to start from. `[theme]` roles are applied on top.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThemePreset {
-    Default,
+    /// The look without a `[theme]` section.
+    Cosmic,
+    /// The earlier dark teal look, still called `"default"` in the config.
+    Teal,
     Classic,
 }
 
 impl ThemePreset {
-    pub const ALL: [ThemePreset; 2] = [Self::Default, Self::Classic];
+    pub const ALL: [ThemePreset; 3] = [Self::Cosmic, Self::Teal, Self::Classic];
 
     pub fn name(self) -> &'static str {
         match self {
-            Self::Default => "default",
+            Self::Cosmic => "cosmic",
+            Self::Teal => "default",
             Self::Classic => "classic",
         }
     }
@@ -83,7 +87,35 @@ impl ThemePreset {
 
     pub fn palette(self) -> Palette {
         match self {
-            Self::Default => Palette {
+            Self::Cosmic => Palette {
+                background: Color::from_rgb8(0x17, 0x12, 0x2B),
+                panel: Color::from_rgb8(0x21, 0x1A, 0x3A),
+                text: Color::from_rgb8(0xE4, 0xDD, 0xFF),
+                dim_text: Color::from_rgb8(0xA5, 0x9B, 0xD0),
+                directory: Color::from_rgb8(0xFF, 0xD2, 0x3F),
+                cursor: Color::from_rgb8(0x5F, 0xB8, 0x4A),
+                cursor_text: Color::from_rgb8(0x0E, 0x0A, 0x1C),
+                tagged: Color::from_rgb8(0x84, 0x45, 0xD0),
+                tagged_inactive: Color::from_rgb8(0x4B, 0x35, 0x78),
+                border: Color::from_rgb8(0x9F, 0x8F, 0xFF),
+                border_inactive: Color::from_rgb8(0x4A, 0x3D, 0x80),
+                header: Color::from_rgb8(0x8F, 0x7A, 0xE8),
+                title: Color::from_rgb8(0x8F, 0x7A, 0xE8),
+                title_inactive: Color::from_rgb8(0x2E, 0x25, 0x52),
+                status_bar: Color::from_rgb8(0x2E, 0x25, 0x52),
+                dialog: Color::from_rgb8(0x3A, 0x2D, 0x66),
+                menu: Color::from_rgb8(0x2E, 0x25, 0x52),
+                menu_shortcut: Color::from_rgb8(0xFF, 0x8C, 0x42),
+                menu_shortcut_on_cursor: Color::from_rgb8(0x0E, 0x0A, 0x1C),
+                menu_disabled: Color::from_rgb8(0xA5, 0x9B, 0xD0),
+                accent: Color::from_rgb8(0xFF, 0x8C, 0x42),
+                success: Color::from_rgb8(0x0E, 0x3D, 0x12),
+                error: Color::from_rgb8(0xFF, 0x5A, 0x5F),
+                fkey_number: Color::from_rgb8(0xE4, 0xDD, 0xFF),
+                fkey_label: Color::from_rgb8(0x5F, 0xB8, 0x4A),
+                fkey_label_text: Color::from_rgb8(0x0E, 0x0A, 0x1C),
+            },
+            Self::Teal => Palette {
                 background: Color::from_rgb(0.035, 0.047, 0.098),
                 panel: Color::from_rgb(0.047, 0.086, 0.200),
                 text: Color::from_rgb(0.800, 0.840, 0.940),
@@ -293,7 +325,7 @@ impl Palette {
     /// section) with the roles applied in the order written.
     pub fn from_section(section: &ThemeSection) -> Result<ConfiguredPalette, ThemeError> {
         let mut preset_span = None;
-        let mut preset = ThemePreset::Default;
+        let mut preset = ThemePreset::Cosmic;
         for entry in &section.entries {
             if entry.key.as_ref() == PRESET_KEY {
                 let name = entry.value.as_ref();
@@ -472,7 +504,22 @@ mod tests {
     }
 
     #[test]
-    fn without_a_theme_section_every_slot_keeps_its_look() {
+    fn without_a_theme_section_the_cosmic_preset_applies() {
+        for text in ["", "[open]\nview = [\"less\"]\n", "[theme]\n"] {
+            let config = load_text(text);
+            assert_eq!(config.palette, ThemePreset::Cosmic.palette(), "{text:?}");
+            assert_eq!(config.contrast_warning, None);
+        }
+    }
+
+    #[test]
+    fn the_name_default_picks_the_teal_look() {
+        let config = load_text("[theme]\npreset = \"default\"\n");
+        assert_eq!(config.palette, ThemePreset::Teal.palette());
+    }
+
+    #[test]
+    fn every_slot_of_the_teal_preset_keeps_its_look() {
         let expected = [
             ("background", rgb(0.035, 0.047, 0.098)),
             ("panel", rgb(0.047, 0.086, 0.200)),
@@ -501,11 +548,7 @@ mod tests {
             ("fkey_label", rgb(0.180, 0.690, 0.760)),
             ("fkey_label_text", rgb(0.020, 0.040, 0.090)),
         ];
-        for text in ["", "[open]\nview = [\"less\"]\n"] {
-            let config = load_text(text);
-            assert_eq!(slots(&config.palette), expected, "{text:?}");
-            assert_eq!(config.contrast_warning, None);
-        }
+        assert_eq!(slots(&ThemePreset::Teal.palette()), expected);
     }
 
     #[test]
@@ -582,7 +625,7 @@ mod tests {
             ("[theme]\nfoo = \"#fff\"\n", "unknown color role \"foo\""),
             (
                 "[theme]\npreset = \"x\"\n",
-                "unknown preset \"x\", expected \"default\" or \"classic\"",
+                "unknown preset \"x\", expected \"cosmic\" or \"default\" or \"classic\"",
             ),
         ];
         for (text, expected) in cases {
@@ -630,8 +673,8 @@ mod tests {
 
     #[test]
     fn a_light_panel_under_the_default_text_is_reported_but_kept() {
-        let config = load_text("[open]\n\n[theme]\npanel = \"#ccddee\"\n");
-        assert_eq!(config.palette.panel, Color::from_rgb8(0xCC, 0xDD, 0xEE));
+        let config = load_text("[open]\n\n[theme]\npanel = \"#f4f0ff\"\n");
+        assert_eq!(config.palette.panel, Color::from_rgb8(0xF4, 0xF0, 0xFF));
         let warning = config.contrast_warning.unwrap();
         assert_eq!(warning.foreground, ColorRole::Text);
         assert_eq!(warning.background, ColorRole::Panel);

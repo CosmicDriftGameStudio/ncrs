@@ -43,11 +43,16 @@ pub fn view<'a>(
         .on_press(Message::DeleteCancel)
         .style(theme::dialog_button(palette, focus == 1));
 
-    let mut body = column![
-        text(title).size(font_size::TITLE).color(palette.accent),
-        text(subject).size(font_size::STATUS).color(palette.text),
-    ]
-    .spacing(spacing::SECTION_GAP);
+    let mut body = column![text(title).size(font_size::TITLE).color(palette.accent)]
+        .spacing(spacing::SECTION_GAP);
+    if !permanent {
+        body = body.push(
+            text(lang.text(Msg::DeleteSubtitleTrash))
+                .size(font_size::STATUS)
+                .color(palette.dim_text),
+        );
+    }
+    body = body.push(text(subject).size(font_size::STATUS).color(palette.text));
     if permanent {
         body = body.push(
             text(lang.text(Msg::DeleteWarningPermanent))

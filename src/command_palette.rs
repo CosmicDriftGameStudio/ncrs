@@ -178,8 +178,16 @@ impl CommandPalette {
                 .iter()
                 .enumerate()
                 .filter_map(|(entry, candidate)| {
+                    // The config name finds an entry whose label was renamed.
+                    // Whole-word prefixes, not fuzzy: a fuzzy name match would
+                    // also find unrelated entries. Its ranges would point into
+                    // the name, not the label, so there is no highlight.
                     let (score, highlight) =
-                        score_with_highlight(&pattern, &mut matcher, &mut buffer, candidate.label)?;
+                        score_with_highlight(&pattern, &mut matcher, &mut buffer, candidate.label)
+                            .or_else(|| {
+                                words_start_name(&self.query, candidate.action.name())
+                                    .then(|| (0, Vec::new()))
+                            })?;
                     Some(Hit {
                         entry,
                         score,
@@ -196,6 +204,13 @@ impl CommandPalette {
         self.cursor = 0;
         self.top = 0;
     }
+}
+
+/// Every word of `query` begins a word of the config `name` (`quick_open`).
+fn words_start_name(query: &str, name: &str) -> bool {
+    let lowered = query.to_lowercase();
+    let mut words = lowered.split_whitespace().peekable();
+    words.peek().is_some() && words.all(|word| name.split('_').any(|part| part.starts_with(word)))
 }
 
 fn entries(scope: KeyScope, lang: Language, keymap: &Keymap) -> Vec<Entry> {
@@ -353,7 +368,10 @@ mod tests {
         let mut palette = palette(KeyScope::Panel, Language::German);
         palette.set_query("losch".to_owned());
         let labels = labels(&palette);
-        assert!(labels.contains(&"Löschen"), "{labels:?}");
+        assert!(
+            labels.contains(&"Löschen · ab in den Müllball"),
+            "{labels:?}"
+        );
         for hit in palette.hits() {
             let label = palette.entry(hit).unwrap().label;
             for range in &hit.highlight {
@@ -363,9 +381,55 @@ mod tests {
         let delete = palette
             .hits()
             .iter()
-            .find(|hit| palette.entry(hit).unwrap().label == "Löschen")
+            .find(|hit| palette.entry(hit).unwrap().label == "Löschen · ab in den Müllball")
             .unwrap();
         assert_eq!(delete.highlight, vec![0.."Lösch".len()]);
+    }
+
+    fn found(lang: Language, query: &str) -> Vec<KeyAction> {
+        let mut palette = palette(KeyScope::Panel, lang);
+        palette.set_query(query.to_owned());
+        palette
+            .hits()
+            .iter()
+            .map(|hit| palette.entry(hit).unwrap().action)
+            .collect()
+    }
+
+    #[test]
+    fn the_config_name_finds_a_renamed_entry() {
+        assert!(found(Language::English, "quick open").contains(&KeyAction::QuickOpen));
+    }
+
+    #[test]
+    fn the_plain_description_finds_a_renamed_entry() {
+        assert!(found(Language::English, "go to file").contains(&KeyAction::QuickOpen));
+        assert!(found(Language::German, "zu datei").contains(&KeyAction::QuickOpen));
+    }
+
+    #[test]
+    fn a_fragment_of_a_config_name_does_not_find_unrelated_entries() {
+        assert_eq!(found(Language::English, "insp"), [KeyAction::FilingStatus]);
+        assert!(found(Language::English, "quick op").contains(&KeyAction::QuickOpen));
+    }
+
+    #[test]
+    fn drive_menu_finds_both_planet_entries() {
+        let actions = found(Language::English, "drive menu");
+        assert!(actions.contains(&KeyAction::DriveMenuLeft));
+        assert!(actions.contains(&KeyAction::DriveMenuRight));
+    }
+
+    #[test]
+    fn a_hit_through_the_config_name_marks_nothing_in_the_label() {
+        let mut palette = palette(KeyScope::Panel, Language::English);
+        palette.set_query("quick open".to_owned());
+        let hit = palette
+            .hits()
+            .iter()
+            .find(|hit| palette.entry(hit).unwrap().action == KeyAction::QuickOpen)
+            .unwrap();
+        assert!(hit.highlight.is_empty());
     }
 
     #[test]

@@ -197,6 +197,30 @@ mod tests {
         );
     }
 
+    fn assert_preset_matches(preset: &str, reference: &str) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, format!("[theme]\npreset = \"{preset}\"\n")).unwrap();
+        let app = App::with_fixed_panels().with_config(crate::config::load(&path));
+        let mut sim = simulator(&app);
+        let matches = sim
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image(reference)
+            .expect("snapshot comparison");
+        assert!(matches, "preset {preset:?} no longer matches {reference}");
+    }
+
+    #[test]
+    fn the_default_preset_looks_as_before() {
+        assert_preset_matches("default", "tests/snapshots/two_panels_default.png");
+    }
+
+    #[test]
+    fn the_classic_preset_looks_as_before() {
+        assert_preset_matches("classic", "tests/snapshots/two_panels_classic.png");
+    }
+
     /// A configured color changes the picture. Compared with the committed
     /// reference, as `the_dialog_is_drawn_over_the_panels` does, so no new
     /// reference is written.
@@ -1714,11 +1738,24 @@ mod command_palette {
                 "the".to_owned(),
             ))),
         );
+        // "Delete · off to the garbage ball" now matches "the" too, so the
+        // position of Switch language is read from the list.
+        let palette = app.command_palette_for_test().unwrap();
+        let language_row = palette
+            .hits()
+            .iter()
+            .position(|hit| {
+                palette.entry(hit).map(|entry| entry.action)
+                    == Some(crate::keymap::KeyAction::SwitchLanguage)
+            })
+            .expect("Switch language is listed");
         let mut sim = simulator(&app);
         sim.click("F9").expect("the Switch language entry");
         let messages: Vec<Message> = sim.into_messages().collect();
         assert!(
-            messages.contains(&palette_message(CommandPaletteMessage::Select(4))),
+            messages.contains(&palette_message(CommandPaletteMessage::Select(
+                language_row
+            ))),
             "{messages:?}"
         );
         for message in messages {
@@ -1728,7 +1765,7 @@ mod command_palette {
     }
 
     /// The query leaves the entries whose keys read the same on every
-    /// platform: Copy, Move, Switch panel and Switch language, and the
+    /// platform: Copy, Move, Switch panel, Switch language and Delete, and the
     /// Inspection and the Hermes setup, which have no key of their own.
     #[test]
     fn the_box_matches_its_snapshot() {

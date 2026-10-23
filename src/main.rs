@@ -122,8 +122,8 @@ CONFIG:
     or cmd (they jump to a file name) are errors. The full list of actions
     is in the README.
 
-    [theme] picks a palette (preset \"default\" or \"classic\") and sets single
-    colors on top of it as \"#rrggbb\" or \"#rgb\":
+    [theme] picks a palette (preset \"cosmic\", the default, \"default\" or
+    \"classic\") and sets single colors on top of it as \"#rrggbb\" or \"#rgb\":
         [theme]
         preset = \"classic\"
         directory = \"#ffff55\"

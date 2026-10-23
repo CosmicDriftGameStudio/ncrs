@@ -320,7 +320,13 @@
     },
     {
       "key": "conflict.title",
-      "context": "Title of the dialog asking what to do about a file that already exists at the target. Noun phrase, no punctuation.",
+      "context": "Title of the dialog asking what to do about a file that already exists at the target. A playful name, noun phrase, no punctuation; conflict.subtitle below it says plainly what is wrong.",
+      "en": "Time paradox",
+      "de": "Zeitparadoxon"
+    },
+    {
+      "key": "conflict.subtitle",
+      "context": "Line below the title of the dialog asking what to do about a file that already exists at the target. States the problem plainly; no punctuation.",
       "en": "File already exists",
       "de": "Datei existiert bereits"
     },
@@ -365,6 +371,12 @@
       "context": "Title of the confirmation dialog for F8, which moves entries to the trash. Imperative.",
       "en": "Move to trash",
       "de": "In den Papierkorb verschieben"
+    },
+    {
+      "key": "delete.subtitle_trash",
+      "context": "Playful line below the title of the confirmation dialog for F8, which moves entries to the trash. Not shown for permanent deletion.",
+      "en": "Off to the garbage ball",
+      "de": "Ab in den Müllball"
     },
     {
       "key": "delete.title_permanent",
@@ -421,14 +433,20 @@
       "de": "{name} konnte nicht in den Papierkorb: {reason}."
     },
     {
-      "key": "volumes.title_left",
-      "context": "Title of the drive menu opened with Alt+F1, which picks the place the left panel shows. Imperative; the word 'drive' stands for a disk, a mounted volume or another place such as the home folder.",
+      "key": "volumes.title",
+      "context": "Title of the drive menu opened with Alt+F1 or Alt+F2, above the line that says which panel it is for. A playful name for the places a panel can show (disks, mounted volumes, the home folder); a noun, no punctuation.",
+      "en": "Planets",
+      "de": "Planeten"
+    },
+    {
+      "key": "volumes.subtitle_left",
+      "context": "Line below the title of the drive menu opened with Alt+F1, which picks the place the left panel shows. Imperative; the word 'drive' stands for a disk, a mounted volume or another place such as the home folder. The title above it is volumes.title.",
       "en": "Choose drive (left)",
       "de": "Laufwerk wählen (links)"
     },
     {
-      "key": "volumes.title_right",
-      "context": "Title of the drive menu opened with Alt+F2, which picks the place the right panel shows. Imperative; same meaning of 'drive' as in volumes.title_left.",
+      "key": "volumes.subtitle_right",
+      "context": "Line below the title of the drive menu opened with Alt+F2, which picks the place the right panel shows. Imperative; same meaning of 'drive' as in volumes.subtitle_left.",
       "en": "Choose drive (right)",
       "de": "Laufwerk wählen (rechts)"
     },
@@ -488,9 +506,9 @@
     },
     {
       "key": "search.title",
-      "context": "Title bar of the search view that replaces a file panel. Takes {path}, the directory the search runs in.",
-      "en": "Search in {path}",
-      "de": "Suche in {path}"
+      "context": "Title bar of the search view that replaces a file panel, a single line: a playful name, a colon, then what it does. Takes {path}, the directory the search runs in.",
+      "en": "Smell-o-scope: search in {path}",
+      "de": "Riech-o-skop: Suche in {path}"
     },
     {
       "key": "search.query_placeholder",
@@ -596,7 +614,13 @@
     },
     {
       "key": "quickopen.title",
-      "context": "Title of the Quick Open box (Ctrl+P / Cmd+P) in which a file name is typed to jump to the file. Takes {dir}, the name of the directory the files are listed from.",
+      "context": "Title of the Quick Open box (Ctrl+P / Cmd+P) in which a file name is typed to jump to the file. A playful name, not a description; the plain description is quickopen.subtitle below it.",
+      "en": "Dark Matter Drive",
+      "de": "Dunkle-Materie-Antrieb"
+    },
+    {
+      "key": "quickopen.subtitle",
+      "context": "Line below the title of the Quick Open box (Ctrl+P / Cmd+P), saying plainly what the box does. Takes {dir}, the name of the directory the files are listed from.",
       "en": "Go to file in {dir}",
       "de": "Zu Datei in {dir}"
     },
@@ -632,7 +656,13 @@
     },
     {
       "key": "command_palette.title",
-      "context": "Title of the command palette (Ctrl+Shift+P / Cmd+Shift+P), a box in which an action is picked by name.",
+      "context": "Title of the command palette (Ctrl+Shift+P / Cmd+Shift+P), a box in which an action is picked by name. A playful name for a lab where actions are run; the line below it is command_palette.subtitle, which says what the box does.",
+      "en": "Lab",
+      "de": "Labor"
+    },
+    {
+      "key": "command_palette.subtitle",
+      "context": "Line below the title of the command palette (Ctrl+Shift+P / Cmd+Shift+P), saying plainly what the box does. Imperative.",
       "en": "Run an action",
       "de": "Aktion ausführen"
     },
@@ -680,21 +710,21 @@
     },
     {
       "key": "action.toggle_tag",
-      "context": "Entry of the command palette that runs the key action toggle_tag. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
-      "en": "Tag or untag row",
-      "de": "Zeile markieren oder Markierung aufheben"
+      "context": "Entry of the command palette that runs the key action toggle_tag. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
+      "en": "Stamp: tag or untag row",
+      "de": "Stempel: Zeile markieren oder Markierung aufheben"
     },
     {
       "key": "action.tag_all",
-      "context": "Entry of the command palette that runs the key action tag_all. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
-      "en": "Tag all rows",
-      "de": "Alle Zeilen markieren"
+      "context": "Entry of the command palette that runs the key action tag_all. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
+      "en": "Stamp all: tag all rows",
+      "de": "Alle stempeln: alle Zeilen markieren"
     },
     {
       "key": "action.clear_tags",
-      "context": "Entry of the command palette that runs the key action clear_tags. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
-      "en": "Clear all tags",
-      "de": "Alle Markierungen aufheben"
+      "context": "Entry of the command palette that runs the key action clear_tags. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
+      "en": "Clear all stamps: untag all rows",
+      "de": "Alle Stempel entfernen: alle Markierungen aufheben"
     },
     {
       "key": "action.abort_job",
@@ -740,9 +770,9 @@
     },
     {
       "key": "action.delete",
-      "context": "Entry of the command palette that runs the key action delete. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
-      "en": "Delete",
-      "de": "Löschen"
+      "context": "Entry of the command palette that runs the key action delete. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
+      "en": "Delete · off to the garbage ball",
+      "de": "Löschen · ab in den Müllball"
     },
     {
       "key": "action.delete_permanently",
@@ -758,15 +788,15 @@
     },
     {
       "key": "action.drive_menu_left",
-      "context": "Entry of the command palette that runs the key action drive_menu_left. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
-      "en": "Drive menu, left panel",
-      "de": "Laufwerke, linkes Panel"
+      "context": "Entry of the command palette that runs the key action drive_menu_left. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
+      "en": "Planets: drive menu, left panel",
+      "de": "Planeten: Laufwerke, linkes Panel"
     },
     {
       "key": "action.drive_menu_right",
-      "context": "Entry of the command palette that runs the key action drive_menu_right. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
-      "en": "Drive menu, right panel",
-      "de": "Laufwerke, rechtes Panel"
+      "context": "Entry of the command palette that runs the key action drive_menu_right. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
+      "en": "Planets: drive menu, right panel",
+      "de": "Planeten: Laufwerke, rechtes Panel"
     },
     {
       "key": "action.sort_by_name",
@@ -794,15 +824,15 @@
     },
     {
       "key": "action.search",
-      "context": "Entry of the command palette that runs the key action search. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
-      "en": "Search in files",
-      "de": "In Dateien suchen"
+      "context": "Entry of the command palette that runs the key action search. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
+      "en": "Smell-o-scope: search in files",
+      "de": "Riech-o-skop: in Dateien suchen"
     },
     {
       "key": "action.quick_open",
-      "context": "Entry of the command palette that runs the key action quick_open. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
-      "en": "Go to file",
-      "de": "Zu Datei springen"
+      "context": "Entry of the command palette that runs the key action quick_open. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
+      "en": "Dark Matter Drive: go to file",
+      "de": "Dunkle-Materie-Antrieb: zu Datei springen"
     },
     {
       "key": "action.filing_status",

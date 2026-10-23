@@ -8242,7 +8242,7 @@ mod config_status_tests {
     #[test]
     fn the_configured_start_language_words_the_first_message() {
         let app = App::with_fixed_panels()
-            .with_config(Ok(loaded("lang = \"de\"\n[theme]\npanel = \"#ccddee\"\n")));
+            .with_config(Ok(loaded("lang = \"de\"\n[theme]\npanel = \"#f4f0ff\"\n")));
         assert_eq!(app.lang, Language::German);
         let shown = app.status_error().unwrap_or_default();
         assert!(shown.contains("Zeile 3"), "{shown}");
@@ -8253,8 +8253,8 @@ mod config_status_tests {
     #[test]
     fn a_low_contrast_is_shown_follows_the_language_and_is_dismissed() {
         let mut app =
-            App::with_fixed_panels().with_config(Ok(loaded("[theme]\npanel = \"#ccddee\"\n")));
-        assert_eq!(app.palette.panel, iced::Color::from_rgb8(0xCC, 0xDD, 0xEE));
+            App::with_fixed_panels().with_config(Ok(loaded("[theme]\npanel = \"#f4f0ff\"\n")));
+        assert_eq!(app.palette.panel, iced::Color::from_rgb8(0xF4, 0xF0, 0xFF));
         let shown = app.status_error().unwrap_or_default();
         assert!(shown.contains("line 2"), "{shown}");
         assert!(
@@ -8273,7 +8273,7 @@ mod config_status_tests {
 
         drop(app.update(Message::DismissConfigError));
         assert_eq!(app.status_error(), None);
-        assert_eq!(app.palette.panel, iced::Color::from_rgb8(0xCC, 0xDD, 0xEE));
+        assert_eq!(app.palette.panel, iced::Color::from_rgb8(0xF4, 0xF0, 0xFF));
     }
 
     #[test]
