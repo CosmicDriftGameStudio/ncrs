@@ -3,9 +3,10 @@
 //!
 //! Listing must never touch a mount: a network share that went away hangs
 //! `stat` for as long as the kernel retries, and the menu opens synchronously.
-//! So this reads names only (`read_dir`, `/proc/mounts`, `read_link`) and checks
-//! nothing about what it finds. Whether a volume can be entered is found out by
-//! the directory read the choice starts, which reports an error like any other.
+//! So this reads names only (`read_dir` of `/Volumes` and
+//! `~/Library/CloudStorage`, `/proc/mounts`, `read_link`) and checks nothing
+//! about what it finds. Whether a volume can be entered is found out by the
+//! directory read the choice starts, which reports an error like any other.
 
 use std::path::{Path, PathBuf};
 
@@ -67,6 +68,9 @@ fn platform_volumes() -> Vec<Volume> {
     if icloud.exists() {
         volumes.push(Volume::new("iCloud Drive", icloud));
     }
+    volumes.extend(cloud_storage_volumes(
+        &home_dir().join("Library/CloudStorage"),
+    ));
     volumes.extend(mounted);
     volumes
 }
@@ -124,6 +128,62 @@ fn scan_volumes_dir(dir: &Path) -> (Vec<Volume>, Option<String>) {
     }
     volumes.sort_by_cached_key(|volume| volume.name.to_lowercase());
     (volumes, root_name)
+}
+
+/// Provider prefixes of the folders in `~/Library/CloudStorage`, with the name
+/// the menu shows.
+#[cfg(any(target_os = "macos", test))]
+const CLOUD_PROVIDERS: &[(&str, &str)] = &[
+    ("GoogleDrive", "Google Drive"),
+    ("OneDrive", "OneDrive"),
+    ("Dropbox", "Dropbox"),
+    ("Box", "Box"),
+    ("ProtonDrive", "Proton Drive"),
+    ("pCloudDrive", "pCloud Drive"),
+];
+
+/// The folders in `dir` (`~/Library/CloudStorage`), one drive each, sorted by
+/// name. Names only, like the other listings here: a folder is not entered
+/// or stat'ed, and a missing `dir` gives none.
+#[cfg(any(target_os = "macos", test))]
+fn cloud_storage_volumes(dir: &Path) -> Vec<Volume> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut volumes: Vec<Volume> = entries
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry
+                .file_type()
+                .is_ok_and(|kind| kind.is_dir() || kind.is_symlink())
+        })
+        .filter_map(|entry| {
+            let folder = entry.file_name().to_string_lossy().into_owned();
+            (!folder.starts_with('.'))
+                .then(|| Volume::new(cloud_storage_name(&folder), entry.path()))
+        })
+        .collect();
+    volumes.sort_by_cached_key(|volume| volume.name.to_lowercase());
+    volumes
+}
+
+/// Folders are called `<provider>-<account>`, or just `<provider>`. A known
+/// provider shows its proper name and the account in parentheses; an unknown
+/// one keeps the folder name.
+#[cfg(any(target_os = "macos", test))]
+fn cloud_storage_name(folder: &str) -> String {
+    let (provider, account) = folder.split_once('-').unwrap_or((folder, ""));
+    let Some((_, shown)) = CLOUD_PROVIDERS
+        .iter()
+        .find(|(prefix, _)| *prefix == provider)
+    else {
+        return folder.to_string();
+    };
+    if account.is_empty() || account == provider {
+        (*shown).to_string()
+    } else {
+        format!("{shown} ({account})")
+    }
 }
 
 /// One line of `mount` output, as far as the drive menu needs it.
@@ -284,7 +344,7 @@ mod tests {
         let mounts = "\
 sysfs /sys sysfs rw,nosuid 0 0
 /dev/nvme0n1p2 / ext4 rw 0 0
-/dev/sda1 /run/media/marc/STICK vfat rw 0 0
+/dev/sda1 /run/media/user/STICK vfat rw 0 0
 server:/share /mnt/nas nfs rw 0 0
 /dev/sdb1 /media/disk\\040two ext4 rw 0 0
 tmpfs /run/user/1000 tmpfs rw 0 0
@@ -295,9 +355,57 @@ tmpfs /run/user/1000 tmpfs rw 0 0
             [
                 ("disk two", "/media/disk two"),
                 ("nas", "/mnt/nas"),
-                ("STICK", "/run/media/marc/STICK"),
+                ("STICK", "/run/media/user/STICK"),
             ]
         );
+    }
+
+    #[test]
+    fn cloud_storage_folders_get_the_provider_name() {
+        assert_eq!(
+            cloud_storage_name("GoogleDrive-user@example.com"),
+            "Google Drive (user@example.com)"
+        );
+        assert_eq!(
+            cloud_storage_name("OneDrive-Personal"),
+            "OneDrive (Personal)"
+        );
+        assert_eq!(
+            cloud_storage_name("OneDrive-Company A"),
+            "OneDrive (Company A)"
+        );
+        assert_eq!(cloud_storage_name("Dropbox"), "Dropbox");
+        assert_eq!(cloud_storage_name("Box-Box"), "Box");
+        assert_eq!(cloud_storage_name("SomeCloud-thing"), "SomeCloud-thing");
+    }
+
+    #[test]
+    fn cloud_storage_lists_folders_by_name_and_skips_files() {
+        let dir = tempfile::Builder::new()
+            .prefix("ncrs-cloud-")
+            .tempdir()
+            .unwrap();
+        std::fs::create_dir(dir.path().join("GoogleDrive-user@example.com")).unwrap();
+        std::fs::create_dir(dir.path().join("Dropbox")).unwrap();
+        std::fs::write(dir.path().join(".DS_Store"), b"").unwrap();
+        std::fs::write(dir.path().join("notes.txt"), b"").unwrap();
+
+        let volumes = cloud_storage_volumes(dir.path());
+
+        let google = dir.path().join("GoogleDrive-user@example.com");
+        let dropbox = dir.path().join("Dropbox");
+        assert_eq!(
+            pairs(&volumes),
+            [
+                ("Dropbox", dropbox.to_str().unwrap()),
+                ("Google Drive (user@example.com)", google.to_str().unwrap()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_missing_cloud_storage_directory_lists_nothing() {
+        assert!(cloud_storage_volumes(Path::new("/definitely/not/here")).is_empty());
     }
 
     #[test]
@@ -345,9 +453,9 @@ tmpfs /run/user/1000 tmpfs rw 0 0
 /dev/disk3s1s1 on / (apfs, sealed, local, read-only, journaled)
 /dev/disk3s5 on /System/Volumes/Data (apfs, local, journaled, nobrowse, protect, root data)
 map auto_home on /System/Volumes/Data/home (autofs, automounted, nobrowse)
-Cryptomator@macfuse0 on /Volumes/UzeN1wWoFdWU (macfuse, nodev, nosuid, synchronous, mounted by marc)
-/dev/disk10s1 on /Volumes/dmg.tLR3n9 (hfs, local, nodev, nosuid, noowners, nobrowse, mounted by marc)
-//me@nas.local/share on /Volumes/share (smbfs, nodev, nosuid, mounted by marc)
+Cryptomator@macfuse0 on /Volumes/Vault7Q2xK (macfuse, nodev, nosuid, synchronous, mounted by user)
+/dev/disk10s1 on /Volumes/dmg.tLR3n9 (hfs, local, nodev, nosuid, noowners, nobrowse, mounted by user)
+//me@nas.local/share on /Volumes/share (smbfs, nodev, nosuid, mounted by user)
 /dev/disk4s1 on /Volumes/My (Backup) on disk (apfs, local, nodev, nosuid, journaled)
 /dev/disk5s1 on /Volumes/Macintosh HD (apfs, local)
 ";
@@ -360,7 +468,7 @@ Cryptomator@macfuse0 on /Volumes/UzeN1wWoFdWU (macfuse, nodev, nosuid, synchrono
             [
                 ("My (Backup) on disk", "/Volumes/My (Backup) on disk"),
                 ("share", "/Volumes/share"),
-                ("UzeN1wWoFdWU (Cryptomator)", "/Volumes/UzeN1wWoFdWU"),
+                ("Vault7Q2xK (Cryptomator)", "/Volumes/Vault7Q2xK"),
             ]
         );
     }

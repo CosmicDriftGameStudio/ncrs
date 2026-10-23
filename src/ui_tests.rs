@@ -870,6 +870,7 @@ mod title_notice {
             crate::ui::statusbar::Activity {
                 job: None,
                 filing: None,
+                on_blocked_press: None,
             },
             None,
             None,

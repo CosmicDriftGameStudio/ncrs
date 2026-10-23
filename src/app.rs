@@ -372,6 +372,18 @@ struct PendingConflict {
     index: usize,
 }
 
+/// What a click on the "access blocked" error sends. Only macOS has a privacy
+/// settings page to open, and only there does the message exist.
+#[cfg(target_os = "macos")]
+fn blocked_access_press() -> Option<Message> {
+    Some(Message::OpenPrivacySettings)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn blocked_access_press() -> Option<Message> {
+    None
+}
+
 /// The open drive menu. The list is read when the menu opens, so a drive
 /// plugged in a moment ago is there and one removed since is gone.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1629,6 +1641,12 @@ impl App {
                 Task::none()
             }
 
+            #[cfg(target_os = "macos")]
+            Message::OpenPrivacySettings => {
+                self.open_privacy_settings();
+                Task::none()
+            }
+
             // --- drive menu ---
             Message::VolumeMenu(side) => {
                 self.open_volume_menu(side);
@@ -2261,6 +2279,7 @@ impl App {
                     statusbar::Activity {
                         job: self.job_status(),
                         filing: self.filing_badge(),
+                        on_blocked_press: blocked_access_press(),
                     },
                     self.status_error(),
                     self.search_status(),
@@ -2753,6 +2772,22 @@ impl App {
             return;
         }
         self.volume_menu = Some(VolumeMenu::new(side, volumes, &self.panel(side).path));
+    }
+
+    /// A click on the "access blocked" error: the Full Disk Access page of
+    /// System Settings. A launch that fails says so in the status bar.
+    #[cfg(target_os = "macos")]
+    fn open_privacy_settings(&mut self) {
+        self.job_error = None;
+        let command = fs::privacy_settings_command();
+        if let Err(reason) = self.launcher.launch(&command) {
+            let failure = self
+                .lang
+                .text(Msg::ErrorOpenFailed)
+                .replace("{name}", self.lang.text(Msg::StatusSystemSettings))
+                .replace("{reason}", &reason);
+            self.set_status_error(&failure);
+        }
     }
 
     /// Closes the menu and takes its panel to the highlighted drive, as any
@@ -8711,6 +8746,24 @@ mod search_tests {
         assert_eq!(view.query, "line");
         assert!(view.running, "the old results are not trusted");
         assert!(view.results.is_empty());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn opening_the_privacy_settings_launches_the_full_disk_access_page() {
+        let launcher = Arc::new(RecordingLauncher::default());
+        let mut app =
+            App::with_fixed_panels().with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>);
+
+        drop(app.update(Message::OpenPrivacySettings));
+
+        let calls = launcher.0.lock().unwrap().clone();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].program, "/usr/bin/open");
+        assert_eq!(
+            calls[0].args,
+            ["x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"]
+        );
     }
 
     #[test]

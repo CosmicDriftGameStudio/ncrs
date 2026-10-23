@@ -66,6 +66,19 @@ impl Launcher for SystemLauncher {
     }
 }
 
+/// The Full Disk Access page of System Settings, which is what lifts the
+/// privacy block on network volumes, iCloud Drive and cloud storage folders.
+/// A fixed program and URL: nothing the user typed reaches the command.
+#[cfg(target_os = "macos")]
+pub fn privacy_settings_command() -> OpenCommand {
+    OpenCommand {
+        program: "/usr/bin/open".into(),
+        args: vec![
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles".into(),
+        ],
+    }
+}
+
 /// Extensions of files the system opener would run or install rather than
 /// show, compared case-insensitively.
 const EXECUTABLE_EXTENSIONS: &[&str] = &[

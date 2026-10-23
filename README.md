@@ -57,8 +57,9 @@ The same window in German, switched with F9.
 - Errors (e.g. *Permission denied*) are shown in the status bar – no panics
 - Confirmations (e.g. *Path copied*) appear at the right of the title bar for three seconds
 - Mouse click selects a row and activates its panel; the wheel and the trackpad scroll the panel under the pointer
-- Drive menu (`Alt`+`F1` / `Alt`+`F2`): jump a panel to the system volume, home, iCloud Drive (macOS),
-  mounted volumes or drive letters, the same places as in the Finder sidebar
+- Drive menu (`Alt`+`F1` / `Alt`+`F2`): jump a panel to the system volume, home, iCloud Drive and
+  cloud storage folders such as Google Drive, OneDrive or Dropbox (macOS), mounted volumes or
+  drive letters, the same places as in the Finder sidebar; see [Drives on macOS](#drives-on-macos)
 - Search in file names and contents below a directory, in the panel, the way
   VS Code does it: see [Search](#search)
 - Localized UI (English/German) with a translator note on every string, so the UI can
@@ -180,6 +181,22 @@ On Windows (PowerShell):
 ```powershell
 irm https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/install.ps1 | iex
 ```
+
+## Drives on macOS
+
+macOS guards network volumes (including macFUSE mounts such as Cryptomator), removable
+volumes, iCloud Drive and cloud storage folders (`~/Library/CloudStorage`) with its privacy
+settings. A refused read shows "macOS blocks access" in the status bar; clicking it opens
+System Settings > Privacy & Security > Full Disk Access.
+
+- Whose permission counts: `ncrs.app` started from the Finder or Dock asks for itself.
+  Started from a terminal (`ncrs`, `cargo run`), the terminal app (Terminal, iTerm, ...)
+  needs the grant, not ncrs.
+- Full Disk Access covers all of these at once. Under Files & Folders macOS lists single
+  switches (such as "Network Volumes") only once the app has asked.
+- Restart the terminal after granting.
+- `tccutil reset SystemPolicyNetworkVolumes dev.cosmicdrift.ncrs` resets an earlier
+  "Don't Allow" for `ncrs.app`.
 
 ## Configuration
 
