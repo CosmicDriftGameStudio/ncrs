@@ -1,0 +1,121 @@
+use std::io;
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::SystemTime;
+
+use ncrs_index::{DocumentStatus, IndexError, ReviewReason};
+use ncrs_intake::StabilityTracker;
+use ncrs_intake::{settle_location, take_in, IntakeError, Location, LocationMode, Outcome};
+
+use crate::step::{with_index_value, IndexAccess, Item, Step, StepOutcome};
+
+const NO_INDEX: &str = "index not open";
+
+/// The steps every file passes, in order. Steps that classify documents (text,
+/// OCR, rules, fields, filing) register before the review step.
+pub fn intake_steps(index: Arc<dyn IndexAccess>) -> Vec<Box<dyn Step>> {
+    vec![
+        Box::new(IntakeStep {
+            index: Arc::clone(&index),
+            tracker: Mutex::new(StabilityTracker::new()),
+        }),
+        Box::new(ReviewStep { index }),
+    ]
+}
+
+/// Takes the file into the index, once it has held still.
+#[derive(Debug)]
+struct IntakeStep {
+    index: Arc<dyn IndexAccess>,
+    tracker: Mutex<StabilityTracker>,
+}
+
+impl Step for IntakeStep {
+    fn name(&self) -> &'static str {
+        "intake"
+    }
+
+    fn run(&self, item: &mut Item, now: SystemTime) -> Result<StepOutcome, String> {
+        let taken = with_index_value(self.index.as_ref(), |index| {
+            let mut tracker = self.tracker.lock().unwrap_or_else(PoisonError::into_inner);
+            let outcome = take_in(index, &item.location, &item.path, &mut tracker, now)?;
+            // A document taken in but never reviewed (the app quit in between)
+            // goes on to the review step again.
+            let unreviewed = match outcome {
+                Outcome::Unchanged(id) if item.location.mode == LocationMode::Inbox => index
+                    .document(id)?
+                    .is_some_and(|document| document.status == DocumentStatus::New),
+                _ => false,
+            };
+            Ok::<_, IntakeError>((outcome, unreviewed))
+        })
+        .ok_or_else(|| NO_INDEX.to_owned())?;
+        match taken {
+            Ok((outcome, unreviewed)) => Ok(match outcome {
+                Outcome::NotStableYet => StepOutcome::NotReady,
+                Outcome::New(id) | Outcome::Moved(id) | Outcome::ContentChanged(id) => {
+                    item.document = Some(id);
+                    StepOutcome::Continue
+                }
+                Outcome::Unchanged(id) if unreviewed => {
+                    item.document = Some(id);
+                    StepOutcome::Continue
+                }
+                Outcome::Unchanged(_)
+                | Outcome::Copy(_)
+                | Outcome::AlreadyFiled(_)
+                | Outcome::Skipped(_) => StepOutcome::Unchanged,
+            }),
+            // The next scan settles a file that vanished.
+            Err(IntakeError::Io {
+                source,
+                path: _path,
+            }) if source.kind() == io::ErrorKind::NotFound => Ok(StepOutcome::Unchanged),
+            Err(err) => Err(err.to_string()),
+        }
+    }
+
+    fn after_scan(&self, location: &Location) -> Result<(), String> {
+        with_index_value(self.index.as_ref(), |index| {
+            settle_location(index, location)
+        })
+        .ok_or_else(|| NO_INDEX.to_owned())?
+        .map(|_report| ())
+        .map_err(|err| err.to_string())
+    }
+}
+
+/// Until a step classifies documents, every taken-in inbox document lands in
+/// the review list. Archive documents never get a review entry.
+#[derive(Debug)]
+struct ReviewStep {
+    index: Arc<dyn IndexAccess>,
+}
+
+impl Step for ReviewStep {
+    fn name(&self) -> &'static str {
+        "review"
+    }
+
+    fn run(&self, item: &mut Item, _now: SystemTime) -> Result<StepOutcome, String> {
+        if item.location.mode == LocationMode::Archive {
+            return Ok(StepOutcome::Finished);
+        }
+        let id = item
+            .document
+            .ok_or_else(|| "the file has no document".to_owned())?;
+        let added = with_index_value(self.index.as_ref(), |index| {
+            let needs_review = index
+                .document(id)?
+                .is_some_and(|document| document.status == DocumentStatus::New);
+            if needs_review {
+                index.add_review(id, ReviewReason::NoMatchingRule)?;
+            }
+            Ok::<_, IndexError>(())
+        })
+        .ok_or_else(|| NO_INDEX.to_owned())?;
+        match added {
+            Ok(()) | Err(IndexError::ReviewAlreadyOpen(_)) => Ok(StepOutcome::Finished),
+            Err(err) => Err(err.to_string()),
+        }
+    }
+}

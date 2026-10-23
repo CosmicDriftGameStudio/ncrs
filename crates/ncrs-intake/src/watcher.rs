@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver};
 
 use notify::event::{ModifyKind, RenameMode};
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher as _};
@@ -41,6 +41,19 @@ impl LocationWatcher {
         locations: &[Location],
     ) -> (Self, Receiver<WatchEvent>, Vec<(PathBuf, IntakeError)>) {
         let (sender, receiver) = mpsc::channel();
+        let (watcher, failed) = Self::start_forwarding(locations, move |event| {
+            // The receiver is gone when the app shuts down.
+            let _ = sender.send(event);
+        });
+        (watcher, receiver, failed)
+    }
+
+    /// Like `start`, but every event is handed to `forward`, which is called on
+    /// the backend's threads and must not block for long.
+    pub fn start_forwarding(
+        locations: &[Location],
+        forward: impl Fn(WatchEvent) + Clone + Send + 'static,
+    ) -> (Self, Vec<(PathBuf, IntakeError)>) {
         let roots: Vec<PathBuf> = locations
             .iter()
             .map(|location| location.path.clone())
@@ -48,7 +61,7 @@ impl LocationWatcher {
         let mut watchers = Vec::new();
         let mut failed = Vec::new();
         for location in locations {
-            let forward = sender.clone();
+            let forward_events = forward.clone();
             let watched = location.clone();
             let all_roots = roots.clone();
             let handler = move |received: notify::Result<Event>| {
@@ -61,7 +74,7 @@ impl LocationWatcher {
                             .find_map(|path| all_roots.iter().find(|root| path.starts_with(root)))
                             .unwrap_or(&watched.path)
                             .clone();
-                        let _ = forward.send(WatchEvent::Error {
+                        forward_events(WatchEvent::Error {
                             location: failed_root,
                             message: err.to_string(),
                         });
@@ -72,7 +85,7 @@ impl LocationWatcher {
                     return;
                 }
                 for path in event_targets(&event) {
-                    forward_files(&watched, path, &forward);
+                    forward_files(&watched, path, &forward_events);
                 }
             };
             // Not following links: a linked directory could lead out of the
@@ -92,7 +105,6 @@ impl LocationWatcher {
             Self {
                 _watchers: watchers,
             },
-            receiver,
             failed,
         )
     }
@@ -103,7 +115,7 @@ impl LocationWatcher {
 /// on a new folder starts after files may already have been written into it.
 /// notify adds that watch only after this handler returns, so a file written
 /// between the walk and the watch is left to the next scan.
-fn forward_files(location: &Location, path: &Path, forward: &Sender<WatchEvent>) {
+fn forward_files(location: &Location, path: &Path, forward: &impl Fn(WatchEvent)) {
     let is_folder = fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir());
     let files: Vec<PathBuf> = if is_folder {
         let mut found = Vec::new();
@@ -112,7 +124,7 @@ fn forward_files(location: &Location, path: &Path, forward: &Sender<WatchEvent>)
                 Ok(entry) if !entry.file_type().is_dir() => found.push(entry.into_path()),
                 Ok(_folder) => {}
                 Err(err) => {
-                    let _ = forward.send(WatchEvent::Error {
+                    forward(WatchEvent::Error {
                         location: location.path.clone(),
                         message: err.to_string(),
                     });
@@ -125,8 +137,7 @@ fn forward_files(location: &Location, path: &Path, forward: &Sender<WatchEvent>)
     };
     for file in files {
         if classify(location, &file).is_ok() {
-            // The receiver is gone when the app shuts down.
-            let _ = forward.send(WatchEvent::File(file));
+            forward(WatchEvent::File(file));
         }
     }
 }

@@ -13,7 +13,9 @@ mod watcher;
 pub use classify::{classify, Skip};
 pub use error::IntakeError;
 pub use location::{Location, LocationMode};
-pub use scan::{scan_location, ScanReport, MAX_REPORTED_ERRORS};
+pub use scan::{
+    scan_location, settle_location, walk_location, Found, ScanReport, MAX_REPORTED_ERRORS,
+};
 pub use stability::{StabilityTracker, STABLE_AFTER};
 pub use take_in::{take_in, Outcome};
 pub use watcher::{LocationWatcher, WatchEvent};

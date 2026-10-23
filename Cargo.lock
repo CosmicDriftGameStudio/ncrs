@@ -2190,6 +2190,7 @@ dependencies = [
  "ignore",
  "ncrs-index",
  "ncrs-intake",
+ "ncrs-pipeline",
  "nucleo-matcher",
  "same-file",
  "serde",
@@ -2225,6 +2226,15 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "walkdir",
+]
+
+[[package]]
+name = "ncrs-pipeline"
+version = "0.0.0"
+dependencies = [
+ "ncrs-index",
+ "ncrs-intake",
+ "tempfile",
 ]
 
 [[package]]

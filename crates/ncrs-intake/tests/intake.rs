@@ -15,8 +15,8 @@ mod tests {
     use chrono::{DateTime, Utc};
     use ncrs_index::{ContentHash, DocumentSource, DocumentStatus, InMemoryKeyStore, Index};
     use ncrs_intake::{
-        scan_location, take_in, Location, LocationMode, LocationWatcher, Outcome, ScanReport, Skip,
-        StabilityTracker, WatchEvent, STABLE_AFTER,
+        scan_location, settle_location, take_in, Location, LocationMode, LocationWatcher, Outcome,
+        ScanReport, Skip, StabilityTracker, WatchEvent, STABLE_AFTER,
     };
     use sha2::{Digest as _, Sha256};
     use tempfile::TempDir;
@@ -301,6 +301,28 @@ mod tests {
         assert!(document.missing_since.is_none());
         let again = fixture.scan(&archive, t0() + STABLE_AFTER * 5);
         assert_eq!((again.missing, again.unchanged_without_hash), (0, 1));
+    }
+
+    #[test]
+    fn settling_a_location_whose_root_is_gone_fails_and_marks_nothing_missing() {
+        let mut fixture = Fixture::new();
+        let dir = TempDir::new().unwrap();
+        let archive = location(&dir, LocationMode::Archive, false);
+        let path = put(&archive, "a.pdf", INVOICE);
+        fixture.scan_settled(&archive);
+        let id = fixture.index.document_by_path(&path).unwrap().unwrap().id;
+        dir.close().unwrap();
+
+        let settled = settle_location(&fixture.index, &archive);
+
+        settled.unwrap_err();
+        assert!(fixture
+            .index
+            .document(id)
+            .unwrap()
+            .unwrap()
+            .missing_since
+            .is_none());
     }
 
     #[test]

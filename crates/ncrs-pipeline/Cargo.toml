@@ -1,0 +1,19 @@
+[package]
+name = "ncrs-pipeline"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "Worker pool that takes documents through the processing steps for ncrs"
+license = "MIT"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
+ncrs-intake = { path = "../ncrs-intake", version = "0.0.0" }
+
+[dev-dependencies]
+tempfile = "3.27"

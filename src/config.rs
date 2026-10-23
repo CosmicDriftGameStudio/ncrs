@@ -13,11 +13,13 @@
 use std::ffi::OsString;
 use std::fmt;
 use std::io::Read as _;
+use std::num::NonZeroUsize;
 use std::ops::Range;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 use ncrs_intake::LocationMode;
+use ncrs_pipeline::Load;
 use serde::de::{Deserializer, Error as _, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use serde_spanned::Spanned;
@@ -87,6 +89,44 @@ pub struct FilingSection {
     /// Keeps the position of the whole array for the "no target" error.
     #[serde(default)]
     pub locations: Option<Spanned<Vec<LocationEntry>>>,
+    #[serde(default)]
+    pub load: Option<Spanned<LoadValue>>,
+}
+
+/// The spelling of `load` in the file; `resolve_filing` maps it to `Load`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LoadValue {
+    Name(String),
+    Count(i64),
+}
+
+impl<'de> Deserialize<'de> for LoadValue {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct LoadVisitor;
+
+        impl Visitor<'_> for LoadVisitor {
+            type Value = LoadValue;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str(r#""gentle", "balanced", "full" or a number of workers"#)
+            }
+
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<LoadValue, E> {
+                Ok(LoadValue::Name(v.to_owned()))
+            }
+
+            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<LoadValue, E> {
+                Ok(LoadValue::Count(v))
+            }
+
+            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<LoadValue, E> {
+                // Beyond i64 is far above any core count; it is capped later.
+                Ok(LoadValue::Count(i64::try_from(v).unwrap_or(i64::MAX)))
+            }
+        }
+
+        deserializer.deserialize_any(LoadVisitor)
+    }
 }
 
 /// One `[[modules.filing.locations]]` table, unchecked.
@@ -123,6 +163,9 @@ impl From<LocationModeName> for LocationMode {
 pub struct Filing {
     pub enabled: bool,
     pub locations: Vec<FilingLocation>,
+    /// How many workers the pipeline may use; counts above the core count are
+    /// capped when the pipeline starts.
+    pub load: Load,
 }
 
 impl Filing {
@@ -623,6 +666,7 @@ fn resolve_filing(section: &FilingSection, home: Option<&Path>) -> Result<Filing
     let mut filing = Filing {
         enabled: section.enabled,
         locations: Vec::new(),
+        load: resolve_load(section.load.as_ref())?,
     };
     let Some(listed) = &section.locations else {
         return Ok(filing);
@@ -684,6 +728,29 @@ fn resolve_filing(section: &FilingSection, home: Option<&Path>) -> Result<Filing
         }
     }
     Ok(filing)
+}
+
+fn resolve_load(value: Option<&Spanned<LoadValue>>) -> Result<Load, FilingError> {
+    let Some(spanned) = value else {
+        return Ok(Load::default());
+    };
+    let resolved = match spanned.get_ref() {
+        LoadValue::Name(name) => match name.as_str() {
+            "gentle" => Some(Load::Gentle),
+            "balanced" => Some(Load::Balanced),
+            "full" => Some(Load::Full),
+            _ => None,
+        },
+        LoadValue::Count(count) => usize::try_from(*count)
+            .ok()
+            .and_then(NonZeroUsize::new)
+            .map(Load::Workers),
+    };
+    resolved.ok_or_else(|| FilingError {
+        span: spanned.span(),
+        reason: r#"load must be "gentle", "balanced", "full" or a number of workers from 1 up"#
+            .to_owned(),
+    })
 }
 
 /// `~` and `~/rest` become the home directory; everything else must already
@@ -1140,6 +1207,32 @@ mod tests {
         let climbing = filing_text(true, &[location("'~/../x'", archive)]);
         let (line, _) = filing_error(&climbing, Some(home.path()));
         assert_eq!(line, Some(4));
+    }
+
+    fn load_of(setting: &str) -> Load {
+        let text = format!("[modules.filing]\nenabled = true\n{setting}");
+        load_filing(&text, None).unwrap().filing.load
+    }
+
+    #[test]
+    fn the_load_is_gentle_unless_set_and_reads_names_and_numbers() {
+        let workers = |count| Load::Workers(NonZeroUsize::new(count).unwrap());
+        assert_eq!(load_of(""), Load::Gentle);
+        assert_eq!(load_of("load = \"gentle\"\n"), Load::Gentle);
+        assert_eq!(load_of("load = \"balanced\"\n"), Load::Balanced);
+        assert_eq!(load_of("load = \"full\"\n"), Load::Full);
+        assert_eq!(load_of("load = 3\n"), workers(3));
+        assert_eq!(load_of("load = 500\n"), workers(500));
+    }
+
+    #[test]
+    fn a_load_that_is_no_name_and_no_positive_number_names_its_line() {
+        for setting in ["load = \"fast\"", "load = 0", "load = -2", "load = true"] {
+            let text = format!("[modules.filing]\nenabled = true\n{setting}\n");
+            let (line, reason) = filing_error(&text, None);
+            assert_eq!(line, Some(3), "{setting}");
+            assert!(reason.contains("gentle"), "{setting}: {reason}");
+        }
     }
 
     #[test]

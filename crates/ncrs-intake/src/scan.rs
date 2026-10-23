@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -69,16 +70,23 @@ impl ScanReport {
     }
 }
 
-/// Walks the location once and takes in every file. A file or directory that
-/// cannot be read is counted in the report and does not stop the scan.
-pub fn scan_location(
-    index: &mut Index,
+/// What the walk of a location came across.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Found<'path> {
+    File(&'path Path),
+    /// A hidden file or folder below the root; a hidden folder is not entered.
+    Hidden,
+    /// An entry that could not be read.
+    Unreadable(&'path Path),
+}
+
+/// Walks the location once, without following links, in file name order. Only
+/// files are reported, never folders. `ControlFlow::Break` stops the walk.
+pub fn walk_location(
     location: &Location,
-    tracker: &mut StabilityTracker,
-    now: SystemTime,
-) -> Result<ScanReport, IntakeError> {
+    mut visit: impl FnMut(Found<'_>) -> ControlFlow<()>,
+) -> Result<(), IntakeError> {
     fs::metadata(&location.path).map_err(IntakeError::io(&location.path))?;
-    let mut report = ScanReport::default();
     let mut walker = WalkDir::new(&location.path)
         .follow_links(false)
         .sort_by_file_name()
@@ -87,25 +95,72 @@ pub fn scan_location(
         let entry = match step {
             Ok(found) => found,
             Err(err) => {
-                report.count_error(err.path().unwrap_or(&location.path));
+                let path = err.path().unwrap_or(&location.path);
+                if visit(Found::Unreadable(path)).is_break() {
+                    return Ok(());
+                }
                 continue;
             }
         };
-        if entry.depth() > 0 && is_hidden_name(entry.file_name()) {
+        let reported = if entry.depth() > 0 && is_hidden_name(entry.file_name()) {
             if entry.file_type().is_dir() {
                 walker.skip_current_dir();
             }
-            report.count_skip(Skip::Hidden);
+            Found::Hidden
+        } else if entry.file_type().is_dir() {
             continue;
-        }
-        if entry.file_type().is_dir() {
-            continue;
-        }
-        match take_in_counted(index, location, entry.path(), tracker, now) {
-            Ok(taken) => report.count(taken.outcome, entry.path(), taken.hashed),
-            Err(_failed) => report.count_error(entry.path()),
+        } else {
+            Found::File(entry.path())
+        };
+        if visit(reported).is_break() {
+            return Ok(());
         }
     }
+    Ok(())
+}
+
+/// Walks the location once and takes in every file. A file or directory that
+/// cannot be read is counted in the report and does not stop the scan.
+pub fn scan_location(
+    index: &mut Index,
+    location: &Location,
+    tracker: &mut StabilityTracker,
+    now: SystemTime,
+) -> Result<ScanReport, IntakeError> {
+    let mut report = ScanReport::default();
+    walk_location(location, |found| {
+        match found {
+            Found::File(path) => match take_in_counted(index, location, path, tracker, now) {
+                Ok(taken) => report.count(taken.outcome, path, taken.hashed),
+                Err(_failed) => report.count_error(path),
+            },
+            Found::Hidden => report.count_skip(Skip::Hidden),
+            Found::Unreadable(path) => report.count_error(path),
+        }
+        ControlFlow::Continue(())
+    })?;
+    let settled = settle_location(index, location)?;
+    report.removed_copies = settled.removed_copies;
+    report.promoted_copies = settled.promoted_copies;
+    report.missing = settled.missing;
+    report.error_total += settled.error_total;
+    for path in settled.error_paths {
+        if report.error_paths.len() < MAX_REPORTED_ERRORS {
+            report.error_paths.push(path);
+        }
+    }
+    Ok(report)
+}
+
+/// Removes recorded copies whose file is gone and settles documents whose file
+/// is gone. Fills only the `removed_copies`, `promoted_copies`, `missing` and
+/// error fields of the report.
+///
+/// The root is checked first: with an unplugged drive every file looks gone,
+/// and the whole archive would be marked missing.
+pub fn settle_location(index: &Index, location: &Location) -> Result<ScanReport, IntakeError> {
+    fs::metadata(&location.path).map_err(IntakeError::io(&location.path))?;
+    let mut report = ScanReport::default();
     remove_vanished_copies(index, location, &mut report)?;
     settle_vanished_documents(index, location, &mut report)?;
     Ok(report)
