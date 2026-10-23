@@ -67,7 +67,9 @@ lto = "thin"
 codegen-units = 1
 
 [features]
-default = ["software-rendering"]
+# The fallback build, as in releases: software rendering is unusably slow on a
+# high-resolution display, and tiny-skia still takes over where there is no GPU.
+default = ["gpu-with-fallback"]
 
 # Software rasterisation only: no GPU or driver needed, works on CI runners and
 # VMs, but slow on high-resolution displays.

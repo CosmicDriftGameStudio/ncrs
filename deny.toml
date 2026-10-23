@@ -44,7 +44,14 @@ yanked = "deny"
 # and there is no upgrade until secret-service moves to zbus 6. They only
 # speak D-Bus with the local session bus. When keyring ships a zbus 6 backend,
 # these go.
+#
+# RUSTSEC-2024-0436: paste is unmaintained; its author archived it. It arrives
+# through wgpu-hal -> metal, the macOS GPU backend of the default
+# gpu-with-fallback build. It is a proc macro that only concatenates
+# identifiers at compile time, so none of its code ends up in the binary or
+# sees any input. When metal or wgpu-hal drop it, this goes.
 ignore = [
+    "RUSTSEC-2024-0436",
     "RUSTSEC-2026-0192",
     "RUSTSEC-2026-0370",
     "RUSTSEC-2026-0371",

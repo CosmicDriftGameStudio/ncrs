@@ -30,8 +30,8 @@ can be agreed before the work is done.
 ## Building and testing
 
 ```sh
-cargo test                                    # the default feature set
-cargo test --no-default-features --features gpu-with-fallback
+cargo test                                    # the default feature set, gpu-with-fallback
+cargo test --no-default-features --features software-rendering
 cargo clippy --all-targets -- -D warnings
 cargo fmt --all --check
 cargo test readme_screenshots -- --ignored   # regenerates docs/screenshots/*.png for the README

@@ -1,0 +1,7 @@
+[env]
+# iced_test renders snapshots with the backend this names, and the references
+# in tests/snapshots/ are tiny-skia images. Without it the default fallback
+# build would render with wgpu on any machine with a GPU, and `matches_image`
+# writes a missing reference and passes, so the snapshot tests would compare
+# nothing. A wgpu-only build cannot honour it and fails those tests loudly.
+ICED_TEST_BACKEND = "tiny-skia"
