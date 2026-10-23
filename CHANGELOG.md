@@ -12,9 +12,14 @@ All notable changes to this project are documented here. The format follows
   next to the executable holds `config.toml` and `index.db` instead of
   `%APPDATA%\ncrs`. The index key of a portable copy is stored per data folder
   in the credential store.
+- `F1` opens the command palette, as in VS Code; the function key bar shows
+  it as "Commands".
 
 ### Changed
 
+- A `[keys]` section that binds `F1` to another action now reports that `F1`
+  belongs to `command_palette`. Give it other keys, e.g.
+  `command_palette = ["primary+shift+p"]`, to keep your binding.
 - Unpacking the new Windows ZIP over an old install makes it portable. Copy the
   old `%APPDATA%\ncrs\config.toml` into `data\` to keep your settings.
 

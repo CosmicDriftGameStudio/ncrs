@@ -256,6 +256,7 @@ impl KeyAction {
     /// or six hints, not twenty.
     pub fn hint(self) -> Option<Msg> {
         match self {
+            Self::CommandPalette => Some(Msg::ShortcutCommands),
             Self::Quit => Some(Msg::ShortcutQuit),
             Self::SwitchLanguage => Some(Msg::ShortcutSwitchLanguage),
             Self::View => Some(Msg::ShortcutView),
@@ -395,11 +396,12 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
             A::QuickOpen,
             Binding::with_modifiers(Character("p".into()), Modifiers::COMMAND),
         ),
-        // VS Code's Command Palette.
+        // VS Code's Command Palette; F1 opens it there too.
         (
             A::CommandPalette,
             Binding::with_modifiers(Character("p".into()), Modifiers::COMMAND | Modifiers::SHIFT),
         ),
+        (A::CommandPalette, Binding::key(KeyNamed(F1))),
         // The filing status page; Cmd+Shift+D, Ctrl+Shift+D elsewhere.
         (
             A::FilingStatus,
@@ -989,7 +991,7 @@ mod tests {
         assert_eq!(
             en,
             [
-                None,
+                Some("Commands"),
                 None,
                 Some("View"),
                 Some("Edit"),
@@ -1063,10 +1065,50 @@ mod tests {
             map_key(Key::Named(Named::F2), Modifiers::ALT),
             Some(Message::VolumeMenu(PanelSide::Right))
         );
-        assert_eq!(map_key(Key::Named(Named::F1), Modifiers::default()), None);
         assert_eq!(map_key(Key::Named(Named::F2), Modifiers::SHIFT), None);
-        // Not on the bar: bare F1 and F2 stay free for help and the user menu.
-        assert_eq!(function_keys(Language::English)[..2], [None, None]);
+        // Bare F2 stays free for the user menu.
+        assert_eq!(map_key(Key::Named(Named::F2), Modifiers::default()), None);
+        assert_eq!(function_keys(Language::English)[1], None);
+    }
+
+    #[test]
+    fn f1_opens_the_command_palette_and_labels_the_first_slot() {
+        assert_eq!(
+            map_key(Key::Named(Named::F1), Modifiers::default()),
+            Some(Message::CommandPalette(CommandPaletteMessage::Toggle))
+        );
+        assert_eq!(
+            map_key(
+                Key::Character("p".into()),
+                Modifiers::COMMAND | Modifiers::SHIFT
+            ),
+            Some(Message::CommandPalette(CommandPaletteMessage::Toggle))
+        );
+        assert_eq!(function_keys(Language::English)[0], Some("Commands"));
+        assert_eq!(function_keys(Language::German)[0], Some("Befehle"));
+    }
+
+    #[test]
+    fn a_key_section_that_used_the_free_f1_is_told_how_to_keep_it() {
+        let (_, reason) = failure("[keys]\ncopy = \"F1\"\n");
+        assert!(
+            reason
+                .contains("already bound to command_palette; give command_palette other keys too"),
+            "{reason}"
+        );
+    }
+
+    #[test]
+    fn a_key_section_can_take_f1_from_the_command_palette() {
+        let keymap = rebound("[keys]\ncommand_palette = \"primary+shift+p\"\ncopy = \"F1\"\n");
+        assert_eq!(
+            press(&keymap, named(Named::F1), Modifiers::default()),
+            Some(Message::Transfer(TransferKind::Copy))
+        );
+        assert_eq!(
+            keymap.function_keys(Language::English, KeyScope::Panel)[0],
+            Some("Copy")
+        );
     }
 
     #[test]
@@ -1180,7 +1222,13 @@ mod tests {
         );
         assert_eq!(
             keymap.function_keys(Language::English, KeyScope::Panel)[..5],
-            [None, Some("Copy"), Some("View"), Some("Edit"), None]
+            [
+                Some("Commands"),
+                Some("Copy"),
+                Some("View"),
+                Some("Edit"),
+                None
+            ]
         );
     }
 

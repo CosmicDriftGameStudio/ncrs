@@ -6725,7 +6725,10 @@ mod volume_menu_tests {
             route(Named::F2, alt),
             Some(Message::VolumeMenu(PanelSide::Right))
         );
-        assert_eq!(route(Named::F1, Modifiers::default()), None);
+        assert_eq!(
+            route(Named::F1, Modifiers::default()),
+            Some(Message::CommandPalette(CommandPaletteMessage::Toggle))
+        );
         assert_eq!(route(Named::F1, Modifiers::CTRL), None);
     }
 
