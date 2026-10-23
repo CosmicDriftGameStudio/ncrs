@@ -256,6 +256,9 @@ pub enum Message {
     // --- Quick Open (Cmd/Ctrl+P) ---
     QuickOpen(QuickOpenMessage),
 
+    // --- Command palette (Cmd/Ctrl+Shift+P) ---
+    CommandPalette(CommandPaletteMessage),
+
     // --- Window / app ---
     WindowResized(Size),
     Quit,
@@ -368,6 +371,20 @@ pub enum QuickOpenMessage {
     Move(isize),
     Activate,
     RowActivated(usize),
+    Close,
+}
+
+/// Everything the command palette sends.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CommandPaletteMessage {
+    /// Opens the palette, or gives its field the focus again when it is up.
+    Toggle,
+    QueryChanged(String),
+    Move(isize),
+    /// A click on the entry at this position of the list: runs it.
+    Select(usize),
+    /// Enter: runs the entry under the cursor.
+    Run,
     Close,
 }
 

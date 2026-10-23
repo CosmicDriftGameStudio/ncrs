@@ -95,6 +95,7 @@ The defaults. Most of them can be changed in the config file, see [Keys](#keys).
 | Click a column title | Sort that panel by Name / Size / Modified; a second click reverses the order (▲ / ▼). `..` and folders stay on top |
 | `Ctrl`+`F3` / `Ctrl`+`F5` / `Ctrl`+`F6` (macOS: `Cmd`+`1` / `Cmd`+`3` / `Cmd`+`2`) | Sort the active panel by name / modification time / size; again reverses. macOS uses `Cmd`+digit because the system takes `Ctrl`+`F`-keys |
 | `Alt`+`F7` / `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) | Search below the directory of the active panel; pressed again, it moves to the next field. See [Search](#search) |
+| `Cmd`+`Shift`+`P` / `Ctrl`+`Shift`+`P` | Command palette: lists the actions that work where you are, with their keys; type to filter, `↑`/`↓` move, `Enter` runs, `Esc` closes |
 | `Cmd`+`P` / `Ctrl`+`P` | Quick Open: jump to a file by a few letters of its path. See [Quick Open](#quick-open) |
 | `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D`, or click the filing progress in the status bar | Filing status page (filing module on): pipeline state, load, workers, index figures and the last errors. `P` pauses or resumes, `1`/`2`/`3` set the load gentle / balanced / full for this session, `+`/`-` change the worker count, `↑`/`↓` and `Enter` show the file of an error, `Esc` closes |
 | `Cmd`+`Shift`+`L` / `Ctrl`+`Shift`+`L` | Filing setup: add the folder of the active panel as inbox, archive or target and save the locations to the config file. See [Filing](#filing). `Esc` closes |
@@ -295,7 +296,7 @@ Actions: `quit`, `open`, `go_up`, `switch_panel`, `switch_language`,
 `toggle_tag`, `tag_up`, `tag_down`, `tag_all`, `clear_tags`, `view`, `edit`,
 `copy`, `move`, `mkdir`, `delete`, `delete_permanently`, `abort_job`,
 `copy_path`, `copy_name`, `drive_menu_left`, `drive_menu_right`,
-`sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`, `search`, `quick_open`, `search_case`,
+`sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`, `search`, `quick_open`, `command_palette`, `search_case`,
 `search_whole_word`, `search_regex`, `filing_status`, `filing_setup`. Their
 default keys are in [Keyboard shortcuts](#keyboard-shortcuts).
 

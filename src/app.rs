@@ -10,6 +10,7 @@ use iced::keyboard::{self, key::Named, Key, Modifiers};
 use iced::widget::{column, container, mouse_area, opaque, operation, row, Column, Space, Stack};
 use iced::{event, window, Element, Length, Point, Size, Subscription, Task, Theme};
 
+use crate::command_palette::CommandPalette;
 use crate::config::{self, Config, ConfigError, ContrastWarning, Filing, FilingWriteError};
 use crate::context_menu::{ContextAction, ContextMenu, InputState};
 use crate::dialog::{Prompt, PromptKind};
@@ -21,12 +22,13 @@ use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
 use crate::keymap::{self, KeyScope, Keymap};
 use crate::messages::{
-    ClipboardKind, ConflictChoice, FilingSetupMessage, FilingStatusMessage, Message, PanelSide,
-    QuickOpenMessage, SearchMessage, TransferKind,
+    ClipboardKind, CommandPaletteMessage, ConflictChoice, FilingSetupMessage, FilingStatusMessage,
+    Message, PanelSide, QuickOpenMessage, SearchMessage, TransferKind,
 };
 use crate::palette::Palette;
 use crate::quick_open::{QuickOpen, QUICK_OPEN_FILE_LIMIT};
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
+use crate::ui::command_palette as command_palette_ui;
 use crate::ui::context_menu as context_menu_view;
 use crate::ui::delete as delete_dialog_view;
 use crate::ui::dialog::FIELD_ID;
@@ -225,6 +227,7 @@ fn leaves_path_field(message: &Message) -> bool {
         Message::RowClicked { .. }
             | Message::OpenSearch
             | Message::QuickOpen(QuickOpenMessage::Open)
+            | Message::CommandPalette(CommandPaletteMessage::Toggle)
             | Message::FilingStatus(FilingStatusMessage::Open)
             | Message::FilingSetup(
                 FilingSetupMessage::Toggle
@@ -567,6 +570,8 @@ pub struct App {
     quick_open_walk_generation: u64,
     /// Stops the file walk when dropped.
     quick_open_walk: Option<iced::task::Handle>,
+    /// The command palette (Cmd/Ctrl+Shift+P), while its box is up.
+    command_palette: Option<CommandPalette>,
     /// The filing module, when the config switches it on.
     filing: Option<FilingModule>,
     /// Started once the filing module is ready; dropping it stops the workers.
@@ -615,6 +620,8 @@ pub struct PromptKeyState {
     pub search: bool,
     /// Quick Open is up, so the up and down keys move in its hits.
     pub quick_open: bool,
+    /// The command palette is up, so the up and down keys move in its entries.
+    pub command_palette: bool,
     /// The filing status page is up, so its keys act on the pipeline.
     pub filing_status: bool,
     /// The filing setup is up, so Escape closes it.
@@ -642,6 +649,7 @@ impl Default for PromptKeyState {
             path_editing: false,
             search: false,
             quick_open: false,
+            command_palette: false,
             filing_status: false,
             filing_setup: false,
             delete_dialog: DeleteKeys::default(),
@@ -735,6 +743,27 @@ fn keys_without_prompt(
                     == Some(Message::AbortJob))
                 .then_some(Message::TransferConflict(ConflictChoice::Cancel))
             }),
+        };
+    }
+
+    // The field takes the typing and Enter; Escape is `InputState`'s there and
+    // here, so it closes the palette with a job running too. The arrows are the
+    // entries'. Of the bindings only quitting reaches past it.
+    if prompt.command_palette {
+        return match key.as_ref() {
+            Key::Named(Named::Escape) => {
+                Some(Message::CommandPalette(CommandPaletteMessage::Close))
+            }
+            Key::Named(Named::Enter) => Some(Message::CommandPalette(CommandPaletteMessage::Run)),
+            Key::Named(Named::ArrowUp) if key_modifiers.is_empty() => {
+                Some(Message::CommandPalette(CommandPaletteMessage::Move(-1)))
+            }
+            Key::Named(Named::ArrowDown) if key_modifiers.is_empty() => {
+                Some(Message::CommandPalette(CommandPaletteMessage::Move(1)))
+            }
+            _ => bound_message(&prompt.keymap, &key, key_modifiers, scope)
+                .filter(|message| *message == Message::Quit)
+                .filter(|_| is_not_typed_by_text_field(&key, key_modifiers)),
         };
     }
 
@@ -1123,6 +1152,7 @@ fn repeats(message: &Message) -> bool {
             | Message::ContextMenuFirst
             | Message::ContextMenuLast
             | Message::QuickOpen(QuickOpenMessage::Move(_))
+            | Message::CommandPalette(CommandPaletteMessage::Move(_))
             | Message::FilingStatus(FilingStatusMessage::MoveError(_))
             | Message::Search(
                 SearchMessage::ToggleTag
@@ -1413,6 +1443,7 @@ impl App {
             quick_open: None,
             quick_open_walk_generation: 0,
             quick_open_walk: None,
+            command_palette: None,
             filing: None,
             pipeline: None,
             filing_status: FilingStatus::default(),
@@ -1682,7 +1713,7 @@ impl App {
                         self.dialog_focus = 0;
                         self.pending_conflict = Some(PendingConflict { transfer, index });
                         // Else the dialog would be asked behind the box.
-                        self.close_quick_open()
+                        Task::batch([self.close_quick_open(), self.close_command_palette()])
                     }
                     // Rows before this one are already done, so the panels are
                     // reloaded to show them.
@@ -2038,6 +2069,9 @@ impl App {
             Message::OpenSearch => self.open_search(),
             Message::Search(search) => self.update_search(search),
             Message::QuickOpen(quick_open) => self.update_quick_open(quick_open),
+            Message::CommandPalette(command_palette) => {
+                self.update_command_palette(command_palette)
+            }
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => self.update_filing_status(page_message),
             Message::FilingSetup(setup_message) => self.update_filing_setup(setup_message),
@@ -2270,6 +2304,7 @@ impl App {
         input.search_open = search_open;
         input.job_running = job_running;
         input.quick_open = self.quick_open.is_some();
+        input.command_palette = self.command_palette.is_some();
         drop(input);
         // `get` rather than `get_or_init`: the cell is created by the
         // subscription, and `update` must not create it — a cell nothing reads
@@ -2478,6 +2513,11 @@ impl App {
             return Stack::with_children([root, dialog::scrim(box_element)]).into();
         }
 
+        if let Some(command_palette) = self.command_palette.as_ref() {
+            let box_element = command_palette_ui::view(command_palette, self.lang, &self.palette);
+            return Stack::with_children([root, dialog::scrim(box_element)]).into();
+        }
+
         // Then the create-directory prompt, for F7.
         let Some(prompt) = self.prompt.as_ref() else {
             return root;
@@ -2563,6 +2603,7 @@ impl App {
         let path_editing = self.path_field.is_some();
         let search = self.search_has_keys();
         let quick_open = self.quick_open.is_some();
+        let command_palette = self.command_palette.is_some();
         let filing_status = self.filing_status.page_open();
         let filing_setup = self.filing_setup.is_some();
         let delete_dialog = match &self.delete_dialog {
@@ -2581,6 +2622,7 @@ impl App {
                 path_editing,
                 search,
                 quick_open,
+                command_palette,
                 filing_status,
                 filing_setup,
                 // A conflict is asked while no prompt is open — the prompt is
@@ -2600,6 +2642,7 @@ impl App {
                 path_editing,
                 search,
                 quick_open,
+                command_palette,
                 filing_status,
                 filing_setup,
                 conflict_open: self.pending_conflict.is_some(),
@@ -2883,6 +2926,7 @@ impl App {
             || self.delete_dialog.is_some()
             || self.volume_menu.is_some()
             || self.quick_open.is_some()
+            || self.command_palette.is_some()
             || self.filing_status.page_open()
     }
 
@@ -3831,6 +3875,71 @@ impl App {
         self.quick_open_walk = Some(handle.abort_on_drop());
         self.quick_open = Some(QuickOpen::new(root, generation));
         Task::batch([focus, task])
+    }
+
+    /// Cmd/Ctrl+Shift+P: lists the actions that work where the keys are now.
+    /// Pressed while the box is up, it only gives the field the focus again.
+    fn open_command_palette(&mut self) -> Task<Message> {
+        let focus = operation::focus(command_palette_ui::COMMAND_PALETTE_ID);
+        if self.command_palette.is_some() {
+            return focus;
+        }
+        if self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        self.context_menu = None;
+        let scope = if self.search_has_keys() {
+            KeyScope::Search
+        } else {
+            KeyScope::Panel
+        };
+        self.command_palette = Some(CommandPalette::new(scope, self.lang, &self.keymap));
+        focus
+    }
+
+    fn close_command_palette(&mut self) -> Task<Message> {
+        if self.command_palette.take().is_some() {
+            release_focus()
+        } else {
+            Task::none()
+        }
+    }
+
+    fn update_command_palette(&mut self, message: CommandPaletteMessage) -> Task<Message> {
+        match message {
+            CommandPaletteMessage::Toggle => return self.open_command_palette(),
+            CommandPaletteMessage::Close => return self.close_command_palette(),
+            _ => {}
+        }
+        let Some(palette) = self.command_palette.as_mut() else {
+            return Task::none();
+        };
+        match message {
+            CommandPaletteMessage::QueryChanged(text) => palette.set_query(text),
+            CommandPaletteMessage::Move(delta) => palette.move_cursor(delta),
+            CommandPaletteMessage::Select(index) => {
+                palette.select(index);
+                return self.run_command_palette();
+            }
+            CommandPaletteMessage::Run => return self.run_command_palette(),
+            CommandPaletteMessage::Toggle | CommandPaletteMessage::Close => {}
+        }
+        Task::none()
+    }
+
+    /// Closes the palette, then does what its key would. The closing task
+    /// comes first and is chained, not batched: a prompt the action opens
+    /// takes the focus after the palette gave it up.
+    fn run_command_palette(&mut self) -> Task<Message> {
+        let Some(action) = self
+            .command_palette
+            .as_ref()
+            .and_then(CommandPalette::selected_action)
+        else {
+            return Task::none();
+        };
+        let closed = self.close_command_palette();
+        closed.chain(self.update(action.message()))
     }
 
     /// Closes the box and stops its walk.
@@ -4917,6 +5026,7 @@ impl App {
             quick_open: None,
             quick_open_walk_generation: 0,
             quick_open_walk: None,
+            command_palette: None,
             filing: None,
             pipeline: None,
             filing_status: FilingStatus::default(),
@@ -5081,6 +5191,10 @@ impl App {
 
     pub fn search_is_open_for_test(&self) -> bool {
         self.search_open
+    }
+
+    pub fn command_palette_for_test(&self) -> Option<&CommandPalette> {
+        self.command_palette.as_ref()
     }
 
     pub fn quick_open_for_test(&self) -> Option<&QuickOpen> {
@@ -9698,5 +9812,282 @@ mod filing_status_tests {
         drop(app.update(status(FilingStatusMessage::ActivateSelectedError)));
         assert!(!app.filing_status.page_open());
         assert!(app.panel(PanelSide::Left).loading);
+    }
+}
+
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod command_palette_tests {
+    use super::*;
+    use crate::fs::FileEntry;
+    use std::ffi::OsString;
+
+    fn chord() -> Modifiers {
+        Modifiers::COMMAND | Modifiers::SHIFT
+    }
+
+    fn palette_message(message: CommandPaletteMessage) -> Message {
+        Message::CommandPalette(message)
+    }
+
+    fn open_palette(app: &mut App) {
+        drop(app.update(palette_message(CommandPaletteMessage::Toggle)));
+    }
+
+    fn type_into_palette(app: &mut App, text: &str) {
+        drop(
+            app.update(palette_message(CommandPaletteMessage::QueryChanged(
+                text.to_owned(),
+            ))),
+        );
+    }
+
+    fn route(app: &App, key: Key, modifiers: Modifiers) -> Option<Message> {
+        route_key(&app.prompt_key_state(), key, modifiers)
+    }
+
+    fn app_with_files() -> App {
+        let mut app = App::new().0;
+        app.left_panel.path = PathBuf::from("/left");
+        app.right_panel.path = PathBuf::from("/right");
+        app.left_panel.entries = (0..3)
+            .map(|i| FileEntry {
+                name: OsString::from(format!("f{i}.txt")),
+                path: PathBuf::from("/left").join(format!("f{i}.txt")),
+                is_dir: false,
+                is_symlink: false,
+                is_parent: false,
+                size: 1,
+                modified: None,
+            })
+            .collect();
+        app.left_panel.selected = 0;
+        app
+    }
+
+    fn app_with_keys(content: &str) -> App {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, content).unwrap();
+        App::with_fixed_panels().with_config(Ok(config::load(&path).unwrap()))
+    }
+
+    #[test]
+    fn the_default_key_does_not_collide_with_another_default() {
+        let keymap = Keymap::default();
+        for scope in [KeyScope::Panel, KeyScope::Search] {
+            assert_eq!(
+                keymap.map_key(&Key::Character("p".into()), chord(), scope),
+                Some(palette_message(CommandPaletteMessage::Toggle)),
+                "{scope:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_chord_opens_it_over_the_panels_and_over_the_search() {
+        let key = || Key::Character("P".into());
+        let panel = PromptKeyState::default();
+        let search = PromptKeyState {
+            search: true,
+            ..PromptKeyState::default()
+        };
+        for state in [&panel, &search] {
+            assert_eq!(
+                route_key(state, Key::Character("p".into()), chord()),
+                Some(palette_message(CommandPaletteMessage::Toggle))
+            );
+        }
+        // Shift makes the letter a capital on most layouts.
+        assert_eq!(
+            route_key(&panel, key(), chord()),
+            Some(palette_message(CommandPaletteMessage::Toggle))
+        );
+    }
+
+    #[test]
+    fn opening_lists_the_actions_and_takes_the_keys() {
+        let mut app = App::with_fixed_panels();
+        open_palette(&mut app);
+        let palette = app.command_palette_for_test().unwrap();
+        assert!(!palette.hits().is_empty());
+        assert!(app.prompt_key_state().command_palette);
+        assert!(app.blocking_overlay_is_open());
+    }
+
+    #[test]
+    fn the_search_view_gets_the_actions_of_the_search() {
+        let mut app = App::with_fixed_search();
+        open_palette(&mut app);
+        let palette = app.command_palette_for_test().unwrap();
+        let regex = palette
+            .hits()
+            .iter()
+            .filter_map(|hit| palette.entry(hit))
+            .any(|entry| entry.action == keymap::KeyAction::SearchRegex);
+        assert!(regex);
+    }
+
+    #[test]
+    fn the_arrows_move_and_the_other_bindings_are_dead_while_it_is_open() {
+        let mut app = App::with_fixed_panels();
+        open_palette(&mut app);
+        let none = Modifiers::default();
+        assert_eq!(
+            route(&app, Key::Named(Named::ArrowDown), none),
+            Some(palette_message(CommandPaletteMessage::Move(1)))
+        );
+        assert_eq!(
+            route(&app, Key::Named(Named::ArrowUp), none),
+            Some(palette_message(CommandPaletteMessage::Move(-1)))
+        );
+        assert_eq!(
+            route(&app, Key::Named(Named::Enter), none),
+            Some(palette_message(CommandPaletteMessage::Run))
+        );
+        assert_eq!(
+            route(&app, Key::Named(Named::Escape), none),
+            Some(palette_message(CommandPaletteMessage::Close))
+        );
+        for key in [Named::F5, Named::F7, Named::F8, Named::F9, Named::Backspace] {
+            assert_eq!(route(&app, Key::Named(key), none), None, "{key:?}");
+        }
+        assert_eq!(route(&app, Key::Character("q".into()), none), None);
+        assert_eq!(
+            route(&app, Key::Named(Named::F10), none),
+            Some(Message::Quit)
+        );
+    }
+
+    #[test]
+    fn f8_with_the_palette_open_opens_no_delete_dialog() {
+        let mut app = App::with_fixed_panels();
+        open_palette(&mut app);
+        let routed = route(&app, Key::Named(Named::F8), Modifiers::default());
+        assert_eq!(routed, None);
+        assert!(app.delete_dialog.is_none());
+    }
+
+    #[test]
+    fn typing_filters_the_entries() {
+        let mut app = App::with_fixed_panels();
+        open_palette(&mut app);
+        type_into_palette(&mut app, "filing status");
+        let palette = app.command_palette_for_test().unwrap();
+        assert_eq!(palette.hits().len(), 1);
+        assert_eq!(palette.query(), "filing status");
+    }
+
+    #[test]
+    fn enter_on_filing_status_opens_the_page_and_closes_the_palette() {
+        let mut app = App::with_fixed_panels();
+        open_palette(&mut app);
+        type_into_palette(&mut app, "filing status");
+        drop(app.update(palette_message(CommandPaletteMessage::Run)));
+        assert!(app.command_palette_for_test().is_none());
+        assert!(app.filing_status.page_open());
+        assert!(!app.prompt_key_state().command_palette);
+    }
+
+    #[test]
+    fn a_click_on_an_entry_runs_it() {
+        let mut app = App::with_fixed_panels();
+        open_palette(&mut app);
+        type_into_palette(&mut app, "filing status");
+        drop(app.update(palette_message(CommandPaletteMessage::Select(0))));
+        assert!(app.command_palette_for_test().is_none());
+        assert!(app.filing_status.page_open());
+    }
+
+    #[test]
+    fn run_without_a_match_keeps_the_palette_open() {
+        let mut app = App::with_fixed_panels();
+        open_palette(&mut app);
+        type_into_palette(&mut app, "zzzzzz");
+        drop(app.update(palette_message(CommandPaletteMessage::Run)));
+        assert!(app.command_palette_for_test().is_some());
+    }
+
+    #[test]
+    fn mkdir_from_the_palette_leaves_the_prompt_open() {
+        let mut app = App::with_fixed_panels();
+        open_palette(&mut app);
+        type_into_palette(&mut app, "create folder");
+        drop(app.update(palette_message(CommandPaletteMessage::Run)));
+        assert!(app.command_palette_for_test().is_none());
+        assert!(app.prompt.is_some(), "the prompt did not open");
+        assert!(app.prompt_key_state().open);
+    }
+
+    #[test]
+    fn a_rebound_key_shows_in_the_entry() {
+        let mut app = app_with_keys("[keys]\nfiling_status = \"F11\"\n");
+        open_palette(&mut app);
+        let palette = app.command_palette_for_test().unwrap();
+        let entry = palette
+            .hits()
+            .iter()
+            .filter_map(|hit| palette.entry(hit))
+            .find(|entry| entry.action == keymap::KeyAction::FilingStatus)
+            .unwrap();
+        assert_eq!(entry.shortcut.as_deref(), Some("F11"));
+    }
+
+    #[test]
+    fn an_action_without_a_key_has_no_key_in_its_entry() {
+        let mut app = app_with_keys("[keys]\ndelete_permanently = []\n");
+        open_palette(&mut app);
+        let palette = app.command_palette_for_test().unwrap();
+        let entry = palette
+            .hits()
+            .iter()
+            .filter_map(|hit| palette.entry(hit))
+            .find(|entry| entry.action == keymap::KeyAction::DeletePermanently)
+            .unwrap();
+        assert_eq!(entry.shortcut, None);
+    }
+
+    #[tokio::test]
+    async fn escape_closes_it_and_the_running_job_keeps_going() {
+        let mut app = app_with_files();
+        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        assert!(app.jobs.is_busy(), "no job to keep");
+        open_palette(&mut app);
+        assert!(app.command_palette_for_test().is_some());
+
+        let routed = route(&app, Key::Named(Named::Escape), Modifiers::default());
+        assert_eq!(routed, Some(palette_message(CommandPaletteMessage::Close)));
+        let _closed = app.update(routed.unwrap());
+
+        assert!(app.command_palette_for_test().is_none());
+        assert!(app.jobs.is_busy(), "Escape stopped the job");
+    }
+
+    #[test]
+    fn the_input_state_closes_it_on_escape_too() {
+        let mut input = InputState {
+            command_palette: true,
+            job_running: true,
+            ..InputState::default()
+        };
+        let escape = iced::Event::Keyboard(keyboard::Event::KeyPressed {
+            key: Key::Named(Named::Escape),
+            modified_key: Key::Named(Named::Escape),
+            physical_key: keyboard::key::Physical::Code(keyboard::key::Code::Escape),
+            location: keyboard::Location::Standard,
+            modifiers: Modifiers::default(),
+            repeat: false,
+            text: None,
+        });
+        assert_eq!(
+            input.handle(&escape, event::Status::Ignored),
+            Some(palette_message(CommandPaletteMessage::Close))
+        );
     }
 }

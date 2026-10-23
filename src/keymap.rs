@@ -15,8 +15,8 @@ use crate::fs::{OpenKind, SortColumn};
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::messages::{
-    ClipboardKind, FilingSetupMessage, FilingStatusMessage, PanelSide, QuickOpenMessage,
-    SearchMessage, TransferKind,
+    ClipboardKind, CommandPaletteMessage, FilingSetupMessage, FilingStatusMessage, PanelSide,
+    QuickOpenMessage, SearchMessage, TransferKind,
 };
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
@@ -52,7 +52,7 @@ macro_rules! key_actions {
         }
 
         impl KeyAction {
-            #[cfg(test)]
+            /// Every action, in the order of this list.
             pub const ALL: &'static [KeyAction] = &[$(Self::$variant),+];
 
             pub fn name(self) -> &'static str {
@@ -106,6 +106,7 @@ key_actions! {
     Last => "last",
     Search => "search",
     QuickOpen => "quick_open",
+    CommandPalette => "command_palette",
     FilingStatus => "filing_status",
     FilingSetup => "filing_setup",
     SearchCase => "search_case",
@@ -159,6 +160,7 @@ impl KeyAction {
             Self::SearchCase | Self::SearchWholeWord | Self::SearchRegex => Reach::SearchOnly,
             Self::Quit
             | Self::Search
+            | Self::CommandPalette
             | Self::View
             | Self::Edit
             | Self::Copy
@@ -240,6 +242,7 @@ impl KeyAction {
             Self::Last => Message::SelectLast,
             Self::Search => Message::OpenSearch,
             Self::QuickOpen => Message::QuickOpen(QuickOpenMessage::Open),
+            Self::CommandPalette => Message::CommandPalette(CommandPaletteMessage::Toggle),
             Self::FilingStatus => Message::FilingStatus(FilingStatusMessage::Toggle),
             Self::FilingSetup => Message::FilingSetup(FilingSetupMessage::Toggle),
             Self::SearchCase => Message::Search(SearchMessage::ToggleCase),
@@ -391,6 +394,11 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
         (
             A::QuickOpen,
             Binding::with_modifiers(Character("p".into()), Modifiers::COMMAND),
+        ),
+        // VS Code's Command Palette.
+        (
+            A::CommandPalette,
+            Binding::with_modifiers(Character("p".into()), Modifiers::COMMAND | Modifiers::SHIFT),
         ),
         // The filing status page; Cmd+Shift+D, Ctrl+Shift+D elsewhere.
         (
