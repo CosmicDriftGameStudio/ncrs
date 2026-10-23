@@ -21,7 +21,7 @@ use std::str::FromStr as _;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 
-use ncrs_index::{Index, IndexError, KeyStore, RecoveryKey};
+use ncrs_index::{Index, IndexError, IndexStatistics, KeyStore, RecoveryKey};
 use ncrs_intake::Location;
 use ncrs_pipeline::{intake_steps, IndexAccess, Load, Runner, Settings, SystemClock};
 
@@ -35,6 +35,8 @@ pub const NO_DATA_DIRECTORY: &str = "no data directory";
 
 type SharedStore = Arc<dyn KeyStore + Send + Sync>;
 type IndexSlot = Arc<Mutex<Option<Index>>>;
+
+const INDEX_NOT_OPEN: &str = "index not open";
 
 // ---------------------------------------------------------------------------
 // Locations
@@ -428,6 +430,50 @@ impl IndexAccess for IntakeIndex {
     }
 }
 
+/// What the status page shows about the index.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IndexFigures {
+    pub path: PathBuf,
+    pub file_bytes: Option<u64>,
+    pub encrypted: bool,
+    pub statistics: IndexStatistics,
+}
+
+/// Reads the figures of the index. Meant for a blocking thread: the intake may
+/// hold the index for as long as it hashes a large file.
+pub struct IndexFiguresReader {
+    db_path: PathBuf,
+    slot: IndexSlot,
+}
+
+impl fmt::Debug for IndexFiguresReader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("IndexFiguresReader")
+            .field("db_path", &self.db_path)
+            .finish_non_exhaustive()
+    }
+}
+
+impl IndexFiguresReader {
+    pub fn read(self) -> Result<IndexFigures, String> {
+        let file_bytes = std::fs::metadata(&self.db_path)
+            .ok()
+            .map(|metadata| metadata.len());
+        let (encrypted, statistics) = {
+            let guard = lock(&self.slot);
+            let index = guard.as_ref().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
+            let statistics = index.statistics().map_err(|err| err.to_string())?;
+            (index.is_encrypted(), statistics)
+        };
+        Ok(IndexFigures {
+            path: self.db_path,
+            file_bytes,
+            encrypted,
+            statistics,
+        })
+    }
+}
+
 fn put_index(slot: &IndexSlot, index: Index) {
     *lock(slot) = Some(index);
 }
@@ -542,6 +588,28 @@ impl FilingModule {
 
     pub fn phase(&self) -> &Phase {
         &self.phase
+    }
+
+    pub fn load(&self) -> Load {
+        self.load
+    }
+
+    /// Only remembers the choice for the page; the running pipeline is told
+    /// separately.
+    pub fn set_load(&mut self, load: Load) {
+        self.load = load;
+    }
+
+    /// Only looks at the phase and never at the index, so it is safe on the UI
+    /// thread; `read` then runs elsewhere.
+    pub fn index_figures_reader(&self) -> Option<IndexFiguresReader> {
+        match self.phase {
+            Phase::Ready => Some(IndexFiguresReader {
+                db_path: self.db_path.clone(),
+                slot: Arc::clone(&self.index),
+            }),
+            _ => None,
+        }
     }
 
     pub fn locations(&self) -> &[ResolvedLocation] {
@@ -1089,6 +1157,65 @@ mod tests {
 
         assert_ne!(runner.snapshot().state, ncrs_pipeline::RunnerState::Off);
         drop(runner);
+    }
+
+    #[test]
+    fn the_figures_reader_exists_in_ready_only() {
+        let others = [
+            Phase::Starting,
+            Phase::AskEncryption {
+                encrypted: true,
+                busy: false,
+                error: None,
+            },
+            Phase::ShowRecoveryKey {
+                key: FilingModule::fixed_recovery_key(),
+                group: 0,
+                typed: SecretText::default(),
+                mismatch: false,
+            },
+            ask_recovery_key(KeyProblem::Missing),
+            Phase::PlainFileWarning,
+            Phase::Dismissed,
+            Phase::Failed("no".to_owned()),
+        ];
+        for phase in others {
+            let module = FilingModule::in_phase(phase);
+            assert!(
+                module.index_figures_reader().is_none(),
+                "{:?}",
+                module.phase()
+            );
+        }
+        assert!(FilingModule::in_phase(Phase::Ready)
+            .index_figures_reader()
+            .is_some());
+    }
+
+    #[test]
+    fn the_figures_reader_reports_a_plain_index_on_disk() {
+        let dir = TempDir::new().unwrap();
+        let db = db_in(&dir);
+        let store = Arc::new(InMemoryKeyStore::empty());
+        let mut module = started(&db, shared(&store));
+        send(&mut module, FilingMessage::ChooseEncrypted(false));
+        send(&mut module, FilingMessage::CreateIndex);
+
+        let figures = module.index_figures_reader().unwrap().read().unwrap();
+
+        assert!(!figures.encrypted);
+        assert_eq!(figures.path, db);
+        assert!(figures.file_bytes.is_some_and(|bytes| bytes > 0));
+        assert_eq!(figures.statistics.document_count, 0);
+    }
+
+    #[test]
+    fn the_figures_reader_fails_when_the_slot_is_empty() {
+        let module = FilingModule::in_phase(Phase::Ready);
+
+        let result = module.index_figures_reader().unwrap().read();
+
+        assert_eq!(result, Err(INDEX_NOT_OPEN.to_owned()));
     }
 
     #[test]

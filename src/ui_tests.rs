@@ -867,7 +867,10 @@ mod title_notice {
             app.active_panel(),
             crate::i18n::Language::English,
             &crate::palette::Palette::default(),
-            None,
+            crate::ui::statusbar::Activity {
+                job: None,
+                filing: None,
+            },
             None,
             None,
             crate::ui::statusbar::PathBar {
@@ -1146,5 +1149,175 @@ mod filing_cards {
 
         let with_card = messages_for_a_click_on_a_panel_row(&plain_file_card());
         assert_eq!(with_card, without_card);
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod filing_status_page {
+    use std::path::PathBuf;
+    use std::time::{Duration, SystemTime};
+
+    use ncrs_pipeline::{
+        Busy, ErrorEntry, Load, RunnerState, Snapshot, StepSnapshot, Task, WorkerSnapshot,
+    };
+
+    use super::*;
+    use crate::messages::FilingStatusMessage;
+
+    const ERROR_FILE: &str = "/tmp/inbox/company-a-invoice.pdf";
+
+    fn taken_at() -> SystemTime {
+        SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000)
+    }
+
+    fn snapshot(state: RunnerState, waiting: usize, left: usize) -> Snapshot {
+        let mut snapshot = Snapshot::off();
+        snapshot.state = state;
+        snapshot.worker_target = 2;
+        snapshot.left_pipeline = left;
+        snapshot.steps = vec![StepSnapshot {
+            name: "probe",
+            waiting,
+            done: 0,
+            failed: 0,
+            unchanged: 0,
+        }];
+        snapshot
+    }
+
+    fn page(snapshot: Snapshot) -> App {
+        App::with_filing_status_page(snapshot, taken_at())
+    }
+
+    fn shows(app: &App, label: &str) -> bool {
+        simulator(app).find(label).is_ok()
+    }
+
+    fn messages_after_click(app: &App, label: &str) -> Vec<Message> {
+        let mut sim = simulator(app);
+        sim.click(label).expect("the clicked label");
+        sim.into_messages().collect()
+    }
+
+    fn page_message(message: FilingStatusMessage) -> Message {
+        Message::FilingStatus(message)
+    }
+
+    #[test]
+    fn the_page_shows_every_state_and_the_button_that_fits_it() {
+        let cases = [
+            (RunnerState::Off, "Off", "Pause"),
+            (RunnerState::Idle, "Idle", "Pause"),
+            (RunnerState::Running, "Running", "Pause"),
+            (RunnerState::Paused, "Paused", "Resume"),
+        ];
+        for (state, state_text, button) in cases {
+            let app = page(snapshot(state, 0, 0));
+            assert!(shows(&app, state_text), "{state:?}: {state_text}");
+            assert!(shows(&app, button), "{state:?}: {button}");
+            let other = if button == "Pause" { "Resume" } else { "Pause" };
+            assert!(!shows(&app, other), "{state:?}: {other}");
+        }
+    }
+
+    #[test]
+    fn the_buttons_ask_for_a_pause_and_a_load() {
+        let app = page(snapshot(RunnerState::Running, 3, 0));
+
+        assert_eq!(
+            messages_after_click(&app, "Pause"),
+            [page_message(FilingStatusMessage::TogglePause)]
+        );
+        assert_eq!(
+            messages_after_click(&app, "balanced"),
+            [page_message(FilingStatusMessage::SetLoad(Load::Balanced))]
+        );
+    }
+
+    #[test]
+    fn an_error_is_listed_and_a_click_on_it_asks_to_show_the_file() {
+        let mut with_error = snapshot(RunnerState::Idle, 0, 1);
+        with_error.errors = vec![ErrorEntry {
+            file: PathBuf::from(ERROR_FILE),
+            task: Task::Step("probe"),
+            message: "the step stopped unexpectedly".to_owned(),
+            at: taken_at(),
+        }];
+        let app = page(with_error);
+
+        assert!(shows(&app, "the step stopped unexpectedly"));
+        assert_eq!(
+            messages_after_click(&app, ERROR_FILE),
+            [page_message(FilingStatusMessage::ErrorActivated(
+                PathBuf::from(ERROR_FILE)
+            ))]
+        );
+        assert!(!shows(&app, "No errors"));
+        assert!(shows(&page(snapshot(RunnerState::Idle, 0, 0)), "No errors"));
+    }
+
+    #[test]
+    fn a_busy_worker_shows_how_long_it_has_been_at_it() {
+        let mut busy = snapshot(RunnerState::Running, 0, 0);
+        busy.workers = vec![
+            WorkerSnapshot {
+                id: 0,
+                busy: Some(Busy {
+                    file: PathBuf::from(ERROR_FILE),
+                    task: Task::Step("probe"),
+                    started_at: taken_at() - Duration::from_secs(42),
+                }),
+            },
+            WorkerSnapshot { id: 1, busy: None },
+        ];
+        let app = page(busy);
+
+        assert!(shows(&app, "0:42"));
+        assert!(shows(&app, "company-a-invoice.pdf"));
+        assert!(shows(&app, "idle"));
+    }
+
+    #[test]
+    fn without_figures_the_index_says_why() {
+        let app = page(snapshot(RunnerState::Idle, 0, 0));
+
+        assert!(shows(&app, "Index not open"));
+    }
+
+    #[test]
+    fn the_status_bar_shows_progress_while_there_is_work_and_opens_the_page() {
+        let app = App::with_filing_progress(
+            snapshot(RunnerState::Running, 340, 100),
+            snapshot(RunnerState::Running, 328, 112),
+            taken_at(),
+        );
+
+        assert!(shows(&app, "Filing 12 / 340"));
+        assert_eq!(
+            messages_after_click(&app, "Filing 12 / 340"),
+            [page_message(FilingStatusMessage::Open)]
+        );
+    }
+
+    #[test]
+    fn the_status_bar_says_when_the_pipeline_is_paused() {
+        let app = App::with_filing_snapshot(snapshot(RunnerState::Paused, 5, 0), taken_at());
+
+        assert!(shows(&app, "Filing paused 0 / 5"));
+    }
+
+    #[test]
+    fn the_status_bar_shows_no_filing_text_without_work() {
+        for state in [RunnerState::Idle, RunnerState::Off] {
+            let app = App::with_filing_snapshot(snapshot(state, 0, 40), taken_at());
+            assert!(!shows(&app, "Filing 0 / 0"), "{state:?}");
+            assert!(!shows(&app, "Filing paused 0 / 0"), "{state:?}");
+        }
     }
 }

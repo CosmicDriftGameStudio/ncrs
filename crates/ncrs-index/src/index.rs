@@ -8,6 +8,16 @@ use crate::error::IndexError;
 use crate::key::{IndexKey, RecoveryKey};
 use crate::key_store::KeyStore;
 use crate::migrations::{run_migrations, MIGRATIONS};
+use crate::model::IndexStatistics;
+
+/// The FTS5 table `document_text` keeps its data in these shadow tables.
+const FULL_TEXT_TABLES: [&str; 5] = [
+    "document_text_data",
+    "document_text_idx",
+    "document_text_content",
+    "document_text_docsize",
+    "document_text_config",
+];
 
 const PLAINTEXT_HEADER: &[u8; 16] = b"SQLite format 3\0";
 
@@ -88,6 +98,34 @@ impl Index {
 
     pub fn connection(&self) -> &Connection {
         &self.conn
+    }
+
+    /// Cheap counts for a status display; reads no document or review rows.
+    pub fn statistics(&self) -> Result<IndexStatistics, IndexError> {
+        let conn = self.connection();
+        let schema_version = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+        let document_count = conn.query_row("SELECT COUNT(*) FROM document", [], |row| {
+            row.get::<_, i64>(0).map(i64::unsigned_abs)
+        })?;
+        let open_reviews = conn.query_row(
+            "SELECT COUNT(*) FROM review_entry WHERE resolved_at IS NULL",
+            [],
+            |row| row.get::<_, i64>(0).map(i64::unsigned_abs),
+        )?;
+        let full_text_bytes = conn.query_row(
+            &format!(
+                "SELECT COALESCE(SUM(pgsize), 0) FROM dbstat WHERE name IN ({})",
+                FULL_TEXT_TABLES.map(|name| format!("'{name}'")).join(", ")
+            ),
+            [],
+            |row| row.get::<_, i64>(0).map(i64::unsigned_abs),
+        )?;
+        Ok(IndexStatistics {
+            schema_version,
+            document_count,
+            open_reviews,
+            full_text_bytes,
+        })
     }
 
     pub(crate) fn conn_mut(&mut self) -> &mut Connection {
@@ -244,6 +282,8 @@ mod tests {
     use super::*;
     use crate::error::KeyStoreError;
     use crate::key_store::InMemoryKeyStore;
+    use crate::model::ReviewReason;
+    use crate::test_support::{encrypted_index, new_document, plain_index};
 
     const TABLE_A: &str = "CREATE TABLE a (id INTEGER);";
     const TABLE_B: &str = "CREATE TABLE b (id INTEGER);";
@@ -704,5 +744,41 @@ mod tests {
             ),
             "{err}"
         );
+    }
+
+    #[test]
+    fn statistics_of_a_fresh_index_are_empty_in_both_flavours() {
+        for (_dir, index) in [encrypted_index(), plain_index()] {
+            let statistics = index.statistics().unwrap();
+
+            assert_eq!(
+                usize::try_from(statistics.schema_version).unwrap(),
+                MIGRATIONS.len()
+            );
+            assert_eq!(statistics.document_count, 0);
+            assert_eq!(statistics.open_reviews, 0);
+            assert!(statistics.full_text_bytes > 0);
+        }
+    }
+
+    #[test]
+    fn statistics_follow_documents_text_and_reviews() {
+        let (_dir, mut index) = encrypted_index();
+        let before = index.statistics().unwrap().full_text_bytes;
+        let document = index.insert_document(&new_document(1)).unwrap();
+        index
+            .set_document_text(document, &"Invoice from Company A. ".repeat(4000))
+            .unwrap();
+
+        let filled = index.statistics().unwrap();
+        assert_eq!(filled.document_count, 1);
+        assert!(filled.full_text_bytes > before);
+
+        let entry = index
+            .add_review(document, ReviewReason::NoMatchingRule)
+            .unwrap();
+        assert_eq!(index.statistics().unwrap().open_reviews, 1);
+        index.resolve_review(entry).unwrap();
+        assert_eq!(index.statistics().unwrap().open_reviews, 0);
     }
 }

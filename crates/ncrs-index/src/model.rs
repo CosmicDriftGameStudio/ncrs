@@ -313,6 +313,14 @@ pub struct Rule {
     pub spec: RuleSpec,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IndexStatistics {
+    pub schema_version: u32,
+    pub document_count: u64,
+    pub open_reviews: u64,
+    pub full_text_bytes: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReviewEntry {
     pub id: ReviewEntryId,

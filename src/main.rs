@@ -17,6 +17,7 @@ mod config;
 mod context_menu;
 mod dialog;
 mod filing;
+mod filing_status;
 mod fs;
 mod i18n;
 mod jobs;
