@@ -932,9 +932,9 @@
     },
     {
       "key": "filing.key_title",
-      "context": "Title of the card that shows the recovery key of a new encrypted index.",
-      "en": "Your recovery key",
-      "de": "Wiederherstellungsschlüssel"
+      "context": "Title of the card that shows the master key of a new encrypted index. The key is also what other texts call the recovery key.",
+      "en": "Your master key",
+      "de": "Dein Generalschlüssel"
     },
     {
       "key": "filing.key_explain",
@@ -956,9 +956,9 @@
     },
     {
       "key": "filing.key_group_prompt",
-      "context": "Label above the field in the recovery key card. Asks the user to type one group of four characters of the key. Takes the group number, counted from 1.",
-      "en": "Type group {group} of the key to continue",
-      "de": "Zum Fortfahren Gruppe {group} des Schlüssels eingeben"
+      "context": "Hint above the field in the master key card. One block of four characters of the key is highlighted in the key above, and the user types it to show that the key was saved. Takes the block number, counted from 1.",
+      "en": "Type block {group} (the highlighted four characters) to show that you saved the key.",
+      "de": "Tippe Block {group} (die hervorgehobenen vier Zeichen) ab, damit klar ist, dass du den Schlüssel gespeichert hast."
     },
     {
       "key": "filing.key_continue",
@@ -968,9 +968,9 @@
     },
     {
       "key": "filing.key_group_wrong",
-      "context": "Error line in the recovery key card when the typed group is not the requested one. Takes the group number, counted from 1.",
-      "en": "That is not group {group} of the key.",
-      "de": "Das ist nicht Gruppe {group} des Schlüssels."
+      "context": "Error line in the master key card when the typed block is not the requested one. Takes the block number, counted from 1.",
+      "en": "That is not block {group} of the key.",
+      "de": "Das ist nicht Block {group} des Schlüssels."
     },
     {
       "key": "filing.restore_title",

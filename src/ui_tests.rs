@@ -1099,6 +1099,25 @@ mod filing_cards {
         }
     }
 
+    #[test]
+    fn the_master_key_card_matches_its_snapshot() {
+        let app = App::with_fixed_filing(Phase::ShowRecoveryKey {
+            key: FilingModule::varied_recovery_key(),
+            group: 1,
+            typed: SecretText::default(),
+            mismatch: false,
+        });
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/recovery_key.png")
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the card does not match tests/snapshots/recovery_key.png"
+        );
+    }
+
     fn ask_recovery_key(reason: KeyProblem) -> App {
         App::with_fixed_filing(Phase::AskRecoveryKey {
             reason,
@@ -1125,7 +1144,10 @@ mod filing_cards {
             typed: SecretText::default(),
             mismatch: false,
         });
-        assert!(shows(&confirmation, "Type group 4 of the key to continue"));
+        assert!(shows(
+            &confirmation,
+            "Type block 4 (the highlighted four characters) to show that you saved the key."
+        ));
         assert!(shows(&confirmation, "Copy"));
 
         let restore = ask_recovery_key(KeyProblem::Missing);
