@@ -303,14 +303,18 @@ default keys are in [Keyboard shortcuts](#keyboard-shortcuts).
 ### Colors
 
 `[theme]` picks a ready-made palette and changes single colors on top of it.
-There are three: `cosmic` is the default, a calm, almost neutral dark grey with
+There are four: `cosmic` is the default, a calm, almost neutral dark grey with
 muted accents; `default` is the earlier dark teal look; `classic` is Norton
-Commander blue.
+Commander blue; `dracula` is the Dracula look.
+
+The `dracula` preset uses the colors of the
+[Dracula theme](https://draculatheme.com), MIT License, Copyright (c)
+Dracula Theme.
 
 ```toml
 [theme]
-# "cosmic" (the default), "default" (the earlier dark teal look) or "classic"
-# (Norton Commander blue).
+# "cosmic" (the default), "default" (the earlier dark teal look), "classic"
+# (Norton Commander blue) or "dracula".
 preset = "classic"
 # Then single roles, as "#rrggbb" or "#rgb".
 directory = "#ffff55"

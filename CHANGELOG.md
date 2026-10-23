@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- A `dracula` color preset (`preset = "dracula"` in `[theme]`), using the colors
+  of the [Dracula theme](https://draculatheme.com), MIT License, Copyright (c)
+  Dracula Theme.
 - Playful names, each with its plain description next to it: the command
   palette is the Lab, Quick Open the Dark Matter Drive, the search the
   Smell-o-scope, the drive menu Planets, the file exists dialog a Time paradox,

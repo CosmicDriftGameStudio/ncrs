@@ -73,16 +73,18 @@ pub enum ThemePreset {
     /// The earlier dark teal look, still called `"default"` in the config.
     Teal,
     Classic,
+    Dracula,
 }
 
 impl ThemePreset {
-    pub const ALL: [ThemePreset; 3] = [Self::Cosmic, Self::Teal, Self::Classic];
+    pub const ALL: [ThemePreset; 4] = [Self::Cosmic, Self::Teal, Self::Classic, Self::Dracula];
 
     pub fn name(self) -> &'static str {
         match self {
             Self::Cosmic => "cosmic",
             Self::Teal => "default",
             Self::Classic => "classic",
+            Self::Dracula => "dracula",
         }
     }
 
@@ -184,6 +186,38 @@ impl ThemePreset {
                 fkey_number: Color::from_rgb8(0xFF, 0xFF, 0xFF),
                 fkey_label: Color::from_rgb8(0x00, 0xAA, 0xAA),
                 fkey_label_text: Color::from_rgb8(0x00, 0x00, 0x00),
+            },
+            // Colors from the Dracula theme (draculatheme.com), MIT license.
+            Self::Dracula => Palette {
+                background: Color::from_rgb8(0x21, 0x22, 0x2C),
+                panel: Color::from_rgb8(0x28, 0x2A, 0x36),
+                text: Color::from_rgb8(0xF8, 0xF8, 0xF2),
+                dim_text: Color::from_rgb8(0x62, 0x72, 0xA4),
+                directory: Color::from_rgb8(0x8B, 0xE9, 0xFD),
+                cursor: Color::from_rgb8(0x44, 0x47, 0x5A),
+                cursor_text: Color::from_rgb8(0xF8, 0xF8, 0xF2),
+                tagged: Color::from_rgb8(0xFF, 0x79, 0xC6),
+                tagged_inactive: Color::from_rgb8(0x6E, 0x3F, 0x63),
+                tagged_text: Color::from_rgb8(0x28, 0x2A, 0x36),
+                tagged_directory: Color::from_rgb8(0x28, 0x2A, 0x36),
+                border: Color::from_rgb8(0xBD, 0x93, 0xF9),
+                border_inactive: Color::from_rgb8(0x44, 0x47, 0x5A),
+                header: Color::from_rgb8(0x44, 0x47, 0x5A),
+                title: Color::from_rgb8(0x44, 0x47, 0x5A),
+                title_text: Color::from_rgb8(0xF8, 0xF8, 0xF2),
+                title_inactive: Color::from_rgb8(0x21, 0x22, 0x2C),
+                status_bar: Color::from_rgb8(0x21, 0x22, 0x2C),
+                dialog: Color::from_rgb8(0x21, 0x22, 0x2C),
+                menu: Color::from_rgb8(0x21, 0x22, 0x2C),
+                menu_shortcut: Color::from_rgb8(0xFF, 0xB8, 0x6C),
+                menu_shortcut_on_cursor: Color::from_rgb8(0xFF, 0xB8, 0x6C),
+                menu_disabled: Color::from_rgb8(0x62, 0x72, 0xA4),
+                accent: Color::from_rgb8(0xF1, 0xFA, 0x8C),
+                success: Color::from_rgb8(0x50, 0xFA, 0x7B),
+                error: Color::from_rgb8(0xFF, 0x55, 0x55),
+                fkey_number: Color::from_rgb8(0xF8, 0xF8, 0xF2),
+                fkey_label: Color::from_rgb8(0x44, 0x47, 0x5A),
+                fkey_label_text: Color::from_rgb8(0xF8, 0xF8, 0xF2),
             },
         }
     }
@@ -651,7 +685,7 @@ mod tests {
             ("[theme]\nfoo = \"#fff\"\n", "unknown color role \"foo\""),
             (
                 "[theme]\npreset = \"x\"\n",
-                "unknown preset \"x\", expected \"cosmic\" or \"default\" or \"classic\"",
+                "unknown preset \"x\", expected \"cosmic\" or \"default\" or \"classic\" or \"dracula\"",
             ),
         ];
         for (text, expected) in cases {
@@ -698,15 +732,20 @@ mod tests {
     }
 
     #[test]
-    fn title_and_tagged_text_are_readable_on_their_fills_in_cosmic() {
-        let p = ThemePreset::Cosmic.palette();
-        for (name, text, fill) in [
-            ("title_text on title", p.title_text, p.title),
-            ("title_text on header", p.title_text, p.header),
-            ("tagged_text on tagged", p.tagged_text, p.tagged),
-            ("tagged_directory on tagged", p.tagged_directory, p.tagged),
-        ] {
-            assert!(contrast_ratio(text, fill) >= READABLE_CONTRAST, "{name}");
+    fn title_and_tagged_text_are_readable_on_their_fills_in_cosmic_and_dracula() {
+        for preset in [ThemePreset::Cosmic, ThemePreset::Dracula] {
+            let p = preset.palette();
+            for (name, text, fill) in [
+                ("title_text on title", p.title_text, p.title),
+                ("title_text on header", p.title_text, p.header),
+                ("tagged_text on tagged", p.tagged_text, p.tagged),
+                ("tagged_directory on tagged", p.tagged_directory, p.tagged),
+            ] {
+                assert!(
+                    contrast_ratio(text, fill) >= READABLE_CONTRAST,
+                    "{preset:?} {name}"
+                );
+            }
         }
     }
 

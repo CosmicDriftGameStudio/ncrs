@@ -217,6 +217,11 @@ mod tests {
     }
 
     #[test]
+    fn the_dracula_preset_has_its_own_look() {
+        assert_preset_matches("dracula", "tests/snapshots/two_panels_dracula.png");
+    }
+
+    #[test]
     fn the_classic_preset_looks_as_before() {
         assert_preset_matches("classic", "tests/snapshots/two_panels_classic.png");
     }
