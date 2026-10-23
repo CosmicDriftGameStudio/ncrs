@@ -950,9 +950,9 @@
     },
     {
       "key": "filing.key_copied",
-      "context": "Short confirmation in the title bar after the recovery key was copied to the clipboard. Must not contain the key.",
-      "en": "Recovery key copied",
-      "de": "Wiederherstellungsschlüssel kopiert"
+      "context": "Short confirmation in the title bar after the master key was copied to the clipboard. Must not contain the key.",
+      "en": "Master key copied",
+      "de": "Generalschlüssel kopiert"
     },
     {
       "key": "filing.key_group_prompt",

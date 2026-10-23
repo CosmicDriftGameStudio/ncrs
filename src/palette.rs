@@ -379,6 +379,31 @@ impl Palette {
             .min_by(|a, b| a.ratio.total_cmp(&b.ratio))
     }
 
+    /// The presets with their own text colors on tagged rows and bars (Cosmic,
+    /// Dracula) would turn unreadable when a role moves the fill or the color
+    /// the slot used to follow. Then the slot takes the more readable of its
+    /// value before the roles and the color it used to follow. Teal and Classic
+    /// never differ from that color and stay as they are.
+    fn keep_readable(&mut self, preset: &Palette, before: &Palette, set: &[ColorRole]) {
+        let touched = |a: ColorRole, b: ColorRole| set.contains(&a) || set.contains(&b);
+        if preset.tagged_text != preset.text && touched(ColorRole::Tagged, ColorRole::Text) {
+            self.tagged_text = most_readable(self.tagged, [before.tagged_text, self.text]);
+        }
+        if preset.tagged_directory != preset.directory
+            && touched(ColorRole::Tagged, ColorRole::Directory)
+        {
+            self.tagged_directory =
+                most_readable(self.tagged, [before.tagged_directory, self.directory]);
+        }
+        if preset.tagged_mark != preset.accent && touched(ColorRole::Tagged, ColorRole::Accent) {
+            self.tagged_mark = most_readable(self.tagged, [before.tagged_mark, self.accent]);
+        }
+        if preset.title_text != preset.cursor_text && touched(ColorRole::Bar, ColorRole::CursorText)
+        {
+            self.title_text = most_readable(self.title, [before.title_text, self.cursor_text]);
+        }
+    }
+
     /// The palette `[theme]` describes: the preset (wherever it stands in the
     /// section), then the VS Code theme read from its `vscode` entry, then the
     /// roles in the order written.
@@ -409,6 +434,7 @@ impl Palette {
         if let Some(theme) = vscode {
             theme.apply(&mut palette);
         }
+        let before_roles = palette;
         let mut role_spans = Vec::new();
         for entry in &section.entries {
             let key = entry.key.as_ref();
@@ -430,6 +456,8 @@ impl Palette {
             palette.set(role, color);
             role_spans.push((role, entry.value.span()));
         }
+        let set_roles: Vec<ColorRole> = role_spans.iter().map(|(role, _)| *role).collect();
+        palette.keep_readable(&preset.palette(), &before_roles, &set_roles);
         Ok(ConfiguredPalette {
             palette,
             preset_span,
@@ -473,6 +501,16 @@ pub struct LowContrast {
 
 /// `#rrggbb` or `#rgb`. Alpha is refused: a translucent panel would show the
 /// window behind it, which nothing here is drawn to handle.
+/// The candidate with the most contrast against `ground`.
+pub fn most_readable(ground: Color, candidates: [Color; 2]) -> Color {
+    let [first, second] = candidates;
+    if contrast_ratio(second, ground) > contrast_ratio(first, ground) {
+        second
+    } else {
+        first
+    }
+}
+
 fn parse_color(text: &str) -> Result<Color, String> {
     let not_a_color = || format!("{text:?} is not a color, expected \"#rrggbb\" or \"#rgb\"");
     let digits = text.strip_prefix('#').ok_or_else(not_a_color)?;
@@ -784,6 +822,42 @@ mod tests {
             assert_eq!(p.tagged_directory, p.directory, "{preset:?}");
             assert_eq!(p.tagged_mark, p.accent, "{preset:?}");
         }
+    }
+
+    #[test]
+    fn a_dark_tagged_fill_keeps_the_cosmic_tagged_text_readable() {
+        let config = load_text("[open]\n\n[theme]\ntagged = \"#203040\"\n");
+        let p = config.palette;
+        for (name, color) in [
+            ("tagged_text", p.tagged_text),
+            ("tagged_directory", p.tagged_directory),
+            ("tagged_mark", p.tagged_mark),
+        ] {
+            let ratio = contrast_ratio(color, p.tagged);
+            assert!(ratio >= 3.0, "{name} {ratio}");
+        }
+    }
+
+    #[test]
+    fn a_light_bar_keeps_the_cosmic_title_text_readable() {
+        let config = load_text("[open]\n\n[theme]\nbar = \"#e0e0e0\"\n");
+        let p = config.palette;
+        assert!(contrast_ratio(p.title_text, p.title) >= 3.0);
+        let config = load_text("[open]\n\n[theme]\ncursor_text = \"#000000\"\n");
+        let p = config.palette;
+        assert!(contrast_ratio(p.title_text, p.title) >= 3.0);
+    }
+
+    #[test]
+    fn teal_keeps_blind_role_overrides_exactly() {
+        let config = load_text(
+            "[open]\n\n[theme]\npreset = \"default\"\ntagged = \"#203040\"\nbar = \"#e0e0e0\"\ncursor_text = \"#000000\"\n",
+        );
+        let p = config.palette;
+        assert_eq!(p.tagged_text, p.text);
+        assert_eq!(p.tagged_directory, p.directory);
+        assert_eq!(p.tagged_mark, p.accent);
+        assert_eq!(p.title_text, Color::from_rgb8(0, 0, 0));
     }
 
     #[test]

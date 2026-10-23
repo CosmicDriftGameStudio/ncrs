@@ -505,7 +505,8 @@ high-security application, and it does not try to be one.
 `~/.local/share/ncrs` on Linux, `%APPDATA%\ncrs` on Windows). It is a SQLCipher
 database (AES-256). The key is kept in the operating system's credential store
 (Keychain, Credential Manager or Secret Service). When the index is created,
-ncrs shows a recovery key once. You need it if the credential store loses the
+ncrs shows your master key once, the same key ncrs later asks for as the
+recovery key. You need it if the credential store loses the
 key, for example on a new machine or after a reinstall. Without it the index
 cannot be read again.
 

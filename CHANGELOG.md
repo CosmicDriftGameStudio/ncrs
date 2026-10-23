@@ -38,6 +38,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The card with the master key of a new encrypted index is titled "Your master
+  key" and points at the highlighted block you type to confirm you saved it.
+- The Inspection labels what waits as "Pending", names its steps Intake and
+  Pending, and shows "after the first full minute" for throughput and time
+  left until a full minute has been measured.
+- The tag star stays readable on tagged rows in every color preset and with
+  your own `[theme]` colors; the `cosmic` and `dracula` presets keep the text
+  on tagged rows and on the title bars readable when `tagged` or `bar` change.
 - The `cosmic` color preset is the new default, a calm, almost neutral dark
   grey with muted accents. To keep the earlier look, write `[theme]` with
   `preset = "default"` in the config.

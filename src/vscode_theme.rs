@@ -9,7 +9,7 @@ use iced::Color;
 use jsonc_parser::{parse_to_value, JsonValue, ParseOptions};
 
 use crate::config::read_source;
-use crate::palette::{contrast_ratio, ColorRole, Palette};
+use crate::palette::{most_readable, ColorRole, Palette};
 
 /// What a role takes its color from, and which color it is drawn over when
 /// the theme's color is translucent.
@@ -188,16 +188,6 @@ impl VscodeTheme {
                 most_readable(palette.tagged, [palette.directory, palette.background]);
             palette.tagged_mark = palette.tagged_text;
         }
-    }
-}
-
-/// The candidate with the most contrast against `ground`.
-fn most_readable(ground: Color, candidates: [Color; 2]) -> Color {
-    let [first, second] = candidates;
-    if contrast_ratio(second, ground) > contrast_ratio(first, ground) {
-        second
-    } else {
-        first
     }
 }
 
