@@ -185,7 +185,7 @@ impl ThemePreset {
                 menu_shortcut_on_cursor: Color::from_rgb8(0x00, 0x00, 0x00),
                 menu_disabled: Color::from_rgb8(0x80, 0x80, 0x80),
                 accent: Color::from_rgb8(0xFF, 0xFF, 0x55),
-                success: Color::from_rgb8(0x00, 0x44, 0x00),
+                success: Color::from_rgb8(0x55, 0xFF, 0x55),
                 error: Color::from_rgb8(0xFF, 0x55, 0x55),
                 fkey_number: Color::from_rgb8(0xFF, 0xFF, 0xFF),
                 fkey_label: Color::from_rgb8(0x00, 0xAA, 0xAA),
@@ -352,7 +352,7 @@ impl Palette {
     /// Text on the cursor and tagged rows and the error color on the dialog are
     /// not judged: the built-in palette is already weak there.
     pub fn weakest_contrast(&self) -> Option<LowContrast> {
-        const PAIRS: [(ColorRole, ColorRole); 7] = [
+        const PAIRS: [(ColorRole, ColorRole); 8] = [
             (ColorRole::Text, ColorRole::Panel),
             (ColorRole::Directory, ColorRole::Panel),
             (ColorRole::CursorText, ColorRole::Cursor),
@@ -360,6 +360,7 @@ impl Palette {
             (ColorRole::Text, ColorRole::Dialog),
             (ColorRole::Text, ColorRole::Menu),
             (ColorRole::Error, ColorRole::StatusBar),
+            (ColorRole::Success, ColorRole::StatusBar),
         ];
         PAIRS
             .into_iter()

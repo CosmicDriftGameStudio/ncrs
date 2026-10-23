@@ -39,7 +39,9 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 
 - The NC-rs bar at the top is gone (the window title names the app);
-  confirmations show at the right of the status bar.
+  confirmations show at the right of the status bar. In `classic` they are
+  bright green, and a `[theme]` whose `success` or `error` is hard to read on
+  the status bar is reported.
 - The card with the master key of a new encrypted index is titled "Your master
   key" and points at the highlighted block you type to confirm you saved it.
 - The Inspection labels what waits as "Pending", names its steps Intake and
