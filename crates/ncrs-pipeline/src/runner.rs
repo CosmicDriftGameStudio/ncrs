@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
+use std::fs;
 use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -165,10 +166,28 @@ struct StepCounts {
     unchanged: usize,
 }
 
+/// Tells a repeated watch report from a change of the file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Fingerprint {
+    len: u64,
+    modified: SystemTime,
+}
+
+impl Fingerprint {
+    fn of(path: &Path) -> Option<Self> {
+        let metadata = fs::metadata(path).ok()?;
+        Some(Self {
+            len: metadata.len(),
+            modified: metadata.modified().ok()?,
+        })
+    }
+}
+
 #[derive(Debug)]
 struct Queued {
     item: Item,
     batch: Option<u64>,
+    fingerprint: Option<Fingerprint>,
 }
 
 #[derive(Debug)]
@@ -218,6 +237,10 @@ struct State {
     continuations: VecDeque<Continuation>,
     /// Paths queued or deferred at the first step.
     waiting_first: HashSet<PathBuf>,
+    /// Each path as it was when it last left the first-step queue since the
+    /// latest scan of its location started. Recorded at that point, so a
+    /// report arriving while the file runs is matched too.
+    taken: HashMap<PathBuf, Fingerprint>,
     deferred: Vec<Deferred>,
     next_rescan: Option<Instant>,
     batches: HashMap<u64, Batch>,
@@ -249,7 +272,13 @@ impl State {
 
     /// False when the path already waits at the first step, which then covers
     /// the change.
-    fn queue_first_step(&mut self, location: &Location, path: &Path, batch: Option<u64>) -> bool {
+    fn queue_first_step(
+        &mut self,
+        location: &Location,
+        path: &Path,
+        batch: Option<u64>,
+        fingerprint: Option<Fingerprint>,
+    ) -> bool {
         if !self.waiting_first.insert(path.to_path_buf()) {
             return false;
         }
@@ -263,8 +292,13 @@ impl State {
                 document: None,
             },
             batch,
+            fingerprint,
         });
         true
+    }
+
+    fn is_repeated_report(&self, path: &Path, fingerprint: Option<Fingerprint>) -> bool {
+        fingerprint.is_some_and(|reported| self.taken.get(path) == Some(&reported))
     }
 
     fn release(&mut self, batch: u64) -> Option<Location> {
@@ -301,6 +335,7 @@ impl State {
                 self.first_step.push_back(Queued {
                     item: due_entry.item,
                     batch: None,
+                    fingerprint: None,
                 });
             } else {
                 self.continuations.push_back(Continuation {
@@ -327,10 +362,17 @@ impl State {
             return Some(Job::Start);
         }
         if let Some(location) = self.scans.pop_front() {
+            // Cleared under the same lock as the pop, so the scan feeds every
+            // file again and skips only those taken while it walks.
+            self.taken
+                .retain(|path, _| !path.starts_with(&location.path));
             return Some(Job::Scan(location));
         }
         let next = self.first_step.pop_front()?;
         self.waiting_first.remove(&next.item.path);
+        if let Some(fingerprint) = next.fingerprint {
+            self.taken.insert(next.item.path.clone(), fingerprint);
+        }
         Some(Job::Item {
             item: next.item,
             step: 0,
@@ -637,8 +679,15 @@ impl Shared {
                 else {
                     return;
                 };
+                let fingerprint = Fingerprint::of(&path);
+                // Until the watcher is stored, the scans queued with it still lie
+                // ahead and cover the file. Taken here, it would be forgotten when
+                // such a scan starts and then fed a second time by its walk.
                 let queued = self.update(|state| {
-                    !state.stopping && state.queue_first_step(location, &path, None)
+                    !state.stopping
+                        && state.watcher.is_some()
+                        && !state.is_repeated_report(&path, fingerprint)
+                        && state.queue_first_step(location, &path, None, fingerprint)
                 });
                 if queued {
                     self.work_ready.notify_one();
@@ -700,8 +749,11 @@ impl Shared {
             match found {
                 Found::File(path) => {
                     if classify(location, path).is_ok() {
-                        let queued = self
-                            .update(|state| state.queue_first_step(location, path, Some(batch)));
+                        let fingerprint = Fingerprint::of(path);
+                        let queued = self.update(|state| {
+                            !state.is_repeated_report(path, fingerprint)
+                                && state.queue_first_step(location, path, Some(batch), fingerprint)
+                        });
                         if queued {
                             self.work_ready.notify_one();
                         }
@@ -894,6 +946,7 @@ impl Runner {
             first_step: VecDeque::new(),
             continuations: VecDeque::new(),
             waiting_first: HashSet::new(),
+            taken: HashMap::new(),
             deferred: Vec::new(),
             next_rescan: settings
                 .rescan_every
@@ -1307,6 +1360,54 @@ mod tests {
         assert_eq!(report.documents_per_minute.len(), RATE_MINUTES);
         assert_eq!(report.left_pipeline, 3);
         assert_eq!(report.open_files(), 0);
+    }
+
+    /// FSEvents also reports files written shortly before the watch started,
+    /// so a file the scan already took can be reported again unchanged.
+    #[test]
+    fn a_file_reported_again_unchanged_is_not_taken_again() {
+        let (_dir, location) = numbered_files(3);
+        let (step, _started) = probe("probe", None, fail_the_second_file);
+        let runner = start(workers(1), vec![step], &location, Arc::new(FixedClock));
+        runner.wait_for("all three handled", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[0].done + snapshot.steps[0].failed == 3
+        });
+
+        for name in ["file-1.pdf", "file-2.pdf"] {
+            runner
+                .shared
+                .on_watch_event(WatchEvent::File(location.path.join(name)));
+        }
+        let report = runner.wait_for("the repeated reports handled", is_idle);
+
+        let counts = &report.steps[0];
+        assert_eq!((counts.done, counts.failed, counts.unchanged), (2, 1, 0));
+        assert_eq!(report.errors.len(), 1);
+        assert_eq!(report.left_pipeline, 3);
+    }
+
+    #[test]
+    fn a_failed_file_that_changes_is_tried_again() {
+        let (_dir, location) = numbered_files(3);
+        let (step, _started) = probe("probe", None, fail_the_second_file);
+        let runner = start(workers(1), vec![step], &location, Arc::new(FixedClock));
+        runner.wait_for("all three handled", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[0].done + snapshot.steps[0].failed == 3
+        });
+
+        // Moved in whole, so no report can see the file half written.
+        let staging = TempDir::new().unwrap();
+        let changed = staging.path().join("file-2.pdf");
+        fs::write(&changed, b"a longer body").unwrap();
+        let second = location.path.join("file-2.pdf");
+        fs::rename(&changed, &second).unwrap();
+        runner.shared.on_watch_event(WatchEvent::File(second));
+        let report = runner.wait_for("the changed file tried again", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[0].failed == 2
+        });
+
+        assert_eq!(report.steps[0].done, 2);
+        assert_eq!(report.errors.len(), 2);
     }
 
     fn leave_the_second_file_unchanged(path: &Path) -> Result<StepOutcome, String> {
