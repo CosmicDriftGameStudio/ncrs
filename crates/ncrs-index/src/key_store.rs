@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::Mutex;
 
 use crate::error::KeyStoreError;
@@ -23,6 +24,7 @@ pub trait KeyStore {
 #[derive(Debug)]
 pub struct KeyringKeyStore {
     service: String,
+    account: String,
 }
 
 impl KeyringKeyStore {
@@ -34,12 +36,32 @@ impl KeyringKeyStore {
     pub fn with_service(service: &str) -> Self {
         Self {
             service: service.to_owned(),
+            account: ACCOUNT_NAME.to_owned(),
         }
     }
 
-    fn entry(&self) -> Result<keyring::Entry, KeyStoreError> {
-        keyring::Entry::new(&self.service, ACCOUNT_NAME).map_err(unavailable)
+    /// One entry per index: two portable copies, or a portable copy and an
+    /// installed one, must not overwrite each other's key.
+    pub fn with_account(mut self, account: &str) -> Self {
+        account.clone_into(&mut self.account);
+        self
     }
+
+    /// The store of a portable copy, keyed by its data directory. The
+    /// installed layout keeps the plain account, so existing keys still match.
+    pub fn portable(data_dir: &Path) -> Self {
+        Self::new().with_account(&portable_account(data_dir))
+    }
+
+    fn entry(&self) -> Result<keyring::Entry, KeyStoreError> {
+        keyring::Entry::new(&self.service, &self.account).map_err(unavailable)
+    }
+}
+
+// Stored keys are found by this exact string; changing how the path is formed
+// strands every existing portable key.
+fn portable_account(data_dir: &Path) -> String {
+    format!("{ACCOUNT_NAME}:{}", data_dir.display())
 }
 
 impl Default for KeyringKeyStore {
@@ -157,6 +179,31 @@ mod tests {
 
         store.entry().unwrap().delete_credential().unwrap();
         assert_eq!(store.load().unwrap(), None);
+    }
+
+    #[test]
+    fn portable_account_differs_per_data_dir_and_from_the_installed_one() {
+        let first = portable_account(Path::new("/home/user/a/data"));
+        let second = portable_account(Path::new("/home/user/b/data"));
+        assert_eq!(first, "index-key:/home/user/a/data");
+        assert_ne!(first, second);
+        assert_ne!(first, ACCOUNT_NAME);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore = "uses the real operating system credential store"]
+    async fn stores_with_different_accounts_do_not_see_each_other() {
+        let service = format!("ncrs-test-accounts-{}", std::process::id());
+        let first = KeyringKeyStore::with_service(&service).with_account("one");
+        let second = KeyringKeyStore::with_service(&service).with_account("two");
+
+        first.store_new(&[7; 32]).unwrap();
+        assert_eq!(second.load().unwrap(), None);
+        second.store_new(&[8; 32]).unwrap();
+        assert_eq!(first.load().unwrap().unwrap(), [7; 32]);
+
+        first.entry().unwrap().delete_credential().unwrap();
+        second.entry().unwrap().delete_credential().unwrap();
     }
 
     #[test]

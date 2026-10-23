@@ -107,6 +107,8 @@ VIEW / EDIT:
 CONFIG:
     ~/.config/ncrs/config.toml on macOS and Linux ($XDG_CONFIG_HOME/ncrs/
     config.toml on Linux if set), %APPDATA%\\ncrs\\config.toml on Windows. A
+    folder named data next to the ncrs executable makes it portable: config.toml
+    and index.db live there instead (not inside a macOS .app). A
     missing file means the defaults; an invalid one means the defaults plus the
     file and line in the status bar.
 

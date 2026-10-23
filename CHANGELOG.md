@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- The Windows ZIP is portable: it contains a `data` folder, and a `data` folder
+  next to the executable holds `config.toml` and `index.db` instead of
+  `%APPDATA%\ncrs`. The index key of a portable copy is stored per data folder
+  in the credential store.
+
+### Changed
+
+- Unpacking the new Windows ZIP over an old install makes it portable. Copy the
+  old `%APPDATA%\ncrs\config.toml` into `data\` to keep your settings.
+
 ## [0.3.1] — 2026-10-22
 
 ### Added
