@@ -1357,7 +1357,10 @@ mod tests {
 
     #[test]
     fn config_and_index_share_the_mode() {
-        let vars = [("HOME", "/home/user"), ("APPDATA", "/home/user/appdata")];
+        let vars = [
+            ("HOME", "/home/user"),
+            ("APPDATA", r"C:\Users\user\AppData\Roaming"),
+        ];
         let normal_config = config_path_in(None, env(&vars)).unwrap();
         let normal_index = index_path_in(None, env(&vars)).unwrap();
         assert!(!normal_config.starts_with("/home/user/ncrs/data"));
