@@ -42,6 +42,7 @@ use crate::ui::{
     self, conflict, dialog, fkeys, header, layout, panel, statusbar, theme, PanelProps, PanelState,
 };
 use ncrs_index::{KeyStore, KeyringKeyStore};
+use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
 use tokio::sync::mpsc;
 
@@ -232,7 +233,9 @@ fn leaves_path_field(message: &Message) -> bool {
             | Message::FilingSetup(
                 FilingSetupMessage::Toggle
                     | FilingSetupMessage::Close
-                    | FilingSetupMessage::Add(_)
+                    | FilingSetupMessage::PickFolder(_)
+                    | FilingSetupMessage::AddPanelFolder(_)
+                    | FilingSetupMessage::SetTarget(_)
                     | FilingSetupMessage::ToggleImages(_)
                     | FilingSetupMessage::Remove(_)
                     | FilingSetupMessage::Save
@@ -431,6 +434,12 @@ impl VolumeMenu {
     }
 }
 
+/// When a saved filing list takes effect.
+enum SavedFilingApplies {
+    Now,
+    AtNextStart,
+}
+
 /// What is wrong with the config, kept to word it again after F9.
 #[derive(Debug)]
 enum ConfigProblem {
@@ -593,6 +602,10 @@ pub struct App {
     /// Looks up a folder the setup adds, on a blocking thread. Injected so
     /// tests add their fixed folders without a disk.
     resolve_folder: fn(&Path) -> Result<PathBuf, String>,
+    /// Must be called from `update`: on macOS rfd sets up the panel as soon as
+    /// the dialog is asked for, and AppKit allows that only on the main thread,
+    /// which is the one that runs `update`.
+    pick_folder: fn(&Path) -> Task<Option<PathBuf>>,
 }
 
 /// The part of the prompt the key routing needs, cheap to clone.
@@ -1456,6 +1469,7 @@ impl App {
             filing_key_store: None,
             filing_setup: None,
             resolve_folder: filing_setup::resolve_folder,
+            pick_folder: filing_setup::pick_folder_with_system_dialog,
         };
 
         let tasks = Task::batch([
@@ -2749,7 +2763,30 @@ impl App {
                 self.filing_setup = None;
                 Task::none()
             }
-            FilingSetupMessage::Add(kind) => {
+            FilingSetupMessage::PickFolder(mode) => {
+                let Some(setup) = self.filing_setup.as_mut() else {
+                    return Task::none();
+                };
+                if !setup.start_adding() {
+                    return Task::none();
+                }
+                (self.pick_folder)(&self.active_panel().path).map(move |folder| {
+                    Message::FilingSetup(FilingSetupMessage::FolderPicked { mode, folder })
+                })
+            }
+            FilingSetupMessage::FolderPicked { mode, folder } => {
+                let Some(setup) = self.filing_setup.as_mut() else {
+                    return Task::none();
+                };
+                match folder {
+                    Some(picked) => self.resolve_setup_folder(mode, picked),
+                    None => {
+                        setup.cancel_adding();
+                        Task::none()
+                    }
+                }
+            }
+            FilingSetupMessage::AddPanelFolder(mode) => {
                 let Some(setup) = self.filing_setup.as_mut() else {
                     return Task::none();
                 };
@@ -2757,28 +2794,21 @@ impl App {
                     return Task::none();
                 }
                 let folder = self.active_panel().path.clone();
-                let resolve_folder = self.resolve_folder;
-                Task::perform(
-                    tokio::task::spawn_blocking({
-                        let looked_up = folder.clone();
-                        move || resolve_folder(&looked_up)
-                    }),
-                    move |joined| {
-                        Message::FilingSetup(FilingSetupMessage::Added {
-                            kind,
-                            folder,
-                            resolved: joined.unwrap_or_else(|join| Err(join.to_string())),
-                        })
-                    },
-                )
+                self.resolve_setup_folder(mode, folder)
             }
             FilingSetupMessage::Added {
-                kind,
+                mode,
                 folder,
                 resolved,
             } => {
                 if let Some(setup) = self.filing_setup.as_mut() {
-                    setup.finish_adding(kind, folder, resolved);
+                    setup.finish_adding(mode, folder, resolved);
+                }
+                Task::none()
+            }
+            FilingSetupMessage::SetTarget(index) => {
+                if let Some(setup) = self.filing_setup.as_mut() {
+                    setup.set_target(index);
                 }
                 Task::none()
             }
@@ -2825,14 +2855,61 @@ impl App {
             FilingSetupMessage::Saved(result) => {
                 // The file is written even when the card was closed meanwhile,
                 // so the module follows it all the same.
-                let (note, task) = match result {
-                    Ok(filing) => self.apply_saved_filing(filing),
-                    Err(error) => (SetupNote::SaveFailed(error), Task::none()),
-                };
-                if let Some(setup) = self.filing_setup.as_mut() {
-                    setup.finish_saving(note);
+                match result {
+                    Ok(filing) => {
+                        let (applies, task) = self.apply_saved_filing(filing);
+                        self.filing_setup = None;
+                        let notice = self.show_notice(self.saved_filing_notice(applies));
+                        Task::batch([task, notice])
+                    }
+                    Err(error) => {
+                        if let Some(setup) = self.filing_setup.as_mut() {
+                            setup.finish_saving(SetupNote::SaveFailed(error));
+                        }
+                        Task::none()
+                    }
                 }
-                task
+            }
+        }
+    }
+
+    /// Looks up `folder` on a blocking thread; the answer is an `Added`.
+    fn resolve_setup_folder(&self, mode: LocationMode, folder: PathBuf) -> Task<Message> {
+        let resolve_folder = self.resolve_folder;
+        Task::perform(
+            tokio::task::spawn_blocking({
+                let looked_up = folder.clone();
+                move || resolve_folder(&looked_up)
+            }),
+            move |joined| {
+                Message::FilingSetup(FilingSetupMessage::Added {
+                    mode,
+                    folder,
+                    resolved: joined.unwrap_or_else(|join| Err(join.to_string())),
+                })
+            },
+        )
+    }
+
+    fn saved_filing_notice(&self, applies: SavedFilingApplies) -> String {
+        match applies {
+            SavedFilingApplies::AtNextStart => {
+                self.lang.text(Msg::FilingSetupSavedNextStart).to_owned()
+            }
+            SavedFilingApplies::Now => {
+                match self
+                    .keymap
+                    .shortcut_label(&Message::FilingStatus(FilingStatusMessage::Toggle))
+                {
+                    Some(key) => fill_template(
+                        self.lang.text(Msg::FilingSetupSavedRunning),
+                        &[("{key}", &key)],
+                    ),
+                    None => self
+                        .lang
+                        .text(Msg::FilingSetupSavedRunningUnbound)
+                        .to_owned(),
+                }
             }
         }
     }
@@ -2840,14 +2917,14 @@ impl App {
     /// A module that works on configured locations keeps running on them:
     /// there is no reload, and the saved list takes over at the next start.
     /// One without locations, or none at all, is replaced at once.
-    fn apply_saved_filing(&mut self, filing: Filing) -> (SetupNote, Task<Message>) {
+    fn apply_saved_filing(&mut self, filing: Filing) -> (SavedFilingApplies, Task<Message>) {
         let replaceable = self.filing_key_store.is_some()
             && self.filing.as_ref().is_none_or(|module| {
                 !module.has_configured_locations() && module.can_be_replaced()
             });
         if !replaceable {
             self.filing_config = filing;
-            return (SetupNote::AppliesAtNextStart, Task::none());
+            return (SavedFilingApplies::AtNextStart, Task::none());
         }
         // Dropping the runner stops it and lets go of the index before the
         // new module opens it again.
@@ -2855,7 +2932,7 @@ impl App {
         self.filing = None;
         let task = self.start_filing_module(&filing);
         self.refresh_filing_snapshot();
-        (SetupNote::Applied, task)
+        (SavedFilingApplies::Now, task)
     }
 
     /// Shows `text` in the title bar for [`NOTICE_DURATION`]. The timer carries
@@ -5039,6 +5116,7 @@ impl App {
             filing_key_store: None,
             filing_setup: None,
             resolve_folder: |folder| Ok(folder.to_path_buf()),
+            pick_folder: |_| Task::none(),
         };
         for (side, names) in [
             (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
@@ -5083,6 +5161,12 @@ impl App {
             app.filing = Some(FilingModule::in_phase_with_index(Phase::Ready, false));
         }
         app
+    }
+
+    /// The same app, worded in `lang`.
+    pub fn in_language(mut self, lang: Language) -> Self {
+        self.lang = lang;
+        self
     }
 
     /// Fixed panels that have been shown `snapshot` of a pipeline at
@@ -9353,7 +9437,7 @@ mod filing_tests {
 mod filing_setup_tests {
     use super::*;
     use crate::config::FilingLocation;
-    use crate::filing_setup::LocationKind;
+    use crate::filing_setup::SetupProblem;
     use ncrs_index::InMemoryKeyStore;
     use ncrs_intake::LocationMode;
 
@@ -9444,20 +9528,122 @@ mod filing_setup_tests {
         );
     }
 
-    #[test]
-    fn adding_looks_up_the_active_panels_folder_and_lists_it() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
+    fn runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
             .build()
+            .unwrap()
+    }
+
+    fn pick(app: &mut App, mode: LocationMode, path: &str) {
+        drop(app.update(setup_message(FilingSetupMessage::PickFolder(mode))));
+        assert!(app.filing_setup.as_ref().unwrap().is_busy());
+        let folder = PathBuf::from(path);
+        drop(app.update(setup_message(FilingSetupMessage::FolderPicked {
+            mode,
+            folder: Some(folder.clone()),
+        })));
+        drop(app.update(setup_message(FilingSetupMessage::Added {
+            mode,
+            folder: folder.clone(),
+            resolved: Ok(folder),
+        })));
+        assert!(!app.filing_setup.as_ref().unwrap().is_busy());
+    }
+
+    #[test]
+    fn folders_from_the_dialog_fill_both_sections_without_touching_the_panels() {
+        let runtime = runtime();
+        let _inside = runtime.enter();
+        let mut app = App::with_filing_setup(&[], false);
+        let panel_folder = app.active_panel().path.clone();
+
+        pick(&mut app, LocationMode::Inbox, "/home/test/Downloads/Scans");
+        pick(&mut app, LocationMode::Inbox, "/home/test/Scanner");
+        pick(
+            &mut app,
+            LocationMode::Archive,
+            "/home/test/Documents/Filed",
+        );
+        pick(
+            &mut app,
+            LocationMode::Archive,
+            "/home/test/Documents/Old-2019",
+        );
+
+        let setup = app.filing_setup.as_ref().unwrap();
+        let count = |mode| setup.chosen().iter().filter(|l| l.mode == mode).count();
+        assert_eq!(count(LocationMode::Inbox), 2);
+        assert_eq!(count(LocationMode::Archive), 2);
+        assert_eq!(app.active_panel().path, panel_folder);
+        assert_eq!(setup.problem(), Some(SetupProblem::ChooseCentralFiling));
+
+        let filed = setup
+            .chosen()
+            .iter()
+            .position(|l| l.path == Path::new("/home/test/Documents/Filed"))
             .unwrap();
+        drop(app.update(setup_message(FilingSetupMessage::SetTarget(filed))));
+        assert!(app.filing_setup.as_ref().unwrap().can_save());
+    }
+
+    #[test]
+    fn a_cancelled_dialog_adds_nothing() {
+        let mut app = App::with_filing_setup(&[], false);
+
+        drop(app.update(setup_message(FilingSetupMessage::PickFolder(
+            LocationMode::Inbox,
+        ))));
+        assert!(app.filing_setup.as_ref().unwrap().is_busy());
+        drop(app.update(setup_message(FilingSetupMessage::FolderPicked {
+            mode: LocationMode::Inbox,
+            folder: None,
+        })));
+
+        let setup = app.filing_setup.as_ref().unwrap();
+        assert!(!setup.is_busy());
+        assert!(setup.chosen().is_empty());
+    }
+
+    #[test]
+    fn the_same_folder_twice_gives_a_note_and_adds_nothing() {
+        let runtime = runtime();
+        let _inside = runtime.enter();
+        let mut app = App::with_filing_setup(&[], false);
+
+        pick(
+            &mut app,
+            LocationMode::Archive,
+            "/home/test/Documents/Filed",
+        );
+        pick(
+            &mut app,
+            LocationMode::Archive,
+            "/home/test/Documents/Filed",
+        );
+
+        assert_eq!(app.filing_setup.as_ref().unwrap().chosen().len(), 1);
+        assert_eq!(
+            note(&app),
+            Some(&SetupNote::AlreadyAdded {
+                folder: PathBuf::from("/home/test/Documents/Filed")
+            })
+        );
+    }
+
+    #[test]
+    fn the_panel_fallback_adds_the_active_panels_folder() {
+        let runtime = runtime();
         let _inside = runtime.enter();
         let mut app = App::with_filing_setup(&[], false);
         let folder = app.active_panel().path.clone();
 
-        drop(app.update(setup_message(FilingSetupMessage::Add(LocationKind::Target))));
+        drop(app.update(setup_message(FilingSetupMessage::AddPanelFolder(
+            LocationMode::Archive,
+        ))));
         assert!(app.filing_setup.as_ref().unwrap().is_busy());
 
         drop(app.update(setup_message(FilingSetupMessage::Added {
-            kind: LocationKind::Target,
+            mode: LocationMode::Archive,
             folder: folder.clone(),
             resolved: Ok(folder.clone()),
         })));
@@ -9465,7 +9651,7 @@ mod filing_setup_tests {
         assert!(!setup.is_busy());
         assert_eq!(setup.chosen().len(), 1);
         assert_eq!(setup.chosen()[0].path, folder);
-        assert_eq!(LocationKind::of(&setup.chosen()[0]), LocationKind::Target);
+        assert_eq!(setup.chosen()[0].mode, LocationMode::Archive);
     }
 
     #[test]
@@ -9484,7 +9670,14 @@ mod filing_setup_tests {
 
         drop(app.update(setup_message(FilingSetupMessage::Saved(Ok(saved_filing())))));
 
-        assert_eq!(note(&app), Some(&SetupNote::Applied));
+        assert!(app.filing_setup.is_none(), "saving closes the card");
+        let key = app
+            .keymap
+            .shortcut_label(&Message::FilingStatus(FilingStatusMessage::Toggle))
+            .unwrap();
+        let notice = app.notice.as_deref().unwrap();
+        assert!(notice.contains("Hermes is on"), "{notice}");
+        assert!(notice.contains(&key), "{notice}");
         assert!(app.filing.as_ref().unwrap().has_configured_locations());
         assert_eq!(app.filing_config, saved_filing());
     }
@@ -9497,7 +9690,8 @@ mod filing_setup_tests {
 
         drop(app.update(setup_message(FilingSetupMessage::Saved(Ok(saved_filing())))));
 
-        assert_eq!(note(&app), Some(&SetupNote::Applied));
+        assert!(app.filing_setup.is_none());
+        assert!(app.notice.as_deref().unwrap().contains("Hermes is on"));
         assert!(app.pipeline.is_none());
         assert!(app.filing.as_ref().unwrap().has_configured_locations());
     }
@@ -9510,7 +9704,11 @@ mod filing_setup_tests {
 
         drop(app.update(setup_message(FilingSetupMessage::Saved(Ok(saved_filing())))));
 
-        assert_eq!(note(&app), Some(&SetupNote::AppliesAtNextStart));
+        assert!(app.filing_setup.is_none());
+        assert_eq!(
+            app.notice.as_deref(),
+            Some(app.lang.text(Msg::FilingSetupSavedNextStart))
+        );
         assert!(app.pipeline.is_some());
         assert!(matches!(app.filing.as_ref().unwrap().phase(), Phase::Ready));
         assert_eq!(app.filing_config, saved_filing());
@@ -9523,7 +9721,11 @@ mod filing_setup_tests {
 
         drop(app.update(setup_message(FilingSetupMessage::Saved(Ok(saved_filing())))));
 
-        assert_eq!(note(&app), Some(&SetupNote::AppliesAtNextStart));
+        assert!(app.filing_setup.is_none());
+        assert_eq!(
+            app.notice.as_deref(),
+            Some(app.lang.text(Msg::FilingSetupSavedNextStart))
+        );
         assert!(matches!(
             app.filing.as_ref().unwrap().phase(),
             Phase::Starting
@@ -9983,17 +10185,17 @@ mod command_palette_tests {
     fn typing_filters_the_entries() {
         let mut app = App::with_fixed_panels();
         open_palette(&mut app);
-        type_into_palette(&mut app, "filing status");
+        type_into_palette(&mut app, "inspection");
         let palette = app.command_palette_for_test().unwrap();
         assert_eq!(palette.hits().len(), 1);
-        assert_eq!(palette.query(), "filing status");
+        assert_eq!(palette.query(), "inspection");
     }
 
     #[test]
     fn enter_on_filing_status_opens_the_page_and_closes_the_palette() {
         let mut app = App::with_fixed_panels();
         open_palette(&mut app);
-        type_into_palette(&mut app, "filing status");
+        type_into_palette(&mut app, "inspection");
         drop(app.update(palette_message(CommandPaletteMessage::Run)));
         assert!(app.command_palette_for_test().is_none());
         assert!(app.filing_status.page_open());
@@ -10004,7 +10206,7 @@ mod command_palette_tests {
     fn a_click_on_an_entry_runs_it() {
         let mut app = App::with_fixed_panels();
         open_palette(&mut app);
-        type_into_palette(&mut app, "filing status");
+        type_into_palette(&mut app, "inspection");
         drop(app.update(palette_message(CommandPaletteMessage::Select(0))));
         assert!(app.command_palette_for_test().is_none());
         assert!(app.filing_status.page_open());

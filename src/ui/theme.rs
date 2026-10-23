@@ -146,27 +146,30 @@ pub fn dialog(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
     }
 }
 
-/// Buttons in the prompt. `primary` is the action the user most likely wants.
+/// Buttons in the prompt. `primary` is the action the user most likely wants
+/// and is filled; the others are outlined. Only a disabled button is dimmed,
+/// so a card without a focused button does not look switched off.
 pub fn dialog_button(
     palette: &Palette,
     primary: bool,
 ) -> impl Fn(&Theme, button::Status) -> button::Style {
     let colors = *palette;
-    move |_theme, _status| {
-        let background = primary.then_some(Background::Color(colors.cursor));
+    move |_theme, status| {
+        let (background, text_color, border_color) = match status {
+            button::Status::Disabled => (None, colors.dim_text, colors.border_inactive),
+            _ if primary => (
+                Some(Background::Color(colors.cursor)),
+                colors.cursor_text,
+                colors.border,
+            ),
+            button::Status::Hovered | button::Status::Pressed => (None, colors.text, colors.accent),
+            button::Status::Active => (None, colors.text, colors.border),
+        };
         button::Style {
             background,
-            text_color: if primary {
-                colors.cursor_text
-            } else {
-                colors.dim_text
-            },
+            text_color,
             border: Border {
-                color: if primary {
-                    colors.border
-                } else {
-                    colors.border_inactive
-                },
+                color: border_color,
                 width: 1.0,
                 radius: spacing::BORDER_RADIUS.into(),
             },

@@ -115,7 +115,7 @@ pub fn buttons<'a>(items: Vec<Element<'a, Message>>) -> Element<'a, Message> {
         .into()
 }
 
-fn radio_look(palette: &Palette) -> impl Fn(&Theme, radio::Status) -> radio::Style {
+pub fn radio_look(palette: &Palette) -> impl Fn(&Theme, radio::Status) -> radio::Style {
     let colors = *palette;
     move |_theme, _status| radio::Style {
         background: Background::Color(colors.panel),

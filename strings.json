@@ -807,14 +807,14 @@
     {
       "key": "action.filing_status",
       "context": "Entry of the command palette that runs the key action filing_status. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
-      "en": "Filing status",
-      "de": "Ablage-Status"
+      "en": "Inspection: Hermes status and errors",
+      "de": "Inspektion: Status und Fehler von Hermes"
     },
     {
       "key": "action.filing_setup",
       "context": "Entry of the command palette that runs the key action filing_setup. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
-      "en": "Filing locations",
-      "de": "Ablageorte"
+      "en": "Hermes: choose folders",
+      "de": "Hermes: Ordner wählen"
     },
     {
       "key": "action.search_case",
@@ -1017,8 +1017,8 @@
     {
       "key": "filing.failed_title",
       "context": "Title of the card shown when the index could not be opened at all.",
-      "en": "Filing is unavailable",
-      "de": "Ablage nicht verfügbar"
+      "en": "Hermes is unavailable",
+      "de": "Hermes ist nicht verfügbar"
     },
     {
       "key": "filing.failed_reason",
@@ -1040,27 +1040,33 @@
     },
     {
       "key": "filing.locations_skipped",
-      "context": "Notice in the title bar after the filing module started: some configured folders cannot be used. Takes the number of folders.",
-      "en": "{count} filing locations skipped: not reachable or overlapping",
-      "de": "{count} Ablageorte übersprungen: nicht erreichbar oder überlappend"
+      "context": "Notice in the title bar after the filing module (Hermes) started: some configured folders cannot be used. Takes the number of folders.",
+      "en": "{count} Hermes folders skipped: not reachable or overlapping",
+      "de": "{count} Hermes-Ordner übersprungen: nicht erreichbar oder überlappend"
     },
     {
       "key": "filing.progress",
-      "context": "Filing progress at the right end of the status bar while files are in the pipeline; pressing it opens the filing status page. Takes the number of files done and the number of files in this stretch of work.",
-      "en": "Filing {done} / {total}",
-      "de": "Ablage {done} / {total}"
+      "context": "Progress of the filing module at the right end of the status bar while files are in the pipeline; pressing it opens the Inspection (filing status page). Takes the number of files done and the number of files in this stretch of work.",
+      "en": "Hermes stamped {done} of {total} files",
+      "de": "Hermes hat {done} von {total} Akten abgestempelt"
     },
     {
       "key": "filing.progress_paused",
       "context": "Like the filing progress in the status bar, shown while the pipeline is paused with files left.",
-      "en": "Filing paused {done} / {total}",
-      "de": "Ablage pausiert {done} / {total}"
+      "en": "Hermes paused: {done} of {total} files stamped",
+      "de": "Hermes pausiert: {done} von {total} Akten abgestempelt"
     },
     {
       "key": "filing_status.title",
-      "context": "Title of the filing status page, a box over the panels that shows what the filing module is doing.",
-      "en": "Filing status",
-      "de": "Ablage-Status"
+      "context": "Title of the filing status page, a box over the panels that shows what Hermes (the filing module) is doing. Inspection is the themed name of the page.",
+      "en": "Inspection",
+      "de": "Inspektion"
+    },
+    {
+      "key": "filing_status.subtitle",
+      "context": "Line under the title of the filing status page that says what the page is for. Hermes is the name of the filing module.",
+      "en": "Hermes: pipeline, errors, figures",
+      "de": "Hermes: Verarbeitung, Fehler, Kennzahlen"
     },
     {
       "key": "filing_status.close",
@@ -1142,21 +1148,21 @@
     },
     {
       "key": "filing_status.load_gentle",
-      "context": "Button for the lowest load of the pipeline: few workers, so the computer stays usable. Lower case adjective.",
-      "en": "gentle",
-      "de": "schonend"
+      "context": "Button for the lowest load of the pipeline: few workers, so the computer stays usable (config value gentle). Themed name; the explanation line names the plain meaning.",
+      "en": "By the book",
+      "de": "Dienst nach Vorschrift"
     },
     {
       "key": "filing_status.load_balanced",
-      "context": "Button for the middle load of the pipeline. Lower case adjective.",
-      "en": "balanced",
-      "de": "ausgewogen"
+      "context": "Button for the middle load of the pipeline (config value balanced). Themed name; the explanation line names the plain meaning.",
+      "en": "Business as usual",
+      "de": "Normalbetrieb"
     },
     {
       "key": "filing_status.load_full",
-      "context": "Button for the highest load of the pipeline: one worker per processor core. Lower case adjective.",
-      "en": "full",
-      "de": "volle Kante"
+      "context": "Button for the highest load of the pipeline: one worker per processor core (config value full). Themed name; the explanation line names the plain meaning.",
+      "en": "Grade 36",
+      "de": "Grad 36"
     },
     {
       "key": "filing_status.workers_label",
@@ -1169,6 +1175,12 @@
       "context": "Note under the load buttons: a change made on the page is not written to the configuration file.",
       "en": "A change applies until ncrs is restarted; config.toml is not changed.",
       "de": "Eine Änderung gilt bis zum Neustart von ncrs; config.toml wird nicht geändert."
+    },
+    {
+      "key": "filing_status.load_explain",
+      "context": "Note next to the load buttons on the filing status page: the plain meaning of the three themed names, in the order of the buttons.",
+      "en": "By the book = gentle, Business as usual = balanced, Grade 36 = full load.",
+      "de": "Dienst nach Vorschrift = schonend, Normalbetrieb = ausgewogen, Grad 36 = volle Last."
     },
     {
       "key": "filing_status.step_counts",
@@ -1274,9 +1286,9 @@
     },
     {
       "key": "filing_status.index_reviews",
-      "context": "Label for the number of documents waiting for the user's review.",
-      "en": "Open reviews",
-      "de": "Offene Prüffälle"
+      "context": "Label for the number of documents waiting for the user's review. Pending is the themed name; the part in brackets says what it means.",
+      "en": "Pending (documents Hermes asks you about)",
+      "de": "Wiedervorlage (Dokumente mit Rückfragen)"
     },
     {
       "key": "filing_status.index_unavailable",
@@ -1304,63 +1316,87 @@
     },
     {
       "key": "filing_setup.title",
-      "context": "Title of the filing setup, a card above the panels where the user picks the folders the filing module works on.",
-      "en": "Filing locations",
-      "de": "Ablageorte"
+      "context": "Title of the filing setup, a card above the panels where the user picks the folders Hermes (the name of the filing module) works with.",
+      "en": "Hermes",
+      "de": "Hermes"
     },
     {
       "key": "filing_setup.explain",
-      "context": "Explanation at the top of the filing setup card. Inbox, archive and target are the three kinds of location; use the same words as the buttons.",
-      "en": "Go to a folder in the active panel and add it. An inbox is emptied into the target, an archive is indexed where it is, and the target is the archive filed documents go to.",
-      "de": "Wechsle im aktiven Panel in einen Ordner und füge ihn hinzu. Ein Eingang wird ins Ablageziel geleert, ein Archiv wird indiziert, wo es liegt, und das Ablageziel ist das Archiv, in das abgelegte Dokumente kommen."
+      "context": "Explanation at the top of the filing setup card. Hermes is the name of the filing module; the two sections below ask for the Tubes folders and the document folders.",
+      "en": "Hermes files your documents. Choose the folders it works with.",
+      "de": "Hermes legt deine Dokumente ab. Wähle die Ordner, mit denen er arbeitet."
     },
     {
-      "key": "filing_setup.current_folder",
-      "context": "Line in the filing setup card naming the folder the add buttons would add. Takes the folder path.",
-      "en": "Folder in the active panel: {path}",
-      "de": "Ordner im aktiven Panel: {path}"
+      "key": "filing_setup.tubes_heading",
+      "context": "Heading of the first section of the filing setup card, which lists the inbox folders (config mode \"inbox\"). Tubes is the themed name for inboxes; the question says what they are.",
+      "en": "Tubes: where do new documents arrive?",
+      "de": "Rohrpost: Wo kommen neue Dokumente an?"
     },
     {
-      "key": "filing_setup.add_inbox",
-      "context": "Button in the filing setup card: adds the folder of the active panel as an inbox.",
-      "en": "Add as inbox",
-      "de": "Als Eingang hinzufügen"
+      "key": "filing_setup.tubes_explain",
+      "context": "Explanation under the heading of the Tubes section in the filing setup card: documents are picked up from these folders and filed, which empties them.",
+      "en": "Hermes picks them up there and files them. These folders are emptied.",
+      "de": "Hermes holt sie dort ab und legt sie ab. Diese Ordner werden geleert."
     },
     {
-      "key": "filing_setup.add_archive",
-      "context": "Button in the filing setup card: adds the folder of the active panel as an archive.",
-      "en": "Add as archive",
-      "de": "Als Archiv hinzufügen"
+      "key": "filing_setup.tubes_example",
+      "context": "Muted line in the Tubes section of the filing setup card: says that the section is optional and gives examples of folders to add.",
+      "en": "Optional, e.g. Downloads or a scanner folder",
+      "de": "Optional, z. B. Downloads oder ein Scanner-Ordner"
     },
     {
-      "key": "filing_setup.add_target",
-      "context": "Button in the filing setup card: adds the folder of the active panel as the target, the archive filed documents go to.",
-      "en": "Add as target",
-      "de": "Als Ablageziel hinzufügen"
+      "key": "filing_setup.documents_heading",
+      "context": "Heading of the second section of the filing setup card, which lists the document folders (config mode \"archive\").",
+      "en": "Where do you keep your documents?",
+      "de": "Wo bewahrst du deine Dokumente auf?"
     },
     {
-      "key": "filing_setup.kind_inbox",
-      "context": "Kind of a chosen location in the list of the filing setup card.",
-      "en": "Inbox",
-      "de": "Eingang"
+      "key": "filing_setup.documents_explain",
+      "context": "Explanation under the heading of the documents section in the filing setup card. Central Filing is the themed name for the document folder that new documents are moved into (config key target).",
+      "en": "Hermes reads them and learns how you file. Documents are only moved into the Central Filing.",
+      "de": "Hermes liest sie und lernt, wie du ablegst. Dokumente werden nur in die Zentralregistratur verschoben."
     },
     {
-      "key": "filing_setup.kind_archive",
-      "context": "Kind of a chosen location in the list of the filing setup card.",
-      "en": "Archive",
-      "de": "Archiv"
+      "key": "filing_setup.documents_kinds",
+      "context": "Muted line in the documents section of the filing setup card: explains the two kinds of document folder. Central Filing and Records are the themed names; use the same words as the labels in the list.",
+      "en": "Central Filing: new documents are filed here. Records: only read, nothing is moved.",
+      "de": "Zentralregistratur: Hier werden neue Dokumente abgelegt. Aktenkeller: wird nur gelesen, nichts wird verschoben."
     },
     {
-      "key": "filing_setup.kind_target",
-      "context": "Kind of a chosen location in the list of the filing setup card: the archive filed documents go to.",
-      "en": "Target",
-      "de": "Ablageziel"
+      "key": "filing_setup.kind_central",
+      "context": "Label in a row of the documents section of the filing setup card: this document folder is the one new documents are filed into (archive with target = true).",
+      "en": "Central Filing",
+      "de": "Zentralregistratur"
+    },
+    {
+      "key": "filing_setup.kind_records",
+      "context": "Label in a row of the documents section of the filing setup card: this document folder is only read, nothing is moved into it (archive without target).",
+      "en": "Records",
+      "de": "Aktenkeller"
+    },
+    {
+      "key": "filing_setup.add_folder",
+      "context": "Button in the filing setup card, once per section: opens the system dialog to pick a folder to add to that section. Ends with an ellipsis because a dialog follows.",
+      "en": "Add folder…",
+      "de": "Ordner hinzufügen …"
+    },
+    {
+      "key": "filing_setup.use_panel_folder",
+      "context": "Button in the filing setup card, once per section, next to the add folder button: adds the folder shown in the active panel instead of opening a dialog. A muted line with that folder follows it.",
+      "en": "Use the folder in the panel",
+      "de": "Ordner aus dem Panel übernehmen"
+    },
+    {
+      "key": "filing_setup.empty_section",
+      "context": "Shown in a section of the filing setup card while no folder has been added to it.",
+      "en": "No folder yet.",
+      "de": "Noch kein Ordner."
     },
     {
       "key": "filing_setup.images",
-      "context": "Checkbox next to a location in the filing setup card: whether images in it are read too.",
-      "en": "Images",
-      "de": "Bilder"
+      "context": "Checkbox next to a folder in the filing setup card: whether images in it are read too.",
+      "en": "also images",
+      "de": "auch Bilder"
     },
     {
       "key": "filing_setup.remove",
@@ -1369,46 +1405,58 @@
       "de": "Entfernen"
     },
     {
-      "key": "filing_setup.empty",
-      "context": "Shown in the filing setup card while no location has been added.",
-      "en": "No locations yet.",
-      "de": "Noch keine Orte."
+      "key": "filing_setup.already_added",
+      "context": "Note in the filing setup card when the chosen folder is already in the list; nothing is added and this is not an error. Takes the folder path.",
+      "en": "{path} is already added.",
+      "de": "{path} ist schon dabei."
     },
     {
       "key": "filing_setup.rule_no_target",
-      "context": "Rule message in the filing setup card: the list has locations, but none is the target. Saving waits until it is fixed.",
-      "en": "One archive must be the target: add a folder as target.",
-      "de": "Ein Archiv muss das Ablageziel sein: Füge einen Ordner als Ablageziel hinzu."
+      "context": "Rule message in the filing setup card: the written list has document folders, but none is the target. Normally the card prevents this; it can come from a failed write.",
+      "en": "One folder must be the Central Filing.",
+      "de": "Ein Ordner muss die Zentralregistratur sein."
     },
     {
       "key": "filing_setup.rule_second_target",
-      "context": "Rule message in the filing setup card: more than one location is the target. Saving waits until it is fixed.",
-      "en": "Only one location can be the target: remove one of them.",
-      "de": "Nur ein Ort kann das Ablageziel sein: Entferne einen davon."
+      "context": "Rule message in the filing setup card: more than one folder is the target. Normally the card prevents this; it can come from a failed write.",
+      "en": "Only one folder can be the Central Filing.",
+      "de": "Nur ein Ordner kann die Zentralregistratur sein."
     },
     {
       "key": "filing_setup.rule_inbox_target",
-      "context": "Rule message in the filing setup card: an inbox is marked as the target. Saving waits until it is fixed.",
-      "en": "An inbox cannot be the target.",
-      "de": "Ein Eingang kann nicht das Ablageziel sein."
+      "context": "Rule message in the filing setup card: a Tubes folder is marked as the target. Normally the card prevents this; it can come from a failed write.",
+      "en": "A Tubes folder cannot be the Central Filing.",
+      "de": "Ein Rohrpost-Ordner kann nicht die Zentralregistratur sein."
     },
     {
       "key": "filing_setup.rule_overlap",
-      "context": "Rule message in the filing setup card: two locations are the same folder or one lies inside the other. Takes both paths. Saving waits until it is fixed.",
-      "en": "{first} and {second} overlap: a location cannot be the same folder as another or lie inside it.",
-      "de": "{first} und {second} überschneiden sich: Ein Ort darf nicht derselbe Ordner wie ein anderer sein oder in ihm liegen."
+      "context": "Rule message in the filing setup card: two folders are the same or one lies inside the other. Takes both paths. Saving waits until it is fixed.",
+      "en": "{first} and {second} overlap: a folder cannot lie inside another one.",
+      "de": "{first} und {second} überschneiden sich: Ein Ordner darf nicht in einem anderen liegen."
+    },
+    {
+      "key": "filing_setup.problem_no_document_folder",
+      "context": "Problem line in the filing setup card while the list has no document folder; saving waits until one is added. A Tubes folder alone is not enough.",
+      "en": "Add at least one folder where you keep your documents.",
+      "de": "Füge mindestens einen Ordner hinzu, in dem du deine Dokumente aufbewahrst."
+    },
+    {
+      "key": "filing_setup.problem_choose_central",
+      "context": "Problem line in the filing setup card while there are two or more document folders and none is chosen as the Central Filing; saving waits until the user picks one with the radio buttons.",
+      "en": "Choose which folder is the Central Filing.",
+      "de": "Wähle, welcher Ordner die Zentralregistratur ist."
     },
     {
       "key": "filing_setup.folder_unusable",
-      "context": "Error in the filing setup card when the folder of the active panel cannot be added. Takes the path and the reason from the operating system, which stays untranslated.",
+      "context": "Error in the filing setup card when the chosen folder cannot be added. Takes the path and the reason from the operating system, which stays untranslated.",
       "en": "{path} cannot be added: {reason}",
       "de": "{path} kann nicht hinzugefügt werden: {reason}"
     },
     {
       "key": "filing_setup.no_config_path",
-      "context": "Error in the filing setup card when the system names no place for the config file, so the locations cannot be saved.",
-      "en": "The system names no place for the config file, so the locations cannot be saved.",
-      "de": "Das System nennt keinen Ort für die Konfigurationsdatei, daher können die Orte nicht gespeichert werden."
+      "context": "Error in the filing setup card when the system names no place for the config file, so the folders cannot be saved.",
+      "en": "The system names no place for the config file, so the folders cannot be saved.",
+      "de": "Das System nennt keinen Ort für die Konfigurationsdatei, daher können die Ordner nicht gespeichert werden."
     },
     {
       "key": "filing_setup.path_not_text",
@@ -1435,28 +1483,34 @@
       "de": "{path} konnte nicht geschrieben werden: {reason}"
     },
     {
-      "key": "filing_setup.applied",
-      "context": "Confirmation in the filing setup card after saving: the filing module now starts with the saved locations.",
-      "en": "Saved. Filing starts with these locations.",
-      "de": "Gespeichert. Die Ablage startet mit diesen Orten."
+      "key": "filing_setup.saved_running",
+      "context": "Notice in the title bar after saving the filing setup when Hermes starts with the saved folders right away. Takes the key that opens the Inspection (the filing status page), spelled for the platform.",
+      "en": "Hermes is on. Open the Inspection with {key}.",
+      "de": "Hermes ist eingeschaltet. Die Inspektion öffnest du mit {key}."
     },
     {
-      "key": "filing_setup.next_start",
-      "context": "Confirmation in the filing setup card after saving while the filing module already runs: the locations take effect the next time ncrs starts.",
-      "en": "Saved. The locations apply from the next start of ncrs.",
-      "de": "Gespeichert. Die Orte gelten ab dem nächsten Start von ncrs."
+      "key": "filing_setup.saved_running_unbound",
+      "context": "Notice in the title bar after saving the filing setup when Hermes starts right away but no key is bound to the Inspection (the filing status page). Palette means the command palette of the app.",
+      "en": "Hermes is on. Open the Inspection from the command palette.",
+      "de": "Hermes ist eingeschaltet. Die Inspektion öffnest du über „Aktion ausführen“."
+    },
+    {
+      "key": "filing_setup.saved_next_start",
+      "context": "Notice in the title bar after saving the filing setup while Hermes already runs on configured folders: the new folders apply from the next start of ncrs.",
+      "en": "Saved. Hermes uses the new folders from the next start of ncrs.",
+      "de": "Gespeichert. Hermes nimmt die neuen Ordner ab dem nächsten Start von ncrs."
+    },
+    {
+      "key": "filing_setup.cancel",
+      "context": "Button in the filing setup card: closes it without saving.",
+      "en": "Cancel",
+      "de": "Abbrechen"
     },
     {
       "key": "filing_setup.save",
       "context": "Button in the filing setup card: writes the locations to the config file.",
       "en": "Save",
       "de": "Speichern"
-    },
-    {
-      "key": "filing_setup.close",
-      "context": "Button in the filing setup card: closes it without saving.",
-      "en": "Close",
-      "de": "Schließen"
     }
   ]
 }

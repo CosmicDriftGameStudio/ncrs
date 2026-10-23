@@ -16,9 +16,20 @@ All notable changes to this project are documented here. The format follows
   folder keeps it.
 - `F1` opens the command palette, as in VS Code; the function key bar shows
   it as "Commands".
+- The filing setup asks in plain words: one section for the Tubes folders
+  where new documents arrive and one for the folders where you keep your
+  documents. "Add folder…" opens the system folder dialog, a folder already in
+  the list is not added twice, and from two document folders on you choose the
+  Central Filing. After saving, the card closes and the title bar says how to
+  open the Inspection.
 
 ### Changed
 
+- The filing module is called Hermes in the app: Tubes (inbox), Central Filing
+  (target archive), Records (other archives), the Inspection (status page),
+  Pending (review list) and the load levels "By the book", "Business as usual"
+  and "Grade 36" come with a plain explanation next to them. The config keys
+  and values stay as they are.
 - A `[keys]` section that binds `F1` to another action now reports that `F1`
   belongs to `command_palette`. Give it other keys, e.g.
   `command_palette = ["primary+shift+p"]`, to keep your binding.

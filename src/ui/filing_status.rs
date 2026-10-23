@@ -51,6 +51,9 @@ pub fn view<'a>(
 
     let body = column![
         title_row,
+        text(lang.text(Msg::FilingStatusSubtitle))
+            .size(font_size::STATUS)
+            .color(palette.dim_text),
         pipeline_section(status, load, lang, palette),
         workers_section(status, lang, palette),
         index_section(status, index_open, lang, palette),
@@ -191,6 +194,9 @@ fn pipeline_section<'a>(
         labelled(Msg::FilingStatusStateLabel, state_row, lang, palette),
         labelled(Msg::FilingStatusLoadLabel, load_row, lang, palette),
         labelled(Msg::FilingStatusWorkersLabel, workers_row, lang, palette),
+        text(lang.text(Msg::FilingStatusLoadExplain))
+            .size(font_size::STATUS)
+            .color(palette.dim_text),
         text(lang.text(Msg::FilingStatusLoadNote))
             .size(font_size::STATUS)
             .color(palette.dim_text),

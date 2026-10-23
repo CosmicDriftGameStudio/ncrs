@@ -97,8 +97,8 @@ The defaults. Most of them can be changed in the config file, see [Keys](#keys).
 | `Alt`+`F7` / `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) | Search below the directory of the active panel; pressed again, it moves to the next field. See [Search](#search) |
 | `F1` / `Cmd`+`Shift`+`P` / `Ctrl`+`Shift`+`P` | Command palette: lists the actions that work where you are, with their keys; type to filter, `↑`/`↓` move, `Enter` runs, `Esc` closes |
 | `Cmd`+`P` / `Ctrl`+`P` | Quick Open: jump to a file by a few letters of its path. See [Quick Open](#quick-open) |
-| `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D`, or click the filing progress in the status bar | Filing status page (filing module on): pipeline state, load, workers, index figures and the last errors. `P` pauses or resumes, `1`/`2`/`3` set the load gentle / balanced / full for this session, `+`/`-` change the worker count, `↑`/`↓` and `Enter` show the file of an error, `Esc` closes |
-| `Cmd`+`Shift`+`L` / `Ctrl`+`Shift`+`L` | Filing setup: add the folder of the active panel as inbox, archive or target and save the locations to the config file. See [Filing](#filing). `Esc` closes |
+| `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D`, or click the filing progress in the status bar | Inspection, the filing status page (filing module on, Hermes): pipeline state, load, workers, index figures and the last errors. `P` pauses or resumes, `1`/`2`/`3` set the load gentle ("By the book") / balanced ("Business as usual") / full ("Grade 36") for this session, `+`/`-` change the worker count, `↑`/`↓` and `Enter` show the file of an error, `Esc` closes |
+| `Cmd`+`Shift`+`L` / `Ctrl`+`Shift`+`L` | Hermes setup: choose the Tubes and document folders and save them to the config file. See [Filing](#filing). `Esc` closes |
 | `Backspace`        | Go to parent directory                   |
 | `Tab`              | Switch active panel                      |
 | `F9`               | Switch language for this session (start: `lang`) |
@@ -370,20 +370,43 @@ target = true
 - Exactly one archive is the `target`, the archive filed documents go to. An
   inbox cannot be the target, and no location may be the same folder as another
   or lie inside it.
+- `load` has the names `gentle`, `balanced` and `full`; the Inspection shows
+  them as "By the book", "Business as usual" and "Grade 36" (full load).
+
+The filing module is called Hermes in the app. In the setup and on the
+Inspection the config terms read like this:
+
+| Config | English | German |
+| --- | --- | --- |
+| `mode = "inbox"` | Tubes: where new documents arrive, emptied | Rohrpost |
+| `mode = "archive"` and `target = true` | Central Filing: documents are filed here | Zentralregistratur |
+| `mode = "archive"` without `target` | Records: only read, nothing is moved | Aktenkeller |
+| the filing status page | Inspection | Inspektion |
+| the review list | Pending | Wiedervorlage |
 
 **Setup.** `Cmd`+`Shift`+`L` (`Ctrl`+`Shift`+`L` on Linux and Windows,
-`filing_setup` in `[keys]`) opens the setup. It also opens on its own when the
-module is on and no locations are listed. Go to a folder in the active panel
-and add it as inbox, archive or target; the card stays open and the panels stay
-usable. Each entry has its images switch and can be removed. A list that breaks
-a rule says so and cannot be saved.
+`filing_setup` in `[keys]`) opens the setup, also from the command palette
+(`F1`) as "Hermes: choose folders". It also opens on its own when the module is
+on and no locations are listed. The card has two sections: Tubes, where new
+documents arrive (optional), and the folders where you keep your documents (at
+least one). "Add folder…" opens the system folder dialog; "Use the folder in
+the panel" adds the folder of the active panel instead, for keyboard use and
+for systems without a dialog. The card stays open and the panels stay usable.
+Each entry has its images switch and can be removed. A folder that is already
+in the list is not added again; the card says "already added".
+
+With one document folder, it is the Central Filing. From two document folders
+on, pick the Central Filing with the radio buttons; saving waits for the
+choice. A list that breaks a rule, for example a Tubes folder inside a document
+folder, says so and cannot be saved.
 
 Saving writes the locations by their real paths (symlinks resolved) to
 `[modules.filing]` and sets `enabled = true`. The rest of the file, comments
 included, stays as it is. A config file that does not load is not touched: fix
-it first, the setup shows the error. If no filing runs on configured locations
-yet, filing starts at once with the saved ones; otherwise they apply from the
-next start of ncrs.
+it first, the setup shows the error. After saving, the card closes and the
+title bar says that Hermes is on and which key opens the Inspection. If no
+filing runs on configured locations yet, filing starts at once with the saved
+ones; otherwise the title bar says they apply from the next start of ncrs.
 
 ### Portable mode
 

@@ -1236,7 +1236,7 @@ mod filing_status_page {
             [page_message(FilingStatusMessage::TogglePause)]
         );
         assert_eq!(
-            messages_after_click(&app, "balanced"),
+            messages_after_click(&app, "Business as usual"),
             [page_message(FilingStatusMessage::SetLoad(Load::Balanced))]
         );
     }
@@ -1299,9 +1299,9 @@ mod filing_status_page {
             taken_at(),
         );
 
-        assert!(shows(&app, "Filing 12 / 340"));
+        assert!(shows(&app, "Hermes stamped 12 of 340 files"));
         assert_eq!(
-            messages_after_click(&app, "Filing 12 / 340"),
+            messages_after_click(&app, "Hermes stamped 12 of 340 files"),
             [page_message(FilingStatusMessage::Open)]
         );
     }
@@ -1310,15 +1310,18 @@ mod filing_status_page {
     fn the_status_bar_says_when_the_pipeline_is_paused() {
         let app = App::with_filing_snapshot(snapshot(RunnerState::Paused, 5, 0), taken_at());
 
-        assert!(shows(&app, "Filing paused 0 / 5"));
+        assert!(shows(&app, "Hermes paused: 0 of 5 files stamped"));
     }
 
     #[test]
     fn the_status_bar_shows_no_filing_text_without_work() {
         for state in [RunnerState::Idle, RunnerState::Off] {
             let app = App::with_filing_snapshot(snapshot(state, 0, 40), taken_at());
-            assert!(!shows(&app, "Filing 0 / 0"), "{state:?}");
-            assert!(!shows(&app, "Filing paused 0 / 0"), "{state:?}");
+            assert!(!shows(&app, "Hermes stamped 0 of 0 files"), "{state:?}");
+            assert!(
+                !shows(&app, "Hermes paused: 0 of 0 files stamped"),
+                "{state:?}"
+            );
         }
     }
 }
@@ -1337,35 +1340,58 @@ mod filing_setup_card {
 
     use super::*;
     use crate::config::FilingLocation;
-    use crate::filing_setup::LocationKind;
+    use crate::i18n::Language;
     use crate::messages::FilingSetupMessage;
+    use crate::ui::filing_setup::{
+        target_choice_id, ADD_DOCUMENT_FOLDER_ID, ADD_TUBES_FOLDER_ID, USE_PANEL_FOR_DOCUMENTS_ID,
+        USE_PANEL_FOR_TUBES_ID,
+    };
 
-    const NO_TARGET: &str = "One archive must be the target: add a folder as target.";
-    const SECOND_TARGET: &str = "Only one location can be the target: remove one of them.";
+    const CHOOSE_CENTRAL: &str = "Choose which folder is the Central Filing.";
+    const NO_DOCUMENT_FOLDER: &str = "Add at least one folder where you keep your documents.";
+    const NO_FOLDER_YET: &str = "No folder yet.";
     const VAULT_NOTE: &str = "With an unencrypted index, do not add folders from an encrypted drive (for example a mounted Cryptomator vault): their text would end up in the index in plain form. ncrs does not detect such drives.";
 
-    fn location(path: &str, mode: LocationMode, is_target: bool) -> FilingLocation {
+    fn location(path: &str, mode: LocationMode, images: bool, is_target: bool) -> FilingLocation {
         FilingLocation {
             path: PathBuf::from(path),
             mode,
-            images: false,
+            images,
             is_target,
         }
     }
 
-    fn inbox() -> FilingLocation {
-        location("/home/test/inbox", LocationMode::Inbox, false)
+    fn tube(path: &str) -> FilingLocation {
+        location(path, LocationMode::Inbox, false, false)
     }
 
-    fn target() -> FilingLocation {
-        location("/home/test/target", LocationMode::Archive, true)
+    fn documents(path: &str, is_target: bool) -> FilingLocation {
+        location(path, LocationMode::Archive, false, is_target)
     }
 
-    fn one_of_each() -> Vec<FilingLocation> {
+    fn filled() -> Vec<FilingLocation> {
         vec![
-            inbox(),
-            location("/home/test/archive/company-a", LocationMode::Archive, false),
-            target(),
+            tube("/home/test/Downloads/Scans"),
+            location("/home/test/Scanner", LocationMode::Inbox, true, false),
+            location(
+                "/home/test/Documents/Filed",
+                LocationMode::Archive,
+                true,
+                true,
+            ),
+            documents("/home/test/Documents/Old-2019", false),
+        ]
+    }
+
+    fn violation() -> Vec<FilingLocation> {
+        vec![
+            documents("/home/test/Documents/Filed", false),
+            location(
+                "/home/test/Documents/Filed/Scanner",
+                LocationMode::Inbox,
+                false,
+                false,
+            ),
         ]
     }
 
@@ -1379,65 +1405,134 @@ mod filing_setup_card {
         sim.into_messages().collect()
     }
 
+    fn messages_after_clicking_id(app: &App, id: impl Into<iced::widget::Id>) -> Vec<Message> {
+        let mut sim = simulator(app);
+        sim.click(id.into()).expect("the clicked id");
+        sim.into_messages().collect()
+    }
+
+    fn has_target_choice(app: &App, index: usize) -> bool {
+        simulator(app)
+            .find(iced::widget::Id::from(target_choice_id(index)))
+            .is_ok()
+    }
+
     fn setup_message(message: FilingSetupMessage) -> Message {
         Message::FilingSetup(message)
     }
 
     #[test]
-    fn the_locations_step_lists_one_entry_of_each_kind() {
-        let app = App::with_filing_setup(&one_of_each(), false);
+    fn an_empty_card_asks_for_both_kinds_of_folder_and_cannot_be_saved() {
+        let app = App::with_filing_setup(&[], false);
 
         for label in [
-            "Inbox",
-            "Archive",
-            "Target",
-            "~/inbox",
-            "~/archive/company-a",
-            "~/target",
+            "Hermes",
+            "Tubes: where do new documents arrive?",
+            "Where do you keep your documents?",
+            NO_FOLDER_YET,
         ] {
             assert!(shows(&app, label), "{label}");
         }
-        assert!(!shows(&app, NO_TARGET));
-        assert!(!shows(&app, VAULT_NOTE));
-        assert!(!shows(&app, "No locations yet."));
-    }
-
-    #[test]
-    fn the_locations_step_matches_its_snapshot() {
-        let app = App::with_filing_setup(&one_of_each(), true);
-        let matches = simulator(&app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_image("tests/snapshots/filing_setup.png")
-            .expect("snapshot comparison");
-
         assert!(
-            matches,
-            "the filing setup does not match tests/snapshots/filing_setup.png"
+            !shows(&app, NO_DOCUMENT_FOLDER),
+            "nothing to complain about yet"
         );
+        assert!(messages_after_click(&app, "Save").is_empty());
     }
 
     #[test]
-    fn the_add_buttons_add_the_active_folder_as_their_kind() {
+    fn a_section_without_folders_says_so_until_it_has_one() {
+        let only_tubes = App::with_filing_setup(&[tube("/home/test/Scanner")], false);
+        assert!(shows(&only_tubes, NO_FOLDER_YET));
+        assert!(shows(&only_tubes, NO_DOCUMENT_FOLDER));
+
+        let only_documents = App::with_filing_setup(&[documents("/home/test/Filed", false)], false);
+        assert!(shows(&only_documents, NO_FOLDER_YET));
+
+        assert!(!shows(
+            &App::with_filing_setup(&filled(), false),
+            NO_FOLDER_YET
+        ));
+    }
+
+    #[test]
+    fn each_section_has_its_own_add_buttons() {
         let app = App::with_filing_setup(&[], false);
 
-        assert!(shows(&app, "No locations yet."));
-        for (label, kind) in [
-            ("Add as inbox", LocationKind::Inbox),
-            ("Add as archive", LocationKind::Archive),
-            ("Add as target", LocationKind::Target),
+        for (pick_id, panel_id, mode) in [
+            (
+                ADD_TUBES_FOLDER_ID,
+                USE_PANEL_FOR_TUBES_ID,
+                LocationMode::Inbox,
+            ),
+            (
+                ADD_DOCUMENT_FOLDER_ID,
+                USE_PANEL_FOR_DOCUMENTS_ID,
+                LocationMode::Archive,
+            ),
         ] {
             assert_eq!(
-                messages_after_click(&app, label),
-                [setup_message(FilingSetupMessage::Add(kind))],
-                "{label}"
+                messages_after_clicking_id(&app, pick_id),
+                [setup_message(FilingSetupMessage::PickFolder(mode))],
+                "{pick_id}"
+            );
+            assert_eq!(
+                messages_after_clicking_id(&app, panel_id),
+                [setup_message(FilingSetupMessage::AddPanelFolder(mode))],
+                "{panel_id}"
             );
         }
     }
 
     #[test]
+    fn one_document_folder_is_the_central_filing_without_radio_buttons() {
+        let app = App::with_filing_setup(&[documents("/home/test/Filed", false)], false);
+
+        assert!(shows(&app, "Central Filing"));
+        assert!(!shows(&app, "Records"));
+        assert!(
+            messages_after_click(&app, "~/Filed").is_empty(),
+            "a plain path is not a choice"
+        );
+    }
+
+    #[test]
+    fn a_choice_between_document_folders_sends_the_global_index() {
+        let app = App::with_filing_setup(&filled(), false);
+
+        assert!(shows(&app, "Central Filing"));
+        assert!(shows(&app, "Records"));
+        assert_eq!(
+            messages_after_clicking_id(&app, target_choice_id(3)),
+            [setup_message(FilingSetupMessage::SetTarget(3))]
+        );
+        assert_eq!(
+            messages_after_clicking_id(&app, target_choice_id(2)),
+            [setup_message(FilingSetupMessage::SetTarget(2))]
+        );
+        assert_eq!(
+            messages_after_click(&app, "Save"),
+            [setup_message(FilingSetupMessage::Save)]
+        );
+    }
+
+    #[test]
+    fn two_document_folders_without_a_mark_say_so_and_cannot_be_saved() {
+        let app = App::with_filing_setup(
+            &[
+                documents("/home/test/Filed", false),
+                documents("/home/test/Old", false),
+            ],
+            false,
+        );
+
+        assert!(shows(&app, CHOOSE_CENTRAL));
+        assert!(messages_after_click(&app, "Save").is_empty());
+    }
+
+    #[test]
     fn remove_takes_the_entry_off_the_list() {
-        let mut app = App::with_filing_setup(&one_of_each(), false);
+        let mut app = App::with_filing_setup(&filled(), false);
 
         let clicked = messages_after_click(&app, "Remove");
         assert_eq!(clicked, [setup_message(FilingSetupMessage::Remove(0))]);
@@ -1445,33 +1540,29 @@ mod filing_setup_card {
             drop(app.update(message));
         }
 
-        assert!(!shows(&app, "~/inbox"));
-        assert!(shows(&app, "~/archive/company-a"));
-        assert!(shows(&app, "~/target"));
+        assert!(!shows(&app, "~/Downloads/Scans"));
+        assert!(shows(&app, "~/Scanner"));
+        assert!(has_target_choice(&app, 1) && has_target_choice(&app, 2));
+        assert!(!has_target_choice(&app, 3));
     }
 
     #[test]
-    fn a_list_without_one_target_says_why_and_cannot_be_saved() {
-        let without_target = App::with_filing_setup(&[inbox()], false);
-        assert!(shows(&without_target, NO_TARGET));
-        assert!(messages_after_click(&without_target, "Save").is_empty());
+    fn a_rule_the_list_breaks_is_shown() {
+        let app = App::with_filing_setup(&violation(), false);
 
-        let second = location("/home/test/second", LocationMode::Archive, true);
-        let two_targets = App::with_filing_setup(&[target(), second], false);
-        assert!(shows(&two_targets, SECOND_TARGET));
-        assert!(!shows(&two_targets, NO_TARGET));
-
-        let fine = App::with_filing_setup(&[inbox(), target()], false);
-        assert_eq!(
-            messages_after_click(&fine, "Save"),
-            [setup_message(FilingSetupMessage::Save)]
-        );
+        assert!(shows(
+            &app,
+            "~/Documents/Filed and ~/Documents/Filed/Scanner overlap: a folder cannot lie inside another one."
+        ));
+        assert!(messages_after_click(&app, "Save").is_empty());
     }
 
     #[test]
     fn an_unencrypted_index_repeats_the_vault_note() {
-        assert!(shows(
-            &App::with_filing_setup(&[target()], true),
+        let app = App::with_filing_setup(&[documents("/home/test/Filed", false)], true);
+        assert!(shows(&app, VAULT_NOTE));
+        assert!(!shows(
+            &App::with_filing_setup(&[documents("/home/test/Filed", false)], false),
             VAULT_NOTE
         ));
     }
@@ -1491,9 +1582,40 @@ mod filing_setup_card {
         );
 
         assert_eq!(
-            row_click(&App::with_filing_setup(&one_of_each(), false)),
+            row_click(&App::with_filing_setup(&filled(), false)),
             without_setup
         );
+    }
+
+    fn matches_snapshot(chosen: &[FilingLocation], language: Language, name: &str) {
+        let app = App::with_filing_setup(chosen, false).in_language(language);
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image(format!("tests/snapshots/{name}.png"))
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the filing setup does not match tests/snapshots/{name}.png"
+        );
+    }
+
+    #[test]
+    fn the_empty_card_matches_its_snapshots() {
+        matches_snapshot(&[], Language::English, "filing_setup_empty_en");
+        matches_snapshot(&[], Language::German, "filing_setup_empty_de");
+    }
+
+    #[test]
+    fn the_filled_card_matches_its_snapshots() {
+        matches_snapshot(&filled(), Language::English, "filing_setup_filled_en");
+        matches_snapshot(&filled(), Language::German, "filing_setup_filled_de");
+    }
+
+    #[test]
+    fn the_card_with_a_rule_violation_matches_its_snapshots() {
+        matches_snapshot(&violation(), Language::English, "filing_setup_violation_en");
+        matches_snapshot(&violation(), Language::German, "filing_setup_violation_de");
     }
 }
 
@@ -1553,7 +1675,7 @@ mod command_palette {
         open(&mut app);
         drop(
             app.update(palette_message(CommandPaletteMessage::QueryChanged(
-                "filing status".to_owned(),
+                "inspection".to_owned(),
             ))),
         );
         assert!(shows(&app, "F11"));
@@ -1567,13 +1689,13 @@ mod command_palette {
         let mut sim = simulator(&app);
         sim.click(iced_selector::id("command-palette-query"))
             .expect("the query field");
-        let _ = sim.typewrite("filing st");
+        let _ = sim.typewrite("inspec");
         let messages: Vec<Message> = sim.into_messages().collect();
         for message in messages {
             drop(app.update(message));
         }
         let palette = app.command_palette_for_test().unwrap();
-        assert_eq!(palette.query(), "filing st");
+        assert_eq!(palette.query(), "inspec");
         assert_eq!(palette.hits().len(), 1);
         let marked = &palette.hits()[0].highlight;
         assert!(!marked.is_empty(), "nothing is highlighted");
@@ -1596,7 +1718,7 @@ mod command_palette {
         sim.click("F9").expect("the Switch language entry");
         let messages: Vec<Message> = sim.into_messages().collect();
         assert!(
-            messages.contains(&palette_message(CommandPaletteMessage::Select(3))),
+            messages.contains(&palette_message(CommandPaletteMessage::Select(4))),
             "{messages:?}"
         );
         for message in messages {
@@ -1606,7 +1728,8 @@ mod command_palette {
     }
 
     /// The query leaves the entries whose keys read the same on every
-    /// platform: Copy, Move, Switch panel and Switch language.
+    /// platform: Copy, Move, Switch panel and Switch language, and the
+    /// Inspection and the Hermes setup, which have no key of their own.
     #[test]
     fn the_box_matches_its_snapshot() {
         let mut app = App::with_fixed_panels();

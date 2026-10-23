@@ -180,6 +180,8 @@ mod tests {
                 // there is nothing to translate in the string itself.
                 | Msg::ConflictName
                 | Msg::DeleteOne
+                // The module's name, the same in both languages.
+                | Msg::FilingSetupTitle
         )
     }
 
