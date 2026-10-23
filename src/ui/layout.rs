@@ -6,7 +6,6 @@ use super::theme::spacing;
 
 pub const INITIAL_WINDOW_SIZE: Size = Size::new(1200.0, 760.0);
 
-pub const HEADER_HEIGHT: f32 = 30.0;
 pub const STATUSBAR_HEIGHT: f32 = 28.0;
 pub const FKEYBAR_HEIGHT: f32 = 24.0;
 pub const PANEL_TITLE_HEIGHT: f32 = 28.0;
@@ -27,9 +26,9 @@ pub const TAG_COLUMN_WIDTH: f32 = 22.0;
 pub const SIZE_COLUMN_WIDTH: f32 = 90.0;
 pub const DATE_COLUMN_WIDTH: f32 = 150.0;
 
-/// Gaps between the four stacked bars of the window: header, panels, status
-/// bar and function key bar.
-const COLUMN_GAPS: f32 = 3.0;
+/// Gaps between the three stacked parts of the window: panels, status bar and
+/// function key bar.
+const COLUMN_GAPS: f32 = 2.0;
 
 /// Vertical space the panel chrome occupies: everything above and below the
 /// file rows.
@@ -38,8 +37,7 @@ const COLUMN_GAPS: f32 = 3.0;
 /// lay out, and `visible_rows` uses this sum, so a change to any of them moves
 /// both sides together. Adding a header without adding it here would silently
 /// shorten the list, which is what the tests below guard against.
-const CHROME: f32 = HEADER_HEIGHT
-    + STATUSBAR_HEIGHT
+const CHROME: f32 = STATUSBAR_HEIGHT
     + FKEYBAR_HEIGHT
     + PANEL_TITLE_HEIGHT
     + COLUMN_HEADER_HEIGHT
@@ -80,12 +78,8 @@ pub fn cursor_row_anchor(right_panel: bool, row_in_view: usize, window: Size) ->
         } else {
             0.0
         };
-    let rows_top = spacing::OUTER_PADDING
-        + HEADER_HEIGHT
-        + spacing::SECTION_GAP
-        + spacing::BORDER_WIDTH
-        + PANEL_TITLE_HEIGHT
-        + COLUMN_HEADER_HEIGHT;
+    let rows_top =
+        spacing::OUTER_PADDING + spacing::BORDER_WIDTH + PANEL_TITLE_HEIGHT + COLUMN_HEADER_HEIGHT;
     Point::new(
         panel_left + 3.0 * TAG_COLUMN_WIDTH,
         rows_top + (row_in_view + 1) as f32 * ROW_HEIGHT,
@@ -114,17 +108,17 @@ mod tests {
     #[test]
     fn a_full_height_window_fits_the_expected_rows() {
         let window = Size::new(1200.0, 760.0);
-        // Chrome: header 30 + status 28 + function keys 24 + title 28 + column
-        // header 24 + padding 12 + three gaps 18 + borders 2 = 166.
-        // 760 - 166 = 594; 594 / 22 = 27 rows exactly.
-        assert_eq!(visible_rows(window), 27);
+        // Chrome: status 28 + function keys 24 + title 28 + column header 24 +
+        // padding 12 + two gaps 12 + borders 2 = 130.
+        // 760 - 130 = 630; 630 / 22 = 28.6, so 28 rows.
+        assert_eq!(visible_rows(window), 28);
     }
 
     #[test]
     fn the_search_view_gives_its_extra_header_the_rows_it_needs() {
         let window = Size::new(1200.0, 760.0);
-        // (594 + 24 - 124) / 22 = 22.45
-        assert_eq!(search_visible_rows(window), 22);
+        // (630 + 24 - 124) / 22 = 24.09
+        assert_eq!(search_visible_rows(window), 24);
         assert_eq!(search_visible_rows(Size::new(1200.0, 10.0)), 1);
     }
 
@@ -134,7 +128,7 @@ mod tests {
     fn the_initial_window_shows_the_same_rows() {
         assert_eq!(
             visible_rows(INITIAL_WINDOW_SIZE),
-            27,
+            28,
             "the initial size no longer matches the documented row count"
         );
     }
@@ -155,13 +149,12 @@ mod tests {
     /// resized or forgotten here.
     #[test]
     fn chrome_matches_the_constants_the_view_uses() {
-        let expected = HEADER_HEIGHT
-            + STATUSBAR_HEIGHT
+        let expected = STATUSBAR_HEIGHT
             + FKEYBAR_HEIGHT
             + PANEL_TITLE_HEIGHT
             + COLUMN_HEADER_HEIGHT
             + 2.0 * spacing::OUTER_PADDING
-            + 3.0 * spacing::SECTION_GAP
+            + 2.0 * spacing::SECTION_GAP
             + 2.0 * spacing::BORDER_WIDTH;
         assert_eq!(
             CHROME, expected,
@@ -174,8 +167,8 @@ mod tests {
         let window = Size::new(1200.0, 760.0);
         let left = cursor_row_anchor(false, 0, window);
         let right = cursor_row_anchor(true, 0, window);
-        // 6 + 30 + 6 + 1 + 28 + 24 = 95 is where the first row starts.
-        assert_eq!(left.y, 95.0 + ROW_HEIGHT);
+        // 6 + 1 + 28 + 24 = 59 is where the first row starts.
+        assert_eq!(left.y, 59.0 + ROW_HEIGHT);
         assert!(right.x > window.width / 2.0);
         assert_eq!(
             cursor_row_anchor(false, 2, window).y,
@@ -188,7 +181,7 @@ mod tests {
     /// and a zero would make an empty list impossible to leave.
     #[test]
     fn a_tiny_window_still_shows_one_row() {
-        for height in [0.0, 10.0, 100.0, 136.0, 166.0] {
+        for height in [0.0, 10.0, 100.0, 130.0] {
             assert_eq!(
                 visible_rows(Size::new(400.0, height)),
                 1,

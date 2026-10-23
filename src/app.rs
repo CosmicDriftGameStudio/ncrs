@@ -41,7 +41,7 @@ use crate::ui::quick_open as quick_open_ui;
 use crate::ui::search as search_ui;
 use crate::ui::volumes as volumes_view;
 use crate::ui::{
-    self, conflict, dialog, fkeys, header, layout, panel, statusbar, theme, PanelProps, PanelState,
+    self, conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelProps, PanelState,
 };
 use ncrs_index::{KeyStore, KeyringKeyStore};
 use ncrs_intake::LocationMode;
@@ -85,7 +85,7 @@ fn search_events(
         .flatten()
 }
 
-/// How long a confirmation stays in the title bar.
+/// How long a confirmation stays in the status bar.
 const NOTICE_DURATION: std::time::Duration = std::time::Duration::from_secs(3);
 
 const APP_NAME: &str = "NC-rs";
@@ -2455,7 +2455,6 @@ impl App {
 
         let window = container(
             column![
-                header::view(APP_NAME, self.notice.as_deref(), &self.palette),
                 panels,
                 statusbar::view(
                     self.active_panel(),
@@ -2465,6 +2464,7 @@ impl App {
                         job: self.job_status(),
                         filing: self.filing_badge(),
                         on_blocked_press: blocked_access_press(),
+                        notice: self.notice.as_deref(),
                     },
                     self.status_error(),
                     self.search_status(),
@@ -3011,7 +3011,7 @@ impl App {
         (SavedFilingApplies::Now, task)
     }
 
-    /// Shows `text` in the title bar for [`NOTICE_DURATION`]. The timer carries
+    /// Shows `text` in the status bar for [`NOTICE_DURATION`]. The timer carries
     /// the generation, so it cannot clear a notice that came after it.
     fn show_notice(&mut self, text: String) -> Task<Message> {
         self.notice_generation = self.notice_generation.wrapping_add(1);
@@ -5472,7 +5472,7 @@ impl App {
         self.path_field.as_deref()
     }
 
-    /// The title bar's notice, for the snapshot tests.
+    /// The status bar's notice, for the snapshot tests.
     pub fn notice_for_test(&self) -> Option<&str> {
         self.notice.as_deref()
     }
@@ -8293,8 +8293,8 @@ mod config_status_tests {
     #[test]
     fn a_configured_color_reaches_the_app() {
         let app =
-            App::with_fixed_panels().with_config(Ok(loaded("[theme]\nerror = \"#102030\"\n")));
-        assert_eq!(app.palette.error, iced::Color::from_rgb8(0x10, 0x20, 0x30));
+            App::with_fixed_panels().with_config(Ok(loaded("[theme]\nerror = \"#f0a0a0\"\n")));
+        assert_eq!(app.palette.error, iced::Color::from_rgb8(0xF0, 0xA0, 0xA0));
         assert_eq!(app.status_error(), None);
     }
 

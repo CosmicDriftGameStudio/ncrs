@@ -24,7 +24,6 @@ pub mod spacing {
 }
 
 pub mod font_size {
-    pub const HEADER: f32 = 14.0;
     pub const TITLE: f32 = 14.0;
     pub const ROW: f32 = 14.0;
     pub const COLUMN_HEADER: f32 = 12.0;
@@ -47,11 +46,6 @@ fn filled(bg: Color, text: Color) -> container::Style {
 pub fn root(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
     let colors = *palette;
     move |_theme| filled(colors.background, colors.text)
-}
-
-pub fn header(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
-    let colors = *palette;
-    move |_theme| filled(colors.header, colors.title_text)
 }
 
 /// The label box of a function key slot, filled or empty.
@@ -508,9 +502,7 @@ mod tests {
                 }
             }
             let outline = look(false, button::Status::Active).2;
-            // The border only delimits the button; the text color is what
-            // makes it readable, so a calm border need not reach 3:1.
-            assert!(contrast_ratio(outline, p.dialog) >= 2.0, "{preset:?}");
+            assert!(contrast_ratio(outline, p.dialog) >= 3.0, "{preset:?}");
         }
     }
 
@@ -532,11 +524,6 @@ mod tests {
         assert_eq!(
             (fill_of(&style_root), style_root.text_color),
             (Some(background), Some(text))
-        );
-        let style_header_bar = header(&p)(&theme);
-        assert_eq!(
-            (fill_of(&style_header_bar), style_header_bar.text_color),
-            (Some(teal), Some(dark_text))
         );
         let style_fkey = fkey_label(&p)(&theme);
         assert_eq!(

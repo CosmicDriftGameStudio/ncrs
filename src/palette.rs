@@ -40,9 +40,8 @@ pub struct Palette {
     pub tagged_mark: Color,
     pub border: Color,
     pub border_inactive: Color,
-    pub header: Color,
     pub title: Color,
-    /// Text on the active panel title and on the header bar.
+    /// Text on the active panel title.
     pub title_text: Color,
     pub title_inactive: Color,
     pub status_bar: Color,
@@ -54,7 +53,7 @@ pub struct Palette {
     pub menu_shortcut_on_cursor: Color,
     pub menu_disabled: Color,
     pub accent: Color,
-    /// Confirmations, drawn on the header bar.
+    /// Confirmations, drawn on the status bar.
     pub success: Color,
     pub error: Color,
     /// The digit of a function key slot, on the window background.
@@ -112,9 +111,8 @@ impl ThemePreset {
                 tagged_text: Color::from_rgb8(0x14, 0x13, 0x18),
                 tagged_directory: Color::from_rgb8(0x14, 0x13, 0x18),
                 tagged_mark: Color::from_rgb8(0x14, 0x13, 0x18),
-                border: Color::from_rgb8(0x55, 0x52, 0x6A),
+                border: Color::from_rgb8(0x72, 0x6E, 0x8A),
                 border_inactive: Color::from_rgb8(0x1E, 0x1D, 0x25),
-                header: Color::from_rgb8(0x24, 0x22, 0x2D),
                 title: Color::from_rgb8(0x24, 0x22, 0x2D),
                 title_text: Color::from_rgb8(0xCF, 0xCD, 0xD6),
                 title_inactive: Color::from_rgb8(0x1E, 0x1D, 0x25),
@@ -146,7 +144,6 @@ impl ThemePreset {
                 tagged_mark: Color::from_rgb(1.000, 0.850, 0.300),
                 border: Color::from_rgb(0.310, 0.840, 0.910),
                 border_inactive: Color::from_rgb(0.165, 0.210, 0.390),
-                header: Color::from_rgb(0.110, 0.420, 0.520),
                 title: Color::from_rgb(0.110, 0.420, 0.520),
                 title_text: Color::from_rgb(0.020, 0.040, 0.090),
                 title_inactive: Color::from_rgb(0.070, 0.125, 0.270),
@@ -178,7 +175,6 @@ impl ThemePreset {
                 tagged_mark: Color::from_rgb8(0xFF, 0xFF, 0x55),
                 border: Color::from_rgb8(0x55, 0xFF, 0xFF),
                 border_inactive: Color::from_rgb8(0x00, 0xAA, 0xAA),
-                header: Color::from_rgb8(0x00, 0xAA, 0xAA),
                 title: Color::from_rgb8(0x00, 0xAA, 0xAA),
                 title_text: Color::from_rgb8(0x00, 0x00, 0x00),
                 title_inactive: Color::from_rgb8(0x00, 0x00, 0xAA),
@@ -211,7 +207,6 @@ impl ThemePreset {
                 tagged_mark: Color::from_rgb8(0x28, 0x2A, 0x36),
                 border: Color::from_rgb8(0xBD, 0x93, 0xF9),
                 border_inactive: Color::from_rgb8(0x44, 0x47, 0x5A),
-                header: Color::from_rgb8(0x44, 0x47, 0x5A),
                 title: Color::from_rgb8(0x44, 0x47, 0x5A),
                 title_text: Color::from_rgb8(0xF8, 0xF8, 0xF2),
                 title_inactive: Color::from_rgb8(0x21, 0x22, 0x2C),
@@ -311,10 +306,7 @@ impl Palette {
                 self.tagged_inactive = color;
             }
             ColorRole::Border => self.border = color,
-            ColorRole::Bar => {
-                self.header = color;
-                self.title = color;
-            }
+            ColorRole::Bar => self.title = color,
             ColorRole::BarInactive => {
                 self.title_inactive = color;
                 self.border_inactive = color;
@@ -360,13 +352,14 @@ impl Palette {
     /// Text on the cursor and tagged rows and the error color on the dialog are
     /// not judged: the built-in palette is already weak there.
     pub fn weakest_contrast(&self) -> Option<LowContrast> {
-        const PAIRS: [(ColorRole, ColorRole); 6] = [
+        const PAIRS: [(ColorRole, ColorRole); 7] = [
             (ColorRole::Text, ColorRole::Panel),
             (ColorRole::Directory, ColorRole::Panel),
             (ColorRole::CursorText, ColorRole::Cursor),
             (ColorRole::Text, ColorRole::StatusBar),
             (ColorRole::Text, ColorRole::Dialog),
             (ColorRole::Text, ColorRole::Menu),
+            (ColorRole::Error, ColorRole::StatusBar),
         ];
         PAIRS
             .into_iter()
@@ -560,7 +553,7 @@ mod tests {
     use crate::config::{load, ConfigError};
     use std::path::PathBuf;
 
-    fn slots(palette: &Palette) -> [(&'static str, Color); 30] {
+    fn slots(palette: &Palette) -> [(&'static str, Color); 29] {
         [
             ("background", palette.background),
             ("panel", palette.panel),
@@ -576,7 +569,6 @@ mod tests {
             ("tagged_mark", palette.tagged_mark),
             ("border", palette.border),
             ("border_inactive", palette.border_inactive),
-            ("header", palette.header),
             ("title", palette.title),
             ("title_text", palette.title_text),
             ("title_inactive", palette.title_inactive),
@@ -649,7 +641,6 @@ mod tests {
             ("tagged_mark", rgb(1.000, 0.850, 0.300)),
             ("border", rgb(0.310, 0.840, 0.910)),
             ("border_inactive", rgb(0.165, 0.210, 0.390)),
-            ("header", rgb(0.110, 0.420, 0.520)),
             ("title", rgb(0.110, 0.420, 0.520)),
             ("title_text", rgb(0.020, 0.040, 0.090)),
             ("title_inactive", rgb(0.070, 0.125, 0.270)),
@@ -689,7 +680,7 @@ mod tests {
             ),
             (ColorRole::Tagged, &["tagged", "tagged_inactive"]),
             (ColorRole::Border, &["border"]),
-            (ColorRole::Bar, &["header", "title"]),
+            (ColorRole::Bar, &["title"]),
             (
                 ColorRole::BarInactive,
                 &["title_inactive", "border_inactive"],
@@ -800,7 +791,6 @@ mod tests {
             let p = preset.palette();
             for (name, text, fill) in [
                 ("title_text on title", p.title_text, p.title),
-                ("title_text on header", p.title_text, p.header),
                 ("tagged_text on tagged", p.tagged_text, p.tagged),
                 ("tagged_directory on tagged", p.tagged_directory, p.tagged),
                 ("tagged_mark on tagged", p.tagged_mark, p.tagged),

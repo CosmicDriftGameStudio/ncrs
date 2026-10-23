@@ -2100,9 +2100,9 @@ fn a_click_into_the_path_field_with_a_context_menu_open_closes_the_menu() {
     assert!(session.app.context_menu_for_test().is_none());
 }
 
-const LEFT_NAME_HEADER: Point = Point::new(50.0, 83.0);
-const LEFT_SIZE_HEADER: Point = Point::new(415.0, 83.0);
-const LEFT_MODIFIED_HEADER: Point = Point::new(540.0, 83.0);
+const LEFT_NAME_HEADER: Point = Point::new(50.0, 47.0);
+const LEFT_SIZE_HEADER: Point = Point::new(415.0, 47.0);
+const LEFT_MODIFIED_HEADER: Point = Point::new(540.0, 47.0);
 
 fn sorting_session(
     label: &str,

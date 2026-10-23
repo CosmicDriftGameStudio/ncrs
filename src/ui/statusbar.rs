@@ -107,16 +107,20 @@ pub struct FilingBadge<M> {
 }
 
 /// What goes on in the background, at the right of the bar.
-pub struct Activity<M> {
+pub struct Activity<'a, M> {
     pub job: Option<JobStatus>,
     pub filing: Option<FilingBadge<M>>,
     /// Makes the "access blocked" error a button. `None` where there is no
     /// settings page to open.
     pub on_blocked_press: Option<M>,
+    /// A confirmation that goes away by itself. It takes the right end of the
+    /// bar from the filing progress, and an error in the bar hides it.
+    pub notice: Option<&'a str>,
 }
 
 /// The bottom bar: path, then the running job, then the failure of the last
-/// job, the panel's read error, or the selected entry.
+/// job, the panel's read error, or the selected entry; at the right the
+/// notice or the filing progress.
 ///
 /// A running job takes the middle: the file under the cursor is not what the
 /// user is looking at while fifty thousand files are on their way.
@@ -124,7 +128,7 @@ pub fn view<'a, M: Clone + 'a>(
     panel: &'a PanelState,
     lang: Language,
     palette: &Palette,
-    activity: Activity<M>,
+    activity: Activity<'a, M>,
     failure: Option<&'a str>,
     search_file: Option<String>,
     path_bar_input: PathBar<'a, M>,
@@ -133,7 +137,9 @@ pub fn view<'a, M: Clone + 'a>(
         job,
         filing,
         on_blocked_press,
+        notice,
     } = activity;
+    let error_shown = failure.is_some() || panel.error.is_some();
     let path = path_bar(panel, lang, palette, path_bar_input);
 
     let details: Element<'a, M> = if let Some(last_failure) = failure {
@@ -248,7 +254,14 @@ pub fn view<'a, M: Clone + 'a>(
     ]
     .spacing(spacing::CELL_PADDING_X)
     .align_y(alignment::Vertical::Center);
-    if let Some(badge) = filing {
+    if let Some(shown) = notice.filter(|_| !error_shown) {
+        bar = bar.push(
+            text(format!("\u{2713} {shown}"))
+                .size(font_size::STATUS)
+                .color(palette.success)
+                .wrapping(text::Wrapping::None),
+        );
+    } else if let Some(badge) = filing {
         bar = bar.push(
             button(
                 text(badge.text)

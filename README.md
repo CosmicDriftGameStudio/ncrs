@@ -55,7 +55,7 @@ The same window in German, switched with F9.
 - Async directory loading (tokio blocking pool) – the UI never blocks
 - Stale-result protection (fast navigation cannot show an outdated listing)
 - Errors (e.g. *Permission denied*) are shown in the status bar – no panics
-- Confirmations (e.g. *Path copied*) appear at the right of the title bar for three seconds
+- Confirmations (e.g. *Path copied*) appear at the right of the status bar for three seconds
 - Mouse click selects a row and activates its panel; the wheel and the trackpad scroll the panel under the pointer
 - Planets (drive menu, `Alt`+`F1` / `Alt`+`F2`): jump a panel to the system volume, home, iCloud Drive and
   cloud storage folders such as Google Drive, OneDrive or Dropbox (macOS), mounted volumes or
@@ -332,13 +332,13 @@ tagged = "#a50"
 | `cursor_text` | Text on the cursor row, on the title bars and on the function key labels |
 | `tagged` | Tagged rows, in both panels |
 | `border` | The frame of the active panel, of dialogs and menus |
-| `bar` | The top bar and the title of the active panel |
+| `bar` | The title of the active panel |
 | `bar_inactive` | Title and frame of the inactive panel |
 | `status_bar` | The status bar |
 | `dialog` | Dialogs |
 | `menu` | The context menu |
 | `accent` | Column titles, the path, dialog titles, tag stars, menu shortcuts |
-| `success` | Confirmations in the title bar |
+| `success` | Confirmations in the status bar |
 | `error` | Errors |
 
 - Roles not listed keep the preset's colors; without `[theme]` the `cosmic` preset applies.
@@ -467,9 +467,9 @@ Saving writes the locations by their real paths (symlinks resolved) to
 `[modules.filing]` and sets `enabled = true`. The rest of the file, comments
 included, stays as it is. A config file that does not load is not touched: fix
 it first, the setup shows the error. After saving, the card closes and the
-title bar says that Hermes is on and which key opens the Inspection. If no
+status bar says that Hermes is on and which key opens the Inspection. If no
 filing runs on configured locations yet, filing starts at once with the saved
-ones; otherwise the title bar says they apply from the next start of ncrs.
+ones; otherwise the status bar says they apply from the next start of ncrs.
 
 ### Portable mode
 
@@ -663,7 +663,6 @@ src/
 ├── ui/              # Pure, reusable view components (no business logic)
 │   ├── panel.rs     # PanelState (data + selection/scroll helpers) + view()
 │   ├── dialog.rs    # The prompt: text field, buttons, scrim
-│   ├── header.rs    # Title bar with shortcut hints
 │   ├── statusbar.rs # Active path | selected entry | size | date (or error)
 │   ├── theme.rs     # Colors, spacing, font sizes, widget style functions
 │   ├── layout.rs    # Fixed metrics (row height, column widths, visible rows)
@@ -703,8 +702,8 @@ src/
 4. **Components are functions, not stateful widgets.** `PanelState` lives in `App`;
    `panel::view` just renders it.
 5. **Components are generic over the message type.** `panel::view` receives an
-   `on_row_click: impl Fn(usize) -> M` callback, `header::view` / `statusbar::view` are
-   generic `M` – they can be reused in any iced app or in other screens (dialogs, viewers…).
+   `on_row_click: impl Fn(usize) -> M` callback, and `statusbar::view` is
+   generic over `M` – they can be reused in any iced app or in other screens (dialogs, viewers…).
 6. **Minimal exports.** `fs` re-exports only `FileEntry` and the reader functions; the UI
    module exposes components and `PanelState`/`PanelProps`.
 

@@ -33,11 +33,13 @@ All notable changes to this project are documented here. The format follows
   where new documents arrive and one for the folders where you keep your
   documents. "Add folder…" opens the system folder dialog, a folder already in
   the list is not added twice, and from two document folders on you choose the
-  Central Filing. After saving, the card closes and the title bar says how to
+  Central Filing. After saving, the card closes and the status bar says how to
   open the Inspection.
 
 ### Changed
 
+- The NC-rs bar at the top is gone (the window title names the app);
+  confirmations show at the right of the status bar.
 - The card with the master key of a new encrypted index is titled "Your master
   key" and points at the highlighted block you type to confirm you saved it.
 - The Inspection labels what waits as "Pending", names its steps Intake and

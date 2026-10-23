@@ -761,7 +761,7 @@ mod context_menu_overlay {
         let app = App::with_fixed_panels();
         let mut sim = simulator(&app);
         // Second row of the left panel: below the title and column header.
-        sim.point_at(Point::new(200.0, 95.0 + 22.0 * 1.5));
+        sim.point_at(Point::new(200.0, 59.0 + 22.0 * 1.5));
         sim.simulate([Event::Mouse(mouse::Event::ButtonPressed(
             mouse::Button::Right,
         ))]);
@@ -847,7 +847,7 @@ mod context_menu_overlay {
     clippy::indexing_slicing
 )]
 #[cfg(test)]
-mod title_notice {
+mod status_notice {
     use super::*;
     use crate::messages::ClipboardKind;
 
@@ -858,41 +858,22 @@ mod title_notice {
     }
 
     #[test]
-    fn the_notice_is_drawn_in_the_title_bar() {
+    fn the_notice_is_drawn_in_the_status_bar() {
         let matches = simulator(&copied())
             .snapshot(&iced::Theme::Dark)
             .unwrap()
-            .matches_image("tests/snapshots/title_notice.png")
+            .matches_image("tests/snapshots/status_notice.png")
             .expect("snapshot comparison");
         assert!(
             matches,
-            "the title bar notice does not match title_notice.png"
+            "the status bar notice does not match status_notice.png"
         );
     }
 
     const NOTICE_TEXT: &str = "\u{2713} Path copied";
 
-    fn render(view: iced::Element<'_, Message>) -> Simulator<'_, Message, iced::Theme> {
-        Simulator::with_size(
-            iced::Settings::default(),
-            iced::Size::new(1200.0, 40.0),
-            view,
-        )
-    }
-
-    #[test]
-    fn the_notice_is_in_the_title_bar_and_not_in_the_status_bar() {
-        let app = copied();
-        let notice = app.notice_for_test().expect("a notice after copying");
-        render(crate::ui::header::view(
-            "NC-rs",
-            Some(notice),
-            &crate::palette::Palette::default(),
-        ))
-        .find(NOTICE_TEXT)
-        .expect("the title bar shows the notice");
-
-        let status_bar = crate::ui::statusbar::view(
+    fn status_bar<'a>(app: &'a App, failure: Option<&'a str>) -> iced::Element<'a, Message> {
+        crate::ui::statusbar::view(
             app.active_panel(),
             crate::i18n::Language::English,
             &crate::palette::Palette::default(),
@@ -900,8 +881,9 @@ mod title_notice {
                 job: None,
                 filing: None,
                 on_blocked_press: None,
+                notice: app.notice_for_test(),
             },
-            None,
+            failure,
             None,
             crate::ui::statusbar::PathBar {
                 editing: None,
@@ -909,10 +891,24 @@ mod title_notice {
                 on_submit: Message::PathFieldSubmit,
                 on_copy: Message::PathFieldCancel,
             },
-        );
-        render(status_bar)
-            .find(NOTICE_TEXT)
-            .expect_err("the status bar does not show the notice");
+        )
+    }
+
+    fn shows_notice(view: iced::Element<'_, Message>) -> bool {
+        Simulator::with_size(
+            iced::Settings::default(),
+            iced::Size::new(1200.0, 40.0),
+            view,
+        )
+        .find(NOTICE_TEXT)
+        .is_ok()
+    }
+
+    #[test]
+    fn the_status_bar_shows_the_notice_until_an_error_takes_its_place() {
+        let app = copied();
+        assert!(shows_notice(status_bar(&app, None)));
+        assert!(!shows_notice(status_bar(&app, Some("Copy failed"))));
     }
 }
 
