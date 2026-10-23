@@ -11,7 +11,9 @@ use iced::widget::{column, container, mouse_area, opaque, operation, row, Column
 use iced::{event, window, Element, Length, Point, Size, Subscription, Task, Theme};
 
 use crate::command_palette::CommandPalette;
-use crate::config::{self, Config, ConfigError, ContrastWarning, Filing, FilingWriteError};
+use crate::config::{
+    self, Config, ConfigError, ContrastWarning, Filing, FilingWriteError, VscodeWarning,
+};
 use crate::context_menu::{ContextAction, ContextMenu, InputState};
 use crate::dialog::{Prompt, PromptKind};
 use crate::filing::{FilingMessage, FilingModule, LocationStatus, Phase, Work, WorkOutcome};
@@ -447,6 +449,8 @@ enum ConfigProblem {
     Invalid(ConfigError),
     /// The file is in use, but one pairing of colors is hard to read.
     LowContrast(ContrastWarning),
+    /// The file is in use, but the VS Code theme it names was not applied in full.
+    VscodeTheme(VscodeWarning),
 }
 
 pub struct App {
@@ -1381,6 +1385,10 @@ impl App {
                 if let Some(warning) = config.contrast_warning {
                     self.report(ConfigProblem::LowContrast(warning));
                 }
+                // Last, so it wins: it explains why the look is not the one asked for.
+                if let Some(warning) = config.vscode_warning {
+                    self.report(ConfigProblem::VscodeTheme(warning));
+                }
             }
             Err(err) => self.report(ConfigProblem::Invalid(err)),
         }
@@ -1423,6 +1431,24 @@ impl App {
                         self.lang.text(Msg::ErrorConfig),
                         &[("{path}", &path), ("{reason}", err.reason())],
                     ),
+                }
+            }
+            ConfigProblem::VscodeTheme(warning) => {
+                let path = warning.path.display().to_string();
+                let theme = warning.theme.display().to_string();
+                let values = [
+                    ("{path}", path.as_str()),
+                    ("{theme}", theme.as_str()),
+                    ("{reason}", warning.reason.as_str()),
+                ];
+                match warning.line {
+                    Some(number) => {
+                        let line = number.to_string();
+                        let mut with_line = values.to_vec();
+                        with_line.push(("{line}", line.as_str()));
+                        fill_template(self.lang.text(Msg::ErrorVscodeThemeAtLine), &with_line)
+                    }
+                    None => fill_template(self.lang.text(Msg::ErrorVscodeTheme), &values),
                 }
             }
             ConfigProblem::LowContrast(warning) => {
@@ -8229,6 +8255,25 @@ mod config_status_tests {
         let path = dir.path().join("config.toml");
         std::fs::write(&path, content).unwrap();
         config::load(&path).unwrap()
+    }
+
+    #[test]
+    fn a_vscode_theme_that_is_not_found_is_reported_in_both_languages_and_beats_a_contrast_warning()
+    {
+        let mut app = App::with_fixed_panels().with_config(Ok(loaded(
+            "lang = \"de\"\n[theme]\npanel = \"#f4f0ff\"\nvscode = \"gone.json\"\n",
+        )));
+        let german = app.status_error().unwrap_or_default();
+        assert!(german.contains("Zeile 4"), "{german}");
+        assert!(german.contains("VS-Code-Theme"), "{german}");
+        assert!(german.contains("gone.json: no such file"), "{german}");
+        assert!(!german.contains("Kontrast"), "{german}");
+
+        drop(app.update(Message::SwitchLanguage));
+        let english = app.status_error().unwrap_or_default();
+        assert!(english.contains("line 4"), "{english}");
+        assert!(english.contains("VS Code theme"), "{english}");
+        assert!(english.contains("the preset applies"), "{english}");
     }
 
     #[test]

@@ -11,6 +11,7 @@ use std::ops::Range;
 use iced::Color;
 
 use crate::config::ThemeSection;
+use crate::vscode_theme::VscodeTheme;
 
 /// Below this ratio (WCAG calls 3:1 the floor for large or bold text) a
 /// pairing is reported, not refused: the user's choice stands.
@@ -18,6 +19,8 @@ const READABLE_CONTRAST: f32 = 3.0;
 
 /// The key of `[theme]` that picks the base palette.
 const PRESET_KEY: &str = "preset";
+/// Like `preset`, not a role: a VS Code theme file laid over the preset.
+pub const VSCODE_KEY: &str = "vscode";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Palette {
@@ -274,7 +277,7 @@ color_roles! {
 
 impl Palette {
     /// Sets every slot that belongs to `role`.
-    fn set(&mut self, role: ColorRole, color: Color) {
+    pub fn set(&mut self, role: ColorRole, color: Color) {
         match role {
             ColorRole::Background => self.background = color,
             ColorRole::Panel => self.panel = color,
@@ -323,7 +326,7 @@ impl Palette {
     }
 
     /// The main slot of `role`, the one its contrast is judged by.
-    fn color(&self, role: ColorRole) -> Color {
+    pub fn color(&self, role: ColorRole) -> Color {
         match role {
             ColorRole::Background => self.background,
             ColorRole::Panel => self.panel,
@@ -371,9 +374,14 @@ impl Palette {
     }
 
     /// The palette `[theme]` describes: the preset (wherever it stands in the
-    /// section) with the roles applied in the order written.
-    pub fn from_section(section: &ThemeSection) -> Result<ConfiguredPalette, ThemeError> {
+    /// section), then the VS Code theme read from its `vscode` entry, then the
+    /// roles in the order written.
+    pub fn from_section(
+        section: &ThemeSection,
+        vscode: Option<&VscodeTheme>,
+    ) -> Result<ConfiguredPalette, ThemeError> {
         let mut preset_span = None;
+        let mut vscode_span = None;
         let mut preset = ThemePreset::Cosmic;
         for entry in &section.entries {
             if entry.key.as_ref() == PRESET_KEY {
@@ -392,10 +400,17 @@ impl Palette {
         }
 
         let mut palette = preset.palette();
+        if let Some(theme) = vscode {
+            theme.apply(&mut palette);
+        }
         let mut role_spans = Vec::new();
         for entry in &section.entries {
             let key = entry.key.as_ref();
             if key == PRESET_KEY {
+                continue;
+            }
+            if key == VSCODE_KEY {
+                vscode_span = Some(entry.value.span());
                 continue;
             }
             let role = ColorRole::from_name(key).ok_or_else(|| ThemeError {
@@ -412,6 +427,7 @@ impl Palette {
         Ok(ConfiguredPalette {
             palette,
             preset_span,
+            vscode_span,
             role_spans,
         })
     }
@@ -429,6 +445,7 @@ pub struct ThemeError {
 pub struct ConfiguredPalette {
     pub palette: Palette,
     pub preset_span: Option<Range<usize>>,
+    pub vscode_span: Option<Range<usize>>,
     pub role_spans: Vec<(ColorRole, Range<usize>)>,
 }
 

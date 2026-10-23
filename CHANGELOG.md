@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `vscode = "<path>"` in `[theme]` takes the colors of a VS Code color theme
+  file, under the roles written in the config. If the file cannot be used,
+  ncrs starts with the preset and says why in the status bar.
 - A `dracula` color preset (`preset = "dracula"` in `[theme]`), using the colors
   of the [Dracula theme](https://draculatheme.com), MIT License, Copyright (c)
   Dracula Theme.

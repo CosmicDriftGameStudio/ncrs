@@ -351,6 +351,60 @@ tagged = "#a50"
   applied anyway; the status bar says which pair and where, until `Esc`.
 - Colors are read at start; restart ncrs after editing the file.
 
+#### VS Code themes
+
+`vscode` takes the colors from a VS Code color theme file. The installed
+themes are JSON files at `~/.vscode/extensions/<publisher>.<name>-<version>/themes/*.json`,
+on Windows at `%USERPROFILE%\.vscode\extensions\...`.
+
+```toml
+[theme]
+vscode = "themes/my-theme.json"
+# Single roles still win over the theme file.
+cursor = "#335577"
+```
+
+- The path is relative to the folder of the config file, or starts with `~/`.
+- The order is: the preset, then the theme file, then the roles written in
+  `[theme]`. A role the file does not define keeps the preset's color.
+- Only the `colors` object of the file counts, `tokenColors` and the rest are
+  ignored. Comments and trailing commas are fine. Colors are `#rgb`, `#rgba`,
+  `#rrggbb` or `#rrggbbaa`; a translucent color is mixed onto the color below
+  it (the panel, or the cursor row for `cursor_text`). Any other value is
+  skipped.
+- `include` (a path relative to the theme file) reads one more file whose
+  colors the including file overrides. The `include` of that file is not
+  followed.
+- If the file is missing, too big (over 1 MB), not valid JSON, has no `colors`
+  object or includes itself, ncrs starts anyway with the preset and your roles,
+  and the status bar names the file and the reason, until `Esc`.
+
+For each role the first key present counts:
+
+| Role | VS Code keys |
+|---|---|
+| `background` | `sideBar.background`, `editorGroupHeader.tabsBackground`, `editor.background` |
+| `panel` | `editor.background` |
+| `text` | `editor.foreground`, `foreground` |
+| `dim_text` | `descriptionForeground`, `editorLineNumber.foreground` |
+| `directory` | `terminal.ansiBrightWhite`, `editor.foreground` |
+| `cursor` | `list.activeSelectionBackground` |
+| `cursor_text` | `list.activeSelectionForeground` |
+| `tagged` | `terminal.ansiMagenta`, `list.highlightForeground` |
+| `border` | `focusBorder` |
+| `bar` | `titleBar.activeBackground` |
+| `bar_inactive` | `titleBar.inactiveBackground` |
+| `status_bar` | `statusBar.background` |
+| `dialog` | `editorWidget.background` |
+| `menu` | `menu.background`, `editorWidget.background` |
+| `accent` | `terminal.ansiYellow`, `textLink.foreground` |
+| `success` | `terminal.ansiGreen` |
+| `error` | `errorForeground`, `terminal.ansiRed` |
+
+The text on the title bars is `titleBar.activeForeground`; without it, and when
+the theme sets `bar`, it is `text` or `background`, whichever reads better on
+`bar`. The text on tagged rows is chosen the same way when the theme sets `tagged`.
+
 ### Filing
 
 `[modules.filing]` switches the filing module on and lists the folders it works

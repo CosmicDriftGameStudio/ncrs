@@ -26,7 +26,8 @@ use serde_spanned::Spanned;
 
 use crate::i18n::Language;
 use crate::keymap::Keymap;
-use crate::palette::{ColorRole, Palette};
+use crate::palette::{ColorRole, Palette, VSCODE_KEY};
+use crate::vscode_theme::VscodeTheme;
 
 /// The only version this build reads.
 pub const CURRENT_VERSION: u32 = 1;
@@ -62,6 +63,10 @@ pub struct Config {
     /// palette from being used.
     #[serde(skip)]
     pub contrast_warning: Option<ContrastWarning>,
+    /// Set when the VS Code theme named in `[theme]` could not be used in
+    /// full. The preset and the roles still apply.
+    #[serde(skip)]
+    pub vscode_warning: Option<VscodeWarning>,
     /// The `[modules]` sections as written; `load` turns `filing` into the
     /// field of the same name below.
     #[serde(default)]
@@ -186,6 +191,16 @@ pub struct ContrastWarning {
     pub foreground: ColorRole,
     pub background: ColorRole,
     pub ratio: f32,
+}
+
+/// The VS Code theme file named by `vscode` in `[theme]` could not be used,
+/// or not in full.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VscodeWarning {
+    pub path: PathBuf,
+    pub line: Option<usize>,
+    pub theme: PathBuf,
+    pub reason: String,
 }
 
 /// One line of `[theme]`: a role (or `preset`) and the text written for it.
@@ -636,7 +651,7 @@ fn load_with_home(path: &Path, home: Option<&Path>) -> Result<Config, ConfigErro
 }
 
 /// The text of the config at `path`, or `None` when there is no file.
-fn read_source(path: &Path) -> Result<Option<String>, ConfigError> {
+pub fn read_source(path: &Path) -> Result<Option<String>, ConfigError> {
     let unreadable = |reason: String| ConfigError::Unreadable {
         path: path.to_path_buf(),
         reason,
@@ -702,16 +717,27 @@ fn parse_config(source: &str, path: &Path, home: Option<&Path>) -> Result<Config
         config.keymap = Arc::new(keymap);
     }
     if !config.theme.entries.is_empty() {
+        let vscode = load_vscode(&config.theme, path, home);
         let configured =
-            Palette::from_section(&config.theme).map_err(|err| ConfigError::Invalid {
+            Palette::from_section(&config.theme, vscode.as_ref().map(|layer| &layer.theme))
+                .map_err(|err| ConfigError::Invalid {
+                    path: path.to_path_buf(),
+                    line: line_at(source.as_bytes(), err.span.start),
+                    reason: err.reason,
+                })?;
+        config.vscode_warning = vscode.and_then(|layer| {
+            Some(VscodeWarning {
                 path: path.to_path_buf(),
-                line: line_at(source.as_bytes(), err.span.start),
-                reason: err.reason,
-            })?;
+                line: line_at(source.as_bytes(), layer.span.start),
+                reason: layer.theme.problem?,
+                theme: layer.file,
+            })
+        });
         config.contrast_warning = configured.palette.weakest_contrast().map(|weak| {
             let found = configured
                 .span_of(weak.foreground)
                 .or_else(|| configured.span_of(weak.background))
+                .or_else(|| configured.vscode_span.clone())
                 .or_else(|| configured.preset_span.clone());
             ContrastWarning {
                 path: path.to_path_buf(),
@@ -730,6 +756,45 @@ fn parse_config(source: &str, path: &Path, home: Option<&Path>) -> Result<Config
             reason: err.reason,
         })?;
     Ok(config)
+}
+
+/// The VS Code theme `[theme]` names, read, with where it was named.
+struct VscodeLayer {
+    theme: VscodeTheme,
+    span: Range<usize>,
+    file: PathBuf,
+}
+
+/// Reads the file named by `vscode`. It never fails the config: whatever is
+/// wrong with the file ends up in `theme.problem`.
+fn load_vscode(
+    section: &ThemeSection,
+    config_path: &Path,
+    home: Option<&Path>,
+) -> Option<VscodeLayer> {
+    let entry = section
+        .entries
+        .iter()
+        .rev()
+        .find(|entry| entry.key.as_ref() == VSCODE_KEY)?;
+    let text = entry.value.as_ref();
+    let resolved = if text.starts_with('~') {
+        expand_location_path(text, home)
+    } else {
+        Ok(config_path
+            .parent()
+            .unwrap_or_else(|| Path::new(""))
+            .join(text))
+    };
+    let (theme, file) = match resolved {
+        Ok(file) => (VscodeTheme::load(&file), file),
+        Err(reason) => (VscodeTheme::unusable(reason), PathBuf::from(text)),
+    };
+    Some(VscodeLayer {
+        theme,
+        span: entry.value.span(),
+        file,
+    })
 }
 
 struct FilingError {

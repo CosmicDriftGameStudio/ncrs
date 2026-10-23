@@ -69,6 +69,9 @@ tempfile = "3.27"
 # own fallback), so Linux needs neither GTK nor an async runtime. "wayland" only
 # serves a parent window, and the dialog is opened without one.
 rfd = { version = "=0.17.2", default-features = false, features = ["xdg-portal"] }
+# Reads the VS Code theme files named by `vscode` in `[theme]`: JSON with
+# comments and trailing commas. No features, so no dependencies.
+jsonc-parser = { version = "=0.34.0", default-features = false }
 
 [profile.release]
 opt-level = 3

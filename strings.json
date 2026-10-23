@@ -505,6 +505,18 @@
       "de": "Konfigurationsdatei {path}: {foreground} auf {background} hat nur ein Kontrastverhältnis von {ratio}:1 und ist womöglich schwer lesbar."
     },
     {
+      "key": "error.vscode_theme_at_line",
+      "context": "Status bar at startup when the VS Code theme file named by `vscode` in the config's [theme] section could not be used, or not in full. The config itself is valid and in use, with the preset colors and the color keys. Takes the config file path, the line of the `vscode` entry, the path of the theme file and the reason, which is English and stays untranslated.",
+      "en": "Config file {path}, line {line}: VS Code theme {theme}: {reason}. Where it gives no colors, the preset applies.",
+      "de": "Konfigurationsdatei {path}, Zeile {line}: VS-Code-Theme {theme}: {reason}. Wo es keine Farben liefert, gilt das Preset."
+    },
+    {
+      "key": "error.vscode_theme",
+      "context": "Same as the VS Code theme warning with a line, for when no line can be named. Takes the config file path, the path of the theme file and the reason, which is English and stays untranslated.",
+      "en": "Config file {path}: VS Code theme {theme}: {reason}. Where it gives no colors, the preset applies.",
+      "de": "Konfigurationsdatei {path}: VS-Code-Theme {theme}: {reason}. Wo es keine Farben liefert, gilt das Preset."
+    },
+    {
       "key": "search.title",
       "context": "Title bar of the search view that replaces a file panel, a single line: a playful name, a colon, then what it does. Takes {path}, the directory the search runs in.",
       "en": "Smell-o-scope: search in {path}",
