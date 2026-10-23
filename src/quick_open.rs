@@ -106,7 +106,7 @@ impl Rescore {
     }
 }
 
-fn pattern_for(query: &str) -> Pattern {
+pub fn pattern_for(query: &str) -> Pattern {
     // `new`, not `parse`: `!`, `^`, `'` and `$` are file name characters here.
     Pattern::new(
         query,
@@ -200,18 +200,37 @@ pub fn rank(
             best.truncate(MAX_HITS);
         }
     }
-    let mut positions = Vec::new();
     for hit in &mut best {
         let path = path_of(chunks, hit.chunk, hit.index);
-        positions.clear();
-        pattern.indices(
-            Utf32Str::new(path, &mut buffer),
-            &mut matcher,
-            &mut positions,
-        );
-        hit.highlight = byte_ranges(path, &positions);
+        hit.highlight = highlight_ranges(&pattern, &mut matcher, &mut buffer, path);
     }
     Some(best)
+}
+
+/// Byte ranges of the characters of `text` that `pattern` matches, consecutive
+/// ones merged. The matcher carries the config, so a caller that ranks names
+/// rather than paths does not inherit the path bonuses.
+pub fn highlight_ranges(
+    pattern: &Pattern,
+    matcher: &mut Matcher,
+    buffer: &mut Vec<char>,
+    text: &str,
+) -> Vec<Range<usize>> {
+    let mut positions = Vec::new();
+    pattern.indices(Utf32Str::new(text, buffer), matcher, &mut positions);
+    byte_ranges(text, &positions)
+}
+
+/// The score of `text` for `pattern` and what to highlight, or `None` when it
+/// does not match.
+pub fn score_with_highlight(
+    pattern: &Pattern,
+    matcher: &mut Matcher,
+    buffer: &mut Vec<char>,
+    text: &str,
+) -> Option<(u32, Vec<Range<usize>>)> {
+    let score = pattern.score(Utf32Str::new(text, buffer), matcher)?;
+    Some((score, highlight_ranges(pattern, matcher, buffer, text)))
 }
 
 /// The best [`MAX_HITS`] of both lists.

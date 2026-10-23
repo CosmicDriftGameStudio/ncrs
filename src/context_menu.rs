@@ -6,7 +6,9 @@ use iced::{event, mouse, window, Point, Size};
 
 use crate::fs::OpenKind;
 use crate::i18n::Msg;
-use crate::messages::{ClipboardKind, Message, QuickOpenMessage, SearchMessage, TransferKind};
+use crate::messages::{
+    ClipboardKind, CommandPaletteMessage, Message, QuickOpenMessage, SearchMessage, TransferKind,
+};
 use crate::ui::layout::{MENU_ITEM_HEIGHT, MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_WIDTH};
 
 /// What an entry does. Each one is exactly the message its key sends.
@@ -262,6 +264,8 @@ pub struct InputState {
     /// Quick Open is up: Escape closes it, even with a job running, and an
     /// Option tap opens no menu.
     pub quick_open: bool,
+    /// The command palette is up: same as Quick Open.
+    pub command_palette: bool,
 }
 
 impl InputState {
@@ -286,6 +290,9 @@ impl InputState {
                 if self.quick_open && matches!(key, Key::Named(Named::Escape)) {
                     return Some(Message::QuickOpen(QuickOpenMessage::Close));
                 }
+                if self.command_palette && matches!(key, Key::Named(Named::Escape)) {
+                    return Some(Message::CommandPalette(CommandPaletteMessage::Close));
+                }
                 // The search's text fields capture Escape, so the routing
                 // never sees it there.
                 if !(self.search_open && matches!(key, Key::Named(Named::Escape))) {
@@ -305,7 +312,11 @@ impl InputState {
                 // Still fed, so the tap's bookkeeping stays right, but a tap
                 // while a path is being typed opens nothing.
                 let tapped = self.alt_tap.modifiers_changed(*modifiers);
-                (tapped && !self.path_editing && !self.search_open && !self.quick_open)
+                (tapped
+                    && !self.path_editing
+                    && !self.search_open
+                    && !self.quick_open
+                    && !self.command_palette)
                     .then_some(Message::ContextMenuKey)
             }
             event::Event::Window(window::Event::Unfocused) => {

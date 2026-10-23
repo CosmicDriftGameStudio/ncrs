@@ -625,6 +625,210 @@
       "de": "Keine passenden Dateien"
     },
     {
+      "key": "command_palette.title",
+      "context": "Title of the command palette (Ctrl+Shift+P / Cmd+Shift+P), a box in which an action is picked by name.",
+      "en": "Run an action",
+      "de": "Aktion ausführen"
+    },
+    {
+      "key": "command_palette.placeholder",
+      "context": "Placeholder of the text field of the command palette, shown while it is empty. A short instruction.",
+      "en": "Type part of an action name",
+      "de": "Teil eines Aktionsnamens tippen"
+    },
+    {
+      "key": "command_palette.no_match",
+      "context": "Status line of the command palette when nothing that was typed matches an action name.",
+      "en": "No matching actions",
+      "de": "Keine passenden Aktionen"
+    },
+    {
+      "key": "action.quit",
+      "context": "Entry of the command palette that runs the key action quit. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Quit",
+      "de": "Beenden"
+    },
+    {
+      "key": "action.go_up",
+      "context": "Entry of the command palette that runs the key action go_up. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Go to parent folder",
+      "de": "Zum übergeordneten Ordner"
+    },
+    {
+      "key": "action.open",
+      "context": "Entry of the command palette that runs the key action open. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Open",
+      "de": "Öffnen"
+    },
+    {
+      "key": "action.switch_panel",
+      "context": "Entry of the command palette that runs the key action switch_panel. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Switch panel",
+      "de": "Panel wechseln"
+    },
+    {
+      "key": "action.switch_language",
+      "context": "Entry of the command palette that runs the key action switch_language. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Switch language",
+      "de": "Sprache wechseln"
+    },
+    {
+      "key": "action.toggle_tag",
+      "context": "Entry of the command palette that runs the key action toggle_tag. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Tag or untag row",
+      "de": "Zeile markieren oder Markierung aufheben"
+    },
+    {
+      "key": "action.tag_all",
+      "context": "Entry of the command palette that runs the key action tag_all. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Tag all rows",
+      "de": "Alle Zeilen markieren"
+    },
+    {
+      "key": "action.clear_tags",
+      "context": "Entry of the command palette that runs the key action clear_tags. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Clear all tags",
+      "de": "Alle Markierungen aufheben"
+    },
+    {
+      "key": "action.abort_job",
+      "context": "Entry of the command palette that runs the key action abort_job. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Stop running job",
+      "de": "Laufenden Auftrag abbrechen"
+    },
+    {
+      "key": "action.copy_path",
+      "context": "Entry of the command palette that runs the key action copy_path. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Copy path to clipboard",
+      "de": "Pfad in die Zwischenablage kopieren"
+    },
+    {
+      "key": "action.copy_name",
+      "context": "Entry of the command palette that runs the key action copy_name. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Copy name to clipboard",
+      "de": "Name in die Zwischenablage kopieren"
+    },
+    {
+      "key": "action.view",
+      "context": "Entry of the command palette that runs the key action view. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "View file",
+      "de": "Datei ansehen"
+    },
+    {
+      "key": "action.edit",
+      "context": "Entry of the command palette that runs the key action edit. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Edit file",
+      "de": "Datei bearbeiten"
+    },
+    {
+      "key": "action.copy",
+      "context": "Entry of the command palette that runs the key action copy. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Copy to other panel",
+      "de": "In das andere Panel kopieren"
+    },
+    {
+      "key": "action.move",
+      "context": "Entry of the command palette that runs the key action move. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Move to other panel",
+      "de": "In das andere Panel verschieben"
+    },
+    {
+      "key": "action.delete",
+      "context": "Entry of the command palette that runs the key action delete. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Delete",
+      "de": "Löschen"
+    },
+    {
+      "key": "action.delete_permanently",
+      "context": "Entry of the command palette that runs the key action delete_permanently. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Delete permanently",
+      "de": "Endgültig löschen"
+    },
+    {
+      "key": "action.mkdir",
+      "context": "Entry of the command palette that runs the key action mkdir. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Create folder",
+      "de": "Ordner anlegen"
+    },
+    {
+      "key": "action.drive_menu_left",
+      "context": "Entry of the command palette that runs the key action drive_menu_left. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Drive menu, left panel",
+      "de": "Laufwerke, linkes Panel"
+    },
+    {
+      "key": "action.drive_menu_right",
+      "context": "Entry of the command palette that runs the key action drive_menu_right. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Drive menu, right panel",
+      "de": "Laufwerke, rechtes Panel"
+    },
+    {
+      "key": "action.sort_by_name",
+      "context": "Entry of the command palette that runs the key action sort_by_name. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Sort by name",
+      "de": "Nach Name sortieren"
+    },
+    {
+      "key": "action.sort_by_modified",
+      "context": "Entry of the command palette that runs the key action sort_by_modified. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Sort by modification time",
+      "de": "Nach Änderungsdatum sortieren"
+    },
+    {
+      "key": "action.sort_by_size",
+      "context": "Entry of the command palette that runs the key action sort_by_size. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Sort by size",
+      "de": "Nach Größe sortieren"
+    },
+    {
+      "key": "action.context_menu",
+      "context": "Entry of the command palette that runs the key action context_menu. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Context menu",
+      "de": "Kontextmenü"
+    },
+    {
+      "key": "action.search",
+      "context": "Entry of the command palette that runs the key action search. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Search in files",
+      "de": "In Dateien suchen"
+    },
+    {
+      "key": "action.quick_open",
+      "context": "Entry of the command palette that runs the key action quick_open. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Go to file",
+      "de": "Zu Datei springen"
+    },
+    {
+      "key": "action.filing_status",
+      "context": "Entry of the command palette that runs the key action filing_status. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Filing status",
+      "de": "Ablage-Status"
+    },
+    {
+      "key": "action.filing_setup",
+      "context": "Entry of the command palette that runs the key action filing_setup. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Filing locations",
+      "de": "Ablageorte"
+    },
+    {
+      "key": "action.search_case",
+      "context": "Entry of the command palette that runs the key action search_case. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Search: match case",
+      "de": "Suche: Groß-/Kleinschreibung beachten"
+    },
+    {
+      "key": "action.search_whole_word",
+      "context": "Entry of the command palette that runs the key action search_whole_word. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Search: whole words",
+      "de": "Suche: ganze Wörter"
+    },
+    {
+      "key": "action.search_regex",
+      "context": "Entry of the command palette that runs the key action search_regex. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Search: regular expression",
+      "de": "Suche: regulärer Ausdruck"
+    },
+    {
       "key": "filing.encryption_title",
       "context": "Title of the card that asks whether the document index is encrypted. Shown once, when the index does not exist yet.",
       "en": "Create the document index",

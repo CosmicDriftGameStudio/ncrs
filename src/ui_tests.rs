@@ -1496,3 +1496,136 @@ mod filing_setup_card {
         );
     }
 }
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod command_palette {
+    use super::*;
+    use crate::messages::CommandPaletteMessage;
+
+    fn palette_message(message: CommandPaletteMessage) -> Message {
+        Message::CommandPalette(message)
+    }
+
+    fn open(app: &mut App) {
+        drop(app.update(palette_message(CommandPaletteMessage::Toggle)));
+    }
+
+    fn shows(app: &App, label: &str) -> bool {
+        simulator(app).find(label).is_ok()
+    }
+
+    /// The panel is open with its key, and the key routing's message does it.
+    fn opened_with_its_key() -> App {
+        let mut app = App::with_fixed_panels();
+        let routed = crate::app::route_key(
+            &crate::app::PromptKeyState::default(),
+            iced::keyboard::Key::Character("p".into()),
+            iced::keyboard::Modifiers::COMMAND | iced::keyboard::Modifiers::SHIFT,
+        )
+        .expect("the palette key");
+        drop(app.update(routed));
+        app
+    }
+
+    #[test]
+    fn the_key_opens_the_box_with_entries_and_their_keys() {
+        let app = opened_with_its_key();
+        assert!(app.command_palette_for_test().is_some());
+        assert!(shows(&app, "Run an action"));
+        assert!(shows(&app, "Tab"), "the key of Switch panel is not shown");
+        assert!(shows(&app, "Enter"), "the key of Open is not shown");
+    }
+
+    #[test]
+    fn a_rebound_key_is_shown_in_the_box() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[keys]\nfiling_status = \"F11\"\n").unwrap();
+        let mut app = App::with_fixed_panels().with_config(Ok(crate::config::load(&path).unwrap()));
+        open(&mut app);
+        drop(
+            app.update(palette_message(CommandPaletteMessage::QueryChanged(
+                "filing status".to_owned(),
+            ))),
+        );
+        assert!(shows(&app, "F11"));
+    }
+
+    #[test]
+    fn typing_in_the_field_filters_the_list() {
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        assert!(shows(&app, "Tab"));
+        let mut sim = simulator(&app);
+        sim.click(iced_selector::id("command-palette-query"))
+            .expect("the query field");
+        let _ = sim.typewrite("filing st");
+        let messages: Vec<Message> = sim.into_messages().collect();
+        for message in messages {
+            drop(app.update(message));
+        }
+        let palette = app.command_palette_for_test().unwrap();
+        assert_eq!(palette.query(), "filing st");
+        assert_eq!(palette.hits().len(), 1);
+        let marked = &palette.hits()[0].highlight;
+        assert!(!marked.is_empty(), "nothing is highlighted");
+        assert!(
+            !shows(&app, "Tab"),
+            "the filter left Switch panel in the list"
+        );
+    }
+
+    #[test]
+    fn a_click_on_an_entry_runs_it_and_closes_the_box() {
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        drop(
+            app.update(palette_message(CommandPaletteMessage::QueryChanged(
+                "the".to_owned(),
+            ))),
+        );
+        let mut sim = simulator(&app);
+        sim.click("F9").expect("the Switch language entry");
+        let messages: Vec<Message> = sim.into_messages().collect();
+        assert!(
+            messages.contains(&palette_message(CommandPaletteMessage::Select(3))),
+            "{messages:?}"
+        );
+        for message in messages {
+            drop(app.update(message));
+        }
+        assert!(app.command_palette_for_test().is_none());
+    }
+
+    /// The query leaves the entries whose keys read the same on every
+    /// platform: Copy, Move, Switch panel and Switch language.
+    #[test]
+    fn the_box_matches_its_snapshot() {
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        drop(
+            app.update(palette_message(CommandPaletteMessage::QueryChanged(
+                "the".to_owned(),
+            ))),
+        );
+        let mut sim = simulator(&app);
+        let matches = sim
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/command_palette.png")
+            .expect("snapshot comparison");
+
+        assert!(
+            matches,
+            "the command palette does not match tests/snapshots/command_palette.png"
+        );
+    }
+}
