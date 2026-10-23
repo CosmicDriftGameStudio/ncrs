@@ -1554,6 +1554,37 @@ mod tests {
         load_with_home(&write(&dir, content.as_bytes()), home)
     }
 
+    #[test]
+    fn a_vscode_theme_is_found_under_the_home_folder_by_tilde() {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir(home.path().join("themes")).unwrap();
+        std::fs::write(
+            home.path().join("themes/t.json"),
+            r##"{"colors": {"editor.background": "#112233"}}"##,
+        )
+        .unwrap();
+        let config = load_filing(
+            "[open]\n\n[theme]\nvscode = \"~/themes/t.json\"\n",
+            Some(home.path()),
+        )
+        .unwrap();
+        assert_eq!(config.vscode_warning, None);
+        assert_eq!(
+            config.palette.background,
+            iced::Color::from_rgb8(0x11, 0x22, 0x33)
+        );
+    }
+
+    #[test]
+    fn a_tilde_without_a_home_folder_is_a_warning_and_not_an_error() {
+        let config = load_filing("[open]\n\n[theme]\nvscode = \"~/t.json\"\n", None).unwrap();
+        assert!(config.vscode_warning.is_some());
+        assert_eq!(
+            config.palette.background,
+            crate::palette::ThemePreset::Cosmic.palette().background
+        );
+    }
+
     /// A TOML literal string, so Windows backslashes stay as they are.
     fn quoted(path: &Path) -> String {
         format!("'{}'", path.display())
