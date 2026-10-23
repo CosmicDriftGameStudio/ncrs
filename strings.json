@@ -1091,6 +1091,162 @@
       "context": "Key hints at the bottom of the filing status page. Keep the key names.",
       "en": "Esc closes · P pause · 1/2/3 load · +/- workers · Up/Down, Enter errors",
       "de": "Esc schließt · P Pause · 1/2/3 Last · +/- Worker · Auf/Ab, Enter Fehler"
+    },
+    {
+      "key": "filing_setup.title",
+      "context": "Title of the filing setup, a card above the panels where the user picks the folders the filing module works on.",
+      "en": "Filing locations",
+      "de": "Ablageorte"
+    },
+    {
+      "key": "filing_setup.explain",
+      "context": "Explanation at the top of the filing setup card. Inbox, archive and target are the three kinds of location; use the same words as the buttons.",
+      "en": "Go to a folder in the active panel and add it. An inbox is emptied into the target, an archive is indexed where it is, and the target is the archive filed documents go to.",
+      "de": "Wechsle im aktiven Panel in einen Ordner und füge ihn hinzu. Ein Eingang wird ins Ablageziel geleert, ein Archiv wird indiziert, wo es liegt, und das Ablageziel ist das Archiv, in das abgelegte Dokumente kommen."
+    },
+    {
+      "key": "filing_setup.current_folder",
+      "context": "Line in the filing setup card naming the folder the add buttons would add. Takes the folder path.",
+      "en": "Folder in the active panel: {path}",
+      "de": "Ordner im aktiven Panel: {path}"
+    },
+    {
+      "key": "filing_setup.add_inbox",
+      "context": "Button in the filing setup card: adds the folder of the active panel as an inbox.",
+      "en": "Add as inbox",
+      "de": "Als Eingang hinzufügen"
+    },
+    {
+      "key": "filing_setup.add_archive",
+      "context": "Button in the filing setup card: adds the folder of the active panel as an archive.",
+      "en": "Add as archive",
+      "de": "Als Archiv hinzufügen"
+    },
+    {
+      "key": "filing_setup.add_target",
+      "context": "Button in the filing setup card: adds the folder of the active panel as the target, the archive filed documents go to.",
+      "en": "Add as target",
+      "de": "Als Ablageziel hinzufügen"
+    },
+    {
+      "key": "filing_setup.kind_inbox",
+      "context": "Kind of a chosen location in the list of the filing setup card.",
+      "en": "Inbox",
+      "de": "Eingang"
+    },
+    {
+      "key": "filing_setup.kind_archive",
+      "context": "Kind of a chosen location in the list of the filing setup card.",
+      "en": "Archive",
+      "de": "Archiv"
+    },
+    {
+      "key": "filing_setup.kind_target",
+      "context": "Kind of a chosen location in the list of the filing setup card: the archive filed documents go to.",
+      "en": "Target",
+      "de": "Ablageziel"
+    },
+    {
+      "key": "filing_setup.images",
+      "context": "Checkbox next to a location in the filing setup card: whether images in it are read too.",
+      "en": "Images",
+      "de": "Bilder"
+    },
+    {
+      "key": "filing_setup.remove",
+      "context": "Button next to a location in the filing setup card: takes it off the list.",
+      "en": "Remove",
+      "de": "Entfernen"
+    },
+    {
+      "key": "filing_setup.empty",
+      "context": "Shown in the filing setup card while no location has been added.",
+      "en": "No locations yet.",
+      "de": "Noch keine Orte."
+    },
+    {
+      "key": "filing_setup.rule_no_target",
+      "context": "Rule message in the filing setup card: the list has locations, but none is the target. Saving waits until it is fixed.",
+      "en": "One archive must be the target: add a folder as target.",
+      "de": "Ein Archiv muss das Ablageziel sein: Füge einen Ordner als Ablageziel hinzu."
+    },
+    {
+      "key": "filing_setup.rule_second_target",
+      "context": "Rule message in the filing setup card: more than one location is the target. Saving waits until it is fixed.",
+      "en": "Only one location can be the target: remove one of them.",
+      "de": "Nur ein Ort kann das Ablageziel sein: Entferne einen davon."
+    },
+    {
+      "key": "filing_setup.rule_inbox_target",
+      "context": "Rule message in the filing setup card: an inbox is marked as the target. Saving waits until it is fixed.",
+      "en": "An inbox cannot be the target.",
+      "de": "Ein Eingang kann nicht das Ablageziel sein."
+    },
+    {
+      "key": "filing_setup.rule_overlap",
+      "context": "Rule message in the filing setup card: two locations are the same folder or one lies inside the other. Takes both paths. Saving waits until it is fixed.",
+      "en": "{first} and {second} overlap: a location cannot be the same folder as another or lie inside it.",
+      "de": "{first} und {second} überschneiden sich: Ein Ort darf nicht derselbe Ordner wie ein anderer sein oder in ihm liegen."
+    },
+    {
+      "key": "filing_setup.folder_unusable",
+      "context": "Error in the filing setup card when the folder of the active panel cannot be added. Takes the path and the reason from the operating system, which stays untranslated.",
+      "en": "{path} cannot be added: {reason}",
+      "de": "{path} kann nicht hinzugefügt werden: {reason}"
+    },
+    {
+      "key": "filing_setup.no_config_path",
+      "context": "Error in the filing setup card when the system names no place for the config file, so the locations cannot be saved.",
+      "en": "The system names no place for the config file, so the locations cannot be saved.",
+      "de": "Das System nennt keinen Ort für die Konfigurationsdatei, daher können die Orte nicht gespeichert werden."
+    },
+    {
+      "key": "filing_setup.path_not_text",
+      "context": "Error in the filing setup card when a folder name cannot be written to the config file. Takes the path.",
+      "en": "{path} cannot be written to the config file: its name is not valid UTF-8.",
+      "de": "{path} kann nicht in die Konfigurationsdatei geschrieben werden: Der Name ist kein gültiges UTF-8."
+    },
+    {
+      "key": "filing_setup.config_broken_at_line",
+      "context": "Error in the filing setup card when the config file has an error at a known line: nothing was written. Takes the file path, the line number and the reason, which is English and stays untranslated.",
+      "en": "Not saved, the config file {path} has an error in line {line}: {reason}",
+      "de": "Nicht gespeichert, die Konfigurationsdatei {path} hat einen Fehler in Zeile {line}: {reason}"
+    },
+    {
+      "key": "filing_setup.config_broken",
+      "context": "Error in the filing setup card when the config file cannot be read or has an error without a line: nothing was written. Takes the file path and the reason, which is English and stays untranslated.",
+      "en": "Not saved, the config file {path} cannot be used: {reason}",
+      "de": "Nicht gespeichert, die Konfigurationsdatei {path} ist nicht verwendbar: {reason}"
+    },
+    {
+      "key": "filing_setup.write_failed",
+      "context": "Error in the filing setup card when writing the config file failed. Takes the path and the reason from the operating system, which stays untranslated.",
+      "en": "{path} could not be written: {reason}",
+      "de": "{path} konnte nicht geschrieben werden: {reason}"
+    },
+    {
+      "key": "filing_setup.applied",
+      "context": "Confirmation in the filing setup card after saving: the filing module now starts with the saved locations.",
+      "en": "Saved. Filing starts with these locations.",
+      "de": "Gespeichert. Die Ablage startet mit diesen Orten."
+    },
+    {
+      "key": "filing_setup.next_start",
+      "context": "Confirmation in the filing setup card after saving while the filing module already runs: the locations take effect the next time ncrs starts.",
+      "en": "Saved. The locations apply from the next start of ncrs.",
+      "de": "Gespeichert. Die Orte gelten ab dem nächsten Start von ncrs."
+    },
+    {
+      "key": "filing_setup.save",
+      "context": "Button in the filing setup card: writes the locations to the config file.",
+      "en": "Save",
+      "de": "Speichern"
+    },
+    {
+      "key": "filing_setup.close",
+      "context": "Button in the filing setup card: closes it without saving.",
+      "en": "Close",
+      "de": "Schließen"
     }
   ]
 }

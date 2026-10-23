@@ -18,6 +18,7 @@ use std::hash::{BuildHasher as _, Hasher as _};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::str::FromStr as _;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 
@@ -277,12 +278,25 @@ pub struct FilingModule {
     locations: Vec<ResolvedLocation>,
     phase: Phase,
     load: Load,
-    /// Bumps with every new `Work` and with a dismissal: a result of an older
-    /// generation is ignored.
+    /// Changes with every new `Work` and with a dismissal: a result of an older
+    /// generation is ignored. Unique across modules, so a module that replaces
+    /// a dismissed one never takes its leftover result for its own.
     generation: u64,
     /// Which of the groups to type back, given their count. Random in the app,
     /// fixed in tests.
     pick_group: fn(usize) -> usize,
+    /// Whether the config listed any location; `locations` stays empty until
+    /// the start has resolved them.
+    has_configured_locations: bool,
+    /// Known once an index is open.
+    index_encrypted: Option<bool>,
+}
+
+fn next_generation() -> u64 {
+    static LAST_GENERATION: AtomicU64 = AtomicU64::new(0);
+    LAST_GENERATION
+        .fetch_add(1, Ordering::Relaxed)
+        .wrapping_add(1)
 }
 
 impl fmt::Debug for FilingModule {
@@ -575,6 +589,8 @@ impl FilingModule {
             load: filing.load,
             generation: 0,
             pick_group,
+            has_configured_locations: !filing.locations.is_empty(),
+            index_encrypted: None,
         };
         if db_path.is_none() {
             module.phase = Phase::Failed(NO_DATA_DIRECTORY.to_owned());
@@ -658,6 +674,25 @@ impl FilingModule {
         Ok(IntakeIndex(Arc::clone(&self.index)))
     }
 
+    /// The config this module started from listed at least one location.
+    pub fn has_configured_locations(&self) -> bool {
+        self.has_configured_locations
+    }
+
+    /// Only once the open index is known to be unencrypted.
+    pub fn index_is_plain(&self) -> bool {
+        self.index_encrypted == Some(false)
+    }
+
+    /// Whether a new module may take this one's place: no create, restore or
+    /// replace in flight, and no recovery key on screen that would be lost.
+    /// A module dismissed while starting may still run its start job; that job
+    /// only opens an existing index, and its result is ignored by generation.
+    pub fn can_be_replaced(&self) -> bool {
+        !matches!(self.phase, Phase::Starting | Phase::ShowRecoveryKey { .. })
+            && !self.phase.is_busy()
+    }
+
     pub fn has_card(&self) -> bool {
         matches!(
             self.phase,
@@ -678,7 +713,7 @@ impl FilingModule {
     }
 
     fn new_work(&mut self, job: Job) -> Work {
-        self.generation = self.generation.wrapping_add(1);
+        self.generation = next_generation();
         Work {
             generation: self.generation,
             db_path: self.db_path.clone(),
@@ -750,7 +785,7 @@ impl FilingModule {
                     Phase::Ready | Phase::Dismissed | Phase::ShowRecoveryKey { .. }
                 );
                 if !stays && !self.phase.is_busy() {
-                    self.generation = self.generation.wrapping_add(1);
+                    self.generation = next_generation();
                     self.phase = Phase::Dismissed;
                 }
                 None
@@ -853,6 +888,11 @@ impl FilingModule {
             WorkOutcome::KeyApplied(result) => self.finish_key(result),
             WorkOutcome::Crashed(reason) => self.finish_crashed(reason),
         }
+        // Safe on the UI thread: no pipeline holds the index before `Ready`,
+        // and no work is running once its result is here.
+        if self.index_encrypted.is_none() {
+            self.index_encrypted = lock(&self.index).as_ref().map(Index::is_encrypted);
+        }
     }
 
     fn enter(&mut self, opened: OpenOutcome) {
@@ -947,6 +987,24 @@ impl FilingModule {
             load: Load::default(),
             generation: 0,
             pick_group: random_group,
+            has_configured_locations: false,
+            index_encrypted: None,
+        }
+    }
+
+    /// Like `in_phase`, as if the open index had the given encryption.
+    pub fn in_phase_with_index(phase: Phase, encrypted: bool) -> Self {
+        Self {
+            index_encrypted: Some(encrypted),
+            ..Self::in_phase(phase)
+        }
+    }
+
+    /// Like `in_phase`, started from a config that listed locations.
+    pub fn in_phase_with_locations(phase: Phase) -> Self {
+        Self {
+            has_configured_locations: true,
+            ..Self::in_phase(phase)
         }
     }
 
@@ -1207,6 +1265,79 @@ mod tests {
         assert_eq!(figures.path, db);
         assert!(figures.file_bytes.is_some_and(|bytes| bytes > 0));
         assert_eq!(figures.statistics.document_count, 0);
+    }
+
+    #[test]
+    fn the_module_knows_whether_the_index_it_opened_is_plain() {
+        for encrypted in [false, true] {
+            let dir = TempDir::new().unwrap();
+            let store = Arc::new(InMemoryKeyStore::empty());
+            let mut module = started(&db_in(&dir), shared(&store));
+            assert!(!module.index_is_plain(), "nothing is open yet");
+
+            send(&mut module, FilingMessage::ChooseEncrypted(encrypted));
+            send(&mut module, FilingMessage::CreateIndex);
+
+            assert_eq!(module.index_is_plain(), !encrypted);
+        }
+        let dir = TempDir::new().unwrap();
+        make_plain(&db_in(&dir));
+        let store = Arc::new(InMemoryKeyStore::empty());
+        assert!(started(&db_in(&dir), shared(&store)).index_is_plain());
+    }
+
+    #[test]
+    fn the_module_remembers_whether_the_config_listed_locations() {
+        let dir = TempDir::new().unwrap();
+        let store = Arc::new(InMemoryKeyStore::empty());
+        for (locations, expected) in [
+            (Vec::new(), false),
+            (vec![location(&dir.path().join("inbox"))], true),
+        ] {
+            let (module, _work) = FilingModule::start_picking(
+                &filing_with(locations),
+                Some(db_in(&dir)),
+                shared(&store),
+                fixed_group,
+            )
+            .unwrap();
+            assert_eq!(module.has_configured_locations(), expected);
+        }
+    }
+
+    #[test]
+    fn only_a_module_without_work_or_a_shown_key_can_be_replaced() {
+        let replaceable = [
+            Phase::Ready,
+            Phase::Dismissed,
+            Phase::PlainFileWarning,
+            Phase::Failed("broken".to_owned()),
+            Phase::AskEncryption {
+                encrypted: true,
+                busy: false,
+                error: None,
+            },
+        ];
+        for phase in replaceable {
+            assert!(FilingModule::in_phase(phase).can_be_replaced());
+        }
+        let held = [
+            Phase::Starting,
+            Phase::AskEncryption {
+                encrypted: true,
+                busy: true,
+                error: None,
+            },
+            Phase::ShowRecoveryKey {
+                key: FilingModule::fixed_recovery_key(),
+                group: 0,
+                typed: SecretText::default(),
+                mismatch: false,
+            },
+        ];
+        for phase in held {
+            assert!(!FilingModule::in_phase(phase).can_be_replaced());
+        }
     }
 
     #[test]

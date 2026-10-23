@@ -7,21 +7,22 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use iced::futures;
 use iced::keyboard::{self, key::Named, Key, Modifiers};
-use iced::widget::{column, container, mouse_area, opaque, operation, row, Space, Stack};
+use iced::widget::{column, container, mouse_area, opaque, operation, row, Column, Space, Stack};
 use iced::{event, window, Element, Length, Point, Size, Subscription, Task, Theme};
 
-use crate::config::{self, Config, ConfigError, ContrastWarning, Filing};
+use crate::config::{self, Config, ConfigError, ContrastWarning, Filing, FilingWriteError};
 use crate::context_menu::{ContextAction, ContextMenu, InputState};
 use crate::dialog::{Prompt, PromptKind};
 use crate::filing::{FilingMessage, FilingModule, LocationStatus, Phase, Work, WorkOutcome};
+use crate::filing_setup::{self, FilingSetup, SetupNote};
 use crate::filing_status::{FilingStatus, SNAPSHOT_EVERY};
 use crate::fs::{self, CreateDirError};
 use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
 use crate::keymap::{self, KeyScope, Keymap};
 use crate::messages::{
-    ClipboardKind, ConflictChoice, FilingStatusMessage, Message, PanelSide, QuickOpenMessage,
-    SearchMessage, TransferKind,
+    ClipboardKind, ConflictChoice, FilingSetupMessage, FilingStatusMessage, Message, PanelSide,
+    QuickOpenMessage, SearchMessage, TransferKind,
 };
 use crate::palette::Palette;
 use crate::quick_open::{QuickOpen, QUICK_OPEN_FILE_LIMIT};
@@ -30,6 +31,7 @@ use crate::ui::context_menu as context_menu_view;
 use crate::ui::delete as delete_dialog_view;
 use crate::ui::dialog::FIELD_ID;
 use crate::ui::filing as filing_ui;
+use crate::ui::filing_setup as filing_setup_ui;
 use crate::ui::filing_status as filing_status_ui;
 use crate::ui::quick_open as quick_open_ui;
 use crate::ui::search as search_ui;
@@ -224,6 +226,14 @@ fn leaves_path_field(message: &Message) -> bool {
             | Message::OpenSearch
             | Message::QuickOpen(QuickOpenMessage::Open)
             | Message::FilingStatus(FilingStatusMessage::Open)
+            | Message::FilingSetup(
+                FilingSetupMessage::Toggle
+                    | FilingSetupMessage::Close
+                    | FilingSetupMessage::Add(_)
+                    | FilingSetupMessage::ToggleImages(_)
+                    | FilingSetupMessage::Remove(_)
+                    | FilingSetupMessage::Save
+            )
             | Message::ContextMenuAt { .. }
             | Message::ContextMenuKey
             | Message::CopyToClipboard(_)
@@ -565,6 +575,19 @@ pub struct App {
     filing_status: FilingStatus,
     /// The time the status page measures how long a worker has been busy by.
     wall_clock: Arc<dyn ncrs_pipeline::Clock>,
+    /// Where the filing setup writes. `None` when the system names no place.
+    config_path: Option<PathBuf>,
+    /// The filing settings of the config file, as last loaded or written.
+    filing_config: Filing,
+    /// What a new filing module opens and keeps its key in; set by
+    /// `with_filing`. Without a store no module is started.
+    filing_index_path: Option<PathBuf>,
+    filing_key_store: Option<Arc<dyn KeyStore + Send + Sync>>,
+    /// The filing setup card, while it is up.
+    filing_setup: Option<FilingSetup>,
+    /// Looks up a folder the setup adds, on a blocking thread. Injected so
+    /// tests add their fixed folders without a disk.
+    resolve_folder: fn(&Path) -> Result<PathBuf, String>,
 }
 
 /// The part of the prompt the key routing needs, cheap to clone.
@@ -594,6 +617,8 @@ pub struct PromptKeyState {
     pub quick_open: bool,
     /// The filing status page is up, so its keys act on the pipeline.
     pub filing_status: bool,
+    /// The filing setup is up, so Escape closes it.
+    pub filing_setup: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
     /// The drive menu is up, so keys move its highlight.
@@ -618,6 +643,7 @@ impl Default for PromptKeyState {
             search: false,
             quick_open: false,
             filing_status: false,
+            filing_setup: false,
             delete_dialog: DeleteKeys::default(),
             volume_menu: false,
             context_menu: false,
@@ -753,15 +779,19 @@ fn keys_without_prompt(
         return search_key(prompt, &key, key_modifiers);
     }
 
-    // Escape stops a running job, else dismisses the config error, and is free
-    // when neither exists. Unbound rather than bound to something that does
-    // nothing — a key that means different things depending on invisible state
-    // is worse than one that is simply free.
+    // Escape stops a running job, else dismisses the config error, else closes
+    // the filing setup, and is free when none exists. Unbound rather than bound
+    // to something that does nothing — a key that means different things
+    // depending on invisible state is worse than one that is simply free.
     if matches!(key.as_ref(), Key::Named(Named::Escape)) {
         return if prompt.job_running {
             Some(Message::AbortJob)
+        } else if prompt.config_error {
+            Some(Message::DismissConfigError)
         } else {
-            prompt.config_error.then_some(Message::DismissConfigError)
+            prompt
+                .filing_setup
+                .then_some(Message::FilingSetup(FilingSetupMessage::Close))
         };
     }
     bound_message(&prompt.keymap, &key, key_modifiers, scope)
@@ -1185,8 +1215,10 @@ impl App {
     /// Left panel starts in the working directory, right in `$HOME`, so the
     /// two panels are not the same directory on launch.
     pub fn new() -> (Self, Task<Message>) {
-        let loaded = config::default_path()
-            .map_or_else(|| Ok(Config::default()), |path| config::load(&path));
+        let config_path = config::default_path();
+        let loaded = config_path
+            .as_deref()
+            .map_or_else(|| Ok(Config::default()), config::load);
         if let Err(err) = &loaded {
             eprintln!("ncrs: {err}");
         }
@@ -1194,7 +1226,8 @@ impl App {
             .as_ref()
             .map(|config| config.filing.clone())
             .unwrap_or_default();
-        let (panels, panel_loads) = Self::starting_in(fs::start_dir(), fs::home_dir());
+        let (mut panels, panel_loads) = Self::starting_in(fs::start_dir(), fs::home_dir());
+        panels.config_path = config_path;
         let (app, filing_start) = panels.with_config(loaded).with_filing(
             &filing,
             config::default_index_path(),
@@ -1205,18 +1238,36 @@ impl App {
 
     /// Starts the filing module when `filing` switches it on. The database
     /// and its directory are not created here: only after the user chose at
-    /// the encryption question.
+    /// the encryption question. Switched on without locations, the module
+    /// has nothing to work on, so the setup opens.
     pub fn with_filing(
         mut self,
         filing: &Filing,
         db_path: Option<PathBuf>,
         store: Arc<dyn KeyStore + Send + Sync>,
     ) -> (Self, Task<Message>) {
-        let Some((module, work)) = FilingModule::start(filing, db_path, store) else {
-            return (self, Task::none());
+        self.filing_index_path = db_path;
+        self.filing_key_store = Some(store);
+        let task = self.start_filing_module(filing);
+        if filing.enabled && filing.locations.is_empty() {
+            self.filing_setup = Some(FilingSetup::new(&[]));
+        }
+        (self, task)
+    }
+
+    /// Replaces nothing: the caller has dropped any module and pipeline before.
+    fn start_filing_module(&mut self, filing: &Filing) -> Task<Message> {
+        self.filing_config = filing.clone();
+        let Some(store) = self.filing_key_store.clone() else {
+            return Task::none();
+        };
+        let Some((module, work)) =
+            FilingModule::start(filing, self.filing_index_path.clone(), store)
+        else {
+            return Task::none();
         };
         self.filing = Some(module);
-        (self, work.map_or_else(Task::none, run_filing_work))
+        work.map_or_else(Task::none, run_filing_work)
     }
 
     /// Applies a loaded config. A broken one leaves the defaults and says why
@@ -1366,6 +1417,12 @@ impl App {
             pipeline: None,
             filing_status: FilingStatus::default(),
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
+            config_path: None,
+            filing_config: Filing::default(),
+            filing_index_path: None,
+            filing_key_store: None,
+            filing_setup: None,
+            resolve_folder: filing_setup::resolve_folder,
         };
 
         let tasks = Task::batch([
@@ -1983,6 +2040,7 @@ impl App {
             Message::QuickOpen(quick_open) => self.update_quick_open(quick_open),
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => self.update_filing_status(page_message),
+            Message::FilingSetup(setup_message) => self.update_filing_setup(setup_message),
             Message::Quit => iced::exit(),
             // Handled in `update`, which owns the timer's generation check.
             Message::NoticeExpired(_) => Task::none(),
@@ -2308,14 +2366,31 @@ impl App {
 
         // The card has no scrim: the panels stay usable around it. Every modal
         // below stacks on this base, so it stays above the card.
-        let root: Element<'_, Message> = match self
+        let module_card = self
             .filing
             .as_ref()
             .filter(|module| module.has_card())
-            .and_then(|module| filing_ui::view(module, self.lang, &self.palette))
-        {
-            Some(card) => Stack::with_children([window.into(), filing_card_layer(card)]).into(),
-            None => window.into(),
+            .and_then(|module| filing_ui::view(module, self.lang, &self.palette));
+        let setup_card = self.filing_setup.as_ref().map(|setup| {
+            let context = filing_setup_ui::SetupContext {
+                current_folder: &self.active_panel().path,
+                home: &self.home,
+                index_is_plain: self
+                    .filing
+                    .as_ref()
+                    .is_some_and(FilingModule::index_is_plain),
+                lang: self.lang,
+            };
+            filing_setup_ui::view(setup, &context, &self.palette)
+        });
+        let cards: Vec<Element<'_, Message>> = setup_card.into_iter().chain(module_card).collect();
+        let root: Element<'_, Message> = if cards.is_empty() {
+            window.into()
+        } else {
+            let card = Column::with_children(cards)
+                .spacing(theme::spacing::SECTION_GAP)
+                .align_x(iced::Alignment::Center);
+            Stack::with_children([window.into(), filing_card_layer(card.into())]).into()
         };
 
         if let Some(menu) = self.context_menu.as_ref() {
@@ -2489,6 +2564,7 @@ impl App {
         let search = self.search_has_keys();
         let quick_open = self.quick_open.is_some();
         let filing_status = self.filing_status.page_open();
+        let filing_setup = self.filing_setup.is_some();
         let delete_dialog = match &self.delete_dialog {
             None => DeleteKeys::Closed,
             Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
@@ -2506,6 +2582,7 @@ impl App {
                 search,
                 quick_open,
                 filing_status,
+                filing_setup,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
                 // the dialog's keys would fall through to the panels.
@@ -2524,6 +2601,7 @@ impl App {
                 search,
                 quick_open,
                 filing_status,
+                filing_setup,
                 conflict_open: self.pending_conflict.is_some(),
                 busy: prompt.busy(),
                 typed: prompt.name().into(),
@@ -2611,6 +2689,128 @@ impl App {
             tasks.push(self.show_notice(text));
         }
         Task::batch(tasks)
+    }
+
+    fn update_filing_setup(&mut self, message: FilingSetupMessage) -> Task<Message> {
+        match message {
+            FilingSetupMessage::Toggle => {
+                self.filing_setup = match self.filing_setup.take() {
+                    Some(_) => None,
+                    None => Some(FilingSetup::new(&self.filing_config.locations)),
+                };
+                Task::none()
+            }
+            FilingSetupMessage::Close => {
+                self.filing_setup = None;
+                Task::none()
+            }
+            FilingSetupMessage::Add(kind) => {
+                let Some(setup) = self.filing_setup.as_mut() else {
+                    return Task::none();
+                };
+                if !setup.start_adding() {
+                    return Task::none();
+                }
+                let folder = self.active_panel().path.clone();
+                let resolve_folder = self.resolve_folder;
+                Task::perform(
+                    tokio::task::spawn_blocking({
+                        let looked_up = folder.clone();
+                        move || resolve_folder(&looked_up)
+                    }),
+                    move |joined| {
+                        Message::FilingSetup(FilingSetupMessage::Added {
+                            kind,
+                            folder,
+                            resolved: joined.unwrap_or_else(|join| Err(join.to_string())),
+                        })
+                    },
+                )
+            }
+            FilingSetupMessage::Added {
+                kind,
+                folder,
+                resolved,
+            } => {
+                if let Some(setup) = self.filing_setup.as_mut() {
+                    setup.finish_adding(kind, folder, resolved);
+                }
+                Task::none()
+            }
+            FilingSetupMessage::ToggleImages(index) => {
+                if let Some(setup) = self.filing_setup.as_mut() {
+                    setup.toggle_images(index);
+                }
+                Task::none()
+            }
+            FilingSetupMessage::Remove(index) => {
+                if let Some(setup) = self.filing_setup.as_mut() {
+                    setup.remove(index);
+                }
+                Task::none()
+            }
+            FilingSetupMessage::Save => {
+                let Some(setup) = self.filing_setup.as_mut() else {
+                    return Task::none();
+                };
+                let Some(config_path) = self.config_path.clone() else {
+                    setup.refuse_saving(SetupNote::NoConfigPath);
+                    return Task::none();
+                };
+                let Some(chosen) = setup.start_saving() else {
+                    return Task::none();
+                };
+                let written_path = config_path.clone();
+                Task::perform(
+                    tokio::task::spawn_blocking(move || {
+                        filing_setup::write_locations(&written_path, &chosen)
+                    }),
+                    move |joined| {
+                        Message::FilingSetup(FilingSetupMessage::Saved(joined.unwrap_or_else(
+                            |join| {
+                                Err(FilingWriteError::Io {
+                                    path: config_path,
+                                    reason: join.to_string(),
+                                })
+                            },
+                        )))
+                    },
+                )
+            }
+            FilingSetupMessage::Saved(result) => {
+                // The file is written even when the card was closed meanwhile,
+                // so the module follows it all the same.
+                let (note, task) = match result {
+                    Ok(filing) => self.apply_saved_filing(filing),
+                    Err(error) => (SetupNote::SaveFailed(error), Task::none()),
+                };
+                if let Some(setup) = self.filing_setup.as_mut() {
+                    setup.finish_saving(note);
+                }
+                task
+            }
+        }
+    }
+
+    /// A module that works on configured locations keeps running on them:
+    /// there is no reload, and the saved list takes over at the next start.
+    /// One without locations, or none at all, is replaced at once.
+    fn apply_saved_filing(&mut self, filing: Filing) -> (SetupNote, Task<Message>) {
+        let replaceable = self.filing_key_store.is_some()
+            && self.filing.as_ref().is_none_or(|module| {
+                !module.has_configured_locations() && module.can_be_replaced()
+            });
+        if !replaceable {
+            self.filing_config = filing;
+            return (SetupNote::AppliesAtNextStart, Task::none());
+        }
+        // Dropping the runner stops it and lets go of the index before the
+        // new module opens it again.
+        self.pipeline = None;
+        self.filing = None;
+        let task = self.start_filing_module(&filing);
+        self.refresh_filing_snapshot();
+        (SetupNote::Applied, task)
     }
 
     /// Shows `text` in the title bar for [`NOTICE_DURATION`]. The timer carries
@@ -4721,6 +4921,12 @@ impl App {
             pipeline: None,
             filing_status: FilingStatus::default(),
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
+            config_path: None,
+            filing_config: Filing::default(),
+            filing_index_path: None,
+            filing_key_store: None,
+            filing_setup: None,
+            resolve_folder: |folder| Ok(folder.to_path_buf()),
         };
         for (side, names) in [
             (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
@@ -4752,6 +4958,18 @@ impl App {
     pub fn with_fixed_filing(phase: Phase) -> Self {
         let mut app = Self::with_fixed_panels();
         app.filing = Some(FilingModule::in_phase(phase));
+        app
+    }
+
+    /// Fixed panels with the filing setup up, holding `chosen`. With
+    /// `index_is_plain` a module stands behind it that opened an unencrypted
+    /// index.
+    pub fn with_filing_setup(chosen: &[config::FilingLocation], index_is_plain: bool) -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.filing_setup = Some(FilingSetup::new(chosen));
+        if index_is_plain {
+            app.filing = Some(FilingModule::in_phase_with_index(Phase::Ready, false));
+        }
         app
     }
 
@@ -9002,6 +9220,230 @@ mod filing_tests {
         let _task = app.update(Message::Filing(FilingMessage::CopyRecoveryKey));
         let notice = app.notice.clone().unwrap();
         assert!(!notice.contains("AAAA"), "{notice}");
+    }
+}
+
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod filing_setup_tests {
+    use super::*;
+    use crate::config::FilingLocation;
+    use crate::filing_setup::LocationKind;
+    use ncrs_index::InMemoryKeyStore;
+    use ncrs_intake::LocationMode;
+
+    fn setup_message(message: FilingSetupMessage) -> Message {
+        Message::FilingSetup(message)
+    }
+
+    fn location(path: &str, mode: LocationMode, is_target: bool) -> FilingLocation {
+        FilingLocation {
+            path: PathBuf::from(path),
+            mode,
+            images: false,
+            is_target,
+        }
+    }
+
+    fn saved_filing() -> Filing {
+        Filing {
+            enabled: true,
+            locations: vec![
+                location("/home/test/inbox", LocationMode::Inbox, false),
+                location("/home/test/target", LocationMode::Archive, true),
+            ],
+            load: Load::default(),
+        }
+    }
+
+    fn running_pipeline() -> ncrs_pipeline::Runner {
+        ncrs_pipeline::Runner::start(
+            ncrs_pipeline::Settings::new(Load::Gentle, NonZeroUsize::MIN),
+            Vec::new(),
+            Vec::new(),
+            Arc::new(ncrs_pipeline::SystemClock),
+        )
+    }
+
+    /// An app that can start a module: a store, but no data directory, so a
+    /// started module fails at once instead of opening an index.
+    fn app_that_can_start_a_module() -> App {
+        let (mut app, _start) = App::with_fixed_panels().with_filing(
+            &Filing::default(),
+            None,
+            Arc::new(InMemoryKeyStore::empty()),
+        );
+        assert!(app.filing.is_none(), "the module is off");
+        app.filing_setup = Some(FilingSetup::new(&[]));
+        app
+    }
+
+    fn note(app: &App) -> Option<&SetupNote> {
+        app.filing_setup.as_ref().and_then(FilingSetup::note)
+    }
+
+    #[test]
+    fn the_setup_key_opens_the_setup_with_the_configured_locations_and_closes_it() {
+        let mut app = App::with_fixed_panels();
+        app.filing_config = saved_filing();
+
+        drop(app.update(setup_message(FilingSetupMessage::Toggle)));
+        assert_eq!(
+            app.filing_setup.as_ref().unwrap().chosen(),
+            saved_filing().locations
+        );
+
+        drop(app.update(setup_message(FilingSetupMessage::Toggle)));
+        assert!(app.filing_setup.is_none());
+    }
+
+    #[test]
+    fn escape_closes_the_setup_when_nothing_else_wants_it() {
+        let mut app = App::with_filing_setup(&[], false);
+        let escape = route_key(
+            &app.prompt_key_state(),
+            Key::Named(Named::Escape),
+            Modifiers::default(),
+        );
+        assert_eq!(escape, Some(setup_message(FilingSetupMessage::Close)));
+
+        drop(app.update(escape.unwrap()));
+        assert!(app.filing_setup.is_none());
+        assert_eq!(
+            route_key(
+                &app.prompt_key_state(),
+                Key::Named(Named::Escape),
+                Modifiers::default()
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn adding_looks_up_the_active_panels_folder_and_lists_it() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let _inside = runtime.enter();
+        let mut app = App::with_filing_setup(&[], false);
+        let folder = app.active_panel().path.clone();
+
+        drop(app.update(setup_message(FilingSetupMessage::Add(LocationKind::Target))));
+        assert!(app.filing_setup.as_ref().unwrap().is_busy());
+
+        drop(app.update(setup_message(FilingSetupMessage::Added {
+            kind: LocationKind::Target,
+            folder: folder.clone(),
+            resolved: Ok(folder.clone()),
+        })));
+        let setup = app.filing_setup.as_ref().unwrap();
+        assert!(!setup.is_busy());
+        assert_eq!(setup.chosen().len(), 1);
+        assert_eq!(setup.chosen()[0].path, folder);
+        assert_eq!(LocationKind::of(&setup.chosen()[0]), LocationKind::Target);
+    }
+
+    #[test]
+    fn saving_without_a_config_path_says_so_and_writes_nothing() {
+        let mut app = App::with_filing_setup(&saved_filing().locations, false);
+
+        drop(app.update(setup_message(FilingSetupMessage::Save)));
+
+        assert_eq!(note(&app), Some(&SetupNote::NoConfigPath));
+        assert!(!app.filing_setup.as_ref().unwrap().is_busy());
+    }
+
+    #[test]
+    fn a_saved_list_starts_the_module_when_none_was_on() {
+        let mut app = app_that_can_start_a_module();
+
+        drop(app.update(setup_message(FilingSetupMessage::Saved(Ok(saved_filing())))));
+
+        assert_eq!(note(&app), Some(&SetupNote::Applied));
+        assert!(app.filing.as_ref().unwrap().has_configured_locations());
+        assert_eq!(app.filing_config, saved_filing());
+    }
+
+    #[test]
+    fn a_module_without_locations_is_replaced_and_its_runner_stopped() {
+        let mut app = app_that_can_start_a_module();
+        app.filing = Some(FilingModule::in_phase(Phase::Ready));
+        app.pipeline = Some(running_pipeline());
+
+        drop(app.update(setup_message(FilingSetupMessage::Saved(Ok(saved_filing())))));
+
+        assert_eq!(note(&app), Some(&SetupNote::Applied));
+        assert!(app.pipeline.is_none());
+        assert!(app.filing.as_ref().unwrap().has_configured_locations());
+    }
+
+    #[test]
+    fn a_running_module_with_locations_keeps_them_until_the_next_start() {
+        let mut app = app_that_can_start_a_module();
+        app.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
+        app.pipeline = Some(running_pipeline());
+
+        drop(app.update(setup_message(FilingSetupMessage::Saved(Ok(saved_filing())))));
+
+        assert_eq!(note(&app), Some(&SetupNote::AppliesAtNextStart));
+        assert!(app.pipeline.is_some());
+        assert!(matches!(app.filing.as_ref().unwrap().phase(), Phase::Ready));
+        assert_eq!(app.filing_config, saved_filing());
+    }
+
+    #[test]
+    fn a_module_busy_with_its_start_is_not_replaced() {
+        let mut app = app_that_can_start_a_module();
+        app.filing = Some(FilingModule::in_phase(Phase::Starting));
+
+        drop(app.update(setup_message(FilingSetupMessage::Saved(Ok(saved_filing())))));
+
+        assert_eq!(note(&app), Some(&SetupNote::AppliesAtNextStart));
+        assert!(matches!(
+            app.filing.as_ref().unwrap().phase(),
+            Phase::Starting
+        ));
+    }
+
+    #[test]
+    fn a_failed_save_is_shown_and_changes_nothing() {
+        let mut app = app_that_can_start_a_module();
+        let failure = FilingWriteError::Rule(crate::config::FilingRuleViolation::NoTarget);
+
+        drop(app.update(setup_message(FilingSetupMessage::Saved(Err(
+            failure.clone(),
+        )))));
+
+        assert_eq!(note(&app), Some(&SetupNote::SaveFailed(failure)));
+        assert!(app.filing.is_none());
+        assert_eq!(app.filing_config, Filing::default());
+    }
+
+    #[test]
+    fn switched_on_without_locations_the_setup_opens_at_start() {
+        let store = || -> Arc<dyn KeyStore + Send + Sync> { Arc::new(InMemoryKeyStore::empty()) };
+        let without_locations = Filing {
+            enabled: true,
+            locations: Vec::new(),
+            load: Load::default(),
+        };
+        let (empty, _empty_start) =
+            App::with_fixed_panels().with_filing(&without_locations, None, store());
+        assert!(empty.filing_setup.is_some());
+
+        let (configured, _configured_start) =
+            App::with_fixed_panels().with_filing(&saved_filing(), None, store());
+        assert!(configured.filing_setup.is_none());
+
+        let (off, _off_start) =
+            App::with_fixed_panels().with_filing(&Filing::default(), None, store());
+        assert!(off.filing_setup.is_none());
     }
 }
 

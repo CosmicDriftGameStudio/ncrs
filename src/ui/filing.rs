@@ -71,14 +71,14 @@ fn filing_message(message: FilingMessage) -> Message {
     Message::Filing(message)
 }
 
-fn title<'a>(label: &'a str, palette: &Palette) -> Element<'a, Message> {
+pub fn title<'a>(label: &'a str, palette: &Palette) -> Element<'a, Message> {
     text(label)
         .size(font_size::TITLE)
         .color(palette.accent)
         .into()
 }
 
-fn paragraph<'a>(
+pub fn paragraph<'a>(
     content: impl iced::widget::text::IntoFragment<'a>,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -89,7 +89,7 @@ fn paragraph<'a>(
         .into()
 }
 
-fn error_line<'a>(content: String, palette: &Palette) -> Element<'a, Message> {
+pub fn error_line<'a>(content: String, palette: &Palette) -> Element<'a, Message> {
     text(content)
         .size(font_size::STATUS)
         .color(palette.error)
@@ -109,7 +109,7 @@ fn action<'a>(
         .into()
 }
 
-fn buttons<'a>(items: Vec<Element<'a, Message>>) -> Element<'a, Message> {
+pub fn buttons<'a>(items: Vec<Element<'a, Message>>) -> Element<'a, Message> {
     Row::with_children(items)
         .spacing(spacing::CELL_PADDING_X)
         .into()
