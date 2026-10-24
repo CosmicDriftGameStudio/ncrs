@@ -542,7 +542,10 @@ mod tests {
 
     #[test]
     fn control_and_bidi_characters_are_dropped_from_shown_text() {
-        assert_eq!(shown_text("  A\nB\u{202E}C\u{2067}D\u{200F}E\t ", 80), "ABCDE");
+        assert_eq!(
+            shown_text("  A\nB\u{202E}C\u{2067}D\u{200F}E\t ", 80),
+            "ABCDE"
+        );
         assert_eq!(shown_text("\u{202E}\n", 80), "");
     }
 
