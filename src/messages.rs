@@ -16,6 +16,8 @@ use crate::fs::search::SearchEvent;
 use crate::fs::CreateDirError;
 use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
 use crate::jobs::JobEvent;
+use crate::open_vsx::FetchError;
+use crate::theme_fetch::{Fetched, Installed};
 
 /// Identifies one of the two file panels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -259,6 +261,9 @@ pub enum Message {
     // --- Command palette (Cmd/Ctrl+Shift+P) ---
     CommandPalette(CommandPaletteMessage),
 
+    // --- Theme download (command palette: fetch a color theme) ---
+    ThemeFetch(ThemeFetchMessage),
+
     // --- Window / app ---
     WindowResized(Size),
     Quit,
@@ -358,6 +363,32 @@ pub enum FilingSetupMessage {
     Save,
     /// The filing settings read back from the written file.
     Saved(Result<Filing, FilingWriteError>),
+}
+
+/// Everything the card that fetches a color theme sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ThemeFetchMessage {
+    /// Opens the card, or gives its field the focus again when it is up.
+    Open,
+    Close,
+    TextChanged(String),
+    /// Enter: fetches the typed extension, or installs the theme under the
+    /// cursor, whichever the card is waiting for.
+    Activate,
+    Move(isize),
+    /// A click on the theme at this position of the list: installs it.
+    Pick(usize),
+    /// The download of the generation is done. Dropped when the card was
+    /// closed or opened again meanwhile.
+    Fetched {
+        generation: u64,
+        result: Result<Fetched, FetchError>,
+    },
+    /// The installation of the generation is done.
+    Installed {
+        generation: u64,
+        result: Result<Box<Installed>, FetchError>,
+    },
 }
 
 /// Everything Quick Open sends.

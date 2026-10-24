@@ -406,6 +406,24 @@ The text on the title bars is `titleBar.activeForeground`; without it, and when
 the theme sets `bar`, it is `text` or `background`, whichever reads better on
 `bar`. The text on tagged rows is chosen the same way when the theme sets `tagged`.
 
+##### Fetch a theme from Open VSX
+
+The Lab (command palette) has the entry "Fetch color theme…". It downloads a
+color theme from [Open VSX](https://open-vsx.org) and switches it on at once.
+
+- Type an extension ID such as `dracula-theme.theme-dracula`, a Marketplace
+  link (`https://marketplace.visualstudio.com/items?itemName=<publisher>.<name>`)
+  or an Open VSX link (`https://open-vsx.org/extension/<publisher>/<name>`), and
+  press Enter. An extension with several themes asks which one.
+- This is the only place where ncrs goes onto the network, and only after you
+  press Enter or Fetch. It talks to `open-vsx.org` (HTTPS) and to the download
+  host Open VSX redirects to, `openvsx.eclipsecontent.org`, and to nothing else.
+- The files go to `themes/<publisher>.<name>/` next to the config file, together
+  with the extension's license file, and `vscode` in `[theme]` points at the
+  theme. The rest of the config file stays as written.
+- The license named by Open VSX is shown while you choose and in the status bar
+  after the installation. Check that it allows what you do with the theme.
+
 ### Filing
 
 `[modules.filing]` switches the filing module on and lists the folders it works

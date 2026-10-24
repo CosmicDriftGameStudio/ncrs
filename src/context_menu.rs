@@ -7,7 +7,8 @@ use iced::{event, mouse, window, Point, Size};
 use crate::fs::OpenKind;
 use crate::i18n::Msg;
 use crate::messages::{
-    ClipboardKind, CommandPaletteMessage, Message, QuickOpenMessage, SearchMessage, TransferKind,
+    ClipboardKind, CommandPaletteMessage, Message, QuickOpenMessage, SearchMessage,
+    ThemeFetchMessage, TransferKind,
 };
 use crate::ui::layout::{MENU_ITEM_HEIGHT, MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_WIDTH};
 
@@ -266,6 +267,8 @@ pub struct InputState {
     pub quick_open: bool,
     /// The command palette is up: same as Quick Open.
     pub command_palette: bool,
+    /// The theme download card is up: same as Quick Open.
+    pub theme_fetch: bool,
 }
 
 impl InputState {
@@ -293,6 +296,9 @@ impl InputState {
                 if self.command_palette && matches!(key, Key::Named(Named::Escape)) {
                     return Some(Message::CommandPalette(CommandPaletteMessage::Close));
                 }
+                if self.theme_fetch && matches!(key, Key::Named(Named::Escape)) {
+                    return Some(Message::ThemeFetch(ThemeFetchMessage::Close));
+                }
                 // The search's text fields capture Escape, so the routing
                 // never sees it there.
                 if !(self.search_open && matches!(key, Key::Named(Named::Escape))) {
@@ -316,7 +322,8 @@ impl InputState {
                     && !self.path_editing
                     && !self.search_open
                     && !self.quick_open
-                    && !self.command_palette)
+                    && !self.command_palette
+                    && !self.theme_fetch)
                     .then_some(Message::ContextMenuKey)
             }
             event::Event::Window(window::Event::Unfocused) => {

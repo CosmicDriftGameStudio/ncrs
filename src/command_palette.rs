@@ -55,6 +55,7 @@ fn label_of(action: KeyAction) -> Option<Msg> {
         KeyAction::QuickOpen => Some(Msg::ActionQuickOpen),
         KeyAction::FilingStatus => Some(Msg::ActionFilingStatus),
         KeyAction::FilingSetup => Some(Msg::ActionFilingSetup),
+        KeyAction::FetchTheme => Some(Msg::ActionFetchTheme),
         KeyAction::SearchCase => Some(Msg::ActionSearchCase),
         KeyAction::SearchWholeWord => Some(Msg::ActionSearchWholeWord),
         KeyAction::SearchRegex => Some(Msg::ActionSearchRegex),
