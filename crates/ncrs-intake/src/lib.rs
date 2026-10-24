@@ -12,6 +12,8 @@ mod sanitise;
 mod scan;
 mod stability;
 mod take_in;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 mod text;
 mod watcher;
 
@@ -33,7 +35,7 @@ pub use scan::{
 pub use stability::{StabilityTracker, STABLE_AFTER};
 pub use take_in::{take_in, Outcome};
 pub use text::{
-    pdfium_library_dir, Extracted, ImageTextSource, PageImage, PdfText, PdfUnavailable, TextChain,
-    TextError, TextSource,
+    pdfium_library_dir, Extracted, ImageTextSource, ImageTextWithFallback, PageImage, PdfText,
+    PdfUnavailable, TextChain, TextError, TextSource,
 };
 pub use watcher::{LocationWatcher, WatchEvent};

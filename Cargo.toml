@@ -84,6 +84,8 @@ zip = { version = "=9.0.1", default-features = false, features = ["deflate-flate
 # would need GTK, and on Windows installing the menu takes an unsafe call that
 # the app crate forbids. No features, so no GTK and no xdo.
 muda = { version = "=0.21.2", default-features = false }
+# Apple Vision as the first choice for reading scans; ocrs stays the fallback.
+ncrs-ocr-vision = { path = "crates/ncrs-ocr-vision", version = "0.0.0" }
 
 [profile.release]
 opt-level = 3
@@ -111,6 +113,8 @@ gpu-with-fallback = ["iced/wgpu", "iced/tiny-skia"]
 iced_test = "0.14"
 iced_selector = "0.14"
 
+# crates/ncrs-ocr-vision/Cargo.toml repeats these tables with unsafe_code =
+# "deny"; change both together.
 [workspace.lints.rust]
 # A file manager must never execute unchecked code: the whole point is to touch
 # the filesystem, and the unsafe surface there is not worth the review.

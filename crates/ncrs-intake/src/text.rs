@@ -75,6 +75,32 @@ pub trait ImageTextSource: Send + Sync + fmt::Debug {
     fn recognise(&self, images: &[PageImage]) -> Result<Option<String>, TextError>;
 }
 
+/// Asks `preferred` first; when it fails, `fallback` gets the same pages. The
+/// chain itself stops at the first error, so this is where a failing source is
+/// given a second chance.
+#[derive(Debug)]
+pub struct ImageTextWithFallback<P, F> {
+    preferred: P,
+    fallback: F,
+}
+
+impl<P, F> ImageTextWithFallback<P, F> {
+    pub fn new(preferred: P, fallback: F) -> Self {
+        Self {
+            preferred,
+            fallback,
+        }
+    }
+}
+
+impl<P: ImageTextSource, F: ImageTextSource> ImageTextSource for ImageTextWithFallback<P, F> {
+    fn recognise(&self, images: &[PageImage]) -> Result<Option<String>, TextError> {
+        self.preferred
+            .recognise(images)
+            .or_else(|_failed| self.fallback.recognise(images))
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct TextChain {
     sources: Vec<Box<dyn TextSource>>,
@@ -164,6 +190,19 @@ impl PdfText {
             path: PathBuf::new(),
         })?;
         Self::load(&dir)
+    }
+
+    /// Every page of the file as page images, text layer or not.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn render_file(&self, path: &Path) -> Result<Vec<PageImage>, TextError> {
+        let document =
+            self.pdfium
+                .load_pdf_from_file(path, None)
+                .map_err(|err| TextError::Unreadable {
+                    path: path.to_path_buf(),
+                    reason: format!("cannot open the PDF: {err:?}"),
+                })?;
+        Self::render_pages(&document, path)
     }
 
     fn render_pages(
@@ -319,82 +358,11 @@ pub fn pdfium_library_dir() -> Option<PathBuf> {
     clippy::panic,
     clippy::indexing_slicing
 )]
-pub mod tests {
-    use std::fs;
-
+mod tests {
     use tempfile::TempDir;
 
     use super::*;
-
-    const LIBRARY_DIR_VARIABLE: &str = "NCRS_PDFIUM_DIR";
-
-    fn library_dir() -> PathBuf {
-        if let Some(dir) = std::env::var_os(LIBRARY_DIR_VARIABLE) {
-            return PathBuf::from(dir);
-        }
-        let sub = if cfg!(windows) { "bin" } else { "lib" };
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../target/pdfium")
-            .join(sub)
-    }
-
-    /// Every page of the PDF as the OCR sees a scan, text layer or not.
-    pub fn rendered_pages(pdf: &PdfText, path: &Path) -> Vec<PageImage> {
-        let document = pdf.pdfium.load_pdf_from_file(path, None).unwrap();
-        PdfText::render_pages(&document, path).unwrap()
-    }
-
-    pub fn pdf_text() -> PdfText {
-        let dir = library_dir();
-        PdfText::load(&dir).unwrap_or_else(|err| {
-            panic!(
-                "{err}. Run scripts/fetch-pdfium.sh <rust-target-triple> target/pdfium, \
-                 or set {LIBRARY_DIR_VARIABLE} to the folder with the library"
-            )
-        })
-    }
-
-    /// A one-page PDF with the given content stream and extra page resources.
-    fn pdf_bytes(content: &str, resources: &str, extra_objects: &[String]) -> Vec<u8> {
-        let mut objects = vec![
-            "<</Type/Catalog/Pages 2 0 R>>".to_owned(),
-            "<</Type/Pages/Kids[3 0 R]/Count 1>>".to_owned(),
-            format!(
-                "<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]/Contents 4 0 R/Resources<<{resources}>>>>"
-            ),
-            format!("<</Length {}>>\nstream\n{content}\nendstream", content.len()),
-        ];
-        objects.extend_from_slice(extra_objects);
-        let mut out = b"%PDF-1.4\n".to_vec();
-        let mut offsets = Vec::new();
-        for (number, body) in objects.iter().enumerate() {
-            offsets.push(out.len());
-            out.extend_from_slice(format!("{} 0 obj\n{body}\nendobj\n", number + 1).as_bytes());
-        }
-        let xref_at = out.len();
-        out.extend_from_slice(
-            format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes(),
-        );
-        for offset in offsets {
-            out.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
-        }
-        out.extend_from_slice(
-            format!(
-                "trailer\n<</Root 1 0 R/Size {}>>\nstartxref\n{xref_at}\n%%EOF\n",
-                objects.len() + 1
-            )
-            .as_bytes(),
-        );
-        out
-    }
-
-    pub fn text_pdf(text: &str) -> Vec<u8> {
-        pdf_bytes(
-            &format!("BT /F1 14 Tf 20 100 Td ({text}) Tj ET"),
-            "/Font<</F1 5 0 R>>",
-            &["<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>".to_owned()],
-        )
-    }
+    use crate::test_support::{pdf_bytes, pdf_text, text_pdf, write};
 
     fn image_only_pdf() -> Vec<u8> {
         pdf_bytes(
@@ -406,12 +374,6 @@ pub mod tests {
                     .to_owned(),
             ],
         )
-    }
-
-    pub fn write(dir: &TempDir, name: &str, bytes: &[u8]) -> PathBuf {
-        let path = dir.path().join(name);
-        fs::write(&path, bytes).unwrap();
-        path
     }
 
     #[test]
@@ -462,6 +424,79 @@ pub mod tests {
             }
         );
         assert!(err.to_string().contains(&dir.path().display().to_string()));
+    }
+
+    #[derive(Debug)]
+    struct FixedImageSource(Result<Option<String>, TextError>);
+
+    impl ImageTextSource for FixedImageSource {
+        fn recognise(&self, _images: &[PageImage]) -> Result<Option<String>, TextError> {
+            self.0.clone()
+        }
+    }
+
+    fn failure() -> TextError {
+        TextError::Unreadable {
+            path: PathBuf::new(),
+            reason: "unavailable".to_owned(),
+        }
+    }
+
+    fn one_page() -> [PageImage; 1] {
+        [PageImage {
+            width: 1,
+            height: 1,
+            pixels: vec![0],
+        }]
+    }
+
+    #[test]
+    fn the_preferred_source_wins_when_it_finds_text() {
+        let source = ImageTextWithFallback::new(
+            FixedImageSource(Ok(Some("preferred".to_owned()))),
+            FixedImageSource(Ok(Some("fallback".to_owned()))),
+        );
+        assert_eq!(
+            source.recognise(&one_page()),
+            Ok(Some("preferred".to_owned()))
+        );
+    }
+
+    #[test]
+    fn the_fallback_is_asked_when_the_preferred_source_fails() {
+        let source = ImageTextWithFallback::new(
+            FixedImageSource(Err(failure())),
+            FixedImageSource(Ok(Some("fallback".to_owned()))),
+        );
+        assert_eq!(
+            source.recognise(&one_page()),
+            Ok(Some("fallback".to_owned()))
+        );
+    }
+
+    #[test]
+    fn the_error_of_the_fallback_is_reported_when_both_fail() {
+        let source = ImageTextWithFallback::new(
+            FixedImageSource(Err(TextError::LibraryMissing {
+                path: PathBuf::new(),
+            })),
+            FixedImageSource(Err(failure())),
+        );
+        assert_eq!(source.recognise(&one_page()), Err(failure()));
+    }
+
+    #[test]
+    fn a_failing_source_in_a_chain_does_not_stop_the_fallback() {
+        let dir = TempDir::new().unwrap();
+        let path = write(&dir, "scan.pdf", &image_only_pdf());
+        let chain =
+            TextChain::new()
+                .with_source(pdf_text())
+                .with_image_source(ImageTextWithFallback::new(
+                    FixedImageSource(Err(failure())),
+                    FixedImageSource(Ok(Some("fallback".to_owned()))),
+                ));
+        assert_eq!(chain.extract(&path), Ok(Some("fallback".to_owned())));
     }
 
     #[test]

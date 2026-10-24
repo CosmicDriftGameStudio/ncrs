@@ -35,11 +35,16 @@ regex = "1.13"
 ocrs = { version = "=0.13.1", default-features = false, features = ["onnx"] }
 rten = { version = "=0.26.0", default-features = false, features = ["onnx_format"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+tempfile = { version = "3.27", optional = true }
 
 # O_NOFOLLOW and O_NONBLOCK for opening a file that may have been swapped for
 # a link or a FIFO since it was looked at. Already in the lock through notify.
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[features]
+# The PDF page helpers of the tests, for crates that test image text sources.
+test-support = ["dep:tempfile"]
 
 [dev-dependencies]
 tempfile = "3.27"

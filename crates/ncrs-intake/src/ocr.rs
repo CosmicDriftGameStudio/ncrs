@@ -343,7 +343,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::text::tests::{pdf_text, rendered_pages, text_pdf, write};
+    use crate::test_support::{pdf_text, rendered_pages, text_pdf, write};
 
     const MODELS_DIR_VARIABLE: &str = "NCRS_OCR_MODELS_DIR";
 

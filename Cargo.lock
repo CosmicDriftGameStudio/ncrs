@@ -2334,6 +2334,7 @@ dependencies = [
  "muda",
  "ncrs-index",
  "ncrs-intake",
+ "ncrs-ocr-vision",
  "ncrs-pipeline",
  "nucleo-matcher",
  "rfd",
@@ -2377,6 +2378,19 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "walkdir",
+]
+
+[[package]]
+name = "ncrs-ocr-vision"
+version = "0.0.0"
+dependencies = [
+ "ncrs-intake",
+ "objc2 0.6.4",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
+ "objc2-vision",
+ "png",
+ "tempfile",
 ]
 
 [[package]]
@@ -2871,6 +2885,17 @@ dependencies = [
  "objc2 0.5.2",
  "objc2-core-location",
  "objc2-foundation 0.2.2",
+]
+
+[[package]]
+name = "objc2-vision"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bfc194758a2d5d7540b1ad283bfb9ca318ec608991892326e95b428230b2689b"
+dependencies = [
+ "objc2 0.6.4",
+ "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
 ]
 
 [[package]]

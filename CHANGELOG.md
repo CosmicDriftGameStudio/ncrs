@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- On macOS, scanned pages are now read with the text recognition built into
+  the system (Apple Vision), which needs no download. If it fails, the ocrs
+  models are used when they have been downloaded.
 - Scanned pages are now read with text recognition (the ocrs project). The
   two model files it needs are not part of ncrs: the command "Download text
   recognition models…" shows the server, the files with their size and

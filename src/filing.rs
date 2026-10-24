@@ -23,7 +23,11 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 
 use ncrs_index::{Index, IndexError, IndexStatistics, KeyStore, RecoveryKey};
-use ncrs_intake::{LazyOcrText, Location, PdfText, PdfUnavailable, TextChain, OCR_MODELS_FOLDER};
+#[cfg(target_os = "macos")]
+use ncrs_intake::ImageTextWithFallback;
+use ncrs_intake::{
+    ImageTextSource, LazyOcrText, Location, PdfText, PdfUnavailable, TextChain, OCR_MODELS_FOLDER,
+};
 use ncrs_pipeline::{intake_steps, IndexAccess, Load, Runner, Settings, SystemClock};
 
 use crate::config::{Filing, FilingLocation};
@@ -564,12 +568,27 @@ fn key_error(err: IndexError) -> KeyError {
 /// The PDF source; when the pdfium library is missing, each PDF reports that
 /// instead, and the other files go on. A scan is read by OCR once the user has
 /// downloaded the models into `ocr_models_dir`; until then it yields no text.
+/// On macOS the text recognition of the system comes first and the models are
+/// the fallback when it fails.
 fn shipped_text_chain(ocr_models_dir: PathBuf) -> TextChain {
     let chain = match PdfText::load_shipped() {
         Ok(pdf) => TextChain::new().with_source(pdf),
         Err(err) => TextChain::new().with_source(PdfUnavailable::new(err)),
     };
-    chain.with_image_source(LazyOcrText::new(ocr_models_dir))
+    chain.with_image_source(shipped_image_source(ocr_models_dir))
+}
+
+#[cfg(target_os = "macos")]
+fn shipped_image_source(ocr_models_dir: PathBuf) -> impl ImageTextSource + 'static {
+    ImageTextWithFallback::new(
+        ncrs_ocr_vision::VisionText,
+        LazyOcrText::new(ocr_models_dir),
+    )
+}
+
+#[cfg(not(target_os = "macos"))]
+fn shipped_image_source(ocr_models_dir: PathBuf) -> impl ImageTextSource + 'static {
+    LazyOcrText::new(ocr_models_dir)
 }
 
 /// Where the OCR models live: next to the index, so a portable data folder

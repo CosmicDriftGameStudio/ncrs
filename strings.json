@@ -2007,8 +2007,8 @@
     {
       "key": "ocr_models.intro",
       "context": "Explanation at the top of the card for the download of the OCR models. Scanned pages have no text of their own; the models read it from the picture. They are not part of ncrs and are downloaded once, only after the user presses the download button.",
-      "en": "Scanned pages are read with the text recognition of the ocrs project. It needs two model files that are not part of ncrs. Nothing is sent until you press Download. Each file is checked against its size and checksum before it is used.",
-      "de": "Gescannte Seiten werden mit der Texterkennung des ocrs-Projekts gelesen. Dafür braucht es zwei Modelldateien, die nicht zu ncrs gehören. Es wird nichts gesendet, bevor du auf Laden drückst. Jede Datei wird vor der Nutzung gegen Größe und Prüfsumme geprüft."
+      "en": "Scanned pages are read with the text recognition of the ocrs project. It needs two model files that are not part of ncrs. Nothing is sent until you press Download. Each file is checked against its size and checksum before it is used. Where the system has its own text recognition (macOS), that one is used first and these models are only the fallback.",
+      "de": "Gescannte Seiten werden mit der Texterkennung des ocrs-Projekts gelesen. Dafür braucht es zwei Modelldateien, die nicht zu ncrs gehören. Es wird nichts gesendet, bevor du auf Laden drückst. Jede Datei wird vor der Nutzung gegen Größe und Prüfsumme geprüft. Wo das System eine eigene Texterkennung hat (macOS), wird zuerst diese genutzt und diese Modelle sind nur der Ersatz."
     },
     {
       "key": "ocr_models.host",
