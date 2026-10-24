@@ -1967,9 +1967,10 @@ mod command_palette {
     fn the_key_opens_the_box_with_entries_and_their_keys() {
         let app = opened_with_its_key();
         assert!(app.command_palette_for_test().is_some());
-        assert!(shows(&app, "Run an action"));
-        assert!(shows(&app, "Tab"), "the key of Switch panel is not shown");
+        assert!(shows(&app, "Command list"));
+        assert!(shows(&app, "Lab"));
         assert!(shows(&app, "Enter"), "the key of Open is not shown");
+        assert!(shows(&app, "F5"), "the key of Copy is not shown");
     }
 
     #[test]
@@ -1991,7 +1992,7 @@ mod command_palette {
     fn typing_in_the_field_filters_the_list() {
         let mut app = App::with_fixed_panels();
         open(&mut app);
-        assert!(shows(&app, "Tab"));
+        assert!(shows(&app, "Enter"));
         let mut sim = simulator(&app);
         sim.click(iced_selector::id("command-palette-query"))
             .expect("the query field");
@@ -2002,13 +2003,10 @@ mod command_palette {
         }
         let palette = app.command_palette_for_test().unwrap();
         assert_eq!(palette.query(), "inspec");
-        assert_eq!(palette.hits().len(), 1);
-        let marked = &palette.hits()[0].highlight;
+        assert_eq!(palette.hits().count(), 1);
+        let marked = &palette.hits().next().unwrap().theme_highlight;
         assert!(!marked.is_empty(), "nothing is highlighted");
-        assert!(
-            !shows(&app, "Tab"),
-            "the filter left Switch panel in the list"
-        );
+        assert!(!shows(&app, "Enter"), "the filter left Open in the list");
     }
 
     #[test]
@@ -2017,18 +2015,20 @@ mod command_palette {
         open(&mut app);
         drop(
             app.update(palette_message(CommandPaletteMessage::QueryChanged(
-                "the".to_owned(),
+                "switch".to_owned(),
             ))),
         );
-        // "Delete · off to the garbage ball" now matches "the" too, so the
-        // position of Switch language is read from the list.
+        // A header sits above the group, so the row is read from the list.
         let palette = app.command_palette_for_test().unwrap();
         let language_row = palette
-            .hits()
+            .rows()
             .iter()
-            .position(|hit| {
-                palette.entry(hit).map(|entry| entry.action)
-                    == Some(crate::keymap::KeyAction::SwitchLanguage)
+            .position(|row| match row {
+                crate::command_palette::Row::Hit(hit) => {
+                    palette.entry(hit).map(|entry| entry.action)
+                        == Some(crate::keymap::KeyAction::SwitchLanguage)
+                }
+                crate::command_palette::Row::Header(_) => false,
             })
             .expect("Switch language is listed");
         let mut sim = simulator(&app);
@@ -2046,50 +2046,51 @@ mod command_palette {
         assert!(app.command_palette_for_test().is_none());
     }
 
-    /// The query leaves the entries whose keys read the same on every
-    /// platform: Copy, Move, Switch panel, Switch language and Delete, and the
-    /// Inspection, the Hermes setup and the color theme download, which have no
-    /// key of their own.
-    #[test]
-    fn the_box_matches_its_snapshot() {
-        let mut app = App::with_fixed_panels();
-        open(&mut app);
-        drop(
-            app.update(palette_message(CommandPaletteMessage::QueryChanged(
-                "the".to_owned(),
-            ))),
-        );
-        let mut sim = simulator(&app);
-        let matches = sim
+    fn snapshot_of(app: &App, name: &str) {
+        let matches = simulator(app)
             .snapshot(&iced::Theme::Dark)
             .unwrap()
-            .matches_image("tests/snapshots/command_palette.png")
+            .matches_image(name)
             .expect("snapshot comparison");
+        assert!(matches, "the command list does not match {name}");
+    }
 
-        assert!(
-            matches,
-            "the command palette does not match tests/snapshots/command_palette.png"
+    fn typed(app: &mut App, query: &str) {
+        drop(
+            app.update(palette_message(CommandPaletteMessage::QueryChanged(
+                query.to_owned(),
+            ))),
         );
     }
 
     #[test]
-    fn the_box_matches_its_german_snapshot() {
+    fn the_empty_list_matches_its_snapshot() {
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        snapshot_of(&app, "tests/snapshots/command_palette_empty.png");
+    }
+
+    #[test]
+    fn the_empty_list_matches_its_german_snapshot() {
         let mut app = App::with_fixed_panels().in_language(Language::German);
         open(&mut app);
-        drop(
-            app.update(palette_message(CommandPaletteMessage::QueryChanged(
-                "the".to_owned(),
-            ))),
-        );
-        let matches = simulator(&app)
-            .snapshot(&iced::Theme::Dark)
-            .unwrap()
-            .matches_image("tests/snapshots/command_palette_de.png")
-            .expect("snapshot comparison");
-        assert!(
-            matches,
-            "the command palette does not match command_palette_de.png"
-        );
+        snapshot_of(&app, "tests/snapshots/command_palette_empty_de.png");
+    }
+
+    #[test]
+    fn a_query_matches_its_snapshot() {
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        typed(&mut app, "st");
+        snapshot_of(&app, "tests/snapshots/command_palette_query.png");
+    }
+
+    #[test]
+    fn a_query_matches_its_german_snapshot() {
+        let mut app = App::with_fixed_panels().in_language(Language::German);
+        open(&mut app);
+        typed(&mut app, "st");
+        snapshot_of(&app, "tests/snapshots/command_palette_query_de.png");
     }
 }
 

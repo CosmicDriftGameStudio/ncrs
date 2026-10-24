@@ -10,7 +10,7 @@ use iced::keyboard::{self, key::Named, Key, Modifiers};
 use iced::widget::{column, container, mouse_area, opaque, operation, row, Column, Space, Stack};
 use iced::{event, window, Element, Length, Point, Size, Subscription, Task, Theme};
 
-use crate::command_palette::CommandPalette;
+use crate::command_palette::{CommandPalette, RECENT_LIMIT};
 use crate::config::{
     self, Config, ConfigError, ContrastWarning, Filing, FilingWriteError, VscodeWarning,
 };
@@ -22,7 +22,7 @@ use crate::filing_status::{FilingStatus, SNAPSHOT_EVERY};
 use crate::fs::{self, CreateDirError};
 use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
-use crate::keymap::{self, KeyScope, Keymap};
+use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 use crate::messages::{
     ClipboardKind, CommandPaletteMessage, ConflictChoice, FilingSetupMessage, FilingStatusMessage,
     Message, PanelSide, QuickOpenMessage, SearchMessage, ThemeFetchMessage, TransferKind,
@@ -616,6 +616,9 @@ pub struct App {
     quick_open_walk: Option<iced::task::Handle>,
     /// The command palette (Cmd/Ctrl+Shift+P), while its box is up.
     command_palette: Option<CommandPalette>,
+    /// The commands run from the command list this session, most recent
+    /// first. Not kept across runs.
+    recent_commands: Vec<KeyAction>,
     /// The filing module, when the config switches it on.
     filing: Option<FilingModule>,
     /// Started once the filing module is ready; dropping it stops the workers.
@@ -1614,6 +1617,7 @@ impl App {
             quick_open_walk_generation: 0,
             quick_open_walk: None,
             command_palette: None,
+            recent_commands: Vec::new(),
             filing: None,
             pipeline: None,
             filing_status: FilingStatus::default(),
@@ -2235,6 +2239,7 @@ impl App {
 
             Message::WindowResized(size) => {
                 self.window_size = size;
+                self.resize_command_palette(size);
                 self.visible_rows = layout::visible_rows(size);
                 self.resize_search(size);
                 self.left_panel.ensure_visible(self.visible_rows);
@@ -4346,8 +4351,17 @@ impl App {
         } else {
             KeyScope::Panel
         };
-        self.command_palette = Some(CommandPalette::new(scope, self.lang, &self.keymap));
+        let mut palette =
+            CommandPalette::new(scope, self.lang, &self.keymap, &self.recent_commands);
+        palette.set_visible_rows(command_palette_ui::visible_rows(self.window_size));
+        self.command_palette = Some(palette);
         focus
+    }
+
+    fn resize_command_palette(&mut self, window: Size) {
+        if let Some(palette) = self.command_palette.as_mut() {
+            palette.set_visible_rows(command_palette_ui::visible_rows(window));
+        }
     }
 
     fn close_command_palette(&mut self) -> Task<Message> {
@@ -4391,8 +4405,16 @@ impl App {
         else {
             return Task::none();
         };
+        self.remember_command(action);
         let closed = self.close_command_palette();
         closed.chain(self.update(action.message()))
+    }
+
+    /// Puts `action` first among the recent commands, once.
+    fn remember_command(&mut self, action: KeyAction) {
+        self.recent_commands.retain(|&recent| recent != action);
+        self.recent_commands.insert(0, action);
+        self.recent_commands.truncate(RECENT_LIMIT);
     }
 
     /// Closes the box and stops its walk.
@@ -5480,6 +5502,7 @@ impl App {
             quick_open_walk_generation: 0,
             quick_open_walk: None,
             command_palette: None,
+            recent_commands: Vec::new(),
             filing: None,
             pipeline: None,
             filing_status: FilingStatus::default(),
@@ -10591,7 +10614,7 @@ mod command_palette_tests {
         let mut app = App::with_fixed_panels();
         open_palette(&mut app);
         let palette = app.command_palette_for_test().unwrap();
-        assert!(!palette.hits().is_empty());
+        assert!(palette.hits().next().is_some());
         assert!(app.prompt_key_state().command_palette);
         assert!(app.blocking_overlay_is_open());
     }
@@ -10603,7 +10626,6 @@ mod command_palette_tests {
         let palette = app.command_palette_for_test().unwrap();
         let regex = palette
             .hits()
-            .iter()
             .filter_map(|hit| palette.entry(hit))
             .any(|entry| entry.action == keymap::KeyAction::SearchRegex);
         assert!(regex);
@@ -10655,7 +10677,7 @@ mod command_palette_tests {
         open_palette(&mut app);
         type_into_palette(&mut app, "inspection");
         let palette = app.command_palette_for_test().unwrap();
-        assert_eq!(palette.hits().len(), 1);
+        assert_eq!(palette.hits().count(), 1);
         assert_eq!(palette.query(), "inspection");
     }
 
@@ -10675,7 +10697,7 @@ mod command_palette_tests {
         let mut app = App::with_fixed_panels();
         open_palette(&mut app);
         type_into_palette(&mut app, "inspection");
-        drop(app.update(palette_message(CommandPaletteMessage::Select(0))));
+        drop(app.update(palette_message(CommandPaletteMessage::Select(1))));
         assert!(app.command_palette_for_test().is_none());
         assert!(app.filing_status.page_open());
     }
@@ -10687,6 +10709,37 @@ mod command_palette_tests {
         type_into_palette(&mut app, "zzzzzz");
         drop(app.update(palette_message(CommandPaletteMessage::Run)));
         assert!(app.command_palette_for_test().is_some());
+    }
+
+    #[test]
+    fn the_commands_run_last_head_the_list_next_time() {
+        let mut app = App::with_fixed_panels();
+        for query in ["switch panel", "tag all", "switch panel"] {
+            open_palette(&mut app);
+            type_into_palette(&mut app, query);
+            drop(app.update(palette_message(CommandPaletteMessage::Run)));
+        }
+        open_palette(&mut app);
+        let palette = app.command_palette_for_test().unwrap();
+        let first_hits: Vec<keymap::KeyAction> = palette
+            .rows()
+            .iter()
+            .skip(1)
+            .take(2)
+            .filter_map(|row| match row {
+                crate::command_palette::Row::Hit(hit) => palette.entry(hit),
+                crate::command_palette::Row::Header(_) => None,
+            })
+            .map(|entry| entry.action)
+            .collect();
+        assert_eq!(
+            first_hits,
+            [keymap::KeyAction::SwitchPanel, keymap::KeyAction::TagAll]
+        );
+        assert_eq!(
+            palette.selected_action(),
+            Some(keymap::KeyAction::SwitchPanel)
+        );
     }
 
     #[test]
@@ -10707,7 +10760,6 @@ mod command_palette_tests {
         let palette = app.command_palette_for_test().unwrap();
         let entry = palette
             .hits()
-            .iter()
             .filter_map(|hit| palette.entry(hit))
             .find(|entry| entry.action == keymap::KeyAction::FilingStatus)
             .unwrap();
@@ -10721,7 +10773,6 @@ mod command_palette_tests {
         let palette = app.command_palette_for_test().unwrap();
         let entry = palette
             .hits()
-            .iter()
             .filter_map(|hit| palette.entry(hit))
             .find(|entry| entry.action == keymap::KeyAction::DeletePermanently)
             .unwrap();

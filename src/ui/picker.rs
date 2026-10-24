@@ -6,7 +6,7 @@ use std::ops::Range;
 
 use iced::widget::text::{Span, Wrapping};
 use iced::widget::{button, column, container, rich_text, span, text, text_input, Column};
-use iced::{Element, Length, Size};
+use iced::{Color, Element, Length, Size};
 
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
@@ -22,7 +22,8 @@ pub const SIZE: DialogSize = DialogSize::Large;
 /// What the box shows.
 pub struct Content<'a> {
     pub title: String,
-    pub subtitle: String,
+    pub title_theme: Option<String>,
+    pub subtitle: Option<String>,
     pub field: Element<'a, Message>,
     pub status: String,
     pub rows: Vec<Element<'a, Message>>,
@@ -51,8 +52,14 @@ pub fn frame<'a>(
     ]
     .spacing(spacing::SECTION_GAP);
 
-    Frame::new(content.title, body, SIZE, window, lang, palette)
-        .subtitle(content.subtitle)
+    let mut frame = Frame::new(content.title, body, SIZE, window, lang, palette);
+    if let Some(name) = content.title_theme {
+        frame = frame.title_theme(name);
+    }
+    if let Some(subtitle) = content.subtitle {
+        frame = frame.subtitle(subtitle);
+    }
+    frame
         .on_close(content.on_close)
         // Enter runs the highlighted row, which the content defines.
         .hints(KeyHints::default())
@@ -108,8 +115,41 @@ pub fn highlighted<'a>(
     max_chars: usize,
     palette: &Palette,
 ) -> Element<'a, Message> {
+    let plain = if selected {
+        palette.cursor_text
+    } else {
+        palette.text
+    };
+    highlighted_in(text, highlight, selected, max_chars, plain, palette)
+}
+
+/// Like [`highlighted`], with the unmarked part dimmed: a second name beside
+/// the main one.
+pub fn highlighted_dim<'a>(
+    text: &str,
+    highlight: &[Range<usize>],
+    selected: bool,
+    max_chars: usize,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let plain = if selected {
+        palette.cursor_text
+    } else {
+        palette.dim_text
+    };
+    highlighted_in(text, highlight, selected, max_chars, plain, palette)
+}
+
+fn highlighted_in<'a>(
+    text: &str,
+    highlight: &[Range<usize>],
+    selected: bool,
+    max_chars: usize,
+    plain: Color,
+    palette: &Palette,
+) -> Element<'a, Message> {
     let (shown, ranges) = fit(text, highlight, max_chars);
-    rich_text(highlight_spans(&shown, &ranges, selected, palette))
+    rich_text(highlight_spans(&shown, &ranges, selected, plain, palette))
         .size(font_size::ROW)
         .wrapping(Wrapping::None)
         .into()
@@ -154,13 +194,9 @@ fn highlight_spans<'a>(
     text: &str,
     highlight: &[Range<usize>],
     selected: bool,
+    plain: Color,
     palette: &Palette,
 ) -> Vec<Span<'a, ()>> {
-    let plain = if selected {
-        palette.cursor_text
-    } else {
-        palette.text
-    };
     let mut spans = Vec::new();
     let mut at = 0;
     for range in highlight {

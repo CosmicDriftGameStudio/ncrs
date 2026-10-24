@@ -116,6 +116,7 @@ pub struct KeyHints {
 
 pub struct Frame<'a> {
     title: String,
+    title_theme: Option<String>,
     subtitle: Option<String>,
     content: Element<'a, Message>,
     buttons: Vec<Element<'a, Message>>,
@@ -138,6 +139,7 @@ impl<'a> Frame<'a> {
     ) -> Self {
         Self {
             title: title.into(),
+            title_theme: None,
             subtitle: None,
             content: content.into(),
             buttons: Vec::new(),
@@ -148,6 +150,12 @@ impl<'a> Frame<'a> {
             lang,
             palette: *palette,
         }
+    }
+
+    /// A second name for the title, small and dimmed after it.
+    pub fn title_theme(mut self, name: impl Into<String>) -> Self {
+        self.title_theme = Some(name.into());
+        self
     }
 
     pub fn subtitle(mut self, subtitle: impl Into<String>) -> Self {
@@ -176,12 +184,22 @@ impl<'a> Frame<'a> {
         let palette = self.palette;
         let outer = frame_size(self.size, self.window);
 
-        let mut header = row![text(self.title)
+        let mut title = row![text(self.title)
             .size(font_size::TITLE)
             .color(palette.accent)
-            .wrapping(Wrapping::None)
-            .width(Length::Fill)]
+            .wrapping(Wrapping::None)]
+        .spacing(spacing::SECTION_GAP)
         .align_y(alignment::Vertical::Center);
+        if let Some(name) = self.title_theme {
+            title = title.push(
+                text(name)
+                    .size(font_size::STATUS)
+                    .color(palette.dim_text)
+                    .wrapping(Wrapping::None),
+            );
+        }
+        let mut header =
+            row![container(title).width(Length::Fill)].align_y(alignment::Vertical::Center);
         if let Some(message) = self.on_close.clone() {
             header = header.push(
                 button(text(CLOSE_GLYPH).size(font_size::TITLE))

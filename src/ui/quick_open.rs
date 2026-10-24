@@ -47,7 +47,8 @@ pub fn view<'a>(
     picker::frame(
         picker::Content {
             title: lang.text(Msg::QuickopenTitle).to_owned(),
-            subtitle,
+            title_theme: None,
+            subtitle: Some(subtitle),
             field,
             status: status(quick_open, lang),
             rows,

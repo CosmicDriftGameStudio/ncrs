@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- The Lab is now one grouped command list (File, Edit, View, Go, Search,
+  Filing, Help). Each command shows its plain name first and the playful name
+  dimmed after it; type the start of any word of either to find it, so "se"
+  finds "Search in files" but no longer "Sort by size". With an empty field,
+  the commands you ran last in this session come first.
+
 ### Changed
 
 - Every dialog now uses the same frame in one of three sizes: a title with a

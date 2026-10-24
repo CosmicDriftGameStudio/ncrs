@@ -14,6 +14,7 @@ mod ui_tests;
 mod app;
 mod backend;
 mod command_palette;
+mod commands;
 mod config;
 mod context_menu;
 mod dialog;

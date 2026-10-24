@@ -685,18 +685,6 @@
       "de": "Keine passenden Dateien"
     },
     {
-      "key": "command_palette.title",
-      "context": "Title of the command palette (Ctrl+Shift+P / Cmd+Shift+P), a box in which an action is picked by name. A playful name for a lab where actions are run; the line below it is command_palette.subtitle, which says what the box does.",
-      "en": "Lab",
-      "de": "Labor"
-    },
-    {
-      "key": "command_palette.subtitle",
-      "context": "Line below the title of the command palette (Ctrl+Shift+P / Cmd+Shift+P), saying plainly what the box does. Imperative.",
-      "en": "Run an action",
-      "de": "Aktion ausführen"
-    },
-    {
       "key": "command_palette.placeholder",
       "context": "Placeholder of the text field of the command palette, shown while it is empty. A short instruction.",
       "en": "Type part of an action name",
@@ -707,6 +695,66 @@
       "context": "Status line of the command palette when nothing that was typed matches an action name.",
       "en": "No matching actions",
       "de": "Keine passenden Aktionen"
+    },
+    {
+      "key": "group.file",
+      "context": "Heading of a group of commands in the command palette (and, later, a menu of the same name). One or two words.",
+      "en": "File",
+      "de": "Datei"
+    },
+    {
+      "key": "group.edit",
+      "context": "Heading of a group of commands in the command palette (and, later, a menu of the same name). One or two words.",
+      "en": "Edit",
+      "de": "Bearbeiten"
+    },
+    {
+      "key": "group.view",
+      "context": "Heading of a group of commands in the command palette (and, later, a menu of the same name). One or two words.",
+      "en": "View",
+      "de": "Ansicht"
+    },
+    {
+      "key": "group.go",
+      "context": "Heading of a group of commands in the command palette (and, later, a menu of the same name). One or two words.",
+      "en": "Go",
+      "de": "Gehe zu"
+    },
+    {
+      "key": "group.search",
+      "context": "Heading of a group of commands in the command palette (and, later, a menu of the same name). One or two words.",
+      "en": "Search",
+      "de": "Suche"
+    },
+    {
+      "key": "group.hermes",
+      "context": "Heading of a group of commands in the command palette (and, later, a menu of the same name). One or two words.",
+      "en": "Filing",
+      "de": "Ablage"
+    },
+    {
+      "key": "group.hermes.theme",
+      "context": "Theme name of the command group group.hermes, shown dimmed after its plain name in the command palette. A playful name; the plain name beside it says what the group holds.",
+      "en": "Hermes",
+      "de": "Hermes"
+    },
+    {
+      "key": "group.window",
+      "context": "Heading of a group of commands in the command palette (and, later, a menu of the same name). One or two words.",
+      "en": "Window",
+      "de": "Fenster"
+    },
+    {
+      "key": "group.help",
+      "context": "Heading of a group of commands in the command palette (and, later, a menu of the same name). One or two words.",
+      "en": "Help",
+      "de": "Hilfe"
+    },
+    {
+      "key": "command_palette.recent",
+      "context": "Heading above the commands that were run last, at the top of the command palette while the field is empty.",
+      "en": "Recent",
+      "de": "Zuletzt"
     },
     {
       "key": "action.quit",
@@ -740,21 +788,39 @@
     },
     {
       "key": "action.toggle_tag",
-      "context": "Entry of the command palette that runs the key action toggle_tag. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
-      "en": "Stamp: tag or untag row",
-      "de": "Stempel: Zeile markieren oder Markierung aufheben"
+      "context": "Entry of the command palette that runs the key action toggle_tag. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Tag or untag row",
+      "de": "Zeile markieren oder Markierung aufheben"
+    },
+    {
+      "key": "action.toggle_tag.theme",
+      "context": "Theme name of the key action toggle_tag, shown dimmed after its plain name action.toggle_tag in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Stamp",
+      "de": "Stempel"
     },
     {
       "key": "action.tag_all",
-      "context": "Entry of the command palette that runs the key action tag_all. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
-      "en": "Stamp all: tag all rows",
-      "de": "Alle stempeln: alle Zeilen markieren"
+      "context": "Entry of the command palette that runs the key action tag_all. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Tag all rows",
+      "de": "Alle Zeilen markieren"
+    },
+    {
+      "key": "action.tag_all.theme",
+      "context": "Theme name of the key action tag_all, shown dimmed after its plain name action.tag_all in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Stamp all",
+      "de": "Alle stempeln"
     },
     {
       "key": "action.clear_tags",
-      "context": "Entry of the command palette that runs the key action clear_tags. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
-      "en": "Clear all stamps: untag all rows",
-      "de": "Alle Stempel entfernen: alle Markierungen aufheben"
+      "context": "Entry of the command palette that runs the key action clear_tags. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Untag all rows",
+      "de": "Alle Markierungen aufheben"
+    },
+    {
+      "key": "action.clear_tags.theme",
+      "context": "Theme name of the key action clear_tags, shown dimmed after its plain name action.clear_tags in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Clear all stamps",
+      "de": "Alle Stempel entfernen"
     },
     {
       "key": "action.abort_job",
@@ -800,9 +866,15 @@
     },
     {
       "key": "action.delete",
-      "context": "Entry of the command palette that runs the key action delete. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
-      "en": "Delete · off to the garbage ball",
-      "de": "Löschen · ab in den Müllball"
+      "context": "Entry of the command palette that runs the key action delete. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Delete",
+      "de": "Löschen"
+    },
+    {
+      "key": "action.delete.theme",
+      "context": "Theme name of the key action delete, shown dimmed after its plain name action.delete in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "off to the garbage ball",
+      "de": "ab in den Müllball"
     },
     {
       "key": "action.delete_permanently",
@@ -818,15 +890,27 @@
     },
     {
       "key": "action.drive_menu_left",
-      "context": "Entry of the command palette that runs the key action drive_menu_left. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
-      "en": "Planets: drive menu, left panel",
-      "de": "Planeten: Laufwerke, linkes Panel"
+      "context": "Entry of the command palette that runs the key action drive_menu_left. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Drive menu, left panel",
+      "de": "Laufwerke, linkes Panel"
+    },
+    {
+      "key": "action.drive_menu_left.theme",
+      "context": "Theme name of the key action drive_menu_left, shown dimmed after its plain name action.drive_menu_left in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Planets",
+      "de": "Planeten"
     },
     {
       "key": "action.drive_menu_right",
-      "context": "Entry of the command palette that runs the key action drive_menu_right. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
-      "en": "Planets: drive menu, right panel",
-      "de": "Planeten: Laufwerke, rechtes Panel"
+      "context": "Entry of the command palette that runs the key action drive_menu_right. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Drive menu, right panel",
+      "de": "Laufwerke, rechtes Panel"
+    },
+    {
+      "key": "action.drive_menu_right.theme",
+      "context": "Theme name of the key action drive_menu_right, shown dimmed after its plain name action.drive_menu_right in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Planets",
+      "de": "Planeten"
     },
     {
       "key": "action.sort_by_name",
@@ -854,27 +938,51 @@
     },
     {
       "key": "action.search",
-      "context": "Entry of the command palette that runs the key action search. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
-      "en": "Smell-o-scope: search in files",
-      "de": "Riech-o-skop: in Dateien suchen"
+      "context": "Entry of the command palette that runs the key action search. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Search in files",
+      "de": "In Dateien suchen"
+    },
+    {
+      "key": "action.search.theme",
+      "context": "Theme name of the key action search, shown dimmed after its plain name action.search in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Smell-o-scope",
+      "de": "Riech-o-skop"
     },
     {
       "key": "action.quick_open",
-      "context": "Entry of the command palette that runs the key action quick_open. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
-      "en": "Dark Matter Drive: go to file",
-      "de": "Dunkle-Materie-Antrieb: zu Datei springen"
+      "context": "Entry of the command palette that runs the key action quick_open. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Go to file",
+      "de": "Zu Datei springen"
+    },
+    {
+      "key": "action.quick_open.theme",
+      "context": "Theme name of the key action quick_open, shown dimmed after its plain name action.quick_open in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Dark Matter Drive",
+      "de": "Dunkle-Materie-Antrieb"
     },
     {
       "key": "action.filing_status",
-      "context": "Entry of the command palette that runs the key action filing_status. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
-      "en": "Inspection: Hermes status and errors",
-      "de": "Inspektion: Status und Fehler von Hermes"
+      "context": "Entry of the command palette that runs the key action filing_status. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Status and errors",
+      "de": "Status und Fehler"
+    },
+    {
+      "key": "action.filing_status.theme",
+      "context": "Theme name of the key action filing_status, shown dimmed after its plain name action.filing_status in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Inspection",
+      "de": "Inspektion"
     },
     {
       "key": "action.filing_setup",
-      "context": "Entry of the command palette that runs the key action filing_setup. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
-      "en": "Hermes: choose folders",
-      "de": "Hermes: Ordner wählen"
+      "context": "Entry of the command palette that runs the key action filing_setup. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Choose folders",
+      "de": "Ordner wählen"
+    },
+    {
+      "key": "action.filing_setup.theme",
+      "context": "Theme name of the key action filing_setup, shown dimmed after its plain name action.filing_setup in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Hermes",
+      "de": "Hermes"
     },
     {
       "key": "action.search_case",
@@ -893,6 +1001,18 @@
       "context": "Entry of the command palette that runs the key action search_regex. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
       "en": "Search: regular expression",
       "de": "Suche: regulärer Ausdruck"
+    },
+    {
+      "key": "action.command_palette",
+      "context": "Entry of the command palette that runs the key action command_palette. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Command list",
+      "de": "Befehlsliste"
+    },
+    {
+      "key": "action.command_palette.theme",
+      "context": "Theme name of the key action command_palette, shown dimmed after its plain name action.command_palette in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Lab",
+      "de": "Labor"
     },
     {
       "key": "filing.encryption_title",

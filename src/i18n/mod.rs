@@ -182,6 +182,8 @@ mod tests {
                 | Msg::DeleteOne
                 // The module's name, the same in both languages.
                 | Msg::FilingSetupTitle
+                | Msg::ActionFilingSetupTheme
+                | Msg::GroupHermesTheme
         )
     }
 
