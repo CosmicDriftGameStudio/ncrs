@@ -4,7 +4,10 @@
 
 mod classify;
 mod error;
+mod extract;
+mod filing_plan;
 mod location;
+mod sanitise;
 mod scan;
 mod stability;
 mod take_in;
@@ -13,7 +16,12 @@ mod watcher;
 
 pub use classify::{classify, Skip};
 pub use error::IntakeError;
+pub use extract::{
+    extract_amount, extract_date, extract_number, parse_amount, parse_currency, parse_date,
+};
+pub use filing_plan::{plan, FilingPlan, PlanInput, Planning};
 pub use location::{Location, LocationMode};
+pub use sanitise::{sanitise_value, stays_below};
 pub use scan::{
     scan_location, settle_location, walk_location, Found, ScanReport, MAX_REPORTED_ERRORS,
 };

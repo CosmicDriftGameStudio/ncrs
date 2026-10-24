@@ -26,6 +26,9 @@ notify = "8"
 # pipeline's worker threads share one binding. No `image` feature: pages are
 # rendered to raw bytes.
 pdfium-render = { version = "=0.9.4", default-features = false, features = ["pdfium_7881", "thread_safe"] }
+# Rule patterns from the user run over document text; linear-time matching
+# with size limits. Already in the lock through other crates.
+regex = "1.13"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 # O_NOFOLLOW and O_NONBLOCK for opening a file that may have been swapped for

@@ -291,6 +291,8 @@ impl State {
                 path: path.to_path_buf(),
                 document: None,
                 text: None,
+                review: None,
+                plan: None,
             },
             batch,
             fingerprint,
@@ -1554,13 +1556,14 @@ mod tests {
         );
 
         let report = runner.wait_for("the backlog taken in", |snapshot| {
-            is_idle(snapshot) && snapshot.steps[2].done == 3
+            is_idle(snapshot) && snapshot.steps[3].done == 3
         });
 
         assert_eq!(report.steps[0].name, "intake");
         assert_eq!(report.steps[0].done, 3);
         assert_eq!(report.steps[1].name, "text");
-        assert_eq!(report.steps[2].name, "review");
+        assert_eq!(report.steps[2].name, "rules");
+        assert_eq!(report.steps[3].name, "review");
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         let index = fixture.index.lock().unwrap();
         assert_eq!(index.documents_under(&inbox.path).unwrap().len(), 2);
@@ -1588,13 +1591,13 @@ mod tests {
             stepping_clock(),
         );
         runner.wait_for("the backlog reviewed", |snapshot| {
-            is_idle(snapshot) && snapshot.steps[2].done == 1
+            is_idle(snapshot) && snapshot.steps[3].done == 1
         });
 
         put(&inbox, "reminder.pdf", REMINDER);
 
         runner.wait_for("the new file reviewed", |snapshot| {
-            snapshot.steps[2].done == 2
+            snapshot.steps[3].done == 2
         });
         let index = fixture.index.lock().unwrap();
         assert_eq!(index.open_reviews().unwrap().len(), 2);
@@ -1626,7 +1629,7 @@ mod tests {
         );
 
         let report = runner.wait_for("the file reviewed", |snapshot| {
-            is_idle(snapshot) && snapshot.steps[2].done == 1
+            is_idle(snapshot) && snapshot.steps[3].done == 1
         });
 
         assert!(report.errors.is_empty(), "{:?}", report.errors);
@@ -1649,7 +1652,7 @@ mod tests {
         );
 
         runner.wait_for("the file reviewed", |snapshot| {
-            is_idle(snapshot) && snapshot.steps[2].done == 1
+            is_idle(snapshot) && snapshot.steps[3].done == 1
         });
 
         assert_eq!(
@@ -1680,7 +1683,7 @@ mod tests {
         });
 
         assert_eq!(report.errors[0].message, missing.to_string());
-        assert_eq!(report.steps[2].done, 0);
+        assert_eq!(report.steps[3].done, 0);
         assert!(fixture
             .index
             .lock()
@@ -1688,6 +1691,79 @@ mod tests {
             .open_reviews()
             .unwrap()
             .is_empty());
+    }
+
+    fn invoice_rule(filing_pattern: &str, confirmed: bool) -> ncrs_index::RuleSpec {
+        ncrs_index::RuleSpec {
+            match_text: Some(ncrs_index::TextMatch::Contains("company a".to_owned())),
+            match_sender: None,
+            extract_number: Some(r"Invoice (\d+)".to_owned()),
+            extract_date: None,
+            extract_amount: None,
+            kind: "invoice".to_owned(),
+            tax_context: ncrs_index::TaxContext::Company,
+            tags: std::collections::BTreeSet::new(),
+            filing_pattern: filing_pattern.to_owned(),
+            confirmed,
+        }
+    }
+
+    fn run_with_rule(spec: &ncrs_index::RuleSpec) -> IndexFixture {
+        let inbox_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        put(&inbox, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        fixture.index.lock().unwrap().create_rule(spec).unwrap();
+        let chain = TextChain::new().with_source(FixedText(Ok(Extracted::Text(
+            "Invoice 4711 Company A".to_owned(),
+        ))));
+        let runner = Runner::start(
+            settings(workers(1)),
+            fixture.steps_reading(chain),
+            vec![inbox],
+            stepping_clock(),
+        );
+        let report = runner.wait_for("the file handled", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[2].done == 1
+        });
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        fixture
+    }
+
+    #[test]
+    fn a_document_matching_a_confirmed_rule_gets_its_fields_and_no_review() {
+        let fixture = run_with_rule(&invoice_rule("{number}.pdf", true));
+
+        let index = fixture.index.lock().unwrap();
+        assert!(index.open_reviews().unwrap().is_empty());
+        let documents = index.search_text("4711", 10).unwrap();
+        let document = index.document(documents[0]).unwrap().unwrap();
+        assert_eq!(document.fields.number.as_deref(), Some("4711"));
+        assert_eq!(document.fields.kind.as_deref(), Some("invoice"));
+        assert_eq!(document.status, DocumentStatus::New);
+    }
+
+    #[test]
+    fn a_document_with_a_missing_field_is_reviewed_with_that_field() {
+        let fixture = run_with_rule(&invoice_rule("{year}/{number}.pdf", true));
+
+        let index = fixture.index.lock().unwrap();
+        let reviews = index.open_reviews().unwrap();
+        assert_eq!(reviews.len(), 1);
+        assert_eq!(
+            reviews[0].reason,
+            ncrs_index::ReviewReason::MissingField(ncrs_index::Field::Date)
+        );
+    }
+
+    #[test]
+    fn an_unconfirmed_rule_sends_the_document_to_review_as_such() {
+        let fixture = run_with_rule(&invoice_rule("{number}.pdf", false));
+
+        let index = fixture.index.lock().unwrap();
+        let reviews = index.open_reviews().unwrap();
+        assert_eq!(reviews.len(), 1);
+        assert_eq!(reviews[0].reason, ncrs_index::ReviewReason::UnconfirmedRule);
     }
 
     #[test]

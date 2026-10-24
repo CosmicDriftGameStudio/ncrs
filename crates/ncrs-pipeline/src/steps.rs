@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
 use ncrs_index::{DocumentStatus, IndexError, ReviewReason};
+use ncrs_intake::{plan, PlanInput, Planning, StabilityTracker, TextChain};
 use ncrs_intake::{settle_location, take_in, IntakeError, Location, LocationMode, Outcome};
-use ncrs_intake::{StabilityTracker, TextChain};
 
 use crate::step::{with_index_value, IndexAccess, Item, Step, StepOutcome};
 
@@ -21,6 +21,9 @@ pub fn intake_steps(index: Arc<dyn IndexAccess>, text: Arc<TextChain>) -> Vec<Bo
         Box::new(TextStep {
             index: Arc::clone(&index),
             chain: text,
+        }),
+        Box::new(RulesStep {
+            index: Arc::clone(&index),
         }),
         Box::new(ReviewStep { index }),
     ]
@@ -120,8 +123,72 @@ impl Step for TextStep {
     }
 }
 
-/// Until a step classifies documents, every taken-in inbox document lands in
-/// the review list. Archive documents never get a review entry.
+/// Lets the rules decide where a new inbox document would be filed, and stores
+/// the fields they could fill. Nothing is moved here: a plan only ends the
+/// pipeline for the document, executing it is a later step. A document the
+/// rules cannot place carries the reason on to the review step.
+#[derive(Debug)]
+struct RulesStep {
+    index: Arc<dyn IndexAccess>,
+}
+
+impl Step for RulesStep {
+    fn name(&self) -> &'static str {
+        "rules"
+    }
+
+    fn run(&self, item: &mut Item, _now: SystemTime) -> Result<StepOutcome, String> {
+        if item.location.mode == LocationMode::Archive {
+            return Ok(StepOutcome::Continue);
+        }
+        let id = item
+            .document
+            .ok_or_else(|| "the file has no document".to_owned())?;
+        let text = item.text.as_deref().unwrap_or_default();
+        let planning = with_index_value(self.index.as_ref(), |index| {
+            let Some(document) = index.document(id)? else {
+                return Ok(None);
+            };
+            // Fields of a document someone is already looking at or has filed
+            // are theirs; the rules do not overwrite them.
+            if document.status != DocumentStatus::New {
+                return Ok(None);
+            }
+            let rules = index.rules()?;
+            let planning = plan(
+                &rules,
+                &PlanInput {
+                    text,
+                    fields: &document.fields,
+                },
+            );
+            let found = match &planning {
+                Planning::Plan(filing) => &filing.fields,
+                Planning::Review { fields, .. } => fields,
+            };
+            if *found != document.fields {
+                index.set_document_fields(id, found)?;
+            }
+            Ok::<_, IndexError>(Some(planning))
+        })
+        .ok_or_else(|| NO_INDEX.to_owned())?
+        .map_err(|err| err.to_string())?;
+        match planning {
+            Some(Planning::Plan(filing)) => {
+                item.plan = Some(Box::new(filing));
+                Ok(StepOutcome::Finished)
+            }
+            Some(Planning::Review { reason, .. }) => {
+                item.review = Some(reason);
+                Ok(StepOutcome::Continue)
+            }
+            None => Ok(StepOutcome::Continue),
+        }
+    }
+}
+
+/// Every inbox document the rules did not place lands in the review list, with
+/// the reason the rules gave. Archive documents never get a review entry.
 #[derive(Debug)]
 struct ReviewStep {
     index: Arc<dyn IndexAccess>,
@@ -139,12 +206,13 @@ impl Step for ReviewStep {
         let id = item
             .document
             .ok_or_else(|| "the file has no document".to_owned())?;
+        let reason = item.review.unwrap_or(ReviewReason::NoMatchingRule);
         let added = with_index_value(self.index.as_ref(), |index| {
             let needs_review = index
                 .document(id)?
                 .is_some_and(|document| document.status == DocumentStatus::New);
             if needs_review {
-                index.add_review(id, ReviewReason::NoMatchingRule)?;
+                index.add_review(id, reason)?;
             }
             Ok::<_, IndexError>(())
         })
