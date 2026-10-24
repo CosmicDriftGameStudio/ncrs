@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-10-24
+
 ### Added
 
 - "Fetch color theme…" in the command palette downloads a VS Code color theme
@@ -39,6 +41,9 @@ All notable changes to this project are documented here. The format follows
   the list is not added twice, and from two document folders on you choose the
   Central Filing. After saving, the card closes and the status bar says how to
   open the Inspection.
+- Release archives and the macOS app include `THIRD_PARTY_LICENSES.html`: the
+  licenses and copyright notices of every dependency built into ncrs, and of
+  the embedded Fira Sans font.
 
 ### Changed
 
@@ -65,14 +70,6 @@ All notable changes to this project are documented here. The format follows
 - A `[keys]` section that binds `F1` to another action now reports that `F1`
   belongs to `command_palette`. Give it other keys, e.g.
   `command_palette = ["primary+shift+p"]`, to keep your binding.
-
-## [0.3.1] — 2026-10-22
-
-### Added
-
-- Release archives and the macOS app include `THIRD_PARTY_LICENSES.html`: the
-  licenses and copyright notices of every dependency built into ncrs, and of
-  the embedded Fira Sans font.
 
 ## [0.3.0] — 2026-10-17
 
