@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Every dialog now uses the same frame in one of three sizes: a title with a
+  "×" to close, the content, a line with the keys that work, and the buttons
+  at the bottom right with Cancel first. Esc closes every dialog that can be
+  left safely, also the Inspection and a filing card that offers "Not now";
+  the recovery key card and running jobs keep their own way out. Long names
+  are shortened in the middle so the start and the extension stay visible.
+
 ## [0.4.0] — 2026-10-24
 
 ### Added

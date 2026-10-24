@@ -2,7 +2,7 @@
 //! with its key on the right. Pure view over [`CommandPalette`].
 
 use iced::widget::{container, row, text};
-use iced::{alignment, Element, Length};
+use iced::{alignment, Element, Length, Size};
 
 use super::picker;
 use super::theme::font_size;
@@ -17,8 +17,12 @@ fn to_palette(message: CommandPaletteMessage) -> Message {
     Message::CommandPalette(message)
 }
 
+/// Room kept at the right of a row for the key of the action.
+const SHORTCUT_COLUMN: f32 = 110.0;
+
 pub fn view<'a>(
     command_palette: &'a CommandPalette,
+    window: Size,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -51,6 +55,7 @@ pub fn view<'a>(
                     entry.label,
                     &hit.highlight,
                     selected,
+                    picker::row_chars(window, SHORTCUT_COLUMN),
                     palette
                 ))
                 .width(Length::Fill),
@@ -73,12 +78,17 @@ pub fn view<'a>(
         ""
     };
     picker::frame(
-        lang.text(Msg::CommandPaletteTitle).to_owned(),
-        lang.text(Msg::CommandPaletteSubtitle).to_owned(),
-        field,
-        status.to_owned(),
-        rows,
-        VISIBLE_ENTRIES,
+        picker::Content {
+            title: lang.text(Msg::CommandPaletteTitle).to_owned(),
+            subtitle: lang.text(Msg::CommandPaletteSubtitle).to_owned(),
+            field,
+            status: status.to_owned(),
+            rows: rows.collect(),
+            row_count: VISIBLE_ENTRIES,
+            on_close: to_palette(CommandPaletteMessage::Close),
+        },
+        window,
+        lang,
         palette,
     )
 }

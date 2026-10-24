@@ -115,6 +115,24 @@
       "de": "Abbrechen"
     },
     {
+      "key": "dialog.hint.escape",
+      "context": "Key hint in the footer of every dialog: the Escape key closes or cancels the dialog. Keep the key name Esc, then a colon and a short verb.",
+      "en": "Esc: close",
+      "de": "Esc: schließen"
+    },
+    {
+      "key": "dialog.hint.enter",
+      "context": "Key hint in the footer of a dialog with a main button: the Enter key presses it. Keep the key name Enter, then a colon and a short verb.",
+      "en": "Enter: confirm",
+      "de": "Enter: bestätigen"
+    },
+    {
+      "key": "dialog.hint.tab",
+      "context": "Key hint in the footer of a dialog with more than one button or field: the Tab key moves the focus. Keep the key name Tab, then a colon and a short phrase.",
+      "en": "Tab: next field",
+      "de": "Tab: nächstes Feld"
+    },
+    {
       "key": "error.empty_name",
       "context": "Shown in the dialog when the name field is empty. Addressed to the user, not a technical error.",
       "en": "Please enter a name",
@@ -1111,12 +1129,6 @@
       "de": "Hermes: Verarbeitung, Fehler, Kennzahlen"
     },
     {
-      "key": "filing_status.close",
-      "context": "Button on the filing status page that closes it. One word, verb.",
-      "en": "Close",
-      "de": "Schließen"
-    },
-    {
       "key": "filing_status.section_pipeline",
       "context": "Heading of the section with the state, the load and the steps of the filing pipeline.",
       "en": "Pipeline",
@@ -1376,9 +1388,9 @@
     },
     {
       "key": "filing_status.hint",
-      "context": "Key hints at the bottom of the filing status page. Keep the key names.",
-      "en": "Esc closes · P pause · 1/2/3 load · +/- workers · Up/Down, Enter errors",
-      "de": "Esc schließt · P Pause · 1/2/3 Last · +/- Worker · Auf/Ab, Enter Fehler"
+      "context": "Key hints for the filing status page, below its content. The keys for closing and confirming are in the dialog footer. Keep the key names.",
+      "en": "P pause · 1/2/3 load · +/- workers · Up/Down, Enter errors",
+      "de": "P Pause · 1/2/3 Last · +/- Worker · Auf/Ab, Enter Fehler"
     },
     {
       "key": "filing_setup.title",

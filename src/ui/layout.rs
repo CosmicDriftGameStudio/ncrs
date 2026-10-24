@@ -12,8 +12,6 @@ pub const PANEL_TITLE_HEIGHT: f32 = 28.0;
 pub const COLUMN_HEADER_HEIGHT: f32 = 24.0;
 pub const ROW_HEIGHT: f32 = 22.0;
 
-pub const DIALOG_WIDTH: f32 = 420.0;
-
 pub const MENU_WIDTH: f32 = 300.0;
 pub const MENU_ITEM_HEIGHT: f32 = 24.0;
 pub const MENU_SEPARATOR_HEIGHT: f32 = 7.0;

@@ -3,10 +3,10 @@
 //! Pure function, like every other component here: it takes the prompt state
 //! and the language and returns an `Element`. It never mutates anything.
 
-use iced::widget::{button, column, container, text, text_input, Row};
-use iced::{alignment, Background, Element, Length};
+use iced::widget::{column, container, text, text_input};
+use iced::{alignment, Background, Element, Length, Size};
 
-use super::layout::DIALOG_WIDTH;
+use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::theme::{self, font_size, spacing};
 use crate::dialog::Prompt;
 use crate::i18n::{Language, Msg};
@@ -24,6 +24,7 @@ pub const FIELD_ID: &str = "prompt-field";
 /// here, so this component stays a view and the app decides the messages.
 pub fn view<'a>(
     state: &'a Prompt,
+    window: Size,
     lang: Language,
     palette: &Palette,
     on_input: impl Fn(String) -> Message + 'a,
@@ -51,26 +52,16 @@ pub fn view<'a>(
     // by their bounds instead — see `ui_tests`, which clicks at the position
     // the layout reports for them. That is why the layout test and the click
     // test have to agree about where the buttons are.
-    let submit = (!state.busy()).then_some(on_submit);
-    let confirm_button = button(text(confirm))
-        .on_press_maybe(submit)
-        .style(theme::dialog_button(palette, true));
+    let idle = !state.busy();
+    let confirm_button = frame::action(confirm, idle.then_some(on_submit), true, palette);
+    let cancel_button = frame::action(
+        lang.text(Msg::DialogCancel),
+        idle.then(|| on_cancel.clone()),
+        false,
+        palette,
+    );
 
-    let cancel_button = button(text(lang.text(Msg::DialogCancel)))
-        .on_press_maybe((!state.busy()).then_some(on_cancel))
-        .style(theme::dialog_button(palette, false));
-
-    let mut body = column![
-        text(title).size(font_size::TITLE).color(palette.accent),
-        container(field).padding([4.0, 0.0]),
-        container(
-            Row::with_children([confirm_button.into(), cancel_button.into()])
-                .spacing(spacing::CELL_PADDING_X)
-                .align_y(alignment::Vertical::Center),
-        )
-        .padding([4.0, 0.0]),
-    ]
-    .spacing(spacing::SECTION_GAP);
+    let mut body = column![container(field).padding([4.0, 0.0])].spacing(spacing::SECTION_GAP);
 
     if let Some(error) = state.error() {
         // A validation reason is a message id, not a sentence: the dialog layer
@@ -86,13 +77,16 @@ pub fn view<'a>(
                 .wrapping(iced::widget::text::Wrapping::Word),
         );
     }
-    Some(
-        container(body)
-            .padding(spacing::OUTER_PADDING * 2.0)
-            .width(DIALOG_WIDTH)
-            .style(theme::dialog(palette))
-            .into(),
-    )
+    let mut framed = Frame::new(title, body, DialogSize::Small, window, lang, palette)
+        .buttons(vec![cancel_button, confirm_button])
+        .hints(KeyHints {
+            enter: true,
+            tab: false,
+        });
+    if idle {
+        framed = framed.on_close(on_cancel);
+    }
+    Some(framed.into_element())
 }
 
 /// Maps a validation reason to its message, or `None` for a message the fs

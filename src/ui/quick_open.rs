@@ -1,7 +1,7 @@
 //! The Quick Open box: a text field, a status line and the best matches with
 //! the matched characters marked. Pure view over [`QuickOpen`].
 
-use iced::Element;
+use iced::{Element, Size};
 
 use super::picker;
 use crate::app::fill_template;
@@ -18,6 +18,7 @@ fn to_quick_open(message: QuickOpenMessage) -> Message {
 
 pub fn view<'a>(
     quick_open: &'a QuickOpen,
+    window: Size,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -40,15 +41,21 @@ pub fn view<'a>(
         .hits()
         .iter()
         .enumerate()
-        .map(|(index, hit)| hit_row(quick_open, hit, index, palette));
+        .map(|(index, hit)| hit_row(quick_open, hit, index, window, palette))
+        .collect();
 
     picker::frame(
-        lang.text(Msg::QuickopenTitle).to_owned(),
-        subtitle,
-        field,
-        status(quick_open, lang),
-        rows,
-        MAX_HITS,
+        picker::Content {
+            title: lang.text(Msg::QuickopenTitle).to_owned(),
+            subtitle,
+            field,
+            status: status(quick_open, lang),
+            rows,
+            row_count: MAX_HITS,
+            on_close: to_quick_open(QuickOpenMessage::Close),
+        },
+        window,
+        lang,
         palette,
     )
 }
@@ -71,12 +78,19 @@ fn hit_row<'a>(
     quick_open: &'a QuickOpen,
     hit: &Hit,
     index: usize,
+    window: Size,
     palette: &Palette,
 ) -> Element<'a, Message> {
     let selected = index == quick_open.cursor();
     let path = quick_open.relative_path(hit);
     picker::list_row(
-        picker::highlighted(path, &hit.highlight, selected, palette),
+        picker::highlighted(
+            path,
+            &hit.highlight,
+            selected,
+            picker::row_chars(window, 0.0),
+            palette,
+        ),
         to_quick_open(QuickOpenMessage::RowActivated(index)),
         selected,
         palette,

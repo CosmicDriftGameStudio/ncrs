@@ -4,11 +4,13 @@
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
+use iced::widget::text::Wrapping;
 use iced::widget::{button, column, container, row, scrollable, text, Column};
-use iced::{Element, Length};
+use iced::{Element, Length, Size};
 use ncrs_pipeline::{Load, RunnerState, Task, WorkerSnapshot};
 
 use super::format;
+use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::theme::{self, font_size, spacing};
 use crate::app::fill_template;
 use crate::filing::IndexFigures;
@@ -17,8 +19,12 @@ use crate::i18n::{Language, Msg};
 use crate::messages::{FilingStatusMessage, Message};
 use crate::palette::Palette;
 
-const WIDTH: f32 = 720.0;
+const SIZE: DialogSize = DialogSize::Large;
 const ERROR_LIST_HEIGHT: f32 = 120.0;
+/// The default padding of a button at its left and right.
+const ERROR_ROW_PADDING: f32 = 10.0;
+/// File and message of an error row take three of seven parts each.
+const ERROR_TEXT_SHARE: f32 = 3.0 / 7.0;
 const LABEL_WIDTH: f32 = 130.0;
 const WORKER_NUMBER_WIDTH: f32 = 30.0;
 const WORKER_TASK_WIDTH: f32 = 170.0;
@@ -31,44 +37,65 @@ fn send(message: FilingStatusMessage) -> Message {
     Message::FilingStatus(message)
 }
 
+/// How many characters the one-line texts of the page hold, from the width
+/// the frame gives its content. These texts are cut, never wrapped.
+struct LineBudget {
+    worker_file: usize,
+    index_path: usize,
+    error_file: usize,
+    error_message: usize,
+}
+
+impl LineBudget {
+    fn of(window: Size) -> Self {
+        let width = frame::content_width(SIZE, window);
+        let gap = spacing::CELL_PADDING_X;
+        let worker_fixed = WORKER_NUMBER_WIDTH + WORKER_TASK_WIDTH + DURATION_WIDTH + 3.0 * gap;
+        // Three parts of seven each for file and message, one for the task; the
+        // button around the row pads both sides.
+        let error_width = width - 2.0 * ERROR_ROW_PADDING - 2.0 * gap;
+        Self {
+            worker_file: frame::chars_that_fit(width - worker_fixed),
+            index_path: frame::chars_that_fit(width - LABEL_WIDTH - gap),
+            error_file: frame::chars_that_fit(error_width * ERROR_TEXT_SHARE),
+            error_message: frame::chars_that_fit(error_width * ERROR_TEXT_SHARE),
+        }
+    }
+}
+
 pub fn view<'a>(
     status: &'a FilingStatus,
     load: Option<Load>,
     index_open: bool,
+    window: Size,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let title_row = row![
-        text(lang.text(Msg::FilingStatusTitle))
-            .size(font_size::TITLE)
-            .color(palette.accent)
-            .width(Length::Fill),
-        button(text(lang.text(Msg::FilingStatusClose)))
-            .on_press(send(FilingStatusMessage::Close))
-            .style(theme::dialog_button(palette, false)),
-    ]
-    .align_y(iced::alignment::Vertical::Center);
-
+    let budget = LineBudget::of(window);
     let body = column![
-        title_row,
-        text(lang.text(Msg::FilingStatusSubtitle))
-            .size(font_size::STATUS)
-            .color(palette.dim_text),
         pipeline_section(status, load, lang, palette),
-        workers_section(status, lang, palette),
-        index_section(status, index_open, lang, palette),
-        errors_section(status, lang, palette),
+        workers_section(status, &budget, lang, palette),
+        index_section(status, index_open, &budget, lang, palette),
+        errors_section(status, &budget, lang, palette),
         text(lang.text(Msg::FilingStatusHint))
             .size(font_size::STATUS)
             .color(palette.dim_text),
     ]
     .spacing(spacing::SECTION_GAP);
 
-    container(body)
-        .padding(spacing::OUTER_PADDING * 2.0)
-        .width(WIDTH)
-        .style(theme::dialog(palette))
-        .into()
+    Frame::new(
+        lang.text(Msg::FilingStatusTitle),
+        body,
+        SIZE,
+        window,
+        lang,
+        palette,
+    )
+    .subtitle(lang.text(Msg::FilingStatusSubtitle))
+    .on_close(send(FilingStatusMessage::Close))
+    // Enter opens the selected error, which the content defines.
+    .hints(KeyHints::default())
+    .into_element()
 }
 
 fn heading<'a>(label: Msg, lang: Language, palette: &Palette) -> Element<'a, Message> {
@@ -98,6 +125,14 @@ fn labelled<'a>(
 
 fn plain<'a>(value: impl text::IntoFragment<'a>) -> Element<'a, Message> {
     text(value).size(font_size::STATUS).into()
+}
+
+/// Text that stays on one line; the caller has cut it to fit.
+fn one_line<'a>(value: String) -> Element<'a, Message> {
+    text(value)
+        .size(font_size::STATUS)
+        .wrapping(Wrapping::None)
+        .into()
 }
 
 fn state_message(state: RunnerState) -> Msg {
@@ -254,6 +289,7 @@ fn file_label(file: &Path) -> String {
 fn worker_row<'a>(
     worker: &WorkerSnapshot,
     taken_at: SystemTime,
+    budget: &LineBudget,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -273,11 +309,15 @@ fn worker_row<'a>(
     let elapsed = taken_at.duration_since(busy.started_at).unwrap_or_default();
     row![
         number,
-        container(plain(file_label(&busy.file)))
-            .width(Length::Fill)
-            .clip(true),
+        container(one_line(format::ellipsize_end(
+            &file_label(&busy.file),
+            budget.worker_file
+        )))
+        .width(Length::Fill)
+        .clip(true),
         text(task_label(busy.task, lang))
             .size(font_size::STATUS)
+            .wrapping(Wrapping::None)
             .width(WORKER_TASK_WIDTH),
         text(elapsed_label(elapsed))
             .size(font_size::STATUS)
@@ -290,6 +330,7 @@ fn worker_row<'a>(
 
 fn workers_section<'a>(
     status: &'a FilingStatus,
+    budget: &LineBudget,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -297,7 +338,7 @@ fn workers_section<'a>(
         .snapshot()
         .workers
         .iter()
-        .map(|worker| worker_row(worker, status.taken_at(), lang, palette));
+        .map(|worker| worker_row(worker, status.taken_at(), budget, lang, palette));
     column![
         heading(Msg::FilingStatusSectionWorkers, lang, palette),
         Column::with_children(rows),
@@ -316,6 +357,7 @@ fn yes_no(answer: bool, lang: Language) -> &'static str {
 
 fn index_rows<'a>(
     figures: &IndexFigures,
+    budget: &LineBudget,
     lang: Language,
     palette: &Palette,
 ) -> Vec<Element<'a, Message>> {
@@ -323,7 +365,10 @@ fn index_rows<'a>(
     vec![
         labelled(
             Msg::FilingStatusIndexPath,
-            plain(figures.path.display().to_string()),
+            one_line(format::ellipsize_middle(
+                &figures.path.display().to_string(),
+                budget.index_path,
+            )),
             lang,
             palette,
         ),
@@ -379,6 +424,7 @@ fn index_rows<'a>(
 fn index_section<'a>(
     status: &'a FilingStatus,
     index_open: bool,
+    budget: &LineBudget,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -389,7 +435,7 @@ fn index_section<'a>(
             lang.text(Msg::FilingStatusIndexUnavailable),
             &[("{reason}", reason)],
         ))],
-        Some(Ok(figures)) => index_rows(figures, lang, palette),
+        Some(Ok(figures)) => index_rows(figures, budget, lang, palette),
     };
     column![
         heading(Msg::FilingStatusSectionIndex, lang, palette),
@@ -401,6 +447,7 @@ fn index_section<'a>(
 
 fn errors_section<'a>(
     status: &'a FilingStatus,
+    budget: &LineBudget,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -411,15 +458,22 @@ fn errors_section<'a>(
         .map(|(position, error)| {
             button(
                 row![
-                    container(plain(error.file.display().to_string()))
-                        .width(Length::FillPortion(3))
-                        .clip(true),
+                    container(one_line(format::ellipsize_middle(
+                        &error.file.display().to_string(),
+                        budget.error_file,
+                    )))
+                    .width(Length::FillPortion(3))
+                    .clip(true),
                     text(task_label(error.task, lang))
                         .size(font_size::STATUS)
+                        .wrapping(Wrapping::None)
                         .width(Length::FillPortion(1)),
-                    container(plain(error.message.as_str()))
-                        .width(Length::FillPortion(3))
-                        .clip(true),
+                    container(one_line(format::ellipsize_end(
+                        &error.message,
+                        budget.error_message,
+                    )))
+                    .width(Length::FillPortion(3))
+                    .clip(true),
                 ]
                 .spacing(spacing::CELL_PADDING_X),
             )

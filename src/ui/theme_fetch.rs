@@ -3,9 +3,11 @@
 
 use iced::widget::text::Wrapping;
 use iced::widget::{button, column, container, row, text, text_input, Column};
-use iced::{alignment, Element, Length};
+use iced::{alignment, Element, Length, Size};
 
-use super::filing::{buttons, error_line, paragraph, title};
+use super::filing::{error_line, paragraph};
+use super::format;
+use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::layout::ROW_HEIGHT;
 use super::theme::{self, font_size, spacing};
 use crate::app::fill_template;
@@ -21,35 +23,46 @@ pub const FIELD_ID: &str = "theme-fetch-field";
 /// Most themes listed at once; the list follows the cursor beyond that.
 pub const VISIBLE_THEMES: usize = 10;
 
-const CARD_WIDTH: f32 = 560.0;
+/// Characters of a row kept free for "Dark" or "Light" at its right.
+const THEME_MARKER_CHARS: usize = 8;
+
+const SIZE: DialogSize = DialogSize::Medium;
 
 fn to_message(message: ThemeFetchMessage) -> Message {
     Message::ThemeFetch(message)
 }
 
-pub fn view<'a>(card: &'a ThemeFetch, lang: Language, palette: &Palette) -> Element<'a, Message> {
-    let mut body =
-        column![title(lang.text(Msg::ThemeFetchTitle), palette)].spacing(spacing::SECTION_GAP);
+pub fn view<'a>(
+    card: &'a ThemeFetch,
+    window: Size,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let line_chars = frame::content_chars(SIZE, window, 0.0);
+    let mut body = column![].spacing(spacing::SECTION_GAP);
     match card.stage() {
         Stage::Choosing { fetched, cursor } => {
             let extension = &fetched.extension;
+            let extension_line = fill_template(
+                lang.text(Msg::ThemeFetchExtension),
+                &[
+                    ("{name}", extension.display_name.as_str()),
+                    ("{version}", extension.version.as_str()),
+                ],
+            );
             body = body
-                .push(paragraph(
-                    fill_template(
-                        lang.text(Msg::ThemeFetchExtension),
-                        &[
-                            ("{name}", extension.display_name.as_str()),
-                            ("{version}", extension.version.as_str()),
-                        ],
-                    ),
-                    palette,
-                ))
+                .push(
+                    text(format::ellipsize_end(&extension_line, line_chars))
+                        .size(font_size::STATUS)
+                        .color(palette.text)
+                        .wrapping(Wrapping::None),
+                )
                 .push(paragraph(
                     license_line(extension.license.as_deref(), lang),
                     palette,
                 ))
                 .push(dim(lang.text(Msg::ThemeFetchChooseHint), palette))
-                .push(theme_list(card, *cursor, lang, palette));
+                .push(theme_list(card, *cursor, line_chars, lang, palette));
         }
         Stage::Input | Stage::Fetching | Stage::Installing => {
             body = body
@@ -66,13 +79,24 @@ pub fn view<'a>(card: &'a ThemeFetch, lang: Language, palette: &Palette) -> Elem
     if let Some(error) = card.error() {
         body = body.push(error_line(error_text(error, lang), palette));
     }
-    body = body.push(button_row(card, lang, palette));
 
-    container(body)
-        .padding(spacing::OUTER_PADDING * 2.0)
-        .width(CARD_WIDTH)
-        .style(theme::dialog(palette))
-        .into()
+    let choosing = matches!(card.stage(), Stage::Choosing { .. });
+    Frame::new(
+        lang.text(Msg::ThemeFetchTitle),
+        body,
+        SIZE,
+        window,
+        lang,
+        palette,
+    )
+    .buttons(footer_buttons(card, lang, palette))
+    .on_close(to_message(ThemeFetchMessage::Close))
+    // Choosing, Enter takes the highlighted theme: the content defines it.
+    .hints(KeyHints {
+        enter: !choosing,
+        tab: false,
+    })
+    .into_element()
 }
 
 fn dim<'a>(content: &'a str, palette: &Palette) -> Element<'a, Message> {
@@ -110,6 +134,7 @@ fn license_line(license: Option<&str>, lang: Language) -> String {
 fn theme_list<'a>(
     card: &'a ThemeFetch,
     cursor: usize,
+    line_chars: usize,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -137,10 +162,13 @@ fn theme_list<'a>(
             };
             let content = row![
                 container(
-                    text(contributed.label.as_str())
-                        .size(font_size::ROW)
-                        .color(label_color)
-                        .wrapping(Wrapping::None)
+                    text(format::ellipsize_end(
+                        &contributed.label,
+                        line_chars.saturating_sub(THEME_MARKER_CHARS)
+                    ))
+                    .size(font_size::ROW)
+                    .color(label_color)
+                    .wrapping(Wrapping::None)
                 )
                 .width(Length::Fill),
                 text(marker).size(font_size::ROW).color(marker_color),
@@ -160,12 +188,13 @@ fn theme_list<'a>(
         .into()
 }
 
-fn button_row<'a>(card: &ThemeFetch, lang: Language, palette: &Palette) -> Element<'a, Message> {
+fn footer_buttons<'a>(
+    card: &ThemeFetch,
+    lang: Language,
+    palette: &Palette,
+) -> Vec<Element<'a, Message>> {
     let action = |label: &'a str, on_press: Option<ThemeFetchMessage>, primary: bool| {
-        button(text(label))
-            .on_press_maybe(on_press.map(to_message))
-            .style(theme::dialog_button(palette, primary))
-            .into()
+        frame::action(label, on_press.map(to_message), primary, palette)
     };
     let mut items = vec![action(
         lang.text(Msg::ThemeFetchCancel),
@@ -180,7 +209,7 @@ fn button_row<'a>(card: &ThemeFetch, lang: Language, palette: &Palette) -> Eleme
             true,
         ));
     }
-    buttons(items)
+    items
 }
 
 /// The words for what went wrong. The technical detail, where there is one,

@@ -12,6 +12,7 @@ pub mod filing_setup;
 pub mod filing_status;
 pub mod fkeys;
 pub mod format;
+pub mod frame;
 pub mod key_intercept;
 pub mod layout;
 pub mod panel;

@@ -684,6 +684,8 @@ pub struct PromptKeyState {
     pub filing_status: bool,
     /// The filing setup is up, so Escape closes it.
     pub filing_setup: bool,
+    /// A filing card that "Not now" may leave is up, so Escape leaves it.
+    pub filing_card: bool,
     /// The theme download card is up, so Enter and the arrows are its.
     pub theme_fetch: bool,
     /// The delete dialog is up, so keys answer it.
@@ -712,6 +714,7 @@ impl Default for PromptKeyState {
             command_palette: false,
             filing_status: false,
             filing_setup: false,
+            filing_card: false,
             theme_fetch: false,
             delete_dialog: DeleteKeys::default(),
             volume_menu: false,
@@ -888,7 +891,7 @@ fn keys_without_prompt(
     }
 
     // Escape stops a running job, else dismisses the config error, else closes
-    // the filing setup, and is free when none exists. Unbound rather than bound
+    // the filing setup, else leaves a filing card, and is free when none exists. Unbound rather than bound
     // to something that does nothing — a key that means different things
     // depending on invisible state is worse than one that is simply free.
     if matches!(key.as_ref(), Key::Named(Named::Escape)) {
@@ -897,9 +900,13 @@ fn keys_without_prompt(
         } else if prompt.config_error {
             Some(Message::DismissConfigError)
         } else {
-            prompt
-                .filing_setup
-                .then_some(Message::FilingSetup(FilingSetupMessage::Close))
+            if prompt.filing_setup {
+                Some(Message::FilingSetup(FilingSetupMessage::Close))
+            } else {
+                prompt
+                    .filing_card
+                    .then_some(Message::Filing(FilingMessage::Dismiss))
+            }
         };
     }
     bound_message(&prompt.keymap, &key, key_modifiers, scope)
@@ -1878,7 +1885,7 @@ impl App {
                     // The dialog names the file itself, so the reason travels
                     // no further; it stays in the payload for the status line.
                     Err(RowFailure::Conflict(_reason)) => {
-                        self.dialog_focus = 0;
+                        self.dialog_focus = conflict::OVERWRITE_FOCUS;
                         self.pending_conflict = Some(PendingConflict { transfer, index });
                         // Else the dialog would be asked behind the box.
                         Task::batch([self.close_quick_open(), self.close_command_palette()])
@@ -2575,7 +2582,7 @@ impl App {
             .filing
             .as_ref()
             .filter(|module| module.has_card())
-            .and_then(|module| filing_ui::view(module, self.lang, &self.palette));
+            .and_then(|module| filing_ui::view(module, self.window_size, self.lang, &self.palette));
         let setup_card = self.filing_setup.as_ref().map(|setup| {
             let context = filing_setup_ui::SetupContext {
                 current_folder: &self.active_panel().path,
@@ -2585,6 +2592,7 @@ impl App {
                     .as_ref()
                     .is_some_and(FilingModule::index_is_plain),
                 lang: self.lang,
+                window: self.window_size,
             };
             filing_setup_ui::view(setup, &context, &self.palette)
         });
@@ -2622,6 +2630,7 @@ impl App {
                 menu.side,
                 &menu.volumes,
                 menu.selected,
+                self.window_size,
                 self.lang,
                 &self.palette,
             );
@@ -2630,9 +2639,10 @@ impl App {
 
         if let Some(deletion) = self.delete_dialog.as_ref() {
             let dialog_element = delete_dialog_view::view(
-                self.delete_subject(deletion),
+                &self.delete_subject(deletion),
                 deletion.permanent,
                 self.dialog_focus,
+                self.window_size,
                 self.lang,
                 &self.palette,
             );
@@ -2658,6 +2668,7 @@ impl App {
                 &self.palette,
                 self.conflict_all,
                 self.dialog_focus,
+                self.window_size,
                 Message::TransferConflict,
             );
             return Stack::with_children([root, dialog::scrim(conflict_element)]).into();
@@ -2672,6 +2683,7 @@ impl App {
                 &self.filing_status,
                 self.filing.as_ref().map(FilingModule::load),
                 index_open,
+                self.window_size,
                 self.lang,
                 &self.palette,
             );
@@ -2679,17 +2691,24 @@ impl App {
         }
 
         if let Some(quick_open) = self.quick_open.as_ref() {
-            let box_element = quick_open_ui::view(quick_open, self.lang, &self.palette);
+            let box_element =
+                quick_open_ui::view(quick_open, self.window_size, self.lang, &self.palette);
             return Stack::with_children([root, dialog::scrim(box_element)]).into();
         }
 
         if let Some(command_palette) = self.command_palette.as_ref() {
-            let box_element = command_palette_ui::view(command_palette, self.lang, &self.palette);
+            let box_element = command_palette_ui::view(
+                command_palette,
+                self.window_size,
+                self.lang,
+                &self.palette,
+            );
             return Stack::with_children([root, dialog::scrim(box_element)]).into();
         }
 
         if let Some(card) = self.theme_fetch.as_ref() {
-            let card_element = theme_fetch_ui::view(card, self.lang, &self.palette);
+            let card_element =
+                theme_fetch_ui::view(card, self.window_size, self.lang, &self.palette);
             return Stack::with_children([root, dialog::scrim(card_element)]).into();
         }
 
@@ -2699,6 +2718,7 @@ impl App {
         };
         let overlay = dialog::view(
             prompt,
+            self.window_size,
             self.lang,
             &self.palette,
             Message::PromptInput,
@@ -2781,6 +2801,10 @@ impl App {
         let command_palette = self.command_palette.is_some();
         let filing_status = self.filing_status.page_open();
         let filing_setup = self.filing_setup.is_some();
+        let filing_card = self
+            .filing
+            .as_ref()
+            .is_some_and(FilingModule::card_can_be_dismissed);
         let theme_fetch = self.theme_fetch.is_some();
         let delete_dialog = match &self.delete_dialog {
             None => DeleteKeys::Closed,
@@ -2801,6 +2825,7 @@ impl App {
                 command_palette,
                 filing_status,
                 filing_setup,
+                filing_card,
                 theme_fetch,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
@@ -2822,6 +2847,7 @@ impl App {
                 command_palette,
                 filing_status,
                 filing_setup,
+                filing_card,
                 theme_fetch,
                 conflict_open: self.pending_conflict.is_some(),
                 busy: prompt.busy(),
@@ -3136,7 +3162,7 @@ impl App {
     /// Enter in a button dialog: whatever the focused button does.
     fn activate_dialog_button(&mut self) -> Task<Message> {
         if self.delete_dialog.is_some() {
-            return if self.dialog_focus == 0 {
+            return if self.dialog_focus == delete_dialog_view::CONFIRM_FOCUS {
                 self.confirm_delete()
             } else {
                 self.delete_dialog = None;
@@ -3145,8 +3171,8 @@ impl App {
         }
         if self.pending_conflict.is_some() {
             let choice = match self.dialog_focus {
-                0 => ConflictChoice::ThisOverwrite,
-                1 => ConflictChoice::ThisKeep,
+                conflict::OVERWRITE_FOCUS => ConflictChoice::ThisOverwrite,
+                conflict::KEEP_FOCUS => ConflictChoice::ThisKeep,
                 _ => ConflictChoice::Cancel,
             };
             return self.answer_conflict(choice);
@@ -3322,9 +3348,7 @@ impl App {
         }
         self.job_error = None;
         self.notice = None;
-        // The permanent dialog starts on "Cancel", so a reflex Enter never
-        // deletes for good.
-        self.dialog_focus = usize::from(permanent);
+        self.dialog_focus = delete_dialog_view::default_focus(permanent);
         self.delete_dialog = Some(Deletion {
             sources,
             permanent,
@@ -5851,7 +5875,7 @@ impl App {
     /// Puts the delete dialog in front of the user for `count` fixed entries,
     /// for the snapshot tests.
     pub fn open_delete_dialog_for_test(&mut self, count: usize, permanent: bool) {
-        self.dialog_focus = usize::from(permanent);
+        self.dialog_focus = delete_dialog_view::default_focus(permanent);
         self.delete_dialog = Some(Deletion {
             sources: (0..count)
                 .map(|i| PathBuf::from("/left").join(format!("entry-{}.txt", i + 1)))
@@ -6963,6 +6987,26 @@ mod delete_tests {
     }
 
     #[test]
+    fn escape_leaves_a_filing_card_that_may_be_left() {
+        let card = PromptKeyState {
+            filing_card: true,
+            ..PromptKeyState::default()
+        };
+        assert_eq!(
+            route(&card, Named::Escape, Modifiers::default()),
+            Some(Message::Filing(FilingMessage::Dismiss))
+        );
+        assert_eq!(
+            route(
+                &PromptKeyState::default(),
+                Named::Escape,
+                Modifiers::default()
+            ),
+            None
+        );
+    }
+
+    #[test]
     fn a_held_enter_does_not_press_a_button() {
         assert!(!repeats(&Message::DialogActivate));
         assert!(!repeats(&Message::DialogFocus(1)));
@@ -6973,14 +7017,15 @@ mod delete_tests {
         let mut app = app_with_entries(&["a.txt"]);
         let _open = app.update(Message::Delete { permanent: true });
         assert_eq!(
-            app.dialog_focus, 1,
+            app.dialog_focus,
+            delete_dialog_view::CANCEL_FOCUS,
             "the permanent dialog must start on Cancel"
         );
 
         let _wrap = app.update(Message::DialogFocus(1));
-        assert_eq!(app.dialog_focus, 0);
+        assert_eq!(app.dialog_focus, delete_dialog_view::CONFIRM_FOCUS);
         let _back = app.update(Message::DialogFocus(-1));
-        assert_eq!(app.dialog_focus, 1);
+        assert_eq!(app.dialog_focus, delete_dialog_view::CANCEL_FOCUS);
         let _cancel = app.update(Message::DialogActivate);
         assert!(
             app.delete_dialog.is_none(),
@@ -6988,7 +7033,11 @@ mod delete_tests {
         );
 
         let _again = app.update(Message::Delete { permanent: false });
-        assert_eq!(app.dialog_focus, 0, "the trash dialog starts on Delete");
+        assert_eq!(
+            app.dialog_focus,
+            delete_dialog_view::CONFIRM_FOCUS,
+            "the trash dialog starts on Delete"
+        );
         let _move = app.update(Message::DialogFocus(1));
         let _enter = app.update(Message::DialogActivate);
         assert!(app.delete_dialog.is_none());

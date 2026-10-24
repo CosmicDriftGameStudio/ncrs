@@ -27,6 +27,7 @@ use iced_test::Simulator;
 
 use crate::app::App;
 use crate::filing::{FilingMessage, FilingModule, KeyProblem, Phase, SecretText};
+use crate::i18n::Language;
 use crate::messages::Message;
 
 fn simulator(app: &App) -> Simulator<'_, Message, iced::Theme> {
@@ -35,6 +36,16 @@ fn simulator(app: &App) -> Simulator<'_, Message, iced::Theme> {
         iced::Size::new(1200.0, 760.0),
         app.view(),
     )
+}
+
+/// The outer bounds of the dialog frame in the view of `app`. Test-only like
+/// the modules below, where a failing lookup is the signal.
+#[allow(clippy::expect_used)]
+fn frame_bounds(app: &App) -> iced::Rectangle {
+    simulator(app)
+        .find(iced::widget::Id::new(crate::ui::frame::FRAME_ID))
+        .expect("the dialog frame")
+        .bounds()
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
@@ -262,6 +273,20 @@ mod tests {
     }
 
     #[test]
+    fn the_prompt_matches_its_german_snapshot() {
+        let app = App::with_fixed_prompt().in_language(Language::German);
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/prompt_de.png")
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the prompt does not match tests/snapshots/prompt_de.png"
+        );
+    }
+
+    #[test]
     fn the_search_view_matches_its_snapshot() {
         let app = App::with_fixed_search();
         let mut sim = simulator(&app);
@@ -301,6 +326,46 @@ mod tests {
             matches,
             "quick open does not match tests/snapshots/quick_open.png"
         );
+    }
+
+    #[test]
+    fn quick_open_matches_its_german_snapshot() {
+        let mut app = App::with_fixed_panels().in_language(Language::German);
+        app.open_quick_open_for_test(
+            &[
+                "README.md",
+                "docs/Ärger.rs",
+                "src/config.rs",
+                "src/main.rs",
+                "tests/config_rs_test.rs",
+            ],
+            "cfgrs",
+        );
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/quick_open_de.png")
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "quick open does not match tests/snapshots/quick_open_de.png"
+        );
+    }
+
+    #[test]
+    fn a_long_path_does_not_change_the_quick_open_frame() {
+        let short = {
+            let mut app = App::with_fixed_panels();
+            app.open_quick_open_for_test(&["a.rs"], "a");
+            frame_bounds(&app)
+        };
+        let long_path = format!("{}/file.rs", "deeply-nested-folder/".repeat(30));
+        let long = {
+            let mut app = App::with_fixed_panels();
+            app.open_quick_open_for_test(&[long_path.as_str()], "file");
+            frame_bounds(&app)
+        };
+        assert_eq!(short, long);
     }
 }
 
@@ -559,6 +624,19 @@ mod conflict_overlay {
         assert!(matches, "the conflict dialog does not match conflict.png");
     }
 
+    #[test]
+    fn the_dialog_matches_its_german_snapshot() {
+        let matches = simulator(&app_with_conflict().in_language(Language::German))
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/conflict_de.png")
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the conflict dialog does not match conflict_de.png"
+        );
+    }
+
     /// One dialog, not two: the prompt underneath must not show through.
     #[test]
     fn the_prompt_is_gone_while_the_dialog_is_up() {
@@ -617,6 +695,22 @@ mod delete_overlay {
             matches,
             "the permanent dialog does not match delete_permanent.png"
         );
+    }
+
+    #[test]
+    fn the_german_dialogs_match_their_snapshots() {
+        for (count, permanent, name) in [
+            (1, false, "delete_trash_de"),
+            (7, true, "delete_permanent_de"),
+        ] {
+            let app = app_with_delete(count, permanent).in_language(Language::German);
+            let matches = simulator(&app)
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(matches, "the dialog does not match {name}.png");
+        }
     }
 
     /// An overlay that is not drawn would leave the plain panels. Compared with
@@ -685,6 +779,16 @@ mod volume_overlay {
             .matches_image("tests/snapshots/volumes.png")
             .expect("snapshot comparison");
         assert!(matches, "the drive menu does not match volumes.png");
+    }
+
+    #[test]
+    fn the_menu_matches_its_german_snapshot() {
+        let matches = simulator(&app_with_menu().in_language(Language::German))
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/volumes_de.png")
+            .expect("snapshot comparison");
+        assert!(matches, "the drive menu does not match volumes_de.png");
     }
 
     /// A menu that is not drawn would leave the plain panels, compared with the
@@ -1132,6 +1236,26 @@ mod filing_cards {
         );
     }
 
+    #[test]
+    fn the_master_key_card_matches_its_german_snapshot() {
+        let app = App::with_fixed_filing(Phase::ShowRecoveryKey {
+            key: FilingModule::varied_recovery_key(),
+            group: 1,
+            typed: SecretText::default(),
+            mismatch: false,
+        })
+        .in_language(Language::German);
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/recovery_key_de.png")
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the card does not match tests/snapshots/recovery_key_de.png"
+        );
+    }
+
     fn ask_recovery_key(reason: KeyProblem) -> App {
         App::with_fixed_filing(Phase::AskRecoveryKey {
             reason,
@@ -1234,7 +1358,6 @@ mod filing_status_page {
     };
 
     use super::*;
-    use crate::i18n::Language;
     use crate::messages::FilingStatusMessage;
 
     const ERROR_FILE: &str = "/tmp/inbox/company-a-invoice.pdf";
@@ -1311,6 +1434,10 @@ mod filing_status_page {
     }
 
     fn inspection(language: Language) -> App {
+        inspection_of(inspection_snapshot(), language)
+    }
+
+    fn inspection_of(snapshot: Snapshot, language: Language) -> App {
         let figures = crate::filing::IndexFigures {
             path: PathBuf::from("/home/user/.local/share/ncrs/index.db"),
             file_bytes: Some(2 * 1024 * 1024),
@@ -1322,8 +1449,7 @@ mod filing_status_page {
                 full_text_bytes: 512 * 1024,
             },
         };
-        App::with_filing_inspection(inspection_snapshot(), taken_at(), figures)
-            .in_language(language)
+        App::with_filing_inspection(snapshot, taken_at(), figures).in_language(language)
     }
 
     #[test]
@@ -1342,6 +1468,23 @@ mod filing_status_page {
                 "the inspection does not match tests/snapshots/{name}.png"
             );
         }
+    }
+
+    #[test]
+    fn a_long_file_name_does_not_change_the_inspection_frame() {
+        let short = frame_bounds(&inspection(Language::English));
+        let mut snapshot = inspection_snapshot();
+        let long_name = format!("/home/user/inbox/{}.pdf", "very-long-file-name-".repeat(10));
+        snapshot.workers = vec![WorkerSnapshot {
+            id: 0,
+            busy: Some(Busy {
+                file: PathBuf::from(long_name),
+                task: Task::Step("intake"),
+                started_at: taken_at() - Duration::from_secs(12),
+            }),
+        }];
+        let long = frame_bounds(&inspection_of(snapshot, Language::English));
+        assert_eq!(short, long);
     }
 
     #[test]
@@ -1498,7 +1641,6 @@ mod filing_setup_card {
 
     use super::*;
     use crate::config::FilingLocation;
-    use crate::i18n::Language;
     use crate::messages::FilingSetupMessage;
     use crate::ui::filing_setup::{
         target_choice_id, ADD_DOCUMENT_FOLDER_ID, ADD_TUBES_FOLDER_ID, USE_PANEL_FOR_DOCUMENTS_ID,
@@ -1563,8 +1705,14 @@ mod filing_setup_card {
         sim.into_messages().collect()
     }
 
+    /// The card scrolls: what lies below the fold is reached by the wheel, as
+    /// by a user.
     fn messages_after_clicking_id(app: &App, id: impl Into<iced::widget::Id>) -> Vec<Message> {
         let mut sim = simulator(app);
+        sim.point_at(frame_bounds(app).center());
+        let _statuses = sim.simulate([iced::Event::Mouse(iced::mouse::Event::WheelScrolled {
+            delta: iced::mouse::ScrollDelta::Lines { x: 0.0, y: -20.0 },
+        })]);
         sim.click(id.into()).expect("the clicked id");
         sim.into_messages().collect()
     }
@@ -1923,6 +2071,26 @@ mod command_palette {
             "the command palette does not match tests/snapshots/command_palette.png"
         );
     }
+
+    #[test]
+    fn the_box_matches_its_german_snapshot() {
+        let mut app = App::with_fixed_panels().in_language(Language::German);
+        open(&mut app);
+        drop(
+            app.update(palette_message(CommandPaletteMessage::QueryChanged(
+                "the".to_owned(),
+            ))),
+        );
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/command_palette_de.png")
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the command palette does not match command_palette_de.png"
+        );
+    }
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
@@ -1936,7 +2104,6 @@ mod command_palette {
 #[cfg(test)]
 mod theme_fetch_card {
     use super::*;
-    use crate::i18n::Language;
     use crate::messages::ThemeFetchMessage;
     use crate::open_vsx::FetchError;
     use crate::theme_fetch::tests::fetched;
@@ -2057,7 +2224,12 @@ mod theme_fetch_card {
     }
 
     fn matches_snapshot(card: ThemeFetch, name: &str) {
-        let app = App::with_theme_fetch_card(card);
+        let language = if name.ends_with("_de") {
+            Language::German
+        } else {
+            Language::English
+        };
+        let app = App::with_theme_fetch_card(card).in_language(language);
         let matches = simulator(&app)
             .snapshot(&iced::Theme::Dark)
             .unwrap()
@@ -2077,6 +2249,28 @@ mod theme_fetch_card {
     #[test]
     fn the_choice_matches_its_snapshot() {
         matches_snapshot(choosing(two_themes()), "theme_fetch_choose_en");
+    }
+
+    #[test]
+    fn the_german_cards_match_their_snapshots() {
+        matches_snapshot(ThemeFetch::new(), "theme_fetch_input_de");
+        matches_snapshot(choosing(two_themes()), "theme_fetch_choose_de");
+        matches_snapshot(
+            failed(
+                "example.dark-themes",
+                FetchError::NotFound("example.dark-themes".to_owned()),
+            ),
+            "theme_fetch_error_de",
+        );
+    }
+
+    #[test]
+    fn the_number_of_themes_does_not_change_the_frame() {
+        let one = frame_bounds(&App::with_theme_fetch_card(choosing(two_themes())));
+        let names: Vec<String> = (0..10).map(|number| format!("Theme {number}")).collect();
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        let ten = frame_bounds(&App::with_theme_fetch_card(choosing(fetched(&refs))));
+        assert_eq!(one, ten);
     }
 
     #[test]

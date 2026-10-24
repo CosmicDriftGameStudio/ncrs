@@ -704,6 +704,21 @@ impl FilingModule {
         )
     }
 
+    /// Whether "Not now", the cross and Esc may leave the card. The recovery
+    /// key is shown once, so leaving its card would lose it; a card that works
+    /// cannot be left either.
+    pub fn card_can_be_dismissed(&self) -> bool {
+        self.has_card() && self.may_dismiss()
+    }
+
+    fn may_dismiss(&self) -> bool {
+        let stays = matches!(
+            self.phase,
+            Phase::Ready | Phase::Dismissed | Phase::ShowRecoveryKey { .. }
+        );
+        !stays && !self.phase.is_busy()
+    }
+
     /// For the clipboard only.
     pub fn recovery_key_text(&self) -> Option<String> {
         match &self.phase {
@@ -779,12 +794,7 @@ impl FilingModule {
                 None
             }
             FilingMessage::Dismiss => {
-                // The recovery key is shown once; leaving its card would lose it.
-                let stays = matches!(
-                    self.phase,
-                    Phase::Ready | Phase::Dismissed | Phase::ShowRecoveryKey { .. }
-                );
-                if !stays && !self.phase.is_busy() {
+                if self.may_dismiss() {
                     self.generation = next_generation();
                     self.phase = Phase::Dismissed;
                 }
