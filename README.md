@@ -183,6 +183,10 @@ curl -fsSL https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/ins
 
 Set `NCRS_BIN_DIR` to install elsewhere, or `NCRS_REPO` if you fork it.
 
+The archives and the app contain the PDF library (pdfium) next to the binary,
+so ncrs reads PDFs without anything else installed. `install.sh` and
+`install.ps1` put it beside the installed binary.
+
 On Windows (PowerShell):
 
 ```powershell

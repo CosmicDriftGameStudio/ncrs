@@ -18,6 +18,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $Repo = if ($env:NCRS_REPO) { $env:NCRS_REPO } else { 'CosmicDriftGameStudio/ncrs' }
 $BinName = 'ncrs.exe'
+# The PDF library sits next to the executable; ncrs looks for it there.
+$LibName = 'pdfium.dll'
 
 function Write-Info($message) { Write-Host "  $message" }
 
@@ -29,6 +31,11 @@ if ($Uninstall) {
     }
     else {
         Write-Info "nothing to remove at $target"
+    }
+    $libTarget = Join-Path $BinDir $LibName
+    if (Test-Path $libTarget) {
+        Remove-Item $libTarget
+        Write-Info "removed $libTarget"
     }
     $config = Join-Path $env:APPDATA 'ncrs'
     Write-Info "config, if any, is in $config"
@@ -106,9 +113,16 @@ try {
         return
     }
 
+    $libSrc = Get-ChildItem -Path $tmp -Recurse -Filter $LibName | Select-Object -First 1
+    if (-not $libSrc) {
+        Write-Error "archive did not contain a file called $LibName"
+        return
+    }
+
     New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
     Copy-Item $src.FullName (Join-Path $BinDir $BinName) -Force
-    Write-Info "installed $(Join-Path $BinDir $BinName)"
+    Copy-Item $libSrc.FullName (Join-Path $BinDir $LibName) -Force
+    Write-Info "installed $(Join-Path $BinDir $BinName) and $(Join-Path $BinDir $LibName)"
 }
 finally {
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue

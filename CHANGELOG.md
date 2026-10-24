@@ -8,10 +8,13 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- The release archives and the macOS app now contain the PDF library
+  (pdfium), and the install scripts put it next to the program, so ncrs reads
+  PDFs without any extra install.
 - PDFs are now read: the text of a PDF is stored with the document and can
   be searched. A PDF without text, such as a scan, is prepared as page
   images so a later step can recognise its text. This needs the PDF library
-  (pdfium), which is not part of the program itself; without it each PDF shows
+  (pdfium), which sits next to the program; without it each PDF shows
   an error on the status page and is tried again on the next start.
 - Rules now decide where a new document would be filed. A rule can match on
   words in the text (any case) or on a pattern, and can read the date, the

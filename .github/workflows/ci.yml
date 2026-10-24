@@ -162,3 +162,29 @@ jobs:
 
       - name: Build
         run: cargo build --workspace --release --target ${{ matrix.target }} --features ncrs/gpu-with-fallback
+
+      # Lays the release archive out like the release does, so a missing
+      # pdfium library or binary fails on the pull request, not at the tag.
+      # The layout listing in the log shows what the archive holds. Nothing is
+      # uploaded or signed here.
+      - name: Fetch pdfium for the archive
+        shell: bash
+        run: scripts/fetch-pdfium.sh ${{ matrix.target }} target/pdfium-archive
+
+      - name: Package the archive
+        shell: bash
+        run: |
+          binary=target/${{ matrix.target }}/release/ncrs
+          if [ "${{ runner.os }}" = Windows ]; then binary="$binary.exe"; fi
+          scripts/package.sh archive ${{ matrix.target }} "$binary" target/pdfium-archive target/package
+
+      - name: Package the macOS app
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          case "${{ matrix.target }}" in
+            aarch64-*) min_macos=11.0 ;;
+            *) min_macos=10.13 ;;
+          esac
+          scripts/package.sh app target/package/ncrs-${{ matrix.target }} "$version" "$min_macos" target/package-app
