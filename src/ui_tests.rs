@@ -2285,3 +2285,129 @@ mod theme_fetch_card {
         );
     }
 }
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod title_bar {
+    use std::time::{Duration, SystemTime};
+
+    use ncrs_pipeline::{RunnerState, Snapshot};
+
+    use super::*;
+    use crate::messages::{FilingStatusMessage, PanelSide};
+    use crate::ui::titlebar::{HERMES_CHIP_ID, LEFT_TAB_ID, RIGHT_TAB_ID};
+
+    fn taken_at() -> SystemTime {
+        SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000)
+    }
+
+    /// Hermes on, with a measured rate of 78 files a minute.
+    fn with_hermes() -> App {
+        let mut snapshot = Snapshot::off();
+        snapshot.state = RunnerState::Running;
+        snapshot.documents_per_minute[1] = 78;
+        App::with_filing_snapshot(snapshot, taken_at())
+    }
+
+    fn messages_after_click(app: &App, id: &'static str) -> Vec<Message> {
+        let mut sim = simulator(app);
+        sim.click(iced::widget::Id::new(id))
+            .expect("the clicked widget");
+        sim.into_messages().collect()
+    }
+
+    #[test]
+    fn a_click_on_the_inactive_tab_makes_its_panel_active() {
+        let mut app = App::with_fixed_panels();
+        assert_eq!(app.active_panel_side_for_test(), PanelSide::Left);
+
+        let messages = messages_after_click(&app, RIGHT_TAB_ID);
+        assert_eq!(messages, vec![Message::ActivatePanel(PanelSide::Right)]);
+        for message in messages {
+            drop(app.update(message));
+        }
+        assert_eq!(app.active_panel_side_for_test(), PanelSide::Right);
+
+        assert_eq!(
+            messages_after_click(&app, LEFT_TAB_ID),
+            vec![Message::ActivatePanel(PanelSide::Left)]
+        );
+    }
+
+    #[test]
+    fn a_click_on_the_hermes_chip_opens_the_inspection() {
+        let mut app = with_hermes();
+        let messages = messages_after_click(&app, HERMES_CHIP_ID);
+        assert_eq!(
+            messages,
+            vec![Message::FilingStatus(FilingStatusMessage::Open)]
+        );
+        for message in messages {
+            drop(app.update(message));
+        }
+        assert!(app.filing_status_page_is_open_for_test());
+    }
+
+    #[test]
+    fn the_chip_is_absent_while_hermes_is_off() {
+        let shows_chip = |app: &App| {
+            simulator(app)
+                .find(iced::widget::Id::new(HERMES_CHIP_ID))
+                .is_ok()
+        };
+        assert!(!shows_chip(&App::with_fixed_panels()));
+        assert!(shows_chip(&with_hermes()));
+    }
+
+    #[test]
+    fn the_chip_names_the_rate_in_the_language_of_the_app() {
+        let english = with_hermes();
+        simulator(&english).find("Hermes 78/min").unwrap();
+        let german = with_hermes().in_language(Language::German);
+        simulator(&german).find("Hermes 78/Min.").unwrap();
+    }
+
+    #[test]
+    fn the_tabs_show_the_paths_below_the_home_folder() {
+        let app = App::with_fixed_panels();
+        let sep = std::path::MAIN_SEPARATOR;
+        simulator(&app).find(format!("~{sep}links")).unwrap();
+        simulator(&app).find(format!("~{sep}files")).unwrap();
+    }
+
+    fn preset_app(preset: &str, language: Language) -> App {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, format!("[theme]\npreset = \"{preset}\"\n")).unwrap();
+        with_hermes()
+            .with_config(crate::config::load(&path))
+            .in_language(language)
+    }
+
+    #[test]
+    fn the_main_view_matches_its_snapshots() {
+        for (preset, language, name) in [
+            ("cosmic", Language::English, "main_view_cosmic_en"),
+            ("cosmic", Language::German, "main_view_cosmic_de"),
+            ("dracula", Language::English, "main_view_dracula_en"),
+            ("dracula", Language::German, "main_view_dracula_de"),
+        ] {
+            let matches = simulator(&preset_app(preset, language))
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(
+                matches,
+                "the main view does not match tests/snapshots/{name}.png"
+            );
+        }
+    }
+}

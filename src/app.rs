@@ -27,7 +27,8 @@ use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 use crate::menu::Availability;
 use crate::messages::{
     ClipboardKind, CommandPaletteMessage, ConflictChoice, FilingSetupMessage, FilingStatusMessage,
-    Message, PanelSide, QuickOpenMessage, SearchMessage, ThemeFetchMessage, TransferKind,
+    Message, PanelSide, QuickOpenMessage, SearchMessage, ThemeFetchMessage, TitleBarMessage,
+    TransferKind,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -46,13 +47,14 @@ use crate::ui::filing_status as filing_status_ui;
 use crate::ui::quick_open as quick_open_ui;
 use crate::ui::search as search_ui;
 use crate::ui::theme_fetch as theme_fetch_ui;
+use crate::ui::titlebar;
 use crate::ui::volumes as volumes_view;
 use crate::ui::{
     self, conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelProps, PanelState,
 };
 use ncrs_index::{KeyStore, KeyringKeyStore};
 use ncrs_intake::LocationMode;
-use ncrs_pipeline::Load;
+use ncrs_pipeline::{Load, RunnerState};
 use tokio::sync::mpsc;
 
 /// How long the search view waits for the next keystroke before it searches.
@@ -244,6 +246,7 @@ fn resets_type_ahead(message: &Message) -> bool {
             | Message::SelectFirst
             | Message::SelectLast
             | Message::SwitchPanel
+            | Message::ActivatePanel(_)
             | Message::RowClicked { .. }
             | Message::TagMove(_)
             | Message::ToggleTag
@@ -277,8 +280,23 @@ fn leaves_path_field(message: &Message) -> bool {
             | Message::ContextMenuKey
             | Message::CopyToClipboard(_)
             | Message::SwitchPanel
+            | Message::ActivatePanel(_)
             | Message::SortBy { .. }
     )
+}
+
+/// The window is the runtime's to move and resize: the id comes from the
+/// runtime, since the app opens exactly one window.
+fn update_title_bar(message: TitleBarMessage) -> Task<Message> {
+    let window = iced::window::latest();
+    match message {
+        TitleBarMessage::Drag => window.and_then(iced::window::drag),
+        TitleBarMessage::ToggleMaximize => window.and_then(iced::window::toggle_maximize),
+        TitleBarMessage::Minimize => window.and_then(|id| iced::window::minimize(id, true)),
+        TitleBarMessage::Resize(edge) => {
+            window.and_then(move |id| iced::window::drag_resize(id, edge.direction()))
+        }
+    }
 }
 
 /// Takes the keyboard focus from the path field, so the keys go to the panels
@@ -2225,6 +2243,11 @@ impl App {
                 self.active_panel = self.active_panel.other();
                 Task::none()
             }
+            Message::ActivatePanel(side) => {
+                self.active_panel = side;
+                Task::none()
+            }
+            Message::TitleBar(title_bar) => update_title_bar(title_bar),
             Message::SortBy { .. } | Message::SortActive(_) => self.update_sort(message),
             Message::SwitchLanguage => {
                 self.switch_language();
@@ -2594,7 +2617,7 @@ impl App {
             .spacing(ui::theme::spacing::PANEL_GAP)
             .height(Length::Fill);
 
-        let window = container(
+        let below_title_bar = container(
             column![
                 panels,
                 statusbar::view(
@@ -2629,8 +2652,12 @@ impl App {
         )
         .padding(theme::spacing::OUTER_PADDING)
         .width(Length::Fill)
-        .height(Length::Fill)
-        .style(theme::root(&self.palette));
+        .height(Length::Fill);
+
+        let window = container(column![self.title_bar_view(), below_title_bar])
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(theme::root(&self.palette));
 
         // The card has no scrim: the panels stay usable around it. Every modal
         // below stacks on this base, so it stays above the card.
@@ -2653,13 +2680,18 @@ impl App {
             filing_setup_ui::view(setup, &context, &self.palette)
         });
         let cards: Vec<Element<'_, Message>> = setup_card.into_iter().chain(module_card).collect();
-        let root: Element<'_, Message> = if cards.is_empty() {
+        let base: Element<'_, Message> = if cards.is_empty() {
             window.into()
         } else {
             let card = Column::with_children(cards)
                 .spacing(theme::spacing::SECTION_GAP)
                 .align_x(iced::Alignment::Center);
             Stack::with_children([window.into(), filing_card_layer(card.into())]).into()
+        };
+        let root = if cfg!(target_os = "macos") {
+            base
+        } else {
+            titlebar::with_resize_edges(base)
         };
 
         if let Some(menu) = self.context_menu.as_ref() {
@@ -4555,6 +4587,56 @@ impl App {
         self.load(self.active_panel, directory, Some(name))
     }
 
+    fn title_bar_view(&self) -> Element<'_, Message> {
+        let tab = |side: PanelSide| {
+            let title = match self.search.as_ref() {
+                Some(search) if self.search_open && side == self.search_side => {
+                    titlebar::TabTitle::Search(search_ui::title(search, self.lang))
+                }
+                _ => titlebar::TabTitle::Path {
+                    path: &self.panel(side).path,
+                    loading: self.panel(side).loading,
+                },
+            };
+            titlebar::Tab {
+                side,
+                title,
+                active: self.active_panel == side,
+            }
+        };
+        titlebar::view(&titlebar::TitleBar {
+            tabs: [tab(PanelSide::Left), tab(PanelSide::Right)],
+            home: &self.home,
+            hermes: self.hermes_chip(),
+            lab_shortcut: self
+                .keymap
+                .shortcut_label(&KeyAction::CommandPalette.message()),
+            window_width: self.window_size.width,
+            lang: self.lang,
+            palette: &self.palette,
+        })
+    }
+
+    /// The title bar chip: Hermes is on, and how fast it files. Absent while
+    /// the module is off.
+    fn hermes_chip(&self) -> Option<String> {
+        let snapshot = self.filing_status.snapshot();
+        let text = match snapshot.state {
+            RunnerState::Off => return None,
+            RunnerState::Paused => self.lang.text(Msg::TitleBarHermesPaused).to_owned(),
+            RunnerState::Running | RunnerState::Idle => {
+                match self.filing_status.documents_per_minute() {
+                    Some(rate) => fill_template(
+                        self.lang.text(Msg::TitleBarHermesRate),
+                        &[("{rate}", &rate.to_string())],
+                    ),
+                    None => self.lang.text(Msg::ActionFilingSetupTheme).to_owned(),
+                }
+            }
+        };
+        Some(text)
+    }
+
     fn filing_badge(&self) -> Option<statusbar::FilingBadge<Message>> {
         let progress = self.filing_status.progress()?;
         let template = if progress.paused {
@@ -5940,6 +6022,10 @@ impl App {
 
     pub fn set_modifiers_for_test(&mut self, modifiers: Modifiers) {
         self.modifiers = modifiers;
+    }
+
+    pub fn filing_status_page_is_open_for_test(&self) -> bool {
+        self.filing_status.page_open()
     }
 
     pub fn active_panel_side_for_test(&self) -> PanelSide {

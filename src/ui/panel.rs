@@ -9,8 +9,7 @@ use iced::{alignment, Element, Font, Length};
 
 use super::format;
 use super::layout::{
-    COLUMN_HEADER_HEIGHT, DATE_COLUMN_WIDTH, PANEL_TITLE_HEIGHT, ROW_HEIGHT, SIZE_COLUMN_WIDTH,
-    TAG_COLUMN_WIDTH,
+    COLUMN_HEADER_HEIGHT, DATE_COLUMN_WIDTH, ROW_HEIGHT, SIZE_COLUMN_WIDTH, TAG_COLUMN_WIDTH,
 };
 use super::theme::{self, font_size, spacing};
 use crate::fs::{sort_entries, FileEntry, ReadError, SortColumn, SortKey};
@@ -306,32 +305,12 @@ pub fn view<'a, M: Clone + 'a>(
     // has to ask for the wheel itself.
     mouse_area(
         column![
-            title_bar(state, palette, props.is_active),
             column_header(lang, palette, state.sort, on_sort),
             Column::with_children(rows).height(Length::Fill),
         ]
         .apply_frame(palette, props.is_active),
     )
     .on_scroll(on_scroll)
-    .into()
-}
-
-fn title_bar<'a, M: 'a>(state: &'a PanelState, palette: &Palette, active: bool) -> Element<'a, M> {
-    let mut title = state.path.display().to_string();
-    if state.loading {
-        title.push_str("  …");
-    }
-    container(
-        text(title)
-            .size(font_size::TITLE)
-            .wrapping(text::Wrapping::None),
-    )
-    .padding([0.0, spacing::CELL_PADDING_X])
-    .height(PANEL_TITLE_HEIGHT)
-    .width(Length::Fill)
-    .align_y(alignment::Vertical::Center)
-    .clip(true)
-    .style(theme::panel_title(palette, active))
     .into()
 }
 

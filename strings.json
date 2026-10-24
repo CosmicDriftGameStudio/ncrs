@@ -1297,6 +1297,18 @@
       "de": "Hermes pausiert: {done} von {total} Akten abgestempelt"
     },
     {
+      "key": "title_bar.hermes_rate",
+      "context": "Chip in the title bar while the filing module (Hermes) is working: files per minute, measured over the last full minutes. Takes the number. Pressing it opens the Inspection.",
+      "en": "Hermes {rate}/min",
+      "de": "Hermes {rate}/Min."
+    },
+    {
+      "key": "title_bar.hermes_paused",
+      "context": "Chip in the title bar while the filing module (Hermes) is paused; pressing it opens the Inspection.",
+      "en": "Hermes paused",
+      "de": "Hermes pausiert"
+    },
+    {
       "key": "filing_status.title",
       "context": "Title of the filing status page, a box over the panels that shows what Hermes (the filing module) is doing. Inspection is the themed name of the page.",
       "en": "Inspection",

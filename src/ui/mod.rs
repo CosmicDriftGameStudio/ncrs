@@ -22,6 +22,7 @@ pub mod search;
 pub mod statusbar;
 pub mod theme;
 pub mod theme_fetch;
+pub mod titlebar;
 pub mod volumes;
 
 pub use panel::{PanelProps, PanelState};

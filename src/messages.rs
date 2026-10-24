@@ -224,6 +224,11 @@ pub enum Message {
         delta: iced::mouse::ScrollDelta,
     },
     SwitchPanel,
+    /// A click on a path tab in the title bar: that panel becomes the active one.
+    ActivatePanel(PanelSide),
+    /// The window row: moving, zooming and, where the system draws no frame,
+    /// the window buttons and the edges that resize.
+    TitleBar(TitleBarMessage),
     /// Temporarily switches the UI language. Not yet persisted in config.
     SwitchLanguage,
     /// Mouse click on a row of a panel.  is true when the click landed in
@@ -276,6 +281,47 @@ pub enum Message {
     // --- Window / app ---
     WindowResized(Size),
     Quit,
+}
+
+/// What the title bar asks of the window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TitleBarMessage {
+    /// A press on an empty part of the row: the window follows the pointer.
+    Drag,
+    /// A double click on an empty part, or the maximize button: zoom on macOS,
+    /// maximize or restore elsewhere.
+    ToggleMaximize,
+    Minimize,
+    Resize(ResizeEdge),
+}
+
+/// The side or corner of the window a resize starts from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResizeEdge {
+    North,
+    South,
+    East,
+    West,
+    NorthEast,
+    NorthWest,
+    SouthEast,
+    SouthWest,
+}
+
+impl ResizeEdge {
+    pub fn direction(self) -> iced::window::Direction {
+        use iced::window::Direction;
+        match self {
+            Self::North => Direction::North,
+            Self::South => Direction::South,
+            Self::East => Direction::East,
+            Self::West => Direction::West,
+            Self::NorthEast => Direction::NorthEast,
+            Self::NorthWest => Direction::NorthWest,
+            Self::SouthEast => Direction::SouthEast,
+            Self::SouthWest => Direction::SouthWest,
+        }
+    }
 }
 
 /// Everything the search view sends. Its own enum so the panel messages stay

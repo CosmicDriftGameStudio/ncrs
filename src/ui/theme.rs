@@ -80,13 +80,48 @@ pub fn panel(palette: &Palette, active: bool) -> impl Fn(&Theme) -> container::S
     }
 }
 
-pub fn panel_title(palette: &Palette, active: bool) -> impl Fn(&Theme) -> container::Style {
+/// A path tab in the title bar; the active one is the lit one.
+pub fn title_tab(
+    palette: &Palette,
+    active: bool,
+) -> impl Fn(&Theme, button::Status) -> button::Style {
     let colors = *palette;
-    move |_theme| {
-        if active {
-            filled(colors.title, colors.title_text)
+    move |_theme, _status| {
+        let (fill, text_color) = if active {
+            (colors.title, colors.title_text)
         } else {
-            filled(colors.title_inactive, colors.dim_text)
+            (colors.title_inactive, colors.dim_text)
+        };
+        button::Style {
+            background: Some(Background::Color(fill)),
+            text_color,
+            border: Border {
+                radius: spacing::BORDER_RADIUS.into(),
+                ..Border::default()
+            },
+            ..button::Style::default()
+        }
+    }
+}
+
+/// A flat button in the title bar; lit in the title colors while the pointer
+/// is over it.
+pub fn title_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    move |_theme, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: hovered.then_some(Background::Color(colors.title)),
+            text_color: if hovered {
+                colors.title_text
+            } else {
+                colors.accent
+            },
+            border: Border {
+                radius: spacing::BORDER_RADIUS.into(),
+                ..Border::default()
+            },
+            ..button::Style::default()
         }
     }
 }
@@ -548,18 +583,16 @@ mod tests {
         let style_panel_inactive = panel(&p, false)(&theme);
         assert_eq!(style_panel_inactive.border.color, border_inactive);
 
-        let style_title_active = panel_title(&p, true)(&theme);
+        let tab_status = button::Status::Active;
+        let style_tab_active = title_tab(&p, true)(&theme, tab_status);
         assert_eq!(
-            (fill_of(&style_title_active), style_title_active.text_color),
-            (Some(teal), Some(dark_text))
+            (row_fill(&style_tab_active), style_tab_active.text_color),
+            (Some(teal), dark_text)
         );
-        let style_title_inactive = panel_title(&p, false)(&theme);
+        let style_tab_inactive = title_tab(&p, false)(&theme, tab_status);
         assert_eq!(
-            (
-                fill_of(&style_title_inactive),
-                style_title_inactive.text_color
-            ),
-            (Some(bar), Some(rgb(0.450, 0.500, 0.640)))
+            (row_fill(&style_tab_inactive), style_tab_inactive.text_color),
+            (Some(bar), rgb(0.450, 0.500, 0.640))
         );
 
         let status = button::Status::Active;

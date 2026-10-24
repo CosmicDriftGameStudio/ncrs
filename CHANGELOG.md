@@ -22,6 +22,16 @@ All notable changes to this project are documented here. The format follows
   entries. Keys without `Cmd` or `Ctrl` that are not function keys, like
   `Enter` or `Space`, are not shown in the menu so they keep working in text
   fields. On Linux, and for now on Windows, the Lab (`F1`) is the menu.
+- The paths of the two panels now sit in the title bar as tabs, one per
+  panel, with the active one lit; click a tab to switch to that panel. Paths
+  start with `~` under your home folder and are cut in the middle when they do
+  not fit, so the last folder stays visible. The right end of the bar shows a
+  Hermes chip (state and files per minute; click it to open the Inspection;
+  hidden while Hermes is off) and the Lab button with its key. Drag an empty
+  part of the bar to move the window, double-click it to zoom or maximize. On
+  macOS the bar sits behind the traffic lights; on Windows and Linux the
+  window has no system frame any more: the bar carries minimize, maximize and
+  close, and the window edges resize.
 
 ### Changed
 
