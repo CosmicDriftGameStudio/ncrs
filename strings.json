@@ -1598,9 +1598,9 @@
     },
     {
       "key": "theme_fetch.help",
-      "context": "Help line under the text field in the theme download card. Open VSX is the open extension registry at open-vsx.org; the name stays as it is.",
-      "en": "Downloads only from open-vsx.org. Nothing goes out before you press Enter or Fetch.",
-      "de": "Lädt nur von open-vsx.org. Es geht nichts raus, bevor du Enter oder Holen drückst."
+      "context": "Help line under the text field in the theme download card. Open VSX is the open extension registry; the name stays as it is. Its downloads may come from a second Open VSX host, so the line names the registry, not a single host.",
+      "en": "Downloads only from Open VSX. Nothing goes out before you press Enter or Fetch.",
+      "de": "Lädt nur von Open VSX. Es geht nichts raus, bevor du Enter oder Holen drückst."
     },
     {
       "key": "theme_fetch.fetch",

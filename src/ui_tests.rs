@@ -1944,7 +1944,7 @@ mod theme_fetch_card {
     use crate::vsix::Brightness;
 
     const HELP: &str =
-        "Downloads only from open-vsx.org. Nothing goes out before you press Enter or Fetch.";
+        "Downloads only from Open VSX. Nothing goes out before you press Enter or Fetch.";
 
     fn fetch_message(message: ThemeFetchMessage) -> Message {
         Message::ThemeFetch(message)
