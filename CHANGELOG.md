@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- The groundwork for letting an AI fill in the fields the rules left open
+  (sender, kind, date, number, amount). There is an interface for such a
+  provider that can only return field values, a step in the processing that
+  uses it, and a provider for servers that speak the common chat API, which
+  asks for your consent before a document leaves this machine. No provider
+  is switched on in the app yet, so nothing changes for you today, and
+  nothing is sent anywhere.
 - On macOS, scanned pages are now read with the text recognition built into
   the system (Apple Vision), which needs no download. If it fails, the ocrs
   models are used when they have been downloaded.

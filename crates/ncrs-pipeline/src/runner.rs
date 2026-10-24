@@ -1530,6 +1530,7 @@ mod tests {
             intake_steps(
                 Arc::new(SharedIndex(Arc::clone(&self.index))),
                 Arc::new(chain),
+                None,
             )
         }
     }

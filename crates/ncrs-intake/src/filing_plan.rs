@@ -156,7 +156,8 @@ fn plan_with(rule: &Rule, input: &PlanInput<'_>) -> Planning {
     }
 }
 
-const FIELD_ORDER: [Field; 6] = [
+/// The order fields are asked for and reported in.
+pub const FIELD_ORDER: [Field; 6] = [
     Field::Sender,
     Field::Kind,
     Field::TaxContext,

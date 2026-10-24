@@ -2,18 +2,26 @@ use std::io;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
+use ncrs_ai::Provider;
 use ncrs_index::{DocumentStatus, IndexError, ReviewReason};
 use ncrs_intake::{plan, PlanInput, Planning, StabilityTracker, TextChain};
 use ncrs_intake::{settle_location, take_in, IntakeError, Location, LocationMode, Outcome};
 
+use crate::ai_step::AiStep;
 use crate::step::{with_index_value, IndexAccess, Item, Step, StepOutcome};
 
-const NO_INDEX: &str = "index not open";
+pub const NO_INDEX: &str = "index not open";
 
 /// The steps every file passes, in order. Steps that classify documents (text,
-/// OCR, rules, fields, filing) register before the review step.
-pub fn intake_steps(index: Arc<dyn IndexAccess>, text: Arc<TextChain>) -> Vec<Box<dyn Step>> {
-    vec![
+/// OCR, rules, fields, filing) register before the review step. The AI step
+/// is there only when a provider is given; without one the steps are intake,
+/// text, rules, review.
+pub fn intake_steps(
+    index: Arc<dyn IndexAccess>,
+    text: Arc<TextChain>,
+    ai: Option<Arc<dyn Provider>>,
+) -> Vec<Box<dyn Step>> {
+    let mut steps: Vec<Box<dyn Step>> = vec![
         Box::new(IntakeStep {
             index: Arc::clone(&index),
             tracker: Mutex::new(StabilityTracker::new()),
@@ -25,8 +33,12 @@ pub fn intake_steps(index: Arc<dyn IndexAccess>, text: Arc<TextChain>) -> Vec<Bo
         Box::new(RulesStep {
             index: Arc::clone(&index),
         }),
-        Box::new(ReviewStep { index }),
-    ]
+    ];
+    if let Some(provider) = ai {
+        steps.push(Box::new(AiStep::new(Arc::clone(&index), provider)));
+    }
+    steps.push(Box::new(ReviewStep { index }));
+    steps
 }
 
 /// Takes the file into the index, once it has held still.

@@ -1,0 +1,28 @@
+[package]
+name = "ncrs-ai"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "Asks an AI provider for the document fields the rules left open"
+license = "MIT"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
+# The parsers of the rules step: a date or an amount from the AI is read by
+# the same code as one from the rules, not by a second implementation.
+ncrs-intake = { path = "../ncrs-intake", version = "0.0.0" }
+# Reads the reply of the provider (JSON with comments and trailing commas is
+# fine there). The request is written by json.rs: it has no writer, but it is
+# already in the lock, and serde_json is not.
+jsonc-parser = { version = "=0.34.0", default-features = false }
+# The HTTP provider only; same version and features as the app's theme download.
+ureq = { version = "=3.4.2", default-features = false, features = ["rustls"] }
+
+[features]
+# FakeProvider, for the tests of crates that run a provider.
+testing = []

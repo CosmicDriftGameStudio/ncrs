@@ -2351,6 +2351,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ncrs-ai"
+version = "0.0.0"
+dependencies = [
+ "jsonc-parser",
+ "ncrs-index",
+ "ncrs-intake",
+ "ureq",
+]
+
+[[package]]
 name = "ncrs-index"
 version = "0.0.0"
 dependencies = [
@@ -2397,6 +2407,8 @@ dependencies = [
 name = "ncrs-pipeline"
 version = "0.0.0"
 dependencies = [
+ "chrono",
+ "ncrs-ai",
  "ncrs-index",
  "ncrs-intake",
  "tempfile",

@@ -12,8 +12,11 @@ publish = false
 workspace = true
 
 [dependencies]
+ncrs-ai = { path = "../ncrs-ai", version = "0.0.0" }
 ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
 ncrs-intake = { path = "../ncrs-intake", version = "0.0.0" }
 
 [dev-dependencies]
+ncrs-ai = { path = "../ncrs-ai", version = "0.0.0", features = ["testing"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 tempfile = "3.27"

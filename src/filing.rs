@@ -695,6 +695,9 @@ impl FilingModule {
                     ocr_models_dir(&self.db_path)
                         .unwrap_or_else(|| PathBuf::from(OCR_MODELS_FOLDER)),
                 )),
+                // No AI provider yet: the built-in one comes with its own
+                // consent and setup.
+                None,
             ),
             locations,
             Arc::new(SystemClock),
