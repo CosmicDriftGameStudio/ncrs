@@ -8,6 +8,7 @@ mod location;
 mod scan;
 mod stability;
 mod take_in;
+mod text;
 mod watcher;
 
 pub use classify::{classify, Skip};
@@ -18,4 +19,8 @@ pub use scan::{
 };
 pub use stability::{StabilityTracker, STABLE_AFTER};
 pub use take_in::{take_in, Outcome};
+pub use text::{
+    pdfium_library_dir, Extracted, ImageTextSource, PageImage, PdfText, PdfUnavailable, TextChain,
+    TextError, TextSource,
+};
 pub use watcher::{LocationWatcher, WatchEvent};

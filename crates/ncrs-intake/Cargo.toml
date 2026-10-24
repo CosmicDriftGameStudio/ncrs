@@ -19,6 +19,13 @@ same-file = "1.0"
 # One recursive watcher per location; the backends (FSEvents, inotify,
 # ReadDirectoryChanges) do the per-directory work.
 notify = "8"
+# pdfium is loaded from a shared library at runtime, never linked: the library
+# is a separate download (see scripts/fetch-pdfium.sh) and a missing one must be
+# an error the app can show. `pdfium_7881` is the newest API level this crate
+# knows; the binaries are newer and stay compatible. `thread_safe` lets the
+# pipeline's worker threads share one binding. No `image` feature: pages are
+# rendered to raw bytes.
+pdfium-render = { version = "=0.9.4", default-features = false, features = ["pdfium_7881", "thread_safe"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 # O_NOFOLLOW and O_NONBLOCK for opening a file that may have been swapped for

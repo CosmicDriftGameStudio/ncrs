@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- PDFs are now read: the text of a PDF is stored with the document and can
+  be searched. A PDF without text, such as a scan, is prepared as page
+  images so a later step can recognise its text. This needs the PDF library
+  (pdfium), which is not part of the program itself; without it each PDF shows
+  an error on the status page and is tried again on the next start.
 - The Lab is now one grouped command list (File, Edit, View, Go, Search,
   Filing, Help). Each command shows its plain name first and the playful name
   dimmed after it; type the start of any word of either to find it, so "se"

@@ -290,6 +290,7 @@ impl State {
                 location: location.clone(),
                 path: path.to_path_buf(),
                 document: None,
+                text: None,
             },
             batch,
             fingerprint,
@@ -1053,7 +1054,7 @@ mod tests {
     use std::time::UNIX_EPOCH;
 
     use ncrs_index::{DocumentStatus, Index};
-    use ncrs_intake::LocationMode;
+    use ncrs_intake::{Extracted, LocationMode, TextChain, TextError, TextSource};
     use tempfile::TempDir;
 
     use super::*;
@@ -1518,7 +1519,14 @@ mod tests {
         }
 
         fn steps(&self) -> Vec<Box<dyn Step>> {
-            intake_steps(Arc::new(SharedIndex(Arc::clone(&self.index))))
+            self.steps_reading(TextChain::new())
+        }
+
+        fn steps_reading(&self, chain: TextChain) -> Vec<Box<dyn Step>> {
+            intake_steps(
+                Arc::new(SharedIndex(Arc::clone(&self.index))),
+                Arc::new(chain),
+            )
         }
     }
 
@@ -1546,12 +1554,13 @@ mod tests {
         );
 
         let report = runner.wait_for("the backlog taken in", |snapshot| {
-            is_idle(snapshot) && snapshot.steps[1].done == 3
+            is_idle(snapshot) && snapshot.steps[2].done == 3
         });
 
         assert_eq!(report.steps[0].name, "intake");
         assert_eq!(report.steps[0].done, 3);
-        assert_eq!(report.steps[1].name, "review");
+        assert_eq!(report.steps[1].name, "text");
+        assert_eq!(report.steps[2].name, "review");
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         let index = fixture.index.lock().unwrap();
         assert_eq!(index.documents_under(&inbox.path).unwrap().len(), 2);
@@ -1579,16 +1588,106 @@ mod tests {
             stepping_clock(),
         );
         runner.wait_for("the backlog reviewed", |snapshot| {
-            is_idle(snapshot) && snapshot.steps[1].done == 1
+            is_idle(snapshot) && snapshot.steps[2].done == 1
         });
 
         put(&inbox, "reminder.pdf", REMINDER);
 
         runner.wait_for("the new file reviewed", |snapshot| {
-            snapshot.steps[1].done == 2
+            snapshot.steps[2].done == 2
         });
         let index = fixture.index.lock().unwrap();
         assert_eq!(index.open_reviews().unwrap().len(), 2);
+    }
+
+    #[derive(Debug)]
+    struct FixedText(Result<Extracted, TextError>);
+
+    impl TextSource for FixedText {
+        fn extract(&self, _path: &Path) -> Result<Extracted, TextError> {
+            self.0.clone()
+        }
+    }
+
+    #[test]
+    fn the_text_of_a_file_is_stored_in_the_index() {
+        let inbox_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        put(&inbox, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let chain = TextChain::new().with_source(FixedText(Ok(Extracted::Text(
+            "Invoice 4711 Company A".to_owned(),
+        ))));
+        let runner = Runner::start(
+            settings(workers(1)),
+            fixture.steps_reading(chain),
+            vec![inbox],
+            stepping_clock(),
+        );
+
+        let report = runner.wait_for("the file reviewed", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[2].done == 1
+        });
+
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        let index = fixture.index.lock().unwrap();
+        assert_eq!(index.search_text("4711 Company", 10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_file_without_text_still_reaches_the_review_list() {
+        let inbox_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        put(&inbox, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let chain = TextChain::new().with_source(FixedText(Ok(Extracted::NotApplicable)));
+        let runner = Runner::start(
+            settings(workers(1)),
+            fixture.steps_reading(chain),
+            vec![inbox],
+            stepping_clock(),
+        );
+
+        runner.wait_for("the file reviewed", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[2].done == 1
+        });
+
+        assert_eq!(
+            fixture.index.lock().unwrap().open_reviews().unwrap().len(),
+            1
+        );
+    }
+
+    #[test]
+    fn a_text_error_is_reported_and_the_file_stays_out_of_the_review_list() {
+        let inbox_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        put(&inbox, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let missing = TextError::LibraryMissing {
+            path: PathBuf::from("pdfium"),
+        };
+        let chain = TextChain::new().with_source(FixedText(Err(missing.clone())));
+        let runner = Runner::start(
+            settings(workers(1)),
+            fixture.steps_reading(chain),
+            vec![inbox],
+            stepping_clock(),
+        );
+
+        let report = runner.wait_for("the failure shown", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[1].failed == 1
+        });
+
+        assert_eq!(report.errors[0].message, missing.to_string());
+        assert_eq!(report.steps[2].done, 0);
+        assert!(fixture
+            .index
+            .lock()
+            .unwrap()
+            .open_reviews()
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

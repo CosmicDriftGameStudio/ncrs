@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 
 use ncrs_index::{Index, IndexError, IndexStatistics, KeyStore, RecoveryKey};
-use ncrs_intake::Location;
+use ncrs_intake::{Location, PdfText, PdfUnavailable, TextChain};
 use ncrs_pipeline::{intake_steps, IndexAccess, Load, Runner, Settings, SystemClock};
 
 use crate::config::{Filing, FilingLocation};
@@ -561,6 +561,15 @@ fn key_error(err: IndexError) -> KeyError {
 // Module
 // ---------------------------------------------------------------------------
 
+/// The PDF source; when the pdfium library is missing, each PDF reports that
+/// instead, and the other files go on.
+fn shipped_text_chain() -> TextChain {
+    match PdfText::load_shipped() {
+        Ok(pdf) => TextChain::new().with_source(pdf),
+        Err(err) => TextChain::new().with_source(PdfUnavailable::new(err)),
+    }
+}
+
 impl FilingModule {
     /// `None` when the module is off: nothing is opened, created or resolved.
     pub fn start(
@@ -651,7 +660,7 @@ impl FilingModule {
         let logical_cores = thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
         Ok(Runner::start(
             Settings::new(self.load, logical_cores),
-            intake_steps(Arc::new(handle)),
+            intake_steps(Arc::new(handle), Arc::new(shipped_text_chain())),
             locations,
             Arc::new(SystemClock),
         ))

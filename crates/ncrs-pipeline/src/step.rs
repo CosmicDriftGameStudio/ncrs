@@ -12,6 +12,8 @@ pub struct Item {
     pub path: PathBuf,
     /// Set by the step that takes the file into the index.
     pub document: Option<DocumentId>,
+    /// Set by the text step when the file has text; read by later steps.
+    pub text: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

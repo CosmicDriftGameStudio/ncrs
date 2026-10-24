@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
 use ncrs_index::{DocumentStatus, IndexError, ReviewReason};
-use ncrs_intake::StabilityTracker;
 use ncrs_intake::{settle_location, take_in, IntakeError, Location, LocationMode, Outcome};
+use ncrs_intake::{StabilityTracker, TextChain};
 
 use crate::step::{with_index_value, IndexAccess, Item, Step, StepOutcome};
 
@@ -12,11 +12,15 @@ const NO_INDEX: &str = "index not open";
 
 /// The steps every file passes, in order. Steps that classify documents (text,
 /// OCR, rules, fields, filing) register before the review step.
-pub fn intake_steps(index: Arc<dyn IndexAccess>) -> Vec<Box<dyn Step>> {
+pub fn intake_steps(index: Arc<dyn IndexAccess>, text: Arc<TextChain>) -> Vec<Box<dyn Step>> {
     vec![
         Box::new(IntakeStep {
             index: Arc::clone(&index),
             tracker: Mutex::new(StabilityTracker::new()),
+        }),
+        Box::new(TextStep {
+            index: Arc::clone(&index),
+            chain: text,
         }),
         Box::new(ReviewStep { index }),
     ]
@@ -81,6 +85,38 @@ impl Step for IntakeStep {
         .ok_or_else(|| NO_INDEX.to_owned())?
         .map(|_report| ())
         .map_err(|err| err.to_string())
+    }
+}
+
+/// Reads the text of the file and stores it in the index. A file without text
+/// goes on without; the text of a document is only ever stored, never acted on.
+#[derive(Debug)]
+struct TextStep {
+    index: Arc<dyn IndexAccess>,
+    chain: Arc<TextChain>,
+}
+
+impl Step for TextStep {
+    fn name(&self) -> &'static str {
+        "text"
+    }
+
+    fn run(&self, item: &mut Item, _now: SystemTime) -> Result<StepOutcome, String> {
+        let id = item
+            .document
+            .ok_or_else(|| "the file has no document".to_owned())?;
+        item.text = self
+            .chain
+            .extract(&item.path)
+            .map_err(|err| err.to_string())?;
+        if let Some(text) = &item.text {
+            with_index_value(self.index.as_ref(), |index| {
+                index.set_document_text(id, text)
+            })
+            .ok_or_else(|| NO_INDEX.to_owned())?
+            .map_err(|err| err.to_string())?;
+        }
+        Ok(StepOutcome::Continue)
     }
 }
 
