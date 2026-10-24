@@ -319,7 +319,7 @@ pub fn pdfium_library_dir() -> Option<PathBuf> {
     clippy::panic,
     clippy::indexing_slicing
 )]
-mod tests {
+pub mod tests {
     use std::fs;
 
     use tempfile::TempDir;
@@ -338,7 +338,13 @@ mod tests {
             .join(sub)
     }
 
-    fn pdf_text() -> PdfText {
+    /// Every page of the PDF as the OCR sees a scan, text layer or not.
+    pub fn rendered_pages(pdf: &PdfText, path: &Path) -> Vec<PageImage> {
+        let document = pdf.pdfium.load_pdf_from_file(path, None).unwrap();
+        PdfText::render_pages(&document, path).unwrap()
+    }
+
+    pub fn pdf_text() -> PdfText {
         let dir = library_dir();
         PdfText::load(&dir).unwrap_or_else(|err| {
             panic!(
@@ -382,7 +388,7 @@ mod tests {
         out
     }
 
-    fn text_pdf(text: &str) -> Vec<u8> {
+    pub fn text_pdf(text: &str) -> Vec<u8> {
         pdf_bytes(
             &format!("BT /F1 14 Tf 20 100 Td ({text}) Tj ET"),
             "/Font<</F1 5 0 R>>",
@@ -402,7 +408,7 @@ mod tests {
         )
     }
 
-    fn write(dir: &TempDir, name: &str, bytes: &[u8]) -> PathBuf {
+    pub fn write(dir: &TempDir, name: &str, bytes: &[u8]) -> PathBuf {
         let path = dir.path().join(name);
         fs::write(&path, bytes).unwrap();
         path

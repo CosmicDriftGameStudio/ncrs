@@ -1056,7 +1056,9 @@ mod tests {
     use std::time::UNIX_EPOCH;
 
     use ncrs_index::{DocumentStatus, Index};
-    use ncrs_intake::{Extracted, LocationMode, TextChain, TextError, TextSource};
+    use ncrs_intake::{
+        Extracted, LazyOcrText, LocationMode, PageImage, TextChain, TextError, TextSource,
+    };
     use tempfile::TempDir;
 
     use super::*;
@@ -1658,6 +1660,44 @@ mod tests {
         assert_eq!(
             fixture.index.lock().unwrap().open_reviews().unwrap().len(),
             1
+        );
+    }
+
+    #[test]
+    fn a_scan_without_the_ocr_models_goes_to_the_review_list_without_text() {
+        let inbox_dir = TempDir::new().unwrap();
+        let models_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        put(&inbox, "scan.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let page = PageImage {
+            width: 2,
+            height: 2,
+            pixels: vec![0, 255, 255, 0],
+        };
+        let chain = TextChain::new()
+            .with_source(FixedText(Ok(Extracted::PageImages(vec![page]))))
+            .with_image_source(LazyOcrText::new(models_dir.path().join("ocr-models")));
+        let runner = Runner::start(
+            settings(workers(1)),
+            fixture.steps_reading(chain),
+            vec![inbox],
+            stepping_clock(),
+        );
+
+        let report = runner.wait_for("the scan reviewed", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[3].done == 1
+        });
+
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        let index = fixture.index.lock().unwrap();
+        let reviews = index.open_reviews().unwrap();
+        assert_eq!(reviews.len(), 1);
+        assert_eq!(reviews[0].reason, ncrs_index::ReviewReason::NoMatchingRule);
+        assert!(index.search_text("4711", 10).unwrap().is_empty());
+        assert!(
+            !models_dir.path().join("ocr-models").exists(),
+            "nothing is created or downloaded"
         );
     }
 

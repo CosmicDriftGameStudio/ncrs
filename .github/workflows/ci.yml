@@ -61,6 +61,14 @@ jobs:
           scripts/fetch-pdfium.sh "$triple" target/pdfium
           echo "NCRS_PDFIUM_DIR=$PWD/target/pdfium/$lib" >> "$GITHUB_ENV"
 
+      # The OCR test needs the two text recognition models. The script checks
+      # each download against a pinned size and checksum.
+      - name: Fetch the text recognition models for the tests
+        shell: bash
+        run: |
+          scripts/fetch-ocr-models.sh target/ocr-models
+          echo "NCRS_OCR_MODELS_DIR=$PWD/target/ocr-models" >> "$GITHUB_ENV"
+
       - name: Formatting
         run: cargo fmt --all --check
 

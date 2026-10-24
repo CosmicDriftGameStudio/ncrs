@@ -15,6 +15,7 @@ pub mod format;
 pub mod frame;
 pub mod key_intercept;
 pub mod layout;
+pub mod ocr_models;
 pub mod panel;
 pub mod picker;
 pub mod quick_open;

@@ -1991,6 +1991,84 @@
       "context": "Error in the theme download card when the theme files or the config file could not be written. Takes the path and the reason, which is English and stays untranslated.",
       "en": "Could not write {path}: {reason}",
       "de": "{path} konnte nicht geschrieben werden: {reason}"
+    },
+    {
+      "key": "action.download_ocr_models",
+      "context": "Entry of the command list and the menu that runs the key action download_ocr_models, which opens the card asking whether to download the models for reading scanned pages. The name of what the action does, as short as a menu entry; it has no key. The ellipsis says a card with a question follows.",
+      "en": "Download text recognition models…",
+      "de": "Modelle für Texterkennung laden…"
+    },
+    {
+      "key": "ocr_models.title",
+      "context": "Title of the card that asks before the models for text recognition (OCR) of scanned pages are downloaded.",
+      "en": "Download text recognition models",
+      "de": "Modelle für Texterkennung laden"
+    },
+    {
+      "key": "ocr_models.intro",
+      "context": "Explanation at the top of the card for the download of the OCR models. Scanned pages have no text of their own; the models read it from the picture. They are not part of ncrs and are downloaded once, only after the user presses the download button.",
+      "en": "Scanned pages are read with the text recognition of the ocrs project. It needs two model files that are not part of ncrs. Nothing is sent until you press Download. Each file is checked against its size and checksum before it is used.",
+      "de": "Gescannte Seiten werden mit der Texterkennung des ocrs-Projekts gelesen. Dafür braucht es zwei Modelldateien, die nicht zu ncrs gehören. Es wird nichts gesendet, bevor du auf Laden drückst. Jede Datei wird vor der Nutzung gegen Größe und Prüfsumme geprüft."
+    },
+    {
+      "key": "ocr_models.host",
+      "context": "Line in the OCR models card naming the server the files are downloaded from. Takes the host name.",
+      "en": "Download from: {host}",
+      "de": "Herunterladen von: {host}"
+    },
+    {
+      "key": "ocr_models.file",
+      "context": "Line in the OCR models card naming one model file and its size. Takes the file name and the size with its unit, for example 2.4 MB.",
+      "en": "{name}: {size}",
+      "de": "{name} ({size})"
+    },
+    {
+      "key": "ocr_models.checksum",
+      "context": "Line in the OCR models card under a model file: its SHA-256 checksum, which the download must match. Takes the checksum as 64 hexadecimal characters.",
+      "en": "SHA-256 checksum: {checksum}",
+      "de": "SHA-256-Prüfsumme: {checksum}"
+    },
+    {
+      "key": "ocr_models.target",
+      "context": "Line in the OCR models card naming the folder the files are saved in. Takes the folder path.",
+      "en": "Saved to: {folder}",
+      "de": "Gespeichert in: {folder}"
+    },
+    {
+      "key": "ocr_models.source",
+      "context": "Line in the OCR models card saying whose models these are. Takes the address of the project page, shown as plain text.",
+      "en": "The models are made by the ocrs project: {project}",
+      "de": "Die Modelle stammen vom ocrs-Projekt: {project}"
+    },
+    {
+      "key": "ocr_models.download",
+      "context": "Button in the OCR models card that starts the download. Verb.",
+      "en": "Download",
+      "de": "Laden"
+    },
+    {
+      "key": "ocr_models.downloading",
+      "context": "Line in the OCR models card while the files are being downloaded.",
+      "en": "Downloading…",
+      "de": "Wird geladen…"
+    },
+    {
+      "key": "ocr_models.installed",
+      "context": "Notice in the status bar after the OCR models were downloaded and checked.",
+      "en": "Text recognition models downloaded. Scanned pages are read from now on.",
+      "de": "Modelle für die Texterkennung geladen. Gescannte Seiten werden ab jetzt gelesen."
+    },
+    {
+      "key": "ocr_models.error",
+      "context": "Error in the OCR models card when the download failed or a file did not pass the check. Takes the technical detail, which stays untranslated. A file that failed is never put in place.",
+      "en": "Download failed ({detail})",
+      "de": "Download fehlgeschlagen ({detail})"
+    },
+    {
+      "key": "ocr_models.error_no_folder",
+      "context": "Error in the OCR models card when there is no data folder to save the models in.",
+      "en": "There is no data folder to save the models in.",
+      "de": "Es gibt keinen Datenordner, in dem die Modelle gespeichert werden könnten."
     }
   ]
 }

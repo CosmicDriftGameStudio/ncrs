@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 
 use ncrs_index::{Index, IndexError, IndexStatistics, KeyStore, RecoveryKey};
-use ncrs_intake::{Location, PdfText, PdfUnavailable, TextChain};
+use ncrs_intake::{LazyOcrText, Location, PdfText, PdfUnavailable, TextChain, OCR_MODELS_FOLDER};
 use ncrs_pipeline::{intake_steps, IndexAccess, Load, Runner, Settings, SystemClock};
 
 use crate::config::{Filing, FilingLocation};
@@ -562,12 +562,22 @@ fn key_error(err: IndexError) -> KeyError {
 // ---------------------------------------------------------------------------
 
 /// The PDF source; when the pdfium library is missing, each PDF reports that
-/// instead, and the other files go on.
-fn shipped_text_chain() -> TextChain {
-    match PdfText::load_shipped() {
+/// instead, and the other files go on. A scan is read by OCR once the user has
+/// downloaded the models into `ocr_models_dir`; until then it yields no text.
+fn shipped_text_chain(ocr_models_dir: PathBuf) -> TextChain {
+    let chain = match PdfText::load_shipped() {
         Ok(pdf) => TextChain::new().with_source(pdf),
         Err(err) => TextChain::new().with_source(PdfUnavailable::new(err)),
-    }
+    };
+    chain.with_image_source(LazyOcrText::new(ocr_models_dir))
+}
+
+/// Where the OCR models live: next to the index, so a portable data folder
+/// carries them along.
+pub fn ocr_models_dir(index_path: &Path) -> Option<PathBuf> {
+    index_path
+        .parent()
+        .map(|data_dir| data_dir.join(OCR_MODELS_FOLDER))
 }
 
 impl FilingModule {
@@ -660,7 +670,13 @@ impl FilingModule {
         let logical_cores = thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
         Ok(Runner::start(
             Settings::new(self.load, logical_cores),
-            intake_steps(Arc::new(handle), Arc::new(shipped_text_chain())),
+            intake_steps(
+                Arc::new(handle),
+                Arc::new(shipped_text_chain(
+                    ocr_models_dir(&self.db_path)
+                        .unwrap_or_else(|| PathBuf::from(OCR_MODELS_FOLDER)),
+                )),
+            ),
             locations,
             Arc::new(SystemClock),
         ))

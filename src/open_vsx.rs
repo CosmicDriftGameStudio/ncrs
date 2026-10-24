@@ -14,8 +14,8 @@ const API_BASE: &str = "https://open-vsx.org/api/";
 const DOWNLOAD_PREFIX: &str = "https://open-vsx.org/";
 /// Open VSX forwards its downloads to the host of its file storage.
 const DOWNLOAD_HOSTS: [&str; 2] = ["open-vsx.org", "openvsx.eclipsecontent.org"];
-const REDIRECT_STATUSES: [u16; 5] = [301, 302, 303, 307, 308];
-const MAX_REDIRECTS: usize = 3;
+pub const REDIRECT_STATUSES: [u16; 5] = [301, 302, 303, 307, 308];
+pub const MAX_REDIRECTS: usize = 3;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_METADATA_BYTES: u64 = 1024 * 1024;
 const MAX_PART_LENGTH: usize = 128;
@@ -185,6 +185,12 @@ fn shown_host(url: &str) -> String {
 /// `url` must be `https://`, name one of the Open VSX hosts exactly, carry no
 /// user info and use no port but 443.
 fn check_download_host(url: &str) -> Result<(), FetchError> {
+    check_host_in(url, &DOWNLOAD_HOSTS)
+}
+
+/// The same check for any other fixed list of hosts, so every download of the
+/// app is held to one rule.
+pub fn check_host_in(url: &str, hosts: &[&str]) -> Result<(), FetchError> {
     let refused = || FetchError::DownloadRefused {
         host: shown_host(url),
     };
@@ -199,9 +205,7 @@ fn check_download_host(url: &str) -> Result<(), FetchError> {
     };
     let allowed = !authority.contains('@')
         && port.is_none_or(|digits| digits == "443")
-        && DOWNLOAD_HOSTS
-            .iter()
-            .any(|known| host.eq_ignore_ascii_case(known));
+        && hosts.iter().any(|known| host.eq_ignore_ascii_case(known));
     if allowed {
         Ok(())
     } else {
@@ -226,7 +230,7 @@ fn check_declared_size(declared: Option<u64>) -> Result<(), FetchError> {
     }
 }
 
-fn network_error(error: ureq::Error) -> FetchError {
+pub fn network_error(error: ureq::Error) -> FetchError {
     let detail = error.to_string();
     match error {
         ureq::Error::Timeout(_) => FetchError::Timeout,
@@ -239,7 +243,7 @@ fn network_error(error: ureq::Error) -> FetchError {
     }
 }
 
-fn agent() -> ureq::Agent {
+pub fn agent() -> ureq::Agent {
     let config = ureq::Agent::config_builder()
         .https_only(true)
         .timeout_global(Some(REQUEST_TIMEOUT))

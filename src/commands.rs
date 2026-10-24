@@ -175,6 +175,9 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             Msg::ActionFilingSetup,
             Msg::ActionFilingSetupTheme,
         ),
+        KeyAction::DownloadOcrModels => {
+            Command::plain(action, Hermes, Msg::ActionDownloadOcrModels)
+        }
         KeyAction::CommandPalette => Command::themed(
             action,
             Help,

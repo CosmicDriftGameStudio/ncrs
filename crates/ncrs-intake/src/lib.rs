@@ -7,6 +7,7 @@ mod error;
 mod extract;
 mod filing_plan;
 mod location;
+mod ocr;
 mod sanitise;
 mod scan;
 mod stability;
@@ -21,6 +22,10 @@ pub use extract::{
 };
 pub use filing_plan::{plan, FilingPlan, PlanInput, Planning};
 pub use location::{Location, LocationMode};
+pub use ocr::{
+    install_model, verify_model_bytes, LazyOcrText, OcrModelError, OcrModelFile, OcrText,
+    OCR_MODELS_FOLDER, OCR_MODELS_HOST, OCR_MODELS_PROJECT, OCR_MODEL_FILES,
+};
 pub use sanitise::{sanitise_value, stays_below};
 pub use scan::{
     scan_location, settle_location, walk_location, Found, ScanReport, MAX_REPORTED_ERRORS,

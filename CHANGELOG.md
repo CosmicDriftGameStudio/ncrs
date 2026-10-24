@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Scanned pages are now read with text recognition (the ocrs project). The
+  two model files it needs are not part of ncrs: the command "Download text
+  recognition models…" shows the server, the files with their size and
+  checksum and the folder first, and downloads them only when you press
+  Download. Each file is checked before it is used. Without the models a scan
+  has no text and goes to the review list, as before.
 - The release archives and the macOS app now contain the PDF library
   (pdfium), and the install scripts put it next to the program, so ncrs reads
   PDFs without any extra install.

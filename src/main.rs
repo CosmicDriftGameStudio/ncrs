@@ -30,6 +30,7 @@ mod menu;
 mod messages;
 #[cfg(target_os = "macos")]
 mod native_menu;
+mod ocr_models;
 mod open_vsx;
 mod palette;
 mod quick_open;

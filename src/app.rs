@@ -27,11 +27,12 @@ use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 use crate::menu::Availability;
 use crate::messages::{
     ClipboardKind, CommandPaletteMessage, ConflictChoice, FilingSetupMessage, FilingStatusMessage,
-    Message, PanelSide, QuickOpenMessage, SearchMessage, ThemeFetchMessage, TitleBarMessage,
-    TransferKind,
+    Message, OcrModelsMessage, PanelSide, QuickOpenMessage, SearchMessage, ThemeFetchMessage,
+    TitleBarMessage, TransferKind,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
+use crate::ocr_models::{download_models, DownloadError, OcrModelsCard};
 use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
 use crate::palette::Palette;
 use crate::quick_open::{QuickOpen, QUICK_OPEN_FILE_LIMIT};
@@ -44,6 +45,7 @@ use crate::ui::dialog::FIELD_ID;
 use crate::ui::filing as filing_ui;
 use crate::ui::filing_setup as filing_setup_ui;
 use crate::ui::filing_status as filing_status_ui;
+use crate::ui::ocr_models as ocr_models_ui;
 use crate::ui::quick_open as quick_open_ui;
 use crate::ui::search as search_ui;
 use crate::ui::theme_fetch as theme_fetch_ui;
@@ -265,6 +267,7 @@ fn leaves_path_field(message: &Message) -> bool {
             | Message::QuickOpen(QuickOpenMessage::Open)
             | Message::CommandPalette(CommandPaletteMessage::Toggle)
             | Message::ThemeFetch(ThemeFetchMessage::Open)
+            | Message::OcrModels(OcrModelsMessage::Open)
             | Message::FilingStatus(FilingStatusMessage::Open)
             | Message::FilingSetup(
                 FilingSetupMessage::Toggle
@@ -699,6 +702,13 @@ pub struct App {
     /// Writes the picked theme and switches it on, on a blocking thread.
     /// Injected so tests write no files.
     install_theme: fn(&Pick, &Path) -> Result<Box<Installed>, FetchError>,
+    /// The card that asks before the OCR models are downloaded, while it is up.
+    ocr_models: Option<OcrModelsCard>,
+    /// Counts the cards opened, so the late answer of a closed one is dropped.
+    ocr_models_generation: u64,
+    /// Downloads the OCR models into the folder, on a blocking thread.
+    /// Injected so tests need no network.
+    download_ocr_models: fn(&Path) -> Result<(), DownloadError>,
 }
 
 /// The part of the prompt the key routing needs, cheap to clone.
@@ -736,6 +746,8 @@ pub struct PromptKeyState {
     pub filing_card: bool,
     /// The theme download card is up, so Enter and the arrows are its.
     pub theme_fetch: bool,
+    /// The OCR models card is up, so keys answer it like a button dialog.
+    pub ocr_models: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
     /// The drive menu is up, so keys move its highlight.
@@ -764,12 +776,20 @@ impl Default for PromptKeyState {
             filing_setup: false,
             filing_card: false,
             theme_fetch: false,
+            ocr_models: false,
             delete_dialog: DeleteKeys::default(),
             volume_menu: false,
             context_menu: false,
             busy: false,
             typed: Arc::default(),
         }
+    }
+}
+
+fn ocr_models_key(key: Key, key_modifiers: Modifiers) -> Option<Message> {
+    match key.as_ref() {
+        Key::Named(Named::Escape) => Some(Message::OcrModels(OcrModelsMessage::Close)),
+        _ => dialog_focus_key(key, key_modifiers),
     }
 }
 
@@ -837,6 +857,11 @@ fn keys_without_prompt(
                 .then_some(Message::DeleteConfirm)
             }),
         };
+    }
+
+    // Cancel has the focus when it opens, so Enter alone never downloads.
+    if prompt.ocr_models {
+        return ocr_models_key(key, key_modifiers);
     }
 
     if prompt.conflict_open {
@@ -1679,6 +1704,9 @@ impl App {
             theme_fetch_generation: 0,
             fetch_extension: open_vsx::fetch_extension,
             install_theme: install_picked_theme,
+            ocr_models: None,
+            ocr_models_generation: 0,
+            download_ocr_models: download_models,
         };
 
         let tasks = Task::batch([
@@ -2305,6 +2333,7 @@ impl App {
                 self.update_command_palette(command_palette)
             }
             Message::ThemeFetch(fetch_message) => self.update_theme_fetch(fetch_message),
+            Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => self.update_filing_status(page_message),
             Message::FilingSetup(setup_message) => self.update_filing_setup(setup_message),
@@ -2737,6 +2766,17 @@ impl App {
             return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
         }
 
+        if let Some(card) = self.ocr_models.as_ref() {
+            let card_element = ocr_models_ui::view(
+                card,
+                self.dialog_focus,
+                self.window_size,
+                self.lang,
+                &self.palette,
+            );
+            return Stack::with_children([root, dialog::scrim(card_element)]).into();
+        }
+
         // The conflict dialog comes first, before the prompt. A conflict is
         // asked *after* the prompt is gone — the user submitted, and the name
         // turned out to be taken — so behind the prompt's early return the
@@ -2894,6 +2934,7 @@ impl App {
             .as_ref()
             .is_some_and(FilingModule::card_can_be_dismissed);
         let theme_fetch = self.theme_fetch.is_some();
+        let ocr_models = self.ocr_models.is_some();
         let delete_dialog = match &self.delete_dialog {
             None => DeleteKeys::Closed,
             Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
@@ -2915,6 +2956,7 @@ impl App {
                 filing_setup,
                 filing_card,
                 theme_fetch,
+                ocr_models,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
                 // the dialog's keys would fall through to the panels.
@@ -2937,6 +2979,7 @@ impl App {
                 filing_setup,
                 filing_card,
                 theme_fetch,
+                ocr_models,
                 conflict_open: self.pending_conflict.is_some(),
                 busy: prompt.busy(),
                 typed: prompt.name().into(),
@@ -3238,7 +3281,7 @@ impl App {
     }
 
     fn dialog_button_count(&self) -> usize {
-        if self.delete_dialog.is_some() {
+        if self.delete_dialog.is_some() || self.ocr_models.is_some() {
             2
         } else if self.pending_conflict.is_some() {
             3
@@ -3255,6 +3298,13 @@ impl App {
             } else {
                 self.delete_dialog = None;
                 Task::none()
+            };
+        }
+        if self.ocr_models.is_some() {
+            return if self.dialog_focus == ocr_models_ui::DOWNLOAD_FOCUS {
+                self.start_ocr_models_download()
+            } else {
+                self.close_ocr_models()
             };
         }
         if self.pending_conflict.is_some() {
@@ -3283,6 +3333,7 @@ impl App {
             || self.quick_open.is_some()
             || self.command_palette.is_some()
             || self.theme_fetch.is_some()
+            || self.ocr_models.is_some()
             || self.filing_status.page_open()
     }
 
@@ -4416,6 +4467,85 @@ impl App {
             ],
         );
         Task::batch([release_focus(), self.show_notice(notice)])
+    }
+
+    fn update_ocr_models(&mut self, message: OcrModelsMessage) -> Task<Message> {
+        match message {
+            OcrModelsMessage::Open => self.open_ocr_models(),
+            OcrModelsMessage::Close => self.close_ocr_models(),
+            OcrModelsMessage::Download => self.start_ocr_models_download(),
+            OcrModelsMessage::Downloaded { generation, result } => {
+                self.ocr_models_downloaded(generation, result)
+            }
+        }
+    }
+
+    /// Only asks. Nothing is sent before the download button is pressed.
+    fn open_ocr_models(&mut self) -> Task<Message> {
+        if self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        self.context_menu = None;
+        self.ocr_models_generation = self.ocr_models_generation.wrapping_add(1);
+        self.dialog_focus = ocr_models_ui::CANCEL_FOCUS;
+        let target = self
+            .filing_index_path
+            .as_deref()
+            .and_then(crate::filing::ocr_models_dir);
+        self.ocr_models = Some(OcrModelsCard::new(target));
+        Task::none()
+    }
+
+    /// Not while the files are written: closing would leave a download nobody
+    /// reports on.
+    fn close_ocr_models(&mut self) -> Task<Message> {
+        if self
+            .ocr_models
+            .as_ref()
+            .is_some_and(OcrModelsCard::is_downloading)
+        {
+            return Task::none();
+        }
+        self.ocr_models = None;
+        Task::none()
+    }
+
+    fn start_ocr_models_download(&mut self) -> Task<Message> {
+        let Some(target) = self.ocr_models.as_mut().and_then(OcrModelsCard::start) else {
+            return Task::none();
+        };
+        let generation = self.ocr_models_generation;
+        let download = self.download_ocr_models;
+        Task::perform(
+            tokio::task::spawn_blocking(move || download(&target)),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| {
+                    Err(DownloadError::Network(FetchError::Network(
+                        join.to_string(),
+                    )))
+                });
+                Message::OcrModels(OcrModelsMessage::Downloaded { generation, result })
+            },
+        )
+    }
+
+    fn ocr_models_downloaded(
+        &mut self,
+        generation: u64,
+        result: Result<(), DownloadError>,
+    ) -> Task<Message> {
+        if generation != self.ocr_models_generation {
+            return Task::none();
+        }
+        let Some(card) = self.ocr_models.as_mut() else {
+            return Task::none();
+        };
+        if !card.finish(result) {
+            return Task::none();
+        }
+        self.ocr_models = None;
+        let notice = self.lang.text(Msg::OcrModelsInstalled).to_owned();
+        self.show_notice(notice)
     }
 
     /// Cmd/Ctrl+Shift+P: lists the actions that work where the keys are now.
@@ -5657,6 +5787,9 @@ impl App {
             theme_fetch_generation: 0,
             fetch_extension: |_| Err(FetchError::NoConnection("no network in tests".to_owned())),
             install_theme: |_, _| Err(FetchError::NoConfigPath),
+            ocr_models: None,
+            ocr_models_generation: 0,
+            download_ocr_models: |_| Err(DownloadError::NoDataFolder),
         };
         for (side, names) in [
             (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
@@ -5839,6 +5972,18 @@ impl App {
 
     pub fn theme_fetch_for_test(&self) -> Option<&ThemeFetch> {
         self.theme_fetch.as_ref()
+    }
+
+    pub fn ocr_models_for_test(&self) -> Option<&OcrModelsCard> {
+        self.ocr_models.as_ref()
+    }
+
+    /// Fixed panels with the text recognition models card up.
+    pub fn with_ocr_models_card(card: OcrModelsCard) -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.dialog_focus = ocr_models_ui::CANCEL_FOCUS;
+        app.ocr_models = Some(card);
+        app
     }
 
     /// Fixed panels with the theme download card up, in the state of `card`.
@@ -11440,5 +11585,191 @@ mod theme_fetch_tests {
     fn holding_an_arrow_moves_on_but_enter_acts_once() {
         assert!(repeats(&fetch_message(ThemeFetchMessage::Move(1))));
         assert!(!repeats(&fetch_message(ThemeFetchMessage::Activate)));
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod ocr_models_tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+
+    /// Only the tests that never press Download use the counting one.
+    static DOWNLOADS: AtomicUsize = AtomicUsize::new(0);
+
+    fn counting_download(_: &Path) -> Result<(), DownloadError> {
+        DOWNLOADS.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+
+    fn quiet_download(_: &Path) -> Result<(), DownloadError> {
+        Ok(())
+    }
+
+    fn send(app: &mut App, message: OcrModelsMessage) {
+        drop(app.update(Message::OcrModels(message)));
+    }
+
+    fn app_with_data_folder() -> App {
+        let mut app = App::with_fixed_panels();
+        app.filing_index_path = Some(PathBuf::from("/example/data/index.db"));
+        app.download_ocr_models = quiet_download;
+        app
+    }
+
+    fn route(app: &App, key: Named) -> Option<Message> {
+        route_key(
+            &app.prompt_key_state(),
+            Key::Named(key),
+            Modifiers::default(),
+        )
+    }
+
+    #[test]
+    fn the_palette_entry_opens_the_card_and_nothing_is_downloaded() {
+        let before = DOWNLOADS.load(Ordering::SeqCst);
+        let mut app = app_with_data_folder();
+        app.download_ocr_models = counting_download;
+        drop(app.update(Message::CommandPalette(CommandPaletteMessage::Toggle)));
+        drop(app.update(Message::CommandPalette(
+            CommandPaletteMessage::QueryChanged("text recognition".to_owned()),
+        )));
+        drop(app.update(Message::CommandPalette(CommandPaletteMessage::Run)));
+
+        let card = app.ocr_models_for_test().unwrap();
+        assert_eq!(
+            card.target(),
+            Some(Path::new("/example/data/ocr-models")),
+            "the folder next to the index"
+        );
+        assert!(!card.is_downloading());
+        assert!(app.blocking_overlay_is_open());
+        assert_eq!(DOWNLOADS.load(Ordering::SeqCst), before);
+    }
+
+    #[test]
+    fn cancel_and_escape_close_the_card_without_a_download() {
+        let before = DOWNLOADS.load(Ordering::SeqCst);
+        let mut app = app_with_data_folder();
+        app.download_ocr_models = counting_download;
+        send(&mut app, OcrModelsMessage::Open);
+        assert_eq!(
+            route(&app, Named::Escape),
+            Some(Message::OcrModels(OcrModelsMessage::Close))
+        );
+        assert_eq!(
+            route(&app, Named::Enter),
+            Some(Message::DialogActivate),
+            "Enter presses the focused button"
+        );
+
+        drop(app.update(Message::DialogActivate));
+        assert!(
+            app.ocr_models_for_test().is_none(),
+            "Cancel has the focus when it opens"
+        );
+        assert_eq!(DOWNLOADS.load(Ordering::SeqCst), before);
+    }
+
+    #[tokio::test]
+    async fn the_download_button_starts_one_download_only() {
+        let mut app = app_with_data_folder();
+        send(&mut app, OcrModelsMessage::Open);
+        send(&mut app, OcrModelsMessage::Download);
+        assert!(app.ocr_models_for_test().unwrap().is_downloading());
+
+        send(&mut app, OcrModelsMessage::Close);
+        assert!(
+            app.ocr_models_for_test().is_some(),
+            "closing waits while the files are written"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_finished_download_closes_the_card_and_says_so() {
+        let mut app = app_with_data_folder();
+        send(&mut app, OcrModelsMessage::Open);
+        send(&mut app, OcrModelsMessage::Download);
+        let generation = app.ocr_models_generation;
+        send(
+            &mut app,
+            OcrModelsMessage::Downloaded {
+                generation,
+                result: Ok(()),
+            },
+        );
+        assert!(app.ocr_models_for_test().is_none());
+        assert_eq!(
+            app.notice_for_test(),
+            Some("Text recognition models downloaded. Scanned pages are read from now on.")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_download_stays_on_the_card_and_can_be_tried_again() {
+        let mut app = app_with_data_folder();
+        send(&mut app, OcrModelsMessage::Open);
+        send(&mut app, OcrModelsMessage::Download);
+        let generation = app.ocr_models_generation;
+        send(
+            &mut app,
+            OcrModelsMessage::Downloaded {
+                generation,
+                result: Err(DownloadError::Network(FetchError::Timeout)),
+            },
+        );
+        let card = app.ocr_models_for_test().unwrap();
+        assert!(!card.is_downloading());
+        assert_eq!(
+            card.error(),
+            Some(&DownloadError::Network(FetchError::Timeout))
+        );
+        send(&mut app, OcrModelsMessage::Download);
+        assert!(app.ocr_models_for_test().unwrap().is_downloading());
+    }
+
+    #[test]
+    fn an_answer_for_a_closed_card_is_dropped() {
+        let mut app = app_with_data_folder();
+        send(&mut app, OcrModelsMessage::Open);
+        let stale = app.ocr_models_generation;
+        send(&mut app, OcrModelsMessage::Close);
+        send(&mut app, OcrModelsMessage::Open);
+        send(
+            &mut app,
+            OcrModelsMessage::Downloaded {
+                generation: stale,
+                result: Ok(()),
+            },
+        );
+        assert!(app.ocr_models_for_test().is_some());
+        assert_eq!(app.notice_for_test(), None);
+    }
+
+    #[test]
+    fn without_a_data_folder_the_button_says_why() {
+        let mut app = App::with_fixed_panels();
+        app.filing_index_path = None;
+        send(&mut app, OcrModelsMessage::Open);
+        send(&mut app, OcrModelsMessage::Download);
+        let card = app.ocr_models_for_test().unwrap();
+        assert_eq!(card.error(), Some(&DownloadError::NoDataFolder));
+        assert!(!card.is_downloading());
+    }
+
+    #[test]
+    fn it_is_not_opened_over_another_modal() {
+        let mut app = app_with_data_folder();
+        drop(app.update(Message::CommandPalette(CommandPaletteMessage::Toggle)));
+        send(&mut app, OcrModelsMessage::Open);
+        assert!(app.ocr_models_for_test().is_none());
     }
 }

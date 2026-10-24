@@ -18,6 +18,7 @@ use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, Sort
 use crate::jobs::JobEvent;
 #[cfg(any(target_os = "macos", test))]
 use crate::keymap::KeyAction;
+use crate::ocr_models::DownloadError;
 use crate::open_vsx::FetchError;
 use crate::theme_fetch::{Fetched, Installed};
 
@@ -271,6 +272,9 @@ pub enum Message {
     // --- Theme download (command palette: fetch a color theme) ---
     ThemeFetch(ThemeFetchMessage),
 
+    // --- Text recognition models (command palette: download them after asking) ---
+    OcrModels(OcrModelsMessage),
+
     // --- Native menu bar (macOS) ---
     /// A command chosen from the menu bar or the command list.
     #[cfg(any(target_os = "macos", test))]
@@ -443,6 +447,20 @@ pub enum ThemeFetchMessage {
     Installed {
         generation: u64,
         result: Result<Box<Installed>, FetchError>,
+    },
+}
+
+/// Everything the card that asks for the text recognition models sends.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OcrModelsMessage {
+    Open,
+    Close,
+    Download,
+    /// The download of the generation is done. Dropped when the card was
+    /// closed or opened again meanwhile.
+    Downloaded {
+        generation: u64,
+        result: Result<(), DownloadError>,
     },
 }
 
