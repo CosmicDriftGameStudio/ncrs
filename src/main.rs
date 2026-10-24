@@ -30,6 +30,7 @@ mod quick_open;
 mod search_view;
 mod selection;
 mod ui;
+mod vscode_theme;
 
 use app::App;
 use std::env;
@@ -122,14 +123,17 @@ CONFIG:
     or cmd (they jump to a file name) are errors. The full list of actions
     is in the README.
 
-    [theme] picks a palette (preset \"default\" or \"classic\") and sets single
-    colors on top of it as \"#rrggbb\" or \"#rgb\":
+    [theme] picks a palette (preset \"cosmic\", the default, \"default\",
+    \"classic\" or \"dracula\") and sets single colors on top of it as
+    \"#rrggbb\" or \"#rgb\":
         [theme]
         preset = \"classic\"
         directory = \"#ffff55\"
     Roles: background, panel, text, dim_text, directory, cursor, cursor_text,
     tagged, border, bar, bar_inactive, status_bar, dialog, menu, accent,
     success, error. Read at start; text below 3:1 contrast is reported.
+    vscode = \"themes/my-theme.json\" takes the colors of a VS Code theme file
+    (path relative to the config folder), under the roles written here.
 
 DELETE:
     F8 asks, then moves the tagged rows (or the row under the cursor) to the

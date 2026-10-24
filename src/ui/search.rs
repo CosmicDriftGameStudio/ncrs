@@ -339,7 +339,16 @@ fn result_row<'a>(
     let (tagged, content): (bool, Element<'a, Message>) = match kind {
         SearchRow::File(file) => (
             search.is_tagged(file),
-            file_row(search, file, highlighted, search.is_tagged(file), palette)?,
+            file_row(
+                search,
+                file,
+                RowMarks {
+                    highlighted,
+                    panel_active,
+                },
+                search.is_tagged(file),
+                palette,
+            )?,
         ),
         SearchRow::Line(file, line) => {
             let matched = search.results.get(file)?.lines.get(line)?;
@@ -349,7 +358,7 @@ fn result_row<'a>(
     let star = text(if tagged { "*" } else { " " })
         .size(font_size::ROW)
         .color(if tagged {
-            palette.accent
+            theme::tag_star_color(palette, highlighted, panel_active)
         } else {
             palette.dim_text
         })
@@ -379,10 +388,14 @@ fn result_row<'a>(
 fn file_row<'a>(
     search: &'a SearchView,
     file: usize,
-    highlighted: bool,
+    marks: RowMarks,
     tagged: bool,
     palette: &Palette,
 ) -> Option<Element<'a, Message>> {
+    let RowMarks {
+        highlighted,
+        panel_active,
+    } = marks;
     let result = search.results.get(file)?;
     let relative = result
         .path
@@ -409,7 +422,12 @@ fn file_row<'a>(
         .width(INDENT)
         .height(ROW_HEIGHT)
         .padding(0.0)
-        .style(theme::chevron_button(palette, highlighted, tagged))
+        .style(theme::chevron_button(
+            palette,
+            highlighted,
+            tagged,
+            panel_active,
+        ))
         .on_press(to_search(SearchMessage::ToggleGroup(file)))
         .into()
     };
@@ -418,7 +436,7 @@ fn file_row<'a>(
     let dim = if highlighted {
         palette.cursor_text
     } else if tagged {
-        palette.text
+        theme::tagged_text_color(palette, panel_active)
     } else {
         palette.dim_text
     };

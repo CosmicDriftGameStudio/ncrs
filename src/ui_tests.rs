@@ -197,6 +197,35 @@ mod tests {
         );
     }
 
+    fn assert_preset_matches(preset: &str, reference: &str) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, format!("[theme]\npreset = \"{preset}\"\n")).unwrap();
+        let app = App::with_fixed_panels().with_config(crate::config::load(&path));
+        let mut sim = simulator(&app);
+        let matches = sim
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image(reference)
+            .expect("snapshot comparison");
+        assert!(matches, "preset {preset:?} no longer matches {reference}");
+    }
+
+    #[test]
+    fn the_default_preset_looks_as_before() {
+        assert_preset_matches("default", "tests/snapshots/two_panels_default.png");
+    }
+
+    #[test]
+    fn the_dracula_preset_has_its_own_look() {
+        assert_preset_matches("dracula", "tests/snapshots/two_panels_dracula.png");
+    }
+
+    #[test]
+    fn the_classic_preset_looks_as_before() {
+        assert_preset_matches("classic", "tests/snapshots/two_panels_classic.png");
+    }
+
     /// A configured color changes the picture. Compared with the committed
     /// reference, as `the_dialog_is_drawn_over_the_panels` does, so no new
     /// reference is written.
@@ -732,7 +761,7 @@ mod context_menu_overlay {
         let app = App::with_fixed_panels();
         let mut sim = simulator(&app);
         // Second row of the left panel: below the title and column header.
-        sim.point_at(Point::new(200.0, 95.0 + 22.0 * 1.5));
+        sim.point_at(Point::new(200.0, 59.0 + 22.0 * 1.5));
         sim.simulate([Event::Mouse(mouse::Event::ButtonPressed(
             mouse::Button::Right,
         ))]);
@@ -818,7 +847,7 @@ mod context_menu_overlay {
     clippy::indexing_slicing
 )]
 #[cfg(test)]
-mod title_notice {
+mod status_notice {
     use super::*;
     use crate::messages::ClipboardKind;
 
@@ -829,41 +858,22 @@ mod title_notice {
     }
 
     #[test]
-    fn the_notice_is_drawn_in_the_title_bar() {
+    fn the_notice_is_drawn_in_the_status_bar() {
         let matches = simulator(&copied())
             .snapshot(&iced::Theme::Dark)
             .unwrap()
-            .matches_image("tests/snapshots/title_notice.png")
+            .matches_image("tests/snapshots/status_notice.png")
             .expect("snapshot comparison");
         assert!(
             matches,
-            "the title bar notice does not match title_notice.png"
+            "the status bar notice does not match status_notice.png"
         );
     }
 
     const NOTICE_TEXT: &str = "\u{2713} Path copied";
 
-    fn render(view: iced::Element<'_, Message>) -> Simulator<'_, Message, iced::Theme> {
-        Simulator::with_size(
-            iced::Settings::default(),
-            iced::Size::new(1200.0, 40.0),
-            view,
-        )
-    }
-
-    #[test]
-    fn the_notice_is_in_the_title_bar_and_not_in_the_status_bar() {
-        let app = copied();
-        let notice = app.notice_for_test().expect("a notice after copying");
-        render(crate::ui::header::view(
-            "NC-rs",
-            Some(notice),
-            &crate::palette::Palette::default(),
-        ))
-        .find(NOTICE_TEXT)
-        .expect("the title bar shows the notice");
-
-        let status_bar = crate::ui::statusbar::view(
+    fn status_bar<'a>(app: &'a App, failure: Option<&'a str>) -> iced::Element<'a, Message> {
+        crate::ui::statusbar::view(
             app.active_panel(),
             crate::i18n::Language::English,
             &crate::palette::Palette::default(),
@@ -871,8 +881,9 @@ mod title_notice {
                 job: None,
                 filing: None,
                 on_blocked_press: None,
+                notice: app.notice_for_test(),
             },
-            None,
+            failure,
             None,
             crate::ui::statusbar::PathBar {
                 editing: None,
@@ -880,10 +891,42 @@ mod title_notice {
                 on_submit: Message::PathFieldSubmit,
                 on_copy: Message::PathFieldCancel,
             },
+        )
+    }
+
+    fn shows_notice(view: iced::Element<'_, Message>) -> bool {
+        Simulator::with_size(
+            iced::Settings::default(),
+            iced::Size::new(1200.0, 40.0),
+            view,
+        )
+        .find(NOTICE_TEXT)
+        .is_ok()
+    }
+
+    #[test]
+    fn the_status_bar_shows_the_notice_beside_an_error() {
+        let app = copied();
+        assert!(shows_notice(status_bar(&app, None)));
+        assert!(shows_notice(status_bar(&app, Some("Copy failed"))));
+    }
+
+    #[test]
+    fn a_config_warning_and_a_notice_are_drawn_together() {
+        let mut app = App::with_fixed_panels().with_config_warning(
+            "Config file config.toml, line 2: directory on panel is hard to read",
         );
-        render(status_bar)
-            .find(NOTICE_TEXT)
-            .expect_err("the status bar does not show the notice");
+        assert!(app.status_error().is_some());
+        drop(app.update(Message::CopyToClipboard(ClipboardKind::Path)));
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/status_notice_with_error.png")
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the status bar does not match status_notice_with_error.png"
+        );
     }
 }
 
@@ -1070,6 +1113,25 @@ mod filing_cards {
         }
     }
 
+    #[test]
+    fn the_master_key_card_matches_its_snapshot() {
+        let app = App::with_fixed_filing(Phase::ShowRecoveryKey {
+            key: FilingModule::varied_recovery_key(),
+            group: 1,
+            typed: SecretText::default(),
+            mismatch: false,
+        });
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/recovery_key.png")
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the card does not match tests/snapshots/recovery_key.png"
+        );
+    }
+
     fn ask_recovery_key(reason: KeyProblem) -> App {
         App::with_fixed_filing(Phase::AskRecoveryKey {
             reason,
@@ -1096,7 +1158,10 @@ mod filing_cards {
             typed: SecretText::default(),
             mismatch: false,
         });
-        assert!(shows(&confirmation, "Type group 4 of the key to continue"));
+        assert!(shows(
+            &confirmation,
+            "Type block 4 (the highlighted four characters) to show that you saved the key."
+        ));
         assert!(shows(&confirmation, "Copy"));
 
         let restore = ask_recovery_key(KeyProblem::Missing);
@@ -1169,6 +1234,7 @@ mod filing_status_page {
     };
 
     use super::*;
+    use crate::i18n::Language;
     use crate::messages::FilingStatusMessage;
 
     const ERROR_FILE: &str = "/tmp/inbox/company-a-invoice.pdf";
@@ -1208,6 +1274,98 @@ mod filing_status_page {
 
     fn page_message(message: FilingStatusMessage) -> Message {
         Message::FilingStatus(message)
+    }
+
+    /// Two files open, none finished yet: the state in which throughput and
+    /// time left have nothing to show.
+    fn inspection_snapshot() -> Snapshot {
+        let mut snapshot = snapshot(RunnerState::Running, 0, 0);
+        snapshot.steps = vec![
+            StepSnapshot {
+                name: "intake",
+                waiting: 2,
+                done: 5,
+                failed: 0,
+                unchanged: 1,
+            },
+            StepSnapshot {
+                name: "review",
+                waiting: 0,
+                done: 3,
+                failed: 1,
+                unchanged: 0,
+            },
+        ];
+        snapshot.workers = vec![
+            WorkerSnapshot {
+                id: 0,
+                busy: Some(Busy {
+                    file: PathBuf::from("/home/user/inbox/invoice.pdf"),
+                    task: Task::Step("intake"),
+                    started_at: taken_at() - Duration::from_secs(12),
+                }),
+            },
+            WorkerSnapshot { id: 1, busy: None },
+        ];
+        snapshot
+    }
+
+    fn inspection(language: Language) -> App {
+        let figures = crate::filing::IndexFigures {
+            path: PathBuf::from("/home/user/.local/share/ncrs/index.db"),
+            file_bytes: Some(2 * 1024 * 1024),
+            encrypted: true,
+            statistics: ncrs_index::IndexStatistics {
+                schema_version: 3,
+                document_count: 240,
+                open_reviews: 12,
+                full_text_bytes: 512 * 1024,
+            },
+        };
+        App::with_filing_inspection(inspection_snapshot(), taken_at(), figures)
+            .in_language(language)
+    }
+
+    #[test]
+    fn the_inspection_matches_its_snapshots() {
+        for (language, name) in [
+            (Language::English, "inspection_en"),
+            (Language::German, "inspection_de"),
+        ] {
+            let matches = simulator(&inspection(language))
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(
+                matches,
+                "the inspection does not match tests/snapshots/{name}.png"
+            );
+        }
+    }
+
+    #[test]
+    fn the_inspection_uses_the_visible_names_and_says_when_figures_come() {
+        let english = inspection(Language::English);
+        for label in [
+            "Intake: 2 waiting, 5 done, 0 failed, 1 unchanged",
+            "Pending: 0 waiting, 3 done, 1 failed, 0 unchanged",
+            "Pending",
+            "documents Hermes asks you about",
+        ] {
+            assert!(shows(&english, label), "{label}");
+        }
+        assert!(shows(&english, "after the first full minute"));
+        let german = inspection(Language::German);
+        assert!(shows(
+            &german,
+            "Annahme: 2 wartend, 5 fertig, 0 fehlgeschlagen, 1 unverändert"
+        ));
+        assert!(shows(&german, "Wiedervorlage"));
+        assert!(shows(&german, "ab der ersten vollen Minute"));
+
+        let idle = page(snapshot(RunnerState::Idle, 0, 0));
+        assert!(!shows(&idle, "after the first full minute"));
     }
 
     #[test]
@@ -1714,11 +1872,24 @@ mod command_palette {
                 "the".to_owned(),
             ))),
         );
+        // "Delete · off to the garbage ball" now matches "the" too, so the
+        // position of Switch language is read from the list.
+        let palette = app.command_palette_for_test().unwrap();
+        let language_row = palette
+            .hits()
+            .iter()
+            .position(|hit| {
+                palette.entry(hit).map(|entry| entry.action)
+                    == Some(crate::keymap::KeyAction::SwitchLanguage)
+            })
+            .expect("Switch language is listed");
         let mut sim = simulator(&app);
         sim.click("F9").expect("the Switch language entry");
         let messages: Vec<Message> = sim.into_messages().collect();
         assert!(
-            messages.contains(&palette_message(CommandPaletteMessage::Select(4))),
+            messages.contains(&palette_message(CommandPaletteMessage::Select(
+                language_row
+            ))),
             "{messages:?}"
         );
         for message in messages {
@@ -1728,7 +1899,7 @@ mod command_palette {
     }
 
     /// The query leaves the entries whose keys read the same on every
-    /// platform: Copy, Move, Switch panel and Switch language, and the
+    /// platform: Copy, Move, Switch panel, Switch language and Delete, and the
     /// Inspection and the Hermes setup, which have no key of their own.
     #[test]
     fn the_box_matches_its_snapshot() {

@@ -28,9 +28,9 @@ pub fn view<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let title = match side {
-        PanelSide::Left => Msg::VolumesTitleLeft,
-        PanelSide::Right => Msg::VolumesTitleRight,
+    let subtitle = match side {
+        PanelSide::Left => Msg::VolumesSubtitleLeft,
+        PanelSide::Right => Msg::VolumesSubtitleRight,
     };
     let first = first_visible(selected);
     let rows = volumes
@@ -79,9 +79,12 @@ pub fn view<'a>(
         });
 
     let body = column![
-        text(lang.text(title))
+        text(lang.text(Msg::VolumesTitle))
             .size(font_size::TITLE)
             .color(palette.accent),
+        text(lang.text(subtitle))
+            .size(font_size::STATUS)
+            .color(palette.dim_text),
         Column::with_children(rows)
     ]
     .spacing(spacing::SECTION_GAP);

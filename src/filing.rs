@@ -1013,6 +1013,12 @@ impl FilingModule {
         let key = "A".repeat(52).parse::<RecoveryKey>();
         ShownRecoveryKey::new(key.expect("52 times A is a canonical recovery key"))
     }
+
+    /// A made-up key whose 13 blocks all differ: ABCD-EFGH-...-TUVA. Opens nothing.
+    pub fn varied_recovery_key() -> ShownRecoveryKey {
+        let key = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567BCDEFGHJKLMNPQRSTUVA".parse::<RecoveryKey>();
+        ShownRecoveryKey::new(key.expect("a canonical recovery key"))
+    }
 }
 
 fn ask_recovery_key(reason: KeyProblem) -> Phase {
@@ -1585,6 +1591,32 @@ mod tests {
         );
         assert_eq!(store.snapshot().unwrap().len(), 32);
         assert!(Index::open(&db, store.as_ref()).unwrap().is_encrypted());
+    }
+
+    #[test]
+    fn the_typed_block_is_taken_in_any_case_and_with_spaces_around_it() {
+        let phase = |typed: &str| Phase::ShowRecoveryKey {
+            key: FilingModule::varied_recovery_key(),
+            group: 1,
+            typed: SecretText::from(typed),
+            mismatch: false,
+        };
+        for typed in ["EFGH", "efgh", "eFgH", "  efgh", "EFGH \t", " Efgh "] {
+            let mut module = FilingModule::in_phase(phase(typed));
+            send(&mut module, FilingMessage::GroupSubmit);
+            assert_eq!(module.phase(), &Phase::Ready, "{typed:?}");
+        }
+        for typed in ["", "ABCD", "EFG", "EFGHI", "EF GH"] {
+            let mut module = FilingModule::in_phase(phase(typed));
+            send(&mut module, FilingMessage::GroupSubmit);
+            assert!(
+                matches!(
+                    module.phase(),
+                    Phase::ShowRecoveryKey { mismatch: true, .. }
+                ),
+                "{typed:?}"
+            );
+        }
     }
 
     #[test]

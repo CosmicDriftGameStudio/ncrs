@@ -272,7 +272,11 @@ pub fn view<'a, M: Clone + 'a>(
                     text(if mark.tagged { "*" } else { " " })
                         .size(font_size::ROW)
                         .color(if mark.tagged {
-                            palette.accent
+                            theme::tag_star_color(
+                                palette,
+                                mark.cursor && props.is_active,
+                                props.is_active,
+                            )
                         } else {
                             palette.dim_text
                         })
@@ -390,7 +394,13 @@ fn file_row<'a, M: Clone + 'a>(
     // The cursor row of the active panel is the one drawn as highlighted; a
     // tagged row is marked in its own column and tinted by the row style.
     let highlighted = mark.cursor && panel_active;
-    let color = theme::row_text_color(palette, entry.is_dir, highlighted, panel_active);
+    let color = theme::row_text_color(
+        palette,
+        entry.is_dir,
+        highlighted,
+        mark.tagged,
+        panel_active,
+    );
     let font = if entry.is_dir || (highlighted && panel_active) {
         Font {
             weight: iced::font::Weight::Bold,

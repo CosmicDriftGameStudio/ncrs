@@ -8,6 +8,19 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `vscode = "<path>"` in `[theme]` takes the colors of a VS Code color theme
+  file, under the roles written in the config. If the file cannot be used,
+  ncrs starts with the preset and says why in the status bar.
+- A `dracula` color preset (`preset = "dracula"` in `[theme]`), using the colors
+  of the [Dracula theme](https://draculatheme.com), MIT License, Copyright (c)
+  Dracula Theme.
+- Playful names, each with its plain description next to it: the command
+  palette is the Lab, Quick Open the Dark Matter Drive, the search the
+  Smell-o-scope, the drive menu Planets, the file exists dialog a Time paradox,
+  tagging stamps, and the trash dialog says "Off to the garbage ball". The
+  function key bar, the context menu and the config names are unchanged.
+- The command palette also finds an entry by its old name or its config name,
+  e.g. "quick open" or "drive menu".
 - A separate portable Windows ZIP (`ncrs-x86_64-pc-windows-msvc-portable.zip`)
   with a `data` folder. A `data` folder next to the executable holds
   `config.toml` and `index.db` instead of the usual locations, everywhere except
@@ -20,11 +33,26 @@ All notable changes to this project are documented here. The format follows
   where new documents arrive and one for the folders where you keep your
   documents. "Add folder…" opens the system folder dialog, a folder already in
   the list is not added twice, and from two document folders on you choose the
-  Central Filing. After saving, the card closes and the title bar says how to
+  Central Filing. After saving, the card closes and the status bar says how to
   open the Inspection.
 
 ### Changed
 
+- The NC-rs bar at the top is gone (the window title names the app);
+  confirmations show at the right of the status bar. In `classic` they are
+  bright green, and a `[theme]` whose `success` or `error` is hard to read on
+  the status bar is reported.
+- The card with the master key of a new encrypted index is titled "Your master
+  key" and points at the highlighted block you type to confirm you saved it.
+- The Inspection labels what waits as "Pending", names its steps Intake and
+  Pending, and shows "after the first full minute" for throughput and time
+  left until a full minute has been measured.
+- The tag star stays readable on tagged rows in every color preset and with
+  your own `[theme]` colors; the `cosmic` and `dracula` presets keep the text
+  on tagged rows and on the title bars readable when `tagged` or `bar` change.
+- The `cosmic` color preset is the new default, a calm, almost neutral dark
+  grey with muted accents. To keep the earlier look, write `[theme]` with
+  `preset = "default"` in the config.
 - The filing module is called Hermes in the app: Tubes (inbox), Central Filing
   (target archive), Records (other archives), the Inspection (status page),
   Pending (review list) and the load levels "By the book", "Business as usual"

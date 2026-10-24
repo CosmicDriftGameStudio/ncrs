@@ -26,7 +26,8 @@ use serde_spanned::Spanned;
 
 use crate::i18n::Language;
 use crate::keymap::Keymap;
-use crate::palette::{ColorRole, Palette};
+use crate::palette::{ColorRole, Palette, VSCODE_KEY};
+use crate::vscode_theme::VscodeTheme;
 
 /// The only version this build reads.
 pub const CURRENT_VERSION: u32 = 1;
@@ -62,6 +63,10 @@ pub struct Config {
     /// palette from being used.
     #[serde(skip)]
     pub contrast_warning: Option<ContrastWarning>,
+    /// Set when the VS Code theme named in `[theme]` could not be used in
+    /// full. The preset and the roles still apply.
+    #[serde(skip)]
+    pub vscode_warning: Option<VscodeWarning>,
     /// The `[modules]` sections as written; `load` turns `filing` into the
     /// field of the same name below.
     #[serde(default)]
@@ -186,6 +191,16 @@ pub struct ContrastWarning {
     pub foreground: ColorRole,
     pub background: ColorRole,
     pub ratio: f32,
+}
+
+/// The VS Code theme file named by `vscode` in `[theme]` could not be used,
+/// or not in full.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VscodeWarning {
+    pub path: PathBuf,
+    pub line: Option<usize>,
+    pub theme: PathBuf,
+    pub reason: String,
 }
 
 /// One line of `[theme]`: a role (or `preset`) and the text written for it.
@@ -470,9 +485,23 @@ impl fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
+/// Everything that finds the user's own config, index or keychain calls this
+/// first: a test that got there would read or change the real data of whoever
+/// runs it.
+#[allow(clippy::panic, reason = "the guard is the failure, and only in tests")]
+pub fn forbid_user_machine_in_tests(what: &str) {
+    if cfg!(test) {
+        panic!(
+            "{what} reaches the user's config, index or keychain. Tests build the app with \
+             App::with_environment(Environment::isolated()) and never touch those."
+        );
+    }
+}
+
 /// Where the config file lives on this machine, or `None` when the variables
 /// that say so are missing.
 pub fn default_path() -> Option<PathBuf> {
+    forbid_user_machine_in_tests("config::default_path");
     config_path_in(portable_data_dir(), |name| std::env::var_os(name))
 }
 
@@ -506,6 +535,7 @@ fn is_inside_app_bundle(exe_dir: &Path) -> bool {
 /// The portable data directory of the running executable. A failing
 /// `current_exe` or `canonicalize` means the normal layout.
 pub fn portable_data_dir() -> Option<PathBuf> {
+    forbid_user_machine_in_tests("config::portable_data_dir");
     let exe = std::env::current_exe()
         .and_then(std::fs::canonicalize)
         .ok()?;
@@ -568,6 +598,7 @@ fn home_config(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
 /// Where the index database lives on this machine, or `None` when the
 /// variables that say so are missing.
 pub fn default_index_path() -> Option<PathBuf> {
+    forbid_user_machine_in_tests("config::default_index_path");
     index_path_in(portable_data_dir(), |name| std::env::var_os(name))
 }
 
@@ -620,7 +651,7 @@ fn load_with_home(path: &Path, home: Option<&Path>) -> Result<Config, ConfigErro
 }
 
 /// The text of the config at `path`, or `None` when there is no file.
-fn read_source(path: &Path) -> Result<Option<String>, ConfigError> {
+pub fn read_source(path: &Path) -> Result<Option<String>, ConfigError> {
     let unreadable = |reason: String| ConfigError::Unreadable {
         path: path.to_path_buf(),
         reason,
@@ -686,16 +717,27 @@ fn parse_config(source: &str, path: &Path, home: Option<&Path>) -> Result<Config
         config.keymap = Arc::new(keymap);
     }
     if !config.theme.entries.is_empty() {
+        let vscode = load_vscode(&config.theme, path, home);
         let configured =
-            Palette::from_section(&config.theme).map_err(|err| ConfigError::Invalid {
+            Palette::from_section(&config.theme, vscode.as_ref().map(|layer| &layer.theme))
+                .map_err(|err| ConfigError::Invalid {
+                    path: path.to_path_buf(),
+                    line: line_at(source.as_bytes(), err.span.start),
+                    reason: err.reason,
+                })?;
+        config.vscode_warning = vscode.and_then(|layer| {
+            Some(VscodeWarning {
                 path: path.to_path_buf(),
-                line: line_at(source.as_bytes(), err.span.start),
-                reason: err.reason,
-            })?;
+                line: line_at(source.as_bytes(), layer.span.start),
+                reason: layer.theme.problem?,
+                theme: layer.file,
+            })
+        });
         config.contrast_warning = configured.palette.weakest_contrast().map(|weak| {
             let found = configured
                 .span_of(weak.foreground)
                 .or_else(|| configured.span_of(weak.background))
+                .or_else(|| configured.vscode_span.clone())
                 .or_else(|| configured.preset_span.clone());
             ContrastWarning {
                 path: path.to_path_buf(),
@@ -714,6 +756,45 @@ fn parse_config(source: &str, path: &Path, home: Option<&Path>) -> Result<Config
             reason: err.reason,
         })?;
     Ok(config)
+}
+
+/// The VS Code theme `[theme]` names, read, with where it was named.
+struct VscodeLayer {
+    theme: VscodeTheme,
+    span: Range<usize>,
+    file: PathBuf,
+}
+
+/// Reads the file named by `vscode`. It never fails the config: whatever is
+/// wrong with the file ends up in `theme.problem`.
+fn load_vscode(
+    section: &ThemeSection,
+    config_path: &Path,
+    home: Option<&Path>,
+) -> Option<VscodeLayer> {
+    let entry = section
+        .entries
+        .iter()
+        .rev()
+        .find(|entry| entry.key.as_ref() == VSCODE_KEY)?;
+    let text = entry.value.as_ref();
+    let resolved = if text.starts_with('~') {
+        expand_location_path(text, home)
+    } else {
+        Ok(config_path
+            .parent()
+            .unwrap_or_else(|| Path::new(""))
+            .join(text))
+    };
+    let (theme, file) = match resolved {
+        Ok(file) => (VscodeTheme::load(&file), file),
+        Err(reason) => (VscodeTheme::unusable(reason), PathBuf::from(text)),
+    };
+    Some(VscodeLayer {
+        theme,
+        span: entry.value.span(),
+        file,
+    })
 }
 
 struct FilingError {
@@ -1471,6 +1552,37 @@ mod tests {
             reason: err.to_string(),
         })?;
         load_with_home(&write(&dir, content.as_bytes()), home)
+    }
+
+    #[test]
+    fn a_vscode_theme_is_found_under_the_home_folder_by_tilde() {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir(home.path().join("themes")).unwrap();
+        std::fs::write(
+            home.path().join("themes/t.json"),
+            r##"{"colors": {"editor.background": "#112233"}}"##,
+        )
+        .unwrap();
+        let config = load_filing(
+            "[open]\n\n[theme]\nvscode = \"~/themes/t.json\"\n",
+            Some(home.path()),
+        )
+        .unwrap();
+        assert_eq!(config.vscode_warning, None);
+        assert_eq!(
+            config.palette.background,
+            iced::Color::from_rgb8(0x11, 0x22, 0x33)
+        );
+    }
+
+    #[test]
+    fn a_tilde_without_a_home_folder_is_a_warning_and_not_an_error() {
+        let config = load_filing("[open]\n\n[theme]\nvscode = \"~/t.json\"\n", None).unwrap();
+        assert!(config.vscode_warning.is_some());
+        assert_eq!(
+            config.palette.background,
+            crate::palette::ThemePreset::Cosmic.palette().background
+        );
     }
 
     /// A TOML literal string, so Windows backslashes stay as they are.

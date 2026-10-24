@@ -24,7 +24,7 @@ for the state, the licensing audit and the reasoning behind the order.
 
 ![The drive menu on Alt+F1](docs/screenshots/drive-menu.png)
 
-The drive menu (`Alt+F1` for the left panel, `Alt+F2` for the right).
+The drive menu, called Planets in the app (`Alt+F1` for the left panel, `Alt+F2` for the right).
 
 ![The context menu](docs/screenshots/context-menu.png)
 
@@ -55,12 +55,12 @@ The same window in German, switched with F9.
 - Async directory loading (tokio blocking pool) – the UI never blocks
 - Stale-result protection (fast navigation cannot show an outdated listing)
 - Errors (e.g. *Permission denied*) are shown in the status bar – no panics
-- Confirmations (e.g. *Path copied*) appear at the right of the title bar for three seconds
+- Confirmations (e.g. *Path copied*) appear at the right of the status bar for three seconds
 - Mouse click selects a row and activates its panel; the wheel and the trackpad scroll the panel under the pointer
-- Drive menu (`Alt`+`F1` / `Alt`+`F2`): jump a panel to the system volume, home, iCloud Drive and
+- Planets (drive menu, `Alt`+`F1` / `Alt`+`F2`): jump a panel to the system volume, home, iCloud Drive and
   cloud storage folders such as Google Drive, OneDrive or Dropbox (macOS), mounted volumes or
   drive letters, the same places as in the Finder sidebar; see [Drives on macOS](#drives-on-macos)
-- Search in file names and contents below a directory, in the panel, the way
+- Smell-o-scope (search) in file names and contents below a directory, in the panel, the way
   VS Code does it: see [Search](#search)
 - Localized UI (English/German) with a translator note on every string, so the UI can
   be translated mechanically without reading the code
@@ -90,13 +90,13 @@ The defaults. Most of them can be changed in the config file, see [Keys](#keys).
 | `F7`               | Create directory                        |
 | `F8`               | Delete to the trash, after a confirmation |
 | `Shift`+`F8`       | Delete permanently (`Enter` cancels; `Shift`+`F8` again confirms) |
-| `Alt`+`F1` / `Alt`+`F2` | Drive menu for the left / right panel (`↑`/`↓`, `Home`/`End`, `Enter` goes, `Esc` closes; `Option` on macOS) |
+| `Alt`+`F1` / `Alt`+`F2` | Planets (drive menu) for the left / right panel (`↑`/`↓`, `Home`/`End`, `Enter` goes, `Esc` closes; `Option` on macOS) |
 | Right click / `Shift`+`F10` / `Option` tapped alone | Context menu at the pointer or the cursor row (`↑`/`↓`, `Home`/`End`, `Enter` runs, `Esc` closes; `Ctrl`+click also on a Mac) |
 | Click a column title | Sort that panel by Name / Size / Modified; a second click reverses the order (▲ / ▼). `..` and folders stay on top |
 | `Ctrl`+`F3` / `Ctrl`+`F5` / `Ctrl`+`F6` (macOS: `Cmd`+`1` / `Cmd`+`3` / `Cmd`+`2`) | Sort the active panel by name / modification time / size; again reverses. macOS uses `Cmd`+digit because the system takes `Ctrl`+`F`-keys |
-| `Alt`+`F7` / `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) | Search below the directory of the active panel; pressed again, it moves to the next field. See [Search](#search) |
-| `F1` / `Cmd`+`Shift`+`P` / `Ctrl`+`Shift`+`P` | Command palette: lists the actions that work where you are, with their keys; type to filter, `↑`/`↓` move, `Enter` runs, `Esc` closes |
-| `Cmd`+`P` / `Ctrl`+`P` | Quick Open: jump to a file by a few letters of its path. See [Quick Open](#quick-open) |
+| `Alt`+`F7` / `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) | Smell-o-scope (search) below the directory of the active panel; pressed again, it moves to the next field. See [Search](#search) |
+| `F1` / `Cmd`+`Shift`+`P` / `Ctrl`+`Shift`+`P` | Lab (command palette): lists the actions that work where you are, with their keys; type to filter, `↑`/`↓` move, `Enter` runs, `Esc` closes |
+| `Cmd`+`P` / `Ctrl`+`P` | Dark Matter Drive (Quick Open): jump to a file by a few letters of its path. See [Quick Open](#quick-open) |
 | `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D`, or click the filing progress in the status bar | Inspection, the filing status page (filing module on, Hermes): pipeline state, load, workers, index figures and the last errors. `P` pauses or resumes, `1`/`2`/`3` set the load gentle ("By the book") / balanced ("Business as usual") / full ("Grade 36") for this session, `+`/`-` change the worker count, `↑`/`↓` and `Enter` show the file of an error, `Esc` closes |
 | `Cmd`+`Shift`+`L` / `Ctrl`+`Shift`+`L` | Hermes setup: choose the Tubes and document folders and save them to the config file. See [Filing](#filing). `Esc` closes |
 | `Backspace`        | Go to parent directory                   |
@@ -106,7 +106,7 @@ The defaults. Most of them can be changed in the config file, see [Keys](#keys).
 
 ## Search
 
-`Alt`+`F7` or `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) opens
+The Smell-o-scope: `Alt`+`F7` or `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) opens
 the search in the active panel. It searches below that panel's directory, starts
 as you type and stops a search still running when you type on. `Esc` brings the
 panel back; the next search starts with the same fields.
@@ -138,7 +138,7 @@ panel back; the next search starts with the same fields.
 
 ## Quick Open
 
-`Cmd`+`P` (`Ctrl`+`P` on Linux and Windows) opens a box over the panels, as in
+The Dark Matter Drive: `Cmd`+`P` (`Ctrl`+`P` on Linux and Windows) opens a box over the panels, as in
 VS Code. Type letters of a file's path and the best matches are listed with the
 matching characters highlighted: `cfgrs` finds `src/config.rs`. It lists the
 files below the active panel's directory, hidden ones too and without following
@@ -302,11 +302,19 @@ default keys are in [Keyboard shortcuts](#keyboard-shortcuts).
 
 ### Colors
 
-`[theme]` picks a ready-made palette and changes single colors on top of it:
+`[theme]` picks a ready-made palette and changes single colors on top of it.
+There are four: `cosmic` is the default, a calm, almost neutral dark grey with
+muted accents; `default` is the earlier dark teal look; `classic` is Norton
+Commander blue; `dracula` is the Dracula look.
+
+The `dracula` preset uses the colors of the
+[Dracula theme](https://draculatheme.com), MIT License, Copyright (c)
+Dracula Theme.
 
 ```toml
 [theme]
-# "default" (the dark teal look) or "classic" (Norton Commander blue).
+# "cosmic" (the default), "default" (the earlier dark teal look), "classic"
+# (Norton Commander blue) or "dracula".
 preset = "classic"
 # Then single roles, as "#rrggbb" or "#rgb".
 directory = "#ffff55"
@@ -324,23 +332,79 @@ tagged = "#a50"
 | `cursor_text` | Text on the cursor row, on the title bars and on the function key labels |
 | `tagged` | Tagged rows, in both panels |
 | `border` | The frame of the active panel, of dialogs and menus |
-| `bar` | The top bar and the title of the active panel |
+| `bar` | The title of the active panel |
 | `bar_inactive` | Title and frame of the inactive panel |
 | `status_bar` | The status bar |
 | `dialog` | Dialogs |
 | `menu` | The context menu |
 | `accent` | Column titles, the path, dialog titles, tag stars, menu shortcuts |
-| `success` | Confirmations in the title bar |
+| `success` | Confirmations in the status bar |
 | `error` | Errors |
 
-- Roles not listed keep the preset's colors; without `[theme]` nothing changes.
+- Roles not listed keep the preset's colors; without `[theme]` the `cosmic` preset applies.
+  To keep the earlier look, write `[theme]` with `preset = "default"`.
   The order in the file does not matter, `preset` always applies first.
 - An unknown role or preset and a color in another form (names, `#rrggbbaa`) are
   errors with the line, handled like any other config error.
 - A color that makes text hard to read (text on `panel`, `status_bar`, `dialog`
-  or `menu`, directory names on `panel`, `cursor_text` on `cursor`, below 3:1) is
+  or `menu`, `error` and `success` on `status_bar`, directory names on `panel`,
+  `cursor_text` on `cursor`, below 3:1) is
   applied anyway; the status bar says which pair and where, until `Esc`.
 - Colors are read at start; restart ncrs after editing the file.
+
+#### VS Code themes
+
+`vscode` takes the colors from a VS Code color theme file. The installed
+themes are JSON files at `~/.vscode/extensions/<publisher>.<name>-<version>/themes/*.json`,
+on Windows at `%USERPROFILE%\.vscode\extensions\...`.
+
+```toml
+[theme]
+vscode = "themes/my-theme.json"
+# Single roles still win over the theme file.
+cursor = "#335577"
+```
+
+- The path is relative to the folder of the config file, or starts with `~/`.
+- The order is: the preset, then the theme file, then the roles written in
+  `[theme]`. A role the file does not define keeps the preset's color.
+- Only the `colors` object of the file counts, `tokenColors` and the rest are
+  ignored. Comments and trailing commas are fine. Colors are `#rgb`, `#rgba`,
+  `#rrggbb` or `#rrggbbaa`; a translucent color is mixed onto the color below
+  it (the panel, or the cursor row for `cursor_text`). Any other value is
+  skipped.
+- `include` (a path relative to the theme file) reads one more file whose
+  colors the including file overrides. The `include` of that file is not
+  followed.
+- If the file is missing, too big (over 1 MB), not valid JSON, has no `colors`
+  object or includes itself, ncrs starts anyway with the preset and your roles,
+  and the status bar names the file and the reason, until `Esc`.
+
+For each role the first key present counts:
+
+| Role | VS Code keys |
+|---|---|
+| `background` | `sideBar.background`, `editorGroupHeader.tabsBackground`, `editor.background` |
+| `panel` | `editor.background` |
+| `text` | `editor.foreground`, `foreground` |
+| `dim_text` | `descriptionForeground`, `editorLineNumber.foreground` |
+| `directory` | `terminal.ansiBrightWhite`, `editor.foreground` |
+| `cursor` | `list.activeSelectionBackground` |
+| `cursor_text` | `list.activeSelectionForeground` |
+| `tagged` | `terminal.ansiMagenta`, `list.highlightForeground` |
+| `border` | `focusBorder` |
+| `bar` | `titleBar.activeBackground` |
+| `bar_inactive` | `titleBar.inactiveBackground` |
+| `status_bar` | `statusBar.background` |
+| `dialog` | `editorWidget.background` |
+| `menu` | `menu.background`, `editorWidget.background` |
+| `accent` | `terminal.ansiYellow`, `textLink.foreground` |
+| `success` | `terminal.ansiGreen` |
+| `error` | `errorForeground`, `terminal.ansiRed` |
+
+The text on the title bars is `titleBar.activeForeground`; without it, and when
+the theme sets `bar`, it is `text` or `background`, whichever reads better on
+`bar`. The text on tagged rows is chosen the same way when the theme sets `tagged`.
 
 ### Filing
 
@@ -404,9 +468,9 @@ Saving writes the locations by their real paths (symlinks resolved) to
 `[modules.filing]` and sets `enabled = true`. The rest of the file, comments
 included, stays as it is. A config file that does not load is not touched: fix
 it first, the setup shows the error. After saving, the card closes and the
-title bar says that Hermes is on and which key opens the Inspection. If no
+status bar says that Hermes is on and which key opens the Inspection. If no
 filing runs on configured locations yet, filing starts at once with the saved
-ones; otherwise the title bar says they apply from the next start of ncrs.
+ones; otherwise the status bar says they apply from the next start of ncrs.
 
 ### Portable mode
 
@@ -442,7 +506,8 @@ high-security application, and it does not try to be one.
 `~/.local/share/ncrs` on Linux, `%APPDATA%\ncrs` on Windows). It is a SQLCipher
 database (AES-256). The key is kept in the operating system's credential store
 (Keychain, Credential Manager or Secret Service). When the index is created,
-ncrs shows a recovery key once. You need it if the credential store loses the
+ncrs shows your master key once, the same key ncrs later asks for as the
+recovery key. You need it if the credential store loses the
 key, for example on a new machine or after a reinstall. Without it the index
 cannot be read again.
 
@@ -599,7 +664,6 @@ src/
 ├── ui/              # Pure, reusable view components (no business logic)
 │   ├── panel.rs     # PanelState (data + selection/scroll helpers) + view()
 │   ├── dialog.rs    # The prompt: text field, buttons, scrim
-│   ├── header.rs    # Title bar with shortcut hints
 │   ├── statusbar.rs # Active path | selected entry | size | date (or error)
 │   ├── theme.rs     # Colors, spacing, font sizes, widget style functions
 │   ├── layout.rs    # Fixed metrics (row height, column widths, visible rows)
@@ -639,8 +703,8 @@ src/
 4. **Components are functions, not stateful widgets.** `PanelState` lives in `App`;
    `panel::view` just renders it.
 5. **Components are generic over the message type.** `panel::view` receives an
-   `on_row_click: impl Fn(usize) -> M` callback, `header::view` / `statusbar::view` are
-   generic `M` – they can be reused in any iced app or in other screens (dialogs, viewers…).
+   `on_row_click: impl Fn(usize) -> M` callback, and `statusbar::view` is
+   generic over `M` – they can be reused in any iced app or in other screens (dialogs, viewers…).
 6. **Minimal exports.** `fs` re-exports only `FileEntry` and the reader functions; the UI
    module exposes components and `PanelState`/`PanelProps`.
 

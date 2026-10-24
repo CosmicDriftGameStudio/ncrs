@@ -25,7 +25,7 @@ pub fn view<'a>(
         || quick_open.root().display().to_string(),
         |name| name.to_string_lossy().into_owned(),
     );
-    let title = fill_template(lang.text(Msg::QuickopenTitle), &[("{dir}", &directory)]);
+    let subtitle = fill_template(lang.text(Msg::QuickopenSubtitle), &[("{dir}", &directory)]);
 
     let field = picker::query_field(
         lang.text(Msg::QuickopenPlaceholder),
@@ -43,7 +43,8 @@ pub fn view<'a>(
         .map(|(index, hit)| hit_row(quick_open, hit, index, palette));
 
     picker::frame(
-        title,
+        lang.text(Msg::QuickopenTitle).to_owned(),
+        subtitle,
         field,
         status(quick_open, lang),
         rows,

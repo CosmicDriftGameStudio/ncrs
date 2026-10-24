@@ -94,6 +94,12 @@ impl FilingStatus {
         Some(documents.div_ceil(span))
     }
 
+    /// Files are open, but no full minute has been measured, so there is
+    /// neither a rate nor a time left yet.
+    pub fn awaiting_first_minute(&self) -> bool {
+        self.snapshot.open_files() > 0 && self.documents_per_minute().is_none()
+    }
+
     pub fn remaining_estimate(&self) -> Option<Duration> {
         let open = self.snapshot.open_files();
         if open == 0 {
@@ -217,6 +223,15 @@ mod tests {
         let mut status = FilingStatus::default();
         status.set_snapshot(snapshot, at());
         status
+    }
+
+    #[test]
+    fn the_first_minute_is_awaited_only_while_files_are_open_and_no_minute_is_measured() {
+        assert!(with_rate(&[], 5).awaiting_first_minute());
+        assert!(with_rate(&[(0, 7)], 5).awaiting_first_minute());
+        assert!(!with_rate(&[(1, 7)], 5).awaiting_first_minute());
+        assert!(!with_rate(&[], 0).awaiting_first_minute());
+        assert!(!FilingStatus::default().awaiting_first_minute());
     }
 
     fn with_errors(count: usize) -> FilingStatus {

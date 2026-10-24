@@ -11,6 +11,7 @@ use std::ops::Range;
 use iced::Color;
 
 use crate::config::ThemeSection;
+use crate::vscode_theme::VscodeTheme;
 
 /// Below this ratio (WCAG calls 3:1 the floor for large or bold text) a
 /// pairing is reported, not refused: the user's choice stands.
@@ -18,6 +19,8 @@ const READABLE_CONTRAST: f32 = 3.0;
 
 /// The key of `[theme]` that picks the base palette.
 const PRESET_KEY: &str = "preset";
+/// Like `preset`, not a role: a VS Code theme file laid over the preset.
+pub const VSCODE_KEY: &str = "vscode";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Palette {
@@ -30,10 +33,16 @@ pub struct Palette {
     pub cursor_text: Color,
     pub tagged: Color,
     pub tagged_inactive: Color,
+    /// Names on a tagged row of the active panel, when the cursor is elsewhere.
+    pub tagged_text: Color,
+    pub tagged_directory: Color,
+    /// The star of a tagged row of the active panel, when the cursor is elsewhere.
+    pub tagged_mark: Color,
     pub border: Color,
     pub border_inactive: Color,
-    pub header: Color,
     pub title: Color,
+    /// Text on the active panel title.
+    pub title_text: Color,
     pub title_inactive: Color,
     pub status_bar: Color,
     pub dialog: Color,
@@ -44,7 +53,7 @@ pub struct Palette {
     pub menu_shortcut_on_cursor: Color,
     pub menu_disabled: Color,
     pub accent: Color,
-    /// Confirmations, drawn on the header bar.
+    /// Confirmations, drawn on the status bar.
     pub success: Color,
     pub error: Color,
     /// The digit of a function key slot, on the window background.
@@ -56,24 +65,30 @@ pub struct Palette {
 
 impl Default for Palette {
     fn default() -> Self {
-        ThemePreset::Default.palette()
+        ThemePreset::Cosmic.palette()
     }
 }
 
 /// A complete palette to start from. `[theme]` roles are applied on top.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThemePreset {
-    Default,
+    /// The look without a `[theme]` section.
+    Cosmic,
+    /// The earlier dark teal look, still called `"default"` in the config.
+    Teal,
     Classic,
+    Dracula,
 }
 
 impl ThemePreset {
-    pub const ALL: [ThemePreset; 2] = [Self::Default, Self::Classic];
+    pub const ALL: [ThemePreset; 4] = [Self::Cosmic, Self::Teal, Self::Classic, Self::Dracula];
 
     pub fn name(self) -> &'static str {
         match self {
-            Self::Default => "default",
+            Self::Cosmic => "cosmic",
+            Self::Teal => "default",
             Self::Classic => "classic",
+            Self::Dracula => "dracula",
         }
     }
 
@@ -83,7 +98,38 @@ impl ThemePreset {
 
     pub fn palette(self) -> Palette {
         match self {
-            Self::Default => Palette {
+            Self::Cosmic => Palette {
+                background: Color::from_rgb8(0x14, 0x13, 0x18),
+                panel: Color::from_rgb8(0x1A, 0x19, 0x20),
+                text: Color::from_rgb8(0xCF, 0xCD, 0xD6),
+                dim_text: Color::from_rgb8(0x85, 0x82, 0x8F),
+                directory: Color::from_rgb8(0xF0, 0xEE, 0xF5),
+                cursor: Color::from_rgb8(0x7F, 0xA8, 0x8A),
+                cursor_text: Color::from_rgb8(0x14, 0x13, 0x18),
+                tagged: Color::from_rgb8(0xB3, 0x9D, 0xDB),
+                tagged_inactive: Color::from_rgb8(0x3D, 0x36, 0x50),
+                tagged_text: Color::from_rgb8(0x14, 0x13, 0x18),
+                tagged_directory: Color::from_rgb8(0x14, 0x13, 0x18),
+                tagged_mark: Color::from_rgb8(0x14, 0x13, 0x18),
+                border: Color::from_rgb8(0x72, 0x6E, 0x8A),
+                border_inactive: Color::from_rgb8(0x1E, 0x1D, 0x25),
+                title: Color::from_rgb8(0x24, 0x22, 0x2D),
+                title_text: Color::from_rgb8(0xCF, 0xCD, 0xD6),
+                title_inactive: Color::from_rgb8(0x1E, 0x1D, 0x25),
+                status_bar: Color::from_rgb8(0x18, 0x17, 0x1D),
+                dialog: Color::from_rgb8(0x24, 0x22, 0x2D),
+                menu: Color::from_rgb8(0x24, 0x22, 0x2D),
+                menu_shortcut: Color::from_rgb8(0xD4, 0xA3, 0x73),
+                menu_shortcut_on_cursor: Color::from_rgb8(0x14, 0x13, 0x18),
+                menu_disabled: Color::from_rgb8(0x85, 0x82, 0x8F),
+                accent: Color::from_rgb8(0xD4, 0xA3, 0x73),
+                success: Color::from_rgb8(0x8F, 0xB9, 0x96),
+                error: Color::from_rgb8(0xD9, 0x7A, 0x7A),
+                fkey_number: Color::from_rgb8(0xCF, 0xCD, 0xD6),
+                fkey_label: Color::from_rgb8(0x7F, 0xA8, 0x8A),
+                fkey_label_text: Color::from_rgb8(0x14, 0x13, 0x18),
+            },
+            Self::Teal => Palette {
                 background: Color::from_rgb(0.035, 0.047, 0.098),
                 panel: Color::from_rgb(0.047, 0.086, 0.200),
                 text: Color::from_rgb(0.800, 0.840, 0.940),
@@ -93,10 +139,13 @@ impl ThemePreset {
                 cursor_text: Color::from_rgb(0.020, 0.040, 0.090),
                 tagged: Color::from_rgb(0.180, 0.690, 0.760),
                 tagged_inactive: Color::from_rgb(0.130, 0.210, 0.360),
+                tagged_text: Color::from_rgb(0.800, 0.840, 0.940),
+                tagged_directory: Color::from_rgb(1.000, 1.000, 1.000),
+                tagged_mark: Color::from_rgb(1.000, 0.850, 0.300),
                 border: Color::from_rgb(0.310, 0.840, 0.910),
                 border_inactive: Color::from_rgb(0.165, 0.210, 0.390),
-                header: Color::from_rgb(0.110, 0.420, 0.520),
                 title: Color::from_rgb(0.110, 0.420, 0.520),
+                title_text: Color::from_rgb(0.020, 0.040, 0.090),
                 title_inactive: Color::from_rgb(0.070, 0.125, 0.270),
                 status_bar: Color::from_rgb(0.070, 0.125, 0.270),
                 dialog: Color::from_rgb(0.110, 0.420, 0.520),
@@ -121,10 +170,13 @@ impl ThemePreset {
                 cursor_text: Color::from_rgb8(0x00, 0x00, 0x00),
                 tagged: Color::from_rgb8(0x55, 0x55, 0xFF),
                 tagged_inactive: Color::from_rgb8(0x00, 0x00, 0x80),
+                tagged_text: Color::from_rgb8(0x55, 0xFF, 0xFF),
+                tagged_directory: Color::from_rgb8(0xFF, 0xFF, 0xFF),
+                tagged_mark: Color::from_rgb8(0xFF, 0xFF, 0x55),
                 border: Color::from_rgb8(0x55, 0xFF, 0xFF),
                 border_inactive: Color::from_rgb8(0x00, 0xAA, 0xAA),
-                header: Color::from_rgb8(0x00, 0xAA, 0xAA),
                 title: Color::from_rgb8(0x00, 0xAA, 0xAA),
+                title_text: Color::from_rgb8(0x00, 0x00, 0x00),
                 title_inactive: Color::from_rgb8(0x00, 0x00, 0xAA),
                 status_bar: Color::from_rgb8(0x00, 0x00, 0x00),
                 dialog: Color::from_rgb8(0x00, 0x00, 0x80),
@@ -133,11 +185,43 @@ impl ThemePreset {
                 menu_shortcut_on_cursor: Color::from_rgb8(0x00, 0x00, 0x00),
                 menu_disabled: Color::from_rgb8(0x80, 0x80, 0x80),
                 accent: Color::from_rgb8(0xFF, 0xFF, 0x55),
-                success: Color::from_rgb8(0x00, 0x44, 0x00),
+                success: Color::from_rgb8(0x55, 0xFF, 0x55),
                 error: Color::from_rgb8(0xFF, 0x55, 0x55),
                 fkey_number: Color::from_rgb8(0xFF, 0xFF, 0xFF),
                 fkey_label: Color::from_rgb8(0x00, 0xAA, 0xAA),
                 fkey_label_text: Color::from_rgb8(0x00, 0x00, 0x00),
+            },
+            // Colors from the Dracula theme (draculatheme.com), MIT license.
+            Self::Dracula => Palette {
+                background: Color::from_rgb8(0x21, 0x22, 0x2C),
+                panel: Color::from_rgb8(0x28, 0x2A, 0x36),
+                text: Color::from_rgb8(0xF8, 0xF8, 0xF2),
+                dim_text: Color::from_rgb8(0x62, 0x72, 0xA4),
+                directory: Color::from_rgb8(0x8B, 0xE9, 0xFD),
+                cursor: Color::from_rgb8(0x44, 0x47, 0x5A),
+                cursor_text: Color::from_rgb8(0xF8, 0xF8, 0xF2),
+                tagged: Color::from_rgb8(0xFF, 0x79, 0xC6),
+                tagged_inactive: Color::from_rgb8(0x6E, 0x3F, 0x63),
+                tagged_text: Color::from_rgb8(0x28, 0x2A, 0x36),
+                tagged_directory: Color::from_rgb8(0x28, 0x2A, 0x36),
+                tagged_mark: Color::from_rgb8(0x28, 0x2A, 0x36),
+                border: Color::from_rgb8(0xBD, 0x93, 0xF9),
+                border_inactive: Color::from_rgb8(0x44, 0x47, 0x5A),
+                title: Color::from_rgb8(0x44, 0x47, 0x5A),
+                title_text: Color::from_rgb8(0xF8, 0xF8, 0xF2),
+                title_inactive: Color::from_rgb8(0x21, 0x22, 0x2C),
+                status_bar: Color::from_rgb8(0x21, 0x22, 0x2C),
+                dialog: Color::from_rgb8(0x21, 0x22, 0x2C),
+                menu: Color::from_rgb8(0x21, 0x22, 0x2C),
+                menu_shortcut: Color::from_rgb8(0xFF, 0xB8, 0x6C),
+                menu_shortcut_on_cursor: Color::from_rgb8(0xFF, 0xB8, 0x6C),
+                menu_disabled: Color::from_rgb8(0x62, 0x72, 0xA4),
+                accent: Color::from_rgb8(0xF1, 0xFA, 0x8C),
+                success: Color::from_rgb8(0x50, 0xFA, 0x7B),
+                error: Color::from_rgb8(0xFF, 0x55, 0x55),
+                fkey_number: Color::from_rgb8(0xF8, 0xF8, 0xF2),
+                fkey_label: Color::from_rgb8(0x44, 0x47, 0x5A),
+                fkey_label_text: Color::from_rgb8(0xF8, 0xF8, 0xF2),
             },
         }
     }
@@ -194,7 +278,7 @@ color_roles! {
 
 impl Palette {
     /// Sets every slot that belongs to `role`.
-    fn set(&mut self, role: ColorRole, color: Color) {
+    pub fn set(&mut self, role: ColorRole, color: Color) {
         match role {
             ColorRole::Background => self.background = color,
             ColorRole::Panel => self.panel = color,
@@ -213,6 +297,7 @@ impl Palette {
             }
             ColorRole::CursorText => {
                 self.cursor_text = color;
+                self.title_text = color;
                 self.fkey_label_text = color;
                 self.menu_shortcut_on_cursor = color;
             }
@@ -221,10 +306,7 @@ impl Palette {
                 self.tagged_inactive = color;
             }
             ColorRole::Border => self.border = color,
-            ColorRole::Bar => {
-                self.header = color;
-                self.title = color;
-            }
+            ColorRole::Bar => self.title = color,
             ColorRole::BarInactive => {
                 self.title_inactive = color;
                 self.border_inactive = color;
@@ -242,7 +324,7 @@ impl Palette {
     }
 
     /// The main slot of `role`, the one its contrast is judged by.
-    fn color(&self, role: ColorRole) -> Color {
+    pub fn color(&self, role: ColorRole) -> Color {
         match role {
             ColorRole::Background => self.background,
             ColorRole::Panel => self.panel,
@@ -270,13 +352,15 @@ impl Palette {
     /// Text on the cursor and tagged rows and the error color on the dialog are
     /// not judged: the built-in palette is already weak there.
     pub fn weakest_contrast(&self) -> Option<LowContrast> {
-        const PAIRS: [(ColorRole, ColorRole); 6] = [
+        const PAIRS: [(ColorRole, ColorRole); 8] = [
             (ColorRole::Text, ColorRole::Panel),
             (ColorRole::Directory, ColorRole::Panel),
             (ColorRole::CursorText, ColorRole::Cursor),
             (ColorRole::Text, ColorRole::StatusBar),
             (ColorRole::Text, ColorRole::Dialog),
             (ColorRole::Text, ColorRole::Menu),
+            (ColorRole::Error, ColorRole::StatusBar),
+            (ColorRole::Success, ColorRole::StatusBar),
         ];
         PAIRS
             .into_iter()
@@ -289,11 +373,41 @@ impl Palette {
             .min_by(|a, b| a.ratio.total_cmp(&b.ratio))
     }
 
+    /// The presets with their own text colors on tagged rows and bars (Cosmic,
+    /// Dracula) would turn unreadable when a role moves the fill or the color
+    /// the slot used to follow. Then the slot takes the more readable of its
+    /// value before the roles and the color it used to follow. Teal and Classic
+    /// never differ from that color and stay as they are.
+    fn keep_readable(&mut self, preset: &Palette, before: &Palette, set: &[ColorRole]) {
+        let touched = |a: ColorRole, b: ColorRole| set.contains(&a) || set.contains(&b);
+        if preset.tagged_text != preset.text && touched(ColorRole::Tagged, ColorRole::Text) {
+            self.tagged_text = most_readable(self.tagged, [before.tagged_text, self.text]);
+        }
+        if preset.tagged_directory != preset.directory
+            && touched(ColorRole::Tagged, ColorRole::Directory)
+        {
+            self.tagged_directory =
+                most_readable(self.tagged, [before.tagged_directory, self.directory]);
+        }
+        if preset.tagged_mark != preset.accent && touched(ColorRole::Tagged, ColorRole::Accent) {
+            self.tagged_mark = most_readable(self.tagged, [before.tagged_mark, self.accent]);
+        }
+        if preset.title_text != preset.cursor_text && touched(ColorRole::Bar, ColorRole::CursorText)
+        {
+            self.title_text = most_readable(self.title, [before.title_text, self.cursor_text]);
+        }
+    }
+
     /// The palette `[theme]` describes: the preset (wherever it stands in the
-    /// section) with the roles applied in the order written.
-    pub fn from_section(section: &ThemeSection) -> Result<ConfiguredPalette, ThemeError> {
+    /// section), then the VS Code theme read from its `vscode` entry, then the
+    /// roles in the order written.
+    pub fn from_section(
+        section: &ThemeSection,
+        vscode: Option<&VscodeTheme>,
+    ) -> Result<ConfiguredPalette, ThemeError> {
         let mut preset_span = None;
-        let mut preset = ThemePreset::Default;
+        let mut vscode_span = None;
+        let mut preset = ThemePreset::Cosmic;
         for entry in &section.entries {
             if entry.key.as_ref() == PRESET_KEY {
                 let name = entry.value.as_ref();
@@ -311,10 +425,18 @@ impl Palette {
         }
 
         let mut palette = preset.palette();
+        if let Some(theme) = vscode {
+            theme.apply(&mut palette);
+        }
+        let before_roles = palette;
         let mut role_spans = Vec::new();
         for entry in &section.entries {
             let key = entry.key.as_ref();
             if key == PRESET_KEY {
+                continue;
+            }
+            if key == VSCODE_KEY {
+                vscode_span = Some(entry.value.span());
                 continue;
             }
             let role = ColorRole::from_name(key).ok_or_else(|| ThemeError {
@@ -328,9 +450,12 @@ impl Palette {
             palette.set(role, color);
             role_spans.push((role, entry.value.span()));
         }
+        let set_roles: Vec<ColorRole> = role_spans.iter().map(|(role, _)| *role).collect();
+        palette.keep_readable(&preset.palette(), &before_roles, &set_roles);
         Ok(ConfiguredPalette {
             palette,
             preset_span,
+            vscode_span,
             role_spans,
         })
     }
@@ -348,6 +473,7 @@ pub struct ThemeError {
 pub struct ConfiguredPalette {
     pub palette: Palette,
     pub preset_span: Option<Range<usize>>,
+    pub vscode_span: Option<Range<usize>>,
     pub role_spans: Vec<(ColorRole, Range<usize>)>,
 }
 
@@ -369,6 +495,16 @@ pub struct LowContrast {
 
 /// `#rrggbb` or `#rgb`. Alpha is refused: a translucent panel would show the
 /// window behind it, which nothing here is drawn to handle.
+/// The candidate with the most contrast against `ground`.
+pub fn most_readable(ground: Color, candidates: [Color; 2]) -> Color {
+    let [first, second] = candidates;
+    if contrast_ratio(second, ground) > contrast_ratio(first, ground) {
+        second
+    } else {
+        first
+    }
+}
+
 fn parse_color(text: &str) -> Result<Color, String> {
     let not_a_color = || format!("{text:?} is not a color, expected \"#rrggbb\" or \"#rgb\"");
     let digits = text.strip_prefix('#').ok_or_else(not_a_color)?;
@@ -418,7 +554,7 @@ mod tests {
     use crate::config::{load, ConfigError};
     use std::path::PathBuf;
 
-    fn slots(palette: &Palette) -> [(&'static str, Color); 26] {
+    fn slots(palette: &Palette) -> [(&'static str, Color); 29] {
         [
             ("background", palette.background),
             ("panel", palette.panel),
@@ -429,10 +565,13 @@ mod tests {
             ("cursor_text", palette.cursor_text),
             ("tagged", palette.tagged),
             ("tagged_inactive", palette.tagged_inactive),
+            ("tagged_text", palette.tagged_text),
+            ("tagged_directory", palette.tagged_directory),
+            ("tagged_mark", palette.tagged_mark),
             ("border", palette.border),
             ("border_inactive", palette.border_inactive),
-            ("header", palette.header),
             ("title", palette.title),
+            ("title_text", palette.title_text),
             ("title_inactive", palette.title_inactive),
             ("status_bar", palette.status_bar),
             ("dialog", palette.dialog),
@@ -472,7 +611,22 @@ mod tests {
     }
 
     #[test]
-    fn without_a_theme_section_every_slot_keeps_its_look() {
+    fn without_a_theme_section_the_cosmic_preset_applies() {
+        for text in ["", "[open]\nview = [\"less\"]\n", "[theme]\n"] {
+            let config = load_text(text);
+            assert_eq!(config.palette, ThemePreset::Cosmic.palette(), "{text:?}");
+            assert_eq!(config.contrast_warning, None);
+        }
+    }
+
+    #[test]
+    fn the_name_default_picks_the_teal_look() {
+        let config = load_text("[theme]\npreset = \"default\"\n");
+        assert_eq!(config.palette, ThemePreset::Teal.palette());
+    }
+
+    #[test]
+    fn every_slot_of_the_teal_preset_keeps_its_look() {
         let expected = [
             ("background", rgb(0.035, 0.047, 0.098)),
             ("panel", rgb(0.047, 0.086, 0.200)),
@@ -483,10 +637,13 @@ mod tests {
             ("cursor_text", rgb(0.020, 0.040, 0.090)),
             ("tagged", rgb(0.180, 0.690, 0.760)),
             ("tagged_inactive", rgb(0.130, 0.210, 0.360)),
+            ("tagged_text", rgb(0.800, 0.840, 0.940)),
+            ("tagged_directory", rgb(1.000, 1.000, 1.000)),
+            ("tagged_mark", rgb(1.000, 0.850, 0.300)),
             ("border", rgb(0.310, 0.840, 0.910)),
             ("border_inactive", rgb(0.165, 0.210, 0.390)),
-            ("header", rgb(0.110, 0.420, 0.520)),
             ("title", rgb(0.110, 0.420, 0.520)),
+            ("title_text", rgb(0.020, 0.040, 0.090)),
             ("title_inactive", rgb(0.070, 0.125, 0.270)),
             ("status_bar", rgb(0.070, 0.125, 0.270)),
             ("dialog", rgb(0.110, 0.420, 0.520)),
@@ -501,11 +658,7 @@ mod tests {
             ("fkey_label", rgb(0.180, 0.690, 0.760)),
             ("fkey_label_text", rgb(0.020, 0.040, 0.090)),
         ];
-        for text in ["", "[open]\nview = [\"less\"]\n"] {
-            let config = load_text(text);
-            assert_eq!(slots(&config.palette), expected, "{text:?}");
-            assert_eq!(config.contrast_warning, None);
-        }
+        assert_eq!(slots(&ThemePreset::Teal.palette()), expected);
     }
 
     #[test]
@@ -519,11 +672,16 @@ mod tests {
             (ColorRole::Cursor, &["cursor", "fkey_label"]),
             (
                 ColorRole::CursorText,
-                &["cursor_text", "fkey_label_text", "menu_shortcut_on_cursor"],
+                &[
+                    "cursor_text",
+                    "title_text",
+                    "fkey_label_text",
+                    "menu_shortcut_on_cursor",
+                ],
             ),
             (ColorRole::Tagged, &["tagged", "tagged_inactive"]),
             (ColorRole::Border, &["border"]),
-            (ColorRole::Bar, &["header", "title"]),
+            (ColorRole::Bar, &["title"]),
             (
                 ColorRole::BarInactive,
                 &["title_inactive", "border_inactive"],
@@ -582,7 +740,7 @@ mod tests {
             ("[theme]\nfoo = \"#fff\"\n", "unknown color role \"foo\""),
             (
                 "[theme]\npreset = \"x\"\n",
-                "unknown preset \"x\", expected \"default\" or \"classic\"",
+                "unknown preset \"x\", expected \"cosmic\" or \"default\" or \"classic\" or \"dracula\"",
             ),
         ];
         for (text, expected) in cases {
@@ -629,11 +787,74 @@ mod tests {
     }
 
     #[test]
-    fn a_light_panel_under_the_default_text_is_reported_but_kept() {
-        let config = load_text("[open]\n\n[theme]\npanel = \"#ccddee\"\n");
-        assert_eq!(config.palette.panel, Color::from_rgb8(0xCC, 0xDD, 0xEE));
+    fn title_and_tagged_text_are_readable_on_their_fills_in_cosmic_and_dracula() {
+        for preset in [ThemePreset::Cosmic, ThemePreset::Dracula] {
+            let p = preset.palette();
+            for (name, text, fill) in [
+                ("title_text on title", p.title_text, p.title),
+                ("tagged_text on tagged", p.tagged_text, p.tagged),
+                ("tagged_directory on tagged", p.tagged_directory, p.tagged),
+                ("tagged_mark on tagged", p.tagged_mark, p.tagged),
+            ] {
+                assert!(
+                    contrast_ratio(text, fill) >= READABLE_CONTRAST,
+                    "{preset:?} {name}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn teal_and_classic_keep_their_old_title_and_tagged_text() {
+        for preset in [ThemePreset::Teal, ThemePreset::Classic] {
+            let p = preset.palette();
+            assert_eq!(p.title_text, p.cursor_text, "{preset:?}");
+            assert_eq!(p.tagged_text, p.text, "{preset:?}");
+            assert_eq!(p.tagged_directory, p.directory, "{preset:?}");
+            assert_eq!(p.tagged_mark, p.accent, "{preset:?}");
+        }
+    }
+
+    #[test]
+    fn a_dark_tagged_fill_keeps_the_cosmic_tagged_text_readable() {
+        let config = load_text("[open]\n\n[theme]\ntagged = \"#203040\"\n");
+        let p = config.palette;
+        for (name, color) in [
+            ("tagged_text", p.tagged_text),
+            ("tagged_directory", p.tagged_directory),
+            ("tagged_mark", p.tagged_mark),
+        ] {
+            let ratio = contrast_ratio(color, p.tagged);
+            assert!(ratio >= 3.0, "{name} {ratio}");
+        }
+    }
+
+    #[test]
+    fn a_light_bar_keeps_the_cosmic_title_text_readable() {
+        let light_bar = load_text("[open]\n\n[theme]\nbar = \"#e0e0e0\"\n").palette;
+        assert!(contrast_ratio(light_bar.title_text, light_bar.title) >= 3.0);
+        let black_cursor_text = load_text("[open]\n\n[theme]\ncursor_text = \"#000000\"\n").palette;
+        assert!(contrast_ratio(black_cursor_text.title_text, black_cursor_text.title) >= 3.0);
+    }
+
+    #[test]
+    fn teal_keeps_blind_role_overrides_exactly() {
+        let config = load_text(
+            "[open]\n\n[theme]\npreset = \"default\"\ntagged = \"#203040\"\nbar = \"#e0e0e0\"\ncursor_text = \"#000000\"\n",
+        );
+        let p = config.palette;
+        assert_eq!(p.tagged_text, p.text);
+        assert_eq!(p.tagged_directory, p.directory);
+        assert_eq!(p.tagged_mark, p.accent);
+        assert_eq!(p.title_text, Color::from_rgb8(0, 0, 0));
+    }
+
+    #[test]
+    fn a_light_panel_under_the_default_colors_is_reported_but_kept() {
+        let config = load_text("[open]\n\n[theme]\npanel = \"#f4f0ff\"\n");
+        assert_eq!(config.palette.panel, Color::from_rgb8(0xF4, 0xF0, 0xFF));
         let warning = config.contrast_warning.unwrap();
-        assert_eq!(warning.foreground, ColorRole::Text);
+        assert_eq!(warning.foreground, ColorRole::Directory);
         assert_eq!(warning.background, ColorRole::Panel);
         assert_eq!(warning.line, Some(4));
         assert!(warning.ratio < READABLE_CONTRAST);

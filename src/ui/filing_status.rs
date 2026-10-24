@@ -156,30 +156,34 @@ fn pipeline_section<'a>(
     .spacing(spacing::CELL_PADDING_X)
     .align_y(iced::alignment::Vertical::Center);
 
-    let throughput = status.documents_per_minute().map_or_else(
-        || NOTHING_YET.to_owned(),
-        |count| {
-            fill_template(
-                lang.text(Msg::FilingStatusThroughput),
-                &[("{count}", &count.to_string())],
-            )
-        },
-    );
-    let remaining = status.remaining_estimate().map_or_else(
-        || NOTHING_YET.to_owned(),
-        |left| {
-            fill_template(
-                lang.text(Msg::FilingStatusRemaining),
-                &[("{minutes}", &left.as_secs().div_euclid(60).to_string())],
-            )
-        },
-    );
+    let figure = |found: Option<String>| -> Element<'a, Message> {
+        match found {
+            Some(text_found) => plain(text_found),
+            None if status.awaiting_first_minute() => text(lang.text(Msg::FilingStatusFirstMinute))
+                .size(font_size::STATUS)
+                .color(palette.dim_text)
+                .into(),
+            None => plain(NOTHING_YET),
+        }
+    };
+    let throughput = figure(status.documents_per_minute().map(|count| {
+        fill_template(
+            lang.text(Msg::FilingStatusThroughput),
+            &[("{count}", &count.to_string())],
+        )
+    }));
+    let remaining = figure(status.remaining_estimate().map(|left| {
+        fill_template(
+            lang.text(Msg::FilingStatusRemaining),
+            &[("{minutes}", &left.as_secs().div_euclid(60).to_string())],
+        )
+    }));
 
     let steps = snapshot.steps.iter().map(|step| {
         let line = fill_template(
             lang.text(Msg::FilingStatusStepCounts),
             &[
-                ("{name}", step.name),
+                ("{name}", &step_label(step.name, lang)),
                 ("{waiting}", &step.waiting.to_string()),
                 ("{done}", &step.done.to_string()),
                 ("{failed}", &step.failed.to_string()),
@@ -201,21 +205,21 @@ fn pipeline_section<'a>(
             .size(font_size::STATUS)
             .color(palette.dim_text),
         Column::with_children(steps),
-        labelled(
-            Msg::FilingStatusThroughputLabel,
-            plain(throughput),
-            lang,
-            palette
-        ),
-        labelled(
-            Msg::FilingStatusRemainingLabel,
-            plain(remaining),
-            lang,
-            palette
-        ),
+        labelled(Msg::FilingStatusThroughputLabel, throughput, lang, palette),
+        labelled(Msg::FilingStatusRemainingLabel, remaining, lang, palette),
     ]
     .spacing(spacing::SECTION_GAP / 2.0)
     .into()
+}
+
+/// The name a step is shown under. The step's own name is an identifier; one
+/// this build has no word for is shown as it is.
+fn step_label(name: &str, lang: Language) -> String {
+    match name {
+        "intake" => lang.text(Msg::FilingStatusStepIntake).to_owned(),
+        "review" => lang.text(Msg::FilingStatusStepReview).to_owned(),
+        other => other.to_owned(),
+    }
 }
 
 fn task_label(task: Task, lang: Language) -> String {
@@ -223,7 +227,7 @@ fn task_label(task: Task, lang: Language) -> String {
         Task::Workers => lang.text(Msg::FilingStatusTaskWorkers).to_owned(),
         Task::Watch => lang.text(Msg::FilingStatusTaskWatch).to_owned(),
         Task::Scan => lang.text(Msg::FilingStatusTaskScan).to_owned(),
-        Task::Step(name) => name.to_owned(),
+        Task::Step(name) => step_label(name, lang),
     }
 }
 
@@ -359,7 +363,13 @@ fn index_rows<'a>(
         ),
         labelled(
             Msg::FilingStatusIndexReviews,
-            plain(statistics.open_reviews.to_string()),
+            row![
+                plain(format!("{} ·", statistics.open_reviews)),
+                text(lang.text(Msg::FilingStatusIndexReviewsExplain))
+                    .size(font_size::STATUS)
+                    .color(palette.dim_text),
+            ]
+            .spacing(spacing::CELL_PADDING_X / 2.0),
             lang,
             palette,
         ),
@@ -431,4 +441,26 @@ fn errors_section<'a>(
     column![heading(Msg::FilingStatusSectionErrors, lang, palette), list,]
         .spacing(spacing::SECTION_GAP / 2.0)
         .into()
+}
+
+// reason: a failing assertion is the signal in a test
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_known_steps_have_visible_names_and_others_keep_theirs() {
+        assert_eq!(step_label("intake", Language::English), "Intake");
+        assert_eq!(step_label("intake", Language::German), "Annahme");
+        assert_eq!(step_label("review", Language::English), "Pending");
+        assert_eq!(step_label("review", Language::German), "Wiedervorlage");
+        assert_eq!(step_label("some_step", Language::English), "some_step");
+        assert_eq!(step_label("some_step", Language::German), "some_step");
+    }
 }
