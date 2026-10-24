@@ -16,6 +16,8 @@ use crate::fs::search::SearchEvent;
 use crate::fs::CreateDirError;
 use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
 use crate::jobs::JobEvent;
+#[cfg(any(target_os = "macos", test))]
+use crate::keymap::KeyAction;
 use crate::open_vsx::FetchError;
 use crate::theme_fetch::{Fetched, Installed};
 
@@ -263,6 +265,13 @@ pub enum Message {
 
     // --- Theme download (command palette: fetch a color theme) ---
     ThemeFetch(ThemeFetchMessage),
+
+    // --- Native menu bar (macOS) ---
+    /// A command chosen from the menu bar or the command list.
+    #[cfg(any(target_os = "macos", test))]
+    RunCommand(KeyAction),
+    #[cfg(target_os = "macos")]
+    InstallNativeMenu,
 
     // --- Window / app ---
     WindowResized(Size),

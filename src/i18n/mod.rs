@@ -184,6 +184,8 @@ mod tests {
                 | Msg::FilingSetupTitle
                 | Msg::ActionFilingSetupTheme
                 | Msg::GroupHermesTheme
+                // The app's name heads the macOS app menu in every language.
+                | Msg::MenuApp
         )
     }
 

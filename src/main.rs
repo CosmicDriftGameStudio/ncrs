@@ -25,7 +25,11 @@ mod fs;
 mod i18n;
 mod jobs;
 mod keymap;
+#[cfg(any(target_os = "macos", test))]
+mod menu;
 mod messages;
+#[cfg(target_os = "macos")]
+mod native_menu;
 mod open_vsx;
 mod palette;
 mod quick_open;

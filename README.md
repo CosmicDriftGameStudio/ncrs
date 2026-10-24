@@ -104,6 +104,11 @@ The defaults. Most of them can be changed in the config file, see [Keys](#keys).
 | `F9`               | Switch language for this session (start: `lang`) |
 | `F10` / `Cmd`+`Q` / `Ctrl`+`Q` | Quit                                     |
 
+On macOS every command is also in the menu bar (File, Edit, View, Go, Search, Filing, Window,
+Help), with the keys from the keymap. Only keys that cannot be typed into a text field are shown
+there: those with `Cmd` or `Ctrl`, and the function keys. While a dialog is open everything in the menu except Quit is off, so
+the keys reach the dialog. On Linux, and for now on Windows, the Lab (`F1`) is the menu.
+
 ## Search
 
 The Smell-o-scope: `Alt`+`F7` or `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) opens

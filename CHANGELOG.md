@@ -13,6 +13,15 @@ All notable changes to this project are documented here. The format follows
   dimmed after it; type the start of any word of either to find it, so "se"
   finds "Search in files" but no longer "Sort by size". With an empty field,
   the commands you ran last in this session come first.
+- On macOS the menu bar now holds all commands, in the same groups as the
+  Lab, each with its plain name first and the playful name after it in
+  brackets, and with its key as the keymap defines it (`[keys]` included).
+  Choosing an entry does what the Lab entry does. Entries that cannot run in
+  the search view are greyed out, and everything except Quit is off while a
+  dialog is open so that its keys reach the dialog. Switching the language renames the
+  entries. Keys without `Cmd` or `Ctrl` that are not function keys, like
+  `Enter` or `Space`, are not shown in the menu so they keep working in text
+  fields. On Linux, and for now on Windows, the Lab (`F1`) is the menu.
 
 ### Changed
 

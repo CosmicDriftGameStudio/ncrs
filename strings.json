@@ -751,6 +751,66 @@
       "de": "Hilfe"
     },
     {
+      "key": "menu.about",
+      "context": "The first entry of the app menu on a Mac: shows the version and licenses of the app.",
+      "en": "About NC-rs",
+      "de": "Über NC-rs"
+    },
+    {
+      "key": "menu.services",
+      "context": "Entry of the app menu on a Mac that opens the system's list of services other apps offer.",
+      "en": "Services",
+      "de": "Dienste"
+    },
+    {
+      "key": "menu.hide",
+      "context": "Entry of the app menu on a Mac that hides the app's windows until the app is picked again.",
+      "en": "Hide NC-rs",
+      "de": "NC-rs ausblenden"
+    },
+    {
+      "key": "menu.hide_others",
+      "context": "Entry of the app menu on a Mac that hides the windows of all other apps.",
+      "en": "Hide Others",
+      "de": "Andere ausblenden"
+    },
+    {
+      "key": "menu.show_all",
+      "context": "Entry of the app menu on a Mac that shows the windows of all apps again.",
+      "en": "Show All",
+      "de": "Alle einblenden"
+    },
+    {
+      "key": "menu.minimize",
+      "context": "Entry of the Window menu on a Mac that puts the window into the Dock.",
+      "en": "Minimize",
+      "de": "Im Dock ablegen"
+    },
+    {
+      "key": "menu.zoom",
+      "context": "Entry of the Window menu on a Mac that toggles the window between its size and the largest useful size.",
+      "en": "Zoom",
+      "de": "Zoomen"
+    },
+    {
+      "key": "menu.fullscreen",
+      "context": "Entry of the Window menu on a Mac that makes the window fill the screen.",
+      "en": "Enter Full Screen",
+      "de": "Vollbildmodus"
+    },
+    {
+      "key": "menu.bring_all_to_front",
+      "context": "Entry of the Window menu on a Mac that puts every window of the app in front of other apps.",
+      "en": "Bring All to Front",
+      "de": "Alle nach vorne bringen"
+    },
+    {
+      "key": "menu.app",
+      "context": "Title of the app menu on a Mac, the first menu of the menu bar. The system shows the app's own name there instead.",
+      "en": "NC-rs",
+      "de": "NC-rs"
+    },
+    {
       "key": "command_palette.recent",
       "context": "Heading above the commands that were run last, at the top of the command palette while the field is empty.",
       "en": "Recent",

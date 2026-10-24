@@ -79,6 +79,12 @@ ureq = { version = "=3.4.2", default-features = false, features = ["rustls"] }
 # are read by name with a size limit and never extracted to disk.
 zip = { version = "=9.0.1", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# The native menu bar on macOS, built from the command list. macOS only: Linux
+# would need GTK, and on Windows installing the menu takes an unsafe call that
+# the app crate forbids. No features, so no GTK and no xdo.
+muda = { version = "=0.21.2", default-features = false }
+
 [profile.release]
 opt-level = 3
 lto = "thin"

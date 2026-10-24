@@ -598,6 +598,15 @@ impl Keymap {
         Ok(Self { bindings })
     }
 
+    /// The keys of `action`, the first-listed first.
+    #[cfg(any(target_os = "macos", test))]
+    pub fn bindings_of(&self, action: KeyAction) -> impl Iterator<Item = &Binding> {
+        self.bindings
+            .iter()
+            .filter(move |(bound, _)| *bound == action)
+            .map(|(_, binding)| binding)
+    }
+
     /// Maps a key press to a message, among the actions that work in `scope`.
     pub fn map_key(&self, key: &Key, modifiers: Modifiers, scope: KeyScope) -> Option<Message> {
         self.bindings

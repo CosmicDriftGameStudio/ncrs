@@ -23,10 +23,14 @@ use crate::fs::{self, CreateDirError};
 use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
 use crate::keymap::{self, KeyAction, KeyScope, Keymap};
+#[cfg(any(target_os = "macos", test))]
+use crate::menu::Availability;
 use crate::messages::{
     ClipboardKind, CommandPaletteMessage, ConflictChoice, FilingSetupMessage, FilingStatusMessage,
     Message, PanelSide, QuickOpenMessage, SearchMessage, ThemeFetchMessage, TransferKind,
 };
+#[cfg(target_os = "macos")]
+use crate::native_menu;
 use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
 use crate::palette::Palette;
 use crate::quick_open::{QuickOpen, QUICK_OPEN_FILE_LIMIT};
@@ -92,6 +96,29 @@ fn search_events(
 const NOTICE_DURATION: std::time::Duration = std::time::Duration::from_secs(3);
 
 const APP_NAME: &str = "NC-rs";
+
+#[cfg(target_os = "macos")]
+fn native_menu_events() -> Subscription<Message> {
+    native_menu::events()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn native_menu_events() -> Subscription<Message> {
+    Subscription::none()
+}
+
+/// A message rather than a call: it is handled in `update`, on the thread
+/// that owns the app's windows, once the app has started and the default menu
+/// winit installed is there to be replaced.
+#[cfg(target_os = "macos")]
+fn then_install_native_menu(startup: Task<Message>) -> Task<Message> {
+    Task::batch([startup, Task::done(Message::InstallNativeMenu)])
+}
+
+#[cfg(not(target_os = "macos"))]
+fn then_install_native_menu(startup: Task<Message>) -> Task<Message> {
+    startup
+}
 
 /// Turns the transfer's channel into a stream for `Subscription::run_with`.
 ///
@@ -1380,7 +1407,8 @@ impl App {
     /// Left panel starts in the working directory, right in `$HOME`, so the
     /// two panels are not the same directory on launch.
     pub fn new() -> (Self, Task<Message>) {
-        Self::with_environment(Environment::of_the_user())
+        let (app, loading) = Self::with_environment(Environment::of_the_user());
+        (app, then_install_native_menu(loading))
     }
 
     /// `new` with the places it reads and writes given instead of looked up.
@@ -1731,6 +1759,7 @@ impl App {
                 .with(Arc::clone(&self.input))
                 .filter_map(|(input, (event, status))| input.lock().handle(&event, status)),
             window::resize_events().map(|(_id, size)| Message::WindowResized(size)),
+            native_menu_events(),
             // The transfer's ticks. Taken out of the app because a subscription
             // outlives `&self`; the receiver is taken so the subscription
             // rebuilds itself when a new transfer starts.
@@ -2256,6 +2285,13 @@ impl App {
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => self.update_filing_status(page_message),
             Message::FilingSetup(setup_message) => self.update_filing_setup(setup_message),
+            #[cfg(any(target_os = "macos", test))]
+            Message::RunCommand(action) => self.run_command(action),
+            #[cfg(target_os = "macos")]
+            Message::InstallNativeMenu => {
+                native_menu::install(self.lang, &self.keymap, self.menu_availability());
+                Task::none()
+            }
             Message::Quit => iced::exit(),
             // Handled in `update`, which owns the timer's generation check.
             Message::NoticeExpired(_) => Task::none(),
@@ -2270,7 +2306,22 @@ impl App {
         // that follow a conflict would still be routed as panel keys and the
         // dialog could not be answered at all.
         self.publish_key_state();
+        #[cfg(target_os = "macos")]
+        native_menu::sync(self.lang, &self.keymap, self.menu_availability());
         task
+    }
+
+    /// What the menu bar lets the user run: nothing while a dialog or box is
+    /// open, otherwise what works in the area the keys go to.
+    #[cfg(any(target_os = "macos", test))]
+    fn menu_availability(&self) -> Availability {
+        if self.overlay_is_open() {
+            Availability::Blocked
+        } else if self.search_has_keys() {
+            Availability::Open(KeyScope::Search)
+        } else {
+            Availability::Open(KeyScope::Panel)
+        }
     }
 
     fn update_sort(&mut self, message: Message) -> Task<Message> {
@@ -4405,9 +4456,15 @@ impl App {
         else {
             return Task::none();
         };
-        self.remember_command(action);
         let closed = self.close_command_palette();
-        closed.chain(self.update(action.message()))
+        closed.chain(self.run_command(action))
+    }
+
+    /// Runs a command chosen from the command list or the menu bar: what its
+    /// key would do, and it counts among the recent commands.
+    fn run_command(&mut self, action: KeyAction) -> Task<Message> {
+        self.remember_command(action);
+        self.update(action.message())
     }
 
     /// Puts `action` first among the recent commands, once.
@@ -10709,6 +10766,40 @@ mod command_palette_tests {
         type_into_palette(&mut app, "zzzzzz");
         drop(app.update(palette_message(CommandPaletteMessage::Run)));
         assert!(app.command_palette_for_test().is_some());
+    }
+
+    #[test]
+    fn a_menu_entry_does_what_the_same_entry_in_the_lab_does() {
+        let mut lab = App::with_fixed_panels();
+        open_palette(&mut lab);
+        type_into_palette(&mut lab, "switch panel");
+        drop(lab.update(palette_message(CommandPaletteMessage::Run)));
+
+        let mut menu = App::with_fixed_panels();
+        let message = crate::menu::command_message(KeyAction::SwitchPanel.name()).unwrap();
+        drop(menu.update(message));
+
+        assert_eq!(menu.active_panel, PanelSide::Right);
+        assert_eq!(menu.active_panel, lab.active_panel);
+        assert_eq!(menu.recent_commands, [KeyAction::SwitchPanel]);
+        assert_eq!(menu.recent_commands, lab.recent_commands);
+    }
+
+    #[test]
+    fn the_menu_is_off_while_a_box_is_open_and_follows_the_search() {
+        let mut app = App::with_fixed_panels();
+        assert_eq!(app.menu_availability(), Availability::Open(KeyScope::Panel));
+        open_palette(&mut app);
+        let blocked = app.menu_availability();
+        assert_eq!(blocked, Availability::Blocked);
+        assert!(blocked.enables(KeyAction::Quit));
+        assert!(!blocked.enables(KeyAction::Mkdir));
+        drop(app.update(palette_message(CommandPaletteMessage::Close)));
+        drop(app.update(Message::OpenSearch));
+        assert_eq!(
+            app.menu_availability(),
+            Availability::Open(KeyScope::Search)
+        );
     }
 
     #[test]
