@@ -16,7 +16,7 @@ use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::messages::{
     ClipboardKind, CommandPaletteMessage, FilingSetupMessage, FilingStatusMessage, PanelSide,
-    QuickOpenMessage, SearchMessage, TransferKind,
+    QuickOpenMessage, SearchMessage, ThemeFetchMessage, TransferKind,
 };
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
@@ -109,6 +109,7 @@ key_actions! {
     CommandPalette => "command_palette",
     FilingStatus => "filing_status",
     FilingSetup => "filing_setup",
+    FetchTheme => "fetch_theme",
     SearchCase => "search_case",
     SearchWholeWord => "search_whole_word",
     SearchRegex => "search_regex",
@@ -183,6 +184,7 @@ impl KeyAction {
             | Self::QuickOpen
             | Self::FilingStatus
             | Self::FilingSetup
+            | Self::FetchTheme
             | Self::DriveMenuLeft
             | Self::DriveMenuRight
             | Self::SortByName
@@ -245,6 +247,7 @@ impl KeyAction {
             Self::CommandPalette => Message::CommandPalette(CommandPaletteMessage::Toggle),
             Self::FilingStatus => Message::FilingStatus(FilingStatusMessage::Toggle),
             Self::FilingSetup => Message::FilingSetup(FilingSetupMessage::Toggle),
+            Self::FetchTheme => Message::ThemeFetch(ThemeFetchMessage::Open),
             Self::SearchCase => Message::Search(SearchMessage::ToggleCase),
             Self::SearchWholeWord => Message::Search(SearchMessage::ToggleWholeWord),
             Self::SearchRegex => Message::Search(SearchMessage::ToggleRegex),
@@ -1167,8 +1170,13 @@ mod tests {
 
     #[test]
     fn every_action_has_a_default_key_and_no_key_is_twice_bound() {
+        // Reached through the command palette only.
+        const WITHOUT_KEY: [KeyAction; 1] = [KeyAction::FetchTheme];
         let bindings = default_bindings();
-        for action in KeyAction::ALL {
+        for action in KeyAction::ALL
+            .iter()
+            .filter(|action| !WITHOUT_KEY.contains(action))
+        {
             assert!(
                 bindings.iter().any(|(bound, _)| bound == action),
                 "{} has no default key",

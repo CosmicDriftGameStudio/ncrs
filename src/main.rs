@@ -25,12 +25,15 @@ mod i18n;
 mod jobs;
 mod keymap;
 mod messages;
+mod open_vsx;
 mod palette;
 mod quick_open;
 mod search_view;
 mod selection;
+mod theme_fetch;
 mod ui;
 mod vscode_theme;
+mod vsix;
 
 use app::App;
 use std::env;

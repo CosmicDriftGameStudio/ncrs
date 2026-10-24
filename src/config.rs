@@ -33,8 +33,8 @@ use crate::vscode_theme::VscodeTheme;
 pub const CURRENT_VERSION: u32 = 1;
 
 /// A config is a few lines; anything bigger is not one, and reading it would
-/// only delay the start.
-const SIZE_LIMIT: u64 = 1024 * 1024;
+/// only delay the start. A VS Code theme file is held to the same limit.
+pub const SIZE_LIMIT: u64 = 1024 * 1024;
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -969,6 +969,56 @@ fn write_filing_locations_with_home(
     load_with_home(path, home).map_err(FilingWriteError::Config)
 }
 
+/// Sets `vscode` in `[theme]` of the config at `path` to `relative`, a path
+/// from the config's folder, keeping every other line, comment and section as
+/// written. An existing `vscode` is replaced, `preset` and the role colors stay.
+/// Returns the config read back from disk. Only `Config` and `Io` occur.
+pub fn write_vscode_theme(path: &Path, relative: &str) -> Result<Config, FilingWriteError> {
+    write_vscode_theme_with_home(path, relative, home_from_env().as_deref())
+}
+
+fn write_vscode_theme_with_home(
+    path: &Path,
+    relative: &str,
+    home: Option<&Path>,
+) -> Result<Config, FilingWriteError> {
+    let target = resolve_write_target(path)?;
+    let source = read_source(&target).map_err(FilingWriteError::Config)?;
+    if let Some(text) = &source {
+        parse_config(text, path, home).map_err(FilingWriteError::Config)?;
+    }
+    let edited = with_vscode_theme(source.as_deref().unwrap_or_default(), path, relative)?;
+    parse_config(&edited, path, home).map_err(FilingWriteError::Config)?;
+    replace_file(&target, &edited)?;
+    load_with_home(path, home).map_err(FilingWriteError::Config)
+}
+
+/// `source` with `vscode = "<relative>"` in `[theme]`, which is created when
+/// missing.
+fn with_vscode_theme(
+    source: &str,
+    path: &Path,
+    relative: &str,
+) -> Result<String, FilingWriteError> {
+    let mut document = parse_document(source, path)?;
+    let theme = sub_table(document.as_table_mut(), "theme", false)
+        .ok_or_else(|| not_a_table(path, "theme"))?;
+    match theme
+        .get_mut(VSCODE_KEY)
+        .and_then(toml_edit::Item::as_value_mut)
+    {
+        Some(vscode) => {
+            let decor = vscode.decor().clone();
+            *vscode = toml_edit::Value::from(relative);
+            *vscode.decor_mut() = decor;
+        }
+        None => {
+            theme.insert(VSCODE_KEY, toml_edit::value(relative));
+        }
+    }
+    Ok(document.to_string())
+}
+
 fn io_error(path: &Path) -> impl FnOnce(std::io::Error) -> FilingWriteError + '_ {
     move |err| FilingWriteError::Io {
         path: path.to_path_buf(),
@@ -991,20 +1041,9 @@ fn resolve_write_target(path: &Path) -> Result<PathBuf, FilingWriteError> {
     }
 }
 
-/// `source` with `enabled = true` and `locations` in `[modules.filing]`.
-fn with_filing_locations(
-    source: &str,
-    path: &Path,
-    locations: &[FilingLocation],
-) -> Result<String, FilingWriteError> {
-    let not_a_table = |key: &str| {
-        FilingWriteError::Config(ConfigError::Invalid {
-            path: path.to_path_buf(),
-            line: None,
-            reason: format!("`{key}` is not a table"),
-        })
-    };
-    let mut document = source.parse::<toml_edit::DocumentMut>().map_err(|err| {
+/// The config text as an editable document that keeps its comments and layout.
+fn parse_document(source: &str, path: &Path) -> Result<toml_edit::DocumentMut, FilingWriteError> {
+    source.parse::<toml_edit::DocumentMut>().map_err(|err| {
         FilingWriteError::Config(ConfigError::Invalid {
             path: path.to_path_buf(),
             line: err
@@ -1012,11 +1051,28 @@ fn with_filing_locations(
                 .and_then(|span| line_at(source.as_bytes(), span.start)),
             reason: err.message().trim().to_owned(),
         })
-    })?;
+    })
+}
+
+fn not_a_table(path: &Path, key: &str) -> FilingWriteError {
+    FilingWriteError::Config(ConfigError::Invalid {
+        path: path.to_path_buf(),
+        line: None,
+        reason: format!("`{key}` is not a table"),
+    })
+}
+
+/// `source` with `enabled = true` and `locations` in `[modules.filing]`.
+fn with_filing_locations(
+    source: &str,
+    path: &Path,
+    locations: &[FilingLocation],
+) -> Result<String, FilingWriteError> {
+    let mut document = parse_document(source, path)?;
     let modules = sub_table(document.as_table_mut(), "modules", true)
-        .ok_or_else(|| not_a_table("modules"))?;
+        .ok_or_else(|| not_a_table(path, "modules"))?;
     let filing =
-        sub_table(modules, "filing", false).ok_or_else(|| not_a_table("modules.filing"))?;
+        sub_table(modules, "filing", false).ok_or_else(|| not_a_table(path, "modules.filing"))?;
     match filing
         .get_mut("enabled")
         .and_then(toml_edit::Item::as_value_mut)
@@ -2107,5 +2163,124 @@ mod tests {
 
         let mode = std::fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o640);
+    }
+
+    fn theme_file(base: &tempfile::TempDir, relative: &str, background: &str) {
+        let file = base.path().join(relative);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(
+            file,
+            format!(r#"{{"colors": {{"editor.background": "{background}"}}}}"#),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn the_theme_is_written_and_its_palette_loads() {
+        let base = tempfile::tempdir().unwrap();
+        theme_file(&base, "themes/example.dark/dark.json", "#112233");
+        let path = base.path().join("config.toml");
+        std::fs::write(&path, "lang = \"de\"\n").unwrap();
+
+        let written =
+            write_vscode_theme_with_home(&path, "themes/example.dark/dark.json", None).unwrap();
+
+        assert_eq!(written.vscode_warning, None);
+        assert_eq!(
+            written.palette.background,
+            iced::Color::from_rgb8(0x11, 0x22, 0x33)
+        );
+        assert_eq!(written.lang, Some(Language::German));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            text.contains("[theme]\nvscode = \"themes/example.dark/dark.json\"\n"),
+            "{text}"
+        );
+        assert_eq!(load_with_home(&path, None).unwrap(), written);
+    }
+
+    #[test]
+    fn an_existing_vscode_setting_is_replaced_and_the_rest_stays() {
+        let base = tempfile::tempdir().unwrap();
+        theme_file(&base, "themes/example.dark/dark.json", "#112233");
+        let path = base.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "# my settings\nlang = \"en\"\n\n[theme]\n# the look\npreset = \"classic\"\n\
+             vscode = \"old/theme.json\" # before\n\n[open]\nview = [\"viewer\"]\n",
+        )
+        .unwrap();
+
+        let written =
+            write_vscode_theme_with_home(&path, "themes/example.dark/dark.json", None).unwrap();
+
+        let text = std::fs::read_to_string(&path).unwrap();
+        for kept in [
+            "# my settings\nlang = \"en\"\n",
+            "[theme]\n# the look\npreset = \"classic\"\n",
+            "vscode = \"themes/example.dark/dark.json\" # before\n",
+            "[open]\nview = [\"viewer\"]\n",
+        ] {
+            assert!(text.contains(kept), "{kept:?} is gone from:\n{text}");
+        }
+        assert!(!text.contains("old/theme.json"), "{text}");
+        assert_eq!(written.open.view.unwrap().program(), "viewer");
+    }
+
+    #[test]
+    fn a_theme_written_inline_becomes_a_table() {
+        let base = tempfile::tempdir().unwrap();
+        theme_file(&base, "t.json", "#112233");
+        let path = base.path().join("config.toml");
+        std::fs::write(&path, "theme = { preset = \"classic\" }\n").unwrap();
+
+        let written = write_vscode_theme_with_home(&path, "t.json", None).unwrap();
+
+        assert_eq!(written.vscode_warning, None);
+        assert_eq!(
+            written.palette.background,
+            iced::Color::from_rgb8(0x11, 0x22, 0x33)
+        );
+    }
+
+    #[test]
+    fn a_missing_config_is_created_for_the_theme() {
+        let base = tempfile::tempdir().unwrap();
+        theme_file(&base, "ncrs/themes/t.json", "#112233");
+        let path = base.path().join("ncrs").join("config.toml");
+
+        let written = write_vscode_theme_with_home(&path, "themes/t.json", None).unwrap();
+
+        assert_eq!(load_with_home(&path, None).unwrap(), written);
+        assert_eq!(written.vscode_warning, None);
+    }
+
+    #[test]
+    fn a_config_that_does_not_load_is_not_overwritten_by_the_theme() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("config.toml");
+        let broken = "[open\nview = [\"viewer\"]\n";
+        std::fs::write(&path, broken).unwrap();
+
+        let result = write_vscode_theme_with_home(&path, "t.json", None);
+
+        assert!(
+            matches!(
+                result,
+                Err(FilingWriteError::Config(ConfigError::Invalid { .. }))
+            ),
+            "{result:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), broken);
+    }
+
+    #[test]
+    fn a_theme_file_that_is_missing_is_a_warning_in_the_written_config() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("config.toml");
+
+        let written = write_vscode_theme_with_home(&path, "themes/gone.json", None).unwrap();
+
+        assert!(written.vscode_warning.is_some());
     }
 }

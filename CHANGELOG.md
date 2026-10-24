@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- "Fetch color theme…" in the command palette downloads a VS Code color theme
+  from Open VSX by extension ID or link, installs it next to the config file
+  with its license, switches it on at once and shows the license. The only
+  network access of ncrs, and only after you ask for it.
 - `vscode = "<path>"` in `[theme]` takes the colors of a VS Code color theme
   file, under the roles written in the config. If the file cannot be used,
   ncrs starts with the preset and says why in the status bar.

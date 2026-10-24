@@ -1577,6 +1577,216 @@
       "context": "Button in the filing setup card: writes the locations to the config file.",
       "en": "Save",
       "de": "Speichern"
+    },
+    {
+      "key": "action.fetch_theme",
+      "context": "Entry of the command palette that runs the key action fetch_theme, which downloads a VS Code color theme from Open VSX. The name of what the action does, as short as a menu entry; it has no key. The ellipsis says a card with a question follows.",
+      "en": "Fetch color theme…",
+      "de": "Farbschema holen…"
+    },
+    {
+      "key": "theme_fetch.title",
+      "context": "Title of the card that downloads a VS Code color theme from Open VSX, opened from the command palette.",
+      "en": "Fetch color theme",
+      "de": "Farbschema holen"
+    },
+    {
+      "key": "theme_fetch.placeholder",
+      "context": "Placeholder of the text field in the theme download card, shown while it is empty. The extension ID has the form publisher.name; a link to the extension is accepted too.",
+      "en": "publisher.name or link",
+      "de": "Herausgeber.name oder Link"
+    },
+    {
+      "key": "theme_fetch.help",
+      "context": "Help line under the text field in the theme download card. Open VSX is the open extension registry at open-vsx.org; the name stays as it is.",
+      "en": "Downloads only from open-vsx.org. Nothing goes out before you press Enter or Fetch.",
+      "de": "Lädt nur von open-vsx.org. Es geht nichts raus, bevor du Enter oder Holen drückst."
+    },
+    {
+      "key": "theme_fetch.fetch",
+      "context": "Button in the theme download card: starts the download of the typed extension.",
+      "en": "Fetch",
+      "de": "Holen"
+    },
+    {
+      "key": "theme_fetch.cancel",
+      "context": "Button in the theme download card: closes it without installing anything.",
+      "en": "Cancel",
+      "de": "Abbrechen"
+    },
+    {
+      "key": "theme_fetch.fetching",
+      "context": "Status line in the theme download card while the extension is downloaded from Open VSX.",
+      "en": "Fetching from Open VSX…",
+      "de": "Hole von Open VSX…"
+    },
+    {
+      "key": "theme_fetch.installing",
+      "context": "Status line in the theme download card while the theme files are written and the config is changed.",
+      "en": "Installing…",
+      "de": "Installiere…"
+    },
+    {
+      "key": "theme_fetch.choose_hint",
+      "context": "Line above the list of themes in the theme download card, shown when the downloaded extension contains several color themes and the user picks one.",
+      "en": "This extension has several color themes. Pick one with Up/Down and Enter.",
+      "de": "Diese Erweiterung hat mehrere Farbschemata. Wähle eins mit Auf/Ab und Enter."
+    },
+    {
+      "key": "theme_fetch.extension",
+      "context": "Line in the theme download card naming the downloaded extension. Takes its display name and its version.",
+      "en": "{name}, version {version}",
+      "de": "{name}, Version {version}"
+    },
+    {
+      "key": "theme_fetch.license",
+      "context": "Line in the theme download card with the license of the downloaded extension. Takes the license identifier from Open VSX, such as MIT, or the words for a license that is not stated.",
+      "en": "License: {license}",
+      "de": "Lizenz: {license}"
+    },
+    {
+      "key": "theme_fetch.license_not_stated",
+      "context": "Takes the place of the license identifier in the theme download card and in the notice when Open VSX names no license for the extension.",
+      "en": "not stated",
+      "de": "nicht angegeben"
+    },
+    {
+      "key": "theme_fetch.dark",
+      "context": "Marker after a theme name in the theme download list: the theme is made for a dark background.",
+      "en": "dark",
+      "de": "dunkel"
+    },
+    {
+      "key": "theme_fetch.light",
+      "context": "Marker after a theme name in the theme download list: the theme is made for a light background.",
+      "en": "light",
+      "de": "hell"
+    },
+    {
+      "key": "theme_fetch.installed",
+      "context": "Notice in the status bar after a color theme was downloaded from Open VSX and applied. Takes the theme name and the license identifier, or the words for a license that is not stated.",
+      "en": "Color theme \"{label}\" installed from Open VSX (license: {license}).",
+      "de": "Farbschema \"{label}\" von Open VSX installiert (Lizenz: {license})."
+    },
+    {
+      "key": "theme_fetch.error_invalid_id",
+      "context": "Error in the theme download card when the typed text is neither an extension ID (publisher.name) nor a link to the extension on the VS Code Marketplace or Open VSX. Nothing was downloaded.",
+      "en": "Not a valid extension ID or link.",
+      "de": "Keine gültige Erweiterungs-ID und kein gültiger Link."
+    },
+    {
+      "key": "theme_fetch.error_not_found",
+      "context": "Error in the theme download card when Open VSX has no extension with the typed ID. Takes the ID.",
+      "en": "No extension {id} on Open VSX",
+      "de": "Keine Erweiterung {id} auf Open VSX"
+    },
+    {
+      "key": "theme_fetch.error_status",
+      "context": "Error in the theme download card when Open VSX answers with an unexpected HTTP status. Takes the status number.",
+      "en": "Open VSX answered {code}",
+      "de": "Open VSX antwortete mit {code}"
+    },
+    {
+      "key": "theme_fetch.error_no_connection",
+      "context": "Error in the theme download card when no connection to Open VSX could be made, for example without internet or when the name cannot be resolved. Takes the technical detail, which stays untranslated.",
+      "en": "No connection to Open VSX ({detail})",
+      "de": "Keine Verbindung zu Open VSX ({detail})"
+    },
+    {
+      "key": "theme_fetch.error_timeout",
+      "context": "Error in the theme download card when Open VSX does not answer within the time limit.",
+      "en": "Open VSX did not answer in time",
+      "de": "Open VSX hat nicht rechtzeitig geantwortet"
+    },
+    {
+      "key": "theme_fetch.error_tls",
+      "context": "Error in the theme download card when the encrypted connection to Open VSX fails, for example because of a certificate problem. Takes the technical detail, which stays untranslated.",
+      "en": "The secure connection to Open VSX failed ({detail})",
+      "de": "Die sichere Verbindung zu Open VSX ist fehlgeschlagen ({detail})"
+    },
+    {
+      "key": "theme_fetch.error_network",
+      "context": "Error in the theme download card for any other network failure while talking to Open VSX. Takes the technical detail, which stays untranslated.",
+      "en": "Network error ({detail})",
+      "de": "Netzwerkfehler ({detail})"
+    },
+    {
+      "key": "theme_fetch.error_bad_answer",
+      "context": "Error in the theme download card when the answer of Open VSX about the extension cannot be read. Takes the technical detail, which stays untranslated.",
+      "en": "Open VSX sent an answer that cannot be read ({detail})",
+      "de": "Open VSX hat eine Antwort geschickt, die sich nicht lesen lässt ({detail})"
+    },
+    {
+      "key": "theme_fetch.error_no_download",
+      "context": "Error in the theme download card when the answer of Open VSX holds no download link for the extension.",
+      "en": "Open VSX gave no download link for this extension",
+      "de": "Open VSX hat für diese Erweiterung keinen Download-Link angegeben"
+    },
+    {
+      "key": "theme_fetch.error_refused",
+      "context": "Error in the theme download card when the download would leave Open VSX, which ncrs refuses. Takes the host name the link pointed to.",
+      "en": "Download refused: {host} is not Open VSX",
+      "de": "Download abgelehnt: {host} ist nicht Open VSX"
+    },
+    {
+      "key": "theme_fetch.error_redirects",
+      "context": "Error in the theme download card when Open VSX forwards the download more than three times.",
+      "en": "Open VSX forwarded the download too often",
+      "de": "Open VSX hat den Download zu oft weitergeleitet"
+    },
+    {
+      "key": "theme_fetch.error_too_large",
+      "context": "Error in the theme download card when the extension package is bigger than the limit of 20 MB.",
+      "en": "The extension is larger than 20 MB",
+      "de": "Die Erweiterung ist größer als 20 MB"
+    },
+    {
+      "key": "theme_fetch.error_bad_package",
+      "context": "Error in the theme download card when the downloaded file is not a usable extension package (a VSIX, which is a ZIP archive). Takes the technical detail, which stays untranslated.",
+      "en": "The download is not a usable extension package ({detail})",
+      "de": "Der Download ist kein brauchbares Erweiterungspaket ({detail})"
+    },
+    {
+      "key": "theme_fetch.error_no_themes",
+      "context": "Error in the theme download card when the downloaded extension contributes no color theme.",
+      "en": "This extension contains no color theme",
+      "de": "Diese Erweiterung enthält kein Farbschema"
+    },
+    {
+      "key": "theme_fetch.error_missing_file",
+      "context": "Error in the theme download card when a file the extension names for its theme is not in the package. Takes the file path as the extension spells it.",
+      "en": "The theme file {path} is missing in the extension",
+      "de": "Die Themendatei {path} fehlt in der Erweiterung"
+    },
+    {
+      "key": "theme_fetch.error_unsafe_path",
+      "context": "Error in the theme download card when the extension names a file path that leads out of its own folder or is otherwise unsafe. Nothing was written. Takes the path as the extension spells it.",
+      "en": "The extension names an unsafe file path: {path}",
+      "de": "Die Erweiterung nennt einen unsicheren Dateipfad: {path}"
+    },
+    {
+      "key": "theme_fetch.error_file_too_large",
+      "context": "Error in the theme download card when a file inside the extension package is bigger than its limit. Takes the file path inside the package.",
+      "en": "{path} in the extension is too large",
+      "de": "{path} in der Erweiterung ist zu groß"
+    },
+    {
+      "key": "theme_fetch.error_bad_json",
+      "context": "Error in the theme download card when a theme or manifest file inside the extension is not valid JSON. Takes the file path and the technical detail, which stays untranslated.",
+      "en": "{path} in the extension is not valid JSON ({detail})",
+      "de": "{path} in der Erweiterung ist kein gültiges JSON ({detail})"
+    },
+    {
+      "key": "theme_fetch.error_no_config_path",
+      "context": "Error in the theme download card when the system names no place for the config file, so the theme cannot be switched on.",
+      "en": "The system names no place for the config file, so the theme cannot be installed.",
+      "de": "Das System nennt keinen Ort für die Konfigurationsdatei, daher kann das Farbschema nicht installiert werden."
+    },
+    {
+      "key": "theme_fetch.error_write",
+      "context": "Error in the theme download card when the theme files or the config file could not be written. Takes the path and the reason, which is English and stays untranslated.",
+      "en": "Could not write {path}: {reason}",
+      "de": "{path} konnte nicht geschrieben werden: {reason}"
     }
   ]
 }

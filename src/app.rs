@@ -25,11 +25,13 @@ use crate::jobs::{self, JobEvent};
 use crate::keymap::{self, KeyScope, Keymap};
 use crate::messages::{
     ClipboardKind, CommandPaletteMessage, ConflictChoice, FilingSetupMessage, FilingStatusMessage,
-    Message, PanelSide, QuickOpenMessage, SearchMessage, TransferKind,
+    Message, PanelSide, QuickOpenMessage, SearchMessage, ThemeFetchMessage, TransferKind,
 };
+use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
 use crate::palette::Palette;
 use crate::quick_open::{QuickOpen, QUICK_OPEN_FILE_LIMIT};
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
+use crate::theme_fetch::{Fetched, Installed, Pick, Stage, ThemeFetch};
 use crate::ui::command_palette as command_palette_ui;
 use crate::ui::context_menu as context_menu_view;
 use crate::ui::delete as delete_dialog_view;
@@ -39,6 +41,7 @@ use crate::ui::filing_setup as filing_setup_ui;
 use crate::ui::filing_status as filing_status_ui;
 use crate::ui::quick_open as quick_open_ui;
 use crate::ui::search as search_ui;
+use crate::ui::theme_fetch as theme_fetch_ui;
 use crate::ui::volumes as volumes_view;
 use crate::ui::{
     self, conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelProps, PanelState,
@@ -231,6 +234,7 @@ fn leaves_path_field(message: &Message) -> bool {
             | Message::OpenSearch
             | Message::QuickOpen(QuickOpenMessage::Open)
             | Message::CommandPalette(CommandPaletteMessage::Toggle)
+            | Message::ThemeFetch(ThemeFetchMessage::Open)
             | Message::FilingStatus(FilingStatusMessage::Open)
             | Message::FilingSetup(
                 FilingSetupMessage::Toggle
@@ -254,6 +258,33 @@ fn leaves_path_field(message: &Message) -> bool {
 /// again once the editing is over.
 fn release_focus() -> Task<Message> {
     iced::advanced::widget::operate(iced::advanced::widget::operation::focusable::unfocus())
+}
+
+/// The blocking part of the download: the package and the themes it offers.
+fn download_theme(
+    fetch: fn(&ExtensionId) -> Result<FetchedExtension, FetchError>,
+    id: &ExtensionId,
+) -> Result<Fetched, FetchError> {
+    let extension = fetch(id)?;
+    let themes = crate::vsix::list_themes(&extension.vsix)?;
+    Ok(Fetched { extension, themes })
+}
+
+/// The blocking part of the installation: files next to the config file, and
+/// the config pointing at them.
+fn install_picked_theme(pick: &Pick, config_path: &Path) -> Result<Box<Installed>, FetchError> {
+    let (fetched, theme) = pick;
+    let config = crate::vsix::install_theme(
+        &fetched.extension.vsix,
+        theme,
+        &fetched.extension.id,
+        config_path,
+    )?;
+    Ok(Box::new(Installed {
+        config,
+        label: theme.label.clone(),
+        license: fetched.extension.license.clone(),
+    }))
 }
 
 /// Runs one blocking step of the filing module off the UI thread.
@@ -610,6 +641,16 @@ pub struct App {
     /// the dialog is asked for, and AppKit allows that only on the main thread,
     /// which is the one that runs `update`.
     pick_folder: fn(&Path) -> Task<Option<PathBuf>>,
+    /// The card that fetches a color theme, while it is up.
+    theme_fetch: Option<ThemeFetch>,
+    /// Counts the cards opened, so the late answer of a closed one is dropped.
+    theme_fetch_generation: u64,
+    /// Downloads an extension, on a blocking thread. Injected so tests need
+    /// no network.
+    fetch_extension: fn(&ExtensionId) -> Result<FetchedExtension, FetchError>,
+    /// Writes the picked theme and switches it on, on a blocking thread.
+    /// Injected so tests write no files.
+    install_theme: fn(&Pick, &Path) -> Result<Box<Installed>, FetchError>,
 }
 
 /// The part of the prompt the key routing needs, cheap to clone.
@@ -643,6 +684,8 @@ pub struct PromptKeyState {
     pub filing_status: bool,
     /// The filing setup is up, so Escape closes it.
     pub filing_setup: bool,
+    /// The theme download card is up, so Enter and the arrows are its.
+    pub theme_fetch: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
     /// The drive menu is up, so keys move its highlight.
@@ -669,6 +712,7 @@ impl Default for PromptKeyState {
             command_palette: false,
             filing_status: false,
             filing_setup: false,
+            theme_fetch: false,
             delete_dialog: DeleteKeys::default(),
             volume_menu: false,
             context_menu: false,
@@ -777,6 +821,24 @@ fn keys_without_prompt(
             }
             Key::Named(Named::ArrowDown) if key_modifiers.is_empty() => {
                 Some(Message::CommandPalette(CommandPaletteMessage::Move(1)))
+            }
+            _ => bound_message(&prompt.keymap, &key, key_modifiers, scope)
+                .filter(|message| *message == Message::Quit)
+                .filter(|_| is_not_typed_by_text_field(&key, key_modifiers)),
+        };
+    }
+
+    // Like the command palette: the field takes the typing, the card the
+    // rest. Enter reaches the routing when the list has the keys, not the field.
+    if prompt.theme_fetch {
+        return match key.as_ref() {
+            Key::Named(Named::Escape) => Some(Message::ThemeFetch(ThemeFetchMessage::Close)),
+            Key::Named(Named::Enter) => Some(Message::ThemeFetch(ThemeFetchMessage::Activate)),
+            Key::Named(Named::ArrowUp) if key_modifiers.is_empty() => {
+                Some(Message::ThemeFetch(ThemeFetchMessage::Move(-1)))
+            }
+            Key::Named(Named::ArrowDown) if key_modifiers.is_empty() => {
+                Some(Message::ThemeFetch(ThemeFetchMessage::Move(1)))
             }
             _ => bound_message(&prompt.keymap, &key, key_modifiers, scope)
                 .filter(|message| *message == Message::Quit)
@@ -1170,6 +1232,7 @@ fn repeats(message: &Message) -> bool {
             | Message::ContextMenuLast
             | Message::QuickOpen(QuickOpenMessage::Move(_))
             | Message::CommandPalette(CommandPaletteMessage::Move(_))
+            | Message::ThemeFetch(ThemeFetchMessage::Move(_))
             | Message::FilingStatus(FilingStatusMessage::MoveError(_))
             | Message::Search(
                 SearchMessage::ToggleTag
@@ -1382,17 +1445,26 @@ impl App {
                 self.keymap = config.keymap;
                 self.refresh_function_keys();
                 self.palette = config.palette;
-                if let Some(warning) = config.contrast_warning {
-                    self.report(ConfigProblem::LowContrast(warning));
-                }
-                // Last, so it wins: it explains why the look is not the one asked for.
-                if let Some(warning) = config.vscode_warning {
-                    self.report(ConfigProblem::VscodeTheme(warning));
-                }
+                self.report_look_warnings(config.contrast_warning, config.vscode_warning);
             }
             Err(err) => self.report(ConfigProblem::Invalid(err)),
         }
         self
+    }
+
+    /// Says what is off about the look a config asks for. The VS Code warning
+    /// goes last, so it wins: it explains why the look is not the one asked for.
+    fn report_look_warnings(
+        &mut self,
+        contrast: Option<ContrastWarning>,
+        vscode: Option<VscodeWarning>,
+    ) {
+        if let Some(warning) = contrast {
+            self.report(ConfigProblem::LowContrast(warning));
+        }
+        if let Some(warning) = vscode {
+            self.report(ConfigProblem::VscodeTheme(warning));
+        }
     }
 
     /// F9. A config error still up is worded again in the new language.
@@ -1546,6 +1618,10 @@ impl App {
             filing_setup: None,
             resolve_folder: filing_setup::resolve_folder,
             pick_folder: filing_setup::pick_folder_with_system_dialog,
+            theme_fetch: None,
+            theme_fetch_generation: 0,
+            fetch_extension: open_vsx::fetch_extension,
+            install_theme: install_picked_theme,
         };
 
         let tasks = Task::batch([
@@ -2164,6 +2240,7 @@ impl App {
             Message::CommandPalette(command_palette) => {
                 self.update_command_palette(command_palette)
             }
+            Message::ThemeFetch(fetch_message) => self.update_theme_fetch(fetch_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => self.update_filing_status(page_message),
             Message::FilingSetup(setup_message) => self.update_filing_setup(setup_message),
@@ -2397,6 +2474,7 @@ impl App {
         input.job_running = job_running;
         input.quick_open = self.quick_open.is_some();
         input.command_palette = self.command_palette.is_some();
+        input.theme_fetch = self.theme_fetch.is_some();
         drop(input);
         // `get` rather than `get_or_init`: the cell is created by the
         // subscription, and `update` must not create it — a cell nothing reads
@@ -2610,6 +2688,11 @@ impl App {
             return Stack::with_children([root, dialog::scrim(box_element)]).into();
         }
 
+        if let Some(card) = self.theme_fetch.as_ref() {
+            let card_element = theme_fetch_ui::view(card, self.lang, &self.palette);
+            return Stack::with_children([root, dialog::scrim(card_element)]).into();
+        }
+
         // Then the create-directory prompt, for F7.
         let Some(prompt) = self.prompt.as_ref() else {
             return root;
@@ -2698,6 +2781,7 @@ impl App {
         let command_palette = self.command_palette.is_some();
         let filing_status = self.filing_status.page_open();
         let filing_setup = self.filing_setup.is_some();
+        let theme_fetch = self.theme_fetch.is_some();
         let delete_dialog = match &self.delete_dialog {
             None => DeleteKeys::Closed,
             Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
@@ -2717,6 +2801,7 @@ impl App {
                 command_palette,
                 filing_status,
                 filing_setup,
+                theme_fetch,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
                 // the dialog's keys would fall through to the panels.
@@ -2737,6 +2822,7 @@ impl App {
                 command_palette,
                 filing_status,
                 filing_setup,
+                theme_fetch,
                 conflict_open: self.pending_conflict.is_some(),
                 busy: prompt.busy(),
                 typed: prompt.name().into(),
@@ -3082,6 +3168,7 @@ impl App {
             || self.volume_menu.is_some()
             || self.quick_open.is_some()
             || self.command_palette.is_some()
+            || self.theme_fetch.is_some()
             || self.filing_status.page_open()
     }
 
@@ -4030,6 +4117,193 @@ impl App {
         self.quick_open_walk = Some(handle.abort_on_drop());
         self.quick_open = Some(QuickOpen::new(root, generation));
         Task::batch([focus, task])
+    }
+
+    fn update_theme_fetch(&mut self, message: ThemeFetchMessage) -> Task<Message> {
+        match message {
+            ThemeFetchMessage::Open => self.open_theme_fetch(),
+            ThemeFetchMessage::Close => self.close_theme_fetch(),
+            ThemeFetchMessage::TextChanged(text) => {
+                if let Some(card) = self.theme_fetch.as_mut() {
+                    card.set_text(text);
+                }
+                Task::none()
+            }
+            ThemeFetchMessage::Activate => self.activate_theme_fetch(),
+            ThemeFetchMessage::Move(delta) => {
+                if let Some(card) = self.theme_fetch.as_mut() {
+                    card.move_cursor(delta);
+                }
+                Task::none()
+            }
+            ThemeFetchMessage::Pick(index) => {
+                if let Some(card) = self.theme_fetch.as_mut() {
+                    card.select(index);
+                }
+                self.activate_theme_fetch()
+            }
+            ThemeFetchMessage::Fetched { generation, result } => {
+                self.theme_fetched(generation, result)
+            }
+            ThemeFetchMessage::Installed { generation, result } => {
+                self.theme_installed(generation, result)
+            }
+        }
+    }
+
+    fn open_theme_fetch(&mut self) -> Task<Message> {
+        let focus = operation::focus(theme_fetch_ui::FIELD_ID);
+        if self.theme_fetch.is_some() {
+            return focus;
+        }
+        if self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        self.context_menu = None;
+        self.theme_fetch_generation = self.theme_fetch_generation.wrapping_add(1);
+        self.theme_fetch = Some(ThemeFetch::new());
+        focus
+    }
+
+    /// Not while the theme is written: the config change would have no card
+    /// left to report to.
+    fn close_theme_fetch(&mut self) -> Task<Message> {
+        if self
+            .theme_fetch
+            .as_ref()
+            .is_some_and(|card| matches!(card.stage(), Stage::Installing))
+        {
+            return Task::none();
+        }
+        if self.theme_fetch.take().is_some() {
+            release_focus()
+        } else {
+            Task::none()
+        }
+    }
+
+    /// Enter or a click: fetches what was typed, or installs the chosen theme.
+    fn activate_theme_fetch(&mut self) -> Task<Message> {
+        let Some(card) = self.theme_fetch.as_mut() else {
+            return Task::none();
+        };
+        match card.stage() {
+            Stage::Input => match card.start() {
+                Some(id) => self.start_theme_download(id),
+                None => Task::none(),
+            },
+            Stage::Choosing { .. } => match card.choose() {
+                Some(pick) => self.start_theme_install(pick),
+                None => Task::none(),
+            },
+            Stage::Fetching | Stage::Installing => Task::none(),
+        }
+    }
+
+    fn start_theme_download(&self, id: ExtensionId) -> Task<Message> {
+        let generation = self.theme_fetch_generation;
+        let fetch = self.fetch_extension;
+        Task::perform(
+            tokio::task::spawn_blocking(move || download_theme(fetch, &id)),
+            move |joined| {
+                let result =
+                    joined.unwrap_or_else(|join| Err(FetchError::Network(join.to_string())));
+                Message::ThemeFetch(ThemeFetchMessage::Fetched { generation, result })
+            },
+        )
+    }
+
+    fn start_theme_install(&mut self, pick: Pick) -> Task<Message> {
+        let Some(config_path) = self.config_path.clone() else {
+            return self.fail_theme_fetch(FetchError::NoConfigPath);
+        };
+        let generation = self.theme_fetch_generation;
+        let install = self.install_theme;
+        let failed_path = config_path.display().to_string();
+        Task::perform(
+            tokio::task::spawn_blocking(move || install(&pick, &config_path)),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| {
+                    Err(FetchError::WriteFailed {
+                        path: failed_path,
+                        reason: join.to_string(),
+                    })
+                });
+                Message::ThemeFetch(ThemeFetchMessage::Installed { generation, result })
+            },
+        )
+    }
+
+    /// Back to the text field with the reason shown.
+    fn fail_theme_fetch(&mut self, error: FetchError) -> Task<Message> {
+        let Some(card) = self.theme_fetch.as_mut() else {
+            return Task::none();
+        };
+        card.fail(error);
+        operation::focus(theme_fetch_ui::FIELD_ID)
+    }
+
+    fn theme_fetched(
+        &mut self,
+        generation: u64,
+        result: Result<crate::theme_fetch::Fetched, FetchError>,
+    ) -> Task<Message> {
+        if generation != self.theme_fetch_generation {
+            return Task::none();
+        }
+        let Some(card) = self.theme_fetch.as_mut() else {
+            return Task::none();
+        };
+        if !matches!(card.stage(), Stage::Fetching) {
+            return Task::none();
+        }
+        match card.finish_fetching(result) {
+            Some(pick) => self.start_theme_install(pick),
+            None if matches!(card.stage(), Stage::Input) => {
+                operation::focus(theme_fetch_ui::FIELD_ID)
+            }
+            None => Task::none(),
+        }
+    }
+
+    fn theme_installed(
+        &mut self,
+        generation: u64,
+        result: Result<Box<Installed>, FetchError>,
+    ) -> Task<Message> {
+        if generation != self.theme_fetch_generation || self.theme_fetch.is_none() {
+            return Task::none();
+        }
+        let installed = match result {
+            Ok(installed) => *installed,
+            Err(error) => return self.fail_theme_fetch(error),
+        };
+        self.theme_fetch = None;
+        let Installed {
+            config,
+            label,
+            license,
+        } = installed;
+        self.palette = config.palette;
+        // The warnings of the look before this one no longer apply.
+        if matches!(
+            self.config_problem,
+            Some(ConfigProblem::LowContrast(_) | ConfigProblem::VscodeTheme(_))
+        ) {
+            self.config_problem = None;
+            self.config_error = None;
+        }
+        self.report_look_warnings(config.contrast_warning, config.vscode_warning);
+        let shown_license =
+            license.unwrap_or_else(|| self.lang.text(Msg::ThemeFetchLicenseNotStated).to_owned());
+        let notice = fill_template(
+            self.lang.text(Msg::ThemeFetchInstalled),
+            &[
+                ("{label}", label.as_str()),
+                ("{license}", shown_license.as_str()),
+            ],
+        );
+        Task::batch([release_focus(), self.show_notice(notice)])
     }
 
     /// Cmd/Ctrl+Shift+P: lists the actions that work where the keys are now.
@@ -5193,6 +5467,10 @@ impl App {
             filing_setup: None,
             resolve_folder: |folder| Ok(folder.to_path_buf()),
             pick_folder: |_| Task::none(),
+            theme_fetch: None,
+            theme_fetch_generation: 0,
+            fetch_extension: |_| Err(FetchError::NoConnection("no network in tests".to_owned())),
+            install_theme: |_, _| Err(FetchError::NoConfigPath),
         };
         for (side, names) in [
             (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
@@ -5371,6 +5649,17 @@ impl App {
 
     pub fn command_palette_for_test(&self) -> Option<&CommandPalette> {
         self.command_palette.as_ref()
+    }
+
+    pub fn theme_fetch_for_test(&self) -> Option<&ThemeFetch> {
+        self.theme_fetch.as_ref()
+    }
+
+    /// Fixed panels with the theme download card up, in the state of `card`.
+    pub fn with_theme_fetch_card(card: ThemeFetch) -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.theme_fetch = Some(card);
+        app
     }
 
     pub fn quick_open_for_test(&self) -> Option<&QuickOpen> {
@@ -10426,5 +10715,453 @@ mod command_palette_tests {
             input.handle(&escape, event::Status::Ignored),
             Some(palette_message(CommandPaletteMessage::Close))
         );
+    }
+}
+
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod theme_fetch_tests {
+    use super::*;
+    use crate::palette::ThemePreset;
+    use crate::vsix::tests::{manifest, package, THEME_JSON};
+
+    const CONFIG: &str = "/example/config.toml";
+
+    fn extension(themes: &[(&str, &str, &str)]) -> FetchedExtension {
+        let manifest = manifest(themes);
+        let vsix = package(&[
+            ("package.json", manifest.as_bytes()),
+            ("themes/dark.json", THEME_JSON.as_bytes()),
+            ("themes/light.json", THEME_JSON.as_bytes()),
+        ]);
+        FetchedExtension {
+            id: ExtensionId::parse("example.dark-themes").unwrap(),
+            display_name: "Example Themes".to_owned(),
+            version: "1.2.3".to_owned(),
+            license: Some("MIT".to_owned()),
+            vsix: vsix.into(),
+        }
+    }
+
+    fn two_themes(_: &ExtensionId) -> Result<FetchedExtension, FetchError> {
+        Ok(extension(&[
+            ("Example Dark", "vs-dark", "./themes/dark.json"),
+            ("Example Light", "vs", "./themes/light.json"),
+        ]))
+    }
+
+    fn one_theme(_: &ExtensionId) -> Result<FetchedExtension, FetchError> {
+        Ok(extension(&[(
+            "Example Dark",
+            "vs-dark",
+            "./themes/dark.json",
+        )]))
+    }
+
+    fn not_found(id: &ExtensionId) -> Result<FetchedExtension, FetchError> {
+        Err(FetchError::NotFound(id.to_string()))
+    }
+
+    /// What the real install would hand back, without a file anywhere.
+    fn installed(pick: &Pick, _: &Path) -> Result<Box<Installed>, FetchError> {
+        Ok(Box::new(Installed {
+            config: Config {
+                palette: ThemePreset::Classic.palette(),
+                ..Config::default()
+            },
+            label: pick.1.label.clone(),
+            license: pick.0.extension.license.clone(),
+        }))
+    }
+
+    fn warned(pick: &Pick, config_path: &Path) -> Result<Box<Installed>, FetchError> {
+        let mut result = installed(pick, config_path)?;
+        result.config.vscode_warning = Some(VscodeWarning {
+            path: config_path.to_path_buf(),
+            line: None,
+            theme: PathBuf::from("themes/dark.json"),
+            reason: "no colors".to_owned(),
+        });
+        Ok(result)
+    }
+
+    fn fetch_message(message: ThemeFetchMessage) -> Message {
+        Message::ThemeFetch(message)
+    }
+
+    fn app_fetching_with(fetch: fn(&ExtensionId) -> Result<FetchedExtension, FetchError>) -> App {
+        let mut app = App::with_fixed_panels();
+        app.config_path = Some(PathBuf::from(CONFIG));
+        app.fetch_extension = fetch;
+        app.install_theme = installed;
+        app
+    }
+
+    fn send(app: &mut App, message: ThemeFetchMessage) {
+        drop(app.update(fetch_message(message)));
+    }
+
+    fn type_id(app: &mut App) {
+        send(app, ThemeFetchMessage::Open);
+        send(
+            app,
+            ThemeFetchMessage::TextChanged("example.dark-themes".to_owned()),
+        );
+    }
+
+    /// Hands the card the answer of the download it started, the way the
+    /// task does.
+    fn deliver_download(app: &mut App) -> Result<Fetched, FetchError> {
+        let id = ExtensionId::parse(app.theme_fetch_for_test().unwrap().text()).unwrap();
+        let result = download_theme(app.fetch_extension, &id);
+        let generation = app.theme_fetch_generation;
+        send(
+            app,
+            ThemeFetchMessage::Fetched {
+                generation,
+                result: result.clone(),
+            },
+        );
+        result
+    }
+
+    fn deliver_install(app: &mut App, fetched: &Fetched, index: usize) {
+        let pick = (fetched.clone(), fetched.themes[index].clone());
+        let result = (app.install_theme)(&pick, Path::new(CONFIG));
+        let generation = app.theme_fetch_generation;
+        send(app, ThemeFetchMessage::Installed { generation, result });
+    }
+
+    fn stage(app: &App) -> &Stage {
+        app.theme_fetch_for_test().unwrap().stage()
+    }
+
+    #[test]
+    fn the_palette_entry_opens_the_card_and_it_takes_the_keys() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::CommandPalette(CommandPaletteMessage::Toggle)));
+        drop(app.update(Message::CommandPalette(
+            CommandPaletteMessage::QueryChanged("color theme".to_owned()),
+        )));
+        drop(app.update(Message::CommandPalette(CommandPaletteMessage::Run)));
+
+        assert!(app.command_palette_for_test().is_none());
+        assert_eq!(stage(&app), &Stage::Input);
+        assert!(app.prompt_key_state().theme_fetch);
+        assert!(app.blocking_overlay_is_open());
+    }
+
+    #[test]
+    fn it_is_not_opened_over_another_modal() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::CommandPalette(CommandPaletteMessage::Toggle)));
+        send(&mut app, ThemeFetchMessage::Open);
+        assert!(app.theme_fetch_for_test().is_none());
+    }
+
+    #[tokio::test]
+    async fn two_themes_are_listed_and_the_picked_one_is_installed() {
+        let mut app = app_fetching_with(two_themes);
+        let before = app.palette;
+        type_id(&mut app);
+        send(&mut app, ThemeFetchMessage::Activate);
+        assert_eq!(stage(&app), &Stage::Fetching);
+
+        let fetched = deliver_download(&mut app).unwrap();
+        let Stage::Choosing {
+            fetched: offered,
+            cursor,
+        } = stage(&app)
+        else {
+            panic!("not choosing: {:?}", stage(&app));
+        };
+        let labels: Vec<_> = offered.themes.iter().map(|t| t.label.as_str()).collect();
+        assert_eq!(labels, ["Example Dark", "Example Light"]);
+        assert_eq!(*cursor, 0);
+
+        send(&mut app, ThemeFetchMessage::Move(1));
+        send(&mut app, ThemeFetchMessage::Activate);
+        assert_eq!(stage(&app), &Stage::Installing);
+
+        deliver_install(&mut app, &fetched, 1);
+        assert!(app.theme_fetch_for_test().is_none(), "the card closes");
+        assert_ne!(app.palette, before, "the look changes at once");
+        assert_eq!(app.palette, ThemePreset::Classic.palette());
+        assert_eq!(
+            app.notice_for_test(),
+            Some("Color theme \"Example Light\" installed from Open VSX (license: MIT).")
+        );
+        assert_eq!(app.config_error, None);
+    }
+
+    #[tokio::test]
+    async fn a_click_on_a_theme_installs_it() {
+        let mut app = app_fetching_with(two_themes);
+        type_id(&mut app);
+        send(&mut app, ThemeFetchMessage::Activate);
+        deliver_download(&mut app).unwrap();
+
+        send(&mut app, ThemeFetchMessage::Pick(1));
+
+        assert_eq!(stage(&app), &Stage::Installing);
+    }
+
+    #[tokio::test]
+    async fn a_single_theme_is_installed_without_asking() {
+        let mut app = app_fetching_with(one_theme);
+        type_id(&mut app);
+        send(&mut app, ThemeFetchMessage::Activate);
+
+        let fetched = deliver_download(&mut app).unwrap();
+        assert_eq!(stage(&app), &Stage::Installing);
+
+        deliver_install(&mut app, &fetched, 0);
+        assert!(app.theme_fetch_for_test().is_none());
+        assert!(app
+            .notice_for_test()
+            .is_some_and(|notice| notice.contains("Example Dark")));
+    }
+
+    #[tokio::test]
+    async fn a_failed_download_keeps_the_input_and_says_why() {
+        let mut app = app_fetching_with(not_found);
+        type_id(&mut app);
+        send(&mut app, ThemeFetchMessage::Activate);
+
+        deliver_download(&mut app).unwrap_err();
+
+        let card = app.theme_fetch_for_test().unwrap();
+        assert_eq!(card.stage(), &Stage::Input);
+        assert_eq!(card.text(), "example.dark-themes");
+        assert_eq!(
+            card.error(),
+            Some(&FetchError::NotFound("example.dark-themes".to_owned()))
+        );
+    }
+
+    #[test]
+    fn a_text_that_names_no_extension_fetches_nothing() {
+        let mut app = app_fetching_with(two_themes);
+        send(&mut app, ThemeFetchMessage::Open);
+        send(
+            &mut app,
+            ThemeFetchMessage::TextChanged("../etc".to_owned()),
+        );
+        send(&mut app, ThemeFetchMessage::Activate);
+
+        let card = app.theme_fetch_for_test().unwrap();
+        assert_eq!(card.stage(), &Stage::Input);
+        assert_eq!(card.error(), Some(&FetchError::InvalidId));
+    }
+
+    #[tokio::test]
+    async fn a_late_answer_for_a_closed_card_is_dropped() {
+        let mut app = app_fetching_with(two_themes);
+        type_id(&mut app);
+        send(&mut app, ThemeFetchMessage::Activate);
+        let generation = app.theme_fetch_generation;
+        let result = download_theme(
+            two_themes,
+            &ExtensionId::parse("example.dark-themes").unwrap(),
+        );
+
+        let routed = route_key(
+            &app.prompt_key_state(),
+            Key::Named(Named::Escape),
+            Modifiers::default(),
+        );
+        assert_eq!(routed, Some(fetch_message(ThemeFetchMessage::Close)));
+        drop(app.update(routed.unwrap()));
+        assert!(app.theme_fetch_for_test().is_none());
+
+        send(
+            &mut app,
+            ThemeFetchMessage::Fetched {
+                generation,
+                result: result.clone(),
+            },
+        );
+        assert!(app.theme_fetch_for_test().is_none(), "nothing reopens");
+
+        // A card opened since is not the one the answer was for.
+        send(&mut app, ThemeFetchMessage::Open);
+        send(&mut app, ThemeFetchMessage::Fetched { generation, result });
+        assert_eq!(stage(&app), &Stage::Input);
+    }
+
+    #[tokio::test]
+    async fn closing_waits_while_the_theme_is_written() {
+        let mut app = app_fetching_with(one_theme);
+        type_id(&mut app);
+        send(&mut app, ThemeFetchMessage::Activate);
+        let fetched = deliver_download(&mut app).unwrap();
+        assert_eq!(stage(&app), &Stage::Installing);
+
+        send(&mut app, ThemeFetchMessage::Close);
+        assert_eq!(stage(&app), &Stage::Installing);
+
+        deliver_install(&mut app, &fetched, 0);
+        assert!(app.theme_fetch_for_test().is_none());
+    }
+
+    #[tokio::test]
+    async fn without_a_config_file_the_theme_cannot_be_installed() {
+        let mut app = app_fetching_with(one_theme);
+        app.config_path = None;
+        type_id(&mut app);
+        send(&mut app, ThemeFetchMessage::Activate);
+
+        deliver_download(&mut app).unwrap();
+
+        let card = app.theme_fetch_for_test().unwrap();
+        assert_eq!(card.stage(), &Stage::Input);
+        assert_eq!(card.error(), Some(&FetchError::NoConfigPath));
+    }
+
+    #[tokio::test]
+    async fn a_failed_installation_returns_to_the_input() {
+        let mut app = app_fetching_with(one_theme);
+        let before = app.palette;
+        type_id(&mut app);
+        send(&mut app, ThemeFetchMessage::Activate);
+        deliver_download(&mut app).unwrap();
+        let generation = app.theme_fetch_generation;
+        let error = FetchError::WriteFailed {
+            path: CONFIG.to_owned(),
+            reason: "disk full".to_owned(),
+        };
+
+        send(
+            &mut app,
+            ThemeFetchMessage::Installed {
+                generation,
+                result: Err(error.clone()),
+            },
+        );
+
+        let card = app.theme_fetch_for_test().unwrap();
+        assert_eq!(card.stage(), &Stage::Input);
+        assert_eq!(card.error(), Some(&error));
+        assert_eq!(card.text(), "example.dark-themes");
+        assert_eq!(app.palette, before);
+    }
+
+    #[tokio::test]
+    async fn a_theme_that_was_not_applied_in_full_is_reported_like_a_config_does() {
+        let mut app = app_fetching_with(one_theme);
+        app.install_theme = warned;
+        type_id(&mut app);
+        send(&mut app, ThemeFetchMessage::Activate);
+        let fetched = deliver_download(&mut app).unwrap();
+
+        deliver_install(&mut app, &fetched, 0);
+
+        assert!(app
+            .config_error
+            .as_deref()
+            .is_some_and(|text| text.contains("no colors")));
+        assert!(app.notice_for_test().is_some());
+    }
+
+    #[tokio::test]
+    async fn the_warning_of_the_look_before_goes_away_with_a_clean_install() {
+        let mut app = app_fetching_with(one_theme);
+        app.report(ConfigProblem::VscodeTheme(VscodeWarning {
+            path: PathBuf::from(CONFIG),
+            line: None,
+            theme: PathBuf::from("old.json"),
+            reason: "unreadable".to_owned(),
+        }));
+        assert!(app.config_error.is_some());
+        type_id(&mut app);
+        send(&mut app, ThemeFetchMessage::Activate);
+        let fetched = deliver_download(&mut app).unwrap();
+
+        deliver_install(&mut app, &fetched, 0);
+
+        assert_eq!(app.config_error, None);
+    }
+
+    #[tokio::test]
+    async fn an_unreadable_config_error_stays_when_a_theme_is_installed() {
+        let mut app = app_fetching_with(one_theme);
+        app.report(ConfigProblem::Invalid(ConfigError::Unreadable {
+            path: PathBuf::from(CONFIG),
+            reason: "denied".to_owned(),
+        }));
+        type_id(&mut app);
+        send(&mut app, ThemeFetchMessage::Activate);
+        let fetched = deliver_download(&mut app).unwrap();
+
+        deliver_install(&mut app, &fetched, 0);
+
+        assert!(app.config_error.is_some());
+    }
+
+    #[test]
+    fn the_keys_are_the_cards_while_it_is_up() {
+        let mut app = App::with_fixed_panels();
+        send(&mut app, ThemeFetchMessage::Open);
+        let route = |key: Named| {
+            route_key(
+                &app.prompt_key_state(),
+                Key::Named(key),
+                Modifiers::default(),
+            )
+        };
+        assert_eq!(
+            route(Named::Enter),
+            Some(fetch_message(ThemeFetchMessage::Activate))
+        );
+        assert_eq!(
+            route(Named::ArrowDown),
+            Some(fetch_message(ThemeFetchMessage::Move(1)))
+        );
+        assert_eq!(
+            route(Named::ArrowUp),
+            Some(fetch_message(ThemeFetchMessage::Move(-1)))
+        );
+        assert_eq!(
+            route(Named::Escape),
+            Some(fetch_message(ThemeFetchMessage::Close))
+        );
+        for dead in [Named::F5, Named::F7, Named::F8, Named::Backspace] {
+            assert_eq!(route(dead), None, "{dead:?}");
+        }
+        assert_eq!(route(Named::F10), Some(Message::Quit));
+    }
+
+    #[test]
+    fn the_input_state_closes_it_on_escape_too() {
+        let mut input = InputState {
+            theme_fetch: true,
+            job_running: true,
+            ..InputState::default()
+        };
+        let escape = iced::Event::Keyboard(keyboard::Event::KeyPressed {
+            key: Key::Named(Named::Escape),
+            modified_key: Key::Named(Named::Escape),
+            physical_key: keyboard::key::Physical::Code(keyboard::key::Code::Escape),
+            location: keyboard::Location::Standard,
+            modifiers: Modifiers::default(),
+            repeat: false,
+            text: None,
+        });
+        assert_eq!(
+            input.handle(&escape, event::Status::Ignored),
+            Some(fetch_message(ThemeFetchMessage::Close))
+        );
+    }
+
+    #[test]
+    fn holding_an_arrow_moves_on_but_enter_acts_once() {
+        assert!(repeats(&fetch_message(ThemeFetchMessage::Move(1))));
+        assert!(!repeats(&fetch_message(ThemeFetchMessage::Activate)));
     }
 }

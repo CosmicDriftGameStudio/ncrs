@@ -20,6 +20,7 @@ pub mod quick_open;
 pub mod search;
 pub mod statusbar;
 pub mod theme;
+pub mod theme_fetch;
 pub mod volumes;
 
 pub use panel::{PanelProps, PanelState};
