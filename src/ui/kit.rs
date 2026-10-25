@@ -207,10 +207,7 @@ pub fn form_row<'a>(
             text(label.to_owned())
                 .size(font_size::BODY)
                 .color(palette.text)
-                .font(Font {
-                    weight: iced::font::Weight::Medium,
-                    ..Font::MONOSPACE
-                }),
+                .font(Font::MONOSPACE),
         )
         .spacing(spacing::S);
     if let Some(name) = theme_name {

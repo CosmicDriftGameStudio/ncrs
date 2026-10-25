@@ -235,8 +235,10 @@ impl<'a> Frame<'a> {
         let mut title = row![text(self.title.clone())
             .size(font_size::BODY)
             .color(palette.text)
+            // Bold, not Semibold: the generic monospace family has no Semibold
+            // on a stock system, and the fallback differs per machine.
             .font(Font {
-                weight: Weight::Semibold,
+                weight: Weight::Bold,
                 ..Font::MONOSPACE
             })
             .wrapping(Wrapping::None)]
