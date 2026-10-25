@@ -9,6 +9,8 @@ use super::format;
 use super::frame::SIDEBAR_ROOM;
 use super::theme::{self, font_size, size, spacing};
 use crate::i18n::{Language, Msg};
+use ncrs_index::HermesCounts;
+
 use crate::messages::{HermesFocus, HermesPage, Message};
 use crate::palette::Palette;
 
@@ -17,6 +19,7 @@ use crate::palette::Palette;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Badges {
     pub focus: HermesFocus,
+    pub counts: Option<HermesCounts>,
     pub review: Option<usize>,
     pub rule_suggestions: Option<usize>,
 }

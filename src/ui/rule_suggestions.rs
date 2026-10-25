@@ -5,6 +5,8 @@
 
 use iced::widget::{column, container, row};
 use iced::{alignment, Element, Size};
+use ncrs_index::HermesCounts;
+use ncrs_intake::{MIN_FOLDER_DOCUMENTS, MIN_SHARE_IN_FOLDER_PERCENT};
 
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
@@ -48,11 +50,7 @@ pub fn view<'a>(
 
     if state.rows().is_empty() {
         body = body.push(dim(
-            lang.text(if state.is_busy() {
-                Msg::RuleSuggestionsAnalysing
-            } else {
-                Msg::RuleSuggestionsEmpty
-            }),
+            empty_text(state.is_busy(), badges.counts, lang),
             palette,
         ));
     } else {
@@ -96,6 +94,35 @@ pub fn view<'a>(
         tab: editing,
     })
     .into_element()
+}
+
+/// Why the list is empty: the analysis is still running, or what a
+/// suggestion needs and how many archive documents have text right now.
+fn empty_text(busy: bool, counts: Option<HermesCounts>, lang: Language) -> String {
+    if busy {
+        return lang.text(Msg::RuleSuggestionsAnalysing).to_owned();
+    }
+    let mut text = fill_template(
+        lang.text(Msg::RuleSuggestionsEmpty),
+        &[
+            ("{min}", &MIN_FOLDER_DOCUMENTS.to_string()),
+            ("{share}", &MIN_SHARE_IN_FOLDER_PERCENT.to_string()),
+        ],
+    );
+    if let Some(counts) = counts {
+        text.push(' ');
+        text.push_str(&fill_template(
+            lang.text(Msg::RuleSuggestionsEmptyCounts),
+            &[
+                (
+                    "{with_text}",
+                    &format::grouped(counts.archive_documents_with_text),
+                ),
+                ("{total}", &format::grouped(counts.archive_documents)),
+            ],
+        ));
+    }
+    text
 }
 
 fn evidence_text(suggestion: &SuggestedRule, lang: Language) -> String {

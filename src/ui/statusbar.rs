@@ -115,6 +115,8 @@ pub struct JobStatus {
 /// filing status page. The text is the caller's, already translated.
 pub struct FilingBadge<M> {
     pub text: String,
+    /// The text is in the error colour.
+    pub failing: bool,
     pub on_press: M,
 }
 
@@ -305,7 +307,11 @@ pub fn view<'a, M: Clone + 'a>(
             button(
                 text(badge.text)
                     .size(font_size::SMALL)
-                    .color(palette.accent)
+                    .color(if badge.failing {
+                        palette.error
+                    } else {
+                        palette.accent
+                    })
                     .wrapping(text::Wrapping::None),
             )
             .on_press(badge.on_press)

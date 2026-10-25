@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use ncrs_index::{RuleId, SavedQuery, SavedQueryId, TaxContext};
+use ncrs_index::{HermesCounts, RuleId, SavedQuery, SavedQueryId, TaxContext};
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
 
@@ -467,6 +467,8 @@ pub enum FilingStatusMessage {
     /// One worker more (`1`) or fewer (`-1`) than now.
     StepWorkers(i8),
     IndexFigures(Result<IndexFigures, String>),
+    /// The counts of Hermes, read in the background.
+    HermesCounts(Result<HermesCounts, String>),
     /// An error row was pressed: show its file in the panel.
     ErrorActivated(PathBuf),
     MoveError(i32),

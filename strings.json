@@ -1309,16 +1309,52 @@
       "de": "{count} Hermes-Ordner übersprungen: nicht erreichbar oder überlappend"
     },
     {
-      "key": "filing.progress",
-      "context": "Progress of the filing module at the right end of the status bar while files are in the pipeline; pressing it opens the Inspection (filing status page). Takes the number of files done and the number of files in this stretch of work.",
-      "en": "Hermes stamped {done} of {total} files",
-      "de": "Hermes hat {done} von {total} Akten abgestempelt"
+      "key": "hermes.status.running",
+      "context": "Word at the start of the Hermes line in the status bar: the pipeline is working or has files waiting.",
+      "en": "running",
+      "de": "läuft"
     },
     {
-      "key": "filing.progress_paused",
-      "context": "Like the filing progress in the status bar, shown while the pipeline is paused with files left.",
-      "en": "Hermes paused: {done} of {total} files stamped",
-      "de": "Hermes pausiert: {done} von {total} Akten abgestempelt"
+      "key": "hermes.status.paused",
+      "context": "Word at the start of the Hermes line in the status bar: the user paused the pipeline.",
+      "en": "paused",
+      "de": "pausiert"
+    },
+    {
+      "key": "hermes.status.idle",
+      "context": "Word at the start of the Hermes line in the status bar: the pipeline is on, nothing waits and no worker is busy.",
+      "en": "idle",
+      "de": "ruht"
+    },
+    {
+      "key": "hermes.status.working",
+      "context": "Part of the Hermes line in the status bar: workers busy on a file right now. Takes the number.",
+      "en": "{count} working",
+      "de": "{count} in Arbeit"
+    },
+    {
+      "key": "hermes.status.open",
+      "context": "Part of the Hermes line in the status bar: files waiting for a step. Takes the number.",
+      "en": "{count} open",
+      "de": "{count} offen"
+    },
+    {
+      "key": "hermes.status.to_review",
+      "context": "Part of the Hermes line in the status bar: documents waiting for the user in the review list. Takes the number.",
+      "en": "{count} to review",
+      "de": "{count} Rückfragen"
+    },
+    {
+      "key": "hermes.status.failed",
+      "context": "Part of the Hermes line in the status bar: files that failed a step. Takes the number.",
+      "en": "{count} failed",
+      "de": "{count} Fehler"
+    },
+    {
+      "key": "hermes.status.pdf_missing",
+      "context": "The whole Hermes line in the status bar while the PDF library cannot be loaded. One notice, no per-file errors.",
+      "en": "PDF library missing, PDFs are not read",
+      "de": "PDF-Bibliothek fehlt, PDFs werden nicht gelesen"
     },
     {
       "key": "title_bar.hermes_rate",
@@ -1583,6 +1619,42 @@
       "context": "Shown in the error list of the filing status page when there are no errors.",
       "en": "No errors",
       "de": "Keine Fehler"
+    },
+    {
+      "key": "filing_status.pdf_missing",
+      "context": "Warning at the top of the Inspection while the PDF library cannot be loaded.",
+      "en": "PDF library missing, PDFs are not read.",
+      "de": "PDF-Bibliothek fehlt, PDFs werden nicht gelesen."
+    },
+    {
+      "key": "filing_status.pdf_searched",
+      "context": "Second line of the PDF library warning: where it was looked for. Takes the path.",
+      "en": "Looked for it in: {path}",
+      "de": "Gesucht in: {path}"
+    },
+    {
+      "key": "filing_status.counts_seen",
+      "context": "Plain sentence at the top of the Inspection. Takes the documents Hermes has seen in the inbox, the ones it filed, and the ones that wait for the user.",
+      "en": "Hermes has seen {seen} documents: {filed} filed, {waiting} wait for you.",
+      "de": "Hermes hat {seen} Dokumente gesehen: {filed} abgelegt, {waiting} warten auf dich."
+    },
+    {
+      "key": "filing_status.counts_without_text",
+      "context": "Reason sentence after the count sentence: documents waiting for the user that have no readable text. Takes the number.",
+      "en": "{count} of them have no readable text.",
+      "de": "{count} davon ohne gelesenen Text."
+    },
+    {
+      "key": "filing_status.counts_no_rules",
+      "context": "Reason sentence after the count sentence while no rule is confirmed.",
+      "en": "For the rest no rule matches: there are no confirmed rules yet.",
+      "de": "Für den Rest passt keine Regel: es gibt noch keine bestätigten Regeln."
+    },
+    {
+      "key": "filing_status.counts_archive",
+      "context": "Reason sentence: what the rule suggestions learn from. Takes the archive documents with text and all archive documents.",
+      "en": "Rule suggestions learn from the {with_text} of {total} archive documents that have text.",
+      "de": "Regelvorschläge lernen aus den {with_text} von {total} Archivdokumenten mit Text."
     },
     {
       "key": "filing_status.section_steps",
@@ -2162,9 +2234,15 @@
     },
     {
       "key": "rule_suggestions.empty",
-      "context": "Line in the rule suggestions view when there is no suggestion. Suggestions need a document folder in which several documents share a phrase.",
-      "en": "No suggestions. They appear when several documents of a document folder share a phrase.",
-      "de": "Keine Vorschläge. Sie entstehen, wenn mehrere Dokumente eines Dokumentenordners eine Wendung teilen."
+      "context": "Line in the rule suggestions view when there is no suggestion: says when suggestions appear. Takes the minimum number of documents of a folder and the share of them that must contain the phrase.",
+      "en": "No suggestions. They appear from archive documents with read text, once at least {min} documents with the same phrase lie in the same folder ({share} % of the folder and hardly any elsewhere).",
+      "de": "Keine Vorschläge. Sie entstehen aus Archivdokumenten mit gelesenem Text, sobald mindestens {min} Dokumente mit gleicher Wendung im selben Ordner liegen ({share} % des Ordners, anderswo kaum)."
+    },
+    {
+      "key": "rule_suggestions.empty_counts",
+      "context": "Second sentence under the empty rule suggestions line. Takes the archive documents with text and all archive documents.",
+      "en": "Right now {with_text} of {total} archive documents have text.",
+      "de": "Gerade haben {with_text} von {total} Archivdokumenten Text."
     },
     {
       "key": "rule_suggestions.column_condition",
@@ -2714,9 +2792,9 @@
     },
     {
       "key": "review_list.empty",
-      "context": "Shown in the review list when no document waits for review.",
-      "en": "Nothing to review.",
-      "de": "Nichts zu prüfen."
+      "context": "Shown in the review list when no document waits. Says when entries appear.",
+      "en": "Nothing to review. Documents land here when Hermes cannot file them itself: without readable text or without a matching rule.",
+      "de": "Nichts zu prüfen. Hier landen Dokumente, die Hermes nicht selbst ablegen kann: ohne lesbaren Text oder ohne passende Regel."
     },
     {
       "key": "review_list.column_file",

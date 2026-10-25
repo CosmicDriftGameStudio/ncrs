@@ -152,6 +152,20 @@ pub fn estimated_width(text: &str, font_size: f32) -> f32 {
     text.chars().map(glyph_em).sum::<f32>() * font_size
 }
 
+/// A count with a no-break space between the thousands: `2 421`.
+pub fn grouped(count: u64) -> String {
+    let digits = count.to_string();
+    let first = digits.len() % 3;
+    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
+    for (position, digit) in digits.chars().enumerate() {
+        if position > 0 && position % 3 == first % 3 {
+            grouped.push('\u{a0}');
+        }
+        grouped.push(digit);
+    }
+    grouped
+}
+
 /// `text` as it is, or cut at the end with `…` to fit `width_px`.
 pub fn fit_end(text: &str, width_px: f32, font_size: f32) -> String {
     if estimated_width(text, font_size) <= width_px {
@@ -233,6 +247,15 @@ pub fn fit_middle(text: &str, width_px: f32, font_size: f32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn counts_are_grouped_by_thousands() {
+        assert_eq!(grouped(0), "0");
+        assert_eq!(grouped(999), "999");
+        assert_eq!(grouped(2421), "2\u{a0}421");
+        assert_eq!(grouped(12345), "12\u{a0}345");
+        assert_eq!(grouped(1_234_567), "1\u{a0}234\u{a0}567");
+    }
 
     #[test]
     fn formats_sizes() {

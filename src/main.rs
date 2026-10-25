@@ -25,6 +25,7 @@ mod filing_setup;
 mod filing_status;
 mod filing_work;
 mod fs;
+mod hermes_status;
 mod i18n;
 mod jobs;
 mod keymap;

@@ -604,7 +604,6 @@ impl IndexFiguresReader {
 
 /// Reads the counts of the automatic filing, on a blocking thread like
 /// [`IndexFiguresReader`].
-#[expect(dead_code, reason = "read by the Hermes page, which comes later")]
 pub struct HermesCountsReader {
     slot: IndexSlot,
 }
@@ -616,7 +615,6 @@ impl fmt::Debug for HermesCountsReader {
 }
 
 impl HermesCountsReader {
-    #[expect(dead_code, reason = "read by the Hermes page, which comes later")]
     pub fn read(self) -> Result<HermesCounts, String> {
         let guard = lock(&self.slot);
         let index = guard.as_ref().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
@@ -831,7 +829,6 @@ impl FilingModule {
     }
 
     /// Like [`Self::index_figures_reader`]: looks at the phase only.
-    #[expect(dead_code, reason = "read by the Hermes page, which comes later")]
     pub fn hermes_counts_reader(&self) -> Option<HermesCountsReader> {
         match self.phase {
             Phase::Ready => Some(HermesCountsReader {

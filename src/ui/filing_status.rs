@@ -6,6 +6,7 @@ use std::time::{Duration, SystemTime};
 
 use iced::widget::{column, container, row, scrollable, Column};
 use iced::{Element, Length, Size};
+use ncrs_index::HermesCounts;
 use ncrs_pipeline::{Load, RunnerState, Task, WorkerSnapshot};
 
 use super::format;
@@ -65,6 +66,8 @@ struct LineBudget {
     index_path: usize,
     error_file: f32,
     error_message: f32,
+    /// The path in the PDF library notice: the box pads both sides.
+    notice_path: f32,
 }
 
 impl LineBudget {
@@ -79,6 +82,7 @@ impl LineBudget {
             index_path: frame::chars_that_fit(size::CONTROL_WIDTH),
             error_file: error_width * ERROR_TEXT_SHARE - kit::SCROLL_LANE - spacing::S,
             error_message: error_width * ERROR_TEXT_SHARE - kit::SCROLL_LANE - spacing::S,
+            notice_path: width - 4.0 * spacing::M,
         }
     }
 }
@@ -87,13 +91,39 @@ pub fn view<'a>(
     status: &'a FilingStatus,
     load: Option<Load>,
     index_open: bool,
+    pdf_library_missing: Option<&Path>,
     window: Size,
     badges: Badges,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
     let budget = LineBudget::of(window);
+    let mut notices = column![].spacing(spacing::LINE_GAP);
+    if let Some(searched) = pdf_library_missing {
+        notices = notices.push(kit::warning_box(
+            format!(
+                "{}\n{}",
+                lang.text(Msg::FilingStatusPdfMissing),
+                fill_template(
+                    lang.text(Msg::FilingStatusPdfSearched),
+                    &[(
+                        "{path}",
+                        &format::fit_middle(
+                            &searched.display().to_string(),
+                            budget.notice_path,
+                            font_size::BODY,
+                        ),
+                    )],
+                ),
+            ),
+            palette,
+        ));
+    }
+    if let Some(counts) = badges.counts {
+        notices = notices.push(paragraph(counts_sentences(&counts, lang), palette));
+    }
     let body = column![
+        notices,
         pipeline_section(status, load, lang, palette),
         throughput_section(status, lang, palette),
         steps_section(status, &budget, lang, palette),
@@ -117,6 +147,41 @@ pub fn view<'a>(
     .hints(KeyHints::default())
     .page_hints(PAGE_HINTS)
     .into_element()
+}
+
+/// What Hermes has done so far, in plain sentences: the documents seen and
+/// where they are, and why the rest waits.
+pub fn counts_sentences(counts: &HermesCounts, lang: Language) -> String {
+    let inbox = counts.inbox;
+    let seen = inbox.new + inbox.planned + inbox.in_review + inbox.filed;
+    let count = |number: u64| format::grouped(number);
+    let mut sentences = vec![fill_template(
+        lang.text(Msg::FilingStatusCountsSeen),
+        &[
+            ("{seen}", &count(seen)),
+            ("{filed}", &count(inbox.filed)),
+            ("{waiting}", &count(counts.open_reviews)),
+        ],
+    )];
+    if counts.open_reviews_without_text > 0 {
+        sentences.push(fill_template(
+            lang.text(Msg::FilingStatusCountsWithoutText),
+            &[("{count}", &count(counts.open_reviews_without_text))],
+        ));
+    }
+    if counts.confirmed_rules == 0 && counts.open_reviews > counts.open_reviews_without_text {
+        sentences.push(lang.text(Msg::FilingStatusCountsNoRules).to_owned());
+    }
+    if counts.archive_documents > 0 {
+        sentences.push(fill_template(
+            lang.text(Msg::FilingStatusCountsArchive),
+            &[
+                ("{with_text}", &count(counts.archive_documents_with_text)),
+                ("{total}", &count(counts.archive_documents)),
+            ],
+        ));
+    }
+    sentences.join(" ")
 }
 
 fn state_message(state: RunnerState) -> Msg {

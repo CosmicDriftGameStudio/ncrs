@@ -27,6 +27,7 @@ use crate::filing_setup::{self, FilingSetup, SetupNote};
 use crate::filing_status::{FilingStatus, SNAPSHOT_EVERY};
 use crate::filing_work::FilingSummary;
 use crate::fs::{self, CreateDirError};
+use crate::hermes_status::HermesStatus;
 use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
 use crate::keymap::{self, KeyAction, KeyScope, Keymap};
@@ -3327,6 +3328,7 @@ impl App {
                 &self.filing_status,
                 self.filing.as_ref().map(FilingModule::load),
                 index_open,
+                self.pdf_library_missing.as_deref(),
                 self.window_size,
                 self.hermes_badges(),
                 self.lang,
@@ -5975,6 +5977,7 @@ impl App {
             .and_then(|figures| usize::try_from(figures.statistics.open_reviews).ok());
         Badges {
             focus: self.hermes_focus,
+            counts: self.filing_status.hermes_counts().copied(),
             review: self
                 .review_list
                 .as_ref()
@@ -6837,7 +6840,9 @@ impl App {
             settings_tab: self.settings.is_some(),
             home: &self.home,
             hermes: self.hermes_chip(),
-            hermes_paused: self.filing_status.snapshot().state == RunnerState::Paused,
+            hermes_tone: self
+                .hermes_status()
+                .map_or(titlebar::HermesTone::Fine, |status| status.tone()),
             lab_shortcut: self
                 .keymap
                 .shortcut_label(&KeyAction::CommandPalette.message()),
@@ -6880,21 +6885,19 @@ impl App {
         Some(text)
     }
 
+    fn hermes_status(&self) -> Option<HermesStatus> {
+        HermesStatus::of(
+            self.filing_status.snapshot(),
+            self.filing_status.hermes_counts(),
+            self.pdf_library_missing.is_some(),
+        )
+    }
+
     fn filing_badge(&self) -> Option<statusbar::FilingBadge<Message>> {
-        let progress = self.filing_status.progress()?;
-        let template = if progress.paused {
-            Msg::FilingProgressPaused
-        } else {
-            Msg::FilingProgress
-        };
+        let status = self.hermes_status()?;
         Some(statusbar::FilingBadge {
-            text: fill_template(
-                self.lang.text(template),
-                &[
-                    ("{done}", &progress.done.to_string()),
-                    ("{total}", &progress.total.to_string()),
-                ],
-            ),
+            text: status.line(self.lang),
+            failing: status.is_failing(),
             on_press: Message::FilingStatus(FilingStatusMessage::Open),
         })
     }
@@ -6912,11 +6915,6 @@ impl App {
                 .map(FilingModule::ai_status)
                 .unwrap_or_default(),
         );
-    }
-
-    #[expect(dead_code, reason = "read by the Hermes page, which comes later")]
-    pub fn pdf_library_missing(&self) -> Option<&Path> {
-        self.pdf_library_missing.as_deref()
     }
 
     /// The pipeline, unless it is stopped.
@@ -6941,6 +6939,27 @@ impl App {
             tokio::task::spawn_blocking(move || reader.read()),
             |joined| {
                 Message::FilingStatus(FilingStatusMessage::IndexFigures(
+                    joined.unwrap_or_else(|err| Err(err.to_string())),
+                ))
+            },
+        )
+    }
+
+    /// Reads the counts of Hermes on the blocking pool, like the index
+    /// figures.
+    fn request_hermes_counts(&mut self) -> Task<Message> {
+        let Some(reader) = self
+            .filing
+            .as_ref()
+            .and_then(FilingModule::hermes_counts_reader)
+        else {
+            return Task::none();
+        };
+        self.filing_status.counts_requested();
+        Task::perform(
+            tokio::task::spawn_blocking(move || reader.read()),
+            |joined| {
+                Message::FilingStatus(FilingStatusMessage::HermesCounts(
                     joined.unwrap_or_else(|err| Err(err.to_string())),
                 ))
             },
@@ -6994,10 +7013,16 @@ impl App {
                 } else {
                     Task::none()
                 };
+                let counts =
+                    if self.live_pipeline().is_some() && self.filing_status.tick_wants_counts() {
+                        self.request_hermes_counts()
+                    } else {
+                        Task::none()
+                    };
                 if self.filing_status.tick_wants_figures() {
-                    Task::batch([filing, self.request_index_figures()])
+                    Task::batch([filing, counts, self.request_index_figures()])
                 } else {
-                    filing
+                    Task::batch([filing, counts])
                 }
             }
             FilingStatusMessage::TogglePause => {
@@ -7032,6 +7057,10 @@ impl App {
                 if let Some(count) = NonZeroUsize::new(wanted) {
                     self.set_pipeline_load(Load::Workers(count));
                 }
+                Task::none()
+            }
+            FilingStatusMessage::HermesCounts(counts) => {
+                self.filing_status.counts_arrived(counts);
                 Task::none()
             }
             FilingStatusMessage::IndexFigures(figures) => {
@@ -8203,6 +8232,18 @@ impl App {
         let mut app = Self::with_fixed_panels();
         app.review_list = Some(view);
         app
+    }
+
+    /// The counts of Hermes as the index last gave them.
+    pub fn with_hermes_counts(mut self, counts: ncrs_index::HermesCounts) -> Self {
+        self.filing_status.counts_arrived(Ok(counts));
+        self
+    }
+
+    /// The PDF library could not be loaded; `searched` is where it was looked for.
+    pub fn with_pdf_library_missing(mut self, searched: PathBuf) -> Self {
+        self.pdf_library_missing = Some(searched);
+        self
     }
 
     /// Puts the arrow keys of the Hermes card on its sidebar or its page.
