@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Text files (`.txt`, `.md`) and Word and OpenDocument texts (`.docx`,
+  `.odt`) are now read too, so their text is stored with the document and can
+  be searched. No office installation is needed. A broken file shows an error
+  on the status page; very large files are cut off, so a crafted file cannot
+  fill the memory.
+
 - The groundwork for letting an AI fill in the fields the rules left open
   (sender, kind, date, number, amount). There is an interface for such a
   provider that can only return field values, a step in the processing that

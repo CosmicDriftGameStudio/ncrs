@@ -26,7 +26,8 @@ use ncrs_index::{Index, IndexError, IndexStatistics, KeyStore, RecoveryKey};
 #[cfg(target_os = "macos")]
 use ncrs_intake::ImageTextWithFallback;
 use ncrs_intake::{
-    ImageTextSource, LazyOcrText, Location, PdfText, PdfUnavailable, TextChain, OCR_MODELS_FOLDER,
+    ImageTextSource, LazyOcrText, Location, OfficeText, PdfText, PdfUnavailable, PlainText,
+    TextChain, OCR_MODELS_FOLDER,
 };
 use ncrs_pipeline::{intake_steps, IndexAccess, Load, Runner, Settings, SystemClock};
 
@@ -575,7 +576,10 @@ fn shipped_text_chain(ocr_models_dir: PathBuf) -> TextChain {
         Ok(pdf) => TextChain::new().with_source(pdf),
         Err(err) => TextChain::new().with_source(PdfUnavailable::new(err)),
     };
-    chain.with_image_source(shipped_image_source(ocr_models_dir))
+    chain
+        .with_source(PlainText)
+        .with_source(OfficeText)
+        .with_image_source(shipped_image_source(ocr_models_dir))
 }
 
 #[cfg(target_os = "macos")]

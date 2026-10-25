@@ -8,6 +8,7 @@ mod extract;
 mod filing_plan;
 mod location;
 mod ocr;
+mod office;
 mod sanitise;
 mod scan;
 mod stability;
@@ -28,6 +29,7 @@ pub use ocr::{
     install_model, verify_model_bytes, LazyOcrText, OcrModelError, OcrModelFile, OcrText,
     OCR_MODELS_FOLDER, OCR_MODELS_HOST, OCR_MODELS_PROJECT, OCR_MODEL_FILES,
 };
+pub use office::{OfficeText, PlainText};
 pub use sanitise::{sanitise_value, stays_below};
 pub use scan::{
     scan_location, settle_location, walk_location, Found, ScanReport, MAX_REPORTED_ERRORS,
