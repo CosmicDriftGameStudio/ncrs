@@ -48,7 +48,9 @@ jobs:
 
       # The PDF tests load the pdfium library at runtime. The script checks the
       # download against a pinned checksum. The library sits in lib/ on macOS
-      # and Linux and in bin/ on Windows.
+      # and Linux and in bin/ on Windows. The path goes through GITHUB_WORKSPACE,
+      # not PWD: under Git Bash on Windows PWD is a POSIX path (/d/a/...) that
+      # the tests, which run from PowerShell, cannot open.
       - name: Fetch pdfium for the tests
         shell: bash
         run: |
@@ -59,7 +61,7 @@ jobs:
             *) echo "::error::no pdfium binaries for ${{ runner.os }} ${{ runner.arch }}"; exit 1 ;;
           esac
           scripts/fetch-pdfium.sh "$triple" target/pdfium
-          echo "NCRS_PDFIUM_DIR=$PWD/target/pdfium/$lib" >> "$GITHUB_ENV"
+          echo "NCRS_PDFIUM_DIR=$GITHUB_WORKSPACE/target/pdfium/$lib" >> "$GITHUB_ENV"
 
       # The OCR test needs the two text recognition models. The script checks
       # each download against a pinned size and checksum.
@@ -67,7 +69,7 @@ jobs:
         shell: bash
         run: |
           scripts/fetch-ocr-models.sh target/ocr-models
-          echo "NCRS_OCR_MODELS_DIR=$PWD/target/ocr-models" >> "$GITHUB_ENV"
+          echo "NCRS_OCR_MODELS_DIR=$GITHUB_WORKSPACE/target/ocr-models" >> "$GITHUB_ENV"
 
       - name: Formatting
         run: cargo fmt --all --check
