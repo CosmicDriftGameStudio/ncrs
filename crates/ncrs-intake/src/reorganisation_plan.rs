@@ -235,12 +235,21 @@ mod tests {
                 .unwrap();
         }
 
+        /// Keyed the way the tests write paths, whatever the platform's separator.
         fn plan(&mut self) -> BTreeMap<String, PlanItem> {
             plan_location(&mut self.index, &self.root)
                 .unwrap()
                 .items
                 .into_iter()
-                .map(|item| (item.source.to_str().unwrap().to_owned(), item))
+                .map(|item| {
+                    let key = item
+                        .source
+                        .components()
+                        .map(|part| part.as_os_str().to_str().unwrap())
+                        .collect::<Vec<_>>()
+                        .join("/");
+                    (key, item)
+                })
                 .collect()
         }
 
