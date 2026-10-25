@@ -12,6 +12,7 @@ mod model;
 mod names;
 mod profile;
 mod review;
+mod rule_suggestions;
 mod rules;
 #[cfg(test)]
 mod test_support;
@@ -23,5 +24,6 @@ pub use key_store::{InMemoryKeyStore, KeyStore, KeyringKeyStore};
 pub use model::{
     Amount, ContentHash, Currency, Document, DocumentFields, DocumentId, DocumentSource,
     DocumentStatus, Field, FileStamp, IndexStatistics, NewDocument, ReviewEntry, ReviewEntryId,
-    ReviewReason, Rule, RuleId, RuleSpec, SubtreePattern, TaxContext, TextMatch,
+    ReviewReason, Rule, RuleEvidence, RuleId, RuleSpec, RuleSuggestion, SubtreePattern, TaxContext,
+    TextMatch,
 };

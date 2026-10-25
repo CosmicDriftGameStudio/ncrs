@@ -61,6 +61,7 @@ enum Piece {
     Recurring(String),
 }
 
+#[derive(Clone)]
 struct Parsed {
     folders: Vec<String>,
     name: Vec<NameToken>,
@@ -121,6 +122,24 @@ pub fn learn_archive(documents: &[ArchiveDocument]) -> Vec<SubtreePattern> {
                 documents: u32::try_from(following).unwrap_or(u32::MAX),
                 total: u32::try_from(tally.total).unwrap_or(u32::MAX),
             }
+        })
+        .collect()
+}
+
+/// The subtree each document belongs to, in the order of `documents`; `None`
+/// for a path that cannot be a document of the location. The same assignment
+/// `learn_archive` counts with.
+pub fn subtree_per_document(documents: &[ArchiveDocument]) -> Vec<Option<String>> {
+    let parsed: Vec<Option<Parsed>> = documents.iter().map(parse_document).collect();
+    let present: Vec<Parsed> = parsed.iter().flatten().cloned().collect();
+    let mut folders = abstract_folders(&present).into_iter();
+    parsed
+        .iter()
+        .map(|document| {
+            document
+                .as_ref()
+                .and_then(|_| folders.next())
+                .map(|tokens| subtree_of(&tokens))
         })
         .collect()
 }

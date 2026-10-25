@@ -366,3 +366,25 @@ pub struct SubtreePattern {
     /// How many documents the subtree has.
     pub total: u32,
 }
+
+/// Why a suggested rule was suggested: the phrase was in `matching_in_folder`
+/// of the `folder_documents` documents of its folder and in
+/// `matching_elsewhere` documents outside it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RuleEvidence {
+    pub matching_in_folder: u32,
+    pub folder_documents: u32,
+    pub matching_elsewhere: u32,
+}
+
+/// What storing a suggested rule did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuleSuggestion {
+    Created(RuleId),
+    /// An unconfirmed rule with the same condition and target had its
+    /// evidence replaced.
+    Refreshed(RuleId),
+    /// The user already confirmed a rule with this condition and target; it
+    /// was left as it is.
+    AlreadyConfirmed(RuleId),
+}

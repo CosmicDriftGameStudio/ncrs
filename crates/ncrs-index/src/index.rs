@@ -686,9 +686,29 @@ mod tests {
 
         let index = Index::open(&path, &store).unwrap();
 
-        assert_eq!(user_version(&index), 3);
+        assert_eq!(
+            user_version(&index),
+            u32::try_from(MIGRATIONS.len()).unwrap()
+        );
         assert!(table_exists(&index, "location_profile"));
         assert!(table_exists(&index, "location_subtree"));
+    }
+
+    #[test]
+    fn a_version_3_database_gains_the_rule_evidence_table() {
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let store = InMemoryKeyStore::empty();
+        let (old, _) =
+            Index::create_encrypted_with_migrations(&path, &store, &MIGRATIONS[..3]).unwrap();
+        assert_eq!(user_version(&old), 3);
+        assert!(!table_exists(&old, "rule_evidence"));
+        drop(old);
+
+        let index = Index::open(&path, &store).unwrap();
+
+        assert_eq!(user_version(&index), 4);
+        assert!(table_exists(&index, "rule_evidence"));
     }
 
     #[test]
