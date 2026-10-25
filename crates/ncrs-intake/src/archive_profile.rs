@@ -144,6 +144,51 @@ pub fn subtree_per_document(documents: &[ArchiveDocument]) -> Vec<Option<String>
         .collect()
 }
 
+/// The pattern one document follows on its own, and the subtree it belongs to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocumentPattern {
+    pub subtree: String,
+    /// Documents of the same folder structure and file name shape share it.
+    pub pattern: String,
+}
+
+/// The pattern of each document, in the order of `documents`; `None` for a
+/// path that cannot be a document of the location. Grouped like
+/// `learn_archive`, so a document whose pattern is not the one its subtree
+/// learned is an outlier of that subtree.
+pub fn pattern_per_document(documents: &[ArchiveDocument]) -> Vec<Option<DocumentPattern>> {
+    let parsed: Vec<Option<Parsed>> = documents.iter().map(parse_document).collect();
+    let present: Vec<Parsed> = parsed.iter().flatten().cloned().collect();
+    let folder_tokens = abstract_folders(&present);
+    let mut groups: BTreeMap<(&[FolderToken], String), Vec<usize>> = BTreeMap::new();
+    for (index, (document, folders)) in present.iter().zip(&folder_tokens).enumerate() {
+        groups
+            .entry((folders.as_slice(), shape(&document.name)))
+            .or_default()
+            .push(index);
+    }
+    let mut own: Vec<Option<DocumentPattern>> = vec![None; present.len()];
+    for ((folders, _shape), members) in &groups {
+        let found = DocumentPattern {
+            subtree: subtree_of(folders),
+            pattern: pattern_text(folders, &name_pieces(&present, members)),
+        };
+        for &member in members {
+            if let Some(slot) = own.get_mut(member) {
+                *slot = Some(found.clone());
+            }
+        }
+    }
+    let mut own_patterns = own.into_iter();
+    parsed
+        .iter()
+        .map(|document| match document {
+            Some(_) => own_patterns.next().flatten(),
+            None => None,
+        })
+        .collect()
+}
+
 #[derive(Default)]
 struct SubtreeTally {
     total: usize,
@@ -212,7 +257,7 @@ fn follows_dates(document: &Parsed) -> bool {
         .all(|year| year == date.year())
 }
 
-fn year_of(folder: &str) -> Option<i32> {
+pub fn year_of(folder: &str) -> Option<i32> {
     if folder.len() != 4 || !folder.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }

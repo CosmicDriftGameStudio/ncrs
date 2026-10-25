@@ -727,8 +727,37 @@ mod tests {
 
         let index = Index::open(&path, &store).unwrap();
 
-        assert_eq!(user_version(&index), 5);
+        assert_eq!(
+            user_version(&index),
+            u32::try_from(MIGRATIONS.len()).unwrap()
+        );
         assert!(table_exists(&index, "discarded_rule_suggestion"));
+    }
+
+    #[test]
+    fn a_version_5_database_gains_the_reorganisation_plan_tables() {
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let store = InMemoryKeyStore::empty();
+        let (old, _) =
+            Index::create_encrypted_with_migrations(&path, &store, &MIGRATIONS[..5]).unwrap();
+        assert_eq!(user_version(&old), 5);
+        assert!(!table_exists(&old, "reorganisation_plan"));
+        drop(old);
+
+        let index = Index::open(&path, &store).unwrap();
+
+        assert_eq!(
+            user_version(&index),
+            u32::try_from(MIGRATIONS.len()).unwrap()
+        );
+        for table in [
+            "reorganisation_plan",
+            "reorganisation_item",
+            "reorganisation_finding",
+        ] {
+            assert!(table_exists(&index, table), "{table}");
+        }
     }
 
     #[test]

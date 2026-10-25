@@ -11,6 +11,7 @@ mod migrations;
 mod model;
 mod names;
 mod profile;
+mod reorganisation;
 mod review;
 mod rule_suggestions;
 mod rules;
@@ -22,8 +23,9 @@ pub use index::Index;
 pub use key::RecoveryKey;
 pub use key_store::{InMemoryKeyStore, KeyStore, KeyringKeyStore};
 pub use model::{
-    Amount, ContentHash, Currency, Document, DocumentFields, DocumentId, DocumentSource,
-    DocumentStatus, Field, FileStamp, IndexStatistics, NewDocument, ReviewEntry, ReviewEntryId,
-    ReviewReason, Rule, RuleEvidence, RuleId, RuleSpec, RuleSuggestion, SubtreePattern, TaxContext,
-    TextMatch,
+    Amount, ConflictReason, ContentHash, Currency, Document, DocumentFields, DocumentId,
+    DocumentSource, DocumentStatus, Field, FileStamp, Finding, FindingKind, IndexStatistics,
+    NewDocument, NoActionReason, PlanId, PlanItem, PlanOutcome, ReorganisationPlan, ReviewEntry,
+    ReviewEntryId, ReviewReason, Rule, RuleEvidence, RuleId, RuleSpec, RuleSuggestion,
+    SubtreePattern, TaxContext, TextMatch,
 };

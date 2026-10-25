@@ -134,6 +134,24 @@ struct FoundPhrase {
     covered: Vec<usize>,
 }
 
+/// Whether the evidence a suggestion was stored with meets the thresholds it
+/// was made under. `documents` is the number of documents in the archive now,
+/// to put `matching_elsewhere` in relation to the ones outside the folder.
+pub fn evidence_meets_thresholds(evidence: &RuleEvidence, documents: usize) -> bool {
+    let folder = evidence.folder_documents as usize;
+    evidence.folder_documents >= MIN_FOLDER_DOCUMENTS
+        && at_least_share(
+            evidence.matching_in_folder as usize,
+            folder,
+            MIN_SHARE_IN_FOLDER_PERCENT,
+        )
+        && at_most_share(
+            evidence.matching_elsewhere as usize,
+            documents.saturating_sub(folder),
+            MAX_SHARE_ELSEWHERE_PERCENT,
+        )
+}
+
 fn at_least_share(count: usize, of: usize, percent: u32) -> bool {
     count.saturating_mul(100) >= of.saturating_mul(percent as usize)
 }

@@ -10,6 +10,8 @@ mod filing_plan;
 mod location;
 mod ocr;
 mod office;
+mod reorganisation;
+mod reorganisation_plan;
 mod rule_suggestions;
 mod sanitise;
 mod scan;
@@ -20,7 +22,10 @@ pub mod test_support;
 mod text;
 mod watcher;
 
-pub use archive_profile::{learn_archive, propose_target, subtree_per_document, ArchiveDocument};
+pub use archive_profile::{
+    learn_archive, pattern_per_document, propose_target, subtree_per_document, ArchiveDocument,
+    DocumentPattern,
+};
 pub use classify::{classify, Skip};
 pub use error::IntakeError;
 pub use extract::{
@@ -35,6 +40,11 @@ pub use ocr::{
     OCR_MODELS_FOLDER, OCR_MODELS_HOST, OCR_MODELS_PROJECT, OCR_MODEL_FILES,
 };
 pub use office::{OfficeText, PlainText};
+pub use reorganisation::{
+    plan_reorganisation, PlanFile, PlanRule, ReorganisationInput, DUPLICATES_FOLDER,
+    FINDING_PRIORITY,
+};
+pub use reorganisation_plan::plan_location;
 pub use rule_suggestions::{
     suggest_rules, ArchiveText, RuleCandidate, MAX_CANDIDATES_PER_FOLDER, MAX_PHRASE_WORDS,
     MAX_SHARE_ELSEWHERE_PERCENT, MIN_FOLDER_DOCUMENTS, MIN_PHRASE_CHARS,
