@@ -1052,6 +1052,7 @@ mod status_notice {
                 filing: None,
                 on_blocked_press: None,
                 notice: app.notice_for_test(),
+                hermes_line: None,
             },
             failure,
             None,
@@ -3703,6 +3704,25 @@ mod title_bar {
         simulator(&missing)
             .find("PDF library missing, PDFs are not read")
             .unwrap();
+    }
+
+    #[test]
+    fn the_hermes_column_matches_its_snapshots() {
+        for (language, name) in [
+            (Language::English, "hermes_column_en"),
+            (Language::German, "hermes_column_de"),
+        ] {
+            let app = App::with_hermes_column_sample().in_language(language);
+            let matches = simulator(&app)
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(
+                matches,
+                "the main view does not match tests/snapshots/{name}.png"
+            );
+        }
     }
 
     #[test]

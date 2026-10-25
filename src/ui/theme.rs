@@ -3,6 +3,7 @@
 use iced::widget::{button, checkbox, container, text_input, Space};
 use iced::{Background, Border, Color, Element, Length, Theme};
 
+use crate::hermes_column::{FolderRole, HermesFileState};
 use crate::palette::Palette;
 
 /// Behind a modal dialog: darkens the panels without hiding them. Not part of
@@ -538,6 +539,41 @@ pub fn outlined_in(outline: Color) -> impl Fn(&Theme) -> container::Style {
             radius: radius::CONTROL.into(),
         },
         ..container::Style::default()
+    }
+}
+
+/// An inquiry is yellow in every preset; the palette has no warning role.
+const INQUIRY_YELLOW: Color = Color {
+    r: 0.898,
+    g: 0.753,
+    b: 0.482,
+    a: 1.0,
+};
+
+/// How much of the dim text color an excluded file keeps.
+const EXCLUDED_OPACITY: f32 = 0.55;
+
+/// The color of a Hermes state in the status column.
+pub fn hermes_state_color(palette: &Palette, state: HermesFileState) -> Color {
+    match state {
+        HermesFileState::Waiting => palette.dim_text,
+        HermesFileState::Reading => palette.accent,
+        HermesFileState::Filed => palette.success,
+        HermesFileState::Inquiry => INQUIRY_YELLOW,
+        HermesFileState::Error => palette.error,
+        HermesFileState::Excluded => Color {
+            a: EXCLUDED_OPACITY,
+            ..palette.dim_text
+        },
+    }
+}
+
+/// The color of a folder's role tag.
+pub fn hermes_role_color(palette: &Palette, role: FolderRole) -> Color {
+    match role {
+        FolderRole::Inbox => palette.accent,
+        FolderRole::FilingLocation => palette.success,
+        FolderRole::Archive => palette.dim_text,
     }
 }
 

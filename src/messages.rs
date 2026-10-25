@@ -19,6 +19,7 @@ use crate::filing_work::FilingSummary;
 use crate::fs::search::SearchEvent;
 use crate::fs::CreateDirError;
 use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
+use crate::hermes_column::{ColumnReading, ColumnStage, FileDetail};
 use crate::i18n::Language;
 use crate::jobs::JobEvent;
 #[cfg(any(target_os = "macos", test))]
@@ -275,6 +276,9 @@ pub enum Message {
     // --- Filing status page ---
     FilingStatus(FilingStatusMessage),
 
+    // --- The Hermes column of the panels ---
+    HermesColumn(HermesColumnMessage),
+
     // --- Filing setup: the locations, written to the config ---
     FilingSetup(FilingSetupMessage),
 
@@ -473,6 +477,23 @@ pub enum FilingStatusMessage {
     ErrorActivated(PathBuf),
     MoveError(i32),
     ActivateSelectedError,
+}
+
+/// What the background reads for the Hermes column answer with.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HermesColumnMessage {
+    /// One stage of the reading for `directory` of a panel.
+    Read {
+        side: PanelSide,
+        directory: PathBuf,
+        stage: ColumnStage,
+        result: Result<ColumnReading, String>,
+    },
+    /// What the review list knows about the file under the cursor.
+    Detail {
+        path: PathBuf,
+        result: Result<Option<FileDetail>, String>,
+    },
 }
 
 /// Everything the filing setup sends.

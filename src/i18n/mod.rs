@@ -184,6 +184,8 @@ mod tests {
                 | Msg::FilingSetupTitle
                 | Msg::ActionFilingSetupTheme
                 | Msg::GroupHermesTheme
+                // The module's name heads its column.
+                | Msg::ColumnHermes
                 // Names of color schemes.
                 | Msg::SettingsPresetCosmic
                 | Msg::SettingsPresetDracula

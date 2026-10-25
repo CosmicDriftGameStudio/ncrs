@@ -103,12 +103,12 @@ impl Icon {
 }
 
 /// An icon in `color`, [`size::ICON`] square.
-pub fn icon<'a>(icon: Icon, color: Color) -> Element<'a, Message> {
+pub fn icon<'a, M: 'a>(icon: Icon, color: Color) -> Element<'a, M> {
     icon_rotated(icon, color, 0.0)
 }
 
 /// As [`icon`], turned by `radians` around its center (the spinner).
-pub fn icon_rotated<'a>(icon: Icon, color: Color, radians: f32) -> Element<'a, Message> {
+pub fn icon_rotated<'a, M: 'a>(icon: Icon, color: Color, radians: f32) -> Element<'a, M> {
     Svg::new(icon.handle())
         .width(size::ICON)
         .height(size::ICON)

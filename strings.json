@@ -31,6 +31,90 @@
       "de": "Geändert"
     },
     {
+      "key": "column.hermes",
+      "context": "Column header above the Hermes status column of a file panel; Hermes is the name of the automatic filing module and stays untranslated.",
+      "en": "Hermes",
+      "de": "Hermes"
+    },
+    {
+      "key": "hermes_column.state_waiting",
+      "context": "Hover text and status bar word for a file Hermes has queued but not read yet. One word.",
+      "en": "Waiting",
+      "de": "Wartet"
+    },
+    {
+      "key": "hermes_column.state_reading",
+      "context": "Hover text and status bar word for a file Hermes is reading right now (text, OCR, fields, rule).",
+      "en": "Reading",
+      "de": "Wird gelesen"
+    },
+    {
+      "key": "hermes_column.state_filed",
+      "context": "Hover text and status bar word for a file Hermes has filed: it is in the filing location and in the index.",
+      "en": "Filed",
+      "de": "Abgelegt"
+    },
+    {
+      "key": "hermes_column.state_inquiry",
+      "context": "Hover text and status bar word for a file Hermes cannot file alone and asks the user about.",
+      "en": "Inquiry",
+      "de": "Rückfrage"
+    },
+    {
+      "key": "hermes_column.state_error",
+      "context": "Hover text and status bar word for a file Hermes failed to process.",
+      "en": "Error",
+      "de": "Fehler"
+    },
+    {
+      "key": "hermes_column.state_excluded",
+      "context": "Hover text and status bar word for a file the user excluded from Hermes; Hermes does not touch it.",
+      "en": "Excluded",
+      "de": "Ausgeschlossen"
+    },
+    {
+      "key": "hermes_column.role_inbox",
+      "context": "Small tag after the name of a folder Hermes takes new files from. One word.",
+      "en": "Inbox",
+      "de": "Eingang"
+    },
+    {
+      "key": "hermes_column.role_filing_location",
+      "context": "Small tag after the name of an archive folder Hermes files documents into. Short.",
+      "en": "Filing location",
+      "de": "Ablage"
+    },
+    {
+      "key": "hermes_column.role_archive",
+      "context": "Small tag after the name of an archive folder Hermes only reads. One word.",
+      "en": "Archive",
+      "de": "Archiv"
+    },
+    {
+      "key": "hermes_column.role_archive_tooltip",
+      "context": "Hover text of the archive tag: Hermes learns from this folder but never moves files in or out of it.",
+      "en": "Archive, read-only: Hermes learns from it but moves nothing",
+      "de": "Archiv, nur lesen: Hermes lernt daraus, verschiebt aber nichts"
+    },
+    {
+      "key": "hermes_column.excluded_word",
+      "context": "Shown in the Hermes column of a folder the user excluded from Hermes, next to the excluded icon. One word, lower case.",
+      "en": "excluded",
+      "de": "ausgeschlossen"
+    },
+    {
+      "key": "hermes_column.not_counted",
+      "context": "Hover text of the dots shown in the Hermes column of a folder whose files have not been counted yet.",
+      "en": "not counted yet",
+      "de": "noch nicht gezählt"
+    },
+    {
+      "key": "hermes_column.suggestion",
+      "context": "Part of the status bar line for a file Hermes asks about: the place Hermes would file it in. Takes the target path.",
+      "en": "Suggestion: {target}",
+      "de": "Vorschlag: {target}"
+    },
+    {
       "key": "marker.dir",
       "context": "Shown in the size column for directories, like <DIR>. Convention from Norton Commander. Keep the angle brackets; this is deliberately not translated.",
       "en": "<DIR>",

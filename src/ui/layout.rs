@@ -27,6 +27,9 @@ pub const TAG_COLUMN_WIDTH: f32 = 22.0;
 
 pub const SIZE_COLUMN_WIDTH: f32 = 90.0;
 pub const DATE_COLUMN_WIDTH: f32 = 150.0;
+/// The Hermes status column, after the date: an icon for a file, a summary
+/// of icons and counts for a folder.
+pub const HERMES_COLUMN_WIDTH: f32 = 124.0;
 
 /// Vertical space the panel chrome occupies: everything above and below the
 /// file rows.

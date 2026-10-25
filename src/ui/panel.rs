@@ -4,15 +4,21 @@
 use std::path::PathBuf;
 
 use iced::mouse::ScrollDelta;
-use iced::widget::{button, column, container, mouse_area, row, text, Column, Row};
+use iced::widget::{button, column, container, mouse_area, row, text, tooltip, Column, Row, Space};
 use iced::{alignment, Element, Font, Length};
 
 use super::format;
+use super::kit::{self, Icon};
 use super::layout::{
-    COLUMN_HEADER_HEIGHT, DATE_COLUMN_WIDTH, ROW_HEIGHT, SIZE_COLUMN_WIDTH, TAG_COLUMN_WIDTH,
+    COLUMN_HEADER_HEIGHT, DATE_COLUMN_WIDTH, HERMES_COLUMN_WIDTH, ROW_HEIGHT, SIZE_COLUMN_WIDTH,
+    TAG_COLUMN_WIDTH,
 };
-use super::theme::{self, font_size, spacing};
+use super::theme::{self, font_size, size, spacing};
 use crate::fs::{sort_entries, FileEntry, ReadError, SortColumn, SortKey};
+use crate::hermes_column::{
+    abbreviated, role_message, state_label, summary_items, ColumnView, FolderRole, FolderSummary,
+    HermesFileState,
+};
 use crate::i18n::{Language, Msg};
 use crate::palette::Palette;
 use crate::selection::{Selection, SelectionSet};
@@ -226,10 +232,12 @@ impl PanelState {
 
 /// Display options for a panel that are not part of its state.
 #[derive(Debug, Clone, Copy)]
-pub struct PanelProps {
+pub struct PanelProps<'a> {
     pub is_active: bool,
     pub visible_rows: usize,
     pub palette: Palette,
+    /// `None` leaves the Hermes column out.
+    pub hermes: Option<ColumnView<'a>>,
 }
 
 /// Renders a file panel. Generic over the message type: the caller decides
@@ -243,7 +251,7 @@ pub struct PanelProps {
 /// row index when the row is right-clicked.
 pub fn view<'a, M: Clone + 'a>(
     state: &'a PanelState,
-    props: PanelProps,
+    props: PanelProps<'a>,
     lang: Language,
     on_row_click: impl Fn(usize, bool) -> M,
     on_row_context: impl Fn(usize) -> M,
@@ -251,6 +259,7 @@ pub fn view<'a, M: Clone + 'a>(
     on_scroll: impl Fn(ScrollDelta) -> M + 'a,
 ) -> Element<'a, M> {
     let palette = &props.palette;
+    let hermes = props.hermes;
     let rows = state
         .entries
         .iter()
@@ -296,6 +305,7 @@ pub fn view<'a, M: Clone + 'a>(
                 palette,
                 on_row_click(index, false),
                 row,
+                hermes.map(|column| HermesCell::of(entry, column, lang, palette)),
             ))
             .on_right_press(on_row_context(index))
             .into()
@@ -306,7 +316,7 @@ pub fn view<'a, M: Clone + 'a>(
     // has to ask for the wheel itself.
     mouse_area(
         column![
-            column_header(lang, palette, state.sort, on_sort),
+            column_header(lang, palette, state.sort, hermes.is_some(), on_sort),
             Column::with_children(rows).height(Length::Fill),
         ]
         .apply_frame(palette),
@@ -321,6 +331,7 @@ fn column_header<'a, M: Clone + 'a>(
     lang: Language,
     palette: &Palette,
     sort: SortKey,
+    with_hermes: bool,
     on_sort: impl Fn(SortColumn) -> M + 'a,
 ) -> Element<'a, M> {
     let title = |column: SortColumn, msg: Msg| {
@@ -351,6 +362,17 @@ fn column_header<'a, M: Clone + 'a>(
                     .width(DATE_COLUMN_WIDTH)
                     .align_x(alignment::Horizontal::Right),
             ]
+            .extend(with_hermes.then(|| {
+                container(
+                    text(lang.text(Msg::ColumnHermes))
+                        .size(font_size::SMALL)
+                        .color(palette.dim_text)
+                        .wrapping(text::Wrapping::None),
+                )
+                .padding(iced::Padding::ZERO.left(HERMES_CELL_GAP))
+                .width(HERMES_COLUMN_WIDTH)
+                .into()
+            }))
             .align_y(alignment::Vertical::Center),
         )
         .padding([0.0, spacing::CELL_PADDING_X])
@@ -375,6 +397,7 @@ fn file_row<'a, M: Clone + 'a>(
     palette: &Palette,
     on_press: M,
     prefix: Row<'a, M>,
+    hermes: Option<HermesCell<'a, M>>,
 ) -> Element<'a, M> {
     // The cursor row of the active panel is the one drawn as highlighted; a
     // tagged row is marked in its own column and tinted by the row style.
@@ -415,9 +438,13 @@ fn file_row<'a, M: Clone + 'a>(
             .wrapping(text::Wrapping::None)
     };
 
-    let content = row![
+    let name_cell = row![cell(name)]
+        .extend(hermes.as_ref().and_then(HermesCell::role_tag))
+        .spacing(spacing::XS)
+        .align_y(alignment::Vertical::Center);
+    let mut content = row![
         prefix,
-        container(cell(name)).width(Length::Fill).clip(true),
+        container(name_cell).width(Length::Fill).clip(true),
         cell(format::entry_size(entry))
             .width(SIZE_COLUMN_WIDTH)
             .align_x(alignment::Horizontal::Right),
@@ -426,6 +453,9 @@ fn file_row<'a, M: Clone + 'a>(
             .align_x(alignment::Horizontal::Right),
     ]
     .align_y(alignment::Vertical::Center);
+    if let Some(status_cell) = hermes {
+        content = content.push(status_cell.status());
+    }
 
     button(content)
         .on_press(on_press)
@@ -434,6 +464,198 @@ fn file_row<'a, M: Clone + 'a>(
         .width(Length::Fill)
         .style(theme::row(palette, mark.tagged, mark.cursor, panel_active))
         .into()
+}
+
+/// Space between the date and the Hermes column.
+const HERMES_CELL_GAP: f32 = 12.0;
+/// Width of a digit in the small font, in font sizes, to see what fits.
+const DIGIT_WIDTH_PER_SIZE: f32 = 0.6;
+const SUMMARY_GAP: f32 = 6.0;
+const ICON_COUNT_GAP: f32 = 2.0;
+const ROLE_TAG_FONT: f32 = 10.0;
+const NOT_COUNTED: &str = "…";
+
+/// What the Hermes column shows for one row. Built from lookups only, so
+/// drawing a row never reads the index.
+struct HermesCell<'a, M> {
+    content: HermesContent,
+    role: Option<FolderRole>,
+    lang: Language,
+    palette: Palette,
+    angle: f32,
+    _message: std::marker::PhantomData<&'a M>,
+}
+
+enum HermesContent {
+    None,
+    File(HermesFileState),
+    Folder(Option<FolderSummary>),
+}
+
+impl<'a, M: 'a> HermesCell<'a, M> {
+    fn of(entry: &FileEntry, column: ColumnView<'a>, lang: Language, palette: &Palette) -> Self {
+        let is_folder = entry.is_dir && !entry.is_parent;
+        let content = if is_folder {
+            HermesContent::Folder(column.summary_of(&entry.path).cloned())
+        } else if entry.is_dir {
+            HermesContent::None
+        } else {
+            column
+                .state_of(&entry.path)
+                .map_or(HermesContent::None, HermesContent::File)
+        };
+        Self {
+            content,
+            role: is_folder.then(|| column.role_of(&entry.path)).flatten(),
+            lang,
+            palette: *palette,
+            angle: column.angle(),
+            _message: std::marker::PhantomData,
+        }
+    }
+
+    /// A small outlined label after a folder's name.
+    fn role_tag(&self) -> Option<Element<'a, M>> {
+        let role = self.role?;
+        let color = theme::hermes_role_color(&self.palette, role);
+        let tag = container(
+            text(self.lang.text(role_message(role)))
+                .size(ROLE_TAG_FONT)
+                .color(color)
+                .wrapping(text::Wrapping::None),
+        )
+        .padding([0.0, spacing::XS])
+        .style(theme::outlined_in(color));
+        Some(match role {
+            FolderRole::Archive => hint(
+                tag.into(),
+                self.lang
+                    .text(Msg::HermesColumnRoleArchiveTooltip)
+                    .to_owned(),
+                &self.palette,
+            ),
+            FolderRole::Inbox | FolderRole::FilingLocation => tag.into(),
+        })
+    }
+
+    /// The trailing cell, always [`HERMES_COLUMN_WIDTH`] wide and cut at its
+    /// edge, so it never moves the size and date columns.
+    fn status(self) -> Element<'a, M> {
+        let inner: Element<'a, M> = match &self.content {
+            HermesContent::None => Space::new().into(),
+            HermesContent::File(state) => self.state_icon(*state, true),
+            HermesContent::Folder(summary) => self.summary(summary.as_ref()),
+        };
+        container(inner)
+            .padding(iced::Padding::ZERO.left(HERMES_CELL_GAP))
+            .width(HERMES_COLUMN_WIDTH)
+            .clip(true)
+            .into()
+    }
+
+    fn state_icon(&self, state: HermesFileState, with_hint: bool) -> Element<'a, M> {
+        let color = theme::hermes_state_color(&self.palette, state);
+        let glyph = match state {
+            HermesFileState::Waiting => kit::icon(Icon::Clock, color),
+            HermesFileState::Reading => kit::icon_rotated(Icon::Loader, color, self.angle),
+            HermesFileState::Filed => kit::icon(Icon::CircleCheck, color),
+            HermesFileState::Inquiry => kit::icon(Icon::CircleHelp, color),
+            HermesFileState::Error => kit::icon(Icon::TriangleAlert, color),
+            HermesFileState::Excluded => kit::icon(Icon::Ban, color),
+        };
+        if with_hint {
+            hint(
+                glyph,
+                state_label(state, self.lang).to_owned(),
+                &self.palette,
+            )
+        } else {
+            glyph
+        }
+    }
+
+    fn summary(&self, counted: Option<&FolderSummary>) -> Element<'a, M> {
+        let small = |content: String, color| {
+            text(content)
+                .size(font_size::SMALL)
+                .color(color)
+                .wrapping(text::Wrapping::None)
+        };
+        let Some(summary) = counted else {
+            return hint(
+                small(NOT_COUNTED.to_owned(), self.palette.dim_text).into(),
+                self.lang.text(Msg::HermesColumnNotCounted).to_owned(),
+                &self.palette,
+            );
+        };
+        if summary.excluded {
+            let color = theme::hermes_state_color(&self.palette, HermesFileState::Excluded);
+            return row![
+                self.state_icon(HermesFileState::Excluded, false),
+                small(
+                    self.lang.text(Msg::HermesColumnExcludedWord).to_owned(),
+                    color
+                ),
+            ]
+            .spacing(ICON_COUNT_GAP)
+            .align_y(alignment::Vertical::Center)
+            .into();
+        }
+        let items = summary_items(summary);
+        if items.is_empty() {
+            return Space::new().into();
+        }
+        let room = HERMES_COLUMN_WIDTH - HERMES_CELL_GAP;
+        let ellipsis_width = font_size::SMALL * DIGIT_WIDTH_PER_SIZE + SUMMARY_GAP;
+        let mut used = 0.0;
+        let mut shown = Row::new()
+            .spacing(SUMMARY_GAP)
+            .align_y(alignment::Vertical::Center);
+        let total = items.len();
+        for (index, item) in items.iter().enumerate() {
+            let count = abbreviated(item.count);
+            let width = size::ICON
+                + ICON_COUNT_GAP
+                + count.chars().count() as f32 * font_size::SMALL * DIGIT_WIDTH_PER_SIZE
+                + SUMMARY_GAP;
+            let reserve = if index + 1 < total {
+                ellipsis_width
+            } else {
+                0.0
+            };
+            if used + width + reserve > room {
+                shown = shown.push(small(NOT_COUNTED.to_owned(), self.palette.dim_text));
+                break;
+            }
+            used += width;
+            let color = theme::hermes_state_color(&self.palette, item.state);
+            shown = shown.push(hint(
+                row![self.state_icon(item.state, false), small(count, color)]
+                    .spacing(ICON_COUNT_GAP)
+                    .align_y(alignment::Vertical::Center)
+                    .into(),
+                state_label(item.state, self.lang).to_owned(),
+                &self.palette,
+            ));
+        }
+        shown.into()
+    }
+}
+
+/// `content` with `label` in a small box on hover.
+fn hint<'a, M: 'a>(content: Element<'a, M>, label: String, palette: &Palette) -> Element<'a, M> {
+    tooltip(
+        content,
+        container(
+            text(label)
+                .size(font_size::SMALL)
+                .wrapping(text::Wrapping::None),
+        )
+        .padding([2.0, 6.0])
+        .style(theme::dialog(palette)),
+        tooltip::Position::Top,
+    )
+    .into()
 }
 
 /// Small extension to wrap the panel content in its styled frame.

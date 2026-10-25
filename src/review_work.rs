@@ -90,6 +90,14 @@ impl ReviewAccess {
         self.with_index(|index| load(index))
     }
 
+    /// See [`suggestion_for`].
+    pub fn suggestion_for(
+        &self,
+        path: &Path,
+    ) -> Result<Option<(TextState, Option<PathBuf>)>, String> {
+        self.with_index(|index| suggestion_for(index, path))
+    }
+
     /// Files the document under `pattern` with `fields`, and settles its
     /// entry.
     pub fn confirm(
@@ -161,40 +169,72 @@ fn load(index: &Index) -> Result<Vec<ReviewItem>, IndexError> {
         let Some(document) = index.document(entry.document_id)? else {
             continue;
         };
-        let stored_text = index.document_text(document.id)?;
-        let text = stored_text.clone().unwrap_or_default();
-        let planning = plan(
-            &rules,
-            &PlanInput {
-                text: &text,
-                fields: &document.fields,
-            },
-        );
-        let (fields, proposed_pattern) = match planning {
-            Planning::Review {
-                rule: Some(id),
-                fields,
-                ..
-            } => (
-                fields,
-                rules
-                    .iter()
-                    .find(|rule| rule.id == id)
-                    .map(|rule| rule.spec.filing_pattern.clone()),
-            ),
-            Planning::Review { rule: None, .. } | Planning::Plan(_) => (document.fields, None),
-        };
-        items.push(ReviewItem {
-            entry: entry.id,
-            document_id: document.id,
-            text_state: text_state(&document.path, stored_text.as_deref()),
-            path: document.path,
-            reason: entry.reason,
-            fields,
-            proposed_pattern,
-        });
+        items.push(review_item(index, &rules, &entry, document)?);
     }
     Ok(items)
+}
+
+fn review_item(
+    index: &Index,
+    rules: &[ncrs_index::Rule],
+    entry: &ncrs_index::ReviewEntry,
+    document: ncrs_index::Document,
+) -> Result<ReviewItem, IndexError> {
+    let stored_text = index.document_text(document.id)?;
+    let text = stored_text.clone().unwrap_or_default();
+    let planning = plan(
+        rules,
+        &PlanInput {
+            text: &text,
+            fields: &document.fields,
+        },
+    );
+    let (fields, proposed_pattern) = match planning {
+        Planning::Review {
+            rule: Some(id),
+            fields,
+            ..
+        } => (
+            fields,
+            rules
+                .iter()
+                .find(|rule| rule.id == id)
+                .map(|rule| rule.spec.filing_pattern.clone()),
+        ),
+        Planning::Review { rule: None, .. } | Planning::Plan(_) => (document.fields, None),
+    };
+    Ok(ReviewItem {
+        entry: entry.id,
+        document_id: document.id,
+        text_state: text_state(&document.path, stored_text.as_deref()),
+        path: document.path,
+        reason: entry.reason,
+        fields,
+        proposed_pattern,
+    })
+}
+
+/// The review of one file, for the status bar: how its text stands and where
+/// the closest rule would file it. `None` when the file has no open review.
+fn suggestion_for(
+    index: &Index,
+    path: &Path,
+) -> Result<Option<(TextState, Option<PathBuf>)>, IndexError> {
+    let rules = index.rules()?;
+    for entry in index.open_reviews()? {
+        let Some(document) = index.document(entry.document_id)? else {
+            continue;
+        };
+        if document.path != path {
+            continue;
+        }
+        let item = review_item(index, &rules, &entry, document)?;
+        let target = item
+            .proposed_pattern
+            .and_then(|pattern| render_pattern(&pattern, &item.fields));
+        return Ok(Some((item.text_state, target)));
+    }
+    Ok(None)
 }
 
 fn confirm<S: Source>(

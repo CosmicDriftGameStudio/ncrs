@@ -1,5 +1,6 @@
 //! Root application: state, `update` (the only place state changes) and
 //! `view` (pure composition of UI components).
+use std::collections::HashSet;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
@@ -27,6 +28,9 @@ use crate::filing_setup::{self, FilingSetup, SetupNote};
 use crate::filing_status::{FilingStatus, SNAPSHOT_EVERY};
 use crate::filing_work::FilingSummary;
 use crate::fs::{self, CreateDirError};
+use crate::hermes_column::{
+    ColumnRequest, ColumnStage, ColumnView, FileDetail, HermesColumn, HermesFileState,
+};
 use crate::hermes_status::HermesStatus;
 use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
@@ -35,10 +39,10 @@ use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 use crate::menu::Availability;
 use crate::messages::{
     AiModelMessage, ClipboardKind, CommandPaletteMessage, ConflictChoice, FilingSetupMessage,
-    FilingStatusMessage, HermesFocus, HermesPage, Message, OcrModelsMessage, PanelSide,
-    QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage,
-    SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage, ThemeFetchMessage,
-    TitleBarMessage, TransferKind,
+    FilingStatusMessage, HermesColumnMessage, HermesFocus, HermesPage, Message, OcrModelsMessage,
+    PanelSide, QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage,
+    RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage,
+    ThemeFetchMessage, TitleBarMessage, TransferKind,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -122,6 +126,9 @@ fn search_events(
 }
 
 /// How long a confirmation stays in the status bar.
+/// A quarter turn per tick, so the spinner of a file being read moves once
+/// a second without a timer of its own.
+const SPINNER_STEP: f32 = std::f32::consts::FRAC_PI_2;
 const NOTICE_DURATION: std::time::Duration = std::time::Duration::from_secs(3);
 
 const APP_NAME: &str = "NC-rs";
@@ -754,6 +761,15 @@ pub struct App {
     pdf_library_missing: Option<PathBuf>,
     /// What the filing status page and the status bar show of the pipeline.
     filing_status: FilingStatus,
+    /// What the index says about the files and folders the panels show.
+    hermes_column: HermesColumn,
+    /// Reads of the column that are under way or gave up, until something
+    /// is invalidated.
+    hermes_reads: HashSet<(PathBuf, ColumnStage)>,
+    /// Files whose status bar detail is being read.
+    hermes_detail_reads: HashSet<PathBuf>,
+    /// How far the spinner of a file being read has turned, in radians.
+    hermes_spinner_angle: f32,
     /// The time the status page measures how long a worker has been busy by.
     wall_clock: Arc<dyn ncrs_pipeline::Clock>,
     /// Where the filing setup writes. `None` when the system names no place.
@@ -2120,6 +2136,10 @@ impl App {
             pipeline: None,
             pdf_library_missing: None,
             filing_status: FilingStatus::default(),
+            hermes_column: HermesColumn::default(),
+            hermes_reads: HashSet::new(),
+            hermes_detail_reads: HashSet::new(),
+            hermes_spinner_angle: 0.0,
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
             config_path: None,
             filing_config: Filing::default(),
@@ -2302,7 +2322,8 @@ impl App {
             self.set_path_field(None);
         }
         let had_search_keys = self.search_has_keys();
-        let task = self.apply(message);
+        let applied = self.apply(message);
+        let task = Task::batch([applied, self.request_hermes_column()]);
         // The text field keeps typing into the query until it is told to let
         // go, so leaving the search's panel releases it.
         if had_search_keys && !self.search_has_keys() {
@@ -2800,6 +2821,10 @@ impl App {
             Message::Settings(settings_message) => self.update_settings(settings_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => self.update_filing_status(page_message),
+            Message::HermesColumn(column_message) => {
+                self.update_hermes_column(column_message);
+                Task::none()
+            }
             Message::FilingSetup(setup_message) => self.update_filing_setup(setup_message),
             #[cfg(any(target_os = "macos", test))]
             Message::RunCommand(action) => self.run_command(action),
@@ -3088,6 +3113,13 @@ impl App {
                     is_active: self.active_panel == side,
                     visible_rows: self.visible_rows,
                     palette: self.palette,
+                    hermes: self.hermes_active().then(|| {
+                        ColumnView::new(
+                            &self.hermes_column,
+                            &self.filing_config.locations,
+                            self.hermes_spinner_angle,
+                        )
+                    }),
                 },
                 self.lang,
                 move |index, on_tag| Message::RowClicked {
@@ -3148,6 +3180,7 @@ impl App {
                         filing: self.filing_badge(),
                         on_blocked_press: blocked_access_press(),
                         notice: self.notice.as_deref(),
+                        hermes_line: self.hermes_line(),
                     },
                     self.status_error(),
                     self.search_status(),
@@ -6915,6 +6948,182 @@ impl App {
         })
     }
 
+    /// The column shows only while the filing module is ready and has places
+    /// to look at; otherwise the panels are drawn as they always were.
+    fn hermes_active(&self) -> bool {
+        self.filing.as_ref().is_some_and(|module| {
+            matches!(module.phase(), Phase::Ready) && module.has_configured_locations()
+        })
+    }
+
+    /// What Hermes says about the file under the cursor of the active panel.
+    fn hermes_line(&self) -> Option<String> {
+        if !self.hermes_active() {
+            return None;
+        }
+        let entry = self.active_panel().selected_entry()?;
+        self.hermes_column.status_line(&entry.path, self.lang)
+    }
+
+    /// Takes in the pipeline's latest snapshot: what became stale is asked
+    /// for again by [`Self::request_hermes_column`] after this message.
+    fn refresh_hermes_column(&mut self) {
+        if !self.hermes_active() {
+            return;
+        }
+        let epoch = self.hermes_column.epoch();
+        self.hermes_column
+            .set_snapshot(self.filing_status.snapshot());
+        if self.hermes_column.epoch() != epoch {
+            self.hermes_reads.clear();
+            self.hermes_detail_reads.clear();
+        }
+        if self.visible_row_is_reading() {
+            self.hermes_spinner_angle =
+                (self.hermes_spinner_angle + SPINNER_STEP).rem_euclid(std::f32::consts::TAU);
+        }
+    }
+
+    fn visible_row_is_reading(&self) -> bool {
+        [PanelSide::Left, PanelSide::Right].into_iter().any(|side| {
+            let panel = self.panel(side);
+            panel
+                .entries
+                .iter()
+                .skip(panel.scroll_offset)
+                .take(self.visible_rows)
+                .any(|entry| {
+                    self.hermes_column.state_of(&entry.path) == Some(HermesFileState::Reading)
+                })
+        })
+    }
+
+    /// Asks for what the visible rows lack: the listing and the direct counts
+    /// first, the deep counts after. Runs after every message, so a scroll,
+    /// a resize, a cursor move or a new directory all find their data here.
+    fn request_hermes_column(&mut self) -> Task<Message> {
+        if !self.hermes_active() {
+            return Task::none();
+        }
+        let mut tasks: Vec<Task<Message>> = [PanelSide::Left, PanelSide::Right]
+            .into_iter()
+            .filter_map(|side| self.request_panel_column(side))
+            .collect();
+        tasks.extend(self.request_cursor_detail());
+        Task::batch(tasks)
+    }
+
+    fn request_panel_column(&mut self, side: PanelSide) -> Option<Task<Message>> {
+        let panel = self.panel(side);
+        if panel.loading {
+            return None;
+        }
+        let directory = panel.path.clone();
+        let generation = panel.request_id;
+        let visible_folders: Vec<PathBuf> = panel
+            .entries
+            .iter()
+            .skip(panel.scroll_offset)
+            .take(self.visible_rows)
+            .filter(|entry| entry.is_dir && !entry.is_parent)
+            .map(|entry| entry.path.clone())
+            .collect();
+        let listing_wanted = !self
+            .hermes_column
+            .wanted_listings(std::slice::from_ref(&directory))
+            .is_empty();
+        let direct_wanted = self
+            .hermes_column
+            .wanted_counts(&visible_folders, ColumnStage::Listing);
+        let (stage, subfolders) = if listing_wanted || !direct_wanted.is_empty() {
+            (ColumnStage::Listing, direct_wanted)
+        } else {
+            let deep_wanted = self
+                .hermes_column
+                .wanted_counts(&visible_folders, ColumnStage::Deep);
+            if deep_wanted.is_empty() {
+                return None;
+            }
+            (ColumnStage::Deep, deep_wanted)
+        };
+        if !self.hermes_reads.insert((directory.clone(), stage)) {
+            return None;
+        }
+        let reader = self.filing.as_ref().and_then(FilingModule::column_reader)?;
+        let request = ColumnRequest {
+            generation,
+            epoch: self.hermes_column.epoch(),
+            directory: directory.clone(),
+            subfolders,
+            stage,
+        };
+        Some(Task::perform(
+            tokio::task::spawn_blocking(move || reader.read(&request)),
+            move |joined| {
+                Message::HermesColumn(HermesColumnMessage::Read {
+                    side,
+                    directory: directory.clone(),
+                    stage,
+                    result: joined.unwrap_or_else(|err| Err(err.to_string())),
+                })
+            },
+        ))
+    }
+
+    /// The review of the file under the cursor, once, when it is an inquiry.
+    fn request_cursor_detail(&mut self) -> Option<Task<Message>> {
+        let path = self.active_panel().selected_entry()?.path.clone();
+        if !self.hermes_column.wants_detail(&path) || !self.hermes_detail_reads.insert(path.clone())
+        {
+            return None;
+        }
+        let access = self.filing.as_ref()?.review_access()?;
+        let asked = path.clone();
+        Some(Task::perform(
+            tokio::task::spawn_blocking(move || access.suggestion_for(&asked)),
+            move |joined| {
+                let found = joined.unwrap_or_else(|err| Err(err.to_string()));
+                Message::HermesColumn(HermesColumnMessage::Detail {
+                    path: path.clone(),
+                    result: found.map(|review| {
+                        review.map(|(text_state, suggestion)| FileDetail {
+                            text_state,
+                            suggestion,
+                        })
+                    }),
+                })
+            },
+        ))
+    }
+
+    fn update_hermes_column(&mut self, message: HermesColumnMessage) {
+        match message {
+            HermesColumnMessage::Read {
+                side,
+                directory,
+                stage,
+                result,
+            } => {
+                let Ok(reading) = result else {
+                    // Stays in `hermes_reads`: not asked again until the next
+                    // invalidation, so a broken index is not hammered.
+                    return;
+                };
+                self.hermes_reads.remove(&(directory, stage));
+                let panel = self.panel(side);
+                if reading.generation == panel.request_id && reading.directory == panel.path {
+                    self.hermes_column.apply(reading);
+                }
+            }
+            HermesColumnMessage::Detail { path, result } => {
+                if let Ok(Some(detail)) = result {
+                    self.hermes_detail_reads.remove(&path);
+                    self.hermes_column.apply_detail(path, detail);
+                }
+            }
+        }
+    }
+
     fn refresh_filing_snapshot(&mut self) {
         let snapshot = self.pipeline.as_ref().map_or_else(
             ncrs_pipeline::Snapshot::off,
@@ -7017,6 +7226,7 @@ impl App {
             }
             FilingStatusMessage::Tick => {
                 self.refresh_filing_snapshot();
+                self.refresh_hermes_column();
                 let plans_made = self
                     .live_pipeline()
                     .map_or(0, |runner| runner.snapshot().plans_made);
@@ -7955,6 +8165,10 @@ impl App {
             pipeline: None,
             pdf_library_missing: None,
             filing_status: FilingStatus::default(),
+            hermes_column: HermesColumn::default(),
+            hermes_reads: HashSet::new(),
+            hermes_detail_reads: HashSet::new(),
+            hermes_spinner_angle: 0.0,
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
             config_path: None,
             filing_config: Filing::default(),
@@ -8050,6 +8264,152 @@ impl App {
     ) -> Self {
         let mut app = Self::with_fixed_panels();
         app.filing_status.set_snapshot(snapshot, taken_at);
+        app
+    }
+
+    /// Fixed panels with the Hermes column up and filled by hand: folders in
+    /// every role on the left, files in every state on the right with the
+    /// cursor on an inquiry.
+    pub fn with_hermes_column_sample() -> Self {
+        use crate::hermes_column::{ColumnReading, DirectoryStates, FolderReading};
+        use ncrs_index::{DocumentStatus, PathState, ReviewReason, StatusCounts};
+
+        let home = PathBuf::from("/home/test");
+        let files_dir = home.join("files");
+        let location = |name: &str, mode, is_target| config::FilingLocation {
+            path: home.join(name),
+            mode,
+            images: false,
+            is_target,
+        };
+        let mut app = Self::with_fixed_panels();
+        app.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
+        app.filing_config.locations = vec![
+            location("Scans", ncrs_intake::LocationMode::Inbox, false),
+            location("Filed", ncrs_intake::LocationMode::Archive, true),
+            location("Archive", ncrs_intake::LocationMode::Archive, false),
+        ];
+        app.active_panel = PanelSide::Right;
+        app.left_panel.path = home.clone();
+        app.right_panel.path = files_dir.clone();
+
+        let entry = |directory: &Path, name: &str, is_dir: bool, is_parent: bool| fs::FileEntry {
+            name: name.into(),
+            path: directory.join(name),
+            is_dir,
+            is_symlink: false,
+            is_parent,
+            size: if is_dir { 0 } else { 183_000 },
+            modified: None,
+        };
+        app.left_panel.entries = [".."]
+            .into_iter()
+            .map(|name| entry(&home, name, true, true))
+            .chain(
+                ["Scans", "Filed", "Archive", "Projects", "Private"]
+                    .into_iter()
+                    .map(|name| entry(&home, name, true, false)),
+            )
+            .collect();
+        let files = [
+            ("2025-03 utility bill.pdf", DocumentStatus::New),
+            ("2025-03 scan 0412.pdf", DocumentStatus::Planned),
+            ("2025-02 insurance letter.pdf", DocumentStatus::Filed),
+            ("2025-03 receipt market.pdf", DocumentStatus::InReview),
+            ("2025-01 damaged scan.pdf", DocumentStatus::New),
+            ("2024-12 private diary.pdf", DocumentStatus::New),
+        ];
+        app.right_panel.entries = [entry(&files_dir, "..", true, true)]
+            .into_iter()
+            .chain(
+                files
+                    .iter()
+                    .map(|(name, _)| entry(&files_dir, name, false, false)),
+            )
+            .collect();
+        let inquiry = 4;
+        app.right_panel.selected = inquiry;
+
+        let counted = |path: &str, counts: StatusCounts| FolderReading {
+            path: home.join(path),
+            excluded: false,
+            direct: Some(counts),
+            deep: Some(counts),
+        };
+        let states = DirectoryStates::sample(
+            files
+                .iter()
+                .map(|(name, status)| PathState {
+                    path: files_dir.join(name),
+                    status: *status,
+                    review: (*status == DocumentStatus::InReview)
+                        .then_some(ReviewReason::NoMatchingRule),
+                })
+                .collect(),
+            vec![files_dir.join("2024-12 private diary.pdf")],
+        );
+        app.hermes_column.mark_for_test(
+            vec![files_dir.join("2025-03 scan 0412.pdf")],
+            vec![(
+                files_dir.join("2025-01 damaged scan.pdf"),
+                "the PDF could not be opened".to_owned(),
+            )],
+        );
+        let readings = [
+            ColumnReading {
+                generation: 0,
+                epoch: 0,
+                directory: files_dir.clone(),
+                stage: ColumnStage::Listing,
+                states: Some(states),
+                folders: Vec::new(),
+            },
+            ColumnReading {
+                generation: 0,
+                epoch: 0,
+                directory: home.clone(),
+                stage: ColumnStage::Deep,
+                states: None,
+                folders: vec![
+                    counted(
+                        "Scans",
+                        StatusCounts {
+                            new: 3,
+                            in_review: 2,
+                            ..StatusCounts::default()
+                        },
+                    ),
+                    counted(
+                        "Filed",
+                        StatusCounts {
+                            filed: 12_400,
+                            ..StatusCounts::default()
+                        },
+                    ),
+                    counted(
+                        "Archive",
+                        StatusCounts {
+                            filed: 31_000,
+                            ..StatusCounts::default()
+                        },
+                    ),
+                    FolderReading {
+                        excluded: true,
+                        ..counted("Private", StatusCounts::default())
+                    },
+                ],
+            },
+        ];
+        for reading in readings {
+            app.hermes_column.apply(reading);
+        }
+        app.hermes_column.apply_detail(
+            files_dir.join("2025-03 receipt market.pdf"),
+            FileDetail {
+                text_state: crate::review_work::TextState::Read,
+                suggestion: Some(PathBuf::from("Receipts/2025/Market/2025-03 receipt.pdf")),
+            },
+        );
         app
     }
 
@@ -13012,8 +13372,8 @@ mod filing_setup_tests {
         assert!(app.filing.as_ref().unwrap().has_configured_locations());
     }
 
-    #[test]
-    fn a_running_module_with_locations_keeps_them_until_the_next_start() {
+    #[tokio::test]
+    async fn a_running_module_with_locations_keeps_them_until_the_next_start() {
         let mut app = app_that_can_start_a_module();
         app.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
         app.pipeline = Some(running_pipeline());
