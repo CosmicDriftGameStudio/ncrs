@@ -2,9 +2,11 @@
 //! document leaves the machine, so there is no consent to ask for. The model
 //! can only write what the reply grammar allows: fields.
 
+use std::fs;
 use std::num::NonZeroU32;
-use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock, PoisonError};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
+use std::time::SystemTime;
 
 use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::llama_backend::LlamaBackend;
@@ -163,6 +165,149 @@ impl Provider for LocalModel {
     }
 }
 
+/// Size and modification time of the model file, to tell whether a failure
+/// it caused is still current.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FileStamp {
+    len: u64,
+    modified: Option<SystemTime>,
+}
+
+impl FileStamp {
+    fn of(path: &Path) -> Option<Self> {
+        let metadata = fs::metadata(path).ok()?;
+        metadata.is_file().then(|| Self {
+            len: metadata.len(),
+            modified: metadata.modified().ok(),
+        })
+    }
+}
+
+#[derive(Debug)]
+enum LazyState {
+    Missing,
+    NotLoaded,
+    Loaded(Arc<LocalModel>),
+    /// Verifying 640 MB per document would stall the pipeline, so a failure
+    /// stays until the file changes.
+    Failed {
+        reason: &'static str,
+        stamp: FileStamp,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LocalModelStatus {
+    NotDownloaded,
+    NotLoadedYet,
+    Loaded { name: String, memory_bytes: u64 },
+    Failed(&'static str),
+}
+
+/// The local model, loaded when the first document needs it and only if its
+/// file is there. Without the file a call fails at once and does nothing else.
+#[derive(Debug)]
+pub struct LazyLocalModel {
+    path: PathBuf,
+    pin: ModelPin,
+    threads: NonZeroU32,
+    context_tokens: NonZeroU32,
+    state: Mutex<LazyState>,
+}
+
+impl LazyLocalModel {
+    pub fn new(
+        path: PathBuf,
+        pin: ModelPin,
+        threads: NonZeroU32,
+        context_tokens: NonZeroU32,
+    ) -> Self {
+        let state = if FileStamp::of(&path).is_some() {
+            LazyState::NotLoaded
+        } else {
+            LazyState::Missing
+        };
+        Self {
+            path,
+            pin,
+            threads,
+            context_tokens,
+            state: Mutex::new(state),
+        }
+    }
+
+    /// Looks for the file again after a download.
+    pub fn refresh(&self) {
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        if matches!(*state, LazyState::Missing) && FileStamp::of(&self.path).is_some() {
+            *state = LazyState::NotLoaded;
+        }
+    }
+
+    /// Reads this value's own state only, never the disk. While the model is
+    /// being loaded it reports `NotLoadedYet`.
+    pub fn status(&self) -> LocalModelStatus {
+        let Ok(state) = self.state.try_lock() else {
+            return LocalModelStatus::NotLoadedYet;
+        };
+        match &*state {
+            LazyState::Missing => LocalModelStatus::NotDownloaded,
+            LazyState::NotLoaded => LocalModelStatus::NotLoadedYet,
+            LazyState::Loaded(model) => LocalModelStatus::Loaded {
+                name: model.model_name().to_owned(),
+                memory_bytes: model.memory_bytes(),
+            },
+            LazyState::Failed { reason, .. } => LocalModelStatus::Failed(reason),
+        }
+    }
+
+    fn ready(&self) -> Result<Arc<LocalModel>, AiError> {
+        let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+        if let LazyState::Loaded(model) = &*state {
+            return Ok(Arc::clone(model));
+        }
+        let Some(stamp) = FileStamp::of(&self.path) else {
+            *state = LazyState::Missing;
+            return Err(AiError::Model("the local model is not downloaded"));
+        };
+        if let LazyState::Failed {
+            reason,
+            stamp: failed_stamp,
+        } = &*state
+        {
+            if *failed_stamp == stamp {
+                return Err(AiError::Model(reason));
+            }
+        }
+        let config = LocalModelConfig {
+            path: self.path.clone(),
+            threads: self.threads,
+            context_tokens: self.context_tokens,
+        };
+        match LocalModel::load(config, &self.pin) {
+            Ok(loaded) => {
+                let model = Arc::new(loaded);
+                *state = LazyState::Loaded(Arc::clone(&model));
+                Ok(model)
+            }
+            Err(error) => {
+                let reason = match error {
+                    AiError::Model(reason) => reason,
+                    _ => "the local model could not be loaded",
+                };
+                *state = LazyState::Failed { reason, stamp };
+                Err(AiError::Model(reason))
+            }
+        }
+    }
+}
+
+impl Provider for LazyLocalModel {
+    fn extract(&self, request: &ExtractionRequest) -> Result<Extraction, AiError> {
+        self.ready()?.extract(request)
+    }
+}
+
 /// The text of a document as tokens. Special tokens are not parsed, so
 /// `<|im_end|>` inside a document stays plain text and cannot end its turn.
 pub fn document_tokens(vocab: &LlamaVocab<'_>, text: &str) -> Vec<LlamaToken> {
@@ -205,8 +350,6 @@ pub fn prompt_tokens(
     clippy::indexing_slicing
 )]
 mod tests {
-    use std::path::Path;
-
     use ncrs_index::{DocumentFields, Field};
 
     use super::*;
@@ -269,6 +412,78 @@ mod tests {
                 found.field
             );
         }
+    }
+
+    fn lazy_with_pin_of(path: PathBuf, bytes: &[u8]) -> LazyLocalModel {
+        use sha2::{Digest as _, Sha256};
+        let hex: String = Sha256::digest(bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        let pin = ModelPin {
+            name: "test.gguf",
+            size: bytes.len() as u64,
+            sha256: Box::leak(hex.into_boxed_str()),
+            url: "https://example.invalid/test.gguf",
+        };
+        LazyLocalModel::new(
+            path,
+            pin,
+            NonZeroU32::new(1).unwrap(),
+            NonZeroU32::new(2048).unwrap(),
+        )
+    }
+
+    #[test]
+    fn a_missing_model_file_is_an_error_at_once_and_the_status_says_so() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let lazy = lazy_with_pin_of(dir.path().join("test.gguf"), b"model bytes");
+
+        assert_eq!(lazy.status(), LocalModelStatus::NotDownloaded);
+        assert_eq!(
+            lazy.extract(&request("text", &[Field::Number])),
+            Err(AiError::Model("the local model is not downloaded"))
+        );
+        assert_eq!(lazy.status(), LocalModelStatus::NotDownloaded);
+    }
+
+    #[test]
+    fn a_file_that_arrives_later_is_looked_at_again() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("test.gguf");
+        let lazy = lazy_with_pin_of(path.clone(), b"model bytes");
+        fs::write(&path, b"MODEL BYTES").unwrap();
+
+        lazy.refresh();
+
+        assert_eq!(lazy.status(), LocalModelStatus::NotLoadedYet);
+    }
+
+    #[test]
+    fn a_file_that_fails_the_check_is_not_checked_again_until_it_changes() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("test.gguf");
+        fs::write(&path, b"MODEL BYTES").unwrap();
+        let lazy = lazy_with_pin_of(path.clone(), b"model bytes");
+        let ask = || lazy.extract(&request("text", &[Field::Number]));
+        let not_expected = AiError::Model("the model file is not the expected one");
+
+        assert_eq!(ask(), Err(not_expected.clone()));
+        assert_eq!(
+            lazy.status(),
+            LocalModelStatus::Failed("the model file is not the expected one")
+        );
+        assert_eq!(ask(), Err(not_expected));
+
+        let changed = fs::OpenOptions::new().write(true).open(&path).unwrap();
+        changed.set_len(3).unwrap();
+        changed
+            .set_modified(SystemTime::now() + std::time::Duration::from_secs(5))
+            .unwrap();
+        assert_eq!(
+            ask(),
+            Err(AiError::Model("the model file has the wrong size"))
+        );
     }
 
     #[test]

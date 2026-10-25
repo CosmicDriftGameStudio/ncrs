@@ -118,6 +118,8 @@ gpu-with-fallback = ["iced/wgpu", "iced/tiny-skia"]
 # snapshot images, and Ice scripts.
 iced_test = "0.14"
 iced_selector = "0.14"
+# The checksum of the bytes a test server hands out for the AI model download.
+sha2 = "0.10"
 
 # crates/ncrs-ocr-vision/Cargo.toml repeats these tables with unsafe_code =
 # "deny"; change both together.

@@ -205,11 +205,23 @@ pub fn check_host_in(url: &str, hosts: &[&str]) -> Result<(), FetchError> {
     };
     let allowed = !authority.contains('@')
         && port.is_none_or(|digits| digits == "443")
-        && hosts.iter().any(|known| host.eq_ignore_ascii_case(known));
+        && hosts.iter().any(|known| host_is_listed(host, known));
     if allowed {
         Ok(())
     } else {
         Err(refused())
+    }
+}
+
+/// An entry that starts with a dot lists every host below that name (`.hf.co`
+/// takes `us.cdn.hf.co`, not `hf.co` and not `evilhf.co`). Hugging Face
+/// redirects a download to a regional CDN host under hf.co, whose name is not
+/// known in advance.
+fn host_is_listed(host: &str, known: &str) -> bool {
+    if known.starts_with('.') {
+        host.len() > known.len() && host.to_ascii_lowercase().ends_with(known)
+    } else {
+        host.eq_ignore_ascii_case(known)
     }
 }
 
@@ -437,6 +449,35 @@ mod tests {
         assert_eq!(ExtensionId::parse(&too_long), None);
         let longest = format!("{}.b", "a".repeat(128));
         assert!(ExtensionId::parse(&longest).is_some());
+    }
+
+    #[test]
+    fn an_entry_with_a_leading_dot_lists_the_hosts_below_it_only() {
+        let hosts = ["huggingface.co", ".hf.co"];
+        for url in [
+            "https://huggingface.co/a",
+            "https://us.aws.cdn.hf.co/a",
+            "https://CDN.HF.CO/a",
+        ] {
+            assert_eq!(check_host_in(url, &hosts), Ok(()), "{url}");
+        }
+        for url in [
+            "https://hf.co/a",
+            "https://evilhf.co/a",
+            "https://hf.co.evil.example/a",
+            "https://x.hf.co.evil.example/a",
+            "http://x.hf.co/a",
+            "https://user@x.hf.co/a",
+            "https://x.hf.co:8443/a",
+        ] {
+            assert!(
+                matches!(
+                    check_host_in(url, &hosts),
+                    Err(FetchError::DownloadRefused { .. })
+                ),
+                "{url}"
+            );
+        }
     }
 
     #[test]

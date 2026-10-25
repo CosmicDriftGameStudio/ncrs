@@ -9,6 +9,7 @@ use ncrs_pipeline::Load;
 
 use iced::Size;
 
+use crate::ai_model::DownloadError as AiDownloadError;
 use crate::app::{RowFailure, Transfer};
 use crate::config::{Filing, FilingWriteError};
 use crate::dialog::PromptKind;
@@ -293,6 +294,7 @@ pub enum Message {
 
     // --- Text recognition models (command palette: download them after asking) ---
     OcrModels(OcrModelsMessage),
+    AiModel(AiModelMessage),
 
     // --- Native menu bar (macOS) ---
     /// A command chosen from the menu bar or the command list.
@@ -537,6 +539,22 @@ pub enum OcrModelsMessage {
     Downloaded {
         generation: u64,
         result: Result<(), DownloadError>,
+    },
+}
+
+/// Everything the card that asks for the AI model sends.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AiModelMessage {
+    Open,
+    Close,
+    /// Download, or continue where an earlier download stopped.
+    Download,
+    Stop,
+    /// The download of the generation has ended. Dropped when the card was
+    /// closed or opened again meanwhile.
+    Downloaded {
+        generation: u64,
+        result: Result<(), AiDownloadError>,
     },
 }
 

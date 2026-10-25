@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 
 use ncrs_pipeline::{ErrorEntry, RunnerState, Snapshot, RATE_MINUTES};
 
-use crate::filing::IndexFigures;
+use crate::filing::{AiStatus, IndexFigures};
 
 pub const SNAPSHOT_EVERY: Duration = Duration::from_secs(1);
 pub const INDEX_FIGURES_EVERY_TICKS: u32 = 5;
@@ -30,6 +30,7 @@ pub struct FilingStatus {
     ticks_since_figures: u32,
     /// Position in the list as shown, newest first.
     selected_error: Option<usize>,
+    ai: AiStatus,
 }
 
 impl Default for FilingStatus {
@@ -43,6 +44,7 @@ impl Default for FilingStatus {
             figures_in_flight: false,
             ticks_since_figures: 0,
             selected_error: None,
+            ai: AiStatus::Off,
         }
     }
 }
@@ -65,6 +67,14 @@ impl FilingStatus {
 
     pub fn snapshot(&self) -> &Snapshot {
         &self.snapshot
+    }
+
+    pub fn set_ai(&mut self, ai: AiStatus) {
+        self.ai = ai;
+    }
+
+    pub fn ai(&self) -> &AiStatus {
+        &self.ai
     }
 
     pub fn taken_at(&self) -> SystemTime {

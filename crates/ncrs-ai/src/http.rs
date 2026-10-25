@@ -108,6 +108,23 @@ impl Endpoint {
     }
 }
 
+/// Whether `text` is an endpoint this provider accepts, for a setting to be
+/// checked before a provider is built from it.
+pub fn check_endpoint(text: &str) -> Result<(), EndpointProblem> {
+    Endpoint::parse(text).map(|_accepted| ())
+}
+
+/// Whether an accepted endpoint is on this machine (`localhost` or a loopback
+/// address), the only place text is sent to for now.
+pub fn endpoint_is_local(text: &str) -> Result<bool, EndpointProblem> {
+    Endpoint::parse(text).map(|endpoint| endpoint.local)
+}
+
+/// `scheme://host[:port]` of an accepted endpoint, what a person is shown.
+pub fn endpoint_origin(text: &str) -> Result<String, EndpointProblem> {
+    Endpoint::parse(text).map(|endpoint| endpoint.origin)
+}
+
 /// `localhost` or a loopback address (127.0.0.0/8, ::1), judged on the host of
 /// the parsed address, not on the text around it.
 fn is_loopback(host: &str) -> bool {

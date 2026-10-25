@@ -11,6 +11,7 @@ mod screenshot_tests;
 #[cfg(test)]
 mod ui_tests;
 
+mod ai_model;
 mod app;
 mod backend;
 mod command_palette;
