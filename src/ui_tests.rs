@@ -2504,6 +2504,223 @@ mod review_list_card {
     clippy::indexing_slicing
 )]
 #[cfg(test)]
+mod saved_queries_card {
+    use std::path::PathBuf;
+
+    use super::*;
+    use crate::messages::{HermesPage, SavedQueriesMessage};
+    use crate::saved_queries::tests::{hit, loaded_list};
+    use crate::saved_queries::SavedQueries;
+
+    fn queries_message(message: SavedQueriesMessage) -> Message {
+        Message::SavedQueries(message)
+    }
+
+    fn shows(list: SavedQueries, label: &str) -> bool {
+        simulator(&App::with_saved_queries(list))
+            .find(label)
+            .is_ok()
+    }
+
+    /// The first query selected and run: two files to copy, one missing.
+    fn after_run() -> SavedQueries {
+        let mut list = loaded_list();
+        list.select(0);
+        list.begin_run().expect("a spec");
+        list.ran(vec![
+            hit("invoice-1.pdf", false),
+            hit("invoice-2.pdf", false),
+            hit("invoice-3.pdf", true),
+        ]);
+        list
+    }
+
+    fn at_export() -> SavedQueries {
+        let mut list = after_run();
+        list.start_export(PathBuf::from("/Archive/Export"));
+        list
+    }
+
+    #[test]
+    fn the_page_shows_the_queries_the_form_and_the_buttons() {
+        for label in [
+            "Saved queries",
+            "Company A 2024",
+            "Taxes 2023",
+            "Year",
+            "Tax context",
+            "Full text",
+            "New",
+            "Save",
+            "Delete",
+            "Run",
+            "Close",
+        ] {
+            assert!(shows(loaded_list(), label), "{label}");
+        }
+    }
+
+    #[test]
+    fn an_empty_list_says_so() {
+        let mut list = SavedQueries::new();
+        list.loaded(Vec::new());
+
+        assert!(shows(
+            list,
+            "No saved queries yet. Fill in the form and save one."
+        ));
+    }
+
+    #[test]
+    fn clicking_a_row_selects_it() {
+        let app = App::with_saved_queries(loaded_list());
+        let mut sim = simulator(&app);
+        sim.click("Taxes 2023").expect("the row");
+
+        assert_eq!(
+            sim.into_messages().collect::<Vec<_>>(),
+            [queries_message(SavedQueriesMessage::Select(1))]
+        );
+    }
+
+    #[test]
+    fn clicking_run_asks_the_index() {
+        let mut list = loaded_list();
+        list.select(0);
+        let app = App::with_saved_queries(list);
+        let mut sim = simulator(&app);
+        sim.click("Run").expect("the button");
+
+        assert_eq!(
+            sim.into_messages().collect::<Vec<_>>(),
+            [queries_message(SavedQueriesMessage::Run)]
+        );
+    }
+
+    #[test]
+    fn a_run_shows_its_figures_and_the_list_toggles() {
+        for label in ["Hits", "Missing", "View list", "Export …"] {
+            assert!(shows(after_run(), label), "{label}");
+        }
+        let app = App::with_saved_queries(after_run());
+        let mut sim = simulator(&app);
+        sim.click("View list").expect("the toggle");
+
+        assert_eq!(
+            sim.into_messages().collect::<Vec<_>>(),
+            [queries_message(SavedQueriesMessage::ToggleHits)]
+        );
+    }
+
+    #[test]
+    fn the_export_step_says_what_happens_before_anything_is_copied() {
+        for label in [
+            "Target folder: /Archive/Export",
+            "Files to copy: 2",
+            "Copies only; moves and deletes nothing. Existing files stay untouched.",
+            "Choose folder …",
+            "Cancel",
+        ] {
+            assert!(shows(at_export(), label), "{label}");
+        }
+        let app = App::with_saved_queries(at_export());
+        let mut sim = simulator(&app);
+        sim.click("Choose folder …").expect("the button");
+        assert_eq!(
+            sim.into_messages().collect::<Vec<_>>(),
+            [queries_message(SavedQueriesMessage::PickFolder)]
+        );
+    }
+
+    #[test]
+    fn deleting_asks_in_the_page_first() {
+        let mut list = loaded_list();
+        list.select(0);
+        list.ask_delete();
+        assert!(shows(
+            list.clone(),
+            "Delete the query ‘Company A 2024’? Documents stay as they are."
+        ));
+
+        let app = App::with_saved_queries(list);
+        let mut sim = simulator(&app);
+        sim.click("Delete query").expect("the button");
+        assert_eq!(
+            sim.into_messages().collect::<Vec<_>>(),
+            [queries_message(SavedQueriesMessage::ConfirmDelete)]
+        );
+    }
+
+    #[test]
+    fn the_view_is_worded_in_german_too() {
+        let app = App::with_saved_queries(at_export()).in_language(Language::German);
+        let mut sim = simulator(&app);
+        for label in [
+            "Abfragen",
+            "Abbrechen",
+            "Ordner wählen …",
+            "Kopiert nur, verschiebt und löscht nichts. Vorhandene Dateien bleiben unangetastet.",
+        ] {
+            assert!(sim.find(label).is_ok(), "{label}");
+        }
+    }
+
+    #[test]
+    fn a_sidebar_click_opens_the_page_and_closes_the_other() {
+        let mut app = App::with_review_list(crate::review_list::tests::loaded_list());
+        let _ = app.update(Message::HermesPage(HermesPage::SavedQueries));
+
+        assert!(app.review_list_for_test().is_none());
+        assert!(app.saved_queries_for_test().is_some());
+    }
+
+    #[test]
+    fn escape_backs_out_of_the_step_first() {
+        let mut app = App::with_saved_queries(at_export());
+        let _ = app.update(queries_message(SavedQueriesMessage::Close));
+        let page = app.saved_queries_for_test().unwrap();
+        assert!(page.export_step().is_none());
+        assert!(page.results().is_some());
+
+        let _ = app.update(queries_message(SavedQueriesMessage::Close));
+        assert!(app.saved_queries_for_test().is_none());
+    }
+
+    fn matches_snapshot(list: SavedQueries, name: &str) {
+        let language = if name.contains("_de") {
+            Language::German
+        } else {
+            Language::English
+        };
+        let app = App::with_saved_queries(list).in_language(language);
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image(format!("tests/snapshots/{name}.png"))
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the view does not match tests/snapshots/{name}.png"
+        );
+    }
+
+    #[test]
+    fn the_view_matches_its_snapshots() {
+        matches_snapshot(after_run(), "saved_queries_en");
+        matches_snapshot(after_run(), "saved_queries_de");
+        matches_snapshot(at_export(), "saved_queries_export_en");
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
 mod rule_suggestions_card {
     use std::path::PathBuf;
 

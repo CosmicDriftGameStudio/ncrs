@@ -260,7 +260,7 @@ fn field<'a>(
             "",
             value,
             id,
-            move |typed| send(on_input(typed)),
+            Some(move |typed| send(on_input(typed))),
             send(RuleSuggestionsMessage::Confirm),
             palette,
         ),

@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Saved queries (Inquiries): searches over your documents by year, tax
+  context, kind, tags and full text, saved under a name. Running one only
+  looks. Exporting copies the files it found into a folder you choose, next
+  to a CSV with their fields; files with the same name get a number, and the
+  CSV lists the name each was exported as. Nothing is moved, deleted or
+  overwritten. Open it with Cmd+Shift+A (Ctrl+Shift+A elsewhere) or from the
+  command list.
 - Review list (Pending): the documents the rules could not file are listed
   with their fields, which you can correct. Confirming files the document
   with the pattern of its rule (or one you enter), journaled like every move

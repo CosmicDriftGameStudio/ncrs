@@ -94,14 +94,14 @@ impl ReviewAccess {
     /// compared for equality.
     pub fn create_rule_for_sender(
         &self,
-        sender: &str,
-        kind: &str,
+        typed_sender: &str,
+        typed_kind: &str,
         tax_context: Option<TaxContext>,
         tags: BTreeSet<String>,
         pattern: &str,
     ) -> Result<RuleId, String> {
-        let sender = sender.trim();
-        let kind = kind.trim();
+        let sender = typed_sender.trim();
+        let kind = typed_kind.trim();
         if sender.is_empty() || kind.is_empty() {
             return Err("a rule needs a sender and a kind".to_owned());
         }
@@ -239,30 +239,30 @@ pub enum FieldError {
 }
 
 /// `YYYY-MM-DD`; nothing typed is no date.
-pub fn parse_date(text: &str) -> Result<Option<NaiveDate>, FieldError> {
-    let text = text.trim();
+pub fn parse_date(typed: &str) -> Result<Option<NaiveDate>, FieldError> {
+    let text = typed.trim();
     if text.is_empty() {
         return Ok(None);
     }
     NaiveDate::parse_from_str(text, "%Y-%m-%d")
         .map(Some)
-        .map_err(|_| FieldError::Date)
+        .map_err(|_parse_error| FieldError::Date)
 }
 
 /// `12.34 EUR` or `12,34 EUR`; nothing typed is no amount.
-pub fn parse_amount(text: &str) -> Result<Option<Amount>, FieldError> {
-    let text = text.trim();
+pub fn parse_amount(typed: &str) -> Result<Option<Amount>, FieldError> {
+    let text = typed.trim();
     if text.is_empty() {
         return Ok(None);
     }
     let mut words = text.split_whitespace();
-    let (Some(number), Some(code), None) = (words.next(), words.next(), words.next()) else {
+    let (Some(number_word), Some(code), None) = (words.next(), words.next(), words.next()) else {
         return Err(FieldError::Amount);
     };
     let currency = Currency::new(&code.to_ascii_uppercase()).ok_or(FieldError::Amount)?;
-    let (negative, number) = match number.strip_prefix('-') {
+    let (negative, number) = match number_word.strip_prefix('-') {
         Some(rest) => (true, rest),
-        None => (false, number),
+        None => (false, number_word),
     };
     let (whole, fraction) = number
         .split_once(['.', ','])
@@ -272,7 +272,10 @@ pub fn parse_amount(text: &str) -> Result<Option<Amount>, FieldError> {
         return Err(FieldError::Amount);
     }
     let padded = format!("{fraction:0<MINOR_DIGITS$}");
-    let minor = |part: &str| part.parse::<i64>().map_err(|_| FieldError::Amount);
+    let minor = |part: &str| {
+        part.parse::<i64>()
+            .map_err(|_parse_error| FieldError::Amount)
+    };
     let magnitude = minor(whole)?
         .checked_mul(MINOR_UNITS_PER_UNIT)
         .and_then(|units| units.checked_add(minor(&padded).ok()?))
@@ -285,14 +288,18 @@ pub fn parse_amount(text: &str) -> Result<Option<Amount>, FieldError> {
 
 /// The amount as the field shows it, parseable by [`parse_amount`].
 pub fn amount_text(amount: &Amount) -> String {
+    format!("{} {}", amount_digits(amount), amount.currency.as_str())
+}
+
+/// The number of an amount without its currency, with two decimals.
+pub fn amount_digits(amount: &Amount) -> String {
     let magnitude = amount.minor_units.unsigned_abs();
     let unit = MINOR_UNITS_PER_UNIT.unsigned_abs();
     let sign = if amount.minor_units < 0 { "-" } else { "" };
     format!(
-        "{sign}{}.{:02} {}",
-        magnitude / unit,
-        magnitude % unit,
-        amount.currency.as_str()
+        "{sign}{}.{:02}",
+        magnitude.div_euclid(unit),
+        magnitude.rem_euclid(unit)
     )
 }
 
@@ -562,9 +569,9 @@ mod tests {
             access.create_rule_for_sender(sender, kind, None, BTreeSet::new(), pattern)
         };
 
-        assert!(create(" ", "invoice", "{kind}").is_err());
-        assert!(create("Company A", "", "{kind}").is_err());
-        assert!(create("Company A", "invoice", "{nonsense}").is_err());
+        create(" ", "invoice", "{kind}").unwrap_err();
+        create("Company A", "", "{kind}").unwrap_err();
+        create("Company A", "invoice", "{nonsense}").unwrap_err();
         assert!(setup.with_index(|index| index.rules().unwrap()).is_empty());
     }
 

@@ -2891,6 +2891,276 @@
       "context": "Note in the review list after a rule was created. Takes the sender.",
       "en": "Rule created for ‘{sender}’",
       "de": "Regel angelegt für ‚{sender}‘"
+    },
+    {
+      "key": "action.saved_queries",
+      "context": "Entry of the command list and the menu that runs the key action saved_queries, which opens the page with the saved queries: searches over the index by year, tax context, kind, tags and text, with an export of what they find. Also the title of that Hermes page and its sidebar entry.",
+      "en": "Saved queries",
+      "de": "Abfragen"
+    },
+    {
+      "key": "action.saved_queries.theme",
+      "context": "Theme name of the key action saved_queries, shown dimmed after its plain name action.saved_queries in the command list, and matched when typing. A playful name (an inquiry, filed like a form); the plain name beside it says what the action does.",
+      "en": "Inquiries",
+      "de": "Anforderungen"
+    },
+    {
+      "key": "saved_queries.explain",
+      "context": "Line at the top of the saved queries page explaining what it is for.",
+      "en": "Searches over your documents. Running one only looks; exporting copies the files it found into a folder you choose and never changes the originals.",
+      "de": "Suchen über deine Dokumente. Ausführen schaut nur nach; Exportieren kopiert die gefundenen Dateien in einen Ordner deiner Wahl und ändert die Originale nie."
+    },
+    {
+      "key": "saved_queries.loading",
+      "context": "Shown on the saved queries page while the list loads.",
+      "en": "Loading …",
+      "de": "Lädt …"
+    },
+    {
+      "key": "saved_queries.empty",
+      "context": "Shown on the saved queries page when no query is saved yet.",
+      "en": "No saved queries yet. Fill in the form and save one.",
+      "de": "Noch keine Abfragen gespeichert. Fülle das Formular aus und speichere eine."
+    },
+    {
+      "key": "saved_queries.column_criteria",
+      "context": "Column header of the saved queries list: what the query asks for, in short.",
+      "en": "Criteria",
+      "de": "Kriterien"
+    },
+    {
+      "key": "saved_queries.column_hits",
+      "context": "Column header of the saved queries list: how many documents the query found the last time it ran here.",
+      "en": "Hits",
+      "de": "Treffer"
+    },
+    {
+      "key": "saved_queries.criteria_all",
+      "context": "Short form of a query without any criterion in the saved queries list: it finds every document.",
+      "en": "All documents",
+      "de": "Alle Dokumente"
+    },
+    {
+      "key": "saved_queries.field_year",
+      "context": "Form label on the saved queries page: the year of the document date.",
+      "en": "Year",
+      "de": "Jahr"
+    },
+    {
+      "key": "saved_queries.field_tax_context",
+      "context": "Form label on the saved queries page: tax context.",
+      "en": "Tax context",
+      "de": "Steuerkontext"
+    },
+    {
+      "key": "saved_queries.field_kind",
+      "context": "Form label on the saved queries page: kind of document.",
+      "en": "Kind",
+      "de": "Art"
+    },
+    {
+      "key": "saved_queries.field_tags",
+      "context": "Form label on the saved queries page: tags.",
+      "en": "Tags",
+      "de": "Schlagworte"
+    },
+    {
+      "key": "saved_queries.field_full_text",
+      "context": "Form label on the saved queries page: words that occur in the text of the document.",
+      "en": "Full text",
+      "de": "Volltext"
+    },
+    {
+      "key": "saved_queries.tax_any",
+      "context": "Tax context choice on the saved queries page: any context, the query does not ask for one.",
+      "en": "Any",
+      "de": "Beliebig"
+    },
+    {
+      "key": "saved_queries.hint_year",
+      "context": "Description under the year field of the saved queries page.",
+      "en": "Year of the document date, for example 2024",
+      "de": "Jahr des Belegdatums, zum Beispiel 2024"
+    },
+    {
+      "key": "saved_queries.hint_kind",
+      "context": "Description under the kind field of the saved queries page.",
+      "en": "Upper and lower case do not matter",
+      "de": "Groß- und Kleinschreibung ist egal"
+    },
+    {
+      "key": "saved_queries.hint_tags",
+      "context": "Description under the tags field of the saved queries page.",
+      "en": "All of them must be on the document, separated by commas",
+      "de": "Alle müssen am Dokument sein, mit Komma getrennt"
+    },
+    {
+      "key": "saved_queries.hint_full_text",
+      "context": "Description under the full text field of the saved queries page.",
+      "en": "All words must occur in the text",
+      "de": "Alle Wörter müssen im Text vorkommen"
+    },
+    {
+      "key": "saved_queries.problem_year",
+      "context": "Problem on the saved queries page: the year text is not a year.",
+      "en": "The year must be a number like 2024.",
+      "de": "Das Jahr muss eine Zahl wie 2024 sein."
+    },
+    {
+      "key": "saved_queries.problem_name",
+      "context": "Problem on the saved queries page: a query cannot be saved without a name.",
+      "en": "A saved query needs a name.",
+      "de": "Eine gespeicherte Abfrage braucht einen Namen."
+    },
+    {
+      "key": "saved_queries.problem_failed",
+      "context": "Problem on the saved queries page. Takes the error detail.",
+      "en": "Failed: {detail}",
+      "de": "Fehlgeschlagen: {detail}"
+    },
+    {
+      "key": "saved_queries.close",
+      "context": "Button on the saved queries page: closes it.",
+      "en": "Close",
+      "de": "Schließen"
+    },
+    {
+      "key": "saved_queries.new",
+      "context": "Button on the saved queries page: starts an empty, new query.",
+      "en": "New",
+      "de": "Neu"
+    },
+    {
+      "key": "saved_queries.save",
+      "context": "Button on the saved queries page: saves the form as a query, or the change of the selected one.",
+      "en": "Save",
+      "de": "Speichern"
+    },
+    {
+      "key": "saved_queries.delete",
+      "context": "Button on the saved queries page: asks whether to delete the selected query.",
+      "en": "Delete",
+      "de": "Löschen"
+    },
+    {
+      "key": "saved_queries.run",
+      "context": "Button on the saved queries page: runs the query of the form and shows what it finds.",
+      "en": "Run",
+      "de": "Ausführen"
+    },
+    {
+      "key": "saved_queries.export",
+      "context": "Button on the saved queries page: opens the step that asks where to export the found files. Disabled while there is nothing to copy.",
+      "en": "Export …",
+      "de": "Exportieren …"
+    },
+    {
+      "key": "saved_queries.cancel",
+      "context": "Button on the saved queries page: backs out of the export step.",
+      "en": "Cancel",
+      "de": "Abbrechen"
+    },
+    {
+      "key": "saved_queries.delete_question",
+      "context": "Question in the saved queries page before a query is deleted. Takes the name of the query.",
+      "en": "Delete the query ‘{name}’? Documents stay as they are.",
+      "de": "Abfrage ‚{name}‘ löschen? Dokumente bleiben unverändert."
+    },
+    {
+      "key": "saved_queries.delete_confirm",
+      "context": "Button in the delete question of the saved queries page: deletes the query.",
+      "en": "Delete query",
+      "de": "Abfrage löschen"
+    },
+    {
+      "key": "saved_queries.summary_hits",
+      "context": "Label of a figure under a run of a saved query: how many documents were found.",
+      "en": "Hits",
+      "de": "Treffer"
+    },
+    {
+      "key": "saved_queries.summary_missing",
+      "context": "Label of a figure under a run of a saved query: how many of the found documents are missing on disk.",
+      "en": "Missing",
+      "de": "Fehlen"
+    },
+    {
+      "key": "saved_queries.show_list",
+      "context": "Button under a run of a saved query: shows the found documents.",
+      "en": "View list",
+      "de": "Liste ansehen"
+    },
+    {
+      "key": "saved_queries.hide_list",
+      "context": "Button under a run of a saved query: hides the found documents.",
+      "en": "Hide list",
+      "de": "Liste ausblenden"
+    },
+    {
+      "key": "saved_queries.hits_more",
+      "context": "Last line under the list of found documents when there are more than fit. Takes the number left out.",
+      "en": "… and {count} more",
+      "de": "… und {count} weitere"
+    },
+    {
+      "key": "saved_queries.hit_missing",
+      "context": "Mark behind a found document whose file is gone.",
+      "en": "missing",
+      "de": "fehlt"
+    },
+    {
+      "key": "saved_queries.export_title",
+      "context": "Heading of the export step on the saved queries page.",
+      "en": "Export of the hits",
+      "de": "Export der Treffer"
+    },
+    {
+      "key": "saved_queries.export_folder",
+      "context": "Line in the export step: the folder the files are copied into. Takes the path.",
+      "en": "Target folder: {folder}",
+      "de": "Zielordner: {folder}"
+    },
+    {
+      "key": "saved_queries.export_count",
+      "context": "Line in the export step: how many files would be copied. Takes the number.",
+      "en": "Files to copy: {count}",
+      "de": "Zu kopierende Dateien: {count}"
+    },
+    {
+      "key": "saved_queries.export_csv",
+      "context": "Line in the export step: the CSV file written beside the copies. Takes the file name.",
+      "en": "CSV file: {name}",
+      "de": "CSV-Datei: {name}"
+    },
+    {
+      "key": "saved_queries.export_csv_name",
+      "context": "The pattern of the CSV file name shown in the export step; date and time of the export fill the placeholders.",
+      "en": "ncrs-export-<date>-<time>.csv",
+      "de": "ncrs-export-<Datum>-<Zeit>.csv"
+    },
+    {
+      "key": "saved_queries.export_promise",
+      "context": "Sentence in the export step: what the export does and does not do.",
+      "en": "Copies only; moves and deletes nothing. Existing files stay untouched.",
+      "de": "Kopiert nur, verschiebt und löscht nichts. Vorhandene Dateien bleiben unangetastet."
+    },
+    {
+      "key": "saved_queries.choose_folder",
+      "context": "Button in the export step: opens the system dialog to choose the target folder.",
+      "en": "Choose folder …",
+      "de": "Ordner wählen …"
+    },
+    {
+      "key": "saved_queries.export_confirm",
+      "context": "Button in the export step: copies the files and writes the CSV.",
+      "en": "Export",
+      "de": "Exportieren"
+    },
+    {
+      "key": "saved_queries.exported_note",
+      "context": "Footer note on the saved queries page after an export. Takes the numbers and the CSV file name.",
+      "en": "Copied {copied}, skipped {existing} that exist and {missing} that are missing. CSV: {csv}",
+      "de": "{copied} kopiert, {existing} vorhandene und {missing} fehlende übersprungen. CSV: {csv}"
     }
   ]
 }

@@ -99,13 +99,12 @@ pub fn view<'a>(
 }
 
 fn field<'a>(card: &'a ThemeFetch, lang: Language, palette: &Palette) -> Element<'a, Message> {
-    // The card ignores typing outside the input stage, so the field needs no
-    // disabled state while the download runs.
+    let typing = matches!(card.stage(), Stage::Input);
     kit::text_field(
         lang.text(Msg::ThemeFetchPlaceholder),
         card.text(),
         FIELD_ID,
-        |text| to_message(ThemeFetchMessage::TextChanged(text)),
+        typing.then_some(|text| to_message(ThemeFetchMessage::TextChanged(text))),
         to_message(ThemeFetchMessage::Activate),
         palette,
     )

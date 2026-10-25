@@ -70,8 +70,8 @@ impl Form {
     /// The fields the form holds; what is typed and no field can hold is a
     /// problem, never silently dropped.
     fn fields(&self) -> Result<DocumentFields, Problem> {
-        let non_empty = |text: &str| {
-            let text = text.trim();
+        let non_empty = |typed: &str| {
+            let text = typed.trim();
             (!text.is_empty()).then(|| text.to_owned())
         };
         Ok(DocumentFields {
@@ -328,9 +328,9 @@ impl ReviewList {
         let notice = self.pending_notice.take();
         match outcome {
             ConfirmOutcome::Filed { relative_path } => {
-                self.filed = notice.map(|notice| FiledNotice {
+                self.filed = notice.map(|pending| FiledNotice {
                     path: relative_path,
-                    ..notice
+                    ..pending
                 });
             }
             ConfirmOutcome::TargetExists => self.problem = Some(Problem::TargetExists),
@@ -393,7 +393,7 @@ pub mod tests {
 
         let dir = tempfile::TempDir::new().unwrap();
         let mut index = Index::create_plain(&dir.path().join("index.db")).unwrap();
-        (1..=2_u8)
+        (1..=2)
             .map(|seed| {
                 let document = index
                     .insert_document(&NewDocument {

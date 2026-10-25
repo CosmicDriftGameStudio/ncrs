@@ -33,7 +33,7 @@ pub fn view<'a>(
         lang.text(Msg::QuickopenPlaceholder),
         quick_open.query(),
         QUICK_OPEN_ID,
-        |text| to_quick_open(QuickOpenMessage::QueryChanged(text)),
+        Some(|text| to_quick_open(QuickOpenMessage::QueryChanged(text))),
         to_quick_open(QuickOpenMessage::Activate),
         palette,
     );

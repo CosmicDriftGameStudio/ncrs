@@ -8,7 +8,8 @@ use crate::fs::OpenKind;
 use crate::i18n::Msg;
 use crate::messages::{
     ClipboardKind, CommandPaletteMessage, Message, QuickOpenMessage, ReorganisationPlanMessage,
-    ReviewListMessage, RuleSuggestionsMessage, SearchMessage, ThemeFetchMessage, TransferKind,
+    ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage,
+    ThemeFetchMessage, TransferKind,
 };
 use crate::ui::layout::{MENU_ITEM_HEIGHT, MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_WIDTH};
 
@@ -272,6 +273,7 @@ pub struct InputState {
     /// The rule suggestions view is up: same as Quick Open.
     pub rule_suggestions: bool,
     pub review_list: bool,
+    pub saved_queries: bool,
     /// The reorganisation plan view is up: same as Quick Open.
     pub reorganisation_plan: bool,
 }
@@ -310,6 +312,9 @@ impl InputState {
                 if self.review_list && matches!(key, Key::Named(Named::Escape)) {
                     return Some(Message::ReviewList(ReviewListMessage::Close));
                 }
+                if self.saved_queries && matches!(key, Key::Named(Named::Escape)) {
+                    return Some(Message::SavedQueries(SavedQueriesMessage::Close));
+                }
                 if self.reorganisation_plan && matches!(key, Key::Named(Named::Escape)) {
                     return Some(Message::ReorganisationPlan(
                         ReorganisationPlanMessage::Close,
@@ -342,6 +347,7 @@ impl InputState {
                     && !self.theme_fetch
                     && !self.rule_suggestions
                     && !self.review_list
+                    && !self.saved_queries
                     && !self.reorganisation_plan)
                     .then_some(Message::ContextMenuKey)
             }

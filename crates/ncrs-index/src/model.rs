@@ -35,6 +35,7 @@ id_newtype!(RuleId);
 id_newtype!(ReviewEntryId);
 id_newtype!(PlanId);
 id_newtype!(BatchId);
+id_newtype!(SavedQueryId);
 
 /// SHA-256 of the file content. The index stores it; hashing is not its job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -294,6 +295,27 @@ pub struct Document {
     /// Set when the file is gone or no longer has this content. A missing
     /// document is not found by path; its hash still is.
     pub missing_since: Option<DateTime<Utc>>,
+}
+
+/// What a saved query asks for; a criterion left out matches everything.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct QuerySpec {
+    /// The year of the document date.
+    pub year: Option<i32>,
+    pub tax_context: Option<TaxContext>,
+    /// Compared without regard to case.
+    pub kind: Option<String>,
+    /// A document must carry all of them.
+    pub tags: BTreeSet<String>,
+    /// Words that all occur in the full text.
+    pub full_text: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SavedQuery {
+    pub id: SavedQueryId,
+    pub name: String,
+    pub spec: QuerySpec,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

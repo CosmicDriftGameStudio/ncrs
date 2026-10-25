@@ -25,6 +25,7 @@ pub mod quick_open;
 pub mod reorganisation_plan;
 pub mod review_list;
 pub mod rule_suggestions;
+pub mod saved_queries;
 pub mod search;
 pub mod statusbar;
 pub mod theme;

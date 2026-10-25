@@ -235,19 +235,22 @@ pub fn form_row<'a>(
     .into()
 }
 
-/// A single-line text field of 24 px.
+/// A single-line text field of 24 px. Without `on_input` it takes no typing:
+/// it is shown disabled.
 pub fn text_field<'a>(
     placeholder: &str,
     value: &str,
     id: &'static str,
-    on_input: impl Fn(String) -> Message + 'a,
+    on_input: Option<impl Fn(String) -> Message + 'a>,
     on_submit: Message,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    text_input(placeholder, value)
-        .id(id)
-        .on_input(on_input)
-        .on_submit(on_submit)
+    let base = text_input(placeholder, value).id(id);
+    let field = match on_input {
+        Some(typed) => base.on_input(typed).on_submit(on_submit),
+        None => base,
+    };
+    field
         .size(font_size::BODY)
         .line_height(LineHeight::Absolute(Pixels(FIELD_LINE_HEIGHT)))
         .padding([spacing::XS, spacing::S])

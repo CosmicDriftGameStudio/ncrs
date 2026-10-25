@@ -224,7 +224,7 @@ fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element
             "",
             value,
             id,
-            move |typed| send(ReviewListMessage::FieldChanged(field, typed)),
+            Some(move |typed| send(ReviewListMessage::FieldChanged(field, typed))),
             send(ReviewListMessage::Confirm),
             palette,
         )
@@ -233,7 +233,7 @@ fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element
         form_row(
             lang.text(label),
             None,
-            hint.map(|hint| lang.text(hint)),
+            hint.map(|message| lang.text(message)),
             control,
             palette,
         )

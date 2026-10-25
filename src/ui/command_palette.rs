@@ -45,7 +45,7 @@ pub fn view<'a>(
         lang.text(Msg::CommandPalettePlaceholder),
         command_palette.query(),
         COMMAND_PALETTE_ID,
-        |text| to_palette(CommandPaletteMessage::QueryChanged(text)),
+        Some(|text| to_palette(CommandPaletteMessage::QueryChanged(text))),
         to_palette(CommandPaletteMessage::Run),
         palette,
     );

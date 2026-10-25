@@ -35,6 +35,7 @@ use ncrs_pipeline::{intake_steps, IndexAccess, Load, Runner, Settings, SystemClo
 
 use crate::config::{AiSetting, Filing, FilingLocation};
 use crate::filing_work::FilingAccess;
+use crate::query_work::QueryAccess;
 use crate::reorganisation_work::PlanAccess;
 use crate::review_work::ReviewAccess;
 use crate::suggestion_work::SuggestionAccess;
@@ -816,6 +817,12 @@ impl FilingModule {
     pub fn review_access(&self) -> Option<ReviewAccess> {
         let root = self.target_root()?;
         Some(ReviewAccess::new(Arc::clone(&self.index), root))
+    }
+
+    /// The handle of the saved queries: they only read the index, so the
+    /// module being `Ready` is enough.
+    pub fn query_access(&self) -> Option<QueryAccess> {
+        matches!(self.phase, Phase::Ready).then(|| QueryAccess::new(Arc::clone(&self.index)))
     }
 
     fn target_root(&self) -> Option<PathBuf> {

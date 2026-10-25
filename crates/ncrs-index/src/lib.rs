@@ -16,6 +16,7 @@ mod reorganisation;
 mod review;
 mod rule_suggestions;
 mod rules;
+mod saved_queries;
 #[cfg(test)]
 mod test_support;
 
@@ -27,7 +28,7 @@ pub use key_store::{InMemoryKeyStore, KeyStore, KeyringKeyStore};
 pub use model::{
     Amount, BatchId, ConflictReason, ContentHash, Currency, Document, DocumentFields, DocumentId,
     DocumentSource, DocumentStatus, Field, FileStamp, Finding, FindingKind, IndexStatistics,
-    NewDocument, NoActionReason, PlanId, PlanItem, PlanOutcome, ReorganisationPlan, ReviewEntry,
-    ReviewEntryId, ReviewReason, Rule, RuleEvidence, RuleId, RuleSpec, RuleSuggestion,
-    SubtreePattern, TaxContext, TextMatch,
+    NewDocument, NoActionReason, PlanId, PlanItem, PlanOutcome, QuerySpec, ReorganisationPlan,
+    ReviewEntry, ReviewEntryId, ReviewReason, Rule, RuleEvidence, RuleId, RuleSpec, RuleSuggestion,
+    SavedQuery, SavedQueryId, SubtreePattern, TaxContext, TextMatch,
 };

@@ -27,17 +27,18 @@ impl Badges {
         match page {
             HermesPage::Review => self.review,
             HermesPage::RuleSuggestions => self.rule_suggestions,
-            HermesPage::Inspection | HermesPage::Reorganisation => None,
+            HermesPage::Inspection | HermesPage::Reorganisation | HermesPage::SavedQueries => None,
         }
         .filter(|count| *count > 0)
     }
 }
 
-const PAGES: [HermesPage; 4] = [
+const PAGES: [HermesPage; 5] = [
     HermesPage::Inspection,
     HermesPage::Review,
     HermesPage::RuleSuggestions,
     HermesPage::Reorganisation,
+    HermesPage::SavedQueries,
 ];
 
 /// The plain name and the theme name of a page.
@@ -48,6 +49,7 @@ fn names(page: HermesPage) -> (Msg, Msg) {
         HermesPage::RuleSuggestions => {
             (Msg::ActionRuleSuggestions, Msg::ActionRuleSuggestionsTheme)
         }
+        HermesPage::SavedQueries => (Msg::ActionSavedQueries, Msg::ActionSavedQueriesTheme),
         HermesPage::Reorganisation => (
             Msg::ActionReorganisationPlan,
             Msg::ActionReorganisationPlanTheme,

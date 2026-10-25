@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use ncrs_index::{RuleId, TaxContext};
+use ncrs_index::{RuleId, SavedQuery, SavedQueryId, TaxContext};
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
 
@@ -24,9 +24,11 @@ use crate::jobs::JobEvent;
 use crate::keymap::KeyAction;
 use crate::ocr_models::DownloadError;
 use crate::open_vsx::FetchError;
+use crate::query_work::{ExportSummary, QueryHit};
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
 use crate::review_list::FormField;
 use crate::review_work::{ConfirmOutcome, ReviewItem};
+use crate::saved_queries::QueryField;
 use crate::suggestion_work::SuggestedRule;
 use crate::theme_fetch::{Fetched, Installed};
 
@@ -275,6 +277,7 @@ pub enum Message {
     RuleSuggestions(RuleSuggestionsMessage),
     ReorganisationPlan(ReorganisationPlanMessage),
     ReviewList(ReviewListMessage),
+    SavedQueries(SavedQueriesMessage),
     /// The sidebar of the Hermes card: closes the card that is up and opens
     /// this page.
     HermesPage(HermesPage),
@@ -480,6 +483,63 @@ pub enum HermesPage {
     Review,
     RuleSuggestions,
     Reorganisation,
+    SavedQueries,
+}
+
+/// Everything the saved queries page sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SavedQueriesMessage {
+    Open,
+    /// Escape backs out of the step that is up first, then leaves the page.
+    Close,
+    /// The work of the generation is done, with the saved queries. Dropped
+    /// when the page was closed or opened again meanwhile.
+    Loaded {
+        generation: u64,
+        result: Result<Vec<SavedQuery>, String>,
+    },
+    Move(isize),
+    /// A click on the query at this position.
+    Select(usize),
+    New,
+    FieldChanged(QueryField, String),
+    TaxContextChosen(Option<TaxContext>),
+    /// Tab (`false`) or Shift+Tab (`true`) in the form.
+    FocusField {
+        backwards: bool,
+    },
+    Save,
+    Saved {
+        generation: u64,
+        result: Result<SavedQueryId, String>,
+    },
+    /// The first step of deleting: the question in the page.
+    AskDelete,
+    CancelStep,
+    ConfirmDelete,
+    Deleted {
+        generation: u64,
+        result: Result<SavedQueryId, String>,
+    },
+    /// Enter or the button: asks the index.
+    Run,
+    Ran {
+        generation: u64,
+        result: Result<Vec<QueryHit>, String>,
+    },
+    ToggleHits,
+    /// The first step of exporting: the page asks where to and shows what
+    /// would be copied.
+    StartExport,
+    /// Opens the system folder dialog for the target folder.
+    PickFolder,
+    FolderPicked(Option<PathBuf>),
+    /// Enter in the export step: copies.
+    Export,
+    Exported {
+        generation: u64,
+        result: Result<ExportSummary, String>,
+    },
 }
 
 /// Everything the review list sends.
@@ -498,7 +558,6 @@ pub enum ReviewListMessage {
     /// A click on the entry at this position.
     Select(usize),
     Edit,
-    CancelEdit,
     FieldChanged(FormField, String),
     TaxContextChosen(Option<TaxContext>),
     /// Tab (`false`) or Shift+Tab (`true`) in the form.
