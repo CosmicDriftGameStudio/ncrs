@@ -707,8 +707,28 @@ mod tests {
 
         let index = Index::open(&path, &store).unwrap();
 
-        assert_eq!(user_version(&index), 4);
+        assert_eq!(
+            user_version(&index),
+            u32::try_from(MIGRATIONS.len()).unwrap()
+        );
         assert!(table_exists(&index, "rule_evidence"));
+    }
+
+    #[test]
+    fn a_version_4_database_gains_the_discarded_suggestions_table() {
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let store = InMemoryKeyStore::empty();
+        let (old, _) =
+            Index::create_encrypted_with_migrations(&path, &store, &MIGRATIONS[..4]).unwrap();
+        assert_eq!(user_version(&old), 4);
+        assert!(!table_exists(&old, "discarded_rule_suggestion"));
+        drop(old);
+
+        let index = Index::open(&path, &store).unwrap();
+
+        assert_eq!(user_version(&index), 5);
+        assert!(table_exists(&index, "discarded_rule_suggestion"));
     }
 
     #[test]

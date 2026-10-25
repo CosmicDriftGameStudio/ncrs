@@ -16,7 +16,8 @@ use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::messages::{
     ClipboardKind, CommandPaletteMessage, FilingSetupMessage, FilingStatusMessage,
-    OcrModelsMessage, PanelSide, QuickOpenMessage, SearchMessage, ThemeFetchMessage, TransferKind,
+    OcrModelsMessage, PanelSide, QuickOpenMessage, RuleSuggestionsMessage, SearchMessage,
+    ThemeFetchMessage, TransferKind,
 };
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
@@ -109,6 +110,7 @@ key_actions! {
     CommandPalette => "command_palette",
     FilingStatus => "filing_status",
     FilingSetup => "filing_setup",
+    RuleSuggestions => "rule_suggestions",
     FetchTheme => "fetch_theme",
     DownloadOcrModels => "download_ocr_models",
     SearchCase => "search_case",
@@ -185,6 +187,7 @@ impl KeyAction {
             | Self::QuickOpen
             | Self::FilingStatus
             | Self::FilingSetup
+            | Self::RuleSuggestions
             | Self::FetchTheme
             | Self::DownloadOcrModels
             | Self::DriveMenuLeft
@@ -249,6 +252,7 @@ impl KeyAction {
             Self::CommandPalette => Message::CommandPalette(CommandPaletteMessage::Toggle),
             Self::FilingStatus => Message::FilingStatus(FilingStatusMessage::Toggle),
             Self::FilingSetup => Message::FilingSetup(FilingSetupMessage::Toggle),
+            Self::RuleSuggestions => Message::RuleSuggestions(RuleSuggestionsMessage::Open),
             Self::FetchTheme => Message::ThemeFetch(ThemeFetchMessage::Open),
             Self::DownloadOcrModels => Message::OcrModels(OcrModelsMessage::Open),
             Self::SearchCase => Message::Search(SearchMessage::ToggleCase),
@@ -417,6 +421,11 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
         (
             A::FilingSetup,
             Binding::with_modifiers(Character("l".into()), Modifiers::COMMAND | Modifiers::SHIFT),
+        ),
+        // The rule suggestions, R for requisitions; Cmd+Shift+R, Ctrl+Shift+R elsewhere.
+        (
+            A::RuleSuggestions,
+            Binding::with_modifiers(Character("r".into()), Modifiers::COMMAND | Modifiers::SHIFT),
         ),
         // The toggles of the search fields, as in VS Code. On a Mac Option types
         // other characters, so these are only found through the physical key.

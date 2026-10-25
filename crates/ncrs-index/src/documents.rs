@@ -250,6 +250,19 @@ impl Index {
         Ok(ids)
     }
 
+    /// The full text `set_document_text` stored; `None` when there is none.
+    pub fn document_text(&self, id: DocumentId) -> Result<Option<String>, IndexError> {
+        let found = self
+            .connection()
+            .query_row(
+                "SELECT body FROM document_text WHERE rowid = ?1",
+                [id.get()],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(found)
+    }
+
     fn load_document(
         &self,
         sql: &str,
@@ -472,6 +485,19 @@ mod tests {
         ] {
             index.search_text(input, 10).unwrap();
         }
+    }
+
+    #[test]
+    fn the_stored_text_is_read_back() {
+        let (_dir, mut index) = encrypted_index();
+        let id = indexed_with_text(&mut index, 1, "Company A, Invoice 4711");
+        let without = index.insert_document(&new_document(2)).unwrap();
+
+        assert_eq!(
+            index.document_text(id).unwrap().as_deref(),
+            Some("Company A, Invoice 4711")
+        );
+        assert_eq!(index.document_text(without).unwrap(), None);
     }
 
     #[test]

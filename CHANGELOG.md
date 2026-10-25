@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Rule suggestions (Requisitions): ncrs looks at how your records are
+  already filed and suggests rules from it, such as "text contains Company A
+  Ltd goes to Insurance". Each suggestion shows how many documents in its
+  folder and elsewhere contain the text, and which ones. You confirm, edit or
+  discard it; a suggestion does nothing until it is confirmed, and a
+  discarded one is not suggested again. Open it with Cmd+Shift+R
+  (Ctrl+Shift+R elsewhere) or from the command list.
 - Text files (`.txt`, `.md`) and Word and OpenDocument texts (`.docx`,
   `.odt`) are now read too, so their text is stored with the document and can
   be searched. No office installation is needed. A broken file shows an error

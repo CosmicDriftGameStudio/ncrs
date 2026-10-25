@@ -27,8 +27,8 @@ use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 use crate::menu::Availability;
 use crate::messages::{
     ClipboardKind, CommandPaletteMessage, ConflictChoice, FilingSetupMessage, FilingStatusMessage,
-    Message, OcrModelsMessage, PanelSide, QuickOpenMessage, SearchMessage, ThemeFetchMessage,
-    TitleBarMessage, TransferKind,
+    Message, OcrModelsMessage, PanelSide, QuickOpenMessage, RuleSuggestionsMessage, SearchMessage,
+    ThemeFetchMessage, TitleBarMessage, TransferKind,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -36,7 +36,9 @@ use crate::ocr_models::{download_models, DownloadError, OcrModelsCard};
 use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
 use crate::palette::Palette;
 use crate::quick_open::{QuickOpen, QUICK_OPEN_FILE_LIMIT};
+use crate::rule_suggestions::RuleSuggestions;
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
+use crate::suggestion_work::{SuggestedRule, SuggestionAccess, INDEX_NOT_OPEN};
 use crate::theme_fetch::{Fetched, Installed, Pick, Stage, ThemeFetch};
 use crate::ui::command_palette as command_palette_ui;
 use crate::ui::context_menu as context_menu_view;
@@ -47,6 +49,7 @@ use crate::ui::filing_setup as filing_setup_ui;
 use crate::ui::filing_status as filing_status_ui;
 use crate::ui::ocr_models as ocr_models_ui;
 use crate::ui::quick_open as quick_open_ui;
+use crate::ui::rule_suggestions as rule_suggestions_ui;
 use crate::ui::search as search_ui;
 use crate::ui::theme_fetch as theme_fetch_ui;
 use crate::ui::titlebar;
@@ -267,6 +270,7 @@ fn leaves_path_field(message: &Message) -> bool {
             | Message::QuickOpen(QuickOpenMessage::Open)
             | Message::CommandPalette(CommandPaletteMessage::Toggle)
             | Message::ThemeFetch(ThemeFetchMessage::Open)
+            | Message::RuleSuggestions(RuleSuggestionsMessage::Open)
             | Message::OcrModels(OcrModelsMessage::Open)
             | Message::FilingStatus(FilingStatusMessage::Open)
             | Message::FilingSetup(
@@ -696,6 +700,9 @@ pub struct App {
     theme_fetch: Option<ThemeFetch>,
     /// Counts the cards opened, so the late answer of a closed one is dropped.
     theme_fetch_generation: u64,
+    rule_suggestions: Option<RuleSuggestions>,
+    /// Tells the answer of the work that is current from a stale one.
+    rule_suggestions_generation: u64,
     /// Downloads an extension, on a blocking thread. Injected so tests need
     /// no network.
     fetch_extension: fn(&ExtensionId) -> Result<FetchedExtension, FetchError>,
@@ -746,6 +753,10 @@ pub struct PromptKeyState {
     pub filing_card: bool,
     /// The theme download card is up, so Enter and the arrows are its.
     pub theme_fetch: bool,
+    /// The rule suggestions view is up, so Enter, the arrows and its letters are its.
+    pub rule_suggestions: bool,
+    /// Its form is up, so the text fields take the letters.
+    pub rule_suggestions_editing: bool,
     /// The OCR models card is up, so keys answer it like a button dialog.
     pub ocr_models: bool,
     /// The delete dialog is up, so keys answer it.
@@ -776,6 +787,8 @@ impl Default for PromptKeyState {
             filing_setup: false,
             filing_card: false,
             theme_fetch: false,
+            rule_suggestions: false,
+            rule_suggestions_editing: false,
             ocr_models: false,
             delete_dialog: DeleteKeys::default(),
             volume_menu: false,
@@ -783,6 +796,46 @@ impl Default for PromptKeyState {
             busy: false,
             typed: Arc::default(),
         }
+    }
+}
+
+/// The view is a card: Enter confirms, the arrows move in the list, and while
+/// no form is up the letters decide (`e`dit, `d`iscard, `r`e-analyse). With the
+/// form up the fields take the typing; Escape is `InputState`'s then.
+fn rule_suggestions_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    let suggestions = |message| Some(Message::RuleSuggestions(message));
+    let plain = key_modifiers.is_empty();
+    match key.as_ref() {
+        Key::Named(Named::Escape) => suggestions(RuleSuggestionsMessage::Close),
+        Key::Named(Named::Enter) => suggestions(RuleSuggestionsMessage::Confirm),
+        Key::Named(Named::Tab) if prompt.rule_suggestions_editing => {
+            suggestions(RuleSuggestionsMessage::FocusField {
+                backwards: key_modifiers.shift(),
+            })
+        }
+        Key::Named(Named::ArrowUp) if plain && !prompt.rule_suggestions_editing => {
+            suggestions(RuleSuggestionsMessage::Move(-1))
+        }
+        Key::Named(Named::ArrowDown) if plain && !prompt.rule_suggestions_editing => {
+            suggestions(RuleSuggestionsMessage::Move(1))
+        }
+        Key::Character("e") if plain && !prompt.rule_suggestions_editing => {
+            suggestions(RuleSuggestionsMessage::Edit)
+        }
+        Key::Character("d") if plain && !prompt.rule_suggestions_editing => {
+            suggestions(RuleSuggestionsMessage::Discard)
+        }
+        Key::Character("r") if plain && !prompt.rule_suggestions_editing => {
+            suggestions(RuleSuggestionsMessage::Reanalyse)
+        }
+        _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
+            .filter(|message| *message == Message::Quit)
+            .filter(|_| is_not_typed_by_text_field(key, key_modifiers)),
     }
 }
 
@@ -902,6 +955,10 @@ fn keys_without_prompt(
                 .filter(|message| *message == Message::Quit)
                 .filter(|_| is_not_typed_by_text_field(&key, key_modifiers)),
         };
+    }
+
+    if prompt.rule_suggestions {
+        return rule_suggestions_key(prompt, &key, key_modifiers, scope);
     }
 
     // Like the command palette: the field takes the typing, the card the
@@ -1316,6 +1373,7 @@ fn repeats(message: &Message) -> bool {
             | Message::QuickOpen(QuickOpenMessage::Move(_))
             | Message::CommandPalette(CommandPaletteMessage::Move(_))
             | Message::ThemeFetch(ThemeFetchMessage::Move(_))
+            | Message::RuleSuggestions(RuleSuggestionsMessage::Move(_))
             | Message::FilingStatus(FilingStatusMessage::MoveError(_))
             | Message::Search(
                 SearchMessage::ToggleTag
@@ -1705,6 +1763,8 @@ impl App {
             pick_folder: filing_setup::pick_folder_with_system_dialog,
             theme_fetch: None,
             theme_fetch_generation: 0,
+            rule_suggestions: None,
+            rule_suggestions_generation: 0,
             fetch_extension: open_vsx::fetch_extension,
             install_theme: install_picked_theme,
             ocr_models: None,
@@ -2336,6 +2396,7 @@ impl App {
                 self.update_command_palette(command_palette)
             }
             Message::ThemeFetch(fetch_message) => self.update_theme_fetch(fetch_message),
+            Message::RuleSuggestions(suggestions) => self.update_rule_suggestions(suggestions),
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => self.update_filing_status(page_message),
@@ -2593,6 +2654,7 @@ impl App {
         input.quick_open = self.quick_open.is_some();
         input.command_palette = self.command_palette.is_some();
         input.theme_fetch = self.theme_fetch.is_some();
+        input.rule_suggestions = self.rule_suggestions.is_some();
         drop(input);
         // `get` rather than `get_or_init`: the cell is created by the
         // subscription, and `update` must not create it — a cell nothing reads
@@ -2843,6 +2905,12 @@ impl App {
             return Stack::with_children([root, dialog::scrim(card_element)]).into();
         }
 
+        if let Some(view) = self.rule_suggestions.as_ref() {
+            let card_element =
+                rule_suggestions_ui::view(view, self.window_size, self.lang, &self.palette);
+            return Stack::with_children([root, dialog::scrim(card_element)]).into();
+        }
+
         // Then the create-directory prompt, for F7.
         let Some(prompt) = self.prompt.as_ref() else {
             return root;
@@ -2937,6 +3005,11 @@ impl App {
             .as_ref()
             .is_some_and(FilingModule::card_can_be_dismissed);
         let theme_fetch = self.theme_fetch.is_some();
+        let rule_suggestions = self.rule_suggestions.is_some();
+        let rule_suggestions_editing = self
+            .rule_suggestions
+            .as_ref()
+            .is_some_and(|view| view.edit().is_some());
         let ocr_models = self.ocr_models.is_some();
         let delete_dialog = match &self.delete_dialog {
             None => DeleteKeys::Closed,
@@ -2959,6 +3032,8 @@ impl App {
                 filing_setup,
                 filing_card,
                 theme_fetch,
+                rule_suggestions,
+                rule_suggestions_editing,
                 ocr_models,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
@@ -2982,6 +3057,8 @@ impl App {
                 filing_setup,
                 filing_card,
                 theme_fetch,
+                rule_suggestions,
+                rule_suggestions_editing,
                 ocr_models,
                 conflict_open: self.pending_conflict.is_some(),
                 busy: prompt.busy(),
@@ -3336,6 +3413,7 @@ impl App {
             || self.quick_open.is_some()
             || self.command_palette.is_some()
             || self.theme_fetch.is_some()
+            || self.rule_suggestions.is_some()
             || self.ocr_models.is_some()
             || self.filing_status.page_open()
     }
@@ -4283,6 +4361,193 @@ impl App {
         self.quick_open_walk = Some(handle.abort_on_drop());
         self.quick_open = Some(QuickOpen::new(root, generation));
         Task::batch([focus, task])
+    }
+
+    fn update_rule_suggestions(&mut self, message: RuleSuggestionsMessage) -> Task<Message> {
+        match message {
+            RuleSuggestionsMessage::Open => self.open_rule_suggestions(),
+            RuleSuggestionsMessage::Close => self.close_rule_suggestions(),
+            RuleSuggestionsMessage::Reanalyse => {
+                let Some(view) = self.rule_suggestions.as_mut() else {
+                    return Task::none();
+                };
+                if view.is_busy() {
+                    return Task::none();
+                }
+                view.begin_analysis();
+                self.run_suggestion_work(SuggestionAccess::analyse)
+            }
+            RuleSuggestionsMessage::Loaded { generation, result } => {
+                if generation != self.rule_suggestions_generation {
+                    return Task::none();
+                }
+                let Some(view) = self.rule_suggestions.as_mut() else {
+                    return Task::none();
+                };
+                match result {
+                    Ok(rows) => view.loaded(rows),
+                    Err(detail) => view.failed(detail),
+                }
+                self.look_up_suggestion_matches()
+            }
+            RuleSuggestionsMessage::Move(delta) => {
+                if let Some(view) = self.rule_suggestions.as_mut() {
+                    view.move_cursor(delta);
+                }
+                self.look_up_suggestion_matches()
+            }
+            RuleSuggestionsMessage::Select(index) => {
+                if let Some(view) = self.rule_suggestions.as_mut() {
+                    view.select(index);
+                }
+                self.look_up_suggestion_matches()
+            }
+            RuleSuggestionsMessage::Edit => {
+                let Some(view) = self.rule_suggestions.as_mut() else {
+                    return Task::none();
+                };
+                view.start_edit();
+                if view.edit().is_some() {
+                    operation::focus(rule_suggestions_ui::CONDITION_ID)
+                } else {
+                    Task::none()
+                }
+            }
+            RuleSuggestionsMessage::CancelEdit => {
+                if let Some(view) = self.rule_suggestions.as_mut() {
+                    view.cancel_edit();
+                }
+                release_focus()
+            }
+            RuleSuggestionsMessage::ConditionChanged(text) => {
+                if let Some(view) = self.rule_suggestions.as_mut() {
+                    view.set_condition(text);
+                }
+                Task::none()
+            }
+            RuleSuggestionsMessage::KindChanged(text) => {
+                if let Some(view) = self.rule_suggestions.as_mut() {
+                    view.set_kind(text);
+                }
+                Task::none()
+            }
+            RuleSuggestionsMessage::PatternChanged(text) => {
+                if let Some(view) = self.rule_suggestions.as_mut() {
+                    view.set_pattern(text);
+                }
+                Task::none()
+            }
+            RuleSuggestionsMessage::FocusField { backwards } => {
+                if backwards {
+                    operation::focus_previous()
+                } else {
+                    operation::focus_next()
+                }
+            }
+            RuleSuggestionsMessage::Confirm => {
+                let Some((id, spec)) = self
+                    .rule_suggestions
+                    .as_mut()
+                    .and_then(RuleSuggestions::begin_confirm)
+                else {
+                    return Task::none();
+                };
+                self.run_suggestion_work(move |access| access.confirm(id, &spec))
+            }
+            RuleSuggestionsMessage::Discard => {
+                let Some(id) = self
+                    .rule_suggestions
+                    .as_mut()
+                    .and_then(RuleSuggestions::begin_discard)
+                else {
+                    return Task::none();
+                };
+                self.run_suggestion_work(move |access| access.discard(id))
+            }
+            RuleSuggestionsMessage::MatchesFound { id, result } => {
+                if let (Some(view), Ok(paths)) = (self.rule_suggestions.as_mut(), result) {
+                    view.matches_found(id, paths);
+                }
+                Task::none()
+            }
+        }
+    }
+
+    /// The analysis starts with the view; the list appears when it is done.
+    fn open_rule_suggestions(&mut self) -> Task<Message> {
+        if self.rule_suggestions.is_some() || self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        self.context_menu = None;
+        self.rule_suggestions_generation = self.rule_suggestions_generation.wrapping_add(1);
+        self.rule_suggestions = Some(RuleSuggestions::new());
+        self.run_suggestion_work(SuggestionAccess::analyse)
+    }
+
+    /// Escape leaves the form first, the view second.
+    fn close_rule_suggestions(&mut self) -> Task<Message> {
+        match self.rule_suggestions.as_mut() {
+            Some(view) if view.edit().is_some() => {
+                view.cancel_edit();
+                release_focus()
+            }
+            Some(_) => {
+                self.rule_suggestions = None;
+                release_focus()
+            }
+            None => Task::none(),
+        }
+    }
+
+    /// Runs `work` on a blocking thread: the index is shared with the intake,
+    /// which may hold it while it hashes a large file.
+    fn run_suggestion_work(
+        &mut self,
+        work: impl FnOnce(&SuggestionAccess) -> Result<Vec<SuggestedRule>, String> + Send + 'static,
+    ) -> Task<Message> {
+        let generation = self.rule_suggestions_generation;
+        let Some(access) = self
+            .filing
+            .as_ref()
+            .and_then(FilingModule::suggestion_access)
+        else {
+            if let Some(view) = self.rule_suggestions.as_mut() {
+                view.failed(INDEX_NOT_OPEN.to_owned());
+            }
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || work(&access)),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                Message::RuleSuggestions(RuleSuggestionsMessage::Loaded { generation, result })
+            },
+        )
+    }
+
+    /// Looks up the documents of the selected suggestion, once per selection.
+    fn look_up_suggestion_matches(&mut self) -> Task<Message> {
+        let Some((id, condition)) = self
+            .rule_suggestions
+            .as_mut()
+            .and_then(RuleSuggestions::matches_wanted)
+        else {
+            return Task::none();
+        };
+        let Some(access) = self
+            .filing
+            .as_ref()
+            .and_then(FilingModule::suggestion_access)
+        else {
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.matching_documents(&condition)),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                Message::RuleSuggestions(RuleSuggestionsMessage::MatchesFound { id, result })
+            },
+        )
     }
 
     fn update_theme_fetch(&mut self, message: ThemeFetchMessage) -> Task<Message> {
@@ -5788,6 +6053,8 @@ impl App {
             pick_folder: |_| Task::none(),
             theme_fetch: None,
             theme_fetch_generation: 0,
+            rule_suggestions: None,
+            rule_suggestions_generation: 0,
             fetch_extension: |_| Err(FetchError::NoConnection("no network in tests".to_owned())),
             install_theme: |_, _| Err(FetchError::NoConfigPath),
             ocr_models: None,
@@ -5993,6 +6260,17 @@ impl App {
     pub fn with_theme_fetch_card(card: ThemeFetch) -> Self {
         let mut app = Self::with_fixed_panels();
         app.theme_fetch = Some(card);
+        app
+    }
+
+    pub fn rule_suggestions_for_test(&self) -> Option<&RuleSuggestions> {
+        self.rule_suggestions.as_ref()
+    }
+
+    /// Fixed panels with the rule suggestions view up, in the state of `view`.
+    pub fn with_rule_suggestions(view: RuleSuggestions) -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.rule_suggestions = Some(view);
         app
     }
 

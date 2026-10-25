@@ -2295,6 +2295,293 @@ mod theme_fetch_card {
     clippy::indexing_slicing
 )]
 #[cfg(test)]
+mod rule_suggestions_card {
+    use std::path::PathBuf;
+
+    use super::*;
+    use crate::messages::RuleSuggestionsMessage;
+    use crate::rule_suggestions::tests::{loaded_view, rule_ids, suggestion};
+    use crate::rule_suggestions::{Problem, RuleSuggestions};
+    use crate::suggestion_work::INDEX_NOT_OPEN;
+
+    const FIRST_EVIDENCE: &str = "5 of 5 in folder, 0 elsewhere";
+    const SECOND_EVIDENCE: &str = "4 of 5 in folder, 2 elsewhere";
+
+    fn suggestions_message(message: RuleSuggestionsMessage) -> Message {
+        Message::RuleSuggestions(message)
+    }
+
+    fn two_rows() -> RuleSuggestions {
+        let [one, two, _] = rule_ids();
+        let mut second = suggestion(two, "agency b tax office", "Taxes");
+        second.evidence.matching_in_folder = 4;
+        second.evidence.matching_elsewhere = 2;
+        let mut view = RuleSuggestions::new();
+        view.loaded(vec![suggestion(one, "company a ltd", "Insurance"), second]);
+        view
+    }
+
+    fn shows(view: RuleSuggestions, label: &str) -> bool {
+        simulator(&App::with_rule_suggestions(view))
+            .find(label)
+            .is_ok()
+    }
+
+    fn messages_after_click(view: RuleSuggestions, label: &str) -> Vec<Message> {
+        let app = App::with_rule_suggestions(view);
+        let mut sim = simulator(&app);
+        sim.click(label).expect("the clicked label");
+        sim.into_messages().collect()
+    }
+
+    #[test]
+    fn the_list_shows_condition_target_kind_and_evidence_of_each_suggestion() {
+        for label in [
+            "Rule suggestions",
+            "company a ltd",
+            "Insurance/{date}_{name}",
+            "Taxes/{date}_{name}",
+            FIRST_EVIDENCE,
+            SECOND_EVIDENCE,
+            "Confirm",
+            "Edit",
+            "Discard",
+            "Analyse again",
+            "Close",
+        ] {
+            assert!(shows(two_rows(), label), "{label}");
+        }
+    }
+
+    #[test]
+    fn the_view_is_worded_in_german_too() {
+        let app = App::with_rule_suggestions(two_rows()).in_language(Language::German);
+        let mut sim = simulator(&app);
+        for label in [
+            "Regelvorschläge",
+            "5 von 5 im Ordner, 0 sonst",
+            "4 von 5 im Ordner, 2 sonst",
+            "Bestätigen",
+            "Bearbeiten",
+            "Verwerfen",
+            "Erneut analysieren",
+        ] {
+            assert!(sim.find(label).is_ok(), "{label}");
+        }
+    }
+
+    #[test]
+    fn a_view_still_reading_says_so_and_decides_nothing() {
+        let view = RuleSuggestions::new();
+        assert!(shows(view.clone(), "Reading the document folders…"));
+        assert!(messages_after_click(view, "Confirm").is_empty());
+    }
+
+    #[test]
+    fn an_empty_result_says_how_suggestions_come_about() {
+        let mut view = RuleSuggestions::new();
+        view.loaded(Vec::new());
+        assert!(shows(
+            view,
+            "No suggestions. They appear when several documents of a document folder share a phrase."
+        ));
+    }
+
+    #[test]
+    fn the_buttons_send_what_they_say() {
+        for (label, message) in [
+            ("Confirm", RuleSuggestionsMessage::Confirm),
+            ("Discard", RuleSuggestionsMessage::Discard),
+            ("Analyse again", RuleSuggestionsMessage::Reanalyse),
+            ("Close", RuleSuggestionsMessage::Close),
+        ] {
+            assert_eq!(
+                messages_after_click(two_rows(), label),
+                [suggestions_message(message)],
+                "{label}"
+            );
+        }
+    }
+
+    /// "Edit" is also the F4 key of the bar below the view, so the button is
+    /// clicked by its German name.
+    #[test]
+    fn the_edit_button_opens_the_form() {
+        let app = App::with_rule_suggestions(two_rows()).in_language(Language::German);
+        let mut sim = simulator(&app);
+        sim.click("Bearbeiten").expect("the clicked label");
+        assert_eq!(
+            sim.into_messages().collect::<Vec<_>>(),
+            [suggestions_message(RuleSuggestionsMessage::Edit)]
+        );
+    }
+
+    #[test]
+    fn a_click_on_a_row_selects_it() {
+        assert_eq!(
+            messages_after_click(two_rows(), SECOND_EVIDENCE),
+            [suggestions_message(RuleSuggestionsMessage::Select(1))]
+        );
+    }
+
+    #[test]
+    fn the_selected_suggestion_lists_the_documents_it_matches() {
+        let [one, _, _] = rule_ids();
+        let mut view = two_rows();
+        let (id, _) = view.matches_wanted().unwrap();
+        assert_eq!(id, one);
+        view.matches_found(
+            id,
+            vec![
+                PathBuf::from("Insurance/2024_a.pdf"),
+                PathBuf::from("b.pdf"),
+            ],
+        );
+
+        assert!(shows(view.clone(), "Documents that contain this text"));
+        assert!(shows(view, "Insurance/2024_a.pdf"));
+    }
+
+    #[test]
+    fn more_documents_than_fit_are_counted() {
+        let [one, _, _] = rule_ids();
+        let mut view = two_rows();
+        view.matches_wanted();
+        let paths = (0..9).map(|n| PathBuf::from(format!("Insurance/{n}.pdf")));
+        view.matches_found(one, paths.collect());
+
+        assert!(shows(view, "… and 3 more"));
+    }
+
+    #[test]
+    fn the_form_offers_the_three_fields_and_cancel() {
+        let mut view = two_rows();
+        view.start_edit();
+
+        for label in ["Filed as (pattern)", "Kind", "Cancel", "Confirm"] {
+            assert!(shows(view.clone(), label), "{label}");
+        }
+        assert!(
+            !shows(view.clone(), "Discard"),
+            "no decision besides confirm"
+        );
+        assert_eq!(
+            messages_after_click(view, "Cancel"),
+            [suggestions_message(RuleSuggestionsMessage::CancelEdit)]
+        );
+    }
+
+    #[test]
+    fn an_invalid_pattern_shows_the_complaint_and_the_form_stays() {
+        let mut app = App::with_rule_suggestions(two_rows());
+        for message in [
+            RuleSuggestionsMessage::Edit,
+            RuleSuggestionsMessage::PatternChanged("{year}/{nonsense}".to_owned()),
+            RuleSuggestionsMessage::Confirm,
+        ] {
+            let _ = app.update(suggestions_message(message));
+        }
+
+        let view = app.rule_suggestions_for_test().unwrap();
+        assert_eq!(view.problem(), Some(&Problem::InvalidPattern));
+        assert!(view.edit().is_some());
+        assert!(!view.is_busy());
+        simulator(&app)
+            .find(
+                "This pattern cannot be used. Placeholders are written in braces, such as {year}.",
+            )
+            .expect("the complaint");
+    }
+
+    #[test]
+    fn the_view_opens_busy_and_a_missing_index_ends_in_a_complaint() {
+        let mut app = App::with_fixed_panels();
+
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Open));
+
+        let view = app.rule_suggestions_for_test().unwrap();
+        assert_eq!(
+            view.problem(),
+            Some(&Problem::Failed(INDEX_NOT_OPEN.to_owned()))
+        );
+        assert!(!view.is_busy());
+    }
+
+    #[test]
+    fn a_late_answer_of_an_earlier_view_is_dropped() {
+        let mut app = App::with_fixed_panels();
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Open));
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Close));
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Open));
+
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Loaded {
+            generation: 1,
+            result: Ok(loaded_view().rows().to_vec()),
+        }));
+
+        assert!(app.rule_suggestions_for_test().unwrap().rows().is_empty());
+    }
+
+    #[test]
+    fn escape_leaves_the_form_before_the_view() {
+        let mut app = App::with_rule_suggestions(two_rows());
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Edit));
+
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Close));
+        assert!(app.rule_suggestions_for_test().unwrap().edit().is_none());
+
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Close));
+        assert!(app.rule_suggestions_for_test().is_none());
+    }
+
+    fn matches_snapshot(view: RuleSuggestions, name: &str) {
+        let language = if name.ends_with("_de") {
+            Language::German
+        } else {
+            Language::English
+        };
+        let app = App::with_rule_suggestions(view).in_language(language);
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image(format!("tests/snapshots/{name}.png"))
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the view does not match tests/snapshots/{name}.png"
+        );
+    }
+
+    fn with_documents() -> RuleSuggestions {
+        let [one, _, _] = rule_ids();
+        let mut view = two_rows();
+        view.matches_wanted();
+        view.matches_found(
+            one,
+            vec![
+                PathBuf::from("Insurance/2023-05-02_policy.pdf"),
+                PathBuf::from("Insurance/2024-05-03_policy.pdf"),
+            ],
+        );
+        view
+    }
+
+    #[test]
+    fn the_view_matches_its_snapshots() {
+        matches_snapshot(with_documents(), "rule_suggestions_en");
+        matches_snapshot(with_documents(), "rule_suggestions_de");
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
 mod title_bar {
     use std::time::{Duration, SystemTime};
 

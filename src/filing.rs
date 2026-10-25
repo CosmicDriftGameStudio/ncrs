@@ -26,12 +26,13 @@ use ncrs_index::{Index, IndexError, IndexStatistics, KeyStore, RecoveryKey};
 #[cfg(target_os = "macos")]
 use ncrs_intake::ImageTextWithFallback;
 use ncrs_intake::{
-    ImageTextSource, LazyOcrText, Location, OfficeText, PdfText, PdfUnavailable, PlainText,
-    TextChain, OCR_MODELS_FOLDER,
+    ImageTextSource, LazyOcrText, Location, LocationMode, OfficeText, PdfText, PdfUnavailable,
+    PlainText, TextChain, OCR_MODELS_FOLDER,
 };
 use ncrs_pipeline::{intake_steps, IndexAccess, Load, Runner, Settings, SystemClock};
 
 use crate::config::{Filing, FilingLocation};
+use crate::suggestion_work::SuggestionAccess;
 
 /// A recovery key is 13 groups of four characters.
 const GROUP_COUNT: usize = 13;
@@ -666,6 +667,21 @@ impl FilingModule {
                 db_path: self.db_path.clone(),
                 slot: Arc::clone(&self.index),
             }),
+            _ => None,
+        }
+    }
+
+    /// The handle of the rule suggestions view: only when the module is
+    /// `Ready`, and over the archive locations that can be reached.
+    pub fn suggestion_access(&self) -> Option<SuggestionAccess> {
+        match self.phase {
+            Phase::Ready => Some(SuggestionAccess::new(
+                Arc::clone(&self.index),
+                self.reachable_locations()
+                    .filter(|location| location.mode == LocationMode::Archive)
+                    .map(|location| location.path.clone())
+                    .collect(),
+            )),
             _ => None,
         }
     }

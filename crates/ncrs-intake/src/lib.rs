@@ -26,7 +26,9 @@ pub use error::IntakeError;
 pub use extract::{
     extract_amount, extract_date, extract_number, parse_amount, parse_currency, parse_date,
 };
-pub use filing_plan::{plan, FilingPlan, PlanInput, Planning, FIELD_ORDER};
+pub use filing_plan::{
+    contains_condition_holds, pattern_is_valid, plan, FilingPlan, PlanInput, Planning, FIELD_ORDER,
+};
 pub use location::{Location, LocationMode};
 pub use ocr::{
     install_model, verify_model_bytes, LazyOcrText, OcrModelError, OcrModelFile, OcrText,

@@ -19,6 +19,7 @@ pub mod ocr_models;
 pub mod panel;
 pub mod picker;
 pub mod quick_open;
+pub mod rule_suggestions;
 pub mod search;
 pub mod statusbar;
 pub mod theme;

@@ -387,4 +387,7 @@ pub enum RuleSuggestion {
     /// The user already confirmed a rule with this condition and target; it
     /// was left as it is.
     AlreadyConfirmed(RuleId),
+    /// The user discarded this condition and target before; nothing was
+    /// stored.
+    Discarded,
 }

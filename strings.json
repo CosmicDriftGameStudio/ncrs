@@ -2069,6 +2069,174 @@
       "context": "Error in the OCR models card when there is no data folder to save the models in.",
       "en": "There is no data folder to save the models in.",
       "de": "Es gibt keinen Datenordner, in dem die Modelle gespeichert werden könnten."
+    },
+    {
+      "key": "action.rule_suggestions",
+      "context": "Entry of the command list and the menu that runs the key action rule_suggestions, which opens the view with the rules Hermes suggests from how documents are already filed. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Rule suggestions",
+      "de": "Regelvorschläge"
+    },
+    {
+      "key": "action.rule_suggestions.theme",
+      "context": "Theme name of the key action rule_suggestions, shown dimmed after its plain name action.rule_suggestions in the command list, and matched when typing. A playful name (a requisition is a request to be approved); the plain name beside it says what the action does.",
+      "en": "Requisitions",
+      "de": "Anträge"
+    },
+    {
+      "key": "rule_suggestions.explain",
+      "context": "Paragraph at the top of the rule suggestions view. Says where the suggestions come from and that none of them does anything before the user confirms it.",
+      "en": "Suggested from how your documents are already filed. A suggestion does nothing until you confirm it.",
+      "de": "Vorgeschlagen aus der bisherigen Ablage deiner Dokumente. Ein Vorschlag bewirkt nichts, bevor du ihn bestätigst."
+    },
+    {
+      "key": "rule_suggestions.analysing",
+      "context": "Line in the rule suggestions view while the document folders are being read and the suggestions are made. It runs in the background.",
+      "en": "Reading the document folders…",
+      "de": "Die Dokumentenordner werden gelesen…"
+    },
+    {
+      "key": "rule_suggestions.empty",
+      "context": "Line in the rule suggestions view when there is no suggestion. Suggestions need a document folder in which several documents share a phrase.",
+      "en": "No suggestions. They appear when several documents of a document folder share a phrase.",
+      "de": "Keine Vorschläge. Sie entstehen, wenn mehrere Dokumente eines Dokumentenordners eine Wendung teilen."
+    },
+    {
+      "key": "rule_suggestions.column_condition",
+      "context": "Heading of the first column of the rule suggestions list: the text a document has to contain for the rule to apply.",
+      "en": "Text contains",
+      "de": "Text enthält"
+    },
+    {
+      "key": "rule_suggestions.column_pattern",
+      "context": "Heading of the second column of the rule suggestions list: the filing pattern, which says where a matching document is filed.",
+      "en": "Filed as",
+      "de": "Abgelegt als"
+    },
+    {
+      "key": "rule_suggestions.column_kind",
+      "context": "Heading of the third column of the rule suggestions list: the kind of document the rule sets, such as Invoice.",
+      "en": "Kind",
+      "de": "Art"
+    },
+    {
+      "key": "rule_suggestions.column_evidence",
+      "context": "Heading of the last column of the rule suggestions list: how many documents support the suggestion.",
+      "en": "Evidence",
+      "de": "Beleg"
+    },
+    {
+      "key": "rule_suggestions.evidence",
+      "context": "Evidence of a suggested rule in its list row. Takes three numbers: how many documents of the folder contain the text, how many the folder has, and how many documents outside the folder contain it too.",
+      "en": "{matching} of {folder} in folder, {elsewhere} elsewhere",
+      "de": "{matching} von {folder} im Ordner, {elsewhere} sonst"
+    },
+    {
+      "key": "rule_suggestions.documents_heading",
+      "context": "Heading above the list of documents in the rule suggestions view that the selected suggestion matches, so the user can check the evidence.",
+      "en": "Documents that contain this text",
+      "de": "Dokumente, die diesen Text enthalten"
+    },
+    {
+      "key": "rule_suggestions.documents_looking",
+      "context": "Line in the rule suggestions view while the documents of the selected suggestion are looked up in the background.",
+      "en": "Looking…",
+      "de": "Suche läuft…"
+    },
+    {
+      "key": "rule_suggestions.documents_none",
+      "context": "Line in the rule suggestions view when no document contains the text of the selected suggestion.",
+      "en": "No document contains this text.",
+      "de": "Kein Dokument enthält diesen Text."
+    },
+    {
+      "key": "rule_suggestions.documents_more",
+      "context": "Last line of the list of matching documents when only the first ones are shown. Takes the number of documents that are not shown.",
+      "en": "… and {count} more",
+      "de": "… und {count} weitere"
+    },
+    {
+      "key": "rule_suggestions.field_condition",
+      "context": "Label of the field in the edit form of a suggested rule: the text a document has to contain.",
+      "en": "Text contains",
+      "de": "Text enthält"
+    },
+    {
+      "key": "rule_suggestions.field_kind",
+      "context": "Label of the field in the edit form of a suggested rule: the kind of document the rule sets, such as Invoice.",
+      "en": "Kind",
+      "de": "Art"
+    },
+    {
+      "key": "rule_suggestions.field_pattern",
+      "context": "Label of the field in the edit form of a suggested rule: the filing pattern, a path with placeholders such as year and name, below the folder of the Central Filing.",
+      "en": "Filed as (pattern)",
+      "de": "Abgelegt als (Muster)"
+    },
+    {
+      "key": "rule_suggestions.form_hint",
+      "context": "Hint under the edit form of a suggested rule. The text is searched for as it is, ignoring case; it is never a pattern with special characters.",
+      "en": "The text is looked for as typed, anywhere in a document, ignoring case.",
+      "de": "Der Text wird so gesucht, wie er dasteht, an beliebiger Stelle eines Dokuments und ohne Beachtung der Groß- und Kleinschreibung."
+    },
+    {
+      "key": "rule_suggestions.problem_no_condition",
+      "context": "Error line in the edit form of a suggested rule when the text field is empty, so the rule would match every document.",
+      "en": "Enter the text a document has to contain.",
+      "de": "Gib den Text ein, den ein Dokument enthalten muss."
+    },
+    {
+      "key": "rule_suggestions.problem_no_kind",
+      "context": "Error line in the edit form of a suggested rule when the kind field is empty.",
+      "en": "Enter the kind of document.",
+      "de": "Gib die Art des Dokuments ein."
+    },
+    {
+      "key": "rule_suggestions.problem_invalid_pattern",
+      "context": "Error line in the edit form of a suggested rule when the filing pattern cannot be used: an unknown placeholder, a stray brace, or a path that leaves the folder. Nothing is saved.",
+      "en": "This pattern cannot be used. Placeholders are written in braces, such as {year}.",
+      "de": "Dieses Muster ist nicht verwendbar. Platzhalter stehen in geschweiften Klammern, etwa {year}."
+    },
+    {
+      "key": "rule_suggestions.problem_failed",
+      "context": "Error line in the rule suggestions view when reading or writing the rules failed. Takes the technical detail, which stays untranslated.",
+      "en": "That did not work ({detail}).",
+      "de": "Das hat nicht geklappt ({detail})."
+    },
+    {
+      "key": "rule_suggestions.close",
+      "context": "Button in the rule suggestions view: closes it.",
+      "en": "Close",
+      "de": "Schließen"
+    },
+    {
+      "key": "rule_suggestions.reanalyse",
+      "context": "Button in the rule suggestions view: reads the document folders again and refreshes the suggestions.",
+      "en": "Analyse again",
+      "de": "Erneut analysieren"
+    },
+    {
+      "key": "rule_suggestions.discard",
+      "context": "Button in the rule suggestions view: throws the selected suggestion away; it is not suggested again.",
+      "en": "Discard",
+      "de": "Verwerfen"
+    },
+    {
+      "key": "rule_suggestions.edit",
+      "context": "Button in the rule suggestions view: opens the form to change the text, kind or pattern of the selected suggestion before confirming it.",
+      "en": "Edit",
+      "de": "Bearbeiten"
+    },
+    {
+      "key": "rule_suggestions.cancel_edit",
+      "context": "Button in the edit form of a suggested rule: closes the form without confirming and drops the changes.",
+      "en": "Cancel",
+      "de": "Abbrechen"
+    },
+    {
+      "key": "rule_suggestions.confirm",
+      "context": "Button in the rule suggestions view: turns the selected suggestion, as edited if the form is up, into a confirmed rule that Hermes uses from then on.",
+      "en": "Confirm",
+      "de": "Bestätigen"
     }
   ]
 }

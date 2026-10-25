@@ -3,6 +3,7 @@
 
 use std::path::PathBuf;
 
+use ncrs_index::RuleId;
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
 
@@ -20,6 +21,7 @@ use crate::jobs::JobEvent;
 use crate::keymap::KeyAction;
 use crate::ocr_models::DownloadError;
 use crate::open_vsx::FetchError;
+use crate::suggestion_work::SuggestedRule;
 use crate::theme_fetch::{Fetched, Installed};
 
 /// Identifies one of the two file panels.
@@ -263,6 +265,9 @@ pub enum Message {
     // --- Filing setup: the locations, written to the config ---
     FilingSetup(FilingSetupMessage),
 
+    // --- Rule suggestions: rules read out of how the archive is filed ---
+    RuleSuggestions(RuleSuggestionsMessage),
+
     // --- Quick Open (Cmd/Ctrl+P) ---
     QuickOpen(QuickOpenMessage),
 
@@ -422,6 +427,41 @@ pub enum FilingSetupMessage {
     Save,
     /// The filing settings read back from the written file.
     Saved(Result<Filing, FilingWriteError>),
+}
+
+/// Everything the rule suggestions view sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RuleSuggestionsMessage {
+    Open,
+    Close,
+    /// Learns the archive again and refreshes the list.
+    Reanalyse,
+    /// The work of the generation is done, with the open suggestions. Dropped
+    /// when the view was closed or the analysis started again meanwhile.
+    Loaded {
+        generation: u64,
+        result: Result<Vec<SuggestedRule>, String>,
+    },
+    Move(isize),
+    /// A click on the suggestion at this position.
+    Select(usize),
+    Edit,
+    CancelEdit,
+    ConditionChanged(String),
+    KindChanged(String),
+    PatternChanged(String),
+    /// Tab (`false`) or Shift+Tab (`true`) in the form.
+    FocusField {
+        backwards: bool,
+    },
+    /// Enter or the button: confirms the suggestion as it is, or as edited.
+    Confirm,
+    Discard,
+    /// The documents a suggestion's condition finds.
+    MatchesFound {
+        id: RuleId,
+        result: Result<Vec<PathBuf>, String>,
+    },
 }
 
 /// Everything the card that fetches a color theme sends.

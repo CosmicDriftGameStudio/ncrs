@@ -43,6 +43,17 @@ pub enum Planning {
     },
 }
 
+/// Whether a "text contains" condition holds for a text that is already
+/// lowercase: case-insensitive, and an empty condition never holds.
+pub fn contains_condition_holds(lowered_text: &str, needle: &str) -> bool {
+    !needle.is_empty() && lowered_text.contains(&needle.to_lowercase())
+}
+
+/// Whether `source` is a filing pattern `plan` can render.
+pub fn pattern_is_valid(source: &str) -> bool {
+    Pattern::parse(source).is_some()
+}
+
 /// The first confirmed rule that matches wins, in the order of `rules`.
 pub fn plan(rules: &[Rule], input: &PlanInput<'_>) -> Planning {
     let lowered_text = input.text.to_lowercase();
@@ -77,9 +88,7 @@ fn matches(spec: &RuleSpec, input: &PlanInput<'_>, lowered_text: &str) -> bool {
     let has_condition = spec.match_text.is_some() || spec.match_sender.is_some();
     let text_matches = match &spec.match_text {
         None => true,
-        Some(TextMatch::Contains(needle)) => {
-            !needle.is_empty() && lowered_text.contains(&needle.to_lowercase())
-        }
+        Some(TextMatch::Contains(needle)) => contains_condition_holds(lowered_text, needle),
         Some(TextMatch::Regex(source)) => {
             compile(source).is_some_and(|regex| regex.is_match(input.text))
         }
@@ -352,6 +361,27 @@ mod tests {
     use ncrs_index::{Amount, Currency, TaxContext};
 
     use super::*;
+
+    #[test]
+    fn a_pattern_is_valid_when_it_can_be_parsed() {
+        assert!(pattern_is_valid("{year}/Invoices/{sender}"));
+        assert!(!pattern_is_valid("{year}/{nonsense}"));
+        assert!(!pattern_is_valid("{year"));
+        assert!(!pattern_is_valid("/absolute"));
+    }
+
+    #[test]
+    fn a_contains_condition_ignores_case_and_an_empty_one_never_holds() {
+        assert!(contains_condition_holds(
+            "invoice from company a ltd",
+            "Company A"
+        ));
+        assert!(!contains_condition_holds(
+            "invoice from agency b",
+            "company a"
+        ));
+        assert!(!contains_condition_holds("anything", ""));
+    }
 
     fn spec(pattern: &str) -> RuleSpec {
         RuleSpec {
