@@ -16,9 +16,9 @@ use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::messages::{
     AiModelMessage, ClipboardKind, CommandPaletteMessage, FilingSetupMessage, FilingStatusMessage,
-    OcrModelsMessage, PanelSide, QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage,
-    RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage,
-    TransferKind,
+    OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, ReorganisationPlanMessage,
+    ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingsMessage,
+    ThemeFetchMessage, TransferKind,
 };
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
@@ -113,6 +113,7 @@ key_actions! {
     FilingSetup => "filing_setup",
     RuleSuggestions => "rule_suggestions",
     ReviewList => "review_list",
+    HermesQuickFix => "hermes_quick_fix",
     SavedQueries => "saved_queries",
     ReorganisationPlan => "reorganisation_plan",
     UndoReorganisation => "undo_reorganisation",
@@ -196,6 +197,7 @@ impl KeyAction {
             | Self::FilingSetup
             | Self::RuleSuggestions
             | Self::ReviewList
+            | Self::HermesQuickFix
             | Self::SavedQueries
             | Self::ReorganisationPlan
             | Self::UndoReorganisation
@@ -267,6 +269,7 @@ impl KeyAction {
             Self::FilingSetup => Message::FilingSetup(FilingSetupMessage::Toggle),
             Self::RuleSuggestions => Message::RuleSuggestions(RuleSuggestionsMessage::Open),
             Self::ReviewList => Message::ReviewList(ReviewListMessage::Open),
+            Self::HermesQuickFix => Message::QuickFix(QuickFixMessage::Open),
             Self::SavedQueries => Message::SavedQueries(SavedQueriesMessage::Open),
             Self::ReorganisationPlan => {
                 Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
@@ -457,6 +460,11 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
         (
             A::ReviewList,
             Binding::with_modifiers(Character("v".into()), Modifiers::COMMAND | Modifiers::SHIFT),
+        ),
+        // The quick fixes of an inquiry, as in VS Code and Xcode; Cmd+. (Ctrl+. elsewhere).
+        (
+            A::HermesQuickFix,
+            Binding::with_modifiers(Character(".".into()), Modifiers::COMMAND),
         ),
         // The saved queries, A for abfragen; Cmd+Shift+A, Ctrl+Shift+A elsewhere.
         (

@@ -370,5 +370,18 @@ fn problem_text(problem: &Problem, lang: Language) -> String {
     }
 }
 
+/// The id of a text field of the form.
+pub fn field_id(field: FormField) -> &'static str {
+    match field {
+        FormField::Sender => SENDER_ID,
+        FormField::Kind => KIND_ID,
+        FormField::Date => DATE_ID,
+        FormField::Number => NUMBER_ID,
+        FormField::Amount => AMOUNT_ID,
+        FormField::Tags => TAGS_ID,
+        FormField::Pattern => PATTERN_ID,
+    }
+}
+
 /// The id of the field that takes the focus when the form opens.
 pub const FIRST_FIELD_ID: &str = SENDER_ID;

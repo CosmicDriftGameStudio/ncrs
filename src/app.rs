@@ -40,7 +40,7 @@ use crate::menu::Availability;
 use crate::messages::{
     AiModelMessage, ClipboardKind, CommandPaletteMessage, ConflictChoice, FilingSetupMessage,
     FilingStatusMessage, HermesColumnMessage, HermesFocus, HermesPage, Message, OcrModelsMessage,
-    PanelSide, QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage,
+    PanelSide, QuickFixMessage, QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage,
     RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage,
     ThemeFetchMessage, TitleBarMessage, TransferKind,
 };
@@ -50,11 +50,12 @@ use crate::ocr_models::{download_models, DownloadError, OcrModelsCard};
 use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
 use crate::palette::{Palette, ThemePreset};
 use crate::query_work::{self, QueryAccess};
+use crate::quick_fix::{field_to_fix, QuickFix, QuickFixAction};
 use crate::quick_open::{QuickOpen, QUICK_OPEN_FILE_LIMIT};
 use crate::reorganisation_plan::ReorganisationView;
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
-use crate::review_list::ReviewList;
-use crate::review_work::ReviewAccess;
+use crate::review_list::{FormField, ReviewList};
+use crate::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
 use crate::rule_suggestions::RuleSuggestions;
 use crate::saved_queries::SavedQueries;
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
@@ -71,6 +72,7 @@ use crate::ui::filing_setup as filing_setup_ui;
 use crate::ui::filing_status as filing_status_ui;
 use crate::ui::hermes::Badges;
 use crate::ui::ocr_models as ocr_models_ui;
+use crate::ui::quick_fix as quick_fix_view;
 use crate::ui::quick_open as quick_open_ui;
 use crate::ui::reorganisation_plan as reorganisation_plan_ui;
 use crate::ui::review_list as review_list_ui;
@@ -711,6 +713,9 @@ pub struct App {
     volume_menu: Option<VolumeMenu>,
     /// The context menu, while it is up.
     context_menu: Option<ContextMenu>,
+    /// The fixes for an inquiry (Cmd+.); at most one of it and the context menu.
+    quick_fix: Option<QuickFix>,
+    quick_fix_generation: u64,
     type_ahead: TypeAhead,
     /// The path as typed while the status bar's path field is being edited.
     path_field: Option<String>,
@@ -909,6 +914,8 @@ pub struct PromptKeyState {
     pub volume_menu: bool,
     /// The context menu is up, so keys move its highlight.
     pub context_menu: bool,
+    /// The quick-fix menu is up, so keys move its highlight.
+    pub quick_fix: bool,
     /// Whether the operation is running; keys are ignored then.
     pub busy: bool,
     /// The name typed so far.
@@ -946,6 +953,7 @@ impl Default for PromptKeyState {
             delete_dialog: DeleteKeys::default(),
             volume_menu: false,
             context_menu: false,
+            quick_fix: false,
             busy: false,
             typed: Arc::default(),
         }
@@ -1004,6 +1012,21 @@ fn reorganisation_plan_key(
 /// The review list is a card: Enter confirms, the arrows move in the list, `e`
 /// opens the form. With the form up the fields take the typing; Escape is
 /// `InputState`'s then.
+/// The quick-fix menu takes the arrows and Enter; any other key does nothing
+/// until it is closed.
+fn quick_fix_key(key: &Key) -> Option<Message> {
+    let fix = |message| Some(Message::QuickFix(message));
+    match key.as_ref() {
+        Key::Named(Named::Escape) => fix(QuickFixMessage::Close),
+        Key::Named(Named::Enter) => fix(QuickFixMessage::Activate),
+        Key::Named(Named::ArrowUp) => fix(QuickFixMessage::Move(-1)),
+        Key::Named(Named::ArrowDown) => fix(QuickFixMessage::Move(1)),
+        Key::Named(Named::Home) => fix(QuickFixMessage::First),
+        Key::Named(Named::End) => fix(QuickFixMessage::Last),
+        _ => None,
+    }
+}
+
 fn review_list_key(
     prompt: &PromptKeyState,
     key: &Key,
@@ -1209,6 +1232,9 @@ fn keys_without_prompt(
             Key::Named(Named::End) => Some(Message::VolumeMenuLast),
             _ => None,
         };
+    }
+    if prompt.quick_fix {
+        return quick_fix_key(&key);
     }
     if prompt.context_menu {
         return match key.as_ref() {
@@ -1519,6 +1545,41 @@ fn bound_message(
 /// Fills the placeholders of a translated template in one pass, so a value
 /// that itself contains `{key}` or `{reason}` (a file named `{key}.txt`) is
 /// shown as it is and not filled again.
+/// What the status bar says about the documents filed from the quick-fix menu;
+/// `None` when the only one failed, which is an error rather than a notice.
+fn accept_notice(summary: &AcceptSummary, lang: Language) -> Option<String> {
+    let template = |msg: Msg| lang.text(msg).to_owned();
+    match (summary.total(), summary) {
+        (
+            1,
+            AcceptSummary {
+                last_filed: Some(path),
+                ..
+            },
+        ) => Some(fill_template(
+            lang.text(Msg::StatusQuickFixFiled),
+            &[("{path}", &path.display().to_string())],
+        )),
+        (
+            1,
+            AcceptSummary {
+                target_exists: 1, ..
+            },
+        ) => Some(template(Msg::StatusQuickFixTargetExists)),
+        (1, AcceptSummary { requeued: 1, .. }) => Some(template(Msg::StatusQuickFixRequeued)),
+        (1, _) => None,
+        _ => Some(fill_template(
+            lang.text(Msg::StatusQuickFixSummary),
+            &[
+                ("{filed}", &summary.filed.to_string()),
+                ("{taken}", &summary.target_exists.to_string()),
+                ("{requeued}", &summary.requeued.to_string()),
+                ("{failed}", &summary.failed.to_string()),
+            ],
+        )),
+    }
+}
+
 pub fn fill_template(template: &str, values: &[(&str, &str)]) -> String {
     let mut filled = String::with_capacity(template.len());
     let mut rest = template;
@@ -1738,6 +1799,7 @@ fn repeats(message: &Message) -> bool {
             | Message::ContextMenuMove(_)
             | Message::ContextMenuFirst
             | Message::ContextMenuLast
+            | Message::QuickFix(QuickFixMessage::Move(_))
             | Message::QuickOpen(QuickOpenMessage::Move(_))
             | Message::CommandPalette(CommandPaletteMessage::Move(_))
             | Message::ThemeFetch(ThemeFetchMessage::Move(_))
@@ -2113,6 +2175,8 @@ impl App {
             key_state: OnceLock::new(),
             volume_menu: None,
             context_menu: None,
+            quick_fix: None,
+            quick_fix_generation: 0,
             type_ahead: TypeAhead::default(),
             path_field: None,
             path_check_id: 0,
@@ -2505,6 +2569,8 @@ impl App {
             | Message::ContextMenuClick(_)
             | Message::ContextMenuClose) => self.update_context_menu(menu_message),
 
+            Message::QuickFix(fix_message) => self.update_quick_fix(fix_message),
+
             // --- path field ---
             path_message @ (Message::PathFieldInput(_)
             | Message::PathFieldSubmit
@@ -2821,10 +2887,7 @@ impl App {
             Message::Settings(settings_message) => self.update_settings(settings_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => self.update_filing_status(page_message),
-            Message::HermesColumn(column_message) => {
-                self.update_hermes_column(column_message);
-                Task::none()
-            }
+            Message::HermesColumn(column_message) => self.update_hermes_column(column_message),
             Message::FilingSetup(setup_message) => self.update_filing_setup(setup_message),
             #[cfg(any(target_os = "macos", test))]
             Message::RunCommand(action) => self.run_command(action),
@@ -2878,6 +2941,207 @@ impl App {
             _ => {}
         }
         Task::none()
+    }
+
+    fn update_quick_fix(&mut self, message: QuickFixMessage) -> Task<Message> {
+        match message {
+            QuickFixMessage::Open => self.open_quick_fix(),
+            QuickFixMessage::Close => {
+                self.quick_fix = None;
+                Task::none()
+            }
+            QuickFixMessage::Loaded { generation, result } => {
+                self.quick_fix_loaded(generation, result)
+            }
+            QuickFixMessage::Move(delta) => self.with_quick_fix(|menu| menu.move_by(delta)),
+            QuickFixMessage::First => self.with_quick_fix(QuickFix::select_first),
+            QuickFixMessage::Last => self.with_quick_fix(QuickFix::select_last),
+            QuickFixMessage::Hover(index) => self.with_quick_fix(|menu| menu.select(index)),
+            QuickFixMessage::Activate => self.run_quick_fix_entry(),
+            QuickFixMessage::Click(index) => {
+                drop(self.with_quick_fix(|menu| menu.select(index)));
+                self.run_quick_fix_entry()
+            }
+            QuickFixMessage::Filed(summary) => self.quick_fix_filed(&summary),
+        }
+    }
+
+    fn with_quick_fix(&mut self, change: impl FnOnce(&mut QuickFix)) -> Task<Message> {
+        if let Some(menu) = self.quick_fix.as_mut() {
+            change(menu);
+        }
+        Task::none()
+    }
+
+    /// The inquiries under the cursor or among the marked files of the active
+    /// panel.
+    fn inquiry_paths(&self) -> Vec<PathBuf> {
+        self.action_sources()
+            .into_iter()
+            .filter(|path| self.hermes_column.state_of(path) == Some(HermesFileState::Inquiry))
+            .collect()
+    }
+
+    /// Cmd+.: opens the menu on the inquiries of the active panel, and looks up
+    /// their reviews on a blocking thread. Says so when there are none.
+    fn open_quick_fix(&mut self) -> Task<Message> {
+        if self.overlay_is_open() || self.search_open || !self.hermes_active() {
+            return Task::none();
+        }
+        let paths = self.inquiry_paths();
+        let found_access = self.filing.as_ref().and_then(FilingModule::review_access);
+        let Some(access) = found_access.filter(|_| !paths.is_empty()) else {
+            let text = self.lang.text(Msg::StatusQuickFixNone).to_owned();
+            return self.show_notice(text);
+        };
+        let side = self.active_panel;
+        let panel = self.panel(side);
+        let anchor = layout::cursor_row_anchor(
+            side == PanelSide::Right,
+            panel.selected.saturating_sub(panel.scroll_offset),
+            self.window_size,
+        );
+        self.job_error = None;
+        self.notice = None;
+        self.quick_fix_generation = self.quick_fix_generation.wrapping_add(1);
+        let generation = self.quick_fix_generation;
+        self.quick_fix = Some(QuickFix::new(anchor, self.window_size));
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.items_for(&paths)),
+            move |joined| {
+                let result = joined.unwrap_or_else(|err| Err(err.to_string()));
+                Message::QuickFix(QuickFixMessage::Loaded { generation, result })
+            },
+        )
+    }
+
+    fn quick_fix_loaded(
+        &mut self,
+        generation: u64,
+        result: Result<Vec<ReviewItem>, String>,
+    ) -> Task<Message> {
+        if generation != self.quick_fix_generation || self.quick_fix.is_none() {
+            return Task::none();
+        }
+        match result {
+            Ok(items) if items.is_empty() => {
+                self.quick_fix = None;
+                let text = self.lang.text(Msg::StatusQuickFixNone).to_owned();
+                self.show_notice(text)
+            }
+            Ok(items) => self.with_quick_fix(|menu| menu.loaded(items)),
+            Err(detail) => {
+                self.quick_fix = None;
+                self.set_status_error(&detail);
+                Task::none()
+            }
+        }
+    }
+
+    /// Carries out the highlighted entry. The menu closes first for everything
+    /// that opens or files something else.
+    fn run_quick_fix_entry(&mut self) -> Task<Message> {
+        let Some(menu) = self.quick_fix.as_mut() else {
+            return Task::none();
+        };
+        let Some(action) = menu.selected_action() else {
+            return Task::none();
+        };
+        match action {
+            QuickFixAction::Accept(group) if menu.group_items(group).len() > 1 => {
+                menu.summarise(group);
+                Task::none()
+            }
+            QuickFixAction::Accept(group) | QuickFixAction::FileGroup(group) => {
+                self.file_quick_fix_group(group)
+            }
+            QuickFixAction::Back => {
+                menu.back();
+                Task::none()
+            }
+            QuickFixAction::SetFields => self.open_review_from_quick_fix(false),
+            QuickFixAction::CreateRule => self.open_review_from_quick_fix(true),
+            QuickFixAction::Later => {
+                self.quick_fix = None;
+                Task::none()
+            }
+            QuickFixAction::Exclude => {
+                let paths = menu.paths();
+                self.quick_fix = None;
+                self.exclude_from_hermes(paths)
+            }
+        }
+    }
+
+    /// Files the documents of a group one after the other, each through the
+    /// review's own confirm: never a plain move.
+    fn file_quick_fix_group(&mut self, group: usize) -> Task<Message> {
+        let Some(menu) = self.quick_fix.take() else {
+            return Task::none();
+        };
+        let items = menu.group_items(group);
+        let Some(access) = self.filing.as_ref().and_then(FilingModule::review_access) else {
+            self.set_status_error(INDEX_NOT_OPEN);
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.accept(&items)),
+            |joined| {
+                Message::QuickFix(QuickFixMessage::Filed(joined.unwrap_or_else(|err| {
+                    AcceptSummary {
+                        failed: 1,
+                        first_failure: Some(err.to_string()),
+                        ..AcceptSummary::default()
+                    }
+                })))
+            },
+        )
+    }
+
+    fn quick_fix_filed(&mut self, summary: &AcceptSummary) -> Task<Message> {
+        self.hermes_column.invalidate_all();
+        self.hermes_reads.clear();
+        self.hermes_detail_reads.clear();
+        let notice = match accept_notice(summary, self.lang) {
+            Some(text) => self.show_notice(text),
+            None => {
+                let detail = summary.first_failure.clone().unwrap_or_default();
+                self.set_status_error(&detail);
+                Task::none()
+            }
+        };
+        let tasks = [PanelSide::Left, PanelSide::Right].map(|each| {
+            let panel = self.panel(each);
+            let path = panel.path.clone();
+            let cursor = panel
+                .selected_entry()
+                .map(|entry| entry.name.to_string_lossy().into_owned());
+            self.load(each, path, cursor)
+        });
+        Task::batch(tasks.into_iter().chain([notice]))
+    }
+
+    /// Opens the review page on the document of the menu with its form open:
+    /// to fill in the missing field, or to file it by hand and make a rule from
+    /// it afterwards, which the page offers only after filing.
+    fn open_review_from_quick_fix(&mut self, for_rule: bool) -> Task<Message> {
+        let Some(menu) = self.quick_fix.take() else {
+            return Task::none();
+        };
+        let Some(item) = menu.item_to_fix() else {
+            return Task::none();
+        };
+        let field = if for_rule {
+            FormField::Sender
+        } else {
+            field_to_fix(item)
+        };
+        let path = item.path.clone();
+        let opened = self.open_review_list();
+        if let Some(view) = self.review_list.as_mut() {
+            view.edit_on_load(path, field);
+        }
+        opened
     }
 
     fn update_context_menu(&mut self, message: Message) -> Task<Message> {
@@ -3236,6 +3500,17 @@ impl App {
             titlebar::with_resize_edges(base)
         };
 
+        if let Some(menu) = self.quick_fix.as_ref() {
+            let click_catcher = mouse_area(Space::new().width(Length::Fill).height(Length::Fill))
+                .on_press(Message::QuickFix(QuickFixMessage::Close));
+            return Stack::with_children([
+                root,
+                click_catcher.into(),
+                quick_fix_view::view(menu, self.lang, &self.palette),
+            ])
+            .into();
+        }
+
         if let Some(menu) = self.context_menu.as_ref() {
             // A left press anywhere beside the menu closes it, the path field
             // and the column titles included: those take their own clicks and
@@ -3507,6 +3782,7 @@ impl App {
         let config_error = self.config_error.is_some();
         let volume_menu = self.volume_menu.is_some();
         let context_menu = self.context_menu.is_some();
+        let quick_fix = self.quick_fix.is_some();
         let path_editing = self.path_field.is_some();
         let search = self.search_has_keys();
         let quick_open = self.quick_open.is_some();
@@ -3550,6 +3826,7 @@ impl App {
                 delete_dialog,
                 volume_menu,
                 context_menu,
+                quick_fix,
                 path_editing,
                 search,
                 quick_open,
@@ -3584,6 +3861,7 @@ impl App {
                 delete_dialog,
                 volume_menu,
                 context_menu,
+                quick_fix,
                 path_editing,
                 search,
                 quick_open,
@@ -3975,6 +4253,7 @@ impl App {
     /// right click may replace.
     fn blocking_overlay_is_open(&self) -> bool {
         self.prompt.is_some()
+            || self.quick_fix.is_some()
             || self.pending_conflict.is_some()
             || self.transfer_dialog.is_some()
             || self.progress_mask_is_open()
@@ -5470,7 +5749,9 @@ impl App {
                     Ok(rows) => view.loaded(rows),
                     Err(detail) => view.failed(detail),
                 }
-                Task::none()
+                view.take_focus_request().map_or_else(Task::none, |field| {
+                    operation::focus(review_list_ui::field_id(field))
+                })
             }
             ReviewListMessage::Move(delta) => {
                 if let Some(view) = self.review_list.as_mut() {
@@ -7096,7 +7377,7 @@ impl App {
         ))
     }
 
-    fn update_hermes_column(&mut self, message: HermesColumnMessage) {
+    fn update_hermes_column(&mut self, message: HermesColumnMessage) -> Task<Message> {
         match message {
             HermesColumnMessage::Read {
                 side,
@@ -7107,21 +7388,65 @@ impl App {
                 let Ok(reading) = result else {
                     // Stays in `hermes_reads`: not asked again until the next
                     // invalidation, so a broken index is not hammered.
-                    return;
+                    return Task::none();
                 };
                 self.hermes_reads.remove(&(directory, stage));
                 let panel = self.panel(side);
                 if reading.generation == panel.request_id && reading.directory == panel.path {
                     self.hermes_column.apply(reading);
                 }
+                Task::none()
             }
             HermesColumnMessage::Detail { path, result } => {
                 if let Ok(Some(detail)) = result {
                     self.hermes_detail_reads.remove(&path);
                     self.hermes_column.apply_detail(path, detail);
                 }
+                Task::none()
             }
+            HermesColumnMessage::Excluded { paths, result } => self.paths_excluded(&paths, result),
         }
+    }
+
+    /// Tells the index that Hermes leaves `paths` alone from now on; the column
+    /// shows them as excluded once the index has answered.
+    fn exclude_from_hermes(&mut self, paths: Vec<PathBuf>) -> Task<Message> {
+        let Some(access) = self.filing.as_ref().and_then(FilingModule::review_access) else {
+            self.set_status_error(INDEX_NOT_OPEN);
+            return Task::none();
+        };
+        let excluded = paths.clone();
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.exclude(&paths)),
+            move |joined| {
+                Message::HermesColumn(HermesColumnMessage::Excluded {
+                    paths: excluded.clone(),
+                    result: joined.unwrap_or_else(|err| Err(err.to_string())),
+                })
+            },
+        )
+    }
+
+    fn paths_excluded(&mut self, paths: &[PathBuf], result: Result<(), String>) -> Task<Message> {
+        if let Err(detail) = result {
+            self.set_status_error(&detail);
+            return Task::none();
+        }
+        for path in paths {
+            self.invalidate_hermes_path(path);
+        }
+        let text = fill_template(
+            self.lang.text(Msg::StatusQuickFixExcluded),
+            &[("{count}", &paths.len().to_string())],
+        );
+        self.show_notice(text)
+    }
+
+    /// The column asks again for everything that depends on `path`.
+    fn invalidate_hermes_path(&mut self, path: &Path) {
+        self.hermes_column.invalidate_path(path);
+        self.hermes_reads.clear();
+        self.hermes_detail_reads.remove(path);
     }
 
     fn refresh_filing_snapshot(&mut self) {
@@ -8142,6 +8467,8 @@ impl App {
             key_state: OnceLock::new(),
             volume_menu: None,
             context_menu: None,
+            quick_fix: None,
+            quick_fix_generation: 0,
             type_ahead: TypeAhead::default(),
             path_field: None,
             path_check_id: 0,
@@ -8410,6 +8737,33 @@ impl App {
                 suggestion: Some(PathBuf::from("Receipts/2025/Market/2025-03 receipt.pdf")),
             },
         );
+        app
+    }
+
+    /// The Hermes column sample with the quick-fix menu open on its inquiry:
+    /// one file whose sender was not read and whose suggestion is known.
+    pub fn with_hermes_quick_fix_sample() -> Self {
+        let mut app = Self::with_hermes_column_sample();
+        let path = app.right_panel.path.join("2025-03 receipt market.pdf");
+        let mut item = crate::review_list::tests::loaded_list()
+            .rows()
+            .to_vec()
+            .swap_remove(0);
+        item.path = path;
+        item.fields.sender = None;
+        item.fields.kind = Some("receipt".to_owned());
+        item.fields.date = chrono::NaiveDate::from_ymd_opt(2025, 3, 14);
+        item.proposed_pattern = Some("Receipts/2025/Market/2025-03 {kind}.pdf".to_owned());
+        let anchor = layout::cursor_row_anchor(
+            true,
+            app.right_panel
+                .selected
+                .saturating_sub(app.right_panel.scroll_offset),
+            app.window_size,
+        );
+        let mut menu = QuickFix::new(anchor, app.window_size);
+        menu.loaded(vec![item]);
+        app.quick_fix = Some(menu);
         app
     }
 

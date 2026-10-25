@@ -3929,6 +3929,150 @@
       "context": "Hint in the footer of the progress dialog: the Escape key stops the job. Starts with the key name, keep it.",
       "en": "Esc stop",
       "de": "Esc anhalten"
+    },
+    {
+      "key": "action.hermes_quick_fix",
+      "context": "Entry of the command list and the menu that runs the key action hermes_quick_fix: the menu of fixes for the inquiry under the cursor or among the marked files.",
+      "en": "Quick fix for an inquiry",
+      "de": "Schnellkorrektur für eine Rückfrage"
+    },
+    {
+      "key": "quick_fix.header",
+      "context": "First line of the quick-fix menu for one file. {reason} is why Hermes asks, already worded, for example the field that is missing.",
+      "en": "Inquiry · {reason}",
+      "de": "Rückfrage · {reason}"
+    },
+    {
+      "key": "quick_fix.header_many",
+      "context": "First line of the quick-fix menu for several marked files. {count} is their number.",
+      "en": "{count} inquiries",
+      "de": "{count} Rückfragen"
+    },
+    {
+      "key": "quick_fix.header_many_detail",
+      "context": "Second line of the quick-fix menu for several files: how many have a suggestion where to file them and how many have none.",
+      "en": "{suggested} with a suggestion · {without} without",
+      "de": "{suggested} mit Vorschlag · {without} ohne"
+    },
+    {
+      "key": "quick_fix.read",
+      "context": "Second line of the quick-fix menu for one file: what Hermes read from it. A field it did not find is a question mark. The kind is shown as stored.",
+      "en": "Read: kind {kind} · date {date} · sender {sender}",
+      "de": "Gelesen: Art {kind} · Datum {date} · Absender {sender}"
+    },
+    {
+      "key": "quick_fix.loading",
+      "context": "Shown in the quick-fix menu while the open inquiries are being looked up. Just an ellipsis, the same in both languages.",
+      "en": "…",
+      "de": "…"
+    },
+    {
+      "key": "quick_fix.accept",
+      "context": "Entry of the quick-fix menu for one file: files it where Hermes suggests. The suggested path is shown beside it.",
+      "en": "Accept suggestion",
+      "de": "Vorschlag annehmen"
+    },
+    {
+      "key": "quick_fix.accept_group",
+      "context": "Entry of the quick-fix menu for several files: files all of them whose suggestion lands in one folder. {count} files, {directory} the folder below the archive.",
+      "en": "{count} files → {directory}/ accept",
+      "de": "{count} Dateien → {directory}/ annehmen"
+    },
+    {
+      "key": "quick_fix.set_field",
+      "context": "Entry of the quick-fix menu for one file: opens the review page to fill in a missing field.",
+      "en": "Set field…",
+      "de": "Feld setzen…"
+    },
+    {
+      "key": "quick_fix.set_fields_group",
+      "context": "Entry of the quick-fix menu for several files: those that have no suggestion are filled in on the review page. {count} is their number.",
+      "en": "{count} without suggestion: set fields…",
+      "de": "{count} ohne Vorschlag: Felder setzen…"
+    },
+    {
+      "key": "quick_fix.create_rule",
+      "context": "Entry of the quick-fix menu for one file: opens the review page on it to file it by hand and make a rule from it.",
+      "en": "Create rule from this file",
+      "de": "Regel aus dieser Datei anlegen"
+    },
+    {
+      "key": "quick_fix.later",
+      "context": "Entry of the quick-fix menu that closes it and leaves the inquiry open.",
+      "en": "Later",
+      "de": "Später"
+    },
+    {
+      "key": "quick_fix.exclude",
+      "context": "Entry of the quick-fix menu for one file: Hermes leaves it alone from now on.",
+      "en": "Exclude from Hermes",
+      "de": "Von Hermes ausnehmen"
+    },
+    {
+      "key": "quick_fix.exclude_all",
+      "context": "Entry of the quick-fix menu for several files: Hermes leaves all of them alone from now on. {count} is their number.",
+      "en": "Exclude all {count} from Hermes",
+      "de": "Alle {count} von Hermes ausnehmen"
+    },
+    {
+      "key": "quick_fix.summary_title",
+      "context": "First line of the quick-fix menu before a group of files is filed. {count} files, {directory} the folder below the archive.",
+      "en": "File {count} documents into {directory}/?",
+      "de": "{count} Dokumente nach {directory}/ ablegen?"
+    },
+    {
+      "key": "quick_fix.summary_hint",
+      "context": "Second line of the quick-fix menu before a group of files is filed: how it is done.",
+      "en": "Each is moved on its own, nothing is overwritten.",
+      "de": "Jedes wird einzeln verschoben, nichts wird überschrieben."
+    },
+    {
+      "key": "quick_fix.file_group",
+      "context": "Entry of the quick-fix menu that files the group after the summary. {count} is the number of documents.",
+      "en": "File {count} documents",
+      "de": "{count} Dokumente ablegen"
+    },
+    {
+      "key": "quick_fix.back",
+      "context": "Entry of the quick-fix menu that returns from the summary to the list of fixes.",
+      "en": "Back",
+      "de": "Zurück"
+    },
+    {
+      "key": "status.quick_fix_none",
+      "context": "Status bar message when the quick-fix key is pressed on a file without an open inquiry.",
+      "en": "No suggestion here",
+      "de": "Hier gibt es keinen Vorschlag"
+    },
+    {
+      "key": "status.quick_fix_filed",
+      "context": "Status bar message after one document was filed from the quick-fix menu. {path} is the place below the archive.",
+      "en": "Filed to {path}",
+      "de": "Abgelegt nach {path}"
+    },
+    {
+      "key": "status.quick_fix_target_exists",
+      "context": "Status bar message when the quick-fix menu could not file a document because another file is at the suggested place.",
+      "en": "Not filed: the place is already taken",
+      "de": "Nicht abgelegt: Der Platz ist schon belegt"
+    },
+    {
+      "key": "status.quick_fix_requeued",
+      "context": "Status bar message when the document changed or vanished while the quick-fix menu filed it, so Hermes looks at it again.",
+      "en": "The file changed, Hermes reads it again",
+      "de": "Die Datei hat sich geändert, Hermes liest sie neu"
+    },
+    {
+      "key": "status.quick_fix_summary",
+      "context": "Status bar message after the quick-fix menu filed several documents. Each number is a count; taken means another file is at the suggested place.",
+      "en": "{filed} filed, {taken} place taken, {requeued} read again, {failed} failed",
+      "de": "{filed} abgelegt, {taken} Platz belegt, {requeued} neu gelesen, {failed} fehlgeschlagen"
+    },
+    {
+      "key": "status.quick_fix_excluded",
+      "context": "Status bar message after files were excluded from Hermes by the quick-fix menu. {count} is their number.",
+      "en": "Excluded from Hermes: {count}",
+      "de": "Von Hermes ausgenommen: {count}"
     }
   ]
 }

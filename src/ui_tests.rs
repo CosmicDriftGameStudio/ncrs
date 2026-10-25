@@ -3726,6 +3726,25 @@ mod title_bar {
     }
 
     #[test]
+    fn the_hermes_quick_fix_matches_its_snapshots() {
+        for (language, name) in [
+            (Language::English, "hermes_quick_fix_en"),
+            (Language::German, "hermes_quick_fix_de"),
+        ] {
+            let app = App::with_hermes_quick_fix_sample().in_language(language);
+            let matches = simulator(&app)
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(
+                matches,
+                "the quick-fix menu does not match tests/snapshots/{name}.png"
+            );
+        }
+    }
+
+    #[test]
     fn the_main_view_matches_its_snapshots() {
         for (preset, language, name) in [
             ("cosmic", Language::English, "main_view_cosmic_en"),

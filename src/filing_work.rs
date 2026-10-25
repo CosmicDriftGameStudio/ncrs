@@ -136,6 +136,11 @@ pub fn file_planned<P: Progress, S: Source>(
         let Some(document) = index.document(id)? else {
             continue;
         };
+        // Excluded after it was planned: Hermes leaves it where it is.
+        if index.is_excluded(&document.path)? {
+            summary.left += 1;
+            continue;
+        }
         match decide(index, &rules, root, &document)? {
             Decision::Move(item) => items.push(item),
             Decision::Reviewed => summary.reviewed += 1,
@@ -322,6 +327,20 @@ mod tests {
                 .map(|d| d.id),
             Some(document.id)
         );
+    }
+
+    #[test]
+    fn an_excluded_planned_document_stays_where_it_is() {
+        let mut setup = Setup::new();
+        let document = setup.planned("scan 1.pdf", "Invoice from Company A");
+        setup.index.exclude_path(&document.path).unwrap();
+
+        let summary = setup.run(&Move);
+
+        assert_eq!(summary.filed, 0);
+        assert_eq!(summary.left, 1);
+        assert!(document.path.exists());
+        assert!(!setup.target().exists());
     }
 
     #[test]

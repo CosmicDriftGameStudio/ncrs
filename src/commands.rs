@@ -188,6 +188,7 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             Msg::ActionReviewList,
             Msg::ActionReviewListTheme,
         ),
+        KeyAction::HermesQuickFix => Command::plain(action, Hermes, Msg::ActionHermesQuickFix),
         KeyAction::SavedQueries => Command::themed(
             action,
             Hermes,

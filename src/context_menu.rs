@@ -203,7 +203,7 @@ impl ContextMenu {
 
 /// Where a span of `length` starts so it stays within `0..limit`: at `anchor`,
 /// or ending there when it would not fit.
-fn place(anchor: f32, length: f32, limit: f32) -> f32 {
+pub fn place(anchor: f32, length: f32, limit: f32) -> f32 {
     let start = if anchor + length > limit {
         anchor - length
     } else {

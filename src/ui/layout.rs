@@ -20,6 +20,10 @@ pub const MENU_WIDTH: f32 = 300.0;
 pub const MENU_ITEM_HEIGHT: f32 = 24.0;
 pub const MENU_SEPARATOR_HEIGHT: f32 = 7.0;
 pub const MENU_PADDING: f32 = 4.0;
+/// The quick-fix menu: wider than the context menu for a target path, with a
+/// two-line header above its entries.
+pub const QUICK_FIX_WIDTH: f32 = 480.0;
+pub const QUICK_FIX_HEADER_HEIGHT: f32 = 44.0;
 
 /// The star column, left of the name. Its own button so a click there tags the
 /// row instead of moving the cursor.

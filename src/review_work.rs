@@ -62,6 +62,49 @@ pub struct ReviewItem {
     pub proposed_pattern: Option<String>,
 }
 
+impl ReviewItem {
+    /// Where the closest rule would file it, below the archive; `None` when
+    /// no rule came close or the fields do not fit its pattern.
+    pub fn suggested_target(&self) -> Option<PathBuf> {
+        let pattern = self.proposed_pattern.as_deref()?;
+        render_pattern(pattern, &self.fields)
+    }
+}
+
+/// What accepting the suggestions of several documents came to.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AcceptSummary {
+    /// The path below the archive of the last document filed.
+    pub last_filed: Option<PathBuf>,
+    pub filed: usize,
+    pub target_exists: usize,
+    pub requeued: usize,
+    /// No suggestion, or the work failed; the first detail is kept.
+    pub failed: usize,
+    pub first_failure: Option<String>,
+}
+
+impl AcceptSummary {
+    fn record(&mut self, outcome: Result<ConfirmOutcome, String>) {
+        match outcome {
+            Ok(ConfirmOutcome::Filed { relative_path }) => {
+                self.filed += 1;
+                self.last_filed = Some(relative_path);
+            }
+            Ok(ConfirmOutcome::TargetExists) => self.target_exists += 1,
+            Ok(ConfirmOutcome::Requeued) => self.requeued += 1,
+            Err(detail) => {
+                self.failed += 1;
+                self.first_failure.get_or_insert(detail);
+            }
+        }
+    }
+
+    pub fn total(&self) -> usize {
+        self.filed + self.target_exists + self.requeued + self.failed
+    }
+}
+
 /// What filing a document by hand came to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfirmOutcome {
@@ -88,6 +131,32 @@ impl ReviewAccess {
 
     pub fn load(&self) -> Result<Vec<ReviewItem>, String> {
         self.with_index(|index| load(index))
+    }
+
+    /// The open reviews of these files, in the order the index lists them.
+    pub fn items_for(&self, paths: &[PathBuf]) -> Result<Vec<ReviewItem>, String> {
+        self.with_index(|index| {
+            load_matching(index, |path| paths.iter().any(|wanted| wanted == path))
+        })
+    }
+
+    /// Files each item under the rule that came closest, one after the other,
+    /// through the same journaled move as [`Self::confirm`].
+    pub fn accept(&self, items: &[ReviewItem]) -> AcceptSummary {
+        let mut summary = AcceptSummary::default();
+        for item in items {
+            let outcome = match &item.proposed_pattern {
+                Some(pattern) => self.confirm(item.entry, item.document_id, &item.fields, pattern),
+                None => Err(PATTERN_DOES_NOT_FIT.to_owned()),
+            };
+            summary.record(outcome);
+        }
+        summary
+    }
+
+    /// Hermes leaves these paths alone from now on.
+    pub fn exclude(&self, paths: &[PathBuf]) -> Result<(), String> {
+        self.with_index(|index| paths.iter().try_for_each(|path| index.exclude_path(path)))
     }
 
     /// See [`suggestion_for`].
@@ -163,12 +232,22 @@ impl ReviewAccess {
 }
 
 fn load(index: &Index) -> Result<Vec<ReviewItem>, IndexError> {
+    load_matching(index, |_path| true)
+}
+
+fn load_matching(
+    index: &Index,
+    wanted: impl Fn(&Path) -> bool,
+) -> Result<Vec<ReviewItem>, IndexError> {
     let rules = index.rules()?;
     let mut items = Vec::new();
     for entry in index.open_reviews()? {
         let Some(document) = index.document(entry.document_id)? else {
             continue;
         };
+        if !wanted(&document.path) {
+            continue;
+        }
         items.push(review_item(index, &rules, &entry, document)?);
     }
     Ok(items)

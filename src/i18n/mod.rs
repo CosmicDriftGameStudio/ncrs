@@ -173,6 +173,7 @@ mod tests {
         matches!(
             msg,
             Msg::ColumnName
+                | Msg::QuickFixLoading
                 | Msg::MarkerDir
                 | Msg::MarkerUp
                 | Msg::DialogMkdirLabel

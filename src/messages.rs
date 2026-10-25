@@ -30,7 +30,7 @@ use crate::palette::ThemePreset;
 use crate::query_work::{ExportSummary, QueryHit};
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
 use crate::review_list::FormField;
-use crate::review_work::{ConfirmOutcome, ReviewItem};
+use crate::review_work::{AcceptSummary, ConfirmOutcome, ReviewItem};
 use crate::saved_queries::QueryField;
 use crate::suggestion_work::SuggestedRule;
 use crate::theme_fetch::{Fetched, Installed};
@@ -286,6 +286,7 @@ pub enum Message {
     RuleSuggestions(RuleSuggestionsMessage),
     ReorganisationPlan(ReorganisationPlanMessage),
     ReviewList(ReviewListMessage),
+    QuickFix(QuickFixMessage),
     SavedQueries(SavedQueriesMessage),
     /// The sidebar of the Hermes card: closes the card that is up and opens
     /// this page.
@@ -494,6 +495,11 @@ pub enum HermesColumnMessage {
         path: PathBuf,
         result: Result<Option<FileDetail>, String>,
     },
+    /// Hermes was told to leave these paths alone.
+    Excluded {
+        paths: Vec<PathBuf>,
+        result: Result<(), String>,
+    },
 }
 
 /// Everything the filing setup sends.
@@ -628,6 +634,28 @@ pub enum SavedQueriesMessage {
         generation: u64,
         result: Result<ExportSummary, String>,
     },
+}
+
+/// Everything the quick-fix menu of an inquiry sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum QuickFixMessage {
+    /// The key: opens the menu on the cursor row or the marked files.
+    Open,
+    Close,
+    /// The reviews of the generation's files. Dropped when the menu was closed
+    /// or opened again meanwhile.
+    Loaded {
+        generation: u64,
+        result: Result<Vec<ReviewItem>, String>,
+    },
+    Move(isize),
+    First,
+    Last,
+    Hover(usize),
+    Activate,
+    Click(usize),
+    /// The sequential filing of the accepted suggestions is done.
+    Filed(AcceptSummary),
 }
 
 /// Everything the review list sends.

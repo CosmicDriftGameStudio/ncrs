@@ -40,6 +40,7 @@ mod ocr_models;
 mod open_vsx;
 mod palette;
 mod query_work;
+mod quick_fix;
 mod quick_open;
 mod reorganisation_plan;
 mod reorganisation_work;
