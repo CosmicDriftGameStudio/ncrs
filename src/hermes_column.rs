@@ -619,6 +619,10 @@ fn count_under<'a>(paths: impl IntoIterator<Item = &'a PathBuf>, folder: &Path) 
     clippy::indexing_slicing
 )]
 mod tests {
+    fn p(path: &str) -> PathBuf {
+        PathBuf::from(path.replace('/', std::path::MAIN_SEPARATOR_STR))
+    }
+
     use ncrs_index::ReviewReason;
     use ncrs_pipeline::{Busy, ChangedPath, ErrorEntry, WorkerSnapshot, MAX_CHANGED_PATHS};
     use std::time::UNIX_EPOCH;
@@ -627,7 +631,7 @@ mod tests {
 
     fn location(path: &str, mode: LocationMode, is_target: bool) -> FilingLocation {
         FilingLocation {
-            path: PathBuf::from(path),
+            path: p(path),
             mode,
             images: false,
             is_target,
@@ -639,7 +643,7 @@ mod tests {
             files: files
                 .iter()
                 .map(|(name, status)| {
-                    let path = Path::new(directory).join(name);
+                    let path = p(directory).join(name);
                     (
                         path.clone(),
                         PathState {
@@ -658,7 +662,7 @@ mod tests {
         ColumnReading {
             generation: 1,
             epoch: 0,
-            directory: PathBuf::from(directory),
+            directory: p(directory),
             stage: ColumnStage::Listing,
             states: Some(states(directory, files)),
             folders: Vec::new(),
@@ -671,7 +675,7 @@ mod tests {
             ..StatusCounts::default()
         };
         FolderReading {
-            path: PathBuf::from(path),
+            path: p(path),
             excluded: false,
             direct: Some(counts),
             deep: Some(counts),
@@ -684,7 +688,7 @@ mod tests {
                 .iter()
                 .map(|(sequence, path)| ChangedPath {
                     sequence: *sequence,
-                    path: PathBuf::from(path),
+                    path: p(path),
                     failed: false,
                 })
                 .collect(),
@@ -707,7 +711,7 @@ mod tests {
     }
 
     fn directories(names: &[&str]) -> Vec<PathBuf> {
-        names.iter().map(PathBuf::from).collect()
+        names.iter().map(|name| p(name)).collect()
     }
 
     fn summary(counts: StatusCounts, reading: usize, errors: usize) -> FolderSummary {
@@ -781,7 +785,7 @@ mod tests {
     }
 
     fn column_with_inquiry() -> HermesColumn {
-        let path = PathBuf::from("/in/a.pdf");
+        let path = p("/in/a.pdf");
         let mut column = HermesColumn::default();
         column.apply(ColumnReading {
             states: Some(DirectoryStates::sample(
@@ -799,7 +803,7 @@ mod tests {
 
     #[test]
     fn the_status_line_names_state_reason_and_suggestion() {
-        let path = Path::new("/in/a.pdf");
+        let path = &p("/in/a.pdf");
         let mut column = column_with_inquiry();
         let without_detail = column.status_line(path, Language::English).unwrap();
         column.apply_detail(
@@ -819,7 +823,7 @@ mod tests {
             "{with_detail}"
         );
         assert!(column
-            .status_line(Path::new("/in/none.pdf"), Language::English)
+            .status_line(&p("/in/none.pdf"), Language::English)
             .is_none());
     }
 
@@ -829,11 +833,11 @@ mod tests {
         let long = "x".repeat(300);
         column.mark_for_test(
             Vec::new(),
-            vec![(PathBuf::from("/in/a.pdf"), format!("{long}\nsecond line"))],
+            vec![(p("/in/a.pdf"), format!("{long}\nsecond line"))],
         );
 
         let line = column
-            .status_line(Path::new("/in/a.pdf"), Language::English)
+            .status_line(&p("/in/a.pdf"), Language::English)
             .unwrap();
 
         assert!(line.starts_with("Error: xxx"), "{line}");
@@ -844,7 +848,7 @@ mod tests {
     #[test]
     fn a_detail_is_wanted_once_for_an_inquiry_only() {
         let mut column = column_with_inquiry();
-        let path = PathBuf::from("/in/a.pdf");
+        let path = p("/in/a.pdf");
         assert!(column.wants_detail(&path));
 
         column.apply_detail(
@@ -865,20 +869,14 @@ mod tests {
             location("/target", LocationMode::Archive, true),
             location("/old", LocationMode::Archive, false),
         ];
+        assert_eq!(role_of(&p("/in"), &locations), Some(FolderRole::Inbox));
         assert_eq!(
-            role_of(Path::new("/in"), &locations),
-            Some(FolderRole::Inbox)
-        );
-        assert_eq!(
-            role_of(Path::new("/target"), &locations),
+            role_of(&p("/target"), &locations),
             Some(FolderRole::FilingLocation)
         );
-        assert_eq!(
-            role_of(Path::new("/old"), &locations),
-            Some(FolderRole::Archive)
-        );
-        assert_eq!(role_of(Path::new("/old/2024"), &locations), None);
-        assert_eq!(role_of(Path::new("/other"), &locations), None);
+        assert_eq!(role_of(&p("/old"), &locations), Some(FolderRole::Archive));
+        assert_eq!(role_of(&p("/old/2024"), &locations), None);
+        assert_eq!(role_of(&p("/other"), &locations), None);
     }
 
     #[test]
@@ -893,13 +891,13 @@ mod tests {
                 ("filed.pdf", DocumentStatus::Filed),
             ],
         ));
-        let state = |name: &str| column.state_of(&Path::new("/d").join(name));
+        let state = |name: &str| column.state_of(&p("/d").join(name));
         assert_eq!(state("new.pdf"), Some(HermesFileState::Waiting));
         assert_eq!(state("planned.pdf"), Some(HermesFileState::Waiting));
         assert_eq!(state("review.pdf"), Some(HermesFileState::Inquiry));
         assert_eq!(state("filed.pdf"), Some(HermesFileState::Filed));
         assert_eq!(state("unknown.pdf"), None);
-        assert_eq!(column.state_of(Path::new("/elsewhere/a.pdf")), None);
+        assert_eq!(column.state_of(&p("/elsewhere/a.pdf")), None);
     }
 
     #[test]
@@ -919,7 +917,7 @@ mod tests {
         let on = |file: &str| WorkerSnapshot {
             id: 0,
             busy: Some(Busy {
-                file: PathBuf::from(file),
+                file: p(file),
                 task: Task::Step("text"),
                 started_at: UNIX_EPOCH,
             }),
@@ -928,7 +926,7 @@ mod tests {
         snapshot.errors = ["/d/a.pdf", "/d/b.pdf", "/d/c.pdf"]
             .iter()
             .map(|file| ErrorEntry {
-                file: PathBuf::from(file),
+                file: p(file),
                 task: Task::Step("text"),
                 message: String::new(),
                 at: UNIX_EPOCH,
@@ -938,7 +936,7 @@ mod tests {
 
         column.set_snapshot(&snapshot);
 
-        let state = |name: &str| column.state_of(&Path::new("/d").join(name));
+        let state = |name: &str| column.state_of(&p("/d").join(name));
         assert_eq!(state("a.pdf"), Some(HermesFileState::Excluded));
         assert_eq!(state("b.pdf"), Some(HermesFileState::Reading));
         assert_eq!(state("c.pdf"), Some(HermesFileState::Error));
@@ -950,14 +948,14 @@ mod tests {
         column.apply(listing("/d", &[("a.pdf", DocumentStatus::Filed)]));
         let failure = |sequence| ChangedPath {
             sequence,
-            path: PathBuf::from("/d/a.pdf"),
+            path: p("/d/a.pdf"),
             failed: true,
         };
         let mut snapshot = Snapshot::off();
         snapshot.changed_paths = vec![failure(1)];
         snapshot.changed_sequence = 1;
         snapshot.errors = vec![ErrorEntry {
-            file: PathBuf::from("/d/a.pdf"),
+            file: p("/d/a.pdf"),
             task: Task::Step("text"),
             message: "broken".to_owned(),
             at: UNIX_EPOCH,
@@ -965,7 +963,7 @@ mod tests {
         }];
         column.set_snapshot(&snapshot);
         assert_eq!(
-            column.state_of(Path::new("/d/a.pdf")),
+            column.state_of(&p("/d/a.pdf")),
             Some(HermesFileState::Error)
         );
 
@@ -977,7 +975,7 @@ mod tests {
         column.set_snapshot(&snapshot);
 
         assert_eq!(
-            column.state_of(Path::new("/d/a.pdf")),
+            column.state_of(&p("/d/a.pdf")),
             Some(HermesFileState::Filed)
         );
     }
@@ -989,7 +987,7 @@ mod tests {
         reading.states.as_mut().unwrap().excluded_itself = true;
         column.apply(reading);
         assert_eq!(
-            column.state_of(Path::new("/d/private/a.pdf")),
+            column.state_of(&p("/d/private/a.pdf")),
             Some(HermesFileState::Excluded)
         );
     }
@@ -1001,13 +999,13 @@ mod tests {
         snapshot.workers = vec![WorkerSnapshot {
             id: 0,
             busy: Some(Busy {
-                file: PathBuf::from("/d/a.pdf"),
+                file: p("/d/a.pdf"),
                 task: Task::Scan,
                 started_at: UNIX_EPOCH,
             }),
         }];
         column.set_snapshot(&snapshot);
-        assert_eq!(column.state_of(Path::new("/d/a.pdf")), None);
+        assert_eq!(column.state_of(&p("/d/a.pdf")), None);
     }
 
     #[test]
@@ -1032,7 +1030,7 @@ mod tests {
             column.wanted_counts(&folders, ColumnStage::Deep),
             directories(&["/a", "/a/sub"])
         );
-        let stale_but_shown = column.summary_of(Path::new("/a")).unwrap();
+        let stale_but_shown = column.summary_of(&p("/a")).unwrap();
         assert!(stale_but_shown.deep.is_some());
     }
 
@@ -1045,7 +1043,7 @@ mod tests {
 
         assert_eq!(column.wanted_listings(&listed), directories(&["/a"]));
         assert_eq!(
-            column.state_of(Path::new("/a/x.pdf")),
+            column.state_of(&p("/a/x.pdf")),
             Some(HermesFileState::Waiting)
         );
     }
@@ -1083,7 +1081,7 @@ mod tests {
             column.wanted_listings(&directories(&["/a", "/b"])),
             directories(&["/a", "/b"])
         );
-        assert!(column.summary_of(Path::new("/a")).is_none());
+        assert!(column.summary_of(&p("/a")).is_none());
 
         column.apply(listing("/a", &[]));
         column.consume_changes(&Snapshot::off());
@@ -1096,7 +1094,7 @@ mod tests {
     #[test]
     fn invalidating_a_path_by_hand_reaches_a_folder_itself_and_its_ancestors() {
         let mut column = loaded();
-        column.invalidate_path(Path::new("/a/sub"));
+        column.invalidate_path(&p("/a/sub"));
         assert_eq!(
             column.wanted_counts(&directories(&["/a", "/a/sub", "/b"]), ColumnStage::Listing),
             directories(&["/a", "/a/sub"])
@@ -1114,7 +1112,7 @@ mod tests {
         snapshot.errors = ["/a/sub/x.pdf", "/a/y.pdf"]
             .iter()
             .map(|file| ErrorEntry {
-                file: PathBuf::from(file),
+                file: p(file),
                 task: Task::Step("text"),
                 message: String::new(),
                 at: UNIX_EPOCH,
@@ -1124,9 +1122,9 @@ mod tests {
 
         column.set_snapshot(&snapshot);
 
-        assert_eq!(column.summary_of(Path::new("/a")).unwrap().errors, 2);
-        assert_eq!(column.summary_of(Path::new("/a/sub")).unwrap().errors, 1);
-        assert_eq!(column.summary_of(Path::new("/a/s")).unwrap().errors, 0);
+        assert_eq!(column.summary_of(&p("/a")).unwrap().errors, 2);
+        assert_eq!(column.summary_of(&p("/a/sub")).unwrap().errors, 1);
+        assert_eq!(column.summary_of(&p("/a/s")).unwrap().errors, 0);
     }
 
     fn index_with_documents() -> (tempfile::TempDir, Index) {
@@ -1140,7 +1138,7 @@ mod tests {
             index
                 .insert_document(&ncrs_index::NewDocument {
                     hash: ncrs_index::ContentHash([seed; 32]),
-                    path: PathBuf::from(path),
+                    path: p(path),
                     source: ncrs_index::DocumentSource::Inbox,
                     received_at: chrono::DateTime::UNIX_EPOCH,
                     stamp: None,
@@ -1153,11 +1151,11 @@ mod tests {
     #[test]
     fn a_reading_fills_the_cache_in_two_stages() {
         let (_dir, index) = index_with_documents();
-        index.exclude_path(Path::new("/d/Scan/sub")).unwrap();
+        index.exclude_path(&p("/d/Scan/sub")).unwrap();
         let request = |stage| ColumnRequest {
             generation: 7,
             epoch: 0,
-            directory: PathBuf::from("/d/Scan"),
+            directory: p("/d/Scan"),
             subfolders: directories(&["/d/Scan/sub"]),
             stage,
         };
@@ -1168,10 +1166,10 @@ mod tests {
         column.apply(first);
 
         assert_eq!(
-            column.state_of(Path::new("/d/Scan/a.pdf")),
+            column.state_of(&p("/d/Scan/a.pdf")),
             Some(HermesFileState::Waiting)
         );
-        let sub = column.summary_of(Path::new("/d/Scan/sub")).unwrap();
+        let sub = column.summary_of(&p("/d/Scan/sub")).unwrap();
         assert_eq!(sub.direct.unwrap().new, 1);
         assert_eq!(sub.deep, None);
         assert!(sub.excluded);
@@ -1182,7 +1180,7 @@ mod tests {
 
         column.apply(read_column(&index, &request(ColumnStage::Deep)).unwrap());
 
-        let counted_deep = column.summary_of(Path::new("/d/Scan/sub")).unwrap();
+        let counted_deep = column.summary_of(&p("/d/Scan/sub")).unwrap();
         assert_eq!(counted_deep.deep.unwrap().new, 1);
         assert_eq!(counted_deep.direct.unwrap().new, 1);
     }

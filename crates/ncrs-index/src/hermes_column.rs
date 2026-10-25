@@ -266,6 +266,10 @@ fn excluded_ancestor(connection: &Connection, path: &Path) -> Result<Option<Path
     clippy::indexing_slicing
 )]
 mod tests {
+    fn p(path: &str) -> PathBuf {
+        PathBuf::from(path.replace('/', std::path::MAIN_SEPARATOR_STR))
+    }
+
     use std::time::UNIX_EPOCH;
 
     use super::*;
@@ -296,11 +300,11 @@ mod tests {
         let gone = document_at(&index, 4, "/d/Scan/gone.pdf");
         index.mark_document_missing(gone).unwrap();
 
-        let states = index.document_states_in(Path::new("/d/Scan")).unwrap();
+        let states = index.document_states_in(&p("/d/Scan")).unwrap();
 
         assert_eq!(
             states.iter().map(|s| s.path.clone()).collect::<Vec<_>>(),
-            vec![PathBuf::from("/d/Scan/a.pdf")]
+            vec![p("/d/Scan/a.pdf")]
         );
         assert_eq!(states[0].status, DocumentStatus::New);
         assert_eq!(states[0].review, None);
@@ -319,7 +323,7 @@ mod tests {
             .unwrap();
         index.resolve_review(entry).unwrap();
 
-        let states = index.document_states_in(Path::new("/d/")).unwrap();
+        let states = index.document_states_in(&p("/d/")).unwrap();
 
         assert_eq!(states[0].status, DocumentStatus::InReview);
         assert_eq!(
@@ -342,11 +346,7 @@ mod tests {
         index.mark_document_missing(gone).unwrap();
 
         let counts = index
-            .status_counts_under(&[
-                PathBuf::from("/d/Scan"),
-                PathBuf::from("/d/Scan/deeper"),
-                PathBuf::from("/nowhere"),
-            ])
+            .status_counts_under(&[p("/d/Scan"), p("/d/Scan/deeper"), p("/nowhere")])
             .unwrap();
 
         assert_eq!(counts[0].direct.new, 1);
@@ -362,9 +362,7 @@ mod tests {
     fn a_folder_with_a_trailing_separator_counts_the_same() {
         let (_dir, index) = plain_index();
         document_at(&index, 1, "/d/a.pdf");
-        let counts = index
-            .status_counts_under(&[PathBuf::from("/d/"), PathBuf::from("/")])
-            .unwrap();
+        let counts = index.status_counts_under(&[p("/d/"), p("/")]).unwrap();
         assert_eq!(counts[0].direct.new, 1);
         assert_eq!(counts[1].deep.new, 1);
         assert_eq!(counts[1].direct.new, 0);
@@ -373,43 +371,39 @@ mod tests {
     #[test]
     fn a_folder_is_excluded_with_everything_in_it_but_not_its_prefix_sibling() {
         let (_dir, index) = plain_index();
-        index.exclude_path(Path::new("/d/Scan/")).unwrap();
-        index.exclude_path(Path::new("/d/Scan")).unwrap();
+        index.exclude_path(&p("/d/Scan/")).unwrap();
+        index.exclude_path(&p("/d/Scan")).unwrap();
 
-        assert!(index.is_excluded(Path::new("/d/Scan")).unwrap());
-        assert!(index.is_excluded(Path::new("/d/Scan/a/b.pdf")).unwrap());
-        assert!(!index.is_excluded(Path::new("/d/Scans/b.pdf")).unwrap());
-        assert!(!index.is_excluded(Path::new("/d")).unwrap());
+        assert!(index.is_excluded(&p("/d/Scan")).unwrap());
+        assert!(index.is_excluded(&p("/d/Scan/a/b.pdf")).unwrap());
+        assert!(!index.is_excluded(&p("/d/Scans/b.pdf")).unwrap());
+        assert!(!index.is_excluded(&p("/d")).unwrap());
     }
 
     #[test]
     fn including_removes_only_the_exact_row_and_reports_an_excluding_ancestor() {
         let (_dir, index) = plain_index();
-        index.exclude_path(Path::new("/d/Scan")).unwrap();
-        index
-            .exclude_path(Path::new("/d/Scan/inner/x.pdf"))
-            .unwrap();
+        index.exclude_path(&p("/d/Scan")).unwrap();
+        index.exclude_path(&p("/d/Scan/inner/x.pdf")).unwrap();
 
         assert_eq!(
-            index.include_path(Path::new("/d/Scan/other")).unwrap(),
-            IncludeOutcome::ExcludedByAncestor(PathBuf::from("/d/Scan"))
+            index.include_path(&p("/d/Scan/other")).unwrap(),
+            IncludeOutcome::ExcludedByAncestor(p("/d/Scan"))
         );
         assert_eq!(
-            index.include_path(Path::new("/elsewhere")).unwrap(),
+            index.include_path(&p("/elsewhere")).unwrap(),
             IncludeOutcome::NotExcluded
         );
         assert_eq!(
-            index
-                .include_path(Path::new("/d/Scan/inner/x.pdf"))
-                .unwrap(),
+            index.include_path(&p("/d/Scan/inner/x.pdf")).unwrap(),
             IncludeOutcome::Included
         );
-        assert!(index.is_excluded(Path::new("/d/Scan/inner/x.pdf")).unwrap());
+        assert!(index.is_excluded(&p("/d/Scan/inner/x.pdf")).unwrap());
         assert_eq!(
-            index.include_path(Path::new("/d/Scan")).unwrap(),
+            index.include_path(&p("/d/Scan")).unwrap(),
             IncludeOutcome::Included
         );
-        assert!(!index.is_excluded(Path::new("/d/Scan/inner/x.pdf")).unwrap());
+        assert!(!index.is_excluded(&p("/d/Scan/inner/x.pdf")).unwrap());
     }
 
     #[test]
@@ -419,11 +413,8 @@ mod tests {
             index.exclude_path(Path::new(path)).unwrap();
         }
 
-        let below = index.excluded_paths_under(Path::new("/d/Scan")).unwrap();
+        let below = index.excluded_paths_under(&p("/d/Scan")).unwrap();
 
-        assert_eq!(
-            below,
-            vec![PathBuf::from("/d/Scan/a"), PathBuf::from("/d/Scan/b/c")]
-        );
+        assert_eq!(below, vec![p("/d/Scan/a"), p("/d/Scan/b/c")]);
     }
 }
