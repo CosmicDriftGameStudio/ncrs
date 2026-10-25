@@ -57,8 +57,8 @@ pub fn view<'a>(
     palette: &Palette,
 ) -> Element<'a, Message> {
     let line_chars = frame::content_chars(SIZE, window, frame::SIDEBAR_ROOM);
-    let mut body = column![paragraph(lang.text(Msg::SavedQueriesExplain), palette)]
-        .spacing(spacing::SECTION_GAP);
+    let mut body =
+        column![paragraph(lang.text(Msg::SavedQueriesExplain), palette)].spacing(spacing::LINE_GAP);
 
     // The export step takes the room of the list and the form: the page
     // would not fit them all, and the step is what the user decides on.
@@ -327,7 +327,11 @@ fn result<'a>(
             results.hits.len().to_string(),
         ),
         (
-            lang.text(Msg::SavedQueriesSummaryMissing),
+            lang.text(if results.missing() == 1 {
+                Msg::SavedQueriesSummaryMissingOne
+            } else {
+                Msg::SavedQueriesSummaryMissingOther
+            }),
             results.missing().to_string(),
         ),
     ];
@@ -363,16 +367,20 @@ fn result<'a>(
             ));
         }
     }
-    content = content.push(
-        row![kit::button(
-            lang.text(Msg::SavedQueriesExport),
-            (state.copies() > 0 && !state.is_busy() && state.export_step().is_none())
-                .then(|| send(SavedQueriesMessage::StartExport)),
-            Tone::Secondary,
-            palette,
-        )]
-        .align_y(alignment::Vertical::Center),
-    );
+    // The export step has its own buttons: the one that opens it has no place
+    // beside it.
+    if state.export_step().is_none() {
+        content = content.push(
+            row![kit::button(
+                lang.text(Msg::SavedQueriesExport),
+                (state.copies() > 0 && !state.is_busy())
+                    .then(|| send(SavedQueriesMessage::StartExport)),
+                Tone::Secondary,
+                palette,
+            )]
+            .align_y(alignment::Vertical::Center),
+        );
+    }
     content.into()
 }
 

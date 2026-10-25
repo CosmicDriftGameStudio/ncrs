@@ -33,7 +33,7 @@ pub fn view<'a>(
 ) -> Element<'a, Message> {
     let line_chars = frame::content_chars(SIZE, window, 0.0);
     let mut body =
-        column![paragraph(lang.text(Msg::OcrModelsIntro), palette)].spacing(spacing::SECTION_GAP);
+        column![paragraph(lang.text(Msg::OcrModelsIntro), palette)].spacing(spacing::LINE_GAP);
     body = body.push(detail_line(
         fill_template(
             lang.text(Msg::OcrModelsHost),
@@ -58,7 +58,7 @@ pub fn view<'a>(
                     lang.text(Msg::OcrModelsChecksum),
                     &[("{checksum}", file.sha256)],
                 ))
-                .size(font_size::STATUS)
+                .size(font_size::BODY)
                 .color(palette.dim_text)
                 .wrapping(Wrapping::Glyph),
             );
@@ -81,7 +81,7 @@ pub fn view<'a>(
     if card.is_downloading() {
         body = body.push(
             text(lang.text(Msg::OcrModelsDownloading))
-                .size(font_size::STATUS)
+                .size(font_size::BODY)
                 .color(palette.dim_text),
         );
     }
@@ -125,7 +125,7 @@ pub fn view<'a>(
 
 fn detail_line<'a>(content: String, line_chars: usize, palette: &Palette) -> Element<'a, Message> {
     text(format::ellipsize_middle(&content, line_chars))
-        .size(font_size::STATUS)
+        .size(font_size::BODY)
         .color(palette.text)
         .wrapping(Wrapping::None)
         .into()

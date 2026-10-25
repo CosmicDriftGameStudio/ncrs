@@ -47,7 +47,7 @@ pub fn view<'a>(
 ) -> Element<'a, Message> {
     let line_chars = frame::content_chars(SIZE, window, frame::SIDEBAR_ROOM);
     let mut body = column![paragraph(lang.text(Msg::RuleSuggestionsExplain), palette)]
-        .spacing(spacing::SECTION_GAP);
+        .spacing(spacing::LINE_GAP);
 
     if state.rows().is_empty() {
         body = body.push(dim(
@@ -181,7 +181,7 @@ fn documents<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let mut lines = column![].spacing(spacing::CELL_PADDING_X);
+    let mut lines = column![].spacing(spacing::LINE_GAP);
     match state.matches() {
         Matches::Unknown | Matches::Looking => {
             lines = lines.push(dim(
@@ -243,7 +243,7 @@ fn form<'a>(edit: &'a Edit, lang: Language, palette: &Palette) -> Element<'a, Me
         ),
         dim(lang.text(Msg::RuleSuggestionsFormHint), palette),
     ]
-    .spacing(spacing::SECTION_GAP)
+    .spacing(spacing::LINE_GAP)
     .into()
 }
 

@@ -3,12 +3,12 @@
 //! Pure function, like every other component here: it takes the prompt state
 //! and the language and returns an `Element`. It never mutates anything.
 
-use iced::widget::{column, container, text, text_input};
+use iced::widget::{column, container};
 use iced::{alignment, Background, Element, Length, Size};
 
 use super::frame::{DialogSize, Frame, KeyHints};
 use super::kit::{self, Tone};
-use super::theme::{self, font_size, spacing};
+use super::theme::{self, spacing};
 use crate::dialog::Prompt;
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
@@ -40,11 +40,14 @@ pub fn view<'a>(
         ),
     };
 
-    let field = text_input(label, state.name())
-        .id(FIELD_ID)
-        .on_input(on_input)
-        .on_submit(on_submit.clone())
-        .width(Length::Fill);
+    let field = kit::text_field(
+        label,
+        state.name(),
+        FIELD_ID,
+        Some(on_input),
+        on_submit.clone(),
+        palette,
+    );
 
     // `on_press_maybe(None)` is how iced disables a button: no message, so a
     // keypress while the operation runs does nothing. There is no `disabled`.
@@ -63,7 +66,7 @@ pub fn view<'a>(
         palette,
     );
 
-    let mut body = column![container(field).padding([4.0, 0.0])].spacing(spacing::SECTION_GAP);
+    let mut body = column![field].spacing(spacing::LINE_GAP);
 
     if let Some(error) = state.error() {
         // A validation reason is a message id, not a sentence: the dialog layer
@@ -72,12 +75,7 @@ pub fn view<'a>(
             Some(mid) => lang.text(mid),
             None => error,
         };
-        body = body.push(
-            text(message)
-                .size(font_size::BODY)
-                .color(palette.error)
-                .wrapping(iced::widget::text::Wrapping::Word),
-        );
+        body = body.push(kit::error_line(message, palette));
     }
     let mut framed = Frame::new(title, body, DialogSize::Small, window, lang, palette)
         .buttons(vec![cancel_button, confirm_button])

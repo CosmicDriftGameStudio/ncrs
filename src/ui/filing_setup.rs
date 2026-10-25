@@ -1,17 +1,17 @@
-//! The filing setup card. Not modal, like the filing cards: the user walks the
-//! panels to the next folder while it is up.
+//! The filing setup card. It sits on the scrim like the filing cards, but the
+//! user still walks the panels to the next folder by key while it is up.
 
 use std::path::Path;
 
 use iced::widget::text::Wrapping;
-use iced::widget::{checkbox, column, container, radio, text, Column, Row};
+use iced::widget::{checkbox, container, radio, text, Column, Row, Space};
 use iced::{Alignment, Element, Length, Size};
 use ncrs_intake::LocationMode;
 
 use super::filing::radio_look;
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
-use super::kit::{self, error_line, paragraph, Tone};
+use super::kit::{self, dim, error_line, paragraph, Tone};
 use super::theme::{self, font_size, spacing};
 use crate::app::fill_template;
 use crate::config::{ConfigError, FilingLocation, FilingRuleViolation, FilingWriteError};
@@ -64,41 +64,32 @@ pub fn view<'a>(
 ) -> Element<'a, Message> {
     let lang = context.lang;
     let busy = setup.is_busy();
-    let muted = |label: Msg| {
-        text(lang.text(label))
-            .size(font_size::STATUS)
-            .color(palette.dim_text)
-            .wrapping(Wrapping::Word)
-    };
-    let heading = |label: Msg| {
-        text(lang.text(label))
-            .size(font_size::ROW)
-            .color(palette.accent)
-    };
+    let tubes = kit::section(
+        lang.text(Msg::FilingSetupTubesHeading),
+        kit::stack([
+            paragraph(lang.text(Msg::FilingSetupTubesExplain), palette),
+            dim(lang.text(Msg::FilingSetupTubesExample), palette),
+            section_rows(setup, LocationMode::Inbox, busy, context, palette),
+            add_buttons(LocationMode::Inbox, busy, context, palette),
+        ]),
+        palette,
+    );
+    let documents = kit::section(
+        lang.text(Msg::FilingSetupDocumentsHeading),
+        kit::stack([
+            paragraph(lang.text(Msg::FilingSetupDocumentsExplain), palette),
+            dim(lang.text(Msg::FilingSetupDocumentsKinds), palette),
+            section_rows(setup, LocationMode::Archive, busy, context, palette),
+            add_buttons(LocationMode::Archive, busy, context, palette),
+        ]),
+        palette,
+    );
 
-    let tubes = column![
-        heading(Msg::FilingSetupTubesHeading),
-        paragraph(lang.text(Msg::FilingSetupTubesExplain), palette),
-        muted(Msg::FilingSetupTubesExample),
-        section_rows(setup, LocationMode::Inbox, busy, context, palette,),
-        add_buttons(LocationMode::Inbox, busy, context, palette),
-    ]
-    .spacing(spacing::CELL_PADDING_X);
-    let documents = column![
-        heading(Msg::FilingSetupDocumentsHeading),
-        paragraph(lang.text(Msg::FilingSetupDocumentsExplain), palette),
-        muted(Msg::FilingSetupDocumentsKinds),
-        section_rows(setup, LocationMode::Archive, busy, context, palette,),
-        add_buttons(LocationMode::Archive, busy, context, palette),
-    ]
-    .spacing(spacing::CELL_PADDING_X);
-
-    let mut body = column![
+    let mut body = kit::stack([
         paragraph(lang.text(Msg::FilingSetupExplain), palette),
         tubes,
         documents,
-    ]
-    .spacing(spacing::SECTION_GAP);
+    ]);
 
     if let Some(problem) = setup.problem() {
         body = body.push(error_line(
@@ -197,7 +188,7 @@ fn add_buttons<'a>(
             &shown_path(context.current_folder, context.home),
             frame::content_chars(SIZE, context.window, ADD_ROW_RESERVED),
         ))
-        .size(font_size::STATUS)
+        .size(font_size::BODY)
         .color(palette.dim_text)
         .wrapping(Wrapping::None)
         .width(Length::Fill)
@@ -226,13 +217,10 @@ fn section_rows<'a>(
         .map(|(index, location)| entry_row(setup, index, location, busy, context, palette))
         .collect();
     if rows.is_empty() {
-        return text(lang.text(Msg::FilingSetupEmptySection))
-            .size(font_size::STATUS)
-            .color(palette.dim_text)
-            .into();
+        return dim(lang.text(Msg::FilingSetupEmptySection), palette);
     }
     Column::with_children(rows)
-        .spacing(spacing::CELL_PADDING_X)
+        .spacing(spacing::LINE_GAP)
         .into()
 }
 
@@ -264,57 +252,56 @@ fn entry_row<'a>(
                 radio(shown, index, setup.target_index(), |chosen| {
                     setup_message(FilingSetupMessage::SetTarget(chosen))
                 })
-                .size(font_size::STATUS)
-                .text_size(font_size::STATUS)
+                .size(font_size::BODY)
+                .text_size(font_size::BODY)
                 .style(radio_look(palette))
-                .width(Length::Fill),
+                .width(Length::Shrink),
             )
-            .width(Length::Fill)
+            .width(Length::Shrink)
             .id(target_choice_id(index))
             .into()
         } else {
             path_text(shown, palette)
         });
-        row = row.push(
-            text(lang.text(if is_central {
+        row = row.push(dim(
+            lang.text(if is_central {
                 Msg::FilingSetupKindCentral
             } else {
                 Msg::FilingSetupKindRecords
-            }))
-            .size(font_size::STATUS)
-            .color(palette.accent)
-            .width(KIND_WIDTH),
-        );
+            }),
+            palette,
+        ));
     } else {
         row = row.push(path_text(shown, palette));
     }
-    row.push(
-        checkbox(location.images)
-            .on_toggle_maybe(
-                (!busy).then_some(move |_| setup_message(FilingSetupMessage::ToggleImages(index))),
-            )
-            .style(theme::dialog_checkbox(palette)),
-    )
-    .push(
-        text(lang.text(Msg::FilingSetupImages))
-            .size(font_size::STATUS)
-            .color(palette.text),
-    )
-    .push(action(
-        lang.text(Msg::FilingSetupRemove),
-        (!busy).then_some(FilingSetupMessage::Remove(index)),
-        false,
-        palette,
-    ))
-    .into()
+    row.push(Space::new().width(Length::Fill))
+        .push(
+            checkbox(location.images)
+                .on_toggle_maybe(
+                    (!busy)
+                        .then_some(move |_| setup_message(FilingSetupMessage::ToggleImages(index))),
+                )
+                .style(theme::dialog_checkbox(palette)),
+        )
+        .push(
+            text(lang.text(Msg::FilingSetupImages))
+                .size(font_size::BODY)
+                .color(palette.text),
+        )
+        .push(action(
+            lang.text(Msg::FilingSetupRemove),
+            (!busy).then_some(FilingSetupMessage::Remove(index)),
+            false,
+            palette,
+        ))
+        .into()
 }
 
 fn path_text<'a>(shown: String, palette: &Palette) -> Element<'a, Message> {
     text(shown)
-        .size(font_size::STATUS)
+        .size(font_size::BODY)
         .color(palette.text)
         .wrapping(Wrapping::None)
-        .width(Length::Fill)
         .into()
 }
 

@@ -2,14 +2,14 @@
 //! cross, the content in a scrollable of fixed size, and a footer with key
 //! hints on the left and the buttons on the right.
 //!
-//! The size comes from the window and the dialog's [`DialogSize`], never from
-//! the content: a long file name or a longer list scrolls or is cut, the frame
-//! stays where it is.
+//! The width comes from the dialog's [`DialogSize`], the height from the
+//! content up to the most the window and the size allow: a longer content
+//! scrolls. Only the card keeps its height, whatever it shows.
 
-use iced::font::Weight;
+use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::text::Wrapping;
-use iced::widget::{button, column, container, row, scrollable, text};
-use iced::{alignment, Element, Font, Length, Padding, Size};
+use iced::widget::{button, column, container, responsive, row, scrollable, text};
+use iced::{alignment, Element, Length, Padding, Size};
 
 use super::kit;
 use super::theme::{self, font_size, size, spacing};
@@ -32,12 +32,20 @@ const WINDOW_MARGIN: f32 = 24.0;
 
 /// Average width of one glyph at the dialog font size, used to turn a width in
 /// pixels into a number of characters for text that must stay on one line.
-/// Measured: the monospace UI font at 12 px advances 7.22 px per glyph.
-const AVERAGE_GLYPH_WIDTH: f32 = 7.25;
+/// Measured on German running text and paths in the UI font at 12 px: 5.6 to
+/// 5.9 px per glyph; a little more, so capitals do not overflow.
+const AVERAGE_GLYPH_WIDTH: f32 = 6.0;
 
-/// Room kept right of the content for the scrollbar drawn over it, counted
-/// from the edge of the frame.
+/// Average width of a glyph of a key cap, at its 10 px.
+const KEY_CAP_GLYPH_WIDTH: f32 = 6.0;
+
+/// Room kept right of the content for the scrollbar, counted from the edge of
+/// the frame. Only a scrolling page takes it: the scrollbar is
+/// [`SCROLLBAR_WIDTH`] plus its margin on both sides.
 const SCROLLBAR_ROOM: f32 = 22.0;
+
+const SCROLLBAR_WIDTH: f32 = 6.0;
+const SCROLLBAR_MARGIN: f32 = 2.0;
 
 /// The border of the frame on each side.
 const FRAME_BORDER: f32 = 2.0 * spacing::BORDER_WIDTH;
@@ -52,7 +60,7 @@ pub enum DialogSize {
     Small,
     /// Forms, the master key, the setup.
     Medium,
-    /// Lists and the Inspection.
+    /// Lists: the command palette and Quick Open.
     Large,
     /// The card of Hermes: a sidebar and a page.
     Card,
@@ -83,10 +91,9 @@ impl Extent {
 }
 
 impl DialogSize {
-    /// Large and the card keep their height; the others grow with the content
-    /// up to it.
+    /// Everything but the card grows with the content up to its height.
     const fn grows_with_content(self) -> bool {
-        matches!(self, Self::Small | Self::Medium)
+        !matches!(self, Self::Card)
     }
 
     const fn extents(self) -> (Extent, Extent) {
@@ -138,6 +145,13 @@ pub struct KeyHints {
     pub tab: bool,
 }
 
+/// A key of the page the footer names, with its verb.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PageHint {
+    pub key: &'static str,
+    pub verb: Msg,
+}
+
 pub struct Frame<'a> {
     title: String,
     title_theme: Option<String>,
@@ -145,12 +159,12 @@ pub struct Frame<'a> {
     content: Element<'a, Message>,
     sidebar: Option<Element<'a, Message>>,
     footer_note: Option<String>,
-    fixed_height: bool,
     buttons: Vec<Element<'a, Message>>,
     on_close: Option<Message>,
     size: DialogSize,
     window: Size,
     hints: KeyHints,
+    page_hints: &'static [PageHint],
     lang: Language,
     palette: Palette,
 }
@@ -171,12 +185,12 @@ impl<'a> Frame<'a> {
             content: content.into(),
             sidebar: None,
             footer_note: None,
-            fixed_height: false,
             buttons: Vec::new(),
             on_close: None,
             size,
             window,
             hints: KeyHints::default(),
+            page_hints: &[],
             lang,
             palette: *palette,
         }
@@ -197,13 +211,6 @@ impl<'a> Frame<'a> {
     /// A column left of the content, [`size::SIDEBAR_WIDTH`] wide.
     pub fn sidebar(mut self, sidebar: impl Into<Element<'a, Message>>) -> Self {
         self.sidebar = Some(sidebar.into());
-        self
-    }
-
-    /// Keeps the full height of the size whatever the content, for a card whose
-    /// content changes between stages.
-    pub const fn fixed_height(mut self) -> Self {
-        self.fixed_height = true;
         self
     }
 
@@ -230,24 +237,25 @@ impl<'a> Frame<'a> {
         self
     }
 
+    /// The keys of the page itself, named after Esc and Tab where there is
+    /// room.
+    pub const fn page_hints(mut self, hints: &'static [PageHint]) -> Self {
+        self.page_hints = hints;
+        self
+    }
+
     fn header(&self) -> Element<'a, Message> {
         let palette = self.palette;
         let mut title = row![text(self.title.clone())
-            .size(font_size::BODY)
+            .size(font_size::HEADER)
             .color(palette.text)
-            // Bold, not Semibold: the generic monospace family has no Semibold
-            // on a stock system, and the fallback differs per machine.
-            .font(Font {
-                weight: Weight::Bold,
-                ..Font::MONOSPACE
-            })
             .wrapping(Wrapping::None)]
         .spacing(spacing::S)
         .align_y(alignment::Vertical::Center);
         for part in [&self.title_theme, &self.subtitle].into_iter().flatten() {
             title = title.push(
                 text(part.clone())
-                    .size(font_size::BODY)
+                    .size(font_size::HEADER)
                     .color(palette.dim_text)
                     .wrapping(Wrapping::None),
             );
@@ -282,7 +290,24 @@ impl<'a> Frame<'a> {
                 .color(palette.dim_text)
                 .wrapping(Wrapping::None)
                 .into(),
-            None => key_hint_row(self.hints, self.on_close.is_some(), self.lang, &palette),
+            None => {
+                let (hints, page, closable, lang) = (
+                    self.hints,
+                    self.page_hints,
+                    self.on_close.is_some(),
+                    self.lang,
+                );
+                // The buttons take what they need; the hints get what is left
+                // and drop from the right when it is short.
+                responsive(move |room| {
+                    container(key_hint_row(
+                        hints, page, closable, lang, room.width, &palette,
+                    ))
+                    .center_y(Length::Fill)
+                    .into()
+                })
+                .into()
+            }
         };
         row![
             container(left).width(Length::Fill).clip(true),
@@ -304,7 +329,7 @@ impl<'a> Frame<'a> {
     pub fn into_element(mut self) -> Element<'a, Message> {
         let palette = self.palette;
         let outer = frame_size(self.size, self.window);
-        let grows = self.size.grows_with_content() && !self.fixed_height;
+        let grows = self.size.grows_with_content();
         let header = self.header();
         let footer = self.footer();
 
@@ -313,11 +338,18 @@ impl<'a> Frame<'a> {
                 .width(Length::Fill)
                 .padding(Padding {
                     left: spacing::L,
-                    right: SCROLLBAR_ROOM - FRAME_BORDER,
+                    right: spacing::L,
                     top: spacing::L,
                     bottom: spacing::L,
                 }),
         )
+        .direction(Direction::Vertical(
+            Scrollbar::new()
+                .width(SCROLLBAR_WIDTH)
+                .scroller_width(SCROLLBAR_WIDTH)
+                .margin(SCROLLBAR_MARGIN)
+                .spacing(0.0),
+        ))
         .width(Length::Fill)
         .height(if grows { Length::Shrink } else { Length::Fill });
 
@@ -364,33 +396,72 @@ impl<'a> Frame<'a> {
     }
 }
 
-/// The keys the footer names with the verb of each, in the order shown. Enter
-/// is not named: the Enter cap on the main button says it.
-fn key_hints(hints: KeyHints, closable: bool) -> Vec<(&'static str, Msg)> {
-    [
-        (closable, ESCAPE_KEY, Msg::DialogHintEscape),
-        (hints.tab, TAB_KEY, Msg::DialogHintTab),
-    ]
-    .into_iter()
-    .filter(|(shown, _, _)| *shown)
-    .map(|(_, key, verb)| (key, verb))
-    .collect()
+/// The keys the footer names with the verb of each, in the order shown: Esc
+/// first, because it is the last to go. Enter is not named: the Enter cap on
+/// the main button says it.
+fn key_hints(hints: KeyHints, page: &[PageHint], closable: bool) -> Vec<(&'static str, Msg)> {
+    let mut named = Vec::new();
+    if closable {
+        named.push((ESCAPE_KEY, Msg::DialogHintEscape));
+    }
+    if hints.tab {
+        named.push((TAB_KEY, Msg::DialogHintTab));
+    }
+    named.extend(page.iter().map(|hint| (hint.key, hint.verb)));
+    named
 }
 
 const ESCAPE_KEY: &str = "Esc";
 const TAB_KEY: &str = "Tab";
 
-/// The one wording of the keys, the same in every dialog.
+/// The width of a key cap with its label: the label, the padding either side
+/// and the outline.
+fn cap_width(key: &str) -> f32 {
+    key.chars().count() as f32 * KEY_CAP_GLYPH_WIDTH
+        + 2.0 * (spacing::XS - 1.0)
+        + 2.0 * spacing::BORDER_WIDTH
+}
+
+fn hint_width(key: &str, verb: &str) -> f32 {
+    cap_width(key) + spacing::XS + verb.chars().count() as f32 * AVERAGE_GLYPH_WIDTH
+}
+
+/// The hints that fit into `room`, from the left. The first stays whatever the
+/// room: it is Esc, the one way out.
+fn hints_that_fit<'h>(
+    hints: &'h [(&'static str, &'static str)],
+    room: f32,
+) -> &'h [(&'static str, &'static str)] {
+    let mut used = 0.0;
+    let mut count = 0;
+    for (key, verb) in hints {
+        used += hint_width(key, verb) + if count > 0 { spacing::L } else { 0.0 };
+        if count > 0 && used > room {
+            break;
+        }
+        count += 1;
+    }
+    hints.get(..count).unwrap_or_default()
+}
+
+/// The one wording of the keys, the same in every dialog, as many as fit into
+/// `room` pixels.
 fn key_hint_row<'a>(
     hints: KeyHints,
+    page: &[PageHint],
     closable: bool,
     lang: Language,
+    room: f32,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let groups = key_hints(hints, closable).into_iter().map(|(key, verb)| {
+    let worded: Vec<(&'static str, &'static str)> = key_hints(hints, page, closable)
+        .into_iter()
+        .map(|(key, verb)| (key, lang.text(verb)))
+        .collect();
+    let groups = hints_that_fit(&worded, room).iter().map(|(key, verb)| {
         row![
             kit::key_cap(key, palette),
-            text(lang.text(verb))
+            text(*verb)
                 .size(font_size::BODY)
                 .color(palette.dim_text)
                 .wrapping(Wrapping::None),
@@ -483,13 +554,13 @@ mod tests {
 
     #[test]
     fn a_line_holds_fewer_characters_than_pixels_and_at_least_one() {
-        assert_eq!(chars_that_fit(725.0), 100);
+        assert_eq!(chars_that_fit(600.0), 100);
         assert_eq!(chars_that_fit(0.0), 1);
         assert_eq!(chars_that_fit(-50.0), 1);
     }
 
     fn names(hints: KeyHints, closable: bool) -> Vec<&'static str> {
-        key_hints(hints, closable)
+        key_hints(hints, &[], closable)
             .into_iter()
             .map(|(key, _)| key)
             .collect()
@@ -512,10 +583,22 @@ mod tests {
             enter: true,
             tab: true,
         };
-        let verbs: Vec<&str> = key_hints(both, true)
+        let verbs: Vec<&str> = key_hints(both, &[], true)
             .into_iter()
             .map(|(_, verb)| Language::English.text(verb))
             .collect();
         assert_eq!(verbs, ["close", "next field"]);
+    }
+
+    #[test]
+    fn hints_drop_from_the_right_and_esc_stays() {
+        let hints = [("Esc", "close"), ("Tab", "next field"), ("P", "pause")];
+        let all = hint_width("Esc", "close")
+            + hint_width("Tab", "next field")
+            + hint_width("P", "pause")
+            + 2.0 * spacing::L;
+        assert_eq!(hints_that_fit(&hints, all).len(), 3);
+        assert_eq!(hints_that_fit(&hints, all - 1.0).len(), 2);
+        assert_eq!(hints_that_fit(&hints, 0.0).len(), 1);
     }
 }

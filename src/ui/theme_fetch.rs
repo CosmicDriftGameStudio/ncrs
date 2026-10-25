@@ -38,7 +38,7 @@ pub fn view<'a>(
     palette: &Palette,
 ) -> Element<'a, Message> {
     let line_chars = frame::content_chars(SIZE, window, 0.0);
-    let mut body = column![].spacing(spacing::SECTION_GAP);
+    let mut body = column![].spacing(spacing::LINE_GAP);
     match card.stage() {
         Stage::Choosing { fetched, cursor } => {
             let extension = &fetched.extension;
@@ -86,8 +86,6 @@ pub fn view<'a>(
         lang,
         palette,
     )
-    // The stages differ in height; the frame must not jump between them.
-    .fixed_height()
     .buttons(footer_buttons(card, lang, palette))
     .on_close(to_message(ThemeFetchMessage::Close))
     // Choosing, Enter takes the highlighted theme: the content defines it.

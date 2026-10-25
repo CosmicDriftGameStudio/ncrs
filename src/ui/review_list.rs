@@ -58,8 +58,8 @@ pub fn view<'a>(
     palette: &Palette,
 ) -> Element<'a, Message> {
     let line_chars = frame::content_chars(SIZE, window, frame::SIDEBAR_ROOM);
-    let mut body = column![paragraph(lang.text(Msg::ReviewListExplain), palette)]
-        .spacing(spacing::SECTION_GAP);
+    let mut body =
+        column![paragraph(lang.text(Msg::ReviewListExplain), palette)].spacing(spacing::LINE_GAP);
 
     if state.rows().is_empty() {
         body = body.push(dim(

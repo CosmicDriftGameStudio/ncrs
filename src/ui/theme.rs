@@ -28,6 +28,13 @@ pub mod spacing {
     pub const M: f32 = 8.0;
     pub const L: f32 = 12.0;
     pub const XL: f32 = 16.0;
+
+    /// The one gap between the lines and rows of a dialog's content.
+    pub const LINE_GAP: f32 = 6.0;
+    /// Room before the heading of a section.
+    pub const SECTION_LEAD: f32 = L;
+    /// What a nested level of a list steps in.
+    pub const INDENT: f32 = 18.0;
 }
 
 /// Heights and widths of the dialog parts, in pixels.
@@ -48,8 +55,13 @@ pub mod radius {
     pub const KEY_CAP: f32 = 3.0;
 }
 
+/// How much of a button's look stays while it is disabled.
+pub const DISABLED_OPACITY: f32 = 0.45;
+
 pub mod font_size {
     pub const TITLE: f32 = 14.0;
+    /// The title of a dialog.
+    pub const HEADER: f32 = 13.0;
     pub const ROW: f32 = 14.0;
     pub const COLUMN_HEADER: f32 = 12.0;
     pub const STATUS: f32 = 13.0;
