@@ -2,6 +2,7 @@
 //! file watcher. Nothing in this crate ever writes to a location; the only
 //! writes go to the index.
 
+mod archive_profile;
 mod classify;
 mod error;
 mod extract;
@@ -18,6 +19,7 @@ pub mod test_support;
 mod text;
 mod watcher;
 
+pub use archive_profile::{learn_archive, propose_target, ArchiveDocument};
 pub use classify::{classify, Skip};
 pub use error::IntakeError;
 pub use extract::{

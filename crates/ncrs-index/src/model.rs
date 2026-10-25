@@ -352,3 +352,17 @@ pub fn hash_from_column(bytes: &[u8]) -> Result<ContentHash, IndexError> {
         .map(ContentHash)
         .map_err(|_wrong_length| corrupt("document.hash", &format!("{} bytes", bytes.len())))
 }
+
+/// What was learned about one subtree of an archive location. A subtree is
+/// named by its first constant folder (empty for files outside any).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubtreePattern {
+    pub subtree: String,
+    /// A filing pattern in the syntax of the rules; `None` when the documents
+    /// of the subtree follow no common structure.
+    pub pattern: Option<String>,
+    /// How many documents follow `pattern`.
+    pub documents: u32,
+    /// How many documents the subtree has.
+    pub total: u32,
+}

@@ -4,7 +4,8 @@
 //!
 //! A filing pattern is a relative path with these placeholders:
 //! `{year}`, `{month}`, `{day}`, `{date}` (`YYYY-MM-DD`), `{sender}`,
-//! `{number}`, `{kind}` and `{tax_context}`.
+//! `{number}`, `{kind}` and `{tax_context}`. Patterns learned from an archive
+//! add `{folder}` (the sender) and `{name}` (the kind).
 
 use std::path::PathBuf;
 
@@ -156,6 +157,15 @@ fn plan_with(rule: &Rule, input: &PlanInput<'_>) -> Planning {
     }
 }
 
+/// The path a pattern gives for these fields, below the root of the archive.
+/// `None` when the pattern cannot be rendered, a value it needs is missing, or
+/// the result would not stay below the root.
+pub fn render_pattern(source: &str, fields: &DocumentFields) -> Option<PathBuf> {
+    Pattern::parse(source)?
+        .render(fields)
+        .filter(|path| stays_below(path))
+}
+
 /// The order fields are asked for and reported in.
 pub const FIELD_ORDER: [Field; 6] = [
     Field::Sender,
@@ -201,6 +211,8 @@ enum Placeholder {
     Number,
     Kind,
     TaxContext,
+    Folder,
+    Name,
 }
 
 impl Placeholder {
@@ -214,6 +226,8 @@ impl Placeholder {
             "number" => Self::Number,
             "kind" => Self::Kind,
             "tax_context" => Self::TaxContext,
+            "folder" => Self::Folder,
+            "name" => Self::Name,
             _ => return None,
         })
     }
@@ -221,9 +235,9 @@ impl Placeholder {
     fn field(self) -> Field {
         match self {
             Self::Year | Self::Month | Self::Day | Self::Date => Field::Date,
-            Self::Sender => Field::Sender,
+            Self::Sender | Self::Folder => Field::Sender,
             Self::Number => Field::Number,
-            Self::Kind => Field::Kind,
+            Self::Kind | Self::Name => Field::Kind,
             Self::TaxContext => Field::TaxContext,
         }
     }
@@ -235,9 +249,9 @@ impl Placeholder {
             Self::Month => fields.date.map(|date| format!("{:02}", date.month())),
             Self::Day => fields.date.map(|date| format!("{:02}", date.day())),
             Self::Date => fields.date.map(|date| date.to_string()),
-            Self::Sender => fields.sender.as_deref().and_then(sanitise_value),
+            Self::Sender | Self::Folder => fields.sender.as_deref().and_then(sanitise_value),
             Self::Number => fields.number.as_deref().and_then(sanitise_value),
-            Self::Kind => fields.kind.as_deref().and_then(sanitise_value),
+            Self::Kind | Self::Name => fields.kind.as_deref().and_then(sanitise_value),
             Self::TaxContext => fields
                 .tax_context
                 .map(|context| context.as_str().to_owned()),

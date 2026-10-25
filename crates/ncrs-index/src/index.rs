@@ -651,7 +651,10 @@ mod tests {
 
         let index = Index::open(&path, &store).unwrap();
 
-        assert_eq!(user_version(&index), 2);
+        assert_eq!(
+            user_version(&index),
+            u32::try_from(MIGRATIONS.len()).unwrap()
+        );
         let document = index
             .document_by_path(std::path::Path::new("inbox/a.pdf"))
             .unwrap()
@@ -668,6 +671,24 @@ mod tests {
                 },
             )
             .unwrap();
+    }
+
+    #[test]
+    fn a_version_2_database_gains_the_location_profile_tables() {
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let store = InMemoryKeyStore::empty();
+        let (old, _) =
+            Index::create_encrypted_with_migrations(&path, &store, &MIGRATIONS[..2]).unwrap();
+        assert_eq!(user_version(&old), 2);
+        assert!(!table_exists(&old, "location_profile"));
+        drop(old);
+
+        let index = Index::open(&path, &store).unwrap();
+
+        assert_eq!(user_version(&index), 3);
+        assert!(table_exists(&index, "location_profile"));
+        assert!(table_exists(&index, "location_subtree"));
     }
 
     #[test]

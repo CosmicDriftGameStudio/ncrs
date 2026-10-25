@@ -10,6 +10,7 @@ mod locations;
 mod migrations;
 mod model;
 mod names;
+mod profile;
 mod review;
 mod rules;
 #[cfg(test)]
@@ -22,5 +23,5 @@ pub use key_store::{InMemoryKeyStore, KeyStore, KeyringKeyStore};
 pub use model::{
     Amount, ContentHash, Currency, Document, DocumentFields, DocumentId, DocumentSource,
     DocumentStatus, Field, FileStamp, IndexStatistics, NewDocument, ReviewEntry, ReviewEntryId,
-    ReviewReason, Rule, RuleId, RuleSpec, TaxContext, TextMatch,
+    ReviewReason, Rule, RuleId, RuleSpec, SubtreePattern, TaxContext, TextMatch,
 };
