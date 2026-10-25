@@ -84,14 +84,14 @@ pub fn view<'a>(
     .spacing(spacing::SECTION_GAP);
 
     Frame::new(
-        lang.text(Msg::FilingStatusTitle),
+        lang.text(Msg::FilingStatusSubtitle),
         body,
         SIZE,
         window,
         lang,
         palette,
     )
-    .subtitle(lang.text(Msg::FilingStatusSubtitle))
+    .subtitle(lang.text(Msg::FilingStatusTitle))
     .on_close(send(FilingStatusMessage::Close))
     // Enter opens the selected error, which the content defines.
     .hints(KeyHints::default())

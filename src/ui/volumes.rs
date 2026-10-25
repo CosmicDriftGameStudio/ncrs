@@ -96,14 +96,14 @@ pub fn view<'a>(
         });
 
     Frame::new(
-        lang.text(Msg::VolumesTitle),
+        lang.text(subtitle),
         column![Column::with_children(rows)],
         SIZE,
         window,
         lang,
         palette,
     )
-    .subtitle(lang.text(subtitle))
+    .subtitle(lang.text(Msg::VolumesTitle))
     .on_close(Message::VolumeMenuClose)
     // Enter goes to the highlighted row, which the content defines.
     .hints(KeyHints::default())

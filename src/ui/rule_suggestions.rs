@@ -28,7 +28,7 @@ pub const VISIBLE_ROWS: usize = 8;
 /// Most matching documents listed; the rest is counted.
 pub const SHOWN_DOCUMENTS: usize = 6;
 
-const SIZE: DialogSize = DialogSize::Large;
+const SIZE: DialogSize = DialogSize::Card;
 
 /// How the width of a row is shared: condition, target, kind, evidence.
 const PORTIONS: [u16; 4] = [5, 5, 3, 5];

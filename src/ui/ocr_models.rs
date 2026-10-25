@@ -101,13 +101,13 @@ pub fn view<'a>(
         palette,
     )
     .buttons(vec![
-        frame::action(
+        frame::action_without_enter(
             lang.text(Msg::DialogCancel),
             cancel,
             focus == CANCEL_FOCUS,
             palette,
         ),
-        frame::action(
+        frame::action_without_enter(
             lang.text(Msg::OcrModelsDownload),
             download,
             focus == DOWNLOAD_FOCUS,

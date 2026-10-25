@@ -21,6 +21,31 @@ pub mod spacing {
     pub const CELL_PADDING_X: f32 = 8.0;
     pub const BORDER_WIDTH: f32 = 1.0;
     pub const BORDER_RADIUS: f32 = 3.0;
+
+    /// The scale of the dialogs and the kit.
+    pub const XS: f32 = 4.0;
+    pub const S: f32 = 6.0;
+    pub const M: f32 = 8.0;
+    pub const L: f32 = 12.0;
+    pub const XL: f32 = 16.0;
+}
+
+/// Heights and widths of the dialog parts, in pixels.
+pub mod size {
+    pub const ROW: f32 = 22.0;
+    pub const ROW_TALL: f32 = 24.0;
+    pub const BUTTON: f32 = 24.0;
+    pub const HEADER: f32 = 32.0;
+    pub const FOOTER: f32 = 40.0;
+    pub const CONTROL_WIDTH: f32 = 260.0;
+    pub const SIDEBAR_WIDTH: f32 = 200.0;
+    pub const SIDEBAR_ITEM: f32 = 26.0;
+}
+
+pub mod radius {
+    pub const FRAME: f32 = 6.0;
+    pub const CONTROL: f32 = 4.0;
+    pub const KEY_CAP: f32 = 3.0;
 }
 
 pub mod font_size {
@@ -28,6 +53,14 @@ pub mod font_size {
     pub const ROW: f32 = 14.0;
     pub const COLUMN_HEADER: f32 = 12.0;
     pub const STATUS: f32 = 13.0;
+
+    /// The text of dialogs and the kit.
+    pub const BODY: f32 = 12.0;
+    /// The lead line of a dialog.
+    pub const LEAD: f32 = 13.0;
+    pub const KEY_CAP: f32 = 10.0;
+    /// A number shown large.
+    pub const FIGURE: f32 = 16.0;
 }
 
 /// Base theme handed to iced (our widgets override most colors).
@@ -199,8 +232,8 @@ pub fn dialog(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
         text_color: Some(colors.text),
         border: Border {
             color: colors.border,
-            width: 2.0,
-            radius: spacing::BORDER_RADIUS.into(),
+            width: spacing::BORDER_WIDTH,
+            radius: radius::FRAME.into(),
         },
         ..container::Style::default()
     }
@@ -220,7 +253,7 @@ pub fn dialog_button(
             _ if primary => (
                 Some(Background::Color(colors.cursor)),
                 colors.cursor_text,
-                colors.border,
+                colors.cursor,
             ),
             button::Status::Hovered | button::Status::Pressed => (None, colors.text, colors.accent),
             button::Status::Active => (None, colors.text, colors.border),
@@ -230,11 +263,147 @@ pub fn dialog_button(
             text_color,
             border: Border {
                 color: border_color,
-                width: 1.0,
-                radius: spacing::BORDER_RADIUS.into(),
+                width: spacing::BORDER_WIDTH,
+                radius: radius::CONTROL.into(),
             },
             ..button::Style::default()
         }
+    }
+}
+
+/// The button of a destructive action: filled in the error color.
+pub fn danger_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    move |_theme, status| {
+        let disabled = matches!(status, button::Status::Disabled);
+        button::Style {
+            background: (!disabled).then_some(Background::Color(colors.error)),
+            text_color: if disabled {
+                colors.dim_text
+            } else {
+                colors.cursor_text
+            },
+            border: Border {
+                color: if disabled {
+                    colors.border_inactive
+                } else {
+                    colors.error
+                },
+                width: spacing::BORDER_WIDTH,
+                radius: radius::CONTROL.into(),
+            },
+            ..button::Style::default()
+        }
+    }
+}
+
+/// The close cross of a dialog: flat and dimmed, lit while the pointer is over
+/// it.
+pub fn close_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    move |_theme, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: hovered.then_some(Background::Color(colors.title)),
+            text_color: if hovered {
+                colors.text
+            } else {
+                colors.dim_text
+            },
+            border: Border {
+                radius: radius::CONTROL.into(),
+                ..Border::default()
+            },
+            ..button::Style::default()
+        }
+    }
+}
+
+/// A key shown as a cap: outlined, small. `on_fill` is a cap drawn on a filled
+/// button, so it takes the text color of that button.
+pub fn key_cap(palette: &Palette, on_fill: bool) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
+    move |_theme| container::Style {
+        text_color: Some(if on_fill {
+            colors.cursor_text
+        } else {
+            colors.dim_text
+        }),
+        border: Border {
+            color: if on_fill {
+                colors.cursor_text
+            } else {
+                colors.border
+            },
+            width: spacing::BORDER_WIDTH,
+            radius: radius::KEY_CAP.into(),
+        },
+        ..container::Style::default()
+    }
+}
+
+/// One option of a segmented control: flat, the chosen one outlined in the
+/// cursor color.
+pub fn segment_button(
+    palette: &Palette,
+    chosen: bool,
+) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    move |_theme, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: hovered.then_some(Background::Color(colors.title)),
+            text_color: if chosen { colors.text } else { colors.dim_text },
+            border: Border {
+                color: if chosen {
+                    colors.cursor
+                } else {
+                    Color::TRANSPARENT
+                },
+                width: spacing::BORDER_WIDTH,
+                radius: radius::CONTROL.into(),
+            },
+            ..button::Style::default()
+        }
+    }
+}
+
+/// A flat button in the accent color, for an action inside the content.
+pub fn link_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    move |_theme, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: hovered.then_some(Background::Color(colors.title)),
+            text_color: colors.accent,
+            border: Border::default(),
+            ..button::Style::default()
+        }
+    }
+}
+
+/// A line between two parts of a dialog.
+pub fn divider(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
+    move |_theme| filled(colors.border_inactive, colors.text)
+}
+
+/// The side column of a dialog.
+pub fn sidebar(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
+    move |_theme| filled(colors.panel, colors.text)
+}
+
+/// A box of the kit with a 1 px outline and no fill: a table or a summary.
+pub fn outlined(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
+    move |_theme| container::Style {
+        border: Border {
+            color: colors.border_inactive,
+            width: spacing::BORDER_WIDTH,
+            radius: radius::CONTROL.into(),
+        },
+        ..container::Style::default()
     }
 }
 
@@ -296,8 +465,8 @@ pub fn dialog_checkbox(palette: &Palette) -> impl Fn(&Theme, checkbox::Status) -
             icon_color: colors.cursor_text,
             border: Border {
                 color: colors.border,
-                width: 1.0,
-                radius: spacing::BORDER_RADIUS.into(),
+                width: spacing::BORDER_WIDTH,
+                radius: radius::CONTROL.into(),
             },
             text_color: Some(colors.text),
         }
@@ -307,10 +476,15 @@ pub fn dialog_checkbox(palette: &Palette) -> impl Fn(&Theme, checkbox::Status) -
 /// The box of the context menu.
 pub fn menu(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
     let colors = *palette;
-    let dialog = dialog(&colors);
-    move |theme| container::Style {
+    move |_theme| container::Style {
         background: Some(Background::Color(colors.menu)),
-        ..dialog(theme)
+        text_color: Some(colors.text),
+        border: Border {
+            color: colors.border,
+            width: 2.0,
+            radius: spacing::BORDER_RADIUS.into(),
+        },
+        ..container::Style::default()
     }
 }
 
@@ -368,6 +542,23 @@ pub fn search_input(palette: &Palette) -> impl Fn(&Theme, text_input::Status) ->
         placeholder: colors.dim_text,
         value: colors.text,
         selection: colors.cursor,
+    }
+}
+
+/// A text field of a dialog: like [`search_input`], with the radius of the
+/// kit's controls.
+pub fn field_input(palette: &Palette) -> impl Fn(&Theme, text_input::Status) -> text_input::Style {
+    let colors = *palette;
+    let base = search_input(palette);
+    move |theme, status| {
+        let mut style = base(theme, status);
+        style.border.radius = radius::CONTROL.into();
+        style.border.color = if matches!(status, text_input::Status::Focused { .. }) {
+            colors.accent
+        } else {
+            colors.border
+        };
+        style
     }
 }
 

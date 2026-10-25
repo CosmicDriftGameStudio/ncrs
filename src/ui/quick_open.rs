@@ -3,6 +3,7 @@
 
 use iced::{Element, Size};
 
+use super::kit;
 use super::picker;
 use crate::app::fill_template;
 use crate::i18n::{Language, Msg};
@@ -28,7 +29,7 @@ pub fn view<'a>(
     );
     let subtitle = fill_template(lang.text(Msg::QuickopenSubtitle), &[("{dir}", &directory)]);
 
-    let field = picker::query_field(
+    let field = kit::text_field(
         lang.text(Msg::QuickopenPlaceholder),
         quick_open.query(),
         QUICK_OPEN_ID,
@@ -46,9 +47,9 @@ pub fn view<'a>(
 
     picker::frame(
         picker::Content {
-            title: lang.text(Msg::QuickopenTitle).to_owned(),
+            title: subtitle,
             title_theme: None,
-            subtitle: Some(subtitle),
+            subtitle: Some(lang.text(Msg::QuickopenTitle).to_owned()),
             field,
             status: status(quick_open, lang),
             rows,
@@ -84,7 +85,7 @@ fn hit_row<'a>(
 ) -> Element<'a, Message> {
     let selected = index == quick_open.cursor();
     let path = quick_open.relative_path(hit);
-    picker::list_row(
+    kit::list_row(
         picker::highlighted(
             path,
             &hit.highlight,

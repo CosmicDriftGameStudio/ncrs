@@ -1,15 +1,18 @@
-//! The frame every dialog is drawn in: title and close cross on top, the
-//! content in a scrollable of fixed height, key hints and buttons below.
+//! The frame every dialog is drawn in: a header with the title and the close
+//! cross, the content in a scrollable of fixed size, and a footer with key
+//! hints on the left and the buttons on the right.
 //!
 //! The size comes from the window and the dialog's [`DialogSize`], never from
 //! the content: a long file name or a longer list scrolls or is cut, the frame
 //! stays where it is.
 
+use iced::font::Weight;
 use iced::widget::text::Wrapping;
-use iced::widget::{button, column, container, row, rule, scrollable, text};
-use iced::{alignment, Element, Length, Padding, Size};
+use iced::widget::{button, column, container, row, scrollable, text};
+use iced::{alignment, Element, Font, Length, Padding, Size};
 
-use super::theme::{self, font_size, spacing};
+use super::kit::{self, Tone};
+use super::theme::{self, font_size, size, spacing};
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::palette::Palette;
@@ -21,17 +24,27 @@ pub const FRAME_ID: &str = "dialog-frame";
 /// the latter.
 const CLOSE_GLYPH: &str = "×";
 
+/// The side of the square close button.
+const CLOSE_BUTTON: f32 = 22.0;
+
 /// Space kept free between the frame and every edge of the window.
 const WINDOW_MARGIN: f32 = 24.0;
 
-/// Average width of one glyph at the UI font sizes, used to turn a width in
+/// Average width of one glyph at the dialog font size, used to turn a width in
 /// pixels into a number of characters for text that must stay on one line.
-const AVERAGE_GLYPH_WIDTH: f32 = 7.0;
+/// Measured: the monospace UI font at 12 px advances 7.22 px per glyph.
+const AVERAGE_GLYPH_WIDTH: f32 = 7.25;
 
-/// Room kept right of the content for the scrollbar drawn over it.
-const SCROLLBAR_ROOM: f32 = 18.0;
+/// Room kept right of the content for the scrollbar drawn over it, counted
+/// from the edge of the frame.
+const SCROLLBAR_ROOM: f32 = 22.0;
 
-const HINT_SEPARATOR: &str = " · ";
+/// The border of the frame on each side.
+const FRAME_BORDER: f32 = 2.0 * spacing::BORDER_WIDTH;
+
+/// What header, footer, the two dividers and the border take of the height.
+const VERTICAL_CHROME: f32 =
+    size::HEADER + size::FOOTER + 2.0 * spacing::BORDER_WIDTH + FRAME_BORDER;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DialogSize {
@@ -41,6 +54,8 @@ pub enum DialogSize {
     Medium,
     /// Lists and the Inspection.
     Large,
+    /// The card of Hermes: a sidebar and a page.
+    Card,
 }
 
 /// A share of the window, kept between a minimum and a maximum.
@@ -55,6 +70,10 @@ impl Extent {
         Self { share, min, max }
     }
 
+    const fn fixed(pixels: f32) -> Self {
+        Self::new(0.0, pixels, pixels)
+    }
+
     /// Never more than the window minus the margin on both sides, even where
     /// that is less than the minimum.
     fn of(&self, window: f32) -> f32 {
@@ -64,25 +83,24 @@ impl Extent {
 }
 
 impl DialogSize {
+    /// Large and the card keep their height; the others grow with the content
+    /// up to it.
+    const fn grows_with_content(self) -> bool {
+        matches!(self, Self::Small | Self::Medium)
+    }
+
     const fn extents(self) -> (Extent, Extent) {
         match self {
-            Self::Small => (
-                Extent::new(0.36, 380.0, 520.0),
-                Extent::new(0.34, 240.0, 320.0),
-            ),
-            Self::Medium => (
-                Extent::new(0.50, 460.0, 680.0),
-                Extent::new(0.62, 360.0, 600.0),
-            ),
-            Self::Large => (
-                Extent::new(0.72, 600.0, 960.0),
-                Extent::new(0.78, 440.0, 720.0),
-            ),
+            Self::Small => (Extent::fixed(400.0), Extent::new(0.34, 240.0, 320.0)),
+            Self::Medium => (Extent::fixed(520.0), Extent::new(0.62, 360.0, 600.0)),
+            Self::Large => (Extent::fixed(640.0), Extent::fixed(640.0)),
+            Self::Card => (Extent::fixed(1000.0), Extent::fixed(690.0)),
         }
     }
 }
 
-/// The outer size of the frame of a dialog of `size` in a window of `window`.
+/// The outer size of the frame of a dialog of `size` in a window of `window`:
+/// for a size that grows with its content, the most it grows to.
 pub fn frame_size(size: DialogSize, window: Size) -> Size {
     let (width, height) = size.extents();
     Size::new(width.of(window.width), height.of(window.height))
@@ -93,10 +111,12 @@ pub fn chars_that_fit(width: f32) -> usize {
     (width / AVERAGE_GLYPH_WIDTH).floor().max(1.0) as usize
 }
 
-/// The width of a line of content: the frame less its padding and the room
-/// the scrollbar keeps.
+/// The width of a line of content: the frame less its border, its padding and
+/// the room the scrollbar keeps. A sidebar takes
+/// [`size::SIDEBAR_WIDTH`] and its line more: pass them as `reserved` to
+/// [`content_chars`].
 pub fn content_width(size: DialogSize, window: Size) -> f32 {
-    frame_size(size, window).width - 4.0 * spacing::OUTER_PADDING - SCROLLBAR_ROOM
+    frame_size(size, window).width - FRAME_BORDER - spacing::L - SCROLLBAR_ROOM
 }
 
 /// The characters one line of the content of a frame holds, with `reserved`
@@ -108,7 +128,8 @@ pub fn content_chars(size: DialogSize, window: Size, reserved: f32) -> usize {
 /// Which keys the footer names. Esc is named whenever the frame can be closed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct KeyHints {
-    /// Enter presses the primary button.
+    /// Enter presses the primary button, which then carries the Enter cap
+    /// ([`action`]); without it use [`action_without_enter`].
     pub enter: bool,
     /// Tab moves the focus between more than one element.
     pub tab: bool,
@@ -119,6 +140,9 @@ pub struct Frame<'a> {
     title_theme: Option<String>,
     subtitle: Option<String>,
     content: Element<'a, Message>,
+    sidebar: Option<Element<'a, Message>>,
+    footer_note: Option<String>,
+    fixed_height: bool,
     buttons: Vec<Element<'a, Message>>,
     on_close: Option<Message>,
     size: DialogSize,
@@ -142,6 +166,9 @@ impl<'a> Frame<'a> {
             title_theme: None,
             subtitle: None,
             content: content.into(),
+            sidebar: None,
+            footer_note: None,
+            fixed_height: false,
             buttons: Vec::new(),
             on_close: None,
             size,
@@ -152,14 +179,34 @@ impl<'a> Frame<'a> {
         }
     }
 
-    /// A second name for the title, small and dimmed after it.
+    /// A second name for the title, dimmed after it.
     pub fn title_theme(mut self, name: impl Into<String>) -> Self {
         self.title_theme = Some(name.into());
         self
     }
 
+    /// A line of explanation, dimmed after the title like the second name.
     pub fn subtitle(mut self, subtitle: impl Into<String>) -> Self {
         self.subtitle = Some(subtitle.into());
+        self
+    }
+
+    /// A column left of the content, [`size::SIDEBAR_WIDTH`] wide.
+    pub fn sidebar(mut self, sidebar: impl Into<Element<'a, Message>>) -> Self {
+        self.sidebar = Some(sidebar.into());
+        self
+    }
+
+    /// Keeps the full height of the size whatever the content, for a card whose
+    /// content changes between stages.
+    pub const fn fixed_height(mut self) -> Self {
+        self.fixed_height = true;
+        self
+    }
+
+    /// Text in the footer where the key hints would be.
+    pub fn footer_note(mut self, note: impl Into<String>) -> Self {
+        self.footer_note = Some(note.into());
         self
     }
 
@@ -180,130 +227,208 @@ impl<'a> Frame<'a> {
         self
     }
 
-    pub fn into_element(self) -> Element<'a, Message> {
+    fn header(&self) -> Element<'a, Message> {
         let palette = self.palette;
-        let outer = frame_size(self.size, self.window);
-
-        let mut title = row![text(self.title)
-            .size(font_size::TITLE)
-            .color(palette.accent)
+        let mut title = row![text(self.title.clone())
+            .size(font_size::BODY)
+            .color(palette.text)
+            .font(Font {
+                weight: Weight::Semibold,
+                ..Font::MONOSPACE
+            })
             .wrapping(Wrapping::None)]
-        .spacing(spacing::SECTION_GAP)
+        .spacing(spacing::S)
         .align_y(alignment::Vertical::Center);
-        if let Some(name) = self.title_theme {
+        for part in [&self.title_theme, &self.subtitle].into_iter().flatten() {
             title = title.push(
-                text(name)
-                    .size(font_size::STATUS)
+                text(part.clone())
+                    .size(font_size::BODY)
                     .color(palette.dim_text)
                     .wrapping(Wrapping::None),
             );
         }
-        let mut header =
-            row![container(title).width(Length::Fill)].align_y(alignment::Vertical::Center);
+        let mut header = row![container(title).width(Length::Fill).clip(true)]
+            .spacing(spacing::S)
+            .align_y(alignment::Vertical::Center)
+            .height(size::HEADER)
+            .padding(Padding {
+                left: spacing::L,
+                right: spacing::S,
+                ..Padding::ZERO
+            });
         if let Some(message) = self.on_close.clone() {
             header = header.push(
-                button(text(CLOSE_GLYPH).size(font_size::TITLE))
-                    .padding([0.0, spacing::CELL_PADDING_X])
+                button(container(text(CLOSE_GLYPH).size(font_size::TITLE)).center(Length::Fill))
+                    .padding(0.0)
+                    .width(CLOSE_BUTTON)
+                    .height(CLOSE_BUTTON)
                     .on_press(message)
-                    .style(theme::dialog_button(&palette, false)),
+                    .style(theme::close_button(&palette)),
             );
         }
-        let mut top = column![header].spacing(spacing::SECTION_GAP);
-        if let Some(subtitle) = self.subtitle {
-            top = top.push(
-                text(subtitle)
-                    .size(font_size::STATUS)
-                    .color(palette.dim_text)
-                    .wrapping(Wrapping::None),
-            );
-        }
+        header.into()
+    }
 
-        let hint_line = key_hint_line(self.hints, self.on_close.is_some(), self.lang);
-        // The hints sit above the buttons: beside them a long German line
-        // would run under three buttons.
-        let mut footer = column![container(
-            text(hint_line)
-                .size(font_size::STATUS)
+    fn footer(&mut self) -> Element<'a, Message> {
+        let palette = self.palette;
+        let left: Element<'a, Message> = match self.footer_note.take() {
+            Some(note) => text(note)
+                .size(font_size::BODY)
                 .color(palette.dim_text)
                 .wrapping(Wrapping::None)
+                .into(),
+            None => key_hint_row(self.hints, self.on_close.is_some(), self.lang, &palette),
+        };
+        row![
+            container(left).width(Length::Fill).clip(true),
+            row(std::mem::take(&mut self.buttons))
+                .spacing(spacing::S)
+                .align_y(alignment::Vertical::Center),
+        ]
+        .spacing(spacing::S)
+        .align_y(alignment::Vertical::Center)
+        .height(size::FOOTER)
+        .padding(Padding {
+            left: spacing::L,
+            right: spacing::M,
+            ..Padding::ZERO
+        })
+        .into()
+    }
+
+    pub fn into_element(mut self) -> Element<'a, Message> {
+        let palette = self.palette;
+        let outer = frame_size(self.size, self.window);
+        let grows = self.size.grows_with_content() && !self.fixed_height;
+        let header = self.header();
+        let footer = self.footer();
+
+        let page = scrollable(
+            container(self.content)
+                .width(Length::Fill)
+                .padding(Padding {
+                    left: spacing::L,
+                    right: SCROLLBAR_ROOM - FRAME_BORDER,
+                    top: spacing::L,
+                    bottom: spacing::L,
+                }),
         )
         .width(Length::Fill)
-        .clip(true)]
-        .spacing(spacing::SECTION_GAP);
-        if !self.buttons.is_empty() {
-            footer = footer.push(
-                container(row(self.buttons).spacing(spacing::CELL_PADDING_X))
-                    .width(Length::Fill)
-                    .align_x(alignment::Horizontal::Right),
-            );
-        }
+        .height(if grows { Length::Shrink } else { Length::Fill });
 
-        let body = column![
-            top,
-            separator(&palette),
-            scrollable(
-                container(self.content)
-                    .width(Length::Fill)
-                    .padding(Padding {
-                        right: SCROLLBAR_ROOM,
-                        ..Padding::ZERO
-                    })
-            )
-            .width(Length::Fill)
-            .height(Length::Fill),
-            separator(&palette),
+        let middle: Element<'a, Message> = match self.sidebar {
+            Some(sidebar) => row![
+                container(sidebar)
+                    .width(size::SIDEBAR_WIDTH)
+                    .height(Length::Fill)
+                    .padding(spacing::S)
+                    .style(theme::sidebar(&palette)),
+                container("")
+                    .width(spacing::BORDER_WIDTH)
+                    .height(Length::Fill)
+                    .style(theme::divider(&palette)),
+                page,
+            ]
+            .into(),
+            None => page.into(),
+        };
+        let body: Element<'a, Message> = if grows {
+            container(middle)
+                .max_height((outer.height - VERTICAL_CHROME).max(0.0))
+                .into()
+        } else {
+            middle
+        };
+
+        container(column![
+            header,
+            kit::divider(&palette),
+            body,
+            kit::divider(&palette),
             footer,
-        ]
-        .spacing(spacing::SECTION_GAP);
-
-        container(body)
-            .id(FRAME_ID)
-            .padding(spacing::OUTER_PADDING * 2.0)
-            .width(outer.width)
-            .height(outer.height)
-            .style(theme::dialog(&palette))
-            .into()
+        ])
+        .id(FRAME_ID)
+        .width(outer.width)
+        .height(if grows {
+            Length::Shrink
+        } else {
+            Length::Fixed(outer.height)
+        })
+        .style(theme::dialog(&palette))
+        .into()
     }
 }
 
 /// A button of the footer or the content. `highlighted` is the one Enter
-/// presses, drawn filled; `on_press` of `None` disables it.
+/// presses, drawn filled with the Enter cap; `on_press` of `None` disables it.
 pub fn action<'a>(
     label: &str,
     on_press: Option<Message>,
     highlighted: bool,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    button(text(label.to_owned()))
-        .on_press_maybe(on_press)
-        .style(theme::dialog_button(palette, highlighted))
-        .into()
+    if highlighted {
+        kit::enter_button(label, on_press, Tone::Primary, palette)
+    } else {
+        kit::button(label, on_press, Tone::Secondary, palette)
+    }
 }
 
-fn separator<'a>(palette: &Palette) -> Element<'a, Message> {
-    let color = palette.border;
-    rule::horizontal(1)
-        .style(move |_theme| rule::Style {
-            color,
-            radius: 0.0.into(),
-            fill_mode: rule::FillMode::Full,
-            snap: true,
-        })
-        .into()
+/// A button like [`action`] for a dialog where Enter does not press the main
+/// button: filled when `highlighted`, but without the Enter cap.
+pub fn action_without_enter<'a>(
+    label: &str,
+    on_press: Option<Message>,
+    highlighted: bool,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let tone = if highlighted {
+        Tone::Primary
+    } else {
+        Tone::Secondary
+    };
+    kit::button(label, on_press, tone, palette)
 }
 
-/// The one wording of the keys, the same in every dialog.
-fn key_hint_line(hints: KeyHints, closable: bool, lang: Language) -> String {
+/// The keys the footer names with the verb of each, in the order shown. Enter
+/// is not named: the Enter cap on the main button says it.
+fn key_hints(hints: KeyHints, closable: bool) -> Vec<(&'static str, Msg)> {
     [
-        (closable, Msg::DialogHintEscape),
-        (hints.enter, Msg::DialogHintEnter),
-        (hints.tab, Msg::DialogHintTab),
+        (closable, ESCAPE_KEY, Msg::DialogHintEscape),
+        (hints.tab, TAB_KEY, Msg::DialogHintTab),
     ]
     .into_iter()
-    .filter(|(shown, _)| *shown)
-    .map(|(_, hint)| lang.text(hint))
-    .collect::<Vec<_>>()
-    .join(HINT_SEPARATOR)
+    .filter(|(shown, _, _)| *shown)
+    .map(|(_, key, verb)| (key, verb))
+    .collect()
+}
+
+const ESCAPE_KEY: &str = "Esc";
+const TAB_KEY: &str = "Tab";
+
+/// The one wording of the keys, the same in every dialog.
+fn key_hint_row<'a>(
+    hints: KeyHints,
+    closable: bool,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let groups = key_hints(hints, closable).into_iter().map(|(key, verb)| {
+        row![
+            kit::key_cap(key, palette),
+            text(lang.text(verb))
+                .size(font_size::BODY)
+                .color(palette.dim_text)
+                .wrapping(Wrapping::None),
+        ]
+        .spacing(spacing::XS)
+        .align_y(alignment::Vertical::Center)
+        .into()
+    });
+    row(groups)
+        .spacing(spacing::L)
+        .align_y(alignment::Vertical::Center)
+        .into()
 }
 
 // reason: a failing assertion is the signal in a test
@@ -332,25 +457,32 @@ mod tests {
     }
 
     #[test]
-    fn the_three_sizes_at_the_initial_window() {
-        // 1200 x 760: the shares, clamped.
-        assert_size(DialogSize::Small, INITIAL_WINDOW_SIZE, 432.0, 258.4);
-        assert_size(DialogSize::Medium, INITIAL_WINDOW_SIZE, 600.0, 471.2);
-        assert_size(DialogSize::Large, INITIAL_WINDOW_SIZE, 864.0, 592.8);
+    fn the_sizes_at_the_initial_window() {
+        // 1200 x 760: fixed widths, the heights of the small ones from a share.
+        assert_size(DialogSize::Small, INITIAL_WINDOW_SIZE, 400.0, 258.4);
+        assert_size(DialogSize::Medium, INITIAL_WINDOW_SIZE, 520.0, 471.2);
+        assert_size(DialogSize::Large, INITIAL_WINDOW_SIZE, 640.0, 640.0);
+        assert_size(DialogSize::Card, INITIAL_WINDOW_SIZE, 1000.0, 690.0);
     }
 
     #[test]
     fn a_huge_window_stops_at_the_maximum() {
         let huge = Size::new(5000.0, 4000.0);
-        assert_eq!(sized(DialogSize::Small, huge), (520.0, 320.0));
-        assert_eq!(sized(DialogSize::Medium, huge), (680.0, 600.0));
-        assert_eq!(sized(DialogSize::Large, huge), (960.0, 720.0));
+        assert_eq!(sized(DialogSize::Small, huge), (400.0, 320.0));
+        assert_eq!(sized(DialogSize::Medium, huge), (520.0, 600.0));
+        assert_eq!(sized(DialogSize::Large, huge), (640.0, 640.0));
+        assert_eq!(sized(DialogSize::Card, huge), (1000.0, 690.0));
     }
 
     #[test]
     fn a_tiny_window_keeps_the_margin_on_every_side() {
         let tiny = Size::new(300.0, 200.0);
-        for size in [DialogSize::Small, DialogSize::Medium, DialogSize::Large] {
+        for size in [
+            DialogSize::Small,
+            DialogSize::Medium,
+            DialogSize::Large,
+            DialogSize::Card,
+        ] {
             let framed = frame_size(size, tiny);
             assert!((framed.width - 252.0).abs() < 0.01, "{framed:?}");
             assert!((framed.height - 152.0).abs() < 0.01, "{framed:?}");
@@ -368,34 +500,48 @@ mod tests {
         let small = frame_size(DialogSize::Small, INITIAL_WINDOW_SIZE);
         let medium = frame_size(DialogSize::Medium, INITIAL_WINDOW_SIZE);
         let large = frame_size(DialogSize::Large, INITIAL_WINDOW_SIZE);
+        let card = frame_size(DialogSize::Card, INITIAL_WINDOW_SIZE);
         assert!(small.width < medium.width && medium.width < large.width);
+        assert!(large.width < card.width);
         assert!(small.height < medium.height && medium.height < large.height);
+        assert!(large.height < card.height);
     }
 
     #[test]
     fn a_line_holds_fewer_characters_than_pixels_and_at_least_one() {
-        assert_eq!(chars_that_fit(700.0), 100);
+        assert_eq!(chars_that_fit(725.0), 100);
         assert_eq!(chars_that_fit(0.0), 1);
         assert_eq!(chars_that_fit(-50.0), 1);
     }
 
+    fn names(hints: KeyHints, closable: bool) -> Vec<&'static str> {
+        key_hints(hints, closable)
+            .into_iter()
+            .map(|(key, _)| key)
+            .collect()
+    }
+
     #[test]
-    fn the_hint_line_names_only_the_keys_that_work() {
+    fn the_hints_name_only_the_keys_that_work() {
         let both = KeyHints {
             enter: true,
             tab: true,
         };
-        assert_eq!(
-            key_hint_line(both, true, Language::English),
-            "Esc: close · Enter: confirm · Tab: next field"
-        );
-        assert_eq!(
-            key_hint_line(KeyHints::default(), true, Language::English),
-            "Esc: close"
-        );
-        assert_eq!(
-            key_hint_line(KeyHints::default(), false, Language::German),
-            ""
-        );
+        assert_eq!(names(both, true), ["Esc", "Tab"]);
+        assert_eq!(names(KeyHints::default(), true), ["Esc"]);
+        assert!(names(KeyHints::default(), false).is_empty());
+    }
+
+    #[test]
+    fn the_hints_give_each_key_its_own_verb() {
+        let both = KeyHints {
+            enter: true,
+            tab: true,
+        };
+        let verbs: Vec<&str> = key_hints(both, true)
+            .into_iter()
+            .map(|(_, verb)| Language::English.text(verb))
+            .collect();
+        assert_eq!(verbs, ["close", "next field"]);
     }
 }

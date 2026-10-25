@@ -26,7 +26,7 @@ pub const VISIBLE_LINES: usize = 12;
 /// Most lines of a tree shown; the rest is counted.
 pub const TREE_LINES: usize = 6;
 
-const SIZE: DialogSize = DialogSize::Large;
+const SIZE: DialogSize = DialogSize::Card;
 
 /// How the width of an entry is shared: current path, proposed path, reason.
 const PORTIONS: [u16; 3] = [5, 5, 6];

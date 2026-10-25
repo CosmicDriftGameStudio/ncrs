@@ -10,6 +10,7 @@ use iced::{Element, Size};
 
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
+use super::kit::{self, Tone};
 use super::theme::{font_size, spacing};
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
@@ -79,18 +80,36 @@ pub fn view<'a>(
     }
     frame
         .buttons(vec![
-            frame::action(
-                lang.text(Msg::DialogCancel),
-                Some(Message::DeleteCancel),
-                focus == CANCEL_FOCUS,
-                palette,
-            ),
-            frame::action(
-                confirm_label,
-                Some(Message::DeleteConfirm),
-                focus == CONFIRM_FOCUS,
-                palette,
-            ),
+            if permanent {
+                frame::action_without_enter(
+                    lang.text(Msg::DialogCancel),
+                    Some(Message::DeleteCancel),
+                    focus == CANCEL_FOCUS,
+                    palette,
+                )
+            } else {
+                frame::action(
+                    lang.text(Msg::DialogCancel),
+                    Some(Message::DeleteCancel),
+                    focus == CANCEL_FOCUS,
+                    palette,
+                )
+            },
+            if focus == CONFIRM_FOCUS && !permanent {
+                kit::enter_button(
+                    confirm_label,
+                    Some(Message::DeleteConfirm),
+                    Tone::Danger,
+                    palette,
+                )
+            } else {
+                kit::button(
+                    confirm_label,
+                    Some(Message::DeleteConfirm),
+                    Tone::Danger,
+                    palette,
+                )
+            },
         ])
         .on_close(Message::DeleteCancel)
         // The permanent dialog starts on Cancel, so Enter does not confirm.

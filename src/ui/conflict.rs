@@ -16,7 +16,7 @@ use crate::i18n::{Language, Msg};
 use crate::messages::{ConflictChoice, Message};
 use crate::palette::Palette;
 
-const SIZE: DialogSize = DialogSize::Small;
+const SIZE: DialogSize = DialogSize::Medium;
 
 /// The buttons from left to right, the focus numbers they have.
 pub const CANCEL_FOCUS: usize = 0;
@@ -74,14 +74,14 @@ pub fn view<'a>(
     };
 
     Frame::new(
-        lang.text(Msg::ConflictTitle),
+        lang.text(Msg::ConflictSubtitle),
         column![subject, all_row].spacing(spacing::SECTION_GAP),
         SIZE,
         window,
         lang,
         palette,
     )
-    .subtitle(lang.text(Msg::ConflictSubtitle))
+    .subtitle(lang.text(Msg::ConflictTitle))
     .buttons(vec![
         choice_button(Msg::ConflictCancel, ConflictChoice::Cancel, CANCEL_FOCUS),
         choice_button(Msg::ConflictKeep, ConflictChoice::ThisKeep, KEEP_FOCUS),

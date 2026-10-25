@@ -117,6 +117,15 @@ fn action<'a>(
     frame::action(label, on_press.map(filing_message), primary, palette)
 }
 
+fn quiet_action<'a>(
+    label: &'a str,
+    on_press: Option<FilingMessage>,
+    primary: bool,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    frame::action_without_enter(label, on_press.map(filing_message), primary, palette)
+}
+
 pub fn radio_look(palette: &Palette) -> impl Fn(&Theme, radio::Status) -> radio::Style {
     let colors = *palette;
     move |_theme, _status| radio::Style {
@@ -161,13 +170,13 @@ fn ask_encryption<'a>(
         title: lang.text(Msg::FilingEncryptionTitle),
         body,
         buttons: vec![
-            action(
+            quiet_action(
                 lang.text(Msg::FilingNotNow),
                 (!busy).then_some(FilingMessage::Dismiss),
                 false,
                 palette,
             ),
-            action(
+            quiet_action(
                 lang.text(Msg::FilingEncryptionCreate),
                 (!busy).then_some(FilingMessage::CreateIndex),
                 true,
@@ -347,13 +356,13 @@ fn plain_file_warning<'a>(lang: Language, palette: &Palette) -> Card<'a> {
             .wrapping(Wrapping::Word)]
         .spacing(spacing::SECTION_GAP),
         buttons: vec![
-            action(
+            quiet_action(
                 lang.text(Msg::FilingPlainUse),
                 Some(FilingMessage::ConfirmPlainFile),
                 false,
                 palette,
             ),
-            action(
+            quiet_action(
                 lang.text(Msg::FilingNotNow),
                 Some(FilingMessage::Dismiss),
                 true,

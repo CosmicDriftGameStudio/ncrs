@@ -89,6 +89,8 @@ pub fn view<'a>(
         lang,
         palette,
     )
+    // The stages differ in height; the frame must not jump between them.
+    .fixed_height()
     .buttons(footer_buttons(card, lang, palette))
     .on_close(to_message(ThemeFetchMessage::Close))
     // Choosing, Enter takes the highlighted theme: the content defines it.

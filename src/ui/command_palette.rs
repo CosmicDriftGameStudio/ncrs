@@ -6,6 +6,7 @@ use iced::widget::{container, row, text};
 use iced::{alignment, Element, Length, Size};
 
 use super::frame;
+use super::kit;
 use super::layout::ROW_HEIGHT;
 use super::picker;
 use super::theme::{font_size, spacing};
@@ -40,7 +41,7 @@ pub fn view<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let field = picker::query_field(
+    let field = kit::text_field(
         lang.text(Msg::CommandPalettePlaceholder),
         command_palette.query(),
         COMMAND_PALETTE_ID,
@@ -61,7 +62,7 @@ pub fn view<'a>(
             Row::Hit(hit) => {
                 let entry = command_palette.entry(hit)?;
                 let selected = index == command_palette.cursor();
-                Some(picker::list_row(
+                Some(kit::list_row(
                     command_row(entry, hit, selected, window, palette),
                     to_palette(CommandPaletteMessage::Select(index)),
                     selected,
