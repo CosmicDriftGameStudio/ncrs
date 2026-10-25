@@ -57,13 +57,15 @@ pub enum TabTitle<'a> {
     Search(String),
 }
 
+pub use crate::hermes_status::Tone as HermesTone;
+
 pub struct TitleBar<'a> {
     pub tabs: [Tab<'a>; 2],
     pub home: &'a Path,
     /// The Hermes text while it is on; `None` hides it.
     pub hermes: Option<String>,
-    /// Whether Hermes is paused, which its dot shows.
-    pub hermes_paused: bool,
+    /// How the dot of Hermes is coloured.
+    pub hermes_tone: HermesTone,
     /// The key of the command palette, if it has one.
     pub lab_shortcut: Option<String>,
     /// The settings tab after the two path tabs; it is the active one then.
@@ -185,10 +187,13 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
         .spacing(RIGHT_GAP)
         .align_y(alignment::Vertical::Center);
     if let Some(chip) = bar.hermes.clone() {
-        let dot_color = if bar.hermes_paused {
-            palette.dim_text
-        } else {
-            palette.success
+        let dot_color = match bar.hermes_tone {
+            HermesTone::Failing => palette.error,
+            // The palette has no warning colour; `kit::warning_box` uses the
+            // accent for warnings, so the dot does too.
+            HermesTone::Stuck => palette.accent,
+            HermesTone::Paused => palette.dim_text,
+            HermesTone::Fine => palette.success,
         };
         right_side = right_side.push(
             container(

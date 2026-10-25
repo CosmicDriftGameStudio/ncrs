@@ -5,7 +5,7 @@
 //! The text of a document never shows up here as anything but a value in a
 //! field the user can read and change.
 
-use iced::widget::{column, container, row, Column};
+use iced::widget::{column, row};
 use iced::{alignment, Element, Size};
 use ncrs_index::{Field, ReviewReason, TaxContext};
 
@@ -13,17 +13,13 @@ use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::hermes::{self, Badges};
 use super::kit::{self, dim, error_line, form_row, paragraph, Columns, Tone};
-use super::layout::ROW_HEIGHT;
 use super::theme::spacing;
 use crate::app::fill_template;
 use crate::i18n::{Language, Msg};
-use crate::messages::{HermesPage, Message, ReviewListMessage};
+use crate::messages::{HermesFocus, HermesPage, Message, ReviewListMessage};
 use crate::palette::Palette;
-use crate::review_list::{FiledNotice, FormField, Problem, ReviewList};
-use crate::review_work::ReviewItem;
-
-/// Most entries of the list shown at once; the list follows the cursor.
-pub const VISIBLE_ROWS: usize = 5;
+use crate::review_list::{FiledNotice, FormField, Problem, ReviewList, VISIBLE_ROWS};
+use crate::review_work::{ReviewItem, TextState};
 
 pub const SENDER_ID: &str = "review-sender";
 const KIND_ID: &str = "review-kind";
@@ -71,7 +67,7 @@ pub fn view<'a>(
             palette,
         ));
     } else {
-        body = body.push(list(state, line_chars, lang, palette));
+        body = body.push(list(state, line_chars, badges.focus, lang, palette));
         body = body.push(form(state, lang, palette));
         body = body.push(preview(state, lang, palette));
     }
@@ -117,7 +113,7 @@ pub fn view<'a>(
 }
 
 /// Why the document is here, in words; the field a reason names is spelled out.
-pub fn reason_text(reason: ReviewReason, lang: Language) -> String {
+pub fn reason_text(reason: ReviewReason, text_state: TextState, lang: Language) -> String {
     let named = |template: Msg, field: Field| {
         fill_template(
             lang.text(template),
@@ -125,7 +121,13 @@ pub fn reason_text(reason: ReviewReason, lang: Language) -> String {
         )
     };
     match reason {
-        ReviewReason::NoMatchingRule => lang.text(Msg::ReviewListReasonNoRule).to_owned(),
+        ReviewReason::NoMatchingRule => lang
+            .text(match text_state {
+                TextState::NotReadable => Msg::ReviewListReasonImageNoText,
+                TextState::NoneFound => Msg::ReviewListReasonNoText,
+                TextState::Read => Msg::ReviewListReasonNoRule,
+            })
+            .to_owned(),
         ReviewReason::UnconfirmedRule => lang.text(Msg::ReviewListReasonUnconfirmed).to_owned(),
         ReviewReason::TargetExists => lang.text(Msg::ReviewListReasonTargetExists).to_owned(),
         ReviewReason::MissingField(field) => named(Msg::ReviewListReasonMissingField, field),
@@ -154,6 +156,7 @@ fn file_name(item: &ReviewItem) -> String {
 fn list<'a>(
     state: &'a ReviewList,
     line_chars: usize,
+    focus: HermesFocus,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -171,7 +174,7 @@ fn list<'a>(
         ],
         palette,
     );
-    let first = (state.cursor() + 1).saturating_sub(VISIBLE_ROWS);
+    let first = state.first_visible();
     let rows = state
         .rows()
         .iter()
@@ -180,14 +183,14 @@ fn list<'a>(
         .take(VISIBLE_ROWS)
         .map(|(index, item)| {
             let selected = index == state.cursor();
-            let color = if selected {
+            let color = if selected && focus == HermesFocus::Content {
                 palette.cursor_text
             } else {
                 palette.text
             };
             let content = row![
-                columns.cell(0, &file_name(item), color),
-                columns.cell(1, &reason_text(item.reason, lang), color),
+                columns.path_cell(0, &file_name(item), color),
+                columns.cell(1, &reason_text(item.reason, item.text_state, lang), color),
                 columns.cell(2, item.fields.sender.as_deref().unwrap_or_default(), color),
                 columns.cell(3, item.fields.kind.as_deref().unwrap_or_default(), color),
                 columns.cell(
@@ -205,16 +208,22 @@ fn list<'a>(
                 content.into(),
                 send(ReviewListMessage::Select(index)),
                 selected,
+                focus == HermesFocus::Content,
                 palette,
             )
-        });
-    column![
+        })
+        .collect();
+    kit::scroll_list(
         header,
-        container(Column::with_children(rows))
-            .height(ROW_HEIGHT * state.rows().len().min(VISIBLE_ROWS) as f32)
-            .clip(true)
-    ]
-    .into()
+        rows,
+        kit::ListView {
+            len: state.rows().len(),
+            visible: VISIBLE_ROWS,
+            offset: first,
+        },
+        |delta| send(ReviewListMessage::Scrolled(delta)),
+        palette,
+    )
 }
 
 fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element<'a, Message> {

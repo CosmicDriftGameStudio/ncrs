@@ -1712,7 +1712,7 @@ mod tests {
     }
 
     #[test]
-    fn a_text_error_is_reported_and_the_file_stays_out_of_the_review_list() {
+    fn a_missing_pdf_library_holds_the_file_back_without_an_error_or_a_review() {
         let inbox_dir = TempDir::new().unwrap();
         let inbox = location(&inbox_dir, LocationMode::Inbox);
         put(&inbox, "invoice.pdf", INVOICE);
@@ -1720,7 +1720,39 @@ mod tests {
         let missing = TextError::LibraryMissing {
             path: PathBuf::from("pdfium"),
         };
-        let chain = TextChain::new().with_source(FixedText(Err(missing.clone())));
+        let chain = TextChain::new().with_source(FixedText(Err(missing)));
+        let runner = Runner::start(
+            settings(workers(1)),
+            fixture.steps_reading(chain),
+            vec![inbox],
+            stepping_clock(),
+        );
+
+        let report = runner.wait_for("the file held back", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[1].unchanged == 1
+        });
+
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(report.steps[1].failed, 0);
+        assert_eq!(report.steps[2].done, 0);
+        assert_eq!(report.steps[3].done, 0);
+        let index = fixture.index.lock().unwrap();
+        assert!(index.open_reviews().unwrap().is_empty());
+        let statuses = index.documents_with_status(DocumentStatus::New).unwrap();
+        assert_eq!(statuses.len(), 1);
+    }
+
+    #[test]
+    fn an_unreadable_file_is_still_an_error_of_the_text_step() {
+        let inbox_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        put(&inbox, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let broken = TextError::Unreadable {
+            path: PathBuf::from("invoice.pdf"),
+            reason: "broken".to_owned(),
+        };
+        let chain = TextChain::new().with_source(FixedText(Err(broken.clone())));
         let runner = Runner::start(
             settings(workers(1)),
             fixture.steps_reading(chain),
@@ -1732,8 +1764,7 @@ mod tests {
             is_idle(snapshot) && snapshot.steps[1].failed == 1
         });
 
-        assert_eq!(report.errors[0].message, missing.to_string());
-        assert_eq!(report.steps[3].done, 0);
+        assert_eq!(report.errors[0].message, broken.to_string());
         assert!(fixture
             .index
             .lock()
@@ -1741,6 +1772,86 @@ mod tests {
             .open_reviews()
             .unwrap()
             .is_empty());
+    }
+
+    #[derive(Debug)]
+    struct SwitchableText(Arc<Mutex<Result<Extracted, TextError>>>);
+
+    impl TextSource for SwitchableText {
+        fn extract(&self, _path: &Path) -> Result<Extracted, TextError> {
+            self.0
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone()
+        }
+    }
+
+    fn archive_scan(fixture: &IndexFixture, archive: &Location, chain: TextChain) -> Snapshot {
+        let runner = Runner::start(
+            settings(workers(1)),
+            fixture.steps_reading(chain),
+            vec![archive.clone()],
+            stepping_clock(),
+        );
+        runner.wait_for("the archive scanned", is_idle)
+    }
+
+    #[test]
+    fn an_archive_document_whose_text_could_not_be_read_gets_it_on_a_later_scan() {
+        let archive_dir = TempDir::new().unwrap();
+        let archive = location(&archive_dir, LocationMode::Archive);
+        put(&archive, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let source = Arc::new(Mutex::new(Err(TextError::LibraryMissing {
+            path: PathBuf::from("pdfium"),
+        })));
+        let chain = || TextChain::new().with_source(SwitchableText(Arc::clone(&source)));
+
+        let first = archive_scan(&fixture, &archive, chain());
+        assert!(first.errors.is_empty(), "{:?}", first.errors);
+        assert!(fixture
+            .index
+            .lock()
+            .unwrap()
+            .search_text("4711", 10)
+            .unwrap()
+            .is_empty());
+
+        *source.lock().unwrap() = Ok(Extracted::Text("Invoice 4711 Company A".to_owned()));
+        archive_scan(&fixture, &archive, chain());
+
+        let index = fixture.index.lock().unwrap();
+        assert_eq!(index.search_text("4711", 10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn an_archive_document_without_text_is_read_once_and_not_again() {
+        let archive_dir = TempDir::new().unwrap();
+        let archive = location(&archive_dir, LocationMode::Archive);
+        put(&archive, "scan.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let source = Arc::new(Mutex::new(Ok(Extracted::NotApplicable)));
+        let chain = || TextChain::new().with_source(SwitchableText(Arc::clone(&source)));
+
+        archive_scan(&fixture, &archive, chain());
+        let id = fixture
+            .index
+            .lock()
+            .unwrap()
+            .documents_under(&archive.path)
+            .unwrap()[0]
+            .0;
+        assert_eq!(
+            fixture.index.lock().unwrap().document_text(id).unwrap(),
+            Some(String::new())
+        );
+
+        *source.lock().unwrap() = Ok(Extracted::Text("Invoice 4711".to_owned()));
+        let second = archive_scan(&fixture, &archive, chain());
+
+        assert_eq!(second.steps[1].done, 0);
+        let index = fixture.index.lock().unwrap();
+        assert_eq!(index.document_text(id).unwrap(), Some(String::new()));
     }
 
     fn invoice_rule(filing_pattern: &str, confirmed: bool) -> ncrs_index::RuleSpec {

@@ -3,6 +3,7 @@
 
 mod documents;
 mod error;
+mod hermes_counts;
 mod index;
 mod journal;
 mod key;
@@ -27,8 +28,9 @@ pub use key::RecoveryKey;
 pub use key_store::{InMemoryKeyStore, KeyStore, KeyringKeyStore};
 pub use model::{
     Amount, BatchId, ConflictReason, ContentHash, Currency, Document, DocumentFields, DocumentId,
-    DocumentSource, DocumentStatus, Field, FileStamp, Finding, FindingKind, IndexStatistics,
-    NewDocument, NoActionReason, PlanId, PlanItem, PlanOutcome, QuerySpec, ReorganisationPlan,
-    ReviewEntry, ReviewEntryId, ReviewReason, Rule, RuleEvidence, RuleId, RuleSpec, RuleSuggestion,
-    SavedQuery, SavedQueryId, SubtreePattern, TaxContext, TextMatch,
+    DocumentSource, DocumentStatus, Field, FileStamp, Finding, FindingKind, HermesCounts,
+    IndexStatistics, NewDocument, NoActionReason, PlanId, PlanItem, PlanOutcome, QuerySpec,
+    ReorganisationPlan, ReviewEntry, ReviewEntryId, ReviewReason, Rule, RuleEvidence, RuleId,
+    RuleSpec, RuleSuggestion, SavedQuery, SavedQueryId, StatusCounts, SubtreePattern, TaxContext,
+    TextMatch,
 };

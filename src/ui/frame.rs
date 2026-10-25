@@ -34,7 +34,7 @@ const WINDOW_MARGIN: f32 = 24.0;
 /// pixels into a number of characters for text that must stay on one line.
 /// Measured on German running text and paths in the UI font at 12 px: 5.6 to
 /// 5.9 px per glyph; a little more, so capitals do not overflow.
-const AVERAGE_GLYPH_WIDTH: f32 = 6.0;
+pub(in crate::ui) const AVERAGE_GLYPH_WIDTH: f32 = 6.0;
 
 /// Average width of a glyph of a key cap, at its 10 px.
 const KEY_CAP_GLYPH_WIDTH: f32 = 6.0;
@@ -165,6 +165,8 @@ pub struct Frame<'a> {
     window: Size,
     hints: KeyHints,
     page_hints: &'static [PageHint],
+    /// The sidebar can take the arrow keys, so the footer names Left and Right.
+    sidebar_keys: bool,
     lang: Language,
     palette: Palette,
 }
@@ -191,6 +193,7 @@ impl<'a> Frame<'a> {
             window,
             hints: KeyHints::default(),
             page_hints: &[],
+            sidebar_keys: false,
             lang,
             palette: *palette,
         }
@@ -211,6 +214,7 @@ impl<'a> Frame<'a> {
     /// A column left of the content, [`size::SIDEBAR_WIDTH`] wide.
     pub fn sidebar(mut self, sidebar: impl Into<Element<'a, Message>>) -> Self {
         self.sidebar = Some(sidebar.into());
+        self.sidebar_keys = true;
         self
     }
 
@@ -291,17 +295,24 @@ impl<'a> Frame<'a> {
                 .wrapping(Wrapping::None)
                 .into(),
             None => {
-                let (hints, page, closable, lang) = (
+                let (hints, page, closable, sidebar_keys, lang) = (
                     self.hints,
                     self.page_hints,
                     self.on_close.is_some(),
+                    self.sidebar_keys,
                     self.lang,
                 );
                 // The buttons take what they need; the hints get what is left
                 // and drop from the right when it is short.
                 responsive(move |room| {
                     container(key_hint_row(
-                        hints, page, closable, lang, room.width, &palette,
+                        hints,
+                        page,
+                        closable,
+                        sidebar_keys,
+                        lang,
+                        room.width,
+                        &palette,
                     ))
                     .center_y(Length::Fill)
                     .into()
@@ -399,7 +410,12 @@ impl<'a> Frame<'a> {
 /// The keys the footer names with the verb of each, in the order shown: Esc
 /// first, because it is the last to go. Enter is not named: the Enter cap on
 /// the main button says it.
-fn key_hints(hints: KeyHints, page: &[PageHint], closable: bool) -> Vec<(&'static str, Msg)> {
+fn key_hints(
+    hints: KeyHints,
+    page: &[PageHint],
+    closable: bool,
+    sidebar_keys: bool,
+) -> Vec<(&'static str, Msg)> {
     let mut named = Vec::new();
     if closable {
         named.push((ESCAPE_KEY, Msg::DialogHintEscape));
@@ -408,11 +424,15 @@ fn key_hints(hints: KeyHints, page: &[PageHint], closable: bool) -> Vec<(&'stati
         named.push((TAB_KEY, Msg::DialogHintTab));
     }
     named.extend(page.iter().map(|hint| (hint.key, hint.verb)));
+    if sidebar_keys {
+        named.push((SIDEBAR_KEYS, Msg::DialogHintSidebar));
+    }
     named
 }
 
 const ESCAPE_KEY: &str = "Esc";
 const TAB_KEY: &str = "Tab";
+const SIDEBAR_KEYS: &str = "← →";
 
 /// The width of a key cap with its label: the label, the padding either side
 /// and the outline.
@@ -450,11 +470,12 @@ fn key_hint_row<'a>(
     hints: KeyHints,
     page: &[PageHint],
     closable: bool,
+    sidebar_keys: bool,
     lang: Language,
     room: f32,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let worded: Vec<(&'static str, &'static str)> = key_hints(hints, page, closable)
+    let worded: Vec<(&'static str, &'static str)> = key_hints(hints, page, closable, sidebar_keys)
         .into_iter()
         .map(|(key, verb)| (key, lang.text(verb)))
         .collect();
@@ -560,7 +581,7 @@ mod tests {
     }
 
     fn names(hints: KeyHints, closable: bool) -> Vec<&'static str> {
-        key_hints(hints, &[], closable)
+        key_hints(hints, &[], closable, false)
             .into_iter()
             .map(|(key, _)| key)
             .collect()
@@ -583,7 +604,7 @@ mod tests {
             enter: true,
             tab: true,
         };
-        let verbs: Vec<&str> = key_hints(both, &[], true)
+        let verbs: Vec<&str> = key_hints(both, &[], true, false)
             .into_iter()
             .map(|(_, verb)| Language::English.text(verb))
             .collect();

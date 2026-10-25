@@ -54,10 +54,7 @@ pub fn classify(location: &Location, path: &Path) -> Result<(), Skip> {
     {
         return Err(Skip::Temporary);
     }
-    let extension = path
-        .extension()
-        .map(|extension| extension.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
+    let extension = lowercase_extension(path);
     if DOCUMENT_EXTENSIONS.contains(&extension.as_str()) {
         Ok(())
     } else if IMAGE_EXTENSIONS.contains(&extension.as_str()) {
@@ -69,6 +66,17 @@ pub fn classify(location: &Location, path: &Path) -> Result<(), Skip> {
     } else {
         Err(Skip::Unsupported)
     }
+}
+
+fn lowercase_extension(path: &Path) -> String {
+    path.extension()
+        .map(|extension| extension.to_string_lossy().to_lowercase())
+        .unwrap_or_default()
+}
+
+/// Whether the text chain can read files of this kind. Images it cannot.
+pub fn text_is_readable(path: &Path) -> bool {
+    DOCUMENT_EXTENSIONS.contains(&lowercase_extension(path).as_str())
 }
 
 #[cfg(test)]
@@ -83,6 +91,16 @@ mod tests {
 
     use super::*;
     use crate::location::LocationMode;
+
+    #[test]
+    fn documents_are_readable_as_text_and_images_are_not() {
+        for readable in ["a.pdf", "a.PDF", "a.docx", "a.odt", "a.txt", "a.md"] {
+            assert!(text_is_readable(Path::new(readable)), "{readable}");
+        }
+        for unreadable in ["a.jpg", "a.png", "a.heic", "a.tif", "a", "a.xyz"] {
+            assert!(!text_is_readable(Path::new(unreadable)), "{unreadable}");
+        }
+    }
 
     fn location(images: bool) -> Location {
         Location {

@@ -184,12 +184,17 @@ impl PdfText {
         Ok(Self { pdfium })
     }
 
-    /// Loads the library from where the app ships it, see [`pdfium_library_dir`].
+    /// Loads the library from the first of [`pdfium_library_candidates`] that
+    /// holds it. When none does, the error names the folder next to the
+    /// executable, where a user can put it.
     pub fn load_shipped() -> Result<Self, TextError> {
-        let dir = pdfium_library_dir().ok_or_else(|| TextError::LibraryMissing {
-            path: PathBuf::new(),
-        })?;
-        Self::load(&dir)
+        let candidates = pdfium_library_candidates();
+        match candidates.iter().find(|dir| holds_library(dir)) {
+            Some(dir) => Self::load(dir),
+            None => Err(TextError::LibraryMissing {
+                path: candidates.into_iter().next().unwrap_or_default(),
+            }),
+        }
     }
 
     /// Every page of the file as page images, text layer or not.
@@ -334,21 +339,61 @@ fn is_pdf(path: &Path) -> Result<bool, TextError> {
     Ok(header == PDF_HEADER)
 }
 
-/// Where the app finds the pdfium library: next to the executable, and on
-/// macOS in the `Frameworks` folder of the app bundle. Falls back to the
-/// executable's folder when the library is in neither.
-pub fn pdfium_library_dir() -> Option<PathBuf> {
-    let executable_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
-    let mut candidates = vec![executable_dir.clone()];
-    if cfg!(target_os = "macos") {
-        candidates.push(executable_dir.join("..").join("Frameworks"));
+fn holds_library(dir: &Path) -> bool {
+    Pdfium::pdfium_platform_library_name_at_path(dir).is_file()
+}
+
+const LIBRARY_DIR_VARIABLE: &str = "NCRS_PDFIUM_DIR";
+
+/// Where the app looks for the pdfium library, best place first: next to the
+/// executable, on macOS also the `Frameworks` folder of the app bundle. Debug
+/// builds add `NCRS_PDFIUM_DIR` and the folder the fetch script fills; release
+/// builds read no environment variable, so nobody can make them load another
+/// library.
+pub fn pdfium_library_candidates() -> Vec<PathBuf> {
+    let executable_dir = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf));
+    let development = cfg!(debug_assertions).then(|| std::env::var_os(LIBRARY_DIR_VARIABLE));
+    candidates_in(executable_dir, development)
+}
+
+/// `development` is `None` in release builds, otherwise the value of the
+/// override variable.
+fn candidates_in(
+    executable_dir: Option<PathBuf>,
+    development: Option<Option<std::ffi::OsString>>,
+) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(dir) = executable_dir {
+        if cfg!(target_os = "macos") {
+            candidates.push(dir.clone());
+            candidates.push(dir.join("..").join("Frameworks"));
+        } else {
+            candidates.push(dir);
+        }
     }
-    Some(
-        candidates
-            .into_iter()
-            .find(|dir| Pdfium::pdfium_platform_library_name_at_path(dir).is_file())
-            .unwrap_or(executable_dir),
-    )
+    if let Some(override_dir) = development {
+        candidates.extend(override_dir.map(PathBuf::from));
+        let sub = if cfg!(windows) { "bin" } else { "lib" };
+        candidates.push(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../target/pdfium")
+                .join(sub),
+        );
+    }
+    candidates
+}
+
+/// The first of [`pdfium_library_candidates`] that holds the library, else the
+/// folder next to the executable.
+pub fn pdfium_library_dir() -> Option<PathBuf> {
+    let candidates = pdfium_library_candidates();
+    candidates
+        .iter()
+        .find(|dir| holds_library(dir))
+        .or(candidates.first())
+        .cloned()
 }
 
 #[cfg(test)]
@@ -497,6 +542,44 @@ mod tests {
                     FixedImageSource(Ok(Some("fallback".to_owned()))),
                 ));
         assert_eq!(chain.extract(&path), Ok(Some("fallback".to_owned())));
+    }
+
+    #[test]
+    fn candidates_start_at_the_executable_and_development_ones_follow() {
+        let executable = PathBuf::from("/app/bin");
+        let release = candidates_in(Some(executable.clone()), None);
+        assert_eq!(release.first(), Some(&executable));
+        assert!(release
+            .iter()
+            .all(|dir| !dir.ends_with("target/pdfium/lib") && !dir.ends_with("target/pdfium/bin")));
+
+        let overridden = PathBuf::from("/elsewhere");
+        let debug = candidates_in(
+            Some(executable.clone()),
+            Some(Some(overridden.clone().into_os_string())),
+        );
+        let override_at = debug.iter().position(|dir| *dir == overridden).unwrap();
+        let fetched_at = debug
+            .iter()
+            .position(|dir| dir.to_string_lossy().contains("target/pdfium"))
+            .unwrap();
+        assert_eq!(debug.first(), Some(&executable));
+        assert!(override_at < fetched_at);
+        let unset = candidates_in(Some(executable), Some(None));
+        assert!(unset
+            .iter()
+            .any(|dir| dir.to_string_lossy().contains("target/pdfium")));
+    }
+
+    #[test]
+    fn a_folder_without_the_library_reports_that_folder() {
+        let dir = TempDir::new().unwrap();
+        assert_eq!(
+            PdfText::load(dir.path()).unwrap_err(),
+            TextError::LibraryMissing {
+                path: dir.path().to_path_buf()
+            }
+        );
     }
 
     #[test]

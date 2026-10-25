@@ -27,6 +27,7 @@ use crate::filing_setup::{self, FilingSetup, SetupNote};
 use crate::filing_status::{FilingStatus, SNAPSHOT_EVERY};
 use crate::filing_work::FilingSummary;
 use crate::fs::{self, CreateDirError};
+use crate::hermes_status::HermesStatus;
 use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
 use crate::keymap::{self, KeyAction, KeyScope, Keymap};
@@ -34,10 +35,10 @@ use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 use crate::menu::Availability;
 use crate::messages::{
     AiModelMessage, ClipboardKind, CommandPaletteMessage, ConflictChoice, FilingSetupMessage,
-    FilingStatusMessage, HermesPage, Message, OcrModelsMessage, PanelSide, QuickOpenMessage,
-    ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage,
-    SearchMessage, SettingChange, SettingsMessage, ThemeFetchMessage, TitleBarMessage,
-    TransferKind,
+    FilingStatusMessage, HermesFocus, HermesPage, Message, OcrModelsMessage, PanelSide,
+    QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage,
+    SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage, ThemeFetchMessage,
+    TitleBarMessage, TransferKind,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -749,6 +750,8 @@ pub struct App {
     filing: Option<FilingModule>,
     /// Started once the filing module is ready; dropping it stops the workers.
     pipeline: Option<ncrs_pipeline::Runner>,
+    /// The folder the PDF library is missing from, as of the last pipeline start.
+    pdf_library_missing: Option<PathBuf>,
     /// What the filing status page and the status bar show of the pipeline.
     filing_status: FilingStatus,
     /// The time the status page measures how long a worker has been busy by.
@@ -792,6 +795,8 @@ pub struct App {
     /// Tells the answer of the work that is current from a stale one.
     saved_queries_generation: u64,
     reorganisation: Option<ReorganisationView>,
+    /// Whether the arrow keys act on the sidebar or the page of the Hermes card.
+    hermes_focus: HermesFocus,
     /// Tells the answer of the plan that is current from a stale one.
     reorganisation_generation: u64,
     /// `Snapshot::plans_made` the filing job was last asked for.
@@ -872,6 +877,8 @@ pub struct PromptKeyState {
     pub review_list_editing: bool,
     /// The saved queries page is up, so Enter, the arrows and Tab are its.
     pub saved_queries: bool,
+    /// A Hermes page is up and the arrow keys act on its sidebar.
+    pub hermes_sidebar: bool,
     /// The reorganisation plan view is up, so its keys are the card's.
     pub reorganisation_plan: bool,
     /// The OCR models card is up, so keys answer it like a button dialog.
@@ -915,6 +922,7 @@ impl Default for PromptKeyState {
             review_list: false,
             review_list_editing: false,
             saved_queries: false,
+            hermes_sidebar: false,
             reorganisation_plan: false,
             ocr_models: false,
             ai_model: false,
@@ -928,6 +936,29 @@ impl Default for PromptKeyState {
     }
 }
 
+/// The arrows between the sidebar and the page of a Hermes card: Left leaves
+/// the page for the sidebar, where Up and Down switch the page and Right or
+/// Enter go back. A form that is up keeps the arrows for its text fields.
+fn hermes_focus_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    form_up: bool,
+) -> Option<Message> {
+    if !key_modifiers.is_empty() || form_up {
+        return None;
+    }
+    match (key.as_ref(), prompt.hermes_sidebar) {
+        (Key::Named(Named::ArrowLeft), false) => Some(Message::HermesFocus(HermesFocus::Sidebar)),
+        (Key::Named(Named::ArrowUp), true) => Some(Message::HermesStep(-1)),
+        (Key::Named(Named::ArrowDown), true) => Some(Message::HermesStep(1)),
+        (Key::Named(Named::ArrowRight | Named::Enter), true) => {
+            Some(Message::HermesFocus(HermesFocus::Content))
+        }
+        _ => None,
+    }
+}
+
 /// The plan is a card: Enter runs the selection, Space selects or deselects
 /// what the cursor is on, the arrows move.
 fn reorganisation_plan_key(
@@ -938,6 +969,9 @@ fn reorganisation_plan_key(
 ) -> Option<Message> {
     let plan = |message| Some(Message::ReorganisationPlan(message));
     let plain = key_modifiers.is_empty();
+    if let Some(focus) = hermes_focus_key(prompt, key, key_modifiers, false) {
+        return Some(focus);
+    }
     match key.as_ref() {
         Key::Named(Named::Escape) => plan(ReorganisationPlanMessage::Close),
         Key::Named(Named::Enter) => plan(ReorganisationPlanMessage::Execute),
@@ -962,6 +996,9 @@ fn review_list_key(
 ) -> Option<Message> {
     let review = |message| Some(Message::ReviewList(message));
     let plain = key_modifiers.is_empty();
+    if let Some(focus) = hermes_focus_key(prompt, key, key_modifiers, prompt.review_list_editing) {
+        return Some(focus);
+    }
     match key.as_ref() {
         Key::Named(Named::Escape) => review(ReviewListMessage::Close),
         Key::Named(Named::Enter) => review(ReviewListMessage::Confirm),
@@ -996,6 +1033,10 @@ fn saved_queries_key(
 ) -> Option<Message> {
     let queries = |message| Some(Message::SavedQueries(message));
     let plain = key_modifiers.is_empty();
+    // The form is always up, so its text fields keep Left and Right.
+    if let Some(focus) = hermes_focus_key(prompt, key, key_modifiers, !prompt.hermes_sidebar) {
+        return Some(focus);
+    }
     match key.as_ref() {
         Key::Named(Named::Escape) => queries(SavedQueriesMessage::Close),
         Key::Named(Named::Enter) => queries(SavedQueriesMessage::Run),
@@ -1021,6 +1062,11 @@ fn rule_suggestions_key(
 ) -> Option<Message> {
     let suggestions = |message| Some(Message::RuleSuggestions(message));
     let plain = key_modifiers.is_empty();
+    if let Some(focus) =
+        hermes_focus_key(prompt, key, key_modifiers, prompt.rule_suggestions_editing)
+    {
+        return Some(focus);
+    }
     match key.as_ref() {
         Key::Named(Named::Escape) => suggestions(RuleSuggestionsMessage::Close),
         Key::Named(Named::Enter) => suggestions(RuleSuggestionsMessage::Confirm),
@@ -1632,6 +1678,9 @@ fn filing_status_key(
     let page = |message| Some(Message::FilingStatus(message));
     // Shift only changes the character typed (`+` is Shift+= on many layouts).
     let plain = (key_modifiers - Modifiers::SHIFT).is_empty();
+    if let Some(focus) = hermes_focus_key(prompt, key, key_modifiers, false) {
+        return Some(focus);
+    }
     match key.as_ref() {
         Key::Named(Named::Escape) => page(Page::Close),
         Key::Named(Named::ArrowUp) if key_modifiers.is_empty() => page(Page::MoveError(-1)),
@@ -1680,6 +1729,7 @@ fn repeats(message: &Message) -> bool {
             | Message::ReviewList(ReviewListMessage::Move(_))
             | Message::SavedQueries(SavedQueriesMessage::Move(_))
             | Message::ReorganisationPlan(ReorganisationPlanMessage::Move(_))
+            | Message::HermesStep(_)
             | Message::FilingStatus(FilingStatusMessage::MoveError(_))
             | Message::Search(
                 SearchMessage::ToggleTag
@@ -2068,6 +2118,7 @@ impl App {
             recent_commands: Vec::new(),
             filing: None,
             pipeline: None,
+            pdf_library_missing: None,
             filing_status: FilingStatus::default(),
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
             config_path: None,
@@ -2090,6 +2141,7 @@ impl App {
             saved_queries: None,
             saved_queries_generation: 0,
             reorganisation: None,
+            hermes_focus: HermesFocus::default(),
             reorganisation_generation: 0,
             plans_filed_for: 0,
             filing_due: false,
@@ -2733,7 +2785,9 @@ impl App {
             Message::RuleSuggestions(suggestions) => self.update_rule_suggestions(suggestions),
             Message::ReviewList(review) => self.update_review_list(review),
             Message::SavedQueries(queries) => self.update_saved_queries(queries),
-            Message::HermesPage(page) => self.go_to_hermes_page(page),
+            Message::HermesPage(page) => self.show_hermes_page(page),
+            Message::HermesFocus(focus) => self.focus_hermes(focus),
+            Message::HermesStep(step) => self.step_hermes_page(step),
             Message::ReorganisationPlan(plan) => self.update_reorganisation(plan),
             // #73 hangs the executor here; until then the selection goes nowhere.
             Message::ExecuteReorganisation(selection) => self.run_reorganisation(selection),
@@ -3258,8 +3312,11 @@ impl App {
                 .is_some_and(|module| matches!(module.phase(), Phase::Ready));
             let page = filing_status_ui::view(
                 &self.filing_status,
-                self.filing.as_ref().map(FilingModule::load),
-                index_open,
+                filing_status_ui::Setting {
+                    load: self.filing.as_ref().map(FilingModule::load),
+                    index_open,
+                    pdf_library_missing: self.pdf_library_missing.as_deref(),
+                },
                 self.window_size,
                 self.hermes_badges(),
                 self.lang,
@@ -3439,6 +3496,8 @@ impl App {
             .as_ref()
             .is_some_and(ReviewList::is_editing);
         let saved_queries = self.saved_queries.is_some();
+        let hermes_sidebar =
+            self.hermes_focus == HermesFocus::Sidebar && self.open_hermes_page().is_some();
         let reorganisation_plan = self.reorganisation.is_some();
         let ocr_models = self.ocr_models.is_some();
         let ai_model = self.ai_model.is_some();
@@ -3471,6 +3530,7 @@ impl App {
                 review_list,
                 review_list_editing,
                 saved_queries,
+                hermes_sidebar,
                 reorganisation_plan,
                 ocr_models,
                 ai_model,
@@ -3504,6 +3564,7 @@ impl App {
                 review_list,
                 review_list_editing,
                 saved_queries,
+                hermes_sidebar,
                 reorganisation_plan,
                 ocr_models,
                 ai_model,
@@ -3571,8 +3632,12 @@ impl App {
         let work = module.update(message);
         let mut pipeline_started = false;
         if self.pipeline.is_none() && matches!(module.phase(), Phase::Ready) {
-            self.pipeline = module.start_pipeline().ok();
-            pipeline_started = self.pipeline.is_some();
+            let started = module.start_pipeline().ok();
+            pipeline_started = started.is_some();
+            (self.pipeline, self.pdf_library_missing) = match started {
+                Some((runner, missing)) => (Some(runner), missing),
+                None => (None, None),
+            };
         }
         let skipped = if was_starting && !matches!(module.phase(), Phase::Starting) {
             module
@@ -5197,6 +5262,12 @@ impl App {
                 }
                 self.look_up_suggestion_matches()
             }
+            RuleSuggestionsMessage::Scrolled(delta) => {
+                if let Some(view) = self.rule_suggestions.as_mut() {
+                    view.scroll(delta);
+                }
+                self.look_up_suggestion_matches()
+            }
             RuleSuggestionsMessage::Select(index) => {
                 if let Some(view) = self.rule_suggestions.as_mut() {
                     view.select(index);
@@ -5371,6 +5442,12 @@ impl App {
             ReviewListMessage::Move(delta) => {
                 if let Some(view) = self.review_list.as_mut() {
                     view.move_cursor(delta);
+                }
+                Task::none()
+            }
+            ReviewListMessage::Scrolled(delta) => {
+                if let Some(view) = self.review_list.as_mut() {
+                    view.scroll(delta);
                 }
                 Task::none()
             }
@@ -5563,6 +5640,12 @@ impl App {
             SavedQueriesMessage::Move(delta) => {
                 if let Some(view) = self.saved_queries.as_mut() {
                     view.move_cursor(delta);
+                }
+                Task::none()
+            }
+            SavedQueriesMessage::Scrolled(delta) => {
+                if let Some(view) = self.saved_queries.as_mut() {
+                    view.scroll(delta);
                 }
                 Task::none()
             }
@@ -5881,6 +5964,8 @@ impl App {
             .and_then(|figures| figures.as_ref().ok())
             .and_then(|figures| usize::try_from(figures.statistics.open_reviews).ok());
         Badges {
+            focus: self.hermes_focus,
+            counts: self.filing_status.hermes_counts().copied(),
             review: self
                 .review_list
                 .as_ref()
@@ -5928,6 +6013,12 @@ impl App {
             ReorganisationPlanMessage::Move(delta) => {
                 if let Some(view) = self.reorganisation.as_mut() {
                     view.move_cursor(delta);
+                }
+                Task::none()
+            }
+            ReorganisationPlanMessage::Scrolled(delta) => {
+                if let Some(view) = self.reorganisation.as_mut() {
+                    view.scroll(delta);
                 }
                 Task::none()
             }
@@ -6737,7 +6828,9 @@ impl App {
             settings_tab: self.settings.is_some(),
             home: &self.home,
             hermes: self.hermes_chip(),
-            hermes_paused: self.filing_status.snapshot().state == RunnerState::Paused,
+            hermes_tone: self
+                .hermes_status()
+                .map_or(titlebar::HermesTone::Fine, |status| status.tone()),
             lab_shortcut: self
                 .keymap
                 .shortcut_label(&KeyAction::CommandPalette.message()),
@@ -6768,7 +6861,8 @@ impl App {
             RunnerState::Off => return None,
             RunnerState::Paused => self.lang.text(Msg::TitleBarHermesPaused).to_owned(),
             RunnerState::Running | RunnerState::Idle => {
-                match self.filing_status.documents_per_minute() {
+                let busy = self.hermes_status().is_some_and(|status| status.is_busy());
+                match self.filing_status.documents_per_minute().filter(|_| busy) {
                     Some(rate) => fill_template(
                         self.lang.text(Msg::TitleBarHermesRate),
                         &[("{rate}", &rate.to_string())],
@@ -6780,21 +6874,43 @@ impl App {
         Some(text)
     }
 
+    #[cfg(test)]
+    pub(crate) fn hermes_chip_for_test(&self) -> Option<String> {
+        self.hermes_chip()
+    }
+
+    fn show_hermes_page(&mut self, page: HermesPage) -> Task<Message> {
+        self.hermes_focus = HermesFocus::Content;
+        self.go_to_hermes_page(page)
+    }
+
+    fn focus_hermes(&mut self, focus: HermesFocus) -> Task<Message> {
+        if self.open_hermes_page().is_some() {
+            self.hermes_focus = focus;
+        }
+        Task::none()
+    }
+
+    fn step_hermes_page(&mut self, step: isize) -> Task<Message> {
+        let next = self
+            .open_hermes_page()
+            .and_then(|page| crate::ui::hermes::neighbour(page, step));
+        next.map_or_else(Task::none, |page| self.go_to_hermes_page(page))
+    }
+
+    fn hermes_status(&self) -> Option<HermesStatus> {
+        HermesStatus::of(
+            self.filing_status.snapshot(),
+            self.filing_status.hermes_counts(),
+            self.pdf_library_missing.is_some(),
+        )
+    }
+
     fn filing_badge(&self) -> Option<statusbar::FilingBadge<Message>> {
-        let progress = self.filing_status.progress()?;
-        let template = if progress.paused {
-            Msg::FilingProgressPaused
-        } else {
-            Msg::FilingProgress
-        };
+        let status = self.hermes_status()?;
         Some(statusbar::FilingBadge {
-            text: fill_template(
-                self.lang.text(template),
-                &[
-                    ("{done}", &progress.done.to_string()),
-                    ("{total}", &progress.total.to_string()),
-                ],
-            ),
+            text: status.line(self.lang),
+            failing: status.is_failing(),
             on_press: Message::FilingStatus(FilingStatusMessage::Open),
         })
     }
@@ -6836,6 +6952,27 @@ impl App {
             tokio::task::spawn_blocking(move || reader.read()),
             |joined| {
                 Message::FilingStatus(FilingStatusMessage::IndexFigures(
+                    joined.unwrap_or_else(|err| Err(err.to_string())),
+                ))
+            },
+        )
+    }
+
+    /// Reads the counts of Hermes on the blocking pool, like the index
+    /// figures.
+    fn request_hermes_counts(&mut self) -> Task<Message> {
+        let Some(reader) = self
+            .filing
+            .as_ref()
+            .and_then(FilingModule::hermes_counts_reader)
+        else {
+            return Task::none();
+        };
+        self.filing_status.counts_requested();
+        Task::perform(
+            tokio::task::spawn_blocking(move || reader.read()),
+            |joined| {
+                Message::FilingStatus(FilingStatusMessage::HermesCounts(
                     joined.unwrap_or_else(|err| Err(err.to_string())),
                 ))
             },
@@ -6889,10 +7026,16 @@ impl App {
                 } else {
                     Task::none()
                 };
+                let counts =
+                    if self.live_pipeline().is_some() && self.filing_status.tick_wants_counts() {
+                        self.request_hermes_counts()
+                    } else {
+                        Task::none()
+                    };
                 if self.filing_status.tick_wants_figures() {
-                    Task::batch([filing, self.request_index_figures()])
+                    Task::batch([filing, counts, self.request_index_figures()])
                 } else {
-                    filing
+                    Task::batch([filing, counts])
                 }
             }
             FilingStatusMessage::TogglePause => {
@@ -6927,6 +7070,10 @@ impl App {
                 if let Some(count) = NonZeroUsize::new(wanted) {
                     self.set_pipeline_load(Load::Workers(count));
                 }
+                Task::none()
+            }
+            FilingStatusMessage::HermesCounts(counts) => {
+                self.filing_status.counts_arrived(counts);
                 Task::none()
             }
             FilingStatusMessage::IndexFigures(figures) => {
@@ -7806,6 +7953,7 @@ impl App {
             recent_commands: Vec::new(),
             filing: None,
             pipeline: None,
+            pdf_library_missing: None,
             filing_status: FilingStatus::default(),
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
             config_path: None,
@@ -7828,6 +7976,7 @@ impl App {
             saved_queries: None,
             saved_queries_generation: 0,
             reorganisation: None,
+            hermes_focus: HermesFocus::default(),
             reorganisation_generation: 0,
             plans_filed_for: 0,
             filing_due: false,
@@ -8096,6 +8245,24 @@ impl App {
         let mut app = Self::with_fixed_panels();
         app.review_list = Some(view);
         app
+    }
+
+    /// The counts of Hermes as the index last gave them.
+    pub fn with_hermes_counts(mut self, counts: ncrs_index::HermesCounts) -> Self {
+        self.filing_status.counts_arrived(Ok(counts));
+        self
+    }
+
+    /// The PDF library could not be loaded; `searched` is where it was looked for.
+    pub fn with_pdf_library_missing(mut self, searched: PathBuf) -> Self {
+        self.pdf_library_missing = Some(searched);
+        self
+    }
+
+    /// Puts the arrow keys of the Hermes card on its sidebar or its page.
+    pub fn with_hermes_focus(mut self, focus: HermesFocus) -> Self {
+        self.hermes_focus = focus;
+        self
     }
 
     pub fn saved_queries_for_test(&self) -> Option<&SavedQueries> {
@@ -9491,6 +9658,76 @@ mod delete_tests {
 
     fn route(state: &PromptKeyState, named: Named, modifiers: Modifiers) -> Option<Message> {
         route_key(state, Key::Named(named), modifiers)
+    }
+
+    fn review_page(sidebar: bool, editing: bool) -> PromptKeyState {
+        PromptKeyState {
+            review_list: true,
+            review_list_editing: editing,
+            hermes_sidebar: sidebar,
+            ..PromptKeyState::default()
+        }
+    }
+
+    #[test]
+    fn left_in_a_hermes_page_moves_to_the_sidebar() {
+        assert_eq!(
+            route(
+                &review_page(false, false),
+                Named::ArrowLeft,
+                Modifiers::default()
+            ),
+            Some(Message::HermesFocus(HermesFocus::Sidebar))
+        );
+    }
+
+    #[test]
+    fn up_and_down_in_the_sidebar_switch_the_page() {
+        let sidebar = review_page(true, false);
+        assert_eq!(
+            route(&sidebar, Named::ArrowUp, Modifiers::default()),
+            Some(Message::HermesStep(-1))
+        );
+        assert_eq!(
+            route(&sidebar, Named::ArrowDown, Modifiers::default()),
+            Some(Message::HermesStep(1))
+        );
+    }
+
+    #[test]
+    fn right_in_the_sidebar_goes_back_into_the_page() {
+        assert_eq!(
+            route(
+                &review_page(true, false),
+                Named::ArrowRight,
+                Modifiers::default()
+            ),
+            Some(Message::HermesFocus(HermesFocus::Content))
+        );
+    }
+
+    #[test]
+    fn up_in_the_page_still_moves_in_the_list() {
+        assert_eq!(
+            route(
+                &review_page(false, false),
+                Named::ArrowUp,
+                Modifiers::default()
+            ),
+            Some(Message::ReviewList(ReviewListMessage::Move(-1)))
+        );
+    }
+
+    #[test]
+    fn an_open_form_keeps_the_arrows_for_its_fields() {
+        assert_eq!(
+            route(
+                &review_page(false, true),
+                Named::ArrowLeft,
+                Modifiers::default()
+            ),
+            None
+        );
     }
 
     #[test]

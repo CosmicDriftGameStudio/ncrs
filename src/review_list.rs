@@ -6,9 +6,12 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
+use iced::mouse::ScrollDelta;
+
 use ncrs_index::{DocumentFields, DocumentId, ReviewEntryId, TaxContext};
 use ncrs_intake::render_pattern;
 
+use crate::list_window::ListWindow;
 use crate::review_work::{
     amount_text, parse_amount, parse_date, parse_tags, tags_text, ConfirmOutcome, FieldError,
     ReviewItem,
@@ -149,10 +152,14 @@ pub struct RuleRequest {
     pub pattern: String,
 }
 
+/// Most entries of the list shown at once; the list follows the cursor.
+pub const VISIBLE_ROWS: usize = 5;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReviewList {
     rows: Vec<ReviewItem>,
     cursor: usize,
+    window: ListWindow,
     /// The list is loading or a decision is running; the view takes no new one.
     busy: bool,
     editing: bool,
@@ -169,6 +176,7 @@ impl ReviewList {
         Self {
             rows: Vec::new(),
             cursor: 0,
+            window: ListWindow::default(),
             busy: true,
             editing: false,
             form: Form::default(),
@@ -184,6 +192,11 @@ impl ReviewList {
 
     pub fn cursor(&self) -> usize {
         self.cursor
+    }
+
+    /// The first entry of the list that is shown.
+    pub fn first_visible(&self) -> usize {
+        self.window.offset(self.rows.len(), VISIBLE_ROWS)
     }
 
     pub fn selected(&self) -> Option<&ReviewItem> {
@@ -231,6 +244,8 @@ impl ReviewList {
             .and_then(|entry| rows.iter().position(|row| row.entry == entry))
             .unwrap_or_else(|| self.cursor.min(rows.len().saturating_sub(1)));
         self.rows = rows;
+        self.window
+            .ensure_visible(self.cursor, self.rows.len(), VISIBLE_ROWS);
         self.busy = false;
         self.editing = false;
         self.fill_form();
@@ -252,8 +267,19 @@ impl ReviewList {
             return;
         }
         self.cursor = index;
+        self.window
+            .ensure_visible(index, self.rows.len(), VISIBLE_ROWS);
         self.editing = false;
         self.fill_form();
+    }
+
+    /// The wheel moves the window; the entry under the cursor follows it when
+    /// the cursor would leave the window.
+    pub fn scroll(&mut self, delta: ScrollDelta) {
+        let mut cursor = self.cursor;
+        self.window
+            .scroll(delta, self.rows.len(), VISIBLE_ROWS, &mut cursor);
+        self.select(cursor);
     }
 
     pub fn start_edit(&mut self) {
@@ -385,15 +411,20 @@ pub mod tests {
     use ncrs_index::{Index, ReviewReason};
 
     use super::*;
+    use crate::review_work::TextState;
 
     /// Ids come from a real index: only the index hands them out.
     fn ids() -> Vec<(ReviewEntryId, DocumentId)> {
+        ids_of(2)
+    }
+
+    fn ids_of(count: u8) -> Vec<(ReviewEntryId, DocumentId)> {
         use chrono::{TimeZone as _, Utc};
         use ncrs_index::{ContentHash, DocumentSource, NewDocument};
 
         let dir = tempfile::TempDir::new().unwrap();
         let mut index = Index::create_plain(&dir.path().join("index.db")).unwrap();
-        (1..=2)
+        (1..=count)
             .map(|seed| {
                 let document = index
                     .insert_document(&NewDocument {
@@ -422,6 +453,7 @@ pub mod tests {
             document_id,
             path: PathBuf::from(format!("inbox/{name}")),
             reason: ReviewReason::NoMatchingRule,
+            text_state: TextState::Read,
             fields: DocumentFields {
                 sender: (!sender.is_empty()).then(|| sender.to_owned()),
                 kind: Some("invoice".to_owned()),
@@ -440,6 +472,30 @@ pub mod tests {
             item(one, "scan-1.pdf", "Company A"),
             item(two, "scan-2.pdf", "Agency B"),
         ]);
+        list
+    }
+
+    /// More entries than the list shows, the first with names too long for
+    /// the file column and the second with a short one.
+    pub fn long_list() -> ReviewList {
+        const LONG: &str =
+            "2024-03-09_Stadtwerke_Musterhausen_Jahresabrechnung_Strom_und_Gas_Kundennummer_4711.pdf";
+        let mut list = ReviewList::new();
+        list.loaded(
+            ids_of(200)
+                .into_iter()
+                .enumerate()
+                .map(|(position, entry)| match position {
+                    0 => item(
+                        entry,
+                        LONG,
+                        "Stadtwerke Musterhausen Energie und Wasser GmbH",
+                    ),
+                    1 => item(entry, "a.pdf", "A"),
+                    _ => item(entry, &format!("scan-{position}.pdf"), "Agency B"),
+                })
+                .collect(),
+        );
         list
     }
 

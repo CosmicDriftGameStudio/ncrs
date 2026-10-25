@@ -5,9 +5,12 @@
 
 use std::path::PathBuf;
 
+use iced::mouse::ScrollDelta;
+
 use ncrs_index::{RuleId, RuleSpec, TextMatch};
 use ncrs_intake::pattern_is_valid;
 
+use crate::list_window::ListWindow;
 use crate::suggestion_work::{condition_text, SuggestedRule};
 
 /// The fields of the form while a suggestion is edited.
@@ -37,10 +40,14 @@ pub enum Matches {
     Found(Vec<PathBuf>),
 }
 
+/// Most suggestions of the list shown at once; the list follows the cursor.
+pub const VISIBLE_ROWS: usize = 8;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuleSuggestions {
     rows: Vec<SuggestedRule>,
     cursor: usize,
+    window: ListWindow,
     /// The analysis or a decision is running; the view takes no new one.
     busy: bool,
     edit: Option<Edit>,
@@ -56,6 +63,7 @@ impl RuleSuggestions {
         Self {
             rows: Vec::new(),
             cursor: 0,
+            window: ListWindow::default(),
             busy: true,
             edit: None,
             problem: None,
@@ -70,6 +78,11 @@ impl RuleSuggestions {
 
     pub fn cursor(&self) -> usize {
         self.cursor
+    }
+
+    /// The first suggestion of the list that is shown.
+    pub fn first_visible(&self) -> usize {
+        self.window.offset(self.rows.len(), VISIBLE_ROWS)
     }
 
     pub fn selected(&self) -> Option<&SuggestedRule> {
@@ -107,6 +120,8 @@ impl RuleSuggestions {
             .and_then(|id| rows.iter().position(|row| row.id == id))
             .unwrap_or_else(|| self.cursor.min(rows.len().saturating_sub(1)));
         self.rows = rows;
+        self.window
+            .ensure_visible(self.cursor, self.rows.len(), VISIBLE_ROWS);
         self.busy = false;
         self.edit = None;
         self.problem = None;
@@ -123,11 +138,21 @@ impl RuleSuggestions {
         self.select(self.cursor.saturating_add_signed(delta).min(last));
     }
 
+    /// The wheel moves the window; the cursor follows it when it would leave.
+    pub fn scroll(&mut self, delta: ScrollDelta) {
+        let mut cursor = self.cursor;
+        self.window
+            .scroll(delta, self.rows.len(), VISIBLE_ROWS, &mut cursor);
+        self.select(cursor);
+    }
+
     pub fn select(&mut self, index: usize) {
         if self.busy || index >= self.rows.len() || index == self.cursor {
             return;
         }
         self.cursor = index;
+        self.window
+            .ensure_visible(index, self.rows.len(), VISIBLE_ROWS);
         self.edit = None;
         self.problem = None;
         self.forget_matches_of_others();

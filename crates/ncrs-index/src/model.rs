@@ -353,6 +353,27 @@ pub struct IndexStatistics {
     pub full_text_bytes: u64,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct StatusCounts {
+    pub new: u64,
+    pub planned: u64,
+    pub in_review: u64,
+    pub filed: u64,
+}
+
+/// What the automatic filing has done so far. `open_reviews_without_text`
+/// counts the open review entries whose document has no or an empty text.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct HermesCounts {
+    pub inbox: StatusCounts,
+    pub archive: StatusCounts,
+    pub open_reviews: u64,
+    pub open_reviews_without_text: u64,
+    pub confirmed_rules: u64,
+    pub archive_documents: u64,
+    pub archive_documents_with_text: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReviewEntry {
     pub id: ReviewEntryId,

@@ -160,6 +160,7 @@ fn theme_list<'a>(
                 content.into(),
                 to_message(ThemeFetchMessage::Pick(index)),
                 selected,
+                true,
                 palette,
             )
         });

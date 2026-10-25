@@ -1515,7 +1515,70 @@ mod filing_status_page {
                 full_text_bytes: 512 * 1024,
             },
         };
-        App::with_filing_inspection(snapshot, taken_at(), figures).in_language(language)
+        App::with_filing_inspection(snapshot, taken_at(), figures)
+            .with_hermes_counts(sample_counts())
+            .in_language(language)
+    }
+
+    /// 2 421 documents seen, none filed; the archive has text for most.
+    fn sample_counts() -> ncrs_index::HermesCounts {
+        ncrs_index::HermesCounts {
+            inbox: ncrs_index::StatusCounts {
+                in_review: 2421,
+                ..ncrs_index::StatusCounts::default()
+            },
+            open_reviews: 2421,
+            open_reviews_without_text: 1800,
+            confirmed_rules: 0,
+            archive_documents: 5120,
+            archive_documents_with_text: 4871,
+            ..ncrs_index::HermesCounts::default()
+        }
+    }
+
+    #[test]
+    fn the_counts_are_told_in_plain_sentences() {
+        let counts = sample_counts();
+        assert_eq!(
+            crate::ui::filing_status::counts_sentences(&counts, Language::English),
+            "Hermes has seen 2\u{a0}421 documents: 0 filed, 2\u{a0}421 wait for you. \
+             1\u{a0}800 of them have no readable text. \
+             For the rest no rule matches: there are no confirmed rules yet. \
+             Rule suggestions learn from the 4\u{a0}871 of 5\u{a0}120 archive documents that have text."
+        );
+        let with_rules = ncrs_index::HermesCounts {
+            confirmed_rules: 3,
+            open_reviews_without_text: 0,
+            archive_documents: 0,
+            ..counts
+        };
+        assert_eq!(
+            crate::ui::filing_status::counts_sentences(&with_rules, Language::German),
+            "Hermes hat 2\u{a0}421 Dokumente gesehen: 0 abgelegt, 2\u{a0}421 warten auf dich."
+        );
+    }
+
+    #[test]
+    fn a_missing_pdf_library_is_a_box_with_the_searched_path_cut_in_the_middle() {
+        let long = PathBuf::from(format!(
+            "/Applications/Some Application/Contents/Frameworks/{}/lib/libpdfium.dylib",
+            "deeply-nested-folder/".repeat(6)
+        ));
+        for (language, name) in [
+            (Language::English, "inspection_pdf_missing_en"),
+            (Language::German, "inspection_pdf_missing_de"),
+        ] {
+            let app = inspection(language).with_pdf_library_missing(long.clone());
+            let matches = simulator(&app)
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(
+                matches,
+                "the inspection does not match tests/snapshots/{name}.png"
+            );
+        }
     }
 
     #[test]
@@ -1666,9 +1729,9 @@ mod filing_status_page {
             taken_at(),
         );
 
-        assert!(shows(&app, "Hermes stamped 12 of 340 files"));
+        assert!(shows(&app, "running \u{b7} 328 open"));
         assert_eq!(
-            messages_after_click(&app, "Hermes stamped 12 of 340 files"),
+            messages_after_click(&app, "running \u{b7} 328 open"),
             [page_message(FilingStatusMessage::Open)]
         );
     }
@@ -1677,19 +1740,47 @@ mod filing_status_page {
     fn the_status_bar_says_when_the_pipeline_is_paused() {
         let app = App::with_filing_snapshot(snapshot(RunnerState::Paused, 5, 0), taken_at());
 
-        assert!(shows(&app, "Hermes paused: 0 of 5 files stamped"));
+        assert!(shows(&app, "paused \u{b7} 5 open"));
     }
 
     #[test]
-    fn the_status_bar_shows_no_filing_text_without_work() {
-        for state in [RunnerState::Idle, RunnerState::Off] {
-            let app = App::with_filing_snapshot(snapshot(state, 0, 40), taken_at());
-            assert!(!shows(&app, "Hermes stamped 0 of 0 files"), "{state:?}");
-            assert!(
-                !shows(&app, "Hermes paused: 0 of 0 files stamped"),
-                "{state:?}"
-            );
-        }
+    fn the_status_bar_names_reviews_and_failures() {
+        let mut failing = snapshot(RunnerState::Running, 0, 0);
+        failing.steps[0].failed = 2;
+        let counts = ncrs_index::HermesCounts {
+            open_reviews: 2421,
+            ..ncrs_index::HermesCounts::default()
+        };
+        let app = App::with_filing_snapshot(failing, taken_at()).with_hermes_counts(counts);
+        assert!(shows(
+            &app,
+            "idle \u{b7} 2\u{a0}421 to review \u{b7} 2 failed"
+        ));
+        let german = app.in_language(Language::German);
+        assert!(shows(
+            &german,
+            "ruht \u{b7} 2\u{a0}421 R\u{fc}ckfragen \u{b7} 2 Fehler"
+        ));
+    }
+
+    #[test]
+    fn a_missing_pdf_library_is_the_whole_status_line() {
+        let app = App::with_filing_snapshot(snapshot(RunnerState::Running, 5, 0), taken_at())
+            .with_pdf_library_missing(PathBuf::from("/opt/pdfium/lib"));
+        assert!(shows(&app, "PDF library missing, PDFs are not read"));
+        assert_eq!(
+            messages_after_click(&app, "PDF library missing, PDFs are not read"),
+            [page_message(FilingStatusMessage::Open)]
+        );
+    }
+
+    #[test]
+    fn the_status_bar_says_idle_when_nothing_waits_and_nothing_when_off() {
+        let idle = App::with_filing_snapshot(snapshot(RunnerState::Idle, 0, 0), taken_at());
+        assert!(shows(&idle, "idle"));
+        let off = App::with_filing_snapshot(snapshot(RunnerState::Off, 0, 40), taken_at());
+        assert!(!shows(&off, "idle"));
+        assert!(!shows(&off, "running \u{b7} 40 open"));
     }
 }
 
@@ -2366,8 +2457,8 @@ mod review_list_card {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::messages::{HermesPage, ReviewListMessage};
-    use crate::review_list::tests::loaded_list;
+    use crate::messages::{HermesFocus, HermesPage, ReviewListMessage};
+    use crate::review_list::tests::{loaded_list, long_list};
     use crate::review_list::{FormField, ReviewList};
     use crate::review_work::ConfirmOutcome;
     use crate::rule_suggestions::RuleSuggestions;
@@ -2415,7 +2506,19 @@ mod review_list_card {
         let mut list = ReviewList::new();
         list.loaded(Vec::new());
 
-        assert!(shows(list, "Nothing to review."));
+        assert!(shows(
+            list,
+            "Nothing to review. Documents land here when Hermes cannot file them itself: without readable text or without a matching rule."
+        ));
+    }
+
+    #[test]
+    fn the_empty_list_matches_its_snapshots() {
+        for name in ["review_list_empty_en", "review_list_empty_de"] {
+            let mut list = ReviewList::new();
+            list.loaded(Vec::new());
+            matches_snapshot(list, name);
+        }
     }
 
     #[test]
@@ -2537,12 +2640,18 @@ mod review_list_card {
     }
 
     fn matches_snapshot(list: ReviewList, name: &str) {
+        matches_snapshot_focused(list, HermesFocus::Content, name);
+    }
+
+    fn matches_snapshot_focused(list: ReviewList, focus: HermesFocus, name: &str) {
         let language = if name.contains("_de") {
             Language::German
         } else {
             Language::English
         };
-        let app = App::with_review_list(list).in_language(language);
+        let app = App::with_review_list(list)
+            .in_language(language)
+            .with_hermes_focus(focus);
         let matches = simulator(&app)
             .snapshot(&iced::Theme::Dark)
             .unwrap()
@@ -2559,6 +2668,37 @@ mod review_list_card {
         matches_snapshot(loaded_list(), "review_list_en");
         matches_snapshot(loaded_list(), "review_list_de");
         matches_snapshot(after_filing(), "review_list_filed_en");
+    }
+
+    #[test]
+    fn long_names_and_a_long_list_stay_inside_their_columns() {
+        matches_snapshot(long_list(), "review_list_long_en");
+        matches_snapshot(long_list(), "review_list_long_de");
+    }
+
+    #[test]
+    fn the_sidebar_focus_outlines_the_list_and_fills_the_page_entry() {
+        matches_snapshot_focused(
+            loaded_list(),
+            HermesFocus::Sidebar,
+            "review_list_sidebar_focus_en",
+        );
+        matches_snapshot_focused(
+            loaded_list(),
+            HermesFocus::Sidebar,
+            "review_list_sidebar_focus_de",
+        );
+    }
+
+    #[test]
+    fn the_wheel_over_the_list_scrolls_it() {
+        let mut app = App::with_review_list(long_list());
+        let _ = app.update(review_message(ReviewListMessage::Scrolled(
+            iced::mouse::ScrollDelta::Lines { x: 0.0, y: -3.0 },
+        )));
+        let view = app.review_list_for_test().unwrap();
+        assert_eq!(view.first_visible(), 3);
+        assert!(view.cursor() >= 3);
     }
 }
 
@@ -2876,8 +3016,35 @@ mod rule_suggestions_card {
         view.loaded(Vec::new());
         assert!(shows(
             view,
-            "No suggestions. They appear when several documents of a document folder share a phrase."
+            "No suggestions. They appear from archive documents with read text, once at least 3 documents with the same phrase lie in the same folder (80 % of the folder and hardly any elsewhere)."
         ));
+    }
+
+    #[test]
+    fn the_empty_view_with_counts_matches_its_snapshots() {
+        for (language, name) in [
+            (Language::English, "rule_suggestions_empty_en"),
+            (Language::German, "rule_suggestions_empty_de"),
+        ] {
+            let mut view = RuleSuggestions::new();
+            view.loaded(Vec::new());
+            let app = App::with_rule_suggestions(view)
+                .with_hermes_counts(ncrs_index::HermesCounts {
+                    archive_documents: 5120,
+                    archive_documents_with_text: 12,
+                    ..ncrs_index::HermesCounts::default()
+                })
+                .in_language(language);
+            let matches = simulator(&app)
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(
+                matches,
+                "the view does not match tests/snapshots/{name}.png"
+            );
+        }
     }
 
     #[test]
@@ -3399,6 +3566,13 @@ mod title_bar {
         let mut snapshot = Snapshot::off();
         snapshot.state = RunnerState::Running;
         snapshot.documents_per_minute[1] = 78;
+        snapshot.steps = vec![ncrs_pipeline::StepSnapshot {
+            name: "probe",
+            waiting: 4,
+            done: 0,
+            failed: 0,
+            unchanged: 0,
+        }];
         App::with_filing_snapshot(snapshot, taken_at())
     }
 
@@ -3455,9 +3629,20 @@ mod title_bar {
     #[test]
     fn the_chip_names_the_rate_in_the_language_of_the_app() {
         let english = with_hermes();
-        simulator(&english).find("Hermes 78/min").unwrap();
+        simulator(&english).find("Hermes 78/min processed").unwrap();
         let german = with_hermes().in_language(Language::German);
-        simulator(&german).find("Hermes 78/Min.").unwrap();
+        simulator(&german)
+            .find("Hermes 78/Min. verarbeitet")
+            .unwrap();
+    }
+
+    #[test]
+    fn an_idle_chip_shows_no_rate() {
+        let mut snapshot = Snapshot::off();
+        snapshot.state = RunnerState::Idle;
+        snapshot.documents_per_minute[1] = 78;
+        let app = App::with_filing_snapshot(snapshot, taken_at());
+        assert_eq!(app.hermes_chip_for_test().as_deref(), Some("Hermes"));
     }
 
     #[test]
@@ -3475,6 +3660,49 @@ mod title_bar {
         with_hermes()
             .with_config(crate::config::load(&path))
             .in_language(language)
+    }
+
+    /// Two files failed, 2 421 documents wait for the user, none was filed.
+    fn failing_hermes(language: Language) -> App {
+        let mut snapshot = Snapshot::off();
+        snapshot.state = RunnerState::Running;
+        snapshot.documents_per_minute[1] = 78;
+        snapshot.steps = vec![ncrs_pipeline::StepSnapshot {
+            name: "probe",
+            waiting: 0,
+            done: 0,
+            failed: 2,
+            unchanged: 0,
+        }];
+        App::with_filing_snapshot(snapshot, taken_at())
+            .with_hermes_counts(ncrs_index::HermesCounts {
+                open_reviews: 2421,
+                ..ncrs_index::HermesCounts::default()
+            })
+            .in_language(language)
+    }
+
+    #[test]
+    fn the_status_line_and_chip_show_failures_in_the_main_view() {
+        for (language, name) in [
+            (Language::English, "main_view_hermes_failing_en"),
+            (Language::German, "main_view_hermes_failing_de"),
+        ] {
+            let matches = simulator(&failing_hermes(language))
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(
+                matches,
+                "the main view does not match tests/snapshots/{name}.png"
+            );
+        }
+        let missing =
+            with_hermes().with_pdf_library_missing(std::path::PathBuf::from("/opt/pdfium/lib"));
+        simulator(&missing)
+            .find("PDF library missing, PDFs are not read")
+            .unwrap();
     }
 
     #[test]

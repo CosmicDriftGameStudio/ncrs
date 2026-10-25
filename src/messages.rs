@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use ncrs_index::{RuleId, SavedQuery, SavedQueryId, TaxContext};
+use ncrs_index::{HermesCounts, RuleId, SavedQuery, SavedQueryId, TaxContext};
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
 
@@ -286,6 +286,10 @@ pub enum Message {
     /// The sidebar of the Hermes card: closes the card that is up and opens
     /// this page.
     HermesPage(HermesPage),
+    /// The arrow keys move to the sidebar or back into the page.
+    HermesFocus(HermesFocus),
+    /// Up or down in the sidebar: the previous or next page.
+    HermesStep(isize),
     /// The user asked to carry out these entries of the reorganisation plan.
     /// Nothing acts on it yet.
     ExecuteReorganisation(Vec<PlannedItem>),
@@ -463,6 +467,8 @@ pub enum FilingStatusMessage {
     /// One worker more (`1`) or fewer (`-1`) than now.
     StepWorkers(i8),
     IndexFigures(Result<IndexFigures, String>),
+    /// The counts of Hermes, read in the background.
+    HermesCounts(Result<HermesCounts, String>),
     /// An error row was pressed: show its file in the panel.
     ErrorActivated(PathBuf),
     MoveError(i32),
@@ -515,12 +521,24 @@ pub enum ReorganisationPlanMessage {
         generation: u64,
         result: Result<Vec<PlannedItem>, String>,
     },
+    /// The wheel or trackpad over the list.
+    Scrolled(iced::mouse::ScrollDelta),
     Move(isize),
     /// A click on the line at this position: an entry or a group heading.
     Toggle(usize),
     ToggleCursor,
     /// Enter: hands the selection over as `Message::ExecuteReorganisation`.
     Execute,
+}
+
+/// Which part of the Hermes card the arrow keys act on.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum HermesFocus {
+    /// Up and down switch the page.
+    Sidebar,
+    /// Up and down move in the page's list.
+    #[default]
+    Content,
 }
 
 /// The pages of the Hermes card, in the order of its sidebar.
@@ -545,6 +563,8 @@ pub enum SavedQueriesMessage {
         generation: u64,
         result: Result<Vec<SavedQuery>, String>,
     },
+    /// The wheel or trackpad over the list.
+    Scrolled(iced::mouse::ScrollDelta),
     Move(isize),
     /// A click on the query at this position.
     Select(usize),
@@ -601,6 +621,8 @@ pub enum ReviewListMessage {
         generation: u64,
         result: Result<Vec<ReviewItem>, String>,
     },
+    /// The wheel or trackpad over the list.
+    Scrolled(iced::mouse::ScrollDelta),
     Move(isize),
     /// A click on the entry at this position.
     Select(usize),
@@ -638,6 +660,8 @@ pub enum RuleSuggestionsMessage {
         generation: u64,
         result: Result<Vec<SuggestedRule>, String>,
     },
+    /// The wheel or trackpad over the list.
+    Scrolled(iced::mouse::ScrollDelta),
     Move(isize),
     /// A click on the suggestion at this position.
     Select(usize),

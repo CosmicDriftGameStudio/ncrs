@@ -26,7 +26,7 @@ pub use archive_profile::{
     learn_archive, pattern_per_document, propose_target, subtree_per_document, ArchiveDocument,
     DocumentPattern,
 };
-pub use classify::{classify, Skip};
+pub use classify::{classify, text_is_readable, Skip};
 pub use error::IntakeError;
 pub use extract::{
     extract_amount, extract_date, extract_number, parse_amount, parse_currency, parse_date,
@@ -58,7 +58,7 @@ pub use scan::{
 pub use stability::{StabilityTracker, STABLE_AFTER};
 pub use take_in::{has_symlink_ancestor_under, hash_path, take_in, Outcome};
 pub use text::{
-    pdfium_library_dir, Extracted, ImageTextSource, ImageTextWithFallback, PageImage, PdfText,
-    PdfUnavailable, TextChain, TextError, TextSource,
+    pdfium_library_candidates, pdfium_library_dir, Extracted, ImageTextSource,
+    ImageTextWithFallback, PageImage, PdfText, PdfUnavailable, TextChain, TextError, TextSource,
 };
 pub use watcher::{LocationWatcher, WatchEvent};

@@ -4,30 +4,28 @@
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-use ncrs_pipeline::{ErrorEntry, RunnerState, Snapshot, RATE_MINUTES};
+use ncrs_index::HermesCounts;
+use ncrs_pipeline::{ErrorEntry, Snapshot, RATE_MINUTES};
 
 use crate::filing::{AiStatus, IndexFigures};
 
 pub const SNAPSHOT_EVERY: Duration = Duration::from_secs(1);
 pub const INDEX_FIGURES_EVERY_TICKS: u32 = 5;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FilingProgress {
-    pub done: usize,
-    pub total: usize,
-    pub paused: bool,
-}
+/// The counts of Hermes are read this often, also while its page is closed.
+pub const HERMES_COUNTS_EVERY_TICKS: u32 = 5;
 
 #[derive(Debug)]
 pub struct FilingStatus {
     snapshot: Snapshot,
     taken_at: SystemTime,
-    /// `left_pipeline` when the current stretch of work began.
-    progress_baseline: Option<usize>,
     page_open: bool,
     index_figures: Option<Result<IndexFigures, String>>,
     figures_in_flight: bool,
     ticks_since_figures: u32,
+    /// The last counts that could be read; kept when a later read fails.
+    counts: Option<HermesCounts>,
+    counts_in_flight: bool,
+    ticks_since_counts: u32,
     /// Position in the list as shown, newest first.
     selected_error: Option<usize>,
     ai: AiStatus,
@@ -38,29 +36,21 @@ impl Default for FilingStatus {
         Self {
             snapshot: Snapshot::off(),
             taken_at: SystemTime::UNIX_EPOCH,
-            progress_baseline: None,
             page_open: false,
             index_figures: None,
             figures_in_flight: false,
             ticks_since_figures: 0,
+            counts: None,
+            counts_in_flight: false,
+            ticks_since_counts: HERMES_COUNTS_EVERY_TICKS,
             selected_error: None,
             ai: AiStatus::Off,
         }
     }
 }
 
-/// A paused pipeline with files left still has work.
-fn has_work(snapshot: &Snapshot) -> bool {
-    snapshot.state != RunnerState::Off && snapshot.open_files() > 0
-}
-
 impl FilingStatus {
     pub fn set_snapshot(&mut self, snapshot: Snapshot, now: SystemTime) {
-        if !has_work(&snapshot) {
-            self.progress_baseline = None;
-        } else if self.progress_baseline.is_none() {
-            self.progress_baseline = Some(snapshot.left_pipeline);
-        }
         self.snapshot = snapshot;
         self.taken_at = now;
     }
@@ -79,19 +69,6 @@ impl FilingStatus {
 
     pub fn taken_at(&self) -> SystemTime {
         self.taken_at
-    }
-
-    pub fn progress(&self) -> Option<FilingProgress> {
-        if !has_work(&self.snapshot) {
-            return None;
-        }
-        let baseline = self.progress_baseline?;
-        let done = self.snapshot.left_pipeline.saturating_sub(baseline);
-        Some(FilingProgress {
-            done,
-            total: done + self.snapshot.open_files(),
-            paused: self.snapshot.state == RunnerState::Paused,
-        })
     }
 
     /// Averaged over the full minutes back to the oldest one with documents,
@@ -181,6 +158,29 @@ impl FilingStatus {
         self.ticks_since_figures >= INDEX_FIGURES_EVERY_TICKS && !self.figures_in_flight
     }
 
+    pub fn hermes_counts(&self) -> Option<&HermesCounts> {
+        self.counts.as_ref()
+    }
+
+    /// Counts a tick; true when the counts are due.
+    pub fn tick_wants_counts(&mut self) -> bool {
+        self.ticks_since_counts = self.ticks_since_counts.saturating_add(1);
+        self.ticks_since_counts >= HERMES_COUNTS_EVERY_TICKS && !self.counts_in_flight
+    }
+
+    pub fn counts_requested(&mut self) {
+        self.counts_in_flight = true;
+        self.ticks_since_counts = 0;
+    }
+
+    pub fn counts_arrived(&mut self, read: Result<HermesCounts, String>) {
+        if let Ok(counts) = read {
+            self.counts = Some(counts);
+        }
+        self.counts_in_flight = false;
+        self.ticks_since_counts = 0;
+    }
+
     pub fn figures_requested(&mut self) {
         self.figures_in_flight = true;
         self.ticks_since_figures = 0;
@@ -203,7 +203,7 @@ impl FilingStatus {
 mod tests {
     use std::path::PathBuf;
 
-    use ncrs_pipeline::{Busy, StepSnapshot, Task, WorkerSnapshot};
+    use ncrs_pipeline::{Busy, RunnerState, StepSnapshot, Task, WorkerSnapshot};
 
     use super::*;
 
@@ -260,46 +260,6 @@ mod tests {
     }
 
     #[test]
-    fn progress_counts_from_where_the_stretch_of_work_began() {
-        let mut status = FilingStatus::default();
-        status.set_snapshot(snapshot(RunnerState::Running, 100, 340), at());
-        assert_eq!(
-            status.progress(),
-            Some(FilingProgress {
-                done: 0,
-                total: 340,
-                paused: false
-            })
-        );
-
-        status.set_snapshot(snapshot(RunnerState::Running, 112, 328), at());
-        assert_eq!(
-            status.progress(),
-            Some(FilingProgress {
-                done: 12,
-                total: 340,
-                paused: false
-            })
-        );
-
-        status.set_snapshot(snapshot(RunnerState::Idle, 440, 0), at());
-        assert_eq!(status.progress(), None);
-
-        status.set_snapshot(snapshot(RunnerState::Running, 440, 5), at());
-        assert_eq!(status.progress().map(|p| (p.done, p.total)), Some((0, 5)));
-    }
-
-    #[test]
-    fn a_paused_pipeline_with_open_files_has_work_and_an_off_one_has_none() {
-        let mut status = FilingStatus::default();
-        status.set_snapshot(snapshot(RunnerState::Paused, 0, 4), at());
-        assert_eq!(status.progress().map(|p| p.paused), Some(true));
-
-        status.set_snapshot(snapshot(RunnerState::Off, 0, 4), at());
-        assert_eq!(status.progress(), None);
-    }
-
-    #[test]
     fn a_file_in_a_step_counts_as_open_but_a_scan_does_not() {
         let mut busy = snapshot(RunnerState::Running, 0, 0);
         busy.workers = vec![WorkerSnapshot {
@@ -312,7 +272,7 @@ mod tests {
         }];
         let mut status = FilingStatus::default();
         status.set_snapshot(busy, at());
-        assert_eq!(status.progress(), None);
+        assert_eq!(status.snapshot().open_files(), 0);
     }
 
     #[test]

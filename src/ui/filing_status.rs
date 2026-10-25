@@ -6,18 +6,19 @@ use std::time::{Duration, SystemTime};
 
 use iced::widget::{column, container, row, scrollable, Column};
 use iced::{Element, Length, Size};
+use ncrs_index::HermesCounts;
 use ncrs_pipeline::{Load, RunnerState, Task, WorkerSnapshot};
 
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints, PageHint};
 use super::hermes::{self, Badges};
 use super::kit::{self, first_section, form_row, one_line, paragraph, section, Columns, Tone};
-use super::theme::{size, spacing};
+use super::theme::{font_size, size, spacing};
 use crate::app::fill_template;
 use crate::filing::{AiStatus, IndexFigures};
 use crate::filing_status::FilingStatus;
 use crate::i18n::{Language, Msg};
-use crate::messages::{FilingStatusMessage, HermesPage, Message};
+use crate::messages::{FilingStatusMessage, HermesFocus, HermesPage, Message};
 use crate::palette::Palette;
 
 const SIZE: DialogSize = DialogSize::Card;
@@ -63,8 +64,10 @@ fn send(message: FilingStatusMessage) -> Message {
 struct LineBudget {
     table_chars: usize,
     index_path: usize,
-    error_file: usize,
-    error_message: usize,
+    error_file: f32,
+    error_message: f32,
+    /// The path in the PDF library notice: the box pads both sides.
+    notice_path: f32,
 }
 
 impl LineBudget {
@@ -77,29 +80,77 @@ impl LineBudget {
         Self {
             table_chars: frame::chars_that_fit(width),
             index_path: frame::chars_that_fit(size::CONTROL_WIDTH),
-            error_file: frame::chars_that_fit(error_width * ERROR_TEXT_SHARE),
-            error_message: frame::chars_that_fit(error_width * ERROR_TEXT_SHARE),
+            error_file: error_width * ERROR_TEXT_SHARE - kit::SCROLL_LANE - spacing::S,
+            error_message: error_width * ERROR_TEXT_SHARE - kit::SCROLL_LANE - spacing::S,
+            notice_path: width - 4.0 * spacing::M,
         }
     }
 }
 
+/// What the page shows besides the pipeline status.
+pub struct Setting<'a> {
+    pub load: Option<Load>,
+    pub index_open: bool,
+    /// The place the PDF library was searched in, when it is missing.
+    pub pdf_library_missing: Option<&'a Path>,
+}
+
 pub fn view<'a>(
     status: &'a FilingStatus,
-    load: Option<Load>,
-    index_open: bool,
+    setting: Setting<'_>,
     window: Size,
     badges: Badges,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
+    let Setting {
+        load,
+        index_open,
+        pdf_library_missing,
+    } = setting;
     let budget = LineBudget::of(window);
+    let mut notices = column![].spacing(spacing::LINE_GAP);
+    if let Some(searched) = pdf_library_missing {
+        notices = notices.push(kit::warning_box(
+            format!(
+                "{}\n{}",
+                lang.text(Msg::FilingStatusPdfMissing),
+                fill_template(
+                    lang.text(Msg::FilingStatusPdfSearched),
+                    &[(
+                        "{path}",
+                        &format::fit_middle(
+                            &searched.display().to_string(),
+                            budget.notice_path,
+                            font_size::BODY,
+                        ),
+                    )],
+                ),
+            ),
+            palette,
+        ));
+    }
+    let has_notices = pdf_library_missing.is_some() || badges.counts.is_some();
+    if let Some(counts) = badges.counts {
+        notices = notices.push(paragraph(counts_sentences(&counts, lang), palette));
+    }
+    let pipeline =
+        container(pipeline_section(status, load, lang, palette)).padding(iced::Padding {
+            top: if has_notices {
+                spacing::SECTION_LEAD
+            } else {
+                0.0
+            },
+            ..iced::Padding::ZERO
+        });
     let body = column![
-        pipeline_section(status, load, lang, palette),
+        notices,
+        pipeline,
         throughput_section(status, lang, palette),
         steps_section(status, &budget, lang, palette),
         workers_section(status, &budget, lang, palette),
         index_section(status, index_open, &budget, lang, palette),
-        errors_section(status, &budget, lang, palette),
+        errors_section(status, &budget, badges.focus, lang, palette),
     ];
 
     Frame::new(
@@ -117,6 +168,41 @@ pub fn view<'a>(
     .hints(KeyHints::default())
     .page_hints(PAGE_HINTS)
     .into_element()
+}
+
+/// What Hermes has done so far, in plain sentences: the documents seen and
+/// where they are, and why the rest waits.
+pub fn counts_sentences(counts: &HermesCounts, lang: Language) -> String {
+    let inbox = counts.inbox;
+    let seen = inbox.new + inbox.planned + inbox.in_review + inbox.filed;
+    let count = |number: u64| format::grouped(number);
+    let mut sentences = vec![fill_template(
+        lang.text(Msg::FilingStatusCountsSeen),
+        &[
+            ("{seen}", &count(seen)),
+            ("{filed}", &count(inbox.filed)),
+            ("{waiting}", &count(counts.open_reviews)),
+        ],
+    )];
+    if counts.open_reviews_without_text > 0 {
+        sentences.push(fill_template(
+            lang.text(Msg::FilingStatusCountsWithoutText),
+            &[("{count}", &count(counts.open_reviews_without_text))],
+        ));
+    }
+    if counts.confirmed_rules == 0 && counts.open_reviews > counts.open_reviews_without_text {
+        sentences.push(lang.text(Msg::FilingStatusCountsNoRules).to_owned());
+    }
+    if counts.archive_documents > 0 {
+        sentences.push(fill_template(
+            lang.text(Msg::FilingStatusCountsArchive),
+            &[
+                ("{with_text}", &count(counts.archive_documents_with_text)),
+                ("{total}", &count(counts.archive_documents)),
+            ],
+        ));
+    }
+    sentences.join(" ")
 }
 
 fn state_message(state: RunnerState) -> Msg {
@@ -381,7 +467,11 @@ fn worker_row<'a>(
     columns.row_last_right(
         &[
             &number,
-            &file_label(&busy.file),
+            &format::fit_middle(
+                &file_label(&busy.file),
+                columns.text_width(1),
+                font_size::BODY,
+            ),
             &task_label(busy.task, lang),
             &elapsed_label(elapsed),
         ],
@@ -503,6 +593,7 @@ fn index_section<'a>(
 fn errors_section<'a>(
     status: &'a FilingStatus,
     budget: &LineBudget,
+    focus: HermesFocus,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -513,7 +604,11 @@ fn errors_section<'a>(
         .map(|(position, error)| {
             let content = row![
                 container(one_line(
-                    format::ellipsize_middle(&error.file.display().to_string(), budget.error_file),
+                    format::fit_middle(
+                        &error.file.display().to_string(),
+                        budget.error_file,
+                        font_size::BODY,
+                    ),
                     palette,
                 ))
                 .width(Length::FillPortion(3))
@@ -521,7 +616,7 @@ fn errors_section<'a>(
                 container(one_line(task_label(error.task, lang), palette))
                     .width(Length::FillPortion(1)),
                 container(one_line(
-                    format::ellipsize_end(&error.message, budget.error_message),
+                    format::fit_end(&error.message, budget.error_message, font_size::BODY),
                     palette,
                 ))
                 .width(Length::FillPortion(3))
@@ -533,6 +628,7 @@ fn errors_section<'a>(
                 content.into(),
                 send(FilingStatusMessage::ErrorActivated(error.file.clone())),
                 selected == Some(position),
+                focus == HermesFocus::Content,
                 palette,
             )
         })
