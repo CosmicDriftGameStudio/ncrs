@@ -10,13 +10,13 @@ use iced::{Color, Element, Size};
 
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
-use super::layout::ROW_HEIGHT;
 use super::theme::{font_size, spacing};
 use crate::i18n::Language;
 use crate::messages::Message;
 use crate::palette::Palette;
 
-/// Both boxes list long paths and commands: the large frame.
+/// Both boxes list long paths and commands: the large frame, which grows with
+/// the list.
 pub const SIZE: DialogSize = DialogSize::Large;
 
 /// What the box shows.
@@ -27,8 +27,6 @@ pub struct Content<'a> {
     pub field: Element<'a, Message>,
     pub status: String,
     pub rows: Vec<Element<'a, Message>>,
-    /// The room reserved for rows, whether or not there are that many.
-    pub row_count: usize,
     pub on_close: Message,
 }
 
@@ -40,17 +38,16 @@ pub fn frame<'a>(
     palette: &Palette,
 ) -> Element<'a, Message> {
     let status_chars = frame::content_chars(SIZE, window, 0.0);
-    let body = column![
-        content.field,
+    let status = (!content.status.is_empty()).then(|| {
         text(format::ellipsize_end(&content.status, status_chars))
-            .size(font_size::STATUS)
+            .size(font_size::BODY)
             .color(palette.dim_text)
-            .wrapping(Wrapping::None),
-        container(Column::with_children(content.rows))
-            .height(ROW_HEIGHT * content.row_count as f32)
-            .clip(true),
-    ]
-    .spacing(spacing::SECTION_GAP);
+            .wrapping(Wrapping::None)
+    });
+    let body = column![content.field]
+        .extend(status.map(Element::from))
+        .push(container(Column::with_children(content.rows)).clip(true))
+        .spacing(spacing::LINE_GAP);
 
     let mut frame = Frame::new(content.title, body, SIZE, window, lang, palette);
     if let Some(name) = content.title_theme {

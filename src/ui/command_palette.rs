@@ -84,7 +84,6 @@ pub fn view<'a>(
             field,
             status: status.to_owned(),
             rows: rows.collect(),
-            row_count: command_palette.visible_rows(),
             on_close: to_palette(CommandPaletteMessage::Close),
         },
         window,

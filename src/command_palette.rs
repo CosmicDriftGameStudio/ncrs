@@ -126,10 +126,6 @@ impl CommandPalette {
         self.top..(self.top + self.visible_rows).min(self.rows.len())
     }
 
-    pub fn visible_rows(&self) -> usize {
-        self.visible_rows
-    }
-
     pub fn set_visible_rows(&mut self, rows: usize) {
         self.visible_rows = rows.max(1);
         self.keep_cursor_in_view();

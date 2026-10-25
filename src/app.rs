@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use iced::futures;
 use iced::keyboard::{self, key::Named, Key, Modifiers};
-use iced::widget::{column, container, mouse_area, opaque, operation, row, Column, Space, Stack};
+use iced::widget::{column, container, mouse_area, operation, row, Column, Space, Stack};
 use iced::{event, window, Element, Length, Point, Size, Subscription, Task, Theme};
 
 use crate::ai_model::{
@@ -373,25 +373,6 @@ fn run_filing_work(work: Work) -> Task<Message> {
             }))
         },
     )
-}
-
-/// Bottom-center, above the status and function key bars. No scrim, and
-/// `opaque` only on the card itself, so clicks beside it reach the panels.
-fn filing_card_layer(card: Element<'_, Message>) -> Element<'_, Message> {
-    let bars = layout::STATUSBAR_HEIGHT
-        + layout::FKEYBAR_HEIGHT
-        + 2.0 * theme::spacing::SECTION_GAP
-        + theme::spacing::OUTER_PADDING;
-    container(opaque(card))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_x(iced::alignment::Horizontal::Center)
-        .align_y(iced::alignment::Vertical::Bottom)
-        .padding(iced::Padding {
-            bottom: bars + theme::spacing::SECTION_GAP,
-            ..iced::Padding::ZERO
-        })
-        .into()
 }
 
 /// Ctrl+click is the Mac's right click.
@@ -2946,8 +2927,8 @@ impl App {
             .height(Length::Fill)
             .style(theme::root(&self.palette));
 
-        // The card has no scrim: the panels stay usable around it. Every modal
-        // below stacks on this base, so it stays above the card.
+        // The cards sit on the same scrim as the modals; the panels keep their
+        // keys. Every modal below stacks on this base, so it stays above them.
         let module_card = self
             .filing
             .as_ref()
@@ -2971,9 +2952,9 @@ impl App {
             window.into()
         } else {
             let card = Column::with_children(cards)
-                .spacing(theme::spacing::SECTION_GAP)
+                .spacing(theme::spacing::LINE_GAP)
                 .align_x(iced::Alignment::Center);
-            Stack::with_children([window.into(), filing_card_layer(card.into())]).into()
+            Stack::with_children([window.into(), dialog::scrim(card.into())]).into()
         };
         let root = if cfg!(target_os = "macos") {
             base

@@ -5,7 +5,7 @@
 //! for good cannot be, so there the default is "Cancel" and the dialog says why.
 
 use iced::widget::text::Wrapping;
-use iced::widget::{column, text};
+use iced::widget::{column, text, Column};
 use iced::{Element, Size};
 
 use super::format;
@@ -56,22 +56,21 @@ pub fn view<'a>(
         )
     };
 
-    let mut content = column![].spacing(spacing::SECTION_GAP);
     let line_chars = frame::content_chars(SIZE, window, 0.0);
-    for line in subject.lines() {
-        content = content.push(
-            text(format::ellipsize_middle(line, line_chars))
-                .size(font_size::BODY)
-                .color(palette.text)
-                .wrapping(Wrapping::None),
-        );
-    }
+    let names = Column::with_children(subject.lines().map(|line| {
+        text(format::ellipsize_middle(line, line_chars))
+            .size(font_size::BODY)
+            .color(palette.text)
+            .wrapping(Wrapping::None)
+            .into()
+    }))
+    .spacing(spacing::XS / 2.0);
+    let mut content = column![names].spacing(spacing::LINE_GAP);
     if permanent {
-        content = content.push(
-            text(lang.text(Msg::DeleteWarningPermanent))
-                .size(font_size::BODY)
-                .color(palette.error),
-        );
+        content = content.push(kit::error_line(
+            lang.text(Msg::DeleteWarningPermanent),
+            palette,
+        ));
     }
 
     let mut frame = Frame::new(title, content, SIZE, window, lang, palette);

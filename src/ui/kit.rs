@@ -4,12 +4,13 @@
 //! and the [`Frame`](super::frame::Frame); it does not style widgets itself.
 
 use iced::widget::button as widget_button;
-use iced::widget::text::{IntoFragment, LineHeight, Wrapping};
-use iced::widget::{column, container, row, rule, text, text_input, Row};
-use iced::{alignment, Color, Element, Font, Length, Pixels, Theme};
+use iced::widget::checkbox as widget_checkbox;
+use iced::widget::text::{IntoFragment, LineHeight, Shaping, Wrapping};
+use iced::widget::{column, container, row, rule, text, text_input, Column, Row};
+use iced::{alignment, Color, Element, Length, Pixels, Theme};
 
 use super::format;
-use super::theme::{self, font_size, size, spacing};
+use super::theme::{self, font_size, size, spacing, DISABLED_OPACITY};
 use crate::messages::Message;
 use crate::palette::Palette;
 
@@ -76,10 +77,28 @@ fn tone_style(
     let primary = theme::dialog_button(palette, true);
     let secondary = theme::dialog_button(palette, false);
     let danger = theme::danger_button(palette);
-    move |theme, status| match tone {
-        Tone::Primary => primary(theme, status),
-        Tone::Secondary => secondary(theme, status),
-        Tone::Danger => danger(theme, status),
+    move |theme, status| {
+        let disabled = matches!(status, widget_button::Status::Disabled);
+        // A disabled button keeps its fill and outline, only fainter: without
+        // them it reads as plain text.
+        let shown = if disabled {
+            widget_button::Status::Active
+        } else {
+            status
+        };
+        let mut style = match tone {
+            Tone::Primary => primary(theme, shown),
+            Tone::Secondary => secondary(theme, shown),
+            Tone::Danger => danger(theme, shown),
+        };
+        if disabled {
+            style.background = style
+                .background
+                .map(|background| background.scale_alpha(DISABLED_OPACITY));
+            style.text_color = style.text_color.scale_alpha(DISABLED_OPACITY);
+            style.border.color = style.border.color.scale_alpha(DISABLED_OPACITY);
+        }
+        style
     }
 }
 
@@ -168,13 +187,40 @@ pub fn error_line<'a>(content: impl IntoFragment<'a>, palette: &Palette) -> Elem
         .into()
 }
 
-/// A dimmed heading above its content.
+/// Lines of one block, one gap apart.
+pub fn stack<'a>(lines: impl IntoIterator<Item = Element<'a, Message>>) -> Column<'a, Message> {
+    Column::with_children(lines).spacing(spacing::LINE_GAP)
+}
+
+/// A dimmed heading above its content, set off from what comes before it.
 pub fn section<'a>(
     heading: &str,
     content: impl Into<Element<'a, Message>>,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    column![dim(heading.to_owned(), palette), content.into()]
+    container(heading_block(heading, content.into(), palette))
+        .padding(iced::Padding {
+            top: spacing::SECTION_LEAD,
+            ..iced::Padding::ZERO
+        })
+        .into()
+}
+
+/// A section at the top of a page, which has its room above already.
+pub fn first_section<'a>(
+    heading: &str,
+    content: impl Into<Element<'a, Message>>,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    heading_block(heading, content.into(), palette)
+}
+
+fn heading_block<'a>(
+    heading: &str,
+    content: Element<'a, Message>,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    column![dim(heading.to_owned(), palette), content]
         .spacing(spacing::S)
         .into()
 }
@@ -202,13 +248,28 @@ pub fn form_row<'a>(
     control: Element<'a, Message>,
     palette: &Palette,
 ) -> Element<'a, Message> {
+    form_row_wide(
+        label,
+        theme_name,
+        description,
+        control,
+        size::CONTROL_WIDTH,
+        palette,
+    )
+}
+
+/// Like [`form_row`], with a control column of `control_width`, for a control
+/// that does not fit the usual one.
+pub fn form_row_wide<'a>(
+    label: &str,
+    theme_name: Option<&str>,
+    description: Option<&str>,
+    control: Element<'a, Message>,
+    control_width: f32,
+    palette: &Palette,
+) -> Element<'a, Message> {
     let mut names = Row::new()
-        .push(
-            text(label.to_owned())
-                .size(font_size::BODY)
-                .color(palette.text)
-                .font(Font::MONOSPACE),
-        )
+        .push(paragraph(label.to_owned(), palette))
         .spacing(spacing::S);
     if let Some(name) = theme_name {
         names = names.push(dim(name.to_owned(), palette));
@@ -221,12 +282,12 @@ pub fn form_row<'a>(
         row![
             container(left).width(Length::Fill),
             container(control)
-                .width(size::CONTROL_WIDTH)
+                .width(control_width)
                 .align_x(alignment::Horizontal::Right),
         ]
         .spacing(spacing::XL)
         .align_y(alignment::Vertical::Center)
-        .padding([spacing::S + 1.0, 0.0]),
+        .padding([spacing::XS, 0.0]),
         divider(palette),
     ]
     .into()
@@ -327,11 +388,31 @@ impl Columns<'_> {
 
     /// The dimmed titles of the columns, as a row of the height of a list row.
     pub fn header<'a>(&self, labels: &[&str], palette: &Palette) -> Element<'a, Message> {
-        let cells = labels
+        let dimmed: Vec<(&str, Color)> = labels
+            .iter()
+            .map(|label| (*label, palette.dim_text))
+            .collect();
+        self.row_colored(&dimmed)
+    }
+
+    /// One row of the table, every cell in `color`.
+    pub fn row<'a>(&self, cells: &[&str], color: Color) -> Element<'a, Message> {
+        let colored: Vec<(&str, Color)> = cells.iter().map(|cell| (*cell, color)).collect();
+        self.row_colored(&colored)
+    }
+
+    /// One row of the table, each cell in its own color.
+    pub fn row_colored<'a>(&self, cells: &[(&str, Color)]) -> Element<'a, Message> {
+        let missing = self.portions.len().saturating_sub(cells.len());
+        let shown = cells
             .iter()
             .enumerate()
-            .map(|(index, label)| self.cell(index, label, palette.dim_text));
-        Row::with_children(cells)
+            .map(|(index, (content, color))| self.cell(index, content, *color))
+            .chain(
+                (cells.len()..cells.len() + missing)
+                    .map(|index| self.cell(index, "", Color::TRANSPARENT)),
+            );
+        Row::with_children(shown)
             .padding([0.0, spacing::CELL_PADDING_X])
             .height(size::ROW)
             .align_y(alignment::Vertical::Center)
@@ -359,6 +440,71 @@ pub fn segmented<'a>(
         .into()
 }
 
+/// The state of a checkbox.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Check {
+    Off,
+    On,
+    /// Some of what the box stands for is on, like a group of which only part
+    /// of the entries is chosen.
+    Mixed,
+}
+
+/// The side of a checkbox.
+const CHECKBOX_SIDE: f32 = 14.0;
+
+/// A checkbox without a label. `on_toggle` of `None` leaves the clicking to
+/// the widget around it, like a list row.
+pub fn checkbox<'a>(
+    state: Check,
+    on_toggle: Option<Message>,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let mut boxed = widget_checkbox(state != Check::Off)
+        .size(CHECKBOX_SIDE)
+        .style(theme::dialog_checkbox(palette));
+    if state == Check::Mixed {
+        boxed = boxed.icon(widget_checkbox::Icon {
+            font: iced::Font::DEFAULT,
+            code_point: '-',
+            size: None,
+            line_height: LineHeight::default(),
+            shaping: Shaping::Basic,
+        });
+    }
+    if let Some(message) = on_toggle {
+        boxed = boxed.on_toggle(move |_| message.clone());
+    }
+    boxed.into()
+}
+
+/// A few numbers, each under its dimmed name, side by side in an outlined box.
+pub fn figures<'a>(figures: &[(&str, String)], palette: &Palette) -> Element<'a, Message> {
+    container(figure_cells(figures, palette))
+        .style(theme::outlined(palette))
+        .into()
+}
+
+fn figure_cells<'a>(figures: &[(&str, String)], palette: &Palette) -> Row<'a, Message> {
+    let cells = figures.iter().map(|(label, value)| {
+        let shown: Element<'a, Message> = if value.chars().any(|c| c.is_ascii_digit()) {
+            text(value.clone())
+                .size(font_size::FIGURE)
+                .color(palette.text)
+                .wrapping(Wrapping::None)
+                .into()
+        } else {
+            // A value without a digit is a note, not a number.
+            dim(value.clone(), palette)
+        };
+        container(column![dim(label.to_string(), palette), shown].spacing(spacing::XS / 2.0))
+            .padding([spacing::S, BUTTON_PADDING_X])
+            .width(Length::FillPortion(1))
+            .into()
+    });
+    Row::with_children(cells)
+}
+
 /// The size of a selection in a few numbers, with a button that shows or hides
 /// the list behind them.
 pub fn count_summary<'a>(
@@ -369,21 +515,6 @@ pub fn count_summary<'a>(
     hide_label: &str,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let cells = figures.iter().map(|(label, value)| {
-        container(
-            column![
-                dim(label.to_string(), palette),
-                text(value.clone())
-                    .size(font_size::FIGURE)
-                    .color(palette.text)
-                    .wrapping(Wrapping::None),
-            ]
-            .spacing(spacing::XS / 2.0),
-        )
-        .padding([spacing::S, BUTTON_PADDING_X])
-        .width(Length::FillPortion(1))
-        .into()
-    });
     let (chevron, label) = if expanded {
         ("v", hide_label)
     } else {
@@ -402,9 +533,13 @@ pub fn count_summary<'a>(
     .width(Length::Fill)
     .on_press(on_toggle)
     .style(theme::link_button(palette));
-    container(column![Row::with_children(cells), divider(palette), toggle])
-        .style(theme::outlined(palette))
-        .into()
+    container(column![
+        figure_cells(figures, palette),
+        divider(palette),
+        toggle
+    ])
+    .style(theme::outlined(palette))
+    .into()
 }
 
 // reason: a failing assertion is the signal in a test
