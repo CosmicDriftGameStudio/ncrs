@@ -8,6 +8,15 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Reorganisation plan (Inventory): a view that shows how your document
+  folders could be tidied up, without changing anything. Entries are grouped
+  as duplicates, filed in the wrong folder, year does not match, name differs,
+  and what cannot be done, each with its current path, the proposed path and
+  the reason, plus a before and after tree of the folders the selection
+  touches. You select entries one by one or a whole group; entries that rest
+  on a rule you have not confirmed start unselected. Open it with Cmd+Shift+I
+  (Ctrl+Shift+I elsewhere) or from the command list. Running the selection
+  comes next.
 - Rule suggestions (Requisitions): ncrs looks at how your records are
   already filed and suggests rules from it, such as "text contains Company A
   Ltd goes to Insurance". Each suggestion shows how many documents in its

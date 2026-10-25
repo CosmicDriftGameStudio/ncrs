@@ -770,14 +770,11 @@ mod tests {
     #[test]
     fn a_later_group_with_a_better_hit_is_listed_first() {
         // "in" is a word of "Search in files" (Search group) and starts the
-        // theme name "Inspection" (Hermes group, after Search in the fixed
-        // order).
+        // theme names "Inspection" and "Inventory" (Hermes group, after Search
+        // in the fixed order).
         let palette = asked(Language::English, "in");
         let first = palette.hits().next().unwrap();
-        assert_eq!(
-            palette.entry(first).unwrap().action,
-            KeyAction::FilingStatus
-        );
+        assert_eq!(palette.entry(first).unwrap().group, CommandGroup::Hermes);
         assert!(palette
             .hits()
             .any(|hit| palette.entry(hit).unwrap().action == KeyAction::Search));

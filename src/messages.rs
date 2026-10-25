@@ -21,6 +21,7 @@ use crate::jobs::JobEvent;
 use crate::keymap::KeyAction;
 use crate::ocr_models::DownloadError;
 use crate::open_vsx::FetchError;
+use crate::reorganisation_work::PlannedItem;
 use crate::suggestion_work::SuggestedRule;
 use crate::theme_fetch::{Fetched, Installed};
 
@@ -267,6 +268,10 @@ pub enum Message {
 
     // --- Rule suggestions: rules read out of how the archive is filed ---
     RuleSuggestions(RuleSuggestionsMessage),
+    ReorganisationPlan(ReorganisationPlanMessage),
+    /// The user asked to carry out these entries of the reorganisation plan.
+    /// Nothing acts on it yet.
+    ExecuteReorganisation(Vec<PlannedItem>),
 
     // --- Quick Open (Cmd/Ctrl+P) ---
     QuickOpen(QuickOpenMessage),
@@ -427,6 +432,28 @@ pub enum FilingSetupMessage {
     Save,
     /// The filing settings read back from the written file.
     Saved(Result<Filing, FilingWriteError>),
+}
+
+/// Everything the reorganisation plan view sends. Running the selection is
+/// `Message::ExecuteReorganisation`, which carries the entries.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ReorganisationPlanMessage {
+    Open,
+    Close,
+    /// Works the plan out again.
+    Replan,
+    /// The work of the generation is done. Dropped when the view was closed or
+    /// opened again meanwhile.
+    Loaded {
+        generation: u64,
+        result: Result<Vec<PlannedItem>, String>,
+    },
+    Move(isize),
+    /// A click on the line at this position: an entry or a group heading.
+    Toggle(usize),
+    ToggleCursor,
+    /// Enter: hands the selection over as `Message::ExecuteReorganisation`.
+    Execute,
 }
 
 /// Everything the rule suggestions view sends.

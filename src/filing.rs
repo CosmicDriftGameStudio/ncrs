@@ -32,6 +32,7 @@ use ncrs_intake::{
 use ncrs_pipeline::{intake_steps, IndexAccess, Load, Runner, Settings, SystemClock};
 
 use crate::config::{Filing, FilingLocation};
+use crate::reorganisation_work::PlanAccess;
 use crate::suggestion_work::SuggestionAccess;
 
 /// A recovery key is 13 groups of four characters.
@@ -674,8 +675,17 @@ impl FilingModule {
     /// The handle of the rule suggestions view: only when the module is
     /// `Ready`, and over the archive locations that can be reached.
     pub fn suggestion_access(&self) -> Option<SuggestionAccess> {
+        self.archive_handle(SuggestionAccess::new)
+    }
+
+    /// The handle of the reorganisation plan view, on the same terms.
+    pub fn plan_access(&self) -> Option<PlanAccess> {
+        self.archive_handle(PlanAccess::new)
+    }
+
+    fn archive_handle<T>(&self, make: fn(IndexSlot, Vec<PathBuf>) -> T) -> Option<T> {
         match self.phase {
-            Phase::Ready => Some(SuggestionAccess::new(
+            Phase::Ready => Some(make(
                 Arc::clone(&self.index),
                 self.reachable_locations()
                     .filter(|location| location.mode == LocationMode::Archive)

@@ -16,8 +16,8 @@ use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::messages::{
     ClipboardKind, CommandPaletteMessage, FilingSetupMessage, FilingStatusMessage,
-    OcrModelsMessage, PanelSide, QuickOpenMessage, RuleSuggestionsMessage, SearchMessage,
-    ThemeFetchMessage, TransferKind,
+    OcrModelsMessage, PanelSide, QuickOpenMessage, ReorganisationPlanMessage,
+    RuleSuggestionsMessage, SearchMessage, ThemeFetchMessage, TransferKind,
 };
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
@@ -111,6 +111,7 @@ key_actions! {
     FilingStatus => "filing_status",
     FilingSetup => "filing_setup",
     RuleSuggestions => "rule_suggestions",
+    ReorganisationPlan => "reorganisation_plan",
     FetchTheme => "fetch_theme",
     DownloadOcrModels => "download_ocr_models",
     SearchCase => "search_case",
@@ -188,6 +189,7 @@ impl KeyAction {
             | Self::FilingStatus
             | Self::FilingSetup
             | Self::RuleSuggestions
+            | Self::ReorganisationPlan
             | Self::FetchTheme
             | Self::DownloadOcrModels
             | Self::DriveMenuLeft
@@ -253,6 +255,9 @@ impl KeyAction {
             Self::FilingStatus => Message::FilingStatus(FilingStatusMessage::Toggle),
             Self::FilingSetup => Message::FilingSetup(FilingSetupMessage::Toggle),
             Self::RuleSuggestions => Message::RuleSuggestions(RuleSuggestionsMessage::Open),
+            Self::ReorganisationPlan => {
+                Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
+            }
             Self::FetchTheme => Message::ThemeFetch(ThemeFetchMessage::Open),
             Self::DownloadOcrModels => Message::OcrModels(OcrModelsMessage::Open),
             Self::SearchCase => Message::Search(SearchMessage::ToggleCase),
@@ -426,6 +431,11 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
         (
             A::RuleSuggestions,
             Binding::with_modifiers(Character("r".into()), Modifiers::COMMAND | Modifiers::SHIFT),
+        ),
+        // The reorganisation plan, I for inventory; Cmd+Shift+I, Ctrl+Shift+I elsewhere.
+        (
+            A::ReorganisationPlan,
+            Binding::with_modifiers(Character("i".into()), Modifiers::COMMAND | Modifiers::SHIFT),
         ),
         // The toggles of the search fields, as in VS Code. On a Mac Option types
         // other characters, so these are only found through the physical key.

@@ -2237,6 +2237,192 @@
       "context": "Button in the rule suggestions view: turns the selected suggestion, as edited if the form is up, into a confirmed rule that Hermes uses from then on.",
       "en": "Confirm",
       "de": "Bestätigen"
+    },
+    {
+      "key": "action.reorganisation_plan",
+      "context": "Entry of the command list and the menu that runs the key action reorganisation_plan, which opens the view with the plan for tidying the document folders. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Reorganisation plan",
+      "de": "Umräumplan"
+    },
+    {
+      "key": "action.reorganisation_plan.theme",
+      "context": "Theme name of the key action reorganisation_plan, shown dimmed after its plain name action.reorganisation_plan in the command list, and matched when typing. A playful name (taking inventory before tidying up); the plain name beside it says what the action does.",
+      "en": "Inventory",
+      "de": "Inventur"
+    },
+    {
+      "key": "reorganisation_plan.explain",
+      "context": "Paragraph at the top of the reorganisation plan view. Says that the view only proposes changes to the document folders and that nothing is moved before the user runs the selected steps.",
+      "en": "A plan for tidying your document folders. Nothing is moved until you run the selected steps.",
+      "de": "Ein Plan zum Aufräumen deiner Dokumentenordner. Nichts wird verschoben, bevor du die ausgewählten Schritte ausführst."
+    },
+    {
+      "key": "reorganisation_plan.planning",
+      "context": "Line in the reorganisation plan view while the plan is being worked out in the background, before any entry can be shown.",
+      "en": "Working out the plan…",
+      "de": "Der Plan wird erstellt…"
+    },
+    {
+      "key": "reorganisation_plan.empty",
+      "context": "Line in the reorganisation plan view when the plan has no entry: every document is already where the folder it is in expects it.",
+      "en": "Nothing to tidy up. Every document is where its folder expects it.",
+      "de": "Nichts aufzuräumen. Jedes Dokument liegt dort, wo sein Ordner es erwartet."
+    },
+    {
+      "key": "reorganisation_plan.group_duplicate",
+      "context": "Heading of the group of plan entries that are copies of a file kept elsewhere; the plan moves such a copy into a separate folder and never deletes it.",
+      "en": "Duplicates",
+      "de": "Duplikate"
+    },
+    {
+      "key": "reorganisation_plan.group_misplaced",
+      "context": "Heading of the group of plan entries whose text matches a rule that files documents in another folder than the one they are in.",
+      "en": "Filed in the wrong folder",
+      "de": "Falsch abgelegt"
+    },
+    {
+      "key": "reorganisation_plan.group_year",
+      "context": "Heading of the group of plan entries that lie in a folder of one year although the document is dated in another year.",
+      "en": "Year does not match",
+      "de": "Jahr passt nicht"
+    },
+    {
+      "key": "reorganisation_plan.group_name",
+      "context": "Heading of the group of plan entries whose file name does not follow the naming pattern of the folder they are in.",
+      "en": "Name differs",
+      "de": "Name weicht ab"
+    },
+    {
+      "key": "reorganisation_plan.group_blocked",
+      "context": "Heading of the group of plan entries that cannot be carried out: the target is taken, or too little is known about the document. They are shown for information and cannot be selected.",
+      "en": "Cannot be done",
+      "de": "Nicht ausführbar"
+    },
+    {
+      "key": "reorganisation_plan.group_count",
+      "context": "Count behind a group heading of the reorganisation plan view: how many of the entries of the group are selected to be run.",
+      "en": "{selected} of {count} selected",
+      "de": "{selected} von {count} ausgewählt"
+    },
+    {
+      "key": "reorganisation_plan.column_current",
+      "context": "Column heading in the reorganisation plan view above the current path of each document, below its document folder.",
+      "en": "Now",
+      "de": "Jetzt"
+    },
+    {
+      "key": "reorganisation_plan.column_proposed",
+      "context": "Column heading in the reorganisation plan view above the path each document would get, below its document folder.",
+      "en": "Proposed",
+      "de": "Vorschlag"
+    },
+    {
+      "key": "reorganisation_plan.column_reason",
+      "context": "Column heading in the reorganisation plan view above the plain-text reason for each proposal.",
+      "en": "Why",
+      "de": "Grund"
+    },
+    {
+      "key": "reorganisation_plan.reason_duplicate",
+      "context": "Reason of a plan entry that is a copy. Takes the path of the copy that stays where it is.",
+      "en": "Copy of {keeper}",
+      "de": "Kopie von {keeper}"
+    },
+    {
+      "key": "reorganisation_plan.reason_misplaced",
+      "context": "Reason of a plan entry that a confirmed rule files in another folder.",
+      "en": "A rule files it elsewhere",
+      "de": "Eine Regel legt es woanders ab"
+    },
+    {
+      "key": "reorganisation_plan.reason_misplaced_unconfirmed",
+      "context": "Reason of a plan entry that a suggested rule files in another folder, where the user has not confirmed that rule yet; such an entry starts unselected.",
+      "en": "An unconfirmed rule files it elsewhere",
+      "de": "Eine unbestätigte Regel legt es woanders ab"
+    },
+    {
+      "key": "reorganisation_plan.reason_year",
+      "context": "Reason of a plan entry that lies in the folder of the wrong year. Takes the year of the folder and the year of the document.",
+      "en": "Filed under {folder_year}, dated {date_year}",
+      "de": "Abgelegt unter {folder_year}, datiert {date_year}"
+    },
+    {
+      "key": "reorganisation_plan.reason_name",
+      "context": "Reason of a plan entry whose name differs from the others in its folder. Takes the naming pattern of the folder.",
+      "en": "Does not follow the name pattern {pattern}",
+      "de": "Folgt nicht dem Namensmuster {pattern}"
+    },
+    {
+      "key": "reorganisation_plan.reason_target_exists",
+      "context": "Reason why a plan entry cannot be carried out: a file already exists at the path it would get.",
+      "en": "The target already exists",
+      "de": "Das Ziel gibt es schon"
+    },
+    {
+      "key": "reorganisation_plan.reason_target_taken",
+      "context": "Reason why a plan entry cannot be carried out: another entry of the same plan wants the same path.",
+      "en": "Another file wants the same target",
+      "de": "Eine andere Datei will dasselbe Ziel"
+    },
+    {
+      "key": "reorganisation_plan.reason_target_leaves",
+      "context": "Reason why a plan entry cannot be carried out: the path it would get is not inside the document folder.",
+      "en": "The target would leave the folder",
+      "de": "Das Ziel läge außerhalb des Ordners"
+    },
+    {
+      "key": "reorganisation_plan.reason_missing_fields",
+      "context": "Reason why a plan entry has no proposal: the fields the naming pattern of the folder needs, such as the date, are not known for the document.",
+      "en": "Not enough is known to name it",
+      "de": "Zu wenig bekannt für einen Namen"
+    },
+    {
+      "key": "reorganisation_plan.before",
+      "context": "Heading of the tree in the reorganisation plan view that shows the folders and files affected by the selected entries as they are now.",
+      "en": "Before",
+      "de": "Vorher"
+    },
+    {
+      "key": "reorganisation_plan.after",
+      "context": "Heading of the tree in the reorganisation plan view that shows the folders and files affected by the selected entries as they would be after running them.",
+      "en": "After",
+      "de": "Nachher"
+    },
+    {
+      "key": "reorganisation_plan.tree_empty",
+      "context": "Line under a tree heading in the reorganisation plan view when no entry is selected, so there is nothing to show.",
+      "en": "Nothing selected.",
+      "de": "Nichts ausgewählt."
+    },
+    {
+      "key": "reorganisation_plan.problem_failed",
+      "context": "Line in the reorganisation plan view when the plan could not be worked out. Takes the technical detail, which stays English.",
+      "en": "The plan could not be made ({detail}).",
+      "de": "Der Plan konnte nicht erstellt werden ({detail})."
+    },
+    {
+      "key": "reorganisation_plan.close",
+      "context": "Button in the reorganisation plan view: closes the view without running anything.",
+      "en": "Close",
+      "de": "Schließen"
+    },
+    {
+      "key": "reorganisation_plan.replan",
+      "context": "Button in the reorganisation plan view: works the plan out again from the documents as they are now, and drops the selection.",
+      "en": "Plan again",
+      "de": "Neu planen"
+    },
+    {
+      "key": "reorganisation_plan.execute",
+      "context": "Button in the reorganisation plan view: hands the selected entries over to be carried out. Disabled while no entry is selected.",
+      "en": "Run selected",
+      "de": "Ausgewählte ausführen"
+    },
+    {
+      "key": "reorganisation_plan.tree_more",
+      "context": "Last line under a tree of the reorganisation plan view when the tree has more lines than fit. Takes the number of lines left out.",
+      "en": "… {count} more",
+      "de": "… {count} weitere"
     }
   ]
 }

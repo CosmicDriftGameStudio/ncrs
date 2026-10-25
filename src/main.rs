@@ -34,6 +34,8 @@ mod ocr_models;
 mod open_vsx;
 mod palette;
 mod quick_open;
+mod reorganisation_plan;
+mod reorganisation_work;
 mod rule_suggestions;
 mod search_view;
 mod selection;

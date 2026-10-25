@@ -27,8 +27,8 @@ use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 use crate::menu::Availability;
 use crate::messages::{
     ClipboardKind, CommandPaletteMessage, ConflictChoice, FilingSetupMessage, FilingStatusMessage,
-    Message, OcrModelsMessage, PanelSide, QuickOpenMessage, RuleSuggestionsMessage, SearchMessage,
-    ThemeFetchMessage, TitleBarMessage, TransferKind,
+    Message, OcrModelsMessage, PanelSide, QuickOpenMessage, ReorganisationPlanMessage,
+    RuleSuggestionsMessage, SearchMessage, ThemeFetchMessage, TitleBarMessage, TransferKind,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -36,6 +36,7 @@ use crate::ocr_models::{download_models, DownloadError, OcrModelsCard};
 use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
 use crate::palette::Palette;
 use crate::quick_open::{QuickOpen, QUICK_OPEN_FILE_LIMIT};
+use crate::reorganisation_plan::ReorganisationView;
 use crate::rule_suggestions::RuleSuggestions;
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
 use crate::suggestion_work::{SuggestedRule, SuggestionAccess, INDEX_NOT_OPEN};
@@ -49,6 +50,7 @@ use crate::ui::filing_setup as filing_setup_ui;
 use crate::ui::filing_status as filing_status_ui;
 use crate::ui::ocr_models as ocr_models_ui;
 use crate::ui::quick_open as quick_open_ui;
+use crate::ui::reorganisation_plan as reorganisation_plan_ui;
 use crate::ui::rule_suggestions as rule_suggestions_ui;
 use crate::ui::search as search_ui;
 use crate::ui::theme_fetch as theme_fetch_ui;
@@ -271,6 +273,7 @@ fn leaves_path_field(message: &Message) -> bool {
             | Message::CommandPalette(CommandPaletteMessage::Toggle)
             | Message::ThemeFetch(ThemeFetchMessage::Open)
             | Message::RuleSuggestions(RuleSuggestionsMessage::Open)
+            | Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
             | Message::OcrModels(OcrModelsMessage::Open)
             | Message::FilingStatus(FilingStatusMessage::Open)
             | Message::FilingSetup(
@@ -703,6 +706,9 @@ pub struct App {
     rule_suggestions: Option<RuleSuggestions>,
     /// Tells the answer of the work that is current from a stale one.
     rule_suggestions_generation: u64,
+    reorganisation: Option<ReorganisationView>,
+    /// Tells the answer of the plan that is current from a stale one.
+    reorganisation_generation: u64,
     /// Downloads an extension, on a blocking thread. Injected so tests need
     /// no network.
     fetch_extension: fn(&ExtensionId) -> Result<FetchedExtension, FetchError>,
@@ -757,6 +763,8 @@ pub struct PromptKeyState {
     pub rule_suggestions: bool,
     /// Its form is up, so the text fields take the letters.
     pub rule_suggestions_editing: bool,
+    /// The reorganisation plan view is up, so its keys are the card's.
+    pub reorganisation_plan: bool,
     /// The OCR models card is up, so keys answer it like a button dialog.
     pub ocr_models: bool,
     /// The delete dialog is up, so keys answer it.
@@ -789,6 +797,7 @@ impl Default for PromptKeyState {
             theme_fetch: false,
             rule_suggestions: false,
             rule_suggestions_editing: false,
+            reorganisation_plan: false,
             ocr_models: false,
             delete_dialog: DeleteKeys::default(),
             volume_menu: false,
@@ -796,6 +805,29 @@ impl Default for PromptKeyState {
             busy: false,
             typed: Arc::default(),
         }
+    }
+}
+
+/// The plan is a card: Enter runs the selection, Space selects or deselects
+/// what the cursor is on, the arrows move.
+fn reorganisation_plan_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    let plan = |message| Some(Message::ReorganisationPlan(message));
+    let plain = key_modifiers.is_empty();
+    match key.as_ref() {
+        Key::Named(Named::Escape) => plan(ReorganisationPlanMessage::Close),
+        Key::Named(Named::Enter) => plan(ReorganisationPlanMessage::Execute),
+        Key::Named(Named::Space) if plain => plan(ReorganisationPlanMessage::ToggleCursor),
+        Key::Named(Named::ArrowUp) if plain => plan(ReorganisationPlanMessage::Move(-1)),
+        Key::Named(Named::ArrowDown) if plain => plan(ReorganisationPlanMessage::Move(1)),
+        Key::Character("r") if plain => plan(ReorganisationPlanMessage::Replan),
+        _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
+            .filter(|message| *message == Message::Quit)
+            .filter(|_| is_not_typed_by_text_field(key, key_modifiers)),
     }
 }
 
@@ -955,6 +987,10 @@ fn keys_without_prompt(
                 .filter(|message| *message == Message::Quit)
                 .filter(|_| is_not_typed_by_text_field(&key, key_modifiers)),
         };
+    }
+
+    if prompt.reorganisation_plan {
+        return reorganisation_plan_key(prompt, &key, key_modifiers, scope);
     }
 
     if prompt.rule_suggestions {
@@ -1374,6 +1410,7 @@ fn repeats(message: &Message) -> bool {
             | Message::CommandPalette(CommandPaletteMessage::Move(_))
             | Message::ThemeFetch(ThemeFetchMessage::Move(_))
             | Message::RuleSuggestions(RuleSuggestionsMessage::Move(_))
+            | Message::ReorganisationPlan(ReorganisationPlanMessage::Move(_))
             | Message::FilingStatus(FilingStatusMessage::MoveError(_))
             | Message::Search(
                 SearchMessage::ToggleTag
@@ -1765,6 +1802,8 @@ impl App {
             theme_fetch_generation: 0,
             rule_suggestions: None,
             rule_suggestions_generation: 0,
+            reorganisation: None,
+            reorganisation_generation: 0,
             fetch_extension: open_vsx::fetch_extension,
             install_theme: install_picked_theme,
             ocr_models: None,
@@ -2397,6 +2436,9 @@ impl App {
             }
             Message::ThemeFetch(fetch_message) => self.update_theme_fetch(fetch_message),
             Message::RuleSuggestions(suggestions) => self.update_rule_suggestions(suggestions),
+            Message::ReorganisationPlan(plan) => self.update_reorganisation(plan),
+            // #73 hangs the executor here; until then the selection goes nowhere.
+            Message::ExecuteReorganisation(_selection) => Task::none(),
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => self.update_filing_status(page_message),
@@ -2655,6 +2697,7 @@ impl App {
         input.command_palette = self.command_palette.is_some();
         input.theme_fetch = self.theme_fetch.is_some();
         input.rule_suggestions = self.rule_suggestions.is_some();
+        input.reorganisation_plan = self.reorganisation.is_some();
         drop(input);
         // `get` rather than `get_or_init`: the cell is created by the
         // subscription, and `update` must not create it — a cell nothing reads
@@ -2911,6 +2954,12 @@ impl App {
             return Stack::with_children([root, dialog::scrim(card_element)]).into();
         }
 
+        if let Some(view) = self.reorganisation.as_ref() {
+            let card_element =
+                reorganisation_plan_ui::view(view, self.window_size, self.lang, &self.palette);
+            return Stack::with_children([root, dialog::scrim(card_element)]).into();
+        }
+
         // Then the create-directory prompt, for F7.
         let Some(prompt) = self.prompt.as_ref() else {
             return root;
@@ -3010,6 +3059,7 @@ impl App {
             .rule_suggestions
             .as_ref()
             .is_some_and(|view| view.edit().is_some());
+        let reorganisation_plan = self.reorganisation.is_some();
         let ocr_models = self.ocr_models.is_some();
         let delete_dialog = match &self.delete_dialog {
             None => DeleteKeys::Closed,
@@ -3034,6 +3084,7 @@ impl App {
                 theme_fetch,
                 rule_suggestions,
                 rule_suggestions_editing,
+                reorganisation_plan,
                 ocr_models,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
@@ -3059,6 +3110,7 @@ impl App {
                 theme_fetch,
                 rule_suggestions,
                 rule_suggestions_editing,
+                reorganisation_plan,
                 ocr_models,
                 conflict_open: self.pending_conflict.is_some(),
                 busy: prompt.busy(),
@@ -3414,6 +3466,7 @@ impl App {
             || self.command_palette.is_some()
             || self.theme_fetch.is_some()
             || self.rule_suggestions.is_some()
+            || self.reorganisation.is_some()
             || self.ocr_models.is_some()
             || self.filing_status.page_open()
     }
@@ -4546,6 +4599,97 @@ impl App {
             move |joined| {
                 let result = joined.unwrap_or_else(|join| Err(join.to_string()));
                 Message::RuleSuggestions(RuleSuggestionsMessage::MatchesFound { id, result })
+            },
+        )
+    }
+
+    fn update_reorganisation(&mut self, message: ReorganisationPlanMessage) -> Task<Message> {
+        match message {
+            ReorganisationPlanMessage::Open => self.open_reorganisation(),
+            ReorganisationPlanMessage::Close => {
+                if self.reorganisation.take().is_some() {
+                    release_focus()
+                } else {
+                    Task::none()
+                }
+            }
+            ReorganisationPlanMessage::Replan => {
+                let Some(view) = self.reorganisation.as_mut() else {
+                    return Task::none();
+                };
+                if view.is_busy() {
+                    return Task::none();
+                }
+                view.begin_planning();
+                self.run_planning()
+            }
+            ReorganisationPlanMessage::Loaded { generation, result } => {
+                if generation != self.reorganisation_generation {
+                    return Task::none();
+                }
+                match (self.reorganisation.as_mut(), result) {
+                    (Some(view), Ok(rows)) => view.loaded(rows),
+                    (Some(view), Err(detail)) => view.failed(detail),
+                    (None, _) => {}
+                }
+                Task::none()
+            }
+            ReorganisationPlanMessage::Move(delta) => {
+                if let Some(view) = self.reorganisation.as_mut() {
+                    view.move_cursor(delta);
+                }
+                Task::none()
+            }
+            ReorganisationPlanMessage::Toggle(line) => {
+                if let Some(view) = self.reorganisation.as_mut() {
+                    view.toggle(line);
+                }
+                Task::none()
+            }
+            ReorganisationPlanMessage::ToggleCursor => {
+                if let Some(view) = self.reorganisation.as_mut() {
+                    view.toggle_cursor();
+                }
+                Task::none()
+            }
+            ReorganisationPlanMessage::Execute => match self.reorganisation.as_ref() {
+                Some(view) if view.has_selection() && !view.is_busy() => {
+                    Task::done(Message::ExecuteReorganisation(view.selection()))
+                }
+                _ => Task::none(),
+            },
+        }
+    }
+
+    /// The plan is made as the view opens; the entries appear when it is done.
+    fn open_reorganisation(&mut self) -> Task<Message> {
+        if self.reorganisation.is_some() || self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        self.context_menu = None;
+        self.reorganisation_generation = self.reorganisation_generation.wrapping_add(1);
+        self.reorganisation = Some(ReorganisationView::new());
+        self.run_planning()
+    }
+
+    /// Plans on a blocking thread: the plan reads the whole folder tree and
+    /// holds the index the intake shares.
+    fn run_planning(&mut self) -> Task<Message> {
+        let generation = self.reorganisation_generation;
+        let Some(access) = self.filing.as_ref().and_then(FilingModule::plan_access) else {
+            if let Some(view) = self.reorganisation.as_mut() {
+                view.failed(INDEX_NOT_OPEN.to_owned());
+            }
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.plan()),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                Message::ReorganisationPlan(ReorganisationPlanMessage::Loaded {
+                    generation,
+                    result,
+                })
             },
         )
     }
@@ -6055,6 +6199,8 @@ impl App {
             theme_fetch_generation: 0,
             rule_suggestions: None,
             rule_suggestions_generation: 0,
+            reorganisation: None,
+            reorganisation_generation: 0,
             fetch_extension: |_| Err(FetchError::NoConnection("no network in tests".to_owned())),
             install_theme: |_, _| Err(FetchError::NoConfigPath),
             ocr_models: None,
@@ -6271,6 +6417,17 @@ impl App {
     pub fn with_rule_suggestions(view: RuleSuggestions) -> Self {
         let mut app = Self::with_fixed_panels();
         app.rule_suggestions = Some(view);
+        app
+    }
+
+    pub fn reorganisation_for_test(&self) -> Option<&ReorganisationView> {
+        self.reorganisation.as_ref()
+    }
+
+    /// Fixed panels with the reorganisation plan view up, in the state of `view`.
+    pub fn with_reorganisation_plan(view: ReorganisationView) -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.reorganisation = Some(view);
         app
     }
 
