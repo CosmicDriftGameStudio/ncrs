@@ -6,8 +6,11 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use iced::mouse::ScrollDelta;
+
 use ncrs_index::{QuerySpec, SavedQuery, SavedQueryId, TaxContext};
 
+use crate::list_window::ListWindow;
 use crate::query_work::{copies_of, ExportSummary, QueryHit};
 use crate::review_work::parse_tags;
 
@@ -123,11 +126,15 @@ pub struct ExportRequest {
     pub folder: PathBuf,
 }
 
+/// Most queries of the list shown at once; the list follows the cursor.
+pub const VISIBLE_ROWS: usize = 3;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SavedQueries {
     rows: Vec<SavedQuery>,
     /// `None` is a new query, not saved yet.
     cursor: Option<usize>,
+    window: ListWindow,
     /// The list is loading or the work is running; the view takes no new task.
     busy: bool,
     form: Form,
@@ -148,6 +155,7 @@ impl SavedQueries {
         Self {
             rows: Vec::new(),
             cursor: None,
+            window: ListWindow::default(),
             busy: true,
             form: Form::default(),
             problem: None,
@@ -166,6 +174,11 @@ impl SavedQueries {
 
     pub fn cursor(&self) -> Option<usize> {
         self.cursor
+    }
+
+    /// The first query of the list that is shown.
+    pub fn first_visible(&self) -> usize {
+        self.window.offset(self.rows.len(), VISIBLE_ROWS)
     }
 
     pub fn selected(&self) -> Option<&SavedQuery> {
@@ -237,6 +250,10 @@ impl SavedQueries {
         self.rows = rows;
         self.busy = false;
         self.cursor = wanted.and_then(|id| self.rows.iter().position(|query| query.id == id));
+        if let Some(cursor) = self.cursor {
+            self.window
+                .ensure_visible(cursor, self.rows.len(), VISIBLE_ROWS);
+        }
         if let Some(query) = self.selected().cloned() {
             self.form = Form::of(&query);
         } else if previous {
@@ -271,7 +288,20 @@ impl SavedQueries {
         };
         self.form = Form::of(query);
         self.cursor = Some(index);
+        self.window
+            .ensure_visible(index, self.rows.len(), VISIBLE_ROWS);
         self.leave_query();
+    }
+
+    /// The wheel moves the window; a query under the cursor follows it when
+    /// the cursor would leave. A new query stays the one being edited.
+    pub fn scroll(&mut self, delta: ScrollDelta) {
+        let mut moved = self.cursor.unwrap_or_default();
+        self.window
+            .scroll(delta, self.rows.len(), VISIBLE_ROWS, &mut moved);
+        if self.cursor.is_some() {
+            self.select(moved);
+        }
     }
 
     /// An empty form for a query that is not saved yet.

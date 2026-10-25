@@ -6,18 +6,17 @@ use iced::widget::{button, container, row, text, Column};
 use iced::{alignment, Element, Length};
 
 use super::format;
-use super::frame::{chars_that_fit, SIDEBAR_ROOM};
+use super::frame::SIDEBAR_ROOM;
 use super::theme::{self, font_size, size, spacing};
 use crate::i18n::{Language, Msg};
-use crate::messages::{HermesPage, Message};
+use crate::messages::{HermesFocus, HermesPage, Message};
 use crate::palette::Palette;
 
-/// Room for a badge: a count of up to three digits.
-const BADGE_CHARS: usize = 3;
-
-/// The counts the app has at hand; a page without one shows no badge.
+/// What the app tells the card around a page: the counts it has at hand (a
+/// page without one shows no badge) and where the keyboard focus is.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Badges {
+    pub focus: HermesFocus,
     pub review: Option<usize>,
     pub rule_suggestions: Option<usize>,
 }
@@ -33,7 +32,7 @@ impl Badges {
     }
 }
 
-const PAGES: [HermesPage; 5] = [
+pub const PAGES: [HermesPage; 5] = [
     HermesPage::Inspection,
     HermesPage::Review,
     HermesPage::RuleSuggestions,
@@ -63,42 +62,62 @@ pub fn nav<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let line_chars =
-        chars_that_fit(SIDEBAR_ROOM - 2.0 * spacing::S - 2.0 * spacing::CELL_PADDING_X);
+    let available = SIDEBAR_ROOM - 2.0 * spacing::S - 2.0 * spacing::CELL_PADDING_X;
     let items = PAGES.map(|page| {
         let active = page == current;
-        let (plain_color, theme_color) = if active {
+        let (plain_color, theme_color) = if active && badges.focus == HermesFocus::Sidebar {
             (palette.cursor_text, palette.cursor_text)
         } else {
             (palette.text, palette.dim_text)
         };
-        let badge = badges.of(page);
+        let badge = badges.of(page).map(|count| count.to_string());
+        let badge_room = badge.as_ref().map_or(0.0, |digits| {
+            format::estimated_width(digits, font_size::BODY) + spacing::S
+        });
         let (plain_msg, theme_msg) = names(page);
-        let plain = format::ellipsize_end(lang.text(plain_msg), line_chars);
-        let room = line_chars
-            .saturating_sub(plain.chars().count())
-            .saturating_sub(1)
-            .saturating_sub(if badge.is_some() { BADGE_CHARS } else { 0 });
+        let plain = format::fit_end(
+            lang.text(plain_msg),
+            available - badge_room,
+            font_size::BODY,
+        );
         let theme_name = lang.text(theme_msg);
+        let theme_fits = format::estimated_width(&plain, font_size::BODY)
+            + spacing::S
+            + format::estimated_width(theme_name, font_size::BODY)
+            + badge_room
+            <= available;
         let mut content = row![label(plain, plain_color)]
             .spacing(spacing::S)
             .align_y(alignment::Vertical::Center);
-        if theme_name.chars().count() <= room {
+        if theme_fits {
             content = content.push(label(theme_name.to_owned(), theme_color));
         }
         content = content.push(container("").width(Length::Fill));
-        if let Some(count) = badge {
-            content = content.push(label(count.to_string(), theme_color));
+        if let Some(digits) = badge {
+            content = content.push(label(digits, theme_color));
         }
         button(content)
             .on_press(Message::HermesPage(page))
             .width(Length::Fill)
             .height(size::SIDEBAR_ITEM)
             .padding([0.0, spacing::CELL_PADDING_X])
-            .style(theme::row(palette, false, active, true))
+            .clip(true)
+            .style(theme::row(
+                palette,
+                false,
+                active,
+                badges.focus == HermesFocus::Sidebar,
+            ))
             .into()
     });
     Column::with_children(items).into()
+}
+
+/// The page before (`step` below zero) or after the one open, or `None` at
+/// either end of the sidebar.
+pub fn neighbour(current: HermesPage, step: isize) -> Option<HermesPage> {
+    let position = PAGES.iter().position(|page| *page == current)?;
+    PAGES.get(position.checked_add_signed(step)?).copied()
 }
 
 fn label<'a>(content: String, color: iced::Color) -> Element<'a, Message> {

@@ -28,6 +28,7 @@ mod fs;
 mod i18n;
 mod jobs;
 mod keymap;
+mod list_window;
 #[cfg(any(target_os = "macos", test))]
 mod menu;
 mod messages;

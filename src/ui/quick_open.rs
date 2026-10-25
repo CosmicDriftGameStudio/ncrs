@@ -94,6 +94,7 @@ fn hit_row<'a>(
         ),
         to_quick_open(QuickOpenMessage::RowActivated(index)),
         selected,
+        true,
         palette,
     )
 }

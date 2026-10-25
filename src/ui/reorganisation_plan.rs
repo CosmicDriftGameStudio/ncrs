@@ -4,7 +4,7 @@
 //! after. Modal, like the rule suggestions. Pure view over
 //! [`ReorganisationView`]; nothing here touches a file.
 
-use iced::widget::{button, column, container, row, Column, Space};
+use iced::widget::{column, container, row, Space};
 use iced::{alignment, Element, Length, Size};
 use ncrs_index::{ConflictReason, Finding, PlanOutcome};
 
@@ -12,16 +12,16 @@ use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::hermes::{self, Badges};
 use super::kit::{self, dim, error_line, paragraph, Columns, Tone};
-use super::theme::{self, size, spacing};
+use super::theme::{size, spacing};
 use crate::app::fill_template;
 use crate::i18n::{Language, Msg};
-use crate::messages::{HermesPage, Message, ReorganisationPlanMessage};
+use crate::messages::{HermesFocus, HermesPage, Message, ReorganisationPlanMessage};
 use crate::palette::Palette;
-use crate::reorganisation_plan::{target, Group, Line, ReorganisationView, TreeLine};
+use crate::reorganisation_plan::{
+    target, Group, Line, ReorganisationView, TreeLine, VISIBLE_LINES,
+};
 use crate::reorganisation_work::{deciding_finding, PlannedItem};
 
-/// Most lines of the list shown at once; the list follows the cursor.
-pub const VISIBLE_LINES: usize = 12;
 /// Most lines of a tree shown; the rest is counted.
 pub const TREE_LINES: usize = 6;
 
@@ -65,7 +65,7 @@ pub fn view<'a>(
             palette,
         ));
     } else {
-        body = body.push(list(state, line_chars, lang, palette));
+        body = body.push(list(state, line_chars, badges.focus, lang, palette));
         if state.is_busy() {
             body = body.push(dim(lang.text(Msg::ReorganisationPlanPlanning), palette));
         }
@@ -213,6 +213,7 @@ pub fn reason_text(planned: &PlannedItem, lang: Language) -> String {
 fn list<'a>(
     state: &'a ReorganisationView,
     line_chars: usize,
+    focus: HermesFocus,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -246,7 +247,7 @@ fn list<'a>(
     .height(size::ROW)
     .align_y(alignment::Vertical::Center);
 
-    let first = (state.cursor() + 1).saturating_sub(VISIBLE_LINES);
+    let first = state.first_visible();
     let shown = state
         .lines()
         .iter()
@@ -255,7 +256,7 @@ fn list<'a>(
         .take(VISIBLE_LINES);
     let lines = shown.map(|(position, line)| {
         let on_cursor = position == state.cursor();
-        let color = if on_cursor {
+        let color = if on_cursor && focus == HermesFocus::Content {
             palette.cursor_text
         } else {
             palette.text
@@ -304,21 +305,25 @@ fn list<'a>(
             }
         }
         .align_y(alignment::Vertical::Center);
-        button(content)
-            .on_press(send(ReorganisationPlanMessage::Toggle(position)))
-            .width(Length::Fill)
-            .padding([0.0, spacing::CELL_PADDING_X])
-            .height(size::ROW)
-            .style(theme::row(palette, false, on_cursor, true))
-            .into()
+        kit::list_row(
+            content.into(),
+            send(ReorganisationPlanMessage::Toggle(position)),
+            on_cursor,
+            focus == HermesFocus::Content,
+            palette,
+        )
     });
-    column![
-        header,
-        container(Column::with_children(lines))
-            .height(size::ROW * state.lines().len().min(VISIBLE_LINES) as f32)
-            .clip(true)
-    ]
-    .into()
+    kit::scroll_list(
+        header.into(),
+        lines.collect(),
+        kit::ListView {
+            len: state.lines().len(),
+            visible: VISIBLE_LINES,
+            offset: first,
+        },
+        |delta| send(ReorganisationPlanMessage::Scrolled(delta)),
+        palette,
+    )
 }
 
 fn trees<'a>(

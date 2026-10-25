@@ -66,6 +66,7 @@ pub fn view<'a>(
                     command_row(entry, hit, selected, window, palette),
                     to_palette(CommandPaletteMessage::Select(index)),
                     selected,
+                    true,
                     palette,
                 ))
             }

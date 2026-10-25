@@ -7,8 +7,11 @@ use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
 
+use iced::mouse::ScrollDelta;
+
 use ncrs_index::{Finding, PlanOutcome};
 
+use crate::list_window::ListWindow;
 use crate::reorganisation_work::{deciding_finding, PlannedItem};
 
 /// The kind of finding an entry is listed under. `Blocked` collects what has
@@ -70,6 +73,9 @@ pub struct TreeLine {
     pub is_folder: bool,
 }
 
+/// Most lines of the plan shown at once; the list follows the cursor.
+pub const VISIBLE_LINES: usize = 12;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReorganisationView {
     rows: Vec<PlannedItem>,
@@ -77,6 +83,7 @@ pub struct ReorganisationView {
     /// Positions in `rows`; only entries with a target are ever in it.
     selected: BTreeSet<usize>,
     cursor: usize,
+    window: ListWindow,
     /// The plan is being worked out.
     busy: bool,
     problem: Option<String>,
@@ -90,6 +97,7 @@ impl ReorganisationView {
             lines: Vec::new(),
             selected: BTreeSet::new(),
             cursor: 0,
+            window: ListWindow::default(),
             busy: true,
             problem: None,
         }
@@ -105,6 +113,11 @@ impl ReorganisationView {
 
     pub fn cursor(&self) -> usize {
         self.cursor
+    }
+
+    /// The first line of the plan that is shown.
+    pub fn first_visible(&self) -> usize {
+        self.window.offset(self.lines.len(), VISIBLE_LINES)
     }
 
     pub fn is_busy(&self) -> bool {
@@ -156,6 +169,7 @@ impl ReorganisationView {
             .collect();
         self.rows = rows;
         self.cursor = 0;
+        self.window = ListWindow::default();
         self.busy = false;
         self.problem = None;
     }
@@ -168,6 +182,14 @@ impl ReorganisationView {
     pub fn move_cursor(&mut self, delta: isize) {
         let last = self.lines.len().saturating_sub(1);
         self.cursor = self.cursor.saturating_add_signed(delta).min(last);
+        self.window
+            .ensure_visible(self.cursor, self.lines.len(), VISIBLE_LINES);
+    }
+
+    /// The wheel moves the window; the cursor follows it when it would leave.
+    pub fn scroll(&mut self, delta: ScrollDelta) {
+        self.window
+            .scroll(delta, self.lines.len(), VISIBLE_LINES, &mut self.cursor);
     }
 
     /// Selects or deselects what the line stands for: an entry, or every entry

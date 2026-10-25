@@ -3,13 +3,17 @@
 //! and every color comes from the palette. A dialog is put together from these
 //! and the [`Frame`](super::frame::Frame); it does not style widgets itself.
 
+use iced::mouse::ScrollDelta;
 use iced::widget::button as widget_button;
 use iced::widget::checkbox as widget_checkbox;
 use iced::widget::text::{IntoFragment, LineHeight, Shaping, Wrapping};
-use iced::widget::{column, container, row, rule, text, text_input, Column, Row};
-use iced::{alignment, Color, Element, Font, Length, Pixels, Theme};
+use iced::widget::{
+    column, container, mouse_area, row, rule, text, text_input, Column, Row, Space,
+};
+use iced::{alignment, Background, Color, Element, Font, Length, Padding, Pixels, Theme};
 
 use super::format;
+use super::frame::{AVERAGE_GLYPH_WIDTH, SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
 use super::theme::{self, font_size, size, spacing, DISABLED_OPACITY};
 use crate::messages::Message;
 use crate::palette::Palette;
@@ -380,11 +384,14 @@ fn field_in<'a>(
         .into()
 }
 
-/// One row of a list; a click sends `on_press`.
+/// One row of a list; a click sends `on_press`. The row under the cursor is
+/// filled while the list has the keyboard focus (`focused`), else only
+/// outlined.
 pub fn list_row<'a>(
     content: Element<'a, Message>,
     on_press: Message,
     selected: bool,
+    focused: bool,
     palette: &Palette,
 ) -> Element<'a, Message> {
     widget_button(content)
@@ -392,36 +399,47 @@ pub fn list_row<'a>(
         .width(Length::Fill)
         .padding([0.0, spacing::CELL_PADDING_X])
         .height(size::ROW)
-        .style(theme::row(palette, false, selected, true))
+        .style(theme::row(palette, false, selected, focused))
         .into()
 }
 
+/// Room kept right of a table for the bar of a scrolling list.
+pub const SCROLL_LANE: f32 = SCROLLBAR_WIDTH + SCROLLBAR_MARGIN;
+
 /// The columns of a table of text that must stay on one line: each takes a
-/// share of the line, and a cell is cut to the characters its column holds.
+/// share of the line, and a cell is cut to the pixels its column holds. The
+/// width of a text is estimated, see [`format::estimated_width`].
 pub struct Columns<'p> {
     /// The relative widths of the columns.
     pub portions: &'p [u16],
-    /// The characters of the whole line.
+    /// The characters of the whole line, at the average width of a glyph.
     pub line_chars: usize,
 }
 
 impl Columns<'_> {
-    /// The characters column `index` holds, less the padding around its cell.
-    pub fn chars(&self, index: usize) -> usize {
-        let total: usize = self.portions.iter().copied().map(usize::from).sum();
-        let portion = self.portions.get(index).copied().map_or(0, usize::from);
-        self.line_chars
-            .saturating_mul(portion)
-            .checked_div(total)
-            .unwrap_or_default()
-            .saturating_sub(2)
+    /// The pixels the cells of the line share: the line less the padding of a
+    /// row and the lane of the scroll bar.
+    fn cells_width(&self) -> f32 {
+        (self.line_chars as f32 * AVERAGE_GLYPH_WIDTH - 2.0 * spacing::CELL_PADDING_X - SCROLL_LANE)
+            .max(0.0)
+    }
+
+    /// The pixels the text of column `index` may take: the share of the
+    /// column less the gap to the next one.
+    pub fn text_width(&self, index: usize) -> f32 {
+        let total: f32 = self.portions.iter().copied().map(f32::from).sum();
+        let portion = self.portions.get(index).copied().map_or(0.0, f32::from);
+        if total <= 0.0 {
+            return 0.0;
+        }
+        (self.cells_width() * portion / total - spacing::S).max(0.0)
     }
 
     /// The text of column `index`, cut at the end where it is too long.
     pub fn cell<'a>(&self, index: usize, content: &str, color: Color) -> Element<'a, Message> {
         self.cell_of(
             index,
-            format::ellipsize_end(content, self.chars(index)),
+            format::fit_end(content, self.text_width(index), font_size::BODY),
             color,
         )
     }
@@ -445,6 +463,10 @@ impl Columns<'_> {
                 .wrapping(Wrapping::None),
         )
         .width(Length::FillPortion(portion))
+        .padding(Padding {
+            right: spacing::S,
+            ..Padding::ZERO
+        })
         .align_x(align)
         .clip(true)
         .into()
@@ -455,7 +477,7 @@ impl Columns<'_> {
     pub fn path_cell<'a>(&self, index: usize, content: &str, color: Color) -> Element<'a, Message> {
         self.cell_of(
             index,
-            format::ellipsize_middle(content, self.chars(index)),
+            format::fit_middle(content, self.text_width(index), font_size::BODY),
             color,
         )
     }
@@ -507,7 +529,7 @@ impl Columns<'_> {
                 };
                 self.aligned_cell_of(
                     index,
-                    format::ellipsize_end(content, self.chars(index)),
+                    format::fit_end(content, self.text_width(index), font_size::BODY),
                     *color,
                     align,
                 )
@@ -522,6 +544,88 @@ impl Columns<'_> {
             .align_y(alignment::Vertical::Center)
             .into()
     }
+}
+
+/// The shortest the thumb of the bar of a list gets.
+const MIN_THUMB: f32 = 12.0;
+
+/// Where the thumb starts and how long it is on a track of `track` pixels, for
+/// a window of `visible` rows at `offset` in a list of `len`.
+fn thumb_extent(len: usize, visible: usize, offset: usize, track: f32) -> (f32, f32) {
+    let thumb = (track * visible as f32 / len.max(1) as f32).clamp(MIN_THUMB.min(track), track);
+    let scrollable = len.saturating_sub(visible).max(1) as f32;
+    let top = (track - thumb) * (offset as f32 / scrollable).min(1.0);
+    (top, thumb)
+}
+
+/// A table whose rows are a window into a longer list: the header, the rows
+/// shown, and right of them a bar that shows where the window is. The wheel
+/// over the rows (not over the header or the rest of the page) sends
+/// `on_scroll`.
+pub fn scroll_list<'a>(
+    header: Element<'a, Message>,
+    rows: Vec<Element<'a, Message>>,
+    window: ListView,
+    on_scroll: impl Fn(ScrollDelta) -> Message + 'a,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let shown = rows.len();
+    let track = size::ROW * shown as f32;
+    let list = mouse_area(
+        container(Column::with_children(rows))
+            .width(Length::Fill)
+            .height(track)
+            .clip(true),
+    )
+    .on_scroll(on_scroll);
+    let lane = if window.len > window.visible {
+        let (top, thumb) = thumb_extent(window.len, window.visible, window.offset, track);
+        let (track_color, thumb_color) = (palette.border_inactive, palette.dim_text);
+        let fill = |color: Color| {
+            move |_theme: &Theme| container::Style {
+                background: Some(Background::Color(color)),
+                border: iced::Border {
+                    radius: SCROLLBAR_WIDTH.into(),
+                    ..iced::Border::default()
+                },
+                ..container::Style::default()
+            }
+        };
+        container(column![
+            Space::new().height(top),
+            container("")
+                .width(SCROLLBAR_WIDTH)
+                .height(thumb)
+                .style(fill(thumb_color)),
+        ])
+        .width(SCROLLBAR_WIDTH)
+        .height(track)
+        .style(fill(track_color))
+    } else {
+        container("").width(SCROLLBAR_WIDTH).height(track)
+    };
+    column![
+        container(header).padding(Padding {
+            right: SCROLL_LANE,
+            ..Padding::ZERO
+        }),
+        row![
+            list,
+            container(lane).padding(Padding {
+                left: SCROLLBAR_MARGIN,
+                ..Padding::ZERO
+            })
+        ],
+    ]
+    .into()
+}
+
+/// Which rows of a list a window shows, for [`scroll_list`].
+#[derive(Debug, Clone, Copy)]
+pub struct ListView {
+    pub len: usize,
+    pub visible: usize,
+    pub offset: usize,
 }
 
 /// A group of buttons of which one is on, like the load setting of Hermes.
@@ -660,14 +764,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_column_holds_its_share_of_the_line_less_the_padding() {
+    fn a_column_holds_its_share_of_the_line_less_the_gap() {
         let columns = Columns {
             portions: &[1, 2, 1],
             line_chars: 80,
         };
-        assert_eq!(columns.chars(0), 18);
-        assert_eq!(columns.chars(1), 38);
-        assert_eq!(columns.chars(2), 18);
+        let cells = 80.0 * AVERAGE_GLYPH_WIDTH - 2.0 * spacing::CELL_PADDING_X - SCROLL_LANE;
+        let gap = spacing::S;
+        assert!((columns.text_width(0) - (cells / 4.0 - gap)).abs() < 0.01);
+        assert!((columns.text_width(1) - (cells / 2.0 - gap)).abs() < 0.01);
+        assert!(columns.text_width(1) > columns.text_width(0));
     }
 
     #[test]
@@ -676,12 +782,12 @@ mod tests {
             portions: &[1, 1],
             line_chars: 40,
         };
-        assert_eq!(columns.chars(5), 0);
+        assert_eq!(columns.text_width(5), 0.0);
         let none = Columns {
             portions: &[],
             line_chars: 40,
         };
-        assert_eq!(none.chars(0), 0);
+        assert_eq!(none.text_width(0), 0.0);
     }
 
     #[test]
@@ -690,6 +796,18 @@ mod tests {
             portions: &[1, 1],
             line_chars: 2,
         };
-        assert_eq!(columns.chars(0), 0);
+        assert_eq!(columns.text_width(0), 0.0);
+    }
+
+    #[test]
+    fn the_thumb_follows_the_offset_and_never_leaves_the_track() {
+        let track = 5.0 * size::ROW;
+        let (top, thumb) = thumb_extent(2421, 5, 0, track);
+        assert_eq!(top, 0.0);
+        assert!(thumb >= MIN_THUMB);
+        let (top, thumb) = thumb_extent(2421, 5, 2416, track);
+        assert!((top + thumb - track).abs() < 0.01);
+        let (middle, _) = thumb_extent(100, 10, 45, track);
+        assert!(middle > 0.0 && middle < track);
     }
 }

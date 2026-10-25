@@ -4,7 +4,7 @@
 //!
 //! Nothing is copied before the export step has shown where to and how many.
 
-use iced::widget::{column, container, row, Column};
+use iced::widget::{column, container, row};
 use iced::{alignment, Element, Size};
 use ncrs_index::{QuerySpec, TaxContext};
 
@@ -12,16 +12,12 @@ use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::hermes::{self, Badges};
 use super::kit::{self, dim, error_line, form_row, one_line, paragraph, Columns, Tone};
-use super::layout::ROW_HEIGHT;
 use super::theme::spacing;
 use crate::app::fill_template;
 use crate::i18n::{Language, Msg};
-use crate::messages::{HermesPage, Message, SavedQueriesMessage};
+use crate::messages::{HermesFocus, HermesPage, Message, SavedQueriesMessage};
 use crate::palette::Palette;
-use crate::saved_queries::{Problem, QueryField, SavedQueries};
-
-/// Most queries of the list shown at once; the list follows the cursor.
-pub const VISIBLE_ROWS: usize = 3;
+use crate::saved_queries::{Problem, QueryField, SavedQueries, VISIBLE_ROWS};
 
 /// Most hits listed when the result is expanded; the rest is counted.
 pub const VISIBLE_HITS: usize = 6;
@@ -73,7 +69,7 @@ pub fn view<'a>(
                 palette,
             ));
         } else {
-            body = body.push(list(state, line_chars, lang, palette));
+            body = body.push(list(state, line_chars, badges.focus, lang, palette));
         }
         body = body.push(form(state, lang, palette));
     }
@@ -155,6 +151,7 @@ pub fn criteria_text(spec: &QuerySpec, lang: Language) -> String {
 fn list<'a>(
     state: &'a SavedQueries,
     line_chars: usize,
+    focus: HermesFocus,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -170,9 +167,7 @@ fn list<'a>(
         ],
         palette,
     );
-    let first = state
-        .cursor()
-        .map_or(0, |cursor| (cursor + 1).saturating_sub(VISIBLE_ROWS));
+    let first = state.first_visible();
     let rows = state
         .rows()
         .iter()
@@ -181,7 +176,7 @@ fn list<'a>(
         .take(VISIBLE_ROWS)
         .map(|(index, query)| {
             let selected = state.cursor() == Some(index);
-            let color = if selected {
+            let color = if selected && focus == HermesFocus::Content {
                 palette.cursor_text
             } else {
                 palette.text
@@ -200,16 +195,22 @@ fn list<'a>(
                 content.into(),
                 send(SavedQueriesMessage::Select(index)),
                 selected,
+                focus == HermesFocus::Content,
                 palette,
             )
-        });
-    column![
+        })
+        .collect();
+    kit::scroll_list(
         header,
-        container(Column::with_children(rows))
-            .height(ROW_HEIGHT * state.rows().len().min(VISIBLE_ROWS) as f32)
-            .clip(true)
-    ]
-    .into()
+        rows,
+        kit::ListView {
+            len: state.rows().len(),
+            visible: VISIBLE_ROWS,
+            offset: first,
+        },
+        |delta| send(SavedQueriesMessage::Scrolled(delta)),
+        palette,
+    )
 }
 
 fn form<'a>(state: &'a SavedQueries, lang: Language, palette: &Palette) -> Element<'a, Message> {

@@ -12,12 +12,12 @@ use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints, PageHint};
 use super::hermes::{self, Badges};
 use super::kit::{self, first_section, form_row, one_line, paragraph, section, Columns, Tone};
-use super::theme::{size, spacing};
+use super::theme::{font_size, size, spacing};
 use crate::app::fill_template;
 use crate::filing::{AiStatus, IndexFigures};
 use crate::filing_status::FilingStatus;
 use crate::i18n::{Language, Msg};
-use crate::messages::{FilingStatusMessage, HermesPage, Message};
+use crate::messages::{FilingStatusMessage, HermesFocus, HermesPage, Message};
 use crate::palette::Palette;
 
 const SIZE: DialogSize = DialogSize::Card;
@@ -63,8 +63,8 @@ fn send(message: FilingStatusMessage) -> Message {
 struct LineBudget {
     table_chars: usize,
     index_path: usize,
-    error_file: usize,
-    error_message: usize,
+    error_file: f32,
+    error_message: f32,
 }
 
 impl LineBudget {
@@ -77,8 +77,8 @@ impl LineBudget {
         Self {
             table_chars: frame::chars_that_fit(width),
             index_path: frame::chars_that_fit(size::CONTROL_WIDTH),
-            error_file: frame::chars_that_fit(error_width * ERROR_TEXT_SHARE),
-            error_message: frame::chars_that_fit(error_width * ERROR_TEXT_SHARE),
+            error_file: error_width * ERROR_TEXT_SHARE - kit::SCROLL_LANE - spacing::S,
+            error_message: error_width * ERROR_TEXT_SHARE - kit::SCROLL_LANE - spacing::S,
         }
     }
 }
@@ -99,7 +99,7 @@ pub fn view<'a>(
         steps_section(status, &budget, lang, palette),
         workers_section(status, &budget, lang, palette),
         index_section(status, index_open, &budget, lang, palette),
-        errors_section(status, &budget, lang, palette),
+        errors_section(status, &budget, badges.focus, lang, palette),
     ];
 
     Frame::new(
@@ -381,7 +381,11 @@ fn worker_row<'a>(
     columns.row_last_right(
         &[
             &number,
-            &file_label(&busy.file),
+            &format::fit_middle(
+                &file_label(&busy.file),
+                columns.text_width(1),
+                font_size::BODY,
+            ),
             &task_label(busy.task, lang),
             &elapsed_label(elapsed),
         ],
@@ -503,6 +507,7 @@ fn index_section<'a>(
 fn errors_section<'a>(
     status: &'a FilingStatus,
     budget: &LineBudget,
+    focus: HermesFocus,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -513,7 +518,11 @@ fn errors_section<'a>(
         .map(|(position, error)| {
             let content = row![
                 container(one_line(
-                    format::ellipsize_middle(&error.file.display().to_string(), budget.error_file),
+                    format::fit_middle(
+                        &error.file.display().to_string(),
+                        budget.error_file,
+                        font_size::BODY,
+                    ),
                     palette,
                 ))
                 .width(Length::FillPortion(3))
@@ -521,7 +530,7 @@ fn errors_section<'a>(
                 container(one_line(task_label(error.task, lang), palette))
                     .width(Length::FillPortion(1)),
                 container(one_line(
-                    format::ellipsize_end(&error.message, budget.error_message),
+                    format::fit_end(&error.message, budget.error_message, font_size::BODY),
                     palette,
                 ))
                 .width(Length::FillPortion(3))
@@ -533,6 +542,7 @@ fn errors_section<'a>(
                 content.into(),
                 send(FilingStatusMessage::ErrorActivated(error.file.clone())),
                 selected == Some(position),
+                focus == HermesFocus::Content,
                 palette,
             )
         })

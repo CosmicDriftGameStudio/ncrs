@@ -3,28 +3,25 @@
 //! form to edit it. Modal, like the Inspection. Pure view over
 //! [`RuleSuggestions`].
 
-use iced::widget::{button, column, container, row, Column};
-use iced::{alignment, Element, Length, Size};
+use iced::widget::{column, container, row};
+use iced::{alignment, Element, Size};
 
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::hermes::{self, Badges};
 use super::kit::{self, dim, error_line, paragraph, section, Columns, Tone};
-use super::layout::ROW_HEIGHT;
-use super::theme::{self, spacing};
+use super::theme::spacing;
 use crate::app::fill_template;
 use crate::i18n::{Language, Msg};
-use crate::messages::{HermesPage, Message, RuleSuggestionsMessage};
+use crate::messages::{HermesFocus, HermesPage, Message, RuleSuggestionsMessage};
 use crate::palette::Palette;
-use crate::rule_suggestions::{Edit, Matches, Problem, RuleSuggestions};
+use crate::rule_suggestions::{Edit, Matches, Problem, RuleSuggestions, VISIBLE_ROWS};
 use crate::suggestion_work::{condition_text, SuggestedRule};
 
 pub const CONDITION_ID: &str = "rule-suggestions-condition";
 pub const KIND_ID: &str = "rule-suggestions-kind";
 pub const PATTERN_ID: &str = "rule-suggestions-pattern";
 
-/// Most suggestions listed at once; the list follows the cursor beyond that.
-pub const VISIBLE_ROWS: usize = 8;
 /// Most matching documents listed; the rest is counted.
 pub const SHOWN_DOCUMENTS: usize = 6;
 
@@ -59,7 +56,7 @@ pub fn view<'a>(
             palette,
         ));
     } else {
-        body = body.push(list(state, line_chars, lang, palette));
+        body = body.push(list(state, line_chars, badges.focus, lang, palette));
         if state.is_busy() {
             body = body.push(dim(lang.text(Msg::RuleSuggestionsAnalysing), palette));
         }
@@ -116,6 +113,7 @@ fn evidence_text(suggestion: &SuggestedRule, lang: Language) -> String {
 fn list<'a>(
     state: &'a RuleSuggestions,
     line_chars: usize,
+    focus: HermesFocus,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -133,7 +131,7 @@ fn list<'a>(
         palette,
     );
 
-    let first = (state.cursor() + 1).saturating_sub(VISIBLE_ROWS);
+    let first = state.first_visible();
     let rows = state
         .rows()
         .iter()
@@ -142,7 +140,7 @@ fn list<'a>(
         .take(VISIBLE_ROWS)
         .map(|(index, suggestion)| {
             let selected = index == state.cursor();
-            let color = if selected {
+            let color = if selected && focus == HermesFocus::Content {
                 palette.cursor_text
             } else {
                 palette.text
@@ -153,26 +151,31 @@ fn list<'a>(
                     condition_text(&suggestion.spec).unwrap_or_default(),
                     color
                 ),
-                columns.cell(1, &suggestion.spec.filing_pattern, color),
+                columns.path_cell(1, &suggestion.spec.filing_pattern, color),
                 columns.cell(2, &suggestion.spec.kind, color),
                 columns.cell(3, &evidence_text(suggestion, lang), color),
             ]
             .align_y(alignment::Vertical::Center);
-            button(content)
-                .on_press(send(RuleSuggestionsMessage::Select(index)))
-                .width(Length::Fill)
-                .padding([0.0, spacing::CELL_PADDING_X])
-                .height(ROW_HEIGHT)
-                .style(theme::row(palette, false, selected, true))
-                .into()
-        });
-    column![
+            kit::list_row(
+                content.into(),
+                send(RuleSuggestionsMessage::Select(index)),
+                selected,
+                focus == HermesFocus::Content,
+                palette,
+            )
+        })
+        .collect();
+    kit::scroll_list(
         header,
-        container(Column::with_children(rows))
-            .height(ROW_HEIGHT * state.rows().len().min(VISIBLE_ROWS) as f32)
-            .clip(true)
-    ]
-    .into()
+        rows,
+        kit::ListView {
+            len: state.rows().len(),
+            visible: VISIBLE_ROWS,
+            offset: first,
+        },
+        |delta| send(RuleSuggestionsMessage::Scrolled(delta)),
+        palette,
+    )
 }
 
 fn documents<'a>(

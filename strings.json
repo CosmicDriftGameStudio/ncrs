@@ -139,6 +139,12 @@
       "de": "nächstes Feld"
     },
     {
+      "key": "dialog.hint.sidebar",
+      "context": "Short word shown next to the Left and Right arrow key caps in the footer of a Hermes page: the keys move the focus between the sidebar and the page. Only the word, the key cap is drawn separately.",
+      "en": "sidebar",
+      "de": "Seitenleiste"
+    },
+    {
       "key": "error.empty_name",
       "context": "Shown in the dialog when the name field is empty. Addressed to the user, not a technical error.",
       "en": "Please enter a name",

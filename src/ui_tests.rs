@@ -2366,8 +2366,8 @@ mod review_list_card {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::messages::{HermesPage, ReviewListMessage};
-    use crate::review_list::tests::loaded_list;
+    use crate::messages::{HermesFocus, HermesPage, ReviewListMessage};
+    use crate::review_list::tests::{loaded_list, long_list};
     use crate::review_list::{FormField, ReviewList};
     use crate::review_work::ConfirmOutcome;
     use crate::rule_suggestions::RuleSuggestions;
@@ -2537,12 +2537,18 @@ mod review_list_card {
     }
 
     fn matches_snapshot(list: ReviewList, name: &str) {
+        matches_snapshot_focused(list, HermesFocus::Content, name);
+    }
+
+    fn matches_snapshot_focused(list: ReviewList, focus: HermesFocus, name: &str) {
         let language = if name.contains("_de") {
             Language::German
         } else {
             Language::English
         };
-        let app = App::with_review_list(list).in_language(language);
+        let app = App::with_review_list(list)
+            .in_language(language)
+            .with_hermes_focus(focus);
         let matches = simulator(&app)
             .snapshot(&iced::Theme::Dark)
             .unwrap()
@@ -2559,6 +2565,37 @@ mod review_list_card {
         matches_snapshot(loaded_list(), "review_list_en");
         matches_snapshot(loaded_list(), "review_list_de");
         matches_snapshot(after_filing(), "review_list_filed_en");
+    }
+
+    #[test]
+    fn long_names_and_a_long_list_stay_inside_their_columns() {
+        matches_snapshot(long_list(), "review_list_long_en");
+        matches_snapshot(long_list(), "review_list_long_de");
+    }
+
+    #[test]
+    fn the_sidebar_focus_outlines_the_list_and_fills_the_page_entry() {
+        matches_snapshot_focused(
+            loaded_list(),
+            HermesFocus::Sidebar,
+            "review_list_sidebar_focus_en",
+        );
+        matches_snapshot_focused(
+            loaded_list(),
+            HermesFocus::Sidebar,
+            "review_list_sidebar_focus_de",
+        );
+    }
+
+    #[test]
+    fn the_wheel_over_the_list_scrolls_it() {
+        let mut app = App::with_review_list(long_list());
+        let _ = app.update(review_message(ReviewListMessage::Scrolled(
+            iced::mouse::ScrollDelta::Lines { x: 0.0, y: -3.0 },
+        )));
+        let view = app.review_list_for_test().unwrap();
+        assert_eq!(view.first_visible(), 3);
+        assert!(view.cursor() >= 3);
     }
 }
 
