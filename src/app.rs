@@ -20,6 +20,7 @@ use crate::execute;
 use crate::filing::{FilingMessage, FilingModule, LocationStatus, Phase, Work, WorkOutcome};
 use crate::filing_setup::{self, FilingSetup, SetupNote};
 use crate::filing_status::{FilingStatus, SNAPSHOT_EVERY};
+use crate::filing_work::FilingSummary;
 use crate::fs::{self, CreateDirError};
 use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
@@ -711,6 +712,10 @@ pub struct App {
     reorganisation: Option<ReorganisationView>,
     /// Tells the answer of the plan that is current from a stale one.
     reorganisation_generation: u64,
+    /// `Snapshot::plans_made` the filing job was last asked for.
+    plans_filed_for: usize,
+    /// The filing job was due but another job was running.
+    filing_due: bool,
     /// Downloads an extension, on a blocking thread. Injected so tests need
     /// no network.
     fetch_extension: fn(&ExtensionId) -> Result<FetchedExtension, FetchError>,
@@ -1806,6 +1811,8 @@ impl App {
             rule_suggestions_generation: 0,
             reorganisation: None,
             reorganisation_generation: 0,
+            plans_filed_for: 0,
+            filing_due: false,
             fetch_extension: open_vsx::fetch_extension,
             install_theme: install_picked_theme,
             ocr_models: None,
@@ -2443,6 +2450,7 @@ impl App {
             Message::ExecuteReorganisation(selection) => self.run_reorganisation(selection),
             Message::ReorganisationExecuted(result) => self.reorganisation_executed(result),
             Message::UndoReorganisation => self.undo_reorganisation(),
+            Message::DocumentsFiled(result) => self.documents_filed(result),
             Message::ReorganisationUndone(result) => self.reorganisation_undone(result),
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
@@ -3176,8 +3184,10 @@ impl App {
         let work_finished = matches!(message, FilingMessage::WorkDone { .. });
         let was_starting = matches!(module.phase(), Phase::Starting);
         let work = module.update(message);
+        let mut pipeline_started = false;
         if self.pipeline.is_none() && matches!(module.phase(), Phase::Ready) {
             self.pipeline = module.start_pipeline().ok();
+            pipeline_started = self.pipeline.is_some();
         }
         let skipped = if was_starting && !matches!(module.phase(), Phase::Starting) {
             module
@@ -3196,6 +3206,11 @@ impl App {
         };
         let mut tasks: Vec<Task<Message>> = work.map(run_filing_work).into_iter().collect();
         tasks.extend(field.map(operation::focus));
+        if pipeline_started {
+            // The index is open and `reconcile` has settled what a crash left;
+            // what an earlier run planned but did not move goes now.
+            tasks.push(self.run_filing());
+        }
         if skipped > 0 {
             let text = fill_template(
                 self.lang.text(Msg::FilingLocationsSkipped),
@@ -3953,6 +3968,60 @@ impl App {
                 )
             })
             .unwrap_or_else(Task::none)
+    }
+
+    /// One job files every planned document. Waits for a running job instead
+    /// of queueing behind it, and is asked for again on the next tick.
+    fn run_filing(&mut self) -> Task<Message> {
+        if self.jobs.is_busy() {
+            self.filing_due = true;
+            return Task::none();
+        }
+        self.filing_due = false;
+        let Some(access) = self.filing.as_ref().and_then(FilingModule::filing_access) else {
+            return Task::none();
+        };
+        let progress_tx = self.progress_sender();
+        self.jobs.enqueue(jobs::Job {
+            kind: jobs::JobKind::File,
+            path: PathBuf::new(),
+            total: None,
+        });
+        self.jobs
+            .start_next(|_| {
+                Task::perform(
+                    tokio::task::spawn_blocking(move || {
+                        let mut progress = fs::transfer::Reporting::new(&progress_tx);
+                        access.file_planned(&mut progress)
+                    }),
+                    |joined| {
+                        Message::DocumentsFiled(joined.unwrap_or_else(|join| Err(join.to_string())))
+                    },
+                )
+            })
+            .unwrap_or_else(Task::none)
+    }
+
+    fn documents_filed(&mut self, result: Result<FilingSummary, String>) -> Task<Message> {
+        self.jobs.finish();
+        self.job_progress = None;
+        match result {
+            Ok(summary) if summary.filed + summary.reviewed > 0 => {
+                let text = fill_template(
+                    self.lang.text(Msg::StatusDocumentsFiled),
+                    &[
+                        ("{filed}", &summary.filed.to_string()),
+                        ("{reviewed}", &summary.reviewed.to_string()),
+                    ],
+                );
+                self.show_notice(text)
+            }
+            Ok(_) => Task::none(),
+            Err(detail) => {
+                self.set_status_error(&detail);
+                Task::none()
+            }
+        }
     }
 
     fn reorganisation_executed(
@@ -5392,10 +5461,19 @@ impl App {
             }
             FilingStatusMessage::Tick => {
                 self.refresh_filing_snapshot();
-                if self.filing_status.tick_wants_figures() {
-                    self.request_index_figures()
+                let plans_made = self
+                    .live_pipeline()
+                    .map_or(0, |runner| runner.snapshot().plans_made);
+                let filing = if plans_made > self.plans_filed_for || self.filing_due {
+                    self.plans_filed_for = plans_made;
+                    self.run_filing()
                 } else {
                     Task::none()
+                };
+                if self.filing_status.tick_wants_figures() {
+                    Task::batch([filing, self.request_index_figures()])
+                } else {
+                    filing
                 }
             }
             FilingStatusMessage::TogglePause => {
@@ -6320,6 +6398,8 @@ impl App {
             rule_suggestions_generation: 0,
             reorganisation: None,
             reorganisation_generation: 0,
+            plans_filed_for: 0,
+            filing_due: false,
             fetch_extension: |_| Err(FetchError::NoConnection("no network in tests".to_owned())),
             install_theme: |_, _| Err(FetchError::NoConfigPath),
             ocr_models: None,

@@ -12,12 +12,14 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use ncrs_index::{
-    BatchId, BatchKind, ContentHash, DocumentId, FileStamp, Index, IndexError, JournalItem,
-    JournalState, NewJournalItem,
+    BatchId, BatchKind, ContentHash, DocumentId, DocumentStatus, FileStamp, Index, IndexError,
+    JournalItem, JournalState, NewJournalItem,
 };
 use ncrs_intake::{hash_path, stays_below, IntakeError};
 
-use crate::fs::transfer::{partial_prefix, transfer_to, Counting, Move, OnConflict, Progress};
+use crate::fs::transfer::{
+    partial_prefix, transfer_to, Counting, Move, OnConflict, Progress, Source,
+};
 
 /// One move. Paths are absolute.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,6 +135,19 @@ pub fn execute<P: Progress>(
     items: &[ExecutionItem],
     progress: &mut P,
 ) -> Result<ExecutionReport, ExecuteError> {
+    execute_with(index, kind, root, items, progress, &Move)
+}
+
+/// `execute` with the effect of the move given, so a test can stand in for a
+/// volume boundary or a failing delete.
+pub fn execute_with<P: Progress, S: Source>(
+    index: &Index,
+    kind: BatchKind,
+    root: &Path,
+    items: &[ExecutionItem],
+    progress: &mut P,
+    effect: &S,
+) -> Result<ExecutionReport, ExecuteError> {
     let batch = index.begin_batch(kind)?;
     let mut reports = Vec::with_capacity(items.len());
     let mut stopped = false;
@@ -140,7 +155,7 @@ pub fn execute<P: Progress>(
         let outcome = if stopped {
             skip(index, batch, item, SkipReason::Cancelled)?
         } else {
-            let outcome = run_item(index, batch, root, item)?;
+            let outcome = run_item(index, batch, root, item, effect)?;
             stopped = progress.advanced(position + 1, items.len()).is_err();
             outcome
         };
@@ -194,13 +209,14 @@ fn is_not_found(err: &IntakeError) -> bool {
     matches!(err, IntakeError::Io { source, .. } if source.kind() == io::ErrorKind::NotFound)
 }
 
-fn run_item(
+fn run_item<S: Source>(
     index: &Index,
     batch: BatchId,
     root: &Path,
     item: &ExecutionItem,
+    effect: &S,
 ) -> Result<ItemOutcome, ExecuteError> {
-    if !is_below(root, &item.to) || !is_below(root, &item.from) {
+    if !is_below(root, &item.to) {
         return skip(index, batch, item, SkipReason::OutsideLocation);
     }
     match hash_path(&item.from) {
@@ -227,7 +243,13 @@ fn run_item(
         )?;
         return Ok(ItemOutcome::Skipped(SkipReason::Failed(err.to_string())));
     }
-    let moved = transfer_to(&item.from, &item.to, &Move, &mut Counting, OnConflict::Fail);
+    let moved = transfer_to(
+        &item.from,
+        &item.to,
+        effect,
+        &mut Counting,
+        OnConflict::Fail,
+    );
     let journaled = JournalItem {
         seq,
         from: item.from.clone(),
@@ -240,13 +262,15 @@ fn run_item(
     };
     let settled = match moved {
         Ok(_) => settle_moved(index, batch, &journaled)?,
-        Err(err) => match settle(index, batch, &journaled)? {
-            ItemOutcome::Skipped(SkipReason::Interrupted) => {
+        Err(err) => match settle(index, batch, &journaled) {
+            Ok(ItemOutcome::Skipped(SkipReason::Interrupted)) => {
                 let reason = SkipReason::Failed(err.to_string());
                 index.set_journal_state(batch, seq, JournalState::Skipped, Some(&reason.text()))?;
                 ItemOutcome::Skipped(reason)
             }
-            settled => settled,
+            Ok(settled) => settled,
+            // Left pending: the next `reconcile` looks at the disk again.
+            Err(_unsettled) => ItemOutcome::Skipped(SkipReason::Failed(err.to_string())),
         },
     };
     Ok(settled)
@@ -322,6 +346,11 @@ fn settle_moved(
         &item.from,
         &item.to,
     )?;
+    if let (Some(BatchKind::Filing), Some(id), false) =
+        (index.batch_kind(batch)?, item.document_id, item.duplicate)
+    {
+        index.set_document_status(id, DocumentStatus::Filed)?;
+    }
     index.set_journal_state(batch, item.seq, JournalState::Moved, None)?;
     Ok(ItemOutcome::Moved)
 }

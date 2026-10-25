@@ -226,6 +226,20 @@ impl Index {
         Ok(())
     }
 
+    /// The documents with `status` that are not missing, oldest first.
+    pub fn documents_with_status(
+        &self,
+        status: DocumentStatus,
+    ) -> Result<Vec<DocumentId>, IndexError> {
+        let mut statement = self.connection().prepare(
+            "SELECT id FROM document WHERE status = ?1 AND missing_since IS NULL ORDER BY id",
+        )?;
+        let ids = statement
+            .query_map([status.as_str()], |row| row.get(0).map(DocumentId::new))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(ids)
+    }
+
     /// Best match first. The input is the user's words, not FTS5 syntax: every
     /// word is quoted, so all of them must match and operators are plain text.
     pub fn search_text(&self, words: &str, limit: usize) -> Result<Vec<DocumentId>, IndexError> {

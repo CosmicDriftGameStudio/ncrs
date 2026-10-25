@@ -170,6 +170,7 @@ impl AiStep {
                 if filing.fields != merged {
                     index.set_document_fields(id, &filing.fields)?;
                 }
+                index.set_document_status(id, DocumentStatus::Planned)?;
             }
             Ok::<_, IndexError>(Some(planning))
         })

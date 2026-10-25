@@ -113,6 +113,8 @@ pub struct Snapshot {
     /// Files that left the pipeline since the start: finished, unchanged,
     /// failed, or passed the last step.
     pub left_pipeline: usize,
+    /// Documents a step has planned a place for since the start.
+    pub plans_made: usize,
 }
 
 impl Snapshot {
@@ -126,6 +128,7 @@ impl Snapshot {
             documents_per_minute: vec![0; RATE_MINUTES],
             errors: Vec::new(),
             left_pipeline: 0,
+            plans_made: 0,
         }
     }
 
@@ -249,6 +252,7 @@ struct State {
     rate: VecDeque<SystemTime>,
     errors: VecDeque<ErrorEntry>,
     left_pipeline: usize,
+    plans_made: usize,
 }
 
 impl State {
@@ -575,6 +579,7 @@ impl Shared {
             documents_per_minute,
             errors: state.errors.iter().cloned().collect(),
             left_pipeline: state.left_pipeline,
+            plans_made: state.plans_made,
         }
     }
 
@@ -845,6 +850,9 @@ impl State {
             Ok(StepOutcome::Finished) => {
                 counts.done += 1;
                 self.left_pipeline += 1;
+                if item.plan.is_some() {
+                    self.plans_made += 1;
+                }
                 self.record_document(at);
             }
             Ok(StepOutcome::Unchanged) => {
@@ -960,6 +968,7 @@ impl Runner {
             rate: VecDeque::new(),
             errors: VecDeque::new(),
             left_pipeline: 0,
+            plans_made: 0,
         };
         let shared = Arc::new(Shared {
             state: Mutex::new(state),
@@ -1781,7 +1790,17 @@ mod tests {
         let document = index.document(documents[0]).unwrap().unwrap();
         assert_eq!(document.fields.number.as_deref(), Some("4711"));
         assert_eq!(document.fields.kind.as_deref(), Some("invoice"));
-        assert_eq!(document.status, DocumentStatus::New);
+        assert_eq!(document.status, DocumentStatus::Planned);
+    }
+
+    #[test]
+    fn a_document_the_rules_cannot_place_stays_new_until_it_is_reviewed() {
+        let fixture = run_with_rule(&invoice_rule("{number}.pdf", false));
+
+        let index = fixture.index.lock().unwrap();
+        let documents = index.search_text("4711", 10).unwrap();
+        let document = index.document(documents[0]).unwrap().unwrap();
+        assert_eq!(document.status, DocumentStatus::InReview);
     }
 
     #[test]

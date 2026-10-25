@@ -19,7 +19,7 @@ use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::str::FromStr as _;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, TryLockError};
 use std::thread;
 
 use ncrs_index::{Index, IndexError, IndexStatistics, KeyStore, RecoveryKey};
@@ -32,6 +32,7 @@ use ncrs_intake::{
 use ncrs_pipeline::{intake_steps, IndexAccess, Load, Runner, Settings, SystemClock};
 
 use crate::config::{Filing, FilingLocation};
+use crate::filing_work::FilingAccess;
 use crate::reorganisation_work::PlanAccess;
 use crate::suggestion_work::SuggestionAccess;
 
@@ -687,6 +688,24 @@ impl FilingModule {
         self.archive_handle(PlanAccess::new)
     }
 
+    /// The handle of the filing job: only when the module is `Ready` and the
+    /// archive marked as the target can be reached.
+    pub fn filing_access(&self) -> Option<FilingAccess> {
+        if !matches!(self.phase, Phase::Ready) {
+            return None;
+        }
+        self.locations
+            .iter()
+            .filter(|entry| entry.configured.is_target)
+            .find_map(|entry| match &entry.status {
+                LocationStatus::Ready(location) => Some(FilingAccess::new(
+                    Arc::clone(&self.index),
+                    location.path.clone(),
+                )),
+                LocationStatus::NotReachable { .. } | LocationStatus::Overlaps { .. } => None,
+            })
+    }
+
     fn archive_handle<T>(&self, make: fn(IndexSlot, Vec<PathBuf>) -> T) -> Option<T> {
         match self.phase {
             Phase::Ready => Some(make(
@@ -749,7 +768,14 @@ impl FilingModule {
             Phase::Dismissed => return Err(HeldReason::Dismissed),
             Phase::Failed(_) => return Err(HeldReason::Failed),
         }
-        if lock(&self.index).is_none() {
+        // Never waits: a job on the blocking pool may hold the index, and a
+        // held index is an open one.
+        let is_open = match self.index.try_lock() {
+            Ok(guard) => guard.is_some(),
+            Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner().is_some(),
+            Err(TryLockError::WouldBlock) => true,
+        };
+        if !is_open {
             return Err(HeldReason::Failed);
         }
         Ok(IntakeIndex(Arc::clone(&self.index)))

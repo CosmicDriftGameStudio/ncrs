@@ -14,6 +14,7 @@ use crate::config::{Filing, FilingWriteError};
 use crate::dialog::PromptKind;
 use crate::execute::UndoReport;
 use crate::filing::{FilingMessage, IndexFigures};
+use crate::filing_work::FilingSummary;
 use crate::fs::search::SearchEvent;
 use crate::fs::CreateDirError;
 use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
@@ -276,6 +277,8 @@ pub enum Message {
     /// The executor on its blocking thread is done.
     ReorganisationExecuted(Result<ExecutionSummary, String>),
     UndoReorganisation,
+    /// The filing job on its blocking thread is done.
+    DocumentsFiled(Result<FilingSummary, String>),
     /// `None`: there was no carried out reorganisation left to undo.
     ReorganisationUndone(Result<Option<UndoReport>, String>),
 

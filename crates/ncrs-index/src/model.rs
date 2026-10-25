@@ -74,6 +74,8 @@ impl DocumentSource {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DocumentStatus {
     New,
+    /// The rules found a place for it; the filing job has not moved it yet.
+    Planned,
     InReview,
     Filed,
 }
@@ -82,6 +84,7 @@ impl DocumentStatus {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::New => "new",
+            Self::Planned => "planned",
             Self::InReview => "in_review",
             Self::Filed => "filed",
         }
@@ -90,6 +93,7 @@ impl DocumentStatus {
     pub(crate) fn parse(value: &str) -> Result<Self, IndexError> {
         match value {
             "new" => Ok(Self::New),
+            "planned" => Ok(Self::Planned),
             "in_review" => Ok(Self::InReview),
             "filed" => Ok(Self::Filed),
             other => Err(corrupt("document.status", other)),
@@ -162,6 +166,8 @@ impl Field {
 pub enum ReviewReason {
     NoMatchingRule,
     UnconfirmedRule,
+    /// The place the rules chose is taken by another file.
+    TargetExists,
     MissingField(Field),
     LowConfidence(Field),
 }
@@ -173,6 +179,7 @@ impl ReviewReason {
         match self {
             Self::NoMatchingRule => ("no_matching_rule", None),
             Self::UnconfirmedRule => ("unconfirmed_rule", None),
+            Self::TargetExists => ("target_exists", None),
             Self::MissingField(field) => ("missing_field", Some(field)),
             Self::LowConfidence(field) => ("low_confidence", Some(field)),
         }
@@ -183,6 +190,7 @@ impl ReviewReason {
         match (reason, named) {
             ("no_matching_rule", None) => Ok(Self::NoMatchingRule),
             ("unconfirmed_rule", None) => Ok(Self::UnconfirmedRule),
+            ("target_exists", None) => Ok(Self::TargetExists),
             ("missing_field", Some(of)) => Ok(Self::MissingField(of)),
             ("low_confidence", Some(of)) => Ok(Self::LowConfidence(of)),
             _ => Err(corrupt("review_entry.reason", reason)),

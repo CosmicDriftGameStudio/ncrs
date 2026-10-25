@@ -193,6 +193,12 @@
       "de": "Räume um…"
     },
     {
+      "key": "job.file",
+      "context": "Status bar while inbox documents are being filed into the archive by the rules. Same shape as job.copy.",
+      "en": "Filing…",
+      "de": "Lege ab…"
+    },
+    {
       "key": "job.create_dir",
       "context": "Status bar while a directory is being created. Same shape as job.copy.",
       "en": "Creating…",
@@ -2279,6 +2285,12 @@
       "context": "Status bar message after the last reorganisation was undone. Takes the number of documents moved back and of those left where they are.",
       "en": "{moved} moved back, {skipped} left where they are",
       "de": "{moved} zurückverschoben, {skipped} unverändert gelassen"
+    },
+    {
+      "key": "status.documents_filed",
+      "context": "Status bar message after inbox documents were filed by the rules. Takes the number of filed documents and of those that need a look because their place is taken or no rule places them now.",
+      "en": "{filed} filed, {reviewed} need a look",
+      "de": "{filed} abgelegt, {reviewed} brauchen einen Blick"
     },
     {
       "key": "status.nothing_to_undo",

@@ -8,6 +8,16 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Inbox documents are now filed on their own: when the rules have found a
+  place for a document it is marked as planned, and a filing job moves it to
+  the archive marked as the target (it also runs once when ncrs starts). The
+  place is worked out again from the current rules, so a changed rule counts.
+  Nothing is overwritten or deleted: if the place is taken, or no rule places
+  the document any more, it goes to the review list instead, and a file that
+  was edited in the meantime is taken in again. Each move is journaled, so a
+  run that was cut off is settled the next time ncrs starts, and Escape stops
+  the job between two files; the documents not yet moved stay planned and are
+  filed by the next job.
 - Reorganisation plan (Inventory): a view that shows how your document
   folders could be tidied up, without changing anything. Entries are grouped
   as duplicates, filed in the wrong folder, year does not match, name differs,
