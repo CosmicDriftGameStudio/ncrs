@@ -4,11 +4,13 @@
 use std::path::Path;
 
 use iced::widget::text::Wrapping;
-use iced::widget::{button, checkbox, column, container, radio, text, Column, Row};
-use iced::{Alignment, Element, Length};
+use iced::widget::{checkbox, column, container, radio, text, Column, Row};
+use iced::{Alignment, Element, Length, Size};
 use ncrs_intake::LocationMode;
 
-use super::filing::{buttons, error_line, paragraph, radio_look, title};
+use super::filing::{error_line, paragraph, radio_look};
+use super::format;
+use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::theme::{self, font_size, spacing};
 use crate::app::fill_template;
 use crate::config::{ConfigError, FilingLocation, FilingRuleViolation, FilingWriteError};
@@ -17,9 +19,15 @@ use crate::i18n::{Language, Msg};
 use crate::messages::{FilingSetupMessage, Message};
 use crate::palette::Palette;
 
-/// Wider than the filing cards: a row holds a path next to its controls.
-const CARD_WIDTH: f32 = 640.0;
+const SIZE: DialogSize = DialogSize::Medium;
 const KIND_WIDTH: f32 = 130.0;
+
+/// What a row keeps for its other controls: the checkbox, its label and the
+/// remove button, and for a document folder the kind column besides.
+const INBOX_ROW_RESERVED: f32 = 220.0;
+const ARCHIVE_ROW_RESERVED: f32 = INBOX_ROW_RESERVED + KIND_WIDTH + 16.0;
+/// What the line under the add buttons keeps for the two buttons.
+const ADD_ROW_RESERVED: f32 = 320.0;
 
 /// Wrap the two add buttons of each section, so a test can tell the sections
 /// apart: both carry the same labels.
@@ -45,6 +53,7 @@ pub struct SetupContext<'a> {
     /// The open index is unencrypted, so the vault warning applies.
     pub index_is_plain: bool,
     pub lang: Language,
+    pub window: Size,
 }
 
 pub fn view<'a>(
@@ -84,7 +93,6 @@ pub fn view<'a>(
     .spacing(spacing::CELL_PADDING_X);
 
     let mut body = column![
-        title(lang.text(Msg::FilingSetupTitle), palette),
         paragraph(lang.text(Msg::FilingSetupExplain), palette),
         tubes,
         documents,
@@ -111,7 +119,15 @@ pub fn view<'a>(
             paragraph(line, palette)
         });
     }
-    body = body.push(buttons(vec![
+    Frame::new(
+        lang.text(Msg::FilingSetupTitle),
+        body,
+        SIZE,
+        context.window,
+        lang,
+        palette,
+    )
+    .buttons(vec![
         action(
             lang.text(Msg::FilingSetupCancel),
             Some(FilingSetupMessage::Close),
@@ -121,15 +137,14 @@ pub fn view<'a>(
         action(
             lang.text(Msg::FilingSetupSave),
             setup.can_save().then_some(FilingSetupMessage::Save),
-            true,
+            false,
             palette,
         ),
-    ]));
-    container(body)
-        .padding(spacing::OUTER_PADDING * 2.0)
-        .width(CARD_WIDTH)
-        .style(theme::dialog(palette))
-        .into()
+    ])
+    .on_close(setup_message(FilingSetupMessage::Close))
+    // The panels keep Enter and Tab while the card is up.
+    .hints(KeyHints::default())
+    .into_element()
 }
 
 fn setup_message(message: FilingSetupMessage) -> Message {
@@ -142,10 +157,7 @@ fn action<'a>(
     primary: bool,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    button(text(label))
-        .on_press_maybe(on_press.map(setup_message))
-        .style(theme::dialog_button(palette, primary))
-        .into()
+    frame::action(label, on_press.map(setup_message), primary, palette)
 }
 
 fn add_buttons<'a>(
@@ -176,12 +188,15 @@ fn add_buttons<'a>(
         ))
         .id(panel_id)
         .into(),
-        text(shown_path(context.current_folder, context.home))
-            .size(font_size::STATUS)
-            .color(palette.dim_text)
-            .wrapping(Wrapping::Glyph)
-            .width(Length::Fill)
-            .into(),
+        text(format::ellipsize_middle(
+            &shown_path(context.current_folder, context.home),
+            frame::content_chars(SIZE, context.window, ADD_ROW_RESERVED),
+        ))
+        .size(font_size::STATUS)
+        .color(palette.dim_text)
+        .wrapping(Wrapping::None)
+        .width(Length::Fill)
+        .into(),
     ])
     .spacing(spacing::CELL_PADDING_X)
     .align_y(Alignment::Center)
@@ -225,7 +240,15 @@ fn entry_row<'a>(
     palette: &Palette,
 ) -> Element<'a, Message> {
     let lang = context.lang;
-    let shown = shown_path(&location.path, context.home);
+    let reserved = if location.mode == LocationMode::Archive {
+        ARCHIVE_ROW_RESERVED
+    } else {
+        INBOX_ROW_RESERVED
+    };
+    let shown = format::ellipsize_middle(
+        &shown_path(&location.path, context.home),
+        frame::content_chars(SIZE, context.window, reserved),
+    );
     let mut row = Row::new()
         .spacing(spacing::CELL_PADDING_X)
         .align_y(Alignment::Center);
@@ -285,7 +308,7 @@ fn path_text<'a>(shown: String, palette: &Palette) -> Element<'a, Message> {
     text(shown)
         .size(font_size::STATUS)
         .color(palette.text)
-        .wrapping(Wrapping::Glyph)
+        .wrapping(Wrapping::None)
         .width(Length::Fill)
         .into()
 }

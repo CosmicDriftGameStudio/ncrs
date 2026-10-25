@@ -140,27 +140,18 @@ jobs:
         with:
           name: third-party-licenses
 
-      - name: Package (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          mkdir -p ncrs-${{ matrix.target }}
-          cp target/${{ matrix.target }}/release/ncrs ncrs-${{ matrix.target }}/
-          cp LICENSE README.md ROADMAP.md ncrs-${{ matrix.target }}/ 2>/dev/null || true
-          cp THIRD_PARTY_LICENSES.html ncrs-${{ matrix.target }}/
-          tar -czf ncrs-${{ matrix.target }}.tar.gz -C . ncrs-${{ matrix.target }}
+      # The library is the one the app loads at runtime, next to the binary.
+      - name: Fetch pdfium
+        shell: bash
+        run: scripts/fetch-pdfium.sh ${{ matrix.target }} target/pdfium
 
-      - name: Package (Windows)
-        if: runner.os == 'Windows'
+      - name: Package
+        shell: bash
         run: |
-          New-Item -ItemType Directory -Force -Path "ncrs-${{ matrix.target }}"
-          Copy-Item "target/${{ matrix.target }}/release/ncrs.exe" "ncrs-${{ matrix.target }}/"
-          Copy-Item LICENSE, README.md, ROADMAP.md "ncrs-${{ matrix.target }}/" -ErrorAction SilentlyContinue
-          Copy-Item THIRD_PARTY_LICENSES.html "ncrs-${{ matrix.target }}/"
-          Compress-Archive -Path "ncrs-${{ matrix.target }}" -DestinationPath "ncrs-${{ matrix.target }}.zip"
-          Copy-Item -Recurse "ncrs-${{ matrix.target }}" "ncrs-${{ matrix.target }}-portable"
-          New-Item -ItemType Directory -Force -Path "ncrs-${{ matrix.target }}-portable/data"
-          Copy-Item packaging/windows/data/README.txt "ncrs-${{ matrix.target }}-portable/data/"
-          Compress-Archive -Path "ncrs-${{ matrix.target }}-portable" -DestinationPath "ncrs-${{ matrix.target }}-portable.zip"
+          binary=target/${{ matrix.target }}/release/ncrs
+          if [ "${{ runner.os }}" = Windows ]; then binary="$binary.exe"; fi
+          scripts/package.sh archive ${{ matrix.target }} "$binary" target/pdfium . \
+            --licenses THIRD_PARTY_LICENSES.html
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -193,13 +184,15 @@ jobs:
     # is built, and that needs the macOS tooling.
     runs-on: macos-latest
     steps:
-      # Only for the app bundle: its Info.plist template, the icon and the
-      # version in Cargo.toml. No build happens in this job.
+      # Only for the app bundle: its Info.plist template, the icon, the
+      # version in Cargo.toml and the packaging script. No build happens in
+      # this job.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
           sparse-checkout: |
             Cargo.toml
+            scripts
             packaging/macos
             assets/ncrs.icns
           sparse-checkout-cone-mode: false
@@ -316,21 +309,32 @@ jobs:
             # binary sits one level down — never assume a flat layout.
             dir=$(find "$workdir" -type d -name 'ncrs-*apple-darwin' | head -n 1)
             binary="$dir/ncrs"
+            library="$dir/libpdfium.dylib"
             test -x "$binary" || { echo "::error::no binary in $archive"; exit 1; }
+            test -f "$library" || { echo "::error::no libpdfium.dylib in $archive"; exit 1; }
 
             # --options runtime makes the hardened runtime mandatory, which
             # the notary service requires. The identifier is stable across
             # releases so an update replaces the app instead of duplicating it.
+            #
+            # The library first, then the binary that loads it: under the
+            # hardened runtime the binary refuses a library that is not signed
+            # by the same team. Never `--deep`: it signs nested code with the
+            # outer options and hides which file failed.
+            codesign --force --sign "$APPLE_TEAM_ID" \
+              --options runtime --timestamp "$library"
+            codesign --verify --strict --verbose=2 "$library"
             codesign --force --sign "$APPLE_TEAM_ID" \
               --options runtime --timestamp \
               --identifier dev.cosmicdrift.ncrs "$binary"
             codesign --verify --strict --verbose=2 "$binary"
 
-            # notarytool accepts only zip, pkg or dmg, so the signed binary is
-            # submitted in a zip. A bare Mach-O cannot carry a stapled ticket;
-            # Gatekeeper fetches it online on first launch instead.
+            # notarytool accepts only zip, pkg or dmg, so the signed binary and
+            # library are submitted in a zip of the folder. A bare Mach-O
+            # cannot carry a stapled ticket; Gatekeeper fetches it online on
+            # first launch instead.
             submission="$workdir/ncrs-notarize.zip"
-            ditto -c -k --keepParent "$binary" "$submission"
+            ditto -c -k --keepParent "$dir" "$submission"
             xcrun notarytool submit "$submission" \
               --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
               --password "$APPLE_APP_SPECIFIC_PASSWORD" \
@@ -345,9 +349,9 @@ jobs:
             # checksum step below runs after this, so it covers this file.
             tar -czf "$archive" -C "$workdir" "$(basename "$dir")"
 
-            # The app bundle holds that same binary. Signing the bundle signs
-            # the executable again, this time bound to Info.plist and the
-            # resources, which changes its CDHash. The ticket for the bare
+            # The app bundle holds that same binary and library. Signing the
+            # bundle signs the executable again, this time bound to Info.plist
+            # and the resources, which changes its CDHash. The ticket for the bare
             # binary therefore does not cover the one in the bundle, and the
             # bundle is notarized on its own. The tarball keeps the bare
             # binary, which `install.sh` and Windows-style users rely on.
@@ -357,20 +361,20 @@ jobs:
               aarch64-*) min_macos=11.0 ;;
               *) min_macos=10.13 ;;
             esac
+            # The layout (Info.plist, icon, licenses, Frameworks) lives in
+            # the script; it is the same one the pull request build runs.
+            scripts/package.sh app "$dir" "$VERSION" "$min_macos" "$workdir" \
+              --licenses artifacts/third-party-licenses/THIRD_PARTY_LICENSES.html
             app="$workdir/ncrs.app"
-            mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-            cp "$binary" "$app/Contents/MacOS/ncrs"
-            cp assets/ncrs.icns "$app/Contents/Resources/ncrs.icns"
-            # Inside Resources so it is covered by the bundle signature.
-            cp artifacts/third-party-licenses/THIRD_PARTY_LICENSES.html "$app/Contents/Resources/"
-            cp packaging/macos/Info.plist "$app/Contents/Info.plist"
-            plutil -replace CFBundleShortVersionString -string "$VERSION" "$app/Contents/Info.plist"
-            plutil -replace CFBundleVersion -string "$VERSION" "$app/Contents/Info.plist"
-            plutil -replace LSMinimumSystemVersion -string "$min_macos" "$app/Contents/Info.plist"
 
+            # The library inside the bundle first, then the bundle (which
+            # signs the executable again, bound to Info.plist and resources).
+            codesign --force --sign "$APPLE_TEAM_ID" \
+              --options runtime --timestamp "$app/Contents/Frameworks/libpdfium.dylib"
             codesign --force --sign "$APPLE_TEAM_ID" \
               --options runtime --timestamp "$app"
             codesign --verify --deep --strict --verbose=2 "$app"
+            codesign --verify --strict --verbose=2 "$app/Contents/Frameworks/libpdfium.dylib"
 
             ditto -c -k --keepParent "$app" "$workdir/ncrs-app-notarize.zip"
             xcrun notarytool submit "$workdir/ncrs-app-notarize.zip" \
@@ -406,6 +410,8 @@ jobs:
             printf '%s\n' "$verdict" | grep -q 'source=Notarized Developer ID' \
               || { echo "::error::$(basename "$app_zip") is not notarized"; exit 1; }
             xcrun stapler validate "$workdir/ncrs.app"
+            codesign --verify --strict --verbose=2 \
+              "$workdir/ncrs.app/Contents/Frameworks/libpdfium.dylib"
             rm -rf "$workdir"
           done
           for archive in dist/ncrs-*-apple-darwin.tar.gz; do
@@ -413,6 +419,9 @@ jobs:
             workdir=$(mktemp -d); tar -xzf "$archive" -C "$workdir"
             binary=$(find "$workdir" -name ncrs -type f | head -n 1)
             codesign --verify --strict --verbose=2 "$binary"
+            library=$(find "$workdir" -name libpdfium.dylib -type f | head -n 1)
+            test -n "$library" || { echo "::error::no libpdfium.dylib in $archive"; exit 1; }
+            codesign --verify --strict --verbose=2 "$library"
             rm -rf "$workdir"
           done
 

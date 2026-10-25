@@ -1,0 +1,256 @@
+//! The card that asks before the models for reading scanned pages are
+//! downloaded, and the download itself. Nothing here runs unless the user
+//! pressed the button of the card; the download is blocking and belongs on a
+//! blocking thread. The card's state has no widgets and no network: `App` owns
+//! it, the view is `ui::ocr_models`.
+
+use std::fmt;
+use std::path::{Path, PathBuf};
+
+use ncrs_intake::{install_model, OcrModelError, OcrModelFile, OCR_MODELS_HOST, OCR_MODEL_FILES};
+
+use crate::open_vsx::{self, FetchError};
+
+/// The only host a model may come from, redirects included.
+const MODEL_HOSTS: [&str; 1] = [OCR_MODELS_HOST];
+
+/// What can go wrong between pressing the button and having the files in
+/// place. The card words it with the detail in English.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DownloadError {
+    NoDataFolder,
+    Network(FetchError),
+    Install(OcrModelError),
+}
+
+impl fmt::Display for DownloadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoDataFolder => write!(f, "no data folder"),
+            Self::Install(error) => write!(f, "{error}"),
+            Self::Network(error) => match error {
+                FetchError::Status(code) => write!(f, "the server answered {code}"),
+                FetchError::NoConnection(detail) => write!(f, "no connection: {detail}"),
+                FetchError::Timeout => write!(f, "the server did not answer in time"),
+                FetchError::Tls(detail) => write!(f, "secure connection failed: {detail}"),
+                FetchError::Network(detail) => write!(f, "{detail}"),
+                FetchError::DownloadRefused { host } => write!(f, "{host} is not allowed"),
+                FetchError::TooManyRedirects => write!(f, "forwarded too often"),
+                FetchError::TooLarge => write!(f, "larger than expected"),
+                FetchError::InvalidId
+                | FetchError::NotFound(_)
+                | FetchError::BadAnswer(_)
+                | FetchError::NoDownloadLink
+                | FetchError::BadPackage(_)
+                | FetchError::NoThemes
+                | FetchError::MissingFile(_)
+                | FetchError::UnsafePath(_)
+                | FetchError::FileTooLarge(_)
+                | FetchError::BadJson { .. }
+                | FetchError::NoConfigPath
+                | FetchError::Config(_)
+                | FetchError::WriteFailed { .. } => write!(f, "unexpected answer"),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OcrModelsCard {
+    /// Where the files will be saved; `None` without a data folder.
+    target: Option<PathBuf>,
+    downloading: bool,
+    error: Option<DownloadError>,
+}
+
+impl OcrModelsCard {
+    pub fn new(target: Option<PathBuf>) -> Self {
+        Self {
+            target,
+            downloading: false,
+            error: None,
+        }
+    }
+
+    pub fn target(&self) -> Option<&Path> {
+        self.target.as_deref()
+    }
+
+    pub fn is_downloading(&self) -> bool {
+        self.downloading
+    }
+
+    pub fn error(&self) -> Option<&DownloadError> {
+        self.error.as_ref()
+    }
+
+    /// The button: the folder to download into, or the reason there is none.
+    /// A download that runs is not started twice.
+    pub fn start(&mut self) -> Option<PathBuf> {
+        if self.downloading {
+            return None;
+        }
+        let Some(target) = self.target.clone() else {
+            self.error = Some(DownloadError::NoDataFolder);
+            return None;
+        };
+        self.error = None;
+        self.downloading = true;
+        Some(target)
+    }
+
+    /// The download is done. `true` when the files are in place; the card then
+    /// goes away. An answer nobody waits for changes nothing.
+    pub fn finish(&mut self, result: Result<(), DownloadError>) -> bool {
+        if !self.downloading {
+            return false;
+        }
+        self.downloading = false;
+        match result {
+            Ok(()) => true,
+            Err(error) => {
+                self.error = Some(error);
+                false
+            }
+        }
+    }
+}
+
+/// Downloads both model files into `dir`. Each is held to its pinned size and
+/// checksum and put in place only when it passes; the first failure stops.
+pub fn download_models(dir: &Path) -> Result<(), DownloadError> {
+    let agent = open_vsx::agent();
+    OCR_MODEL_FILES
+        .iter()
+        .try_for_each(|file| download_model(&agent, dir, file))
+}
+
+fn download_model(
+    agent: &ureq::Agent,
+    dir: &Path,
+    file: &OcrModelFile,
+) -> Result<(), DownloadError> {
+    let mut url = file.url();
+    for hop in 0..=open_vsx::MAX_REDIRECTS {
+        open_vsx::check_host_in(&url, &MODEL_HOSTS).map_err(DownloadError::Network)?;
+        let mut response = agent
+            .get(&url)
+            .call()
+            .map_err(|error| DownloadError::Network(open_vsx::network_error(error)))?;
+        let status = response.status().as_u16();
+        if open_vsx::REDIRECT_STATUSES.contains(&status) {
+            if hop == open_vsx::MAX_REDIRECTS {
+                return Err(DownloadError::Network(FetchError::TooManyRedirects));
+            }
+            url = response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or_default()
+                .to_owned();
+            continue;
+        }
+        if status != 200 {
+            return Err(DownloadError::Network(FetchError::Status(status)));
+        }
+        if response
+            .body()
+            .content_length()
+            .is_some_and(|declared| declared > file.size)
+        {
+            return Err(DownloadError::Network(FetchError::TooLarge));
+        }
+        let reader = response
+            .body_mut()
+            .with_config()
+            .limit(file.size.saturating_add(1))
+            .reader();
+        return install_model(dir, file, reader).map_err(DownloadError::Install);
+    }
+    Err(DownloadError::Network(FetchError::TooManyRedirects))
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn card() -> OcrModelsCard {
+        OcrModelsCard::new(Some(PathBuf::from("data/ocr-models")))
+    }
+
+    #[test]
+    fn the_card_starts_only_on_the_button_and_only_once() {
+        let mut card = card();
+        assert!(!card.is_downloading());
+        assert_eq!(card.start(), Some(PathBuf::from("data/ocr-models")));
+        assert!(card.is_downloading());
+        assert_eq!(card.start(), None, "no second download");
+    }
+
+    #[test]
+    fn without_a_data_folder_nothing_starts_and_the_reason_is_shown() {
+        let mut card = OcrModelsCard::new(None);
+        assert_eq!(card.start(), None);
+        assert!(!card.is_downloading());
+        assert_eq!(card.error(), Some(&DownloadError::NoDataFolder));
+    }
+
+    #[test]
+    fn a_failed_download_keeps_the_card_with_the_reason_and_can_be_tried_again() {
+        let mut card = card();
+        card.start();
+        let error = DownloadError::Install(OcrModelError::WrongHash {
+            file: "text-detection.onnx",
+        });
+        assert!(!card.finish(Err(error.clone())));
+        assert_eq!(card.error(), Some(&error));
+        assert!(!card.is_downloading());
+        assert!(card.start().is_some());
+        assert_eq!(card.error(), None, "a new try ends the complaint");
+    }
+
+    #[test]
+    fn a_finished_download_closes_the_card() {
+        let mut card = card();
+        card.start();
+        assert!(card.finish(Ok(())));
+    }
+
+    #[test]
+    fn an_answer_nobody_waits_for_changes_nothing() {
+        let mut card = card();
+        assert!(!card.finish(Ok(())));
+        assert!(!card.finish(Err(DownloadError::NoDataFolder)));
+        assert_eq!(card.error(), None);
+    }
+
+    #[test]
+    fn only_the_host_of_the_models_passes_the_check() {
+        for file in OCR_MODEL_FILES {
+            assert_eq!(open_vsx::check_host_in(&file.url(), &MODEL_HOSTS), Ok(()));
+        }
+        for url in [
+            "http://ocrs-models.s3-accelerate.amazonaws.com/a",
+            "https://ocrs-models.s3.amazonaws.com/a",
+            "https://ocrs-models.s3-accelerate.amazonaws.com.evil.example/a",
+            "https://user@ocrs-models.s3-accelerate.amazonaws.com/a",
+            "https://open-vsx.org/a",
+        ] {
+            assert!(
+                matches!(
+                    open_vsx::check_host_in(url, &MODEL_HOSTS),
+                    Err(FetchError::DownloadRefused { .. })
+                ),
+                "{url}"
+            );
+        }
+    }
+}

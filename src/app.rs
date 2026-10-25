@@ -10,7 +10,7 @@ use iced::keyboard::{self, key::Named, Key, Modifiers};
 use iced::widget::{column, container, mouse_area, opaque, operation, row, Column, Space, Stack};
 use iced::{event, window, Element, Length, Point, Size, Subscription, Task, Theme};
 
-use crate::command_palette::CommandPalette;
+use crate::command_palette::{CommandPalette, RECENT_LIMIT};
 use crate::config::{
     self, Config, ConfigError, ContrastWarning, Filing, FilingWriteError, VscodeWarning,
 };
@@ -22,11 +22,17 @@ use crate::filing_status::{FilingStatus, SNAPSHOT_EVERY};
 use crate::fs::{self, CreateDirError};
 use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
-use crate::keymap::{self, KeyScope, Keymap};
+use crate::keymap::{self, KeyAction, KeyScope, Keymap};
+#[cfg(any(target_os = "macos", test))]
+use crate::menu::Availability;
 use crate::messages::{
     ClipboardKind, CommandPaletteMessage, ConflictChoice, FilingSetupMessage, FilingStatusMessage,
-    Message, PanelSide, QuickOpenMessage, SearchMessage, ThemeFetchMessage, TransferKind,
+    Message, OcrModelsMessage, PanelSide, QuickOpenMessage, SearchMessage, ThemeFetchMessage,
+    TitleBarMessage, TransferKind,
 };
+#[cfg(target_os = "macos")]
+use crate::native_menu;
+use crate::ocr_models::{download_models, DownloadError, OcrModelsCard};
 use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
 use crate::palette::Palette;
 use crate::quick_open::{QuickOpen, QUICK_OPEN_FILE_LIMIT};
@@ -39,16 +45,18 @@ use crate::ui::dialog::FIELD_ID;
 use crate::ui::filing as filing_ui;
 use crate::ui::filing_setup as filing_setup_ui;
 use crate::ui::filing_status as filing_status_ui;
+use crate::ui::ocr_models as ocr_models_ui;
 use crate::ui::quick_open as quick_open_ui;
 use crate::ui::search as search_ui;
 use crate::ui::theme_fetch as theme_fetch_ui;
+use crate::ui::titlebar;
 use crate::ui::volumes as volumes_view;
 use crate::ui::{
     self, conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelProps, PanelState,
 };
 use ncrs_index::{KeyStore, KeyringKeyStore};
 use ncrs_intake::LocationMode;
-use ncrs_pipeline::Load;
+use ncrs_pipeline::{Load, RunnerState};
 use tokio::sync::mpsc;
 
 /// How long the search view waits for the next keystroke before it searches.
@@ -92,6 +100,29 @@ fn search_events(
 const NOTICE_DURATION: std::time::Duration = std::time::Duration::from_secs(3);
 
 const APP_NAME: &str = "NC-rs";
+
+#[cfg(target_os = "macos")]
+fn native_menu_events() -> Subscription<Message> {
+    native_menu::events()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn native_menu_events() -> Subscription<Message> {
+    Subscription::none()
+}
+
+/// A message rather than a call: it is handled in `update`, on the thread
+/// that owns the app's windows, once the app has started and the default menu
+/// winit installed is there to be replaced.
+#[cfg(target_os = "macos")]
+fn then_install_native_menu(startup: Task<Message>) -> Task<Message> {
+    Task::batch([startup, Task::done(Message::InstallNativeMenu)])
+}
+
+#[cfg(not(target_os = "macos"))]
+fn then_install_native_menu(startup: Task<Message>) -> Task<Message> {
+    startup
+}
 
 /// Turns the transfer's channel into a stream for `Subscription::run_with`.
 ///
@@ -217,6 +248,7 @@ fn resets_type_ahead(message: &Message) -> bool {
             | Message::SelectFirst
             | Message::SelectLast
             | Message::SwitchPanel
+            | Message::ActivatePanel(_)
             | Message::RowClicked { .. }
             | Message::TagMove(_)
             | Message::ToggleTag
@@ -235,6 +267,7 @@ fn leaves_path_field(message: &Message) -> bool {
             | Message::QuickOpen(QuickOpenMessage::Open)
             | Message::CommandPalette(CommandPaletteMessage::Toggle)
             | Message::ThemeFetch(ThemeFetchMessage::Open)
+            | Message::OcrModels(OcrModelsMessage::Open)
             | Message::FilingStatus(FilingStatusMessage::Open)
             | Message::FilingSetup(
                 FilingSetupMessage::Toggle
@@ -250,8 +283,23 @@ fn leaves_path_field(message: &Message) -> bool {
             | Message::ContextMenuKey
             | Message::CopyToClipboard(_)
             | Message::SwitchPanel
+            | Message::ActivatePanel(_)
             | Message::SortBy { .. }
     )
+}
+
+/// The window is the runtime's to move and resize: the id comes from the
+/// runtime, since the app opens exactly one window.
+fn update_title_bar(message: TitleBarMessage) -> Task<Message> {
+    let window = iced::window::latest();
+    match message {
+        TitleBarMessage::Drag => window.and_then(iced::window::drag),
+        TitleBarMessage::ToggleMaximize => window.and_then(iced::window::toggle_maximize),
+        TitleBarMessage::Minimize => window.and_then(|id| iced::window::minimize(id, true)),
+        TitleBarMessage::Resize(edge) => {
+            window.and_then(move |id| iced::window::drag_resize(id, edge.direction()))
+        }
+    }
 }
 
 /// Takes the keyboard focus from the path field, so the keys go to the panels
@@ -616,6 +664,9 @@ pub struct App {
     quick_open_walk: Option<iced::task::Handle>,
     /// The command palette (Cmd/Ctrl+Shift+P), while its box is up.
     command_palette: Option<CommandPalette>,
+    /// The commands run from the command list this session, most recent
+    /// first. Not kept across runs.
+    recent_commands: Vec<KeyAction>,
     /// The filing module, when the config switches it on.
     filing: Option<FilingModule>,
     /// Started once the filing module is ready; dropping it stops the workers.
@@ -651,6 +702,13 @@ pub struct App {
     /// Writes the picked theme and switches it on, on a blocking thread.
     /// Injected so tests write no files.
     install_theme: fn(&Pick, &Path) -> Result<Box<Installed>, FetchError>,
+    /// The card that asks before the OCR models are downloaded, while it is up.
+    ocr_models: Option<OcrModelsCard>,
+    /// Counts the cards opened, so the late answer of a closed one is dropped.
+    ocr_models_generation: u64,
+    /// Downloads the OCR models into the folder, on a blocking thread.
+    /// Injected so tests need no network.
+    download_ocr_models: fn(&Path) -> Result<(), DownloadError>,
 }
 
 /// The part of the prompt the key routing needs, cheap to clone.
@@ -684,8 +742,12 @@ pub struct PromptKeyState {
     pub filing_status: bool,
     /// The filing setup is up, so Escape closes it.
     pub filing_setup: bool,
+    /// A filing card that "Not now" may leave is up, so Escape leaves it.
+    pub filing_card: bool,
     /// The theme download card is up, so Enter and the arrows are its.
     pub theme_fetch: bool,
+    /// The OCR models card is up, so keys answer it like a button dialog.
+    pub ocr_models: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
     /// The drive menu is up, so keys move its highlight.
@@ -712,13 +774,22 @@ impl Default for PromptKeyState {
             command_palette: false,
             filing_status: false,
             filing_setup: false,
+            filing_card: false,
             theme_fetch: false,
+            ocr_models: false,
             delete_dialog: DeleteKeys::default(),
             volume_menu: false,
             context_menu: false,
             busy: false,
             typed: Arc::default(),
         }
+    }
+}
+
+fn ocr_models_key(key: Key, key_modifiers: Modifiers) -> Option<Message> {
+    match key.as_ref() {
+        Key::Named(Named::Escape) => Some(Message::OcrModels(OcrModelsMessage::Close)),
+        _ => dialog_focus_key(key, key_modifiers),
     }
 }
 
@@ -786,6 +857,11 @@ fn keys_without_prompt(
                 .then_some(Message::DeleteConfirm)
             }),
         };
+    }
+
+    // Cancel has the focus when it opens, so Enter alone never downloads.
+    if prompt.ocr_models {
+        return ocr_models_key(key, key_modifiers);
     }
 
     if prompt.conflict_open {
@@ -887,23 +963,30 @@ fn keys_without_prompt(
         return search_key(prompt, &key, key_modifiers);
     }
 
-    // Escape stops a running job, else dismisses the config error, else closes
-    // the filing setup, and is free when none exists. Unbound rather than bound
-    // to something that does nothing — a key that means different things
-    // depending on invisible state is worse than one that is simply free.
     if matches!(key.as_ref(), Key::Named(Named::Escape)) {
-        return if prompt.job_running {
-            Some(Message::AbortJob)
-        } else if prompt.config_error {
-            Some(Message::DismissConfigError)
-        } else {
-            prompt
-                .filing_setup
-                .then_some(Message::FilingSetup(FilingSetupMessage::Close))
-        };
+        return escape_message(prompt);
     }
     bound_message(&prompt.keymap, &key, key_modifiers, scope)
         .or_else(|| type_ahead_message(&key, key_modifiers))
+}
+
+// A visible card whose footer promises "Esc: close" goes before the job
+// (same thought as the delete dialog): the filing setup, then a filing
+// card, then a running job, then the config error. Unbound rather than
+// bound to something that does nothing — a key that means different things
+// depending on invisible state is worse than one that is simply free.
+fn escape_message(prompt: &PromptKeyState) -> Option<Message> {
+    if prompt.filing_setup {
+        Some(Message::FilingSetup(FilingSetupMessage::Close))
+    } else if prompt.filing_card {
+        Some(Message::Filing(FilingMessage::Dismiss))
+    } else if prompt.job_running {
+        Some(Message::AbortJob)
+    } else if prompt.config_error {
+        Some(Message::DismissConfigError)
+    } else {
+        None
+    }
 }
 
 /// Keys while the search view is up. A text field captures what it types, so
@@ -1370,7 +1453,8 @@ impl App {
     /// Left panel starts in the working directory, right in `$HOME`, so the
     /// two panels are not the same directory on launch.
     pub fn new() -> (Self, Task<Message>) {
-        Self::with_environment(Environment::of_the_user())
+        let (app, loading) = Self::with_environment(Environment::of_the_user());
+        (app, then_install_native_menu(loading))
     }
 
     /// `new` with the places it reads and writes given instead of looked up.
@@ -1607,6 +1691,7 @@ impl App {
             quick_open_walk_generation: 0,
             quick_open_walk: None,
             command_palette: None,
+            recent_commands: Vec::new(),
             filing: None,
             pipeline: None,
             filing_status: FilingStatus::default(),
@@ -1622,6 +1707,9 @@ impl App {
             theme_fetch_generation: 0,
             fetch_extension: open_vsx::fetch_extension,
             install_theme: install_picked_theme,
+            ocr_models: None,
+            ocr_models_generation: 0,
+            download_ocr_models: download_models,
         };
 
         let tasks = Task::batch([
@@ -1720,6 +1808,7 @@ impl App {
                 .with(Arc::clone(&self.input))
                 .filter_map(|(input, (event, status))| input.lock().handle(&event, status)),
             window::resize_events().map(|(_id, size)| Message::WindowResized(size)),
+            native_menu_events(),
             // The transfer's ticks. Taken out of the app because a subscription
             // outlives `&self`; the receiver is taken so the subscription
             // rebuilds itself when a new transfer starts.
@@ -1878,7 +1967,7 @@ impl App {
                     // The dialog names the file itself, so the reason travels
                     // no further; it stays in the payload for the status line.
                     Err(RowFailure::Conflict(_reason)) => {
-                        self.dialog_focus = 0;
+                        self.dialog_focus = conflict::OVERWRITE_FOCUS;
                         self.pending_conflict = Some(PendingConflict { transfer, index });
                         // Else the dialog would be asked behind the box.
                         Task::batch([self.close_quick_open(), self.close_command_palette()])
@@ -2185,6 +2274,11 @@ impl App {
                 self.active_panel = self.active_panel.other();
                 Task::none()
             }
+            Message::ActivatePanel(side) => {
+                self.active_panel = side;
+                Task::none()
+            }
+            Message::TitleBar(title_bar) => update_title_bar(title_bar),
             Message::SortBy { .. } | Message::SortActive(_) => self.update_sort(message),
             Message::SwitchLanguage => {
                 self.switch_language();
@@ -2228,6 +2322,7 @@ impl App {
 
             Message::WindowResized(size) => {
                 self.window_size = size;
+                self.resize_command_palette(size);
                 self.visible_rows = layout::visible_rows(size);
                 self.resize_search(size);
                 self.left_panel.ensure_visible(self.visible_rows);
@@ -2241,9 +2336,17 @@ impl App {
                 self.update_command_palette(command_palette)
             }
             Message::ThemeFetch(fetch_message) => self.update_theme_fetch(fetch_message),
+            Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => self.update_filing_status(page_message),
             Message::FilingSetup(setup_message) => self.update_filing_setup(setup_message),
+            #[cfg(any(target_os = "macos", test))]
+            Message::RunCommand(action) => self.run_command(action),
+            #[cfg(target_os = "macos")]
+            Message::InstallNativeMenu => {
+                native_menu::install(self.lang, &self.keymap, self.menu_availability());
+                Task::none()
+            }
             Message::Quit => iced::exit(),
             // Handled in `update`, which owns the timer's generation check.
             Message::NoticeExpired(_) => Task::none(),
@@ -2258,7 +2361,22 @@ impl App {
         // that follow a conflict would still be routed as panel keys and the
         // dialog could not be answered at all.
         self.publish_key_state();
+        #[cfg(target_os = "macos")]
+        native_menu::sync(self.lang, &self.keymap, self.menu_availability());
         task
+    }
+
+    /// What the menu bar lets the user run: nothing while a dialog or box is
+    /// open, otherwise what works in the area the keys go to.
+    #[cfg(any(target_os = "macos", test))]
+    fn menu_availability(&self) -> Availability {
+        if self.overlay_is_open() {
+            Availability::Blocked
+        } else if self.search_has_keys() {
+            Availability::Open(KeyScope::Search)
+        } else {
+            Availability::Open(KeyScope::Panel)
+        }
     }
 
     fn update_sort(&mut self, message: Message) -> Task<Message> {
@@ -2531,7 +2649,7 @@ impl App {
             .spacing(ui::theme::spacing::PANEL_GAP)
             .height(Length::Fill);
 
-        let window = container(
+        let below_title_bar = container(
             column![
                 panels,
                 statusbar::view(
@@ -2566,8 +2684,12 @@ impl App {
         )
         .padding(theme::spacing::OUTER_PADDING)
         .width(Length::Fill)
-        .height(Length::Fill)
-        .style(theme::root(&self.palette));
+        .height(Length::Fill);
+
+        let window = container(column![self.title_bar_view(), below_title_bar])
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(theme::root(&self.palette));
 
         // The card has no scrim: the panels stay usable around it. Every modal
         // below stacks on this base, so it stays above the card.
@@ -2575,7 +2697,7 @@ impl App {
             .filing
             .as_ref()
             .filter(|module| module.has_card())
-            .and_then(|module| filing_ui::view(module, self.lang, &self.palette));
+            .and_then(|module| filing_ui::view(module, self.window_size, self.lang, &self.palette));
         let setup_card = self.filing_setup.as_ref().map(|setup| {
             let context = filing_setup_ui::SetupContext {
                 current_folder: &self.active_panel().path,
@@ -2585,17 +2707,23 @@ impl App {
                     .as_ref()
                     .is_some_and(FilingModule::index_is_plain),
                 lang: self.lang,
+                window: self.window_size,
             };
             filing_setup_ui::view(setup, &context, &self.palette)
         });
         let cards: Vec<Element<'_, Message>> = setup_card.into_iter().chain(module_card).collect();
-        let root: Element<'_, Message> = if cards.is_empty() {
+        let base: Element<'_, Message> = if cards.is_empty() {
             window.into()
         } else {
             let card = Column::with_children(cards)
                 .spacing(theme::spacing::SECTION_GAP)
                 .align_x(iced::Alignment::Center);
             Stack::with_children([window.into(), filing_card_layer(card.into())]).into()
+        };
+        let root = if cfg!(target_os = "macos") {
+            base
+        } else {
+            titlebar::with_resize_edges(base)
         };
 
         if let Some(menu) = self.context_menu.as_ref() {
@@ -2622,6 +2750,7 @@ impl App {
                 menu.side,
                 &menu.volumes,
                 menu.selected,
+                self.window_size,
                 self.lang,
                 &self.palette,
             );
@@ -2630,13 +2759,25 @@ impl App {
 
         if let Some(deletion) = self.delete_dialog.as_ref() {
             let dialog_element = delete_dialog_view::view(
-                self.delete_subject(deletion),
+                &self.delete_subject(deletion),
                 deletion.permanent,
                 self.dialog_focus,
+                self.window_size,
                 self.lang,
                 &self.palette,
             );
             return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
+        }
+
+        if let Some(card) = self.ocr_models.as_ref() {
+            let card_element = ocr_models_ui::view(
+                card,
+                self.dialog_focus,
+                self.window_size,
+                self.lang,
+                &self.palette,
+            );
+            return Stack::with_children([root, dialog::scrim(card_element)]).into();
         }
 
         // The conflict dialog comes first, before the prompt. A conflict is
@@ -2658,6 +2799,7 @@ impl App {
                 &self.palette,
                 self.conflict_all,
                 self.dialog_focus,
+                self.window_size,
                 Message::TransferConflict,
             );
             return Stack::with_children([root, dialog::scrim(conflict_element)]).into();
@@ -2672,6 +2814,7 @@ impl App {
                 &self.filing_status,
                 self.filing.as_ref().map(FilingModule::load),
                 index_open,
+                self.window_size,
                 self.lang,
                 &self.palette,
             );
@@ -2679,17 +2822,24 @@ impl App {
         }
 
         if let Some(quick_open) = self.quick_open.as_ref() {
-            let box_element = quick_open_ui::view(quick_open, self.lang, &self.palette);
+            let box_element =
+                quick_open_ui::view(quick_open, self.window_size, self.lang, &self.palette);
             return Stack::with_children([root, dialog::scrim(box_element)]).into();
         }
 
         if let Some(command_palette) = self.command_palette.as_ref() {
-            let box_element = command_palette_ui::view(command_palette, self.lang, &self.palette);
+            let box_element = command_palette_ui::view(
+                command_palette,
+                self.window_size,
+                self.lang,
+                &self.palette,
+            );
             return Stack::with_children([root, dialog::scrim(box_element)]).into();
         }
 
         if let Some(card) = self.theme_fetch.as_ref() {
-            let card_element = theme_fetch_ui::view(card, self.lang, &self.palette);
+            let card_element =
+                theme_fetch_ui::view(card, self.window_size, self.lang, &self.palette);
             return Stack::with_children([root, dialog::scrim(card_element)]).into();
         }
 
@@ -2699,6 +2849,7 @@ impl App {
         };
         let overlay = dialog::view(
             prompt,
+            self.window_size,
             self.lang,
             &self.palette,
             Message::PromptInput,
@@ -2781,7 +2932,12 @@ impl App {
         let command_palette = self.command_palette.is_some();
         let filing_status = self.filing_status.page_open();
         let filing_setup = self.filing_setup.is_some();
+        let filing_card = self
+            .filing
+            .as_ref()
+            .is_some_and(FilingModule::card_can_be_dismissed);
         let theme_fetch = self.theme_fetch.is_some();
+        let ocr_models = self.ocr_models.is_some();
         let delete_dialog = match &self.delete_dialog {
             None => DeleteKeys::Closed,
             Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
@@ -2801,7 +2957,9 @@ impl App {
                 command_palette,
                 filing_status,
                 filing_setup,
+                filing_card,
                 theme_fetch,
+                ocr_models,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
                 // the dialog's keys would fall through to the panels.
@@ -2822,7 +2980,9 @@ impl App {
                 command_palette,
                 filing_status,
                 filing_setup,
+                filing_card,
                 theme_fetch,
+                ocr_models,
                 conflict_open: self.pending_conflict.is_some(),
                 busy: prompt.busy(),
                 typed: prompt.name().into(),
@@ -3124,7 +3284,7 @@ impl App {
     }
 
     fn dialog_button_count(&self) -> usize {
-        if self.delete_dialog.is_some() {
+        if self.delete_dialog.is_some() || self.ocr_models.is_some() {
             2
         } else if self.pending_conflict.is_some() {
             3
@@ -3136,17 +3296,24 @@ impl App {
     /// Enter in a button dialog: whatever the focused button does.
     fn activate_dialog_button(&mut self) -> Task<Message> {
         if self.delete_dialog.is_some() {
-            return if self.dialog_focus == 0 {
+            return if self.dialog_focus == delete_dialog_view::CONFIRM_FOCUS {
                 self.confirm_delete()
             } else {
                 self.delete_dialog = None;
                 Task::none()
             };
         }
+        if self.ocr_models.is_some() {
+            return if self.dialog_focus == ocr_models_ui::DOWNLOAD_FOCUS {
+                self.start_ocr_models_download()
+            } else {
+                self.close_ocr_models()
+            };
+        }
         if self.pending_conflict.is_some() {
             let choice = match self.dialog_focus {
-                0 => ConflictChoice::ThisOverwrite,
-                1 => ConflictChoice::ThisKeep,
+                conflict::OVERWRITE_FOCUS => ConflictChoice::ThisOverwrite,
+                conflict::KEEP_FOCUS => ConflictChoice::ThisKeep,
                 _ => ConflictChoice::Cancel,
             };
             return self.answer_conflict(choice);
@@ -3169,6 +3336,7 @@ impl App {
             || self.quick_open.is_some()
             || self.command_palette.is_some()
             || self.theme_fetch.is_some()
+            || self.ocr_models.is_some()
             || self.filing_status.page_open()
     }
 
@@ -3322,9 +3490,7 @@ impl App {
         }
         self.job_error = None;
         self.notice = None;
-        // The permanent dialog starts on "Cancel", so a reflex Enter never
-        // deletes for good.
-        self.dialog_focus = usize::from(permanent);
+        self.dialog_focus = delete_dialog_view::default_focus(permanent);
         self.delete_dialog = Some(Deletion {
             sources,
             permanent,
@@ -4306,6 +4472,85 @@ impl App {
         Task::batch([release_focus(), self.show_notice(notice)])
     }
 
+    fn update_ocr_models(&mut self, message: OcrModelsMessage) -> Task<Message> {
+        match message {
+            OcrModelsMessage::Open => self.open_ocr_models(),
+            OcrModelsMessage::Close => self.close_ocr_models(),
+            OcrModelsMessage::Download => self.start_ocr_models_download(),
+            OcrModelsMessage::Downloaded { generation, result } => {
+                self.ocr_models_downloaded(generation, result)
+            }
+        }
+    }
+
+    /// Only asks. Nothing is sent before the download button is pressed.
+    fn open_ocr_models(&mut self) -> Task<Message> {
+        if self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        self.context_menu = None;
+        self.ocr_models_generation = self.ocr_models_generation.wrapping_add(1);
+        self.dialog_focus = ocr_models_ui::CANCEL_FOCUS;
+        let target = self
+            .filing_index_path
+            .as_deref()
+            .and_then(crate::filing::ocr_models_dir);
+        self.ocr_models = Some(OcrModelsCard::new(target));
+        Task::none()
+    }
+
+    /// Not while the files are written: closing would leave a download nobody
+    /// reports on.
+    fn close_ocr_models(&mut self) -> Task<Message> {
+        if self
+            .ocr_models
+            .as_ref()
+            .is_some_and(OcrModelsCard::is_downloading)
+        {
+            return Task::none();
+        }
+        self.ocr_models = None;
+        Task::none()
+    }
+
+    fn start_ocr_models_download(&mut self) -> Task<Message> {
+        let Some(target) = self.ocr_models.as_mut().and_then(OcrModelsCard::start) else {
+            return Task::none();
+        };
+        let generation = self.ocr_models_generation;
+        let download = self.download_ocr_models;
+        Task::perform(
+            tokio::task::spawn_blocking(move || download(&target)),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| {
+                    Err(DownloadError::Network(FetchError::Network(
+                        join.to_string(),
+                    )))
+                });
+                Message::OcrModels(OcrModelsMessage::Downloaded { generation, result })
+            },
+        )
+    }
+
+    fn ocr_models_downloaded(
+        &mut self,
+        generation: u64,
+        result: Result<(), DownloadError>,
+    ) -> Task<Message> {
+        if generation != self.ocr_models_generation {
+            return Task::none();
+        }
+        let Some(card) = self.ocr_models.as_mut() else {
+            return Task::none();
+        };
+        if !card.finish(result) {
+            return Task::none();
+        }
+        self.ocr_models = None;
+        let notice = self.lang.text(Msg::OcrModelsInstalled).to_owned();
+        self.show_notice(notice)
+    }
+
     /// Cmd/Ctrl+Shift+P: lists the actions that work where the keys are now.
     /// Pressed while the box is up, it only gives the field the focus again.
     fn open_command_palette(&mut self) -> Task<Message> {
@@ -4322,8 +4567,17 @@ impl App {
         } else {
             KeyScope::Panel
         };
-        self.command_palette = Some(CommandPalette::new(scope, self.lang, &self.keymap));
+        let mut palette =
+            CommandPalette::new(scope, self.lang, &self.keymap, &self.recent_commands);
+        palette.set_visible_rows(command_palette_ui::visible_rows(self.window_size));
+        self.command_palette = Some(palette);
         focus
+    }
+
+    fn resize_command_palette(&mut self, window: Size) {
+        if let Some(palette) = self.command_palette.as_mut() {
+            palette.set_visible_rows(command_palette_ui::visible_rows(window));
+        }
     }
 
     fn close_command_palette(&mut self) -> Task<Message> {
@@ -4368,7 +4622,21 @@ impl App {
             return Task::none();
         };
         let closed = self.close_command_palette();
-        closed.chain(self.update(action.message()))
+        closed.chain(self.run_command(action))
+    }
+
+    /// Runs a command chosen from the command list or the menu bar: what its
+    /// key would do, and it counts among the recent commands.
+    fn run_command(&mut self, action: KeyAction) -> Task<Message> {
+        self.remember_command(action);
+        self.update(action.message())
+    }
+
+    /// Puts `action` first among the recent commands, once.
+    fn remember_command(&mut self, action: KeyAction) {
+        self.recent_commands.retain(|&recent| recent != action);
+        self.recent_commands.insert(0, action);
+        self.recent_commands.truncate(RECENT_LIMIT);
     }
 
     /// Closes the box and stops its walk.
@@ -4450,6 +4718,56 @@ impl App {
         let directory = parent.to_path_buf();
         let name = file.to_string_lossy().into_owned();
         self.load(self.active_panel, directory, Some(name))
+    }
+
+    fn title_bar_view(&self) -> Element<'_, Message> {
+        let tab = |side: PanelSide| {
+            let title = match self.search.as_ref() {
+                Some(search) if self.search_open && side == self.search_side => {
+                    titlebar::TabTitle::Search(search_ui::title(search, self.lang))
+                }
+                _ => titlebar::TabTitle::Path {
+                    path: &self.panel(side).path,
+                    loading: self.panel(side).loading,
+                },
+            };
+            titlebar::Tab {
+                side,
+                title,
+                active: self.active_panel == side,
+            }
+        };
+        titlebar::view(&titlebar::TitleBar {
+            tabs: [tab(PanelSide::Left), tab(PanelSide::Right)],
+            home: &self.home,
+            hermes: self.hermes_chip(),
+            lab_shortcut: self
+                .keymap
+                .shortcut_label(&KeyAction::CommandPalette.message()),
+            window_width: self.window_size.width,
+            lang: self.lang,
+            palette: &self.palette,
+        })
+    }
+
+    /// The title bar chip: Hermes is on, and how fast it files. Absent while
+    /// the module is off.
+    fn hermes_chip(&self) -> Option<String> {
+        let snapshot = self.filing_status.snapshot();
+        let text = match snapshot.state {
+            RunnerState::Off => return None,
+            RunnerState::Paused => self.lang.text(Msg::TitleBarHermesPaused).to_owned(),
+            RunnerState::Running | RunnerState::Idle => {
+                match self.filing_status.documents_per_minute() {
+                    Some(rate) => fill_template(
+                        self.lang.text(Msg::TitleBarHermesRate),
+                        &[("{rate}", &rate.to_string())],
+                    ),
+                    None => self.lang.text(Msg::ActionFilingSetupTheme).to_owned(),
+                }
+            }
+        };
+        Some(text)
     }
 
     fn filing_badge(&self) -> Option<statusbar::FilingBadge<Message>> {
@@ -5456,6 +5774,7 @@ impl App {
             quick_open_walk_generation: 0,
             quick_open_walk: None,
             command_palette: None,
+            recent_commands: Vec::new(),
             filing: None,
             pipeline: None,
             filing_status: FilingStatus::default(),
@@ -5471,6 +5790,9 @@ impl App {
             theme_fetch_generation: 0,
             fetch_extension: |_| Err(FetchError::NoConnection("no network in tests".to_owned())),
             install_theme: |_, _| Err(FetchError::NoConfigPath),
+            ocr_models: None,
+            ocr_models_generation: 0,
+            download_ocr_models: |_| Err(DownloadError::NoDataFolder),
         };
         for (side, names) in [
             (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
@@ -5653,6 +5975,18 @@ impl App {
 
     pub fn theme_fetch_for_test(&self) -> Option<&ThemeFetch> {
         self.theme_fetch.as_ref()
+    }
+
+    pub fn ocr_models_for_test(&self) -> Option<&OcrModelsCard> {
+        self.ocr_models.as_ref()
+    }
+
+    /// Fixed panels with the text recognition models card up.
+    pub fn with_ocr_models_card(card: OcrModelsCard) -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.dialog_focus = ocr_models_ui::CANCEL_FOCUS;
+        app.ocr_models = Some(card);
+        app
     }
 
     /// Fixed panels with the theme download card up, in the state of `card`.
@@ -5838,6 +6172,10 @@ impl App {
         self.modifiers = modifiers;
     }
 
+    pub fn filing_status_page_is_open_for_test(&self) -> bool {
+        self.filing_status.page_open()
+    }
+
     pub fn active_panel_side_for_test(&self) -> PanelSide {
         self.active_panel
     }
@@ -5851,7 +6189,7 @@ impl App {
     /// Puts the delete dialog in front of the user for `count` fixed entries,
     /// for the snapshot tests.
     pub fn open_delete_dialog_for_test(&mut self, count: usize, permanent: bool) {
-        self.dialog_focus = usize::from(permanent);
+        self.dialog_focus = delete_dialog_view::default_focus(permanent);
         self.delete_dialog = Some(Deletion {
             sources: (0..count)
                 .map(|i| PathBuf::from("/left").join(format!("entry-{}.txt", i + 1)))
@@ -6963,6 +7301,39 @@ mod delete_tests {
     }
 
     #[test]
+    fn escape_leaves_a_filing_card_that_may_be_left() {
+        let card = PromptKeyState {
+            filing_card: true,
+            ..PromptKeyState::default()
+        };
+        assert_eq!(
+            route(&card, Named::Escape, Modifiers::default()),
+            Some(Message::Filing(FilingMessage::Dismiss))
+        );
+        assert_eq!(
+            route(
+                &PromptKeyState::default(),
+                Named::Escape,
+                Modifiers::default()
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn escape_closes_the_filing_setup_and_leaves_a_running_job_alone() {
+        let setup_over_job = PromptKeyState {
+            filing_setup: true,
+            job_running: true,
+            ..PromptKeyState::default()
+        };
+        assert_eq!(
+            route(&setup_over_job, Named::Escape, Modifiers::default()),
+            Some(Message::FilingSetup(FilingSetupMessage::Close))
+        );
+    }
+
+    #[test]
     fn a_held_enter_does_not_press_a_button() {
         assert!(!repeats(&Message::DialogActivate));
         assert!(!repeats(&Message::DialogFocus(1)));
@@ -6973,14 +7344,15 @@ mod delete_tests {
         let mut app = app_with_entries(&["a.txt"]);
         let _open = app.update(Message::Delete { permanent: true });
         assert_eq!(
-            app.dialog_focus, 1,
+            app.dialog_focus,
+            delete_dialog_view::CANCEL_FOCUS,
             "the permanent dialog must start on Cancel"
         );
 
         let _wrap = app.update(Message::DialogFocus(1));
-        assert_eq!(app.dialog_focus, 0);
+        assert_eq!(app.dialog_focus, delete_dialog_view::CONFIRM_FOCUS);
         let _back = app.update(Message::DialogFocus(-1));
-        assert_eq!(app.dialog_focus, 1);
+        assert_eq!(app.dialog_focus, delete_dialog_view::CANCEL_FOCUS);
         let _cancel = app.update(Message::DialogActivate);
         assert!(
             app.delete_dialog.is_none(),
@@ -6988,7 +7360,11 @@ mod delete_tests {
         );
 
         let _again = app.update(Message::Delete { permanent: false });
-        assert_eq!(app.dialog_focus, 0, "the trash dialog starts on Delete");
+        assert_eq!(
+            app.dialog_focus,
+            delete_dialog_view::CONFIRM_FOCUS,
+            "the trash dialog starts on Delete"
+        );
         let _move = app.update(Message::DialogFocus(1));
         let _enter = app.update(Message::DialogActivate);
         assert!(app.delete_dialog.is_none());
@@ -10542,7 +10918,7 @@ mod command_palette_tests {
         let mut app = App::with_fixed_panels();
         open_palette(&mut app);
         let palette = app.command_palette_for_test().unwrap();
-        assert!(!palette.hits().is_empty());
+        assert!(palette.hits().next().is_some());
         assert!(app.prompt_key_state().command_palette);
         assert!(app.blocking_overlay_is_open());
     }
@@ -10554,7 +10930,6 @@ mod command_palette_tests {
         let palette = app.command_palette_for_test().unwrap();
         let regex = palette
             .hits()
-            .iter()
             .filter_map(|hit| palette.entry(hit))
             .any(|entry| entry.action == keymap::KeyAction::SearchRegex);
         assert!(regex);
@@ -10606,7 +10981,7 @@ mod command_palette_tests {
         open_palette(&mut app);
         type_into_palette(&mut app, "inspection");
         let palette = app.command_palette_for_test().unwrap();
-        assert_eq!(palette.hits().len(), 1);
+        assert_eq!(palette.hits().count(), 1);
         assert_eq!(palette.query(), "inspection");
     }
 
@@ -10626,7 +11001,7 @@ mod command_palette_tests {
         let mut app = App::with_fixed_panels();
         open_palette(&mut app);
         type_into_palette(&mut app, "inspection");
-        drop(app.update(palette_message(CommandPaletteMessage::Select(0))));
+        drop(app.update(palette_message(CommandPaletteMessage::Select(1))));
         assert!(app.command_palette_for_test().is_none());
         assert!(app.filing_status.page_open());
     }
@@ -10638,6 +11013,71 @@ mod command_palette_tests {
         type_into_palette(&mut app, "zzzzzz");
         drop(app.update(palette_message(CommandPaletteMessage::Run)));
         assert!(app.command_palette_for_test().is_some());
+    }
+
+    #[test]
+    fn a_menu_entry_does_what_the_same_entry_in_the_lab_does() {
+        let mut lab = App::with_fixed_panels();
+        open_palette(&mut lab);
+        type_into_palette(&mut lab, "switch panel");
+        drop(lab.update(palette_message(CommandPaletteMessage::Run)));
+
+        let mut menu = App::with_fixed_panels();
+        let message = crate::menu::command_message(KeyAction::SwitchPanel.name()).unwrap();
+        drop(menu.update(message));
+
+        assert_eq!(menu.active_panel, PanelSide::Right);
+        assert_eq!(menu.active_panel, lab.active_panel);
+        assert_eq!(menu.recent_commands, [KeyAction::SwitchPanel]);
+        assert_eq!(menu.recent_commands, lab.recent_commands);
+    }
+
+    #[test]
+    fn the_menu_is_off_while_a_box_is_open_and_follows_the_search() {
+        let mut app = App::with_fixed_panels();
+        assert_eq!(app.menu_availability(), Availability::Open(KeyScope::Panel));
+        open_palette(&mut app);
+        let blocked = app.menu_availability();
+        assert_eq!(blocked, Availability::Blocked);
+        assert!(blocked.enables(KeyAction::Quit));
+        assert!(!blocked.enables(KeyAction::Mkdir));
+        drop(app.update(palette_message(CommandPaletteMessage::Close)));
+        drop(app.update(Message::OpenSearch));
+        assert_eq!(
+            app.menu_availability(),
+            Availability::Open(KeyScope::Search)
+        );
+    }
+
+    #[test]
+    fn the_commands_run_last_head_the_list_next_time() {
+        let mut app = App::with_fixed_panels();
+        for query in ["switch panel", "tag all", "switch panel"] {
+            open_palette(&mut app);
+            type_into_palette(&mut app, query);
+            drop(app.update(palette_message(CommandPaletteMessage::Run)));
+        }
+        open_palette(&mut app);
+        let palette = app.command_palette_for_test().unwrap();
+        let first_hits: Vec<keymap::KeyAction> = palette
+            .rows()
+            .iter()
+            .skip(1)
+            .take(2)
+            .filter_map(|row| match row {
+                crate::command_palette::Row::Hit(hit) => palette.entry(hit),
+                crate::command_palette::Row::Header(_) => None,
+            })
+            .map(|entry| entry.action)
+            .collect();
+        assert_eq!(
+            first_hits,
+            [keymap::KeyAction::SwitchPanel, keymap::KeyAction::TagAll]
+        );
+        assert_eq!(
+            palette.selected_action(),
+            Some(keymap::KeyAction::SwitchPanel)
+        );
     }
 
     #[test]
@@ -10658,7 +11098,6 @@ mod command_palette_tests {
         let palette = app.command_palette_for_test().unwrap();
         let entry = palette
             .hits()
-            .iter()
             .filter_map(|hit| palette.entry(hit))
             .find(|entry| entry.action == keymap::KeyAction::FilingStatus)
             .unwrap();
@@ -10672,7 +11111,6 @@ mod command_palette_tests {
         let palette = app.command_palette_for_test().unwrap();
         let entry = palette
             .hits()
-            .iter()
             .filter_map(|hit| palette.entry(hit))
             .find(|entry| entry.action == keymap::KeyAction::DeletePermanently)
             .unwrap();
@@ -11163,5 +11601,191 @@ mod theme_fetch_tests {
     fn holding_an_arrow_moves_on_but_enter_acts_once() {
         assert!(repeats(&fetch_message(ThemeFetchMessage::Move(1))));
         assert!(!repeats(&fetch_message(ThemeFetchMessage::Activate)));
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod ocr_models_tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+
+    /// Only the tests that never press Download use the counting one.
+    static DOWNLOADS: AtomicUsize = AtomicUsize::new(0);
+
+    fn counting_download(_: &Path) -> Result<(), DownloadError> {
+        DOWNLOADS.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+
+    fn quiet_download(_: &Path) -> Result<(), DownloadError> {
+        Ok(())
+    }
+
+    fn send(app: &mut App, message: OcrModelsMessage) {
+        drop(app.update(Message::OcrModels(message)));
+    }
+
+    fn app_with_data_folder() -> App {
+        let mut app = App::with_fixed_panels();
+        app.filing_index_path = Some(PathBuf::from("/example/data/index.db"));
+        app.download_ocr_models = quiet_download;
+        app
+    }
+
+    fn route(app: &App, key: Named) -> Option<Message> {
+        route_key(
+            &app.prompt_key_state(),
+            Key::Named(key),
+            Modifiers::default(),
+        )
+    }
+
+    #[test]
+    fn the_palette_entry_opens_the_card_and_nothing_is_downloaded() {
+        let before = DOWNLOADS.load(Ordering::SeqCst);
+        let mut app = app_with_data_folder();
+        app.download_ocr_models = counting_download;
+        drop(app.update(Message::CommandPalette(CommandPaletteMessage::Toggle)));
+        drop(app.update(Message::CommandPalette(
+            CommandPaletteMessage::QueryChanged("text recognition".to_owned()),
+        )));
+        drop(app.update(Message::CommandPalette(CommandPaletteMessage::Run)));
+
+        let card = app.ocr_models_for_test().unwrap();
+        assert_eq!(
+            card.target(),
+            Some(Path::new("/example/data/ocr-models")),
+            "the folder next to the index"
+        );
+        assert!(!card.is_downloading());
+        assert!(app.blocking_overlay_is_open());
+        assert_eq!(DOWNLOADS.load(Ordering::SeqCst), before);
+    }
+
+    #[test]
+    fn cancel_and_escape_close_the_card_without_a_download() {
+        let before = DOWNLOADS.load(Ordering::SeqCst);
+        let mut app = app_with_data_folder();
+        app.download_ocr_models = counting_download;
+        send(&mut app, OcrModelsMessage::Open);
+        assert_eq!(
+            route(&app, Named::Escape),
+            Some(Message::OcrModels(OcrModelsMessage::Close))
+        );
+        assert_eq!(
+            route(&app, Named::Enter),
+            Some(Message::DialogActivate),
+            "Enter presses the focused button"
+        );
+
+        drop(app.update(Message::DialogActivate));
+        assert!(
+            app.ocr_models_for_test().is_none(),
+            "Cancel has the focus when it opens"
+        );
+        assert_eq!(DOWNLOADS.load(Ordering::SeqCst), before);
+    }
+
+    #[tokio::test]
+    async fn the_download_button_starts_one_download_only() {
+        let mut app = app_with_data_folder();
+        send(&mut app, OcrModelsMessage::Open);
+        send(&mut app, OcrModelsMessage::Download);
+        assert!(app.ocr_models_for_test().unwrap().is_downloading());
+
+        send(&mut app, OcrModelsMessage::Close);
+        assert!(
+            app.ocr_models_for_test().is_some(),
+            "closing waits while the files are written"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_finished_download_closes_the_card_and_says_so() {
+        let mut app = app_with_data_folder();
+        send(&mut app, OcrModelsMessage::Open);
+        send(&mut app, OcrModelsMessage::Download);
+        let generation = app.ocr_models_generation;
+        send(
+            &mut app,
+            OcrModelsMessage::Downloaded {
+                generation,
+                result: Ok(()),
+            },
+        );
+        assert!(app.ocr_models_for_test().is_none());
+        assert_eq!(
+            app.notice_for_test(),
+            Some("Text recognition models downloaded. Scanned pages are read from now on.")
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_download_stays_on_the_card_and_can_be_tried_again() {
+        let mut app = app_with_data_folder();
+        send(&mut app, OcrModelsMessage::Open);
+        send(&mut app, OcrModelsMessage::Download);
+        let generation = app.ocr_models_generation;
+        send(
+            &mut app,
+            OcrModelsMessage::Downloaded {
+                generation,
+                result: Err(DownloadError::Network(FetchError::Timeout)),
+            },
+        );
+        let card = app.ocr_models_for_test().unwrap();
+        assert!(!card.is_downloading());
+        assert_eq!(
+            card.error(),
+            Some(&DownloadError::Network(FetchError::Timeout))
+        );
+        send(&mut app, OcrModelsMessage::Download);
+        assert!(app.ocr_models_for_test().unwrap().is_downloading());
+    }
+
+    #[test]
+    fn an_answer_for_a_closed_card_is_dropped() {
+        let mut app = app_with_data_folder();
+        send(&mut app, OcrModelsMessage::Open);
+        let stale = app.ocr_models_generation;
+        send(&mut app, OcrModelsMessage::Close);
+        send(&mut app, OcrModelsMessage::Open);
+        send(
+            &mut app,
+            OcrModelsMessage::Downloaded {
+                generation: stale,
+                result: Ok(()),
+            },
+        );
+        assert!(app.ocr_models_for_test().is_some());
+        assert_eq!(app.notice_for_test(), None);
+    }
+
+    #[test]
+    fn without_a_data_folder_the_button_says_why() {
+        let mut app = App::with_fixed_panels();
+        app.filing_index_path = None;
+        send(&mut app, OcrModelsMessage::Open);
+        send(&mut app, OcrModelsMessage::Download);
+        let card = app.ocr_models_for_test().unwrap();
+        assert_eq!(card.error(), Some(&DownloadError::NoDataFolder));
+        assert!(!card.is_downloading());
+    }
+
+    #[test]
+    fn it_is_not_opened_over_another_modal() {
+        let mut app = app_with_data_folder();
+        drop(app.update(Message::CommandPalette(CommandPaletteMessage::Toggle)));
+        send(&mut app, OcrModelsMessage::Open);
+        assert!(app.ocr_models_for_test().is_none());
     }
 }

@@ -14,6 +14,7 @@ mod ui_tests;
 mod app;
 mod backend;
 mod command_palette;
+mod commands;
 mod config;
 mod context_menu;
 mod dialog;
@@ -24,7 +25,12 @@ mod fs;
 mod i18n;
 mod jobs;
 mod keymap;
+#[cfg(any(target_os = "macos", test))]
+mod menu;
 mod messages;
+#[cfg(target_os = "macos")]
+mod native_menu;
+mod ocr_models;
 mod open_vsx;
 mod palette;
 mod quick_open;
@@ -60,10 +66,32 @@ fn program(
         .window(iced::window::Settings {
             size: ui::layout::INITIAL_WINDOW_SIZE,
             icon: window_icon(),
-            ..iced::window::Settings::default()
+            ..window_frame()
         })
         .default_font(iced::Font::MONOSPACE)
         .antialiasing(true)
+}
+
+/// The title bar row in the app draws the title and, off macOS, the window
+/// buttons; the system frame gives way to it.
+#[cfg(target_os = "macos")]
+fn window_frame() -> iced::window::Settings {
+    iced::window::Settings {
+        platform_specific: iced::window::settings::PlatformSpecific {
+            title_hidden: true,
+            titlebar_transparent: true,
+            fullsize_content_view: true,
+        },
+        ..iced::window::Settings::default()
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn window_frame() -> iced::window::Settings {
+    iced::window::Settings {
+        decorations: false,
+        ..iced::window::Settings::default()
+    }
 }
 
 const WINDOW_ICON_SIZE: u32 = 128;

@@ -115,6 +115,24 @@
       "de": "Abbrechen"
     },
     {
+      "key": "dialog.hint.escape",
+      "context": "Key hint in the footer of every dialog: the Escape key closes or cancels the dialog. Keep the key name Esc, then a colon and a short verb.",
+      "en": "Esc: close",
+      "de": "Esc: schließen"
+    },
+    {
+      "key": "dialog.hint.enter",
+      "context": "Key hint in the footer of a dialog with a main button: the Enter key presses it. Keep the key name Enter, then a colon and a short verb.",
+      "en": "Enter: confirm",
+      "de": "Enter: bestätigen"
+    },
+    {
+      "key": "dialog.hint.tab",
+      "context": "Key hint in the footer of a dialog with more than one button or field: the Tab key moves the focus. Keep the key name Tab, then a colon and a short phrase.",
+      "en": "Tab: next field",
+      "de": "Tab: nächstes Feld"
+    },
+    {
       "key": "error.empty_name",
       "context": "Shown in the dialog when the name field is empty. Addressed to the user, not a technical error.",
       "en": "Please enter a name",
@@ -667,18 +685,6 @@
       "de": "Keine passenden Dateien"
     },
     {
-      "key": "command_palette.title",
-      "context": "Title of the command palette (Ctrl+Shift+P / Cmd+Shift+P), a box in which an action is picked by name. A playful name for a lab where actions are run; the line below it is command_palette.subtitle, which says what the box does.",
-      "en": "Lab",
-      "de": "Labor"
-    },
-    {
-      "key": "command_palette.subtitle",
-      "context": "Line below the title of the command palette (Ctrl+Shift+P / Cmd+Shift+P), saying plainly what the box does. Imperative.",
-      "en": "Run an action",
-      "de": "Aktion ausführen"
-    },
-    {
       "key": "command_palette.placeholder",
       "context": "Placeholder of the text field of the command palette, shown while it is empty. A short instruction.",
       "en": "Type part of an action name",
@@ -689,6 +695,126 @@
       "context": "Status line of the command palette when nothing that was typed matches an action name.",
       "en": "No matching actions",
       "de": "Keine passenden Aktionen"
+    },
+    {
+      "key": "group.file",
+      "context": "Heading of a group of commands in the command palette (and, later, a menu of the same name). One or two words.",
+      "en": "File",
+      "de": "Datei"
+    },
+    {
+      "key": "group.edit",
+      "context": "Heading of a group of commands in the command palette (and, later, a menu of the same name). One or two words.",
+      "en": "Edit",
+      "de": "Bearbeiten"
+    },
+    {
+      "key": "group.view",
+      "context": "Heading of a group of commands in the command palette (and, later, a menu of the same name). One or two words.",
+      "en": "View",
+      "de": "Ansicht"
+    },
+    {
+      "key": "group.go",
+      "context": "Heading of a group of commands in the command palette (and, later, a menu of the same name). One or two words.",
+      "en": "Go",
+      "de": "Gehe zu"
+    },
+    {
+      "key": "group.search",
+      "context": "Heading of a group of commands in the command palette (and, later, a menu of the same name). One or two words.",
+      "en": "Search",
+      "de": "Suche"
+    },
+    {
+      "key": "group.hermes",
+      "context": "Heading of a group of commands in the command palette (and, later, a menu of the same name). One or two words.",
+      "en": "Filing",
+      "de": "Ablage"
+    },
+    {
+      "key": "group.hermes.theme",
+      "context": "Theme name of the command group group.hermes, shown dimmed after its plain name in the command palette. A playful name; the plain name beside it says what the group holds.",
+      "en": "Hermes",
+      "de": "Hermes"
+    },
+    {
+      "key": "group.window",
+      "context": "Heading of a group of commands in the command palette (and, later, a menu of the same name). One or two words.",
+      "en": "Window",
+      "de": "Fenster"
+    },
+    {
+      "key": "group.help",
+      "context": "Heading of a group of commands in the command palette (and, later, a menu of the same name). One or two words.",
+      "en": "Help",
+      "de": "Hilfe"
+    },
+    {
+      "key": "menu.about",
+      "context": "The first entry of the app menu on a Mac: shows the version and licenses of the app.",
+      "en": "About NC-rs",
+      "de": "Über NC-rs"
+    },
+    {
+      "key": "menu.services",
+      "context": "Entry of the app menu on a Mac that opens the system's list of services other apps offer.",
+      "en": "Services",
+      "de": "Dienste"
+    },
+    {
+      "key": "menu.hide",
+      "context": "Entry of the app menu on a Mac that hides the app's windows until the app is picked again.",
+      "en": "Hide NC-rs",
+      "de": "NC-rs ausblenden"
+    },
+    {
+      "key": "menu.hide_others",
+      "context": "Entry of the app menu on a Mac that hides the windows of all other apps.",
+      "en": "Hide Others",
+      "de": "Andere ausblenden"
+    },
+    {
+      "key": "menu.show_all",
+      "context": "Entry of the app menu on a Mac that shows the windows of all apps again.",
+      "en": "Show All",
+      "de": "Alle einblenden"
+    },
+    {
+      "key": "menu.minimize",
+      "context": "Entry of the Window menu on a Mac that puts the window into the Dock.",
+      "en": "Minimize",
+      "de": "Im Dock ablegen"
+    },
+    {
+      "key": "menu.zoom",
+      "context": "Entry of the Window menu on a Mac that toggles the window between its size and the largest useful size.",
+      "en": "Zoom",
+      "de": "Zoomen"
+    },
+    {
+      "key": "menu.fullscreen",
+      "context": "Entry of the Window menu on a Mac that makes the window fill the screen.",
+      "en": "Enter Full Screen",
+      "de": "Vollbildmodus"
+    },
+    {
+      "key": "menu.bring_all_to_front",
+      "context": "Entry of the Window menu on a Mac that puts every window of the app in front of other apps.",
+      "en": "Bring All to Front",
+      "de": "Alle nach vorne bringen"
+    },
+    {
+      "key": "menu.app",
+      "context": "Title of the app menu on a Mac, the first menu of the menu bar. The system shows the app's own name there instead.",
+      "en": "NC-rs",
+      "de": "NC-rs"
+    },
+    {
+      "key": "command_palette.recent",
+      "context": "Heading above the commands that were run last, at the top of the command palette while the field is empty.",
+      "en": "Recent",
+      "de": "Zuletzt"
     },
     {
       "key": "action.quit",
@@ -722,21 +848,39 @@
     },
     {
       "key": "action.toggle_tag",
-      "context": "Entry of the command palette that runs the key action toggle_tag. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
-      "en": "Stamp: tag or untag row",
-      "de": "Stempel: Zeile markieren oder Markierung aufheben"
+      "context": "Entry of the command palette that runs the key action toggle_tag. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Tag or untag row",
+      "de": "Zeile markieren oder Markierung aufheben"
+    },
+    {
+      "key": "action.toggle_tag.theme",
+      "context": "Theme name of the key action toggle_tag, shown dimmed after its plain name action.toggle_tag in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Stamp",
+      "de": "Stempel"
     },
     {
       "key": "action.tag_all",
-      "context": "Entry of the command palette that runs the key action tag_all. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
-      "en": "Stamp all: tag all rows",
-      "de": "Alle stempeln: alle Zeilen markieren"
+      "context": "Entry of the command palette that runs the key action tag_all. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Tag all rows",
+      "de": "Alle Zeilen markieren"
+    },
+    {
+      "key": "action.tag_all.theme",
+      "context": "Theme name of the key action tag_all, shown dimmed after its plain name action.tag_all in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Stamp all",
+      "de": "Alle stempeln"
     },
     {
       "key": "action.clear_tags",
-      "context": "Entry of the command palette that runs the key action clear_tags. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
-      "en": "Clear all stamps: untag all rows",
-      "de": "Alle Stempel entfernen: alle Markierungen aufheben"
+      "context": "Entry of the command palette that runs the key action clear_tags. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Untag all rows",
+      "de": "Alle Markierungen aufheben"
+    },
+    {
+      "key": "action.clear_tags.theme",
+      "context": "Theme name of the key action clear_tags, shown dimmed after its plain name action.clear_tags in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Clear all stamps",
+      "de": "Alle Stempel entfernen"
     },
     {
       "key": "action.abort_job",
@@ -782,9 +926,15 @@
     },
     {
       "key": "action.delete",
-      "context": "Entry of the command palette that runs the key action delete. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
-      "en": "Delete · off to the garbage ball",
-      "de": "Löschen · ab in den Müllball"
+      "context": "Entry of the command palette that runs the key action delete. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Delete",
+      "de": "Löschen"
+    },
+    {
+      "key": "action.delete.theme",
+      "context": "Theme name of the key action delete, shown dimmed after its plain name action.delete in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "off to the garbage ball",
+      "de": "ab in den Müllball"
     },
     {
       "key": "action.delete_permanently",
@@ -800,15 +950,27 @@
     },
     {
       "key": "action.drive_menu_left",
-      "context": "Entry of the command palette that runs the key action drive_menu_left. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
-      "en": "Planets: drive menu, left panel",
-      "de": "Planeten: Laufwerke, linkes Panel"
+      "context": "Entry of the command palette that runs the key action drive_menu_left. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Drive menu, left panel",
+      "de": "Laufwerke, linkes Panel"
+    },
+    {
+      "key": "action.drive_menu_left.theme",
+      "context": "Theme name of the key action drive_menu_left, shown dimmed after its plain name action.drive_menu_left in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Planets",
+      "de": "Planeten"
     },
     {
       "key": "action.drive_menu_right",
-      "context": "Entry of the command palette that runs the key action drive_menu_right. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
-      "en": "Planets: drive menu, right panel",
-      "de": "Planeten: Laufwerke, rechtes Panel"
+      "context": "Entry of the command palette that runs the key action drive_menu_right. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Drive menu, right panel",
+      "de": "Laufwerke, rechtes Panel"
+    },
+    {
+      "key": "action.drive_menu_right.theme",
+      "context": "Theme name of the key action drive_menu_right, shown dimmed after its plain name action.drive_menu_right in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Planets",
+      "de": "Planeten"
     },
     {
       "key": "action.sort_by_name",
@@ -836,27 +998,51 @@
     },
     {
       "key": "action.search",
-      "context": "Entry of the command palette that runs the key action search. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
-      "en": "Smell-o-scope: search in files",
-      "de": "Riech-o-skop: in Dateien suchen"
+      "context": "Entry of the command palette that runs the key action search. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Search in files",
+      "de": "In Dateien suchen"
+    },
+    {
+      "key": "action.search.theme",
+      "context": "Theme name of the key action search, shown dimmed after its plain name action.search in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Smell-o-scope",
+      "de": "Riech-o-skop"
     },
     {
       "key": "action.quick_open",
-      "context": "Entry of the command palette that runs the key action quick_open. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it. Starts with a playful name, then says plainly what the action does.",
-      "en": "Dark Matter Drive: go to file",
-      "de": "Dunkle-Materie-Antrieb: zu Datei springen"
+      "context": "Entry of the command palette that runs the key action quick_open. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Go to file",
+      "de": "Zu Datei springen"
+    },
+    {
+      "key": "action.quick_open.theme",
+      "context": "Theme name of the key action quick_open, shown dimmed after its plain name action.quick_open in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Dark Matter Drive",
+      "de": "Dunkle-Materie-Antrieb"
     },
     {
       "key": "action.filing_status",
-      "context": "Entry of the command palette that runs the key action filing_status. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
-      "en": "Inspection: Hermes status and errors",
-      "de": "Inspektion: Status und Fehler von Hermes"
+      "context": "Entry of the command palette that runs the key action filing_status. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Status and errors",
+      "de": "Status und Fehler"
+    },
+    {
+      "key": "action.filing_status.theme",
+      "context": "Theme name of the key action filing_status, shown dimmed after its plain name action.filing_status in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Inspection",
+      "de": "Inspektion"
     },
     {
       "key": "action.filing_setup",
-      "context": "Entry of the command palette that runs the key action filing_setup. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
-      "en": "Hermes: choose folders",
-      "de": "Hermes: Ordner wählen"
+      "context": "Entry of the command palette that runs the key action filing_setup. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Choose folders",
+      "de": "Ordner wählen"
+    },
+    {
+      "key": "action.filing_setup.theme",
+      "context": "Theme name of the key action filing_setup, shown dimmed after its plain name action.filing_setup in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Hermes",
+      "de": "Hermes"
     },
     {
       "key": "action.search_case",
@@ -875,6 +1061,18 @@
       "context": "Entry of the command palette that runs the key action search_regex. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
       "en": "Search: regular expression",
       "de": "Suche: regulärer Ausdruck"
+    },
+    {
+      "key": "action.command_palette",
+      "context": "Entry of the command palette that runs the key action command_palette. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Command list",
+      "de": "Befehlsliste"
+    },
+    {
+      "key": "action.command_palette.theme",
+      "context": "Theme name of the key action command_palette, shown dimmed after its plain name action.command_palette in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Lab",
+      "de": "Labor"
     },
     {
       "key": "filing.encryption_title",
@@ -1099,6 +1297,18 @@
       "de": "Hermes pausiert: {done} von {total} Akten abgestempelt"
     },
     {
+      "key": "title_bar.hermes_rate",
+      "context": "Chip in the title bar while the filing module (Hermes) is working: files per minute, measured over the last full minutes. Takes the number. Pressing it opens the Inspection.",
+      "en": "Hermes {rate}/min",
+      "de": "Hermes {rate}/Min."
+    },
+    {
+      "key": "title_bar.hermes_paused",
+      "context": "Chip in the title bar while the filing module (Hermes) is paused; pressing it opens the Inspection.",
+      "en": "Hermes paused",
+      "de": "Hermes pausiert"
+    },
+    {
       "key": "filing_status.title",
       "context": "Title of the filing status page, a box over the panels that shows what Hermes (the filing module) is doing. Inspection is the themed name of the page.",
       "en": "Inspection",
@@ -1109,12 +1319,6 @@
       "context": "Line under the title of the filing status page that says what the page is for. Hermes is the name of the filing module.",
       "en": "Hermes: pipeline, errors, figures",
       "de": "Hermes: Verarbeitung, Fehler, Kennzahlen"
-    },
-    {
-      "key": "filing_status.close",
-      "context": "Button on the filing status page that closes it. One word, verb.",
-      "en": "Close",
-      "de": "Schließen"
     },
     {
       "key": "filing_status.section_pipeline",
@@ -1376,9 +1580,9 @@
     },
     {
       "key": "filing_status.hint",
-      "context": "Key hints at the bottom of the filing status page. Keep the key names.",
-      "en": "Esc closes · P pause · 1/2/3 load · +/- workers · Up/Down, Enter errors",
-      "de": "Esc schließt · P Pause · 1/2/3 Last · +/- Worker · Auf/Ab, Enter Fehler"
+      "context": "Key hints for the filing status page, below its content. The keys for closing and confirming are in the dialog footer. Keep the key names.",
+      "en": "P pause · 1/2/3 load · +/- workers · Up/Down, Enter errors",
+      "de": "P Pause · 1/2/3 Last · +/- Worker · Auf/Ab, Enter Fehler"
     },
     {
       "key": "filing_setup.title",
@@ -1787,6 +1991,84 @@
       "context": "Error in the theme download card when the theme files or the config file could not be written. Takes the path and the reason, which is English and stays untranslated.",
       "en": "Could not write {path}: {reason}",
       "de": "{path} konnte nicht geschrieben werden: {reason}"
+    },
+    {
+      "key": "action.download_ocr_models",
+      "context": "Entry of the command list and the menu that runs the key action download_ocr_models, which opens the card asking whether to download the models for reading scanned pages. The name of what the action does, as short as a menu entry; it has no key. The ellipsis says a card with a question follows.",
+      "en": "Download text recognition models…",
+      "de": "Modelle für Texterkennung laden…"
+    },
+    {
+      "key": "ocr_models.title",
+      "context": "Title of the card that asks before the models for text recognition (OCR) of scanned pages are downloaded.",
+      "en": "Download text recognition models",
+      "de": "Modelle für Texterkennung laden"
+    },
+    {
+      "key": "ocr_models.intro",
+      "context": "Explanation at the top of the card for the download of the OCR models. Scanned pages have no text of their own; the models read it from the picture. They are not part of ncrs and are downloaded once, only after the user presses the download button.",
+      "en": "Scanned pages are read with the text recognition of the ocrs project. It needs two model files that are not part of ncrs. Nothing is sent until you press Download. Each file is checked against its size and checksum before it is used. Where the system has its own text recognition (macOS), that one is used first and these models are only the fallback.",
+      "de": "Gescannte Seiten werden mit der Texterkennung des ocrs-Projekts gelesen. Dafür braucht es zwei Modelldateien, die nicht zu ncrs gehören. Es wird nichts gesendet, bevor du auf Laden drückst. Jede Datei wird vor der Nutzung gegen Größe und Prüfsumme geprüft. Wo das System eine eigene Texterkennung hat (macOS), wird zuerst diese genutzt und diese Modelle sind nur der Ersatz."
+    },
+    {
+      "key": "ocr_models.host",
+      "context": "Line in the OCR models card naming the server the files are downloaded from. Takes the host name.",
+      "en": "Download from: {host}",
+      "de": "Herunterladen von: {host}"
+    },
+    {
+      "key": "ocr_models.file",
+      "context": "Line in the OCR models card naming one model file and its size. Takes the file name and the size with its unit, for example 2.4 MB.",
+      "en": "{name}: {size}",
+      "de": "{name} ({size})"
+    },
+    {
+      "key": "ocr_models.checksum",
+      "context": "Line in the OCR models card under a model file: its SHA-256 checksum, which the download must match. Takes the checksum as 64 hexadecimal characters.",
+      "en": "SHA-256 checksum: {checksum}",
+      "de": "SHA-256-Prüfsumme: {checksum}"
+    },
+    {
+      "key": "ocr_models.target",
+      "context": "Line in the OCR models card naming the folder the files are saved in. Takes the folder path.",
+      "en": "Saved to: {folder}",
+      "de": "Gespeichert in: {folder}"
+    },
+    {
+      "key": "ocr_models.source",
+      "context": "Line in the OCR models card saying whose models these are. Takes the address of the project page, shown as plain text.",
+      "en": "The models are made by the ocrs project: {project}",
+      "de": "Die Modelle stammen vom ocrs-Projekt: {project}"
+    },
+    {
+      "key": "ocr_models.download",
+      "context": "Button in the OCR models card that starts the download. Verb.",
+      "en": "Download",
+      "de": "Laden"
+    },
+    {
+      "key": "ocr_models.downloading",
+      "context": "Line in the OCR models card while the files are being downloaded.",
+      "en": "Downloading…",
+      "de": "Wird geladen…"
+    },
+    {
+      "key": "ocr_models.installed",
+      "context": "Notice in the status bar after the OCR models were downloaded and checked.",
+      "en": "Text recognition models downloaded. Scanned pages are read from now on.",
+      "de": "Modelle für die Texterkennung geladen. Gescannte Seiten werden ab jetzt gelesen."
+    },
+    {
+      "key": "ocr_models.error",
+      "context": "Error in the OCR models card when the download failed or a file did not pass the check. Takes the technical detail, which stays untranslated. A file that failed is never put in place.",
+      "en": "Download failed ({detail})",
+      "de": "Download fehlgeschlagen ({detail})"
+    },
+    {
+      "key": "ocr_models.error_no_folder",
+      "context": "Error in the OCR models card when there is no data folder to save the models in.",
+      "en": "There is no data folder to save the models in.",
+      "de": "Es gibt keinen Datenordner, in dem die Modelle gespeichert werden könnten."
     }
   ]
 }

@@ -11,6 +11,11 @@ set -eu
 REPO="${NCRS_REPO:-CosmicDriftGameStudio/ncrs}"
 BIN_DIR="${NCRS_BIN_DIR:-$HOME/.local/bin}"
 BIN_NAME="ncrs"
+# The PDF library sits next to the binary; ncrs looks for it there.
+case "$(uname -s)" in
+    Darwin) LIB_NAME="libpdfium.dylib" ;;
+    *)      LIB_NAME="libpdfium.so" ;;
+esac
 
 info() { printf '  %s\n' "$*"; }
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
@@ -21,6 +26,10 @@ uninstall() {
         info "removed $BIN_DIR/$BIN_NAME"
     else
         info "nothing to remove at $BIN_DIR/$BIN_NAME"
+    fi
+    if [ -e "$BIN_DIR/$LIB_NAME" ]; then
+        rm -f "$BIN_DIR/$LIB_NAME"
+        info "removed $BIN_DIR/$LIB_NAME"
     fi
     info "config, if any, is in ${XDG_CONFIG_HOME:-$HOME/.config}/ncrs"
 }
@@ -142,13 +151,19 @@ tar -xzf "$tmp/$archive" -C "$tmp" || fail "could not unpack $archive"
 src=$(find "$tmp" -type f -name "$BIN_NAME" | head -n 1)
 [ -n "$src" ] || fail "archive did not contain a file called $BIN_NAME"
 
+lib_src=$(find "$tmp" -type f -name "$LIB_NAME" | head -n 1)
+[ -n "$lib_src" ] || fail "archive did not contain a file called $LIB_NAME"
+
 mkdir -p "$BIN_DIR"
 # Install via a temp name so a running instance is not clobbered mid-execution.
 cp "$src" "$BIN_DIR/.$BIN_NAME.new"
 chmod +x "$BIN_DIR/.$BIN_NAME.new"
 mv "$BIN_DIR/.$BIN_NAME.new" "$BIN_DIR/$BIN_NAME"
 
-info "installed $BIN_DIR/$BIN_NAME"
+cp "$lib_src" "$BIN_DIR/.$LIB_NAME.new"
+mv "$BIN_DIR/.$LIB_NAME.new" "$BIN_DIR/$LIB_NAME"
+
+info "installed $BIN_DIR/$BIN_NAME and $BIN_DIR/$LIB_NAME"
 
 # --- PATH hint --------------------------------------------------------------
 

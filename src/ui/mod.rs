@@ -12,8 +12,10 @@ pub mod filing_setup;
 pub mod filing_status;
 pub mod fkeys;
 pub mod format;
+pub mod frame;
 pub mod key_intercept;
 pub mod layout;
+pub mod ocr_models;
 pub mod panel;
 pub mod picker;
 pub mod quick_open;
@@ -21,6 +23,7 @@ pub mod search;
 pub mod statusbar;
 pub mod theme;
 pub mod theme_fetch;
+pub mod titlebar;
 pub mod volumes;
 
 pub use panel::{PanelProps, PanelState};

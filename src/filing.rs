@@ -23,7 +23,11 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 
 use ncrs_index::{Index, IndexError, IndexStatistics, KeyStore, RecoveryKey};
-use ncrs_intake::Location;
+#[cfg(target_os = "macos")]
+use ncrs_intake::ImageTextWithFallback;
+use ncrs_intake::{
+    ImageTextSource, LazyOcrText, Location, PdfText, PdfUnavailable, TextChain, OCR_MODELS_FOLDER,
+};
 use ncrs_pipeline::{intake_steps, IndexAccess, Load, Runner, Settings, SystemClock};
 
 use crate::config::{Filing, FilingLocation};
@@ -561,6 +565,40 @@ fn key_error(err: IndexError) -> KeyError {
 // Module
 // ---------------------------------------------------------------------------
 
+/// The PDF source; when the pdfium library is missing, each PDF reports that
+/// instead, and the other files go on. A scan is read by OCR once the user has
+/// downloaded the models into `ocr_models_dir`; until then it yields no text.
+/// On macOS the text recognition of the system comes first and the models are
+/// the fallback when it fails.
+fn shipped_text_chain(ocr_models_dir: PathBuf) -> TextChain {
+    let chain = match PdfText::load_shipped() {
+        Ok(pdf) => TextChain::new().with_source(pdf),
+        Err(err) => TextChain::new().with_source(PdfUnavailable::new(err)),
+    };
+    chain.with_image_source(shipped_image_source(ocr_models_dir))
+}
+
+#[cfg(target_os = "macos")]
+fn shipped_image_source(ocr_models_dir: PathBuf) -> impl ImageTextSource + 'static {
+    ImageTextWithFallback::new(
+        ncrs_ocr_vision::VisionText,
+        LazyOcrText::new(ocr_models_dir),
+    )
+}
+
+#[cfg(not(target_os = "macos"))]
+fn shipped_image_source(ocr_models_dir: PathBuf) -> impl ImageTextSource + 'static {
+    LazyOcrText::new(ocr_models_dir)
+}
+
+/// Where the OCR models live: next to the index, so a portable data folder
+/// carries them along.
+pub fn ocr_models_dir(index_path: &Path) -> Option<PathBuf> {
+    index_path
+        .parent()
+        .map(|data_dir| data_dir.join(OCR_MODELS_FOLDER))
+}
+
 impl FilingModule {
     /// `None` when the module is off: nothing is opened, created or resolved.
     pub fn start(
@@ -651,7 +689,16 @@ impl FilingModule {
         let logical_cores = thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
         Ok(Runner::start(
             Settings::new(self.load, logical_cores),
-            intake_steps(Arc::new(handle)),
+            intake_steps(
+                Arc::new(handle),
+                Arc::new(shipped_text_chain(
+                    ocr_models_dir(&self.db_path)
+                        .unwrap_or_else(|| PathBuf::from(OCR_MODELS_FOLDER)),
+                )),
+                // No AI provider yet: the built-in one comes with its own
+                // consent and setup.
+                None,
+            ),
             locations,
             Arc::new(SystemClock),
         ))
@@ -702,6 +749,21 @@ impl FilingModule {
                 | Phase::PlainFileWarning
                 | Phase::Failed(_)
         )
+    }
+
+    /// Whether "Not now", the cross and Esc may leave the card. The recovery
+    /// key is shown once, so leaving its card would lose it; a card that works
+    /// cannot be left either.
+    pub fn card_can_be_dismissed(&self) -> bool {
+        self.has_card() && self.may_dismiss()
+    }
+
+    fn may_dismiss(&self) -> bool {
+        let stays = matches!(
+            self.phase,
+            Phase::Ready | Phase::Dismissed | Phase::ShowRecoveryKey { .. }
+        );
+        !stays && !self.phase.is_busy()
     }
 
     /// For the clipboard only.
@@ -779,12 +841,7 @@ impl FilingModule {
                 None
             }
             FilingMessage::Dismiss => {
-                // The recovery key is shown once; leaving its card would lose it.
-                let stays = matches!(
-                    self.phase,
-                    Phase::Ready | Phase::Dismissed | Phase::ShowRecoveryKey { .. }
-                );
-                if !stays && !self.phase.is_busy() {
+                if self.may_dismiss() {
                     self.generation = next_generation();
                     self.phase = Phase::Dismissed;
                 }

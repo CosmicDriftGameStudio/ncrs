@@ -5,14 +5,23 @@
 //! questions; with it, the user answers once and the rest follow. That was in
 //! the requirements before anything here was built.
 
-use iced::widget::{button, checkbox, column, container, text, Row};
-use iced::{alignment, Element};
+use iced::widget::text::Wrapping;
+use iced::widget::{checkbox, column, text, Row};
+use iced::{alignment, Element, Size};
 
-use super::layout::DIALOG_WIDTH;
+use super::format;
+use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::theme::{self, font_size, spacing};
 use crate::i18n::{Language, Msg};
 use crate::messages::{ConflictChoice, Message};
 use crate::palette::Palette;
+
+const SIZE: DialogSize = DialogSize::Small;
+
+/// The buttons from left to right, the focus numbers they have.
+pub const CANCEL_FOCUS: usize = 0;
+pub const KEEP_FOCUS: usize = 1;
+pub const OVERWRITE_FOCUS: usize = 2;
 
 /// Renders the conflict dialog.
 ///
@@ -20,7 +29,7 @@ use crate::palette::Palette;
 /// ticked; the app holds it so the tick survives the dialog being rebuilt every
 /// frame.
 ///
-/// `focus` is the button Enter would press: 0 overwrite, 1 keep, 2 cancel.
+/// `focus` is the button Enter would press.
 ///
 /// The keys are routed in `app`, not here: Esc answers "keep", Ctrl+C answers
 /// "cancel the whole operation", Space ticks "for all files".
@@ -30,19 +39,16 @@ pub fn view<'a>(
     palette: &Palette,
     all: bool,
     focus: usize,
+    window: Size,
     on_choice: impl Fn(ConflictChoice) -> Message + 'a,
 ) -> Element<'a, Message> {
-    let title = text(lang.text(Msg::ConflictTitle))
-        .size(font_size::TITLE)
-        .color(palette.accent);
-
-    let subtitle = text(lang.text(Msg::ConflictSubtitle))
-        .size(font_size::STATUS)
-        .color(palette.dim_text);
-
-    let subject = text(lang.text(Msg::ConflictName).replace("{name}", name))
-        .size(font_size::STATUS)
-        .color(palette.text);
+    let subject = text(format::ellipsize_end(
+        &lang.text(Msg::ConflictName).replace("{name}", name),
+        frame::content_chars(SIZE, window, 0.0),
+    ))
+    .size(font_size::STATUS)
+    .color(palette.text)
+    .wrapping(Wrapping::None);
 
     // The checkbox state comes from the app, not from here: the view is pure,
     // and the tick has to survive the dialog being rebuilt every frame.
@@ -58,25 +64,38 @@ pub fn view<'a>(
     .spacing(spacing::CELL_PADDING_X)
     .align_y(alignment::Vertical::Center);
 
-    let button_row = Row::with_children([
-        button(text(lang.text(Msg::ConflictOverwrite)))
-            .on_press(on_choice(ConflictChoice::ThisOverwrite))
-            .style(theme::dialog_button(palette, focus == 0))
-            .into(),
-        button(text(lang.text(Msg::ConflictKeep)))
-            .on_press(on_choice(ConflictChoice::ThisKeep))
-            .style(theme::dialog_button(palette, focus == 1))
-            .into(),
-        button(text(lang.text(Msg::ConflictCancel)))
-            .on_press(on_choice(ConflictChoice::Cancel))
-            .style(theme::dialog_button(palette, focus == 2))
-            .into(),
-    ])
-    .spacing(spacing::CELL_PADDING_X);
+    let choice_button = |label: Msg, choice: ConflictChoice, button_focus: usize| {
+        frame::action(
+            lang.text(label),
+            Some(on_choice(choice)),
+            focus == button_focus,
+            palette,
+        )
+    };
 
-    container(column![title, subtitle, subject, all_row, button_row].spacing(spacing::SECTION_GAP))
-        .padding(spacing::OUTER_PADDING * 2.0)
-        .width(DIALOG_WIDTH)
-        .style(theme::dialog(palette))
-        .into()
+    Frame::new(
+        lang.text(Msg::ConflictTitle),
+        column![subject, all_row].spacing(spacing::SECTION_GAP),
+        SIZE,
+        window,
+        lang,
+        palette,
+    )
+    .subtitle(lang.text(Msg::ConflictSubtitle))
+    .buttons(vec![
+        choice_button(Msg::ConflictCancel, ConflictChoice::Cancel, CANCEL_FOCUS),
+        choice_button(Msg::ConflictKeep, ConflictChoice::ThisKeep, KEEP_FOCUS),
+        choice_button(
+            Msg::ConflictOverwrite,
+            ConflictChoice::ThisOverwrite,
+            OVERWRITE_FOCUS,
+        ),
+    ])
+    // Esc answers "keep", the no that loses no data; the cross does the same.
+    .on_close(on_choice(ConflictChoice::ThisKeep))
+    .hints(KeyHints {
+        enter: true,
+        tab: true,
+    })
+    .into_element()
 }

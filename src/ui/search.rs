@@ -7,7 +7,7 @@ use iced::widget::{tooltip, Column};
 use iced::{alignment, Element, Font, Length};
 
 use super::key_intercept::key_intercept;
-use super::layout::{PANEL_TITLE_HEIGHT, ROW_HEIGHT, SEARCH_HEADER_HEIGHT, TAG_COLUMN_WIDTH};
+use super::layout::{ROW_HEIGHT, SEARCH_HEADER_HEIGHT, TAG_COLUMN_WIDTH};
 use super::theme::{self, font_size, spacing};
 use crate::app::{fill_template, search_toggle_for_press};
 use crate::fs::search::{LineMatch, SearchError};
@@ -88,7 +88,6 @@ pub fn view<'a>(
     };
 
     let framed = column![
-        title_bar(search, lang, palette, is_active),
         header(search, lang, palette, keymap, shortcuts),
         container(body).height(Length::Fill).width(Length::Fill),
     ];
@@ -103,24 +102,12 @@ pub fn view<'a>(
     .into()
 }
 
-fn title_bar<'a>(
-    search: &SearchView,
-    lang: Language,
-    palette: &Palette,
-    active: bool,
-) -> Element<'a, Message> {
-    let title = fill_template(
+/// What the search view's tab in the title bar says.
+pub fn title(search: &SearchView, lang: Language) -> String {
+    fill_template(
         lang.text(Msg::SearchTitle),
         &[("{path}", &search.root.display().to_string())],
-    );
-    container(text(title).size(font_size::TITLE).wrapping(Wrapping::None))
-        .padding([0.0, spacing::CELL_PADDING_X])
-        .height(PANEL_TITLE_HEIGHT)
-        .width(Length::Fill)
-        .align_y(alignment::Vertical::Center)
-        .clip(true)
-        .style(theme::panel_title(palette, active))
-        .into()
+    )
 }
 
 fn header<'a>(

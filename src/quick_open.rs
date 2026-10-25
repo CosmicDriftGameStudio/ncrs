@@ -221,18 +221,6 @@ pub fn highlight_ranges(
     byte_ranges(text, &positions)
 }
 
-/// The score of `text` for `pattern` and what to highlight, or `None` when it
-/// does not match.
-pub fn score_with_highlight(
-    pattern: &Pattern,
-    matcher: &mut Matcher,
-    buffer: &mut Vec<char>,
-    text: &str,
-) -> Option<(u32, Vec<Range<usize>>)> {
-    let score = pattern.score(Utf32Str::new(text, buffer), matcher)?;
-    Some((score, highlight_ranges(pattern, matcher, buffer, text)))
-}
-
 /// The best [`MAX_HITS`] of both lists.
 pub fn merge_hits(chunks: &[Chunk], mut kept: Vec<Hit>, found: Vec<Hit>) -> Vec<Hit> {
     kept.extend(found);

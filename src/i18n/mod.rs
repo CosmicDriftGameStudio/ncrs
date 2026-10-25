@@ -182,6 +182,10 @@ mod tests {
                 | Msg::DeleteOne
                 // The module's name, the same in both languages.
                 | Msg::FilingSetupTitle
+                | Msg::ActionFilingSetupTheme
+                | Msg::GroupHermesTheme
+                // The app's name heads the macOS app menu in every language.
+                | Msg::MenuApp
         )
     }
 

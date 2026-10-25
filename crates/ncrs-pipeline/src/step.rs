@@ -2,8 +2,8 @@ use std::fmt;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use ncrs_index::{DocumentId, Index};
-use ncrs_intake::Location;
+use ncrs_index::{DocumentId, Index, ReviewReason};
+use ncrs_intake::{FilingPlan, Location};
 
 /// One file on its way through the steps.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -12,6 +12,13 @@ pub struct Item {
     pub path: PathBuf,
     /// Set by the step that takes the file into the index.
     pub document: Option<DocumentId>,
+    /// Set by the text step when the file has text; read by later steps.
+    pub text: Option<String>,
+    /// Set by the rules step when a person has to look at the document.
+    pub review: Option<ReviewReason>,
+    /// Set by the rules step when a rule says where the document goes.
+    /// Boxed: a plan holds all fields and would make every queued job large.
+    pub plan: Option<Box<FilingPlan>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

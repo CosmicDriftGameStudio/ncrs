@@ -4,23 +4,42 @@
 //! undone, so its default button, the one Enter presses, is the action. Deleting
 //! for good cannot be, so there the default is "Cancel" and the dialog says why.
 
-use iced::widget::{button, column, container, text, Row};
-use iced::Element;
+use iced::widget::text::Wrapping;
+use iced::widget::{column, text};
+use iced::{Element, Size};
 
-use super::layout::DIALOG_WIDTH;
-use super::theme::{self, font_size, spacing};
+use super::format;
+use super::frame::{self, DialogSize, Frame, KeyHints};
+use super::theme::{font_size, spacing};
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::palette::Palette;
 
-/// `focus` is the button Enter would press: 0 confirms, 1 cancels.
+const SIZE: DialogSize = DialogSize::Small;
+
+/// The buttons from left to right: cancel is `0`, confirm is `1`, rightmost.
+pub const CANCEL_FOCUS: usize = 0;
+pub const CONFIRM_FOCUS: usize = 1;
+
+/// The button Enter presses when the dialog opens. The permanent dialog starts
+/// on Cancel, so a reflex Enter never deletes for good.
+pub const fn default_focus(permanent: bool) -> usize {
+    if permanent {
+        CANCEL_FOCUS
+    } else {
+        CONFIRM_FOCUS
+    }
+}
+
+/// `focus` is the button Enter would press.
 ///
 /// `subject` is the entry name or the count line, already worded by the caller
 /// because it needs the number of entries.
 pub fn view<'a>(
-    subject: String,
+    subject: &str,
     permanent: bool,
     focus: usize,
+    window: Size,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -36,36 +55,48 @@ pub fn view<'a>(
         )
     };
 
-    let confirm = button(text(confirm_label))
-        .on_press(Message::DeleteConfirm)
-        .style(theme::dialog_button(palette, focus == 0));
-    let cancel = button(text(lang.text(Msg::DialogCancel)))
-        .on_press(Message::DeleteCancel)
-        .style(theme::dialog_button(palette, focus == 1));
-
-    let mut body = column![text(title).size(font_size::TITLE).color(palette.accent)]
-        .spacing(spacing::SECTION_GAP);
-    if !permanent {
-        body = body.push(
-            text(lang.text(Msg::DeleteSubtitleTrash))
+    let mut content = column![].spacing(spacing::SECTION_GAP);
+    let line_chars = frame::content_chars(SIZE, window, 0.0);
+    for line in subject.lines() {
+        content = content.push(
+            text(format::ellipsize_middle(line, line_chars))
                 .size(font_size::STATUS)
-                .color(palette.dim_text),
+                .color(palette.text)
+                .wrapping(Wrapping::None),
         );
     }
-    body = body.push(text(subject).size(font_size::STATUS).color(palette.text));
     if permanent {
-        body = body.push(
+        content = content.push(
             text(lang.text(Msg::DeleteWarningPermanent))
                 .size(font_size::STATUS)
                 .color(palette.error),
         );
     }
-    body = body
-        .push(Row::with_children([confirm.into(), cancel.into()]).spacing(spacing::CELL_PADDING_X));
 
-    container(body)
-        .padding(spacing::OUTER_PADDING * 2.0)
-        .width(DIALOG_WIDTH)
-        .style(theme::dialog(palette))
-        .into()
+    let mut frame = Frame::new(title, content, SIZE, window, lang, palette);
+    if !permanent {
+        frame = frame.subtitle(lang.text(Msg::DeleteSubtitleTrash));
+    }
+    frame
+        .buttons(vec![
+            frame::action(
+                lang.text(Msg::DialogCancel),
+                Some(Message::DeleteCancel),
+                focus == CANCEL_FOCUS,
+                palette,
+            ),
+            frame::action(
+                confirm_label,
+                Some(Message::DeleteConfirm),
+                focus == CONFIRM_FOCUS,
+                palette,
+            ),
+        ])
+        .on_close(Message::DeleteCancel)
+        // The permanent dialog starts on Cancel, so Enter does not confirm.
+        .hints(KeyHints {
+            enter: !permanent,
+            tab: true,
+        })
+        .into_element()
 }

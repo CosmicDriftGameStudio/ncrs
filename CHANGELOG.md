@@ -6,6 +6,74 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- The groundwork for letting an AI fill in the fields the rules left open
+  (sender, kind, date, number, amount). There is an interface for such a
+  provider that can only return field values, a step in the processing that
+  uses it, and a provider for servers that speak the common chat API, which
+  asks for your consent before a document leaves this machine. No provider
+  is switched on in the app yet, so nothing changes for you today, and
+  nothing is sent anywhere.
+- On macOS, scanned pages are now read with the text recognition built into
+  the system (Apple Vision), which needs no download. If it fails, the ocrs
+  models are used when they have been downloaded.
+- Scanned pages are now read with text recognition (the ocrs project). The
+  two model files it needs are not part of ncrs: the command "Download text
+  recognition models…" shows the server, the files with their size and
+  checksum and the folder first, and downloads them only when you press
+  Download. Each file is checked before it is used. Without the models a scan
+  has no text and goes to the review list, as before.
+- The release archives and the macOS app now contain the PDF library
+  (pdfium), and the install scripts put it next to the program, so ncrs reads
+  PDFs without any extra install.
+- PDFs are now read: the text of a PDF is stored with the document and can
+  be searched. A PDF without text, such as a scan, is prepared as page
+  images so a later step can recognise its text. This needs the PDF library
+  (pdfium), which sits next to the program; without it each PDF shows
+  an error on the status page and is tried again on the next start.
+- Rules now decide where a new document would be filed. A rule can match on
+  words in the text (any case) or on a pattern, and can read the date, the
+  number and the amount out of the text; the filing pattern turns them into a
+  folder and file name, for example `{year}/{date}_{sender}_{number}.pdf`.
+  Whatever a document says is cleaned first, so its text can never send a file
+  outside the archive. A document that no confirmed rule fits, or that lacks a
+  value the pattern needs, goes to the review list with the reason. Nothing is
+  moved yet.
+- The Lab is now one grouped command list (File, Edit, View, Go, Search,
+  Filing, Help). Each command shows its plain name first and the playful name
+  dimmed after it; type the start of any word of either to find it, so "se"
+  finds "Search in files" but no longer "Sort by size". With an empty field,
+  the commands you ran last in this session come first.
+- On macOS the menu bar now holds all commands, in the same groups as the
+  Lab, each with its plain name first and the playful name after it in
+  brackets, and with its key as the keymap defines it (`[keys]` included).
+  Choosing an entry does what the Lab entry does. Entries that cannot run in
+  the search view are greyed out, and everything except Quit is off while a
+  dialog is open so that its keys reach the dialog. Switching the language renames the
+  entries. Keys without `Cmd` or `Ctrl` that are not function keys, like
+  `Enter` or `Space`, are not shown in the menu so they keep working in text
+  fields. On Linux, and for now on Windows, the Lab (`F1`) is the menu.
+- The paths of the two panels now sit in the title bar as tabs, one per
+  panel, with the active one lit; click a tab to switch to that panel. Paths
+  start with `~` under your home folder and are cut in the middle when they do
+  not fit, so the last folder stays visible. The right end of the bar shows a
+  Hermes chip (state and files per minute; click it to open the Inspection;
+  hidden while Hermes is off) and the Lab button with its key. Drag an empty
+  part of the bar to move the window, double-click it to zoom or maximize. On
+  macOS the bar sits behind the traffic lights; on Windows and Linux the
+  window has no system frame any more: the bar carries minimize, maximize and
+  close, and the window edges resize.
+
+### Changed
+
+- Every dialog now uses the same frame in one of three sizes: a title with a
+  "×" to close, the content, a line with the keys that work, and the buttons
+  at the bottom right with Cancel first. Esc closes every dialog that can be
+  left safely, also the Inspection and a filing card that offers "Not now";
+  the recovery key card and running jobs keep their own way out. Long names
+  are shortened in the middle so the start and the extension stay visible.
+
 ## [0.4.0] — 2026-10-24
 
 ### Added

@@ -1,19 +1,29 @@
 //! The drive menu for Alt+F1 and Alt+F2: one row per place, the highlighted one
 //! is where Enter goes.
 
-use iced::widget::{button, column, container, text, Column, Row};
-use iced::{Element, Length};
+use iced::widget::container;
+use iced::widget::{button, column, text, Column, Row};
+use iced::{Element, Length, Size};
 
-use super::layout::DIALOG_WIDTH;
+use super::format;
+use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::theme::{self, font_size, spacing};
 use crate::fs::Volume;
 use crate::i18n::{Language, Msg};
 use crate::messages::{Message, PanelSide};
 use crate::palette::Palette;
 
+/// Medium rather than large: the list is short, and a large frame would be
+/// mostly empty.
+const SIZE: DialogSize = DialogSize::Medium;
+
 /// Rows shown at once. A list longer than this scrolls with the highlight, so
 /// the dialog stays inside the window with many mounts.
 const VISIBLE_ROWS: usize = 12;
+
+/// The name column takes two parts of five, the path three.
+const NAME_SHARE: f32 = 0.4;
+const PATH_SHARE: f32 = 0.6;
 
 /// Index of the first row shown when `selected` is highlighted: the window only
 /// moves once the highlight would leave it.
@@ -25,6 +35,7 @@ pub fn view<'a>(
     side: PanelSide,
     volumes: &'a [Volume],
     selected: usize,
+    window: Size,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -33,6 +44,9 @@ pub fn view<'a>(
         PanelSide::Right => Msg::VolumesSubtitleRight,
     };
     let first = first_visible(selected);
+    let row_width = frame::content_width(SIZE, window) - 2.0 * spacing::CELL_PADDING_X;
+    let name_chars = frame::chars_that_fit(row_width * NAME_SHARE);
+    let path_chars = frame::chars_that_fit(row_width * PATH_SHARE);
     let rows = volumes
         .iter()
         .enumerate()
@@ -52,7 +66,7 @@ pub fn view<'a>(
             };
             let content = Row::with_children([
                 container(
-                    text(volume.name.as_str())
+                    text(format::ellipsize_end(volume.name.as_str(), name_chars))
                         .size(font_size::ROW)
                         .color(name_color)
                         .wrapping(text::Wrapping::None),
@@ -61,10 +75,13 @@ pub fn view<'a>(
                 .clip(true)
                 .into(),
                 container(
-                    text(volume.path.to_string_lossy())
-                        .size(font_size::STATUS)
-                        .color(path_color)
-                        .wrapping(text::Wrapping::None),
+                    text(format::ellipsize_middle(
+                        &volume.path.to_string_lossy(),
+                        path_chars,
+                    ))
+                    .size(font_size::STATUS)
+                    .color(path_color)
+                    .wrapping(text::Wrapping::None),
                 )
                 .width(Length::FillPortion(3))
                 .clip(true)
@@ -78,20 +95,17 @@ pub fn view<'a>(
                 .into()
         });
 
-    let body = column![
-        text(lang.text(Msg::VolumesTitle))
-            .size(font_size::TITLE)
-            .color(palette.accent),
-        text(lang.text(subtitle))
-            .size(font_size::STATUS)
-            .color(palette.dim_text),
-        Column::with_children(rows)
-    ]
-    .spacing(spacing::SECTION_GAP);
-
-    container(body)
-        .padding(spacing::OUTER_PADDING * 2.0)
-        .width(DIALOG_WIDTH)
-        .style(theme::dialog(palette))
-        .into()
+    Frame::new(
+        lang.text(Msg::VolumesTitle),
+        column![Column::with_children(rows)],
+        SIZE,
+        window,
+        lang,
+        palette,
+    )
+    .subtitle(lang.text(subtitle))
+    .on_close(Message::VolumeMenuClose)
+    // Enter goes to the highlighted row, which the content defines.
+    .hints(KeyHints::default())
+    .into_element()
 }

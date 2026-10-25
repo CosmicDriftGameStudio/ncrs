@@ -805,6 +805,29 @@ mod tests {
     }
 
     #[test]
+    fn the_title_bar_text_is_readable_on_its_fills_in_every_preset() {
+        for preset in [
+            ThemePreset::Teal,
+            ThemePreset::Classic,
+            ThemePreset::Cosmic,
+            ThemePreset::Dracula,
+        ] {
+            let p = preset.palette();
+            for (name, text, fill) in [
+                ("title_text on title", p.title_text, p.title),
+                ("dim_text on title_inactive", p.dim_text, p.title_inactive),
+                ("accent on background", p.accent, p.background),
+                ("dim_text on background", p.dim_text, p.background),
+            ] {
+                assert!(
+                    contrast_ratio(text, fill) >= READABLE_CONTRAST,
+                    "{preset:?} {name}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn teal_and_classic_keep_their_old_title_and_tagged_text() {
         for preset in [ThemePreset::Teal, ThemePreset::Classic] {
             let p = preset.palette();

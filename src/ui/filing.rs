@@ -8,11 +8,10 @@
 use iced::widget::span;
 use iced::widget::text::Span;
 use iced::widget::text::Wrapping;
-use iced::widget::{
-    button, checkbox, column, container, radio, rich_text, text, text_input, Column, Row,
-};
-use iced::{Background, Color, Element, Font, Length, Theme};
+use iced::widget::{checkbox, column, radio, rich_text, text, text_input, Column, Row};
+use iced::{Background, Color, Element, Font, Length, Size, Theme};
 
+use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::theme::{self, font_size, spacing};
 use crate::app::fill_template;
 use crate::filing::{FilingMessage, FilingModule, KeyError, KeyProblem, Phase, SecretText};
@@ -23,15 +22,25 @@ use crate::palette::Palette;
 pub const GROUP_FIELD_ID: &str = "filing-group-field";
 pub const KEY_FIELD_ID: &str = "filing-key-field";
 
-const CARD_WIDTH: f32 = 520.0;
+const SIZE: DialogSize = DialogSize::Medium;
+
+/// What a phase puts into the frame.
+struct Card<'a> {
+    title: &'a str,
+    body: Column<'a, Message>,
+    buttons: Vec<Element<'a, Message>>,
+    /// A text field of the card takes Enter and submits it.
+    enter_submits: bool,
+}
 
 /// The card for the module's current phase, or nothing when it has none.
 pub fn view<'a>(
     module: &'a FilingModule,
+    window: Size,
     lang: Language,
     palette: &Palette,
 ) -> Option<Element<'a, Message>> {
-    let body = match module.phase() {
+    let card = match module.phase() {
         Phase::AskEncryption {
             encrypted,
             busy,
@@ -62,24 +71,22 @@ pub fn view<'a>(
         Phase::Failed(reason) => failed(reason, lang, palette),
         Phase::Starting | Phase::Ready | Phase::Dismissed => return None,
     };
-    Some(
-        container(body)
-            .padding(spacing::OUTER_PADDING * 2.0)
-            .width(CARD_WIDTH)
-            .style(theme::dialog(palette))
-            .into(),
-    )
+    let mut framed = Frame::new(card.title, card.body, SIZE, window, lang, palette)
+        .buttons(card.buttons)
+        .hints(KeyHints {
+            enter: card.enter_submits,
+            tab: false,
+        });
+    // The cross and Esc leave the card the way "Not now" does; they are absent
+    // where that is refused.
+    if module.card_can_be_dismissed() {
+        framed = framed.on_close(filing_message(FilingMessage::Dismiss));
+    }
+    Some(framed.into_element())
 }
 
 fn filing_message(message: FilingMessage) -> Message {
     Message::Filing(message)
-}
-
-pub fn title<'a>(label: &'a str, palette: &Palette) -> Element<'a, Message> {
-    text(label)
-        .size(font_size::TITLE)
-        .color(palette.accent)
-        .into()
 }
 
 pub fn paragraph<'a>(
@@ -107,16 +114,7 @@ fn action<'a>(
     primary: bool,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    button(text(label))
-        .on_press_maybe(on_press.map(filing_message))
-        .style(theme::dialog_button(palette, primary))
-        .into()
-}
-
-pub fn buttons<'a>(items: Vec<Element<'a, Message>>) -> Element<'a, Message> {
-    Row::with_children(items)
-        .spacing(spacing::CELL_PADDING_X)
-        .into()
+    frame::action(label, on_press.map(filing_message), primary, palette)
 }
 
 pub fn radio_look(palette: &Palette) -> impl Fn(&Theme, radio::Status) -> radio::Style {
@@ -136,7 +134,7 @@ fn ask_encryption<'a>(
     error: Option<&str>,
     lang: Language,
     palette: &Palette,
-) -> Column<'a, Message> {
+) -> Card<'a> {
     let choice = |label: Msg, value: bool| {
         radio(lang.text(label), value, Some(encrypted), move |chosen| {
             filing_message(FilingMessage::ChooseEncrypted(chosen))
@@ -146,7 +144,6 @@ fn ask_encryption<'a>(
         .style(radio_look(palette))
     };
     let mut body = column![
-        title(lang.text(Msg::FilingEncryptionTitle), palette),
         choice(Msg::FilingEncryptionEncrypted, true),
         choice(Msg::FilingEncryptionPlain, false),
         paragraph(lang.text(Msg::FilingEncryptionNoteFiles), palette),
@@ -160,20 +157,25 @@ fn ask_encryption<'a>(
             palette,
         ));
     }
-    body.push(buttons(vec![
-        action(
-            lang.text(Msg::FilingEncryptionCreate),
-            (!busy).then_some(FilingMessage::CreateIndex),
-            true,
-            palette,
-        ),
-        action(
-            lang.text(Msg::FilingNotNow),
-            (!busy).then_some(FilingMessage::Dismiss),
-            false,
-            palette,
-        ),
-    ]))
+    Card {
+        title: lang.text(Msg::FilingEncryptionTitle),
+        body,
+        buttons: vec![
+            action(
+                lang.text(Msg::FilingNotNow),
+                (!busy).then_some(FilingMessage::Dismiss),
+                false,
+                palette,
+            ),
+            action(
+                lang.text(Msg::FilingEncryptionCreate),
+                (!busy).then_some(FilingMessage::CreateIndex),
+                true,
+                palette,
+            ),
+        ],
+        enter_submits: false,
+    }
 }
 
 /// The key split into its blocks and the dashes between them. The block the
@@ -215,7 +217,7 @@ fn show_recovery_key<'a>(
     mismatch: bool,
     lang: Language,
     palette: &Palette,
-) -> Column<'a, Message> {
+) -> Card<'a> {
     let group_number = (group + 1).to_string();
     let field = text_input("", typed.as_str())
         .id(GROUP_FIELD_ID)
@@ -223,7 +225,6 @@ fn show_recovery_key<'a>(
         .on_submit(filing_message(FilingMessage::GroupSubmit))
         .width(160);
     let mut body = column![
-        title(lang.text(Msg::FilingKeyTitle), palette),
         paragraph(lang.text(Msg::FilingKeyExplain), palette),
         Row::with_children([
             key_text_view(key_text, group, palette),
@@ -254,12 +255,17 @@ fn show_recovery_key<'a>(
             palette,
         ));
     }
-    body.push(buttons(vec![action(
-        lang.text(Msg::FilingKeyContinue),
-        Some(FilingMessage::GroupSubmit),
-        true,
-        palette,
-    )]))
+    Card {
+        title: lang.text(Msg::FilingKeyTitle),
+        body,
+        buttons: vec![action(
+            lang.text(Msg::FilingKeyContinue),
+            Some(FilingMessage::GroupSubmit),
+            true,
+            palette,
+        )],
+        enter_submits: true,
+    }
 }
 
 fn key_error_text(error: &KeyError, lang: Language) -> String {
@@ -281,7 +287,7 @@ fn ask_recovery_key<'a>(
     error: Option<&KeyError>,
     lang: Language,
     palette: &Palette,
-) -> Column<'a, Message> {
+) -> Card<'a> {
     let (explanation, submit_label) = match reason {
         KeyProblem::Missing => (Msg::FilingRestoreMissing, Msg::FilingRestoreButton),
         KeyProblem::Mismatch => (Msg::FilingRestoreMismatch, Msg::FilingReplaceButton),
@@ -291,11 +297,8 @@ fn ask_recovery_key<'a>(
         .on_input(|input| filing_message(FilingMessage::KeyInput(SecretText::from(input))))
         .on_submit(filing_message(FilingMessage::KeySubmit))
         .width(Length::Fill);
-    let mut body = column![
-        title(lang.text(Msg::FilingRestoreTitle), palette),
-        paragraph(lang.text(explanation), palette),
-    ]
-    .spacing(spacing::SECTION_GAP);
+    let mut body =
+        column![paragraph(lang.text(explanation), palette)].spacing(spacing::SECTION_GAP);
     if reason == KeyProblem::Mismatch {
         body = body.push(
             Row::with_children([
@@ -314,30 +317,36 @@ fn ask_recovery_key<'a>(
     if let Some(failure) = error {
         body = body.push(error_line(key_error_text(failure, lang), palette));
     }
-    body.push(buttons(vec![
-        action(
-            lang.text(submit_label),
-            (!busy).then_some(FilingMessage::KeySubmit),
-            true,
-            palette,
-        ),
-        action(
-            lang.text(Msg::FilingNotNow),
-            (!busy).then_some(FilingMessage::Dismiss),
-            false,
-            palette,
-        ),
-    ]))
+    Card {
+        title: lang.text(Msg::FilingRestoreTitle),
+        body,
+        buttons: vec![
+            action(
+                lang.text(Msg::FilingNotNow),
+                (!busy).then_some(FilingMessage::Dismiss),
+                false,
+                palette,
+            ),
+            action(
+                lang.text(submit_label),
+                (!busy).then_some(FilingMessage::KeySubmit),
+                true,
+                palette,
+            ),
+        ],
+        enter_submits: true,
+    }
 }
 
-fn plain_file_warning<'a>(lang: Language, palette: &Palette) -> Column<'a, Message> {
-    column![
-        title(lang.text(Msg::FilingPlainTitle), palette),
-        text(lang.text(Msg::FilingPlainWarning))
+fn plain_file_warning<'a>(lang: Language, palette: &Palette) -> Card<'a> {
+    Card {
+        title: lang.text(Msg::FilingPlainTitle),
+        body: column![text(lang.text(Msg::FilingPlainWarning))
             .size(font_size::STATUS)
             .color(palette.error)
-            .wrapping(Wrapping::Word),
-        buttons(vec![
+            .wrapping(Wrapping::Word)]
+        .spacing(spacing::SECTION_GAP),
+        buttons: vec![
             action(
                 lang.text(Msg::FilingPlainUse),
                 Some(FilingMessage::ConfirmPlainFile),
@@ -350,28 +359,28 @@ fn plain_file_warning<'a>(lang: Language, palette: &Palette) -> Column<'a, Messa
                 true,
                 palette,
             ),
-        ]),
-    ]
-    .spacing(spacing::SECTION_GAP)
+        ],
+        enter_submits: false,
+    }
 }
 
-fn failed<'a>(reason: &str, lang: Language, palette: &Palette) -> Column<'a, Message> {
+fn failed<'a>(reason: &str, lang: Language, palette: &Palette) -> Card<'a> {
     let line = if reason == crate::filing::NO_DATA_DIRECTORY {
         lang.text(Msg::FilingFailedNoDataDir).to_owned()
     } else {
         fill_template(lang.text(Msg::FilingFailedReason), &[("{reason}", reason)])
     };
-    column![
-        title(lang.text(Msg::FilingFailedTitle), palette),
-        error_line(line, palette),
-        buttons(vec![action(
+    Card {
+        title: lang.text(Msg::FilingFailedTitle),
+        body: column![error_line(line, palette)].spacing(spacing::SECTION_GAP),
+        buttons: vec![action(
             lang.text(Msg::FilingFailedClose),
             Some(FilingMessage::Dismiss),
             true,
             palette,
-        )]),
-    ]
-    .spacing(spacing::SECTION_GAP)
+        )],
+        enter_submits: false,
+    }
 }
 
 // reason: a failing assertion is the signal in a test

@@ -46,6 +46,31 @@ jobs:
           cargo install cargo-about --locked --version 0.9.2 --features cli
           cargo about generate about.hbs -o /dev/null
 
+      # The PDF tests load the pdfium library at runtime. The script checks the
+      # download against a pinned checksum. The library sits in lib/ on macOS
+      # and Linux and in bin/ on Windows. The path goes through GITHUB_WORKSPACE,
+      # not PWD: under Git Bash on Windows PWD is a POSIX path (/d/a/...) that
+      # the tests, which run from PowerShell, cannot open.
+      - name: Fetch pdfium for the tests
+        shell: bash
+        run: |
+          case "${{ runner.os }}-${{ runner.arch }}" in
+            Linux-X64) triple=x86_64-unknown-linux-gnu; lib=lib ;;
+            macOS-ARM64) triple=aarch64-apple-darwin; lib=lib ;;
+            Windows-X64) triple=x86_64-pc-windows-msvc; lib=bin ;;
+            *) echo "::error::no pdfium binaries for ${{ runner.os }} ${{ runner.arch }}"; exit 1 ;;
+          esac
+          scripts/fetch-pdfium.sh "$triple" target/pdfium
+          echo "NCRS_PDFIUM_DIR=$GITHUB_WORKSPACE/target/pdfium/$lib" >> "$GITHUB_ENV"
+
+      # The OCR test needs the two text recognition models. The script checks
+      # each download against a pinned size and checksum.
+      - name: Fetch the text recognition models for the tests
+        shell: bash
+        run: |
+          scripts/fetch-ocr-models.sh target/ocr-models
+          echo "NCRS_OCR_MODELS_DIR=$GITHUB_WORKSPACE/target/ocr-models" >> "$GITHUB_ENV"
+
       - name: Formatting
         run: cargo fmt --all --check
 
@@ -147,3 +172,29 @@ jobs:
 
       - name: Build
         run: cargo build --workspace --release --target ${{ matrix.target }} --features ncrs/gpu-with-fallback
+
+      # Lays the release archive out like the release does, so a missing
+      # pdfium library or binary fails on the pull request, not at the tag.
+      # The layout listing in the log shows what the archive holds. Nothing is
+      # uploaded or signed here.
+      - name: Fetch pdfium for the archive
+        shell: bash
+        run: scripts/fetch-pdfium.sh ${{ matrix.target }} target/pdfium-archive
+
+      - name: Package the archive
+        shell: bash
+        run: |
+          binary=target/${{ matrix.target }}/release/ncrs
+          if [ "${{ runner.os }}" = Windows ]; then binary="$binary.exe"; fi
+          scripts/package.sh archive ${{ matrix.target }} "$binary" target/pdfium-archive target/package
+
+      - name: Package the macOS app
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          case "${{ matrix.target }}" in
+            aarch64-*) min_macos=11.0 ;;
+            *) min_macos=10.13 ;;
+          esac
+          scripts/package.sh app target/package/ncrs-${{ matrix.target }} "$version" "$min_macos" target/package-app
