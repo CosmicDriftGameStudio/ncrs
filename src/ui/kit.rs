@@ -805,8 +805,8 @@ mod tests {
         let (top, thumb) = thumb_extent(2421, 5, 0, track);
         assert_eq!(top, 0.0);
         assert!(thumb >= MIN_THUMB);
-        let (top, thumb) = thumb_extent(2421, 5, 2416, track);
-        assert!((top + thumb - track).abs() < 0.01);
+        let (end_top, end_thumb) = thumb_extent(2421, 5, 2416, track);
+        assert!((end_top + end_thumb - track).abs() < 0.01);
         let (middle, _) = thumb_extent(100, 10, 45, track);
         assert!(middle > 0.0 && middle < track);
     }

@@ -2785,23 +2785,9 @@ impl App {
             Message::RuleSuggestions(suggestions) => self.update_rule_suggestions(suggestions),
             Message::ReviewList(review) => self.update_review_list(review),
             Message::SavedQueries(queries) => self.update_saved_queries(queries),
-            Message::HermesPage(page) => {
-                self.hermes_focus = HermesFocus::Content;
-                self.go_to_hermes_page(page)
-            }
-            Message::HermesFocus(focus) => {
-                if self.open_hermes_page().is_some() {
-                    self.hermes_focus = focus;
-                }
-                Task::none()
-            }
-            Message::HermesStep(step) => match self
-                .open_hermes_page()
-                .and_then(|page| crate::ui::hermes::neighbour(page, step))
-            {
-                Some(page) => self.go_to_hermes_page(page),
-                None => Task::none(),
-            },
+            Message::HermesPage(page) => self.show_hermes_page(page),
+            Message::HermesFocus(focus) => self.focus_hermes(focus),
+            Message::HermesStep(step) => self.step_hermes_page(step),
             Message::ReorganisationPlan(plan) => self.update_reorganisation(plan),
             // #73 hangs the executor here; until then the selection goes nowhere.
             Message::ExecuteReorganisation(selection) => self.run_reorganisation(selection),
@@ -6891,6 +6877,25 @@ impl App {
     #[cfg(test)]
     pub(crate) fn hermes_chip_for_test(&self) -> Option<String> {
         self.hermes_chip()
+    }
+
+    fn show_hermes_page(&mut self, page: HermesPage) -> Task<Message> {
+        self.hermes_focus = HermesFocus::Content;
+        self.go_to_hermes_page(page)
+    }
+
+    fn focus_hermes(&mut self, focus: HermesFocus) -> Task<Message> {
+        if self.open_hermes_page().is_some() {
+            self.hermes_focus = focus;
+        }
+        Task::none()
+    }
+
+    fn step_hermes_page(&mut self, step: isize) -> Task<Message> {
+        let next = self
+            .open_hermes_page()
+            .and_then(|page| crate::ui::hermes::neighbour(page, step));
+        next.map_or_else(Task::none, |page| self.go_to_hermes_page(page))
     }
 
     fn hermes_status(&self) -> Option<HermesStatus> {

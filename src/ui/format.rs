@@ -154,16 +154,17 @@ pub fn estimated_width(text: &str, font_size: f32) -> f32 {
 
 /// A count with a no-break space between the thousands: `2 421`.
 pub fn grouped(count: u64) -> String {
-    let digits = count.to_string();
-    let first = digits.len() % 3;
-    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
-    for (position, digit) in digits.chars().enumerate() {
-        if position > 0 && position % 3 == first % 3 {
-            grouped.push('\u{a0}');
-        }
-        grouped.push(digit);
-    }
-    grouped
+    let reversed: Vec<char> = count.to_string().chars().rev().collect();
+    let groups: Vec<String> = reversed
+        .chunks(3)
+        .map(|chunk| chunk.iter().rev().collect())
+        .collect();
+    groups
+        .iter()
+        .rev()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join("\u{a0}")
 }
 
 /// `text` as it is, or cut at the end with `…` to fit `width_px`.
