@@ -1,12 +1,12 @@
 use std::path::{Path, PathBuf};
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use rusqlite::{params, OptionalExtension as _};
 
 use crate::documents::require_document;
 use crate::error::IndexError;
 use crate::index::Index;
-use crate::model::{ContentHash, DocumentId, FileStamp};
+use crate::model::{timestamp_from_column, ContentHash, DocumentId, FileStamp};
 
 fn utf8(path: &Path) -> Result<&str, IndexError> {
     path.to_str()
@@ -170,6 +170,33 @@ impl Index {
             .collect::<Result<Vec<_>, _>>()?;
         paths.sort();
         Ok(paths)
+    }
+
+    /// The copies of the document with the time each was first seen. Sorted
+    /// by path.
+    pub fn duplicate_copies(
+        &self,
+        id: DocumentId,
+    ) -> Result<Vec<(PathBuf, DateTime<Utc>)>, IndexError> {
+        let mut statement = self
+            .connection()
+            .prepare("SELECT path, seen_at FROM duplicate_path WHERE document_id = ?1")?;
+        let rows = statement
+            .query_map([id.get()], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut copies = rows
+            .into_iter()
+            .map(|(path, seen_at)| {
+                Ok((
+                    PathBuf::from(path),
+                    timestamp_from_column("duplicate_path.seen_at", seen_at)?,
+                ))
+            })
+            .collect::<Result<Vec<_>, IndexError>>()?;
+        copies.sort();
+        Ok(copies)
     }
 
     /// Copies whose path lies in `directory`, compared by path components:

@@ -2382,12 +2382,14 @@ dependencies = [
  "notify",
  "ocrs",
  "pdfium-render",
+ "quick-xml",
  "regex",
  "rten",
  "same-file",
  "sha2 0.10.9",
  "tempfile",
  "walkdir",
+ "zip",
 ]
 
 [[package]]

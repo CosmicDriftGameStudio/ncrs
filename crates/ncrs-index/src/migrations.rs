@@ -6,6 +6,11 @@ use crate::error::IndexError;
 pub const MIGRATIONS: &[&str] = &[
     include_str!("migrations/001_documents.sql"),
     include_str!("migrations/002_locations.sql"),
+    include_str!("migrations/003_location_profile.sql"),
+    include_str!("migrations/004_rule_evidence.sql"),
+    include_str!("migrations/005_discarded_rule_suggestions.sql"),
+    include_str!("migrations/006_reorganisation_plan.sql"),
+    include_str!("migrations/007_execution_journal.sql"),
 ];
 
 /// Step `n` (1-based) runs in one transaction together with the bump of

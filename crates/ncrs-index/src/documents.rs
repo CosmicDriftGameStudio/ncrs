@@ -226,6 +226,20 @@ impl Index {
         Ok(())
     }
 
+    /// The documents with `status` that are not missing, oldest first.
+    pub fn documents_with_status(
+        &self,
+        status: DocumentStatus,
+    ) -> Result<Vec<DocumentId>, IndexError> {
+        let mut statement = self.connection().prepare(
+            "SELECT id FROM document WHERE status = ?1 AND missing_since IS NULL ORDER BY id",
+        )?;
+        let ids = statement
+            .query_map([status.as_str()], |row| row.get(0).map(DocumentId::new))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(ids)
+    }
+
     /// Best match first. The input is the user's words, not FTS5 syntax: every
     /// word is quoted, so all of them must match and operators are plain text.
     pub fn search_text(&self, words: &str, limit: usize) -> Result<Vec<DocumentId>, IndexError> {
@@ -248,6 +262,19 @@ impl Index {
             })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(ids)
+    }
+
+    /// The full text `set_document_text` stored; `None` when there is none.
+    pub fn document_text(&self, id: DocumentId) -> Result<Option<String>, IndexError> {
+        let found = self
+            .connection()
+            .query_row(
+                "SELECT body FROM document_text WHERE rowid = ?1",
+                [id.get()],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(found)
     }
 
     fn load_document(
@@ -472,6 +499,19 @@ mod tests {
         ] {
             index.search_text(input, 10).unwrap();
         }
+    }
+
+    #[test]
+    fn the_stored_text_is_read_back() {
+        let (_dir, mut index) = encrypted_index();
+        let id = indexed_with_text(&mut index, 1, "Company A, Invoice 4711");
+        let without = index.insert_document(&new_document(2)).unwrap();
+
+        assert_eq!(
+            index.document_text(id).unwrap().as_deref(),
+            Some("Company A, Invoice 4711")
+        );
+        assert_eq!(index.document_text(without).unwrap(), None);
     }
 
     #[test]

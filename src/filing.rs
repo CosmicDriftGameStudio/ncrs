@@ -19,18 +19,22 @@ use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::str::FromStr as _;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, TryLockError};
 use std::thread;
 
 use ncrs_index::{Index, IndexError, IndexStatistics, KeyStore, RecoveryKey};
 #[cfg(target_os = "macos")]
 use ncrs_intake::ImageTextWithFallback;
 use ncrs_intake::{
-    ImageTextSource, LazyOcrText, Location, PdfText, PdfUnavailable, TextChain, OCR_MODELS_FOLDER,
+    ImageTextSource, LazyOcrText, Location, LocationMode, OfficeText, PdfText, PdfUnavailable,
+    PlainText, TextChain, OCR_MODELS_FOLDER,
 };
 use ncrs_pipeline::{intake_steps, IndexAccess, Load, Runner, Settings, SystemClock};
 
 use crate::config::{Filing, FilingLocation};
+use crate::filing_work::FilingAccess;
+use crate::reorganisation_work::PlanAccess;
+use crate::suggestion_work::SuggestionAccess;
 
 /// A recovery key is 13 groups of four characters.
 const GROUP_COUNT: usize = 13;
@@ -492,7 +496,11 @@ impl IndexFiguresReader {
     }
 }
 
+/// Every index goes through here before the watcher and the pipeline see it,
+/// so a move that was interrupted is settled before anything looks at the files.
 fn put_index(slot: &IndexSlot, index: Index) {
+    // A failure leaves the pending items pending; the next open settles them.
+    let _settled_or_retried_next_open = crate::execute::reconcile(&index);
     *lock(slot) = Some(index);
 }
 
@@ -575,7 +583,10 @@ fn shipped_text_chain(ocr_models_dir: PathBuf) -> TextChain {
         Ok(pdf) => TextChain::new().with_source(pdf),
         Err(err) => TextChain::new().with_source(PdfUnavailable::new(err)),
     };
-    chain.with_image_source(shipped_image_source(ocr_models_dir))
+    chain
+        .with_source(PlainText)
+        .with_source(OfficeText)
+        .with_image_source(shipped_image_source(ocr_models_dir))
 }
 
 #[cfg(target_os = "macos")]
@@ -666,6 +677,48 @@ impl FilingModule {
         }
     }
 
+    /// The handle of the rule suggestions view: only when the module is
+    /// `Ready`, and over the archive locations that can be reached.
+    pub fn suggestion_access(&self) -> Option<SuggestionAccess> {
+        self.archive_handle(SuggestionAccess::new)
+    }
+
+    /// The handle of the reorganisation plan view, on the same terms.
+    pub fn plan_access(&self) -> Option<PlanAccess> {
+        self.archive_handle(PlanAccess::new)
+    }
+
+    /// The handle of the filing job: only when the module is `Ready` and the
+    /// archive marked as the target can be reached.
+    pub fn filing_access(&self) -> Option<FilingAccess> {
+        if !matches!(self.phase, Phase::Ready) {
+            return None;
+        }
+        self.locations
+            .iter()
+            .filter(|entry| entry.configured.is_target)
+            .find_map(|entry| match &entry.status {
+                LocationStatus::Ready(location) => Some(FilingAccess::new(
+                    Arc::clone(&self.index),
+                    location.path.clone(),
+                )),
+                LocationStatus::NotReachable { .. } | LocationStatus::Overlaps { .. } => None,
+            })
+    }
+
+    fn archive_handle<T>(&self, make: fn(IndexSlot, Vec<PathBuf>) -> T) -> Option<T> {
+        match self.phase {
+            Phase::Ready => Some(make(
+                Arc::clone(&self.index),
+                self.reachable_locations()
+                    .filter(|location| location.mode == LocationMode::Archive)
+                    .map(|location| location.path.clone())
+                    .collect(),
+            )),
+            _ => None,
+        }
+    }
+
     pub fn locations(&self) -> &[ResolvedLocation] {
         &self.locations
     }
@@ -715,7 +768,14 @@ impl FilingModule {
             Phase::Dismissed => return Err(HeldReason::Dismissed),
             Phase::Failed(_) => return Err(HeldReason::Failed),
         }
-        if lock(&self.index).is_none() {
+        // Never waits: a job on the blocking pool may hold the index, and a
+        // held index is an open one.
+        let is_open = match self.index.try_lock() {
+            Ok(guard) => guard.is_some(),
+            Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner().is_some(),
+            Err(TryLockError::WouldBlock) => true,
+        };
+        if !is_open {
             return Err(HeldReason::Failed);
         }
         Ok(IntakeIndex(Arc::clone(&self.index)))
@@ -1263,6 +1323,39 @@ mod tests {
             &module.index,
             Index::create_plain(&dir.path().join("index.db")).unwrap(),
         );
+    }
+
+    #[test]
+    fn an_index_put_into_the_slot_has_its_interrupted_move_settled_first() {
+        use ncrs_index::{BatchKind, JournalState, NewJournalItem};
+
+        let dir = TempDir::new().unwrap();
+        let source = dir.path().join("a.pdf");
+        std::fs::write(&source, "alpha").unwrap();
+        let index = Index::create_plain(&dir.path().join("index.db")).unwrap();
+        let batch = index.begin_batch(BatchKind::Reorganisation).unwrap();
+        index
+            .add_journal_item(
+                batch,
+                &NewJournalItem {
+                    from: source.clone(),
+                    to: dir.path().join("b.pdf"),
+                    hash: ncrs_intake::hash_path(&source).unwrap(),
+                    document_id: None,
+                    duplicate: false,
+                    state: JournalState::Pending,
+                    reason: None,
+                },
+            )
+            .unwrap();
+        let slot = IndexSlot::default();
+
+        put_index(&slot, index);
+
+        let guard = lock(&slot);
+        let items = guard.as_ref().unwrap().journal_items(batch).unwrap();
+        assert_eq!(items[0].state, JournalState::Skipped);
+        assert_eq!(items[0].reason.as_deref(), Some("interrupted"));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -10,7 +10,7 @@ use ncrs_index::{
 };
 use sha2::{Digest as _, Sha256};
 
-use crate::classify::{classify, relative_to_root, Skip};
+use crate::classify::{classify, Skip};
 use crate::error::IntakeError;
 use crate::location::{Location, LocationMode};
 use crate::stability::StabilityTracker;
@@ -159,28 +159,41 @@ pub fn path_exists(path: &Path) -> Result<bool, IntakeError> {
 /// the location, however the file itself looks. The file's own name is checked
 /// by the caller.
 fn has_symlink_ancestor(location: &Location, path: &Path) -> Result<bool, IntakeError> {
-    let Some(relative) = relative_to_root(location, path) else {
+    has_symlink_ancestor_under(&location.path, path)
+}
+
+/// `has_symlink_ancestor` for a root and a path that may not exist yet: a
+/// folder that is not there cannot be a link, and nothing below it exists.
+pub fn has_symlink_ancestor_under(root: &Path, path: &Path) -> Result<bool, IntakeError> {
+    let Ok(relative) = path.strip_prefix(root) else {
         return Ok(false);
     };
-    let mut current = location.path.clone();
+    if !relative
+        .components()
+        .all(|part| matches!(part, std::path::Component::Normal(_)))
+    {
+        return Ok(false);
+    }
+    let mut current = root.to_path_buf();
     let mut parts = relative.components().peekable();
     while let Some(part) = parts.next() {
         if parts.peek().is_none() {
             break;
         }
         current.push(part);
-        let metadata = fs::symlink_metadata(&current).map_err(IntakeError::io(&current))?;
-        if metadata.file_type().is_symlink() {
-            return Ok(true);
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => return Ok(true),
+            Ok(_) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(err) => return Err(IntakeError::io(&current)(err)),
         }
     }
     Ok(false)
 }
 
 /// Opens without following a link and without blocking on a FIFO, since the
-/// path may have been swapped since it was looked at. `None` when what was
-/// opened is not the file that was stamped: it is still changing.
-fn hash_file(path: &Path, stamp: FileStamp) -> Result<Option<ContentHash>, IntakeError> {
+/// path may have been swapped since it was looked at.
+fn open_regular(path: &Path) -> Result<File, IntakeError> {
     let mut options = OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
@@ -188,7 +201,19 @@ fn hash_file(path: &Path, stamp: FileStamp) -> Result<Option<ContentHash>, Intak
         &mut options,
         libc::O_NOFOLLOW | libc::O_NONBLOCK,
     );
-    let mut file = options.open(path).map_err(IntakeError::io(path))?;
+    options.open(path).map_err(IntakeError::io(path))
+}
+
+fn hash_open(file: &mut File, path: &Path) -> Result<ContentHash, IntakeError> {
+    let mut hasher = Sha256::new();
+    io::copy(file, &mut hasher).map_err(IntakeError::io(path))?;
+    Ok(ContentHash(hasher.finalize().into()))
+}
+
+/// `None` when what was opened is not the file that was stamped: it is still
+/// changing.
+fn hash_file(path: &Path, stamp: FileStamp) -> Result<Option<ContentHash>, IntakeError> {
+    let mut file = open_regular(path)?;
     let opened = file.metadata().map_err(IntakeError::io(path))?;
     let unchanged = opened.is_file()
         && opened.len() == stamp.size
@@ -196,9 +221,21 @@ fn hash_file(path: &Path, stamp: FileStamp) -> Result<Option<ContentHash>, Intak
     if !unchanged {
         return Ok(None);
     }
-    let mut hasher = Sha256::new();
-    io::copy(&mut file, &mut hasher).map_err(IntakeError::io(path))?;
-    Ok(Some(ContentHash(hasher.finalize().into())))
+    hash_open(&mut file, path).map(Some)
+}
+
+/// The hash a document is known by, of the regular file at `path`, without a
+/// stamp to compare with. A link, a FIFO or a folder is an error.
+pub fn hash_path(path: &Path) -> Result<ContentHash, IntakeError> {
+    let mut file = open_regular(path)?;
+    let opened = file.metadata().map_err(IntakeError::io(path))?;
+    if !opened.is_file() {
+        return Err(IntakeError::io(path)(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "not a regular file",
+        )));
+    }
+    hash_open(&mut file, path)
 }
 
 /// `DateTime::from(SystemTime)` panics on values chrono cannot hold, and a

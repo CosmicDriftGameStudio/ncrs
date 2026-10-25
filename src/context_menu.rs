@@ -7,8 +7,8 @@ use iced::{event, mouse, window, Point, Size};
 use crate::fs::OpenKind;
 use crate::i18n::Msg;
 use crate::messages::{
-    ClipboardKind, CommandPaletteMessage, Message, QuickOpenMessage, SearchMessage,
-    ThemeFetchMessage, TransferKind,
+    ClipboardKind, CommandPaletteMessage, Message, QuickOpenMessage, ReorganisationPlanMessage,
+    RuleSuggestionsMessage, SearchMessage, ThemeFetchMessage, TransferKind,
 };
 use crate::ui::layout::{MENU_ITEM_HEIGHT, MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_WIDTH};
 
@@ -269,6 +269,10 @@ pub struct InputState {
     pub command_palette: bool,
     /// The theme download card is up: same as Quick Open.
     pub theme_fetch: bool,
+    /// The rule suggestions view is up: same as Quick Open.
+    pub rule_suggestions: bool,
+    /// The reorganisation plan view is up: same as Quick Open.
+    pub reorganisation_plan: bool,
 }
 
 impl InputState {
@@ -299,6 +303,14 @@ impl InputState {
                 if self.theme_fetch && matches!(key, Key::Named(Named::Escape)) {
                     return Some(Message::ThemeFetch(ThemeFetchMessage::Close));
                 }
+                if self.rule_suggestions && matches!(key, Key::Named(Named::Escape)) {
+                    return Some(Message::RuleSuggestions(RuleSuggestionsMessage::Close));
+                }
+                if self.reorganisation_plan && matches!(key, Key::Named(Named::Escape)) {
+                    return Some(Message::ReorganisationPlan(
+                        ReorganisationPlanMessage::Close,
+                    ));
+                }
                 // The search's text fields capture Escape, so the routing
                 // never sees it there.
                 if !(self.search_open && matches!(key, Key::Named(Named::Escape))) {
@@ -323,7 +335,9 @@ impl InputState {
                     && !self.search_open
                     && !self.quick_open
                     && !self.command_palette
-                    && !self.theme_fetch)
+                    && !self.theme_fetch
+                    && !self.rule_suggestions
+                    && !self.reorganisation_plan)
                     .then_some(Message::ContextMenuKey)
             }
             event::Event::Window(window::Event::Unfocused) => {

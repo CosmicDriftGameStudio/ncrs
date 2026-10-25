@@ -8,6 +8,45 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Inbox documents are now filed on their own: when the rules have found a
+  place for a document it is marked as planned, and a filing job moves it to
+  the archive marked as the target (it also runs once when ncrs starts). The
+  place is worked out again from the current rules, so a changed rule counts.
+  Nothing is overwritten or deleted: if the place is taken, or no rule places
+  the document any more, it goes to the review list instead, and a file that
+  was edited in the meantime is taken in again. Each move is journaled, so a
+  run that was cut off is settled the next time ncrs starts, and Escape stops
+  the job between two files; the documents not yet moved stay planned and are
+  filed by the next job.
+- Reorganisation plan (Inventory): a view that shows how your document
+  folders could be tidied up, without changing anything. Entries are grouped
+  as duplicates, filed in the wrong folder, year does not match, name differs,
+  and what cannot be done, each with its current path, the proposed path and
+  the reason, plus a before and after tree of the folders the selection
+  touches. You select entries one by one or a whole group; entries that rest
+  on a rule you have not confirmed start unselected. Open it with Cmd+Shift+I
+  (Ctrl+Shift+I elsewhere) or from the command list. Enter now carries out
+  the selected entries: each file is checked against the plan, never
+  overwrites anything and is never deleted, and the run can be stopped with
+  Escape between two files. Every step is journaled, so "Undo last
+  reorganisation" (command list, with the small name Rewind) moves the files
+  back and removes the folders the run created if they are empty. A run that
+  was interrupted is settled the next time the index opens. Moves across
+  drives copy to a temporary name first, compare the copy with the original
+  and only then remove the original.
+- Rule suggestions (Requisitions): ncrs looks at how your records are
+  already filed and suggests rules from it, such as "text contains Company A
+  Ltd goes to Insurance". Each suggestion shows how many documents in its
+  folder and elsewhere contain the text, and which ones. You confirm, edit or
+  discard it; a suggestion does nothing until it is confirmed, and a
+  discarded one is not suggested again. Open it with Cmd+Shift+R
+  (Ctrl+Shift+R elsewhere) or from the command list.
+- Text files (`.txt`, `.md`) and Word and OpenDocument texts (`.docx`,
+  `.odt`) are now read too, so their text is stored with the document and can
+  be searched. No office installation is needed. A broken file shows an error
+  on the status page; very large files are cut off, so a crafted file cannot
+  fill the memory.
+
 - The groundwork for letting an AI fill in the fields the rules left open
   (sender, kind, date, number, amount). There is an interface for such a
   provider that can only return field values, a step in the processing that

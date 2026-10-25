@@ -4,7 +4,8 @@
 //!
 //! A filing pattern is a relative path with these placeholders:
 //! `{year}`, `{month}`, `{day}`, `{date}` (`YYYY-MM-DD`), `{sender}`,
-//! `{number}`, `{kind}` and `{tax_context}`.
+//! `{number}`, `{kind}` and `{tax_context}`. Patterns learned from an archive
+//! add `{folder}` (the sender) and `{name}` (the kind).
 
 use std::path::PathBuf;
 
@@ -42,6 +43,17 @@ pub enum Planning {
     },
 }
 
+/// Whether a "text contains" condition holds for a text that is already
+/// lowercase: case-insensitive, and an empty condition never holds.
+pub fn contains_condition_holds(lowered_text: &str, needle: &str) -> bool {
+    !needle.is_empty() && lowered_text.contains(&needle.to_lowercase())
+}
+
+/// Whether `source` is a filing pattern `plan` can render.
+pub fn pattern_is_valid(source: &str) -> bool {
+    Pattern::parse(source).is_some()
+}
+
 /// The first confirmed rule that matches wins, in the order of `rules`.
 pub fn plan(rules: &[Rule], input: &PlanInput<'_>) -> Planning {
     let lowered_text = input.text.to_lowercase();
@@ -76,9 +88,7 @@ fn matches(spec: &RuleSpec, input: &PlanInput<'_>, lowered_text: &str) -> bool {
     let has_condition = spec.match_text.is_some() || spec.match_sender.is_some();
     let text_matches = match &spec.match_text {
         None => true,
-        Some(TextMatch::Contains(needle)) => {
-            !needle.is_empty() && lowered_text.contains(&needle.to_lowercase())
-        }
+        Some(TextMatch::Contains(needle)) => contains_condition_holds(lowered_text, needle),
         Some(TextMatch::Regex(source)) => {
             compile(source).is_some_and(|regex| regex.is_match(input.text))
         }
@@ -156,6 +166,15 @@ fn plan_with(rule: &Rule, input: &PlanInput<'_>) -> Planning {
     }
 }
 
+/// The path a pattern gives for these fields, below the root of the archive.
+/// `None` when the pattern cannot be rendered, a value it needs is missing, or
+/// the result would not stay below the root.
+pub fn render_pattern(source: &str, fields: &DocumentFields) -> Option<PathBuf> {
+    Pattern::parse(source)?
+        .render(fields)
+        .filter(|path| stays_below(path))
+}
+
 /// The order fields are asked for and reported in.
 pub const FIELD_ORDER: [Field; 6] = [
     Field::Sender,
@@ -201,6 +220,8 @@ enum Placeholder {
     Number,
     Kind,
     TaxContext,
+    Folder,
+    Name,
 }
 
 impl Placeholder {
@@ -214,6 +235,8 @@ impl Placeholder {
             "number" => Self::Number,
             "kind" => Self::Kind,
             "tax_context" => Self::TaxContext,
+            "folder" => Self::Folder,
+            "name" => Self::Name,
             _ => return None,
         })
     }
@@ -221,9 +244,9 @@ impl Placeholder {
     fn field(self) -> Field {
         match self {
             Self::Year | Self::Month | Self::Day | Self::Date => Field::Date,
-            Self::Sender => Field::Sender,
+            Self::Sender | Self::Folder => Field::Sender,
             Self::Number => Field::Number,
-            Self::Kind => Field::Kind,
+            Self::Kind | Self::Name => Field::Kind,
             Self::TaxContext => Field::TaxContext,
         }
     }
@@ -235,9 +258,9 @@ impl Placeholder {
             Self::Month => fields.date.map(|date| format!("{:02}", date.month())),
             Self::Day => fields.date.map(|date| format!("{:02}", date.day())),
             Self::Date => fields.date.map(|date| date.to_string()),
-            Self::Sender => fields.sender.as_deref().and_then(sanitise_value),
+            Self::Sender | Self::Folder => fields.sender.as_deref().and_then(sanitise_value),
             Self::Number => fields.number.as_deref().and_then(sanitise_value),
-            Self::Kind => fields.kind.as_deref().and_then(sanitise_value),
+            Self::Kind | Self::Name => fields.kind.as_deref().and_then(sanitise_value),
             Self::TaxContext => fields
                 .tax_context
                 .map(|context| context.as_str().to_owned()),
@@ -338,6 +361,27 @@ mod tests {
     use ncrs_index::{Amount, Currency, TaxContext};
 
     use super::*;
+
+    #[test]
+    fn a_pattern_is_valid_when_it_can_be_parsed() {
+        assert!(pattern_is_valid("{year}/Invoices/{sender}"));
+        assert!(!pattern_is_valid("{year}/{nonsense}"));
+        assert!(!pattern_is_valid("{year"));
+        assert!(!pattern_is_valid("/absolute"));
+    }
+
+    #[test]
+    fn a_contains_condition_ignores_case_and_an_empty_one_never_holds() {
+        assert!(contains_condition_holds(
+            "invoice from company a ltd",
+            "Company A"
+        ));
+        assert!(!contains_condition_holds(
+            "invoice from agency b",
+            "company a"
+        ));
+        assert!(!contains_condition_holds("anything", ""));
+    }
 
     fn spec(pattern: &str) -> RuleSpec {
         RuleSpec {

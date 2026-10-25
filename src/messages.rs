@@ -3,6 +3,7 @@
 
 use std::path::PathBuf;
 
+use ncrs_index::RuleId;
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
 
@@ -11,7 +12,9 @@ use iced::Size;
 use crate::app::{RowFailure, Transfer};
 use crate::config::{Filing, FilingWriteError};
 use crate::dialog::PromptKind;
+use crate::execute::UndoReport;
 use crate::filing::{FilingMessage, IndexFigures};
+use crate::filing_work::FilingSummary;
 use crate::fs::search::SearchEvent;
 use crate::fs::CreateDirError;
 use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
@@ -20,6 +23,8 @@ use crate::jobs::JobEvent;
 use crate::keymap::KeyAction;
 use crate::ocr_models::DownloadError;
 use crate::open_vsx::FetchError;
+use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
+use crate::suggestion_work::SuggestedRule;
 use crate::theme_fetch::{Fetched, Installed};
 
 /// Identifies one of the two file panels.
@@ -263,6 +268,20 @@ pub enum Message {
     // --- Filing setup: the locations, written to the config ---
     FilingSetup(FilingSetupMessage),
 
+    // --- Rule suggestions: rules read out of how the archive is filed ---
+    RuleSuggestions(RuleSuggestionsMessage),
+    ReorganisationPlan(ReorganisationPlanMessage),
+    /// The user asked to carry out these entries of the reorganisation plan.
+    /// Nothing acts on it yet.
+    ExecuteReorganisation(Vec<PlannedItem>),
+    /// The executor on its blocking thread is done.
+    ReorganisationExecuted(Result<ExecutionSummary, String>),
+    UndoReorganisation,
+    /// The filing job on its blocking thread is done.
+    DocumentsFiled(Result<FilingSummary, String>),
+    /// `None`: there was no carried out reorganisation left to undo.
+    ReorganisationUndone(Result<Option<UndoReport>, String>),
+
     // --- Quick Open (Cmd/Ctrl+P) ---
     QuickOpen(QuickOpenMessage),
 
@@ -422,6 +441,63 @@ pub enum FilingSetupMessage {
     Save,
     /// The filing settings read back from the written file.
     Saved(Result<Filing, FilingWriteError>),
+}
+
+/// Everything the reorganisation plan view sends. Running the selection is
+/// `Message::ExecuteReorganisation`, which carries the entries.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ReorganisationPlanMessage {
+    Open,
+    Close,
+    /// Works the plan out again.
+    Replan,
+    /// The work of the generation is done. Dropped when the view was closed or
+    /// opened again meanwhile.
+    Loaded {
+        generation: u64,
+        result: Result<Vec<PlannedItem>, String>,
+    },
+    Move(isize),
+    /// A click on the line at this position: an entry or a group heading.
+    Toggle(usize),
+    ToggleCursor,
+    /// Enter: hands the selection over as `Message::ExecuteReorganisation`.
+    Execute,
+}
+
+/// Everything the rule suggestions view sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RuleSuggestionsMessage {
+    Open,
+    Close,
+    /// Learns the archive again and refreshes the list.
+    Reanalyse,
+    /// The work of the generation is done, with the open suggestions. Dropped
+    /// when the view was closed or the analysis started again meanwhile.
+    Loaded {
+        generation: u64,
+        result: Result<Vec<SuggestedRule>, String>,
+    },
+    Move(isize),
+    /// A click on the suggestion at this position.
+    Select(usize),
+    Edit,
+    CancelEdit,
+    ConditionChanged(String),
+    KindChanged(String),
+    PatternChanged(String),
+    /// Tab (`false`) or Shift+Tab (`true`) in the form.
+    FocusField {
+        backwards: bool,
+    },
+    /// Enter or the button: confirms the suggestion as it is, or as edited.
+    Confirm,
+    Discard,
+    /// The documents a suggestion's condition finds.
+    MatchesFound {
+        id: RuleId,
+        result: Result<Vec<PathBuf>, String>,
+    },
 }
 
 /// Everything the card that fetches a color theme sends.

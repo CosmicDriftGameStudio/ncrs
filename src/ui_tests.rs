@@ -2295,6 +2295,599 @@ mod theme_fetch_card {
     clippy::indexing_slicing
 )]
 #[cfg(test)]
+mod rule_suggestions_card {
+    use std::path::PathBuf;
+
+    use super::*;
+    use crate::messages::RuleSuggestionsMessage;
+    use crate::rule_suggestions::tests::{loaded_view, rule_ids, suggestion};
+    use crate::rule_suggestions::{Problem, RuleSuggestions};
+    use crate::suggestion_work::INDEX_NOT_OPEN;
+
+    const FIRST_EVIDENCE: &str = "5 of 5 in folder, 0 elsewhere";
+    const SECOND_EVIDENCE: &str = "4 of 5 in folder, 2 elsewhere";
+
+    fn suggestions_message(message: RuleSuggestionsMessage) -> Message {
+        Message::RuleSuggestions(message)
+    }
+
+    fn two_rows() -> RuleSuggestions {
+        let [one, two, _] = rule_ids();
+        let mut second = suggestion(two, "agency b tax office", "Taxes");
+        second.evidence.matching_in_folder = 4;
+        second.evidence.matching_elsewhere = 2;
+        let mut view = RuleSuggestions::new();
+        view.loaded(vec![suggestion(one, "company a ltd", "Insurance"), second]);
+        view
+    }
+
+    fn shows(view: RuleSuggestions, label: &str) -> bool {
+        simulator(&App::with_rule_suggestions(view))
+            .find(label)
+            .is_ok()
+    }
+
+    fn messages_after_click(view: RuleSuggestions, label: &str) -> Vec<Message> {
+        let app = App::with_rule_suggestions(view);
+        let mut sim = simulator(&app);
+        sim.click(label).expect("the clicked label");
+        sim.into_messages().collect()
+    }
+
+    #[test]
+    fn the_list_shows_condition_target_kind_and_evidence_of_each_suggestion() {
+        for label in [
+            "Rule suggestions",
+            "company a ltd",
+            "Insurance/{date}_{name}",
+            "Taxes/{date}_{name}",
+            FIRST_EVIDENCE,
+            SECOND_EVIDENCE,
+            "Confirm",
+            "Edit",
+            "Discard",
+            "Analyse again",
+            "Close",
+        ] {
+            assert!(shows(two_rows(), label), "{label}");
+        }
+    }
+
+    #[test]
+    fn the_view_is_worded_in_german_too() {
+        let app = App::with_rule_suggestions(two_rows()).in_language(Language::German);
+        let mut sim = simulator(&app);
+        for label in [
+            "Regelvorschläge",
+            "5 von 5 im Ordner, 0 sonst",
+            "4 von 5 im Ordner, 2 sonst",
+            "Bestätigen",
+            "Bearbeiten",
+            "Verwerfen",
+            "Erneut analysieren",
+        ] {
+            assert!(sim.find(label).is_ok(), "{label}");
+        }
+    }
+
+    #[test]
+    fn a_view_still_reading_says_so_and_decides_nothing() {
+        let view = RuleSuggestions::new();
+        assert!(shows(view.clone(), "Reading the document folders…"));
+        assert!(messages_after_click(view, "Confirm").is_empty());
+    }
+
+    #[test]
+    fn an_empty_result_says_how_suggestions_come_about() {
+        let mut view = RuleSuggestions::new();
+        view.loaded(Vec::new());
+        assert!(shows(
+            view,
+            "No suggestions. They appear when several documents of a document folder share a phrase."
+        ));
+    }
+
+    #[test]
+    fn the_buttons_send_what_they_say() {
+        for (label, message) in [
+            ("Confirm", RuleSuggestionsMessage::Confirm),
+            ("Discard", RuleSuggestionsMessage::Discard),
+            ("Analyse again", RuleSuggestionsMessage::Reanalyse),
+            ("Close", RuleSuggestionsMessage::Close),
+        ] {
+            assert_eq!(
+                messages_after_click(two_rows(), label),
+                [suggestions_message(message)],
+                "{label}"
+            );
+        }
+    }
+
+    /// "Edit" is also the F4 key of the bar below the view, so the button is
+    /// clicked by its German name.
+    #[test]
+    fn the_edit_button_opens_the_form() {
+        let app = App::with_rule_suggestions(two_rows()).in_language(Language::German);
+        let mut sim = simulator(&app);
+        sim.click("Bearbeiten").expect("the clicked label");
+        assert_eq!(
+            sim.into_messages().collect::<Vec<_>>(),
+            [suggestions_message(RuleSuggestionsMessage::Edit)]
+        );
+    }
+
+    #[test]
+    fn a_click_on_a_row_selects_it() {
+        assert_eq!(
+            messages_after_click(two_rows(), SECOND_EVIDENCE),
+            [suggestions_message(RuleSuggestionsMessage::Select(1))]
+        );
+    }
+
+    #[test]
+    fn the_selected_suggestion_lists_the_documents_it_matches() {
+        let [one, _, _] = rule_ids();
+        let mut view = two_rows();
+        let (id, _) = view.matches_wanted().unwrap();
+        assert_eq!(id, one);
+        view.matches_found(
+            id,
+            vec![
+                PathBuf::from("Insurance/2024_a.pdf"),
+                PathBuf::from("b.pdf"),
+            ],
+        );
+
+        assert!(shows(view.clone(), "Documents that contain this text"));
+        assert!(shows(view, "Insurance/2024_a.pdf"));
+    }
+
+    #[test]
+    fn more_documents_than_fit_are_counted() {
+        let [one, _, _] = rule_ids();
+        let mut view = two_rows();
+        view.matches_wanted();
+        let paths = (0..9).map(|n| PathBuf::from(format!("Insurance/{n}.pdf")));
+        view.matches_found(one, paths.collect());
+
+        assert!(shows(view, "… and 3 more"));
+    }
+
+    #[test]
+    fn the_form_offers_the_three_fields_and_cancel() {
+        let mut view = two_rows();
+        view.start_edit();
+
+        for label in ["Filed as (pattern)", "Kind", "Cancel", "Confirm"] {
+            assert!(shows(view.clone(), label), "{label}");
+        }
+        assert!(
+            !shows(view.clone(), "Discard"),
+            "no decision besides confirm"
+        );
+        assert_eq!(
+            messages_after_click(view, "Cancel"),
+            [suggestions_message(RuleSuggestionsMessage::CancelEdit)]
+        );
+    }
+
+    #[test]
+    fn an_invalid_pattern_shows_the_complaint_and_the_form_stays() {
+        let mut app = App::with_rule_suggestions(two_rows());
+        for message in [
+            RuleSuggestionsMessage::Edit,
+            RuleSuggestionsMessage::PatternChanged("{year}/{nonsense}".to_owned()),
+            RuleSuggestionsMessage::Confirm,
+        ] {
+            let _ = app.update(suggestions_message(message));
+        }
+
+        let view = app.rule_suggestions_for_test().unwrap();
+        assert_eq!(view.problem(), Some(&Problem::InvalidPattern));
+        assert!(view.edit().is_some());
+        assert!(!view.is_busy());
+        simulator(&app)
+            .find(
+                "This pattern cannot be used. Placeholders are written in braces, such as {year}.",
+            )
+            .expect("the complaint");
+    }
+
+    #[test]
+    fn the_view_opens_busy_and_a_missing_index_ends_in_a_complaint() {
+        let mut app = App::with_fixed_panels();
+
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Open));
+
+        let view = app.rule_suggestions_for_test().unwrap();
+        assert_eq!(
+            view.problem(),
+            Some(&Problem::Failed(INDEX_NOT_OPEN.to_owned()))
+        );
+        assert!(!view.is_busy());
+    }
+
+    #[test]
+    fn a_late_answer_of_an_earlier_view_is_dropped() {
+        let mut app = App::with_fixed_panels();
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Open));
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Close));
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Open));
+
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Loaded {
+            generation: 1,
+            result: Ok(loaded_view().rows().to_vec()),
+        }));
+
+        assert!(app.rule_suggestions_for_test().unwrap().rows().is_empty());
+    }
+
+    #[test]
+    fn escape_leaves_the_form_before_the_view() {
+        let mut app = App::with_rule_suggestions(two_rows());
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Edit));
+
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Close));
+        assert!(app.rule_suggestions_for_test().unwrap().edit().is_none());
+
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Close));
+        assert!(app.rule_suggestions_for_test().is_none());
+    }
+
+    fn matches_snapshot(view: RuleSuggestions, name: &str) {
+        let language = if name.ends_with("_de") {
+            Language::German
+        } else {
+            Language::English
+        };
+        let app = App::with_rule_suggestions(view).in_language(language);
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image(format!("tests/snapshots/{name}.png"))
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the view does not match tests/snapshots/{name}.png"
+        );
+    }
+
+    fn with_documents() -> RuleSuggestions {
+        let [one, _, _] = rule_ids();
+        let mut view = two_rows();
+        view.matches_wanted();
+        view.matches_found(
+            one,
+            vec![
+                PathBuf::from("Insurance/2023-05-02_policy.pdf"),
+                PathBuf::from("Insurance/2024-05-03_policy.pdf"),
+            ],
+        );
+        view
+    }
+
+    #[test]
+    fn the_view_matches_its_snapshots() {
+        matches_snapshot(with_documents(), "rule_suggestions_en");
+        matches_snapshot(with_documents(), "rule_suggestions_de");
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod reorganisation_plan_card {
+    use super::*;
+    use crate::messages::ReorganisationPlanMessage;
+    use crate::reorganisation_plan::tests::loaded_view;
+    use crate::reorganisation_plan::{Group, Line, ReorganisationView};
+    use crate::reorganisation_work::tests::{archive, sample_items};
+    use crate::suggestion_work::INDEX_NOT_OPEN;
+
+    fn plan_message(message: ReorganisationPlanMessage) -> Message {
+        Message::ReorganisationPlan(message)
+    }
+
+    fn shows(view: ReorganisationView, label: &str) -> bool {
+        simulator(&App::with_reorganisation_plan(view))
+            .find(label)
+            .is_ok()
+    }
+
+    fn messages_after_click(view: ReorganisationView, label: &str) -> Vec<Message> {
+        let app = App::with_reorganisation_plan(view);
+        let mut sim = simulator(&app);
+        sim.click(label).expect("the clicked label");
+        sim.into_messages().collect()
+    }
+
+    fn header_line(view: &ReorganisationView, group: Group) -> usize {
+        view.lines()
+            .iter()
+            .position(|line| *line == Line::Header(group))
+            .unwrap()
+    }
+
+    fn row_of(view: &ReorganisationView, source: &str) -> usize {
+        view.rows()
+            .iter()
+            .position(|planned| planned.item.source == std::path::Path::new(source))
+            .unwrap()
+    }
+
+    fn line_of(view: &ReorganisationView, source: &str) -> usize {
+        let row = row_of(view, source);
+        view.lines()
+            .iter()
+            .position(|line| *line == Line::Item(row))
+            .unwrap()
+    }
+
+    #[test]
+    fn the_plan_is_listed_per_group_with_paths_and_reasons() {
+        for label in [
+            "Reorganisation plan",
+            "Duplicates  1 of 1 selected",
+            "Filed in the wrong folder  1 of 2 selected",
+            "Year does not match  1 of 1 selected",
+            "Name differs  1 of 1 selected",
+            "Cannot be done",
+            "Misc/2024-04-01_invoice.pdf",
+            "A rule files it elsewhere",
+            "An unconfirmed rule files it elsewhere",
+            "Filed under 2023, dated 2024",
+            "The target already exists",
+            "Not enough is known to name it",
+            "Run selected",
+            "Plan again",
+            "Close",
+        ] {
+            assert!(shows(loaded_view(), label), "{label}");
+        }
+    }
+
+    #[test]
+    fn the_plan_is_worded_in_german_too() {
+        let app = App::with_reorganisation_plan(loaded_view()).in_language(Language::German);
+        let mut sim = simulator(&app);
+        for label in [
+            "Umräumplan",
+            "Duplikate  1 von 1 ausgewählt",
+            "Falsch abgelegt  1 von 2 ausgewählt",
+            "Jahr passt nicht  1 von 1 ausgewählt",
+            "Name weicht ab  1 von 1 ausgewählt",
+            "Nicht ausführbar",
+            "Das Ziel gibt es schon",
+            "Ausgewählte ausführen",
+            "Neu planen",
+        ] {
+            assert!(sim.find(label).is_ok(), "{label}");
+        }
+    }
+
+    #[test]
+    fn a_plan_still_being_made_says_so_and_runs_nothing() {
+        let view = ReorganisationView::new();
+        assert!(shows(view.clone(), "Working out the plan…"));
+        assert!(messages_after_click(view, "Run selected").is_empty());
+    }
+
+    #[test]
+    fn an_empty_plan_says_so() {
+        let mut view = ReorganisationView::new();
+        view.loaded(Vec::new());
+        assert!(shows(
+            view,
+            "Nothing to tidy up. Every document is where its folder expects it."
+        ));
+    }
+
+    #[test]
+    fn a_click_selects_and_deselects_an_entry_and_a_group() {
+        let mut app = App::with_reorganisation_plan(loaded_view());
+        let view = app.reorganisation_for_test().unwrap().clone();
+        let year = line_of(&view, "Insurance/2023/2024-05-01_invoice.pdf");
+        let year_row = row_of(&view, "Insurance/2023/2024-05-01_invoice.pdf");
+        assert!(view.is_selected(year_row));
+
+        let _ = app.update(plan_message(ReorganisationPlanMessage::Toggle(year)));
+        assert!(!app.reorganisation_for_test().unwrap().is_selected(year_row));
+        let _ = app.update(plan_message(ReorganisationPlanMessage::Toggle(year)));
+        assert!(app.reorganisation_for_test().unwrap().is_selected(year_row));
+
+        let misplaced = header_line(&view, Group::Misplaced);
+        assert_eq!(
+            messages_after_click(view, "Filed in the wrong folder  1 of 2 selected"),
+            [plan_message(ReorganisationPlanMessage::Toggle(misplaced))]
+        );
+        let _ = app.update(plan_message(ReorganisationPlanMessage::Toggle(misplaced)));
+        assert_eq!(
+            app.reorganisation_for_test()
+                .unwrap()
+                .counts(Group::Misplaced),
+            (2, 2)
+        );
+        let _ = app.update(plan_message(ReorganisationPlanMessage::Toggle(misplaced)));
+        assert_eq!(
+            app.reorganisation_for_test()
+                .unwrap()
+                .counts(Group::Misplaced),
+            (0, 2)
+        );
+    }
+
+    #[test]
+    fn what_cannot_be_done_has_no_box_to_check() {
+        let mut app = App::with_reorganisation_plan(loaded_view());
+        let view = app.reorganisation_for_test().unwrap().clone();
+        let conflict = line_of(&view, "Insurance/2023/2024-06-01_invoice.pdf");
+
+        let _ = app.update(plan_message(ReorganisationPlanMessage::Toggle(conflict)));
+
+        assert_eq!(
+            app.reorganisation_for_test().unwrap().selection(),
+            view.selection()
+        );
+    }
+
+    #[test]
+    fn an_entry_on_an_unconfirmed_rule_starts_unselected() {
+        let view = loaded_view();
+        let by_suggestion = row_of(&view, "Insurance/2024/2024-08-01_invoice.pdf");
+        let by_confirmed = row_of(&view, "Insurance/2024/2024-07-01_invoice.pdf");
+
+        assert!(!view.is_selected(by_suggestion));
+        assert!(view.is_selected(by_confirmed));
+    }
+
+    #[test]
+    fn a_selected_move_is_in_the_after_tree_of_the_view() {
+        let mut view = loaded_view();
+        let year = line_of(&view, "Insurance/2023/2024-05-01_invoice.pdf");
+        assert!(view
+            .after_tree()
+            .iter()
+            .any(|line| line.name == "2024-05-01_invoice.pdf"));
+        for label in ["Before", "After"] {
+            assert!(shows(view.clone(), label), "{label}");
+        }
+
+        view.toggle(year);
+
+        assert!(!view
+            .after_tree()
+            .iter()
+            .any(|line| line.name == "2024-05-01_invoice.pdf"));
+    }
+
+    #[test]
+    fn nothing_selected_shows_empty_trees_and_the_button_does_nothing() {
+        let mut view = loaded_view();
+        for group in Group::ALL {
+            let header = header_line(&view, group);
+            while view.counts(group).0 > 0 {
+                view.toggle(header);
+            }
+        }
+
+        assert!(shows(view.clone(), "Nothing selected."));
+        assert!(messages_after_click(view, "Run selected").is_empty());
+    }
+
+    #[test]
+    fn the_button_hands_the_selection_over() {
+        let view = loaded_view();
+        let selection = view.selection();
+        assert!(!selection.is_empty());
+
+        assert_eq!(
+            messages_after_click(view, "Run selected"),
+            [Message::ExecuteReorganisation(selection)]
+        );
+    }
+
+    #[test]
+    fn handing_the_selection_over_changes_nothing_yet() {
+        let mut app = App::with_reorganisation_plan(loaded_view());
+        let before = app.reorganisation_for_test().unwrap().clone();
+        let selection = before.selection();
+
+        let _ = app.update(Message::ExecuteReorganisation(selection));
+
+        assert_eq!(app.reorganisation_for_test().unwrap(), &before);
+    }
+
+    #[test]
+    fn opening_without_an_index_ends_in_a_complaint() {
+        let mut app = App::with_fixed_panels();
+
+        let _ = app.update(plan_message(ReorganisationPlanMessage::Open));
+
+        let view = app.reorganisation_for_test().unwrap();
+        assert_eq!(view.problem(), Some(INDEX_NOT_OPEN));
+        assert!(!view.is_busy());
+        assert!(shows(
+            view.clone(),
+            "The plan could not be made (index not open)."
+        ));
+    }
+
+    #[test]
+    fn a_late_answer_of_an_earlier_view_is_dropped() {
+        let mut app = App::with_fixed_panels();
+        let _ = app.update(plan_message(ReorganisationPlanMessage::Open));
+        let _ = app.update(plan_message(ReorganisationPlanMessage::Close));
+        let _ = app.update(plan_message(ReorganisationPlanMessage::Open));
+
+        let _ = app.update(plan_message(ReorganisationPlanMessage::Loaded {
+            generation: 1,
+            result: Ok(sample_items()),
+        }));
+
+        assert!(app.reorganisation_for_test().unwrap().rows().is_empty());
+    }
+
+    #[test]
+    fn opening_and_closing_the_view_changes_no_file() {
+        let archive = archive();
+        let before = archive.snapshot();
+        let mut app = App::with_fixed_panels();
+
+        let _ = app.update(plan_message(ReorganisationPlanMessage::Open));
+        let _ = app.update(plan_message(ReorganisationPlanMessage::Loaded {
+            generation: 1,
+            result: archive.access().plan(),
+        }));
+        assert!(!app.reorganisation_for_test().unwrap().rows().is_empty());
+        let _ = app.update(plan_message(ReorganisationPlanMessage::Toggle(0)));
+        let selection = app.reorganisation_for_test().unwrap().selection();
+        let _ = app.update(Message::ExecuteReorganisation(selection));
+        let _ = app.update(plan_message(ReorganisationPlanMessage::Close));
+
+        assert!(app.reorganisation_for_test().is_none());
+        assert_eq!(archive.snapshot(), before);
+    }
+
+    fn matches_snapshot(view: ReorganisationView, name: &str) {
+        let language = if name.ends_with("_de") {
+            Language::German
+        } else {
+            Language::English
+        };
+        let app = App::with_reorganisation_plan(view).in_language(language);
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image(format!("tests/snapshots/{name}.png"))
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the view does not match tests/snapshots/{name}.png"
+        );
+    }
+
+    #[test]
+    fn the_view_matches_its_snapshots() {
+        matches_snapshot(loaded_view(), "reorganisation_plan_en");
+        matches_snapshot(loaded_view(), "reorganisation_plan_de");
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
 mod title_bar {
     use std::time::{Duration, SystemTime};
 

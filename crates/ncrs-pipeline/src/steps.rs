@@ -181,6 +181,9 @@ impl Step for RulesStep {
             if *found != document.fields {
                 index.set_document_fields(id, found)?;
             }
+            if matches!(planning, Planning::Plan(_)) {
+                index.set_document_status(id, DocumentStatus::Planned)?;
+            }
             Ok::<_, IndexError>(Some(planning))
         })
         .ok_or_else(|| NO_INDEX.to_owned())?
