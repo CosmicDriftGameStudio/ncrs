@@ -149,7 +149,9 @@ fn archive_entries(index: &Index, root: &Path) -> Result<Vec<ArchiveEntry>, Inde
                 relative_path: relative.to_path_buf(),
                 date,
             },
-            text: index.document_text(id)?,
+            text: index
+                .document_text(id)?
+                .filter(|text| !text.trim().is_empty()),
         });
     }
     Ok(entries)

@@ -749,6 +749,8 @@ pub struct App {
     filing: Option<FilingModule>,
     /// Started once the filing module is ready; dropping it stops the workers.
     pipeline: Option<ncrs_pipeline::Runner>,
+    /// The folder the PDF library is missing from, as of the last pipeline start.
+    pdf_library_missing: Option<PathBuf>,
     /// What the filing status page and the status bar show of the pipeline.
     filing_status: FilingStatus,
     /// The time the status page measures how long a worker has been busy by.
@@ -2068,6 +2070,7 @@ impl App {
             recent_commands: Vec::new(),
             filing: None,
             pipeline: None,
+            pdf_library_missing: None,
             filing_status: FilingStatus::default(),
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
             config_path: None,
@@ -3571,8 +3574,12 @@ impl App {
         let work = module.update(message);
         let mut pipeline_started = false;
         if self.pipeline.is_none() && matches!(module.phase(), Phase::Ready) {
-            self.pipeline = module.start_pipeline().ok();
-            pipeline_started = self.pipeline.is_some();
+            let started = module.start_pipeline().ok();
+            pipeline_started = started.is_some();
+            (self.pipeline, self.pdf_library_missing) = match started {
+                Some((runner, missing)) => (Some(runner), missing),
+                None => (None, None),
+            };
         }
         let skipped = if was_starting && !matches!(module.phase(), Phase::Starting) {
             module
@@ -6814,6 +6821,11 @@ impl App {
         );
     }
 
+    #[expect(dead_code, reason = "read by the Hermes page, which comes later")]
+    pub fn pdf_library_missing(&self) -> Option<&Path> {
+        self.pdf_library_missing.as_deref()
+    }
+
     /// The pipeline, unless it is stopped.
     fn live_pipeline(&self) -> Option<&ncrs_pipeline::Runner> {
         self.pipeline
@@ -7806,6 +7818,7 @@ impl App {
             recent_commands: Vec::new(),
             filing: None,
             pipeline: None,
+            pdf_library_missing: None,
             filing_status: FilingStatus::default(),
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
             config_path: None,

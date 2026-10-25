@@ -15,29 +15,16 @@ use tempfile::TempDir;
 
 use crate::text::{PageImage, PdfText};
 
-const LIBRARY_DIR_VARIABLE: &str = "NCRS_PDFIUM_DIR";
-
-fn library_dir() -> PathBuf {
-    if let Some(dir) = std::env::var_os(LIBRARY_DIR_VARIABLE) {
-        return PathBuf::from(dir);
-    }
-    let sub = if cfg!(windows) { "bin" } else { "lib" };
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/pdfium")
-        .join(sub)
-}
-
 /// Every page of the PDF as the OCR sees a scan, text layer or not.
 pub fn rendered_pages(pdf: &PdfText, path: &Path) -> Vec<PageImage> {
     pdf.render_file(path).unwrap()
 }
 
 pub fn pdf_text() -> PdfText {
-    let dir = library_dir();
-    PdfText::load(&dir).unwrap_or_else(|err| {
+    PdfText::load_shipped().unwrap_or_else(|err| {
         panic!(
             "{err}. Run scripts/fetch-pdfium.sh <rust-target-triple> target/pdfium, \
-             or set {LIBRARY_DIR_VARIABLE} to the folder with the library"
+             or set NCRS_PDFIUM_DIR to the folder with the library"
         )
     })
 }

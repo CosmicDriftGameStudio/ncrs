@@ -15,7 +15,7 @@ use ncrs_index::{
     Amount, BatchKind, Currency, DocumentFields, DocumentId, DocumentStatus, Index, IndexError,
     ReviewEntryId, ReviewReason, RuleId, RuleSpec, TaxContext,
 };
-use ncrs_intake::{pattern_is_valid, plan, render_pattern, PlanInput, Planning};
+use ncrs_intake::{pattern_is_valid, plan, render_pattern, text_is_readable, PlanInput, Planning};
 
 use crate::execute::{execute_with, ItemOutcome, SkipReason};
 use crate::filing_work::target_of;
@@ -28,6 +28,26 @@ pub const PATTERN_DOES_NOT_FIT: &str = "the pattern does not fit the fields";
 const MINOR_UNITS_PER_UNIT: i64 = 100;
 const MINOR_DIGITS: usize = 2;
 
+/// What is known about the text of a document, derived when the list loads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextState {
+    Read,
+    /// Read or never read, but there is no text.
+    NoneFound,
+    /// Files of this kind are not read at all, for example images.
+    NotReadable,
+}
+
+fn text_state(path: &Path, stored: Option<&str>) -> TextState {
+    if !text_is_readable(path) {
+        TextState::NotReadable
+    } else if stored.is_none_or(|text| text.trim().is_empty()) {
+        TextState::NoneFound
+    } else {
+        TextState::Read
+    }
+}
+
 /// A document waiting for the user, with what the rules could say about it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReviewItem {
@@ -35,6 +55,7 @@ pub struct ReviewItem {
     pub document_id: DocumentId,
     pub path: PathBuf,
     pub reason: ReviewReason,
+    pub text_state: TextState,
     /// The stored fields, completed by the rule that came closest.
     pub fields: DocumentFields,
     /// The pattern of that rule, as a start for the one the user confirms.
@@ -140,7 +161,8 @@ fn load(index: &Index) -> Result<Vec<ReviewItem>, IndexError> {
         let Some(document) = index.document(entry.document_id)? else {
             continue;
         };
-        let text = index.document_text(document.id)?.unwrap_or_default();
+        let stored_text = index.document_text(document.id)?;
+        let text = stored_text.clone().unwrap_or_default();
         let planning = plan(
             &rules,
             &PlanInput {
@@ -165,6 +187,7 @@ fn load(index: &Index) -> Result<Vec<ReviewItem>, IndexError> {
         items.push(ReviewItem {
             entry: entry.id,
             document_id: document.id,
+            text_state: text_state(&document.path, stored_text.as_deref()),
             path: document.path,
             reason: entry.reason,
             fields,
@@ -414,6 +437,45 @@ mod tests {
 
     fn first(access: &ReviewAccess) -> ReviewItem {
         access.load().unwrap().remove(0)
+    }
+
+    #[test]
+    fn the_text_state_tells_images_from_empty_from_read_text() {
+        let setup = Setup::new();
+        let read = setup.in_review("invoice.pdf");
+        let empty = setup.in_review("blank.pdf");
+        let image = setup.in_review("photo.jpg");
+        let never_read = setup.in_review("never.pdf");
+        setup.with_index(|index| {
+            index.set_document_text(empty, "").unwrap();
+            index.set_document_text(image, "").unwrap();
+            index
+                .connection()
+                .execute(
+                    "DELETE FROM document_text
+                     WHERE rowid = (SELECT id FROM document WHERE path LIKE '%never.pdf')",
+                    [],
+                )
+                .unwrap();
+        });
+
+        let states: Vec<(DocumentId, TextState)> = setup
+            .access()
+            .load()
+            .unwrap()
+            .into_iter()
+            .map(|item| (item.document_id, item.text_state))
+            .collect();
+
+        assert_eq!(
+            states,
+            vec![
+                (read, TextState::Read),
+                (empty, TextState::NoneFound),
+                (image, TextState::NotReadable),
+                (never_read, TextState::NoneFound),
+            ]
+        );
     }
 
     #[test]

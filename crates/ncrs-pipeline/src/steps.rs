@@ -4,7 +4,8 @@ use std::time::SystemTime;
 
 use ncrs_ai::Provider;
 use ncrs_index::{DocumentStatus, IndexError, ReviewReason};
-use ncrs_intake::{plan, PlanInput, Planning, StabilityTracker, TextChain};
+use ncrs_intake::text_is_readable;
+use ncrs_intake::{plan, PlanInput, Planning, StabilityTracker, TextChain, TextError};
 use ncrs_intake::{settle_location, take_in, IntakeError, Location, LocationMode, Outcome};
 
 use crate::ai_step::AiStep;
@@ -57,12 +58,18 @@ impl Step for IntakeStep {
         let taken = with_index_value(self.index.as_ref(), |index| {
             let mut tracker = self.tracker.lock().unwrap_or_else(PoisonError::into_inner);
             let outcome = take_in(index, &item.location, &item.path, &mut tracker, now)?;
-            // A document taken in but never reviewed (the app quit in between)
-            // goes on to the review step again.
+            // An inbox document taken in but never reviewed (the app quit in
+            // between) goes on again, and so does an archive document whose
+            // text was never read, for example for lack of the PDF library.
             let unreviewed = match outcome {
-                Outcome::Unchanged(id) if item.location.mode == LocationMode::Inbox => index
-                    .document(id)?
-                    .is_some_and(|document| document.status == DocumentStatus::New),
+                Outcome::Unchanged(id) => match item.location.mode {
+                    LocationMode::Inbox => index
+                        .document(id)?
+                        .is_some_and(|document| document.status == DocumentStatus::New),
+                    LocationMode::Archive => {
+                        text_is_readable(&item.path) && !index.has_document_text_row(id)?
+                    }
+                },
                 _ => false,
             };
             Ok::<_, IntakeError>((outcome, unreviewed))
@@ -104,7 +111,9 @@ impl Step for IntakeStep {
 }
 
 /// Reads the text of the file and stores it in the index. A file without text
-/// goes on without; the text of a document is only ever stored, never acted on.
+/// goes on with an empty text stored, so a later scan can tell "read, nothing
+/// found" from "never read". Without the PDF library the file is held back
+/// unchanged. The text of a document is only ever stored, never acted on.
 #[derive(Debug)]
 struct TextStep {
     index: Arc<dyn IndexAccess>,
@@ -120,17 +129,17 @@ impl Step for TextStep {
         let id = item
             .document
             .ok_or_else(|| "the file has no document".to_owned())?;
-        item.text = self
-            .chain
-            .extract(&item.path)
-            .map_err(|err| err.to_string())?;
-        if let Some(text) = &item.text {
-            with_index_value(self.index.as_ref(), |index| {
-                index.set_document_text(id, text)
-            })
-            .ok_or_else(|| NO_INDEX.to_owned())?
-            .map_err(|err| err.to_string())?;
-        }
+        item.text = match self.chain.extract(&item.path) {
+            Ok(text) => text,
+            Err(TextError::LibraryMissing { .. }) => return Ok(StepOutcome::Unchanged),
+            Err(err) => return Err(err.to_string()),
+        };
+        let stored = item.text.as_deref().unwrap_or_default();
+        with_index_value(self.index.as_ref(), |index| {
+            index.set_document_text(id, stored)
+        })
+        .ok_or_else(|| NO_INDEX.to_owned())?
+        .map_err(|err| err.to_string())?;
         Ok(StepOutcome::Continue)
     }
 }

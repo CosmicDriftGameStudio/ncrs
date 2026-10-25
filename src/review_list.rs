@@ -385,6 +385,7 @@ pub mod tests {
     use ncrs_index::{Index, ReviewReason};
 
     use super::*;
+    use crate::review_work::TextState;
 
     /// Ids come from a real index: only the index hands them out.
     fn ids() -> Vec<(ReviewEntryId, DocumentId)> {
@@ -422,6 +423,7 @@ pub mod tests {
             document_id,
             path: PathBuf::from(format!("inbox/{name}")),
             reason: ReviewReason::NoMatchingRule,
+            text_state: TextState::Read,
             fields: DocumentFields {
                 sender: (!sender.is_empty()).then(|| sender.to_owned()),
                 kind: Some("invoice".to_owned()),

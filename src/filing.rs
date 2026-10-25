@@ -24,12 +24,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, TryLockError};
 use std::thread;
 
-use ncrs_index::{Index, IndexError, IndexStatistics, KeyStore, RecoveryKey};
+use ncrs_index::{HermesCounts, Index, IndexError, IndexStatistics, KeyStore, RecoveryKey};
 #[cfg(target_os = "macos")]
 use ncrs_intake::ImageTextWithFallback;
 use ncrs_intake::{
     ImageTextSource, LazyOcrText, Location, LocationMode, OfficeText, PdfText, PdfUnavailable,
-    PlainText, TextChain, OCR_MODELS_FOLDER,
+    PlainText, TextChain, TextError, OCR_MODELS_FOLDER,
 };
 use ncrs_pipeline::{intake_steps, IndexAccess, Load, Runner, Settings, SystemClock};
 
@@ -602,6 +602,28 @@ impl IndexFiguresReader {
     }
 }
 
+/// Reads the counts of the automatic filing, on a blocking thread like
+/// [`IndexFiguresReader`].
+#[expect(dead_code, reason = "read by the Hermes page, which comes later")]
+pub struct HermesCountsReader {
+    slot: IndexSlot,
+}
+
+impl fmt::Debug for HermesCountsReader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HermesCountsReader").finish_non_exhaustive()
+    }
+}
+
+impl HermesCountsReader {
+    #[expect(dead_code, reason = "read by the Hermes page, which comes later")]
+    pub fn read(self) -> Result<HermesCounts, String> {
+        let guard = lock(&self.slot);
+        let index = guard.as_ref().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
+        index.hermes_counts().map_err(|err| err.to_string())
+    }
+}
+
 /// Every index goes through here before the watcher and the pipeline see it,
 /// so a move that was interrupted is settled before anything looks at the files.
 fn put_index(slot: &IndexSlot, index: Index) {
@@ -679,20 +701,34 @@ fn key_error(err: IndexError) -> KeyError {
 // Module
 // ---------------------------------------------------------------------------
 
-/// The PDF source; when the pdfium library is missing, each PDF reports that
+/// The PDF source; when the pdfium library is missing, each PDF is held back
 /// instead, and the other files go on. A scan is read by OCR once the user has
 /// downloaded the models into `ocr_models_dir`; until then it yields no text.
 /// On macOS the text recognition of the system comes first and the models are
 /// the fallback when it fails.
-fn shipped_text_chain(ocr_models_dir: PathBuf) -> TextChain {
-    let chain = match PdfText::load_shipped() {
-        Ok(pdf) => TextChain::new().with_source(pdf),
-        Err(err) => TextChain::new().with_source(PdfUnavailable::new(err)),
+///
+/// The second value is the folder the library is missing from, when it is.
+fn shipped_text_chain(ocr_models_dir: PathBuf) -> (TextChain, Option<PathBuf>) {
+    let (chain, library_missing_from) = match PdfText::load_shipped() {
+        Ok(pdf) => (TextChain::new().with_source(pdf), None),
+        Err(err) => {
+            let folder = match &err {
+                TextError::LibraryMissing { path } => Some(path.clone()),
+                _ => None,
+            };
+            (
+                TextChain::new().with_source(PdfUnavailable::new(err)),
+                folder,
+            )
+        }
     };
-    chain
-        .with_source(PlainText)
-        .with_source(OfficeText)
-        .with_image_source(shipped_image_source(ocr_models_dir))
+    (
+        chain
+            .with_source(PlainText)
+            .with_source(OfficeText)
+            .with_image_source(shipped_image_source(ocr_models_dir)),
+        library_missing_from,
+    )
 }
 
 #[cfg(target_os = "macos")]
@@ -794,6 +830,17 @@ impl FilingModule {
         }
     }
 
+    /// Like [`Self::index_figures_reader`]: looks at the phase only.
+    #[expect(dead_code, reason = "read by the Hermes page, which comes later")]
+    pub fn hermes_counts_reader(&self) -> Option<HermesCountsReader> {
+        match self.phase {
+            Phase::Ready => Some(HermesCountsReader {
+                slot: Arc::clone(&self.index),
+            }),
+            _ => None,
+        }
+    }
+
     /// The handle of the rule suggestions view: only when the module is
     /// `Ready`, and over the archive locations that can be reached.
     pub fn suggestion_access(&self) -> Option<SuggestionAccess> {
@@ -868,23 +915,23 @@ impl FilingModule {
     /// Starts the pipeline on the reachable locations. The only way to the
     /// index: it is handed over in exactly one case, the module is `Ready` and
     /// the index is there.
-    pub fn start_pipeline(&self) -> Result<Runner, HeldReason> {
+    ///
+    /// The second value is the folder the PDF library is missing from, when it
+    /// is: PDFs wait until it is there and the next start finds it.
+    pub fn start_pipeline(&self) -> Result<(Runner, Option<PathBuf>), HeldReason> {
         let handle = self.intake_index()?;
         let locations: Vec<Location> = self.reachable_locations().cloned().collect();
         let logical_cores = thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
-        Ok(Runner::start(
+        let (chain, pdf_library_missing) = shipped_text_chain(
+            ocr_models_dir(&self.db_path).unwrap_or_else(|| PathBuf::from(OCR_MODELS_FOLDER)),
+        );
+        let runner = Runner::start(
             Settings::new(self.load, logical_cores),
-            intake_steps(
-                Arc::new(handle),
-                Arc::new(shipped_text_chain(
-                    ocr_models_dir(&self.db_path)
-                        .unwrap_or_else(|| PathBuf::from(OCR_MODELS_FOLDER)),
-                )),
-                self.ai_provider(),
-            ),
+            intake_steps(Arc::new(handle), Arc::new(chain), self.ai_provider()),
             locations,
             Arc::new(SystemClock),
-        ))
+        );
+        Ok((runner, pdf_library_missing))
     }
 
     fn ai_provider(&self) -> Option<Arc<dyn ncrs_ai::Provider>> {
@@ -1543,7 +1590,7 @@ mod tests {
             Index::create_plain(&dir.path().join("index.db")).unwrap(),
         );
 
-        let runner = module.start_pipeline().unwrap();
+        let (runner, _pdf_library_missing) = module.start_pipeline().unwrap();
 
         assert_ne!(runner.snapshot().state, ncrs_pipeline::RunnerState::Off);
         drop(runner);

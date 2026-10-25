@@ -20,7 +20,7 @@ use crate::i18n::{Language, Msg};
 use crate::messages::{HermesPage, Message, ReviewListMessage};
 use crate::palette::Palette;
 use crate::review_list::{FiledNotice, FormField, Problem, ReviewList};
-use crate::review_work::ReviewItem;
+use crate::review_work::{ReviewItem, TextState};
 
 /// Most entries of the list shown at once; the list follows the cursor.
 pub const VISIBLE_ROWS: usize = 5;
@@ -117,7 +117,7 @@ pub fn view<'a>(
 }
 
 /// Why the document is here, in words; the field a reason names is spelled out.
-pub fn reason_text(reason: ReviewReason, lang: Language) -> String {
+pub fn reason_text(reason: ReviewReason, text_state: TextState, lang: Language) -> String {
     let named = |template: Msg, field: Field| {
         fill_template(
             lang.text(template),
@@ -125,7 +125,13 @@ pub fn reason_text(reason: ReviewReason, lang: Language) -> String {
         )
     };
     match reason {
-        ReviewReason::NoMatchingRule => lang.text(Msg::ReviewListReasonNoRule).to_owned(),
+        ReviewReason::NoMatchingRule => lang
+            .text(match text_state {
+                TextState::NotReadable => Msg::ReviewListReasonImageNoText,
+                TextState::NoneFound => Msg::ReviewListReasonNoText,
+                TextState::Read => Msg::ReviewListReasonNoRule,
+            })
+            .to_owned(),
         ReviewReason::UnconfirmedRule => lang.text(Msg::ReviewListReasonUnconfirmed).to_owned(),
         ReviewReason::TargetExists => lang.text(Msg::ReviewListReasonTargetExists).to_owned(),
         ReviewReason::MissingField(field) => named(Msg::ReviewListReasonMissingField, field),
@@ -187,7 +193,7 @@ fn list<'a>(
             };
             let content = row![
                 columns.cell(0, &file_name(item), color),
-                columns.cell(1, &reason_text(item.reason, lang), color),
+                columns.cell(1, &reason_text(item.reason, item.text_state, lang), color),
                 columns.cell(2, item.fields.sender.as_deref().unwrap_or_default(), color),
                 columns.cell(3, item.fields.kind.as_deref().unwrap_or_default(), color),
                 columns.cell(

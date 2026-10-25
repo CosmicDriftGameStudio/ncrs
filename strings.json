@@ -2749,6 +2749,18 @@
       "de": "Keine Regel passt"
     },
     {
+      "key": "review_list.reason_image_no_text",
+      "context": "Review reason in the review list: the document is an image, which is not read for text, so no rule could match.",
+      "en": "Image, no text read",
+      "de": "Bild, kein Text gelesen"
+    },
+    {
+      "key": "review_list.reason_no_text",
+      "context": "Review reason in the review list: no text could be read from the document, so no rule could match.",
+      "en": "No text read",
+      "de": "Kein Text gelesen"
+    },
+    {
       "key": "review_list.reason_unconfirmed",
       "context": "Review reason in the review list: a rule matched but is not confirmed yet.",
       "en": "Rule not confirmed",
