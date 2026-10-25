@@ -12,13 +12,14 @@ use iced::keyboard::{key, Key, Modifiers};
 
 use crate::config::KeySection;
 use crate::fs::{OpenKind, SortColumn};
+use crate::hermes_column::FolderRole;
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::messages::{
     AiModelMessage, ClipboardKind, CommandPaletteMessage, FilingSetupMessage, FilingStatusMessage,
-    OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, ReorganisationPlanMessage,
-    ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingsMessage,
-    ThemeFetchMessage, TransferKind,
+    HermesFileMessage, OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage,
+    ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage,
+    SearchMessage, SettingsMessage, ThemeFetchMessage, TransferKind,
 };
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
@@ -114,6 +115,13 @@ key_actions! {
     RuleSuggestions => "rule_suggestions",
     ReviewList => "review_list",
     HermesQuickFix => "hermes_quick_fix",
+    HermesHandToInbox => "hermes_hand_to_inbox",
+    HermesProcessAgain => "hermes_process_again",
+    HermesSetInbox => "hermes_set_inbox",
+    HermesSetFilingLocation => "hermes_set_filing_location",
+    HermesSetArchive => "hermes_set_archive",
+    HermesExclude => "hermes_exclude",
+    HermesInspect => "hermes_inspect",
     SavedQueries => "saved_queries",
     ReorganisationPlan => "reorganisation_plan",
     UndoReorganisation => "undo_reorganisation",
@@ -198,6 +206,13 @@ impl KeyAction {
             | Self::RuleSuggestions
             | Self::ReviewList
             | Self::HermesQuickFix
+            | Self::HermesHandToInbox
+            | Self::HermesProcessAgain
+            | Self::HermesSetInbox
+            | Self::HermesSetFilingLocation
+            | Self::HermesSetArchive
+            | Self::HermesExclude
+            | Self::HermesInspect
             | Self::SavedQueries
             | Self::ReorganisationPlan
             | Self::UndoReorganisation
@@ -224,6 +239,22 @@ impl KeyAction {
             | (Reach::SearchOnly, KeyScope::Search) => true,
             (Reach::PanelOnly, KeyScope::Search) | (Reach::SearchOnly, KeyScope::Panel) => false,
         }
+    }
+
+    /// The action works on the file under the cursor and only means something
+    /// while the Hermes column is up.
+    pub fn acts_on_hermes_file(self) -> bool {
+        matches!(
+            self,
+            Self::HermesQuickFix
+                | Self::HermesHandToInbox
+                | Self::HermesProcessAgain
+                | Self::HermesSetInbox
+                | Self::HermesSetFilingLocation
+                | Self::HermesSetArchive
+                | Self::HermesExclude
+                | Self::HermesInspect
+        )
     }
 
     /// The message the key sends. Derived rather than stored next to the key,
@@ -270,6 +301,19 @@ impl KeyAction {
             Self::RuleSuggestions => Message::RuleSuggestions(RuleSuggestionsMessage::Open),
             Self::ReviewList => Message::ReviewList(ReviewListMessage::Open),
             Self::HermesQuickFix => Message::QuickFix(QuickFixMessage::Open),
+            Self::HermesHandToInbox => Message::HermesFile(HermesFileMessage::HandToInbox),
+            Self::HermesProcessAgain => Message::HermesFile(HermesFileMessage::ProcessAgain),
+            Self::HermesSetInbox => {
+                Message::HermesFile(HermesFileMessage::SetRole(FolderRole::Inbox))
+            }
+            Self::HermesSetFilingLocation => {
+                Message::HermesFile(HermesFileMessage::SetRole(FolderRole::FilingLocation))
+            }
+            Self::HermesSetArchive => {
+                Message::HermesFile(HermesFileMessage::SetRole(FolderRole::Archive))
+            }
+            Self::HermesExclude => Message::HermesFile(HermesFileMessage::ToggleExclusion),
+            Self::HermesInspect => Message::HermesFile(HermesFileMessage::ShowInInspection),
             Self::SavedQueries => Message::SavedQueries(SavedQueriesMessage::Open),
             Self::ReorganisationPlan => {
                 Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
@@ -465,6 +509,12 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
         (
             A::HermesQuickFix,
             Binding::with_modifiers(Character(".".into()), Modifiers::COMMAND),
+        ),
+        // Process the file under the cursor again, H for Hermes; Cmd+Shift+H,
+        // Ctrl+Shift+H elsewhere. Cmd+Shift+R already opens the rule suggestions.
+        (
+            A::HermesProcessAgain,
+            Binding::with_modifiers(Character("h".into()), Modifiers::COMMAND | Modifiers::SHIFT),
         ),
         // The saved queries, A for abfragen; Cmd+Shift+A, Ctrl+Shift+A elsewhere.
         (
@@ -1245,11 +1295,17 @@ mod tests {
 
     #[test]
     fn every_action_has_a_default_key_and_no_key_is_twice_bound() {
-        // Reached through the command palette only.
-        const WITHOUT_KEY: [KeyAction; 3] = [
+        // Reached through the command palette (or a menu) only.
+        const WITHOUT_KEY: [KeyAction; 9] = [
             KeyAction::FetchTheme,
             KeyAction::DownloadOcrModels,
             KeyAction::DownloadAiModel,
+            KeyAction::HermesHandToInbox,
+            KeyAction::HermesSetInbox,
+            KeyAction::HermesSetFilingLocation,
+            KeyAction::HermesSetArchive,
+            KeyAction::HermesExclude,
+            KeyAction::HermesInspect,
         ];
         let bindings = default_bindings();
         for action in KeyAction::ALL

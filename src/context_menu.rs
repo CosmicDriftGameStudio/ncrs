@@ -5,14 +5,17 @@ use iced::keyboard::{self, key::Named, Key, Modifiers};
 use iced::{event, mouse, window, Point, Size};
 
 use crate::fs::OpenKind;
+use crate::hermes_column::FolderRole;
 use crate::i18n::Msg;
 use crate::messages::{
-    ClipboardKind, CommandPaletteMessage, Message, QuickOpenMessage, ReorganisationPlanMessage,
-    ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingsMessage,
-    ThemeFetchMessage, TransferKind,
+    ClipboardKind, CommandPaletteMessage, HermesFileMessage, Message, QuickFixMessage,
+    QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage,
+    SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage, TransferKind,
 };
 use crate::transfer_dialog::TransferDialogMessage;
-use crate::ui::layout::{MENU_ITEM_HEIGHT, MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_WIDTH};
+use crate::ui::layout::{
+    MENU_ITEM_HEIGHT, MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_SUB_WIDTH, MENU_WIDTH,
+};
 
 /// What an entry does. Each one is exactly the message its key sends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,12 +86,142 @@ pub enum MenuEntry {
         action: ContextAction,
         enabled: bool,
     },
+    /// The entry that opens the Hermes submenu.
+    Hermes,
 }
 
 impl MenuEntry {
     fn is_usable(self) -> bool {
-        matches!(self, MenuEntry::Item { enabled: true, .. })
+        matches!(
+            self,
+            MenuEntry::Item { enabled: true, .. } | MenuEntry::Hermes
+        )
     }
+}
+
+/// What an entry of the Hermes submenu does with the file under the cursor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HermesAction {
+    ShowSuggestion,
+    HandToInbox,
+    ProcessAgain,
+    SetInbox,
+    SetFilingLocation,
+    SetArchive,
+    Exclude,
+    Include,
+    Inspect,
+}
+
+impl HermesAction {
+    pub fn message(self) -> Message {
+        match self {
+            HermesAction::ShowSuggestion => Message::QuickFix(QuickFixMessage::Open),
+            HermesAction::HandToInbox => Message::HermesFile(HermesFileMessage::HandToInbox),
+            HermesAction::ProcessAgain => Message::HermesFile(HermesFileMessage::ProcessAgain),
+            HermesAction::SetInbox => {
+                Message::HermesFile(HermesFileMessage::SetRole(FolderRole::Inbox))
+            }
+            HermesAction::SetFilingLocation => {
+                Message::HermesFile(HermesFileMessage::SetRole(FolderRole::FilingLocation))
+            }
+            HermesAction::SetArchive => {
+                Message::HermesFile(HermesFileMessage::SetRole(FolderRole::Archive))
+            }
+            HermesAction::Exclude | HermesAction::Include => {
+                Message::HermesFile(HermesFileMessage::ToggleExclusion)
+            }
+            HermesAction::Inspect => Message::HermesFile(HermesFileMessage::ShowInInspection),
+        }
+    }
+
+    pub fn label(self) -> Msg {
+        match self {
+            HermesAction::ShowSuggestion => Msg::HermesMenuShowSuggestion,
+            HermesAction::HandToInbox => Msg::HermesMenuHandToInbox,
+            HermesAction::ProcessAgain => Msg::HermesMenuProcessAgain,
+            HermesAction::SetInbox => Msg::HermesMenuSetInbox,
+            HermesAction::SetFilingLocation => Msg::HermesMenuSetFilingLocation,
+            HermesAction::SetArchive => Msg::HermesMenuSetArchive,
+            HermesAction::Exclude => Msg::HermesMenuExclude,
+            HermesAction::Include => Msg::HermesMenuInclude,
+            HermesAction::Inspect => Msg::HermesMenuInspect,
+        }
+    }
+
+    /// The dimmed word after the label.
+    pub fn note(self) -> Option<Msg> {
+        match self {
+            HermesAction::HandToInbox => Some(Msg::HermesMenuNoteInbox),
+            HermesAction::SetArchive => Some(Msg::HermesMenuNoteReadOnly),
+            HermesAction::ShowSuggestion
+            | HermesAction::ProcessAgain
+            | HermesAction::SetInbox
+            | HermesAction::SetFilingLocation
+            | HermesAction::Exclude
+            | HermesAction::Include
+            | HermesAction::Inspect => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubEntry {
+    Separator,
+    Item { action: HermesAction, enabled: bool },
+}
+
+impl SubEntry {
+    fn is_usable(self) -> bool {
+        matches!(self, SubEntry::Item { enabled: true, .. })
+    }
+}
+
+/// How the Hermes entry is built: which of its commands apply to the file.
+pub struct HermesMenu<'a> {
+    /// The file is excluded, so the menu offers to include it.
+    pub excluded: bool,
+    pub is_enabled: &'a dyn Fn(HermesAction) -> bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct Submenu {
+    entries: Vec<SubEntry>,
+    selected: usize,
+    open: bool,
+}
+
+fn sub_groups(excluded: bool) -> [Vec<HermesAction>; 4] {
+    [
+        vec![HermesAction::ShowSuggestion],
+        vec![HermesAction::HandToInbox, HermesAction::ProcessAgain],
+        vec![
+            HermesAction::SetInbox,
+            HermesAction::SetFilingLocation,
+            HermesAction::SetArchive,
+        ],
+        vec![
+            if excluded {
+                HermesAction::Include
+            } else {
+                HermesAction::Exclude
+            },
+            HermesAction::Inspect,
+        ],
+    ]
+}
+
+/// The index after (or before, for a negative `delta`) `from` in `entries`
+/// that can be used; stays at `from` at either end.
+fn step_usable(entries: &[SubEntry], from: usize, delta: isize) -> usize {
+    let mut candidates: Box<dyn Iterator<Item = usize>> = if delta < 0 {
+        Box::new((0..from).rev())
+    } else {
+        Box::new(from + 1..entries.len())
+    };
+    candidates
+        .find(|&index| entries.get(index).is_some_and(|entry| entry.is_usable()))
+        .unwrap_or(from)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -97,12 +230,26 @@ pub struct ContextMenu {
     entries: Vec<MenuEntry>,
     /// Index into `entries`; always a usable item.
     selected: usize,
+    window: Size,
+    hermes: Option<Submenu>,
 }
 
 impl ContextMenu {
     /// A menu next to `anchor` that stays inside `window`: it opens to the
     /// right and below, and folds to the left or up where there is no room.
+    #[cfg(test)]
     pub fn new(anchor: Point, window: Size, is_enabled: impl Fn(ContextAction) -> bool) -> Self {
+        Self::with_hermes(anchor, window, is_enabled, None)
+    }
+
+    /// As [`Self::new`], with the Hermes entry after the file groups when
+    /// `hermes` says the column is up.
+    pub fn with_hermes(
+        anchor: Point,
+        window: Size,
+        is_enabled: impl Fn(ContextAction) -> bool,
+        hermes: Option<HermesMenu<'_>>,
+    ) -> Self {
         let mut entries = Vec::new();
         for (group_index, group) in GROUPS.iter().enumerate() {
             if group_index > 0 {
@@ -113,6 +260,11 @@ impl ContextMenu {
                 enabled: is_enabled(action),
             }));
         }
+        let submenu = hermes.map(|menu| {
+            entries.push(MenuEntry::Separator);
+            entries.push(MenuEntry::Hermes);
+            Submenu::new(&menu)
+        });
         let selected = entries
             .iter()
             .position(|entry| entry.is_usable())
@@ -125,6 +277,8 @@ impl ContextMenu {
             ),
             entries,
             selected,
+            window,
+            hermes: submenu,
         }
     }
 
@@ -133,7 +287,7 @@ impl ContextMenu {
             .iter()
             .map(|entry| match entry {
                 MenuEntry::Separator => MENU_SEPARATOR_HEIGHT,
-                MenuEntry::Item { .. } => MENU_ITEM_HEIGHT,
+                MenuEntry::Item { .. } | MenuEntry::Hermes => MENU_ITEM_HEIGHT,
             })
             .sum();
         Size::new(MENU_WIDTH, height + 2.0 * MENU_PADDING)
@@ -172,9 +326,27 @@ impl ContextMenu {
         }
     }
 
+    /// The pointer is over the entry at `index`: the Hermes entry opens its
+    /// submenu, any other closes it.
+    pub fn hover(&mut self, index: usize) {
+        self.select(index);
+        if self.selected == index {
+            if self.selected_is_hermes() {
+                self.open_submenu();
+            } else {
+                self.close_submenu();
+            }
+        }
+    }
+
     /// Moves to the next usable entry in the direction of `delta`, skipping
-    /// separators and greyed-out ones; stays put at either end.
+    /// separators and greyed-out ones; stays put at either end. In the open
+    /// submenu it moves there.
     pub fn move_by(&mut self, delta: isize) {
+        if let Some(sub) = self.open_sub_mut() {
+            sub.selected = step_usable(&sub.entries, sub.selected, delta);
+            return;
+        }
         let candidates: Vec<usize> = if delta < 0 {
             (0..self.selected).rev().collect()
         } else {
@@ -189,16 +361,176 @@ impl ContextMenu {
     }
 
     pub fn select_first(&mut self) {
+        if let Some(sub) = self.open_sub_mut() {
+            sub.selected = sub.first_usable();
+            return;
+        }
         if let Some(index) = self.entries.iter().position(|entry| entry.is_usable()) {
             self.selected = index;
         }
     }
 
     pub fn select_last(&mut self) {
+        if let Some(sub) = self.open_sub_mut() {
+            sub.selected = sub
+                .entries
+                .iter()
+                .rposition(|entry| entry.is_usable())
+                .unwrap_or(sub.selected);
+            return;
+        }
         if let Some(index) = self.entries.iter().rposition(|entry| entry.is_usable()) {
             self.selected = index;
         }
     }
+
+    fn open_sub_mut(&mut self) -> Option<&mut Submenu> {
+        self.hermes.as_mut().filter(|sub| sub.open)
+    }
+
+    pub fn selected_is_hermes(&self) -> bool {
+        matches!(self.entries.get(self.selected), Some(MenuEntry::Hermes))
+    }
+
+    pub fn submenu_is_open(&self) -> bool {
+        self.hermes.as_ref().is_some_and(|sub| sub.open)
+    }
+
+    /// Opens the submenu of the highlighted Hermes entry, with its first
+    /// usable entry highlighted. False when the highlight is on another entry.
+    pub fn open_submenu(&mut self) -> bool {
+        if !self.selected_is_hermes() {
+            return false;
+        }
+        match self.hermes.as_mut() {
+            Some(sub) => {
+                if !sub.open {
+                    sub.selected = sub.first_usable();
+                }
+                sub.open = true;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// True when a submenu was open.
+    pub fn close_submenu(&mut self) -> bool {
+        match self.hermes.as_mut() {
+            Some(sub) if sub.open => {
+                sub.open = false;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn sub_entries(&self) -> &[SubEntry] {
+        self.hermes
+            .as_ref()
+            .map_or(&[], |sub| sub.entries.as_slice())
+    }
+
+    pub fn sub_selected(&self) -> usize {
+        self.hermes.as_ref().map_or(0, |sub| sub.selected)
+    }
+
+    /// Highlights the entry of the open submenu at `index` if it can be used.
+    pub fn select_sub(&mut self, index: usize) {
+        if let Some(sub) = self.open_sub_mut() {
+            if sub
+                .entries
+                .get(index)
+                .is_some_and(|entry| entry.is_usable())
+            {
+                sub.selected = index;
+            }
+        }
+    }
+
+    pub fn selected_hermes_action(&self) -> Option<HermesAction> {
+        let sub = self.hermes.as_ref().filter(|sub| sub.open)?;
+        match sub.entries.get(sub.selected) {
+            Some(SubEntry::Item {
+                action,
+                enabled: true,
+            }) => Some(*action),
+            _ => None,
+        }
+    }
+
+    /// Where the open submenu goes: beside the Hermes entry, to the right or,
+    /// where that has no room, to the left, and up as far as it must to stay
+    /// in the window. `None` while it is closed.
+    pub fn submenu_origin(&self) -> Option<Point> {
+        let sub = self.hermes.as_ref().filter(|sub| sub.open)?;
+        let height = sub_height(&sub.entries);
+        let row_top = self.origin.y
+            + MENU_PADDING
+            + self
+                .entries
+                .iter()
+                .take(self.selected)
+                .map(entry_height)
+                .sum::<f32>();
+        let right = self.origin.x + MENU_WIDTH;
+        let x = if right + MENU_SUB_WIDTH > self.window.width {
+            self.origin.x - MENU_SUB_WIDTH
+        } else {
+            right
+        };
+        Some(Point::new(
+            x.max(0.0),
+            place(row_top - MENU_PADDING, height, self.window.height),
+        ))
+    }
+}
+
+impl Submenu {
+    fn new(menu: &HermesMenu<'_>) -> Self {
+        let mut entries = Vec::new();
+        for (group_index, group) in sub_groups(menu.excluded).iter().enumerate() {
+            if group_index > 0 {
+                entries.push(SubEntry::Separator);
+            }
+            entries.extend(group.iter().map(|&action| SubEntry::Item {
+                action,
+                enabled: (menu.is_enabled)(action),
+            }));
+        }
+        let mut sub = Self {
+            entries,
+            selected: 0,
+            open: false,
+        };
+        sub.selected = sub.first_usable();
+        sub
+    }
+
+    fn first_usable(&self) -> usize {
+        self.entries
+            .iter()
+            .position(|entry| entry.is_usable())
+            .unwrap_or(0)
+    }
+}
+
+fn entry_height(entry: &MenuEntry) -> f32 {
+    match entry {
+        MenuEntry::Separator => MENU_SEPARATOR_HEIGHT,
+        MenuEntry::Item { .. } | MenuEntry::Hermes => MENU_ITEM_HEIGHT,
+    }
+}
+
+pub fn sub_height(entries: &[SubEntry]) -> f32 {
+    let inner: f32 = entries
+        .iter()
+        .map(|entry| match entry {
+            SubEntry::Separator => MENU_SEPARATOR_HEIGHT,
+            SubEntry::Item { .. } => MENU_ITEM_HEIGHT,
+        })
+        .sum();
+    inner + 2.0 * MENU_PADDING
 }
 
 /// Where a span of `length` starts so it stays within `0..limit`: at `anchor`,
@@ -726,5 +1058,111 @@ mod tests {
         }
         let letter = key_pressed(Key::Character("a".into()));
         assert_eq!(input.handle(&letter, event::Status::Ignored), None);
+    }
+
+    fn hermes_menu(disabled: &'static [HermesAction]) -> ContextMenu {
+        let enabled = move |action: HermesAction| !disabled.contains(&action);
+        ContextMenu::with_hermes(
+            Point::new(10.0, 10.0),
+            WINDOW,
+            |_| true,
+            Some(HermesMenu {
+                excluded: false,
+                is_enabled: &enabled,
+            }),
+        )
+    }
+
+    #[test]
+    fn the_hermes_entry_is_last_and_only_there_with_the_column() {
+        let menu = hermes_menu(&[]);
+        assert_eq!(menu.entries().last(), Some(&MenuEntry::Hermes));
+        assert!(!menu_with(&[]).entries().contains(&MenuEntry::Hermes));
+    }
+
+    #[test]
+    fn right_opens_the_submenu_on_the_hermes_entry_and_left_closes_it() {
+        let mut menu = hermes_menu(&[]);
+        assert!(!menu.open_submenu(), "the highlight is on Open");
+        menu.select_last();
+        assert!(menu.selected_is_hermes());
+        assert!(menu.open_submenu());
+        assert_eq!(
+            menu.selected_hermes_action(),
+            Some(HermesAction::ShowSuggestion)
+        );
+        assert!(menu.close_submenu());
+        assert!(!menu.submenu_is_open());
+        assert!(!menu.close_submenu());
+    }
+
+    #[test]
+    fn the_submenu_skips_separators_and_greyed_entries() {
+        let mut menu = hermes_menu(&[HermesAction::ProcessAgain, HermesAction::SetInbox]);
+        menu.select_last();
+        menu.open_submenu();
+        menu.move_by(1);
+        assert_eq!(
+            menu.selected_hermes_action(),
+            Some(HermesAction::HandToInbox)
+        );
+        menu.move_by(1);
+        assert_eq!(
+            menu.selected_hermes_action(),
+            Some(HermesAction::SetFilingLocation)
+        );
+        menu.select_last();
+        assert_eq!(menu.selected_hermes_action(), Some(HermesAction::Inspect));
+        menu.move_by(1);
+        assert_eq!(menu.selected_hermes_action(), Some(HermesAction::Inspect));
+        menu.select_first();
+        assert_eq!(
+            menu.selected_hermes_action(),
+            Some(HermesAction::ShowSuggestion)
+        );
+        assert!(menu.selected_is_hermes(), "the parent keeps its highlight");
+    }
+
+    #[test]
+    fn hovering_another_entry_closes_the_submenu() {
+        let mut menu = hermes_menu(&[]);
+        menu.select_last();
+        let hermes = menu.selected();
+        menu.hover(hermes);
+        assert!(menu.submenu_is_open());
+        menu.hover(0);
+        assert!(!menu.submenu_is_open());
+    }
+
+    #[test]
+    fn the_submenu_folds_to_the_left_where_there_is_no_room() {
+        let mut menu = hermes_menu(&[]);
+        menu.select_last();
+        menu.open_submenu();
+        let origin = menu.submenu_origin().unwrap();
+        assert_eq!(origin.x, menu.origin().x + MENU_WIDTH);
+
+        let mut right = ContextMenu::with_hermes(
+            Point::new(WINDOW.width, 10.0),
+            WINDOW,
+            |_| true,
+            Some(HermesMenu {
+                excluded: true,
+                is_enabled: &|_| true,
+            }),
+        );
+        right.select_last();
+        right.open_submenu();
+        assert_eq!(
+            right.submenu_origin().unwrap().x,
+            right.origin().x - MENU_SUB_WIDTH
+        );
+        assert!(right.sub_entries().iter().any(|entry| matches!(
+            entry,
+            SubEntry::Item {
+                action: HermesAction::Include,
+                ..
+            }
+        )));
     }
 }

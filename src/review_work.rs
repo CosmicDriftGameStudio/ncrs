@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono::NaiveDate;
 use ncrs_index::{
-    Amount, BatchKind, Currency, DocumentFields, DocumentId, DocumentStatus, Index, IndexError,
-    ReviewEntryId, ReviewReason, RuleId, RuleSpec, TaxContext,
+    Amount, BatchKind, Currency, DocumentFields, DocumentId, DocumentStatus, IncludeOutcome, Index,
+    IndexError, ReviewEntryId, ReviewReason, RuleId, RuleSpec, TaxContext,
 };
 use ncrs_intake::{pattern_is_valid, plan, render_pattern, text_is_readable, PlanInput, Planning};
 
@@ -157,6 +157,12 @@ impl ReviewAccess {
     /// Hermes leaves these paths alone from now on.
     pub fn exclude(&self, paths: &[PathBuf]) -> Result<(), String> {
         self.with_index(|index| paths.iter().try_for_each(|path| index.exclude_path(path)))
+    }
+
+    /// Hermes looks at this path again. A folder around it that is excluded
+    /// stays so.
+    pub fn include(&self, path: &Path) -> Result<IncludeOutcome, String> {
+        self.with_index(|index| index.include_path(path))
     }
 
     /// See [`suggestion_for`].

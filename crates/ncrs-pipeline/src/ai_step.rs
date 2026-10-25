@@ -289,6 +289,7 @@ mod tests {
                 text: Some(text.to_owned()),
                 review: None,
                 plan: None,
+                force: false,
             }
         }
 

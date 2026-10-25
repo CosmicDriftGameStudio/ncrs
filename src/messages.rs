@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use ncrs_index::{HermesCounts, RuleId, SavedQuery, SavedQueryId, TaxContext};
+use ncrs_index::{HermesCounts, IncludeOutcome, RuleId, SavedQuery, SavedQueryId, TaxContext};
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
 
@@ -19,7 +19,7 @@ use crate::filing_work::FilingSummary;
 use crate::fs::search::SearchEvent;
 use crate::fs::CreateDirError;
 use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
-use crate::hermes_column::{ColumnReading, ColumnStage, FileDetail};
+use crate::hermes_column::{ColumnReading, ColumnStage, FileDetail, FolderRole};
 use crate::i18n::Language;
 use crate::jobs::JobEvent;
 #[cfg(any(target_os = "macos", test))]
@@ -181,6 +181,14 @@ pub enum Message {
     /// The pointer is over the entry at this index.
     ContextMenuHover(usize),
     ContextMenuClose,
+    /// Right or Enter on the Hermes entry: open its submenu.
+    ContextMenuOpenSub,
+    /// Left: back from the submenu to the entry.
+    ContextMenuCloseSub,
+    /// The pointer is over the entry at this index of the submenu.
+    ContextMenuSubHover(usize),
+    /// A click on the entry at this index of the submenu: run it.
+    ContextMenuSubClick(usize),
 
     // --- path field in the status bar ---
     /// The path field's text changed: from then on it shows what was typed
@@ -287,6 +295,7 @@ pub enum Message {
     ReorganisationPlan(ReorganisationPlanMessage),
     ReviewList(ReviewListMessage),
     QuickFix(QuickFixMessage),
+    HermesFile(HermesFileMessage),
     SavedQueries(SavedQueriesMessage),
     /// The sidebar of the Hermes card: closes the card that is up and opens
     /// this page.
@@ -633,6 +642,24 @@ pub enum SavedQueriesMessage {
     Exported {
         generation: u64,
         result: Result<ExportSummary, String>,
+    },
+}
+
+/// What the Hermes commands do with the file under the cursor of the active
+/// panel.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HermesFileMessage {
+    HandToInbox,
+    ProcessAgain,
+    SetRole(FolderRole),
+    /// Excludes the file, or includes it again when it is excluded.
+    ToggleExclusion,
+    ShowInInspection,
+    /// The configured locations after a role was set, as written.
+    RoleSaved(Result<Filing, FilingWriteError>),
+    Included {
+        path: PathBuf,
+        result: Result<IncludeOutcome, String>,
     },
 }
 

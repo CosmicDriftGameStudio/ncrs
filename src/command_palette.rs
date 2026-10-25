@@ -97,6 +97,15 @@ impl CommandPalette {
         palette
     }
 
+    /// Drops the commands that act on a file in the Hermes column, which is
+    /// not up.
+    pub fn without_hermes_file_commands(mut self) -> Self {
+        self.entries
+            .retain(|entry| !entry.action.acts_on_hermes_file());
+        self.rank();
+        self
+    }
+
     pub fn query(&self) -> &str {
         &self.query
     }
@@ -632,7 +641,10 @@ mod tests {
     fn a_word_only_matches_at_its_start() {
         let actions = found(Language::English, "ize");
         assert!(actions.is_empty(), "{actions:?}");
-        assert_eq!(found(Language::English, "insp"), [KeyAction::FilingStatus]);
+        assert_eq!(
+            found(Language::English, "insp"),
+            [KeyAction::FilingStatus, KeyAction::HermesInspect]
+        );
     }
 
     #[test]
@@ -1027,5 +1039,21 @@ mod tests {
         };
         assert_eq!(key_of(KeyAction::Copy).as_deref(), Some("F5"));
         assert_eq!(key_of(KeyAction::Open).as_deref(), Some("Enter"));
+    }
+
+    #[test]
+    fn the_hermes_file_commands_are_listed_only_while_the_column_is_up() {
+        let listed = |palette: &CommandPalette| {
+            palette
+                .hits()
+                .any(|hit| palette.entry(hit).unwrap().action == KeyAction::HermesProcessAgain)
+        };
+        let with = palette(KeyScope::Panel, Language::English);
+        assert!(listed(&with));
+        let without = with.without_hermes_file_commands();
+        assert!(!listed(&without));
+        assert!(without
+            .hits()
+            .any(|hit| without.entry(hit).unwrap().action == KeyAction::FilingStatus));
     }
 }

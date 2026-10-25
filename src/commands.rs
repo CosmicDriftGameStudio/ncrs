@@ -189,6 +189,19 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             Msg::ActionReviewListTheme,
         ),
         KeyAction::HermesQuickFix => Command::plain(action, Hermes, Msg::ActionHermesQuickFix),
+        KeyAction::HermesHandToInbox => {
+            Command::plain(action, Hermes, Msg::ActionHermesHandToInbox)
+        }
+        KeyAction::HermesProcessAgain => {
+            Command::plain(action, Hermes, Msg::ActionHermesProcessAgain)
+        }
+        KeyAction::HermesSetInbox => Command::plain(action, Hermes, Msg::ActionHermesSetInbox),
+        KeyAction::HermesSetFilingLocation => {
+            Command::plain(action, Hermes, Msg::ActionHermesSetFilingLocation)
+        }
+        KeyAction::HermesSetArchive => Command::plain(action, Hermes, Msg::ActionHermesSetArchive),
+        KeyAction::HermesExclude => Command::plain(action, Hermes, Msg::ActionHermesExclude),
+        KeyAction::HermesInspect => Command::plain(action, Hermes, Msg::ActionHermesInspect),
         KeyAction::SavedQueries => Command::themed(
             action,
             Hermes,

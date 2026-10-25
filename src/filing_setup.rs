@@ -11,6 +11,7 @@ use iced::Task;
 use ncrs_intake::LocationMode;
 
 use crate::config::{self, Filing, FilingLocation, FilingRuleViolation, FilingWriteError};
+use crate::hermes_column::FolderRole;
 
 /// What the card says about the last thing the user did.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -215,6 +216,54 @@ impl FilingSetup {
     /// For a failure before the save could start, such as a missing config path.
     pub fn refuse_saving(&mut self, note: SetupNote) {
         self.note = Some(note);
+    }
+}
+
+/// A role the list would not allow, with the list it was tried on so the
+/// problem can name the folders.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoleRefused {
+    pub problem: SetupProblem,
+    pub chosen: Vec<FilingLocation>,
+}
+
+/// The list to write once `folder` plays `role`: a folder not listed yet is
+/// added, a filing location takes the target over, and the list has to pass
+/// the same checks as in the setup card.
+pub fn locations_with_role(
+    configured: &[FilingLocation],
+    folder: &Path,
+    role: FolderRole,
+) -> Result<Vec<FilingLocation>, RoleRefused> {
+    let (mode, is_target) = match role {
+        FolderRole::Inbox => (LocationMode::Inbox, false),
+        FolderRole::FilingLocation => (LocationMode::Archive, true),
+        FolderRole::Archive => (LocationMode::Archive, false),
+    };
+    let mut setup = FilingSetup::new(configured);
+    match setup.chosen.iter_mut().find(|l| l.path == folder) {
+        Some(location) => {
+            location.mode = mode;
+            location.is_target = is_target;
+        }
+        None => setup.chosen.push(FilingLocation {
+            path: folder.to_path_buf(),
+            mode,
+            images: false,
+            is_target,
+        }),
+    }
+    if is_target {
+        for location in &mut setup.chosen {
+            location.is_target = location.path == folder;
+        }
+    }
+    match setup.problem() {
+        Some(problem) => Err(RoleRefused {
+            problem,
+            chosen: setup.chosen,
+        }),
+        None => Ok(setup.locations_to_save()),
     }
 }
 
@@ -599,5 +648,50 @@ mod tests {
             format!("~{}Documents", std::path::MAIN_SEPARATOR)
         );
         assert_eq!(shown_path(Path::new("/srv/files"), home), "/srv/files");
+    }
+
+    fn configured() -> Vec<FilingLocation> {
+        vec![
+            location(LocationMode::Inbox, "Scans", false),
+            location(LocationMode::Archive, "Filed", true),
+            location(LocationMode::Archive, "Old", false),
+        ]
+    }
+
+    #[test]
+    fn a_filing_location_takes_the_target_over() {
+        let list =
+            locations_with_role(&configured(), &folder("Old"), FolderRole::FilingLocation).unwrap();
+        let targets: Vec<_> = list.iter().filter(|l| l.is_target).collect();
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].path, folder("Old"));
+    }
+
+    #[test]
+    fn an_inbox_is_never_the_target_and_the_target_is_not_left_open() {
+        let list = locations_with_role(&configured(), &folder("Filed"), FolderRole::Inbox).unwrap();
+        assert!(list
+            .iter()
+            .all(|l| l.mode == LocationMode::Archive || !l.is_target));
+        assert_eq!(list.iter().filter(|l| l.is_target).count(), 1);
+
+        let mut three = configured();
+        three.push(location(LocationMode::Archive, "Third", false));
+        let refused = locations_with_role(&three, &folder("Filed"), FolderRole::Inbox).unwrap_err();
+        assert_eq!(refused.problem, SetupProblem::ChooseCentralFiling);
+    }
+
+    #[test]
+    fn a_new_folder_is_added_with_its_role() {
+        let list = locations_with_role(&configured(), &folder("New"), FolderRole::Inbox).unwrap();
+        assert_eq!(list.len(), 4);
+        assert_eq!(list[3].mode, LocationMode::Inbox);
+        let inside = folder("Filed").join("2025");
+        assert!(matches!(
+            locations_with_role(&configured(), &inside, FolderRole::Inbox)
+                .unwrap_err()
+                .problem,
+            SetupProblem::Rule(FilingRuleViolation::Overlap { .. })
+        ));
     }
 }

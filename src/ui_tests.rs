@@ -992,6 +992,7 @@ mod context_menu_overlay {
                     }
                     top += MENU_ITEM_HEIGHT;
                 }
+                MenuEntry::Hermes => top += MENU_ITEM_HEIGHT,
             }
         }
         let point = Point::new(
@@ -3740,6 +3741,25 @@ mod title_bar {
             assert!(
                 matches,
                 "the quick-fix menu does not match tests/snapshots/{name}.png"
+            );
+        }
+    }
+
+    #[test]
+    fn the_hermes_context_menu_matches_its_snapshots() {
+        for (language, name) in [
+            (Language::English, "hermes_context_menu_en"),
+            (Language::German, "hermes_context_menu_de"),
+        ] {
+            let app = App::with_hermes_context_menu_sample().in_language(language);
+            let matches = simulator(&app)
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(
+                matches,
+                "the Hermes context menu does not match tests/snapshots/{name}.png"
             );
         }
     }

@@ -359,11 +359,38 @@ impl State {
                 text: None,
                 review: None,
                 plan: None,
+                force: false,
             },
             batch,
             fingerprint,
         });
         true
+    }
+
+    fn queue_again(&mut self, location: &Location, path: &Path) {
+        if !self.waiting_first.insert(path.to_path_buf()) {
+            if let Some(queued) = self
+                .first_step
+                .iter_mut()
+                .find(|queued| queued.item.path == path)
+            {
+                queued.item.force = true;
+            }
+            return;
+        }
+        self.first_step.push_back(Queued {
+            item: Item {
+                location: location.clone(),
+                path: path.to_path_buf(),
+                document: None,
+                text: None,
+                review: None,
+                plan: None,
+                force: true,
+            },
+            batch: None,
+            fingerprint: None,
+        });
     }
 
     fn is_repeated_report(&self, path: &Path, fingerprint: Option<Fingerprint>) -> bool {
@@ -1064,6 +1091,23 @@ impl Runner {
         self.shared.work_ready.notify_all();
     }
 
+    /// Runs a known file through all steps again, even if nothing about it
+    /// changed. False when the path is in none of the locations.
+    pub fn process_again(&self, path: &Path) -> bool {
+        let Some(location) = self
+            .shared
+            .locations
+            .iter()
+            .find(|location| path.starts_with(&location.path))
+        else {
+            return false;
+        };
+        self.shared
+            .update(|state| state.queue_again(location, path));
+        self.shared.work_ready.notify_all();
+        true
+    }
+
     /// Workers that are above the new target leave after their current job.
     pub fn set_load(&self, load: Load) {
         let target = load.worker_count(self.shared.settings.logical_cores).get();
@@ -1718,6 +1762,46 @@ mod tests {
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         let index = fixture.index.lock().unwrap();
         assert_eq!(index.search_text("4711 Company", 10).unwrap().len(), 1);
+    }
+
+    #[derive(Debug)]
+    struct CountingText(Arc<std::sync::atomic::AtomicUsize>);
+
+    impl TextSource for CountingText {
+        fn extract(&self, _path: &Path) -> Result<Extracted, TextError> {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(Extracted::Text("Invoice 4711 Company A".to_owned()))
+        }
+    }
+
+    #[test]
+    fn a_known_file_processed_again_passes_the_text_step_again() {
+        let inbox_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        put(&inbox, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let reads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let chain = TextChain::new().with_source(CountingText(Arc::clone(&reads)));
+        let runner = Runner::start(
+            settings(workers(1)),
+            fixture.steps_reading(chain),
+            vec![inbox.clone()],
+            stepping_clock(),
+        );
+        runner.wait_for("the file reviewed", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[3].done == 1
+        });
+        assert_eq!(reads.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        assert!(runner.process_again(&inbox.path.join("invoice.pdf")));
+
+        runner.wait_for("the file reviewed again", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[3].done == 2
+        });
+        assert_eq!(reads.load(std::sync::atomic::Ordering::SeqCst), 2);
+        assert!(!runner.process_again(Path::new("/elsewhere/invoice.pdf")));
+        let index = fixture.index.lock().unwrap();
+        assert_eq!(index.open_reviews().unwrap().len(), 1);
     }
 
     #[test]

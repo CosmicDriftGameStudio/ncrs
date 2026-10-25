@@ -122,6 +122,16 @@ pub fn key_cap<'a>(label: &str, palette: &Palette) -> Element<'a, Message> {
     cap(label, false, palette)
 }
 
+/// A key cap in a menu row; on the highlighted (filled) row it is drawn in
+/// the highlight's text color so it stays readable.
+pub fn key_cap_in_row<'a>(
+    label: &str,
+    highlighted: bool,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    cap(label, highlighted, palette)
+}
+
 fn cap<'a>(label: &str, on_fill: bool, palette: &Palette) -> Element<'a, Message> {
     let base = theme::key_cap(palette, on_fill);
     container(

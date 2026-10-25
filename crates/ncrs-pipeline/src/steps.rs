@@ -62,6 +62,12 @@ impl Step for IntakeStep {
             // between) goes on again, and so does an archive document whose
             // text was never read, for example for lack of the PDF library.
             let unreviewed = match outcome {
+                Outcome::Unchanged(id) if item.force => {
+                    if item.location.mode == LocationMode::Inbox {
+                        index.set_document_status(id, DocumentStatus::New)?;
+                    }
+                    true
+                }
                 Outcome::Unchanged(id) => match item.location.mode {
                     LocationMode::Inbox => index
                         .document(id)?

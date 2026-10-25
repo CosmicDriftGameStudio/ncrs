@@ -17,6 +17,8 @@ pub const COLUMN_HEADER_HEIGHT: f32 = size::COLUMN_HEADER;
 pub const ROW_HEIGHT: f32 = 22.0;
 
 pub const MENU_WIDTH: f32 = 300.0;
+/// The Hermes submenu has labels with a note and a key.
+pub const MENU_SUB_WIDTH: f32 = 340.0;
 pub const MENU_ITEM_HEIGHT: f32 = 24.0;
 pub const MENU_SEPARATOR_HEIGHT: f32 = 7.0;
 pub const MENU_PADDING: f32 = 4.0;

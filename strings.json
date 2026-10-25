@@ -4006,13 +4006,13 @@
       "key": "quick_fix.exclude",
       "context": "Entry of the quick-fix menu for one file: Hermes leaves it alone from now on.",
       "en": "Exclude from Hermes",
-      "de": "Von Hermes ausnehmen"
+      "de": "Von Hermes ausschließen"
     },
     {
       "key": "quick_fix.exclude_all",
       "context": "Entry of the quick-fix menu for several files: Hermes leaves all of them alone from now on. {count} is their number.",
       "en": "Exclude all {count} from Hermes",
-      "de": "Alle {count} von Hermes ausnehmen"
+      "de": "Alle {count} von Hermes ausschließen"
     },
     {
       "key": "quick_fix.summary_title",
@@ -4072,7 +4072,157 @@
       "key": "status.quick_fix_excluded",
       "context": "Status bar message after files were excluded from Hermes by the quick-fix menu. {count} is their number.",
       "en": "Excluded from Hermes: {count}",
-      "de": "Von Hermes ausgenommen: {count}"
+      "de": "Von Hermes ausgeschlossen: {count}"
+    },
+    {
+      "key": "hermes_menu.show_suggestion",
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Opens the quick-fix menu with Hermes' suggestion for an inquiry.",
+      "en": "Show suggestion",
+      "de": "Vorschlag zeigen"
+    },
+    {
+      "key": "hermes_menu.hand_to_inbox",
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Opens the move dialog with the inbox as target.",
+      "en": "Hand to Hermes",
+      "de": "An Hermes geben"
+    },
+    {
+      "key": "hermes_menu.note_inbox",
+      "context": "Dimmed note after 'Hand to Hermes' in the Hermes submenu: where the file goes.",
+      "en": "into the inbox",
+      "de": "in den Eingang"
+    },
+    {
+      "key": "hermes_menu.process_again",
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Runs the file through the pipeline steps again.",
+      "en": "Process again",
+      "de": "Erneut verarbeiten"
+    },
+    {
+      "key": "hermes_menu.set_inbox",
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Makes the folder an inbox (Tube) of Hermes.",
+      "en": "Set as inbox",
+      "de": "Als Eingang festlegen"
+    },
+    {
+      "key": "hermes_menu.set_filing_location",
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Makes the folder the filing location, the archive that documents are filed into.",
+      "en": "Set as filing location",
+      "de": "Als Ablageort festlegen"
+    },
+    {
+      "key": "hermes_menu.set_archive",
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Makes the folder an archive that Hermes only reads.",
+      "en": "Set as archive",
+      "de": "Als Archiv festlegen"
+    },
+    {
+      "key": "hermes_menu.note_read_only",
+      "context": "Dimmed note after 'Set as archive' in the Hermes submenu: Hermes does not change what is in it.",
+      "en": "read-only",
+      "de": "nur lesen"
+    },
+    {
+      "key": "hermes_menu.exclude",
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Hermes leaves the file or folder alone from now on.",
+      "en": "Exclude from Hermes",
+      "de": "Von Hermes ausschließen"
+    },
+    {
+      "key": "hermes_menu.include",
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Takes back an exclusion.",
+      "en": "Include in Hermes again",
+      "de": "Wieder bei Hermes einbeziehen"
+    },
+    {
+      "key": "hermes_menu.inspect",
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Opens the Hermes inspection page, at the file's error if it has one.",
+      "en": "Show in inspection",
+      "de": "In der Inspektion zeigen"
+    },
+    {
+      "key": "status.hermes_processing_again",
+      "context": "Status bar message after a file was queued to run through the Hermes steps again. {name} is the file name.",
+      "en": "Processing again: {name}",
+      "de": "Wird erneut verarbeitet: {name}"
+    },
+    {
+      "key": "status.hermes_not_processable",
+      "context": "Status bar message when a file cannot be run through the Hermes steps: it is excluded, outside the configured folders, or the pipeline is not running.",
+      "en": "Hermes cannot process this file now",
+      "de": "Hermes kann diese Datei jetzt nicht verarbeiten"
+    },
+    {
+      "key": "status.hermes_included",
+      "context": "Status bar message after a file or folder was taken back into Hermes' view. {name} is its name.",
+      "en": "Included in Hermes again: {name}",
+      "de": "Wieder bei Hermes einbezogen: {name}"
+    },
+    {
+      "key": "status.hermes_included_by_folder",
+      "context": "Status bar message when a file cannot be included because a folder around it is excluded. {folder} is that folder's path.",
+      "en": "Excluded by the folder {folder}; include that folder instead",
+      "de": "Vom Ordner {folder} ausgeschlossen; schließe stattdessen den Ordner wieder ein"
+    },
+    {
+      "key": "status.hermes_role_refused",
+      "context": "Status bar message when a folder cannot take the chosen role in the filing setup. {problem} is the reason, a sentence.",
+      "en": "Not set: {problem}",
+      "de": "Nicht festgelegt: {problem}"
+    },
+    {
+      "key": "status.hermes_role_failed",
+      "context": "Status bar message when saving a folder's role failed. {reason} is the cause.",
+      "en": "Saving the folder's role failed: {reason}",
+      "de": "Rolle des Ordners nicht gespeichert: {reason}"
+    },
+    {
+      "key": "status.hermes_no_inbox",
+      "context": "Status bar message when a file should go to the inbox but none is configured.",
+      "en": "No inbox is set up",
+      "de": "Es ist kein Eingang eingerichtet"
+    },
+    {
+      "key": "action.hermes_hand_to_inbox",
+      "context": "Entry of the command list and the menu that runs the key action hermes_hand_to_inbox: opens the move dialog for the file under the cursor with the inbox as target.",
+      "en": "Hand to Hermes (into the inbox)",
+      "de": "An Hermes geben (in den Eingang)"
+    },
+    {
+      "key": "action.hermes_process_again",
+      "context": "Entry of the command list and the menu that runs the key action hermes_process_again: runs the file under the cursor through the Hermes steps again.",
+      "en": "Process again",
+      "de": "Erneut verarbeiten"
+    },
+    {
+      "key": "action.hermes_set_inbox",
+      "context": "Entry of the command list and the menu that runs the key action hermes_set_inbox: makes the folder under the cursor an inbox.",
+      "en": "Set as inbox",
+      "de": "Als Eingang festlegen"
+    },
+    {
+      "key": "action.hermes_set_filing_location",
+      "context": "Entry of the command list and the menu that runs the key action hermes_set_filing_location: makes the folder under the cursor the filing location.",
+      "en": "Set as filing location",
+      "de": "Als Ablageort festlegen"
+    },
+    {
+      "key": "action.hermes_set_archive",
+      "context": "Entry of the command list and the menu that runs the key action hermes_set_archive: makes the folder under the cursor a read-only archive.",
+      "en": "Set as archive (read-only)",
+      "de": "Als Archiv festlegen (nur lesen)"
+    },
+    {
+      "key": "action.hermes_exclude",
+      "context": "Entry of the command list and the menu that runs the key action hermes_exclude: excludes the file or folder under the cursor from Hermes, or includes it again when it is excluded.",
+      "en": "Exclude from or include in Hermes",
+      "de": "Von Hermes ausschließen oder wieder einbeziehen"
+    },
+    {
+      "key": "action.hermes_inspect",
+      "context": "Entry of the command list and the menu that runs the key action hermes_inspect: opens the Hermes inspection page for the file under the cursor.",
+      "en": "Show in inspection",
+      "de": "In der Inspektion zeigen"
     }
   ]
 }

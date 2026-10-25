@@ -229,7 +229,7 @@ fn item<'a>(
             .color(detail_color)
             .wrapping(text::Wrapping::None),
     ]
-    .extend(key.map(|cap_text| kit::key_cap(cap_text, palette)))
+    .extend(key.map(|cap_text| kit::key_cap_in_row(cap_text, is_selected, palette)))
     .spacing(spacing::S)
     .align_y(alignment::Vertical::Center);
     let button = button(content)
