@@ -58,6 +58,8 @@ ncrs-intake = { path = "crates/ncrs-intake", version = "0.0.0" }
 ncrs-index = { path = "crates/ncrs-index", version = "0.0.0" }
 # Runs the processing steps on a pool of worker threads whose size follows the load setting.
 ncrs-pipeline = { path = "crates/ncrs-pipeline", version = "0.0.0" }
+# Asks a provider for the fields the rules left open, including the built-in model.
+ncrs-ai = { path = "crates/ncrs-ai", version = "0.0.0" }
 # Folders that overlap are found by file identity, which holds for symlinks and
 # case-insensitive file systems where comparing paths would not.
 same-file = "1.0"
@@ -95,7 +97,11 @@ codegen-units = 1
 [features]
 # The fallback build, as in releases: software rendering is unusably slow on a
 # high-resolution display, and tiny-skia still takes over where there is no GPU.
-default = ["gpu-with-fallback"]
+default = ["gpu-with-fallback", "local-ai"]
+
+# The built-in model provider: llama.cpp is compiled into the app. Needs cmake
+# and a C++ compiler at build time; leave it out with --no-default-features.
+local-ai = ["ncrs-ai/llama"]
 
 # Software rasterisation only: no GPU or driver needed, works on CI runners and
 # VMs, but slow on high-resolution displays.

@@ -47,6 +47,11 @@ All notable changes to this project are documented here. The format follows
   on the status page; very large files are cut off, so a crafted file cannot
   fill the memory.
 
+- A small AI model (Qwen3 0.6B, Apache-2.0) that runs inside the app, for
+  filling in the fields the rules left open without sending a document
+  anywhere. The app is not using it yet, so nothing changes for you today. It
+  is a download of 640 MB that is checked before it is used, and the app now
+  needs macOS 10.15 or later on Intel Macs.
 - The groundwork for letting an AI fill in the fields the rules left open
   (sender, kind, date, number, amount). There is an interface for such a
   provider that can only return field values, a step in the processing that

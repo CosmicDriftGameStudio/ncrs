@@ -37,6 +37,12 @@ cargo fmt --all --check
 cargo test readme_screenshots -- --ignored   # regenerates docs/screenshots/*.png for the README
 ```
 
+The default build compiles llama.cpp (the built-in AI model), which needs cmake, a
+C++17 compiler and clang (libclang, for bindgen). `--no-default-features --features
+gpu-with-fallback` builds without it. The tests that run the model are ignored
+until the file is there: `bash scripts/fetch-ai-model.sh target/ai-models`, then
+`cargo test -p ncrs-ai --features llama with_model_ -- --ignored`.
+
 CI runs the tests in every backend combination, because the backend is chosen
 by cargo features and the `cfg` logic in `src/backend.rs` only compiles in
 some of them.

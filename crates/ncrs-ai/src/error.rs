@@ -35,6 +35,8 @@ pub enum AiError {
     Transport(&'static str),
     Status(u16),
     BadReply(&'static str),
+    /// The built-in model could not be loaded or run.
+    Model(&'static str),
 }
 
 impl fmt::Display for AiError {
@@ -49,6 +51,7 @@ impl fmt::Display for AiError {
             Self::Transport(what) => write!(f, "the AI provider could not be reached: {what}"),
             Self::Status(status) => write!(f, "the AI provider answered with status {status}"),
             Self::BadReply(what) => write!(f, "the AI provider's reply is not usable: {what}"),
+            Self::Model(what) => write!(f, "the local model could not be used: {what}"),
         }
     }
 }

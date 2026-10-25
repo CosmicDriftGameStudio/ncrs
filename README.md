@@ -673,10 +673,14 @@ cargo test           # unit tests (fs reader, formatting, panel selection logic)
 **Linux** additionally needs the usual windowing/font dev packages, e.g. on Debian/Ubuntu:
 
 ```bash
-sudo apt install pkg-config libxkbcommon-dev libwayland-dev libx11-dev libfontconfig1-dev
+sudo apt install pkg-config libxkbcommon-dev libwayland-dev libx11-dev libfontconfig1-dev cmake libclang-dev
 ```
 
-macOS and Windows need no extra system packages.
+The default build compiles llama.cpp for the built-in AI model, so it needs
+[cmake](https://cmake.org), a C++17 compiler and clang (libclang, for the
+bindings) on every system: Xcode's command line tools and `brew install cmake` on
+macOS, Visual Studio's C++ tools, LLVM and cmake on Windows. A build without the
+model needs none of them: `cargo build --no-default-features --features gpu-with-fallback`.
 
 ## Architecture
 
