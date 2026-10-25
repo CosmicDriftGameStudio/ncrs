@@ -124,10 +124,11 @@ fn single_header(item: &ReviewItem, lang: Language) -> String {
 fn read_line(item: &ReviewItem, lang: Language) -> String {
     let fields = &item.fields;
     let date = fields.date.map(|date| date.to_string());
+    let kind = fields.kind.as_deref().map(|kind| lang.kind_label(kind));
     fill_template(
         lang.text(Msg::QuickFixRead),
         &[
-            ("{kind}", fields.kind.as_deref().unwrap_or(MISSING_FIELD)),
+            ("{kind}", kind.as_deref().unwrap_or(MISSING_FIELD)),
             ("{date}", date.as_deref().unwrap_or(MISSING_FIELD)),
             (
                 "{sender}",

@@ -192,7 +192,15 @@ fn list<'a>(
                 columns.path_cell(0, &file_name(item), color),
                 columns.cell(1, &reason_text(item.reason, item.text_state, lang), color),
                 columns.cell(2, item.fields.sender.as_deref().unwrap_or_default(), color),
-                columns.cell(3, item.fields.kind.as_deref().unwrap_or_default(), color),
+                columns.cell(
+                    3,
+                    item.fields
+                        .kind
+                        .as_deref()
+                        .map_or_else(Default::default, |kind| lang.kind_label(kind))
+                        .as_ref(),
+                    color
+                ),
                 columns.cell(
                     4,
                     &item

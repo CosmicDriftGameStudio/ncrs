@@ -182,7 +182,7 @@ pub fn criteria_text(spec: &QuerySpec, lang: Language) -> String {
         }
     }
     if let Some(kind) = &spec.kind {
-        parts.push(kind.clone());
+        parts.push(lang.kind_label(kind).into_owned());
     }
     parts.extend(spec.tags.iter().map(|tag| format!("#{tag}")));
     if let Some(full_text) = &spec.full_text {
