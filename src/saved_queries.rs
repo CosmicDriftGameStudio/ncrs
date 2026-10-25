@@ -49,6 +49,16 @@ impl Form {
         }
     }
 
+    pub fn text(&self, field: QueryField) -> &str {
+        match field {
+            QueryField::Name => &self.name,
+            QueryField::Year => &self.year,
+            QueryField::Kind => &self.kind,
+            QueryField::Tags => &self.tags,
+            QueryField::FullText => &self.full_text,
+        }
+    }
+
     fn text_mut(&mut self, field: QueryField) -> &mut String {
         match field {
             QueryField::Name => &mut self.name,

@@ -611,6 +611,12 @@ pub enum SavedQueriesMessage {
     FocusField {
         backwards: bool,
     },
+    /// Left in the form: asks which field has the focus.
+    LeftInForm,
+    /// The answer: the field that has the focus, if any. Left only goes on to
+    /// the sidebar when that field is empty (iced does not tell where its
+    /// caret is) or none has the focus.
+    LeftChecked(Option<QueryField>),
     Save,
     Saved {
         generation: u64,

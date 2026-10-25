@@ -607,6 +607,8 @@ pub struct InputState {
     pub rule_suggestions: bool,
     pub review_list: bool,
     pub saved_queries: bool,
+    /// The sidebar of the Hermes card has the arrows, not the page.
+    pub hermes_sidebar: bool,
     /// The copy or move confirmation is up: its target field takes Escape.
     pub transfer_dialog: bool,
     /// The reorganisation plan view is up: same as Quick Open.
@@ -617,6 +619,16 @@ pub struct InputState {
 }
 
 impl InputState {
+    /// Left in the saved queries form: the text fields capture it, so the key
+    /// routing never sees it, yet at the start of a field it leads to the
+    /// sidebar.
+    fn leaves_form_left(&self, key: &Key, modifiers: Modifiers) -> bool {
+        self.saved_queries
+            && !self.hermes_sidebar
+            && modifiers.is_empty()
+            && matches!(key, Key::Named(Named::ArrowLeft))
+    }
+
     pub fn handle(&mut self, event: &event::Event, status: event::Status) -> Option<Message> {
         match event {
             event::Event::Mouse(mouse::Event::CursorMoved { position }) => {
@@ -629,8 +641,11 @@ impl InputState {
                 // is a click elsewhere.
                 (status == event::Status::Ignored).then_some(Message::ClickedOutside)
             }
-            event::Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => {
+            event::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
                 self.alt_tap.key_pressed(key);
+                if self.leaves_form_left(key, *modifiers) {
+                    return Some(Message::SavedQueries(SavedQueriesMessage::LeftInForm));
+                }
                 let leaves_field = matches!(key, Key::Named(Named::Escape | Named::Tab));
                 if self.path_editing && leaves_field {
                     return Some(Message::PathFieldCancel);
@@ -1164,5 +1179,32 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn left_in_the_saved_queries_form_asks_where_the_focus_is() {
+        let mut input = InputState {
+            saved_queries: true,
+            ..InputState::default()
+        };
+        let left = |modifiers| {
+            event::Event::Keyboard(keyboard::Event::KeyPressed {
+                key: Key::Named(Named::ArrowLeft),
+                modified_key: Key::Named(Named::ArrowLeft),
+                physical_key: Physical::Unidentified(keyboard::key::NativeCode::Unidentified),
+                location: Location::Standard,
+                modifiers,
+                text: None,
+                repeat: false,
+            })
+        };
+        let asked = Message::SavedQueries(SavedQueriesMessage::LeftInForm);
+        assert_eq!(feed(&mut input, &[left(Modifiers::empty())]), [asked]);
+        assert!(feed(&mut input, &[left(Modifiers::SHIFT)]).is_empty());
+        input.hermes_sidebar = true;
+        assert!(feed(&mut input, &[left(Modifiers::empty())]).is_empty());
+        input.hermes_sidebar = false;
+        input.saved_queries = false;
+        assert!(feed(&mut input, &[left(Modifiers::empty())]).is_empty());
     }
 }

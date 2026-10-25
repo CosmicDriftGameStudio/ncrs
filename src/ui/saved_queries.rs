@@ -15,12 +15,59 @@ use super::kit::{self, dim, error_line, form_row, one_line, paragraph, Columns, 
 use super::theme::spacing;
 use crate::app::fill_template;
 use crate::i18n::{Language, Msg};
+use iced::advanced::widget::operation::{Focusable, Outcome};
+use iced::advanced::widget::{self, Operation};
+use iced::Rectangle;
+
 use crate::messages::{HermesFocus, HermesPage, Message, SavedQueriesMessage};
 use crate::palette::Palette;
 use crate::saved_queries::{Problem, QueryField, SavedQueries, VISIBLE_ROWS};
 
 /// Most hits listed when the result is expanded; the rest is counted.
 pub const VISIBLE_HITS: usize = 6;
+
+/// The form field that has the keyboard focus, or `None` while none has.
+pub fn focused_field() -> impl Operation<Option<QueryField>> {
+    struct FocusedField {
+        found: Option<QueryField>,
+    }
+
+    impl Operation<Option<QueryField>> for FocusedField {
+        fn focusable(
+            &mut self,
+            id: Option<&widget::Id>,
+            _bounds: Rectangle,
+            state: &mut dyn Focusable,
+        ) {
+            if state.is_focused() {
+                self.found = id.and_then(field_of);
+            }
+        }
+
+        fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn Operation<Option<QueryField>>)) {
+            operate(self);
+        }
+
+        fn finish(&self) -> Outcome<Option<QueryField>> {
+            Outcome::Some(self.found)
+        }
+    }
+
+    FocusedField { found: None }
+}
+
+fn field_of(id: &widget::Id) -> Option<QueryField> {
+    [
+        (NAME_ID, QueryField::Name),
+        (YEAR_ID, QueryField::Year),
+        (KIND_ID, QueryField::Kind),
+        (TAGS_ID, QueryField::Tags),
+        (FULL_TEXT_ID, QueryField::FullText),
+    ]
+    .into_iter()
+    .find(|(known, _)| *id == widget::Id::new(known))
+    .map(|(_, field)| field)
+}
 
 const NAME_ID: &str = "saved-query-name";
 const YEAR_ID: &str = "saved-query-year";
@@ -494,5 +541,37 @@ fn problem_text(problem: &Problem, lang: Language) -> String {
             lang.text(Msg::SavedQueriesProblemFailed),
             &[("{detail}", detail)],
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Field(bool);
+
+    impl Focusable for Field {
+        fn is_focused(&self) -> bool {
+            self.0
+        }
+        fn focus(&mut self) {}
+        fn unfocus(&mut self) {}
+    }
+
+    #[test]
+    fn the_focused_form_field_is_found_by_its_id() {
+        let mut operation = focused_field();
+        let bounds = Rectangle::default();
+        operation.focusable(Some(&widget::Id::new(NAME_ID)), bounds, &mut Field(false));
+        operation.focusable(Some(&widget::Id::new(KIND_ID)), bounds, &mut Field(true));
+        operation.focusable(
+            Some(&widget::Id::new("elsewhere")),
+            bounds,
+            &mut Field(false),
+        );
+        assert!(matches!(
+            operation.finish(),
+            Outcome::Some(Some(QueryField::Kind))
+        ));
     }
 }

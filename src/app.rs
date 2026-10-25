@@ -3394,6 +3394,7 @@ impl App {
         input.rule_suggestions = self.rule_suggestions.is_some();
         input.review_list = self.review_list.is_some();
         input.saved_queries = self.saved_queries.is_some();
+        input.hermes_sidebar = state.hermes_sidebar;
         input.transfer_dialog = self.transfer_dialog.is_some();
         input.reorganisation_plan = self.reorganisation.is_some();
         input.settings = self.settings.is_some()
@@ -6311,6 +6312,20 @@ impl App {
             SavedQueriesMessage::TaxContextChosen(choice) => {
                 if let Some(view) = self.saved_queries.as_mut() {
                     view.set_tax_context(choice);
+                }
+                Task::none()
+            }
+            SavedQueriesMessage::LeftInForm => {
+                iced::advanced::widget::operate(saved_queries_ui::focused_field())
+                    .map(|field| Message::SavedQueries(SavedQueriesMessage::LeftChecked(field)))
+            }
+            SavedQueriesMessage::LeftChecked(field) => {
+                let empty = self.saved_queries.as_ref().is_some_and(|view| {
+                    field.is_none_or(|focused| view.form().text(focused).is_empty())
+                });
+                if empty && self.hermes_focus == HermesFocus::Content {
+                    self.hermes_focus = HermesFocus::Sidebar;
+                    return release_focus();
                 }
                 Task::none()
             }
@@ -15607,5 +15622,36 @@ mod settings_tab_tests {
             app.settings.as_ref().unwrap().feature,
             SettingsFeature::Hermes
         );
+    }
+
+    #[test]
+    fn left_in_an_empty_form_field_goes_to_the_sidebar_and_in_a_filled_one_does_not() {
+        let mut view = crate::saved_queries::tests::loaded_list();
+        view.set_text(crate::saved_queries::QueryField::Kind, String::new());
+        view.set_text(crate::saved_queries::QueryField::Year, "2025".to_owned());
+        let mut app = App::with_saved_queries(view).with_hermes_focus(HermesFocus::Content);
+
+        drop(
+            app.update(Message::SavedQueries(SavedQueriesMessage::LeftChecked(
+                Some(crate::saved_queries::QueryField::Year),
+            ))),
+        );
+        assert_eq!(app.hermes_focus, HermesFocus::Content);
+
+        drop(
+            app.update(Message::SavedQueries(SavedQueriesMessage::LeftChecked(
+                Some(crate::saved_queries::QueryField::Kind),
+            ))),
+        );
+        assert_eq!(app.hermes_focus, HermesFocus::Sidebar);
+
+        let mut unfocused = App::with_saved_queries(crate::saved_queries::tests::loaded_list())
+            .with_hermes_focus(HermesFocus::Content);
+        drop(
+            unfocused.update(Message::SavedQueries(SavedQueriesMessage::LeftChecked(
+                None,
+            ))),
+        );
+        assert_eq!(unfocused.hermes_focus, HermesFocus::Sidebar);
     }
 }
