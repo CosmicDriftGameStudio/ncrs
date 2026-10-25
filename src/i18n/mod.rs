@@ -78,6 +78,20 @@ impl Language {
         }
     }
 
+    /// A document kind as shown: the translation for the kinds the rules and
+    /// the AI usually write, anything else (user kinds) exactly as stored.
+    pub fn kind_label<'a>(self, kind: &'a str) -> std::borrow::Cow<'a, str> {
+        let known = match kind.trim().to_lowercase().as_str() {
+            "invoice" => Msg::KindInvoice,
+            "receipt" => Msg::KindReceipt,
+            "contract" => Msg::KindContract,
+            "letter" => Msg::KindLetter,
+            "quote" => Msg::KindQuote,
+            _ => return std::borrow::Cow::Borrowed(kind),
+        };
+        std::borrow::Cow::Borrowed(self.text(known))
+    }
+
     /// Every language, in the order the config error lists them.
     pub const ALL: [Language; 2] = [Language::English, Language::German];
 
@@ -130,6 +144,17 @@ mod tests {
     use super::gen::ALL;
     use super::*;
 
+    #[test]
+    fn known_kinds_are_translated_and_others_stay_as_stored() {
+        assert_eq!(Language::German.kind_label("invoice"), "Rechnung");
+        assert_eq!(Language::German.kind_label("Receipt"), "Beleg");
+        assert_eq!(Language::English.kind_label("invoice"), "invoice");
+        assert_eq!(
+            Language::German.kind_label("Steuerbescheid"),
+            "Steuerbescheid"
+        );
+    }
+
     /// A string without usable context is the failure mode that makes
     /// translation guesswork, so the file must never contain one.
     #[test]
@@ -173,6 +198,7 @@ mod tests {
         matches!(
             msg,
             Msg::ColumnName
+                | Msg::QuickFixLoading
                 | Msg::MarkerDir
                 | Msg::MarkerUp
                 | Msg::DialogMkdirLabel
@@ -184,6 +210,8 @@ mod tests {
                 | Msg::FilingSetupTitle
                 | Msg::ActionFilingSetupTheme
                 | Msg::GroupHermesTheme
+                // The module's name heads its column.
+                | Msg::ColumnHermes
                 // Names of color schemes.
                 | Msg::SettingsPresetCosmic
                 | Msg::SettingsPresetDracula

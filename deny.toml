@@ -50,9 +50,17 @@ yanked = "deny"
 # gpu-with-fallback build. It is a proc macro that only concatenates
 # identifiers at compile time, so none of its code ends up in the binary or
 # sees any input. When metal or wgpu-hal drop it, this goes.
+#
+# RUSTSEC-2026-0206: rustybuzz is unmaintained. It arrives through iced's svg
+# feature: iced_tiny_skia -> resvg (default features) -> usvg, which uses it to
+# shape <text> elements. iced turns those defaults on, so no feature switch
+# avoids it. The only SVGs ncrs draws are the icons compiled into the binary
+# from assets/icons, and none of them contains text. When usvg moves to
+# harfrust, this goes.
 ignore = [
     "RUSTSEC-2024-0436",
     "RUSTSEC-2026-0192",
+    "RUSTSEC-2026-0206",
     "RUSTSEC-2026-0370",
     "RUSTSEC-2026-0371",
     "RUSTSEC-2026-0372",

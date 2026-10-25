@@ -3,6 +3,7 @@
 
 mod documents;
 mod error;
+mod hermes_column;
 mod hermes_counts;
 mod index;
 mod journal;
@@ -22,6 +23,7 @@ mod saved_queries;
 mod test_support;
 
 pub use error::{IndexError, KeyStoreError, RecoveryKeyError};
+pub use hermes_column::{FolderCounts, IncludeOutcome, PathState};
 pub use index::Index;
 pub use journal::{BatchKind, JournalItem, JournalState, NewJournalItem};
 pub use key::RecoveryKey;

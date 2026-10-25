@@ -1,5 +1,6 @@
 //! Root application: state, `update` (the only place state changes) and
 //! `view` (pure composition of UI components).
+use std::collections::HashSet;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
@@ -19,7 +20,7 @@ use crate::command_palette::{CommandPalette, RECENT_LIMIT};
 use crate::config::{
     self, Config, ConfigError, ContrastWarning, Filing, FilingWriteError, VscodeWarning,
 };
-use crate::context_menu::{ContextAction, ContextMenu, InputState};
+use crate::context_menu::{ContextAction, ContextMenu, HermesAction, HermesMenu, InputState};
 use crate::dialog::{Prompt, PromptKind};
 use crate::execute;
 use crate::filing::{FilingMessage, FilingModule, LocationStatus, Phase, Work, WorkOutcome};
@@ -27,6 +28,10 @@ use crate::filing_setup::{self, FilingSetup, SetupNote};
 use crate::filing_status::{FilingStatus, SNAPSHOT_EVERY};
 use crate::filing_work::FilingSummary;
 use crate::fs::{self, CreateDirError};
+use crate::hermes_column::{
+    role_of, ColumnRequest, ColumnStage, ColumnView, FileDetail, FolderRole, HermesColumn,
+    HermesFileState,
+};
 use crate::hermes_status::HermesStatus;
 use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
@@ -35,10 +40,10 @@ use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 use crate::menu::Availability;
 use crate::messages::{
     AiModelMessage, ClipboardKind, CommandPaletteMessage, ConflictChoice, FilingSetupMessage,
-    FilingStatusMessage, HermesFocus, HermesPage, Message, OcrModelsMessage, PanelSide,
-    QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage,
-    SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage, ThemeFetchMessage,
-    TitleBarMessage, TransferKind,
+    FilingStatusMessage, HermesColumnMessage, HermesFileMessage, HermesFocus, HermesPage, Message,
+    OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, ReorganisationPlanMessage,
+    ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingChange,
+    SettingsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -46,11 +51,12 @@ use crate::ocr_models::{download_models, DownloadError, OcrModelsCard};
 use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
 use crate::palette::{Palette, ThemePreset};
 use crate::query_work::{self, QueryAccess};
+use crate::quick_fix::{field_to_fix, QuickFix, QuickFixAction};
 use crate::quick_open::{QuickOpen, QUICK_OPEN_FILE_LIMIT};
 use crate::reorganisation_plan::ReorganisationView;
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
-use crate::review_list::ReviewList;
-use crate::review_work::ReviewAccess;
+use crate::review_list::{FormField, ReviewList};
+use crate::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
 use crate::rule_suggestions::RuleSuggestions;
 use crate::saved_queries::SavedQueries;
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
@@ -67,6 +73,7 @@ use crate::ui::filing_setup as filing_setup_ui;
 use crate::ui::filing_status as filing_status_ui;
 use crate::ui::hermes::Badges;
 use crate::ui::ocr_models as ocr_models_ui;
+use crate::ui::quick_fix as quick_fix_view;
 use crate::ui::quick_open as quick_open_ui;
 use crate::ui::reorganisation_plan as reorganisation_plan_ui;
 use crate::ui::review_list as review_list_ui;
@@ -79,7 +86,7 @@ use crate::ui::titlebar;
 use crate::ui::transfer as transfer_ui;
 use crate::ui::volumes as volumes_view;
 use crate::ui::{conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelProps, PanelState};
-use ncrs_index::{KeyStore, KeyringKeyStore};
+use ncrs_index::{IncludeOutcome, KeyStore, KeyringKeyStore};
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::{Load, RunnerState};
 use tokio::sync::mpsc;
@@ -122,6 +129,9 @@ fn search_events(
 }
 
 /// How long a confirmation stays in the status bar.
+/// A quarter turn per tick, so the spinner of a file being read moves once
+/// a second without a timer of its own.
+const SPINNER_STEP: f32 = std::f32::consts::FRAC_PI_2;
 const NOTICE_DURATION: std::time::Duration = std::time::Duration::from_secs(3);
 
 const APP_NAME: &str = "NC-rs";
@@ -704,6 +714,9 @@ pub struct App {
     volume_menu: Option<VolumeMenu>,
     /// The context menu, while it is up.
     context_menu: Option<ContextMenu>,
+    /// The fixes for an inquiry (Cmd+.); at most one of it and the context menu.
+    quick_fix: Option<QuickFix>,
+    quick_fix_generation: u64,
     type_ahead: TypeAhead,
     /// The path as typed while the status bar's path field is being edited.
     path_field: Option<String>,
@@ -754,6 +767,15 @@ pub struct App {
     pdf_library_missing: Option<PathBuf>,
     /// What the filing status page and the status bar show of the pipeline.
     filing_status: FilingStatus,
+    /// What the index says about the files and folders the panels show.
+    hermes_column: HermesColumn,
+    /// Reads of the column that are under way or gave up, until something
+    /// is invalidated.
+    hermes_reads: HashSet<(PathBuf, ColumnStage)>,
+    /// Files whose status bar detail is being read.
+    hermes_detail_reads: HashSet<PathBuf>,
+    /// How far the spinner of a file being read has turned, in radians.
+    hermes_spinner_angle: f32,
     /// The time the status page measures how long a worker has been busy by.
     wall_clock: Arc<dyn ncrs_pipeline::Clock>,
     /// Where the filing setup writes. `None` when the system names no place.
@@ -893,6 +915,10 @@ pub struct PromptKeyState {
     pub volume_menu: bool,
     /// The context menu is up, so keys move its highlight.
     pub context_menu: bool,
+    /// Its Hermes submenu is up too: Escape and Left go back to the menu.
+    pub context_submenu: bool,
+    /// The quick-fix menu is up, so keys move its highlight.
+    pub quick_fix: bool,
     /// Whether the operation is running; keys are ignored then.
     pub busy: bool,
     /// The name typed so far.
@@ -930,6 +956,8 @@ impl Default for PromptKeyState {
             delete_dialog: DeleteKeys::default(),
             volume_menu: false,
             context_menu: false,
+            context_submenu: false,
+            quick_fix: false,
             busy: false,
             typed: Arc::default(),
         }
@@ -988,6 +1016,21 @@ fn reorganisation_plan_key(
 /// The review list is a card: Enter confirms, the arrows move in the list, `e`
 /// opens the form. With the form up the fields take the typing; Escape is
 /// `InputState`'s then.
+/// The quick-fix menu takes the arrows and Enter; any other key does nothing
+/// until it is closed.
+fn quick_fix_key(key: &Key) -> Option<Message> {
+    let fix = |message| Some(Message::QuickFix(message));
+    match key.as_ref() {
+        Key::Named(Named::Escape) => fix(QuickFixMessage::Close),
+        Key::Named(Named::Enter) => fix(QuickFixMessage::Activate),
+        Key::Named(Named::ArrowUp) => fix(QuickFixMessage::Move(-1)),
+        Key::Named(Named::ArrowDown) => fix(QuickFixMessage::Move(1)),
+        Key::Named(Named::Home) => fix(QuickFixMessage::First),
+        Key::Named(Named::End) => fix(QuickFixMessage::Last),
+        _ => None,
+    }
+}
+
 fn review_list_key(
     prompt: &PromptKeyState,
     key: &Key,
@@ -1171,6 +1214,23 @@ fn transfer_overlay_key(
     }
 }
 
+/// The keys of the open context menu; Left and Right walk between the menu
+/// and its Hermes submenu.
+fn context_menu_key(prompt: &PromptKeyState, key: &Key) -> Option<Message> {
+    match key.as_ref() {
+        Key::Named(Named::Escape) if prompt.context_submenu => Some(Message::ContextMenuCloseSub),
+        Key::Named(Named::Escape) => Some(Message::ContextMenuClose),
+        Key::Named(Named::ArrowRight) => Some(Message::ContextMenuOpenSub),
+        Key::Named(Named::ArrowLeft) => Some(Message::ContextMenuCloseSub),
+        Key::Named(Named::Enter) => Some(Message::ContextMenuActivate),
+        Key::Named(Named::ArrowUp) => Some(Message::ContextMenuMove(-1)),
+        Key::Named(Named::ArrowDown) => Some(Message::ContextMenuMove(1)),
+        Key::Named(Named::Home) => Some(Message::ContextMenuFirst),
+        Key::Named(Named::End) => Some(Message::ContextMenuLast),
+        _ => None,
+    }
+}
+
 fn keys_without_prompt(
     prompt: &PromptKeyState,
     key: Key,
@@ -1194,16 +1254,11 @@ fn keys_without_prompt(
             _ => None,
         };
     }
+    if prompt.quick_fix {
+        return quick_fix_key(&key);
+    }
     if prompt.context_menu {
-        return match key.as_ref() {
-            Key::Named(Named::Escape) => Some(Message::ContextMenuClose),
-            Key::Named(Named::Enter) => Some(Message::ContextMenuActivate),
-            Key::Named(Named::ArrowUp) => Some(Message::ContextMenuMove(-1)),
-            Key::Named(Named::ArrowDown) => Some(Message::ContextMenuMove(1)),
-            Key::Named(Named::Home) => Some(Message::ContextMenuFirst),
-            Key::Named(Named::End) => Some(Message::ContextMenuLast),
-            _ => None,
-        };
+        return context_menu_key(prompt, &key);
     }
 
     // Before the conflict dialog and the job: a delete is only offered when
@@ -1503,6 +1558,41 @@ fn bound_message(
 /// Fills the placeholders of a translated template in one pass, so a value
 /// that itself contains `{key}` or `{reason}` (a file named `{key}.txt`) is
 /// shown as it is and not filled again.
+/// What the status bar says about the documents filed from the quick-fix menu;
+/// `None` when the only one failed, which is an error rather than a notice.
+fn accept_notice(summary: &AcceptSummary, lang: Language) -> Option<String> {
+    let template = |msg: Msg| lang.text(msg).to_owned();
+    match (summary.total(), summary) {
+        (
+            1,
+            AcceptSummary {
+                last_filed: Some(path),
+                ..
+            },
+        ) => Some(fill_template(
+            lang.text(Msg::StatusQuickFixFiled),
+            &[("{path}", &path.display().to_string())],
+        )),
+        (
+            1,
+            AcceptSummary {
+                target_exists: 1, ..
+            },
+        ) => Some(template(Msg::StatusQuickFixTargetExists)),
+        (1, AcceptSummary { requeued: 1, .. }) => Some(template(Msg::StatusQuickFixRequeued)),
+        (1, _) => None,
+        _ => Some(fill_template(
+            lang.text(Msg::StatusQuickFixSummary),
+            &[
+                ("{filed}", &summary.filed.to_string()),
+                ("{taken}", &summary.target_exists.to_string()),
+                ("{requeued}", &summary.requeued.to_string()),
+                ("{failed}", &summary.failed.to_string()),
+            ],
+        )),
+    }
+}
+
 pub fn fill_template(template: &str, values: &[(&str, &str)]) -> String {
     let mut filled = String::with_capacity(template.len());
     let mut rest = template;
@@ -1722,6 +1812,7 @@ fn repeats(message: &Message) -> bool {
             | Message::ContextMenuMove(_)
             | Message::ContextMenuFirst
             | Message::ContextMenuLast
+            | Message::QuickFix(QuickFixMessage::Move(_))
             | Message::QuickOpen(QuickOpenMessage::Move(_))
             | Message::CommandPalette(CommandPaletteMessage::Move(_))
             | Message::ThemeFetch(ThemeFetchMessage::Move(_))
@@ -2097,6 +2188,8 @@ impl App {
             key_state: OnceLock::new(),
             volume_menu: None,
             context_menu: None,
+            quick_fix: None,
+            quick_fix_generation: 0,
             type_ahead: TypeAhead::default(),
             path_field: None,
             path_check_id: 0,
@@ -2120,6 +2213,10 @@ impl App {
             pipeline: None,
             pdf_library_missing: None,
             filing_status: FilingStatus::default(),
+            hermes_column: HermesColumn::default(),
+            hermes_reads: HashSet::new(),
+            hermes_detail_reads: HashSet::new(),
+            hermes_spinner_angle: 0.0,
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
             config_path: None,
             filing_config: Filing::default(),
@@ -2302,7 +2399,8 @@ impl App {
             self.set_path_field(None);
         }
         let had_search_keys = self.search_has_keys();
-        let task = self.apply(message);
+        let applied = self.apply(message);
+        let task = Task::batch([applied, self.request_hermes_column()]);
         // The text field keeps typing into the query until it is told to let
         // go, so leaving the search's panel releases it.
         if had_search_keys && !self.search_has_keys() {
@@ -2482,7 +2580,15 @@ impl App {
             | Message::ContextMenuHover(_)
             | Message::ContextMenuActivate
             | Message::ContextMenuClick(_)
+            | Message::ContextMenuOpenSub
+            | Message::ContextMenuCloseSub
+            | Message::ContextMenuSubHover(_)
+            | Message::ContextMenuSubClick(_)
             | Message::ContextMenuClose) => self.update_context_menu(menu_message),
+
+            Message::HermesFile(file_message) => self.update_hermes_file(file_message),
+
+            Message::QuickFix(fix_message) => self.update_quick_fix(fix_message),
 
             // --- path field ---
             path_message @ (Message::PathFieldInput(_)
@@ -2800,6 +2906,7 @@ impl App {
             Message::Settings(settings_message) => self.update_settings(settings_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => self.update_filing_status(page_message),
+            Message::HermesColumn(column_message) => self.update_hermes_column(column_message),
             Message::FilingSetup(setup_message) => self.update_filing_setup(setup_message),
             #[cfg(any(target_os = "macos", test))]
             Message::RunCommand(action) => self.run_command(action),
@@ -2855,6 +2962,207 @@ impl App {
         Task::none()
     }
 
+    fn update_quick_fix(&mut self, message: QuickFixMessage) -> Task<Message> {
+        match message {
+            QuickFixMessage::Open => self.open_quick_fix(),
+            QuickFixMessage::Close => {
+                self.quick_fix = None;
+                Task::none()
+            }
+            QuickFixMessage::Loaded { generation, result } => {
+                self.quick_fix_loaded(generation, result)
+            }
+            QuickFixMessage::Move(delta) => self.with_quick_fix(|menu| menu.move_by(delta)),
+            QuickFixMessage::First => self.with_quick_fix(QuickFix::select_first),
+            QuickFixMessage::Last => self.with_quick_fix(QuickFix::select_last),
+            QuickFixMessage::Hover(index) => self.with_quick_fix(|menu| menu.select(index)),
+            QuickFixMessage::Activate => self.run_quick_fix_entry(),
+            QuickFixMessage::Click(index) => {
+                drop(self.with_quick_fix(|menu| menu.select(index)));
+                self.run_quick_fix_entry()
+            }
+            QuickFixMessage::Filed(summary) => self.quick_fix_filed(&summary),
+        }
+    }
+
+    fn with_quick_fix(&mut self, change: impl FnOnce(&mut QuickFix)) -> Task<Message> {
+        if let Some(menu) = self.quick_fix.as_mut() {
+            change(menu);
+        }
+        Task::none()
+    }
+
+    /// The inquiries under the cursor or among the marked files of the active
+    /// panel.
+    fn inquiry_paths(&self) -> Vec<PathBuf> {
+        self.action_sources()
+            .into_iter()
+            .filter(|path| self.hermes_column.state_of(path) == Some(HermesFileState::Inquiry))
+            .collect()
+    }
+
+    /// Cmd+.: opens the menu on the inquiries of the active panel, and looks up
+    /// their reviews on a blocking thread. Says so when there are none.
+    fn open_quick_fix(&mut self) -> Task<Message> {
+        if self.overlay_is_open() || self.search_open || !self.hermes_active() {
+            return Task::none();
+        }
+        let paths = self.inquiry_paths();
+        let found_access = self.filing.as_ref().and_then(FilingModule::review_access);
+        let Some(access) = found_access.filter(|_| !paths.is_empty()) else {
+            let text = self.lang.text(Msg::StatusQuickFixNone).to_owned();
+            return self.show_notice(text);
+        };
+        let side = self.active_panel;
+        let panel = self.panel(side);
+        let anchor = layout::cursor_row_anchor(
+            side == PanelSide::Right,
+            panel.selected.saturating_sub(panel.scroll_offset),
+            self.window_size,
+        );
+        self.job_error = None;
+        self.notice = None;
+        self.quick_fix_generation = self.quick_fix_generation.wrapping_add(1);
+        let generation = self.quick_fix_generation;
+        self.quick_fix = Some(QuickFix::new(anchor, self.window_size));
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.items_for(&paths)),
+            move |joined| {
+                let result = joined.unwrap_or_else(|err| Err(err.to_string()));
+                Message::QuickFix(QuickFixMessage::Loaded { generation, result })
+            },
+        )
+    }
+
+    fn quick_fix_loaded(
+        &mut self,
+        generation: u64,
+        result: Result<Vec<ReviewItem>, String>,
+    ) -> Task<Message> {
+        if generation != self.quick_fix_generation || self.quick_fix.is_none() {
+            return Task::none();
+        }
+        match result {
+            Ok(items) if items.is_empty() => {
+                self.quick_fix = None;
+                let text = self.lang.text(Msg::StatusQuickFixNone).to_owned();
+                self.show_notice(text)
+            }
+            Ok(items) => self.with_quick_fix(|menu| menu.loaded(items)),
+            Err(detail) => {
+                self.quick_fix = None;
+                self.set_status_error(&detail);
+                Task::none()
+            }
+        }
+    }
+
+    /// Carries out the highlighted entry. The menu closes first for everything
+    /// that opens or files something else.
+    fn run_quick_fix_entry(&mut self) -> Task<Message> {
+        let Some(menu) = self.quick_fix.as_mut() else {
+            return Task::none();
+        };
+        let Some(action) = menu.selected_action() else {
+            return Task::none();
+        };
+        match action {
+            QuickFixAction::Accept(group) if menu.group_items(group).len() > 1 => {
+                menu.summarise(group);
+                Task::none()
+            }
+            QuickFixAction::Accept(group) | QuickFixAction::FileGroup(group) => {
+                self.file_quick_fix_group(group)
+            }
+            QuickFixAction::Back => {
+                menu.back();
+                Task::none()
+            }
+            QuickFixAction::SetFields => self.open_review_from_quick_fix(false),
+            QuickFixAction::CreateRule => self.open_review_from_quick_fix(true),
+            QuickFixAction::Later => {
+                self.quick_fix = None;
+                Task::none()
+            }
+            QuickFixAction::Exclude => {
+                let paths = menu.paths();
+                self.quick_fix = None;
+                self.exclude_from_hermes(paths)
+            }
+        }
+    }
+
+    /// Files the documents of a group one after the other, each through the
+    /// review's own confirm: never a plain move.
+    fn file_quick_fix_group(&mut self, group: usize) -> Task<Message> {
+        let Some(menu) = self.quick_fix.take() else {
+            return Task::none();
+        };
+        let items = menu.group_items(group);
+        let Some(access) = self.filing.as_ref().and_then(FilingModule::review_access) else {
+            self.set_status_error(INDEX_NOT_OPEN);
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.accept(&items)),
+            |joined| {
+                Message::QuickFix(QuickFixMessage::Filed(joined.unwrap_or_else(|err| {
+                    AcceptSummary {
+                        failed: 1,
+                        first_failure: Some(err.to_string()),
+                        ..AcceptSummary::default()
+                    }
+                })))
+            },
+        )
+    }
+
+    fn quick_fix_filed(&mut self, summary: &AcceptSummary) -> Task<Message> {
+        self.hermes_column.invalidate_all();
+        self.hermes_reads.clear();
+        self.hermes_detail_reads.clear();
+        let notice = match accept_notice(summary, self.lang) {
+            Some(text) => self.show_notice(text),
+            None => {
+                let detail = summary.first_failure.clone().unwrap_or_default();
+                self.set_status_error(&detail);
+                Task::none()
+            }
+        };
+        let tasks = [PanelSide::Left, PanelSide::Right].map(|each| {
+            let panel = self.panel(each);
+            let path = panel.path.clone();
+            let cursor = panel
+                .selected_entry()
+                .map(|entry| entry.name.to_string_lossy().into_owned());
+            self.load(each, path, cursor)
+        });
+        Task::batch(tasks.into_iter().chain([notice]))
+    }
+
+    /// Opens the review page on the document of the menu with its form open:
+    /// to fill in the missing field, or to file it by hand and make a rule from
+    /// it afterwards, which the page offers only after filing.
+    fn open_review_from_quick_fix(&mut self, for_rule: bool) -> Task<Message> {
+        let Some(menu) = self.quick_fix.take() else {
+            return Task::none();
+        };
+        let Some(item) = menu.item_to_fix() else {
+            return Task::none();
+        };
+        let field = if for_rule {
+            FormField::Sender
+        } else {
+            field_to_fix(item)
+        };
+        let path = item.path.clone();
+        let opened = self.open_review_list();
+        if let Some(view) = self.review_list.as_mut() {
+            view.edit_on_load(path, field);
+        }
+        opened
+    }
+
     fn update_context_menu(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::ContextMenuAt { side, index } => {
@@ -2888,7 +3196,7 @@ impl App {
             }
             Message::ContextMenuHover(index) => {
                 if let Some(menu) = self.context_menu.as_mut() {
-                    menu.select(index);
+                    menu.hover(index);
                 }
                 Task::none()
             }
@@ -2896,6 +3204,35 @@ impl App {
             Message::ContextMenuClick(index) => {
                 if let Some(menu) = self.context_menu.as_mut() {
                     menu.select(index);
+                    if menu.selected_is_hermes() {
+                        menu.open_submenu();
+                        return Task::none();
+                    }
+                    menu.close_submenu();
+                }
+                self.run_context_menu_entry()
+            }
+            Message::ContextMenuOpenSub => {
+                if let Some(menu) = self.context_menu.as_mut() {
+                    menu.open_submenu();
+                }
+                Task::none()
+            }
+            Message::ContextMenuCloseSub => {
+                if let Some(menu) = self.context_menu.as_mut() {
+                    menu.close_submenu();
+                }
+                Task::none()
+            }
+            Message::ContextMenuSubHover(index) => {
+                if let Some(menu) = self.context_menu.as_mut() {
+                    menu.select_sub(index);
+                }
+                Task::none()
+            }
+            Message::ContextMenuSubClick(index) => {
+                if let Some(menu) = self.context_menu.as_mut() {
+                    menu.select_sub(index);
                 }
                 self.run_context_menu_entry()
             }
@@ -3057,6 +3394,7 @@ impl App {
         input.rule_suggestions = self.rule_suggestions.is_some();
         input.review_list = self.review_list.is_some();
         input.saved_queries = self.saved_queries.is_some();
+        input.hermes_sidebar = state.hermes_sidebar;
         input.transfer_dialog = self.transfer_dialog.is_some();
         input.reorganisation_plan = self.reorganisation.is_some();
         input.settings = self.settings.is_some()
@@ -3088,6 +3426,13 @@ impl App {
                     is_active: self.active_panel == side,
                     visible_rows: self.visible_rows,
                     palette: self.palette,
+                    hermes: self.hermes_active().then(|| {
+                        ColumnView::new(
+                            &self.hermes_column,
+                            &self.filing_config.locations,
+                            self.hermes_spinner_angle,
+                        )
+                    }),
                 },
                 self.lang,
                 move |index, on_tag| Message::RowClicked {
@@ -3148,6 +3493,7 @@ impl App {
                         filing: self.filing_badge(),
                         on_blocked_press: blocked_access_press(),
                         notice: self.notice.as_deref(),
+                        hermes_line: self.hermes_line(),
                     },
                     self.status_error(),
                     self.search_status(),
@@ -3202,6 +3548,17 @@ impl App {
         } else {
             titlebar::with_resize_edges(base)
         };
+
+        if let Some(menu) = self.quick_fix.as_ref() {
+            let click_catcher = mouse_area(Space::new().width(Length::Fill).height(Length::Fill))
+                .on_press(Message::QuickFix(QuickFixMessage::Close));
+            return Stack::with_children([
+                root,
+                click_catcher.into(),
+                quick_fix_view::view(menu, self.lang, &self.palette),
+            ])
+            .into();
+        }
 
         if let Some(menu) = self.context_menu.as_ref() {
             // A left press anywhere beside the menu closes it, the path field
@@ -3474,6 +3831,11 @@ impl App {
         let config_error = self.config_error.is_some();
         let volume_menu = self.volume_menu.is_some();
         let context_menu = self.context_menu.is_some();
+        let context_submenu = self
+            .context_menu
+            .as_ref()
+            .is_some_and(ContextMenu::submenu_is_open);
+        let quick_fix = self.quick_fix.is_some();
         let path_editing = self.path_field.is_some();
         let search = self.search_has_keys();
         let quick_open = self.quick_open.is_some();
@@ -3517,6 +3879,8 @@ impl App {
                 delete_dialog,
                 volume_menu,
                 context_menu,
+                context_submenu,
+                quick_fix,
                 path_editing,
                 search,
                 quick_open,
@@ -3551,6 +3915,8 @@ impl App {
                 delete_dialog,
                 volume_menu,
                 context_menu,
+                context_submenu,
+                quick_fix,
                 path_editing,
                 search,
                 quick_open,
@@ -3942,6 +4308,7 @@ impl App {
     /// right click may replace.
     fn blocking_overlay_is_open(&self) -> bool {
         self.prompt.is_some()
+            || self.quick_fix.is_some()
             || self.pending_conflict.is_some()
             || self.transfer_dialog.is_some()
             || self.progress_mask_is_open()
@@ -4016,22 +4383,288 @@ impl App {
                 window,
             )
         });
-        self.context_menu = Some(ContextMenu::new(place_at, self.window_size, |action| {
-            self.context_action_enabled(action)
-        }));
+        let hermes_enabled = |action| self.hermes_action_enabled(action);
+        let hermes = self.hermes_active().then(|| HermesMenu {
+            excluded: self.cursor_is_excluded_from_hermes(),
+            is_enabled: &hermes_enabled,
+        });
+        self.context_menu = Some(ContextMenu::with_hermes(
+            place_at,
+            self.window_size,
+            |action| self.context_action_enabled(action),
+            hermes,
+        ));
     }
 
     /// Closes the menu and sends the message its highlighted entry stands for,
     /// the same one its key sends. Closed first: the actions refuse to run
     /// under an overlay.
     fn run_context_menu_entry(&mut self) -> Task<Message> {
+        let Some(open) = self.context_menu.as_mut() else {
+            return Task::none();
+        };
+        if open.selected_is_hermes() && !open.submenu_is_open() {
+            open.open_submenu();
+            return Task::none();
+        }
         let Some(menu) = self.context_menu.take() else {
             return Task::none();
         };
-        match menu.selected_action() {
-            Some(action) => self.update(action.message()),
-            None => Task::none(),
+        let chosen = if menu.submenu_is_open() {
+            menu.selected_hermes_action().map(HermesAction::message)
+        } else {
+            menu.selected_action().map(ContextAction::message)
+        };
+        chosen.map_or_else(Task::none, |message| self.update(message))
+    }
+
+    /// The file or folder under the cursor of the active panel, for the Hermes
+    /// commands: not the `..` row.
+    fn hermes_cursor_entry(&self) -> Option<&fs::FileEntry> {
+        self.active_panel()
+            .selected_entry()
+            .filter(|entry| !entry.is_parent)
+    }
+
+    fn cursor_is_excluded_from_hermes(&self) -> bool {
+        self.hermes_cursor_entry().is_some_and(|entry| {
+            if entry.is_dir {
+                self.hermes_column
+                    .summary_of(&entry.path)
+                    .is_some_and(|summary| summary.excluded)
+            } else {
+                self.hermes_column.state_of(&entry.path) == Some(HermesFileState::Excluded)
+            }
+        })
+    }
+
+    fn inbox_location(&self) -> Option<&Path> {
+        self.filing_config
+            .locations
+            .iter()
+            .find(|location| location.mode == LocationMode::Inbox)
+            .map(|location| location.path.as_path())
+    }
+
+    /// Whether the Hermes entry can do something for the cursor row; the
+    /// greyed-out entries of the submenu.
+    fn hermes_action_enabled(&self, action: HermesAction) -> bool {
+        let Some(entry) = self.hermes_cursor_entry() else {
+            return false;
+        };
+        let role_free = |role| role_of(&entry.path, &self.filing_config.locations) != Some(role);
+        match action {
+            HermesAction::ShowSuggestion => !self.inquiry_paths().is_empty(),
+            HermesAction::HandToInbox => self
+                .inbox_location()
+                .is_some_and(|inbox| !entry.path.starts_with(inbox)),
+            HermesAction::ProcessAgain => {
+                !entry.is_dir
+                    && self.live_pipeline().is_some()
+                    && self.hermes_column.state_of(&entry.path) != Some(HermesFileState::Excluded)
+                    && self
+                        .filing_config
+                        .locations
+                        .iter()
+                        .any(|location| entry.path.starts_with(&location.path))
+            }
+            HermesAction::SetInbox => entry.is_dir && role_free(FolderRole::Inbox),
+            HermesAction::SetFilingLocation => {
+                entry.is_dir && role_free(FolderRole::FilingLocation)
+            }
+            HermesAction::SetArchive => entry.is_dir && role_free(FolderRole::Archive),
+            HermesAction::Exclude | HermesAction::Include | HermesAction::Inspect => true,
         }
+    }
+
+    fn update_hermes_file(&mut self, message: HermesFileMessage) -> Task<Message> {
+        match message {
+            HermesFileMessage::RoleSaved(result) => return self.hermes_role_saved(result),
+            HermesFileMessage::Included { path, result } => {
+                return self.hermes_included(&path, result)
+            }
+            HermesFileMessage::HandToInbox
+            | HermesFileMessage::ProcessAgain
+            | HermesFileMessage::SetRole(_)
+            | HermesFileMessage::ToggleExclusion
+            | HermesFileMessage::ShowInInspection => {}
+        }
+        if self.overlay_is_open() || self.search_open || !self.hermes_active() {
+            return Task::none();
+        }
+        let Some((path, is_dir)) = self
+            .hermes_cursor_entry()
+            .map(|entry| (entry.path.clone(), entry.is_dir))
+        else {
+            return Task::none();
+        };
+        match message {
+            HermesFileMessage::HandToInbox => {
+                let Some(inbox) = self.inbox_location().map(Path::to_path_buf) else {
+                    let text = self.lang.text(Msg::StatusHermesNoInbox).to_owned();
+                    return self.show_notice(text);
+                };
+                self.open_transfer_dialog_to(TransferKind::Move, Some(inbox))
+            }
+            HermesFileMessage::ProcessAgain => self.process_again(&path),
+            HermesFileMessage::SetRole(role) if is_dir => self.set_folder_role(&path, role),
+            HermesFileMessage::ToggleExclusion => self.toggle_hermes_exclusion(path),
+            HermesFileMessage::ShowInInspection => self.show_in_inspection(&path),
+            HermesFileMessage::SetRole(_)
+            | HermesFileMessage::RoleSaved(_)
+            | HermesFileMessage::Included { .. } => Task::none(),
+        }
+    }
+
+    fn process_again(&mut self, path: &Path) -> Task<Message> {
+        let queued = !self
+            .hermes_column
+            .state_of(path)
+            .is_some_and(|state| state == HermesFileState::Excluded)
+            && self
+                .live_pipeline()
+                .is_some_and(|runner| runner.process_again(path));
+        let text = if queued {
+            self.invalidate_hermes_path(path);
+            fill_template(
+                self.lang.text(Msg::StatusHermesProcessingAgain),
+                &[(
+                    "{name}",
+                    &path.file_name().map_or_else(
+                        || path.display().to_string(),
+                        |name| name.to_string_lossy().into_owned(),
+                    ),
+                )],
+            )
+        } else {
+            self.lang.text(Msg::StatusHermesNotProcessable).to_owned()
+        };
+        self.show_notice(text)
+    }
+
+    fn set_folder_role(&mut self, folder: &Path, role: FolderRole) -> Task<Message> {
+        let Some(config_path) = self.config_path.clone() else {
+            let text = self.lang.text(Msg::FilingSetupNoConfigPath).to_owned();
+            return self.show_notice(text);
+        };
+        let chosen =
+            match filing_setup::locations_with_role(&self.filing_config.locations, folder, role) {
+                Ok(chosen) => chosen,
+                Err(refused) => {
+                    let problem = crate::ui::filing_setup::problem_sentence(
+                        refused.problem,
+                        &refused.chosen,
+                        self.lang,
+                        &self.home,
+                    );
+                    let text = fill_template(
+                        self.lang.text(Msg::StatusHermesRoleRefused),
+                        &[("{problem}", &problem)],
+                    );
+                    return self.show_notice(text);
+                }
+            };
+        let written_path = config_path.clone();
+        Task::perform(
+            tokio::task::spawn_blocking(move || {
+                filing_setup::write_locations(&written_path, &chosen)
+            }),
+            move |joined| {
+                Message::HermesFile(HermesFileMessage::RoleSaved(joined.unwrap_or_else(
+                    |join| {
+                        Err(FilingWriteError::Io {
+                            path: config_path,
+                            reason: join.to_string(),
+                        })
+                    },
+                )))
+            },
+        )
+    }
+
+    fn hermes_role_saved(&mut self, result: Result<Filing, FilingWriteError>) -> Task<Message> {
+        match result {
+            Ok(filing) => {
+                let (applies, task) = self.apply_saved_filing(filing);
+                self.hermes_column.invalidate_all();
+                self.hermes_reads.clear();
+                let notice = self.show_notice(self.saved_filing_notice(applies));
+                Task::batch([task, notice])
+            }
+            Err(error) => {
+                let text = fill_template(
+                    self.lang.text(Msg::StatusHermesRoleFailed),
+                    &[("{reason}", &format!("{error:?}"))],
+                );
+                self.show_notice(text)
+            }
+        }
+    }
+
+    fn toggle_hermes_exclusion(&mut self, path: PathBuf) -> Task<Message> {
+        if !self.cursor_is_excluded_from_hermes() {
+            return self.exclude_from_hermes(vec![path]);
+        }
+        let Some(access) = self.filing.as_ref().and_then(FilingModule::review_access) else {
+            self.set_status_error(INDEX_NOT_OPEN);
+            return Task::none();
+        };
+        let included = path.clone();
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.include(&path)),
+            move |joined| {
+                Message::HermesFile(HermesFileMessage::Included {
+                    path: included.clone(),
+                    result: joined.unwrap_or_else(|err| Err(err.to_string())),
+                })
+            },
+        )
+    }
+
+    fn hermes_included(
+        &mut self,
+        path: &Path,
+        result: Result<IncludeOutcome, String>,
+    ) -> Task<Message> {
+        let text = match result {
+            Err(detail) => {
+                self.set_status_error(&detail);
+                return Task::none();
+            }
+            Ok(IncludeOutcome::ExcludedByAncestor(folder)) => fill_template(
+                self.lang.text(Msg::StatusHermesIncludedByFolder),
+                &[("{folder}", &folder.display().to_string())],
+            ),
+            Ok(IncludeOutcome::Included | IncludeOutcome::NotExcluded) => {
+                self.invalidate_hermes_path(path);
+                if let Some(runner) = self.live_pipeline() {
+                    runner.rescan_around(path);
+                }
+                fill_template(
+                    self.lang.text(Msg::StatusHermesIncluded),
+                    &[(
+                        "{name}",
+                        &path.file_name().map_or_else(
+                            || path.display().to_string(),
+                            |name| name.to_string_lossy().into_owned(),
+                        ),
+                    )],
+                )
+            }
+        };
+        self.show_notice(text)
+    }
+
+    /// Opens the Hermes card on the inspection page, at the file's error if
+    /// the page lists one for it.
+    fn show_in_inspection(&mut self, path: &Path) -> Task<Message> {
+        let task = if self.open_hermes_page().is_some() {
+            self.go_to_hermes_page(HermesPage::Inspection)
+        } else {
+            self.open_filing_status()
+        };
+        self.filing_status.select_error_of(path);
+        task
     }
 
     /// Alt+F1 / Alt+F2: list the drives and highlight the one `side` is on.
@@ -4317,6 +4950,16 @@ impl App {
     /// have moved. With a transfer already running the key brings its progress
     /// back instead: one transfer at a time owns the conflict state.
     fn open_transfer_dialog(&mut self, kind: TransferKind) -> Task<Message> {
+        self.open_transfer_dialog_to(kind, None)
+    }
+
+    /// As [`Self::open_transfer_dialog`], with the target field preset to
+    /// `target` instead of the other panel's folder.
+    fn open_transfer_dialog_to(
+        &mut self,
+        kind: TransferKind,
+        preset: Option<PathBuf>,
+    ) -> Task<Message> {
         if self.transfer.is_some() {
             self.transfer_mask_visible = true;
             return Task::none();
@@ -4335,7 +4978,7 @@ impl App {
         self.job_error = None;
         self.notice = None;
         self.transfer_dialogs_opened = self.transfer_dialogs_opened.wrapping_add(1);
-        let base = self.panel(self.source_side().other()).path.clone();
+        let base = preset.unwrap_or_else(|| self.panel(self.source_side().other()).path.clone());
         let dialog = TransferDialog::new(self.transfer_dialogs_opened, kind, sources, base);
         let scan = scan_task(&dialog);
         let conflicts = conflicts_task(&dialog);
@@ -5437,7 +6080,9 @@ impl App {
                     Ok(rows) => view.loaded(rows),
                     Err(detail) => view.failed(detail),
                 }
-                Task::none()
+                view.take_focus_request().map_or_else(Task::none, |field| {
+                    operation::focus(review_list_ui::field_id(field))
+                })
             }
             ReviewListMessage::Move(delta) => {
                 if let Some(view) = self.review_list.as_mut() {
@@ -5670,6 +6315,20 @@ impl App {
             SavedQueriesMessage::TaxContextChosen(choice) => {
                 if let Some(view) = self.saved_queries.as_mut() {
                     view.set_tax_context(choice);
+                }
+                Task::none()
+            }
+            SavedQueriesMessage::LeftInForm => {
+                iced::advanced::widget::operate(saved_queries_ui::focused_field())
+                    .map(|field| Message::SavedQueries(SavedQueriesMessage::LeftChecked(field)))
+            }
+            SavedQueriesMessage::LeftChecked(field) => {
+                let empty = self.saved_queries.as_ref().is_some_and(|view| {
+                    field.is_none_or(|focused| view.form().text(focused).is_empty())
+                });
+                if empty && self.hermes_focus == HermesFocus::Content {
+                    self.hermes_focus = HermesFocus::Sidebar;
+                    return release_focus();
                 }
                 Task::none()
             }
@@ -6655,6 +7314,11 @@ impl App {
         };
         let mut palette =
             CommandPalette::new(scope, self.lang, &self.keymap, &self.recent_commands);
+        if !self.hermes_active() {
+            palette = palette.without_hermes_file_commands();
+        } else if !self.hermes_action_enabled(HermesAction::ProcessAgain) {
+            palette = palette.without_command(KeyAction::HermesProcessAgain);
+        }
         palette.set_visible_rows(command_palette_ui::visible_rows(self.window_size));
         self.command_palette = Some(palette);
         focus
@@ -6915,6 +7579,226 @@ impl App {
         })
     }
 
+    /// The column shows only while the filing module is ready and has places
+    /// to look at; otherwise the panels are drawn as they always were.
+    fn hermes_active(&self) -> bool {
+        self.filing.as_ref().is_some_and(|module| {
+            matches!(module.phase(), Phase::Ready) && module.has_configured_locations()
+        })
+    }
+
+    /// What Hermes says about the file under the cursor of the active panel.
+    fn hermes_line(&self) -> Option<String> {
+        if !self.hermes_active() {
+            return None;
+        }
+        let entry = self.active_panel().selected_entry()?;
+        self.hermes_column.status_line(&entry.path, self.lang)
+    }
+
+    /// Takes in the pipeline's latest snapshot: what became stale is asked
+    /// for again by [`Self::request_hermes_column`] after this message.
+    fn refresh_hermes_column(&mut self) {
+        if !self.hermes_active() {
+            return;
+        }
+        let epoch = self.hermes_column.epoch();
+        self.hermes_column
+            .set_snapshot(self.filing_status.snapshot());
+        if self.hermes_column.epoch() != epoch {
+            self.hermes_reads.clear();
+            self.hermes_detail_reads.clear();
+        }
+        if self.visible_row_is_reading() {
+            self.hermes_spinner_angle =
+                (self.hermes_spinner_angle + SPINNER_STEP).rem_euclid(std::f32::consts::TAU);
+        }
+    }
+
+    fn visible_row_is_reading(&self) -> bool {
+        [PanelSide::Left, PanelSide::Right].into_iter().any(|side| {
+            let panel = self.panel(side);
+            panel
+                .entries
+                .iter()
+                .skip(panel.scroll_offset)
+                .take(self.visible_rows)
+                .any(|entry| {
+                    self.hermes_column.state_of(&entry.path) == Some(HermesFileState::Reading)
+                })
+        })
+    }
+
+    /// Asks for what the visible rows lack: the listing and the direct counts
+    /// first, the deep counts after. Runs after every message, so a scroll,
+    /// a resize, a cursor move or a new directory all find their data here.
+    fn request_hermes_column(&mut self) -> Task<Message> {
+        if !self.hermes_active() {
+            return Task::none();
+        }
+        let mut tasks: Vec<Task<Message>> = [PanelSide::Left, PanelSide::Right]
+            .into_iter()
+            .filter_map(|side| self.request_panel_column(side))
+            .collect();
+        tasks.extend(self.request_cursor_detail());
+        Task::batch(tasks)
+    }
+
+    fn request_panel_column(&mut self, side: PanelSide) -> Option<Task<Message>> {
+        let panel = self.panel(side);
+        if panel.loading {
+            return None;
+        }
+        let directory = panel.path.clone();
+        let generation = panel.request_id;
+        let visible_folders: Vec<PathBuf> = panel
+            .entries
+            .iter()
+            .skip(panel.scroll_offset)
+            .take(self.visible_rows)
+            .filter(|entry| entry.is_dir && !entry.is_parent)
+            .map(|entry| entry.path.clone())
+            .collect();
+        let listing_wanted = !self
+            .hermes_column
+            .wanted_listings(std::slice::from_ref(&directory))
+            .is_empty();
+        let direct_wanted = self
+            .hermes_column
+            .wanted_counts(&visible_folders, ColumnStage::Listing);
+        let (stage, subfolders) = if listing_wanted || !direct_wanted.is_empty() {
+            (ColumnStage::Listing, direct_wanted)
+        } else {
+            let deep_wanted = self
+                .hermes_column
+                .wanted_counts(&visible_folders, ColumnStage::Deep);
+            if deep_wanted.is_empty() {
+                return None;
+            }
+            (ColumnStage::Deep, deep_wanted)
+        };
+        if !self.hermes_reads.insert((directory.clone(), stage)) {
+            return None;
+        }
+        let reader = self.filing.as_ref().and_then(FilingModule::column_reader)?;
+        let request = ColumnRequest {
+            generation,
+            epoch: self.hermes_column.epoch(),
+            directory: directory.clone(),
+            subfolders,
+            stage,
+        };
+        Some(Task::perform(
+            tokio::task::spawn_blocking(move || reader.read(&request)),
+            move |joined| {
+                Message::HermesColumn(HermesColumnMessage::Read {
+                    side,
+                    directory: directory.clone(),
+                    stage,
+                    result: joined.unwrap_or_else(|err| Err(err.to_string())),
+                })
+            },
+        ))
+    }
+
+    /// The review of the file under the cursor, once, when it is an inquiry.
+    fn request_cursor_detail(&mut self) -> Option<Task<Message>> {
+        let path = self.active_panel().selected_entry()?.path.clone();
+        if !self.hermes_column.wants_detail(&path) || !self.hermes_detail_reads.insert(path.clone())
+        {
+            return None;
+        }
+        let access = self.filing.as_ref()?.review_access()?;
+        let asked = path.clone();
+        Some(Task::perform(
+            tokio::task::spawn_blocking(move || access.suggestion_for(&asked)),
+            move |joined| {
+                let found = joined.unwrap_or_else(|err| Err(err.to_string()));
+                Message::HermesColumn(HermesColumnMessage::Detail {
+                    path: path.clone(),
+                    result: found.map(|review| {
+                        review.map(|(text_state, suggestion)| FileDetail {
+                            text_state,
+                            suggestion,
+                        })
+                    }),
+                })
+            },
+        ))
+    }
+
+    fn update_hermes_column(&mut self, message: HermesColumnMessage) -> Task<Message> {
+        match message {
+            HermesColumnMessage::Read {
+                side,
+                directory,
+                stage,
+                result,
+            } => {
+                let Ok(reading) = result else {
+                    // Stays in `hermes_reads`: not asked again until the next
+                    // invalidation, so a broken index is not hammered.
+                    return Task::none();
+                };
+                self.hermes_reads.remove(&(directory, stage));
+                let panel = self.panel(side);
+                if reading.generation == panel.request_id && reading.directory == panel.path {
+                    self.hermes_column.apply(reading);
+                }
+                Task::none()
+            }
+            HermesColumnMessage::Detail { path, result } => {
+                if let Ok(Some(detail)) = result {
+                    self.hermes_detail_reads.remove(&path);
+                    self.hermes_column.apply_detail(path, detail);
+                }
+                Task::none()
+            }
+            HermesColumnMessage::Excluded { paths, result } => self.paths_excluded(&paths, result),
+        }
+    }
+
+    /// Tells the index that Hermes leaves `paths` alone from now on; the column
+    /// shows them as excluded once the index has answered.
+    fn exclude_from_hermes(&mut self, paths: Vec<PathBuf>) -> Task<Message> {
+        let Some(access) = self.filing.as_ref().and_then(FilingModule::review_access) else {
+            self.set_status_error(INDEX_NOT_OPEN);
+            return Task::none();
+        };
+        let excluded = paths.clone();
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.exclude(&paths)),
+            move |joined| {
+                Message::HermesColumn(HermesColumnMessage::Excluded {
+                    paths: excluded.clone(),
+                    result: joined.unwrap_or_else(|err| Err(err.to_string())),
+                })
+            },
+        )
+    }
+
+    fn paths_excluded(&mut self, paths: &[PathBuf], result: Result<(), String>) -> Task<Message> {
+        if let Err(detail) = result {
+            self.set_status_error(&detail);
+            return Task::none();
+        }
+        for path in paths {
+            self.invalidate_hermes_path(path);
+        }
+        let text = fill_template(
+            self.lang.text(Msg::StatusQuickFixExcluded),
+            &[("{count}", &paths.len().to_string())],
+        );
+        self.show_notice(text)
+    }
+
+    /// The column asks again for everything that depends on `path`.
+    fn invalidate_hermes_path(&mut self, path: &Path) {
+        self.hermes_column.invalidate_path(path);
+        self.hermes_reads.clear();
+        self.hermes_detail_reads.remove(path);
+    }
+
     fn refresh_filing_snapshot(&mut self) {
         let snapshot = self.pipeline.as_ref().map_or_else(
             ncrs_pipeline::Snapshot::off,
@@ -7017,6 +7901,7 @@ impl App {
             }
             FilingStatusMessage::Tick => {
                 self.refresh_filing_snapshot();
+                self.refresh_hermes_column();
                 let plans_made = self
                     .live_pipeline()
                     .map_or(0, |runner| runner.snapshot().plans_made);
@@ -7932,6 +8817,8 @@ impl App {
             key_state: OnceLock::new(),
             volume_menu: None,
             context_menu: None,
+            quick_fix: None,
+            quick_fix_generation: 0,
             type_ahead: TypeAhead::default(),
             path_field: None,
             path_check_id: 0,
@@ -7955,6 +8842,10 @@ impl App {
             pipeline: None,
             pdf_library_missing: None,
             filing_status: FilingStatus::default(),
+            hermes_column: HermesColumn::default(),
+            hermes_reads: HashSet::new(),
+            hermes_detail_reads: HashSet::new(),
+            hermes_spinner_angle: 0.0,
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
             config_path: None,
             filing_config: Filing::default(),
@@ -8050,6 +8941,192 @@ impl App {
     ) -> Self {
         let mut app = Self::with_fixed_panels();
         app.filing_status.set_snapshot(snapshot, taken_at);
+        app
+    }
+
+    /// Fixed panels with the Hermes column up and filled by hand: folders in
+    /// every role on the left, files in every state on the right with the
+    /// cursor on an inquiry.
+    pub fn with_hermes_column_sample() -> Self {
+        use crate::hermes_column::{ColumnReading, DirectoryStates, FolderReading};
+        use ncrs_index::{DocumentStatus, PathState, ReviewReason, StatusCounts};
+
+        let home = PathBuf::from("/home/test");
+        let files_dir = home.join("files");
+        let location = |name: &str, mode, is_target| config::FilingLocation {
+            path: home.join(name),
+            mode,
+            images: false,
+            is_target,
+        };
+        let mut app = Self::with_fixed_panels();
+        app.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
+        app.filing_config.locations = vec![
+            location("Scans", ncrs_intake::LocationMode::Inbox, false),
+            location("Filed", ncrs_intake::LocationMode::Archive, true),
+            location("Archive", ncrs_intake::LocationMode::Archive, false),
+        ];
+        app.active_panel = PanelSide::Right;
+        app.left_panel.path = home.clone();
+        app.right_panel.path = files_dir.clone();
+
+        let entry = |directory: &Path, name: &str, is_dir: bool, is_parent: bool| fs::FileEntry {
+            name: name.into(),
+            path: directory.join(name),
+            is_dir,
+            is_symlink: false,
+            is_parent,
+            size: if is_dir { 0 } else { 183_000 },
+            modified: None,
+        };
+        app.left_panel.entries = [".."]
+            .into_iter()
+            .map(|name| entry(&home, name, true, true))
+            .chain(
+                ["Scans", "Filed", "Archive", "Projects", "Private"]
+                    .into_iter()
+                    .map(|name| entry(&home, name, true, false)),
+            )
+            .collect();
+        let files = [
+            ("2025-03 utility bill.pdf", DocumentStatus::New),
+            ("2025-03 scan 0412.pdf", DocumentStatus::Planned),
+            ("2025-02 insurance letter.pdf", DocumentStatus::Filed),
+            ("2025-03 receipt market.pdf", DocumentStatus::InReview),
+            ("2025-01 damaged scan.pdf", DocumentStatus::New),
+            ("2024-12 private diary.pdf", DocumentStatus::New),
+        ];
+        app.right_panel.entries = [entry(&files_dir, "..", true, true)]
+            .into_iter()
+            .chain(
+                files
+                    .iter()
+                    .map(|(name, _)| entry(&files_dir, name, false, false)),
+            )
+            .collect();
+        let inquiry = 4;
+        app.right_panel.selected = inquiry;
+
+        let counted = |path: &str, counts: StatusCounts| FolderReading {
+            path: home.join(path),
+            excluded: false,
+            direct: Some(counts),
+            deep: Some(counts),
+        };
+        let states = DirectoryStates::sample(
+            files
+                .iter()
+                .map(|(name, status)| PathState {
+                    path: files_dir.join(name),
+                    status: *status,
+                    review: (*status == DocumentStatus::InReview)
+                        .then_some(ReviewReason::NoMatchingRule),
+                })
+                .collect(),
+            vec![files_dir.join("2024-12 private diary.pdf")],
+        );
+        app.hermes_column.mark_for_test(
+            vec![files_dir.join("2025-03 scan 0412.pdf")],
+            vec![(
+                files_dir.join("2025-01 damaged scan.pdf"),
+                "the PDF could not be opened".to_owned(),
+            )],
+        );
+        let readings = [
+            ColumnReading {
+                generation: 0,
+                epoch: 0,
+                directory: files_dir.clone(),
+                stage: ColumnStage::Listing,
+                states: Some(states),
+                folders: Vec::new(),
+            },
+            ColumnReading {
+                generation: 0,
+                epoch: 0,
+                directory: home.clone(),
+                stage: ColumnStage::Deep,
+                states: None,
+                folders: vec![
+                    counted(
+                        "Scans",
+                        StatusCounts {
+                            new: 3,
+                            in_review: 2,
+                            ..StatusCounts::default()
+                        },
+                    ),
+                    counted(
+                        "Filed",
+                        StatusCounts {
+                            filed: 12_400,
+                            ..StatusCounts::default()
+                        },
+                    ),
+                    counted(
+                        "Archive",
+                        StatusCounts {
+                            filed: 31_000,
+                            ..StatusCounts::default()
+                        },
+                    ),
+                    FolderReading {
+                        excluded: true,
+                        ..counted("Private", StatusCounts::default())
+                    },
+                ],
+            },
+        ];
+        for reading in readings {
+            app.hermes_column.apply(reading);
+        }
+        app.hermes_column.apply_detail(
+            files_dir.join("2025-03 receipt market.pdf"),
+            FileDetail {
+                text_state: crate::review_work::TextState::Read,
+                suggestion: Some(PathBuf::from("Receipts/2025/Market/2025-03 receipt.pdf")),
+            },
+        );
+        app
+    }
+
+    /// The Hermes column sample with the quick-fix menu open on its inquiry:
+    /// one file whose sender was not read and whose suggestion is known.
+    pub fn with_hermes_quick_fix_sample() -> Self {
+        let mut app = Self::with_hermes_column_sample();
+        let path = app.right_panel.path.join("2025-03 receipt market.pdf");
+        let mut item = crate::review_list::tests::loaded_list()
+            .rows()
+            .to_vec()
+            .swap_remove(0);
+        item.path = path;
+        item.fields.sender = None;
+        item.fields.kind = Some("receipt".to_owned());
+        item.fields.date = chrono::NaiveDate::from_ymd_opt(2025, 3, 14);
+        item.proposed_pattern = Some("Receipts/2025/Market/2025-03 {kind}.pdf".to_owned());
+        let anchor = layout::cursor_row_anchor(
+            true,
+            app.right_panel
+                .selected
+                .saturating_sub(app.right_panel.scroll_offset),
+            app.window_size,
+        );
+        let mut menu = QuickFix::new(anchor, app.window_size);
+        menu.loaded(vec![item]);
+        app.quick_fix = Some(menu);
+        app
+    }
+
+    /// The column sample with the context menu open on the inquiry row and the
+    /// Hermes submenu out.
+    pub fn with_hermes_context_menu_sample() -> Self {
+        let mut app = Self::with_hermes_column_sample();
+        let index = app.right_panel.selected;
+        app.open_context_menu(PanelSide::Right, index, None);
+        if let Some(menu) = app.context_menu.as_mut() {
+            menu.select_last();
+            menu.open_submenu();
+        }
         app
     }
 
@@ -13012,8 +14089,8 @@ mod filing_setup_tests {
         assert!(app.filing.as_ref().unwrap().has_configured_locations());
     }
 
-    #[test]
-    fn a_running_module_with_locations_keeps_them_until_the_next_start() {
+    #[tokio::test]
+    async fn a_running_module_with_locations_keeps_them_until_the_next_start() {
         let mut app = app_that_can_start_a_module();
         app.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
         app.pipeline = Some(running_pipeline());
@@ -13326,6 +14403,7 @@ mod filing_status_tests {
             task: PipelineTask::Step("probe"),
             message: "the step stopped unexpectedly".to_owned(),
             at: SystemTime::UNIX_EPOCH,
+            sequence: 0,
         }];
         let mut app = App::with_filing_status_page(snapshot, SystemTime::UNIX_EPOCH);
 
@@ -14550,5 +15628,36 @@ mod settings_tab_tests {
             app.settings.as_ref().unwrap().feature,
             SettingsFeature::Hermes
         );
+    }
+
+    #[test]
+    fn left_in_an_empty_form_field_goes_to_the_sidebar_and_in_a_filled_one_does_not() {
+        let mut view = crate::saved_queries::tests::loaded_list();
+        view.set_text(crate::saved_queries::QueryField::Kind, String::new());
+        view.set_text(crate::saved_queries::QueryField::Year, "2025".to_owned());
+        let mut app = App::with_saved_queries(view).with_hermes_focus(HermesFocus::Content);
+
+        drop(
+            app.update(Message::SavedQueries(SavedQueriesMessage::LeftChecked(
+                Some(crate::saved_queries::QueryField::Year),
+            ))),
+        );
+        assert_eq!(app.hermes_focus, HermesFocus::Content);
+
+        drop(
+            app.update(Message::SavedQueries(SavedQueriesMessage::LeftChecked(
+                Some(crate::saved_queries::QueryField::Kind),
+            ))),
+        );
+        assert_eq!(app.hermes_focus, HermesFocus::Sidebar);
+
+        let mut unfocused = App::with_saved_queries(crate::saved_queries::tests::loaded_list())
+            .with_hermes_focus(HermesFocus::Content);
+        drop(
+            unfocused.update(Message::SavedQueries(SavedQueriesMessage::LeftChecked(
+                None,
+            ))),
+        );
+        assert_eq!(unfocused.hermes_focus, HermesFocus::Sidebar);
     }
 }

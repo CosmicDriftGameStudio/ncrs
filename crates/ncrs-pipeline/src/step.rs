@@ -19,6 +19,9 @@ pub struct Item {
     /// Set by the rules step when a rule says where the document goes.
     /// Boxed: a plan holds all fields and would make every queued job large.
     pub plan: Option<Box<FilingPlan>>,
+    /// A person asked to run the file again: a known file does not stop at
+    /// the intake step as unchanged.
+    pub force: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

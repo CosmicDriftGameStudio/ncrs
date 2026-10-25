@@ -17,9 +17,15 @@ pub const COLUMN_HEADER_HEIGHT: f32 = size::COLUMN_HEADER;
 pub const ROW_HEIGHT: f32 = 22.0;
 
 pub const MENU_WIDTH: f32 = 300.0;
+/// The Hermes submenu has labels with a note and a key.
+pub const MENU_SUB_WIDTH: f32 = 340.0;
 pub const MENU_ITEM_HEIGHT: f32 = 24.0;
 pub const MENU_SEPARATOR_HEIGHT: f32 = 7.0;
 pub const MENU_PADDING: f32 = 4.0;
+/// The quick-fix menu: wider than the context menu for a target path, with a
+/// two-line header above its entries.
+pub const QUICK_FIX_WIDTH: f32 = 480.0;
+pub const QUICK_FIX_HEADER_HEIGHT: f32 = 44.0;
 
 /// The star column, left of the name. Its own button so a click there tags the
 /// row instead of moving the cursor.
@@ -27,6 +33,9 @@ pub const TAG_COLUMN_WIDTH: f32 = 22.0;
 
 pub const SIZE_COLUMN_WIDTH: f32 = 90.0;
 pub const DATE_COLUMN_WIDTH: f32 = 150.0;
+/// The Hermes status column, after the date: an icon for a file, a summary
+/// of icons and counts for a folder.
+pub const HERMES_COLUMN_WIDTH: f32 = 124.0;
 
 /// Vertical space the panel chrome occupies: everything above and below the
 /// file rows.

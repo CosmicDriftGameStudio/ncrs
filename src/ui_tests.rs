@@ -992,6 +992,7 @@ mod context_menu_overlay {
                     }
                     top += MENU_ITEM_HEIGHT;
                 }
+                MenuEntry::Hermes => top += MENU_ITEM_HEIGHT,
             }
         }
         let point = Point::new(
@@ -1052,6 +1053,7 @@ mod status_notice {
                 filing: None,
                 on_blocked_press: None,
                 notice: app.notice_for_test(),
+                hermes_line: None,
             },
             failure,
             None,
@@ -1679,6 +1681,7 @@ mod filing_status_page {
             task: Task::Step("probe"),
             message: "the step stopped unexpectedly".to_owned(),
             at: taken_at(),
+            sequence: 0,
         }];
         let app = page(with_error);
 
@@ -3703,6 +3706,63 @@ mod title_bar {
         simulator(&missing)
             .find("PDF library missing, PDFs are not read")
             .unwrap();
+    }
+
+    #[test]
+    fn the_hermes_column_matches_its_snapshots() {
+        for (language, name) in [
+            (Language::English, "hermes_column_en"),
+            (Language::German, "hermes_column_de"),
+        ] {
+            let app = App::with_hermes_column_sample().in_language(language);
+            let matches = simulator(&app)
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(
+                matches,
+                "the main view does not match tests/snapshots/{name}.png"
+            );
+        }
+    }
+
+    #[test]
+    fn the_hermes_quick_fix_matches_its_snapshots() {
+        for (language, name) in [
+            (Language::English, "hermes_quick_fix_en"),
+            (Language::German, "hermes_quick_fix_de"),
+        ] {
+            let app = App::with_hermes_quick_fix_sample().in_language(language);
+            let matches = simulator(&app)
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(
+                matches,
+                "the quick-fix menu does not match tests/snapshots/{name}.png"
+            );
+        }
+    }
+
+    #[test]
+    fn the_hermes_context_menu_matches_its_snapshots() {
+        for (language, name) in [
+            (Language::English, "hermes_context_menu_en"),
+            (Language::German, "hermes_context_menu_de"),
+        ] {
+            let app = App::with_hermes_context_menu_sample().in_language(language);
+            let matches = simulator(&app)
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(
+                matches,
+                "the Hermes context menu does not match tests/snapshots/{name}.png"
+            );
+        }
     }
 
     #[test]

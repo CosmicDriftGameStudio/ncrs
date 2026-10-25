@@ -31,6 +31,90 @@
       "de": "Geändert"
     },
     {
+      "key": "column.hermes",
+      "context": "Column header above the Hermes status column of a file panel; Hermes is the name of the automatic filing module and stays untranslated.",
+      "en": "Hermes",
+      "de": "Hermes"
+    },
+    {
+      "key": "hermes_column.state_waiting",
+      "context": "Hover text and status bar word for a file Hermes has queued but not read yet. One word.",
+      "en": "Waiting",
+      "de": "Wartet"
+    },
+    {
+      "key": "hermes_column.state_reading",
+      "context": "Hover text and status bar word for a file Hermes is reading right now (text, OCR, fields, rule).",
+      "en": "Reading",
+      "de": "Wird gelesen"
+    },
+    {
+      "key": "hermes_column.state_filed",
+      "context": "Hover text and status bar word for a file Hermes has filed: it is in the filing location and in the index.",
+      "en": "Filed",
+      "de": "Abgelegt"
+    },
+    {
+      "key": "hermes_column.state_inquiry",
+      "context": "Hover text and status bar word for a file Hermes cannot file alone and asks the user about.",
+      "en": "Inquiry",
+      "de": "Rückfrage"
+    },
+    {
+      "key": "hermes_column.state_error",
+      "context": "Hover text and status bar word for a file Hermes failed to process.",
+      "en": "Error",
+      "de": "Fehler"
+    },
+    {
+      "key": "hermes_column.state_excluded",
+      "context": "Hover text and status bar word for a file the user excluded from Hermes; Hermes does not touch it.",
+      "en": "Excluded",
+      "de": "Ausgeschlossen"
+    },
+    {
+      "key": "hermes_column.role_inbox",
+      "context": "Small tag after the name of a folder Hermes takes new files from. One word.",
+      "en": "Inbox",
+      "de": "Eingang"
+    },
+    {
+      "key": "hermes_column.role_filing_location",
+      "context": "Small tag after the name of an archive folder Hermes files documents into. Short.",
+      "en": "Filing location",
+      "de": "Ablage"
+    },
+    {
+      "key": "hermes_column.role_archive",
+      "context": "Small tag after the name of an archive folder Hermes only reads. One word.",
+      "en": "Archive",
+      "de": "Archiv"
+    },
+    {
+      "key": "hermes_column.role_archive_tooltip",
+      "context": "Hover text of the archive tag: Hermes learns from this folder but never moves files in or out of it.",
+      "en": "Archive, read-only: Hermes learns from it but moves nothing",
+      "de": "Archiv, nur lesen: Hermes lernt daraus, verschiebt aber nichts"
+    },
+    {
+      "key": "hermes_column.excluded_word",
+      "context": "Shown in the Hermes column of a folder the user excluded from Hermes, next to the excluded icon. One word, lower case.",
+      "en": "excluded",
+      "de": "ausgeschlossen"
+    },
+    {
+      "key": "hermes_column.not_counted",
+      "context": "Hover text of the dots shown in the Hermes column of a folder whose files have not been counted yet.",
+      "en": "not counted yet",
+      "de": "noch nicht gezählt"
+    },
+    {
+      "key": "hermes_column.suggestion",
+      "context": "Part of the status bar line for a file Hermes asks about: the place Hermes would file it in. Takes the target path.",
+      "en": "Suggestion: {target}",
+      "de": "Vorschlag: {target}"
+    },
+    {
       "key": "marker.dir",
       "context": "Shown in the size column for directories, like <DIR>. Convention from Norton Commander. Keep the angle brackets; this is deliberately not translated.",
       "en": "<DIR>",
@@ -3085,6 +3169,36 @@
       "de": "Treffer"
     },
     {
+      "key": "kind.invoice",
+      "context": "Display name of the document kind 'invoice' as the rules or the AI write it; other kinds are shown as written.",
+      "en": "invoice",
+      "de": "Rechnung"
+    },
+    {
+      "key": "kind.receipt",
+      "context": "Display name of the document kind 'receipt' as the rules or the AI write it; other kinds are shown as written.",
+      "en": "receipt",
+      "de": "Beleg"
+    },
+    {
+      "key": "kind.contract",
+      "context": "Display name of the document kind 'contract' as the rules or the AI write it; other kinds are shown as written.",
+      "en": "contract",
+      "de": "Vertrag"
+    },
+    {
+      "key": "kind.letter",
+      "context": "Display name of the document kind 'letter' as the rules or the AI write it; other kinds are shown as written.",
+      "en": "letter",
+      "de": "Brief"
+    },
+    {
+      "key": "kind.quote",
+      "context": "Display name of the document kind 'quote' as the rules or the AI write it; other kinds are shown as written.",
+      "en": "quote",
+      "de": "Angebot"
+    },
+    {
       "key": "saved_queries.criteria_all",
       "context": "Short form of a query without any criterion in the saved queries list: it finds every document.",
       "en": "All documents",
@@ -3845,6 +3959,300 @@
       "context": "Hint in the footer of the progress dialog: the Escape key stops the job. Starts with the key name, keep it.",
       "en": "Esc stop",
       "de": "Esc anhalten"
+    },
+    {
+      "key": "action.hermes_quick_fix",
+      "context": "Entry of the command list and the menu that runs the key action hermes_quick_fix: the menu of fixes for the inquiry under the cursor or among the marked files.",
+      "en": "Quick fix for an inquiry",
+      "de": "Schnellkorrektur für eine Rückfrage"
+    },
+    {
+      "key": "quick_fix.header",
+      "context": "First line of the quick-fix menu for one file. {reason} is why Hermes asks, already worded, for example the field that is missing.",
+      "en": "Inquiry · {reason}",
+      "de": "Rückfrage · {reason}"
+    },
+    {
+      "key": "quick_fix.header_many",
+      "context": "First line of the quick-fix menu for several marked files. {count} is their number.",
+      "en": "{count} inquiries",
+      "de": "{count} Rückfragen"
+    },
+    {
+      "key": "quick_fix.header_many_detail",
+      "context": "Second line of the quick-fix menu for several files: how many have a suggestion where to file them and how many have none.",
+      "en": "{suggested} with a suggestion · {without} without",
+      "de": "{suggested} mit Vorschlag · {without} ohne"
+    },
+    {
+      "key": "quick_fix.read",
+      "context": "Second line of the quick-fix menu for one file: what Hermes read from it. A field it did not find is a question mark. The kind is shown as stored.",
+      "en": "Read: kind {kind} · date {date} · sender {sender}",
+      "de": "Gelesen: Art {kind} · Datum {date} · Absender {sender}"
+    },
+    {
+      "key": "quick_fix.loading",
+      "context": "Shown in the quick-fix menu while the open inquiries are being looked up. Just an ellipsis, the same in both languages.",
+      "en": "…",
+      "de": "…"
+    },
+    {
+      "key": "quick_fix.accept",
+      "context": "Entry of the quick-fix menu for one file: files it where Hermes suggests. The suggested path is shown beside it.",
+      "en": "Accept suggestion",
+      "de": "Vorschlag annehmen"
+    },
+    {
+      "key": "quick_fix.accept_group",
+      "context": "Entry of the quick-fix menu for several files: files all of them whose suggestion lands in one folder. {count} files, {directory} the folder below the archive.",
+      "en": "{count} files → {directory}/ accept",
+      "de": "{count} Dateien → {directory}/ annehmen"
+    },
+    {
+      "key": "quick_fix.set_field",
+      "context": "Entry of the quick-fix menu for one file: opens the review page to fill in a missing field.",
+      "en": "Set field…",
+      "de": "Feld setzen…"
+    },
+    {
+      "key": "quick_fix.set_fields_group",
+      "context": "Entry of the quick-fix menu for several files: those that have no suggestion are filled in on the review page. {count} is their number.",
+      "en": "{count} without suggestion: set fields…",
+      "de": "{count} ohne Vorschlag: Felder setzen…"
+    },
+    {
+      "key": "quick_fix.create_rule",
+      "context": "Entry of the quick-fix menu for one file: opens the review page on it to file it by hand and make a rule from it.",
+      "en": "Create rule from this file",
+      "de": "Regel aus dieser Datei anlegen"
+    },
+    {
+      "key": "quick_fix.later",
+      "context": "Entry of the quick-fix menu that closes it and leaves the inquiry open.",
+      "en": "Later",
+      "de": "Später"
+    },
+    {
+      "key": "quick_fix.exclude",
+      "context": "Entry of the quick-fix menu for one file: Hermes leaves it alone from now on.",
+      "en": "Exclude from Hermes",
+      "de": "Von Hermes ausschließen"
+    },
+    {
+      "key": "quick_fix.exclude_all",
+      "context": "Entry of the quick-fix menu for several files: Hermes leaves all of them alone from now on. {count} is their number.",
+      "en": "Exclude all {count} from Hermes",
+      "de": "Alle {count} von Hermes ausschließen"
+    },
+    {
+      "key": "quick_fix.summary_title",
+      "context": "First line of the quick-fix menu before a group of files is filed. {count} files, {directory} the folder below the archive.",
+      "en": "File {count} documents into {directory}/?",
+      "de": "{count} Dokumente nach {directory}/ ablegen?"
+    },
+    {
+      "key": "quick_fix.summary_hint",
+      "context": "Second line of the quick-fix menu before a group of files is filed: how it is done.",
+      "en": "Each is moved on its own, nothing is overwritten.",
+      "de": "Jedes wird einzeln verschoben, nichts wird überschrieben."
+    },
+    {
+      "key": "quick_fix.file_group",
+      "context": "Entry of the quick-fix menu that files the group after the summary. {count} is the number of documents.",
+      "en": "File {count} documents",
+      "de": "{count} Dokumente ablegen"
+    },
+    {
+      "key": "quick_fix.back",
+      "context": "Entry of the quick-fix menu that returns from the summary to the list of fixes.",
+      "en": "Back",
+      "de": "Zurück"
+    },
+    {
+      "key": "status.quick_fix_none",
+      "context": "Status bar message when the quick-fix key is pressed on a file without an open inquiry.",
+      "en": "No suggestion here",
+      "de": "Hier gibt es keinen Vorschlag"
+    },
+    {
+      "key": "status.quick_fix_filed",
+      "context": "Status bar message after one document was filed from the quick-fix menu. {path} is the place below the archive.",
+      "en": "Filed to {path}",
+      "de": "Abgelegt nach {path}"
+    },
+    {
+      "key": "status.quick_fix_target_exists",
+      "context": "Status bar message when the quick-fix menu could not file a document because another file is at the suggested place.",
+      "en": "Not filed: the place is already taken",
+      "de": "Nicht abgelegt: Der Platz ist schon belegt"
+    },
+    {
+      "key": "status.quick_fix_requeued",
+      "context": "Status bar message when the document changed or vanished while the quick-fix menu filed it, so Hermes looks at it again.",
+      "en": "The file changed, Hermes reads it again",
+      "de": "Die Datei hat sich geändert, Hermes liest sie neu"
+    },
+    {
+      "key": "status.quick_fix_summary",
+      "context": "Status bar message after the quick-fix menu filed several documents. Each number is a count; taken means another file is at the suggested place.",
+      "en": "{filed} filed, {taken} place taken, {requeued} read again, {failed} failed",
+      "de": "{filed} abgelegt, {taken} Platz belegt, {requeued} neu gelesen, {failed} fehlgeschlagen"
+    },
+    {
+      "key": "status.quick_fix_excluded",
+      "context": "Status bar message after files were excluded from Hermes by the quick-fix menu. {count} is their number.",
+      "en": "Excluded from Hermes: {count}",
+      "de": "Von Hermes ausgeschlossen: {count}"
+    },
+    {
+      "key": "hermes_menu.show_suggestion",
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Opens the quick-fix menu with Hermes' suggestion for an inquiry.",
+      "en": "Show suggestion",
+      "de": "Vorschlag zeigen"
+    },
+    {
+      "key": "hermes_menu.hand_to_inbox",
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Opens the move dialog with the inbox as target.",
+      "en": "Hand to Hermes",
+      "de": "An Hermes geben"
+    },
+    {
+      "key": "hermes_menu.note_inbox",
+      "context": "Dimmed note after 'Hand to Hermes' in the Hermes submenu: where the file goes.",
+      "en": "into the inbox",
+      "de": "in den Eingang"
+    },
+    {
+      "key": "hermes_menu.process_again",
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Runs the file through the pipeline steps again.",
+      "en": "Process again",
+      "de": "Erneut verarbeiten"
+    },
+    {
+      "key": "hermes_menu.set_inbox",
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Makes the folder an inbox (Tube) of Hermes.",
+      "en": "Set as inbox",
+      "de": "Als Eingang festlegen"
+    },
+    {
+      "key": "hermes_menu.set_filing_location",
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Makes the folder the filing location, the archive that documents are filed into.",
+      "en": "Set as filing location",
+      "de": "Als Ablageort festlegen"
+    },
+    {
+      "key": "hermes_menu.set_archive",
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Makes the folder an archive that Hermes only reads.",
+      "en": "Set as archive",
+      "de": "Als Archiv festlegen"
+    },
+    {
+      "key": "hermes_menu.note_read_only",
+      "context": "Dimmed note after 'Set as archive' in the Hermes submenu: Hermes does not change what is in it.",
+      "en": "read-only",
+      "de": "nur lesen"
+    },
+    {
+      "key": "hermes_menu.exclude",
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Hermes leaves the file or folder alone from now on.",
+      "en": "Exclude from Hermes",
+      "de": "Von Hermes ausschließen"
+    },
+    {
+      "key": "hermes_menu.include",
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Takes back an exclusion.",
+      "en": "Include in Hermes again",
+      "de": "Wieder bei Hermes einbeziehen"
+    },
+    {
+      "key": "hermes_menu.inspect",
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Opens the Hermes inspection page, at the file's error if it has one.",
+      "en": "Show in inspection",
+      "de": "In der Inspektion zeigen"
+    },
+    {
+      "key": "status.hermes_processing_again",
+      "context": "Status bar message after a file was queued to run through the Hermes steps again. {name} is the file name.",
+      "en": "Processing again: {name}",
+      "de": "Wird erneut verarbeitet: {name}"
+    },
+    {
+      "key": "status.hermes_not_processable",
+      "context": "Status bar message when a file cannot be run through the Hermes steps: it is excluded, outside the configured folders, or the pipeline is not running.",
+      "en": "Hermes cannot process this file now",
+      "de": "Hermes kann diese Datei jetzt nicht verarbeiten"
+    },
+    {
+      "key": "status.hermes_included",
+      "context": "Status bar message after a file or folder was taken back into Hermes' view. {name} is its name.",
+      "en": "Included in Hermes again: {name}",
+      "de": "Wieder bei Hermes einbezogen: {name}"
+    },
+    {
+      "key": "status.hermes_included_by_folder",
+      "context": "Status bar message when a file cannot be included because a folder around it is excluded. {folder} is that folder's path.",
+      "en": "Excluded by the folder {folder}; include that folder instead",
+      "de": "Vom Ordner {folder} ausgeschlossen; schließe stattdessen den Ordner wieder ein"
+    },
+    {
+      "key": "status.hermes_role_refused",
+      "context": "Status bar message when a folder cannot take the chosen role in the filing setup. {problem} is the reason, a sentence.",
+      "en": "Not set: {problem}",
+      "de": "Nicht festgelegt: {problem}"
+    },
+    {
+      "key": "status.hermes_role_failed",
+      "context": "Status bar message when saving a folder's role failed. {reason} is the cause.",
+      "en": "Saving the folder's role failed: {reason}",
+      "de": "Rolle des Ordners nicht gespeichert: {reason}"
+    },
+    {
+      "key": "status.hermes_no_inbox",
+      "context": "Status bar message when a file should go to the inbox but none is configured.",
+      "en": "No inbox is set up",
+      "de": "Es ist kein Eingang eingerichtet"
+    },
+    {
+      "key": "action.hermes_hand_to_inbox",
+      "context": "Entry of the command list and the menu that runs the key action hermes_hand_to_inbox: opens the move dialog for the file under the cursor with the inbox as target.",
+      "en": "Hand to Hermes (into the inbox)",
+      "de": "An Hermes geben (in den Eingang)"
+    },
+    {
+      "key": "action.hermes_process_again",
+      "context": "Entry of the command list and the menu that runs the key action hermes_process_again: runs the file under the cursor through the Hermes steps again.",
+      "en": "Process again",
+      "de": "Erneut verarbeiten"
+    },
+    {
+      "key": "action.hermes_set_inbox",
+      "context": "Entry of the command list and the menu that runs the key action hermes_set_inbox: makes the folder under the cursor an inbox.",
+      "en": "Set as inbox",
+      "de": "Als Eingang festlegen"
+    },
+    {
+      "key": "action.hermes_set_filing_location",
+      "context": "Entry of the command list and the menu that runs the key action hermes_set_filing_location: makes the folder under the cursor the filing location.",
+      "en": "Set as filing location",
+      "de": "Als Ablageort festlegen"
+    },
+    {
+      "key": "action.hermes_set_archive",
+      "context": "Entry of the command list and the menu that runs the key action hermes_set_archive: makes the folder under the cursor a read-only archive.",
+      "en": "Set as archive (read-only)",
+      "de": "Als Archiv festlegen (nur lesen)"
+    },
+    {
+      "key": "action.hermes_exclude",
+      "context": "Entry of the command list and the menu that runs the key action hermes_exclude: excludes the file or folder under the cursor from Hermes, or includes it again when it is excluded.",
+      "en": "Exclude from or include in Hermes",
+      "de": "Von Hermes ausschließen oder wieder einbeziehen"
+    },
+    {
+      "key": "action.hermes_inspect",
+      "context": "Entry of the command list and the menu that runs the key action hermes_inspect: opens the Hermes inspection page for the file under the cursor.",
+      "en": "Show in inspection",
+      "de": "In der Inspektion zeigen"
     }
   ]
 }

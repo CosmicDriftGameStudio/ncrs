@@ -138,6 +138,9 @@ pub struct Activity<'a, M> {
     /// A confirmation that goes away by itself. It takes the right end of the
     /// bar from the filing progress and stands beside an error.
     pub notice: Option<&'a str>,
+    /// What Hermes says about the file under the cursor: its state, why, and
+    /// where it would go. Shown in place of the entry info.
+    pub hermes_line: Option<String>,
 }
 
 /// The bottom bar: path, then the running job, then the failure of the last
@@ -163,6 +166,7 @@ pub fn view<'a, M: Clone + 'a>(
         filing,
         on_blocked_press,
         notice,
+        hermes_line,
     } = activity;
     let path_chars = path_bar_input.editing.map_or_else(
         || panel.path.display().to_string().chars().count(),
@@ -197,6 +201,8 @@ pub fn view<'a, M: Clone + 'a>(
             .size(font_size::SMALL)
             .wrapping(text::Wrapping::None)
             .into()
+    } else if let (Some(line), Some(entry)) = (hermes_line, panel.selected_entry()) {
+        hermes_details(&entry.name.to_string_lossy(), line, palette)
     } else if let Some(entry) = panel.selected_entry() {
         let name = entry.name.to_string_lossy().into_owned();
         let dim = |content: String| {
@@ -341,6 +347,23 @@ pub fn view<'a, M: Clone + 'a>(
     .height(STATUSBAR_HEIGHT)
     .width(Length::Fill)
     .style(theme::statusbar(palette))
+    .into()
+}
+
+/// The cursor file's name, then what Hermes says about it.
+fn hermes_details<'a, M: 'a>(name: &str, line: String, palette: &Palette) -> Element<'a, M> {
+    let small = |content: String| {
+        text(content)
+            .size(font_size::SMALL)
+            .wrapping(text::Wrapping::None)
+    };
+    row![
+        small(name.to_owned())
+            .font(Font::MONOSPACE)
+            .color(palette.dim_text),
+        small(ENTRY_SEPARATOR.to_owned()).color(palette.dim_text),
+        small(line),
+    ]
     .into()
 }
 

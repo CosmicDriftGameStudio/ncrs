@@ -168,6 +168,11 @@ pub struct ReviewList {
     filed: Option<FiledNotice>,
     /// What `begin_confirm` filed, until the work answers.
     pending_notice: Option<FiledNotice>,
+    /// An entry to put the cursor on once the list has loaded, with the field
+    /// to edit; set by the quick-fix menu.
+    wanted: Option<(PathBuf, FormField)>,
+    /// The field to focus after the load that found the wanted entry.
+    focus_request: Option<FormField>,
 }
 
 impl ReviewList {
@@ -183,7 +188,20 @@ impl ReviewList {
             problem: None,
             filed: None,
             pending_notice: None,
+            wanted: None,
+            focus_request: None,
         }
+    }
+
+    /// Opens the form on the entry of `path` with the cursor in `field` as soon
+    /// as the list has loaded.
+    pub fn edit_on_load(&mut self, path: PathBuf, field: FormField) {
+        self.wanted = Some((path, field));
+    }
+
+    /// The field to focus, once, after a load that found the wanted entry.
+    pub fn take_focus_request(&mut self) -> Option<FormField> {
+        self.focus_request.take()
     }
 
     pub fn rows(&self) -> &[ReviewItem] {
@@ -249,6 +267,22 @@ impl ReviewList {
         self.busy = false;
         self.editing = false;
         self.fill_form();
+        self.go_to_wanted();
+    }
+
+    fn go_to_wanted(&mut self) {
+        let Some((path, field)) = self.wanted.take() else {
+            return;
+        };
+        let Some(position) = self.rows.iter().position(|row| row.path == path) else {
+            return;
+        };
+        self.cursor = position;
+        self.window
+            .ensure_visible(position, self.rows.len(), VISIBLE_ROWS);
+        self.fill_form();
+        self.editing = true;
+        self.focus_request = Some(field);
     }
 
     pub fn failed(&mut self, detail: String) {
@@ -497,6 +531,18 @@ pub mod tests {
                 .collect(),
         );
         list
+    }
+
+    #[test]
+    fn a_wanted_entry_gets_the_cursor_and_the_form_once_the_list_has_loaded() {
+        let rows = loaded_list().rows().to_vec();
+        let mut reopened = ReviewList::new();
+        reopened.edit_on_load(rows[1].path.clone(), FormField::Kind);
+        reopened.loaded(rows);
+        assert_eq!(reopened.cursor(), 1);
+        assert!(reopened.is_editing());
+        assert_eq!(reopened.take_focus_request(), Some(FormField::Kind));
+        assert_eq!(reopened.take_focus_request(), None);
     }
 
     #[test]

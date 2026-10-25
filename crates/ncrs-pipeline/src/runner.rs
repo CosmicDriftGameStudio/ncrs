@@ -21,6 +21,8 @@ use crate::step::{Item, Step, StepOutcome};
 pub const RATE_MINUTES: usize = 10;
 /// The errors kept for `Snapshot::errors`; the oldest are dropped.
 pub const MAX_ERRORS: usize = 50;
+/// The entries kept for `Snapshot::changed_paths`; the oldest are dropped.
+pub const MAX_CHANGED_PATHS: usize = 512;
 
 const PANIC_MESSAGE: &str = "the step stopped unexpectedly";
 const DEFAULT_RESCAN_EVERY: Duration = Duration::from_secs(10 * 60);
@@ -95,6 +97,53 @@ pub struct ErrorEntry {
     pub task: Task,
     pub message: String,
     pub at: SystemTime,
+    /// The newest change sequence when the error happened: a later change of
+    /// the same file that did not fail supersedes the error.
+    pub sequence: u64,
+}
+
+/// A file whose state in the index or in the pipeline changed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangedPath {
+    /// Counts up from 1 for the lifetime of a runner.
+    pub sequence: u64,
+    pub path: PathBuf,
+    /// The step failed on this file.
+    pub failed: bool,
+}
+
+/// The newest changed paths, bounded. A consumer that remembers the sequence it
+/// has seen asks for what came after; it learns from the floor when entries it
+/// never saw were dropped.
+#[derive(Debug, Default)]
+struct ChangeLog {
+    entries: VecDeque<ChangedPath>,
+    latest: u64,
+    /// The highest sequence that was dropped, 0 while nothing was.
+    floor: u64,
+}
+
+impl ChangeLog {
+    fn push(&mut self, path: &Path, failed: bool) {
+        if self
+            .entries
+            .back()
+            .is_some_and(|last| last.path == path && last.failed == failed)
+        {
+            return;
+        }
+        self.latest += 1;
+        self.entries.push_back(ChangedPath {
+            sequence: self.latest,
+            path: path.to_path_buf(),
+            failed,
+        });
+        while self.entries.len() > MAX_CHANGED_PATHS {
+            if let Some(dropped) = self.entries.pop_front() {
+                self.floor = dropped.sequence;
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,6 +164,14 @@ pub struct Snapshot {
     pub left_pipeline: usize,
     /// Documents a step has planned a place for since the start.
     pub plans_made: usize,
+    /// Files whose state changed, oldest first: taken into the index, planned,
+    /// finished or failed. Files a rescan finds unchanged are not listed.
+    pub changed_paths: Vec<ChangedPath>,
+    /// The sequence of the newest change, 0 before the first.
+    pub changed_sequence: u64,
+    /// The highest sequence dropped from `changed_paths`: whoever last saw a
+    /// lower one has missed changes.
+    pub changed_sequence_floor: u64,
 }
 
 impl Snapshot {
@@ -129,7 +186,29 @@ impl Snapshot {
             errors: Vec::new(),
             left_pipeline: 0,
             plans_made: 0,
+            changed_paths: Vec::new(),
+            changed_sequence: 0,
+            changed_sequence_floor: 0,
         }
+    }
+
+    /// The changes after `seen`, or `None` when some of them were dropped (or
+    /// the runner started over) and the caller has to assume everything changed.
+    pub fn changes_since(&self, seen: u64) -> Option<impl Iterator<Item = &ChangedPath>> {
+        let missed = seen < self.changed_sequence_floor || seen > self.changed_sequence;
+        (!missed).then(|| {
+            self.changed_paths
+                .iter()
+                .filter(move |change| change.sequence > seen)
+        })
+    }
+
+    /// Whether the file changed without failing after the error happened, so
+    /// the error no longer describes it.
+    pub fn is_superseded(&self, error: &ErrorEntry) -> bool {
+        self.changed_paths.iter().any(|change| {
+            !change.failed && change.sequence > error.sequence && change.path == error.file
+        })
     }
 
     /// Files in the pipeline right now: waiting at a step or being worked on
@@ -253,6 +332,7 @@ struct State {
     errors: VecDeque<ErrorEntry>,
     left_pipeline: usize,
     plans_made: usize,
+    changes: ChangeLog,
 }
 
 impl State {
@@ -262,6 +342,7 @@ impl State {
             task,
             message,
             at,
+            sequence: self.changes.latest,
         });
         while self.errors.len() > MAX_ERRORS {
             self.errors.pop_front();
@@ -297,11 +378,38 @@ impl State {
                 text: None,
                 review: None,
                 plan: None,
+                force: false,
             },
             batch,
             fingerprint,
         });
         true
+    }
+
+    fn queue_again(&mut self, location: &Location, path: &Path) {
+        if !self.waiting_first.insert(path.to_path_buf()) {
+            if let Some(queued) = self
+                .first_step
+                .iter_mut()
+                .find(|queued| queued.item.path == path)
+            {
+                queued.item.force = true;
+            }
+            return;
+        }
+        self.first_step.push_back(Queued {
+            item: Item {
+                location: location.clone(),
+                path: path.to_path_buf(),
+                document: None,
+                text: None,
+                review: None,
+                plan: None,
+                force: true,
+            },
+            batch: None,
+            fingerprint: None,
+        });
     }
 
     fn is_repeated_report(&self, path: &Path, fingerprint: Option<Fingerprint>) -> bool {
@@ -580,6 +688,9 @@ impl Shared {
             errors: state.errors.iter().cloned().collect(),
             left_pipeline: state.left_pipeline,
             plans_made: state.plans_made,
+            changed_paths: state.changes.entries.iter().cloned().collect(),
+            changed_sequence: state.changes.latest,
+            changed_sequence_floor: state.changes.floor,
         }
     }
 
@@ -837,6 +948,9 @@ impl State {
         match outcome {
             Ok(StepOutcome::Continue) => {
                 counts.done += 1;
+                if step_index == 0 || last_step || item.plan.is_some() || item.review.is_some() {
+                    self.changes.push(&item.path, false);
+                }
                 if last_step {
                     self.left_pipeline += 1;
                     self.record_document(at);
@@ -853,6 +967,7 @@ impl State {
                 if item.plan.is_some() {
                     self.plans_made += 1;
                 }
+                self.changes.push(&item.path, false);
                 self.record_document(at);
             }
             Ok(StepOutcome::Unchanged) => {
@@ -873,6 +988,7 @@ impl State {
             Err(message) => {
                 counts.failed += 1;
                 self.left_pipeline += 1;
+                self.changes.push(&item.path, true);
                 self.push_error(item.path, Task::Step(name), message, at);
             }
         }
@@ -969,6 +1085,7 @@ impl Runner {
             errors: VecDeque::new(),
             left_pipeline: 0,
             plans_made: 0,
+            changes: ChangeLog::default(),
         };
         let shared = Arc::new(Shared {
             state: Mutex::new(state),
@@ -991,6 +1108,40 @@ impl Runner {
     pub fn resume(&self) {
         self.shared.update(|state| state.paused = false);
         self.shared.work_ready.notify_all();
+    }
+
+    /// Runs a known file through all steps again, even if nothing about it
+    /// changed. False when the path is in none of the locations.
+    pub fn process_again(&self, path: &Path) -> bool {
+        let Some(location) = self
+            .shared
+            .locations
+            .iter()
+            .find(|location| path.starts_with(&location.path))
+        else {
+            return false;
+        };
+        self.shared
+            .update(|state| state.queue_again(location, path));
+        self.shared.work_ready.notify_all();
+        true
+    }
+
+    /// Scans the location that holds `path` now, through the normal first
+    /// step: a file or folder that was left out until now is found without
+    /// waiting for the next rescan. False when the path is in no location.
+    pub fn rescan_around(&self, path: &Path) -> bool {
+        let Some(location) = self
+            .shared
+            .locations
+            .iter()
+            .find(|location| path.starts_with(&location.path))
+        else {
+            return false;
+        };
+        self.shared.update(|state| state.queue_scan(location));
+        self.shared.work_ready.notify_all();
+        true
     }
 
     /// Workers that are above the new target leave after their current job.
@@ -1061,6 +1212,7 @@ impl Drop for Runner {
 mod tests {
     use std::collections::HashSet;
     use std::fs;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::mpsc::{self, Receiver, Sender};
     use std::time::UNIX_EPOCH;
 
@@ -1649,6 +1801,180 @@ mod tests {
         assert_eq!(index.search_text("4711 Company", 10).unwrap().len(), 1);
     }
 
+    #[derive(Debug)]
+    struct CountingText(Arc<std::sync::atomic::AtomicUsize>);
+
+    impl TextSource for CountingText {
+        fn extract(&self, _path: &Path) -> Result<Extracted, TextError> {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(Extracted::Text("Invoice 4711 Company A".to_owned()))
+        }
+    }
+
+    #[test]
+    fn a_known_file_processed_again_passes_the_text_step_again() {
+        let inbox_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        put(&inbox, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let reads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let chain = TextChain::new().with_source(CountingText(Arc::clone(&reads)));
+        let runner = Runner::start(
+            settings(workers(1)),
+            fixture.steps_reading(chain),
+            vec![inbox.clone()],
+            stepping_clock(),
+        );
+        runner.wait_for("the file reviewed", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[3].done == 1
+        });
+        assert_eq!(reads.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        assert!(runner.process_again(&inbox.path.join("invoice.pdf")));
+
+        runner.wait_for("the file reviewed again", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[3].done == 2
+        });
+        assert_eq!(reads.load(std::sync::atomic::Ordering::SeqCst), 2);
+        assert!(!runner.process_again(Path::new("/elsewhere/invoice.pdf")));
+        let index = fixture.index.lock().unwrap();
+        assert_eq!(index.open_reviews().unwrap().len(), 1);
+    }
+
+    fn first_document_status(fixture: &IndexFixture, location: &Location) -> DocumentStatus {
+        let index = fixture.index.lock().unwrap();
+        let id = index.documents_under(&location.path).unwrap()[0].0;
+        index.document(id).unwrap().unwrap().status
+    }
+
+    fn mark_first_document_filed(fixture: &IndexFixture, location: &Location) {
+        let index = fixture.index.lock().unwrap();
+        let id = index.documents_under(&location.path).unwrap()[0].0;
+        index
+            .set_document_status(id, DocumentStatus::Filed)
+            .unwrap();
+    }
+
+    fn reviewed_once(
+        location: &Location,
+        fixture: &IndexFixture,
+        reads: &Arc<AtomicUsize>,
+    ) -> Runner {
+        let chain = TextChain::new().with_source(CountingText(Arc::clone(reads)));
+        let runner = Runner::start(
+            settings(workers(1)),
+            fixture.steps_reading(chain),
+            vec![location.clone()],
+            stepping_clock(),
+        );
+        runner.wait_for("the file taken in", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[3].done == 1
+        });
+        runner
+    }
+
+    #[test]
+    fn a_filed_document_in_an_inbox_location_stays_filed_when_processed_again() {
+        let inbox_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        let path = put(&inbox, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let reads = Arc::new(AtomicUsize::new(0));
+        let runner = reviewed_once(&inbox, &fixture, &reads);
+        mark_first_document_filed(&fixture, &inbox);
+
+        assert!(runner.process_again(&path));
+
+        let report = runner.wait_for("the file passed again", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[3].done == 2
+        });
+        assert_eq!(report.plans_made, 0);
+        assert_eq!(
+            first_document_status(&fixture, &inbox),
+            DocumentStatus::Filed
+        );
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn a_document_in_an_archive_location_is_never_planned_when_processed_again() {
+        let archive_dir = TempDir::new().unwrap();
+        let archive = location(&archive_dir, LocationMode::Archive);
+        let path = put(&archive, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let reads = Arc::new(AtomicUsize::new(0));
+        let runner = reviewed_once(&archive, &fixture, &reads);
+
+        assert!(runner.process_again(&path));
+
+        let report = runner.wait_for("the file passed again", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[3].done == 2
+        });
+        assert_eq!(report.plans_made, 0);
+        assert_eq!(reads.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            first_document_status(&fixture, &archive),
+            DocumentStatus::Filed
+        );
+        assert!(fixture
+            .index
+            .lock()
+            .unwrap()
+            .open_reviews()
+            .unwrap()
+            .is_empty());
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn an_excluded_file_is_skipped_even_when_processed_again() {
+        let inbox_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        let path = put(&inbox, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let reads = Arc::new(AtomicUsize::new(0));
+        let runner = reviewed_once(&inbox, &fixture, &reads);
+        fixture.index.lock().unwrap().exclude_path(&path).unwrap();
+
+        assert!(runner.process_again(&path));
+
+        let report = runner.wait_for("the file passed the first step", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[0].unchanged == 1
+        });
+        assert_eq!(report.steps[1].done, 1);
+        assert_eq!(reads.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn a_file_included_again_is_found_by_a_scan_without_waiting_for_the_rescan() {
+        let inbox_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        let path = put(&inbox, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        fixture.index.lock().unwrap().exclude_path(&path).unwrap();
+        let runner = Runner::start(
+            settings(workers(1)),
+            fixture.steps(),
+            vec![inbox.clone()],
+            stepping_clock(),
+        );
+        runner.wait_for("the excluded file skipped", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[0].unchanged == 1
+        });
+        fixture.index.lock().unwrap().include_path(&path).unwrap();
+
+        assert!(runner.rescan_around(&path));
+        assert!(!runner.rescan_around(Path::new("/elsewhere/invoice.pdf")));
+
+        runner.wait_for("the file reviewed", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[3].done == 1
+        });
+        assert_eq!(
+            fixture.index.lock().unwrap().open_reviews().unwrap().len(),
+            1
+        );
+    }
+
     #[test]
     fn a_file_without_text_still_reaches_the_review_list() {
         let inbox_dir = TempDir::new().unwrap();
@@ -1935,6 +2261,73 @@ mod tests {
         let reviews = index.open_reviews().unwrap();
         assert_eq!(reviews.len(), 1);
         assert_eq!(reviews[0].reason, ncrs_index::ReviewReason::UnconfirmedRule);
+    }
+
+    #[test]
+    fn the_change_log_numbers_entries_and_tells_a_slow_consumer_it_missed_some() {
+        let mut log = ChangeLog::default();
+        for number in 0..MAX_CHANGED_PATHS + 3 {
+            log.push(Path::new(&format!("/in/{number}.pdf")), false);
+        }
+        log.push(Path::new("/in/514.pdf"), false);
+        let mut snapshot = Snapshot::off();
+        snapshot.changed_paths = log.entries.iter().cloned().collect();
+        snapshot.changed_sequence = log.latest;
+        snapshot.changed_sequence_floor = log.floor;
+
+        assert_eq!(snapshot.changed_paths.len(), MAX_CHANGED_PATHS);
+        assert_eq!(snapshot.changed_sequence, (MAX_CHANGED_PATHS + 3) as u64);
+        assert_eq!(snapshot.changed_sequence_floor, 3);
+        assert!(snapshot.changes_since(2).is_none());
+        let recent: Vec<_> = snapshot
+            .changes_since(snapshot.changed_sequence - 2)
+            .unwrap()
+            .collect();
+        assert_eq!(recent.len(), 2);
+        assert_eq!(recent[1].path, Path::new("/in/514.pdf"));
+        assert_eq!(
+            snapshot.changes_since(3).unwrap().count(),
+            MAX_CHANGED_PATHS
+        );
+        assert!(snapshot
+            .changes_since(snapshot.changed_sequence + 1)
+            .is_none());
+    }
+
+    #[test]
+    fn files_that_changed_are_listed_and_files_found_unchanged_are_not() {
+        let (_dir, location) = numbered_files(2);
+        let (step, _started) = probe("probe", None, leave_the_second_file_unchanged);
+        let runner = start(workers(1), vec![step], &location, Arc::new(FixedClock));
+
+        let report = runner.wait_for("both files handled", |snapshot| {
+            is_idle(snapshot) && snapshot.left_pipeline == 2
+        });
+
+        let paths: Vec<_> = report
+            .changed_paths
+            .iter()
+            .map(|change| change.path.clone())
+            .collect();
+        assert_eq!(paths, vec![location.path.join("file-1.pdf")]);
+        assert_eq!(report.changed_sequence, 1);
+        assert_eq!(report.changed_sequence_floor, 0);
+    }
+
+    #[test]
+    fn a_failed_file_is_listed_as_changed() {
+        let (_dir, location) = numbered_files(3);
+        let (step, _started) = probe("probe", None, fail_the_second_file);
+        let runner = start(workers(1), vec![step], &location, Arc::new(FixedClock));
+
+        let report = runner.wait_for("all handled", |snapshot| {
+            is_idle(snapshot) && snapshot.left_pipeline == 3
+        });
+
+        assert!(report
+            .changed_paths
+            .iter()
+            .any(|change| change.path == location.path.join("file-2.pdf")));
     }
 
     #[test]

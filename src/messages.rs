@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use ncrs_index::{HermesCounts, RuleId, SavedQuery, SavedQueryId, TaxContext};
+use ncrs_index::{HermesCounts, IncludeOutcome, RuleId, SavedQuery, SavedQueryId, TaxContext};
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
 
@@ -19,6 +19,7 @@ use crate::filing_work::FilingSummary;
 use crate::fs::search::SearchEvent;
 use crate::fs::CreateDirError;
 use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
+use crate::hermes_column::{ColumnReading, ColumnStage, FileDetail, FolderRole};
 use crate::i18n::Language;
 use crate::jobs::JobEvent;
 #[cfg(any(target_os = "macos", test))]
@@ -29,7 +30,7 @@ use crate::palette::ThemePreset;
 use crate::query_work::{ExportSummary, QueryHit};
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
 use crate::review_list::FormField;
-use crate::review_work::{ConfirmOutcome, ReviewItem};
+use crate::review_work::{AcceptSummary, ConfirmOutcome, ReviewItem};
 use crate::saved_queries::QueryField;
 use crate::suggestion_work::SuggestedRule;
 use crate::theme_fetch::{Fetched, Installed};
@@ -180,6 +181,14 @@ pub enum Message {
     /// The pointer is over the entry at this index.
     ContextMenuHover(usize),
     ContextMenuClose,
+    /// Right or Enter on the Hermes entry: open its submenu.
+    ContextMenuOpenSub,
+    /// Left: back from the submenu to the entry.
+    ContextMenuCloseSub,
+    /// The pointer is over the entry at this index of the submenu.
+    ContextMenuSubHover(usize),
+    /// A click on the entry at this index of the submenu: run it.
+    ContextMenuSubClick(usize),
 
     // --- path field in the status bar ---
     /// The path field's text changed: from then on it shows what was typed
@@ -275,6 +284,9 @@ pub enum Message {
     // --- Filing status page ---
     FilingStatus(FilingStatusMessage),
 
+    // --- The Hermes column of the panels ---
+    HermesColumn(HermesColumnMessage),
+
     // --- Filing setup: the locations, written to the config ---
     FilingSetup(FilingSetupMessage),
 
@@ -282,6 +294,8 @@ pub enum Message {
     RuleSuggestions(RuleSuggestionsMessage),
     ReorganisationPlan(ReorganisationPlanMessage),
     ReviewList(ReviewListMessage),
+    QuickFix(QuickFixMessage),
+    HermesFile(HermesFileMessage),
     SavedQueries(SavedQueriesMessage),
     /// The sidebar of the Hermes card: closes the card that is up and opens
     /// this page.
@@ -475,6 +489,28 @@ pub enum FilingStatusMessage {
     ActivateSelectedError,
 }
 
+/// What the background reads for the Hermes column answer with.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HermesColumnMessage {
+    /// One stage of the reading for `directory` of a panel.
+    Read {
+        side: PanelSide,
+        directory: PathBuf,
+        stage: ColumnStage,
+        result: Result<ColumnReading, String>,
+    },
+    /// What the review list knows about the file under the cursor.
+    Detail {
+        path: PathBuf,
+        result: Result<Option<FileDetail>, String>,
+    },
+    /// Hermes was told to leave these paths alone.
+    Excluded {
+        paths: Vec<PathBuf>,
+        result: Result<(), String>,
+    },
+}
+
 /// Everything the filing setup sends.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FilingSetupMessage {
@@ -575,6 +611,12 @@ pub enum SavedQueriesMessage {
     FocusField {
         backwards: bool,
     },
+    /// Left in the form: asks which field has the focus.
+    LeftInForm,
+    /// The answer: the field that has the focus, if any. Left only goes on to
+    /// the sidebar when that field is empty (iced does not tell where its
+    /// caret is) or none has the focus.
+    LeftChecked(Option<QueryField>),
     Save,
     Saved {
         generation: u64,
@@ -607,6 +649,46 @@ pub enum SavedQueriesMessage {
         generation: u64,
         result: Result<ExportSummary, String>,
     },
+}
+
+/// What the Hermes commands do with the file under the cursor of the active
+/// panel.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HermesFileMessage {
+    HandToInbox,
+    ProcessAgain,
+    SetRole(FolderRole),
+    /// Excludes the file, or includes it again when it is excluded.
+    ToggleExclusion,
+    ShowInInspection,
+    /// The configured locations after a role was set, as written.
+    RoleSaved(Result<Filing, FilingWriteError>),
+    Included {
+        path: PathBuf,
+        result: Result<IncludeOutcome, String>,
+    },
+}
+
+/// Everything the quick-fix menu of an inquiry sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum QuickFixMessage {
+    /// The key: opens the menu on the cursor row or the marked files.
+    Open,
+    Close,
+    /// The reviews of the generation's files. Dropped when the menu was closed
+    /// or opened again meanwhile.
+    Loaded {
+        generation: u64,
+        result: Result<Vec<ReviewItem>, String>,
+    },
+    Move(isize),
+    First,
+    Last,
+    Hover(usize),
+    Activate,
+    Click(usize),
+    /// The sequential filing of the accepted suggestions is done.
+    Filed(AcceptSummary),
 }
 
 /// Everything the review list sends.

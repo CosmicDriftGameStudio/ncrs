@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono::NaiveDate;
 use ncrs_index::{
-    Amount, BatchKind, Currency, DocumentFields, DocumentId, DocumentStatus, Index, IndexError,
-    ReviewEntryId, ReviewReason, RuleId, RuleSpec, TaxContext,
+    Amount, BatchKind, Currency, DocumentFields, DocumentId, DocumentStatus, IncludeOutcome, Index,
+    IndexError, ReviewEntryId, ReviewReason, RuleId, RuleSpec, TaxContext,
 };
 use ncrs_intake::{pattern_is_valid, plan, render_pattern, text_is_readable, PlanInput, Planning};
 
@@ -62,6 +62,49 @@ pub struct ReviewItem {
     pub proposed_pattern: Option<String>,
 }
 
+impl ReviewItem {
+    /// Where the closest rule would file it, below the archive; `None` when
+    /// no rule came close or the fields do not fit its pattern.
+    pub fn suggested_target(&self) -> Option<PathBuf> {
+        let pattern = self.proposed_pattern.as_deref()?;
+        render_pattern(pattern, &self.fields)
+    }
+}
+
+/// What accepting the suggestions of several documents came to.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AcceptSummary {
+    /// The path below the archive of the last document filed.
+    pub last_filed: Option<PathBuf>,
+    pub filed: usize,
+    pub target_exists: usize,
+    pub requeued: usize,
+    /// No suggestion, or the work failed; the first detail is kept.
+    pub failed: usize,
+    pub first_failure: Option<String>,
+}
+
+impl AcceptSummary {
+    fn record(&mut self, outcome: Result<ConfirmOutcome, String>) {
+        match outcome {
+            Ok(ConfirmOutcome::Filed { relative_path }) => {
+                self.filed += 1;
+                self.last_filed = Some(relative_path);
+            }
+            Ok(ConfirmOutcome::TargetExists) => self.target_exists += 1,
+            Ok(ConfirmOutcome::Requeued) => self.requeued += 1,
+            Err(detail) => {
+                self.failed += 1;
+                self.first_failure.get_or_insert(detail);
+            }
+        }
+    }
+
+    pub fn total(&self) -> usize {
+        self.filed + self.target_exists + self.requeued + self.failed
+    }
+}
+
 /// What filing a document by hand came to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfirmOutcome {
@@ -88,6 +131,46 @@ impl ReviewAccess {
 
     pub fn load(&self) -> Result<Vec<ReviewItem>, String> {
         self.with_index(|index| load(index))
+    }
+
+    /// The open reviews of these files, in the order the index lists them.
+    pub fn items_for(&self, paths: &[PathBuf]) -> Result<Vec<ReviewItem>, String> {
+        self.with_index(|index| {
+            load_matching(index, |path| paths.iter().any(|wanted| wanted == path))
+        })
+    }
+
+    /// Files each item under the rule that came closest, one after the other,
+    /// through the same journaled move as [`Self::confirm`].
+    pub fn accept(&self, items: &[ReviewItem]) -> AcceptSummary {
+        let mut summary = AcceptSummary::default();
+        for item in items {
+            let outcome = match &item.proposed_pattern {
+                Some(pattern) => self.confirm(item.entry, item.document_id, &item.fields, pattern),
+                None => Err(PATTERN_DOES_NOT_FIT.to_owned()),
+            };
+            summary.record(outcome);
+        }
+        summary
+    }
+
+    /// Hermes leaves these paths alone from now on.
+    pub fn exclude(&self, paths: &[PathBuf]) -> Result<(), String> {
+        self.with_index(|index| paths.iter().try_for_each(|path| index.exclude_path(path)))
+    }
+
+    /// Hermes looks at this path again. A folder around it that is excluded
+    /// stays so.
+    pub fn include(&self, path: &Path) -> Result<IncludeOutcome, String> {
+        self.with_index(|index| index.include_path(path))
+    }
+
+    /// See [`suggestion_for`].
+    pub fn suggestion_for(
+        &self,
+        path: &Path,
+    ) -> Result<Option<(TextState, Option<PathBuf>)>, String> {
+        self.with_index(|index| suggestion_for(index, path))
     }
 
     /// Files the document under `pattern` with `fields`, and settles its
@@ -155,46 +238,88 @@ impl ReviewAccess {
 }
 
 fn load(index: &Index) -> Result<Vec<ReviewItem>, IndexError> {
+    load_matching(index, |_path| true)
+}
+
+fn load_matching(
+    index: &Index,
+    wanted: impl Fn(&Path) -> bool,
+) -> Result<Vec<ReviewItem>, IndexError> {
     let rules = index.rules()?;
     let mut items = Vec::new();
     for entry in index.open_reviews()? {
         let Some(document) = index.document(entry.document_id)? else {
             continue;
         };
-        let stored_text = index.document_text(document.id)?;
-        let text = stored_text.clone().unwrap_or_default();
-        let planning = plan(
-            &rules,
-            &PlanInput {
-                text: &text,
-                fields: &document.fields,
-            },
-        );
-        let (fields, proposed_pattern) = match planning {
-            Planning::Review {
-                rule: Some(id),
-                fields,
-                ..
-            } => (
-                fields,
-                rules
-                    .iter()
-                    .find(|rule| rule.id == id)
-                    .map(|rule| rule.spec.filing_pattern.clone()),
-            ),
-            Planning::Review { rule: None, .. } | Planning::Plan(_) => (document.fields, None),
-        };
-        items.push(ReviewItem {
-            entry: entry.id,
-            document_id: document.id,
-            text_state: text_state(&document.path, stored_text.as_deref()),
-            path: document.path,
-            reason: entry.reason,
-            fields,
-            proposed_pattern,
-        });
+        if !wanted(&document.path) {
+            continue;
+        }
+        items.push(review_item(index, &rules, &entry, document)?);
     }
     Ok(items)
+}
+
+fn review_item(
+    index: &Index,
+    rules: &[ncrs_index::Rule],
+    entry: &ncrs_index::ReviewEntry,
+    document: ncrs_index::Document,
+) -> Result<ReviewItem, IndexError> {
+    let stored_text = index.document_text(document.id)?;
+    let text = stored_text.clone().unwrap_or_default();
+    let planning = plan(
+        rules,
+        &PlanInput {
+            text: &text,
+            fields: &document.fields,
+        },
+    );
+    let (fields, proposed_pattern) = match planning {
+        Planning::Review {
+            rule: Some(id),
+            fields,
+            ..
+        } => (
+            fields,
+            rules
+                .iter()
+                .find(|rule| rule.id == id)
+                .map(|rule| rule.spec.filing_pattern.clone()),
+        ),
+        Planning::Review { rule: None, .. } | Planning::Plan(_) => (document.fields, None),
+    };
+    Ok(ReviewItem {
+        entry: entry.id,
+        document_id: document.id,
+        text_state: text_state(&document.path, stored_text.as_deref()),
+        path: document.path,
+        reason: entry.reason,
+        fields,
+        proposed_pattern,
+    })
+}
+
+/// The review of one file, for the status bar: how its text stands and where
+/// the closest rule would file it. `None` when the file has no open review.
+fn suggestion_for(
+    index: &Index,
+    path: &Path,
+) -> Result<Option<(TextState, Option<PathBuf>)>, IndexError> {
+    let rules = index.rules()?;
+    for entry in index.open_reviews()? {
+        let Some(document) = index.document(entry.document_id)? else {
+            continue;
+        };
+        if document.path != path {
+            continue;
+        }
+        let item = review_item(index, &rules, &entry, document)?;
+        let target = item
+            .proposed_pattern
+            .and_then(|pattern| render_pattern(&pattern, &item.fields));
+        return Ok(Some((item.text_state, target)));
+    }
+    Ok(None)
 }
 
 fn confirm<S: Source>(

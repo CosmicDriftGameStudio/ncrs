@@ -127,6 +127,16 @@ impl FilingStatus {
             .map(|entry| entry.file.as_path())
     }
 
+    /// Selects the newest error of `file`, if the page lists one.
+    pub fn select_error_of(&mut self, file: &Path) {
+        let position = self
+            .errors_newest_first()
+            .position(|entry| entry.file == file);
+        if position.is_some() {
+            self.selected_error = position;
+        }
+    }
+
     pub fn page_open(&self) -> bool {
         self.page_open
     }
@@ -252,6 +262,7 @@ mod tests {
                 task: Task::Step("probe"),
                 message: "the step stopped unexpectedly".to_owned(),
                 at: at(),
+                sequence: 0,
             })
             .collect();
         let mut status = FilingStatus::default();

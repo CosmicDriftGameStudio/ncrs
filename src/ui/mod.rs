@@ -21,6 +21,7 @@ pub mod layout;
 pub mod ocr_models;
 pub mod panel;
 pub mod picker;
+pub mod quick_fix;
 pub mod quick_open;
 pub mod reorganisation_plan;
 pub mod review_list;

@@ -305,6 +305,23 @@ fn path_text<'a>(shown: String, palette: &Palette) -> Element<'a, Message> {
         .into()
 }
 
+/// The sentence for a problem found outside the card, as it would read there.
+pub fn problem_sentence(
+    problem: SetupProblem,
+    chosen: &[FilingLocation],
+    lang: Language,
+    home: &Path,
+) -> String {
+    let context = SetupContext {
+        current_folder: home,
+        home,
+        index_is_plain: false,
+        lang,
+        window: Size::ZERO,
+    };
+    problem_text(problem, chosen, &context)
+}
+
 fn problem_text(
     problem: SetupProblem,
     chosen: &[FilingLocation],
