@@ -39,6 +39,8 @@ mod palette;
 mod quick_open;
 mod reorganisation_plan;
 mod reorganisation_work;
+mod review_list;
+mod review_work;
 mod rule_suggestions;
 mod search_view;
 mod selection;

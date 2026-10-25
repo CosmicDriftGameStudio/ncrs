@@ -39,6 +39,7 @@ pub mod size {
     pub const FOOTER: f32 = 40.0;
     pub const CONTROL_WIDTH: f32 = 260.0;
     pub const SIDEBAR_WIDTH: f32 = 200.0;
+    pub const SIDEBAR_ITEM: f32 = 26.0;
 }
 
 pub mod radius {

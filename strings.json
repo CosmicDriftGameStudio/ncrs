@@ -2615,6 +2615,282 @@
       "context": "Value of the AI model row on the filing status page when a server is asked instead of a model on this machine. Takes the address of the server (scheme and host) and the name of the model.",
       "en": "{model} at {endpoint}",
       "de": "{model} unter {endpoint}"
+    },
+    {
+      "key": "action.review_list",
+      "context": "Entry of the command list and the menu that runs the key action review_list, which opens the review list: documents that no confirmed rule could file. Also the title of that Hermes page and its sidebar entry.",
+      "en": "Review",
+      "de": "Rückfragen"
+    },
+    {
+      "key": "action.review_list.theme",
+      "context": "Theme name of the key action review_list, shown dimmed after its plain name action.review_list.",
+      "en": "Pending",
+      "de": "Wiedervorlage"
+    },
+    {
+      "key": "hermes.nav_inspection",
+      "context": "Sidebar entry of the Hermes card that opens the filing status and errors page.",
+      "en": "Status and errors",
+      "de": "Status und Fehler"
+    },
+    {
+      "key": "hermes.nav_inspection.theme",
+      "context": "Theme name shown dimmed behind the sidebar entry hermes.nav_inspection.",
+      "en": "Inspection",
+      "de": "Inspektion"
+    },
+    {
+      "key": "review_list.explain",
+      "context": "Line at the top of the review list explaining what the list holds.",
+      "en": "Documents that no confirmed rule could file. Nothing is filed before you confirm.",
+      "de": "Dokumente, die keine bestätigte Regel ablegen konnte. Nichts wird abgelegt, bevor du bestätigst."
+    },
+    {
+      "key": "review_list.loading",
+      "context": "Shown in the review list while it loads.",
+      "en": "Loading …",
+      "de": "Lädt …"
+    },
+    {
+      "key": "review_list.empty",
+      "context": "Shown in the review list when no document waits for review.",
+      "en": "Nothing to review.",
+      "de": "Nichts zu prüfen."
+    },
+    {
+      "key": "review_list.column_file",
+      "context": "Column header of the review list: file name.",
+      "en": "File",
+      "de": "Datei"
+    },
+    {
+      "key": "review_list.column_reason",
+      "context": "Column header of the review list: why the document is here.",
+      "en": "Reason",
+      "de": "Grund"
+    },
+    {
+      "key": "review_list.column_sender",
+      "context": "Column header of the review list: sender.",
+      "en": "Sender",
+      "de": "Absender"
+    },
+    {
+      "key": "review_list.column_kind",
+      "context": "Column header of the review list: kind of document.",
+      "en": "Kind",
+      "de": "Art"
+    },
+    {
+      "key": "review_list.column_date",
+      "context": "Column header of the review list: document date.",
+      "en": "Date",
+      "de": "Datum"
+    },
+    {
+      "key": "review_list.reason_no_rule",
+      "context": "Review reason in the review list: no rule matched the document.",
+      "en": "No rule matches",
+      "de": "Keine Regel passt"
+    },
+    {
+      "key": "review_list.reason_unconfirmed",
+      "context": "Review reason in the review list: a rule matched but is not confirmed yet.",
+      "en": "Rule not confirmed",
+      "de": "Regel nicht bestätigt"
+    },
+    {
+      "key": "review_list.reason_target_exists",
+      "context": "Review reason in the review list: a file with the target name already exists.",
+      "en": "Target already exists",
+      "de": "Ziel existiert schon"
+    },
+    {
+      "key": "review_list.reason_missing_field",
+      "context": "Review reason in the review list: a field could not be read. Takes the field name.",
+      "en": "{field} missing",
+      "de": "{field} fehlt"
+    },
+    {
+      "key": "review_list.reason_low_confidence",
+      "context": "Review reason in the review list: a field was read with low confidence. Takes the field name.",
+      "en": "{field} uncertain",
+      "de": "{field} unsicher"
+    },
+    {
+      "key": "review_list.field_sender",
+      "context": "Form label in the review list: sender. Also names the field in a review reason.",
+      "en": "Sender",
+      "de": "Absender"
+    },
+    {
+      "key": "review_list.field_kind",
+      "context": "Form label in the review list: kind of document. Also names the field in a review reason.",
+      "en": "Kind",
+      "de": "Art"
+    },
+    {
+      "key": "review_list.field_tax_context",
+      "context": "Form label in the review list: tax context. Also names the field in a review reason.",
+      "en": "Tax context",
+      "de": "Steuerkontext"
+    },
+    {
+      "key": "review_list.field_date",
+      "context": "Form label in the review list: document date. Also names the field in a review reason.",
+      "en": "Date",
+      "de": "Datum"
+    },
+    {
+      "key": "review_list.field_number",
+      "context": "Form label in the review list: document number. Also names the field in a review reason.",
+      "en": "Number",
+      "de": "Nummer"
+    },
+    {
+      "key": "review_list.field_amount",
+      "context": "Form label in the review list: amount. Also names the field in a review reason.",
+      "en": "Amount",
+      "de": "Betrag"
+    },
+    {
+      "key": "review_list.field_tags",
+      "context": "Form label in the review list: tags.",
+      "en": "Tags",
+      "de": "Schlagworte"
+    },
+    {
+      "key": "review_list.field_pattern",
+      "context": "Form label in the review list: filing pattern.",
+      "en": "Filing pattern",
+      "de": "Ablagemuster"
+    },
+    {
+      "key": "review_list.tax_open",
+      "context": "Tax context choice in the review list: not decided yet.",
+      "en": "Open",
+      "de": "Offen"
+    },
+    {
+      "key": "review_list.tax_company",
+      "context": "Tax context choice in the review list: company.",
+      "en": "Company",
+      "de": "Firma"
+    },
+    {
+      "key": "review_list.tax_private",
+      "context": "Tax context choice in the review list: private.",
+      "en": "Private",
+      "de": "Privat"
+    },
+    {
+      "key": "review_list.tax_none",
+      "context": "Tax context choice in the review list: no tax relevance.",
+      "en": "None",
+      "de": "Keiner"
+    },
+    {
+      "key": "review_list.hint_date",
+      "context": "Description under the date field of the review list.",
+      "en": "Format YYYY-MM-DD",
+      "de": "Format JJJJ-MM-TT"
+    },
+    {
+      "key": "review_list.hint_amount",
+      "context": "Description under the amount field of the review list.",
+      "en": "For example 12.34 EUR",
+      "de": "Zum Beispiel 12,34 EUR"
+    },
+    {
+      "key": "review_list.hint_tags",
+      "context": "Description under the tags field of the review list.",
+      "en": "Separated by commas",
+      "de": "Mit Komma getrennt"
+    },
+    {
+      "key": "review_list.hint_pattern",
+      "context": "Description under the filing pattern field of the review list: the placeholders a pattern may use. The placeholders in braces are literal and must not be translated.",
+      "en": "Placeholders: {year} {month} {day} {date} {sender} {number} {kind} {tax_context}",
+      "de": "Platzhalter: {year} {month} {day} {date} {sender} {number} {kind} {tax_context}"
+    },
+    {
+      "key": "review_list.preview",
+      "context": "Live preview in the review list. Takes the path the document would be filed under.",
+      "en": "Will be filed as: {path}",
+      "de": "Wird abgelegt als: {path}"
+    },
+    {
+      "key": "review_list.preview_none",
+      "context": "Shown in the review list instead of the preview when the pattern does not fit the fields.",
+      "en": "The pattern does not fit the fields yet",
+      "de": "Das Muster passt noch nicht zu den Feldern"
+    },
+    {
+      "key": "review_list.problem_date",
+      "context": "Problem in the review list: the date text is not valid.",
+      "en": "The date must look like 2024-03-31.",
+      "de": "Das Datum muss so aussehen: 2024-03-31."
+    },
+    {
+      "key": "review_list.problem_amount",
+      "context": "Problem in the review list: the amount text is not valid.",
+      "en": "The amount must look like 12.34 EUR.",
+      "de": "Der Betrag muss so aussehen: 12,34 EUR."
+    },
+    {
+      "key": "review_list.problem_pattern",
+      "context": "Problem in the review list: the pattern cannot be rendered with the fields.",
+      "en": "The pattern does not fit the fields.",
+      "de": "Das Muster passt nicht zu den Feldern."
+    },
+    {
+      "key": "review_list.problem_target_exists",
+      "context": "Problem in the review list: the target file exists; nothing was overwritten.",
+      "en": "A file with this name already exists. Nothing was overwritten.",
+      "de": "Eine Datei mit diesem Namen gibt es schon. Nichts wurde überschrieben."
+    },
+    {
+      "key": "review_list.problem_file_changed",
+      "context": "Problem in the review list: the source file changed or vanished; the document is queued again.",
+      "en": "The file changed or is gone. It will be looked at again.",
+      "de": "Die Datei hat sich geändert oder fehlt. Sie wird neu betrachtet."
+    },
+    {
+      "key": "review_list.problem_failed",
+      "context": "Problem in the review list. Takes the error detail.",
+      "en": "Failed: {detail}",
+      "de": "Fehlgeschlagen: {detail}"
+    },
+    {
+      "key": "review_list.close",
+      "context": "Button in the review list: closes it.",
+      "en": "Close",
+      "de": "Schließen"
+    },
+    {
+      "key": "review_list.create_rule",
+      "context": "Button in the review list after filing: creates a rule for the sender. Takes the sender.",
+      "en": "Create rule for sender ‘{sender}’",
+      "de": "Regel für Absender ‚{sender}‘ anlegen"
+    },
+    {
+      "key": "review_list.confirm",
+      "context": "Button in the review list: files the document with the fields shown.",
+      "en": "Confirm",
+      "de": "Bestätigen"
+    },
+    {
+      "key": "review_list.filed_note",
+      "context": "Footer note in the review list after filing. Takes the path.",
+      "en": "Filed as {path}",
+      "de": "Abgelegt als {path}"
+    },
+    {
+      "key": "review_list.rule_created",
+      "context": "Note in the review list after a rule was created. Takes the sender.",
+      "en": "Rule created for ‘{sender}’",
+      "de": "Regel angelegt für ‚{sender}‘"
     }
   ]
 }

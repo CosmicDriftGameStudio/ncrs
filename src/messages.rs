@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use ncrs_index::RuleId;
+use ncrs_index::{RuleId, TaxContext};
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
 
@@ -25,6 +25,8 @@ use crate::keymap::KeyAction;
 use crate::ocr_models::DownloadError;
 use crate::open_vsx::FetchError;
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
+use crate::review_list::FormField;
+use crate::review_work::{ConfirmOutcome, ReviewItem};
 use crate::suggestion_work::SuggestedRule;
 use crate::theme_fetch::{Fetched, Installed};
 
@@ -272,6 +274,10 @@ pub enum Message {
     // --- Rule suggestions: rules read out of how the archive is filed ---
     RuleSuggestions(RuleSuggestionsMessage),
     ReorganisationPlan(ReorganisationPlanMessage),
+    ReviewList(ReviewListMessage),
+    /// The sidebar of the Hermes card: closes the card that is up and opens
+    /// this page.
+    HermesPage(HermesPage),
     /// The user asked to carry out these entries of the reorganisation plan.
     /// Nothing acts on it yet.
     ExecuteReorganisation(Vec<PlannedItem>),
@@ -465,6 +471,52 @@ pub enum ReorganisationPlanMessage {
     ToggleCursor,
     /// Enter: hands the selection over as `Message::ExecuteReorganisation`.
     Execute,
+}
+
+/// The pages of the Hermes card, in the order of its sidebar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HermesPage {
+    Inspection,
+    Review,
+    RuleSuggestions,
+    Reorganisation,
+}
+
+/// Everything the review list sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ReviewListMessage {
+    Open,
+    /// Escape leaves the form first, the list second.
+    Close,
+    /// The work of the generation is done, with the open entries. Dropped when
+    /// the list was closed or opened again meanwhile.
+    Loaded {
+        generation: u64,
+        result: Result<Vec<ReviewItem>, String>,
+    },
+    Move(isize),
+    /// A click on the entry at this position.
+    Select(usize),
+    Edit,
+    CancelEdit,
+    FieldChanged(FormField, String),
+    TaxContextChosen(Option<TaxContext>),
+    /// Tab (`false`) or Shift+Tab (`true`) in the form.
+    FocusField {
+        backwards: bool,
+    },
+    /// Enter or the button: files the document with the fields as shown.
+    Confirm,
+    Confirmed {
+        generation: u64,
+        result: Result<ConfirmOutcome, String>,
+    },
+    /// The offer after filing: a rule for this sender.
+    CreateRule,
+    RuleCreated {
+        generation: u64,
+        result: Result<RuleId, String>,
+    },
 }
 
 /// Everything the rule suggestions view sends.

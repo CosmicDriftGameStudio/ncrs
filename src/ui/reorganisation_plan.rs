@@ -11,11 +11,12 @@ use ncrs_index::{ConflictReason, Finding, PlanOutcome};
 
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
+use super::hermes::{self, Badges};
 use super::kit::{self, dim, error_line, paragraph, Columns, Tone};
 use super::theme::{self, font_size, size, spacing};
 use crate::app::fill_template;
 use crate::i18n::{Language, Msg};
-use crate::messages::{Message, ReorganisationPlanMessage};
+use crate::messages::{HermesPage, Message, ReorganisationPlanMessage};
 use crate::palette::Palette;
 use crate::reorganisation_plan::{target, Group, Line, ReorganisationView, TreeLine};
 use crate::reorganisation_work::{deciding_finding, PlannedItem};
@@ -28,7 +29,7 @@ pub const TREE_LINES: usize = 6;
 const SIZE: DialogSize = DialogSize::Card;
 
 /// How the width of an entry is shared: current path, proposed path, reason.
-const PORTIONS: [u16; 3] = [5, 5, 6];
+const PORTIONS: [u16; 3] = [5, 5, 7];
 /// Width of the box before an entry, in characters.
 const BOX_CHARS: usize = 5;
 const BOX_WIDTH: f32 = 36.0;
@@ -41,10 +42,11 @@ fn send(message: ReorganisationPlanMessage) -> Message {
 pub fn view<'a>(
     state: &'a ReorganisationView,
     window: Size,
+    badges: Badges,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let line_chars = frame::content_chars(SIZE, window, 0.0);
+    let line_chars = frame::content_chars(SIZE, window, frame::SIDEBAR_ROOM);
     let mut body = column![paragraph(
         lang.text(Msg::ReorganisationPlanExplain),
         palette
@@ -92,6 +94,12 @@ pub fn view<'a>(
     )
     .title_theme(lang.text(Msg::ActionReorganisationPlanTheme))
     .buttons(buttons(state, lang, palette))
+    .sidebar(hermes::nav(
+        HermesPage::Reorganisation,
+        badges,
+        lang,
+        palette,
+    ))
     .on_close(send(ReorganisationPlanMessage::Close))
     .hints(KeyHints {
         enter: true,

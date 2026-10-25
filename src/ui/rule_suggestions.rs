@@ -8,12 +8,13 @@ use iced::{alignment, Element, Length, Size};
 
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
+use super::hermes::{self, Badges};
 use super::kit::{self, dim, error_line, paragraph, section, Columns, Tone};
 use super::layout::ROW_HEIGHT;
 use super::theme::{self, spacing};
 use crate::app::fill_template;
 use crate::i18n::{Language, Msg};
-use crate::messages::{Message, RuleSuggestionsMessage};
+use crate::messages::{HermesPage, Message, RuleSuggestionsMessage};
 use crate::palette::Palette;
 use crate::rule_suggestions::{Edit, Matches, Problem, RuleSuggestions};
 use crate::suggestion_work::{condition_text, SuggestedRule};
@@ -30,7 +31,7 @@ pub const SHOWN_DOCUMENTS: usize = 6;
 const SIZE: DialogSize = DialogSize::Card;
 
 /// How the width of a row is shared: condition, target, kind, evidence.
-const PORTIONS: [u16; 4] = [5, 5, 3, 5];
+const PORTIONS: [u16; 4] = [4, 5, 3, 7];
 const LABEL_WIDTH: f32 = 170.0;
 
 fn send(message: RuleSuggestionsMessage) -> Message {
@@ -40,10 +41,11 @@ fn send(message: RuleSuggestionsMessage) -> Message {
 pub fn view<'a>(
     state: &'a RuleSuggestions,
     window: Size,
+    badges: Badges,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let line_chars = frame::content_chars(SIZE, window, 0.0);
+    let line_chars = frame::content_chars(SIZE, window, frame::SIDEBAR_ROOM);
     let mut body = column![paragraph(lang.text(Msg::RuleSuggestionsExplain), palette)]
         .spacing(spacing::SECTION_GAP);
 
@@ -85,6 +87,12 @@ pub fn view<'a>(
     )
     .title_theme(lang.text(Msg::ActionRuleSuggestionsTheme))
     .buttons(buttons(state, lang, palette))
+    .sidebar(hermes::nav(
+        HermesPage::RuleSuggestions,
+        badges,
+        lang,
+        palette,
+    ))
     .on_close(send(RuleSuggestionsMessage::Close))
     .hints(KeyHints {
         enter: true,

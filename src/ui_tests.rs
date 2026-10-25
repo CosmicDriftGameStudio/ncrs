@@ -2295,6 +2295,215 @@ mod theme_fetch_card {
     clippy::indexing_slicing
 )]
 #[cfg(test)]
+mod review_list_card {
+    use std::path::PathBuf;
+
+    use super::*;
+    use crate::messages::{HermesPage, ReviewListMessage};
+    use crate::review_list::tests::loaded_list;
+    use crate::review_list::{FormField, ReviewList};
+    use crate::review_work::ConfirmOutcome;
+    use crate::rule_suggestions::RuleSuggestions;
+
+    fn review_message(message: ReviewListMessage) -> Message {
+        Message::ReviewList(message)
+    }
+
+    fn shows(list: ReviewList, label: &str) -> bool {
+        simulator(&App::with_review_list(list)).find(label).is_ok()
+    }
+
+    /// The first document filed, the second still waiting, the offer up.
+    fn after_filing() -> ReviewList {
+        let mut list = loaded_list();
+        let second = list.rows()[1].clone();
+        list.begin_confirm().expect("a request");
+        list.confirmed(ConfirmOutcome::Filed {
+            relative_path: PathBuf::from("Company A/2024-03-09_invoice.pdf"),
+        });
+        list.loaded(vec![second]);
+        list
+    }
+
+    #[test]
+    fn the_list_shows_reason_fields_and_buttons() {
+        for label in [
+            "Review",
+            "scan-1.pdf",
+            "scan-2.pdf",
+            "No rule matches",
+            "Sender",
+            "Tax context",
+            "Filing pattern",
+            "Will be filed as: Company A/2024-03-09_invoice",
+            "Confirm",
+            "Close",
+        ] {
+            assert!(shows(loaded_list(), label), "{label}");
+        }
+    }
+
+    #[test]
+    fn an_empty_list_says_so() {
+        let mut list = ReviewList::new();
+        list.loaded(Vec::new());
+
+        assert!(shows(list, "Nothing to review."));
+    }
+
+    #[test]
+    fn clicking_a_row_selects_it() {
+        let app = App::with_review_list(loaded_list());
+        let mut sim = simulator(&app);
+        sim.click("scan-2.pdf").expect("the row");
+
+        assert_eq!(
+            sim.into_messages().collect::<Vec<_>>(),
+            [review_message(ReviewListMessage::Select(1))]
+        );
+    }
+
+    #[test]
+    fn typing_into_a_field_changes_it() {
+        let app = App::with_review_list(loaded_list());
+        let mut sim = simulator(&app);
+        sim.click(iced_selector::id("review-sender"))
+            .expect("the sender field");
+        let _ = sim.typewrite("X");
+
+        assert_eq!(
+            sim.into_messages().last(),
+            Some(review_message(ReviewListMessage::FieldChanged(
+                FormField::Sender,
+                "Company AX".to_owned()
+            )))
+        );
+    }
+
+    #[test]
+    fn clicking_confirm_asks_to_file() {
+        let app = App::with_review_list(loaded_list());
+        let mut sim = simulator(&app);
+        sim.click("Confirm").expect("the button");
+
+        assert_eq!(
+            sim.into_messages().collect::<Vec<_>>(),
+            [review_message(ReviewListMessage::Confirm)]
+        );
+    }
+
+    #[test]
+    fn after_filing_the_rule_for_the_sender_is_offered() {
+        let label = "Create rule for sender ‘Company A’";
+        assert!(shows(after_filing(), label));
+        assert!(shows(
+            after_filing(),
+            "Filed as Company A/2024-03-09_invoice.pdf"
+        ));
+
+        let app = App::with_review_list(after_filing());
+        let mut sim = simulator(&app);
+        sim.click(label).expect("the offer");
+        assert_eq!(
+            sim.into_messages().collect::<Vec<_>>(),
+            [review_message(ReviewListMessage::CreateRule)]
+        );
+    }
+
+    #[test]
+    fn the_view_is_worded_in_german_too() {
+        let app = App::with_review_list(after_filing()).in_language(Language::German);
+        let mut sim = simulator(&app);
+        for label in [
+            "Rückfragen",
+            "Bestätigen",
+            "Schließen",
+            "Regel für Absender ‚Company A‘ anlegen",
+            "Ablagemuster",
+        ] {
+            assert!(sim.find(label).is_ok(), "{label}");
+        }
+    }
+
+    #[test]
+    fn the_sidebar_names_the_pages_of_hermes() {
+        let app = App::with_review_list(loaded_list());
+        let mut sim = simulator(&app);
+        for label in ["Status and errors", "Rule suggestions"] {
+            assert!(sim.find(label).is_ok(), "{label}");
+        }
+        sim.click("Rule suggestions").expect("the entry");
+        assert_eq!(
+            sim.into_messages().collect::<Vec<_>>(),
+            [Message::HermesPage(HermesPage::RuleSuggestions)]
+        );
+    }
+
+    #[test]
+    fn a_sidebar_click_swaps_the_open_card() {
+        let mut app = App::with_rule_suggestions(RuleSuggestions::new());
+        let _ = app.update(Message::HermesPage(HermesPage::Review));
+
+        assert!(app.rule_suggestions_for_test().is_none());
+        assert!(app.review_list_for_test().is_some());
+    }
+
+    #[test]
+    fn the_page_that_is_open_stays_as_it_is() {
+        let mut list = loaded_list();
+        list.start_edit();
+        let mut app = App::with_review_list(list);
+        let _ = app.update(Message::HermesPage(HermesPage::Review));
+
+        assert!(app.review_list_for_test().unwrap().is_editing());
+    }
+
+    #[test]
+    fn escape_leaves_the_form_first() {
+        let mut list = loaded_list();
+        list.start_edit();
+        let mut app = App::with_review_list(list);
+        let _ = app.update(review_message(ReviewListMessage::Close));
+        assert!(!app.review_list_for_test().unwrap().is_editing());
+        let _ = app.update(review_message(ReviewListMessage::Close));
+        assert!(app.review_list_for_test().is_none());
+    }
+
+    fn matches_snapshot(list: ReviewList, name: &str) {
+        let language = if name.contains("_de") {
+            Language::German
+        } else {
+            Language::English
+        };
+        let app = App::with_review_list(list).in_language(language);
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image(format!("tests/snapshots/{name}.png"))
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the view does not match tests/snapshots/{name}.png"
+        );
+    }
+
+    #[test]
+    fn the_view_matches_its_snapshots() {
+        matches_snapshot(loaded_list(), "review_list_en");
+        matches_snapshot(loaded_list(), "review_list_de");
+        matches_snapshot(after_filing(), "review_list_filed_en");
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
 mod rule_suggestions_card {
     use std::path::PathBuf;
 

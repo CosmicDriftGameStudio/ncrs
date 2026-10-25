@@ -10,16 +10,17 @@ use ncrs_pipeline::{Load, RunnerState, Task, WorkerSnapshot};
 
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
+use super::hermes::{self, Badges};
 use super::kit::{self, dim, one_line, paragraph, section, Tone};
 use super::theme::spacing;
 use crate::app::fill_template;
 use crate::filing::{AiStatus, IndexFigures};
 use crate::filing_status::FilingStatus;
 use crate::i18n::{Language, Msg};
-use crate::messages::{FilingStatusMessage, Message};
+use crate::messages::{FilingStatusMessage, HermesPage, Message};
 use crate::palette::Palette;
 
-const SIZE: DialogSize = DialogSize::Large;
+const SIZE: DialogSize = DialogSize::Card;
 const ERROR_LIST_HEIGHT: f32 = 120.0;
 /// File and message of an error row take three of seven parts each.
 const ERROR_TEXT_SHARE: f32 = 3.0 / 7.0;
@@ -46,7 +47,7 @@ struct LineBudget {
 
 impl LineBudget {
     fn of(window: Size) -> Self {
-        let width = frame::content_width(SIZE, window);
+        let width = frame::content_width(SIZE, window) - frame::SIDEBAR_ROOM;
         let gap = spacing::CELL_PADDING_X;
         let worker_fixed = WORKER_NUMBER_WIDTH + WORKER_TASK_WIDTH + DURATION_WIDTH + 3.0 * gap;
         // Three parts of seven each for file and message, one for the task; the
@@ -66,6 +67,7 @@ pub fn view<'a>(
     load: Option<Load>,
     index_open: bool,
     window: Size,
+    badges: Badges,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -88,6 +90,7 @@ pub fn view<'a>(
         palette,
     )
     .subtitle(lang.text(Msg::FilingStatusTitle))
+    .sidebar(hermes::nav(HermesPage::Inspection, badges, lang, palette))
     .on_close(send(FilingStatusMessage::Close))
     // Enter opens the selected error, which the content defines.
     .hints(KeyHints::default())

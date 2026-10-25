@@ -53,7 +53,7 @@ pub struct FilingSummary {
 
 /// The name the rules gave, with the extension of the file: a filing pattern
 /// describes the name without it.
-fn target_of(root: &Path, relative: &Path, source: &Path) -> PathBuf {
+pub(crate) fn target_of(root: &Path, relative: &Path, source: &Path) -> PathBuf {
     let mut name: OsString = relative.as_os_str().to_owned();
     if let Some(extension) = source.extension() {
         let has_it = relative
