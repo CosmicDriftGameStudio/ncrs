@@ -33,6 +33,7 @@ use crate::review_work::{ConfirmOutcome, ReviewItem};
 use crate::saved_queries::QueryField;
 use crate::suggestion_work::SuggestedRule;
 use crate::theme_fetch::{Fetched, Installed};
+use crate::transfer_dialog::TransferDialogMessage;
 
 /// Identifies one of the two file panels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,6 +91,8 @@ pub enum Message {
     JobProgress(crate::fs::transfer::Tick),
     /// F5 or F6, decided by the action rather than a message each.
     Transfer(TransferKind),
+    /// The copy or move dialog, and the progress mask after it.
+    TransferDialog(TransferDialogMessage),
     /// The status bar's notice of this generation has been up long enough. An
     /// older timer finds a newer notice and leaves it.
     NoticeExpired(u64),

@@ -337,6 +337,7 @@ fn result<'a>(
     ];
     let mut content = column![kit::count_summary(
         &figures,
+        None,
         results.expanded,
         send(SavedQueriesMessage::ToggleHits),
         lang.text(Msg::SavedQueriesShowList),

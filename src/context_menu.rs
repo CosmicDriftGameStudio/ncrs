@@ -11,6 +11,7 @@ use crate::messages::{
     ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingsMessage,
     ThemeFetchMessage, TransferKind,
 };
+use crate::transfer_dialog::TransferDialogMessage;
 use crate::ui::layout::{MENU_ITEM_HEIGHT, MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_WIDTH};
 
 /// What an entry does. Each one is exactly the message its key sends.
@@ -274,6 +275,8 @@ pub struct InputState {
     pub rule_suggestions: bool,
     pub review_list: bool,
     pub saved_queries: bool,
+    /// The copy or move confirmation is up: its target field takes Escape.
+    pub transfer_dialog: bool,
     /// The reorganisation plan view is up: same as Quick Open.
     pub reorganisation_plan: bool,
     /// The settings tab is up with nothing on top: Escape closes it, even from
@@ -315,6 +318,9 @@ impl InputState {
                 if self.review_list && matches!(key, Key::Named(Named::Escape)) {
                     return Some(Message::ReviewList(ReviewListMessage::Close));
                 }
+                if self.transfer_dialog && matches!(key, Key::Named(Named::Escape)) {
+                    return Some(Message::TransferDialog(TransferDialogMessage::Cancel));
+                }
                 if self.saved_queries && matches!(key, Key::Named(Named::Escape)) {
                     return Some(Message::SavedQueries(SavedQueriesMessage::Close));
                 }
@@ -354,6 +360,7 @@ impl InputState {
                     && !self.rule_suggestions
                     && !self.review_list
                     && !self.saved_queries
+                    && !self.transfer_dialog
                     && !self.reorganisation_plan
                     && !self.settings)
                     .then_some(Message::ContextMenuKey)

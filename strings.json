@@ -3581,6 +3581,174 @@
       "context": "Notice in the status bar after a setting was written to the file but only takes effect when the program starts again.",
       "en": "Saved in config.toml. Takes effect at the next start.",
       "de": "In der config.toml gespeichert. Gilt ab dem nächsten Start."
+    },
+    {
+      "key": "transfer.title_copy",
+      "context": "Title of the copy dialog and label of its primary button. Imperative verb, one word.",
+      "en": "Copy",
+      "de": "Kopieren"
+    },
+    {
+      "key": "transfer.title_move",
+      "context": "Title of the move dialog and label of its primary button. Imperative verb, one word.",
+      "en": "Move",
+      "de": "Verschieben"
+    },
+    {
+      "key": "transfer.summary",
+      "context": "Dimmed text after the title of the copy and move dialog: how many top-level entries are selected and how large they are. {count} is two or more, {size} is a size like 4.2 GB or an ellipsis while the folders are still being counted.",
+      "en": "{count} entries · {size}",
+      "de": "{count} Einträge · {size}"
+    },
+    {
+      "key": "transfer.summary_one",
+      "context": "Same as transfer.summary for exactly one selected entry. {size} is a size or an ellipsis while it is counted.",
+      "en": "1 entry · {size}",
+      "de": "1 Eintrag · {size}"
+    },
+    {
+      "key": "transfer.figure_files",
+      "context": "Label above the number of files in the copy and move dialog when many entries are selected. Plural noun, one word.",
+      "en": "Files",
+      "de": "Dateien"
+    },
+    {
+      "key": "transfer.figure_folders",
+      "context": "Label above the number of folders in the copy and move dialog when many entries are selected. Plural noun, one word.",
+      "en": "Folders",
+      "de": "Ordner"
+    },
+    {
+      "key": "transfer.figure_size",
+      "context": "Label above the total size in the copy and move dialog when many entries are selected. Noun, one word.",
+      "en": "Size",
+      "de": "Größe"
+    },
+    {
+      "key": "transfer.figure_unreadable",
+      "context": "Label above the number of entries the size count could not read in the copy and move dialog. Only shown when there are some. Short adjective phrase.",
+      "en": "Unreadable",
+      "de": "Nicht lesbar"
+    },
+    {
+      "key": "transfer.first_names",
+      "context": "The first names of a large selection, then how many more there are. {names} is a comma separated list of file names, {count} the number left out.",
+      "en": "{names} and {count} more",
+      "de": "{names} und {count} weitere"
+    },
+    {
+      "key": "transfer.show_list",
+      "context": "Button in the copy and move dialog that unfolds the list of all selected names. Short verb phrase.",
+      "en": "View list",
+      "de": "Liste ansehen"
+    },
+    {
+      "key": "transfer.hide_list",
+      "context": "Button in the copy and move dialog that folds the list of selected names away again. Short verb phrase.",
+      "en": "Hide list",
+      "de": "Liste ausblenden"
+    },
+    {
+      "key": "transfer.list_more",
+      "context": "Last line of the unfolded name list when it is cut off: how many names are not shown. {count} is the number left out.",
+      "en": "… and {count} more",
+      "de": "… und {count} weitere"
+    },
+    {
+      "key": "transfer.conflicts",
+      "context": "Warning in the copy and move dialog: some selected names already exist in the target folder. {count} is two or more.",
+      "en": "{count} of these names already exist in the target",
+      "de": "Im Ziel gibt es schon {count} dieser Namen"
+    },
+    {
+      "key": "transfer.conflicts_one",
+      "context": "Same as transfer.conflicts for exactly one name that already exists in the target folder.",
+      "en": "One of these names already exists in the target",
+      "de": "Im Ziel gibt es schon einen dieser Namen"
+    },
+    {
+      "key": "transfer.target",
+      "context": "Label of the target folder field in the copy and move dialog, also its placeholder. One word, a preposition.",
+      "en": "To",
+      "de": "Nach"
+    },
+    {
+      "key": "transfer.policy",
+      "context": "Label of the choice in the copy and move dialog for what happens when the target already has a name. Reads as the start of a sentence.",
+      "en": "If the file exists",
+      "de": "Wenn es die Datei gibt"
+    },
+    {
+      "key": "transfer.policy_ask",
+      "context": "Option of the choice for an existing name: ask for each file that is in the way. One word.",
+      "en": "Ask",
+      "de": "Fragen"
+    },
+    {
+      "key": "transfer.policy_overwrite",
+      "context": "Option of the choice for an existing name: replace the file in the target without asking. One word.",
+      "en": "Overwrite",
+      "de": "Überschreiben"
+    },
+    {
+      "key": "transfer.policy_skip",
+      "context": "Option of the choice for an existing name: leave the file in the target alone and go on. One word.",
+      "en": "Skip",
+      "de": "Überspringen"
+    },
+    {
+      "key": "transfer.switch_hint",
+      "context": "Hint in the footer of the copy and move dialog: the Tab key switches between the two. Starts with the key name, keep it.",
+      "en": "Tab: copy or move",
+      "de": "Tab: Kopieren oder Verschieben"
+    },
+    {
+      "key": "transfer.error_missing",
+      "context": "Error under the target field when the typed folder does not exist.",
+      "en": "That folder does not exist",
+      "de": "Diesen Ordner gibt es nicht"
+    },
+    {
+      "key": "transfer.error_not_folder",
+      "context": "Error under the target field when the typed path is a file, not a folder.",
+      "en": "The target is not a folder",
+      "de": "Das Ziel ist kein Ordner"
+    },
+    {
+      "key": "transfer.error_same_folder",
+      "context": "Error under the target field when the target is the folder the selected entries are already in.",
+      "en": "Source and target are the same folder",
+      "de": "Quelle und Ziel sind derselbe Ordner"
+    },
+    {
+      "key": "transfer.error_inside",
+      "context": "Error under the target field when a selected folder would be copied or moved into itself or one of its subfolders.",
+      "en": "A folder cannot go into itself",
+      "de": "Ein Ordner kann nicht in sich selbst"
+    },
+    {
+      "key": "transfer.error_unreadable",
+      "context": "Error under the target field when the system would not say whether the target folder can be used, for example for lack of permission.",
+      "en": "The target cannot be read",
+      "de": "Das Ziel lässt sich nicht lesen"
+    },
+    {
+      "key": "transfer.progress_to",
+      "context": "Dimmed text after the title of the progress dialog of a copy or move: where it goes. {target} is the folder path.",
+      "en": "to {target}",
+      "de": "nach {target}"
+    },
+    {
+      "key": "transfer.background",
+      "context": "Button of the progress dialog that closes it while the copy or move goes on. Short, like a mode name.",
+      "en": "In background",
+      "de": "Im Hintergrund"
+    },
+    {
+      "key": "transfer.progress_hint",
+      "context": "Hint in the footer of the progress dialog: the Escape key stops the job. Starts with the key name, keep it.",
+      "en": "Esc stop",
+      "de": "Esc anhalten"
     }
   ]
 }

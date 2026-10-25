@@ -126,6 +126,9 @@ pub struct Activity<'a, M> {
     /// palette that is no preset.
     pub theme_name: Option<String>,
     pub job: Option<JobStatus>,
+    /// What a press on the job text sends: the progress mask back. `None`
+    /// where the job has no mask.
+    pub job_press: Option<M>,
     pub filing: Option<FilingBadge<M>>,
     /// Makes the "access blocked" error a button. `None` where there is no
     /// settings page to open.
@@ -154,6 +157,7 @@ pub fn view<'a, M: Clone + 'a>(
         side,
         theme_name,
         job,
+        job_press,
         filing,
         on_blocked_press,
         notice,
@@ -253,7 +257,14 @@ pub fn view<'a, M: Clone + 'a>(
     // A running job replaces the file info, not the path: the path is where the
     // operation is going, which is still what the user is watching.
     let middle: Element<'a, M> = match &job {
-        Some(running) => job_text(running, lang, palette),
+        Some(running) => match job_press {
+            Some(press) => button(job_text(running, lang, palette))
+                .padding(0)
+                .style(theme::icon_button(palette))
+                .on_press(press)
+                .into(),
+            None => job_text(running, lang, palette),
+        },
         None => details,
     };
     let mode = lang.text(match side {

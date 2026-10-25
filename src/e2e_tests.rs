@@ -765,6 +765,7 @@ mod tests {
         // wherever it is, so put it back on alpha.txt first.
         session.press(Key::Named(Named::ArrowUp));
         session.press(Key::Named(Named::F5));
+        session.press(Key::Named(Named::Enter));
 
         assert!(
             home.join("alpha.txt").is_file(),
@@ -796,6 +797,7 @@ mod tests {
         let mut session = session_in(dir.path());
         cursor_to(&mut session, "alpha.txt");
         session.press(Key::Named(Named::F6));
+        session.press(Key::Named(Named::Enter));
 
         assert!(
             home.join("alpha.txt").is_file(),
@@ -820,6 +822,7 @@ mod tests {
         let mut session = session_in(dir.path());
         cursor_to(&mut session, "alpha.txt");
         session.press(Key::Named(Named::F5));
+        session.press(Key::Named(Named::Enter));
 
         assert_eq!(
             std::fs::read_to_string(home.join("alpha.txt")).expect("the old file"),
@@ -844,6 +847,7 @@ mod tests {
         let mut session = session_in(dir.path());
         cursor_to(&mut session, "alpha.txt");
         session.press(Key::Named(Named::F5));
+        session.press(Key::Named(Named::Enter));
         // The answer goes in as a message: `Instruction` cannot carry a
         // modifier, and this dialog is answered with Enter and Escape.
         session.press(Key::Named(Named::Enter));
@@ -866,6 +870,7 @@ mod tests {
         let mut session = session_in(dir.path());
         cursor_to(&mut session, "alpha.txt");
         session.press(Key::Named(Named::F5));
+        session.press(Key::Named(Named::Enter));
         session.press(Key::Named(Named::Escape));
 
         assert_eq!(
@@ -891,6 +896,7 @@ mod tests {
             session.press(Key::Named(Named::Insert));
         }
         session.press(Key::Named(key));
+        session.press(Key::Named(Named::Enter));
     }
 
     /// Keep skips one file and the transfer goes on with the next.
@@ -970,6 +976,7 @@ mod tests {
             session.press(Key::Named(Named::Insert));
         }
         session.press(Key::Named(Named::F5));
+        session.press(Key::Named(Named::Enter));
         assert!(session.app.conflict_is_pending(), "no question about alpha");
         session.press(Key::Named(Named::Space));
         (dir, home, session)
@@ -1068,7 +1075,10 @@ mod tests {
 
         let mut session = session_in(dir.path());
         cursor_to(&mut session, "alpha.txt");
-        let held = session.send_held(Message::Transfer(crate::messages::TransferKind::Copy));
+        session.send(Message::Transfer(crate::messages::TransferKind::Copy));
+        let held = session.send_held(Message::TransferDialog(
+            crate::transfer_dialog::TransferDialogMessage::Confirm,
+        ));
         assert!(!session.app.job_is_idle(), "F5 did not start a job");
 
         session.press_with(Key::Character("c".into()), Modifiers::CTRL);
@@ -1356,6 +1366,7 @@ mod tests {
             let mut session = session_in(dir.path());
             cursor_to(&mut session, "alpha.txt");
             session.press(Key::Named(Named::F5));
+            session.press(Key::Named(Named::Enter));
             for (named, modifiers) in &keys {
                 session.press_with(Key::Named(*named), *modifiers);
             }

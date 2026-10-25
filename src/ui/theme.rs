@@ -527,6 +527,31 @@ pub fn outlined(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
     }
 }
 
+/// An outlined box whose outline has the given color, for a notice.
+pub fn outlined_in(outline: Color) -> impl Fn(&Theme) -> container::Style {
+    move |_theme| container::Style {
+        border: Border {
+            color: outline,
+            width: spacing::BORDER_WIDTH,
+            radius: radius::CONTROL.into(),
+        },
+        ..container::Style::default()
+    }
+}
+
+/// A thin progress bar: the track in the border color, the fill in success.
+pub fn progress(palette: &Palette) -> impl Fn(&Theme) -> iced::widget::progress_bar::Style {
+    let colors = *palette;
+    move |_theme| iced::widget::progress_bar::Style {
+        background: Background::Color(colors.border_inactive),
+        bar: Background::Color(colors.success),
+        border: Border {
+            radius: radius::KEY_CAP.into(),
+            ..Border::default()
+        },
+    }
+}
+
 /// The star in front of a row. Flat, so it does not look like a button until it
 /// is one: a tagged row is the only one with a visible mark.
 pub fn tag_button(
