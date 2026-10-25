@@ -35,7 +35,9 @@ use ncrs_pipeline::{intake_steps, IndexAccess, Load, Runner, Settings, SystemClo
 
 use crate::config::{AiSetting, Filing, FilingLocation};
 use crate::filing_work::FilingAccess;
+use crate::query_work::QueryAccess;
 use crate::reorganisation_work::PlanAccess;
+use crate::review_work::ReviewAccess;
 use crate::suggestion_work::SuggestionAccess;
 
 /// A recovery key is 13 groups of four characters.
@@ -806,6 +808,24 @@ impl FilingModule {
     /// The handle of the filing job: only when the module is `Ready` and the
     /// archive marked as the target can be reached.
     pub fn filing_access(&self) -> Option<FilingAccess> {
+        let root = self.target_root()?;
+        Some(FilingAccess::new(Arc::clone(&self.index), root))
+    }
+
+    /// The handle of the review list, on the same terms as the filing job: it
+    /// files into the same target.
+    pub fn review_access(&self) -> Option<ReviewAccess> {
+        let root = self.target_root()?;
+        Some(ReviewAccess::new(Arc::clone(&self.index), root))
+    }
+
+    /// The handle of the saved queries: they only read the index, so the
+    /// module being `Ready` is enough.
+    pub fn query_access(&self) -> Option<QueryAccess> {
+        matches!(self.phase, Phase::Ready).then(|| QueryAccess::new(Arc::clone(&self.index)))
+    }
+
+    fn target_root(&self) -> Option<PathBuf> {
         if !matches!(self.phase, Phase::Ready) {
             return None;
         }
@@ -813,10 +833,7 @@ impl FilingModule {
             .iter()
             .filter(|entry| entry.configured.is_target)
             .find_map(|entry| match &entry.status {
-                LocationStatus::Ready(location) => Some(FilingAccess::new(
-                    Arc::clone(&self.index),
-                    location.path.clone(),
-                )),
+                LocationStatus::Ready(location) => Some(location.path.clone()),
                 LocationStatus::NotReachable { .. } | LocationStatus::Overlaps { .. } => None,
             })
     }

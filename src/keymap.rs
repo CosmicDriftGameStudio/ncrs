@@ -16,8 +16,8 @@ use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::messages::{
     AiModelMessage, ClipboardKind, CommandPaletteMessage, FilingSetupMessage, FilingStatusMessage,
-    OcrModelsMessage, PanelSide, QuickOpenMessage, ReorganisationPlanMessage,
-    RuleSuggestionsMessage, SearchMessage, ThemeFetchMessage, TransferKind,
+    OcrModelsMessage, PanelSide, QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage,
+    RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, ThemeFetchMessage, TransferKind,
 };
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
@@ -111,6 +111,8 @@ key_actions! {
     FilingStatus => "filing_status",
     FilingSetup => "filing_setup",
     RuleSuggestions => "rule_suggestions",
+    ReviewList => "review_list",
+    SavedQueries => "saved_queries",
     ReorganisationPlan => "reorganisation_plan",
     UndoReorganisation => "undo_reorganisation",
     FetchTheme => "fetch_theme",
@@ -191,6 +193,8 @@ impl KeyAction {
             | Self::FilingStatus
             | Self::FilingSetup
             | Self::RuleSuggestions
+            | Self::ReviewList
+            | Self::SavedQueries
             | Self::ReorganisationPlan
             | Self::UndoReorganisation
             | Self::FetchTheme
@@ -259,6 +263,8 @@ impl KeyAction {
             Self::FilingStatus => Message::FilingStatus(FilingStatusMessage::Toggle),
             Self::FilingSetup => Message::FilingSetup(FilingSetupMessage::Toggle),
             Self::RuleSuggestions => Message::RuleSuggestions(RuleSuggestionsMessage::Open),
+            Self::ReviewList => Message::ReviewList(ReviewListMessage::Open),
+            Self::SavedQueries => Message::SavedQueries(SavedQueriesMessage::Open),
             Self::ReorganisationPlan => {
                 Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
             }
@@ -437,6 +443,16 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
         (
             A::RuleSuggestions,
             Binding::with_modifiers(Character("r".into()), Modifiers::COMMAND | Modifiers::SHIFT),
+        ),
+        // The review list, V for verify; Cmd+Shift+V, Ctrl+Shift+V elsewhere.
+        (
+            A::ReviewList,
+            Binding::with_modifiers(Character("v".into()), Modifiers::COMMAND | Modifiers::SHIFT),
+        ),
+        // The saved queries, A for abfragen; Cmd+Shift+A, Ctrl+Shift+A elsewhere.
+        (
+            A::SavedQueries,
+            Binding::with_modifiers(Character("a".into()), Modifiers::COMMAND | Modifiers::SHIFT),
         ),
         // The reorganisation plan, I for inventory; Cmd+Shift+I, Ctrl+Shift+I elsewhere.
         (

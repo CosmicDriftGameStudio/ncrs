@@ -4,25 +4,24 @@
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-use iced::widget::text::Wrapping;
-use iced::widget::{button, column, container, row, scrollable, text, Column};
+use iced::widget::{column, container, row, scrollable, Column};
 use iced::{Element, Length, Size};
 use ncrs_pipeline::{Load, RunnerState, Task, WorkerSnapshot};
 
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
-use super::theme::{self, font_size, spacing};
+use super::hermes::{self, Badges};
+use super::kit::{self, dim, one_line, paragraph, section, Tone};
+use super::theme::spacing;
 use crate::app::fill_template;
 use crate::filing::{AiStatus, IndexFigures};
 use crate::filing_status::FilingStatus;
 use crate::i18n::{Language, Msg};
-use crate::messages::{FilingStatusMessage, Message};
+use crate::messages::{FilingStatusMessage, HermesPage, Message};
 use crate::palette::Palette;
 
-const SIZE: DialogSize = DialogSize::Large;
+const SIZE: DialogSize = DialogSize::Card;
 const ERROR_LIST_HEIGHT: f32 = 120.0;
-/// The default padding of a button at its left and right.
-const ERROR_ROW_PADDING: f32 = 10.0;
 /// File and message of an error row take three of seven parts each.
 const ERROR_TEXT_SHARE: f32 = 3.0 / 7.0;
 const LABEL_WIDTH: f32 = 130.0;
@@ -48,12 +47,12 @@ struct LineBudget {
 
 impl LineBudget {
     fn of(window: Size) -> Self {
-        let width = frame::content_width(SIZE, window);
+        let width = frame::content_width(SIZE, window) - frame::SIDEBAR_ROOM;
         let gap = spacing::CELL_PADDING_X;
         let worker_fixed = WORKER_NUMBER_WIDTH + WORKER_TASK_WIDTH + DURATION_WIDTH + 3.0 * gap;
         // Three parts of seven each for file and message, one for the task; the
         // button around the row pads both sides.
-        let error_width = width - 2.0 * ERROR_ROW_PADDING - 2.0 * gap;
+        let error_width = width - 2.0 * spacing::CELL_PADDING_X - 2.0 * gap;
         Self {
             worker_file: frame::chars_that_fit(width - worker_fixed),
             index_path: frame::chars_that_fit(width - LABEL_WIDTH - gap),
@@ -68,6 +67,7 @@ pub fn view<'a>(
     load: Option<Load>,
     index_open: bool,
     window: Size,
+    badges: Badges,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -77,32 +77,24 @@ pub fn view<'a>(
         workers_section(status, &budget, lang, palette),
         index_section(status, index_open, &budget, lang, palette),
         errors_section(status, &budget, lang, palette),
-        text(lang.text(Msg::FilingStatusHint))
-            .size(font_size::STATUS)
-            .color(palette.dim_text),
+        dim(lang.text(Msg::FilingStatusHint), palette),
     ]
     .spacing(spacing::SECTION_GAP);
 
     Frame::new(
-        lang.text(Msg::FilingStatusTitle),
+        lang.text(Msg::FilingStatusSubtitle),
         body,
         SIZE,
         window,
         lang,
         palette,
     )
-    .subtitle(lang.text(Msg::FilingStatusSubtitle))
+    .subtitle(lang.text(Msg::FilingStatusTitle))
+    .sidebar(hermes::nav(HermesPage::Inspection, badges, lang, palette))
     .on_close(send(FilingStatusMessage::Close))
     // Enter opens the selected error, which the content defines.
     .hints(KeyHints::default())
     .into_element()
-}
-
-fn heading<'a>(label: Msg, lang: Language, palette: &Palette) -> Element<'a, Message> {
-    text(lang.text(label))
-        .size(font_size::ROW)
-        .color(palette.accent)
-        .into()
 }
 
 fn labelled<'a>(
@@ -112,27 +104,12 @@ fn labelled<'a>(
     palette: &Palette,
 ) -> Element<'a, Message> {
     row![
-        text(lang.text(label))
-            .size(font_size::STATUS)
-            .color(palette.dim_text)
-            .width(LABEL_WIDTH),
+        container(dim(lang.text(label), palette)).width(LABEL_WIDTH),
         value.into(),
     ]
     .spacing(spacing::CELL_PADDING_X)
     .align_y(iced::alignment::Vertical::Center)
     .into()
-}
-
-fn plain<'a>(value: impl text::IntoFragment<'a>) -> Element<'a, Message> {
-    text(value).size(font_size::STATUS).into()
-}
-
-/// Text that stays on one line; the caller has cut it to fit.
-fn one_line<'a>(value: String) -> Element<'a, Message> {
-    text(value)
-        .size(font_size::STATUS)
-        .wrapping(Wrapping::None)
-        .into()
 }
 
 fn state_message(state: RunnerState) -> Msg {
@@ -158,34 +135,48 @@ fn pipeline_section<'a>(
         Msg::FilingStatusPause
     };
     let state_row = row![
-        plain(lang.text(state_message(snapshot.state))),
-        button(text(lang.text(pause_label)))
-            .on_press_maybe(running.then(|| send(FilingStatusMessage::TogglePause)))
-            .style(theme::dialog_button(palette, false)),
+        paragraph(lang.text(state_message(snapshot.state)), palette),
+        kit::button(
+            lang.text(pause_label),
+            running.then(|| send(FilingStatusMessage::TogglePause)),
+            Tone::Secondary,
+            palette,
+        ),
     ]
     .spacing(spacing::CELL_PADDING_X)
     .align_y(iced::alignment::Vertical::Center);
 
-    let load_button = |label: Msg, target: Load| {
-        button(text(lang.text(label)))
-            .on_press_maybe(running.then(|| send(FilingStatusMessage::SetLoad(target))))
-            .style(theme::dialog_button(palette, load == Some(target)))
-    };
-    let load_row = row![
-        load_button(Msg::FilingStatusLoadGentle, Load::Gentle),
-        load_button(Msg::FilingStatusLoadBalanced, Load::Balanced),
-        load_button(Msg::FilingStatusLoadFull, Load::Full),
-    ]
-    .spacing(spacing::CELL_PADDING_X);
+    let loads = [
+        (Msg::FilingStatusLoadGentle, Load::Gentle),
+        (Msg::FilingStatusLoadBalanced, Load::Balanced),
+        (Msg::FilingStatusLoadFull, Load::Full),
+    ];
+    let load_options: Vec<(&str, Message)> = loads
+        .iter()
+        .map(|(label, target)| {
+            (
+                lang.text(*label),
+                send(FilingStatusMessage::SetLoad(*target)),
+            )
+        })
+        .collect();
+    let selected_load = loads
+        .iter()
+        .position(|(_, target)| load == Some(*target))
+        .unwrap_or(loads.len());
+    let load_row = kit::segmented(&load_options, selected_load, running, palette);
 
-    let step_button = |label: &'static str, delta: i8| {
-        button(text(label))
-            .on_press_maybe(running.then(|| send(FilingStatusMessage::StepWorkers(delta))))
-            .style(theme::dialog_button(palette, false))
+    let step_button = |label: &str, delta: i8| {
+        kit::button(
+            label,
+            running.then(|| send(FilingStatusMessage::StepWorkers(delta))),
+            Tone::Secondary,
+            palette,
+        )
     };
     let workers_row = row![
         step_button("-", -1),
-        plain(snapshot.worker_target.to_string()),
+        paragraph(snapshot.worker_target.to_string(), palette),
         step_button("+", 1),
     ]
     .spacing(spacing::CELL_PADDING_X)
@@ -193,12 +184,11 @@ fn pipeline_section<'a>(
 
     let figure = |found: Option<String>| -> Element<'a, Message> {
         match found {
-            Some(text_found) => plain(text_found),
-            None if status.awaiting_first_minute() => text(lang.text(Msg::FilingStatusFirstMinute))
-                .size(font_size::STATUS)
-                .color(palette.dim_text)
-                .into(),
-            None => plain(NOTHING_YET),
+            Some(text_found) => paragraph(text_found, palette),
+            None if status.awaiting_first_minute() => {
+                dim(lang.text(Msg::FilingStatusFirstMinute), palette)
+            }
+            None => paragraph(NOTHING_YET, palette),
         }
     };
     let throughput = figure(status.documents_per_minute().map(|count| {
@@ -225,27 +215,26 @@ fn pipeline_section<'a>(
                 ("{unchanged}", &step.unchanged.to_string()),
             ],
         );
-        plain(line)
+        paragraph(line, palette)
     });
 
-    column![
-        heading(Msg::FilingStatusSectionPipeline, lang, palette),
+    let content = column![
         labelled(Msg::FilingStatusStateLabel, state_row, lang, palette),
         labelled(Msg::FilingStatusLoadLabel, load_row, lang, palette),
         labelled(Msg::FilingStatusWorkersLabel, workers_row, lang, palette),
-        text(lang.text(Msg::FilingStatusLoadExplain))
-            .size(font_size::STATUS)
-            .color(palette.dim_text),
-        text(lang.text(Msg::FilingStatusLoadNote))
-            .size(font_size::STATUS)
-            .color(palette.dim_text),
+        dim(lang.text(Msg::FilingStatusLoadExplain), palette),
+        dim(lang.text(Msg::FilingStatusLoadNote), palette),
         Column::with_children(steps),
         labelled(Msg::FilingStatusThroughputLabel, throughput, lang, palette),
         labelled(Msg::FilingStatusRemainingLabel, remaining, lang, palette),
     ]
     .extend(ai_row(status.ai(), lang, palette))
-    .spacing(spacing::SECTION_GAP / 2.0)
-    .into()
+    .spacing(spacing::SECTION_GAP / 2.0);
+    section(
+        lang.text(Msg::FilingStatusSectionPipeline),
+        content,
+        palette,
+    )
 }
 
 /// Not there at all while the AI is off, so a setup without it looks as before.
@@ -269,7 +258,7 @@ fn ai_row<'a>(ai: &AiStatus, lang: Language, palette: &Palette) -> Option<Elemen
     };
     Some(labelled(
         Msg::FilingStatusAiLabel,
-        plain(value),
+        paragraph(value, palette),
         lang,
         palette,
     ))
@@ -321,34 +310,24 @@ fn worker_row<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let number = text((worker.id + 1).to_string())
-        .size(font_size::STATUS)
-        .width(WORKER_NUMBER_WIDTH);
+    let number =
+        container(paragraph((worker.id + 1).to_string(), palette)).width(WORKER_NUMBER_WIDTH);
     let Some(busy) = &worker.busy else {
-        return row![
-            number,
-            text(lang.text(Msg::FilingStatusWorkerIdle))
-                .size(font_size::STATUS)
-                .color(palette.dim_text)
-        ]
-        .spacing(spacing::CELL_PADDING_X)
-        .into();
+        return row![number, dim(lang.text(Msg::FilingStatusWorkerIdle), palette)]
+            .spacing(spacing::CELL_PADDING_X)
+            .into();
     };
     let elapsed = taken_at.duration_since(busy.started_at).unwrap_or_default();
     row![
         number,
-        container(one_line(format::ellipsize_end(
-            &file_label(&busy.file),
-            budget.worker_file
-        )))
+        container(one_line(
+            format::ellipsize_end(&file_label(&busy.file), budget.worker_file),
+            palette
+        ))
         .width(Length::Fill)
         .clip(true),
-        text(task_label(busy.task, lang))
-            .size(font_size::STATUS)
-            .wrapping(Wrapping::None)
-            .width(WORKER_TASK_WIDTH),
-        text(elapsed_label(elapsed))
-            .size(font_size::STATUS)
+        container(one_line(task_label(busy.task, lang), palette)).width(WORKER_TASK_WIDTH),
+        container(paragraph(elapsed_label(elapsed), palette))
             .width(DURATION_WIDTH)
             .align_x(iced::alignment::Horizontal::Right),
     ]
@@ -367,12 +346,11 @@ fn workers_section<'a>(
         .workers
         .iter()
         .map(|worker| worker_row(worker, status.taken_at(), budget, lang, palette));
-    column![
-        heading(Msg::FilingStatusSectionWorkers, lang, palette),
+    section(
+        lang.text(Msg::FilingStatusSectionWorkers),
         Column::with_children(rows),
-    ]
-    .spacing(spacing::SECTION_GAP / 2.0)
-    .into()
+        palette,
+    )
 }
 
 fn yes_no(answer: bool, lang: Language) -> &'static str {
@@ -393,54 +371,53 @@ fn index_rows<'a>(
     vec![
         labelled(
             Msg::FilingStatusIndexPath,
-            one_line(format::ellipsize_middle(
-                &figures.path.display().to_string(),
-                budget.index_path,
-            )),
+            one_line(
+                format::ellipsize_middle(&figures.path.display().to_string(), budget.index_path),
+                palette,
+            ),
             lang,
             palette,
         ),
         labelled(
             Msg::FilingStatusIndexSize,
-            plain(
+            paragraph(
                 figures
                     .file_bytes
                     .map_or_else(|| NOTHING_YET.to_owned(), format::size),
+                palette,
             ),
             lang,
             palette,
         ),
         labelled(
             Msg::FilingStatusIndexEncrypted,
-            plain(yes_no(figures.encrypted, lang)),
+            paragraph(yes_no(figures.encrypted, lang), palette),
             lang,
             palette,
         ),
         labelled(
             Msg::FilingStatusIndexSchema,
-            plain(statistics.schema_version.to_string()),
+            paragraph(statistics.schema_version.to_string(), palette),
             lang,
             palette,
         ),
         labelled(
             Msg::FilingStatusIndexDocuments,
-            plain(statistics.document_count.to_string()),
+            paragraph(statistics.document_count.to_string(), palette),
             lang,
             palette,
         ),
         labelled(
             Msg::FilingStatusIndexFullText,
-            plain(format::size(statistics.full_text_bytes)),
+            paragraph(format::size(statistics.full_text_bytes), palette),
             lang,
             palette,
         ),
         labelled(
             Msg::FilingStatusIndexReviews,
             row![
-                plain(format!("{} ·", statistics.open_reviews)),
-                text(lang.text(Msg::FilingStatusIndexReviewsExplain))
-                    .size(font_size::STATUS)
-                    .color(palette.dim_text),
+                paragraph(format!("{} ·", statistics.open_reviews), palette),
+                dim(lang.text(Msg::FilingStatusIndexReviewsExplain), palette),
             ]
             .spacing(spacing::CELL_PADDING_X / 2.0),
             lang,
@@ -457,20 +434,22 @@ fn index_section<'a>(
     palette: &Palette,
 ) -> Element<'a, Message> {
     let rows: Vec<Element<'a, Message>> = match status.index_figures() {
-        _ if !index_open => vec![plain(lang.text(Msg::FilingStatusIndexNotOpen))],
-        None => vec![plain(NOT_READ_YET)],
-        Some(Err(reason)) => vec![plain(fill_template(
-            lang.text(Msg::FilingStatusIndexUnavailable),
-            &[("{reason}", reason)],
-        ))],
+        _ if !index_open => vec![paragraph(lang.text(Msg::FilingStatusIndexNotOpen), palette)],
+        None => vec![paragraph(NOT_READ_YET, palette)],
+        Some(Err(reason)) => vec![paragraph(
+            fill_template(
+                lang.text(Msg::FilingStatusIndexUnavailable),
+                &[("{reason}", reason)],
+            ),
+            palette,
+        )],
         Some(Ok(figures)) => index_rows(figures, budget, lang, palette),
     };
-    column![
-        heading(Msg::FilingStatusSectionIndex, lang, palette),
+    section(
+        lang.text(Msg::FilingStatusSectionIndex),
         Column::with_children(rows),
-    ]
-    .spacing(spacing::SECTION_GAP / 2.0)
-    .into()
+        palette,
+    )
 }
 
 fn errors_section<'a>(
@@ -484,45 +463,40 @@ fn errors_section<'a>(
         .errors_newest_first()
         .enumerate()
         .map(|(position, error)| {
-            button(
-                row![
-                    container(one_line(format::ellipsize_middle(
-                        &error.file.display().to_string(),
-                        budget.error_file,
-                    )))
-                    .width(Length::FillPortion(3))
-                    .clip(true),
-                    text(task_label(error.task, lang))
-                        .size(font_size::STATUS)
-                        .wrapping(Wrapping::None)
-                        .width(Length::FillPortion(1)),
-                    container(one_line(format::ellipsize_end(
-                        &error.message,
-                        budget.error_message,
-                    )))
-                    .width(Length::FillPortion(3))
-                    .clip(true),
-                ]
-                .spacing(spacing::CELL_PADDING_X),
+            let content = row![
+                container(one_line(
+                    format::ellipsize_middle(&error.file.display().to_string(), budget.error_file),
+                    palette,
+                ))
+                .width(Length::FillPortion(3))
+                .clip(true),
+                container(one_line(task_label(error.task, lang), palette))
+                    .width(Length::FillPortion(1)),
+                container(one_line(
+                    format::ellipsize_end(&error.message, budget.error_message),
+                    palette,
+                ))
+                .width(Length::FillPortion(3))
+                .clip(true),
+            ]
+            .spacing(spacing::CELL_PADDING_X)
+            .align_y(iced::alignment::Vertical::Center);
+            kit::list_row(
+                content.into(),
+                send(FilingStatusMessage::ErrorActivated(error.file.clone())),
+                selected == Some(position),
+                palette,
             )
-            .width(Length::Fill)
-            .on_press(send(FilingStatusMessage::ErrorActivated(
-                error.file.clone(),
-            )))
-            .style(theme::dialog_button(palette, selected == Some(position)))
-            .into()
         })
         .collect();
     let list: Element<'a, Message> = if rows.is_empty() {
-        plain(lang.text(Msg::FilingStatusErrorsNone))
+        paragraph(lang.text(Msg::FilingStatusErrorsNone), palette)
     } else {
         scrollable(Column::with_children(rows))
             .height(ERROR_LIST_HEIGHT)
             .into()
     };
-    column![heading(Msg::FilingStatusSectionErrors, lang, palette), list,]
-        .spacing(spacing::SECTION_GAP / 2.0)
-        .into()
+    section(lang.text(Msg::FilingStatusSectionErrors), list, palette)
 }
 
 // reason: a failing assertion is the signal in a test

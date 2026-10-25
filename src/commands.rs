@@ -181,6 +181,18 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             Msg::ActionRuleSuggestions,
             Msg::ActionRuleSuggestionsTheme,
         ),
+        KeyAction::ReviewList => Command::themed(
+            action,
+            Hermes,
+            Msg::ActionReviewList,
+            Msg::ActionReviewListTheme,
+        ),
+        KeyAction::SavedQueries => Command::themed(
+            action,
+            Hermes,
+            Msg::ActionSavedQueries,
+            Msg::ActionSavedQueriesTheme,
+        ),
         KeyAction::ReorganisationPlan => Command::themed(
             action,
             Hermes,

@@ -67,7 +67,7 @@ pub fn view<'a>(
             let content = Row::with_children([
                 container(
                     text(format::ellipsize_end(volume.name.as_str(), name_chars))
-                        .size(font_size::ROW)
+                        .size(font_size::BODY)
                         .color(name_color)
                         .wrapping(text::Wrapping::None),
                 )
@@ -79,7 +79,7 @@ pub fn view<'a>(
                         &volume.path.to_string_lossy(),
                         path_chars,
                     ))
-                    .size(font_size::STATUS)
+                    .size(font_size::BODY)
                     .color(path_color)
                     .wrapping(text::Wrapping::None),
                 )
@@ -96,14 +96,14 @@ pub fn view<'a>(
         });
 
     Frame::new(
-        lang.text(Msg::VolumesTitle),
+        lang.text(subtitle),
         column![Column::with_children(rows)],
         SIZE,
         window,
         lang,
         palette,
     )
-    .subtitle(lang.text(subtitle))
+    .subtitle(lang.text(Msg::VolumesTitle))
     .on_close(Message::VolumeMenuClose)
     // Enter goes to the highlighted row, which the content defines.
     .hints(KeyHints::default())

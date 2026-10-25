@@ -7,9 +7,9 @@ use iced::widget::{column, text};
 use iced::{Element, Size};
 use ncrs_ai::LOCAL_MODEL;
 
-use super::filing::{error_line, paragraph};
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
+use super::kit::{self, dim, error_line, one_line, paragraph, Tone};
 use super::theme::{font_size, spacing};
 use crate::ai_model::{
     AiModelCard, DownloadError, AI_MODEL_HOST, AI_MODEL_LICENSE, AI_MODEL_PROJECT,
@@ -57,7 +57,7 @@ pub fn view<'a>(
                 lang.text(Msg::AiModelChecksum),
                 &[("{checksum}", LOCAL_MODEL.sha256)],
             ))
-            .size(font_size::STATUS)
+            .size(font_size::BODY)
             .color(palette.dim_text)
             .wrapping(Wrapping::Glyph),
         )
@@ -90,17 +90,9 @@ pub fn view<'a>(
         } else {
             Msg::AiModelDownloading
         };
-        body = body.push(
-            text(lang.text(line))
-                .size(font_size::STATUS)
-                .color(palette.dim_text),
-        );
+        body = body.push(dim(lang.text(line), palette));
     } else if card.is_paused() {
-        body = body.push(
-            text(lang.text(Msg::AiModelPaused))
-                .size(font_size::STATUS)
-                .color(palette.dim_text),
-        );
+        body = body.push(dim(lang.text(Msg::AiModelPaused), palette));
     }
     if let Some(error) = card.error() {
         body = body.push(error_line(error_text(error, lang), palette));
@@ -132,16 +124,16 @@ pub fn view<'a>(
         palette,
     )
     .buttons(vec![
-        frame::action(
+        kit::button(
             lang.text(Msg::DialogCancel),
             cancel,
-            focus == CANCEL_FOCUS,
+            Tone::filled_if(focus == CANCEL_FOCUS),
             palette,
         ),
-        frame::action(
+        kit::button(
             lang.text(action_label),
             action,
-            focus == DOWNLOAD_FOCUS,
+            Tone::filled_if(focus == DOWNLOAD_FOCUS),
             palette,
         ),
     ])
@@ -155,11 +147,7 @@ pub fn view<'a>(
 }
 
 fn detail_line<'a>(content: String, line_chars: usize, palette: &Palette) -> Element<'a, Message> {
-    text(format::ellipsize_middle(&content, line_chars))
-        .size(font_size::STATUS)
-        .color(palette.text)
-        .wrapping(Wrapping::None)
-        .into()
+    one_line(format::ellipsize_middle(&content, line_chars), palette)
 }
 
 fn error_text(error: &DownloadError, lang: Language) -> String {

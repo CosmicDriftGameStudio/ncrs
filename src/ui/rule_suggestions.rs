@@ -3,18 +3,18 @@
 //! form to edit it. Modal, like the Inspection. Pure view over
 //! [`RuleSuggestions`].
 
-use iced::widget::text::Wrapping;
-use iced::widget::{button, column, container, row, text, text_input, Column};
-use iced::{alignment, Color, Element, Length, Size};
+use iced::widget::{button, column, container, row, Column};
+use iced::{alignment, Element, Length, Size};
 
-use super::filing::{error_line, paragraph};
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
+use super::hermes::{self, Badges};
+use super::kit::{self, dim, error_line, paragraph, section, Columns, Tone};
 use super::layout::ROW_HEIGHT;
-use super::theme::{self, font_size, spacing};
+use super::theme::{self, spacing};
 use crate::app::fill_template;
 use crate::i18n::{Language, Msg};
-use crate::messages::{Message, RuleSuggestionsMessage};
+use crate::messages::{HermesPage, Message, RuleSuggestionsMessage};
 use crate::palette::Palette;
 use crate::rule_suggestions::{Edit, Matches, Problem, RuleSuggestions};
 use crate::suggestion_work::{condition_text, SuggestedRule};
@@ -28,10 +28,10 @@ pub const VISIBLE_ROWS: usize = 8;
 /// Most matching documents listed; the rest is counted.
 pub const SHOWN_DOCUMENTS: usize = 6;
 
-const SIZE: DialogSize = DialogSize::Large;
+const SIZE: DialogSize = DialogSize::Card;
 
 /// How the width of a row is shared: condition, target, kind, evidence.
-const PORTIONS: [u16; 4] = [5, 5, 3, 5];
+const PORTIONS: [u16; 4] = [4, 5, 3, 7];
 const LABEL_WIDTH: f32 = 170.0;
 
 fn send(message: RuleSuggestionsMessage) -> Message {
@@ -41,10 +41,11 @@ fn send(message: RuleSuggestionsMessage) -> Message {
 pub fn view<'a>(
     state: &'a RuleSuggestions,
     window: Size,
+    badges: Badges,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let line_chars = frame::content_chars(SIZE, window, 0.0);
+    let line_chars = frame::content_chars(SIZE, window, frame::SIDEBAR_ROOM);
     let mut body = column![paragraph(lang.text(Msg::RuleSuggestionsExplain), palette)]
         .spacing(spacing::SECTION_GAP);
 
@@ -86,42 +87,18 @@ pub fn view<'a>(
     )
     .title_theme(lang.text(Msg::ActionRuleSuggestionsTheme))
     .buttons(buttons(state, lang, palette))
+    .sidebar(hermes::nav(
+        HermesPage::RuleSuggestions,
+        badges,
+        lang,
+        palette,
+    ))
     .on_close(send(RuleSuggestionsMessage::Close))
     .hints(KeyHints {
         enter: true,
         tab: editing,
     })
     .into_element()
-}
-
-fn dim<'a>(content: &'a str, palette: &Palette) -> Element<'a, Message> {
-    text(content)
-        .size(font_size::STATUS)
-        .color(palette.dim_text)
-        .wrapping(Wrapping::Word)
-        .into()
-}
-
-fn cell<'a>(content: &str, portion: u16, chars: usize, color: Color) -> Element<'a, Message> {
-    container(
-        text(format::ellipsize_end(content, chars))
-            .size(font_size::ROW)
-            .color(color)
-            .wrapping(Wrapping::None),
-    )
-    .width(Length::FillPortion(portion))
-    .clip(true)
-    .into()
-}
-
-/// The characters a column of `portion` holds in a line of `line_chars`.
-fn column_chars(line_chars: usize, portion: u16) -> usize {
-    let total: u16 = PORTIONS.iter().sum();
-    line_chars
-        .saturating_mul(usize::from(portion))
-        .checked_div(usize::from(total))
-        .unwrap_or_default()
-        .saturating_sub(2)
 }
 
 fn evidence_text(suggestion: &SuggestedRule, lang: Language) -> String {
@@ -142,37 +119,19 @@ fn list<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let [condition, target, kind, evidence] = PORTIONS;
-    let chars = |portion| column_chars(line_chars, portion);
-    let header = row![
-        cell(
+    let columns = Columns {
+        portions: &PORTIONS,
+        line_chars,
+    };
+    let header = columns.header(
+        &[
             lang.text(Msg::RuleSuggestionsColumnCondition),
-            condition,
-            chars(condition),
-            palette.dim_text
-        ),
-        cell(
             lang.text(Msg::RuleSuggestionsColumnPattern),
-            target,
-            chars(target),
-            palette.dim_text
-        ),
-        cell(
             lang.text(Msg::RuleSuggestionsColumnKind),
-            kind,
-            chars(kind),
-            palette.dim_text
-        ),
-        cell(
             lang.text(Msg::RuleSuggestionsColumnEvidence),
-            evidence,
-            chars(evidence),
-            palette.dim_text
-        ),
-    ]
-    .padding([0.0, spacing::CELL_PADDING_X])
-    .height(ROW_HEIGHT)
-    .align_y(alignment::Vertical::Center);
+        ],
+        palette,
+    );
 
     let first = (state.cursor() + 1).saturating_sub(VISIBLE_ROWS);
     let rows = state
@@ -189,25 +148,14 @@ fn list<'a>(
                 palette.text
             };
             let content = row![
-                cell(
+                columns.cell(
+                    0,
                     condition_text(&suggestion.spec).unwrap_or_default(),
-                    condition,
-                    chars(condition),
                     color
                 ),
-                cell(
-                    &suggestion.spec.filing_pattern,
-                    target,
-                    chars(target),
-                    color
-                ),
-                cell(&suggestion.spec.kind, kind, chars(kind), color),
-                cell(
-                    &evidence_text(suggestion, lang),
-                    evidence,
-                    chars(evidence),
-                    color
-                ),
+                columns.cell(1, &suggestion.spec.filing_pattern, color),
+                columns.cell(2, &suggestion.spec.kind, color),
+                columns.cell(3, &evidence_text(suggestion, lang), color),
             ]
             .align_y(alignment::Vertical::Center);
             button(content)
@@ -233,10 +181,7 @@ fn documents<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let mut lines = column![text(lang.text(Msg::RuleSuggestionsDocumentsHeading))
-        .size(font_size::STATUS)
-        .color(palette.accent)]
-    .spacing(spacing::CELL_PADDING_X);
+    let mut lines = column![].spacing(spacing::CELL_PADDING_X);
     match state.matches() {
         Matches::Unknown | Matches::Looking => {
             lines = lines.push(dim(
@@ -249,30 +194,28 @@ fn documents<'a>(
         }
         Matches::Found(paths) => {
             for path in paths.iter().take(SHOWN_DOCUMENTS) {
-                lines = lines.push(
-                    text(format::ellipsize_middle(
-                        &path.display().to_string(),
-                        line_chars,
-                    ))
-                    .size(font_size::STATUS)
-                    .color(palette.text)
-                    .wrapping(Wrapping::None),
-                );
+                lines = lines.push(paragraph(
+                    format::ellipsize_middle(&path.display().to_string(), line_chars),
+                    palette,
+                ));
             }
             let rest = paths.len().saturating_sub(SHOWN_DOCUMENTS);
             if rest > 0 {
-                lines = lines.push(
-                    text(fill_template(
+                lines = lines.push(dim(
+                    fill_template(
                         lang.text(Msg::RuleSuggestionsDocumentsMore),
                         &[("{count}", &rest.to_string())],
-                    ))
-                    .size(font_size::STATUS)
-                    .color(palette.dim_text),
-                );
+                    ),
+                    palette,
+                ));
             }
         }
     }
-    lines.into()
+    section(
+        lang.text(Msg::RuleSuggestionsDocumentsHeading),
+        lines,
+        palette,
+    )
 }
 
 fn form<'a>(edit: &'a Edit, lang: Language, palette: &Palette) -> Element<'a, Message> {
@@ -312,18 +255,15 @@ fn field<'a>(
     palette: &Palette,
 ) -> Element<'a, Message> {
     row![
-        text(label)
-            .size(font_size::STATUS)
-            .color(palette.text)
-            .width(LABEL_WIDTH),
-        text_input("", value)
-            .id(id)
-            .on_input(move |typed| send(on_input(typed)))
-            .on_submit(send(RuleSuggestionsMessage::Confirm))
-            .size(font_size::ROW)
-            .padding([3.0, 6.0])
-            .style(theme::search_input(palette))
-            .width(Length::Fill),
+        container(paragraph(label, palette)).width(LABEL_WIDTH),
+        kit::text_field(
+            "",
+            value,
+            id,
+            Some(move |typed| send(on_input(typed))),
+            send(RuleSuggestionsMessage::Confirm),
+            palette,
+        ),
     ]
     .spacing(spacing::CELL_PADDING_X)
     .align_y(alignment::Vertical::Center)
@@ -336,7 +276,16 @@ fn buttons<'a>(
     palette: &Palette,
 ) -> Vec<Element<'a, Message>> {
     let action = |label: Msg, on_press: Option<RuleSuggestionsMessage>, primary: bool| {
-        frame::action(lang.text(label), on_press.map(send), primary, palette)
+        if primary {
+            kit::enter_button(lang.text(label), on_press.map(send), Tone::Primary, palette)
+        } else {
+            kit::button(
+                lang.text(label),
+                on_press.map(send),
+                Tone::Secondary,
+                palette,
+            )
+        }
     };
     let decidable = !state.is_busy() && state.selected().is_some();
     let confirm = action(

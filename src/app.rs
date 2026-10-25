@@ -32,19 +32,23 @@ use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 use crate::menu::Availability;
 use crate::messages::{
     AiModelMessage, ClipboardKind, CommandPaletteMessage, ConflictChoice, FilingSetupMessage,
-    FilingStatusMessage, Message, OcrModelsMessage, PanelSide, QuickOpenMessage,
-    ReorganisationPlanMessage, RuleSuggestionsMessage, SearchMessage, ThemeFetchMessage,
-    TitleBarMessage, TransferKind,
+    FilingStatusMessage, HermesPage, Message, OcrModelsMessage, PanelSide, QuickOpenMessage,
+    ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage,
+    SearchMessage, ThemeFetchMessage, TitleBarMessage, TransferKind,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
 use crate::ocr_models::{download_models, DownloadError, OcrModelsCard};
 use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
 use crate::palette::Palette;
+use crate::query_work::{self, QueryAccess};
 use crate::quick_open::{QuickOpen, QUICK_OPEN_FILE_LIMIT};
 use crate::reorganisation_plan::ReorganisationView;
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
+use crate::review_list::ReviewList;
+use crate::review_work::ReviewAccess;
 use crate::rule_suggestions::RuleSuggestions;
+use crate::saved_queries::SavedQueries;
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
 use crate::suggestion_work::{SuggestedRule, SuggestionAccess, INDEX_NOT_OPEN};
 use crate::theme_fetch::{Fetched, Installed, Pick, Stage, ThemeFetch};
@@ -56,10 +60,13 @@ use crate::ui::dialog::FIELD_ID;
 use crate::ui::filing as filing_ui;
 use crate::ui::filing_setup as filing_setup_ui;
 use crate::ui::filing_status as filing_status_ui;
+use crate::ui::hermes::Badges;
 use crate::ui::ocr_models as ocr_models_ui;
 use crate::ui::quick_open as quick_open_ui;
 use crate::ui::reorganisation_plan as reorganisation_plan_ui;
+use crate::ui::review_list as review_list_ui;
 use crate::ui::rule_suggestions as rule_suggestions_ui;
+use crate::ui::saved_queries as saved_queries_ui;
 use crate::ui::search as search_ui;
 use crate::ui::theme_fetch as theme_fetch_ui;
 use crate::ui::titlebar;
@@ -281,6 +288,9 @@ fn leaves_path_field(message: &Message) -> bool {
             | Message::CommandPalette(CommandPaletteMessage::Toggle)
             | Message::ThemeFetch(ThemeFetchMessage::Open)
             | Message::RuleSuggestions(RuleSuggestionsMessage::Open)
+            | Message::ReviewList(ReviewListMessage::Open)
+            | Message::SavedQueries(SavedQueriesMessage::Open)
+            | Message::HermesPage(_)
             | Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
             | Message::OcrModels(OcrModelsMessage::Open)
             | Message::AiModel(AiModelMessage::Open)
@@ -715,6 +725,12 @@ pub struct App {
     rule_suggestions: Option<RuleSuggestions>,
     /// Tells the answer of the work that is current from a stale one.
     rule_suggestions_generation: u64,
+    review_list: Option<ReviewList>,
+    /// Tells the answer of the work that is current from a stale one.
+    review_list_generation: u64,
+    saved_queries: Option<SavedQueries>,
+    /// Tells the answer of the work that is current from a stale one.
+    saved_queries_generation: u64,
     reorganisation: Option<ReorganisationView>,
     /// Tells the answer of the plan that is current from a stale one.
     reorganisation_generation: u64,
@@ -786,6 +802,12 @@ pub struct PromptKeyState {
     pub rule_suggestions: bool,
     /// Its form is up, so the text fields take the letters.
     pub rule_suggestions_editing: bool,
+    /// The review list is up, so Enter, the arrows and its letters are its.
+    pub review_list: bool,
+    /// Its form is up, so the text fields take the letters.
+    pub review_list_editing: bool,
+    /// The saved queries page is up, so Enter, the arrows and Tab are its.
+    pub saved_queries: bool,
     /// The reorganisation plan view is up, so its keys are the card's.
     pub reorganisation_plan: bool,
     /// The OCR models card is up, so keys answer it like a button dialog.
@@ -822,6 +844,9 @@ impl Default for PromptKeyState {
             theme_fetch: false,
             rule_suggestions: false,
             rule_suggestions_editing: false,
+            review_list: false,
+            review_list_editing: false,
+            saved_queries: false,
             reorganisation_plan: false,
             ocr_models: false,
             ai_model: false,
@@ -851,6 +876,65 @@ fn reorganisation_plan_key(
         Key::Named(Named::ArrowUp) if plain => plan(ReorganisationPlanMessage::Move(-1)),
         Key::Named(Named::ArrowDown) if plain => plan(ReorganisationPlanMessage::Move(1)),
         Key::Character("r") if plain => plan(ReorganisationPlanMessage::Replan),
+        _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
+            .filter(|message| *message == Message::Quit)
+            .filter(|_| is_not_typed_by_text_field(key, key_modifiers)),
+    }
+}
+
+/// The review list is a card: Enter confirms, the arrows move in the list, `e`
+/// opens the form. With the form up the fields take the typing; Escape is
+/// `InputState`'s then.
+fn review_list_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    let review = |message| Some(Message::ReviewList(message));
+    let plain = key_modifiers.is_empty();
+    match key.as_ref() {
+        Key::Named(Named::Escape) => review(ReviewListMessage::Close),
+        Key::Named(Named::Enter) => review(ReviewListMessage::Confirm),
+        Key::Named(Named::Tab) if prompt.review_list_editing => {
+            review(ReviewListMessage::FocusField {
+                backwards: key_modifiers.shift(),
+            })
+        }
+        Key::Named(Named::ArrowUp) if plain && !prompt.review_list_editing => {
+            review(ReviewListMessage::Move(-1))
+        }
+        Key::Named(Named::ArrowDown) if plain && !prompt.review_list_editing => {
+            review(ReviewListMessage::Move(1))
+        }
+        Key::Character("e") if plain && !prompt.review_list_editing => {
+            review(ReviewListMessage::Edit)
+        }
+        _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
+            .filter(|message| *message == Message::Quit)
+            .filter(|_| is_not_typed_by_text_field(key, key_modifiers)),
+    }
+}
+
+/// The saved queries page is a card: the form is always up, so the fields take
+/// the letters; Enter runs (or exports, when that step is up), the arrows move
+/// in the list and Tab goes from field to field.
+fn saved_queries_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    let queries = |message| Some(Message::SavedQueries(message));
+    let plain = key_modifiers.is_empty();
+    match key.as_ref() {
+        Key::Named(Named::Escape) => queries(SavedQueriesMessage::Close),
+        Key::Named(Named::Enter) => queries(SavedQueriesMessage::Run),
+        Key::Named(Named::Tab) => queries(SavedQueriesMessage::FocusField {
+            backwards: key_modifiers.shift(),
+        }),
+        Key::Named(Named::ArrowUp) if plain => queries(SavedQueriesMessage::Move(-1)),
+        Key::Named(Named::ArrowDown) if plain => queries(SavedQueriesMessage::Move(1)),
         _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
             .filter(|message| *message == Message::Quit)
             .filter(|_| is_not_typed_by_text_field(key, key_modifiers)),
@@ -1031,6 +1115,14 @@ fn keys_without_prompt(
 
     if prompt.rule_suggestions {
         return rule_suggestions_key(prompt, &key, key_modifiers, scope);
+    }
+
+    if prompt.review_list {
+        return review_list_key(prompt, &key, key_modifiers, scope);
+    }
+
+    if prompt.saved_queries {
+        return saved_queries_key(prompt, &key, key_modifiers, scope);
     }
 
     // Like the command palette: the field takes the typing, the card the
@@ -1446,6 +1538,8 @@ fn repeats(message: &Message) -> bool {
             | Message::CommandPalette(CommandPaletteMessage::Move(_))
             | Message::ThemeFetch(ThemeFetchMessage::Move(_))
             | Message::RuleSuggestions(RuleSuggestionsMessage::Move(_))
+            | Message::ReviewList(ReviewListMessage::Move(_))
+            | Message::SavedQueries(SavedQueriesMessage::Move(_))
             | Message::ReorganisationPlan(ReorganisationPlanMessage::Move(_))
             | Message::FilingStatus(FilingStatusMessage::MoveError(_))
             | Message::Search(
@@ -1838,6 +1932,10 @@ impl App {
             theme_fetch_generation: 0,
             rule_suggestions: None,
             rule_suggestions_generation: 0,
+            review_list: None,
+            review_list_generation: 0,
+            saved_queries: None,
+            saved_queries_generation: 0,
             reorganisation: None,
             reorganisation_generation: 0,
             plans_filed_for: 0,
@@ -2478,6 +2576,9 @@ impl App {
             }
             Message::ThemeFetch(fetch_message) => self.update_theme_fetch(fetch_message),
             Message::RuleSuggestions(suggestions) => self.update_rule_suggestions(suggestions),
+            Message::ReviewList(review) => self.update_review_list(review),
+            Message::SavedQueries(queries) => self.update_saved_queries(queries),
+            Message::HermesPage(page) => self.go_to_hermes_page(page),
             Message::ReorganisationPlan(plan) => self.update_reorganisation(plan),
             // #73 hangs the executor here; until then the selection goes nowhere.
             Message::ExecuteReorganisation(selection) => self.run_reorganisation(selection),
@@ -2744,6 +2845,8 @@ impl App {
         input.command_palette = self.command_palette.is_some();
         input.theme_fetch = self.theme_fetch.is_some();
         input.rule_suggestions = self.rule_suggestions.is_some();
+        input.review_list = self.review_list.is_some();
+        input.saved_queries = self.saved_queries.is_some();
         input.reorganisation_plan = self.reorganisation.is_some();
         drop(input);
         // `get` rather than `get_or_init`: the cell is created by the
@@ -2978,6 +3081,7 @@ impl App {
                 self.filing.as_ref().map(FilingModule::load),
                 index_open,
                 self.window_size,
+                self.hermes_badges(),
                 self.lang,
                 &self.palette,
             );
@@ -3007,14 +3111,46 @@ impl App {
         }
 
         if let Some(view) = self.rule_suggestions.as_ref() {
-            let card_element =
-                rule_suggestions_ui::view(view, self.window_size, self.lang, &self.palette);
+            let card_element = rule_suggestions_ui::view(
+                view,
+                self.window_size,
+                self.hermes_badges(),
+                self.lang,
+                &self.palette,
+            );
+            return Stack::with_children([root, dialog::scrim(card_element)]).into();
+        }
+
+        if let Some(view) = self.review_list.as_ref() {
+            let card_element = review_list_ui::view(
+                view,
+                self.window_size,
+                self.hermes_badges(),
+                self.lang,
+                &self.palette,
+            );
+            return Stack::with_children([root, dialog::scrim(card_element)]).into();
+        }
+
+        if let Some(view) = self.saved_queries.as_ref() {
+            let card_element = saved_queries_ui::view(
+                view,
+                self.window_size,
+                self.hermes_badges(),
+                self.lang,
+                &self.palette,
+            );
             return Stack::with_children([root, dialog::scrim(card_element)]).into();
         }
 
         if let Some(view) = self.reorganisation.as_ref() {
-            let card_element =
-                reorganisation_plan_ui::view(view, self.window_size, self.lang, &self.palette);
+            let card_element = reorganisation_plan_ui::view(
+                view,
+                self.window_size,
+                self.hermes_badges(),
+                self.lang,
+                &self.palette,
+            );
             return Stack::with_children([root, dialog::scrim(card_element)]).into();
         }
 
@@ -3117,6 +3253,12 @@ impl App {
             .rule_suggestions
             .as_ref()
             .is_some_and(|view| view.edit().is_some());
+        let review_list = self.review_list.is_some();
+        let review_list_editing = self
+            .review_list
+            .as_ref()
+            .is_some_and(ReviewList::is_editing);
+        let saved_queries = self.saved_queries.is_some();
         let reorganisation_plan = self.reorganisation.is_some();
         let ocr_models = self.ocr_models.is_some();
         let ai_model = self.ai_model.is_some();
@@ -3143,6 +3285,9 @@ impl App {
                 theme_fetch,
                 rule_suggestions,
                 rule_suggestions_editing,
+                review_list,
+                review_list_editing,
+                saved_queries,
                 reorganisation_plan,
                 ocr_models,
                 ai_model,
@@ -3170,6 +3315,9 @@ impl App {
                 theme_fetch,
                 rule_suggestions,
                 rule_suggestions_editing,
+                review_list,
+                review_list_editing,
+                saved_queries,
                 reorganisation_plan,
                 ocr_models,
                 ai_model,
@@ -3547,6 +3695,8 @@ impl App {
             || self.command_palette.is_some()
             || self.theme_fetch.is_some()
             || self.rule_suggestions.is_some()
+            || self.review_list.is_some()
+            || self.saved_queries.is_some()
             || self.reorganisation.is_some()
             || self.ocr_models.is_some()
             || self.ai_model.is_some()
@@ -4851,6 +5001,549 @@ impl App {
                 Message::RuleSuggestions(RuleSuggestionsMessage::MatchesFound { id, result })
             },
         )
+    }
+
+    fn update_review_list(&mut self, message: ReviewListMessage) -> Task<Message> {
+        match message {
+            ReviewListMessage::Open => self.open_review_list(),
+            ReviewListMessage::Close => self.close_review_list(),
+            ReviewListMessage::Loaded { generation, result } => {
+                if generation != self.review_list_generation {
+                    return Task::none();
+                }
+                let Some(view) = self.review_list.as_mut() else {
+                    return Task::none();
+                };
+                match result {
+                    Ok(rows) => view.loaded(rows),
+                    Err(detail) => view.failed(detail),
+                }
+                Task::none()
+            }
+            ReviewListMessage::Move(delta) => {
+                if let Some(view) = self.review_list.as_mut() {
+                    view.move_cursor(delta);
+                }
+                Task::none()
+            }
+            ReviewListMessage::Select(index) => {
+                if let Some(view) = self.review_list.as_mut() {
+                    view.select(index);
+                }
+                Task::none()
+            }
+            ReviewListMessage::Edit => {
+                let Some(view) = self.review_list.as_mut() else {
+                    return Task::none();
+                };
+                view.start_edit();
+                if view.is_editing() {
+                    operation::focus(review_list_ui::FIRST_FIELD_ID)
+                } else {
+                    Task::none()
+                }
+            }
+            ReviewListMessage::FieldChanged(field, text) => {
+                if let Some(view) = self.review_list.as_mut() {
+                    view.set_text(field, text);
+                }
+                Task::none()
+            }
+            ReviewListMessage::TaxContextChosen(choice) => {
+                if let Some(view) = self.review_list.as_mut() {
+                    view.set_tax_context(choice);
+                }
+                Task::none()
+            }
+            ReviewListMessage::FocusField { backwards } => {
+                if backwards {
+                    operation::focus_previous()
+                } else {
+                    operation::focus_next()
+                }
+            }
+            ReviewListMessage::Confirm => {
+                let Some(request) = self
+                    .review_list
+                    .as_mut()
+                    .and_then(ReviewList::begin_confirm)
+                else {
+                    return Task::none();
+                };
+                let generation = self.review_list_generation;
+                let Some(access) = self.review_access() else {
+                    return Task::none();
+                };
+                Task::perform(
+                    tokio::task::spawn_blocking(move || {
+                        access.confirm(
+                            request.entry,
+                            request.document_id,
+                            &request.fields,
+                            &request.pattern,
+                        )
+                    }),
+                    move |joined| {
+                        let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                        Message::ReviewList(ReviewListMessage::Confirmed { generation, result })
+                    },
+                )
+            }
+            ReviewListMessage::Confirmed { generation, result } => {
+                if generation != self.review_list_generation {
+                    return Task::none();
+                }
+                let Some(view) = self.review_list.as_mut() else {
+                    return Task::none();
+                };
+                match result {
+                    Ok(outcome) => view.confirmed(outcome),
+                    Err(detail) => {
+                        view.failed(detail);
+                        return Task::none();
+                    }
+                }
+                self.run_review_load()
+            }
+            ReviewListMessage::CreateRule => {
+                let Some(request) = self.review_list.as_mut().and_then(ReviewList::begin_rule)
+                else {
+                    return Task::none();
+                };
+                let generation = self.review_list_generation;
+                let Some(access) = self.review_access() else {
+                    return Task::none();
+                };
+                Task::perform(
+                    tokio::task::spawn_blocking(move || {
+                        access.create_rule_for_sender(
+                            &request.sender,
+                            &request.kind,
+                            request.tax_context,
+                            request.tags,
+                            &request.pattern,
+                        )
+                    }),
+                    move |joined| {
+                        let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                        Message::ReviewList(ReviewListMessage::RuleCreated { generation, result })
+                    },
+                )
+            }
+            ReviewListMessage::RuleCreated { generation, result } => {
+                if generation != self.review_list_generation {
+                    return Task::none();
+                }
+                let Some(view) = self.review_list.as_mut() else {
+                    return Task::none();
+                };
+                match result {
+                    Ok(_) => view.rule_created(),
+                    Err(detail) => view.failed(detail),
+                }
+                Task::none()
+            }
+        }
+    }
+
+    fn review_access(&mut self) -> Option<ReviewAccess> {
+        let access = self.filing.as_ref().and_then(FilingModule::review_access);
+        if access.is_none() {
+            if let Some(view) = self.review_list.as_mut() {
+                view.failed(INDEX_NOT_OPEN.to_owned());
+            }
+        }
+        access
+    }
+
+    fn open_review_list(&mut self) -> Task<Message> {
+        if self.review_list.is_some() || self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        self.context_menu = None;
+        self.review_list_generation = self.review_list_generation.wrapping_add(1);
+        self.review_list = Some(ReviewList::new());
+        self.run_review_load()
+    }
+
+    /// Escape leaves the form first, the list second.
+    fn close_review_list(&mut self) -> Task<Message> {
+        match self.review_list.as_mut() {
+            Some(view) if view.is_editing() => {
+                view.cancel_edit();
+                release_focus()
+            }
+            Some(_) => {
+                self.review_list = None;
+                release_focus()
+            }
+            None => Task::none(),
+        }
+    }
+
+    /// Loads on a blocking thread: the load plans every open entry again, and
+    /// the index is shared with the intake.
+    fn run_review_load(&mut self) -> Task<Message> {
+        let generation = self.review_list_generation;
+        let Some(access) = self.review_access() else {
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.load()),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                Message::ReviewList(ReviewListMessage::Loaded { generation, result })
+            },
+        )
+    }
+
+    fn update_saved_queries(&mut self, message: SavedQueriesMessage) -> Task<Message> {
+        match message {
+            SavedQueriesMessage::Open => self.open_saved_queries(),
+            SavedQueriesMessage::Close => self.close_saved_queries(),
+            SavedQueriesMessage::Loaded { generation, result } => {
+                if generation == self.saved_queries_generation {
+                    if let Some(view) = self.saved_queries.as_mut() {
+                        match result {
+                            Ok(rows) => view.loaded(rows),
+                            Err(detail) => view.failed(detail),
+                        }
+                    }
+                }
+                Task::none()
+            }
+            SavedQueriesMessage::Move(delta) => {
+                if let Some(view) = self.saved_queries.as_mut() {
+                    view.move_cursor(delta);
+                }
+                Task::none()
+            }
+            SavedQueriesMessage::Select(index) => {
+                if let Some(view) = self.saved_queries.as_mut() {
+                    view.select(index);
+                }
+                Task::none()
+            }
+            SavedQueriesMessage::New => {
+                if let Some(view) = self.saved_queries.as_mut() {
+                    view.start_new();
+                }
+                Task::none()
+            }
+            SavedQueriesMessage::FieldChanged(field, text) => {
+                if let Some(view) = self.saved_queries.as_mut() {
+                    view.set_text(field, text);
+                }
+                Task::none()
+            }
+            SavedQueriesMessage::TaxContextChosen(choice) => {
+                if let Some(view) = self.saved_queries.as_mut() {
+                    view.set_tax_context(choice);
+                }
+                Task::none()
+            }
+            SavedQueriesMessage::FocusField { backwards } => {
+                if backwards {
+                    operation::focus_previous()
+                } else {
+                    operation::focus_next()
+                }
+            }
+            SavedQueriesMessage::Save => {
+                let Some(request) = self
+                    .saved_queries
+                    .as_mut()
+                    .and_then(SavedQueries::begin_save)
+                else {
+                    return Task::none();
+                };
+                let generation = self.saved_queries_generation;
+                let Some(access) = self.query_access() else {
+                    return Task::none();
+                };
+                Task::perform(
+                    tokio::task::spawn_blocking(move || {
+                        access.save(request.id, &request.name, &request.spec)
+                    }),
+                    move |joined| {
+                        let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                        Message::SavedQueries(SavedQueriesMessage::Saved { generation, result })
+                    },
+                )
+            }
+            SavedQueriesMessage::Saved { generation, result } => {
+                if generation != self.saved_queries_generation {
+                    return Task::none();
+                }
+                let Some(view) = self.saved_queries.as_mut() else {
+                    return Task::none();
+                };
+                match result {
+                    Ok(id) => view.saved(id),
+                    Err(detail) => {
+                        view.failed(detail);
+                        return Task::none();
+                    }
+                }
+                self.run_query_load()
+            }
+            SavedQueriesMessage::AskDelete => {
+                if let Some(view) = self.saved_queries.as_mut() {
+                    view.ask_delete();
+                }
+                Task::none()
+            }
+            SavedQueriesMessage::CancelStep => {
+                if let Some(view) = self.saved_queries.as_mut() {
+                    view.cancel_step();
+                }
+                Task::none()
+            }
+            SavedQueriesMessage::ConfirmDelete => {
+                let Some(id) = self
+                    .saved_queries
+                    .as_mut()
+                    .and_then(SavedQueries::begin_delete)
+                else {
+                    return Task::none();
+                };
+                let generation = self.saved_queries_generation;
+                let Some(access) = self.query_access() else {
+                    return Task::none();
+                };
+                Task::perform(
+                    tokio::task::spawn_blocking(move || access.delete(id).map(|_| id)),
+                    move |joined| {
+                        let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                        Message::SavedQueries(SavedQueriesMessage::Deleted { generation, result })
+                    },
+                )
+            }
+            SavedQueriesMessage::Deleted { generation, result } => {
+                if generation != self.saved_queries_generation {
+                    return Task::none();
+                }
+                let Some(view) = self.saved_queries.as_mut() else {
+                    return Task::none();
+                };
+                match result {
+                    Ok(id) => view.deleted(id),
+                    Err(detail) => {
+                        view.failed(detail);
+                        return Task::none();
+                    }
+                }
+                self.run_query_load()
+            }
+            SavedQueriesMessage::Run => {
+                let Some(view) = self.saved_queries.as_mut() else {
+                    return Task::none();
+                };
+                // Enter answers the step that is up, not the form behind it.
+                if view.export_step().is_some() {
+                    return self.update_saved_queries(SavedQueriesMessage::Export);
+                }
+                if view.is_confirming_delete() {
+                    return Task::none();
+                }
+                let Some(spec) = view.begin_run() else {
+                    return Task::none();
+                };
+                let generation = self.saved_queries_generation;
+                let Some(access) = self.query_access() else {
+                    return Task::none();
+                };
+                Task::perform(
+                    tokio::task::spawn_blocking(move || access.run(&spec)),
+                    move |joined| {
+                        let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                        Message::SavedQueries(SavedQueriesMessage::Ran { generation, result })
+                    },
+                )
+            }
+            SavedQueriesMessage::Ran { generation, result } => {
+                if generation == self.saved_queries_generation {
+                    if let Some(view) = self.saved_queries.as_mut() {
+                        match result {
+                            Ok(hits) => view.ran(hits),
+                            Err(detail) => view.failed(detail),
+                        }
+                    }
+                }
+                Task::none()
+            }
+            SavedQueriesMessage::ToggleHits => {
+                if let Some(view) = self.saved_queries.as_mut() {
+                    view.toggle_hits();
+                }
+                Task::none()
+            }
+            SavedQueriesMessage::StartExport => {
+                // The other panel's folder is where files are usually wanted.
+                let folder = self.panel(self.active_panel.other()).path.clone();
+                if let Some(view) = self.saved_queries.as_mut() {
+                    view.start_export(folder);
+                }
+                Task::none()
+            }
+            SavedQueriesMessage::PickFolder => {
+                let start_in = self
+                    .saved_queries
+                    .as_ref()
+                    .and_then(|view| view.export_step())
+                    .map_or_else(
+                        || self.active_panel().path.clone(),
+                        |step| step.folder.clone(),
+                    );
+                (self.pick_folder)(&start_in)
+                    .map(|folder| Message::SavedQueries(SavedQueriesMessage::FolderPicked(folder)))
+            }
+            SavedQueriesMessage::FolderPicked(folder) => {
+                if let (Some(view), Some(picked)) = (self.saved_queries.as_mut(), folder) {
+                    view.set_export_folder(&picked);
+                }
+                Task::none()
+            }
+            SavedQueriesMessage::Export => {
+                let Some(request) = self
+                    .saved_queries
+                    .as_mut()
+                    .and_then(SavedQueries::begin_export)
+                else {
+                    return Task::none();
+                };
+                let generation = self.saved_queries_generation;
+                let now = chrono::Local::now().naive_local();
+                Task::perform(
+                    tokio::task::spawn_blocking(move || {
+                        query_work::export(&request.hits, &request.folder, now)
+                    }),
+                    move |joined| {
+                        let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                        Message::SavedQueries(SavedQueriesMessage::Exported { generation, result })
+                    },
+                )
+            }
+            SavedQueriesMessage::Exported { generation, result } => {
+                if generation == self.saved_queries_generation {
+                    if let Some(view) = self.saved_queries.as_mut() {
+                        match result {
+                            Ok(summary) => view.export_done(summary),
+                            Err(detail) => view.failed(detail),
+                        }
+                    }
+                }
+                Task::none()
+            }
+        }
+    }
+
+    fn query_access(&mut self) -> Option<QueryAccess> {
+        let access = self.filing.as_ref().and_then(FilingModule::query_access);
+        if access.is_none() {
+            if let Some(view) = self.saved_queries.as_mut() {
+                view.failed(INDEX_NOT_OPEN.to_owned());
+            }
+        }
+        access
+    }
+
+    fn open_saved_queries(&mut self) -> Task<Message> {
+        if self.saved_queries.is_some() || self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        self.context_menu = None;
+        self.saved_queries_generation = self.saved_queries_generation.wrapping_add(1);
+        self.saved_queries = Some(SavedQueries::new());
+        self.run_query_load()
+    }
+
+    /// Escape backs out of the step that is up first, then leaves the page.
+    fn close_saved_queries(&mut self) -> Task<Message> {
+        let Some(view) = self.saved_queries.as_mut() else {
+            return Task::none();
+        };
+        if view.cancel_step() {
+            return Task::none();
+        }
+        self.saved_queries = None;
+        release_focus()
+    }
+
+    fn run_query_load(&mut self) -> Task<Message> {
+        let generation = self.saved_queries_generation;
+        let Some(access) = self.query_access() else {
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.load()),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                Message::SavedQueries(SavedQueriesMessage::Loaded { generation, result })
+            },
+        )
+    }
+
+    /// The Hermes card that is up, if any.
+    fn open_hermes_page(&self) -> Option<HermesPage> {
+        if self.filing_status.page_open() {
+            Some(HermesPage::Inspection)
+        } else if self.review_list.is_some() {
+            Some(HermesPage::Review)
+        } else if self.saved_queries.is_some() {
+            Some(HermesPage::SavedQueries)
+        } else if self.rule_suggestions.is_some() {
+            Some(HermesPage::RuleSuggestions)
+        } else if self.reorganisation.is_some() {
+            Some(HermesPage::Reorganisation)
+        } else {
+            None
+        }
+    }
+
+    /// A click in the sidebar: the card that is up closes without its Escape
+    /// steps, the chosen page opens. Nothing happens when it is the open one,
+    /// or when no Hermes card is up.
+    fn go_to_hermes_page(&mut self, page: HermesPage) -> Task<Message> {
+        match self.open_hermes_page() {
+            None => return Task::none(),
+            Some(open) if open == page => return Task::none(),
+            Some(_) => {}
+        }
+        self.filing_status.close_page();
+        self.rule_suggestions = None;
+        self.review_list = None;
+        self.saved_queries = None;
+        self.reorganisation = None;
+        let open = match page {
+            HermesPage::Inspection => self.open_filing_status(),
+            HermesPage::Review => self.open_review_list(),
+            HermesPage::SavedQueries => self.open_saved_queries(),
+            HermesPage::RuleSuggestions => self.open_rule_suggestions(),
+            HermesPage::Reorganisation => self.open_reorganisation(),
+        };
+        Task::batch([release_focus(), open])
+    }
+
+    /// The counts the sidebar shows, from what the app already holds.
+    fn hermes_badges(&self) -> Badges {
+        let figures = self
+            .filing_status
+            .index_figures()
+            .and_then(|figures| figures.as_ref().ok())
+            .and_then(|figures| usize::try_from(figures.statistics.open_reviews).ok());
+        Badges {
+            review: self
+                .review_list
+                .as_ref()
+                .and_then(ReviewList::open_count)
+                .or(figures),
+            rule_suggestions: self
+                .rule_suggestions
+                .as_ref()
+                .filter(|view| !view.is_busy())
+                .map(|view| view.rows().len()),
+        }
     }
 
     fn update_reorganisation(&mut self, message: ReorganisationPlanMessage) -> Task<Message> {
@@ -6567,6 +7260,10 @@ impl App {
             theme_fetch_generation: 0,
             rule_suggestions: None,
             rule_suggestions_generation: 0,
+            review_list: None,
+            review_list_generation: 0,
+            saved_queries: None,
+            saved_queries_generation: 0,
             reorganisation: None,
             reorganisation_generation: 0,
             plans_filed_for: 0,
@@ -6813,6 +7510,28 @@ impl App {
     pub fn with_rule_suggestions(view: RuleSuggestions) -> Self {
         let mut app = Self::with_fixed_panels();
         app.rule_suggestions = Some(view);
+        app
+    }
+
+    pub fn review_list_for_test(&self) -> Option<&ReviewList> {
+        self.review_list.as_ref()
+    }
+
+    /// Fixed panels with the review list up, in the state of `view`.
+    pub fn with_review_list(view: ReviewList) -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.review_list = Some(view);
+        app
+    }
+
+    pub fn saved_queries_for_test(&self) -> Option<&SavedQueries> {
+        self.saved_queries.as_ref()
+    }
+
+    /// Fixed panels with the saved queries page up, in the state of `view`.
+    pub fn with_saved_queries(view: SavedQueries) -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.saved_queries = Some(view);
         app
     }
 

@@ -6,9 +6,9 @@ use iced::widget::text::Wrapping;
 use iced::widget::{column, text};
 use iced::{Element, Size};
 
-use super::filing::{error_line, paragraph};
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
+use super::kit::{self, error_line, paragraph, Tone};
 use super::theme::{font_size, spacing};
 use crate::app::fill_template;
 use crate::i18n::{Language, Msg};
@@ -101,16 +101,16 @@ pub fn view<'a>(
         palette,
     )
     .buttons(vec![
-        frame::action(
+        kit::button(
             lang.text(Msg::DialogCancel),
             cancel,
-            focus == CANCEL_FOCUS,
+            Tone::filled_if(focus == CANCEL_FOCUS),
             palette,
         ),
-        frame::action(
+        kit::button(
             lang.text(Msg::OcrModelsDownload),
             download,
-            focus == DOWNLOAD_FOCUS,
+            Tone::filled_if(focus == DOWNLOAD_FOCUS),
             palette,
         ),
     ])

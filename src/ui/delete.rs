@@ -10,12 +10,13 @@ use iced::{Element, Size};
 
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
+use super::kit::{self, Tone};
 use super::theme::{font_size, spacing};
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::palette::Palette;
 
-const SIZE: DialogSize = DialogSize::Small;
+const SIZE: DialogSize = DialogSize::Medium;
 
 /// The buttons from left to right: cancel is `0`, confirm is `1`, rightmost.
 pub const CANCEL_FOCUS: usize = 0;
@@ -60,7 +61,7 @@ pub fn view<'a>(
     for line in subject.lines() {
         content = content.push(
             text(format::ellipsize_middle(line, line_chars))
-                .size(font_size::STATUS)
+                .size(font_size::BODY)
                 .color(palette.text)
                 .wrapping(Wrapping::None),
         );
@@ -68,7 +69,7 @@ pub fn view<'a>(
     if permanent {
         content = content.push(
             text(lang.text(Msg::DeleteWarningPermanent))
-                .size(font_size::STATUS)
+                .size(font_size::BODY)
                 .color(palette.error),
         );
     }
@@ -79,18 +80,36 @@ pub fn view<'a>(
     }
     frame
         .buttons(vec![
-            frame::action(
-                lang.text(Msg::DialogCancel),
-                Some(Message::DeleteCancel),
-                focus == CANCEL_FOCUS,
-                palette,
-            ),
-            frame::action(
-                confirm_label,
-                Some(Message::DeleteConfirm),
-                focus == CONFIRM_FOCUS,
-                palette,
-            ),
+            if focus == CANCEL_FOCUS && !permanent {
+                kit::enter_button(
+                    lang.text(Msg::DialogCancel),
+                    Some(Message::DeleteCancel),
+                    Tone::Primary,
+                    palette,
+                )
+            } else {
+                kit::button(
+                    lang.text(Msg::DialogCancel),
+                    Some(Message::DeleteCancel),
+                    Tone::filled_if(focus == CANCEL_FOCUS),
+                    palette,
+                )
+            },
+            if focus == CONFIRM_FOCUS && !permanent {
+                kit::enter_button(
+                    confirm_label,
+                    Some(Message::DeleteConfirm),
+                    Tone::Danger,
+                    palette,
+                )
+            } else {
+                kit::button(
+                    confirm_label,
+                    Some(Message::DeleteConfirm),
+                    Tone::Danger,
+                    palette,
+                )
+            },
         ])
         .on_close(Message::DeleteCancel)
         // The permanent dialog starts on Cancel, so Enter does not confirm.

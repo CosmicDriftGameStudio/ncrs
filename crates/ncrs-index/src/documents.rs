@@ -12,7 +12,7 @@ use crate::model::{
 };
 use crate::names::{name_id, optional_name_id, NameTable};
 
-const DOCUMENT_COLUMNS: &str = "SELECT d.id, d.hash, d.path, d.source, d.received_at, d.status,
+pub const DOCUMENT_COLUMNS: &str = "SELECT d.id, d.hash, d.path, d.source, d.received_at, d.status,
         s.name, k.name, d.tax_context, d.document_date, d.document_number,
         d.amount_minor, d.currency, d.file_size, d.file_mtime, d.missing_since
     FROM document d
@@ -20,7 +20,7 @@ const DOCUMENT_COLUMNS: &str = "SELECT d.id, d.hash, d.path, d.source, d.receive
     LEFT JOIN document_kind k ON k.id = d.kind_id";
 
 /// A row as stored, before its text columns are parsed into the model types.
-struct DocumentRow {
+pub struct DocumentRow {
     id: i64,
     hash: Vec<u8>,
     path: String,
@@ -40,7 +40,11 @@ struct DocumentRow {
 }
 
 impl DocumentRow {
-    fn read(row: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
+    pub fn id(&self) -> i64 {
+        self.id
+    }
+
+    pub fn read(row: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
         Ok(Self {
             id: row.get(0)?,
             hash: row.get(1)?,
@@ -61,7 +65,7 @@ impl DocumentRow {
         })
     }
 
-    fn into_document(self, tags: BTreeSet<String>) -> Result<Document, IndexError> {
+    pub fn into_document(self, tags: BTreeSet<String>) -> Result<Document, IndexError> {
         let amount = match (self.amount_minor, self.currency) {
             (Some(minor_units), Some(currency)) => Some(Amount {
                 minor_units,
@@ -293,7 +297,7 @@ impl Index {
         row.into_document(tags).map(Some)
     }
 
-    fn document_tags(&self, id: i64) -> Result<BTreeSet<String>, IndexError> {
+    pub fn document_tags(&self, id: i64) -> Result<BTreeSet<String>, IndexError> {
         let mut statement = self.connection().prepare(
             "SELECT t.name FROM document_tag dt JOIN tag t ON t.id = dt.tag_id
              WHERE dt.document_id = ?1",

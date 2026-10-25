@@ -5,13 +5,13 @@
 use std::ops::Range;
 
 use iced::widget::text::{Span, Wrapping};
-use iced::widget::{button, column, container, rich_text, span, text, text_input, Column};
-use iced::{Color, Element, Length, Size};
+use iced::widget::{column, container, rich_text, span, text, Column};
+use iced::{Color, Element, Size};
 
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::layout::ROW_HEIGHT;
-use super::theme::{self, font_size, spacing};
+use super::theme::{font_size, spacing};
 use crate::i18n::Language;
 use crate::messages::Message;
 use crate::palette::Palette;
@@ -69,41 +69,6 @@ pub fn frame<'a>(
 /// The characters one row of the list holds, less `reserved` pixels.
 pub fn row_chars(window: Size, reserved: f32) -> usize {
     frame::content_chars(SIZE, window, reserved + 2.0 * spacing::CELL_PADDING_X)
-}
-
-pub fn query_field<'a>(
-    placeholder: &str,
-    query: &str,
-    id: &'static str,
-    on_input: impl Fn(String) -> Message + 'a,
-    on_submit: Message,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    text_input(placeholder, query)
-        .id(id)
-        .on_input(on_input)
-        .on_submit(on_submit)
-        .size(font_size::ROW)
-        .padding([3.0, 6.0])
-        .style(theme::search_input(palette))
-        .width(Length::Fill)
-        .into()
-}
-
-/// One row of the list; a click sends `on_press`.
-pub fn list_row<'a>(
-    content: Element<'a, Message>,
-    on_press: Message,
-    selected: bool,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    button(content)
-        .on_press(on_press)
-        .width(Length::Fill)
-        .padding([0.0, spacing::CELL_PADDING_X])
-        .height(ROW_HEIGHT)
-        .style(theme::row(palette, false, selected, true))
-        .into()
 }
 
 /// `text` cut at the matched ranges, which are drawn in the accent color. A
