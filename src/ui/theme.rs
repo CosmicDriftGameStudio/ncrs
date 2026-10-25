@@ -55,6 +55,8 @@ pub mod size {
     pub const COLUMN_HEADER: f32 = 22.0;
     pub const TAB_WIDTH: f32 = 240.0;
     pub const DOT: f32 = 6.0;
+    /// The side of a status or folder icon: the line height of a panel row's text.
+    pub const ICON: f32 = 14.0;
 }
 
 pub mod radius {

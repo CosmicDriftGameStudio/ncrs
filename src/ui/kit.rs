@@ -6,11 +6,15 @@
 use iced::mouse::ScrollDelta;
 use iced::widget::button as widget_button;
 use iced::widget::checkbox as widget_checkbox;
+use iced::widget::svg::{self, Svg};
 use iced::widget::text::{IntoFragment, LineHeight, Shaping, Wrapping};
 use iced::widget::{
     column, container, mouse_area, row, rule, text, text_input, Column, Row, Space,
 };
-use iced::{alignment, Background, Color, Element, Font, Length, Padding, Pixels, Theme};
+use iced::{
+    alignment, Background, Color, Element, Font, Length, Padding, Pixels, Radians, Rotation, Theme,
+};
+use std::sync::LazyLock;
 
 use super::format;
 use super::frame::{AVERAGE_GLYPH_WIDTH, SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
@@ -49,6 +53,68 @@ impl Tone {
             Self::Secondary
         }
     }
+}
+
+/// The Lucide icons the main window draws (assets/icons).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Icon {
+    Clock,
+    Loader,
+    CircleCheck,
+    CircleHelp,
+    TriangleAlert,
+    Ban,
+    ChevronRight,
+}
+
+impl Icon {
+    pub const ALL: [Self; 7] = [
+        Self::Clock,
+        Self::Loader,
+        Self::CircleCheck,
+        Self::CircleHelp,
+        Self::TriangleAlert,
+        Self::Ban,
+        Self::ChevronRight,
+    ];
+
+    const fn bytes(self) -> &'static [u8] {
+        match self {
+            Self::Clock => include_bytes!("../../assets/icons/clock.svg"),
+            Self::Loader => include_bytes!("../../assets/icons/loader-circle.svg"),
+            Self::CircleCheck => include_bytes!("../../assets/icons/circle-check.svg"),
+            Self::CircleHelp => include_bytes!("../../assets/icons/circle-question-mark.svg"),
+            Self::TriangleAlert => include_bytes!("../../assets/icons/triangle-alert.svg"),
+            Self::Ban => include_bytes!("../../assets/icons/ban.svg"),
+            Self::ChevronRight => include_bytes!("../../assets/icons/chevron-right.svg"),
+        }
+    }
+
+    /// Built once: the handle's id is what the renderer caches the parsed
+    /// vector by, so a new handle per frame would parse the file every frame.
+    fn handle(self) -> svg::Handle {
+        static HANDLES: LazyLock<[svg::Handle; 7]> =
+            LazyLock::new(|| Icon::ALL.map(|icon| svg::Handle::from_memory(icon.bytes())));
+        HANDLES
+            .get(self as usize)
+            .cloned()
+            .unwrap_or_else(|| svg::Handle::from_memory(self.bytes()))
+    }
+}
+
+/// An icon in `color`, [`size::ICON`] square.
+pub fn icon<'a>(icon: Icon, color: Color) -> Element<'a, Message> {
+    icon_rotated(icon, color, 0.0)
+}
+
+/// As [`icon`], turned by `radians` around its center (the spinner).
+pub fn icon_rotated<'a>(icon: Icon, color: Color, radians: f32) -> Element<'a, Message> {
+    Svg::new(icon.handle())
+        .width(size::ICON)
+        .height(size::ICON)
+        .rotation(Rotation::Floating(Radians(radians)))
+        .style(move |_: &Theme, _| svg::Style { color: Some(color) })
+        .into()
 }
 
 /// A key as a small outlined cap.
@@ -809,5 +875,22 @@ mod tests {
         assert!((end_top + end_thumb - track).abs() < 0.01);
         let (middle, _) = thumb_extent(100, 10, 45, track);
         assert!(middle > 0.0 && middle < track);
+    }
+
+    #[test]
+    fn every_icon_is_a_24_unit_svg() {
+        for icon in Icon::ALL {
+            let source = std::str::from_utf8(icon.bytes()).unwrap_or_default();
+            assert!(source.trim_start().starts_with("<svg"), "{icon:?}");
+            assert!(source.contains("viewBox=\"0 0 24 24\""), "{icon:?}");
+        }
+    }
+
+    #[test]
+    fn every_icon_has_its_own_cached_handle() {
+        for (index, icon) in Icon::ALL.into_iter().enumerate() {
+            assert_eq!(icon as usize, index);
+            assert_eq!(icon.handle().id(), icon.handle().id());
+        }
     }
 }

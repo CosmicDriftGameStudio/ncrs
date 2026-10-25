@@ -17,3 +17,5 @@ done
 iconutil -c icns ncrs.iconset -o ncrs.icns
 rm -rf ncrs.iconset
 ```
+
+`icons/` holds the Lucide icons the main window draws, unchanged; their license (ISC, with the MIT part for the Feather icons they derive from) is `icons/LICENSE`.
