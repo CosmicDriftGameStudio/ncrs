@@ -198,7 +198,7 @@ impl PlanAccess {
         else {
             return Ok(None);
         };
-        execute::undo(index, batch)
+        execute::undo(index, batch, &self.archive_roots)
             .map(Some)
             .map_err(|err| err.to_string())
     }

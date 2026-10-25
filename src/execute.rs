@@ -15,7 +15,7 @@ use ncrs_index::{
     BatchId, BatchKind, ContentHash, DocumentId, DocumentStatus, FileStamp, Index, IndexError,
     JournalItem, JournalState, NewJournalItem,
 };
-use ncrs_intake::{hash_path, stays_below, IntakeError};
+use ncrs_intake::{has_symlink_ancestor_under, hash_path, stays_below, IntakeError};
 
 use crate::fs::transfer::{
     partial_prefix, transfer_to, Counting, Move, OnConflict, Progress, Source,
@@ -37,6 +37,8 @@ pub struct ExecutionItem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SkipReason {
     OutsideLocation,
+    /// A folder between the root and the path is a link that may lead out.
+    LeavesLocation,
     SourceChanged,
     SourceMissing,
     TargetExists,
@@ -51,6 +53,7 @@ impl SkipReason {
     pub fn text(&self) -> String {
         match self {
             Self::OutsideLocation => "outside_location".to_owned(),
+            Self::LeavesLocation => "leaves_location".to_owned(),
             Self::SourceChanged => "source_changed".to_owned(),
             Self::SourceMissing => "source_missing".to_owned(),
             Self::TargetExists => "target_exists".to_owned(),
@@ -218,6 +221,11 @@ fn run_item<S: Source>(
 ) -> Result<ItemOutcome, ExecuteError> {
     if !is_below(root, &item.to) {
         return skip(index, batch, item, SkipReason::OutsideLocation);
+    }
+    match has_symlink_ancestor_under(root, &item.to) {
+        Ok(false) => {}
+        Ok(true) => return skip(index, batch, item, SkipReason::LeavesLocation),
+        Err(err) => return skip(index, batch, item, SkipReason::Failed(err.to_string())),
     }
     match hash_path(&item.from) {
         Ok(hash) if hash == item.expected_hash => {}
@@ -420,16 +428,26 @@ fn settle(index: &Index, batch: BatchId, item: &JournalItem) -> Result<ItemOutco
 pub fn reconcile(index: &Index) -> Result<usize, ExecuteError> {
     let pending = index.pending_journal_items()?;
     let mut batches = Vec::new();
+    let mut open_batches = Vec::new();
+    let mut settled = 0;
     for (batch, item) in &pending {
-        settle(index, *batch, item)?;
         if !batches.contains(batch) {
             batches.push(*batch);
         }
+        // An item that cannot be settled now stays `pending`, so the next open
+        // looks at the disk again; the others are not held up by it.
+        match settle(index, *batch, item) {
+            Ok(_) => settled += 1,
+            Err(_unsettled) => open_batches.push(*batch),
+        }
     }
-    for batch in batches {
+    for batch in batches
+        .into_iter()
+        .filter(|batch| !open_batches.contains(batch))
+    {
         index.finish_batch(batch)?;
     }
-    Ok(pending.len())
+    Ok(settled)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -438,11 +456,12 @@ pub struct UndoReport {
     pub left: usize,
 }
 
-/// Moves the batch back, last item first. An item goes back only when the
+/// Moves the batch back, last item first. `roots` are the locations the batch
+/// may have worked in. An item goes back only when the
 /// file at its target still has the planned content and its old place is free;
 /// the rest is left and journaled as `undo_skipped`. Then the folders the run
 /// created are removed if they are empty, deepest first.
-pub fn undo(index: &Index, batch: BatchId) -> Result<UndoReport, ExecuteError> {
+pub fn undo(index: &Index, batch: BatchId, roots: &[PathBuf]) -> Result<UndoReport, ExecuteError> {
     let mut report = UndoReport::default();
     let items = index.journal_items(batch)?;
     for item in items
@@ -450,7 +469,7 @@ pub fn undo(index: &Index, batch: BatchId) -> Result<UndoReport, ExecuteError> {
         .rev()
         .filter(|item| item.state == JournalState::Moved)
     {
-        match undo_item(index, item)? {
+        match undo_item(index, item, roots)? {
             None => {
                 index.set_journal_state(batch, item.seq, JournalState::Undone, None)?;
                 report.undone += 1;
@@ -476,7 +495,20 @@ pub fn undo(index: &Index, batch: BatchId) -> Result<UndoReport, ExecuteError> {
     Ok(report)
 }
 
-fn undo_item(index: &Index, item: &JournalItem) -> Result<Option<SkipReason>, ExecuteError> {
+fn undo_item(
+    index: &Index,
+    item: &JournalItem,
+    roots: &[PathBuf],
+) -> Result<Option<SkipReason>, ExecuteError> {
+    // The folder the file was moved into is the location it belongs to; a
+    // link between that root and the old place could lead out of it.
+    if let Some(root) = roots.iter().find(|root| item.to.starts_with(root)) {
+        match has_symlink_ancestor_under(root, &item.from) {
+            Ok(false) => {}
+            Ok(true) => return Ok(Some(SkipReason::LeavesLocation)),
+            Err(err) => return Ok(Some(SkipReason::Failed(err.to_string()))),
+        }
+    }
     match hash_path(&item.to) {
         Ok(hash) if hash == item.hash => {}
         Ok(_) => return Ok(Some(SkipReason::SourceChanged)),
@@ -729,7 +761,12 @@ mod tests {
         let second = setup.document("b/2.pdf", "two");
         let report = setup.run(&[first.clone(), second.clone()]);
 
-        let undone = undo(&setup.index, report.batch).unwrap();
+        let undone = undo(
+            &setup.index,
+            report.batch,
+            std::slice::from_ref(&setup.root),
+        )
+        .unwrap();
 
         assert_eq!(undone, UndoReport { undone: 2, left: 0 });
         assert_eq!(fs::read_to_string(&first.from).unwrap(), "one");
@@ -764,7 +801,12 @@ mod tests {
         fs::write(&blocked.from, "new file at the old place").unwrap();
         setup.write("moved/keep.txt", "the user's own file");
 
-        let undone = undo(&setup.index, report.batch).unwrap();
+        let undone = undo(
+            &setup.index,
+            report.batch,
+            std::slice::from_ref(&setup.root),
+        )
+        .unwrap();
 
         assert_eq!(undone, UndoReport { undone: 1, left: 2 });
         assert_eq!(fs::read_to_string(&edited.to).unwrap(), "edited later");
@@ -870,5 +912,75 @@ mod tests {
         assert_eq!(state_of(&setup, batch).state, JournalState::Skipped);
         assert!(item.from.exists());
         assert_eq!(fs::read_to_string(&item.to).unwrap(), "something else");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_folder_that_leads_out_of_the_location_is_not_followed() {
+        let setup = Setup::new();
+        let outside = setup._dir.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, setup.root.join("link")).unwrap();
+        let item = ExecutionItem {
+            to: setup.root.join("link/deeper/a.pdf"),
+            ..setup.document("a.pdf", "alpha")
+        };
+
+        let report = setup.run(std::slice::from_ref(&item));
+
+        assert_eq!(
+            report.items[0].outcome,
+            ItemOutcome::Skipped(SkipReason::LeavesLocation)
+        );
+        assert!(item.from.exists());
+        assert_eq!(fs::read_dir(&outside).unwrap().count(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn undo_does_not_move_a_file_back_through_a_link_folder() {
+        let setup = Setup::new();
+        let item = setup.document("a/a.pdf", "alpha");
+        let report = setup.run(std::slice::from_ref(&item));
+        let outside = setup._dir.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::remove_dir(item.from.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(&outside, item.from.parent().unwrap()).unwrap();
+
+        let undone = undo(
+            &setup.index,
+            report.batch,
+            std::slice::from_ref(&setup.root),
+        )
+        .unwrap();
+
+        assert_eq!(undone, UndoReport { undone: 0, left: 1 });
+        assert!(item.to.exists());
+        assert_eq!(fs::read_dir(&outside).unwrap().count(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reconcile_goes_on_after_an_item_it_cannot_settle() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let setup = Setup::new();
+        let stuck = setup.document("locked/a.pdf", "alpha");
+        let (stuck_batch, _) = pending(&setup, &stuck);
+        fs::create_dir_all(stuck.to.parent().unwrap()).unwrap();
+        fs::copy(&stuck.from, &stuck.to).unwrap();
+        let locked = stuck.from.parent().unwrap().to_path_buf();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o555)).unwrap();
+        let fine = setup.document("b.pdf", "beta");
+        let (fine_batch, _) = pending(&setup, &fine);
+        fs::create_dir_all(fine.to.parent().unwrap()).unwrap();
+        fs::rename(&fine.from, &fine.to).unwrap();
+
+        let settled = reconcile(&setup.index);
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert_eq!(settled.unwrap(), 1);
+        assert_eq!(state_of(&setup, fine_batch).state, JournalState::Moved);
+        assert_eq!(state_of(&setup, stuck_batch).state, JournalState::Pending);
     }
 }

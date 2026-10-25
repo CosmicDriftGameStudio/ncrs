@@ -55,7 +55,7 @@ pub use scan::{
     scan_location, settle_location, walk_location, Found, ScanReport, MAX_REPORTED_ERRORS,
 };
 pub use stability::{StabilityTracker, STABLE_AFTER};
-pub use take_in::{hash_path, take_in, Outcome};
+pub use take_in::{has_symlink_ancestor_under, hash_path, take_in, Outcome};
 pub use text::{
     pdfium_library_dir, Extracted, ImageTextSource, ImageTextWithFallback, PageImage, PdfText,
     PdfUnavailable, TextChain, TextError, TextSource,

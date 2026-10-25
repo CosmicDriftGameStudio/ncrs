@@ -10,7 +10,7 @@ use ncrs_index::{
 };
 use sha2::{Digest as _, Sha256};
 
-use crate::classify::{classify, relative_to_root, Skip};
+use crate::classify::{classify, Skip};
 use crate::error::IntakeError;
 use crate::location::{Location, LocationMode};
 use crate::stability::StabilityTracker;
@@ -159,19 +159,33 @@ pub fn path_exists(path: &Path) -> Result<bool, IntakeError> {
 /// the location, however the file itself looks. The file's own name is checked
 /// by the caller.
 fn has_symlink_ancestor(location: &Location, path: &Path) -> Result<bool, IntakeError> {
-    let Some(relative) = relative_to_root(location, path) else {
+    has_symlink_ancestor_under(&location.path, path)
+}
+
+/// `has_symlink_ancestor` for a root and a path that may not exist yet: a
+/// folder that is not there cannot be a link, and nothing below it exists.
+pub fn has_symlink_ancestor_under(root: &Path, path: &Path) -> Result<bool, IntakeError> {
+    let Ok(relative) = path.strip_prefix(root) else {
         return Ok(false);
     };
-    let mut current = location.path.clone();
+    if !relative
+        .components()
+        .all(|part| matches!(part, std::path::Component::Normal(_)))
+    {
+        return Ok(false);
+    }
+    let mut current = root.to_path_buf();
     let mut parts = relative.components().peekable();
     while let Some(part) = parts.next() {
         if parts.peek().is_none() {
             break;
         }
         current.push(part);
-        let metadata = fs::symlink_metadata(&current).map_err(IntakeError::io(&current))?;
-        if metadata.file_type().is_symlink() {
-            return Ok(true);
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => return Ok(true),
+            Ok(_) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(err) => return Err(IntakeError::io(&current)(err)),
         }
     }
     Ok(false)
