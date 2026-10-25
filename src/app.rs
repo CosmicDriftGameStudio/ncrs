@@ -3326,9 +3326,11 @@ impl App {
                 .is_some_and(|module| matches!(module.phase(), Phase::Ready));
             let page = filing_status_ui::view(
                 &self.filing_status,
-                self.filing.as_ref().map(FilingModule::load),
-                index_open,
-                self.pdf_library_missing.as_deref(),
+                filing_status_ui::Setting {
+                    load: self.filing.as_ref().map(FilingModule::load),
+                    index_open,
+                    pdf_library_missing: self.pdf_library_missing.as_deref(),
+                },
                 self.window_size,
                 self.hermes_badges(),
                 self.lang,
@@ -6873,7 +6875,8 @@ impl App {
             RunnerState::Off => return None,
             RunnerState::Paused => self.lang.text(Msg::TitleBarHermesPaused).to_owned(),
             RunnerState::Running | RunnerState::Idle => {
-                match self.filing_status.documents_per_minute() {
+                let busy = self.hermes_status().is_some_and(|status| status.is_busy());
+                match self.filing_status.documents_per_minute().filter(|_| busy) {
                     Some(rate) => fill_template(
                         self.lang.text(Msg::TitleBarHermesRate),
                         &[("{rate}", &rate.to_string())],
@@ -6883,6 +6886,11 @@ impl App {
             }
         };
         Some(text)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn hermes_chip_for_test(&self) -> Option<String> {
+        self.hermes_chip()
     }
 
     fn hermes_status(&self) -> Option<HermesStatus> {

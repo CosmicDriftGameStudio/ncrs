@@ -215,12 +215,12 @@ pub fn fit_middle(text: &str, width_px: f32, font_size: f32) -> String {
     };
     let tail_budget = tail_wanted.min(budget);
     let head_budget = budget - tail_budget;
-    let mut used = 0.0;
+    let mut head_used = 0.0;
     let head: String = text
         .chars()
         .take_while(|glyph| {
-            used += glyph_em(*glyph) * font_size;
-            used <= head_budget
+            head_used += glyph_em(*glyph) * font_size;
+            head_used <= head_budget
         })
         .collect();
     let mut used = 0.0;

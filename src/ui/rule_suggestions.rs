@@ -109,16 +109,16 @@ fn empty_text(busy: bool, counts: Option<HermesCounts>, lang: Language) -> Strin
             ("{share}", &MIN_SHARE_IN_FOLDER_PERCENT.to_string()),
         ],
     );
-    if let Some(counts) = counts {
+    if let Some(known) = counts {
         text.push(' ');
         text.push_str(&fill_template(
             lang.text(Msg::RuleSuggestionsEmptyCounts),
             &[
                 (
                     "{with_text}",
-                    &format::grouped(counts.archive_documents_with_text),
+                    &format::grouped(known.archive_documents_with_text),
                 ),
-                ("{total}", &format::grouped(counts.archive_documents)),
+                ("{total}", &format::grouped(known.archive_documents)),
             ],
         ));
     }

@@ -1358,9 +1358,9 @@
     },
     {
       "key": "title_bar.hermes_rate",
-      "context": "Chip in the title bar while the filing module (Hermes) is working: files per minute, measured over the last full minutes. Takes the number. Pressing it opens the Inspection.",
-      "en": "Hermes {rate}/min",
-      "de": "Hermes {rate}/Min."
+      "context": "Chip in the title bar while the filing module (Hermes) is working: documents processed per minute (filed or sent to review), measured over the last full minutes; only shown while files are in work or queued. Takes the number. Pressing it opens the Inspection.",
+      "en": "Hermes {rate}/min processed",
+      "de": "Hermes {rate}/Min. verarbeitet"
     },
     {
       "key": "title_bar.hermes_paused",

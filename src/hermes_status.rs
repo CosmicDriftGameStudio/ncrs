@@ -38,7 +38,7 @@ pub struct HermesStatus {
     /// Files that failed a step.
     pub failed: usize,
     pub pdf_library_missing: bool,
-    stuck: bool,
+    pub stuck: bool,
 }
 
 /// Hermes is stuck when it is paused with files waiting, or when documents
@@ -77,8 +77,8 @@ impl HermesStatus {
         } else {
             StateWord::Running
         };
-        let to_review = counts.map_or(0, |counts| counts.open_reviews);
-        let inbox_filed = counts.map_or(1, |counts| counts.inbox.filed);
+        let to_review = counts.map_or(0, |known| known.open_reviews);
+        let inbox_filed = counts.map_or(1, |known| known.inbox.filed);
         Some(Self {
             word,
             working,
@@ -88,6 +88,13 @@ impl HermesStatus {
             pdf_library_missing,
             stuck: is_stuck(word, open, to_review, inbox_filed),
         })
+    }
+
+    /// The documents-per-minute rate only means something while files are
+    /// in work or queued; it also counts documents routed to review, so an
+    /// idle Hermes must not advertise it.
+    pub fn is_busy(&self) -> bool {
+        self.working > 0 || self.open > 0
     }
 
     pub fn is_failing(&self) -> bool {

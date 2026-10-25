@@ -87,16 +87,27 @@ impl LineBudget {
     }
 }
 
+/// What the page shows besides the pipeline status.
+pub struct Setting<'a> {
+    pub load: Option<Load>,
+    pub index_open: bool,
+    /// The place the PDF library was searched in, when it is missing.
+    pub pdf_library_missing: Option<&'a Path>,
+}
+
 pub fn view<'a>(
     status: &'a FilingStatus,
-    load: Option<Load>,
-    index_open: bool,
-    pdf_library_missing: Option<&Path>,
+    setting: Setting<'_>,
     window: Size,
     badges: Badges,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
+    let Setting {
+        load,
+        index_open,
+        pdf_library_missing,
+    } = setting;
     let budget = LineBudget::of(window);
     let mut notices = column![].spacing(spacing::LINE_GAP);
     if let Some(searched) = pdf_library_missing {
@@ -119,12 +130,22 @@ pub fn view<'a>(
             palette,
         ));
     }
+    let has_notices = pdf_library_missing.is_some() || badges.counts.is_some();
     if let Some(counts) = badges.counts {
         notices = notices.push(paragraph(counts_sentences(&counts, lang), palette));
     }
+    let pipeline =
+        container(pipeline_section(status, load, lang, palette)).padding(iced::Padding {
+            top: if has_notices {
+                spacing::SECTION_LEAD
+            } else {
+                0.0
+            },
+            ..iced::Padding::ZERO
+        });
     let body = column![
         notices,
-        pipeline_section(status, load, lang, palette),
+        pipeline,
         throughput_section(status, lang, palette),
         steps_section(status, &budget, lang, palette),
         workers_section(status, &budget, lang, palette),

@@ -3566,6 +3566,13 @@ mod title_bar {
         let mut snapshot = Snapshot::off();
         snapshot.state = RunnerState::Running;
         snapshot.documents_per_minute[1] = 78;
+        snapshot.steps = vec![ncrs_pipeline::StepSnapshot {
+            name: "probe",
+            waiting: 4,
+            done: 0,
+            failed: 0,
+            unchanged: 0,
+        }];
         App::with_filing_snapshot(snapshot, taken_at())
     }
 
@@ -3622,9 +3629,20 @@ mod title_bar {
     #[test]
     fn the_chip_names_the_rate_in_the_language_of_the_app() {
         let english = with_hermes();
-        simulator(&english).find("Hermes 78/min").unwrap();
+        simulator(&english).find("Hermes 78/min processed").unwrap();
         let german = with_hermes().in_language(Language::German);
-        simulator(&german).find("Hermes 78/Min.").unwrap();
+        simulator(&german)
+            .find("Hermes 78/Min. verarbeitet")
+            .unwrap();
+    }
+
+    #[test]
+    fn an_idle_chip_shows_no_rate() {
+        let mut snapshot = Snapshot::off();
+        snapshot.state = RunnerState::Idle;
+        snapshot.documents_per_minute[1] = 78;
+        let app = App::with_filing_snapshot(snapshot, taken_at());
+        assert_eq!(app.hermes_chip_for_test().as_deref(), Some("Hermes"));
     }
 
     #[test]

@@ -173,8 +173,8 @@ impl FilingStatus {
         self.ticks_since_counts = 0;
     }
 
-    pub fn counts_arrived(&mut self, counts: Result<HermesCounts, String>) {
-        if let Ok(counts) = counts {
+    pub fn counts_arrived(&mut self, read: Result<HermesCounts, String>) {
+        if let Ok(counts) = read {
             self.counts = Some(counts);
         }
         self.counts_in_flight = false;
