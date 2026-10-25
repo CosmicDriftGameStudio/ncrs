@@ -7,7 +7,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use iced::futures;
 use iced::keyboard::{self, key::Named, Key, Modifiers};
-use iced::widget::{column, container, mouse_area, operation, row, Column, Space, Stack};
+use iced::widget::{
+    column, container, mouse_area, operation, row, Column, Container, Space, Stack,
+};
 use iced::{event, window, Element, Length, Point, Size, Subscription, Task, Theme};
 
 use crate::ai_model::{
@@ -34,13 +36,14 @@ use crate::messages::{
     AiModelMessage, ClipboardKind, CommandPaletteMessage, ConflictChoice, FilingSetupMessage,
     FilingStatusMessage, HermesPage, Message, OcrModelsMessage, PanelSide, QuickOpenMessage,
     ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage,
-    SearchMessage, ThemeFetchMessage, TitleBarMessage, TransferKind,
+    SearchMessage, SettingChange, SettingsMessage, ThemeFetchMessage, TitleBarMessage,
+    TransferKind,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
 use crate::ocr_models::{download_models, DownloadError, OcrModelsCard};
 use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
-use crate::palette::Palette;
+use crate::palette::{Palette, ThemePreset};
 use crate::query_work::{self, QueryAccess};
 use crate::quick_open::{QuickOpen, QUICK_OPEN_FILE_LIMIT};
 use crate::reorganisation_plan::ReorganisationView;
@@ -52,6 +55,7 @@ use crate::saved_queries::SavedQueries;
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
 use crate::suggestion_work::{SuggestedRule, SuggestionAccess, INDEX_NOT_OPEN};
 use crate::theme_fetch::{Fetched, Installed, Pick, Stage, ThemeFetch};
+use crate::transfer_dialog::{self, Policy, TransferDialog, TransferDialogMessage};
 use crate::ui::ai_model as ai_model_ui;
 use crate::ui::command_palette as command_palette_ui;
 use crate::ui::context_menu as context_menu_view;
@@ -68,12 +72,12 @@ use crate::ui::review_list as review_list_ui;
 use crate::ui::rule_suggestions as rule_suggestions_ui;
 use crate::ui::saved_queries as saved_queries_ui;
 use crate::ui::search as search_ui;
+use crate::ui::settings as settings_ui;
 use crate::ui::theme_fetch as theme_fetch_ui;
 use crate::ui::titlebar;
+use crate::ui::transfer as transfer_ui;
 use crate::ui::volumes as volumes_view;
-use crate::ui::{
-    self, conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelProps, PanelState,
-};
+use crate::ui::{conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelProps, PanelState};
 use ncrs_index::{KeyStore, KeyringKeyStore};
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::{Load, RunnerState};
@@ -283,6 +287,7 @@ fn leaves_path_field(message: &Message) -> bool {
     matches!(
         message,
         Message::RowClicked { .. }
+            | Message::Transfer(_)
             | Message::OpenSearch
             | Message::QuickOpen(QuickOpenMessage::Open)
             | Message::CommandPalette(CommandPaletteMessage::Toggle)
@@ -294,6 +299,7 @@ fn leaves_path_field(message: &Message) -> bool {
             | Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
             | Message::OcrModels(OcrModelsMessage::Open)
             | Message::AiModel(AiModelMessage::Open)
+            | Message::Settings(_)
             | Message::FilingStatus(FilingStatusMessage::Open)
             | Message::FilingSetup(
                 FilingSetupMessage::Toggle
@@ -332,6 +338,40 @@ fn update_title_bar(message: TitleBarMessage) -> Task<Message> {
 /// again once the editing is over.
 fn release_focus() -> Task<Message> {
     iced::advanced::widget::operate(iced::advanced::widget::operation::focusable::unfocus())
+}
+
+/// Counts what the selection of `dialog` holds, off the UI thread. The dialog's
+/// stop flag ends the walk when the dialog goes away.
+fn scan_task(dialog: &TransferDialog) -> Task<Message> {
+    let (id, sources, stop) = (dialog.id(), dialog.sources().to_vec(), dialog.stop_flag());
+    Task::perform(
+        tokio::task::spawn_blocking(move || transfer_dialog::scan(&sources, &stop)),
+        move |done| {
+            Message::TransferDialog(TransferDialogMessage::Scanned {
+                dialog: id,
+                scan: done.ok(),
+            })
+        },
+    )
+}
+
+/// Counts which top-level names of the selection the typed target already
+/// has, off the UI thread. The result carries the edit it was counted for.
+fn conflicts_task(dialog: &TransferDialog) -> Task<Message> {
+    let (id, edit, stop) = (dialog.id(), dialog.edit(), dialog.stop_flag());
+    let (sources, target) = (dialog.sources().to_vec(), dialog.target_path());
+    Task::perform(
+        tokio::task::spawn_blocking(move || {
+            transfer_dialog::count_conflicts(&sources, &target, &stop)
+        }),
+        move |counted| {
+            Message::TransferDialog(TransferDialogMessage::ConflictsCounted {
+                dialog: id,
+                edit,
+                count: counted.unwrap_or_default(),
+            })
+        },
+    )
 }
 
 /// The blocking part of the download: the package and the themes it offers.
@@ -522,6 +562,27 @@ impl VolumeMenu {
     }
 }
 
+/// The writer of the config for one change of the settings tab.
+fn write_setting_change(
+    path: &Path,
+    change: SettingChange,
+) -> Result<Box<Config>, FilingWriteError> {
+    // Each writer reads, edits and writes the whole file: two quick clicks on
+    // the blocking pool would otherwise lose one of the changes.
+    static ONE_WRITER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _writing = ONE_WRITER
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let written = match change {
+        SettingChange::Preset(preset) => config::write_theme_preset(path, preset),
+        SettingChange::Language(lang) => config::write_language(path, lang),
+        SettingChange::HermesEnabled(enabled) => config::write_filing_enabled(path, enabled),
+        SettingChange::Load(load) => config::write_filing_load(path, load),
+        SettingChange::AiEnabled(enabled) => config::write_ai_enabled(path, enabled),
+    };
+    written.map(Box::new)
+}
+
 /// When a saved filing list takes effect.
 enum SavedFilingApplies {
     Now,
@@ -570,6 +631,16 @@ pub struct App {
     transfer: Option<Transfer>,
     /// A transfer paused on a name that is already taken.
     pending_conflict: Option<PendingConflict>,
+    /// The copy or move confirmation, while it is up.
+    transfer_dialog: Option<TransferDialog>,
+    /// Counts the confirmations opened, so a result of the background scan can
+    /// tell if its dialog is still the one on screen.
+    transfer_dialogs_opened: u64,
+    /// Whether the progress mask of the running transfer is up. "In the
+    /// background" closes it; the status bar brings it back.
+    transfer_mask_visible: bool,
+    /// How many rows (top-level entries) of the running transfer are done.
+    transfer_rows_done: usize,
     /// The delete confirmation dialog, while it is up.
     delete_dialog: Option<Deletion>,
     /// The delete that is running.
@@ -686,6 +757,14 @@ pub struct App {
     config_path: Option<PathBuf>,
     /// The filing settings of the config file, as last loaded or written.
     filing_config: Filing,
+    /// The settings tab, while it is open.
+    settings: Option<settings_ui::SettingsState>,
+    /// A write of the settings tab that failed; it stays until the next write.
+    settings_failure: Option<String>,
+    /// The preset and the VS Code theme file the config names, as last loaded
+    /// or written.
+    theme_preset: ThemePreset,
+    vscode_theme: Option<String>,
     /// What a new filing module opens and keeps its key in; set by
     /// `with_filing`. Without a store no module is started.
     filing_index_path: Option<PathBuf>,
@@ -763,6 +842,10 @@ pub struct PromptKeyState {
     pub config_error: bool,
     /// The conflict dialog is up, so keys answer it rather than the panels.
     pub conflict_open: bool,
+    /// The copy or move confirmation is up: Enter confirms, Tab switches.
+    pub transfer_dialog: bool,
+    /// The progress mask of a transfer is up: Escape stops the job.
+    pub transfer_progress: bool,
     /// The path field is being edited: its keys are the text field's.
     pub path_editing: bool,
     /// The search view is up, so the cursor keys move in its results.
@@ -795,6 +878,8 @@ pub struct PromptKeyState {
     pub ocr_models: bool,
     /// The AI model card is up, so keys answer it like a button dialog.
     pub ai_model: bool,
+    /// The settings tab is up, so the panel keys are inert and Escape closes it.
+    pub settings: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
     /// The drive menu is up, so keys move its highlight.
@@ -815,6 +900,8 @@ impl Default for PromptKeyState {
             job_running: false,
             config_error: false,
             conflict_open: false,
+            transfer_dialog: false,
+            transfer_progress: false,
             path_editing: false,
             search: false,
             quick_open: false,
@@ -831,6 +918,7 @@ impl Default for PromptKeyState {
             reorganisation_plan: false,
             ocr_models: false,
             ai_model: false,
+            settings: false,
             delete_dialog: DeleteKeys::default(),
             volume_menu: false,
             context_menu: false,
@@ -988,6 +1076,55 @@ fn ai_model_key(key: Key, key_modifiers: Modifiers) -> Option<Message> {
 /// The order matters and is not arbitrary. A conflict is asked *while* a job
 /// runs, so if the job branch came first, Escape would stop the copy instead of
 /// answering the question the app is waiting on.
+fn conflict_key(
+    prompt: &PromptKeyState,
+    key: Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    match key.as_ref() {
+        // Escape means "no" to a question, and "keep" is the no that does
+        // not lose data. Cancelling the whole transfer is on the key that
+        // already aborts a job (Ctrl+C unless rebound).
+        Key::Named(Named::Escape) => Some(Message::TransferConflict(ConflictChoice::ThisKeep)),
+        // Space ticks "for all files", as it ticks a checkbox elsewhere.
+        Key::Named(Named::Space) => Some(Message::ToggleConflictAll),
+        // The fixed dialog keys before the configured one, so a rebound
+        // abort key cannot take Enter or an arrow. The key that aborts a
+        // job then cancels the whole operation.
+        _ => dialog_focus_key(key.clone(), key_modifiers).or_else(|| {
+            (bound_message(&prompt.keymap, &key, key_modifiers, scope) == Some(Message::AbortJob))
+                .then_some(Message::TransferConflict(ConflictChoice::Cancel))
+        }),
+    }
+}
+
+fn transfer_overlay_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    if prompt.transfer_dialog {
+        let dialog = |message| Some(Message::TransferDialog(message));
+        return match key.as_ref() {
+            Key::Named(Named::Escape) => dialog(TransferDialogMessage::Cancel),
+            Key::Named(Named::Enter) => dialog(TransferDialogMessage::Confirm),
+            Key::Named(Named::Tab) => dialog(TransferDialogMessage::ToggleKind),
+            _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
+                .filter(|message| *message == Message::Quit)
+                .filter(|_| is_not_typed_by_text_field(key, key_modifiers)),
+        };
+    }
+    // The progress mask has no field. Escape stops the job, as it does with the
+    // mask closed; the panel keys do nothing behind it.
+    match key.as_ref() {
+        Key::Named(Named::Escape) => Some(Message::AbortJob),
+        _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
+            .filter(|message| *message == Message::Quit || *message == Message::AbortJob),
+    }
+}
+
 fn keys_without_prompt(
     prompt: &PromptKeyState,
     key: Key,
@@ -1051,22 +1188,14 @@ fn keys_without_prompt(
     }
 
     if prompt.conflict_open {
-        return match key.as_ref() {
-            // Escape means "no" to a question, and "keep" is the no that does
-            // not lose data. Cancelling the whole transfer is on the key that
-            // already aborts a job (Ctrl+C unless rebound).
-            Key::Named(Named::Escape) => Some(Message::TransferConflict(ConflictChoice::ThisKeep)),
-            // Space ticks "for all files", as it ticks a checkbox elsewhere.
-            Key::Named(Named::Space) => Some(Message::ToggleConflictAll),
-            // The fixed dialog keys before the configured one, so a rebound
-            // abort key cannot take Enter or an arrow. The key that aborts a
-            // job then cancels the whole operation.
-            _ => dialog_focus_key(key.clone(), key_modifiers).or_else(|| {
-                (bound_message(&prompt.keymap, &key, key_modifiers, scope)
-                    == Some(Message::AbortJob))
-                .then_some(Message::TransferConflict(ConflictChoice::Cancel))
-            }),
-        };
+        return conflict_key(prompt, key, key_modifiers, scope);
+    }
+
+    // The target field takes the typing and Enter on its own; Escape is
+    // `InputState`'s there and here. Tab switches between copy and move, as the
+    // footer says; of the bindings only quitting reaches past the dialog.
+    if prompt.transfer_dialog || prompt.transfer_progress {
+        return transfer_overlay_key(prompt, &key, key_modifiers, scope);
     }
 
     // The field takes the typing and Enter; Escape is `InputState`'s there and
@@ -1147,6 +1276,10 @@ fn keys_without_prompt(
         return filing_status_key(prompt, &key, key_modifiers, scope);
     }
 
+    if prompt.settings {
+        return settings_key(prompt, &key, key_modifiers, scope);
+    }
+
     // The text field takes the typing and Enter on its own, and `InputState`
     // sees Escape and Tab leave it. Of the bindings only quitting reaches past
     // it: the field has no use for F10 or Cmd+Q, and a program that cannot be
@@ -1170,6 +1303,31 @@ fn keys_without_prompt(
     }
     bound_message(&prompt.keymap, &key, key_modifiers, scope)
         .or_else(|| type_ahead_message(&key, key_modifiers))
+}
+
+/// The tab shows no panel, so the panel keys do nothing. Of the bindings the
+/// command list, the key that closes the tab and quitting reach through. A
+/// card opened from the tab has the Escape first.
+fn settings_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    if matches!(key.as_ref(), Key::Named(Named::Escape)) {
+        return Some(if prompt.filing_setup {
+            Message::FilingSetup(FilingSetupMessage::Close)
+        } else {
+            Message::Settings(SettingsMessage::Close)
+        });
+    }
+    bound_message(&prompt.keymap, key, key_modifiers, scope)
+        .filter(|message| {
+            *message == Message::Quit
+                || *message == KeyAction::CommandPalette.message()
+                || *message == KeyAction::Settings.message()
+        })
+        .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
 }
 
 // A visible card whose footer promises "Esc: close" goes before the job
@@ -1731,6 +1889,8 @@ impl App {
                 if let Some(lang) = config.lang {
                     self.lang = lang;
                 }
+                self.theme_preset = config.theme_preset();
+                self.vscode_theme = config.vscode_theme_path().map(str::to_owned);
                 self.open_programs = config.open;
                 self.keymap = config.keymap;
                 self.refresh_function_keys();
@@ -1759,7 +1919,11 @@ impl App {
 
     /// F9. A config error still up is worded again in the new language.
     fn switch_language(&mut self) {
-        self.lang = self.lang.other();
+        self.set_language(self.lang.other());
+    }
+
+    fn set_language(&mut self, lang: Language) {
+        self.lang = lang;
         self.refresh_function_keys();
         if let Some(problem) = &self.config_problem {
             self.config_error = Some(self.config_error_text(problem));
@@ -1856,6 +2020,10 @@ impl App {
             jobs: jobs::Queue::new(),
             transfer: None,
             pending_conflict: None,
+            transfer_dialog: None,
+            transfer_dialogs_opened: 0,
+            transfer_mask_visible: false,
+            transfer_rows_done: 0,
             delete_dialog: None,
             deleting: None,
             dialog_focus: 0,
@@ -1907,6 +2075,10 @@ impl App {
             filing_index_path: None,
             filing_key_store: None,
             filing_setup: None,
+            settings: None,
+            settings_failure: None,
+            theme_preset: ThemePreset::Cosmic,
+            vscode_theme: None,
             resolve_folder: filing_setup::resolve_folder,
             pick_folder: filing_setup::pick_folder_with_system_dialog,
             theme_fetch: None,
@@ -2094,7 +2266,8 @@ impl App {
             // A raw key press. Routed here rather than in the subscription,
             // because that one cannot see whether a prompt is open.
             // --- copy / move ---
-            Message::Transfer(kind) => self.start_transfer(kind),
+            Message::Transfer(kind) => self.open_transfer_dialog(kind),
+            Message::TransferDialog(dialog_message) => self.update_transfer_dialog(dialog_message),
 
             Message::ModifiersChanged(modifiers) => {
                 self.modifiers = modifiers;
@@ -2177,6 +2350,7 @@ impl App {
                     // A remembered "all" answer applies to the rows after this
                     // one, without asking again.
                     Ok(done) => {
+                        self.transfer_rows_done = index + 1;
                         let rule = self.conflict_rule.unwrap_or(fs::transfer::OnConflict::Fail);
                         self.run_from(done, index + 1, rule)
                     }
@@ -2496,7 +2670,7 @@ impl App {
             }
             Message::ActivatePanel(side) => {
                 self.active_panel = side;
-                Task::none()
+                self.close_settings()
             }
             Message::TitleBar(title_bar) => update_title_bar(title_bar),
             Message::SortBy { .. } | Message::SortActive(_) => self.update_sort(message),
@@ -2569,6 +2743,7 @@ impl App {
             Message::ReorganisationUndone(result) => self.reorganisation_undone(result),
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::AiModel(model_message) => self.update_ai_model(model_message),
+            Message::Settings(settings_message) => self.update_settings(settings_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => self.update_filing_status(page_message),
             Message::FilingSetup(setup_message) => self.update_filing_setup(setup_message),
@@ -2828,7 +3003,11 @@ impl App {
         input.rule_suggestions = self.rule_suggestions.is_some();
         input.review_list = self.review_list.is_some();
         input.saved_queries = self.saved_queries.is_some();
+        input.transfer_dialog = self.transfer_dialog.is_some();
         input.reorganisation_plan = self.reorganisation.is_some();
+        input.settings = self.settings.is_some()
+            && self.filing_setup.is_none()
+            && !self.blocking_overlay_is_open();
         drop(input);
         // `get` rather than `get_or_init`: the cell is created by the
         // subscription, and `update` must not create it — a cell nothing reads
@@ -2881,19 +3060,37 @@ impl App {
             _ => panel_view(side),
         };
 
-        let panels = row![side_view(PanelSide::Left), side_view(PanelSide::Right)]
-            .spacing(ui::theme::spacing::PANEL_GAP)
-            .height(Length::Fill);
+        let panels = row![
+            side_view(PanelSide::Left),
+            theme::vertical_rule(self.palette.border),
+            side_view(PanelSide::Right),
+        ]
+        .height(Length::Fill);
 
-        let below_title_bar = container(
-            column![
+        let below_title_bar = if let Some(state) = self.settings.as_ref() {
+            self.settings_area(state)
+        } else {
+            container(column![
                 panels,
+                fkeys::view(
+                    if self.search_has_keys() {
+                        &self.search_function_keys
+                    } else {
+                        &self.function_keys
+                    },
+                    &self.palette,
+                ),
                 statusbar::view(
                     self.active_panel(),
                     self.lang,
                     &self.palette,
                     statusbar::Activity {
+                        side: self.active_panel,
+                        theme_name: self.theme_name(),
                         job: self.job_status(),
+                        job_press: self.transfer.is_some().then_some(Message::TransferDialog(
+                            TransferDialogMessage::ShowProgress,
+                        )),
                         filing: self.filing_badge(),
                         on_blocked_press: blocked_access_press(),
                         notice: self.notice.as_deref(),
@@ -2907,20 +3104,10 @@ impl App {
                         on_copy: Message::CopyToClipboard(ClipboardKind::Directory),
                     },
                 ),
-                fkeys::view(
-                    if self.search_has_keys() {
-                        &self.search_function_keys
-                    } else {
-                        &self.function_keys
-                    },
-                    &self.palette,
-                ),
-            ]
-            .spacing(theme::spacing::SECTION_GAP),
-        )
-        .padding(theme::spacing::OUTER_PADDING)
-        .width(Length::Fill)
-        .height(Length::Fill);
+            ])
+            .width(Length::Fill)
+            .height(Length::Fill)
+        };
 
         let window = container(column![self.title_bar_view(), below_title_bar])
             .width(Length::Fill)
@@ -3050,6 +3237,18 @@ impl App {
                 Message::TransferConflict,
             );
             return Stack::with_children([root, dialog::scrim(conflict_element)]).into();
+        }
+
+        if let Some(confirm) = self.transfer_dialog.as_ref() {
+            let confirm_element =
+                transfer_ui::confirm(confirm, self.window_size, self.lang, &self.palette);
+            return Stack::with_children([root, dialog::scrim(confirm_element)]).into();
+        }
+
+        if let Some(running) = self.progress_mask() {
+            let progress_element =
+                transfer_ui::progress(&running, self.window_size, self.lang, &self.palette);
+            return Stack::with_children([root, dialog::scrim(progress_element)]).into();
         }
 
         if self.filing_status.page_open() {
@@ -3243,6 +3442,9 @@ impl App {
         let reorganisation_plan = self.reorganisation.is_some();
         let ocr_models = self.ocr_models.is_some();
         let ai_model = self.ai_model.is_some();
+        let settings = self.settings.is_some();
+        let transfer_dialog = self.transfer_dialog.is_some();
+        let transfer_progress = self.progress_mask_is_open();
         let delete_dialog = match &self.delete_dialog {
             None => DeleteKeys::Closed,
             Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
@@ -3272,10 +3474,13 @@ impl App {
                 reorganisation_plan,
                 ocr_models,
                 ai_model,
+                settings,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
                 // the dialog's keys would fall through to the panels.
                 conflict_open: self.pending_conflict.is_some(),
+                transfer_dialog,
+                transfer_progress,
                 ..PromptKeyState::default()
             },
             Some(prompt) => PromptKeyState {
@@ -3302,7 +3507,10 @@ impl App {
                 reorganisation_plan,
                 ocr_models,
                 ai_model,
+                settings,
                 conflict_open: self.pending_conflict.is_some(),
+                transfer_dialog,
+                transfer_progress,
                 busy: prompt.busy(),
                 typed: prompt.name().into(),
             },
@@ -3670,6 +3878,8 @@ impl App {
     fn blocking_overlay_is_open(&self) -> bool {
         self.prompt.is_some()
             || self.pending_conflict.is_some()
+            || self.transfer_dialog.is_some()
+            || self.progress_mask_is_open()
             || self.delete_dialog.is_some()
             || self.volume_menu.is_some()
             || self.quick_open.is_some()
@@ -4035,27 +4245,182 @@ impl App {
         )
     }
 
-    /// F5 / F6: resolve what to transfer, then start the first row.
+    /// F5 / F6: resolve what to transfer and ask before anything starts.
     ///
-    /// The rows are resolved here rather than later because a conflict dialog
-    /// pauses the operation, and by then the selection may have moved.
-    fn start_transfer(&mut self, kind: TransferKind) -> Task<Message> {
+    /// The rows are resolved here rather than at the confirmation because a
+    /// conflict dialog pauses the operation, and by then the selection may
+    /// have moved. With a transfer already running the key brings its progress
+    /// back instead: one transfer at a time owns the conflict state.
+    fn open_transfer_dialog(&mut self, kind: TransferKind) -> Task<Message> {
+        if self.transfer.is_some() {
+            self.transfer_mask_visible = true;
+            return Task::none();
+        }
+        if self.prompt.is_some()
+            || self.pending_conflict.is_some()
+            || self.delete_dialog.is_some()
+            || self.transfer_dialog.is_some()
+        {
+            return Task::none();
+        }
         let sources = self.action_sources();
-
         if sources.is_empty() {
             return Task::none();
         }
+        self.job_error = None;
+        self.notice = None;
+        self.transfer_dialogs_opened = self.transfer_dialogs_opened.wrapping_add(1);
+        let base = self.panel(self.source_side().other()).path.clone();
+        let dialog = TransferDialog::new(self.transfer_dialogs_opened, kind, sources, base);
+        let scan = scan_task(&dialog);
+        let conflicts = conflicts_task(&dialog);
+        self.transfer_dialog = Some(dialog);
+        let target = transfer_ui::TARGET_FIELD_ID;
+        Task::batch([
+            scan,
+            conflicts,
+            operation::focus(target).chain(operation::move_cursor_to_end(target)),
+        ])
+    }
 
-        let target = self.panel(self.source_side().other()).path.clone();
+    fn update_transfer_dialog(&mut self, message: TransferDialogMessage) -> Task<Message> {
+        match message {
+            TransferDialogMessage::Scanned { dialog, scan } => {
+                if let Some(open) = self.transfer_dialog.as_mut().filter(|d| d.id() == dialog) {
+                    open.set_scan(scan);
+                }
+                Task::none()
+            }
+            TransferDialogMessage::ConflictsCounted {
+                dialog,
+                edit,
+                count,
+            } => {
+                if let Some(open) = self.transfer_dialog.as_mut().filter(|d| d.id() == dialog) {
+                    open.set_conflicts(edit, count);
+                }
+                Task::none()
+            }
+            TransferDialogMessage::TargetInput(typed) => {
+                let Some(open) = self.transfer_dialog.as_mut() else {
+                    return Task::none();
+                };
+                open.type_target(typed);
+                conflicts_task(open)
+            }
+            TransferDialogMessage::SetKind(kind) => {
+                if let Some(open) = self.transfer_dialog.as_mut() {
+                    open.set_kind(kind);
+                }
+                Task::none()
+            }
+            TransferDialogMessage::ToggleKind => {
+                if let Some(open) = self.transfer_dialog.as_mut() {
+                    open.set_kind(match open.kind() {
+                        TransferKind::Copy => TransferKind::Move,
+                        TransferKind::Move => TransferKind::Copy,
+                    });
+                }
+                Task::none()
+            }
+            TransferDialogMessage::SetPolicy(policy) => {
+                if let Some(open) = self.transfer_dialog.as_mut() {
+                    open.set_policy(policy);
+                }
+                Task::none()
+            }
+            TransferDialogMessage::ToggleList => {
+                if let Some(open) = self.transfer_dialog.as_mut() {
+                    open.toggle_list();
+                }
+                Task::none()
+            }
+            TransferDialogMessage::Cancel => {
+                if self.transfer_dialog.take().is_some() {
+                    release_focus()
+                } else {
+                    Task::none()
+                }
+            }
+            TransferDialogMessage::Confirm => self.confirm_transfer(),
+            TransferDialogMessage::Background => {
+                self.transfer_mask_visible = false;
+                Task::none()
+            }
+            TransferDialogMessage::ShowProgress => {
+                self.transfer_mask_visible = self.transfer.is_some();
+                Task::none()
+            }
+        }
+    }
+
+    /// Enter in the confirmation: refuse a target that cannot take the
+    /// selection, with the reason in the dialog, or start the transfer.
+    fn confirm_transfer(&mut self) -> Task<Message> {
+        let Some(open) = self.transfer_dialog.as_mut() else {
+            return Task::none();
+        };
+        let target = match transfer_dialog::validate(open.sources(), &open.target_path()) {
+            Ok(target) => target,
+            Err(refusal) => {
+                open.refuse(refusal);
+                return Task::none();
+            }
+        };
+        let (kind, sources, policy) = (open.kind(), open.sources().to_vec(), open.policy());
+        self.transfer_dialog = None;
+        Task::batch([
+            release_focus(),
+            self.begin_transfer(kind, sources, target, policy),
+        ])
+    }
+
+    /// Starts the first row of a confirmed transfer and shows its progress.
+    fn begin_transfer(
+        &mut self,
+        kind: TransferKind,
+        sources: Vec<PathBuf>,
+        target: PathBuf,
+        policy: Policy,
+    ) -> Task<Message> {
         let transfer = Transfer {
             kind,
             sources,
             target,
         };
         self.transfer = Some(transfer.clone());
-        self.conflict_rule = None;
+        self.conflict_rule = policy.standing_rule();
         self.generation = self.generation.wrapping_add(1);
-        self.run_from(transfer, 0, fs::transfer::OnConflict::Fail)
+        self.transfer_mask_visible = true;
+        self.transfer_rows_done = 0;
+        self.run_from(transfer, 0, policy.on_conflict())
+    }
+
+    /// Whether the progress mask is up over a running transfer.
+    fn progress_mask_is_open(&self) -> bool {
+        self.transfer_mask_visible && self.transfer.is_some()
+    }
+
+    /// What the progress mask shows: how far, counted in rows when there are
+    /// several (the tick only knows the row it is in) and in the tick's items
+    /// when a single entry, maybe a whole folder, is the transfer.
+    fn progress_mask(&self) -> Option<transfer_ui::Progress<'_>> {
+        let transfer = self
+            .transfer
+            .as_ref()
+            .filter(|_| self.transfer_mask_visible)?;
+        let (done, total) = if transfer.sources.len() > 1 {
+            (self.transfer_rows_done, transfer.sources.len())
+        } else {
+            self.job_progress
+                .map_or((0, 0), |tick| (tick.done, tick.total))
+        };
+        Some(transfer_ui::Progress {
+            kind: transfer.kind,
+            target: &transfer.target,
+            done,
+            total,
+        })
     }
 
     /// Answers a conflict and remembers an "all" answer, so the next
@@ -4100,6 +4465,8 @@ impl App {
     /// the target and rows before a failure or a cancel are already done.
     fn end_transfer(&mut self) -> Task<Message> {
         self.transfer = None;
+        self.transfer_mask_visible = false;
+        self.transfer_rows_done = 0;
         self.conflict_rule = None;
         self.generation = self.generation.wrapping_add(1);
         let source_side = self.source_side();
@@ -5783,6 +6150,7 @@ impl App {
             label,
             license,
         } = installed;
+        self.vscode_theme = config.vscode_theme_path().map(str::to_owned);
         self.palette = config.palette;
         // The warnings of the look before this one no longer apply.
         if matches!(
@@ -5803,6 +6171,194 @@ impl App {
             ],
         );
         Task::batch([release_focus(), self.show_notice(notice)])
+    }
+
+    fn settings_area<'a>(
+        &'a self,
+        state: &'a settings_ui::SettingsState,
+    ) -> Container<'a, Message> {
+        let page = settings_ui::view(&settings_ui::SettingsView {
+            state,
+            preset: self.theme_preset,
+            vscode_theme: self.vscode_theme.as_deref(),
+            filing: &self.filing_config,
+            ai_status: self.filing.as_ref().map(FilingModule::ai_status),
+            home: &self.home,
+            lang: self.lang,
+            palette: &self.palette,
+        });
+        let bar = settings_ui::status_bar(&settings_ui::StatusBar {
+            changed: state.changed,
+            failure: self.settings_failure.as_deref(),
+            notice: self.notice.as_deref(),
+            lang: self.lang,
+            palette: &self.palette,
+        });
+        container(column![page, bar])
+            .width(Length::Fill)
+            .height(Length::Fill)
+    }
+
+    fn update_settings(&mut self, message: SettingsMessage) -> Task<Message> {
+        match message {
+            SettingsMessage::Toggle if self.settings.is_some() => self.close_settings(),
+            SettingsMessage::Toggle => self.open_settings(),
+            SettingsMessage::Close => self.close_settings(),
+            SettingsMessage::Select(feature) => {
+                if let Some(state) = self.settings.as_mut() {
+                    state.feature = feature;
+                }
+                Task::none()
+            }
+            SettingsMessage::SearchChanged(query) => {
+                if let Some(state) = self.settings.as_mut() {
+                    state.query = query;
+                }
+                Task::none()
+            }
+            SettingsMessage::Change(change) => self.write_setting(change),
+            SettingsMessage::Written { change, result } => match result {
+                Ok(config) => {
+                    self.settings_failure = None;
+                    if let Some(state) = self.settings.as_mut() {
+                        state.changed += 1;
+                    }
+                    self.apply_setting(change, *config)
+                }
+                Err(error) => {
+                    self.settings_failure = Some(self.settings_write_failure(&error));
+                    Task::none()
+                }
+            },
+        }
+    }
+
+    fn open_settings(&mut self) -> Task<Message> {
+        if self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        self.context_menu = None;
+        self.set_path_field(None);
+        self.notice = None;
+        self.settings_failure = None;
+        let ocr_models_present = self
+            .filing_index_path
+            .as_deref()
+            .and_then(crate::filing::ocr_models_dir)
+            .is_some_and(|dir| dir.read_dir().is_ok_and(|mut files| files.next().is_some()));
+        self.settings = Some(settings_ui::SettingsState::new(ocr_models_present));
+        release_focus()
+    }
+
+    fn close_settings(&mut self) -> Task<Message> {
+        if self.settings.take().is_some() {
+            self.settings_failure = None;
+            release_focus()
+        } else {
+            Task::none()
+        }
+    }
+
+    /// Writes `change` to the config on a blocking thread; the answer is a
+    /// `Written` with the file read back, and only then it is applied.
+    fn write_setting(&mut self, change: SettingChange) -> Task<Message> {
+        let Some(config_path) = self.config_path.clone() else {
+            self.settings_failure = Some(self.lang.text(Msg::FilingSetupNoConfigPath).to_owned());
+            return Task::none();
+        };
+        self.settings_failure = None;
+        let written_path = config_path.clone();
+        Task::perform(
+            tokio::task::spawn_blocking(move || write_setting_change(&written_path, change)),
+            move |joined| {
+                Message::Settings(SettingsMessage::Written {
+                    change,
+                    result: joined.unwrap_or_else(|join| {
+                        Err(FilingWriteError::Io {
+                            path: config_path,
+                            reason: join.to_string(),
+                        })
+                    }),
+                })
+            },
+        )
+    }
+
+    /// Takes over what the file now says about `change`.
+    fn apply_setting(&mut self, change: SettingChange, config: Config) -> Task<Message> {
+        match change {
+            SettingChange::Preset(_) => {
+                self.theme_preset = config.theme_preset();
+                self.vscode_theme = config.vscode_theme_path().map(str::to_owned);
+                self.palette = config.palette;
+                if matches!(
+                    self.config_problem,
+                    Some(ConfigProblem::LowContrast(_) | ConfigProblem::VscodeTheme(_))
+                ) {
+                    self.config_problem = None;
+                    self.config_error = None;
+                }
+                self.report_look_warnings(config.contrast_warning, config.vscode_warning);
+                Task::none()
+            }
+            SettingChange::Language(lang) => {
+                self.set_language(lang);
+                Task::none()
+            }
+            SettingChange::Load(load) => {
+                self.filing_config.load = load;
+                self.set_pipeline_load(load);
+                Task::none()
+            }
+            SettingChange::HermesEnabled(_) | SettingChange::AiEnabled(_) => {
+                let (applies, task) = self.apply_saved_filing(config.filing);
+                if matches!(applies, SavedFilingApplies::AtNextStart) {
+                    let notice = self.lang.text(Msg::SettingsSavedNextStart).to_owned();
+                    Task::batch([task, self.show_notice(notice)])
+                } else {
+                    task
+                }
+            }
+        }
+    }
+
+    fn settings_write_failure(&self, error: &FilingWriteError) -> String {
+        let shown = |path: &Path| filing_setup::shown_path(path, &self.home);
+        let write_failed = |path: &Path, reason: &str| {
+            fill_template(
+                self.lang.text(Msg::FilingSetupWriteFailed),
+                &[("{path}", &shown(path)), ("{reason}", reason)],
+            )
+        };
+        match error {
+            FilingWriteError::Io { path, reason } => write_failed(path, reason),
+            FilingWriteError::PathNotText(path) => fill_template(
+                self.lang.text(Msg::FilingSetupPathNotText),
+                &[("{path}", &shown(path))],
+            ),
+            FilingWriteError::Config(config_error) => {
+                let path = shown(config_error.path());
+                match config_error.line() {
+                    Some(line) => fill_template(
+                        self.lang.text(Msg::FilingSetupConfigBrokenAtLine),
+                        &[
+                            ("{path}", &path),
+                            ("{line}", &line.to_string()),
+                            ("{reason}", config_error.reason()),
+                        ],
+                    ),
+                    None => fill_template(
+                        self.lang.text(Msg::FilingSetupConfigBroken),
+                        &[("{path}", &path), ("{reason}", config_error.reason())],
+                    ),
+                }
+            }
+            // The writers of the tab check no filing rules.
+            FilingWriteError::Rule(violation) => write_failed(
+                self.config_path.as_deref().unwrap_or(Path::new("")),
+                &format!("{violation:?}"),
+            ),
+        }
     }
 
     fn update_ocr_models(&mut self, message: OcrModelsMessage) -> Task<Message> {
@@ -5880,6 +6436,9 @@ impl App {
             return Task::none();
         }
         self.ocr_models = None;
+        if let Some(settings) = self.settings.as_mut() {
+            settings.ocr_models_present = true;
+        }
         let notice = self.lang.text(Msg::OcrModelsInstalled).to_owned();
         self.show_notice(notice)
     }
@@ -6170,20 +6729,35 @@ impl App {
             titlebar::Tab {
                 side,
                 title,
-                active: self.active_panel == side,
+                active: self.active_panel == side && self.settings.is_none(),
             }
         };
         titlebar::view(&titlebar::TitleBar {
             tabs: [tab(PanelSide::Left), tab(PanelSide::Right)],
+            settings_tab: self.settings.is_some(),
             home: &self.home,
             hermes: self.hermes_chip(),
+            hermes_paused: self.filing_status.snapshot().state == RunnerState::Paused,
             lab_shortcut: self
                 .keymap
                 .shortcut_label(&KeyAction::CommandPalette.message()),
-            window_width: self.window_size.width,
             lang: self.lang,
             palette: &self.palette,
         })
+    }
+
+    /// The name of the colour theme when the palette is one of the presets.
+    fn theme_name(&self) -> Option<String> {
+        ThemePreset::ALL
+            .into_iter()
+            .find(|preset| preset.palette() == self.palette)
+            .map(|preset| {
+                let name = preset.name();
+                let mut letters = name.chars();
+                letters.next().map_or_else(String::new, |first| {
+                    first.to_uppercase().chain(letters).collect()
+                })
+            })
     }
 
     /// The title bar chip: Hermes is on, and how fast it files. Absent while
@@ -7184,6 +7758,10 @@ impl App {
             jobs: jobs::Queue::new(),
             transfer: None,
             pending_conflict: None,
+            transfer_dialog: None,
+            transfer_dialogs_opened: 0,
+            transfer_mask_visible: false,
+            transfer_rows_done: 0,
             delete_dialog: None,
             deleting: None,
             dialog_focus: 0,
@@ -7235,6 +7813,10 @@ impl App {
             filing_index_path: None,
             filing_key_store: None,
             filing_setup: None,
+            settings: None,
+            settings_failure: None,
+            theme_preset: ThemePreset::Cosmic,
+            vscode_theme: None,
             resolve_folder: |folder| Ok(folder.to_path_buf()),
             pick_folder: |_| Task::none(),
             theme_fetch: None,
@@ -7463,6 +8045,17 @@ impl App {
         let mut app = Self::with_fixed_panels();
         app.dialog_focus = ai_model_ui::CANCEL_FOCUS;
         app.ai_model = Some(card);
+        app
+    }
+
+    /// Fixed panels with the settings tab open on `feature`, with `filing` as
+    /// the config says.
+    pub fn with_settings_open(feature: crate::messages::SettingsFeature, filing: Filing) -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.filing_config = filing;
+        let mut state = settings_ui::SettingsState::new(false);
+        state.feature = feature;
+        app.settings = Some(state);
         app
     }
 
@@ -7717,6 +8310,18 @@ impl App {
         self
     }
 
+    /// Starts a transfer of what F5 would offer, to the other panel and asking
+    /// per conflict, without the confirmation. For the tests of what happens
+    /// once a transfer runs, which have no real folders to confirm against.
+    pub fn start_transfer(&mut self, kind: TransferKind) -> Task<Message> {
+        let sources = self.action_sources();
+        if sources.is_empty() {
+            return Task::none();
+        }
+        let target = self.panel(self.source_side().other()).path.clone();
+        self.begin_transfer(kind, sources, target, Policy::Ask)
+    }
+
     /// Puts the delete dialog in front of the user for `count` fixed entries,
     /// for the snapshot tests.
     pub fn open_delete_dialog_for_test(&mut self, count: usize, permanent: bool) {
@@ -7728,6 +8333,41 @@ impl App {
             permanent,
             side: PanelSide::Left,
         });
+    }
+
+    /// Puts the copy confirmation in front of the user for `count` fixed
+    /// entries with a finished scan and three taken names, for the snapshot
+    /// tests.
+    pub fn open_transfer_dialog_for_test(&mut self, count: usize) {
+        let sources = (0..count)
+            .map(|i| PathBuf::from("/home/test/links").join(format!("entry-{}.txt", i + 1)))
+            .collect();
+        let mut dialog = TransferDialog::new(
+            1,
+            TransferKind::Copy,
+            sources,
+            self.right_panel.path.clone(),
+        );
+        dialog.set_scan(Some(transfer_dialog::Scan {
+            files: count * 4,
+            folders: count.div_ceil(2),
+            bytes: 48_300_000,
+            unreadable: 0,
+        }));
+        dialog.set_conflicts(dialog.edit(), 3);
+        self.transfer_dialog = Some(dialog);
+    }
+
+    /// Shows the progress mask of a fixed copy that is `done` of `total`
+    /// items in, for the snapshot tests.
+    pub fn show_progress_for_test(&mut self, done: usize, total: usize) {
+        self.transfer = Some(Transfer {
+            kind: TransferKind::Copy,
+            sources: vec![PathBuf::from("/home/test/links/entry-1")],
+            target: self.right_panel.path.clone(),
+        });
+        self.job_progress = Some(fs::transfer::Tick { done, total });
+        self.transfer_mask_visible = true;
     }
 
     /// The text of the status-line error, for the end-to-end tests.
@@ -7799,11 +8439,122 @@ mod transfer_tests {
         let mut app = app_with_files();
         app.left_panel.selected = 1;
 
-        let _task = app.update(Message::Transfer(TransferKind::Copy));
+        let _task = app.start_transfer(TransferKind::Copy);
 
         let transfer = app.transfer.as_ref().expect("F5 set up nothing");
         assert_eq!(transfer.sources, vec![PathBuf::from("/left/b.txt")]);
         assert_eq!(transfer.target, PathBuf::from("/right"));
+    }
+
+    fn dialog_app(root: &Path) -> (App, PathBuf, PathBuf) {
+        let from = root.join("from");
+        let to = root.join("to");
+        std::fs::create_dir_all(&from).unwrap();
+        std::fs::create_dir_all(&to).unwrap();
+        std::fs::write(from.join("a.txt"), "a").unwrap();
+        let mut app = App::with_environment(Environment::isolated()).0;
+        app.left_panel.path = from.clone();
+        app.right_panel.path = to.clone();
+        let mut entry = file("a.txt");
+        entry.path = from.join("a.txt");
+        app.left_panel.entries = vec![entry];
+        (app, from, to)
+    }
+
+    fn dialog_message(message: TransferDialogMessage) -> Message {
+        Message::TransferDialog(message)
+    }
+
+    #[tokio::test]
+    async fn f5_asks_first_and_starts_nothing() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut app, _, to) = dialog_app(root.path());
+        let _task = app.update(Message::Transfer(TransferKind::Copy));
+        let dialog = app.transfer_dialog.as_ref().expect("no confirmation");
+        assert_eq!(dialog.target_path(), to);
+        assert!(app.transfer.is_none());
+        assert!(!app.jobs.is_busy());
+    }
+
+    #[tokio::test]
+    async fn confirming_starts_the_transfer_with_the_chosen_policy() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut app, _, to) = dialog_app(root.path());
+        let _open = app.update(Message::Transfer(TransferKind::Copy));
+        let _policy = app.update(dialog_message(TransferDialogMessage::SetPolicy(
+            Policy::Overwrite,
+        )));
+        let _confirm = app.update(dialog_message(TransferDialogMessage::Confirm));
+        assert!(app.transfer_dialog.is_none());
+        let transfer = app.transfer.as_ref().expect("nothing started");
+        assert_eq!(transfer.target, std::fs::canonicalize(&to).unwrap());
+        assert_eq!(app.conflict_rule, Some(fs::transfer::OnConflict::Overwrite));
+    }
+
+    #[tokio::test]
+    async fn asking_leaves_no_standing_answer() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut app, _, _) = dialog_app(root.path());
+        let _open = app.update(Message::Transfer(TransferKind::Move));
+        let _confirm = app.update(dialog_message(TransferDialogMessage::Confirm));
+        assert!(app.transfer.is_some());
+        assert_eq!(app.conflict_rule, None);
+    }
+
+    #[tokio::test]
+    async fn a_target_inside_the_selection_is_refused_in_the_dialog() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut app, from, _) = dialog_app(root.path());
+        let inside = from.join("a.txt").join("deeper");
+        let _open = app.update(Message::Transfer(TransferKind::Copy));
+        let _typed = app.update(dialog_message(TransferDialogMessage::TargetInput(
+            inside.display().to_string(),
+        )));
+        let _confirm = app.update(dialog_message(TransferDialogMessage::Confirm));
+        assert!(app.transfer.is_none());
+        let dialog = app.transfer_dialog.as_ref().expect("dialog closed");
+        assert!(dialog.refusal().is_some());
+    }
+
+    #[tokio::test]
+    async fn tab_switches_between_copy_and_move_and_escape_closes() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut app, _, _) = dialog_app(root.path());
+        let _open = app.update(Message::Transfer(TransferKind::Copy));
+        let tab = route_key(
+            &app.prompt_key_state(),
+            Key::Named(Named::Tab),
+            Modifiers::default(),
+        );
+        assert_eq!(tab, Some(dialog_message(TransferDialogMessage::ToggleKind)));
+        let _toggled = app.update(tab.unwrap());
+        assert_eq!(
+            app.transfer_dialog.as_ref().unwrap().kind(),
+            TransferKind::Move
+        );
+
+        let escape = route_key(
+            &app.prompt_key_state(),
+            Key::Named(Named::Escape),
+            Modifiers::default(),
+        );
+        assert_eq!(escape, Some(dialog_message(TransferDialogMessage::Cancel)));
+        let _closed = app.update(escape.unwrap());
+        assert!(app.transfer_dialog.is_none());
+        assert!(app.transfer.is_none());
+    }
+
+    #[tokio::test]
+    async fn f5_during_a_transfer_brings_the_progress_back() {
+        let root = tempfile::tempdir().unwrap();
+        let (mut app, _, _) = dialog_app(root.path());
+        let _open = app.update(Message::Transfer(TransferKind::Copy));
+        let _confirm = app.update(dialog_message(TransferDialogMessage::Confirm));
+        let _hidden = app.update(dialog_message(TransferDialogMessage::Background));
+        assert!(!app.progress_mask_is_open());
+        let _again = app.update(Message::Transfer(TransferKind::Copy));
+        assert!(app.progress_mask_is_open());
+        assert!(app.transfer_dialog.is_none());
     }
 
     /// Tagged rows win over the cursor. This is the whole point of tagging: the
@@ -7816,7 +8567,7 @@ mod transfer_tests {
         app.left_panel.selection.toggle(&OsString::from("a.txt"));
         app.left_panel.selection.toggle(&OsString::from("c.txt"));
 
-        let _task = app.update(Message::Transfer(TransferKind::Copy));
+        let _task = app.start_transfer(TransferKind::Copy);
 
         let transfer = app.transfer.as_ref().expect("F5 set up nothing");
         assert_eq!(
@@ -7837,7 +8588,7 @@ mod transfer_tests {
             .is_parent = true;
         app.left_panel.selected = 1;
 
-        let _task = app.update(Message::Transfer(TransferKind::Copy));
+        let _task = app.start_transfer(TransferKind::Copy);
 
         assert!(
             app.transfer.is_none(),
@@ -7852,7 +8603,7 @@ mod transfer_tests {
         let mut app = app_with_files();
         app.left_panel.selected = 0;
 
-        let _task = app.update(Message::Transfer(TransferKind::Copy));
+        let _task = app.start_transfer(TransferKind::Copy);
 
         let transfer = app.transfer.as_ref().expect("F5 set up nothing");
         assert_eq!(transfer.target, app.right_panel.path);
@@ -7870,7 +8621,7 @@ mod transfer_tests {
         app.right_panel.entries = vec![x];
         app.right_panel.selected = 0;
 
-        let _task = app.update(Message::Transfer(TransferKind::Copy));
+        let _task = app.start_transfer(TransferKind::Copy);
 
         let transfer = app.transfer.as_ref().expect("F5 set up nothing");
         // The source comes from the active panel, which is now the right one,
@@ -8224,7 +8975,7 @@ mod abort_tests {
     async fn escape_stops_a_running_job() {
         let mut app = app_with_files();
         // Start a transfer, so there is something to stop.
-        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        let _started = app.start_transfer(TransferKind::Copy);
         assert!(app.jobs.is_busy(), "nothing to abort");
 
         let routed = route_key(
@@ -8247,10 +8998,10 @@ mod abort_tests {
     #[tokio::test]
     async fn a_copy_after_a_stop_gets_a_live_progress_channel() {
         let mut app = app_with_files();
-        let _first = app.update(Message::Transfer(TransferKind::Copy));
+        let _first = app.start_transfer(TransferKind::Copy);
         let _stopped = app.update(Message::AbortJob);
 
-        let _second = app.update(Message::Transfer(TransferKind::Copy));
+        let _second = app.start_transfer(TransferKind::Copy);
 
         let sender = app.progress_tx.as_ref().expect("a channel for the copy");
         assert!(!sender.is_closed(), "nobody listens to the new copy");
@@ -8271,7 +9022,7 @@ mod abort_tests {
         let mut app = app_with_files();
         assert!(app.job_status().is_none(), "an idle app shows a job");
 
-        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        let _started = app.start_transfer(TransferKind::Copy);
         let status = app.job_status().expect("a running job should show");
         assert!(
             status.abortable,
@@ -8355,7 +9106,7 @@ mod conflict_tests {
     async fn a_taken_name_asks_instead_of_failing() {
         let (mut app, _scratch) = with_conflict();
 
-        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        let _started = app.start_transfer(TransferKind::Copy);
         deliver_conflict(&mut app);
 
         let pending = app
@@ -8371,7 +9122,7 @@ mod conflict_tests {
     #[tokio::test]
     async fn an_all_answer_is_remembered() {
         let (mut app, _scratch) = with_conflict();
-        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        let _started = app.start_transfer(TransferKind::Copy);
         deliver_conflict(&mut app);
         assert!(app.pending_conflict.is_some(), "the dialog did not open");
 
@@ -8389,7 +9140,7 @@ mod conflict_tests {
     #[tokio::test]
     async fn a_single_answer_is_not_remembered() {
         let (mut app, _scratch) = with_conflict();
-        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        let _started = app.start_transfer(TransferKind::Copy);
         deliver_conflict(&mut app);
 
         let _resumed = app.answer_conflict(ConflictChoice::ThisOverwrite);
@@ -8405,7 +9156,7 @@ mod conflict_tests {
     #[tokio::test]
     async fn cancel_ends_the_transfer() {
         let (mut app, _scratch) = with_conflict();
-        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        let _started = app.start_transfer(TransferKind::Copy);
         deliver_conflict(&mut app);
         app.conflict_rule = Some(fs::transfer::OnConflict::Skip);
 
@@ -8420,7 +9171,7 @@ mod conflict_tests {
     #[tokio::test]
     async fn keep_all_skips_instead_of_asking_again() {
         let (mut app, _scratch) = with_conflict();
-        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        let _started = app.start_transfer(TransferKind::Copy);
         deliver_conflict(&mut app);
 
         let _task = app.answer_conflict(ConflictChoice::AllKeep);
@@ -8436,7 +9187,7 @@ mod conflict_tests {
         let (mut app, _scratch) = with_conflict();
         app.conflict_rule = Some(fs::transfer::OnConflict::Overwrite);
 
-        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        let _started = app.start_transfer(TransferKind::Copy);
 
         assert_eq!(app.conflict_rule, None);
     }
@@ -8446,10 +9197,10 @@ mod conflict_tests {
     #[tokio::test]
     async fn a_late_result_of_a_stopped_transfer_is_ignored() {
         let (mut app, _scratch) = with_conflict();
-        let _first = app.update(Message::Transfer(TransferKind::Copy));
+        let _first = app.start_transfer(TransferKind::Copy);
         let stale = app.generation;
         let _stopped = app.update(Message::AbortJob);
-        let _second = app.update(Message::Transfer(TransferKind::Copy));
+        let _second = app.start_transfer(TransferKind::Copy);
         assert!(app.jobs.is_busy());
 
         let _task = app.update(Message::TransferRowDone {
@@ -8472,7 +9223,7 @@ mod conflict_tests {
     #[tokio::test]
     async fn a_finished_transfer_forgets_its_rule() {
         let (mut app, _scratch) = with_conflict();
-        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        let _started = app.start_transfer(TransferKind::Copy);
         app.conflict_rule = Some(fs::transfer::OnConflict::Overwrite);
         let transfer = app.transfer.clone().expect("a running transfer");
 
@@ -8544,7 +9295,7 @@ mod progress_bar {
     #[tokio::test]
     async fn the_bar_shows_the_tick_not_the_row_count() {
         let mut app = app_with_one_file();
-        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        let _started = app.start_transfer(TransferKind::Copy);
         assert!(app.jobs.is_busy(), "nothing to show progress for");
 
         // What the blocking thread would have sent: 1 of 1 for a single file.
@@ -8562,7 +9313,7 @@ mod progress_bar {
     #[tokio::test]
     async fn the_bar_does_not_claim_progress_before_the_first_tick() {
         let mut app = app_with_one_file();
-        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        let _started = app.start_transfer(TransferKind::Copy);
 
         let status = app.job_status().expect("a running job should show");
         assert_eq!(status.done, 0, "the bar started at the end");
@@ -8573,7 +9324,7 @@ mod progress_bar {
     #[tokio::test]
     async fn stopping_clears_the_progress() {
         let mut app = app_with_one_file();
-        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        let _started = app.start_transfer(TransferKind::Copy);
         let _ticked = app.update(Message::JobProgress(fs::transfer::Tick {
             done: 5,
             total: 10,
@@ -8664,7 +9415,7 @@ mod conflict_keys {
     #[tokio::test]
     async fn escape_does_not_stop_the_job_while_the_dialog_is_up() {
         let (mut app, _scratch) = app_with_conflict();
-        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        let _started = app.start_transfer(TransferKind::Copy);
         app.pending_conflict = Some(PendingConflict {
             transfer: Transfer {
                 kind: TransferKind::Copy,
@@ -12654,8 +13405,9 @@ mod command_palette_tests {
     #[tokio::test]
     async fn escape_closes_it_and_the_running_job_keeps_going() {
         let mut app = app_with_files();
-        let _started = app.update(Message::Transfer(TransferKind::Copy));
+        let _started = app.start_transfer(TransferKind::Copy);
         assert!(app.jobs.is_busy(), "no job to keep");
+        drop(app.update(Message::TransferDialog(TransferDialogMessage::Background)));
         open_palette(&mut app);
         assert!(app.command_palette_for_test().is_some());
 
@@ -13458,5 +14210,108 @@ mod ai_model_tests {
         let card = app.ai_model_for_test().unwrap();
         assert_eq!(card.error(), Some(&AiDownloadError::NoDataFolder));
         assert!(!card.is_downloading());
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod settings_tab_tests {
+    use super::*;
+    use crate::messages::SettingsFeature;
+
+    fn open(app: &mut App) {
+        drop(app.update(Message::Settings(SettingsMessage::Toggle)));
+    }
+
+    fn press(app: &App, key: Key, modifiers: Modifiers) -> Option<Message> {
+        route_key(&app.prompt_key_state(), key, modifiers)
+    }
+
+    #[test]
+    fn the_key_opens_the_tab_and_closes_it_again() {
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        assert!(app.settings.is_some());
+        open(&mut app);
+        assert!(app.settings.is_none());
+    }
+
+    #[test]
+    fn escape_and_the_panel_tabs_close_it() {
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        assert_eq!(
+            press(&app, Key::Named(Named::Escape), Modifiers::empty()),
+            Some(Message::Settings(SettingsMessage::Close))
+        );
+        drop(app.update(Message::ActivatePanel(PanelSide::Right)));
+        assert!(app.settings.is_none());
+    }
+
+    #[test]
+    fn the_panel_keys_do_nothing_while_it_is_open() {
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        assert_eq!(
+            press(&app, Key::Named(Named::ArrowDown), Modifiers::empty()),
+            None
+        );
+    }
+
+    #[test]
+    fn a_change_without_a_config_place_is_reported_and_applies_nothing() {
+        let mut app = App::with_fixed_panels();
+        app.config_path = None;
+        open(&mut app);
+        drop(app.update(Message::Settings(SettingsMessage::Change(
+            SettingChange::Language(Language::German),
+        ))));
+        assert!(app.settings_failure.is_some());
+        assert_eq!(app.settings.as_ref().unwrap().changed, 0);
+    }
+
+    #[test]
+    fn a_written_language_is_applied_and_counted() {
+        let mut app = App::with_fixed_panels().in_language(Language::English);
+        open(&mut app);
+        drop(app.update(Message::Settings(SettingsMessage::Written {
+            change: SettingChange::Language(Language::German),
+            result: Ok(Box::default()),
+        })));
+        assert_eq!(app.lang, Language::German);
+        assert_eq!(app.settings.as_ref().unwrap().changed, 1);
+    }
+
+    #[test]
+    fn a_failed_write_is_shown_and_changes_nothing() {
+        let mut app = App::with_fixed_panels().in_language(Language::English);
+        open(&mut app);
+        drop(app.update(Message::Settings(SettingsMessage::Written {
+            change: SettingChange::Language(Language::German),
+            result: Err(FilingWriteError::Io {
+                path: PathBuf::from("/x/config.toml"),
+                reason: "denied".to_owned(),
+            }),
+        })));
+        assert_eq!(app.lang, Language::English);
+        assert!(app.settings_failure.as_deref().unwrap().contains("denied"));
+    }
+
+    #[test]
+    fn a_page_is_selected_and_searched() {
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        drop(app.update(Message::Settings(SettingsMessage::Select(
+            SettingsFeature::Hermes,
+        ))));
+        assert_eq!(
+            app.settings.as_ref().unwrap().feature,
+            SettingsFeature::Hermes
+        );
     }
 }

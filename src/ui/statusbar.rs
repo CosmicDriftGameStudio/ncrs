@@ -1,13 +1,14 @@
 //! Bottom bar: active path, selected entry info, or the last error.
 use iced::widget::{button, column, container, row, text, text_input, tooltip, Stack};
-use iced::{alignment, Element, Length, Padding};
+use iced::{alignment, Element, Font, Length, Padding};
 
 use super::format;
-use super::layout::{DATE_COLUMN_WIDTH, SIZE_COLUMN_WIDTH, STATUSBAR_HEIGHT};
+use super::layout::STATUSBAR_HEIGHT;
 use super::panel::PanelState;
 use super::theme::{self, font_size, spacing};
 use crate::fs::ReadError;
 use crate::i18n::{Language, Msg};
+use crate::messages::PanelSide;
 use crate::palette::Palette;
 
 /// The path at the left of the bar: a text field, with a button that copies
@@ -21,6 +22,16 @@ pub struct PathBar<'a, M> {
     pub on_copy: M,
 }
 
+/// Room left and right of each field of the bar.
+const FIELD_PADDING_X: f32 = 10.0;
+/// Width of a character of the monospace font, in font sizes.
+const GLYPH_WIDTH_PER_SIZE: f32 = 0.6;
+/// The path field is as wide as its text, so the entry info stands right after
+/// it; room for the copy button and for typing a longer path.
+const PATH_EXTRA_WIDTH: f32 = 36.0;
+const PATH_MIN_WIDTH: f32 = 160.0;
+const PATH_MAX_WIDTH: f32 = 520.0;
+const ENTRY_SEPARATOR: &str = " · ";
 const COPY_ICON_SIZE: f32 = 14.0;
 const COPY_ICON_SQUARE: f32 = 9.0;
 
@@ -62,7 +73,8 @@ fn path_bar<'a, M: Clone + 'a>(
     let path: Element<'a, M> = text_input("", &shown)
         .on_input(bar.on_input)
         .on_submit(bar.on_submit)
-        .size(font_size::STATUS)
+        .size(font_size::FILE)
+        .font(Font::MONOSPACE)
         .padding(0.0)
         .style(theme::path_input(palette))
         .into();
@@ -73,7 +85,7 @@ fn path_bar<'a, M: Clone + 'a>(
             .style(theme::icon_button(palette)),
         container(
             text(lang.text(Msg::StatusCopyPathTooltip))
-                .size(font_size::STATUS)
+                .size(font_size::SMALL)
                 .wrapping(text::Wrapping::None),
         )
         .padding([2.0, 6.0])
@@ -108,7 +120,15 @@ pub struct FilingBadge<M> {
 
 /// What goes on in the background, at the right of the bar.
 pub struct Activity<'a, M> {
+    /// The panel the bar speaks for: named in the mode field at its left end.
+    pub side: PanelSide,
+    /// The name of the colour theme, shown at the right end. `None` for a
+    /// palette that is no preset.
+    pub theme_name: Option<String>,
     pub job: Option<JobStatus>,
+    /// What a press on the job text sends: the progress mask back. `None`
+    /// where the job has no mask.
+    pub job_press: Option<M>,
     pub filing: Option<FilingBadge<M>>,
     /// Makes the "access blocked" error a button. `None` where there is no
     /// settings page to open.
@@ -134,22 +154,32 @@ pub fn view<'a, M: Clone + 'a>(
     path_bar_input: PathBar<'a, M>,
 ) -> Element<'a, M> {
     let Activity {
+        side,
+        theme_name,
         job,
+        job_press,
         filing,
         on_blocked_press,
         notice,
     } = activity;
+    let path_chars = path_bar_input.editing.map_or_else(
+        || panel.path.display().to_string().chars().count(),
+        |typed| typed.chars().count(),
+    );
+    let path_width = (path_chars as f32 * font_size::FILE * GLYPH_WIDTH_PER_SIZE
+        + PATH_EXTRA_WIDTH)
+        .clamp(PATH_MIN_WIDTH, PATH_MAX_WIDTH);
     let path = path_bar(panel, lang, palette, path_bar_input);
 
     let details: Element<'a, M> = if let Some(last_failure) = failure {
         text(last_failure)
-            .size(font_size::STATUS)
+            .size(font_size::SMALL)
             .color(palette.error)
             .wrapping(text::Wrapping::None)
             .into()
     } else if let Some(error) = &panel.error {
         let line = text(format_error(error, &panel.path, lang))
-            .size(font_size::STATUS)
+            .size(font_size::SMALL)
             .color(palette.error)
             .wrapping(text::Wrapping::None);
         match (error, on_blocked_press) {
@@ -162,44 +192,40 @@ pub fn view<'a, M: Clone + 'a>(
         }
     } else if let Some(file) = search_file {
         text(file)
-            .size(font_size::STATUS)
+            .size(font_size::SMALL)
             .wrapping(text::Wrapping::None)
             .into()
     } else if let Some(entry) = panel.selected_entry() {
         let name = entry.name.to_string_lossy().into_owned();
-        row![
-            container(
-                text(name)
-                    .size(font_size::STATUS)
-                    .wrapping(text::Wrapping::None)
-            )
-            .width(Length::Fill)
-            .clip(true),
-            text(format::entry_size(entry))
-                .size(font_size::STATUS)
-                .width(SIZE_COLUMN_WIDTH)
-                .align_x(alignment::Horizontal::Right),
-            text(format::time(entry.modified))
-                .size(font_size::STATUS)
-                .width(DATE_COLUMN_WIDTH)
-                .align_x(alignment::Horizontal::Right),
-        ]
-        .into()
+        let dim = |content: String| {
+            text(content)
+                .size(font_size::SMALL)
+                .color(palette.dim_text)
+                .wrapping(text::Wrapping::None)
+        };
+        let mut info = row![
+            dim(name).font(Font::MONOSPACE),
+            dim(ENTRY_SEPARATOR.to_owned()),
+            dim(format::entry_size(entry)),
+        ];
+        // The parent entry has no date; no dangling separator then.
+        let modified = format::time(entry.modified);
+        if !modified.is_empty() {
+            info = info
+                .push(dim(ENTRY_SEPARATOR.to_owned()))
+                .push(dim(modified));
+        }
+        info.into()
     } else {
         text(if panel.loading {
             lang.text(Msg::StatusLoading)
         } else {
             ""
         })
-        .size(font_size::STATUS)
+        .size(font_size::SMALL)
         .color(palette.dim_text)
         .into()
     };
-
-    let separator = || text("│").size(font_size::STATUS).color(palette.dim_text);
-    // An invisible separator keeps the columns aligned whether or not a job is
-    // running, so the file info does not jump sideways when one starts.
-    let separator_hidden = || text(" ").size(font_size::STATUS);
 
     /// The job line: what it is, how far along, and the abort hint. Returns
     /// None when nothing is running, so the bar falls back to the file info.
@@ -222,7 +248,7 @@ pub fn view<'a, M: Clone + 'a>(
             line.push_str(lang.text(Msg::JobAbort));
         }
         text(line)
-            .size(font_size::STATUS)
+            .size(font_size::SMALL)
             .color(palette.accent)
             .wrapping(text::Wrapping::None)
             .into()
@@ -231,32 +257,46 @@ pub fn view<'a, M: Clone + 'a>(
     // A running job replaces the file info, not the path: the path is where the
     // operation is going, which is still what the user is watching.
     let middle: Element<'a, M> = match &job {
-        Some(running) => job_text(running, lang, palette),
+        Some(running) => match job_press {
+            Some(press) => button(job_text(running, lang, palette))
+                .padding(0)
+                .style(theme::icon_button(palette))
+                .on_press(press)
+                .into(),
+            None => job_text(running, lang, palette),
+        },
         None => details,
     };
-    // The path keeps two parts, the middle three, whatever is in the middle.
-    const PATH_PARTS: u16 = 2;
-    const MIDDLE_PARTS: u16 = 3;
+    let mode = lang.text(match side {
+        PanelSide::Left => Msg::StatusModeLeft,
+        PanelSide::Right => Msg::StatusModeRight,
+    });
+    let mode_field = container(
+        text(mode)
+            .size(font_size::SMALL)
+            .wrapping(text::Wrapping::None),
+    )
+    .padding([0.0, FIELD_PADDING_X])
+    .height(Length::Fill)
+    .align_y(alignment::Vertical::Center)
+    .style(theme::mode_field(palette));
 
     let mut bar = row![
+        mode_field,
         container(path)
-            .width(Length::FillPortion(PATH_PARTS))
+            .width(path_width)
+            .padding([0.0, FIELD_PADDING_X])
             .clip(true),
-        separator(),
-        match &job {
-            Some(_) => separator(),
-            None => separator_hidden(),
-        },
         container(middle)
-            .width(Length::FillPortion(MIDDLE_PARTS))
+            .width(Length::Fill)
+            .padding([0.0, FIELD_PADDING_X])
             .clip(true),
     ]
-    .spacing(spacing::CELL_PADDING_X)
     .align_y(alignment::Vertical::Center);
     if let Some(shown) = notice {
         bar = bar.push(
             text(format!("\u{2713} {shown}"))
-                .size(font_size::STATUS)
+                .size(font_size::SMALL)
                 .color(palette.success)
                 .wrapping(text::Wrapping::None),
         );
@@ -264,7 +304,7 @@ pub fn view<'a, M: Clone + 'a>(
         bar = bar.push(
             button(
                 text(badge.text)
-                    .size(font_size::STATUS)
+                    .size(font_size::SMALL)
                     .color(palette.accent)
                     .wrapping(text::Wrapping::None),
             )
@@ -273,14 +313,29 @@ pub fn view<'a, M: Clone + 'a>(
             .style(theme::icon_button(palette)),
         );
     }
+    for dim in [Some(lang.code().to_uppercase()), theme_name]
+        .into_iter()
+        .flatten()
+    {
+        bar = bar.push(
+            container(
+                text(dim)
+                    .size(font_size::SMALL)
+                    .color(palette.dim_text)
+                    .wrapping(text::Wrapping::None),
+            )
+            .padding([0.0, FIELD_PADDING_X]),
+        );
+    }
 
-    container(bar)
-        .padding([0.0, spacing::CELL_PADDING_X * 1.5])
-        .height(STATUSBAR_HEIGHT)
-        .width(Length::Fill)
-        .align_y(alignment::Vertical::Center)
-        .style(theme::statusbar(palette))
-        .into()
+    container(column![
+        theme::horizontal_rule(palette.border_inactive),
+        container(bar).width(Length::Fill).height(Length::Fill),
+    ])
+    .height(STATUSBAR_HEIGHT)
+    .width(Length::Fill)
+    .style(theme::statusbar(palette))
+    .into()
 }
 
 /// Renders a read error in the current language. The path comes from the panel

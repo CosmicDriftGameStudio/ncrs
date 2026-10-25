@@ -662,6 +662,69 @@ mod conflict_overlay {
     clippy::indexing_slicing
 )]
 #[cfg(test)]
+mod transfer_overlay {
+    use super::*;
+
+    fn app_with(open: impl FnOnce(&mut App), lang: Language) -> App {
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        app.in_language(lang)
+    }
+
+    fn assert_snapshot(app: &App, name: &str) {
+        let matches = simulator(app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image(format!("tests/snapshots/{name}.png"))
+            .expect("snapshot comparison");
+        assert!(matches, "the dialog does not match {name}.png");
+    }
+
+    #[test]
+    fn the_confirmation_of_a_few_entries_lists_their_names() {
+        for (lang, name) in [
+            (Language::English, "copy_confirm_few_en"),
+            (Language::German, "copy_confirm_few_de"),
+        ] {
+            assert_snapshot(
+                &app_with(|a| a.open_transfer_dialog_for_test(4), lang),
+                name,
+            );
+        }
+    }
+
+    #[test]
+    fn the_confirmation_of_many_entries_sums_them_up() {
+        for (lang, name) in [
+            (Language::English, "copy_confirm_many_en"),
+            (Language::German, "copy_confirm_many_de"),
+        ] {
+            assert_snapshot(
+                &app_with(|a| a.open_transfer_dialog_for_test(36), lang),
+                name,
+            );
+        }
+    }
+
+    #[test]
+    fn the_progress_shows_how_far_the_copy_is() {
+        for (lang, name) in [
+            (Language::English, "copy_progress_en"),
+            (Language::German, "copy_progress_de"),
+        ] {
+            assert_snapshot(&app_with(|a| a.show_progress_for_test(37, 120), lang), name);
+        }
+    }
+}
+
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
 mod delete_overlay {
     use super::*;
 
@@ -982,7 +1045,10 @@ mod status_notice {
             crate::i18n::Language::English,
             &crate::palette::Palette::default(),
             crate::ui::statusbar::Activity {
+                side: crate::messages::PanelSide::Left,
+                theme_name: None,
                 job: None,
+                job_press: None,
                 filing: None,
                 on_blocked_press: None,
                 notice: app.notice_for_test(),
@@ -3707,5 +3773,112 @@ mod ai_status_row {
             },
             "qwen at http://localhost:8080"
         ));
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod settings_tab {
+    use std::path::PathBuf;
+
+    use ncrs_intake::LocationMode;
+
+    use super::*;
+    use crate::config::{AiSetting, Filing, FilingLocation};
+    use crate::messages::{SettingChange, SettingsFeature, SettingsMessage};
+    use crate::palette::ThemePreset;
+
+    fn hermes_config() -> Filing {
+        Filing {
+            enabled: true,
+            locations: vec![
+                FilingLocation {
+                    path: PathBuf::from("/home/test/Downloads/Scans"),
+                    mode: LocationMode::Inbox,
+                    images: true,
+                    is_target: false,
+                },
+                FilingLocation {
+                    path: PathBuf::from("/home/test/Documents/Filed"),
+                    mode: LocationMode::Archive,
+                    images: false,
+                    is_target: true,
+                },
+            ],
+            load: Default::default(),
+            ai: AiSetting::Local { threads: None },
+        }
+    }
+
+    fn matches_snapshot(app: &App, name: &str) {
+        let matches = simulator(app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image(format!("tests/snapshots/{name}.png"))
+            .expect("snapshot comparison");
+        assert!(matches, "the tab does not match tests/snapshots/{name}.png");
+    }
+
+    #[test]
+    fn the_appearance_page_matches_its_snapshots() {
+        let app = || App::with_settings_open(SettingsFeature::Look, Filing::default());
+        matches_snapshot(
+            &app().in_language(Language::German),
+            "settings_appearance_de",
+        );
+        matches_snapshot(
+            &app().in_language(Language::English),
+            "settings_appearance_en",
+        );
+    }
+
+    #[test]
+    fn the_filing_page_matches_its_snapshots() {
+        let app = || App::with_settings_open(SettingsFeature::Hermes, hermes_config());
+        matches_snapshot(&app().in_language(Language::German), "settings_hermes_de");
+        matches_snapshot(&app().in_language(Language::English), "settings_hermes_en");
+    }
+
+    fn messages_after_click(app: &App, label: &str) -> Vec<Message> {
+        let mut sim = simulator(app);
+        sim.click(label).expect("the clicked label");
+        sim.into_messages().collect()
+    }
+
+    #[test]
+    fn a_preset_is_chosen_by_its_name() {
+        let app = App::with_settings_open(SettingsFeature::Look, Filing::default());
+        assert!(
+            messages_after_click(&app, "Dracula").contains(&Message::Settings(
+                SettingsMessage::Change(SettingChange::Preset(ThemePreset::Dracula))
+            ))
+        );
+    }
+
+    #[test]
+    fn a_page_is_chosen_from_the_list() {
+        let app = App::with_settings_open(SettingsFeature::Look, Filing::default());
+        assert!(
+            messages_after_click(&app, "Language").contains(&Message::Settings(
+                SettingsMessage::Select(SettingsFeature::Language)
+            ))
+        );
+    }
+
+    #[test]
+    fn the_search_filters_the_rows_by_label() {
+        let mut app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
+        simulator(&app).find("Folders").expect("the folders group");
+        drop(app.update(Message::Settings(SettingsMessage::SearchChanged(
+            "load".to_owned(),
+        ))));
+        let folders_hidden = simulator(&app).find("Folders").is_err();
+        assert!(folders_hidden);
+        simulator(&app).find("Load").expect("the load row");
     }
 }

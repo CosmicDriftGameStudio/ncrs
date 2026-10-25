@@ -184,6 +184,9 @@ mod tests {
                 | Msg::FilingSetupTitle
                 | Msg::ActionFilingSetupTheme
                 | Msg::GroupHermesTheme
+                // Names of color schemes.
+                | Msg::SettingsPresetCosmic
+                | Msg::SettingsPresetDracula
                 // The app's name heads the macOS app menu in every language.
                 | Msg::MenuApp
         )

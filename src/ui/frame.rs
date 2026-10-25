@@ -44,8 +44,8 @@ const KEY_CAP_GLYPH_WIDTH: f32 = 6.0;
 /// [`SCROLLBAR_WIDTH`] plus its margin on both sides.
 const SCROLLBAR_ROOM: f32 = 22.0;
 
-const SCROLLBAR_WIDTH: f32 = 6.0;
-const SCROLLBAR_MARGIN: f32 = 2.0;
+pub(in crate::ui) const SCROLLBAR_WIDTH: f32 = 6.0;
+pub(in crate::ui) const SCROLLBAR_MARGIN: f32 = 2.0;
 
 /// The border of the frame on each side.
 const FRAME_BORDER: f32 = 2.0 * spacing::BORDER_WIDTH;

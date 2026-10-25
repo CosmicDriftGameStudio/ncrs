@@ -269,7 +269,8 @@ pub fn view<'a, M: Clone + 'a>(
             row = row.push(
                 button(
                     text(if mark.tagged { "*" } else { " " })
-                        .size(font_size::ROW)
+                        .size(font_size::FILE)
+                        .font(Font::MONOSPACE)
                         .color(if mark.tagged {
                             theme::tag_star_color(
                                 palette,
@@ -308,7 +309,7 @@ pub fn view<'a, M: Clone + 'a>(
             column_header(lang, palette, state.sort, on_sort),
             Column::with_children(rows).height(Length::Fill),
         ]
-        .apply_frame(palette, props.is_active),
+        .apply_frame(palette),
     )
     .on_scroll(on_scroll)
     .into()
@@ -330,30 +331,35 @@ fn column_header<'a, M: Clone + 'a>(
         };
         mouse_area(
             text(format!("{}{arrow}", lang.text(msg)))
-                .size(font_size::COLUMN_HEADER)
-                .color(palette.accent)
+                .size(font_size::SMALL)
+                .color(palette.dim_text)
                 .wrapping(text::Wrapping::None),
         )
         .interaction(iced::mouse::Interaction::Pointer)
         .on_press(on_sort(column))
     };
-    container(
-        row![
-            container(title(SortColumn::Name, Msg::ColumnName))
-                .padding(iced::Padding::ZERO.left(TAG_COLUMN_WIDTH))
-                .width(Length::Fill),
-            container(title(SortColumn::Size, Msg::ColumnSize))
-                .width(SIZE_COLUMN_WIDTH)
-                .align_x(alignment::Horizontal::Right),
-            container(title(SortColumn::Modified, Msg::ColumnModified))
-                .width(DATE_COLUMN_WIDTH)
-                .align_x(alignment::Horizontal::Right),
-        ]
-        .align_y(alignment::Vertical::Center),
-    )
-    .padding([0.0, spacing::CELL_PADDING_X])
+    column![
+        container(
+            row![
+                container(title(SortColumn::Name, Msg::ColumnName))
+                    .padding(iced::Padding::ZERO.left(TAG_COLUMN_WIDTH))
+                    .width(Length::Fill),
+                container(title(SortColumn::Size, Msg::ColumnSize))
+                    .width(SIZE_COLUMN_WIDTH)
+                    .align_x(alignment::Horizontal::Right),
+                container(title(SortColumn::Modified, Msg::ColumnModified))
+                    .width(DATE_COLUMN_WIDTH)
+                    .align_x(alignment::Horizontal::Right),
+            ]
+            .align_y(alignment::Vertical::Center),
+        )
+        .padding([0.0, spacing::CELL_PADDING_X])
+        .height(Length::Fill)
+        .align_y(alignment::Vertical::Center)
+        .width(Length::Fill),
+        theme::horizontal_rule(palette.border_inactive),
+    ]
     .height(COLUMN_HEADER_HEIGHT)
-    .align_y(alignment::Vertical::Center)
     .width(Length::Fill)
     .into()
 }
@@ -403,7 +409,7 @@ fn file_row<'a, M: Clone + 'a>(
 
     let cell = |content: String| {
         text(content)
-            .size(font_size::ROW)
+            .size(font_size::FILE)
             .font(font)
             .color(color)
             .wrapping(text::Wrapping::None)
@@ -426,22 +432,21 @@ fn file_row<'a, M: Clone + 'a>(
         .padding([0.0, spacing::CELL_PADDING_X])
         .height(ROW_HEIGHT)
         .width(Length::Fill)
-        .style(theme::row(palette, mark.tagged, highlighted, panel_active))
+        .style(theme::row(palette, mark.tagged, mark.cursor, panel_active))
         .into()
 }
 
 /// Small extension to wrap the panel content in its styled frame.
 trait ApplyFrame<'a, M> {
-    fn apply_frame(self, palette: &Palette, active: bool) -> Element<'a, M>;
+    fn apply_frame(self, palette: &Palette) -> Element<'a, M>;
 }
 
 impl<'a, M: 'a> ApplyFrame<'a, M> for Column<'a, M> {
-    fn apply_frame(self, palette: &Palette, active: bool) -> Element<'a, M> {
+    fn apply_frame(self, palette: &Palette) -> Element<'a, M> {
         container(self)
-            .padding(spacing::BORDER_WIDTH)
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(theme::panel(palette, active))
+            .style(theme::panel(palette))
             .into()
     }
 }

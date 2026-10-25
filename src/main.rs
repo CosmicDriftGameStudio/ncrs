@@ -48,6 +48,7 @@ mod search_view;
 mod selection;
 mod suggestion_work;
 mod theme_fetch;
+mod transfer_dialog;
 mod ui;
 mod vscode_theme;
 mod vsix;

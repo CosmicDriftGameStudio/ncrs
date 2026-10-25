@@ -17,7 +17,8 @@ use crate::messages::Message;
 use crate::messages::{
     AiModelMessage, ClipboardKind, CommandPaletteMessage, FilingSetupMessage, FilingStatusMessage,
     OcrModelsMessage, PanelSide, QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage,
-    RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, ThemeFetchMessage, TransferKind,
+    RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage,
+    TransferKind,
 };
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
@@ -116,6 +117,7 @@ key_actions! {
     ReorganisationPlan => "reorganisation_plan",
     UndoReorganisation => "undo_reorganisation",
     FetchTheme => "fetch_theme",
+    Settings => "settings",
     DownloadOcrModels => "download_ocr_models",
     DownloadAiModel => "download_ai_model",
     SearchCase => "search_case",
@@ -198,6 +200,7 @@ impl KeyAction {
             | Self::ReorganisationPlan
             | Self::UndoReorganisation
             | Self::FetchTheme
+            | Self::Settings
             | Self::DownloadOcrModels
             | Self::DownloadAiModel
             | Self::DriveMenuLeft
@@ -270,6 +273,7 @@ impl KeyAction {
             }
             Self::UndoReorganisation => Message::UndoReorganisation,
             Self::FetchTheme => Message::ThemeFetch(ThemeFetchMessage::Open),
+            Self::Settings => Message::Settings(SettingsMessage::Toggle),
             Self::DownloadOcrModels => Message::OcrModels(OcrModelsMessage::Open),
             Self::DownloadAiModel => Message::AiModel(AiModelMessage::Open),
             Self::SearchCase => Message::Search(SearchMessage::ToggleCase),
@@ -429,6 +433,11 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
             Binding::with_modifiers(Character("p".into()), Modifiers::COMMAND | Modifiers::SHIFT),
         ),
         (A::CommandPalette, Binding::key(KeyNamed(F1))),
+        // The settings tab; Cmd+, (Ctrl+, elsewhere) is the usual key for preferences.
+        (
+            A::Settings,
+            Binding::with_modifiers(Character(",".into()), Modifiers::COMMAND),
+        ),
         // The filing status page; Cmd+Shift+D, Ctrl+Shift+D elsewhere.
         (
             A::FilingStatus,

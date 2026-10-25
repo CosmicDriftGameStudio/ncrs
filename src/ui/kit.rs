@@ -7,7 +7,7 @@ use iced::widget::button as widget_button;
 use iced::widget::checkbox as widget_checkbox;
 use iced::widget::text::{IntoFragment, LineHeight, Shaping, Wrapping};
 use iced::widget::{column, container, row, rule, text, text_input, Column, Row};
-use iced::{alignment, Color, Element, Length, Pixels, Theme};
+use iced::{alignment, Color, Element, Font, Length, Pixels, Theme};
 
 use super::format;
 use super::theme::{self, font_size, size, spacing, DISABLED_OPACITY};
@@ -187,6 +187,33 @@ pub fn error_line<'a>(content: impl IntoFragment<'a>, palette: &Palette) -> Elem
         .into()
 }
 
+/// A notice that is neither an error nor plain text: an outlined box with its
+/// line in the accent color, like the warning that a name is taken.
+pub fn warning_box<'a>(content: impl IntoFragment<'a>, palette: &Palette) -> Element<'a, Message> {
+    container(
+        text(content)
+            .size(font_size::BODY)
+            .color(palette.accent)
+            .wrapping(Wrapping::Word),
+    )
+    .padding([spacing::XS, spacing::M])
+    .width(Length::Fill)
+    .style(theme::outlined_in(palette.accent))
+    .into()
+}
+
+/// How far a job is, `0.0` to `1.0`, as a thin bar.
+pub fn progress_bar<'a>(fraction: f32, palette: &Palette) -> Element<'a, Message> {
+    iced::widget::progress_bar(0.0..=1.0, fraction.clamp(0.0, 1.0))
+        .length(Length::Fill)
+        .girth(PROGRESS_GIRTH)
+        .style(theme::progress(palette))
+        .into()
+}
+
+/// The thickness of the progress bar.
+const PROGRESS_GIRTH: f32 = 4.0;
+
 /// Lines of one block, one gap apart.
 pub fn stack<'a>(lines: impl IntoIterator<Item = Element<'a, Message>>) -> Column<'a, Message> {
     Column::with_children(lines).spacing(spacing::LINE_GAP)
@@ -303,10 +330,46 @@ pub fn text_field<'a>(
     on_submit: Message,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let base = text_input(placeholder, value).id(id);
+    field_in(placeholder, value, id, on_input, on_submit, None, palette)
+}
+
+/// A text field for a path or a name, set in the monospace font.
+pub fn mono_text_field<'a>(
+    placeholder: &str,
+    value: &str,
+    id: &'static str,
+    on_input: Option<impl Fn(String) -> Message + 'a>,
+    on_submit: Message,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    field_in(
+        placeholder,
+        value,
+        id,
+        on_input,
+        on_submit,
+        Some(Font::MONOSPACE),
+        palette,
+    )
+}
+
+fn field_in<'a>(
+    placeholder: &str,
+    value: &str,
+    id: &'static str,
+    on_input: Option<impl Fn(String) -> Message + 'a>,
+    on_submit: Message,
+    forced_font: Option<Font>,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let plain = text_input(placeholder, value).id(id);
+    let fonted = match forced_font {
+        Some(chosen) => plain.font(chosen),
+        None => plain,
+    };
     let field = match on_input {
-        Some(typed) => base.on_input(typed).on_submit(on_submit),
-        None => base,
+        Some(typed) => fonted.on_input(typed).on_submit(on_submit),
+        None => fonted,
     };
     field
         .size(font_size::BODY)
@@ -547,9 +610,10 @@ fn figure_cells<'a>(figures: &[(&str, String)], palette: &Palette) -> Row<'a, Me
 }
 
 /// The size of a selection in a few numbers, with a button that shows or hides
-/// the list behind them.
+/// the list behind them; `note` goes between the two, set off by a divider.
 pub fn count_summary<'a>(
     figures: &[(&str, String)],
+    note: Option<Element<'a, Message>>,
     expanded: bool,
     on_toggle: Message,
     show_label: &str,
@@ -574,13 +638,14 @@ pub fn count_summary<'a>(
     .width(Length::Fill)
     .on_press(on_toggle)
     .style(theme::link_button(palette));
-    container(column![
-        figure_cells(figures, palette),
-        divider(palette),
-        toggle
-    ])
-    .style(theme::outlined(palette))
-    .into()
+    let mut parts = column![figure_cells(figures, palette), divider(palette)];
+    if let Some(between) = note {
+        parts = parts.push(container(between).padding([spacing::S, BUTTON_PADDING_X]));
+        parts = parts.push(divider(palette));
+    }
+    container(parts.push(toggle))
+        .style(theme::outlined(palette))
+        .into()
 }
 
 // reason: a failing assertion is the signal in a test
