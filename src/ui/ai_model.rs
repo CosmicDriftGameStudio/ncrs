@@ -37,7 +37,7 @@ pub fn view<'a>(
     let line_chars = frame::content_chars(SIZE, window, 0.0);
     let size = format::size(LOCAL_MODEL.size);
     let mut body =
-        column![paragraph(lang.text(Msg::AiModelIntro), palette)].spacing(spacing::SECTION_GAP);
+        column![paragraph(lang.text(Msg::AiModelIntro), palette)].spacing(spacing::LINE_GAP);
     body = body
         .push(detail_line(
             fill_template(lang.text(Msg::AiModelHost), &[("{host}", AI_MODEL_HOST)]),

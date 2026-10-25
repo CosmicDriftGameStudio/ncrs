@@ -1,14 +1,14 @@
 //! The cards of the filing module: the encryption question, the recovery key,
 //! the restore prompts and the plain-file warning.
 //!
-//! A card is not modal. It sits above the status bar without a scrim, so the
-//! panels stay usable while it is up. Pure function, like the other
-//! components: module state in, `Element` out.
+//! A card sits on the scrim like every dialog, centered; the panels keep their
+//! keys. Pure function, like the other components: module state in,
+//! `Element` out.
 
 use iced::widget::span;
 use iced::widget::text::Span;
 use iced::widget::text::Wrapping;
-use iced::widget::{checkbox, column, radio, rich_text, text, text_input, Column, Row};
+use iced::widget::{checkbox, column, container, radio, rich_text, text, Column, Row};
 use iced::{Background, Color, Element, Font, Length, Size, Theme};
 
 use super::frame::{DialogSize, Frame, KeyHints};
@@ -24,6 +24,9 @@ pub const GROUP_FIELD_ID: &str = "filing-group-field";
 pub const KEY_FIELD_ID: &str = "filing-key-field";
 
 const SIZE: DialogSize = DialogSize::Medium;
+
+/// Four characters of the key and a little room.
+const GROUP_FIELD_WIDTH: f32 = 160.0;
 
 /// What a phase puts into the frame.
 struct Card<'a> {
@@ -155,7 +158,7 @@ fn ask_encryption<'a>(
         paragraph(lang.text(Msg::FilingEncryptionNoteIndex), palette),
         paragraph(lang.text(Msg::FilingEncryptionNoteVault), palette),
     ]
-    .spacing(spacing::SECTION_GAP);
+    .spacing(spacing::LINE_GAP);
     if let Some(reason) = error {
         body = body.push(error_line(
             fill_template(lang.text(Msg::FilingCreateFailed), &[("{reason}", reason)]),
@@ -224,11 +227,15 @@ fn show_recovery_key<'a>(
     palette: &Palette,
 ) -> Card<'a> {
     let group_number = (group + 1).to_string();
-    let field = text_input("", typed.as_str())
-        .id(GROUP_FIELD_ID)
-        .on_input(|input| filing_message(FilingMessage::GroupInput(SecretText::from(input))))
-        .on_submit(filing_message(FilingMessage::GroupSubmit))
-        .width(160);
+    let field = container(kit::text_field(
+        "",
+        typed.as_str(),
+        GROUP_FIELD_ID,
+        Some(|input| filing_message(FilingMessage::GroupInput(SecretText::from(input)))),
+        filing_message(FilingMessage::GroupSubmit),
+        palette,
+    ))
+    .width(GROUP_FIELD_WIDTH);
     let mut body = column![
         paragraph(lang.text(Msg::FilingKeyExplain), palette),
         Row::with_children([
@@ -240,7 +247,7 @@ fn show_recovery_key<'a>(
                 palette,
             ),
         ])
-        .spacing(spacing::CELL_PADDING_X),
+        .spacing(spacing::M),
         paragraph(
             fill_template(
                 lang.text(Msg::FilingKeyGroupPrompt),
@@ -250,7 +257,7 @@ fn show_recovery_key<'a>(
         ),
         field,
     ]
-    .spacing(spacing::SECTION_GAP);
+    .spacing(spacing::LINE_GAP);
     if mismatch {
         body = body.push(error_line(
             fill_template(
@@ -297,13 +304,15 @@ fn ask_recovery_key<'a>(
         KeyProblem::Missing => (Msg::FilingRestoreMissing, Msg::FilingRestoreButton),
         KeyProblem::Mismatch => (Msg::FilingRestoreMismatch, Msg::FilingReplaceButton),
     };
-    let field = text_input(lang.text(Msg::FilingRestoreField), typed.as_str())
-        .id(KEY_FIELD_ID)
-        .on_input(|input| filing_message(FilingMessage::KeyInput(SecretText::from(input))))
-        .on_submit(filing_message(FilingMessage::KeySubmit))
-        .width(Length::Fill);
-    let mut body =
-        column![paragraph(lang.text(explanation), palette)].spacing(spacing::SECTION_GAP);
+    let field = kit::text_field(
+        lang.text(Msg::FilingRestoreField),
+        typed.as_str(),
+        KEY_FIELD_ID,
+        Some(|input| filing_message(FilingMessage::KeyInput(SecretText::from(input)))),
+        filing_message(FilingMessage::KeySubmit),
+        palette,
+    );
+    let mut body = column![paragraph(lang.text(explanation), palette)].spacing(spacing::LINE_GAP);
     if reason == KeyProblem::Mismatch {
         body = body.push(
             Row::with_children([
@@ -350,7 +359,7 @@ fn plain_file_warning<'a>(lang: Language, palette: &Palette) -> Card<'a> {
             .size(font_size::BODY)
             .color(palette.error)
             .wrapping(Wrapping::Word)]
-        .spacing(spacing::SECTION_GAP),
+        .spacing(spacing::LINE_GAP),
         buttons: vec![
             quiet_action(
                 lang.text(Msg::FilingPlainUse),
@@ -377,7 +386,7 @@ fn failed<'a>(reason: &str, lang: Language, palette: &Palette) -> Card<'a> {
     };
     Card {
         title: lang.text(Msg::FilingFailedTitle),
-        body: column![error_line(line, palette)].spacing(spacing::SECTION_GAP),
+        body: column![error_line(line, palette)].spacing(spacing::LINE_GAP),
         buttons: vec![action(
             lang.text(Msg::FilingFailedClose),
             Some(FilingMessage::Dismiss),

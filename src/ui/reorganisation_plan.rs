@@ -4,16 +4,15 @@
 //! after. Modal, like the rule suggestions. Pure view over
 //! [`ReorganisationView`]; nothing here touches a file.
 
-use iced::widget::text::Wrapping;
-use iced::widget::{button, column, container, row, text, Column};
-use iced::{alignment, Color, Element, Length, Size};
+use iced::widget::{button, column, container, row, Column, Space};
+use iced::{alignment, Element, Length, Size};
 use ncrs_index::{ConflictReason, Finding, PlanOutcome};
 
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::hermes::{self, Badges};
 use super::kit::{self, dim, error_line, paragraph, Columns, Tone};
-use super::theme::{self, font_size, size, spacing};
+use super::theme::{self, size, spacing};
 use crate::app::fill_template;
 use crate::i18n::{Language, Msg};
 use crate::messages::{HermesPage, Message, ReorganisationPlanMessage};
@@ -30,10 +29,13 @@ const SIZE: DialogSize = DialogSize::Card;
 
 /// How the width of an entry is shared: current path, proposed path, reason.
 const PORTIONS: [u16; 3] = [5, 5, 7];
-/// Width of the box before an entry, in characters.
-const BOX_CHARS: usize = 5;
-const BOX_WIDTH: f32 = 36.0;
-const INDENT: &str = "  ";
+/// What the checkbox of a line takes: the box and the room after it.
+const CHECK_WIDTH: f32 = 20.0;
+/// What an entry keeps free before its columns: one level of indent and its
+/// checkbox.
+const BOX_WIDTH: f32 = spacing::INDENT + CHECK_WIDTH;
+/// [`BOX_WIDTH`] in characters.
+const BOX_CHARS: usize = 7;
 
 fn send(message: ReorganisationPlanMessage) -> Message {
     Message::ReorganisationPlan(message)
@@ -51,7 +53,7 @@ pub fn view<'a>(
         lang.text(Msg::ReorganisationPlanExplain),
         palette
     )]
-    .spacing(spacing::SECTION_GAP);
+    .spacing(spacing::LINE_GAP);
 
     if state.lines().is_empty() {
         body = body.push(dim(
@@ -67,12 +69,18 @@ pub fn view<'a>(
         if state.is_busy() {
             body = body.push(dim(lang.text(Msg::ReorganisationPlanPlanning), palette));
         }
-        body = body.push(trees(
-            state,
-            line_chars.checked_div(2).unwrap_or_default(),
-            lang,
-            palette,
-        ));
+        body = body.push(
+            container(trees(
+                state,
+                line_chars.checked_div(2).unwrap_or_default(),
+                lang,
+                palette,
+            ))
+            .padding(iced::Padding {
+                top: spacing::SECTION_LEAD,
+                ..iced::Padding::ZERO
+            }),
+        );
     }
     if let Some(detail) = state.problem() {
         body = body.push(error_line(
@@ -108,15 +116,18 @@ pub fn view<'a>(
     .into_element()
 }
 
-fn box_cell<'a>(mark: &str, color: Color) -> Element<'a, Message> {
-    container(
-        text(mark.to_owned())
-            .size(font_size::BODY)
-            .color(color)
-            .wrapping(Wrapping::None),
-    )
-    .width(BOX_WIDTH)
-    .into()
+/// The room before the columns, empty.
+fn box_gap<'a>() -> Element<'a, Message> {
+    Space::new().width(BOX_WIDTH).into()
+}
+
+/// The checkbox of a line, or its room where the line cannot be chosen.
+fn check_cell<'a>(state: Option<kit::Check>, palette: &Palette) -> Element<'a, Message> {
+    let content: Element<'a, Message> = match state {
+        Some(checked) => kit::checkbox(checked, None, palette),
+        None => Space::new().into(),
+    };
+    container(content).width(CHECK_WIDTH).into()
 }
 
 fn group_name(group: Group) -> Msg {
@@ -129,15 +140,15 @@ fn group_name(group: Group) -> Msg {
     }
 }
 
-fn mark(selected: usize, selectable: usize) -> &'static str {
+fn group_check(selected: usize, selectable: usize) -> Option<kit::Check> {
     if selectable == 0 {
-        ""
+        None
     } else if selected == 0 {
-        "[ ]"
+        Some(kit::Check::Off)
     } else if selected == selectable {
-        "[x]"
+        Some(kit::Check::On)
     } else {
-        "[-]"
+        Some(kit::Check::Mixed)
     }
 }
 
@@ -214,7 +225,7 @@ fn list<'a>(
         line_chars: line_chars.saturating_sub(BOX_CHARS),
     };
     let header = row![
-        box_cell("", palette.dim_text),
+        box_gap(),
         columns.cell(
             0,
             lang.text(Msg::ReorganisationPlanColumnCurrent),
@@ -266,7 +277,7 @@ fn list<'a>(
                     );
                 }
                 row![
-                    box_cell(mark(selected, selectable), color),
+                    check_cell(group_check(selected, selectable), palette),
                     whole_line.cell(0, &title, color),
                 ]
             }
@@ -275,16 +286,16 @@ fn list<'a>(
                     .rows()
                     .get(position_in_plan)
                     .map_or_else(row::Row::new, |planned| {
-                        let selectable = u8::from(target(planned).is_some());
-                        let own_mark = if selectable == 0 {
-                            ""
-                        } else if state.is_selected(position_in_plan) {
-                            "[x]"
-                        } else {
-                            "[ ]"
-                        };
+                        let own_check = target(planned).is_some().then(|| {
+                            if state.is_selected(position_in_plan) {
+                                kit::Check::On
+                            } else {
+                                kit::Check::Off
+                            }
+                        });
                         row![
-                            box_cell(&format!("{INDENT}{own_mark}"), color),
+                            Space::new().width(spacing::INDENT),
+                            check_cell(own_check, palette),
                             columns.path_cell(0, &planned.item.source.display().to_string(), color),
                             columns.path_cell(1, &proposed_text(planned), color),
                             columns.cell(2, &reason_text(planned, lang), color),
@@ -332,7 +343,7 @@ fn trees<'a>(
             palette
         ),
     ]
-    .spacing(spacing::SECTION_GAP)
+    .spacing(spacing::LINE_GAP)
     .into()
 }
 
@@ -343,36 +354,39 @@ fn tree<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let mut shown = column![text(heading).size(font_size::BODY).color(palette.accent)]
-        .spacing(2)
+    let mut shown = column![dim(heading, palette)]
+        .spacing(spacing::XS / 2.0)
         .width(Length::FillPortion(1));
     if lines.is_empty() {
         shown = shown.push(dim(lang.text(Msg::ReorganisationPlanTreeEmpty), palette));
     }
     for line in lines.iter().take(TREE_LINES) {
         let slash = if line.is_folder { "/" } else { "" };
-        let content = format!("{}{}{slash}", INDENT.repeat(line.depth), line.name);
+        let content = format!("{}{slash}", line.name);
+        let indent = spacing::INDENT * line.depth as f32;
+        let room = chars.saturating_sub(line.depth * 3);
+        let name = format::ellipsize_end(&content, room);
         shown = shown.push(
-            text(format::ellipsize_end(&content, chars))
-                .size(font_size::BODY)
-                .color(if line.is_folder {
-                    palette.dim_text
-                } else {
-                    palette.text
-                })
-                .wrapping(Wrapping::None),
+            container(if line.is_folder {
+                dim(name, palette)
+            } else {
+                kit::one_line(name, palette)
+            })
+            .padding(iced::Padding {
+                left: indent,
+                ..iced::Padding::ZERO
+            }),
         );
     }
     let rest = lines.len().saturating_sub(TREE_LINES);
     if rest > 0 {
-        shown = shown.push(
-            text(fill_template(
+        shown = shown.push(dim(
+            fill_template(
                 lang.text(Msg::ReorganisationPlanTreeMore),
                 &[("{count}", &rest.to_string())],
-            ))
-            .size(font_size::BODY)
-            .color(palette.dim_text),
-        );
+            ),
+            palette,
+        ));
     }
     shown.into()
 }

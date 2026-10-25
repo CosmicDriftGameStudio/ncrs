@@ -9,7 +9,7 @@ use crate::app::fill_template;
 use crate::i18n::{Language, Msg};
 use crate::messages::{Message, QuickOpenMessage};
 use crate::palette::Palette;
-use crate::quick_open::{Hit, QuickOpen, MAX_HITS};
+use crate::quick_open::{Hit, QuickOpen};
 
 pub const QUICK_OPEN_ID: &str = "quick-open-query";
 
@@ -53,7 +53,6 @@ pub fn view<'a>(
             field,
             status: status(quick_open, lang),
             rows,
-            row_count: MAX_HITS,
             on_close: to_quick_open(QuickOpenMessage::Close),
         },
         window,

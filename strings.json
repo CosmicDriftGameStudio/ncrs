@@ -1315,18 +1315,6 @@
       "de": "Hermes pausiert"
     },
     {
-      "key": "filing_status.title",
-      "context": "Title of the filing status page, a box over the panels that shows what Hermes (the filing module) is doing. Inspection is the themed name of the page.",
-      "en": "Inspection",
-      "de": "Inspektion"
-    },
-    {
-      "key": "filing_status.subtitle",
-      "context": "Line under the title of the filing status page that says what the page is for. Hermes is the name of the filing module.",
-      "en": "Hermes: pipeline, errors, figures",
-      "de": "Hermes: Verarbeitung, Fehler, Kennzahlen"
-    },
-    {
       "key": "filing_status.section_pipeline",
       "context": "Heading of the section with the state, the load and the steps of the filing pipeline.",
       "en": "Pipeline",
@@ -1435,12 +1423,6 @@
       "de": "Dienst nach Vorschrift = schonend, Normalbetrieb = ausgewogen, Grad 36 = volle Last."
     },
     {
-      "key": "filing_status.step_counts",
-      "context": "One line per pipeline step. Takes the visible name of the step and four counts of files.",
-      "en": "{name}: {waiting} waiting, {done} done, {failed} failed, {unchanged} unchanged",
-      "de": "{name}: {waiting} wartend, {done} fertig, {failed} fehlgeschlagen, {unchanged} unverändert"
-    },
-    {
       "key": "filing_status.step_intake",
       "context": "Visible name of the pipeline step that takes documents into the index, in the step lines, the worker lines and the error list of the inspection page. Themed name.",
       "en": "Intake",
@@ -1457,6 +1439,12 @@
       "context": "Dimmed, instead of a throughput or time-left figure, while documents are waiting but no full minute of work has been measured yet.",
       "en": "after the first full minute",
       "de": "ab der ersten vollen Minute"
+    },
+    {
+      "key": "filing_status.section_throughput",
+      "context": "Heading of the section with the throughput and time-left figures; must differ from the Throughput figure label below it.",
+      "en": "Pace",
+      "de": "Tempo"
     },
     {
       "key": "filing_status.throughput_label",
@@ -1561,12 +1549,6 @@
       "de": "Wiedervorlage"
     },
     {
-      "key": "filing_status.index_reviews_explain",
-      "context": "Dimmed explanation after the number of documents waiting for the user's review, in the same line as the Pending label and the number. Lower case start.",
-      "en": "documents Hermes asks you about",
-      "de": "Dokumente, zu denen Hermes dich fragt"
-    },
-    {
       "key": "filing_status.index_unavailable",
       "context": "Shown instead of the index figures when they could not be read. Takes the reason.",
       "en": "Index figures unavailable: {reason}",
@@ -1585,10 +1567,70 @@
       "de": "Keine Fehler"
     },
     {
-      "key": "filing_status.hint",
-      "context": "Key hints for the filing status page, below its content. The keys for closing and confirming are in the dialog footer. Keep the key names.",
-      "en": "P pause · 1/2/3 load · +/- workers · Up/Down, Enter errors",
-      "de": "P Pause · 1/2/3 Last · +/- Worker · Auf/Ab, Enter Fehler"
+      "key": "filing_status.section_steps",
+      "context": "Heading of the table on the filing status page that lists, per pipeline step, how many documents wait, are done, failed or stay unchanged.",
+      "en": "Steps",
+      "de": "Stufen"
+    },
+    {
+      "key": "filing_status.step_waiting",
+      "context": "Column title in the table of pipeline steps on the filing status page: documents waiting for this step.",
+      "en": "waiting",
+      "de": "wartend"
+    },
+    {
+      "key": "filing_status.step_done",
+      "context": "Column title in the table of pipeline steps on the filing status page: documents this step has finished.",
+      "en": "done",
+      "de": "fertig"
+    },
+    {
+      "key": "filing_status.step_failed",
+      "context": "Column title in the table of pipeline steps on the filing status page: documents on which this step failed.",
+      "en": "failed",
+      "de": "fehlgeschlagen"
+    },
+    {
+      "key": "filing_status.step_unchanged",
+      "context": "Column title in the table of pipeline steps on the filing status page: documents this step found unchanged and skipped.",
+      "en": "unchanged",
+      "de": "unverändert"
+    },
+    {
+      "key": "filing_status.hint_pause",
+      "context": "Verb next to the P key cap in the footer of the filing status page: the key pauses or resumes the pipeline. Only the verb, the key cap is drawn separately.",
+      "en": "pause",
+      "de": "Pause"
+    },
+    {
+      "key": "filing_status.hint_load",
+      "context": "Word next to the 1 2 3 key caps in the footer of the filing status page: the keys choose the load. Only the word, the key caps are drawn separately.",
+      "en": "load",
+      "de": "Last"
+    },
+    {
+      "key": "filing_status.hint_workers",
+      "context": "Word next to the + - key caps in the footer of the filing status page: the keys change the number of workers. Only the word, the key caps are drawn separately.",
+      "en": "workers",
+      "de": "Worker"
+    },
+    {
+      "key": "filing_status.hint_errors",
+      "context": "Word next to the up and down arrow key caps in the footer of the filing status page: the keys move through the list of errors, Enter opens one. Only the word, the key caps are drawn separately.",
+      "en": "errors",
+      "de": "Fehler"
+    },
+    {
+      "key": "saved_queries.summary_missing_one",
+      "context": "Label of a figure under a run of a saved query when exactly one of the found documents is missing on disk; the figure itself is the number 1.",
+      "en": "file missing",
+      "de": "Datei fehlt"
+    },
+    {
+      "key": "saved_queries.summary_missing_other",
+      "context": "Label of a figure under a run of a saved query when none or several of the found documents are missing on disk; the figure itself is the number.",
+      "en": "files missing",
+      "de": "Dateien fehlen"
     },
     {
       "key": "filing_setup.title",
@@ -3077,12 +3119,6 @@
       "context": "Label of a figure under a run of a saved query: how many documents were found.",
       "en": "Hits",
       "de": "Treffer"
-    },
-    {
-      "key": "saved_queries.summary_missing",
-      "context": "Label of a figure under a run of a saved query: how many of the found documents are missing on disk.",
-      "en": "Missing",
-      "de": "Fehlen"
     },
     {
       "key": "saved_queries.show_list",

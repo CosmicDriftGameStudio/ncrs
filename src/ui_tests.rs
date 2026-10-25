@@ -1491,19 +1491,19 @@ mod filing_status_page {
     fn the_inspection_uses_the_visible_names_and_says_when_figures_come() {
         let english = inspection(Language::English);
         for label in [
-            "Intake: 2 waiting, 5 done, 0 failed, 1 unchanged",
-            "Pending: 0 waiting, 3 done, 1 failed, 0 unchanged",
+            "Intake",
+            "waiting",
+            "done",
+            "failed",
+            "unchanged",
             "Pending",
-            "documents Hermes asks you about",
         ] {
             assert!(shows(&english, label), "{label}");
         }
         assert!(shows(&english, "after the first full minute"));
         let german = inspection(Language::German);
-        assert!(shows(
-            &german,
-            "Annahme: 2 wartend, 5 fertig, 0 fehlgeschlagen, 1 unverändert"
-        ));
+        assert!(shows(&german, "Annahme"));
+        assert!(shows(&german, "wartend"));
         assert!(shows(&german, "Wiedervorlage"));
         assert!(shows(&german, "ab der ersten vollen Minute"));
 
@@ -2266,12 +2266,13 @@ mod theme_fetch_card {
     }
 
     #[test]
-    fn the_number_of_themes_does_not_change_the_frame() {
+    fn the_frame_grows_with_the_themes_and_keeps_its_width() {
         let one = frame_bounds(&App::with_theme_fetch_card(choosing(two_themes())));
         let names: Vec<String> = (0..10).map(|number| format!("Theme {number}")).collect();
         let refs: Vec<&str> = names.iter().map(String::as_str).collect();
         let ten = frame_bounds(&App::with_theme_fetch_card(choosing(fetched(&refs))));
-        assert_eq!(one, ten);
+        assert_eq!(one.width, ten.width);
+        assert!(ten.height > one.height, "{one:?} {ten:?}");
     }
 
     #[test]
@@ -2599,7 +2600,7 @@ mod saved_queries_card {
 
     #[test]
     fn a_run_shows_its_figures_and_the_list_toggles() {
-        for label in ["Hits", "Missing", "View list", "Export …"] {
+        for label in ["Hits", "file missing", "View list", "Export …"] {
             assert!(shows(after_run(), label), "{label}");
         }
         let app = App::with_saved_queries(after_run());

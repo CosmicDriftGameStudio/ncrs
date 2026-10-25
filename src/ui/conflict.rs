@@ -73,7 +73,7 @@ pub fn view<'a>(
 
     Frame::new(
         lang.text(Msg::ConflictSubtitle),
-        column![subject, all_row].spacing(spacing::SECTION_GAP),
+        column![subject, all_row].spacing(spacing::LINE_GAP),
         SIZE,
         window,
         lang,
