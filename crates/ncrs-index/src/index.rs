@@ -761,6 +761,28 @@ mod tests {
     }
 
     #[test]
+    fn a_version_6_database_gains_the_execution_journal_tables() {
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let store = InMemoryKeyStore::empty();
+        let (old, _) =
+            Index::create_encrypted_with_migrations(&path, &store, &MIGRATIONS[..6]).unwrap();
+        assert_eq!(user_version(&old), 6);
+        assert!(!table_exists(&old, "execution_batch"));
+        drop(old);
+
+        let index = Index::open(&path, &store).unwrap();
+
+        assert_eq!(
+            user_version(&index),
+            u32::try_from(MIGRATIONS.len()).unwrap()
+        );
+        for table in ["execution_batch", "execution_item", "execution_created_dir"] {
+            assert!(table_exists(&index, table), "{table}");
+        }
+    }
+
+    #[test]
     fn empty_a1_database_gains_the_document_schema_on_open() {
         let dir = TempDir::new().unwrap();
         let path = db_in(&dir);

@@ -25,6 +25,7 @@ pub enum JobKind {
     Copy,
     Move,
     Delete,
+    Reorganise,
 }
 
 impl JobKind {
@@ -33,6 +34,7 @@ impl JobKind {
             JobKind::Copy => crate::i18n::Msg::JobCopy,
             JobKind::Move => crate::i18n::Msg::JobMove,
             JobKind::Delete => crate::i18n::Msg::JobDelete,
+            JobKind::Reorganise => crate::i18n::Msg::JobReorganise,
         }
     }
 }

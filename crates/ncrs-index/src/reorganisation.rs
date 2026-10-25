@@ -95,6 +95,16 @@ impl Index {
         }))
     }
 
+    /// The plan has been carried out; `reorganisation_plan` no longer returns
+    /// it, and a new plan of the location does not replace it.
+    pub fn mark_executed(&self, plan: PlanId) -> Result<(), IndexError> {
+        self.connection().execute(
+            "UPDATE reorganisation_plan SET executed_at = ?2 WHERE id = ?1",
+            params![plan.get(), Utc::now().timestamp()],
+        )?;
+        Ok(())
+    }
+
     fn plan_items(&self, id: PlanId) -> Result<Vec<PlanItem>, IndexError> {
         let plan_id = id.get();
         let mut statement = self.connection().prepare(
@@ -286,6 +296,27 @@ mod tests {
             })
             .unwrap();
         assert_eq!(rows, 6);
+    }
+
+    #[test]
+    fn an_executed_plan_is_not_returned_and_not_replaced() {
+        let (_dir, mut index) = encrypted_index();
+        let location = Path::new("/archive");
+        let id = index
+            .replace_reorganisation_plan(location, &every_kind())
+            .unwrap();
+
+        index.mark_executed(id).unwrap();
+
+        assert!(index.reorganisation_plan(location).unwrap().is_none());
+        index.replace_reorganisation_plan(location, &[]).unwrap();
+        let rows: i64 = index
+            .connection()
+            .query_row("SELECT count(*) FROM reorganisation_plan", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(rows, 2);
     }
 
     #[test]

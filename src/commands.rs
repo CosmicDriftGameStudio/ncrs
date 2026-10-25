@@ -187,6 +187,12 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             Msg::ActionReorganisationPlan,
             Msg::ActionReorganisationPlanTheme,
         ),
+        KeyAction::UndoReorganisation => Command::themed(
+            action,
+            Hermes,
+            Msg::ActionUndoReorganisation,
+            Msg::ActionUndoReorganisationTheme,
+        ),
         KeyAction::DownloadOcrModels => {
             Command::plain(action, Hermes, Msg::ActionDownloadOcrModels)
         }

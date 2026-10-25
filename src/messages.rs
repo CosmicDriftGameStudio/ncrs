@@ -12,6 +12,7 @@ use iced::Size;
 use crate::app::{RowFailure, Transfer};
 use crate::config::{Filing, FilingWriteError};
 use crate::dialog::PromptKind;
+use crate::execute::UndoReport;
 use crate::filing::{FilingMessage, IndexFigures};
 use crate::fs::search::SearchEvent;
 use crate::fs::CreateDirError;
@@ -21,7 +22,7 @@ use crate::jobs::JobEvent;
 use crate::keymap::KeyAction;
 use crate::ocr_models::DownloadError;
 use crate::open_vsx::FetchError;
-use crate::reorganisation_work::PlannedItem;
+use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
 use crate::suggestion_work::SuggestedRule;
 use crate::theme_fetch::{Fetched, Installed};
 
@@ -272,6 +273,11 @@ pub enum Message {
     /// The user asked to carry out these entries of the reorganisation plan.
     /// Nothing acts on it yet.
     ExecuteReorganisation(Vec<PlannedItem>),
+    /// The executor on its blocking thread is done.
+    ReorganisationExecuted(Result<ExecutionSummary, String>),
+    UndoReorganisation,
+    /// `None`: there was no carried out reorganisation left to undo.
+    ReorganisationUndone(Result<Option<UndoReport>, String>),
 
     // --- Quick Open (Cmd/Ctrl+P) ---
     QuickOpen(QuickOpenMessage),

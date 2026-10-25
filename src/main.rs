@@ -18,6 +18,7 @@ mod commands;
 mod config;
 mod context_menu;
 mod dialog;
+mod execute;
 mod filing;
 mod filing_setup;
 mod filing_status;

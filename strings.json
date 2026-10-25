@@ -187,6 +187,12 @@
       "de": "Lösche…"
     },
     {
+      "key": "job.reorganise",
+      "context": "Status bar while the documents are being moved according to the reorganisation plan. Same shape as job.copy.",
+      "en": "Tidying up…",
+      "de": "Räume um…"
+    },
+    {
       "key": "job.create_dir",
       "context": "Status bar while a directory is being created. Same shape as job.copy.",
       "en": "Creating…",
@@ -2249,6 +2255,36 @@
       "context": "Theme name of the key action reorganisation_plan, shown dimmed after its plain name action.reorganisation_plan in the command list, and matched when typing. A playful name (taking inventory before tidying up); the plain name beside it says what the action does.",
       "en": "Inventory",
       "de": "Inventur"
+    },
+    {
+      "key": "action.undo_reorganisation",
+      "context": "Entry of the command list that runs the key action undo_reorganisation, which moves the documents of the last carried out reorganisation back. The plain name of what the action does, as short as a menu entry.",
+      "en": "Undo last reorganisation",
+      "de": "Letztes Umräumen rückgängig machen"
+    },
+    {
+      "key": "action.undo_reorganisation.theme",
+      "context": "Theme name of the key action undo_reorganisation, shown dimmed after its plain name in the command list, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Rewind",
+      "de": "Zurückspulen"
+    },
+    {
+      "key": "status.reorganised",
+      "context": "Status bar message after the reorganisation plan was carried out. Takes the number of moved and of skipped documents.",
+      "en": "{moved} moved, {skipped} skipped",
+      "de": "{moved} verschoben, {skipped} übersprungen"
+    },
+    {
+      "key": "status.reorganisation_undone",
+      "context": "Status bar message after the last reorganisation was undone. Takes the number of documents moved back and of those left where they are.",
+      "en": "{moved} moved back, {skipped} left where they are",
+      "de": "{moved} zurückverschoben, {skipped} unverändert gelassen"
+    },
+    {
+      "key": "status.nothing_to_undo",
+      "context": "Status bar message when undo was asked for but no carried out reorganisation is left to undo.",
+      "en": "No reorganisation to undo",
+      "de": "Kein Umräumen zum Rückgängigmachen"
     },
     {
       "key": "reorganisation_plan.explain",

@@ -9,9 +9,11 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use ncrs_index::{Finding, Index, PlanItem, RuleId};
+use ncrs_index::{BatchKind, Finding, Index, IndexError, PlanItem, PlanOutcome, RuleId};
 use ncrs_intake::{plan_location, FINDING_PRIORITY};
 
+use crate::execute::{self, ExecutionItem, UndoReport};
+use crate::fs::transfer::Progress;
 use crate::suggestion_work::INDEX_NOT_OPEN;
 
 type IndexSlot = Arc<Mutex<Option<Index>>>;
@@ -75,6 +77,130 @@ impl PlanAccess {
             }));
         }
         Ok(planned)
+    }
+}
+
+/// What a run of the plan did, over all locations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExecutionSummary {
+    pub moved: usize,
+    pub skipped: usize,
+}
+
+/// Counts over the whole selection, although the executor runs one location at
+/// a time.
+struct Overall<'a, P> {
+    inner: &'a mut P,
+    done_before: usize,
+    total: usize,
+}
+
+impl<P: Progress> Progress for Overall<'_, P> {
+    fn advanced(&mut self, done: usize, _total: usize) -> std::io::Result<()> {
+        self.inner.advanced(self.done_before + done, self.total)
+    }
+}
+
+/// The entries of the plan that move something, with the document the index
+/// knows the file as.
+fn execution_items(
+    index: &Index,
+    entries: &[&PlannedItem],
+) -> Result<Vec<ExecutionItem>, IndexError> {
+    let mut items = Vec::new();
+    for entry in entries {
+        let (PlanOutcome::Move { target } | PlanOutcome::Rename { target }) = &entry.item.outcome
+        else {
+            continue;
+        };
+        let from = entry.item.source.clone();
+        let (document_id, duplicate) = match index.document_by_path(&from)? {
+            Some(document) => (Some(document.id), false),
+            None => match index.document_by_duplicate_path(&from)? {
+                Some((id, _stamp)) => (Some(id), true),
+                None => (None, false),
+            },
+        };
+        items.push(ExecutionItem {
+            from,
+            to: target.clone(),
+            expected_hash: entry.item.hash,
+            document_id,
+            duplicate,
+        });
+    }
+    Ok(items)
+}
+
+impl PlanAccess {
+    /// Carries out the selected entries, location by location, and marks the
+    /// plans executed. The index stays locked for the whole run, which keeps
+    /// the intake from looking at files while they move.
+    pub fn execute<P: Progress>(
+        &self,
+        selection: &[PlannedItem],
+        progress: &mut P,
+    ) -> Result<ExecutionSummary, String> {
+        let mut guard = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
+        let index = guard.as_mut().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
+        let mut locations: Vec<&PathBuf> = Vec::new();
+        for entry in selection {
+            if !locations.contains(&&entry.location) {
+                locations.push(&entry.location);
+            }
+        }
+        let total = selection.len();
+        let mut summary = ExecutionSummary {
+            moved: 0,
+            skipped: 0,
+        };
+        for location in locations {
+            let entries: Vec<&PlannedItem> = selection
+                .iter()
+                .filter(|entry| &entry.location == location)
+                .collect();
+            let items = execution_items(index, &entries).map_err(|err| err.to_string())?;
+            let mut overall = Overall {
+                inner: progress,
+                done_before: summary.moved + summary.skipped,
+                total,
+            };
+            let report = execute::execute(
+                index,
+                BatchKind::Reorganisation,
+                location,
+                &items,
+                &mut overall,
+            )
+            .map_err(|err| err.to_string())?;
+            summary.moved += report.moved();
+            summary.skipped += report.skipped();
+            if let Some(plan) = index
+                .reorganisation_plan(location)
+                .map_err(|err| err.to_string())?
+            {
+                index
+                    .mark_executed(plan.id)
+                    .map_err(|err| err.to_string())?;
+            }
+        }
+        Ok(summary)
+    }
+
+    /// Undoes the last carried out reorganisation that is not undone yet;
+    /// `None` when there is none.
+    pub fn undo_last(&self) -> Result<Option<UndoReport>, String> {
+        let mut guard = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
+        let index = guard.as_mut().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
+        let Some(batch) = index
+            .last_undoable_batch(BatchKind::Reorganisation)
+            .map_err(|err| err.to_string())?
+        else {
+            return Ok(None);
+        };
+        execute::undo(index, batch)
+            .map(Some)
+            .map_err(|err| err.to_string())
     }
 }
 
@@ -355,5 +481,16 @@ pub mod tests {
         let access = PlanAccess::new(Arc::new(Mutex::new(None)), vec![PathBuf::from("/x")]);
 
         assert_eq!(access.plan(), Err(INDEX_NOT_OPEN.to_owned()));
+    }
+
+    #[test]
+    fn executing_and_undoing_with_a_closed_index_is_reported() {
+        let access = PlanAccess::new(Arc::new(Mutex::new(None)), vec![PathBuf::from("/x")]);
+
+        assert_eq!(
+            access.execute(&[], &mut crate::fs::transfer::Counting),
+            Err(INDEX_NOT_OPEN.to_owned())
+        );
+        assert_eq!(access.undo_last(), Err(INDEX_NOT_OPEN.to_owned()));
     }
 }

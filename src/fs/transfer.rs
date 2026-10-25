@@ -159,7 +159,7 @@ pub enum OnConflict {
     Skip,
 }
 
-/// Copies or moves `source` into `target_dir`.
+/// Copies or moves `source` into `target_dir`, keeping its name.
 ///
 /// `total` is the item count for the progress callback, or 0 while it is still
 /// unknown — the callback gets the real number on every call.
@@ -176,10 +176,51 @@ pub fn transfer<S: Source, P: Progress>(
     let target = target_dir.join(name);
 
     refuse_onto_itself(source, target_dir, &target)?;
+    place(source, &target, effect, progress, conflict)
+}
 
+/// Copies or moves `source` to exactly `target`, which may have another name
+/// and may be in the same folder (a rename). Refuses a target that is the
+/// source, an ancestor of it, or inside it.
+pub fn transfer_to<S: Source, P: Progress>(
+    source: &Path,
+    target: &Path,
+    effect: &S,
+    progress: &mut P,
+    conflict: OnConflict,
+) -> io::Result<usize> {
+    refuse_target_in_the_way(source, target)?;
+    place(source, target, effect, progress, conflict)
+}
+
+fn refuse_target_in_the_way(source: &Path, target: &Path) -> io::Result<()> {
+    let refused = |text: String| Err(io::Error::new(io::ErrorKind::InvalidInput, text));
+    if target == source {
+        return refused(format!("{} is already there", source.display()));
+    }
+    if source.starts_with(target) {
+        return refused(format!(
+            "{} contains {}",
+            target.display(),
+            source.display()
+        ));
+    }
+    if std::fs::symlink_metadata(source)?.is_dir() && target.starts_with(source) {
+        return refused(format!("cannot copy {} into itself", target.display()));
+    }
+    Ok(())
+}
+
+fn place<S: Source, P: Progress>(
+    source: &Path,
+    target: &Path,
+    effect: &S,
+    progress: &mut P,
+    conflict: OnConflict,
+) -> io::Result<usize> {
     // `symlink_metadata`, not `exists`: a dangling symlink in the way is still
     // something in the way, and `exists` follows it and says no.
-    let existed = match std::fs::symlink_metadata(&target) {
+    let existed = match std::fs::symlink_metadata(target) {
         Ok(_) => true,
         Err(e) if e.kind() == io::ErrorKind::NotFound => false,
         Err(e) => return Err(e),
@@ -197,7 +238,9 @@ pub fn transfer<S: Source, P: Progress>(
         }
     }
 
-    std::fs::create_dir_all(target_dir)?;
+    if let Some(parent) = target.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent)?;
+    }
 
     // An overwrite is built next to the target and swapped in at the end, so a
     // failure halfway leaves the old target untouched.
@@ -209,15 +252,15 @@ pub fn transfer<S: Source, P: Progress>(
     // check and the rename.
     if effect.removes_source() {
         let staged = if existed {
-            free_sibling(&target)
+            free_sibling(target)
         } else {
-            target.clone()
+            target.to_path_buf()
         };
         if effect.relocate(source, &staged)? {
             // A rename is one step, however large the tree.
             progress.advanced(1, 1)?;
             if existed {
-                if let Err(e) = replace(&staged, &target) {
+                if let Err(e) = replace(&staged, target) {
                     // Put the source back rather than leave it hidden under
                     // the staging name.
                     let _best_effort = std::fs::rename(&staged, source);
@@ -226,10 +269,11 @@ pub fn transfer<S: Source, P: Progress>(
             }
             return Ok(1);
         }
+        return copy_then_remove(source, target, existed, effect, progress);
     }
 
     let meta = std::fs::symlink_metadata(source)?;
-    let staged = claim_entry(source, &meta, &target, existed)?;
+    let staged = claim_entry(source, &meta, target, existed)?;
     let total = count_items(source);
     let mut done = 0;
     if let Err(e) = descend(source, &staged, &meta, progress, &mut done, total) {
@@ -239,17 +283,158 @@ pub fn transfer<S: Source, P: Progress>(
         return Err(e);
     }
     if existed {
-        if let Err(e) = replace(&staged, &target) {
+        if let Err(e) = replace(&staged, target) {
             let _best_effort = remove_path(&staged);
             return Err(e);
         }
     }
-
-    // Only now, with everything copied, does the source go.
-    if effect.removes_source() {
-        effect.remove(source)?;
-    }
     Ok(done)
+}
+
+/// The prefix of the hidden name a move across devices copies to first. A
+/// leftover of an interrupted move is found by it.
+pub fn partial_prefix(target: &Path) -> String {
+    format!(
+        ".ncrs-partial-{}-",
+        target.file_name().unwrap_or_default().to_string_lossy()
+    )
+}
+
+/// A move that cannot rename. The copy is made under a hidden name next to the
+/// target and compared with the source; only a copy that matches is renamed to
+/// the target, and only then does the source go. A failure at any step removes
+/// the hidden copy and leaves the source alone.
+fn copy_then_remove<S: Source, P: Progress>(
+    source: &Path,
+    target: &Path,
+    existed: bool,
+    effect: &S,
+    progress: &mut P,
+) -> io::Result<usize> {
+    let meta = std::fs::symlink_metadata(source)?;
+    let staged = claim_partial(source, &meta, target)?;
+    let total = count_items(source);
+    let mut done = 0;
+    let finished = descend(source, &staged, &meta, progress, &mut done, total)
+        .and_then(|()| verify_copy(source, &staged))
+        .and_then(|()| {
+            if existed {
+                replace(&staged, target)
+            } else {
+                claim_free_target(&staged, target)
+            }
+        });
+    if let Err(e) = finished {
+        let _best_effort = remove_path(&staged);
+        return Err(e);
+    }
+    effect.remove(source)?;
+    Ok(done)
+}
+
+/// Renames `staged` to `target` after checking once more that nothing is there.
+fn claim_free_target(staged: &Path, target: &Path) -> io::Result<()> {
+    match std::fs::symlink_metadata(target) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => std::fs::rename(staged, target),
+        Err(e) => Err(e),
+        Ok(_) => Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            format!("{} already exists", target.display()),
+        )),
+    }
+}
+
+/// Creates the first entry of a copy under a hidden name nobody else holds.
+fn claim_partial(source: &Path, meta: &std::fs::Metadata, target: &Path) -> io::Result<PathBuf> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+    loop {
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let candidate = target.with_file_name(format!(
+            "{}{}-{n}",
+            partial_prefix(target),
+            std::process::id()
+        ));
+        match create_entry(source, meta, &candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+/// Whether `copy` holds exactly what `source` holds: the same names, the same
+/// links and the same bytes in every regular file.
+fn verify_copy(source: &Path, copy: &Path) -> io::Result<()> {
+    let differs = || {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("the copy of {} differs from the original", source.display()),
+        )
+    };
+    let from = std::fs::symlink_metadata(source)?;
+    let to = std::fs::symlink_metadata(copy)?;
+    if from.is_dir() {
+        if !to.is_dir() {
+            return Err(differs());
+        }
+        let names = |dir: &Path| -> io::Result<Vec<std::ffi::OsString>> {
+            let mut names = std::fs::read_dir(dir)?
+                .map(|entry| entry.map(|found| found.file_name()))
+                .collect::<io::Result<Vec<_>>>()?;
+            names.sort();
+            Ok(names)
+        };
+        let listed = names(source)?;
+        if listed != names(copy)? {
+            return Err(differs());
+        }
+        for name in listed {
+            verify_copy(&source.join(&name), &copy.join(&name))?;
+        }
+        Ok(())
+    } else if from.file_type().is_symlink() {
+        if to.file_type().is_symlink() && std::fs::read_link(source)? == std::fs::read_link(copy)? {
+            Ok(())
+        } else {
+            Err(differs())
+        }
+    } else if to.is_file() && from.len() == to.len() && same_bytes(source, copy)? {
+        Ok(())
+    } else {
+        Err(differs())
+    }
+}
+
+fn same_bytes(left: &Path, right: &Path) -> io::Result<bool> {
+    use io::Read as _;
+    let mut left_reader = io::BufReader::new(std::fs::File::open(left)?);
+    let mut right_reader = io::BufReader::new(std::fs::File::open(right)?);
+    let mut left_buffer: [u8; 64 * 1024] = [0; 64 * 1024];
+    let mut right_buffer: [u8; 64 * 1024] = [0; 64 * 1024];
+    loop {
+        let read = left_reader.read(&mut left_buffer)?;
+        if read == 0 {
+            return Ok(right_reader.read(&mut right_buffer)? == 0);
+        }
+        let Some(expected) = left_buffer.get(..read) else {
+            return Ok(false);
+        };
+        let mut got = 0;
+        while got < read {
+            let Some(room) = right_buffer.get_mut(got..read) else {
+                return Ok(false);
+            };
+            let n = right_reader.read(room)?;
+            if n == 0 {
+                return Ok(false);
+            }
+            got += n;
+        }
+        if right_buffer.get(..read) != Some(expected) {
+            return Ok(false);
+        }
+    }
 }
 
 /// Creates the first entry of a copy under a name nobody else holds.
@@ -1065,6 +1250,134 @@ mod tests {
 
         assert!(!src.exists());
         assert_eq!(fs::read(dst.join("src/sub/deeper/c.txt")).unwrap(), b"c");
+    }
+
+    /// A move that always has to copy, as across volumes.
+    struct AcrossDevices;
+    impl Source for AcrossDevices {
+        fn removes_source(&self) -> bool {
+            true
+        }
+        fn remove(&self, path: &Path) -> io::Result<()> {
+            Move.remove(path)
+        }
+        fn relocate(&self, _from: &Path, _to: &Path) -> io::Result<bool> {
+            Ok(false)
+        }
+    }
+
+    #[test]
+    fn a_file_is_renamed_inside_its_folder_to_a_new_name() {
+        let dir = scratch("rename-here");
+        let src = dir.path().join("scan 0042.pdf");
+        fs::write(&src, b"Company A").unwrap();
+        let target = dir.path().join("2024-04-05_invoice.pdf");
+
+        transfer_to(&src, &target, &Move, &mut Counting, OnConflict::Fail).unwrap();
+
+        assert!(!src.exists());
+        assert_eq!(fs::read(&target).unwrap(), b"Company A");
+    }
+
+    #[test]
+    fn a_target_that_is_the_source_or_around_it_is_refused() {
+        let dir = scratch("to-refused");
+        let src = dir.path().join("a/b.txt");
+        fs::create_dir_all(src.parent().unwrap()).unwrap();
+        fs::write(&src, b"x").unwrap();
+
+        for target in [src.clone(), dir.path().join("a")] {
+            let err =
+                transfer_to(&src, &target, &Move, &mut Counting, OnConflict::Fail).unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::InvalidInput, "{target:?}");
+        }
+        assert_eq!(fs::read(&src).unwrap(), b"x");
+    }
+
+    #[test]
+    fn a_move_across_devices_copies_verifies_and_only_then_removes_the_source() {
+        let dir = scratch("exdev-to");
+        let src = dir.path().join("Company A.pdf");
+        fs::write(&src, b"letter").unwrap();
+        let target = dir.path().join("new/Agency B.pdf");
+
+        transfer_to(
+            &src,
+            &target,
+            &AcrossDevices,
+            &mut Counting,
+            OnConflict::Fail,
+        )
+        .unwrap();
+
+        assert!(!src.exists());
+        assert_eq!(fs::read(&target).unwrap(), b"letter");
+        let leftovers: Vec<_> = fs::read_dir(dir.path().join("new")).unwrap().collect();
+        assert_eq!(leftovers.len(), 1, "no staging copy is left");
+    }
+
+    #[test]
+    fn a_copy_that_differs_leaves_the_source_and_no_staging_copy() {
+        struct Tamper<'a>(&'a Path);
+        impl Progress for Tamper<'_> {
+            fn advanced(&mut self, _done: usize, _total: usize) -> io::Result<()> {
+                for entry in fs::read_dir(self.0)? {
+                    let path = entry?.path();
+                    let name = path.file_name().unwrap().to_string_lossy().into_owned();
+                    if name.starts_with(".ncrs-partial-") {
+                        fs::write(&path, b"changed on the way")?;
+                    }
+                }
+                Ok(())
+            }
+        }
+        let dir = scratch("exdev-differs");
+        let src = dir.path().join("Company A.pdf");
+        fs::write(&src, b"letter").unwrap();
+        let target_dir = dir.path().join("new");
+        fs::create_dir(&target_dir).unwrap();
+        let target = target_dir.join("Agency B.pdf");
+
+        let err = transfer_to(
+            &src,
+            &target,
+            &AcrossDevices,
+            &mut Tamper(&target_dir),
+            OnConflict::Fail,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(fs::read(&src).unwrap(), b"letter");
+        assert_eq!(fs::read_dir(&target_dir).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn a_target_that_appeared_during_the_copy_is_not_overwritten() {
+        struct Occupy<'a>(&'a Path);
+        impl Progress for Occupy<'_> {
+            fn advanced(&mut self, _done: usize, _total: usize) -> io::Result<()> {
+                fs::write(self.0, b"someone else")
+            }
+        }
+        let dir = scratch("exdev-appeared");
+        let src = dir.path().join("Company A.pdf");
+        fs::write(&src, b"letter").unwrap();
+        let target = dir.path().join("Agency B.pdf");
+
+        let err = transfer_to(
+            &src,
+            &target,
+            &AcrossDevices,
+            &mut Occupy(&target),
+            OnConflict::Fail,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(fs::read(&src).unwrap(), b"letter");
+        assert_eq!(fs::read(&target).unwrap(), b"someone else");
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2);
     }
 
     #[test]

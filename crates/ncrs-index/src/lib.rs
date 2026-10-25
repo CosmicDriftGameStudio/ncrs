@@ -4,6 +4,7 @@
 mod documents;
 mod error;
 mod index;
+mod journal;
 mod key;
 mod key_store;
 mod locations;
@@ -20,10 +21,11 @@ mod test_support;
 
 pub use error::{IndexError, KeyStoreError, RecoveryKeyError};
 pub use index::Index;
+pub use journal::{BatchKind, JournalItem, JournalState, NewJournalItem};
 pub use key::RecoveryKey;
 pub use key_store::{InMemoryKeyStore, KeyStore, KeyringKeyStore};
 pub use model::{
-    Amount, ConflictReason, ContentHash, Currency, Document, DocumentFields, DocumentId,
+    Amount, BatchId, ConflictReason, ContentHash, Currency, Document, DocumentFields, DocumentId,
     DocumentSource, DocumentStatus, Field, FileStamp, Finding, FindingKind, IndexStatistics,
     NewDocument, NoActionReason, PlanId, PlanItem, PlanOutcome, ReorganisationPlan, ReviewEntry,
     ReviewEntryId, ReviewReason, Rule, RuleEvidence, RuleId, RuleSpec, RuleSuggestion,

@@ -34,12 +34,13 @@ id_newtype!(DocumentId);
 id_newtype!(RuleId);
 id_newtype!(ReviewEntryId);
 id_newtype!(PlanId);
+id_newtype!(BatchId);
 
 /// SHA-256 of the file content. The index stores it; hashing is not its job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ContentHash(pub [u8; 32]);
 
-fn corrupt(column: &'static str, value: &str) -> IndexError {
+pub fn corrupt(column: &'static str, value: &str) -> IndexError {
     IndexError::CorruptValue {
         column,
         value: value.to_owned(),

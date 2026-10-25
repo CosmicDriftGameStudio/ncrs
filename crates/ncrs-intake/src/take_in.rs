@@ -1,4 +1,4 @@
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -178,9 +178,8 @@ fn has_symlink_ancestor(location: &Location, path: &Path) -> Result<bool, Intake
 }
 
 /// Opens without following a link and without blocking on a FIFO, since the
-/// path may have been swapped since it was looked at. `None` when what was
-/// opened is not the file that was stamped: it is still changing.
-fn hash_file(path: &Path, stamp: FileStamp) -> Result<Option<ContentHash>, IntakeError> {
+/// path may have been swapped since it was looked at.
+fn open_regular(path: &Path) -> Result<File, IntakeError> {
     let mut options = OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
@@ -188,7 +187,19 @@ fn hash_file(path: &Path, stamp: FileStamp) -> Result<Option<ContentHash>, Intak
         &mut options,
         libc::O_NOFOLLOW | libc::O_NONBLOCK,
     );
-    let mut file = options.open(path).map_err(IntakeError::io(path))?;
+    options.open(path).map_err(IntakeError::io(path))
+}
+
+fn hash_open(file: &mut File, path: &Path) -> Result<ContentHash, IntakeError> {
+    let mut hasher = Sha256::new();
+    io::copy(file, &mut hasher).map_err(IntakeError::io(path))?;
+    Ok(ContentHash(hasher.finalize().into()))
+}
+
+/// `None` when what was opened is not the file that was stamped: it is still
+/// changing.
+fn hash_file(path: &Path, stamp: FileStamp) -> Result<Option<ContentHash>, IntakeError> {
+    let mut file = open_regular(path)?;
     let opened = file.metadata().map_err(IntakeError::io(path))?;
     let unchanged = opened.is_file()
         && opened.len() == stamp.size
@@ -196,9 +207,21 @@ fn hash_file(path: &Path, stamp: FileStamp) -> Result<Option<ContentHash>, Intak
     if !unchanged {
         return Ok(None);
     }
-    let mut hasher = Sha256::new();
-    io::copy(&mut file, &mut hasher).map_err(IntakeError::io(path))?;
-    Ok(Some(ContentHash(hasher.finalize().into())))
+    hash_open(&mut file, path).map(Some)
+}
+
+/// The hash a document is known by, of the regular file at `path`, without a
+/// stamp to compare with. A link, a FIFO or a folder is an error.
+pub fn hash_path(path: &Path) -> Result<ContentHash, IntakeError> {
+    let mut file = open_regular(path)?;
+    let opened = file.metadata().map_err(IntakeError::io(path))?;
+    if !opened.is_file() {
+        return Err(IntakeError::io(path)(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "not a regular file",
+        )));
+    }
+    hash_open(&mut file, path)
 }
 
 /// `DateTime::from(SystemTime)` panics on values chrono cannot hold, and a

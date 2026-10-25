@@ -16,6 +16,7 @@ use crate::config::{
 };
 use crate::context_menu::{ContextAction, ContextMenu, InputState};
 use crate::dialog::{Prompt, PromptKind};
+use crate::execute;
 use crate::filing::{FilingMessage, FilingModule, LocationStatus, Phase, Work, WorkOutcome};
 use crate::filing_setup::{self, FilingSetup, SetupNote};
 use crate::filing_status::{FilingStatus, SNAPSHOT_EVERY};
@@ -37,6 +38,7 @@ use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
 use crate::palette::Palette;
 use crate::quick_open::{QuickOpen, QUICK_OPEN_FILE_LIMIT};
 use crate::reorganisation_plan::ReorganisationView;
+use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
 use crate::rule_suggestions::RuleSuggestions;
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
 use crate::suggestion_work::{SuggestedRule, SuggestionAccess, INDEX_NOT_OPEN};
@@ -2438,7 +2440,10 @@ impl App {
             Message::RuleSuggestions(suggestions) => self.update_rule_suggestions(suggestions),
             Message::ReorganisationPlan(plan) => self.update_reorganisation(plan),
             // #73 hangs the executor here; until then the selection goes nowhere.
-            Message::ExecuteReorganisation(_selection) => Task::none(),
+            Message::ExecuteReorganisation(selection) => self.run_reorganisation(selection),
+            Message::ReorganisationExecuted(result) => self.reorganisation_executed(result),
+            Message::UndoReorganisation => self.undo_reorganisation(),
+            Message::ReorganisationUndone(result) => self.reorganisation_undone(result),
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => self.update_filing_status(page_message),
@@ -3900,6 +3905,128 @@ impl App {
         ])
     }
 
+    fn progress_sender(&mut self) -> mpsc::UnboundedSender<fs::transfer::Tick> {
+        match &self.progress_tx {
+            Some(tx) => tx.clone(),
+            None => {
+                let (created, receiver) = tokio::sync::mpsc::unbounded_channel();
+                self.progress_tx = Some(created.clone());
+                self.progress_rx = Some(Arc::new(tokio::sync::Mutex::new(receiver)));
+                created
+            }
+        }
+    }
+
+    /// Runs the selected plan entries on the blocking pool, as one job. Escape
+    /// closes the progress channel, which stops the run between two files.
+    fn run_reorganisation(&mut self, selection: Vec<PlannedItem>) -> Task<Message> {
+        if self.jobs.is_busy() || selection.is_empty() {
+            return Task::none();
+        }
+        let Some(access) = self.filing.as_ref().and_then(FilingModule::plan_access) else {
+            self.set_status_error(INDEX_NOT_OPEN);
+            return Task::none();
+        };
+        let progress_tx = self.progress_sender();
+        let total = selection.len();
+        self.job_progress = Some(fs::transfer::Tick { done: 0, total });
+        self.jobs.enqueue(jobs::Job {
+            kind: jobs::JobKind::Reorganise,
+            path: selection
+                .first()
+                .map(|entry| entry.location.clone())
+                .unwrap_or_default(),
+            total: Some(total),
+        });
+        self.jobs
+            .start_next(|_| {
+                Task::perform(
+                    tokio::task::spawn_blocking(move || {
+                        let mut progress = fs::transfer::Reporting::new(&progress_tx);
+                        access.execute(&selection, &mut progress)
+                    }),
+                    |joined| {
+                        Message::ReorganisationExecuted(
+                            joined.unwrap_or_else(|join| Err(join.to_string())),
+                        )
+                    },
+                )
+            })
+            .unwrap_or_else(Task::none)
+    }
+
+    fn reorganisation_executed(
+        &mut self,
+        result: Result<ExecutionSummary, String>,
+    ) -> Task<Message> {
+        self.jobs.finish();
+        self.job_progress = None;
+        match result {
+            Ok(summary) => {
+                let text = self
+                    .lang
+                    .text(Msg::StatusReorganised)
+                    .replace("{moved}", &summary.moved.to_string())
+                    .replace("{skipped}", &summary.skipped.to_string());
+                Task::batch([self.show_notice(text), self.replan_if_open()])
+            }
+            Err(detail) => {
+                self.set_status_error(&detail);
+                self.replan_if_open()
+            }
+        }
+    }
+
+    fn undo_reorganisation(&mut self) -> Task<Message> {
+        if self.jobs.is_busy() {
+            return Task::none();
+        }
+        let Some(access) = self.filing.as_ref().and_then(FilingModule::plan_access) else {
+            self.set_status_error(INDEX_NOT_OPEN);
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.undo_last()),
+            |joined| {
+                Message::ReorganisationUndone(joined.unwrap_or_else(|join| Err(join.to_string())))
+            },
+        )
+    }
+
+    fn reorganisation_undone(
+        &mut self,
+        result: Result<Option<execute::UndoReport>, String>,
+    ) -> Task<Message> {
+        match result {
+            Ok(Some(report)) => {
+                let text = self
+                    .lang
+                    .text(Msg::StatusReorganisationUndone)
+                    .replace("{moved}", &report.undone.to_string())
+                    .replace("{skipped}", &report.left.to_string());
+                Task::batch([self.show_notice(text), self.replan_if_open()])
+            }
+            Ok(None) => {
+                let text = self.lang.text(Msg::StatusNothingToUndo).to_string();
+                self.show_notice(text)
+            }
+            Err(detail) => {
+                self.set_status_error(&detail);
+                Task::none()
+            }
+        }
+    }
+
+    /// The files moved, so an open plan is out of date.
+    fn replan_if_open(&mut self) -> Task<Message> {
+        let Some(view) = self.reorganisation.as_mut() else {
+            return Task::none();
+        };
+        view.begin_planning();
+        self.reorganisation_generation = self.reorganisation_generation.wrapping_add(1);
+        self.run_planning()
+    }
+
     /// Runs the rows from `index`, on the blocking pool, reporting progress.
     ///
     /// One row at a time rather than the whole list, so a conflict can be
@@ -3917,15 +4044,7 @@ impl App {
         // One channel per transfer, but the receiving half is created once for
         // the app (see `progress_rx`) and reused, so `subscription` does not
         // have to hand out a fresh receiver after every row.
-        let progress_tx = match &self.progress_tx {
-            Some(tx) => tx.clone(),
-            None => {
-                let (created, receiver) = tokio::sync::mpsc::unbounded_channel();
-                self.progress_tx = Some(created.clone());
-                self.progress_rx = Some(Arc::new(tokio::sync::Mutex::new(receiver)));
-                created
-            }
-        };
+        let progress_tx = self.progress_sender();
 
         let generation = self.generation;
         let target = transfer.target.clone();

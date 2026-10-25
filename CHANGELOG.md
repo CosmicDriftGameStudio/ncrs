@@ -15,8 +15,15 @@ All notable changes to this project are documented here. The format follows
   the reason, plus a before and after tree of the folders the selection
   touches. You select entries one by one or a whole group; entries that rest
   on a rule you have not confirmed start unselected. Open it with Cmd+Shift+I
-  (Ctrl+Shift+I elsewhere) or from the command list. Running the selection
-  comes next.
+  (Ctrl+Shift+I elsewhere) or from the command list. Enter now carries out
+  the selected entries: each file is checked against the plan, never
+  overwrites anything and is never deleted, and the run can be stopped with
+  Escape between two files. Every step is journaled, so "Undo last
+  reorganisation" (command list, with the small name Rewind) moves the files
+  back and removes the folders the run created if they are empty. A run that
+  was interrupted is settled the next time the index opens. Moves across
+  drives copy to a temporary name first, compare the copy with the original
+  and only then remove the original.
 - Rule suggestions (Requisitions): ncrs looks at how your records are
   already filed and suggests rules from it, such as "text contains Company A
   Ltd goes to Insurance". Each suggestion shows how many documents in its

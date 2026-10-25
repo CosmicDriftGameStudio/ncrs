@@ -495,7 +495,11 @@ impl IndexFiguresReader {
     }
 }
 
+/// Every index goes through here before the watcher and the pipeline see it,
+/// so a move that was interrupted is settled before anything looks at the files.
 fn put_index(slot: &IndexSlot, index: Index) {
+    // A failure leaves the pending items pending; the next open settles them.
+    let _settled_or_retried_next_open = crate::execute::reconcile(&index);
     *lock(slot) = Some(index);
 }
 
@@ -1293,6 +1297,39 @@ mod tests {
             &module.index,
             Index::create_plain(&dir.path().join("index.db")).unwrap(),
         );
+    }
+
+    #[test]
+    fn an_index_put_into_the_slot_has_its_interrupted_move_settled_first() {
+        use ncrs_index::{BatchKind, JournalState, NewJournalItem};
+
+        let dir = TempDir::new().unwrap();
+        let source = dir.path().join("a.pdf");
+        std::fs::write(&source, "alpha").unwrap();
+        let index = Index::create_plain(&dir.path().join("index.db")).unwrap();
+        let batch = index.begin_batch(BatchKind::Reorganisation).unwrap();
+        index
+            .add_journal_item(
+                batch,
+                &NewJournalItem {
+                    from: source.clone(),
+                    to: dir.path().join("b.pdf"),
+                    hash: ncrs_intake::hash_path(&source).unwrap(),
+                    document_id: None,
+                    duplicate: false,
+                    state: JournalState::Pending,
+                    reason: None,
+                },
+            )
+            .unwrap();
+        let slot = IndexSlot::default();
+
+        put_index(&slot, index);
+
+        let guard = lock(&slot);
+        let items = guard.as_ref().unwrap().journal_items(batch).unwrap();
+        assert_eq!(items[0].state, JournalState::Skipped);
+        assert_eq!(items[0].reason.as_deref(), Some("interrupted"));
     }
 
     #[test]
