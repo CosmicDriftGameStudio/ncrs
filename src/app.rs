@@ -963,27 +963,30 @@ fn keys_without_prompt(
         return search_key(prompt, &key, key_modifiers);
     }
 
-    // Escape stops a running job, else dismisses the config error, else closes
-    // the filing setup, else leaves a filing card, and is free when none exists. Unbound rather than bound
-    // to something that does nothing — a key that means different things
-    // depending on invisible state is worse than one that is simply free.
     if matches!(key.as_ref(), Key::Named(Named::Escape)) {
-        return if prompt.job_running {
-            Some(Message::AbortJob)
-        } else if prompt.config_error {
-            Some(Message::DismissConfigError)
-        } else {
-            if prompt.filing_setup {
-                Some(Message::FilingSetup(FilingSetupMessage::Close))
-            } else {
-                prompt
-                    .filing_card
-                    .then_some(Message::Filing(FilingMessage::Dismiss))
-            }
-        };
+        return escape_message(prompt);
     }
     bound_message(&prompt.keymap, &key, key_modifiers, scope)
         .or_else(|| type_ahead_message(&key, key_modifiers))
+}
+
+// A visible card whose footer promises "Esc: close" goes before the job
+// (same thought as the delete dialog): the filing setup, then a filing
+// card, then a running job, then the config error. Unbound rather than
+// bound to something that does nothing — a key that means different things
+// depending on invisible state is worse than one that is simply free.
+fn escape_message(prompt: &PromptKeyState) -> Option<Message> {
+    if prompt.filing_setup {
+        Some(Message::FilingSetup(FilingSetupMessage::Close))
+    } else if prompt.filing_card {
+        Some(Message::Filing(FilingMessage::Dismiss))
+    } else if prompt.job_running {
+        Some(Message::AbortJob)
+    } else if prompt.config_error {
+        Some(Message::DismissConfigError)
+    } else {
+        None
+    }
 }
 
 /// Keys while the search view is up. A text field captures what it types, so
@@ -7314,6 +7317,19 @@ mod delete_tests {
                 Modifiers::default()
             ),
             None
+        );
+    }
+
+    #[test]
+    fn escape_closes_the_filing_setup_and_leaves_a_running_job_alone() {
+        let setup_over_job = PromptKeyState {
+            filing_setup: true,
+            job_running: true,
+            ..PromptKeyState::default()
+        };
+        assert_eq!(
+            route(&setup_over_job, Named::Escape, Modifiers::default()),
+            Some(Message::FilingSetup(FilingSetupMessage::Close))
         );
     }
 

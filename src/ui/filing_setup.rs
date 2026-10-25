@@ -137,7 +137,7 @@ pub fn view<'a>(
         action(
             lang.text(Msg::FilingSetupSave),
             setup.can_save().then_some(FilingSetupMessage::Save),
-            true,
+            false,
             palette,
         ),
     ])
