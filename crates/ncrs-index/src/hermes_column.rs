@@ -281,7 +281,7 @@ mod tests {
         index
             .set_document_path(
                 id,
-                Path::new(path),
+                &p(path),
                 FileStamp {
                     size: 1,
                     mtime: UNIX_EPOCH,
