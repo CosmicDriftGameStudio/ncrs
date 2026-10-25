@@ -8,9 +8,10 @@ use iced::widget::{checkbox, column, container, radio, text, Column, Row};
 use iced::{Alignment, Element, Length, Size};
 use ncrs_intake::LocationMode;
 
-use super::filing::{error_line, paragraph, radio_look};
+use super::filing::radio_look;
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
+use super::kit::{self, error_line, paragraph, Tone};
 use super::theme::{self, font_size, spacing};
 use crate::app::fill_template;
 use crate::config::{ConfigError, FilingLocation, FilingRuleViolation, FilingWriteError};
@@ -157,7 +158,11 @@ fn action<'a>(
     primary: bool,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    frame::action(label, on_press.map(setup_message), primary, palette)
+    if primary {
+        kit::enter_button(label, on_press.map(setup_message), Tone::Primary, palette)
+    } else {
+        kit::button(label, on_press.map(setup_message), Tone::Secondary, palette)
+    }
 }
 
 fn add_buttons<'a>(

@@ -11,7 +11,8 @@ use iced::widget::text::Wrapping;
 use iced::widget::{checkbox, column, radio, rich_text, text, text_input, Column, Row};
 use iced::{Background, Color, Element, Font, Length, Size, Theme};
 
-use super::frame::{self, DialogSize, Frame, KeyHints};
+use super::frame::{DialogSize, Frame, KeyHints};
+use super::kit::{self, error_line, paragraph, Tone};
 use super::theme::{self, font_size, spacing};
 use crate::app::fill_template;
 use crate::filing::{FilingMessage, FilingModule, KeyError, KeyProblem, Phase, SecretText};
@@ -89,32 +90,22 @@ fn filing_message(message: FilingMessage) -> Message {
     Message::Filing(message)
 }
 
-pub fn paragraph<'a>(
-    content: impl iced::widget::text::IntoFragment<'a>,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    text(content)
-        .size(font_size::STATUS)
-        .color(palette.text)
-        .wrapping(Wrapping::Word)
-        .into()
-}
-
-pub fn error_line<'a>(content: String, palette: &Palette) -> Element<'a, Message> {
-    text(content)
-        .size(font_size::STATUS)
-        .color(palette.error)
-        .wrapping(Wrapping::Word)
-        .into()
-}
-
 fn action<'a>(
     label: &'a str,
     on_press: Option<FilingMessage>,
     primary: bool,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    frame::action(label, on_press.map(filing_message), primary, palette)
+    if primary {
+        kit::enter_button(label, on_press.map(filing_message), Tone::Primary, palette)
+    } else {
+        kit::button(
+            label,
+            on_press.map(filing_message),
+            Tone::Secondary,
+            palette,
+        )
+    }
 }
 
 fn quiet_action<'a>(
@@ -123,7 +114,12 @@ fn quiet_action<'a>(
     primary: bool,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    frame::action_without_enter(label, on_press.map(filing_message), primary, palette)
+    kit::button(
+        label,
+        on_press.map(filing_message),
+        Tone::filled_if(primary),
+        palette,
+    )
 }
 
 pub fn radio_look(palette: &Palette) -> impl Fn(&Theme, radio::Status) -> radio::Style {
@@ -149,7 +145,7 @@ fn ask_encryption<'a>(
             filing_message(FilingMessage::ChooseEncrypted(chosen))
         })
         .size(14)
-        .text_size(font_size::STATUS)
+        .text_size(font_size::BODY)
         .style(radio_look(palette))
     };
     let mut body = column![
@@ -316,7 +312,7 @@ fn ask_recovery_key<'a>(
                     .style(theme::dialog_checkbox(palette))
                     .into(),
                 text(lang.text(Msg::FilingRestoreReplaceCheckbox))
-                    .size(font_size::STATUS)
+                    .size(font_size::BODY)
                     .into(),
             ])
             .spacing(spacing::CELL_PADDING_X),
@@ -351,7 +347,7 @@ fn plain_file_warning<'a>(lang: Language, palette: &Palette) -> Card<'a> {
     Card {
         title: lang.text(Msg::FilingPlainTitle),
         body: column![text(lang.text(Msg::FilingPlainWarning))
-            .size(font_size::STATUS)
+            .size(font_size::BODY)
             .color(palette.error)
             .wrapping(Wrapping::Word)]
         .spacing(spacing::SECTION_GAP),

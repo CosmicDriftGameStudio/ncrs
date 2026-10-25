@@ -6,7 +6,8 @@
 use iced::widget::{column, container, text, text_input};
 use iced::{alignment, Background, Element, Length, Size};
 
-use super::frame::{self, DialogSize, Frame, KeyHints};
+use super::frame::{DialogSize, Frame, KeyHints};
+use super::kit::{self, Tone};
 use super::theme::{self, font_size, spacing};
 use crate::dialog::Prompt;
 use crate::i18n::{Language, Msg};
@@ -53,11 +54,12 @@ pub fn view<'a>(
     // the layout reports for them. That is why the layout test and the click
     // test have to agree about where the buttons are.
     let idle = !state.busy();
-    let confirm_button = frame::action(confirm, idle.then_some(on_submit), true, palette);
-    let cancel_button = frame::action(
+    let confirm_button =
+        kit::enter_button(confirm, idle.then_some(on_submit), Tone::Primary, palette);
+    let cancel_button = kit::button(
         lang.text(Msg::DialogCancel),
         idle.then(|| on_cancel.clone()),
-        false,
+        Tone::Secondary,
         palette,
     );
 
@@ -72,7 +74,7 @@ pub fn view<'a>(
         };
         body = body.push(
             text(message)
-                .size(font_size::STATUS)
+                .size(font_size::BODY)
                 .color(palette.error)
                 .wrapping(iced::widget::text::Wrapping::Word),
         );

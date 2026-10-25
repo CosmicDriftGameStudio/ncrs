@@ -9,11 +9,10 @@ use iced::widget::{button, column, container, row, text, Column};
 use iced::{alignment, Color, Element, Length, Size};
 use ncrs_index::{ConflictReason, Finding, PlanOutcome};
 
-use super::filing::{error_line, paragraph};
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
-use super::layout::ROW_HEIGHT;
-use super::theme::{self, font_size, spacing};
+use super::kit::{self, dim, error_line, paragraph, Columns, Tone};
+use super::theme::{self, font_size, size, spacing};
 use crate::app::fill_template;
 use crate::i18n::{Language, Msg};
 use crate::messages::{Message, ReorganisationPlanMessage};
@@ -101,60 +100,15 @@ pub fn view<'a>(
     .into_element()
 }
 
-fn dim<'a>(content: &'a str, palette: &Palette) -> Element<'a, Message> {
-    text(content)
-        .size(font_size::STATUS)
-        .color(palette.dim_text)
-        .wrapping(Wrapping::Word)
-        .into()
-}
-
-fn cell<'a>(content: &str, portion: u16, chars: usize, color: Color) -> Element<'a, Message> {
-    shortened_cell(format::ellipsize_middle(content, chars), portion, color)
-}
-
-/// For text that reads from its start, such as a reason.
-fn reason_cell<'a>(
-    content: &str,
-    portion: u16,
-    chars: usize,
-    color: Color,
-) -> Element<'a, Message> {
-    shortened_cell(format::ellipsize_end(content, chars), portion, color)
-}
-
-fn shortened_cell<'a>(content: String, portion: u16, color: Color) -> Element<'a, Message> {
-    container(
-        text(content)
-            .size(font_size::ROW)
-            .color(color)
-            .wrapping(Wrapping::None),
-    )
-    .width(Length::FillPortion(portion))
-    .clip(true)
-    .into()
-}
-
 fn box_cell<'a>(mark: &str, color: Color) -> Element<'a, Message> {
     container(
         text(mark.to_owned())
-            .size(font_size::ROW)
+            .size(font_size::BODY)
             .color(color)
             .wrapping(Wrapping::None),
     )
     .width(BOX_WIDTH)
     .into()
-}
-
-/// The characters a column of `portion` holds in a line of `line_chars`.
-fn column_chars(line_chars: usize, portion: u16) -> usize {
-    let total: u16 = PORTIONS.iter().sum();
-    line_chars
-        .saturating_sub(BOX_CHARS)
-        .saturating_mul(usize::from(portion))
-        .checked_div(usize::from(total))
-        .unwrap_or_default()
-        .saturating_sub(2)
 }
 
 fn group_name(group: Group) -> Msg {
@@ -243,31 +197,34 @@ fn list<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let [current, proposed, reason] = PORTIONS;
-    let chars = |portion| column_chars(line_chars, portion);
+    let columns = Columns {
+        portions: &PORTIONS,
+        line_chars: line_chars.saturating_sub(BOX_CHARS),
+    };
+    let whole_line = Columns {
+        portions: &[1],
+        line_chars: line_chars.saturating_sub(BOX_CHARS),
+    };
     let header = row![
         box_cell("", palette.dim_text),
-        cell(
+        columns.cell(
+            0,
             lang.text(Msg::ReorganisationPlanColumnCurrent),
-            current,
-            chars(current),
             palette.dim_text
         ),
-        cell(
+        columns.cell(
+            1,
             lang.text(Msg::ReorganisationPlanColumnProposed),
-            proposed,
-            chars(proposed),
             palette.dim_text
         ),
-        cell(
+        columns.cell(
+            2,
             lang.text(Msg::ReorganisationPlanColumnReason),
-            reason,
-            chars(reason),
             palette.dim_text
         ),
     ]
     .padding([0.0, spacing::CELL_PADDING_X])
-    .height(ROW_HEIGHT)
+    .height(size::ROW)
     .align_y(alignment::Vertical::Center);
 
     let first = (state.cursor() + 1).saturating_sub(VISIBLE_LINES);
@@ -302,7 +259,7 @@ fn list<'a>(
                 }
                 row![
                     box_cell(mark(selected, selectable), color),
-                    cell(&title, 1, line_chars.saturating_sub(BOX_CHARS), color),
+                    whole_line.cell(0, &title, color),
                 ]
             }
             Line::Item(position_in_plan) => {
@@ -320,14 +277,9 @@ fn list<'a>(
                         };
                         row![
                             box_cell(&format!("{INDENT}{own_mark}"), color),
-                            cell(
-                                &planned.item.source.display().to_string(),
-                                current,
-                                chars(current),
-                                color
-                            ),
-                            cell(&proposed_text(planned), proposed, chars(proposed), color),
-                            reason_cell(&reason_text(planned, lang), reason, chars(reason), color),
+                            columns.path_cell(0, &planned.item.source.display().to_string(), color),
+                            columns.path_cell(1, &proposed_text(planned), color),
+                            columns.cell(2, &reason_text(planned, lang), color),
                         ]
                     })
             }
@@ -337,14 +289,14 @@ fn list<'a>(
             .on_press(send(ReorganisationPlanMessage::Toggle(position)))
             .width(Length::Fill)
             .padding([0.0, spacing::CELL_PADDING_X])
-            .height(ROW_HEIGHT)
+            .height(size::ROW)
             .style(theme::row(palette, false, on_cursor, true))
             .into()
     });
     column![
         header,
         container(Column::with_children(lines))
-            .height(ROW_HEIGHT * state.lines().len().min(VISIBLE_LINES) as f32)
+            .height(size::ROW * state.lines().len().min(VISIBLE_LINES) as f32)
             .clip(true)
     ]
     .into()
@@ -383,7 +335,7 @@ fn tree<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let mut shown = column![text(heading).size(font_size::STATUS).color(palette.accent)]
+    let mut shown = column![text(heading).size(font_size::BODY).color(palette.accent)]
         .spacing(2)
         .width(Length::FillPortion(1));
     if lines.is_empty() {
@@ -394,7 +346,7 @@ fn tree<'a>(
         let content = format!("{}{}{slash}", INDENT.repeat(line.depth), line.name);
         shown = shown.push(
             text(format::ellipsize_end(&content, chars))
-                .size(font_size::STATUS)
+                .size(font_size::BODY)
                 .color(if line.is_folder {
                     palette.dim_text
                 } else {
@@ -410,7 +362,7 @@ fn tree<'a>(
                 lang.text(Msg::ReorganisationPlanTreeMore),
                 &[("{count}", &rest.to_string())],
             ))
-            .size(font_size::STATUS)
+            .size(font_size::BODY)
             .color(palette.dim_text),
         );
     }
@@ -424,22 +376,22 @@ fn buttons<'a>(
 ) -> Vec<Element<'a, Message>> {
     let runnable = state.has_selection() && !state.is_busy();
     vec![
-        frame::action(
+        kit::button(
             lang.text(Msg::ReorganisationPlanClose),
             Some(send(ReorganisationPlanMessage::Close)),
-            false,
+            Tone::Secondary,
             palette,
         ),
-        frame::action(
+        kit::button(
             lang.text(Msg::ReorganisationPlanReplan),
             (!state.is_busy()).then(|| send(ReorganisationPlanMessage::Replan)),
-            false,
+            Tone::Secondary,
             palette,
         ),
-        frame::action(
+        kit::enter_button(
             lang.text(Msg::ReorganisationPlanExecute),
             runnable.then(|| Message::ExecuteReorganisation(state.selection())),
-            true,
+            Tone::Primary,
             palette,
         ),
     ]

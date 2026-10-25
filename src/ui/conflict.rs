@@ -5,13 +5,13 @@
 //! questions; with it, the user answers once and the rest follow. That was in
 //! the requirements before anything here was built.
 
-use iced::widget::text::Wrapping;
-use iced::widget::{checkbox, column, text, Row};
+use iced::widget::{checkbox, column, Row};
 use iced::{alignment, Element, Size};
 
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
-use super::theme::{self, font_size, spacing};
+use super::kit::{self, one_line, paragraph, Tone};
+use super::theme::{self, spacing};
 use crate::i18n::{Language, Msg};
 use crate::messages::{ConflictChoice, Message};
 use crate::palette::Palette;
@@ -42,13 +42,13 @@ pub fn view<'a>(
     window: Size,
     on_choice: impl Fn(ConflictChoice) -> Message + 'a,
 ) -> Element<'a, Message> {
-    let subject = text(format::ellipsize_end(
-        &lang.text(Msg::ConflictName).replace("{name}", name),
-        frame::content_chars(SIZE, window, 0.0),
-    ))
-    .size(font_size::STATUS)
-    .color(palette.text)
-    .wrapping(Wrapping::None);
+    let subject = one_line(
+        format::ellipsize_end(
+            &lang.text(Msg::ConflictName).replace("{name}", name),
+            frame::content_chars(SIZE, window, 0.0),
+        ),
+        palette,
+    );
 
     // The checkbox state comes from the app, not from here: the view is pure,
     // and the tick has to survive the dialog being rebuilt every frame.
@@ -57,20 +57,18 @@ pub fn view<'a>(
             .on_toggle(|_| Message::ToggleConflictAll)
             .style(theme::dialog_checkbox(palette))
             .into(),
-        text(lang.text(Msg::ConflictApplyAll))
-            .size(font_size::STATUS)
-            .into(),
+        paragraph(lang.text(Msg::ConflictApplyAll), palette),
     ])
     .spacing(spacing::CELL_PADDING_X)
     .align_y(alignment::Vertical::Center);
 
     let choice_button = |label: Msg, choice: ConflictChoice, button_focus: usize| {
-        frame::action(
-            lang.text(label),
-            Some(on_choice(choice)),
-            focus == button_focus,
-            palette,
-        )
+        let tone = Tone::filled_if(focus == button_focus);
+        if focus == button_focus {
+            kit::enter_button(lang.text(label), Some(on_choice(choice)), tone, palette)
+        } else {
+            kit::button(lang.text(label), Some(on_choice(choice)), tone, palette)
+        }
     };
 
     Frame::new(

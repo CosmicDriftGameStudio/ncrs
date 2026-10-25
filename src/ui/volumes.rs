@@ -67,7 +67,7 @@ pub fn view<'a>(
             let content = Row::with_children([
                 container(
                     text(format::ellipsize_end(volume.name.as_str(), name_chars))
-                        .size(font_size::ROW)
+                        .size(font_size::BODY)
                         .color(name_color)
                         .wrapping(text::Wrapping::None),
                 )
@@ -79,7 +79,7 @@ pub fn view<'a>(
                         &volume.path.to_string_lossy(),
                         path_chars,
                     ))
-                    .size(font_size::STATUS)
+                    .size(font_size::BODY)
                     .color(path_color)
                     .wrapping(text::Wrapping::None),
                 )

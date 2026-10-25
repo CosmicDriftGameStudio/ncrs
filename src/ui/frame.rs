@@ -11,7 +11,7 @@ use iced::widget::text::Wrapping;
 use iced::widget::{button, column, container, row, scrollable, text};
 use iced::{alignment, Element, Font, Length, Padding, Size};
 
-use super::kit::{self, Tone};
+use super::kit;
 use super::theme::{self, font_size, size, spacing};
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
@@ -129,7 +129,7 @@ pub fn content_chars(size: DialogSize, window: Size, reserved: f32) -> usize {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct KeyHints {
     /// Enter presses the primary button, which then carries the Enter cap
-    /// ([`action`]); without it use [`action_without_enter`].
+    /// (`kit::enter_button`); without it `kit::button`.
     pub enter: bool,
     /// Tab moves the focus between more than one element.
     pub tab: bool,
@@ -357,37 +357,6 @@ impl<'a> Frame<'a> {
         .style(theme::dialog(&palette))
         .into()
     }
-}
-
-/// A button of the footer or the content. `highlighted` is the one Enter
-/// presses, drawn filled with the Enter cap; `on_press` of `None` disables it.
-pub fn action<'a>(
-    label: &str,
-    on_press: Option<Message>,
-    highlighted: bool,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    if highlighted {
-        kit::enter_button(label, on_press, Tone::Primary, palette)
-    } else {
-        kit::button(label, on_press, Tone::Secondary, palette)
-    }
-}
-
-/// A button like [`action`] for a dialog where Enter does not press the main
-/// button: filled when `highlighted`, but without the Enter cap.
-pub fn action_without_enter<'a>(
-    label: &str,
-    on_press: Option<Message>,
-    highlighted: bool,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let tone = if highlighted {
-        Tone::Primary
-    } else {
-        Tone::Secondary
-    };
-    kit::button(label, on_press, tone, palette)
 }
 
 /// The keys the footer names with the verb of each, in the order shown. Enter

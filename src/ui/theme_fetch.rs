@@ -2,14 +2,13 @@
 //! palette. Pure view over [`ThemeFetch`].
 
 use iced::widget::text::Wrapping;
-use iced::widget::{button, column, container, row, text, text_input, Column};
+use iced::widget::{column, container, row, text, Column};
 use iced::{alignment, Element, Length, Size};
 
-use super::filing::{error_line, paragraph};
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
-use super::layout::ROW_HEIGHT;
-use super::theme::{self, font_size, spacing};
+use super::kit::{self, dim, error_line, one_line, paragraph, Tone};
+use super::theme::{font_size, size, spacing};
 use crate::app::fill_template;
 use crate::i18n::{Language, Msg};
 use crate::messages::{Message, ThemeFetchMessage};
@@ -51,12 +50,10 @@ pub fn view<'a>(
                 ],
             );
             body = body
-                .push(
-                    text(format::ellipsize_end(&extension_line, line_chars))
-                        .size(font_size::STATUS)
-                        .color(palette.text)
-                        .wrapping(Wrapping::None),
-                )
+                .push(one_line(
+                    format::ellipsize_end(&extension_line, line_chars),
+                    palette,
+                ))
                 .push(paragraph(
                     license_line(extension.license.as_deref(), lang),
                     palette,
@@ -101,31 +98,17 @@ pub fn view<'a>(
     .into_element()
 }
 
-fn dim<'a>(content: &'a str, palette: &Palette) -> Element<'a, Message> {
-    text(content)
-        .size(font_size::STATUS)
-        .color(palette.dim_text)
-        .wrapping(Wrapping::Word)
-        .into()
-}
-
 fn field<'a>(card: &'a ThemeFetch, lang: Language, palette: &Palette) -> Element<'a, Message> {
-    let input = text_input(lang.text(Msg::ThemeFetchPlaceholder), card.text())
-        .id(FIELD_ID)
-        .on_submit(to_message(ThemeFetchMessage::Activate))
-        .size(font_size::ROW)
-        .padding([3.0, 6.0])
-        .style(theme::search_input(palette))
-        .width(Length::Fill);
-    // Without `on_input` the field is disabled: nothing is typed while the
-    // download runs.
-    if matches!(card.stage(), Stage::Input) {
-        input
-            .on_input(|text| to_message(ThemeFetchMessage::TextChanged(text)))
-            .into()
-    } else {
-        input.into()
-    }
+    // The card ignores typing outside the input stage, so the field needs no
+    // disabled state while the download runs.
+    kit::text_field(
+        lang.text(Msg::ThemeFetchPlaceholder),
+        card.text(),
+        FIELD_ID,
+        |text| to_message(ThemeFetchMessage::TextChanged(text)),
+        to_message(ThemeFetchMessage::Activate),
+        palette,
+    )
 }
 
 fn license_line(license: Option<&str>, lang: Language) -> String {
@@ -168,24 +151,23 @@ fn theme_list<'a>(
                         &contributed.label,
                         line_chars.saturating_sub(THEME_MARKER_CHARS)
                     ))
-                    .size(font_size::ROW)
+                    .size(font_size::BODY)
                     .color(label_color)
                     .wrapping(Wrapping::None)
                 )
                 .width(Length::Fill),
-                text(marker).size(font_size::ROW).color(marker_color),
+                text(marker).size(font_size::BODY).color(marker_color),
             ]
             .align_y(alignment::Vertical::Center);
-            button(content)
-                .on_press(to_message(ThemeFetchMessage::Pick(index)))
-                .width(Length::Fill)
-                .padding([0.0, spacing::CELL_PADDING_X])
-                .height(ROW_HEIGHT)
-                .style(theme::row(palette, false, selected, true))
-                .into()
+            kit::list_row(
+                content.into(),
+                to_message(ThemeFetchMessage::Pick(index)),
+                selected,
+                palette,
+            )
         });
     container(Column::with_children(rows))
-        .height(ROW_HEIGHT * fetched.themes.len().min(VISIBLE_THEMES) as f32)
+        .height(size::ROW * fetched.themes.len().min(VISIBLE_THEMES) as f32)
         .clip(true)
         .into()
 }
@@ -196,7 +178,11 @@ fn footer_buttons<'a>(
     palette: &Palette,
 ) -> Vec<Element<'a, Message>> {
     let action = |label: &'a str, on_press: Option<ThemeFetchMessage>, primary: bool| {
-        frame::action(label, on_press.map(to_message), primary, palette)
+        if primary {
+            kit::enter_button(label, on_press.map(to_message), Tone::Primary, palette)
+        } else {
+            kit::button(label, on_press.map(to_message), Tone::Secondary, palette)
+        }
     };
     let mut items = vec![action(
         lang.text(Msg::ThemeFetchCancel),

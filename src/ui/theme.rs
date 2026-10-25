@@ -39,7 +39,6 @@ pub mod size {
     pub const FOOTER: f32 = 40.0;
     pub const CONTROL_WIDTH: f32 = 260.0;
     pub const SIDEBAR_WIDTH: f32 = 200.0;
-    pub const SIDEBAR_ITEM: f32 = 26.0;
 }
 
 pub mod radius {
@@ -56,8 +55,6 @@ pub mod font_size {
 
     /// The text of dialogs and the kit.
     pub const BODY: f32 = 12.0;
-    /// The lead line of a dialog.
-    pub const LEAD: f32 = 13.0;
     pub const KEY_CAP: f32 = 10.0;
     /// A number shown large.
     pub const FIGURE: f32 = 16.0;

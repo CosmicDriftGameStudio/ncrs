@@ -34,6 +34,18 @@ pub enum Tone {
     Danger,
 }
 
+impl Tone {
+    /// Filled for the button that is the focus of the dialog, outlined for the
+    /// others.
+    pub const fn filled_if(filled: bool) -> Self {
+        if filled {
+            Self::Primary
+        } else {
+            Self::Secondary
+        }
+    }
+}
+
 /// A key as a small outlined cap.
 pub fn key_cap<'a>(label: &str, palette: &Palette) -> Element<'a, Message> {
     cap(label, false, palette)
@@ -127,6 +139,15 @@ pub fn dim<'a>(content: impl IntoFragment<'a>, palette: &Palette) -> Element<'a,
         .size(font_size::BODY)
         .color(palette.dim_text)
         .wrapping(Wrapping::Word)
+        .into()
+}
+
+/// Text that stays on one line; the caller has cut it to fit.
+pub fn one_line<'a>(content: String, palette: &Palette) -> Element<'a, Message> {
+    text(content)
+        .size(font_size::BODY)
+        .color(palette.text)
+        .wrapping(Wrapping::None)
         .into()
 }
 
@@ -274,9 +295,17 @@ impl Columns<'_> {
 
     /// The text of column `index`, cut at the end where it is too long.
     pub fn cell<'a>(&self, index: usize, content: &str, color: Color) -> Element<'a, Message> {
+        self.cell_of(
+            index,
+            format::ellipsize_end(content, self.chars(index)),
+            color,
+        )
+    }
+
+    fn cell_of<'a>(&self, index: usize, shown: String, color: Color) -> Element<'a, Message> {
         let portion = self.portions.get(index).copied().unwrap_or(1);
         container(
-            text(format::ellipsize_end(content, self.chars(index)))
+            text(shown)
                 .size(font_size::BODY)
                 .color(color)
                 .wrapping(Wrapping::None),
@@ -286,14 +315,26 @@ impl Columns<'_> {
         .into()
     }
 
-    /// The dimmed titles of the columns.
+    /// The text of column `index`, cut in the middle where it is too long: a
+    /// path, whose end matters as much as its start.
+    pub fn path_cell<'a>(&self, index: usize, content: &str, color: Color) -> Element<'a, Message> {
+        self.cell_of(
+            index,
+            format::ellipsize_middle(content, self.chars(index)),
+            color,
+        )
+    }
+
+    /// The dimmed titles of the columns, as a row of the height of a list row.
     pub fn header<'a>(&self, labels: &[&str], palette: &Palette) -> Element<'a, Message> {
         let cells = labels
             .iter()
             .enumerate()
             .map(|(index, label)| self.cell(index, label, palette.dim_text));
         Row::with_children(cells)
-            .spacing(spacing::CELL_PADDING_X)
+            .padding([0.0, spacing::CELL_PADDING_X])
+            .height(size::ROW)
+            .align_y(alignment::Vertical::Center)
             .into()
     }
 }
@@ -302,13 +343,14 @@ impl Columns<'_> {
 pub fn segmented<'a>(
     options: &[(&str, Message)],
     selected: usize,
+    enabled: bool,
     palette: &Palette,
 ) -> Element<'a, Message> {
     let buttons = options.iter().enumerate().map(|(index, (label, message))| {
         widget_button(container(label_text(label)).center_y(Length::Fill))
             .padding([0.0, BUTTON_PADDING_X])
             .height(size::ROW)
-            .on_press(message.clone())
+            .on_press_maybe(enabled.then(|| message.clone()))
             .style(theme::segment_button(palette, index == selected))
             .into()
     });
