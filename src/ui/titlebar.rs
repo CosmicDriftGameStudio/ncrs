@@ -12,13 +12,16 @@ use super::layout::{TITLE_BAR_HEIGHT, TRAFFIC_LIGHTS_INSET};
 use super::theme::{self, font_size, size, spacing};
 use crate::i18n::{Language, Msg};
 use crate::messages::{
-    CommandPaletteMessage, FilingStatusMessage, Message, PanelSide, ResizeEdge, TitleBarMessage,
+    CommandPaletteMessage, FilingStatusMessage, Message, PanelSide, ResizeEdge, SettingsMessage,
+    TitleBarMessage,
 };
 use crate::palette::Palette;
 
 pub const LEFT_TAB_ID: &str = "title-tab-left";
 pub const RIGHT_TAB_ID: &str = "title-tab-right";
 pub const HERMES_CHIP_ID: &str = "title-hermes-chip";
+pub const SETTINGS_TAB_ID: &str = "title-tab-settings";
+const CLOSE_CROSS: &str = "×";
 
 /// The macOS window has its own buttons (the traffic lights); the others get
 /// ours.
@@ -63,6 +66,8 @@ pub struct TitleBar<'a> {
     pub hermes_paused: bool,
     /// The key of the command palette, if it has one.
     pub lab_shortcut: Option<String>,
+    /// The settings tab after the two path tabs; it is the active one then.
+    pub settings_tab: bool,
     pub lang: Language,
     pub palette: &'a Palette,
 }
@@ -167,11 +172,14 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
         .into()
     };
     let [left, right] = &bar.tabs;
-    let tabs = row![
+    let mut tabs = row![
         tab(left, LEFT_TAB_ID, Msg::StatusModeLeft),
         tab(right, RIGHT_TAB_ID, Msg::StatusModeRight),
     ]
     .height(Length::Fill);
+    if bar.settings_tab {
+        tabs = tabs.push(settings_tab(lang, palette));
+    }
 
     let mut right_side = row![]
         .spacing(RIGHT_GAP)
@@ -253,6 +261,39 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
     )
     .on_press(Message::TitleBar(TitleBarMessage::Drag))
     .on_double_click(Message::TitleBar(TitleBarMessage::ToggleMaximize))
+    .into()
+}
+
+/// The tab of the settings: always the active one, with a cross that closes it.
+fn settings_tab<'a>(lang: Language, palette: &Palette) -> Element<'a, Message> {
+    let label = row![
+        text(lang.text(Msg::SettingsTab).to_owned())
+            .size(font_size::FILE)
+            .width(Length::Fill)
+            .wrapping(text::Wrapping::None),
+        button(text(CLOSE_CROSS).size(font_size::FILE))
+            .on_press(Message::Settings(SettingsMessage::Close))
+            .padding([0.0, spacing::XS])
+            .style(theme::close_button(palette)),
+    ]
+    .spacing(TAB_GAP)
+    .height(Length::Fill)
+    .align_y(alignment::Vertical::Center);
+    container(row![
+        theme::vertical_rule(palette.border_inactive),
+        column![
+            theme::horizontal_rule(palette.accent),
+            container(label)
+                .padding([0.0, TAB_PADDING_X])
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .style(theme::panel(palette)),
+        ],
+        theme::vertical_rule(palette.border_inactive),
+    ])
+    .id(SETTINGS_TAB_ID)
+    .width(size::TAB_WIDTH)
+    .height(Length::Fill)
     .into()
 }
 

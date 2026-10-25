@@ -27,6 +27,7 @@ pub mod review_list;
 pub mod rule_suggestions;
 pub mod saved_queries;
 pub mod search;
+pub mod settings;
 pub mod statusbar;
 pub mod theme;
 pub mod theme_fetch;

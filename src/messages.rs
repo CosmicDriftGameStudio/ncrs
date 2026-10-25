@@ -11,7 +11,7 @@ use iced::Size;
 
 use crate::ai_model::DownloadError as AiDownloadError;
 use crate::app::{RowFailure, Transfer};
-use crate::config::{Filing, FilingWriteError};
+use crate::config::{Config, Filing, FilingWriteError};
 use crate::dialog::PromptKind;
 use crate::execute::UndoReport;
 use crate::filing::{FilingMessage, IndexFigures};
@@ -19,11 +19,13 @@ use crate::filing_work::FilingSummary;
 use crate::fs::search::SearchEvent;
 use crate::fs::CreateDirError;
 use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
+use crate::i18n::Language;
 use crate::jobs::JobEvent;
 #[cfg(any(target_os = "macos", test))]
 use crate::keymap::KeyAction;
 use crate::ocr_models::DownloadError;
 use crate::open_vsx::FetchError;
+use crate::palette::ThemePreset;
 use crate::query_work::{ExportSummary, QueryHit};
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
 use crate::review_list::FormField;
@@ -305,6 +307,9 @@ pub enum Message {
     OcrModels(OcrModelsMessage),
     AiModel(AiModelMessage),
 
+    // --- Settings tab ---
+    Settings(SettingsMessage),
+
     // --- Native menu bar (macOS) ---
     /// A command chosen from the menu bar or the command list.
     #[cfg(any(target_os = "macos", test))]
@@ -315,6 +320,45 @@ pub enum Message {
     // --- Window / app ---
     WindowResized(Size),
     Quit,
+}
+
+/// A page of the settings tab, one entry of its feature list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsFeature {
+    Look,
+    Language,
+    Hermes,
+}
+
+impl SettingsFeature {
+    pub const ALL: [Self; 3] = [Self::Look, Self::Language, Self::Hermes];
+}
+
+/// A setting the settings tab changes: applied at once and written to the
+/// config.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingChange {
+    Preset(ThemePreset),
+    Language(Language),
+    HermesEnabled(bool),
+    Load(Load),
+    AiEnabled(bool),
+}
+
+/// Everything the settings tab sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SettingsMessage {
+    /// The key and the command list: opens the tab, or closes it when it is up.
+    Toggle,
+    Close,
+    Select(SettingsFeature),
+    SearchChanged(String),
+    Change(SettingChange),
+    /// The config as read back after the write of `change`.
+    Written {
+        change: SettingChange,
+        result: Result<Box<Config>, FilingWriteError>,
+    },
 }
 
 /// What the title bar asks of the window.

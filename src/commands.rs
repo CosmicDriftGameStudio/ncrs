@@ -140,6 +140,7 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
         KeyAction::SortBySize => Command::plain(action, View, Msg::ActionSortBySize),
         KeyAction::FetchTheme => Command::plain(action, View, Msg::ActionFetchTheme),
         KeyAction::SwitchLanguage => Command::plain(action, View, Msg::ActionSwitchLanguage),
+        KeyAction::Settings => Command::plain(action, View, Msg::ActionSettings),
         KeyAction::GoUp => Command::plain(action, Go, Msg::ActionGoUp),
         KeyAction::SwitchPanel => Command::plain(action, Go, Msg::ActionSwitchPanel),
         KeyAction::DriveMenuLeft => Command::themed(

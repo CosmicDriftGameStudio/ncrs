@@ -7,7 +7,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use iced::futures;
 use iced::keyboard::{self, key::Named, Key, Modifiers};
-use iced::widget::{column, container, mouse_area, operation, row, Column, Space, Stack};
+use iced::widget::{
+    column, container, mouse_area, operation, row, Column, Container, Space, Stack,
+};
 use iced::{event, window, Element, Length, Point, Size, Subscription, Task, Theme};
 
 use crate::ai_model::{
@@ -34,7 +36,8 @@ use crate::messages::{
     AiModelMessage, ClipboardKind, CommandPaletteMessage, ConflictChoice, FilingSetupMessage,
     FilingStatusMessage, HermesPage, Message, OcrModelsMessage, PanelSide, QuickOpenMessage,
     ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage,
-    SearchMessage, ThemeFetchMessage, TitleBarMessage, TransferKind,
+    SearchMessage, SettingChange, SettingsMessage, ThemeFetchMessage, TitleBarMessage,
+    TransferKind,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -68,6 +71,7 @@ use crate::ui::review_list as review_list_ui;
 use crate::ui::rule_suggestions as rule_suggestions_ui;
 use crate::ui::saved_queries as saved_queries_ui;
 use crate::ui::search as search_ui;
+use crate::ui::settings as settings_ui;
 use crate::ui::theme_fetch as theme_fetch_ui;
 use crate::ui::titlebar;
 use crate::ui::volumes as volumes_view;
@@ -292,6 +296,7 @@ fn leaves_path_field(message: &Message) -> bool {
             | Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
             | Message::OcrModels(OcrModelsMessage::Open)
             | Message::AiModel(AiModelMessage::Open)
+            | Message::Settings(_)
             | Message::FilingStatus(FilingStatusMessage::Open)
             | Message::FilingSetup(
                 FilingSetupMessage::Toggle
@@ -520,6 +525,27 @@ impl VolumeMenu {
     }
 }
 
+/// The writer of the config for one change of the settings tab.
+fn write_setting_change(
+    path: &Path,
+    change: SettingChange,
+) -> Result<Box<Config>, FilingWriteError> {
+    // Each writer reads, edits and writes the whole file: two quick clicks on
+    // the blocking pool would otherwise lose one of the changes.
+    static ONE_WRITER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _writing = ONE_WRITER
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let written = match change {
+        SettingChange::Preset(preset) => config::write_theme_preset(path, preset),
+        SettingChange::Language(lang) => config::write_language(path, lang),
+        SettingChange::HermesEnabled(enabled) => config::write_filing_enabled(path, enabled),
+        SettingChange::Load(load) => config::write_filing_load(path, load),
+        SettingChange::AiEnabled(enabled) => config::write_ai_enabled(path, enabled),
+    };
+    written.map(Box::new)
+}
+
 /// When a saved filing list takes effect.
 enum SavedFilingApplies {
     Now,
@@ -684,6 +710,14 @@ pub struct App {
     config_path: Option<PathBuf>,
     /// The filing settings of the config file, as last loaded or written.
     filing_config: Filing,
+    /// The settings tab, while it is open.
+    settings: Option<settings_ui::SettingsState>,
+    /// A write of the settings tab that failed; it stays until the next write.
+    settings_failure: Option<String>,
+    /// The preset and the VS Code theme file the config names, as last loaded
+    /// or written.
+    theme_preset: ThemePreset,
+    vscode_theme: Option<String>,
     /// What a new filing module opens and keeps its key in; set by
     /// `with_filing`. Without a store no module is started.
     filing_index_path: Option<PathBuf>,
@@ -793,6 +827,8 @@ pub struct PromptKeyState {
     pub ocr_models: bool,
     /// The AI model card is up, so keys answer it like a button dialog.
     pub ai_model: bool,
+    /// The settings tab is up, so the panel keys are inert and Escape closes it.
+    pub settings: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
     /// The drive menu is up, so keys move its highlight.
@@ -829,6 +865,7 @@ impl Default for PromptKeyState {
             reorganisation_plan: false,
             ocr_models: false,
             ai_model: false,
+            settings: false,
             delete_dialog: DeleteKeys::default(),
             volume_menu: false,
             context_menu: false,
@@ -1145,6 +1182,10 @@ fn keys_without_prompt(
         return filing_status_key(prompt, &key, key_modifiers, scope);
     }
 
+    if prompt.settings {
+        return settings_key(prompt, &key, key_modifiers, scope);
+    }
+
     // The text field takes the typing and Enter on its own, and `InputState`
     // sees Escape and Tab leave it. Of the bindings only quitting reaches past
     // it: the field has no use for F10 or Cmd+Q, and a program that cannot be
@@ -1168,6 +1209,31 @@ fn keys_without_prompt(
     }
     bound_message(&prompt.keymap, &key, key_modifiers, scope)
         .or_else(|| type_ahead_message(&key, key_modifiers))
+}
+
+/// The tab shows no panel, so the panel keys do nothing. Of the bindings the
+/// command list, the key that closes the tab and quitting reach through. A
+/// card opened from the tab has the Escape first.
+fn settings_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    if matches!(key.as_ref(), Key::Named(Named::Escape)) {
+        return Some(if prompt.filing_setup {
+            Message::FilingSetup(FilingSetupMessage::Close)
+        } else {
+            Message::Settings(SettingsMessage::Close)
+        });
+    }
+    bound_message(&prompt.keymap, key, key_modifiers, scope)
+        .filter(|message| {
+            *message == Message::Quit
+                || *message == KeyAction::CommandPalette.message()
+                || *message == KeyAction::Settings.message()
+        })
+        .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
 }
 
 // A visible card whose footer promises "Esc: close" goes before the job
@@ -1729,6 +1795,8 @@ impl App {
                 if let Some(lang) = config.lang {
                     self.lang = lang;
                 }
+                self.theme_preset = config.theme_preset();
+                self.vscode_theme = config.vscode_theme_path().map(str::to_owned);
                 self.open_programs = config.open;
                 self.keymap = config.keymap;
                 self.refresh_function_keys();
@@ -1757,7 +1825,11 @@ impl App {
 
     /// F9. A config error still up is worded again in the new language.
     fn switch_language(&mut self) {
-        self.lang = self.lang.other();
+        self.set_language(self.lang.other());
+    }
+
+    fn set_language(&mut self, lang: Language) {
+        self.lang = lang;
         self.refresh_function_keys();
         if let Some(problem) = &self.config_problem {
             self.config_error = Some(self.config_error_text(problem));
@@ -1905,6 +1977,10 @@ impl App {
             filing_index_path: None,
             filing_key_store: None,
             filing_setup: None,
+            settings: None,
+            settings_failure: None,
+            theme_preset: ThemePreset::Cosmic,
+            vscode_theme: None,
             resolve_folder: filing_setup::resolve_folder,
             pick_folder: filing_setup::pick_folder_with_system_dialog,
             theme_fetch: None,
@@ -2494,7 +2570,7 @@ impl App {
             }
             Message::ActivatePanel(side) => {
                 self.active_panel = side;
-                Task::none()
+                self.close_settings()
             }
             Message::TitleBar(title_bar) => update_title_bar(title_bar),
             Message::SortBy { .. } | Message::SortActive(_) => self.update_sort(message),
@@ -2567,6 +2643,7 @@ impl App {
             Message::ReorganisationUndone(result) => self.reorganisation_undone(result),
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::AiModel(model_message) => self.update_ai_model(model_message),
+            Message::Settings(settings_message) => self.update_settings(settings_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => self.update_filing_status(page_message),
             Message::FilingSetup(setup_message) => self.update_filing_setup(setup_message),
@@ -2827,6 +2904,9 @@ impl App {
         input.review_list = self.review_list.is_some();
         input.saved_queries = self.saved_queries.is_some();
         input.reorganisation_plan = self.reorganisation.is_some();
+        input.settings = self.settings.is_some()
+            && self.filing_setup.is_none()
+            && !self.blocking_overlay_is_open();
         drop(input);
         // `get` rather than `get_or_init`: the cell is created by the
         // subscription, and `update` must not create it — a cell nothing reads
@@ -2886,40 +2966,44 @@ impl App {
         ]
         .height(Length::Fill);
 
-        let below_title_bar = container(column![
-            panels,
-            fkeys::view(
-                if self.search_has_keys() {
-                    &self.search_function_keys
-                } else {
-                    &self.function_keys
-                },
-                &self.palette,
-            ),
-            statusbar::view(
-                self.active_panel(),
-                self.lang,
-                &self.palette,
-                statusbar::Activity {
-                    side: self.active_panel,
-                    theme_name: self.theme_name(),
-                    job: self.job_status(),
-                    filing: self.filing_badge(),
-                    on_blocked_press: blocked_access_press(),
-                    notice: self.notice.as_deref(),
-                },
-                self.status_error(),
-                self.search_status(),
-                statusbar::PathBar {
-                    editing: self.path_field.as_deref(),
-                    on_input: Message::PathFieldInput,
-                    on_submit: Message::PathFieldSubmit,
-                    on_copy: Message::CopyToClipboard(ClipboardKind::Directory),
-                },
-            ),
-        ])
-        .width(Length::Fill)
-        .height(Length::Fill);
+        let below_title_bar = if let Some(state) = self.settings.as_ref() {
+            self.settings_area(state)
+        } else {
+            container(column![
+                panels,
+                fkeys::view(
+                    if self.search_has_keys() {
+                        &self.search_function_keys
+                    } else {
+                        &self.function_keys
+                    },
+                    &self.palette,
+                ),
+                statusbar::view(
+                    self.active_panel(),
+                    self.lang,
+                    &self.palette,
+                    statusbar::Activity {
+                        side: self.active_panel,
+                        theme_name: self.theme_name(),
+                        job: self.job_status(),
+                        filing: self.filing_badge(),
+                        on_blocked_press: blocked_access_press(),
+                        notice: self.notice.as_deref(),
+                    },
+                    self.status_error(),
+                    self.search_status(),
+                    statusbar::PathBar {
+                        editing: self.path_field.as_deref(),
+                        on_input: Message::PathFieldInput,
+                        on_submit: Message::PathFieldSubmit,
+                        on_copy: Message::CopyToClipboard(ClipboardKind::Directory),
+                    },
+                ),
+            ])
+            .width(Length::Fill)
+            .height(Length::Fill)
+        };
 
         let window = container(column![self.title_bar_view(), below_title_bar])
             .width(Length::Fill)
@@ -3242,6 +3326,7 @@ impl App {
         let reorganisation_plan = self.reorganisation.is_some();
         let ocr_models = self.ocr_models.is_some();
         let ai_model = self.ai_model.is_some();
+        let settings = self.settings.is_some();
         let delete_dialog = match &self.delete_dialog {
             None => DeleteKeys::Closed,
             Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
@@ -3271,6 +3356,7 @@ impl App {
                 reorganisation_plan,
                 ocr_models,
                 ai_model,
+                settings,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
                 // the dialog's keys would fall through to the panels.
@@ -3301,6 +3387,7 @@ impl App {
                 reorganisation_plan,
                 ocr_models,
                 ai_model,
+                settings,
                 conflict_open: self.pending_conflict.is_some(),
                 busy: prompt.busy(),
                 typed: prompt.name().into(),
@@ -5782,6 +5869,7 @@ impl App {
             label,
             license,
         } = installed;
+        self.vscode_theme = config.vscode_theme_path().map(str::to_owned);
         self.palette = config.palette;
         // The warnings of the look before this one no longer apply.
         if matches!(
@@ -5802,6 +5890,194 @@ impl App {
             ],
         );
         Task::batch([release_focus(), self.show_notice(notice)])
+    }
+
+    fn settings_area<'a>(
+        &'a self,
+        state: &'a settings_ui::SettingsState,
+    ) -> Container<'a, Message> {
+        let page = settings_ui::view(&settings_ui::SettingsView {
+            state,
+            preset: self.theme_preset,
+            vscode_theme: self.vscode_theme.as_deref(),
+            filing: &self.filing_config,
+            ai_status: self.filing.as_ref().map(FilingModule::ai_status),
+            home: &self.home,
+            lang: self.lang,
+            palette: &self.palette,
+        });
+        let bar = settings_ui::status_bar(&settings_ui::StatusBar {
+            changed: state.changed,
+            failure: self.settings_failure.as_deref(),
+            notice: self.notice.as_deref(),
+            lang: self.lang,
+            palette: &self.palette,
+        });
+        container(column![page, bar])
+            .width(Length::Fill)
+            .height(Length::Fill)
+    }
+
+    fn update_settings(&mut self, message: SettingsMessage) -> Task<Message> {
+        match message {
+            SettingsMessage::Toggle if self.settings.is_some() => self.close_settings(),
+            SettingsMessage::Toggle => self.open_settings(),
+            SettingsMessage::Close => self.close_settings(),
+            SettingsMessage::Select(feature) => {
+                if let Some(state) = self.settings.as_mut() {
+                    state.feature = feature;
+                }
+                Task::none()
+            }
+            SettingsMessage::SearchChanged(query) => {
+                if let Some(state) = self.settings.as_mut() {
+                    state.query = query;
+                }
+                Task::none()
+            }
+            SettingsMessage::Change(change) => self.write_setting(change),
+            SettingsMessage::Written { change, result } => match result {
+                Ok(config) => {
+                    self.settings_failure = None;
+                    if let Some(state) = self.settings.as_mut() {
+                        state.changed += 1;
+                    }
+                    self.apply_setting(change, *config)
+                }
+                Err(error) => {
+                    self.settings_failure = Some(self.settings_write_failure(&error));
+                    Task::none()
+                }
+            },
+        }
+    }
+
+    fn open_settings(&mut self) -> Task<Message> {
+        if self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        self.context_menu = None;
+        self.set_path_field(None);
+        self.notice = None;
+        self.settings_failure = None;
+        let ocr_models_present = self
+            .filing_index_path
+            .as_deref()
+            .and_then(crate::filing::ocr_models_dir)
+            .is_some_and(|dir| dir.read_dir().is_ok_and(|mut files| files.next().is_some()));
+        self.settings = Some(settings_ui::SettingsState::new(ocr_models_present));
+        release_focus()
+    }
+
+    fn close_settings(&mut self) -> Task<Message> {
+        if self.settings.take().is_some() {
+            self.settings_failure = None;
+            release_focus()
+        } else {
+            Task::none()
+        }
+    }
+
+    /// Writes `change` to the config on a blocking thread; the answer is a
+    /// `Written` with the file read back, and only then it is applied.
+    fn write_setting(&mut self, change: SettingChange) -> Task<Message> {
+        let Some(config_path) = self.config_path.clone() else {
+            self.settings_failure = Some(self.lang.text(Msg::FilingSetupNoConfigPath).to_owned());
+            return Task::none();
+        };
+        self.settings_failure = None;
+        let written_path = config_path.clone();
+        Task::perform(
+            tokio::task::spawn_blocking(move || write_setting_change(&written_path, change)),
+            move |joined| {
+                Message::Settings(SettingsMessage::Written {
+                    change,
+                    result: joined.unwrap_or_else(|join| {
+                        Err(FilingWriteError::Io {
+                            path: config_path,
+                            reason: join.to_string(),
+                        })
+                    }),
+                })
+            },
+        )
+    }
+
+    /// Takes over what the file now says about `change`.
+    fn apply_setting(&mut self, change: SettingChange, config: Config) -> Task<Message> {
+        match change {
+            SettingChange::Preset(_) => {
+                self.theme_preset = config.theme_preset();
+                self.vscode_theme = config.vscode_theme_path().map(str::to_owned);
+                self.palette = config.palette;
+                if matches!(
+                    self.config_problem,
+                    Some(ConfigProblem::LowContrast(_) | ConfigProblem::VscodeTheme(_))
+                ) {
+                    self.config_problem = None;
+                    self.config_error = None;
+                }
+                self.report_look_warnings(config.contrast_warning, config.vscode_warning);
+                Task::none()
+            }
+            SettingChange::Language(lang) => {
+                self.set_language(lang);
+                Task::none()
+            }
+            SettingChange::Load(load) => {
+                self.filing_config.load = load;
+                self.set_pipeline_load(load);
+                Task::none()
+            }
+            SettingChange::HermesEnabled(_) | SettingChange::AiEnabled(_) => {
+                let (applies, task) = self.apply_saved_filing(config.filing);
+                if matches!(applies, SavedFilingApplies::AtNextStart) {
+                    let notice = self.lang.text(Msg::SettingsSavedNextStart).to_owned();
+                    Task::batch([task, self.show_notice(notice)])
+                } else {
+                    task
+                }
+            }
+        }
+    }
+
+    fn settings_write_failure(&self, error: &FilingWriteError) -> String {
+        let shown = |path: &Path| filing_setup::shown_path(path, &self.home);
+        let write_failed = |path: &Path, reason: &str| {
+            fill_template(
+                self.lang.text(Msg::FilingSetupWriteFailed),
+                &[("{path}", &shown(path)), ("{reason}", reason)],
+            )
+        };
+        match error {
+            FilingWriteError::Io { path, reason } => write_failed(path, reason),
+            FilingWriteError::PathNotText(path) => fill_template(
+                self.lang.text(Msg::FilingSetupPathNotText),
+                &[("{path}", &shown(path))],
+            ),
+            FilingWriteError::Config(config_error) => {
+                let path = shown(config_error.path());
+                match config_error.line() {
+                    Some(line) => fill_template(
+                        self.lang.text(Msg::FilingSetupConfigBrokenAtLine),
+                        &[
+                            ("{path}", &path),
+                            ("{line}", &line.to_string()),
+                            ("{reason}", config_error.reason()),
+                        ],
+                    ),
+                    None => fill_template(
+                        self.lang.text(Msg::FilingSetupConfigBroken),
+                        &[("{path}", &path), ("{reason}", config_error.reason())],
+                    ),
+                }
+            }
+            // The writers of the tab check no filing rules.
+            FilingWriteError::Rule(violation) => write_failed(
+                self.config_path.as_deref().unwrap_or(Path::new("")),
+                &format!("{violation:?}"),
+            ),
+        }
     }
 
     fn update_ocr_models(&mut self, message: OcrModelsMessage) -> Task<Message> {
@@ -5879,6 +6155,9 @@ impl App {
             return Task::none();
         }
         self.ocr_models = None;
+        if let Some(settings) = self.settings.as_mut() {
+            settings.ocr_models_present = true;
+        }
         let notice = self.lang.text(Msg::OcrModelsInstalled).to_owned();
         self.show_notice(notice)
     }
@@ -6169,11 +6448,12 @@ impl App {
             titlebar::Tab {
                 side,
                 title,
-                active: self.active_panel == side,
+                active: self.active_panel == side && self.settings.is_none(),
             }
         };
         titlebar::view(&titlebar::TitleBar {
             tabs: [tab(PanelSide::Left), tab(PanelSide::Right)],
+            settings_tab: self.settings.is_some(),
             home: &self.home,
             hermes: self.hermes_chip(),
             hermes_paused: self.filing_status.snapshot().state == RunnerState::Paused,
@@ -7248,6 +7528,10 @@ impl App {
             filing_index_path: None,
             filing_key_store: None,
             filing_setup: None,
+            settings: None,
+            settings_failure: None,
+            theme_preset: ThemePreset::Cosmic,
+            vscode_theme: None,
             resolve_folder: |folder| Ok(folder.to_path_buf()),
             pick_folder: |_| Task::none(),
             theme_fetch: None,
@@ -7476,6 +7760,17 @@ impl App {
         let mut app = Self::with_fixed_panels();
         app.dialog_focus = ai_model_ui::CANCEL_FOCUS;
         app.ai_model = Some(card);
+        app
+    }
+
+    /// Fixed panels with the settings tab open on `feature`, with `filing` as
+    /// the config says.
+    pub fn with_settings_open(feature: crate::messages::SettingsFeature, filing: Filing) -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.filing_config = filing;
+        let mut state = settings_ui::SettingsState::new(false);
+        state.feature = feature;
+        app.settings = Some(state);
         app
     }
 
@@ -13471,5 +13766,108 @@ mod ai_model_tests {
         let card = app.ai_model_for_test().unwrap();
         assert_eq!(card.error(), Some(&AiDownloadError::NoDataFolder));
         assert!(!card.is_downloading());
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod settings_tab_tests {
+    use super::*;
+    use crate::messages::SettingsFeature;
+
+    fn open(app: &mut App) {
+        drop(app.update(Message::Settings(SettingsMessage::Toggle)));
+    }
+
+    fn press(app: &App, key: Key, modifiers: Modifiers) -> Option<Message> {
+        route_key(&app.prompt_key_state(), key, modifiers)
+    }
+
+    #[test]
+    fn the_key_opens_the_tab_and_closes_it_again() {
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        assert!(app.settings.is_some());
+        open(&mut app);
+        assert!(app.settings.is_none());
+    }
+
+    #[test]
+    fn escape_and_the_panel_tabs_close_it() {
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        assert_eq!(
+            press(&app, Key::Named(Named::Escape), Modifiers::empty()),
+            Some(Message::Settings(SettingsMessage::Close))
+        );
+        drop(app.update(Message::ActivatePanel(PanelSide::Right)));
+        assert!(app.settings.is_none());
+    }
+
+    #[test]
+    fn the_panel_keys_do_nothing_while_it_is_open() {
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        assert_eq!(
+            press(&app, Key::Named(Named::ArrowDown), Modifiers::empty()),
+            None
+        );
+    }
+
+    #[test]
+    fn a_change_without_a_config_place_is_reported_and_applies_nothing() {
+        let mut app = App::with_fixed_panels();
+        app.config_path = None;
+        open(&mut app);
+        drop(app.update(Message::Settings(SettingsMessage::Change(
+            SettingChange::Language(Language::German),
+        ))));
+        assert!(app.settings_failure.is_some());
+        assert_eq!(app.settings.as_ref().unwrap().changed, 0);
+    }
+
+    #[test]
+    fn a_written_language_is_applied_and_counted() {
+        let mut app = App::with_fixed_panels().in_language(Language::English);
+        open(&mut app);
+        drop(app.update(Message::Settings(SettingsMessage::Written {
+            change: SettingChange::Language(Language::German),
+            result: Ok(Box::default()),
+        })));
+        assert_eq!(app.lang, Language::German);
+        assert_eq!(app.settings.as_ref().unwrap().changed, 1);
+    }
+
+    #[test]
+    fn a_failed_write_is_shown_and_changes_nothing() {
+        let mut app = App::with_fixed_panels().in_language(Language::English);
+        open(&mut app);
+        drop(app.update(Message::Settings(SettingsMessage::Written {
+            change: SettingChange::Language(Language::German),
+            result: Err(FilingWriteError::Io {
+                path: PathBuf::from("/x/config.toml"),
+                reason: "denied".to_owned(),
+            }),
+        })));
+        assert_eq!(app.lang, Language::English);
+        assert!(app.settings_failure.as_deref().unwrap().contains("denied"));
+    }
+
+    #[test]
+    fn a_page_is_selected_and_searched() {
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        drop(app.update(Message::Settings(SettingsMessage::Select(
+            SettingsFeature::Hermes,
+        ))));
+        assert_eq!(
+            app.settings.as_ref().unwrap().feature,
+            SettingsFeature::Hermes
+        );
     }
 }

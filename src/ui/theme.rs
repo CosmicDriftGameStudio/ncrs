@@ -160,6 +160,49 @@ pub fn mode_field(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
     move |_theme| filled(colors.cursor, colors.cursor_text)
 }
 
+/// The mode field while the settings tab is open: the accent instead of the
+/// cursor color, so it cannot be taken for a panel.
+pub fn mode_field_accent(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
+    move |_theme| filled(colors.accent, colors.cursor_text)
+}
+
+/// How strongly the chosen entry of the feature list is tinted.
+const FEATURE_TINT: f32 = 0.2;
+
+/// An entry of the feature list on the settings tab; the chosen one is tinted
+/// and outlined in the cursor color.
+pub fn feature_item(
+    palette: &Palette,
+    chosen: bool,
+) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    move |_theme, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        let background = if chosen {
+            Some(Background::Color(colors.cursor.scale_alpha(FEATURE_TINT)))
+        } else if hovered {
+            Some(Background::Color(colors.title))
+        } else {
+            None
+        };
+        button::Style {
+            background,
+            text_color: if chosen { colors.text } else { colors.dim_text },
+            border: Border {
+                color: if chosen {
+                    colors.cursor
+                } else {
+                    Color::TRANSPARENT
+                },
+                width: spacing::BORDER_WIDTH,
+                radius: radius::CONTROL.into(),
+            },
+            ..button::Style::default()
+        }
+    }
+}
+
 /// A path tab in the title bar: the active one has the panel's fill, the
 /// inactive one shows the bar through.
 pub fn title_tab(

@@ -76,6 +76,13 @@ pub fn cursor_row_anchor(right_panel: bool, row_in_view: usize, window: Size) ->
     )
 }
 
+/// The feature list on the left of the settings tab.
+pub const SETTINGS_NAV_WIDTH: f32 = 232.0;
+/// The page of the settings tab does not grow wider than this.
+pub const SETTINGS_PAGE_MAX_WIDTH: f32 = 760.0;
+/// Control column of a setting whose control is a row of options.
+pub const SETTINGS_WIDE_CONTROL_WIDTH: f32 = 460.0;
+
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
 #[allow(

@@ -26,7 +26,7 @@ use serde_spanned::Spanned;
 
 use crate::i18n::Language;
 use crate::keymap::Keymap;
-use crate::palette::{ColorRole, Palette, VSCODE_KEY};
+use crate::palette::{ColorRole, Palette, ThemePreset, PRESET_KEY, VSCODE_KEY};
 use crate::vscode_theme::VscodeTheme;
 
 /// The only version this build reads.
@@ -1062,6 +1062,167 @@ fn with_vscode_theme(
         }
     }
     Ok(document.to_string())
+}
+
+/// One value the settings page changes: the tables it sits in, its key and
+/// what it becomes. Only the `*_setting` functions below build one, so every
+/// value is one the loader accepts.
+struct Setting {
+    tables: &'static [&'static str],
+    key: &'static str,
+    value: toml_edit::Value,
+}
+
+const THEME_TABLE: &str = "theme";
+const MODULES_TABLE: &str = "modules";
+const FILING_TABLE: &str = "filing";
+const AI_TABLE: &str = "ai";
+
+fn theme_preset_setting(preset: ThemePreset) -> Setting {
+    Setting {
+        tables: &[THEME_TABLE],
+        key: PRESET_KEY,
+        value: preset.name().into(),
+    }
+}
+
+fn language_setting(language: Language) -> Setting {
+    Setting {
+        tables: &[],
+        key: "lang",
+        value: language.code().into(),
+    }
+}
+
+fn filing_enabled_setting(enabled: bool) -> Setting {
+    Setting {
+        tables: &[MODULES_TABLE, FILING_TABLE],
+        key: "enabled",
+        value: enabled.into(),
+    }
+}
+
+fn filing_load_setting(load: Load) -> Setting {
+    let value = match load {
+        Load::Gentle => "gentle".into(),
+        Load::Balanced => "balanced".into(),
+        Load::Full => "full".into(),
+        Load::Workers(count) => i64::try_from(count.get()).unwrap_or(i64::MAX).into(),
+    };
+    Setting {
+        tables: &[MODULES_TABLE, FILING_TABLE],
+        key: "load",
+        value,
+    }
+}
+
+fn ai_enabled_setting(enabled: bool) -> Setting {
+    Setting {
+        tables: &[MODULES_TABLE, FILING_TABLE, AI_TABLE],
+        key: "enabled",
+        value: enabled.into(),
+    }
+}
+
+/// Sets `preset` in `[theme]` of the config at `path`, keeping every other
+/// line, comment and section as written. Returns the config read back.
+pub fn write_theme_preset(path: &Path, preset: ThemePreset) -> Result<Config, FilingWriteError> {
+    write_setting(
+        path,
+        theme_preset_setting(preset),
+        home_from_env().as_deref(),
+    )
+}
+
+/// Sets the top-level `lang`; same guarantees as [`write_theme_preset`].
+pub fn write_language(path: &Path, language: Language) -> Result<Config, FilingWriteError> {
+    write_setting(path, language_setting(language), home_from_env().as_deref())
+}
+
+/// Sets `enabled` in `[modules.filing]`; same guarantees as [`write_theme_preset`].
+pub fn write_filing_enabled(path: &Path, enabled: bool) -> Result<Config, FilingWriteError> {
+    write_setting(
+        path,
+        filing_enabled_setting(enabled),
+        home_from_env().as_deref(),
+    )
+}
+
+/// Sets `load` in `[modules.filing]`; same guarantees as [`write_theme_preset`].
+pub fn write_filing_load(path: &Path, load: Load) -> Result<Config, FilingWriteError> {
+    write_setting(path, filing_load_setting(load), home_from_env().as_deref())
+}
+
+/// Sets `enabled` in `[modules.filing.ai]`; same guarantees as [`write_theme_preset`].
+pub fn write_ai_enabled(path: &Path, enabled: bool) -> Result<Config, FilingWriteError> {
+    write_setting(
+        path,
+        ai_enabled_setting(enabled),
+        home_from_env().as_deref(),
+    )
+}
+
+fn write_setting(
+    path: &Path,
+    setting: Setting,
+    home: Option<&Path>,
+) -> Result<Config, FilingWriteError> {
+    let target = resolve_write_target(path)?;
+    let source = read_source(&target).map_err(FilingWriteError::Config)?;
+    if let Some(text) = &source {
+        parse_config(text, path, home).map_err(FilingWriteError::Config)?;
+    }
+    let edited = with_setting(source.as_deref().unwrap_or_default(), path, &setting)?;
+    parse_config(&edited, path, home).map_err(FilingWriteError::Config)?;
+    replace_file(&target, &edited)?;
+    load_with_home(path, home).map_err(FilingWriteError::Config)
+}
+
+/// `source` with the setting's value in place, its tables created when
+/// missing. An existing value keeps the comment on its line.
+fn with_setting(source: &str, path: &Path, setting: &Setting) -> Result<String, FilingWriteError> {
+    let mut document = parse_document(source, path)?;
+    let mut table = document.as_table_mut();
+    for (depth, name) in setting.tables.iter().enumerate() {
+        let implicit = depth + 1 < setting.tables.len();
+        table = sub_table(table, name, implicit).ok_or_else(|| not_a_table(path, name))?;
+    }
+    match table
+        .get_mut(setting.key)
+        .and_then(toml_edit::Item::as_value_mut)
+    {
+        Some(existing) => {
+            let decor = existing.decor().clone();
+            *existing = setting.value.clone();
+            *existing.decor_mut() = decor;
+        }
+        None => {
+            table.insert(setting.key, toml_edit::Item::Value(setting.value.clone()));
+        }
+    }
+    Ok(document.to_string())
+}
+
+impl Config {
+    /// The preset `[theme]` names; the built-in look without one.
+    pub fn theme_preset(&self) -> ThemePreset {
+        self.theme_text(PRESET_KEY)
+            .and_then(ThemePreset::from_name)
+            .unwrap_or(ThemePreset::Cosmic)
+    }
+
+    /// The VS Code theme file `[theme]` names, as written.
+    pub fn vscode_theme_path(&self) -> Option<&str> {
+        self.theme_text(VSCODE_KEY)
+    }
+
+    fn theme_text(&self, key: &str) -> Option<&str> {
+        self.theme
+            .entries
+            .iter()
+            .find(|entry| entry.key.get_ref() == key)
+            .map(|entry| entry.value.get_ref().as_str())
+    }
 }
 
 fn io_error(path: &Path) -> impl FnOnce(std::io::Error) -> FilingWriteError + '_ {
@@ -2541,5 +2702,160 @@ mod tests {
         let written = write_vscode_theme_with_home(&path, "themes/gone.json", None).unwrap();
 
         assert!(written.vscode_warning.is_some());
+    }
+    fn lines_of(path: &Path) -> String {
+        std::fs::read_to_string(path).unwrap()
+    }
+
+    #[test]
+    fn the_preset_is_written_in_place_and_the_comments_stay() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "# mine\nlang = \"en\"\n\n[theme]\n# the look\npreset = \"classic\" # old\nbackground = \"#112233\"\n",
+        )
+        .unwrap();
+
+        let written =
+            write_setting(&path, theme_preset_setting(ThemePreset::Dracula), None).unwrap();
+
+        let text = lines_of(&path);
+        for kept in [
+            "# mine\nlang = \"en\"\n",
+            "# the look\npreset = \"dracula\" # old\n",
+            "background = \"#112233\"\n",
+        ] {
+            assert!(text.contains(kept), "{kept:?} is gone from:\n{text}");
+        }
+        assert_eq!(written.theme_preset(), ThemePreset::Dracula);
+        assert_eq!(load_with_home(&path, None).unwrap(), written);
+    }
+
+    #[test]
+    fn a_missing_theme_table_is_created_for_the_preset() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("config.toml");
+        std::fs::write(&path, "lang = \"de\"\n").unwrap();
+
+        let written = write_setting(&path, theme_preset_setting(ThemePreset::Teal), None).unwrap();
+
+        assert!(lines_of(&path).contains("[theme]\npreset = \"default\"\n"));
+        assert_eq!(written.theme_preset(), ThemePreset::Teal);
+        assert_eq!(written.lang, Some(Language::German));
+    }
+
+    #[test]
+    fn the_language_is_written_at_the_top_and_round_trips() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("config.toml");
+        std::fs::write(&path, "# first\n[theme]\npreset = \"classic\"\n").unwrap();
+
+        let written = write_setting(&path, language_setting(Language::German), None).unwrap();
+
+        let text = lines_of(&path);
+        assert!(text.starts_with("lang = \"de\"\n"), "{text}");
+        assert!(
+            text.contains("# first\n[theme]\npreset = \"classic\"\n"),
+            "{text}"
+        );
+        assert_eq!(written.lang, Some(Language::German));
+        let again = write_setting(&path, language_setting(Language::English), None).unwrap();
+        assert_eq!(again.lang, Some(Language::English));
+        assert_eq!(lines_of(&path).matches("lang").count(), 1);
+    }
+
+    #[test]
+    fn filing_enabled_creates_its_table_and_keeps_the_rest() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("config.toml");
+        std::fs::write(&path, "[open]\nview = [\"viewer\"] # mine\n").unwrap();
+
+        let written = write_setting(&path, filing_enabled_setting(true), None).unwrap();
+
+        let text = lines_of(&path);
+        assert!(text.contains("view = [\"viewer\"] # mine\n"), "{text}");
+        assert!(
+            text.contains("[modules.filing]\nenabled = true\n"),
+            "{text}"
+        );
+        assert!(written.filing.enabled);
+        let off = write_setting(&path, filing_enabled_setting(false), None).unwrap();
+        assert!(!off.filing.enabled);
+    }
+
+    #[test]
+    fn the_load_is_written_as_a_name_or_a_number_and_reads_back() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "[modules.filing]\nenabled = false\nload = \"gentle\" # easy\n",
+        )
+        .unwrap();
+        let workers = Load::Workers(NonZeroUsize::new(3).unwrap());
+
+        for load in [Load::Full, Load::Balanced, workers, Load::Gentle] {
+            let written = write_setting(&path, filing_load_setting(load), None).unwrap();
+            assert_eq!(written.filing.load, load);
+        }
+        let text = lines_of(&path);
+        assert!(text.contains("load = \"gentle\" # easy\n"), "{text}");
+        assert!(text.contains("enabled = false\n"), "{text}");
+    }
+
+    #[test]
+    fn ai_enabled_creates_the_nested_table_and_keeps_the_filing_keys() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("config.toml");
+        std::fs::write(&path, "[modules.filing]\nenabled = true\nload = \"full\"\n").unwrap();
+
+        let written = write_setting(&path, ai_enabled_setting(true), None).unwrap();
+
+        let text = lines_of(&path);
+        assert!(text.contains("load = \"full\"\n"), "{text}");
+        assert!(
+            text.contains("[modules.filing.ai]\nenabled = true\n"),
+            "{text}"
+        );
+        assert!(matches!(written.filing.ai, AiSetting::Local { .. }));
+        let off = write_setting(&path, ai_enabled_setting(false), None).unwrap();
+        assert_eq!(off.filing.ai, AiSetting::Off);
+    }
+
+    #[test]
+    fn a_setting_is_created_with_its_config_and_a_broken_config_is_left_alone() {
+        let base = tempfile::tempdir().unwrap();
+        let fresh = base.path().join("ncrs").join("config.toml");
+        let written = write_setting(&fresh, language_setting(Language::English), None).unwrap();
+        assert_eq!(written.lang, Some(Language::English));
+
+        let broken = base.path().join("broken.toml");
+        let text = "[open\nview = [\"viewer\"]\n";
+        std::fs::write(&broken, text).unwrap();
+        let result = write_setting(&broken, filing_enabled_setting(true), None);
+        assert!(
+            matches!(
+                result,
+                Err(FilingWriteError::Config(ConfigError::Invalid { .. }))
+            ),
+            "{result:?}"
+        );
+        assert_eq!(lines_of(&broken), text);
+    }
+
+    #[test]
+    fn a_table_that_is_not_one_is_reported_not_replaced() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("config.toml");
+        std::fs::write(&path, "theme = \"classic\"\n").unwrap();
+
+        let result = write_setting(&path, theme_preset_setting(ThemePreset::Teal), None);
+
+        assert!(
+            matches!(result, Err(FilingWriteError::Config(_))),
+            "{result:?}"
+        );
+        assert_eq!(lines_of(&path), "theme = \"classic\"\n");
     }
 }

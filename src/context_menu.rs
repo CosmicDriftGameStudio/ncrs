@@ -8,7 +8,7 @@ use crate::fs::OpenKind;
 use crate::i18n::Msg;
 use crate::messages::{
     ClipboardKind, CommandPaletteMessage, Message, QuickOpenMessage, ReorganisationPlanMessage,
-    ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage,
+    ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingsMessage,
     ThemeFetchMessage, TransferKind,
 };
 use crate::ui::layout::{MENU_ITEM_HEIGHT, MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_WIDTH};
@@ -276,6 +276,9 @@ pub struct InputState {
     pub saved_queries: bool,
     /// The reorganisation plan view is up: same as Quick Open.
     pub reorganisation_plan: bool,
+    /// The settings tab is up with nothing on top: Escape closes it, even from
+    /// its search field, and an Option tap opens no menu.
+    pub settings: bool,
 }
 
 impl InputState {
@@ -320,6 +323,9 @@ impl InputState {
                         ReorganisationPlanMessage::Close,
                     ));
                 }
+                if self.settings && matches!(key, Key::Named(Named::Escape)) {
+                    return Some(Message::Settings(SettingsMessage::Close));
+                }
                 // The search's text fields capture Escape, so the routing
                 // never sees it there.
                 if !(self.search_open && matches!(key, Key::Named(Named::Escape))) {
@@ -348,7 +354,8 @@ impl InputState {
                     && !self.rule_suggestions
                     && !self.review_list
                     && !self.saved_queries
-                    && !self.reorganisation_plan)
+                    && !self.reorganisation_plan
+                    && !self.settings)
                     .then_some(Message::ContextMenuKey)
             }
             event::Event::Window(window::Event::Unfocused) => {

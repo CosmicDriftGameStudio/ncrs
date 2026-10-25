@@ -18,7 +18,7 @@ use crate::vscode_theme::VscodeTheme;
 const READABLE_CONTRAST: f32 = 3.0;
 
 /// The key of `[theme]` that picks the base palette.
-const PRESET_KEY: &str = "preset";
+pub const PRESET_KEY: &str = "preset";
 /// Like `preset`, not a role: a VS Code theme file laid over the preset.
 pub const VSCODE_KEY: &str = "vscode";
 
