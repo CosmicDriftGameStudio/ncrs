@@ -276,7 +276,7 @@ mod tests {
         }
 
         fn target(&self) -> PathBuf {
-            self.archive.join("Insurance/invoice.pdf")
+            self.archive.join("Insurance").join("invoice.pdf")
         }
     }
 
