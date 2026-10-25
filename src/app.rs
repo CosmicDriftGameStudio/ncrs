@@ -40,7 +40,7 @@ use crate::messages::{
 use crate::native_menu;
 use crate::ocr_models::{download_models, DownloadError, OcrModelsCard};
 use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
-use crate::palette::Palette;
+use crate::palette::{Palette, ThemePreset};
 use crate::query_work::{self, QueryAccess};
 use crate::quick_open::{QuickOpen, QUICK_OPEN_FILE_LIMIT};
 use crate::reorganisation_plan::ReorganisationView;
@@ -71,9 +71,7 @@ use crate::ui::search as search_ui;
 use crate::ui::theme_fetch as theme_fetch_ui;
 use crate::ui::titlebar;
 use crate::ui::volumes as volumes_view;
-use crate::ui::{
-    self, conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelProps, PanelState,
-};
+use crate::ui::{conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelProps, PanelState};
 use ncrs_index::{KeyStore, KeyringKeyStore};
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::{Load, RunnerState};
@@ -2881,44 +2879,45 @@ impl App {
             _ => panel_view(side),
         };
 
-        let panels = row![side_view(PanelSide::Left), side_view(PanelSide::Right)]
-            .spacing(ui::theme::spacing::PANEL_GAP)
-            .height(Length::Fill);
+        let panels = row![
+            side_view(PanelSide::Left),
+            theme::vertical_rule(self.palette.border),
+            side_view(PanelSide::Right),
+        ]
+        .height(Length::Fill);
 
-        let below_title_bar = container(
-            column![
-                panels,
-                statusbar::view(
-                    self.active_panel(),
-                    self.lang,
-                    &self.palette,
-                    statusbar::Activity {
-                        job: self.job_status(),
-                        filing: self.filing_badge(),
-                        on_blocked_press: blocked_access_press(),
-                        notice: self.notice.as_deref(),
-                    },
-                    self.status_error(),
-                    self.search_status(),
-                    statusbar::PathBar {
-                        editing: self.path_field.as_deref(),
-                        on_input: Message::PathFieldInput,
-                        on_submit: Message::PathFieldSubmit,
-                        on_copy: Message::CopyToClipboard(ClipboardKind::Directory),
-                    },
-                ),
-                fkeys::view(
-                    if self.search_has_keys() {
-                        &self.search_function_keys
-                    } else {
-                        &self.function_keys
-                    },
-                    &self.palette,
-                ),
-            ]
-            .spacing(theme::spacing::SECTION_GAP),
-        )
-        .padding(theme::spacing::OUTER_PADDING)
+        let below_title_bar = container(column![
+            panels,
+            fkeys::view(
+                if self.search_has_keys() {
+                    &self.search_function_keys
+                } else {
+                    &self.function_keys
+                },
+                &self.palette,
+            ),
+            statusbar::view(
+                self.active_panel(),
+                self.lang,
+                &self.palette,
+                statusbar::Activity {
+                    side: self.active_panel,
+                    theme_name: self.theme_name(),
+                    job: self.job_status(),
+                    filing: self.filing_badge(),
+                    on_blocked_press: blocked_access_press(),
+                    notice: self.notice.as_deref(),
+                },
+                self.status_error(),
+                self.search_status(),
+                statusbar::PathBar {
+                    editing: self.path_field.as_deref(),
+                    on_input: Message::PathFieldInput,
+                    on_submit: Message::PathFieldSubmit,
+                    on_copy: Message::CopyToClipboard(ClipboardKind::Directory),
+                },
+            ),
+        ])
         .width(Length::Fill)
         .height(Length::Fill);
 
@@ -6177,13 +6176,27 @@ impl App {
             tabs: [tab(PanelSide::Left), tab(PanelSide::Right)],
             home: &self.home,
             hermes: self.hermes_chip(),
+            hermes_paused: self.filing_status.snapshot().state == RunnerState::Paused,
             lab_shortcut: self
                 .keymap
                 .shortcut_label(&KeyAction::CommandPalette.message()),
-            window_width: self.window_size.width,
             lang: self.lang,
             palette: &self.palette,
         })
+    }
+
+    /// The name of the colour theme when the palette is one of the presets.
+    fn theme_name(&self) -> Option<String> {
+        ThemePreset::ALL
+            .into_iter()
+            .find(|preset| preset.palette() == self.palette)
+            .map(|preset| {
+                let name = preset.name();
+                let mut letters = name.chars();
+                letters.next().map_or_else(String::new, |first| {
+                    first.to_uppercase().chain(letters).collect()
+                })
+            })
     }
 
     /// The title bar chip: Hermes is on, and how fast it files. Absent while

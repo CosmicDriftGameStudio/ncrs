@@ -1,14 +1,15 @@
 //! The row across the window top: a tab with the path of each panel, the
-//! Hermes chip and the Lab button. Where the system draws no window frame it
-//! also holds the window buttons, and the window edges resize.
+//! Hermes status and the button for the command palette. Where the system
+//! draws no window frame it also holds the window buttons, and the window
+//! edges resize.
 use std::path::{Path, MAIN_SEPARATOR};
 
 use iced::widget::{button, column, container, mouse_area, row, text, Space};
-use iced::{alignment, mouse, Element, Length, Padding};
+use iced::{alignment, mouse, Color, Element, Font, Length, Padding};
 
 use super::format::ellipsize_middle;
 use super::layout::{TITLE_BAR_HEIGHT, TRAFFIC_LIGHTS_INSET};
-use super::theme::{self, font_size, spacing};
+use super::theme::{self, font_size, size, spacing};
 use crate::i18n::{Language, Msg};
 use crate::messages::{
     CommandPaletteMessage, FilingStatusMessage, Message, PanelSide, ResizeEdge, TitleBarMessage,
@@ -23,9 +24,14 @@ pub const HERMES_CHIP_ID: &str = "title-hermes-chip";
 /// ours.
 const OWN_WINDOW_BUTTONS: bool = cfg!(not(target_os = "macos"));
 const WINDOW_BUTTON_WIDTH: f32 = 44.0;
-const TAB_HEIGHT: f32 = TITLE_BAR_HEIGHT - 10.0;
-const ROW_SPACING: f32 = 12.0;
-const TAB_SPACING: f32 = 6.0;
+const TAB_PADDING_X: f32 = 12.0;
+const TAB_GAP: f32 = 8.0;
+/// Room the panel letter at the right end of a tab takes.
+const TAB_LETTER_WIDTH: f32 = 8.0;
+const RIGHT_GAP: f32 = 2.0;
+const RIGHT_PADDING: f32 = 8.0;
+const BUTTON_PADDING_X: f32 = 8.0;
+const BUTTON_CONTENT_GAP: f32 = 6.0;
 /// Width of a character of the monospace font, in font sizes.
 const GLYPH_WIDTH_PER_SIZE: f32 = 0.6;
 const LOADING_MARK: &str = "  …";
@@ -51,11 +57,12 @@ pub enum TabTitle<'a> {
 pub struct TitleBar<'a> {
     pub tabs: [Tab<'a>; 2],
     pub home: &'a Path,
-    /// The chip text while Hermes is on; `None` hides the chip.
+    /// The Hermes text while it is on; `None` hides it.
     pub hermes: Option<String>,
-    /// The key of the Lab, if it has one.
+    /// Whether Hermes is paused, which its dot shows.
+    pub hermes_paused: bool,
+    /// The key of the command palette, if it has one.
     pub lab_shortcut: Option<String>,
-    pub window_width: f32,
     pub lang: Language,
     pub palette: &'a Palette,
 }
@@ -103,106 +110,146 @@ fn left_inset() -> f32 {
     }
 }
 
-/// How many characters one tab's label may have, once the right end of the row
-/// (`right_chars` characters of chip and button) and the window buttons have
-/// their room. The two tabs share what is left.
-pub fn tab_chars(window_width: f32, right_chars: usize) -> usize {
-    let buttons = if OWN_WINDOW_BUTTONS {
-        3.0 * WINDOW_BUTTON_WIDTH
-    } else {
-        0.0
-    };
-    let right =
-        right_chars as f32 * font_size::STATUS * GLYPH_WIDTH_PER_SIZE + 3.0 * ROW_SPACING + buttons;
-    let tabs = window_width - left_inset() - spacing::OUTER_PADDING - right - TAB_SPACING;
-    let per_tab = tabs / 2.0 - 2.0 * spacing::CELL_PADDING_X;
-    characters_that_fit(per_tab, font_size::TITLE)
+/// How many characters of the path a tab shows.
+fn tab_chars() -> usize {
+    let room = size::TAB_WIDTH - 2.0 * TAB_PADDING_X - TAB_GAP - TAB_LETTER_WIDTH;
+    characters_that_fit(room, font_size::FILE)
 }
 
 pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
     let palette = bar.palette;
-    let lab = bar.lang.text(Msg::ShortcutCommands);
-    let lab_theme = bar.lang.text(Msg::ActionCommandPaletteTheme);
-    let lab_shortcut = bar.lab_shortcut.clone().unwrap_or_default();
-    let right_chars = bar.hermes.as_ref().map_or(0, |chip| chip.chars().count())
-        + lab.chars().count()
-        + lab_theme.chars().count()
-        + lab_shortcut.chars().count();
-    let chars = tab_chars(bar.window_width, right_chars);
+    let lang = bar.lang;
+    let chars = tab_chars();
 
-    let tab = |tab: &Tab<'a>, id: &'static str| -> Element<'a, Message> {
+    let tab = |tab: &Tab<'a>, id: &'static str, letter_of: Msg| -> Element<'a, Message> {
         let label = match &tab.title {
             TabTitle::Path { path, loading } => tab_label(path, bar.home, *loading, chars),
             TabTitle::Search(title) => ellipsize_middle(title, chars),
         };
-        container(
-            button(
+        let letter: String = lang.text(letter_of).chars().take(1).collect();
+        let content = button(
+            row![
                 text(label)
-                    .size(font_size::TITLE)
-                    .height(Length::Fill)
-                    .align_y(alignment::Vertical::Center)
+                    .size(font_size::FILE)
+                    .font(Font::MONOSPACE)
+                    .width(Length::Fill)
                     .wrapping(text::Wrapping::None),
-            )
-            .on_press(Message::ActivatePanel(tab.side))
-            .padding([0.0, spacing::CELL_PADDING_X])
-            .width(Length::Fill)
-            .height(TAB_HEIGHT)
-            .clip(true)
-            .style(theme::title_tab(palette, tab.active)),
+                text(letter).size(font_size::SMALL).color(palette.dim_text),
+            ]
+            .spacing(TAB_GAP)
+            .height(Length::Fill)
+            .align_y(alignment::Vertical::Center),
         )
-        .id(id)
+        .on_press(Message::ActivatePanel(tab.side))
+        .padding([0.0, TAB_PADDING_X])
         .width(Length::Fill)
+        .height(Length::Fill)
+        .clip(true)
+        .style(theme::title_tab(palette, tab.active));
+        let top_line = if tab.active {
+            palette.accent
+        } else {
+            Color::TRANSPARENT
+        };
+        let left_edge: Element<'a, Message> = if tab.active {
+            theme::vertical_rule(palette.border_inactive)
+        } else {
+            Space::new().width(0.0).into()
+        };
+        container(row![
+            left_edge,
+            column![theme::horizontal_rule(top_line), content],
+            theme::vertical_rule(palette.border_inactive),
+        ])
+        .id(id)
+        .width(size::TAB_WIDTH)
+        .height(Length::Fill)
         .into()
     };
     let [left, right] = &bar.tabs;
-    let tabs = row![tab(left, LEFT_TAB_ID), tab(right, RIGHT_TAB_ID)]
-        .spacing(TAB_SPACING)
-        .width(Length::Fill);
+    let tabs = row![
+        tab(left, LEFT_TAB_ID, Msg::StatusModeLeft),
+        tab(right, RIGHT_TAB_ID, Msg::StatusModeRight),
+    ]
+    .height(Length::Fill);
 
-    let mut bar_row = row![tabs].spacing(ROW_SPACING);
+    let mut right_side = row![]
+        .spacing(RIGHT_GAP)
+        .align_y(alignment::Vertical::Center);
     if let Some(chip) = bar.hermes.clone() {
-        bar_row = bar_row.push(
+        let dot_color = if bar.hermes_paused {
+            palette.dim_text
+        } else {
+            palette.success
+        };
+        right_side = right_side.push(
             container(
-                button(text(chip).size(font_size::STATUS))
-                    .on_press(Message::FilingStatus(FilingStatusMessage::Open))
-                    .padding([2.0, 6.0])
-                    .style(theme::title_button(palette)),
+                button(
+                    row![
+                        theme::status_dot(dot_color),
+                        text(chip).size(font_size::BODY).color(palette.dim_text)
+                    ]
+                    .spacing(BUTTON_CONTENT_GAP)
+                    .align_y(alignment::Vertical::Center),
+                )
+                .on_press(Message::FilingStatus(FilingStatusMessage::Open))
+                .padding([0.0, BUTTON_PADDING_X])
+                .height(size::BUTTON)
+                .style(theme::icon_button(palette)),
             )
             .id(HERMES_CHIP_ID),
         );
     }
-    bar_row = bar_row.push(
+    right_side = right_side.push(
         button(
             row![
-                text(lab).size(font_size::STATUS),
-                text(lab_theme).size(font_size::COLUMN_HEADER),
-                text(lab_shortcut).size(font_size::COLUMN_HEADER),
+                text(lang.text(Msg::ShortcutCommands)).size(font_size::BODY),
+                text(bar.lab_shortcut.clone().unwrap_or_default())
+                    .size(font_size::BODY)
+                    .color(palette.dim_text),
             ]
-            .spacing(TAB_SPACING)
+            .spacing(BUTTON_CONTENT_GAP)
             .align_y(alignment::Vertical::Center),
         )
         .on_press(Message::CommandPalette(CommandPaletteMessage::Toggle))
-        .padding([2.0, 6.0])
-        .style(theme::title_button(palette)),
+        .padding([0.0, BUTTON_PADDING_X])
+        .height(size::BUTTON)
+        .style(theme::title_command_button(palette)),
     );
+
+    let mut bar_row = row![
+        tabs,
+        Space::new().width(Length::Fill),
+        container(right_side).padding(Padding {
+            right: if OWN_WINDOW_BUTTONS {
+                0.0
+            } else {
+                RIGHT_PADDING
+            },
+            left: RIGHT_PADDING,
+            ..Padding::ZERO
+        }),
+    ]
+    .height(Length::Fill)
+    .align_y(alignment::Vertical::Center);
     if OWN_WINDOW_BUTTONS {
         bar_row = bar_row.push(window_buttons(palette));
     }
 
     mouse_area(
-        container(bar_row.align_y(alignment::Vertical::Center))
-            .padding(Padding {
-                left: left_inset(),
-                right: if OWN_WINDOW_BUTTONS {
-                    0.0
-                } else {
-                    spacing::OUTER_PADDING
-                },
-                ..Padding::ZERO
-            })
-            .width(Length::Fill)
-            .height(TITLE_BAR_HEIGHT)
-            .align_y(alignment::Vertical::Center),
+        container(column![
+            container(bar_row)
+                .padding(Padding {
+                    left: left_inset(),
+                    ..Padding::ZERO
+                })
+                .width(Length::Fill)
+                .height(Length::Fill),
+            theme::horizontal_rule(palette.border_inactive),
+        ])
+        .width(Length::Fill)
+        .height(TITLE_BAR_HEIGHT)
+        .style(theme::statusbar(palette)),
     )
     .on_press(Message::TitleBar(TitleBarMessage::Drag))
     .on_double_click(Message::TitleBar(TitleBarMessage::ToggleMaximize))
@@ -219,7 +266,7 @@ fn window_buttons<'a>(palette: &Palette) -> Element<'a, Message> {
         )
         .on_press(message)
         .width(WINDOW_BUTTON_WIDTH)
-        .height(TITLE_BAR_HEIGHT)
+        .height(Length::Fill)
         .style(theme::title_button(palette))
     };
     row![
@@ -315,12 +362,5 @@ mod tests {
         let label = tab_label(&deep, home, true, 24);
         assert_eq!(label.chars().count(), 24);
         assert!(label.ends_with(LOADING_MARK), "{label}");
-    }
-
-    #[test]
-    fn a_wider_window_gives_the_tabs_more_characters() {
-        assert!(tab_chars(1600.0, 30) > tab_chars(900.0, 30));
-        assert!(tab_chars(900.0, 10) > tab_chars(900.0, 40));
-        assert_eq!(tab_chars(10.0, 80), 1);
     }
 }

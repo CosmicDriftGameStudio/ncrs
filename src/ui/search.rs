@@ -93,10 +93,9 @@ pub fn view<'a>(
     ];
     mouse_area(
         container(framed)
-            .padding(spacing::BORDER_WIDTH)
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(theme::panel(palette, is_active)),
+            .style(theme::panel(palette)),
     )
     .on_scroll(|delta| to_search(SearchMessage::Scrolled(delta)))
     .into()

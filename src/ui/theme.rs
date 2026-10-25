@@ -1,7 +1,7 @@
 //! Colors, spacing and reusable widget styles (dark, Norton Commander inspired).
 
-use iced::widget::{button, checkbox, container, text_input};
-use iced::{Background, Border, Color, Theme};
+use iced::widget::{button, checkbox, container, text_input, Space};
+use iced::{Background, Border, Color, Element, Length, Theme};
 
 use crate::palette::Palette;
 
@@ -17,7 +17,6 @@ pub const SCRIM: Color = Color {
 pub mod spacing {
     pub const OUTER_PADDING: f32 = 6.0;
     pub const SECTION_GAP: f32 = 6.0;
-    pub const PANEL_GAP: f32 = 6.0;
     pub const CELL_PADDING_X: f32 = 8.0;
     pub const BORDER_WIDTH: f32 = 1.0;
     pub const BORDER_RADIUS: f32 = 3.0;
@@ -47,6 +46,15 @@ pub mod size {
     pub const CONTROL_WIDTH: f32 = 260.0;
     pub const SIDEBAR_WIDTH: f32 = 200.0;
     pub const SIDEBAR_ITEM: f32 = 26.0;
+
+    /// The main window: the bars across top and bottom, the column titles and
+    /// the path tabs.
+    pub const TITLE_BAR: f32 = 34.0;
+    pub const STATUS_BAR: f32 = 22.0;
+    pub const FKEY_BAR: f32 = 24.0;
+    pub const COLUMN_HEADER: f32 = 22.0;
+    pub const TAB_WIDTH: f32 = 240.0;
+    pub const DOT: f32 = 6.0;
 }
 
 pub mod radius {
@@ -69,6 +77,10 @@ pub mod font_size {
     /// The text of dialogs and the kit.
     pub const BODY: f32 = 12.0;
     pub const KEY_CAP: f32 = 10.0;
+    /// Column titles, hints and the status bar of the main window.
+    pub const SMALL: f32 = 11.0;
+    /// File names and paths, set in the monospace font.
+    pub const FILE: f32 = 12.0;
     /// A number shown large.
     pub const FIGURE: f32 = 16.0;
 }
@@ -91,39 +103,65 @@ pub fn root(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
     move |_theme| filled(colors.background, colors.text)
 }
 
-/// The label box of a function key slot, filled or empty.
-pub fn fkey_label(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
-    let colors = *palette;
-    move |_theme| container::Style {
-        background: Some(Background::Color(colors.fkey_label)),
-        text_color: Some(colors.fkey_label_text),
-        ..container::Style::default()
-    }
-}
-
+/// The bar across the bottom and the title bar.
 pub fn statusbar(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
     let colors = *palette;
     move |_theme| filled(colors.status_bar, colors.text)
 }
 
-/// Outer frame of a file panel; highlighted border when active.
-pub fn panel(palette: &Palette, active: bool) -> impl Fn(&Theme) -> container::Style {
+/// A file panel: flat, the panels are told apart by a line between them.
+pub fn panel(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
     let colors = *palette;
-    move |_theme| container::Style {
-        border: Border {
-            color: if active {
-                colors.border
-            } else {
-                colors.border_inactive
-            },
-            width: spacing::BORDER_WIDTH,
-            radius: spacing::BORDER_RADIUS.into(),
-        },
-        ..filled(colors.panel, colors.text)
-    }
+    move |_theme| filled(colors.panel, colors.text)
 }
 
-/// A path tab in the title bar; the active one is the lit one.
+/// A 1 px line, drawn as a container of that thickness.
+pub fn line(color: Color) -> impl Fn(&Theme) -> container::Style {
+    move |_theme| filled(color, color)
+}
+
+/// A thin horizontal rule across the full width.
+pub fn horizontal_rule<'a, M: 'a>(color: Color) -> Element<'a, M> {
+    container(Space::new())
+        .width(Length::Fill)
+        .height(spacing::BORDER_WIDTH)
+        .style(line(color))
+        .into()
+}
+
+/// A thin vertical rule across the full height.
+pub fn vertical_rule<'a, M: 'a>(color: Color) -> Element<'a, M> {
+    container(Space::new())
+        .width(spacing::BORDER_WIDTH)
+        .height(Length::Fill)
+        .style(line(color))
+        .into()
+}
+
+/// A small round status dot.
+pub fn status_dot<'a, M: 'a>(color: Color) -> Element<'a, M> {
+    container(Space::new())
+        .width(size::DOT)
+        .height(size::DOT)
+        .style(move |_theme: &Theme| container::Style {
+            background: Some(Background::Color(color)),
+            border: Border {
+                radius: (size::DOT / 2.0).into(),
+                ..Border::default()
+            },
+            ..container::Style::default()
+        })
+        .into()
+}
+
+/// The mode field at the left end of the status bar: names the active panel.
+pub fn mode_field(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
+    move |_theme| filled(colors.cursor, colors.cursor_text)
+}
+
+/// A path tab in the title bar: the active one has the panel's fill, the
+/// inactive one shows the bar through.
 pub fn title_tab(
     palette: &Palette,
     active: bool,
@@ -131,15 +169,33 @@ pub fn title_tab(
     let colors = *palette;
     move |_theme, _status| {
         let (fill, text_color) = if active {
-            (colors.title, colors.title_text)
+            (Some(Background::Color(colors.panel)), colors.text)
         } else {
-            (colors.title_inactive, colors.dim_text)
+            (None, colors.dim_text)
         };
         button::Style {
-            background: Some(Background::Color(fill)),
+            background: fill,
             text_color,
+            ..button::Style::default()
+        }
+    }
+}
+
+/// The button that opens the command palette: a subtle fill, lit while the
+/// pointer is over it.
+pub fn title_command_button(palette: &Palette) -> impl Fn(&Theme, button::Status) -> button::Style {
+    let colors = *palette;
+    move |_theme, status| {
+        let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+        button::Style {
+            background: Some(Background::Color(if hovered {
+                colors.border
+            } else {
+                colors.border_inactive
+            })),
+            text_color: colors.text,
             border: Border {
-                radius: spacing::BORDER_RADIUS.into(),
+                radius: radius::CONTROL.into(),
                 ..Border::default()
             },
             ..button::Style::default()
@@ -185,10 +241,21 @@ pub fn row(
             (false, true, false) => Some(Background::Color(colors.tagged_inactive)),
             (false, false, _) => None,
         };
+        // The cursor of the other panel is only outlined, so it can be found
+        // without looking active.
+        let outline = cursor && !panel_active;
         button::Style {
             background,
             text_color: colors.text,
-            border: Border::default(),
+            border: if outline {
+                Border {
+                    color: colors.cursor,
+                    width: spacing::BORDER_WIDTH,
+                    radius: 0.0.into(),
+                }
+            } else {
+                Border::default()
+            },
             ..button::Style::default()
         }
     }
@@ -754,17 +821,11 @@ mod tests {
         let bar = rgb(0.070, 0.125, 0.270);
         let cursor = rgb(0.180, 0.690, 0.760);
         let border = rgb(0.310, 0.840, 0.910);
-        let border_inactive = rgb(0.165, 0.210, 0.390);
 
         let style_root = root(&p)(&theme);
         assert_eq!(
             (fill_of(&style_root), style_root.text_color),
             (Some(background), Some(text))
-        );
-        let style_fkey = fkey_label(&p)(&theme);
-        assert_eq!(
-            (fill_of(&style_fkey), style_fkey.text_color),
-            (Some(cursor), Some(dark_text))
         );
         let style_status = statusbar(&p)(&theme);
         assert_eq!(
@@ -772,28 +833,22 @@ mod tests {
             (Some(bar), Some(text))
         );
 
-        let style_panel_active = panel(&p, true)(&theme);
+        let style_panel = panel(&p)(&theme);
         assert_eq!(
-            (
-                fill_of(&style_panel_active),
-                style_panel_active.text_color,
-                style_panel_active.border.color
-            ),
-            (Some(panel_fill), Some(text), border)
+            (fill_of(&style_panel), style_panel.text_color),
+            (Some(panel_fill), Some(text))
         );
-        let style_panel_inactive = panel(&p, false)(&theme);
-        assert_eq!(style_panel_inactive.border.color, border_inactive);
 
         let tab_status = button::Status::Active;
         let style_tab_active = title_tab(&p, true)(&theme, tab_status);
         assert_eq!(
             (row_fill(&style_tab_active), style_tab_active.text_color),
-            (Some(teal), dark_text)
+            (Some(panel_fill), text)
         );
         let style_tab_inactive = title_tab(&p, false)(&theme, tab_status);
         assert_eq!(
             (row_fill(&style_tab_inactive), style_tab_inactive.text_color),
-            (Some(bar), rgb(0.450, 0.500, 0.640))
+            (None, rgb(0.450, 0.500, 0.640))
         );
 
         let status = button::Status::Active;

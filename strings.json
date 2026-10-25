@@ -43,6 +43,18 @@
       "de": "<UP>"
     },
     {
+      "key": "status.mode_left",
+      "context": "Colored field at the left end of the status bar while the left panel is the active one; also its first letter marks the left path tab in the title bar. Upper case, a single short word.",
+      "en": "LEFT",
+      "de": "LINKS"
+    },
+    {
+      "key": "status.mode_right",
+      "context": "Colored field at the left end of the status bar while the right panel is the active one; also its first letter marks the right path tab in the title bar. Upper case, a single short word.",
+      "en": "RIGHT",
+      "de": "RECHTS"
+    },
+    {
       "key": "status.loading",
       "context": "Status bar text while a directory is being read. The surrounding UI is monospace, so an ellipsis character is fine.",
       "en": "Loading…",

@@ -982,6 +982,8 @@ mod status_notice {
             crate::i18n::Language::English,
             &crate::palette::Palette::default(),
             crate::ui::statusbar::Activity {
+                side: crate::messages::PanelSide::Left,
+                theme_name: None,
                 job: None,
                 filing: None,
                 on_blocked_press: None,

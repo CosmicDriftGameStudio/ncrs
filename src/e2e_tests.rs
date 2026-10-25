@@ -1938,9 +1938,11 @@ mod tests {
     }
 }
 
-/// A point on the path line of a 1200 x 760 window, right of a short path, so
-/// the caret lands at its end.
-const PATH_LINE: Point = Point::new(350.0, 710.0);
+/// A point on the path in the status bar of a 1200 x 760 window, just right of
+/// the mode field. The field is only as wide as its path, and a temporary path
+/// is short on Linux, so the point stays near the field's start; End then puts
+/// the caret at the end.
+const PATH_LINE: Point = Point::new(120.0, 749.0);
 
 /// Both panels in a scratch tree that holds a `lib` directory with two files.
 fn path_session(
@@ -2100,9 +2102,9 @@ fn a_click_into_the_path_field_with_a_context_menu_open_closes_the_menu() {
     assert!(session.app.context_menu_for_test().is_none());
 }
 
-const LEFT_NAME_HEADER: Point = Point::new(50.0, 47.0);
-const LEFT_SIZE_HEADER: Point = Point::new(415.0, 47.0);
-const LEFT_MODIFIED_HEADER: Point = Point::new(540.0, 47.0);
+const LEFT_NAME_HEADER: Point = Point::new(50.0, 45.0);
+const LEFT_SIZE_HEADER: Point = Point::new(418.0, 45.0);
+const LEFT_MODIFIED_HEADER: Point = Point::new(544.0, 45.0);
 
 fn sorting_session(
     label: &str,

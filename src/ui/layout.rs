@@ -2,18 +2,18 @@
 //! rows can be derived from the window height (used for scrolling).
 use iced::{Point, Size};
 
-use super::theme::spacing;
+use super::theme::{size, spacing};
 
 pub const INITIAL_WINDOW_SIZE: Size = Size::new(1200.0, 760.0);
 
-pub const STATUSBAR_HEIGHT: f32 = 28.0;
-pub const FKEYBAR_HEIGHT: f32 = 24.0;
+pub const STATUSBAR_HEIGHT: f32 = size::STATUS_BAR;
+pub const FKEYBAR_HEIGHT: f32 = size::FKEY_BAR;
 /// The row across the window top that holds the path tabs, the Hermes chip and
 /// the Lab button (and the window buttons where the system draws none).
-pub const TITLE_BAR_HEIGHT: f32 = 34.0;
+pub const TITLE_BAR_HEIGHT: f32 = size::TITLE_BAR;
 /// Where the row starts on macOS: the traffic lights are drawn over its left end.
 pub const TRAFFIC_LIGHTS_INSET: f32 = 78.0;
-pub const COLUMN_HEADER_HEIGHT: f32 = 24.0;
+pub const COLUMN_HEADER_HEIGHT: f32 = size::COLUMN_HEADER;
 pub const ROW_HEIGHT: f32 = 22.0;
 
 pub const MENU_WIDTH: f32 = 300.0;
@@ -28,10 +28,6 @@ pub const TAG_COLUMN_WIDTH: f32 = 22.0;
 pub const SIZE_COLUMN_WIDTH: f32 = 90.0;
 pub const DATE_COLUMN_WIDTH: f32 = 150.0;
 
-/// Gaps between the three stacked parts below the title bar: panels, status
-/// bar and function key bar.
-const COLUMN_GAPS: f32 = 2.0;
-
 /// Vertical space the panel chrome occupies: everything above and below the
 /// file rows.
 ///
@@ -39,13 +35,7 @@ const COLUMN_GAPS: f32 = 2.0;
 /// lay out, and `visible_rows` uses this sum, so a change to any of them moves
 /// both sides together. Adding a header without adding it here would silently
 /// shorten the list, which is what the tests below guard against.
-const CHROME: f32 = STATUSBAR_HEIGHT
-    + FKEYBAR_HEIGHT
-    + TITLE_BAR_HEIGHT
-    + COLUMN_HEADER_HEIGHT
-    + 2.0 * spacing::OUTER_PADDING
-    + COLUMN_GAPS * spacing::SECTION_GAP
-    + 2.0 * spacing::BORDER_WIDTH;
+const CHROME: f32 = STATUSBAR_HEIGHT + FKEYBAR_HEIGHT + TITLE_BAR_HEIGHT + COLUMN_HEADER_HEIGHT;
 
 /// Number of file rows that fit into a panel for a given window size.
 pub fn visible_rows(window: Size) -> usize {
@@ -73,15 +63,13 @@ pub fn search_visible_rows(window: Size) -> usize {
 ///
 /// `row_in_view` is the row's position counted from the first visible row.
 pub fn cursor_row_anchor(right_panel: bool, row_in_view: usize, window: Size) -> Point {
-    let panel_width = (window.width - 2.0 * spacing::OUTER_PADDING - spacing::PANEL_GAP) / 2.0;
-    let panel_left = spacing::OUTER_PADDING
-        + if right_panel {
-            panel_width + spacing::PANEL_GAP
-        } else {
-            0.0
-        };
-    let rows_top =
-        TITLE_BAR_HEIGHT + spacing::OUTER_PADDING + spacing::BORDER_WIDTH + COLUMN_HEADER_HEIGHT;
+    let panel_width = (window.width - spacing::BORDER_WIDTH) / 2.0;
+    let panel_left = if right_panel {
+        panel_width + spacing::BORDER_WIDTH
+    } else {
+        0.0
+    };
+    let rows_top = TITLE_BAR_HEIGHT + COLUMN_HEADER_HEIGHT;
     Point::new(
         panel_left + 3.0 * TAG_COLUMN_WIDTH,
         rows_top + (row_in_view + 1) as f32 * ROW_HEIGHT,
@@ -110,17 +98,16 @@ mod tests {
     #[test]
     fn a_full_height_window_fits_the_expected_rows() {
         let window = Size::new(1200.0, 760.0);
-        // Chrome: status 28 + function keys 24 + title bar 34 + column header
-        // 24 + padding 12 + two gaps 12 + borders 2 = 136.
-        // 760 - 136 = 624; 624 / 22 = 28.4, so 28 rows.
-        assert_eq!(visible_rows(window), 28);
+        // Chrome: status 22 + function keys 24 + title bar 34 + column header
+        // 22 = 102. 760 - 102 = 658; 658 / 22 = 29.9, so 29 rows.
+        assert_eq!(visible_rows(window), 29);
     }
 
     #[test]
     fn the_search_view_gives_its_extra_header_the_rows_it_needs() {
         let window = Size::new(1200.0, 760.0);
-        // (624 + 24 - 124) / 22 = 23.8
-        assert_eq!(search_visible_rows(window), 23);
+        // (658 + 22 - 124) / 22 = 25.3
+        assert_eq!(search_visible_rows(window), 25);
         assert_eq!(search_visible_rows(Size::new(1200.0, 10.0)), 1);
     }
 
@@ -130,7 +117,7 @@ mod tests {
     fn the_initial_window_shows_the_same_rows() {
         assert_eq!(
             visible_rows(INITIAL_WINDOW_SIZE),
-            28,
+            29,
             "the initial size no longer matches the documented row count"
         );
     }
@@ -151,13 +138,7 @@ mod tests {
     /// resized or forgotten here.
     #[test]
     fn chrome_matches_the_constants_the_view_uses() {
-        let expected = STATUSBAR_HEIGHT
-            + FKEYBAR_HEIGHT
-            + TITLE_BAR_HEIGHT
-            + COLUMN_HEADER_HEIGHT
-            + 2.0 * spacing::OUTER_PADDING
-            + 2.0 * spacing::SECTION_GAP
-            + 2.0 * spacing::BORDER_WIDTH;
+        let expected = STATUSBAR_HEIGHT + FKEYBAR_HEIGHT + TITLE_BAR_HEIGHT + COLUMN_HEADER_HEIGHT;
         assert_eq!(
             CHROME, expected,
             "CHROME and the view's constants have drifted apart"
@@ -169,10 +150,7 @@ mod tests {
         let window = Size::new(1200.0, 760.0);
         let left = cursor_row_anchor(false, 0, window);
         let right = cursor_row_anchor(true, 0, window);
-        let first_row_top = TITLE_BAR_HEIGHT
-            + spacing::OUTER_PADDING
-            + spacing::BORDER_WIDTH
-            + COLUMN_HEADER_HEIGHT;
+        let first_row_top = TITLE_BAR_HEIGHT + COLUMN_HEADER_HEIGHT;
         assert_eq!(left.y, first_row_top + ROW_HEIGHT);
         assert!(right.x > window.width / 2.0);
         assert_eq!(
@@ -186,7 +164,7 @@ mod tests {
     /// and a zero would make an empty list impossible to leave.
     #[test]
     fn a_tiny_window_still_shows_one_row() {
-        for height in [0.0, 10.0, 100.0, 136.0] {
+        for height in [0.0, 10.0, 100.0, 124.0] {
             assert_eq!(
                 visible_rows(Size::new(400.0, height)),
                 1,
