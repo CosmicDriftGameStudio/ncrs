@@ -1497,7 +1497,6 @@ mod filing_status_page {
             "failed",
             "unchanged",
             "Pending",
-            "Pending: documents Hermes asks you about",
         ] {
             assert!(shows(&english, label), "{label}");
         }

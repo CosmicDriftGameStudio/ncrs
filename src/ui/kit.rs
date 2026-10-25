@@ -364,6 +364,16 @@ impl Columns<'_> {
     }
 
     fn cell_of<'a>(&self, index: usize, shown: String, color: Color) -> Element<'a, Message> {
+        self.aligned_cell_of(index, shown, color, alignment::Horizontal::Left)
+    }
+
+    fn aligned_cell_of<'a>(
+        &self,
+        index: usize,
+        shown: String,
+        color: Color,
+        align: alignment::Horizontal,
+    ) -> Element<'a, Message> {
         let portion = self.portions.get(index).copied().unwrap_or(1);
         container(
             text(shown)
@@ -372,6 +382,7 @@ impl Columns<'_> {
                 .wrapping(Wrapping::None),
         )
         .width(Length::FillPortion(portion))
+        .align_x(align)
         .clip(true)
         .into()
     }
@@ -386,13 +397,14 @@ impl Columns<'_> {
         )
     }
 
-    /// The dimmed titles of the columns, as a row of the height of a list row.
+    /// The dimmed titles of the columns, one text line high: nothing selects
+    /// them, so they need no list row height and stay close to the heading.
     pub fn header<'a>(&self, labels: &[&str], palette: &Palette) -> Element<'a, Message> {
         let dimmed: Vec<(&str, Color)> = labels
             .iter()
             .map(|label| (*label, palette.dim_text))
             .collect();
-        self.row_colored(&dimmed)
+        self.line(&dimmed, alignment::Horizontal::Left, Length::Shrink)
     }
 
     /// One row of the table, every cell in `color`.
@@ -403,18 +415,47 @@ impl Columns<'_> {
 
     /// One row of the table, each cell in its own color.
     pub fn row_colored<'a>(&self, cells: &[(&str, Color)]) -> Element<'a, Message> {
+        self.line(cells, alignment::Horizontal::Left, size::ROW.into())
+    }
+
+    /// One row of the table, every cell in `color`, the last column set
+    /// against its right edge: a column of times or amounts.
+    pub fn row_last_right<'a>(&self, cells: &[&str], color: Color) -> Element<'a, Message> {
+        let colored: Vec<(&str, Color)> = cells.iter().map(|cell| (*cell, color)).collect();
+        self.line(&colored, alignment::Horizontal::Right, size::ROW.into())
+    }
+
+    fn line<'a>(
+        &self,
+        cells: &[(&str, Color)],
+        last: alignment::Horizontal,
+        height: Length,
+    ) -> Element<'a, Message> {
         let missing = self.portions.len().saturating_sub(cells.len());
+        let last_index = self.portions.len().saturating_sub(1);
         let shown = cells
             .iter()
             .enumerate()
-            .map(|(index, (content, color))| self.cell(index, content, *color))
+            .map(|(index, (content, color))| {
+                let align = if index == last_index {
+                    last
+                } else {
+                    alignment::Horizontal::Left
+                };
+                self.aligned_cell_of(
+                    index,
+                    format::ellipsize_end(content, self.chars(index)),
+                    *color,
+                    align,
+                )
+            })
             .chain(
                 (cells.len()..cells.len() + missing)
                     .map(|index| self.cell(index, "", Color::TRANSPARENT)),
             );
         Row::with_children(shown)
             .padding([0.0, spacing::CELL_PADDING_X])
-            .height(size::ROW)
+            .height(height)
             .align_y(alignment::Vertical::Center)
             .into()
     }

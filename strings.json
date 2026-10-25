@@ -1441,6 +1441,12 @@
       "de": "ab der ersten vollen Minute"
     },
     {
+      "key": "filing_status.section_throughput",
+      "context": "Heading of the section with the throughput and time-left figures; must differ from the Throughput figure label below it.",
+      "en": "Pace",
+      "de": "Tempo"
+    },
+    {
       "key": "filing_status.throughput_label",
       "context": "Label in front of the number of documents the pipeline filed per minute.",
       "en": "Throughput",
@@ -1541,12 +1547,6 @@
       "context": "Label for the number of documents waiting for the user's review. Pending is the themed name; the explanation follows the number in its own text.",
       "en": "Pending",
       "de": "Wiedervorlage"
-    },
-    {
-      "key": "filing_status.index_reviews_explain",
-      "context": "Dimmed explanation after the number of documents waiting for the user's review, in the same line as the Pending label and the number. Lower case start.",
-      "en": "documents Hermes asks you about",
-      "de": "Dokumente, zu denen Hermes dich fragt"
     },
     {
       "key": "filing_status.index_unavailable",

@@ -11,7 +11,7 @@ use ncrs_pipeline::{Load, RunnerState, Task, WorkerSnapshot};
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints, PageHint};
 use super::hermes::{self, Badges};
-use super::kit::{self, dim, first_section, form_row, one_line, paragraph, section, Columns, Tone};
+use super::kit::{self, first_section, form_row, one_line, paragraph, section, Columns, Tone};
 use super::theme::{size, spacing};
 use crate::app::fill_template;
 use crate::filing::{AiStatus, IndexFigures};
@@ -251,7 +251,7 @@ fn throughput_section<'a>(
         )
     }));
     section(
-        lang.text(Msg::FilingStatusThroughputLabel),
+        lang.text(Msg::FilingStatusSectionThroughput),
         kit::figures(
             &[
                 (lang.text(Msg::FilingStatusThroughputLabel), throughput),
@@ -378,7 +378,7 @@ fn worker_row<'a>(
         ]);
     };
     let elapsed = taken_at.duration_since(busy.started_at).unwrap_or_default();
-    columns.row(
+    columns.row_last_right(
         &[
             &number,
             &file_label(&busy.file),
@@ -446,14 +446,6 @@ fn index_rows<'a>(
                     statistics.open_reviews.to_string(),
                 ),
             ],
-            palette,
-        ),
-        dim(
-            format!(
-                "{}: {}",
-                lang.text(Msg::FilingStatusIndexReviews),
-                lang.text(Msg::FilingStatusIndexReviewsExplain)
-            ),
             palette,
         ),
         row_of(
