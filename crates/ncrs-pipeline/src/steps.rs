@@ -63,7 +63,13 @@ impl Step for IntakeStep {
             // text was never read, for example for lack of the PDF library.
             let unreviewed = match outcome {
                 Outcome::Unchanged(id) if item.force => {
-                    if item.location.mode == LocationMode::Inbox {
+                    // A filed document keeps its status even where it lies in
+                    // an inbox location: setting it back would plan it, and
+                    // so move it, a second time.
+                    let filed = index
+                        .document(id)?
+                        .is_some_and(|document| document.status == DocumentStatus::Filed);
+                    if item.location.mode == LocationMode::Inbox && !filed {
                         index.set_document_status(id, DocumentStatus::New)?;
                     }
                     true

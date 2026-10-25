@@ -306,6 +306,7 @@ impl HermesColumn {
         self.errors = snapshot
             .errors
             .iter()
+            .filter(|error| !snapshot.is_superseded(error))
             .map(|error| (error.file.clone(), error.message.clone()))
             .collect();
         let failed: Vec<&PathBuf> = self.errors.iter().map(|(path, _)| path).collect();
@@ -684,6 +685,7 @@ mod tests {
                 .map(|(sequence, path)| ChangedPath {
                     sequence: *sequence,
                     path: PathBuf::from(path),
+                    failed: false,
                 })
                 .collect(),
             changed_sequence: latest,
@@ -930,6 +932,7 @@ mod tests {
                 task: Task::Step("text"),
                 message: String::new(),
                 at: UNIX_EPOCH,
+                sequence: 0,
             })
             .collect();
 
@@ -939,6 +942,44 @@ mod tests {
         assert_eq!(state("a.pdf"), Some(HermesFileState::Excluded));
         assert_eq!(state("b.pdf"), Some(HermesFileState::Reading));
         assert_eq!(state("c.pdf"), Some(HermesFileState::Error));
+    }
+
+    #[test]
+    fn an_error_ends_when_a_later_change_of_the_file_did_not_fail() {
+        let mut column = HermesColumn::default();
+        column.apply(listing("/d", &[("a.pdf", DocumentStatus::Filed)]));
+        let failure = |sequence| ChangedPath {
+            sequence,
+            path: PathBuf::from("/d/a.pdf"),
+            failed: true,
+        };
+        let mut snapshot = Snapshot::off();
+        snapshot.changed_paths = vec![failure(1)];
+        snapshot.changed_sequence = 1;
+        snapshot.errors = vec![ErrorEntry {
+            file: PathBuf::from("/d/a.pdf"),
+            task: Task::Step("text"),
+            message: "broken".to_owned(),
+            at: UNIX_EPOCH,
+            sequence: 1,
+        }];
+        column.set_snapshot(&snapshot);
+        assert_eq!(
+            column.state_of(Path::new("/d/a.pdf")),
+            Some(HermesFileState::Error)
+        );
+
+        snapshot.changed_paths.push(ChangedPath {
+            failed: false,
+            ..failure(2)
+        });
+        snapshot.changed_sequence = 2;
+        column.set_snapshot(&snapshot);
+
+        assert_eq!(
+            column.state_of(Path::new("/d/a.pdf")),
+            Some(HermesFileState::Filed)
+        );
     }
 
     #[test]
@@ -1077,6 +1118,7 @@ mod tests {
                 task: Task::Step("text"),
                 message: String::new(),
                 at: UNIX_EPOCH,
+                sequence: 0,
             })
             .collect();
 

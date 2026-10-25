@@ -97,6 +97,9 @@ pub struct ErrorEntry {
     pub task: Task,
     pub message: String,
     pub at: SystemTime,
+    /// The newest change sequence when the error happened: a later change of
+    /// the same file that did not fail supersedes the error.
+    pub sequence: u64,
 }
 
 /// A file whose state in the index or in the pipeline changed.
@@ -105,6 +108,8 @@ pub struct ChangedPath {
     /// Counts up from 1 for the lifetime of a runner.
     pub sequence: u64,
     pub path: PathBuf,
+    /// The step failed on this file.
+    pub failed: bool,
 }
 
 /// The newest changed paths, bounded. A consumer that remembers the sequence it
@@ -119,14 +124,19 @@ struct ChangeLog {
 }
 
 impl ChangeLog {
-    fn push(&mut self, path: &Path) {
-        if self.entries.back().is_some_and(|last| last.path == path) {
+    fn push(&mut self, path: &Path, failed: bool) {
+        if self
+            .entries
+            .back()
+            .is_some_and(|last| last.path == path && last.failed == failed)
+        {
             return;
         }
         self.latest += 1;
         self.entries.push_back(ChangedPath {
             sequence: self.latest,
             path: path.to_path_buf(),
+            failed,
         });
         while self.entries.len() > MAX_CHANGED_PATHS {
             if let Some(dropped) = self.entries.pop_front() {
@@ -190,6 +200,14 @@ impl Snapshot {
             self.changed_paths
                 .iter()
                 .filter(move |change| change.sequence > seen)
+        })
+    }
+
+    /// Whether the file changed without failing after the error happened, so
+    /// the error no longer describes it.
+    pub fn is_superseded(&self, error: &ErrorEntry) -> bool {
+        self.changed_paths.iter().any(|change| {
+            !change.failed && change.sequence > error.sequence && change.path == error.file
         })
     }
 
@@ -324,6 +342,7 @@ impl State {
             task,
             message,
             at,
+            sequence: self.changes.latest,
         });
         while self.errors.len() > MAX_ERRORS {
             self.errors.pop_front();
@@ -930,7 +949,7 @@ impl State {
             Ok(StepOutcome::Continue) => {
                 counts.done += 1;
                 if step_index == 0 || last_step || item.plan.is_some() || item.review.is_some() {
-                    self.changes.push(&item.path);
+                    self.changes.push(&item.path, false);
                 }
                 if last_step {
                     self.left_pipeline += 1;
@@ -948,7 +967,7 @@ impl State {
                 if item.plan.is_some() {
                     self.plans_made += 1;
                 }
-                self.changes.push(&item.path);
+                self.changes.push(&item.path, false);
                 self.record_document(at);
             }
             Ok(StepOutcome::Unchanged) => {
@@ -969,7 +988,7 @@ impl State {
             Err(message) => {
                 counts.failed += 1;
                 self.left_pipeline += 1;
-                self.changes.push(&item.path);
+                self.changes.push(&item.path, true);
                 self.push_error(item.path, Task::Step(name), message, at);
             }
         }
@@ -1108,6 +1127,23 @@ impl Runner {
         true
     }
 
+    /// Scans the location that holds `path` now, through the normal first
+    /// step: a file or folder that was left out until now is found without
+    /// waiting for the next rescan. False when the path is in no location.
+    pub fn rescan_around(&self, path: &Path) -> bool {
+        let Some(location) = self
+            .shared
+            .locations
+            .iter()
+            .find(|location| path.starts_with(&location.path))
+        else {
+            return false;
+        };
+        self.shared.update(|state| state.queue_scan(location));
+        self.shared.work_ready.notify_all();
+        true
+    }
+
     /// Workers that are above the new target leave after their current job.
     pub fn set_load(&self, load: Load) {
         let target = load.worker_count(self.shared.settings.logical_cores).get();
@@ -1176,6 +1212,7 @@ impl Drop for Runner {
 mod tests {
     use std::collections::HashSet;
     use std::fs;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::mpsc::{self, Receiver, Sender};
     use std::time::UNIX_EPOCH;
 
@@ -1804,6 +1841,140 @@ mod tests {
         assert_eq!(index.open_reviews().unwrap().len(), 1);
     }
 
+    fn first_document_status(fixture: &IndexFixture, location: &Location) -> DocumentStatus {
+        let index = fixture.index.lock().unwrap();
+        let id = index.documents_under(&location.path).unwrap()[0].0;
+        index.document(id).unwrap().unwrap().status
+    }
+
+    fn mark_first_document_filed(fixture: &IndexFixture, location: &Location) {
+        let index = fixture.index.lock().unwrap();
+        let id = index.documents_under(&location.path).unwrap()[0].0;
+        index
+            .set_document_status(id, DocumentStatus::Filed)
+            .unwrap();
+    }
+
+    fn reviewed_once(
+        location: &Location,
+        fixture: &IndexFixture,
+        reads: &Arc<AtomicUsize>,
+    ) -> Runner {
+        let chain = TextChain::new().with_source(CountingText(Arc::clone(reads)));
+        let runner = Runner::start(
+            settings(workers(1)),
+            fixture.steps_reading(chain),
+            vec![location.clone()],
+            stepping_clock(),
+        );
+        runner.wait_for("the file taken in", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[3].done == 1
+        });
+        runner
+    }
+
+    #[test]
+    fn a_filed_document_in_an_inbox_location_stays_filed_when_processed_again() {
+        let inbox_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        let path = put(&inbox, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let reads = Arc::new(AtomicUsize::new(0));
+        let runner = reviewed_once(&inbox, &fixture, &reads);
+        mark_first_document_filed(&fixture, &inbox);
+
+        assert!(runner.process_again(&path));
+
+        let report = runner.wait_for("the file passed again", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[3].done == 2
+        });
+        assert_eq!(report.plans_made, 0);
+        assert_eq!(
+            first_document_status(&fixture, &inbox),
+            DocumentStatus::Filed
+        );
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn a_document_in_an_archive_location_is_never_planned_when_processed_again() {
+        let archive_dir = TempDir::new().unwrap();
+        let archive = location(&archive_dir, LocationMode::Archive);
+        let path = put(&archive, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let reads = Arc::new(AtomicUsize::new(0));
+        let runner = reviewed_once(&archive, &fixture, &reads);
+
+        assert!(runner.process_again(&path));
+
+        let report = runner.wait_for("the file passed again", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[3].done == 2
+        });
+        assert_eq!(report.plans_made, 0);
+        assert_eq!(reads.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            first_document_status(&fixture, &archive),
+            DocumentStatus::Filed
+        );
+        assert!(fixture
+            .index
+            .lock()
+            .unwrap()
+            .open_reviews()
+            .unwrap()
+            .is_empty());
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn an_excluded_file_is_skipped_even_when_processed_again() {
+        let inbox_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        let path = put(&inbox, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let reads = Arc::new(AtomicUsize::new(0));
+        let runner = reviewed_once(&inbox, &fixture, &reads);
+        fixture.index.lock().unwrap().exclude_path(&path).unwrap();
+
+        assert!(runner.process_again(&path));
+
+        let report = runner.wait_for("the file passed the first step", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[0].unchanged == 1
+        });
+        assert_eq!(report.steps[1].done, 1);
+        assert_eq!(reads.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn a_file_included_again_is_found_by_a_scan_without_waiting_for_the_rescan() {
+        let inbox_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        let path = put(&inbox, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        fixture.index.lock().unwrap().exclude_path(&path).unwrap();
+        let runner = Runner::start(
+            settings(workers(1)),
+            fixture.steps(),
+            vec![inbox.clone()],
+            stepping_clock(),
+        );
+        runner.wait_for("the excluded file skipped", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[0].unchanged == 1
+        });
+        fixture.index.lock().unwrap().include_path(&path).unwrap();
+
+        assert!(runner.rescan_around(&path));
+        assert!(!runner.rescan_around(Path::new("/elsewhere/invoice.pdf")));
+
+        runner.wait_for("the file reviewed", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[3].done == 1
+        });
+        assert_eq!(
+            fixture.index.lock().unwrap().open_reviews().unwrap().len(),
+            1
+        );
+    }
+
     #[test]
     fn a_file_without_text_still_reaches_the_review_list() {
         let inbox_dir = TempDir::new().unwrap();
@@ -2096,9 +2267,9 @@ mod tests {
     fn the_change_log_numbers_entries_and_tells_a_slow_consumer_it_missed_some() {
         let mut log = ChangeLog::default();
         for number in 0..MAX_CHANGED_PATHS + 3 {
-            log.push(Path::new(&format!("/in/{number}.pdf")));
+            log.push(Path::new(&format!("/in/{number}.pdf")), false);
         }
-        log.push(Path::new("/in/514.pdf"));
+        log.push(Path::new("/in/514.pdf"), false);
         let mut snapshot = Snapshot::off();
         snapshot.changed_paths = log.entries.iter().cloned().collect();
         snapshot.changed_sequence = log.latest;

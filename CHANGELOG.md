@@ -123,9 +123,27 @@ All notable changes to this project are documented here. The format follows
   macOS the bar sits behind the traffic lights; on Windows and Linux the
   window has no system frame any more: the bar carries minimize, maximize and
   close, and the window edges resize.
+- Hermes column: a column in the file panels that shows what Hermes made of
+  each file (waiting, being read, filed, waiting for you, failed, left out)
+  and, for a folder, how many documents lie in it and below it. The line at
+  the bottom says why and where the closest rule would file it. Quick fix
+  (Cmd+. / Ctrl+.) opens the document that waits for you and lets you fill in
+  what is missing. The context menu has a Hermes entry with a submenu, and
+  every action is also in the command list: hand a file to the inbox, process
+  it again (Cmd+Shift+H / Ctrl+Shift+H), make a folder an inbox, filing
+  location or archive, show it in the Inspection, and leave a file or folder
+  out of Hermes and take it back. A file that is left out is never read, filed
+  or moved; processing again never moves a filed document.
 
 ### Changed
 
+- Document kinds such as invoice or receipt are shown in the language of the
+  interface (Rechnung, Beleg ...) in the review list, the quick fix and saved
+  queries; kinds you wrote yourself stay as they are, and nothing stored
+  changes.
+- In the saved queries page, Left in an empty field moves to the sidebar.
+- A file whose error was followed by a successful run no longer stays marked
+  as failed in the Hermes column.
 - Every dialog now uses the same frame in one of three sizes: a title with a
   "×" to close, the content, a line with the keys that work, and the buttons
   at the bottom right with Cancel first. Esc closes every dialog that can be

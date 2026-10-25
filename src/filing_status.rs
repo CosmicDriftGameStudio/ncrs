@@ -262,6 +262,7 @@ mod tests {
                 task: Task::Step("probe"),
                 message: "the step stopped unexpectedly".to_owned(),
                 at: at(),
+                sequence: 0,
             })
             .collect();
         let mut status = FilingStatus::default();

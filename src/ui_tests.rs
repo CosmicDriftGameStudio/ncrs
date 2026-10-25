@@ -1681,6 +1681,7 @@ mod filing_status_page {
             task: Task::Step("probe"),
             message: "the step stopped unexpectedly".to_owned(),
             at: taken_at(),
+            sequence: 0,
         }];
         let app = page(with_error);
 

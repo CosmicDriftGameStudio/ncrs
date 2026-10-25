@@ -4637,6 +4637,9 @@ impl App {
             ),
             Ok(IncludeOutcome::Included | IncludeOutcome::NotExcluded) => {
                 self.invalidate_hermes_path(path);
+                if let Some(runner) = self.live_pipeline() {
+                    runner.rescan_around(path);
+                }
                 fill_template(
                     self.lang.text(Msg::StatusHermesIncluded),
                     &[(
@@ -7313,6 +7316,8 @@ impl App {
             CommandPalette::new(scope, self.lang, &self.keymap, &self.recent_commands);
         if !self.hermes_active() {
             palette = palette.without_hermes_file_commands();
+        } else if !self.hermes_action_enabled(HermesAction::ProcessAgain) {
+            palette = palette.without_command(KeyAction::HermesProcessAgain);
         }
         palette.set_visible_rows(command_palette_ui::visible_rows(self.window_size));
         self.command_palette = Some(palette);
@@ -14398,6 +14403,7 @@ mod filing_status_tests {
             task: PipelineTask::Step("probe"),
             message: "the step stopped unexpectedly".to_owned(),
             at: SystemTime::UNIX_EPOCH,
+            sequence: 0,
         }];
         let mut app = App::with_filing_status_page(snapshot, SystemTime::UNIX_EPOCH);
 

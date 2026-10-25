@@ -106,6 +106,13 @@ impl CommandPalette {
         self
     }
 
+    /// Drops one command that cannot run for the row under the cursor.
+    pub fn without_command(mut self, action: KeyAction) -> Self {
+        self.entries.retain(|entry| entry.action != action);
+        self.rank();
+        self
+    }
+
     pub fn query(&self) -> &str {
         &self.query
     }
@@ -1055,5 +1062,17 @@ mod tests {
         assert!(without
             .hits()
             .any(|hit| without.entry(hit).unwrap().action == KeyAction::FilingStatus));
+    }
+
+    #[test]
+    fn one_command_can_be_dropped_for_the_row_under_the_cursor() {
+        let palette = palette(KeyScope::Panel, Language::English)
+            .without_command(KeyAction::HermesProcessAgain);
+        let actions: Vec<KeyAction> = palette
+            .hits()
+            .map(|hit| palette.entry(hit).unwrap().action)
+            .collect();
+        assert!(!actions.contains(&KeyAction::HermesProcessAgain));
+        assert!(actions.contains(&KeyAction::HermesExclude));
     }
 }
