@@ -15,6 +15,8 @@
 use std::collections::hash_map::RandomState;
 use std::fmt;
 use std::hash::{BuildHasher as _, Hasher as _};
+#[cfg(feature = "local-ai")]
+use std::num::NonZeroU32;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::str::FromStr as _;
@@ -31,7 +33,7 @@ use ncrs_intake::{
 };
 use ncrs_pipeline::{intake_steps, IndexAccess, Load, Runner, Settings, SystemClock};
 
-use crate::config::{Filing, FilingLocation};
+use crate::config::{AiSetting, Filing, FilingLocation};
 use crate::filing_work::FilingAccess;
 use crate::reorganisation_work::PlanAccess;
 use crate::suggestion_work::SuggestionAccess;
@@ -298,6 +300,108 @@ pub struct FilingModule {
     has_configured_locations: bool,
     /// Known once an index is open.
     index_encrypted: Option<bool>,
+    /// The AI provider the setting asked for. Built once, so the status page
+    /// and the pipeline see the same model.
+    ai: AiWiring,
+}
+
+/// How much text of a document the local model takes in; longer ones are cut.
+#[cfg(feature = "local-ai")]
+const AI_CONTEXT_TOKENS: NonZeroU32 = match NonZeroU32::new(4096) {
+    Some(tokens) => tokens,
+    None => NonZeroU32::MIN,
+};
+
+#[derive(Clone)]
+enum AiWiring {
+    Off,
+    #[cfg(feature = "local-ai")]
+    Local(Arc<ncrs_ai::LazyLocalModel>),
+    Http {
+        provider: Arc<ncrs_ai::OpenAiCompatible>,
+        origin: String,
+        model: String,
+    },
+}
+
+/// What the status page says about the AI.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum AiStatus {
+    #[default]
+    Off,
+    NotDownloaded,
+    // Only the local model reports these; the build without it never does.
+    #[cfg_attr(not(feature = "local-ai"), allow(dead_code))]
+    NotLoadedYet,
+    #[cfg_attr(not(feature = "local-ai"), allow(dead_code))]
+    Loaded {
+        name: String,
+        memory_bytes: u64,
+    },
+    #[cfg_attr(not(feature = "local-ai"), allow(dead_code))]
+    Failed(&'static str),
+    Http {
+        origin: String,
+        model: String,
+    },
+}
+
+/// Builds nothing that reads a model or reaches a server: the local model is
+/// loaded when the first document needs it, a remote endpoint is only parsed.
+fn wire_ai(setting: &AiSetting, db_path: &Path) -> AiWiring {
+    match setting {
+        AiSetting::Off => AiWiring::Off,
+        #[cfg(feature = "local-ai")]
+        AiSetting::Local { threads } => {
+            let folder = ai_models_dir(db_path)
+                .unwrap_or_else(|| PathBuf::from(ncrs_ai::LOCAL_MODEL_FOLDER));
+            AiWiring::Local(Arc::new(ncrs_ai::LazyLocalModel::new(
+                folder.join(ncrs_ai::LOCAL_MODEL.name),
+                ncrs_ai::LOCAL_MODEL,
+                local_threads(*threads),
+                AI_CONTEXT_TOKENS,
+            )))
+        }
+        #[cfg(not(feature = "local-ai"))]
+        AiSetting::Local { .. } => {
+            let _ = db_path;
+            AiWiring::Off
+        }
+        AiSetting::Http { endpoint, model } => {
+            let config = ncrs_ai::OpenAiCompatibleConfig {
+                endpoint: endpoint.clone(),
+                model: model.clone(),
+                api_key: None,
+            };
+            // No way to ask for consent yet: a far endpoint is refused at the
+            // first document, a local one needs none.
+            let ledger = Arc::new(ncrs_ai::NoConsentGiven);
+            match (
+                ncrs_ai::OpenAiCompatible::new(config, ledger),
+                ncrs_ai::endpoint_origin(endpoint),
+            ) {
+                (Ok(provider), Ok(origin)) => AiWiring::Http {
+                    provider: Arc::new(provider),
+                    origin,
+                    model: model.clone(),
+                },
+                (Err(_), _) | (_, Err(_)) => AiWiring::Off,
+            }
+        }
+    }
+}
+
+/// The configured count, or half the logical cores: the model should not take
+/// the whole machine from the person using it.
+#[cfg(feature = "local-ai")]
+fn local_threads(configured: Option<NonZeroU32>) -> NonZeroU32 {
+    configured.unwrap_or_else(|| {
+        let cores = thread::available_parallelism().map_or(1, NonZeroUsize::get);
+        u32::try_from(cores.div_euclid(2))
+            .ok()
+            .and_then(NonZeroU32::new)
+            .unwrap_or(NonZeroU32::MIN)
+    })
 }
 
 fn next_generation() -> u64 {
@@ -610,6 +714,13 @@ pub fn ocr_models_dir(index_path: &Path) -> Option<PathBuf> {
         .map(|data_dir| data_dir.join(OCR_MODELS_FOLDER))
 }
 
+/// Where the AI model lives, next to the index like the OCR models.
+pub fn ai_models_dir(index_path: &Path) -> Option<PathBuf> {
+    index_path
+        .parent()
+        .map(|data_dir| data_dir.join(ncrs_ai::LOCAL_MODEL_FOLDER))
+}
+
 impl FilingModule {
     /// `None` when the module is off: nothing is opened, created or resolved.
     pub fn start(
@@ -629,7 +740,11 @@ impl FilingModule {
         if !filing.enabled {
             return None;
         }
+        let ai = db_path
+            .as_deref()
+            .map_or(AiWiring::Off, |path| wire_ai(&filing.ai, path));
         let mut module = Self {
+            ai,
             db_path: db_path.clone().unwrap_or_default(),
             store,
             index: Arc::default(),
@@ -748,13 +863,55 @@ impl FilingModule {
                     ocr_models_dir(&self.db_path)
                         .unwrap_or_else(|| PathBuf::from(OCR_MODELS_FOLDER)),
                 )),
-                // No AI provider yet: the built-in one comes with its own
-                // consent and setup.
-                None,
+                self.ai_provider(),
             ),
             locations,
             Arc::new(SystemClock),
         ))
+    }
+
+    fn ai_provider(&self) -> Option<Arc<dyn ncrs_ai::Provider>> {
+        match &self.ai {
+            AiWiring::Off => None,
+            #[cfg(feature = "local-ai")]
+            AiWiring::Local(model) => Some(Arc::clone(model) as Arc<dyn ncrs_ai::Provider>),
+            AiWiring::Http { provider, .. } => {
+                Some(Arc::clone(provider) as Arc<dyn ncrs_ai::Provider>)
+            }
+        }
+    }
+
+    /// For the status page. Reads no disk and waits for nothing.
+    pub fn ai_status(&self) -> AiStatus {
+        match &self.ai {
+            AiWiring::Off => AiStatus::Off,
+            #[cfg(feature = "local-ai")]
+            AiWiring::Local(model) => match model.status() {
+                ncrs_ai::LocalModelStatus::NotDownloaded => AiStatus::NotDownloaded,
+                ncrs_ai::LocalModelStatus::NotLoadedYet => AiStatus::NotLoadedYet,
+                ncrs_ai::LocalModelStatus::Loaded { name, memory_bytes } => {
+                    AiStatus::Loaded { name, memory_bytes }
+                }
+                ncrs_ai::LocalModelStatus::Failed(reason) => AiStatus::Failed(reason),
+            },
+            AiWiring::Http { origin, model, .. } => AiStatus::Http {
+                origin: origin.clone(),
+                model: model.clone(),
+            },
+        }
+    }
+
+    /// The setting asks for the local model and its file is not there.
+    pub fn ai_model_is_missing(&self) -> bool {
+        self.ai_status() == AiStatus::NotDownloaded
+    }
+
+    /// After a download: the model file is looked for again.
+    pub fn refresh_ai_model(&self) {
+        #[cfg(feature = "local-ai")]
+        if let AiWiring::Local(model) = &self.ai {
+            model.refresh();
+        }
     }
 
     fn intake_index(&self) -> Result<IntakeIndex, HeldReason> {
@@ -1106,6 +1263,7 @@ impl FilingModule {
             pick_group: random_group,
             has_configured_locations: false,
             index_encrypted: None,
+            ai: AiWiring::Off,
         }
     }
 
@@ -1190,6 +1348,7 @@ mod tests {
             enabled: true,
             locations,
             load: Load::default(),
+            ai: crate::config::AiSetting::Off,
         }
     }
 
@@ -1579,6 +1738,7 @@ mod tests {
             enabled: false,
             locations: vec![location(dir.path())],
             load: Load::default(),
+            ai: crate::config::AiSetting::Off,
         };
 
         assert!(FilingModule::start(&off, Some(db.clone()), shared(&store)).is_none());

@@ -10,6 +10,9 @@ use iced::keyboard::{self, key::Named, Key, Modifiers};
 use iced::widget::{column, container, mouse_area, opaque, operation, row, Column, Space, Stack};
 use iced::{event, window, Element, Length, Point, Size, Subscription, Task, Theme};
 
+use crate::ai_model::{
+    download_ai_model, AiModelCard, DownloadError as AiDownloadError, DownloadJob,
+};
 use crate::command_palette::{CommandPalette, RECENT_LIMIT};
 use crate::config::{
     self, Config, ConfigError, ContrastWarning, Filing, FilingWriteError, VscodeWarning,
@@ -28,9 +31,10 @@ use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 #[cfg(any(target_os = "macos", test))]
 use crate::menu::Availability;
 use crate::messages::{
-    ClipboardKind, CommandPaletteMessage, ConflictChoice, FilingSetupMessage, FilingStatusMessage,
-    Message, OcrModelsMessage, PanelSide, QuickOpenMessage, ReorganisationPlanMessage,
-    RuleSuggestionsMessage, SearchMessage, ThemeFetchMessage, TitleBarMessage, TransferKind,
+    AiModelMessage, ClipboardKind, CommandPaletteMessage, ConflictChoice, FilingSetupMessage,
+    FilingStatusMessage, Message, OcrModelsMessage, PanelSide, QuickOpenMessage,
+    ReorganisationPlanMessage, RuleSuggestionsMessage, SearchMessage, ThemeFetchMessage,
+    TitleBarMessage, TransferKind,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -44,6 +48,7 @@ use crate::rule_suggestions::RuleSuggestions;
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
 use crate::suggestion_work::{SuggestedRule, SuggestionAccess, INDEX_NOT_OPEN};
 use crate::theme_fetch::{Fetched, Installed, Pick, Stage, ThemeFetch};
+use crate::ui::ai_model as ai_model_ui;
 use crate::ui::command_palette as command_palette_ui;
 use crate::ui::context_menu as context_menu_view;
 use crate::ui::delete as delete_dialog_view;
@@ -278,6 +283,7 @@ fn leaves_path_field(message: &Message) -> bool {
             | Message::RuleSuggestions(RuleSuggestionsMessage::Open)
             | Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
             | Message::OcrModels(OcrModelsMessage::Open)
+            | Message::AiModel(AiModelMessage::Open)
             | Message::FilingStatus(FilingStatusMessage::Open)
             | Message::FilingSetup(
                 FilingSetupMessage::Toggle
@@ -729,6 +735,16 @@ pub struct App {
     /// Downloads the OCR models into the folder, on a blocking thread.
     /// Injected so tests need no network.
     download_ocr_models: fn(&Path) -> Result<(), DownloadError>,
+    /// The card that asks before the AI model is downloaded, while it is up.
+    ai_model: Option<AiModelCard>,
+    /// Counts the cards opened, so the late answer of a closed one is dropped.
+    ai_model_generation: u64,
+    /// The card opened by itself for a missing model; once per start, so a
+    /// "Cancel" is not asked again.
+    ai_model_asked: bool,
+    /// Downloads the AI model, on a blocking thread. Injected so tests need no
+    /// network.
+    download_ai_model: fn(&DownloadJob) -> Result<(), AiDownloadError>,
 }
 
 /// The part of the prompt the key routing needs, cheap to clone.
@@ -774,6 +790,8 @@ pub struct PromptKeyState {
     pub reorganisation_plan: bool,
     /// The OCR models card is up, so keys answer it like a button dialog.
     pub ocr_models: bool,
+    /// The AI model card is up, so keys answer it like a button dialog.
+    pub ai_model: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
     /// The drive menu is up, so keys move its highlight.
@@ -806,6 +824,7 @@ impl Default for PromptKeyState {
             rule_suggestions_editing: false,
             reorganisation_plan: false,
             ocr_models: false,
+            ai_model: false,
             delete_dialog: DeleteKeys::default(),
             volume_menu: false,
             context_menu: false,
@@ -885,6 +904,13 @@ fn ocr_models_key(key: Key, key_modifiers: Modifiers) -> Option<Message> {
     }
 }
 
+fn ai_model_key(key: Key, key_modifiers: Modifiers) -> Option<Message> {
+    match key.as_ref() {
+        Key::Named(Named::Escape) => Some(Message::AiModel(AiModelMessage::Close)),
+        _ => dialog_focus_key(key, key_modifiers),
+    }
+}
+
 /// Decides who a key press belongs to: the open prompt, or the bindings.
 ///
 /// A free function because the subscription that calls it outlives `&self`.
@@ -954,6 +980,9 @@ fn keys_without_prompt(
     // Cancel has the focus when it opens, so Enter alone never downloads.
     if prompt.ocr_models {
         return ocr_models_key(key, key_modifiers);
+    }
+    if prompt.ai_model {
+        return ai_model_key(key, key_modifiers);
     }
 
     if prompt.conflict_open {
@@ -1818,6 +1847,10 @@ impl App {
             ocr_models: None,
             ocr_models_generation: 0,
             download_ocr_models: download_models,
+            ai_model: None,
+            ai_model_generation: 0,
+            ai_model_asked: false,
+            download_ai_model,
         };
 
         let tasks = Task::batch([
@@ -2453,6 +2486,7 @@ impl App {
             Message::DocumentsFiled(result) => self.documents_filed(result),
             Message::ReorganisationUndone(result) => self.reorganisation_undone(result),
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
+            Message::AiModel(model_message) => self.update_ai_model(model_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => self.update_filing_status(page_message),
             Message::FilingSetup(setup_message) => self.update_filing_setup(setup_message),
@@ -2898,6 +2932,17 @@ impl App {
             return Stack::with_children([root, dialog::scrim(card_element)]).into();
         }
 
+        if let Some(card) = self.ai_model.as_ref() {
+            let card_element = ai_model_ui::view(
+                card,
+                self.dialog_focus,
+                self.window_size,
+                self.lang,
+                &self.palette,
+            );
+            return Stack::with_children([root, dialog::scrim(card_element)]).into();
+        }
+
         // The conflict dialog comes first, before the prompt. A conflict is
         // asked *after* the prompt is gone — the user submitted, and the name
         // turned out to be taken — so behind the prompt's early return the
@@ -3074,6 +3119,7 @@ impl App {
             .is_some_and(|view| view.edit().is_some());
         let reorganisation_plan = self.reorganisation.is_some();
         let ocr_models = self.ocr_models.is_some();
+        let ai_model = self.ai_model.is_some();
         let delete_dialog = match &self.delete_dialog {
             None => DeleteKeys::Closed,
             Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
@@ -3099,6 +3145,7 @@ impl App {
                 rule_suggestions_editing,
                 reorganisation_plan,
                 ocr_models,
+                ai_model,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
                 // the dialog's keys would fall through to the panels.
@@ -3125,6 +3172,7 @@ impl App {
                 rule_suggestions_editing,
                 reorganisation_plan,
                 ocr_models,
+                ai_model,
                 conflict_open: self.pending_conflict.is_some(),
                 busy: prompt.busy(),
                 typed: prompt.name().into(),
@@ -3204,12 +3252,18 @@ impl App {
             Phase::AskRecoveryKey { .. } if work_finished => Some(filing_ui::KEY_FIELD_ID),
             _ => None,
         };
+        let ask_for_ai_model =
+            matches!(module.phase(), Phase::Ready) && module.ai_model_is_missing();
         let mut tasks: Vec<Task<Message>> = work.map(run_filing_work).into_iter().collect();
         tasks.extend(field.map(operation::focus));
         if pipeline_started {
             // The index is open and `reconcile` has settled what a crash left;
             // what an earlier run planned but did not move goes now.
             tasks.push(self.run_filing());
+        }
+        if ask_for_ai_model && !self.ai_model_asked {
+            tasks.push(self.open_ai_model());
+            self.ai_model_asked = self.ai_model.is_some();
         }
         if skipped > 0 {
             let text = fill_template(
@@ -3433,7 +3487,7 @@ impl App {
     }
 
     fn dialog_button_count(&self) -> usize {
-        if self.delete_dialog.is_some() || self.ocr_models.is_some() {
+        if self.delete_dialog.is_some() || self.ocr_models.is_some() || self.ai_model.is_some() {
             2
         } else if self.pending_conflict.is_some() {
             3
@@ -3457,6 +3511,13 @@ impl App {
                 self.start_ocr_models_download()
             } else {
                 self.close_ocr_models()
+            };
+        }
+        if self.ai_model.is_some() {
+            return if self.dialog_focus == ai_model_ui::DOWNLOAD_FOCUS {
+                self.press_ai_model_button()
+            } else {
+                self.close_ai_model()
             };
         }
         if self.pending_conflict.is_some() {
@@ -3488,6 +3549,7 @@ impl App {
             || self.rule_suggestions.is_some()
             || self.reorganisation.is_some()
             || self.ocr_models.is_some()
+            || self.ai_model.is_some()
             || self.filing_status.page_open()
     }
 
@@ -5148,6 +5210,109 @@ impl App {
         self.show_notice(notice)
     }
 
+    fn update_ai_model(&mut self, message: AiModelMessage) -> Task<Message> {
+        match message {
+            AiModelMessage::Open => self.open_ai_model(),
+            AiModelMessage::Close => self.close_ai_model(),
+            AiModelMessage::Download => self.start_ai_model_download(),
+            AiModelMessage::Stop => {
+                if let Some(card) = self.ai_model.as_mut() {
+                    card.stop();
+                }
+                Task::none()
+            }
+            AiModelMessage::Downloaded { generation, result } => {
+                self.ai_model_downloaded(generation, result)
+            }
+        }
+    }
+
+    /// Only asks. Nothing is fetched before the download button is pressed.
+    fn open_ai_model(&mut self) -> Task<Message> {
+        if self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        self.context_menu = None;
+        self.ai_model_generation = self.ai_model_generation.wrapping_add(1);
+        self.dialog_focus = ai_model_ui::CANCEL_FOCUS;
+        let target = self
+            .filing_index_path
+            .as_deref()
+            .and_then(crate::filing::ai_models_dir);
+        let has_partial = target
+            .as_deref()
+            .is_some_and(|dir| ncrs_ai::has_partial_download(dir, &ncrs_ai::LOCAL_MODEL));
+        self.ai_model = Some(AiModelCard::new(target, has_partial));
+        Task::none()
+    }
+
+    /// Not while the file is written: stopping comes first, then closing.
+    fn close_ai_model(&mut self) -> Task<Message> {
+        if self
+            .ai_model
+            .as_ref()
+            .is_some_and(AiModelCard::is_downloading)
+        {
+            return Task::none();
+        }
+        self.ai_model = None;
+        Task::none()
+    }
+
+    /// The button next to Cancel: it stops a running download, otherwise it
+    /// starts or continues one.
+    fn press_ai_model_button(&mut self) -> Task<Message> {
+        if self
+            .ai_model
+            .as_ref()
+            .is_some_and(AiModelCard::is_downloading)
+        {
+            return self.update_ai_model(AiModelMessage::Stop);
+        }
+        self.start_ai_model_download()
+    }
+
+    fn start_ai_model_download(&mut self) -> Task<Message> {
+        let Some(job) = self.ai_model.as_mut().and_then(AiModelCard::start) else {
+            return Task::none();
+        };
+        let generation = self.ai_model_generation;
+        let download = self.download_ai_model;
+        Task::perform(
+            tokio::task::spawn_blocking(move || download(&job)),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| {
+                    Err(AiDownloadError::Network(FetchError::Network(
+                        join.to_string(),
+                    )))
+                });
+                Message::AiModel(AiModelMessage::Downloaded { generation, result })
+            },
+        )
+    }
+
+    fn ai_model_downloaded(
+        &mut self,
+        generation: u64,
+        result: Result<(), AiDownloadError>,
+    ) -> Task<Message> {
+        if generation != self.ai_model_generation {
+            return Task::none();
+        }
+        let Some(card) = self.ai_model.as_mut() else {
+            return Task::none();
+        };
+        if !card.finish(result) {
+            return Task::none();
+        }
+        self.ai_model = None;
+        if let Some(module) = self.filing.as_ref() {
+            module.refresh_ai_model();
+        }
+        let notice = self.lang.text(Msg::AiModelInstalled).to_owned();
+        self.show_notice(notice)
+    }
+
     /// Cmd/Ctrl+Shift+P: lists the actions that work where the keys are now.
     /// Pressed while the box is up, it only gives the field the focus again.
     fn open_command_palette(&mut self) -> Task<Message> {
@@ -5393,6 +5558,12 @@ impl App {
         );
         self.filing_status
             .set_snapshot(snapshot, self.wall_clock.now());
+        self.filing_status.set_ai(
+            self.filing
+                .as_ref()
+                .map(FilingModule::ai_status)
+                .unwrap_or_default(),
+        );
     }
 
     /// The pipeline, unless it is stopped.
@@ -6405,6 +6576,10 @@ impl App {
             ocr_models: None,
             ocr_models_generation: 0,
             download_ocr_models: |_| Err(DownloadError::NoDataFolder),
+            ai_model: None,
+            ai_model_generation: 0,
+            ai_model_asked: false,
+            download_ai_model: |_| Err(AiDownloadError::NoDataFolder),
         };
         for (side, names) in [
             (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
@@ -6598,6 +6773,28 @@ impl App {
         let mut app = Self::with_fixed_panels();
         app.dialog_focus = ocr_models_ui::CANCEL_FOCUS;
         app.ocr_models = Some(card);
+        app
+    }
+
+    pub fn ai_model_for_test(&self) -> Option<&AiModelCard> {
+        self.ai_model.as_ref()
+    }
+
+    /// Fixed panels with the AI model card up.
+    pub fn with_ai_model_card(card: AiModelCard) -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.dialog_focus = ai_model_ui::CANCEL_FOCUS;
+        app.ai_model = Some(card);
+        app
+    }
+
+    /// The status page open, with the AI line in the state of `ai`.
+    pub fn with_filing_status_ai(ai: crate::filing::AiStatus) -> Self {
+        let mut app = Self::with_filing_status_page(
+            ncrs_pipeline::Snapshot::off(),
+            std::time::SystemTime::UNIX_EPOCH,
+        );
+        app.filing_status.set_ai(ai);
         app
     }
 
@@ -10827,6 +11024,7 @@ mod filing_tests {
             enabled: false,
             locations: Vec::new(),
             load: ncrs_pipeline::Load::default(),
+            ai: crate::config::AiSetting::Off,
         };
 
         let (app, _task) = App::with_fixed_panels().with_filing(&off, Some(db.clone()), store);
@@ -10891,6 +11089,7 @@ mod filing_setup_tests {
                 location("/home/test/target", LocationMode::Archive, true),
             ],
             load: Load::default(),
+            ai: crate::config::AiSetting::Off,
         }
     }
 
@@ -11182,6 +11381,7 @@ mod filing_setup_tests {
             enabled: true,
             locations: Vec::new(),
             load: Load::default(),
+            ai: crate::config::AiSetting::Off,
         };
         let (empty, _empty_start) =
             App::with_fixed_panels().with_filing(&without_locations, None, store());
@@ -12421,5 +12621,142 @@ mod ocr_models_tests {
         drop(app.update(Message::CommandPalette(CommandPaletteMessage::Toggle)));
         send(&mut app, OcrModelsMessage::Open);
         assert!(app.ocr_models_for_test().is_none());
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod ai_model_tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+
+    static DOWNLOADS: AtomicUsize = AtomicUsize::new(0);
+
+    fn counting_download(_: &DownloadJob) -> Result<(), AiDownloadError> {
+        DOWNLOADS.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+
+    fn quiet_download(_: &DownloadJob) -> Result<(), AiDownloadError> {
+        Ok(())
+    }
+
+    fn send(app: &mut App, message: AiModelMessage) {
+        drop(app.update(Message::AiModel(message)));
+    }
+
+    fn app_with_data_folder() -> App {
+        let mut app = App::with_fixed_panels();
+        app.filing_index_path = Some(PathBuf::from("/example/data/index.db"));
+        app.download_ai_model = quiet_download;
+        app
+    }
+
+    #[test]
+    fn the_palette_entry_opens_the_card_and_nothing_is_downloaded() {
+        let before = DOWNLOADS.load(Ordering::SeqCst);
+        let mut app = app_with_data_folder();
+        app.download_ai_model = counting_download;
+        drop(app.update(Message::CommandPalette(CommandPaletteMessage::Toggle)));
+        drop(app.update(Message::CommandPalette(
+            CommandPaletteMessage::QueryChanged("Download AI model".to_owned()),
+        )));
+        drop(app.update(Message::CommandPalette(CommandPaletteMessage::Run)));
+
+        let card = app.ai_model_for_test().unwrap();
+        assert_eq!(
+            card.target(),
+            Some(Path::new("/example/data/ai-models")),
+            "the folder next to the index"
+        );
+        assert!(!card.is_downloading());
+        assert!(app.blocking_overlay_is_open());
+        assert_eq!(DOWNLOADS.load(Ordering::SeqCst), before);
+    }
+
+    #[test]
+    fn escape_closes_the_card_and_enter_presses_cancel() {
+        let mut app = app_with_data_folder();
+        send(&mut app, AiModelMessage::Open);
+        let route = |current: &App, key: Named| {
+            route_key(
+                &current.prompt_key_state(),
+                Key::Named(key),
+                Modifiers::default(),
+            )
+        };
+        assert_eq!(
+            route(&app, Named::Escape),
+            Some(Message::AiModel(AiModelMessage::Close))
+        );
+        drop(app.update(Message::DialogActivate));
+        assert!(app.ai_model_for_test().is_none());
+    }
+
+    #[tokio::test]
+    async fn the_download_button_starts_one_download_and_closing_waits() {
+        let mut app = app_with_data_folder();
+        send(&mut app, AiModelMessage::Open);
+        send(&mut app, AiModelMessage::Download);
+        assert!(app.ai_model_for_test().unwrap().is_downloading());
+        send(&mut app, AiModelMessage::Close);
+        assert!(app.ai_model_for_test().is_some());
+    }
+
+    #[tokio::test]
+    async fn a_finished_download_closes_the_card_and_says_so() {
+        let mut app = app_with_data_folder();
+        send(&mut app, AiModelMessage::Open);
+        send(&mut app, AiModelMessage::Download);
+        let generation = app.ai_model_generation;
+        send(
+            &mut app,
+            AiModelMessage::Downloaded {
+                generation,
+                result: Ok(()),
+            },
+        );
+        assert!(app.ai_model_for_test().is_none());
+        assert_eq!(
+            app.notice_for_test(),
+            Some("AI model downloaded. Documents the rules cannot read are passed to it from now on.")
+        );
+    }
+
+    #[test]
+    fn an_answer_for_a_closed_card_is_dropped() {
+        let mut app = app_with_data_folder();
+        send(&mut app, AiModelMessage::Open);
+        let stale = app.ai_model_generation;
+        send(&mut app, AiModelMessage::Close);
+        send(&mut app, AiModelMessage::Open);
+        send(
+            &mut app,
+            AiModelMessage::Downloaded {
+                generation: stale,
+                result: Ok(()),
+            },
+        );
+        assert!(app.ai_model_for_test().is_some());
+        assert_eq!(app.notice_for_test(), None);
+    }
+
+    #[test]
+    fn without_a_data_folder_the_button_says_why() {
+        let mut app = App::with_fixed_panels();
+        app.filing_index_path = None;
+        send(&mut app, AiModelMessage::Open);
+        send(&mut app, AiModelMessage::Download);
+        let card = app.ai_model_for_test().unwrap();
+        assert_eq!(card.error(), Some(&AiDownloadError::NoDataFolder));
+        assert!(!card.is_downloading());
     }
 }

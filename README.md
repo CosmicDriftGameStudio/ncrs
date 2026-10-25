@@ -499,6 +499,35 @@ status bar says that Hermes is on and which key opens the Inspection. If no
 filing runs on configured locations yet, filing starts at once with the saved
 ones; otherwise the status bar says they apply from the next start of ncrs.
 
+**AI.** Documents the rules cannot read can be handed to a small language
+model. It is off until switched on:
+
+```toml
+[modules.filing.ai]
+enabled = true
+# "local" (default) runs a model on this machine; "http" talks to a server.
+provider = "local"
+# local only: threads for the model, 1 or more; left out, ncrs picks.
+threads = 4
+
+# provider = "http" needs both:
+# endpoint = "http://localhost:8080"
+# model = "qwen3"
+```
+
+- `local` uses Qwen3 0.6B (Apache-2.0), one file of about 610 MB that is not
+  part of ncrs. When it is missing, ncrs asks once per start whether to download
+  it; the card shows host, file, size, checksum and folder first, and nothing
+  is fetched before you press the button. The command palette entry "Download
+  AI model…" (`download_ai_model` in `[keys]`, no key by default) opens the card
+  at any time. An interrupted download continues where it stopped, and the file
+  is checked against its size and checksum before it is used.
+- `http` sends text to the server at `endpoint`, which must be on this machine
+  for now (`localhost`, `127.0.0.1` or `::1`); `endpoint` and `model` are
+  required and `threads` is not allowed. Without a consent given for that
+  server, nothing is sent.
+- The Inspection shows a row "AI model" with the state while the AI is on.
+
 ### Portable mode
 
 If a folder named `data` sits next to the ncrs executable, ncrs is portable:
@@ -673,10 +702,14 @@ cargo test           # unit tests (fs reader, formatting, panel selection logic)
 **Linux** additionally needs the usual windowing/font dev packages, e.g. on Debian/Ubuntu:
 
 ```bash
-sudo apt install pkg-config libxkbcommon-dev libwayland-dev libx11-dev libfontconfig1-dev
+sudo apt install pkg-config libxkbcommon-dev libwayland-dev libx11-dev libfontconfig1-dev cmake libclang-dev
 ```
 
-macOS and Windows need no extra system packages.
+The default build compiles llama.cpp for the built-in AI model, so it needs
+[cmake](https://cmake.org), a C++17 compiler and clang (libclang, for the
+bindings) on every system: Xcode's command line tools and `brew install cmake` on
+macOS, Visual Studio's C++ tools, LLVM and cmake on Windows. A build without the
+model needs none of them: `cargo build --no-default-features --features gpu-with-fallback`.
 
 ## Architecture
 

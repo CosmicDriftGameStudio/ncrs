@@ -13,7 +13,7 @@ use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::theme::{self, font_size, spacing};
 use crate::app::fill_template;
-use crate::filing::IndexFigures;
+use crate::filing::{AiStatus, IndexFigures};
 use crate::filing_status::FilingStatus;
 use crate::i18n::{Language, Msg};
 use crate::messages::{FilingStatusMessage, Message};
@@ -243,8 +243,36 @@ fn pipeline_section<'a>(
         labelled(Msg::FilingStatusThroughputLabel, throughput, lang, palette),
         labelled(Msg::FilingStatusRemainingLabel, remaining, lang, palette),
     ]
+    .extend(ai_row(status.ai(), lang, palette))
     .spacing(spacing::SECTION_GAP / 2.0)
     .into()
+}
+
+/// Not there at all while the AI is off, so a setup without it looks as before.
+fn ai_row<'a>(ai: &AiStatus, lang: Language, palette: &Palette) -> Option<Element<'a, Message>> {
+    let value = match ai {
+        AiStatus::Off => return None,
+        AiStatus::NotDownloaded => lang.text(Msg::FilingStatusAiNotDownloaded).to_owned(),
+        AiStatus::NotLoadedYet => lang.text(Msg::FilingStatusAiNotLoaded).to_owned(),
+        AiStatus::Loaded { name, memory_bytes } => fill_template(
+            lang.text(Msg::FilingStatusAiLoaded),
+            &[("{name}", name), ("{memory}", &format::size(*memory_bytes))],
+        ),
+        AiStatus::Failed(reason) => fill_template(
+            lang.text(Msg::FilingStatusAiFailed),
+            &[("{reason}", reason)],
+        ),
+        AiStatus::Http { origin, model } => fill_template(
+            lang.text(Msg::FilingStatusAiHttp),
+            &[("{endpoint}", origin), ("{model}", model)],
+        ),
+    };
+    Some(labelled(
+        Msg::FilingStatusAiLabel,
+        plain(value),
+        lang,
+        palette,
+    ))
 }
 
 /// The name a step is shown under. The step's own name is an identifier; one

@@ -2471,6 +2471,156 @@
       "context": "Last line under a tree of the reorganisation plan view when the tree has more lines than fit. Takes the number of lines left out.",
       "en": "… {count} more",
       "de": "… {count} weitere"
+    },
+    {
+      "key": "action.download_ai_model",
+      "context": "Entry of the command palette that runs the key action download_ai_model, which opens the card asking whether to download the AI model that reads documents the rules could not read. The plain name of what the action does, as short as a menu entry; it has no key. The ellipsis says a card with a question follows.",
+      "en": "Download AI model…",
+      "de": "KI-Modell laden…"
+    },
+    {
+      "key": "action.download_ai_model.theme",
+      "context": "Theme name of the key action download_ai_model, shown dimmed after its plain name action.download_ai_model in the command palette, and matched when typing. A playful name (in Futurama, heads are kept alive in jars); the plain name beside it says what the action does.",
+      "en": "Head in a jar",
+      "de": "Kopf im Glas"
+    },
+    {
+      "key": "ai_model.title",
+      "context": "Title of the card that asks before the AI model is downloaded.",
+      "en": "Download the AI model",
+      "de": "KI-Modell laden"
+    },
+    {
+      "key": "ai_model.intro",
+      "context": "Explanation at the top of the card for the download of the AI model. Some documents cannot be read by the rules alone; a small language model reads them. The model runs on this machine only and no document is sent anywhere. It is not part of ncrs and is downloaded only after the user presses the download button; an interrupted download continues where it stopped.",
+      "en": "Documents the rules cannot read are handed to a small AI model. It runs on this machine only; no document leaves it. The model is one file that is not part of ncrs. Nothing is sent until you press the button. An interrupted download continues where it stopped, and the file is checked against its size and checksum before it is used.",
+      "de": "Dokumente, die die Regeln nicht lesen können, übernimmt ein kleines KI-Modell. Es läuft nur auf diesem Rechner; kein Dokument verlässt ihn. Das Modell ist eine einzelne Datei, die nicht zu ncrs gehört. Es wird nichts gesendet, bevor du auf die Schaltfläche drückst. Ein unterbrochener Download wird dort fortgesetzt, wo er aufgehört hat, und die Datei wird vor der Nutzung gegen Größe und Prüfsumme geprüft."
+    },
+    {
+      "key": "ai_model.host",
+      "context": "Line in the AI model card naming the server the file is downloaded from. Takes the host name.",
+      "en": "Download from: {host}",
+      "de": "Herunterladen von: {host}"
+    },
+    {
+      "key": "ai_model.file",
+      "context": "Line in the AI model card naming the model file and its size. Takes the file name and the size with its unit, for example 639 MB.",
+      "en": "{name}: {size}",
+      "de": "{name} ({size})"
+    },
+    {
+      "key": "ai_model.checksum",
+      "context": "Line in the AI model card under the model file: its SHA-256 checksum, which the download must match. Takes the checksum as 64 hexadecimal characters.",
+      "en": "SHA-256 checksum: {checksum}",
+      "de": "SHA-256-Prüfsumme: {checksum}"
+    },
+    {
+      "key": "ai_model.license",
+      "context": "Line in the AI model card naming the license of the model. Takes the license name, which is not translated.",
+      "en": "License: {license}",
+      "de": "Lizenz: {license}"
+    },
+    {
+      "key": "ai_model.source",
+      "context": "Line in the AI model card saying whose model this is. Takes the address of the model page, shown as plain text.",
+      "en": "The model is Qwen3 0.6B by the Qwen team: {project}",
+      "de": "Das Modell ist Qwen3 0.6B des Qwen-Teams: {project}"
+    },
+    {
+      "key": "ai_model.target",
+      "context": "Line in the AI model card naming the folder the file is saved in. Takes the folder path.",
+      "en": "Saved to: {folder}",
+      "de": "Gespeichert in: {folder}"
+    },
+    {
+      "key": "ai_model.download",
+      "context": "Button in the AI model card that starts the download. Verb.",
+      "en": "Download",
+      "de": "Laden"
+    },
+    {
+      "key": "ai_model.continue",
+      "context": "Button in the AI model card that starts the download again after it was stopped or broke off. The file continues where it stopped. Verb.",
+      "en": "Continue download",
+      "de": "Download fortsetzen"
+    },
+    {
+      "key": "ai_model.stop",
+      "context": "Button in the AI model card that stops the running download. What was downloaded so far is kept. Verb.",
+      "en": "Stop",
+      "de": "Anhalten"
+    },
+    {
+      "key": "ai_model.downloading",
+      "context": "Line in the AI model card while the file is being downloaded.",
+      "en": "Downloading…",
+      "de": "Wird geladen…"
+    },
+    {
+      "key": "ai_model.stopping",
+      "context": "Line in the AI model card after Stop was pressed, until the download has noticed.",
+      "en": "Stopping…",
+      "de": "Wird angehalten…"
+    },
+    {
+      "key": "ai_model.paused",
+      "context": "Line in the AI model card after the user stopped the download. Not an error: the part that was downloaded is kept.",
+      "en": "Paused. The download continues where it stopped.",
+      "de": "Angehalten. Der Download wird dort fortgesetzt, wo er aufgehört hat."
+    },
+    {
+      "key": "ai_model.installed",
+      "context": "Notice in the status bar after the AI model was downloaded and checked.",
+      "en": "AI model downloaded. Documents the rules cannot read are passed to it from now on.",
+      "de": "KI-Modell geladen. Dokumente, die die Regeln nicht lesen können, werden ab jetzt an es übergeben."
+    },
+    {
+      "key": "ai_model.error",
+      "context": "Error in the AI model card when the download failed or the file did not pass the check. Takes the technical detail, which stays untranslated. A file that failed the check is never put in place.",
+      "en": "Download failed ({detail})",
+      "de": "Download fehlgeschlagen ({detail})"
+    },
+    {
+      "key": "ai_model.error_no_folder",
+      "context": "Error in the AI model card when there is no data folder to save the model in.",
+      "en": "There is no data folder to save the model in.",
+      "de": "Es gibt keinen Datenordner, in dem das Modell gespeichert werden könnte."
+    },
+    {
+      "key": "filing_status.ai_label",
+      "context": "Label for the row on the filing status page that tells which AI model reads the documents the rules cannot read. The row is only there when the AI is switched on in the config.",
+      "en": "AI model",
+      "de": "KI-Modell"
+    },
+    {
+      "key": "filing_status.ai_not_downloaded",
+      "context": "Value of the AI model row on the filing status page when the AI is switched on but its model file has not been downloaded. Lower case.",
+      "en": "not downloaded",
+      "de": "nicht heruntergeladen"
+    },
+    {
+      "key": "filing_status.ai_not_loaded",
+      "context": "Value of the AI model row on the filing status page when the model file is there but has not been needed yet, so it is not in memory. Lower case.",
+      "en": "not loaded yet",
+      "de": "noch nicht geladen"
+    },
+    {
+      "key": "filing_status.ai_loaded",
+      "context": "Value of the AI model row on the filing status page when the model is in memory. Takes the file name and the memory it uses with its unit, for example 700 MB.",
+      "en": "{name} · {memory} in memory",
+      "de": "{name} · {memory} im Speicher"
+    },
+    {
+      "key": "filing_status.ai_failed",
+      "context": "Value of the AI model row on the filing status page when the model file could not be used. Takes the reason, which is English and stays untranslated.",
+      "en": "failed: {reason}",
+      "de": "fehlgeschlagen: {reason}"
+    },
+    {
+      "key": "filing_status.ai_http",
+      "context": "Value of the AI model row on the filing status page when a server is asked instead of a model on this machine. Takes the address of the server (scheme and host) and the name of the model.",
+      "en": "{model} at {endpoint}",
+      "de": "{model} unter {endpoint}"
     }
   ]
 }

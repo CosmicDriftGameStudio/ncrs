@@ -3126,3 +3126,159 @@ mod ocr_models_card {
         matches_snapshot(Language::German, "ocr_models_de");
     }
 }
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod ai_model_card {
+    use super::*;
+    use crate::ai_model::AiModelCard;
+    use crate::messages::AiModelMessage;
+    use std::path::PathBuf;
+
+    fn card() -> AiModelCard {
+        AiModelCard::new(Some(PathBuf::from("/example/data/ai-models")), false)
+    }
+
+    fn shows(card: AiModelCard, label: &str) -> bool {
+        simulator(&App::with_ai_model_card(card))
+            .find(label)
+            .is_ok()
+    }
+
+    fn messages_after_click(card: AiModelCard, label: &str) -> Vec<Message> {
+        let app = App::with_ai_model_card(card);
+        let mut sim = simulator(&app);
+        sim.click(label).expect("the clicked label");
+        sim.into_messages().collect()
+    }
+
+    #[test]
+    fn the_card_names_host_file_size_hash_license_and_folder_before_anything_is_sent() {
+        let pin = ncrs_ai::LOCAL_MODEL;
+        for label in [
+            "Download from: huggingface.co".to_owned(),
+            format!("{}: {}", pin.name, crate::ui::format::size(pin.size)),
+            format!("SHA-256 checksum: {}", pin.sha256),
+            "License: Apache-2.0".to_owned(),
+            "Saved to: /example/data/ai-models".to_owned(),
+        ] {
+            assert!(shows(card(), &label), "{label}");
+        }
+    }
+
+    #[test]
+    fn the_buttons_send_close_and_download_and_nothing_else() {
+        assert_eq!(
+            messages_after_click(card(), "Cancel"),
+            [Message::AiModel(AiModelMessage::Close)]
+        );
+        assert_eq!(
+            messages_after_click(card(), "Download"),
+            [Message::AiModel(AiModelMessage::Download)]
+        );
+    }
+
+    #[test]
+    fn a_running_download_can_be_stopped_but_not_closed() {
+        let mut running = card();
+        running.start().unwrap();
+        assert!(shows(running.clone(), "Downloading…"));
+        assert!(messages_after_click(running.clone(), "Cancel").is_empty());
+        assert_eq!(
+            messages_after_click(running, "Stop"),
+            [Message::AiModel(AiModelMessage::Stop)]
+        );
+    }
+
+    #[test]
+    fn a_partial_file_offers_to_continue() {
+        let partial = AiModelCard::new(Some(PathBuf::from("/example/data/ai-models")), true);
+        assert_eq!(
+            messages_after_click(partial, "Continue download"),
+            [Message::AiModel(AiModelMessage::Download)]
+        );
+    }
+
+    #[test]
+    fn the_card_is_worded_in_german_too() {
+        let app = App::with_ai_model_card(card()).in_language(Language::German);
+        let mut sim = simulator(&app);
+        for label in [
+            "KI-Modell laden",
+            "Herunterladen von: huggingface.co",
+            "Gespeichert in: /example/data/ai-models",
+            "Lizenz: Apache-2.0",
+            "Abbrechen",
+            "Laden",
+        ] {
+            assert!(sim.find(label).is_ok(), "{label}");
+        }
+    }
+
+    fn matches_snapshot(language: Language, name: &str) {
+        let app = App::with_ai_model_card(card()).in_language(language);
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image(format!("tests/snapshots/{name}.png"))
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the AI model card does not match tests/snapshots/{name}.png"
+        );
+    }
+
+    #[test]
+    fn the_card_matches_its_snapshots() {
+        matches_snapshot(Language::English, "ai_model_en");
+        matches_snapshot(Language::German, "ai_model_de");
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod ai_status_row {
+    use super::*;
+    use crate::filing::AiStatus;
+
+    fn shows(ai: AiStatus, label: &str) -> bool {
+        simulator(&App::with_filing_status_ai(ai))
+            .find(label)
+            .is_ok()
+    }
+
+    #[test]
+    fn the_row_is_not_there_while_the_ai_is_off() {
+        assert!(!shows(AiStatus::Off, "AI model"));
+    }
+
+    #[test]
+    fn the_row_names_the_state_of_the_model() {
+        assert!(shows(AiStatus::NotDownloaded, "AI model"));
+        assert!(shows(AiStatus::NotDownloaded, "not downloaded"));
+        assert!(shows(AiStatus::NotLoadedYet, "not loaded yet"));
+        assert!(shows(
+            AiStatus::Failed("the file is damaged"),
+            "failed: the file is damaged"
+        ));
+        assert!(shows(
+            AiStatus::Http {
+                origin: "http://localhost:8080".to_owned(),
+                model: "qwen".to_owned()
+            },
+            "qwen at http://localhost:8080"
+        ));
+    }
+}

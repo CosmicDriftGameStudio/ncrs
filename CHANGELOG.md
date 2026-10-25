@@ -47,6 +47,13 @@ All notable changes to this project are documented here. The format follows
   on the status page; very large files are cut off, so a crafted file cannot
   fill the memory.
 
+- A small AI model (Qwen3 0.6B, Apache-2.0) that runs inside the app and fills
+  in the fields the rules left open, without sending a document anywhere. The
+  first time filing is ready with the AI turned on, the app asks before it
+  downloads the 640 MB file from huggingface.co. It checks the file before use
+  and continues an interrupted download where it stopped. `[modules.filing.ai]`
+  picks this model or an HTTP endpoint on this machine. The app now needs macOS
+  10.15 or later on Intel Macs.
 - The groundwork for letting an AI fill in the fields the rules left open
   (sender, kind, date, number, amount). There is an interface for such a
   provider that can only return field values, a step in the processing that

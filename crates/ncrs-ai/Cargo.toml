@@ -23,6 +23,22 @@ jsonc-parser = { version = "=0.34.0", default-features = false }
 # The HTTP provider only; same version and features as the app's theme download.
 ureq = { version = "=3.4.2", default-features = false, features = ["rustls"] }
 
+# Checks the model file against its pinned checksum before it is loaded.
+sha2 = "0.10"
+# The built-in model provider: llama.cpp runs in this process. No default
+# features: no OpenMP runtime to ship and no `common` (HTTP client, JSON and
+# template engines) that nothing here uses.
+llama-cpp-2 = { version = "=0.1.159", default-features = false, optional = true }
+# Only here to hold the native build at the version llama-cpp-2 is pinned to
+# (its own requirement is `^0.1.159`).
+llama-cpp-sys-2 = { version = "=0.1.159", default-features = false, optional = true }
+
+[dev-dependencies]
+tempfile = "3.27"
+
 [features]
 # FakeProvider, for the tests of crates that run a provider.
 testing = []
+# The built-in model provider (local.rs). Needs cmake and a C++ compiler at
+# build time.
+llama = ["dep:llama-cpp-2", "dep:llama-cpp-sys-2"]

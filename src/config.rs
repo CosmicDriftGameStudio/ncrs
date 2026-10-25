@@ -13,7 +13,7 @@
 use std::ffi::OsString;
 use std::fmt;
 use std::io::Read as _;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::ops::Range;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -96,6 +96,49 @@ pub struct FilingSection {
     pub locations: Option<Spanned<Vec<LocationEntry>>>,
     #[serde(default)]
     pub load: Option<Spanned<LoadValue>>,
+    /// Keeps the position of the table for an error about a missing key.
+    #[serde(default)]
+    pub ai: Option<Spanned<AiSection>>,
+}
+
+/// The `[modules.filing.ai]` section, unchecked.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AiSection {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub provider: Option<Spanned<AiProviderName>>,
+    #[serde(default)]
+    pub threads: Option<Spanned<i64>>,
+    #[serde(default)]
+    pub endpoint: Option<Spanned<String>>,
+    #[serde(default)]
+    pub model: Option<Spanned<String>>,
+}
+
+/// The spelling of `provider` in the file.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AiProviderName {
+    #[default]
+    Local,
+    Http,
+}
+
+/// What the filing module may ask for a document the rules could not read.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum AiSetting {
+    #[default]
+    Off,
+    /// The model on this machine. `None` leaves the thread count to the module.
+    Local {
+        threads: Option<NonZeroU32>,
+    },
+    Http {
+        endpoint: String,
+        model: String,
+    },
 }
 
 /// The spelling of `load` in the file; `resolve_filing` maps it to `Load`.
@@ -171,6 +214,7 @@ pub struct Filing {
     /// How many workers the pipeline may use; counts above the core count are
     /// capped when the pipeline starts.
     pub load: Load,
+    pub ai: AiSetting,
 }
 
 /// A location with an expanded, absolute, `..`-free path. Not looked up on
@@ -809,6 +853,7 @@ fn resolve_filing(section: &FilingSection, home: Option<&Path>) -> Result<Filing
         enabled: section.enabled,
         locations: Vec::new(),
         load: resolve_load(section.load.as_ref())?,
+        ai: resolve_ai(section.ai.as_ref())?,
     };
     let Some(listed) = &section.locations else {
         return Ok(filing);
@@ -1166,6 +1211,89 @@ fn replace_file(target: &Path, content: &str) -> Result<(), FilingWriteError> {
         .persist(target)
         .map_err(|err| io_error(target)(err.error))?;
     Ok(())
+}
+
+fn resolve_ai(section: Option<&Spanned<AiSection>>) -> Result<AiSetting, FilingError> {
+    let Some(spanned) = section else {
+        return Ok(AiSetting::Off);
+    };
+    let ai = spanned.get_ref();
+    let provider = ai
+        .provider
+        .as_ref()
+        .map_or_else(AiProviderName::default, |named| *named.get_ref());
+    let only_for = |key: &Option<Spanned<String>>, name: &str, wanted: AiProviderName| match key {
+        Some(given) if provider != wanted => Err(FilingError {
+            span: given.span(),
+            reason: format!(
+                "{name} is only for provider = \"{}\"",
+                provider_text(wanted)
+            ),
+        }),
+        _ => Ok(()),
+    };
+    let threads = match &ai.threads {
+        Some(given) if provider == AiProviderName::Http => {
+            return Err(FilingError {
+                span: given.span(),
+                reason: "threads is only for provider = \"local\"".to_owned(),
+            });
+        }
+        Some(given) => Some(
+            u32::try_from(*given.get_ref())
+                .ok()
+                .and_then(NonZeroU32::new)
+                .ok_or_else(|| FilingError {
+                    span: given.span(),
+                    reason: "threads must be a number from 1 up".to_owned(),
+                })?,
+        ),
+        None => None,
+    };
+    only_for(&ai.endpoint, "endpoint", AiProviderName::Http)?;
+    only_for(&ai.model, "model", AiProviderName::Http)?;
+    if !ai.enabled {
+        return Ok(AiSetting::Off);
+    }
+    match provider {
+        AiProviderName::Local => Ok(AiSetting::Local { threads }),
+        AiProviderName::Http => {
+            let missing = |key: &str| FilingError {
+                span: spanned.span(),
+                reason: format!("provider = \"http\" needs {key}"),
+            };
+            let endpoint = ai.endpoint.as_ref().ok_or_else(|| missing("endpoint"))?;
+            let model = ai.model.as_ref().ok_or_else(|| missing("model"))?;
+            ncrs_ai::check_endpoint(endpoint.get_ref()).map_err(|problem| FilingError {
+                span: endpoint.span(),
+                reason: format!("endpoint is not usable: {problem}"),
+            })?;
+            let on_this_machine =
+                ncrs_ai::endpoint_is_local(endpoint.get_ref()).map_err(|problem| FilingError {
+                    span: endpoint.span(),
+                    reason: format!("endpoint is not usable: {problem}"),
+                })?;
+            if !on_this_machine {
+                return Err(FilingError {
+                    span: endpoint.span(),
+                    reason:
+                        "endpoint must be on this machine (localhost, 127.0.0.1 or ::1) for now"
+                            .to_owned(),
+                });
+            }
+            Ok(AiSetting::Http {
+                endpoint: endpoint.get_ref().clone(),
+                model: model.get_ref().clone(),
+            })
+        }
+    }
+}
+
+const fn provider_text(provider: AiProviderName) -> &'static str {
+    match provider {
+        AiProviderName::Local => "local",
+        AiProviderName::Http => "http",
+    }
 }
 
 fn resolve_load(value: Option<&Spanned<LoadValue>>) -> Result<Load, FilingError> {
@@ -1785,6 +1913,137 @@ mod tests {
             let (line, reason) = filing_error(&text, None);
             assert_eq!(line, Some(3), "{setting}");
             assert!(reason.contains("gentle"), "{setting}: {reason}");
+        }
+    }
+
+    fn ai_setting(table: &str) -> AiSetting {
+        load_filing(&format!("[modules.filing.ai]\n{table}"), None)
+            .unwrap()
+            .filing
+            .ai
+    }
+
+    #[test]
+    fn without_an_ai_table_or_when_not_enabled_the_ai_is_off() {
+        assert_eq!(
+            load_filing("[modules.filing]\nenabled = true\n", None)
+                .unwrap()
+                .filing
+                .ai,
+            AiSetting::Off
+        );
+        assert_eq!(ai_setting(""), AiSetting::Off);
+        assert_eq!(ai_setting("provider = \"local\"\n"), AiSetting::Off);
+        assert_eq!(ai_setting("enabled = false\nthreads = 2\n"), AiSetting::Off);
+    }
+
+    #[test]
+    fn the_local_provider_is_the_default_and_threads_are_optional() {
+        assert_eq!(
+            ai_setting("enabled = true\n"),
+            AiSetting::Local { threads: None }
+        );
+        assert_eq!(
+            ai_setting("enabled = true\nprovider = \"local\"\nthreads = 3\n"),
+            AiSetting::Local {
+                threads: NonZeroU32::new(3)
+            }
+        );
+    }
+
+    #[test]
+    fn the_http_provider_needs_an_endpoint_and_a_model() {
+        assert_eq!(
+            ai_setting(
+                "enabled = true\nprovider = \"http\"\nendpoint = \"http://localhost:8080/v1\"\nmodel = \"qwen\"\n"
+            ),
+            AiSetting::Http {
+                endpoint: "http://localhost:8080/v1".to_owned(),
+                model: "qwen".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn the_http_provider_accepts_every_way_to_say_this_machine() {
+        for endpoint in [
+            "http://localhost:8080",
+            "http://127.0.0.1:8080/v1",
+            "http://[::1]:8080",
+            "https://localhost:8443",
+        ] {
+            let text = format!(
+                "enabled = true\nprovider = \"http\"\nmodel = \"q\"\nendpoint = \"{endpoint}\"\n"
+            );
+            assert!(
+                matches!(ai_setting(&text), AiSetting::Http { .. }),
+                "{endpoint}"
+            );
+        }
+    }
+
+    #[test]
+    fn ai_errors_name_the_exact_line() {
+        let cases: [(&str, &str, usize, &str); 9] = [
+            (
+                "http without an endpoint",
+                "enabled = true\nprovider = \"http\"\nmodel = \"qwen\"\n",
+                1,
+                "needs endpoint",
+            ),
+            (
+                "http without a model",
+                "enabled = true\nprovider = \"http\"\nendpoint = \"http://localhost:8080\"\n",
+                1,
+                "needs model",
+            ),
+            (
+                "an endpoint that is not accepted",
+                "enabled = true\nprovider = \"http\"\nmodel = \"q\"\nendpoint = \"http://example.com/v1\"\n",
+                5,
+                "needs https",
+            ),
+            (
+                "an endpoint on another machine",
+                "enabled = true\nprovider = \"http\"\nmodel = \"q\"\nendpoint = \"https://api.example.com/v1\"\n",
+                5,
+                "must be on this machine",
+            ),
+            (
+                "threads of zero",
+                "enabled = true\nthreads = 0\n",
+                3,
+                "from 1 up",
+            ),
+            (
+                "threads for http",
+                "provider = \"http\"\nthreads = 2\n",
+                3,
+                "only for provider = \"local\"",
+            ),
+            (
+                "an endpoint for the local provider",
+                "enabled = true\nendpoint = \"http://localhost:8080\"\n",
+                3,
+                "only for provider = \"http\"",
+            ),
+            (
+                "a model for the local provider",
+                "enabled = true\nmodel = \"qwen\"\n",
+                3,
+                "only for provider = \"http\"",
+            ),
+            (
+                "an unknown provider",
+                "enabled = true\nprovider = \"cloud\"\n",
+                3,
+                "cloud",
+            ),
+        ];
+        for (name, table, expected_line, expected_reason) in cases {
+            let (line, reason) = filing_error(&format!("[modules.filing.ai]\n{table}"), None);
+            assert_eq!(line, Some(expected_line), "{name}");
+            assert!(reason.contains(expected_reason), "{name}: {reason}");
         }
     }
 

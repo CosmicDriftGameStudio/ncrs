@@ -2,6 +2,7 @@
 //! components are generic over the message type where they emit messages,
 //! so they can be reused in other contexts.
 
+pub mod ai_model;
 pub mod command_palette;
 pub mod conflict;
 pub mod context_menu;

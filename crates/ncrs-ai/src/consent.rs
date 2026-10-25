@@ -8,6 +8,17 @@ pub trait ConsentLedger: Send + Sync + fmt::Debug {
     fn granted(&self, endpoint_origin: &str, source: &Path) -> bool;
 }
 
+/// Grants nothing. For as long as there is no way to ask the user, a document
+/// goes only to an endpoint on this machine, which needs no consent.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoConsentGiven;
+
+impl ConsentLedger for NoConsentGiven {
+    fn granted(&self, _endpoint_origin: &str, _source: &Path) -> bool {
+        false
+    }
+}
+
 /// Exactly what a call would send, for the user to read before agreeing. The
 /// key is not part of it: it travels in a header, never in the body.
 #[derive(Clone, PartialEq, Eq)]

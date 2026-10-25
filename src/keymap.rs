@@ -15,7 +15,7 @@ use crate::fs::{OpenKind, SortColumn};
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::messages::{
-    ClipboardKind, CommandPaletteMessage, FilingSetupMessage, FilingStatusMessage,
+    AiModelMessage, ClipboardKind, CommandPaletteMessage, FilingSetupMessage, FilingStatusMessage,
     OcrModelsMessage, PanelSide, QuickOpenMessage, ReorganisationPlanMessage,
     RuleSuggestionsMessage, SearchMessage, ThemeFetchMessage, TransferKind,
 };
@@ -115,6 +115,7 @@ key_actions! {
     UndoReorganisation => "undo_reorganisation",
     FetchTheme => "fetch_theme",
     DownloadOcrModels => "download_ocr_models",
+    DownloadAiModel => "download_ai_model",
     SearchCase => "search_case",
     SearchWholeWord => "search_whole_word",
     SearchRegex => "search_regex",
@@ -194,6 +195,7 @@ impl KeyAction {
             | Self::UndoReorganisation
             | Self::FetchTheme
             | Self::DownloadOcrModels
+            | Self::DownloadAiModel
             | Self::DriveMenuLeft
             | Self::DriveMenuRight
             | Self::SortByName
@@ -263,6 +265,7 @@ impl KeyAction {
             Self::UndoReorganisation => Message::UndoReorganisation,
             Self::FetchTheme => Message::ThemeFetch(ThemeFetchMessage::Open),
             Self::DownloadOcrModels => Message::OcrModels(OcrModelsMessage::Open),
+            Self::DownloadAiModel => Message::AiModel(AiModelMessage::Open),
             Self::SearchCase => Message::Search(SearchMessage::ToggleCase),
             Self::SearchWholeWord => Message::Search(SearchMessage::ToggleWholeWord),
             Self::SearchRegex => Message::Search(SearchMessage::ToggleRegex),
@@ -1210,7 +1213,11 @@ mod tests {
     #[test]
     fn every_action_has_a_default_key_and_no_key_is_twice_bound() {
         // Reached through the command palette only.
-        const WITHOUT_KEY: [KeyAction; 2] = [KeyAction::FetchTheme, KeyAction::DownloadOcrModels];
+        const WITHOUT_KEY: [KeyAction; 3] = [
+            KeyAction::FetchTheme,
+            KeyAction::DownloadOcrModels,
+            KeyAction::DownloadAiModel,
+        ];
         let bindings = default_bindings();
         for action in KeyAction::ALL
             .iter()

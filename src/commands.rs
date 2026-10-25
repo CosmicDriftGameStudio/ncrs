@@ -196,6 +196,12 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
         KeyAction::DownloadOcrModels => {
             Command::plain(action, Hermes, Msg::ActionDownloadOcrModels)
         }
+        KeyAction::DownloadAiModel => Command::themed(
+            action,
+            Hermes,
+            Msg::ActionDownloadAiModel,
+            Msg::ActionDownloadAiModelTheme,
+        ),
         KeyAction::CommandPalette => Command::themed(
             action,
             Help,
