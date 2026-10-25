@@ -18,6 +18,8 @@ pub enum Skip {
     Symlink,
     /// The path is not below the location's root.
     OutsideLocation,
+    /// The user excluded the file or a folder around it from filing.
+    Excluded,
 }
 
 pub fn is_hidden_name(name: &OsStr) -> bool {

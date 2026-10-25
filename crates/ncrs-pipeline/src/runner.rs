@@ -21,6 +21,8 @@ use crate::step::{Item, Step, StepOutcome};
 pub const RATE_MINUTES: usize = 10;
 /// The errors kept for `Snapshot::errors`; the oldest are dropped.
 pub const MAX_ERRORS: usize = 50;
+/// The entries kept for `Snapshot::changed_paths`; the oldest are dropped.
+pub const MAX_CHANGED_PATHS: usize = 512;
 
 const PANIC_MESSAGE: &str = "the step stopped unexpectedly";
 const DEFAULT_RESCAN_EVERY: Duration = Duration::from_secs(10 * 60);
@@ -97,6 +99,43 @@ pub struct ErrorEntry {
     pub at: SystemTime,
 }
 
+/// A file whose state in the index or in the pipeline changed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangedPath {
+    /// Counts up from 1 for the lifetime of a runner.
+    pub sequence: u64,
+    pub path: PathBuf,
+}
+
+/// The newest changed paths, bounded. A consumer that remembers the sequence it
+/// has seen asks for what came after; it learns from the floor when entries it
+/// never saw were dropped.
+#[derive(Debug, Default)]
+struct ChangeLog {
+    entries: VecDeque<ChangedPath>,
+    latest: u64,
+    /// The highest sequence that was dropped, 0 while nothing was.
+    floor: u64,
+}
+
+impl ChangeLog {
+    fn push(&mut self, path: &Path) {
+        if self.entries.back().is_some_and(|last| last.path == path) {
+            return;
+        }
+        self.latest += 1;
+        self.entries.push_back(ChangedPath {
+            sequence: self.latest,
+            path: path.to_path_buf(),
+        });
+        while self.entries.len() > MAX_CHANGED_PATHS {
+            if let Some(dropped) = self.entries.pop_front() {
+                self.floor = dropped.sequence;
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Snapshot {
     pub state: RunnerState,
@@ -115,6 +154,14 @@ pub struct Snapshot {
     pub left_pipeline: usize,
     /// Documents a step has planned a place for since the start.
     pub plans_made: usize,
+    /// Files whose state changed, oldest first: taken into the index, planned,
+    /// finished or failed. Files a rescan finds unchanged are not listed.
+    pub changed_paths: Vec<ChangedPath>,
+    /// The sequence of the newest change, 0 before the first.
+    pub changed_sequence: u64,
+    /// The highest sequence dropped from `changed_paths`: whoever last saw a
+    /// lower one has missed changes.
+    pub changed_sequence_floor: u64,
 }
 
 impl Snapshot {
@@ -129,7 +176,21 @@ impl Snapshot {
             errors: Vec::new(),
             left_pipeline: 0,
             plans_made: 0,
+            changed_paths: Vec::new(),
+            changed_sequence: 0,
+            changed_sequence_floor: 0,
         }
+    }
+
+    /// The changes after `seen`, or `None` when some of them were dropped (or
+    /// the runner started over) and the caller has to assume everything changed.
+    pub fn changes_since(&self, seen: u64) -> Option<impl Iterator<Item = &ChangedPath>> {
+        let missed = seen < self.changed_sequence_floor || seen > self.changed_sequence;
+        (!missed).then(|| {
+            self.changed_paths
+                .iter()
+                .filter(move |change| change.sequence > seen)
+        })
     }
 
     /// Files in the pipeline right now: waiting at a step or being worked on
@@ -253,6 +314,7 @@ struct State {
     errors: VecDeque<ErrorEntry>,
     left_pipeline: usize,
     plans_made: usize,
+    changes: ChangeLog,
 }
 
 impl State {
@@ -580,6 +642,9 @@ impl Shared {
             errors: state.errors.iter().cloned().collect(),
             left_pipeline: state.left_pipeline,
             plans_made: state.plans_made,
+            changed_paths: state.changes.entries.iter().cloned().collect(),
+            changed_sequence: state.changes.latest,
+            changed_sequence_floor: state.changes.floor,
         }
     }
 
@@ -837,6 +902,9 @@ impl State {
         match outcome {
             Ok(StepOutcome::Continue) => {
                 counts.done += 1;
+                if step_index == 0 || last_step || item.plan.is_some() || item.review.is_some() {
+                    self.changes.push(&item.path);
+                }
                 if last_step {
                     self.left_pipeline += 1;
                     self.record_document(at);
@@ -853,6 +921,7 @@ impl State {
                 if item.plan.is_some() {
                     self.plans_made += 1;
                 }
+                self.changes.push(&item.path);
                 self.record_document(at);
             }
             Ok(StepOutcome::Unchanged) => {
@@ -873,6 +942,7 @@ impl State {
             Err(message) => {
                 counts.failed += 1;
                 self.left_pipeline += 1;
+                self.changes.push(&item.path);
                 self.push_error(item.path, Task::Step(name), message, at);
             }
         }
@@ -969,6 +1039,7 @@ impl Runner {
             errors: VecDeque::new(),
             left_pipeline: 0,
             plans_made: 0,
+            changes: ChangeLog::default(),
         };
         let shared = Arc::new(Shared {
             state: Mutex::new(state),
@@ -1935,6 +2006,73 @@ mod tests {
         let reviews = index.open_reviews().unwrap();
         assert_eq!(reviews.len(), 1);
         assert_eq!(reviews[0].reason, ncrs_index::ReviewReason::UnconfirmedRule);
+    }
+
+    #[test]
+    fn the_change_log_numbers_entries_and_tells_a_slow_consumer_it_missed_some() {
+        let mut log = ChangeLog::default();
+        for number in 0..MAX_CHANGED_PATHS + 3 {
+            log.push(Path::new(&format!("/in/{number}.pdf")));
+        }
+        log.push(Path::new("/in/514.pdf"));
+        let mut snapshot = Snapshot::off();
+        snapshot.changed_paths = log.entries.iter().cloned().collect();
+        snapshot.changed_sequence = log.latest;
+        snapshot.changed_sequence_floor = log.floor;
+
+        assert_eq!(snapshot.changed_paths.len(), MAX_CHANGED_PATHS);
+        assert_eq!(snapshot.changed_sequence, (MAX_CHANGED_PATHS + 3) as u64);
+        assert_eq!(snapshot.changed_sequence_floor, 3);
+        assert!(snapshot.changes_since(2).is_none());
+        let recent: Vec<_> = snapshot
+            .changes_since(snapshot.changed_sequence - 2)
+            .unwrap()
+            .collect();
+        assert_eq!(recent.len(), 2);
+        assert_eq!(recent[1].path, Path::new("/in/514.pdf"));
+        assert_eq!(
+            snapshot.changes_since(3).unwrap().count(),
+            MAX_CHANGED_PATHS
+        );
+        assert!(snapshot
+            .changes_since(snapshot.changed_sequence + 1)
+            .is_none());
+    }
+
+    #[test]
+    fn files_that_changed_are_listed_and_files_found_unchanged_are_not() {
+        let (_dir, location) = numbered_files(2);
+        let (step, _started) = probe("probe", None, leave_the_second_file_unchanged);
+        let runner = start(workers(1), vec![step], &location, Arc::new(FixedClock));
+
+        let report = runner.wait_for("both files handled", |snapshot| {
+            is_idle(snapshot) && snapshot.left_pipeline == 2
+        });
+
+        let paths: Vec<_> = report
+            .changed_paths
+            .iter()
+            .map(|change| change.path.clone())
+            .collect();
+        assert_eq!(paths, vec![location.path.join("file-1.pdf")]);
+        assert_eq!(report.changed_sequence, 1);
+        assert_eq!(report.changed_sequence_floor, 0);
+    }
+
+    #[test]
+    fn a_failed_file_is_listed_as_changed() {
+        let (_dir, location) = numbered_files(3);
+        let (step, _started) = probe("probe", None, fail_the_second_file);
+        let runner = start(workers(1), vec![step], &location, Arc::new(FixedClock));
+
+        let report = runner.wait_for("all handled", |snapshot| {
+            is_idle(snapshot) && snapshot.left_pipeline == 3
+        });
+
+        assert!(report
+            .changed_paths
+            .iter()
+            .any(|change| change.path == location.path.join("file-2.pdf")));
     }
 
     #[test]

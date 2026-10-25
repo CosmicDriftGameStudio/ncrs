@@ -611,6 +611,38 @@ mod tests {
         assert_eq!(outcome(&path, t0() + STABLE_AFTER), Outcome::Unchanged(id));
     }
 
+    #[test]
+    fn an_excluded_file_or_folder_is_neither_inserted_nor_updated_by_a_scan() {
+        let mut fixture = Fixture::new();
+        let dir = TempDir::new().unwrap();
+        let inbox = location(&dir, LocationMode::Inbox, false);
+        put(&inbox, "kept.pdf", INVOICE);
+        let known = put(&inbox, "known.pdf", REMINDER);
+        let secret = put(&inbox, "private/secret.pdf", b"secret");
+        fixture.scan_settled(&inbox);
+        let known_id = fixture.index.document_by_path(&known).unwrap().unwrap().id;
+        fixture
+            .index
+            .exclude_path(&inbox.path.join("private"))
+            .unwrap();
+        fixture.index.exclude_path(&known).unwrap();
+        let another = put(&inbox, "private/another.pdf", b"another");
+        fs::write(&known, b"changed after exclusion").unwrap();
+
+        let report = fixture.scan_settled(&inbox);
+
+        assert_eq!(report.new, 0);
+        assert_eq!(report.content_changed, 0);
+        assert_eq!(report.skipped.get(&Skip::Excluded), Some(&3));
+        assert_eq!(report.error_total, 0);
+        assert!(fixture.index.document_by_path(&another).unwrap().is_none());
+        assert!(fixture.index.document_by_path(&secret).unwrap().is_some());
+        assert_eq!(
+            fixture.index.document(known_id).unwrap().unwrap().hash,
+            hash_of(REMINDER)
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn a_symlink_out_of_the_location_is_neither_followed_nor_taken_in() {

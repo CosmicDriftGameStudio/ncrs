@@ -35,6 +35,7 @@ use ncrs_pipeline::{intake_steps, IndexAccess, Load, Runner, Settings, SystemClo
 
 use crate::config::{AiSetting, Filing, FilingLocation};
 use crate::filing_work::FilingAccess;
+use crate::hermes_column::{read_column, ColumnReading, ColumnRequest};
 use crate::query_work::QueryAccess;
 use crate::reorganisation_work::PlanAccess;
 use crate::review_work::ReviewAccess;
@@ -622,6 +623,26 @@ impl HermesCountsReader {
     }
 }
 
+/// Reads what one panel's Hermes column needs, on a blocking thread like
+/// [`HermesCountsReader`].
+pub struct ColumnReader {
+    slot: IndexSlot,
+}
+
+impl fmt::Debug for ColumnReader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ColumnReader").finish_non_exhaustive()
+    }
+}
+
+impl ColumnReader {
+    pub fn read(self, request: &ColumnRequest) -> Result<ColumnReading, String> {
+        let guard = lock(&self.slot);
+        let index = guard.as_ref().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
+        read_column(index, request).map_err(|err| err.to_string())
+    }
+}
+
 /// Every index goes through here before the watcher and the pipeline see it,
 /// so a move that was interrupted is settled before anything looks at the files.
 fn put_index(slot: &IndexSlot, index: Index) {
@@ -832,6 +853,16 @@ impl FilingModule {
     pub fn hermes_counts_reader(&self) -> Option<HermesCountsReader> {
         match self.phase {
             Phase::Ready => Some(HermesCountsReader {
+                slot: Arc::clone(&self.index),
+            }),
+            _ => None,
+        }
+    }
+
+    /// Like [`Self::index_figures_reader`]: looks at the phase only.
+    pub fn column_reader(&self) -> Option<ColumnReader> {
+        match self.phase {
+            Phase::Ready => Some(ColumnReader {
                 slot: Arc::clone(&self.index),
             }),
             _ => None,

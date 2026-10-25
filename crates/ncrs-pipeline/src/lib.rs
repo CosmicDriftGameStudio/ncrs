@@ -14,8 +14,8 @@ mod steps;
 pub use clock::{Clock, SystemClock};
 pub use load::Load;
 pub use runner::{
-    Busy, ErrorEntry, Runner, RunnerState, Settings, Snapshot, StepSnapshot, Task, WorkerSnapshot,
-    MAX_ERRORS, RATE_MINUTES,
+    Busy, ChangedPath, ErrorEntry, Runner, RunnerState, Settings, Snapshot, StepSnapshot, Task,
+    WorkerSnapshot, MAX_CHANGED_PATHS, MAX_ERRORS, RATE_MINUTES,
 };
 pub use step::{with_index_value, IndexAccess, Item, Step, StepOutcome};
 pub use steps::intake_steps;

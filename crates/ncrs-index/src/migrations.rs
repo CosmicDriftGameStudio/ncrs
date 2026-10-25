@@ -12,6 +12,7 @@ pub const MIGRATIONS: &[&str] = &[
     include_str!("migrations/006_reorganisation_plan.sql"),
     include_str!("migrations/007_execution_journal.sql"),
     include_str!("migrations/008_saved_queries.sql"),
+    include_str!("migrations/009_excluded_path.sql"),
 ];
 
 /// Step `n` (1-based) runs in one transaction together with the bump of

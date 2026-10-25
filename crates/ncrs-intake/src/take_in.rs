@@ -61,6 +61,9 @@ pub fn take_in_counted(
     if let Err(skip) = classify(location, path) {
         return Ok(without_hash(Outcome::Skipped(skip)));
     }
+    if index.is_excluded(path)? {
+        return Ok(without_hash(Outcome::Skipped(Skip::Excluded)));
+    }
     if has_symlink_ancestor(location, path)? {
         return Ok(without_hash(Outcome::Skipped(Skip::Symlink)));
     }
