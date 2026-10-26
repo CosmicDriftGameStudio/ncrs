@@ -463,6 +463,39 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
 - [ ] **T15 – Netzwerk-Mounts** (macOS/Linux), **T16 – Archiv-Support lesend**,
   **T17 – Archiv-Support schreibend** – Umfang siehe Abschnitt 4
 
+## Weg zu 1.0.0 (Plan vom 2026-10-26)
+
+1.0 heißt: der Dateimanager ist komplett, Hermes läuft als Beta mit, Config und Index
+migrieren statt zu brechen, und ncrs erscheint im Mac App Store als Einmalkauf
+(9,99 €, Updates inklusive). GitHub, Homebrew, winget, AUR und die Linux-Pakete bleiben
+kostenlos und ohne Sandbox. Jeder Baustein ist ein Issue im Milestone seiner Version;
+Größen sind Schätzungen (S bis ein Tag, M zwei bis vier Tage, L eine Woche und mehr).
+
+| Version | Thema | Bausteine |
+|---|---|---|
+| 0.7.0 | Bedienung komplett, Risiko zuerst | S1 Sandbox-Test (#120) · K1 Kommandozeile, T6d.1 (#121) · K2 Favoriten und Verlauf, T6d.5 (#123) · K3 Zustand merken, T18 (#122) |
+| 0.8.0 | Netz und Archive lesen | K4 Netzwerk-Mounts, T15 (#125) · K5 Archive lesen, T16 (#124) · A0 Sandbox-Grundlagen (#126) |
+| 0.9.0 | Schreiben und Versprechen | K6 Archive schreiben, T17 (#127) · V1 Config versioniert (#128) · V2 Index-Migration (#129) · V3 100k-Dateien-Messung (#130) · V4 Lizenzen für den Store (#131) · H1 Hermes als Beta (#132) |
+| 1.0.0 | App Store | A1 Sandbox-Build (#133) · A2 App Store Connect (#134) · A3 Store-Auftritt (#135) · A4 Review und Release (#136) |
+
+Abhängigkeiten: S1 vor K3, K4 und A0 · K3 vor K2, A0 und V1 · K5 vor K6 · V2 vor H1 ·
+A0, K4 und K6 vor A1 · A1 vor A2 und A3 · alles vor A4. winget und AUR laufen nebenher
+unter #89.
+
+Entschieden:
+- **Preis:** Einmalkauf 9,99 €, kein Abo.
+- **Archivformate für 1.0:** zip, tar, tar.gz, tar.zst. 7z und RAR nicht (Lizenz), 7z
+  später höchstens lesend.
+- **Schnitt:** jede Zwischenversion bringt etwas, das man bedienen kann.
+
+Offen, fällt mit dem Sandbox-Test S1:
+- volle Fassung im Store oder Lite mit Hinweis auf die freie Fassung,
+- Netzwerk über System-Mounts oder eigenen Client (SFTP), weil die Sandbox fremde Mounts
+  nur mit Freigabe sieht,
+- Hermes in der Store-Fassung als Beta dabei (Vorschlag) oder erst nach 1.0.
+
+Nach 1.0: 7z/RAR, Plugins, Mail als Hermes-Quelle, iOS.
+
 ## Was das Testen über den Aufbau gelehrt hat
 
 Aus T2/T2b: fünf Runden mit einem Compiler-Fehler und zwei Testrunden. Die Regeln, die
@@ -499,4 +532,4 @@ weiß ich nur durch deine Beobachtung — die steht als Messung im README, nicht
 | T10 | TOML oder JSON für die Config? | **entschieden: TOML**, besser für Handeditierung. |
 | T13 | Sprachauswahl persistent | **entschieden und gebaut:** `lang` in der Config setzt die Startsprache, F9 schaltet nur die Sitzung um; die Config bleibt read-only, es wird nichts zurückgeschrieben. |
 | T14 | Suche: `glob` oder inkrementell? | **offen.** Die Filterlogik ist in beiden testbar, das Timing nicht. |
-| T18 | Settings | **offen.** Wichtige Sachen soll sich das program merken |
+| T18 | Settings | **geplant für 0.7.0 (#122):** Pfade, Tabs, Sortierung und Fenstergröße in einer eigenen Zustandsdatei neben der Config; `config.toml` bleibt read-only. |
