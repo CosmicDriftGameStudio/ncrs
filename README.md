@@ -138,6 +138,7 @@ The defaults. Most of them can be changed in the config file, see [Keys](#keys).
 | `F3` / `F4`        | View / edit the file under the cursor in an external program (programs configurable, see [Configuration](#configuration)) |
 | `F5` / `F6`        | Copy / move to the other panel          |
 | `F7`               | Create directory                        |
+| `Shift`+`F4`       | New file: creates an empty file under the name asked for and opens it in the editor like `F4`; an existing name is never overwritten |
 | `F8`               | Delete to the trash, after a confirmation |
 | `Shift`+`F8`       | Delete permanently (`Enter` cancels; `Shift`+`F8` again confirms) |
 | `Alt`+`F1` / `Alt`+`F2` | Planets (drive menu) for the left / right panel (`↑`/`↓`, `Home`/`End`, `Enter` goes, `Esc` closes; `Option` on macOS) |
@@ -311,7 +312,7 @@ edit = "F3"
 Actions: `quit`, `open`, `go_up`, `switch_panel`, `switch_language`,
 `cursor_up`, `cursor_down`, `page_up`, `page_down`, `first`, `last`,
 `toggle_tag`, `tag_up`, `tag_down`, `tag_all`, `clear_tags`, `view`, `edit`,
-`copy`, `move`, `mkdir`, `delete`, `delete_permanently`, `abort_job`,
+`copy`, `move`, `mkdir`, `new_file`, `delete`, `delete_permanently`, `abort_job`,
 `copy_path`, `copy_name`, `drive_menu_left`, `drive_menu_right`,
 `sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`, `search`, `quick_open`, `command_line`, `command_palette`, `search_case`,
 `search_whole_word`, `search_regex`, `filing_status`, `filing_setup`. Their

@@ -9,7 +9,7 @@ use iced::{alignment, Background, Element, Length, Size};
 use super::frame::{DialogSize, Frame, KeyHints};
 use super::kit::{self, Tone};
 use super::theme::{self, spacing};
-use crate::dialog::Prompt;
+use crate::dialog::{Prompt, PromptKind};
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::palette::Palette;
@@ -32,9 +32,15 @@ pub fn view<'a>(
     on_submit: Message,
     on_cancel: Message,
 ) -> Option<Element<'a, Message>> {
-    let (title, label, confirm) = match state {
-        Prompt::CreateDir { .. } => (
+    let (title, label, confirm) = match state.kind() {
+        PromptKind::CreateDir => (
             lang.text(Msg::DialogMkdirTitle),
+            lang.text(Msg::DialogMkdirLabel),
+            lang.text(Msg::DialogMkdirCreate),
+        ),
+        // The label and button say "name" and "create", which fit a file too.
+        PromptKind::CreateFile => (
+            lang.text(Msg::DialogNewFileTitle),
             lang.text(Msg::DialogMkdirLabel),
             lang.text(Msg::DialogMkdirCreate),
         ),

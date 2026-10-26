@@ -287,6 +287,34 @@ mod tests {
     }
 
     #[test]
+    fn the_new_file_prompt_matches_its_snapshot() {
+        let app = App::with_fixed_new_file_prompt();
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/new_file_prompt.png")
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the new-file prompt does not match tests/snapshots/new_file_prompt.png"
+        );
+    }
+
+    #[test]
+    fn the_new_file_prompt_matches_its_german_snapshot() {
+        let app = App::with_fixed_new_file_prompt().in_language(Language::German);
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/new_file_prompt_de.png")
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the new-file prompt does not match tests/snapshots/new_file_prompt_de.png"
+        );
+    }
+
+    #[test]
     fn the_search_view_matches_its_snapshot() {
         let app = App::with_fixed_search();
         let mut sim = simulator(&app);

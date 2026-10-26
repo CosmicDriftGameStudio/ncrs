@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `Shift+F4` asks for a name, creates an empty file in the active panel's folder
+  and opens it in the editor like `F4`, with the cursor on it; an existing name
+  is never overwritten. Rebindable as `new_file`, also in the command list.
 - Command line below the panels (`F2`): `cd` changes the active panel's folder,
   any other line runs in the folder of the active panel through `$SHELL` (`cmd`
   on Windows), and the status bar shows its exit status once it ends. `↑`/`↓`

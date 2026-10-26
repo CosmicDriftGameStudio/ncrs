@@ -14,26 +14,28 @@ use std::path::PathBuf;
 pub enum PromptKind {
     /// F7 — ask for a directory name to create in the active panel.
     CreateDir,
+    /// Shift+F4 — ask for a file name to create in the active panel and edit.
+    CreateFile,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Prompt {
-    CreateDir {
-        /// The directory the new one goes into, and the panel to reload.
-        parent: PathBuf,
-        /// What the user typed. Kept across a failed attempt so the error sits
-        /// next to the text that caused it.
-        name: String,
-        /// Set while the operation runs.
-        busy: bool,
-        /// Why the last attempt failed, in the active language.
-        error: Option<String>,
-    },
+pub struct Prompt {
+    kind: PromptKind,
+    /// The directory the new entry goes into, and the panel to reload.
+    parent: PathBuf,
+    /// What the user typed. Kept across a failed attempt so the error sits
+    /// next to the text that caused it.
+    name: String,
+    /// Set while the operation runs.
+    busy: bool,
+    /// Why the last attempt failed, in the active language.
+    error: Option<String>,
 }
 
 impl Prompt {
-    pub fn create_dir(parent: PathBuf) -> Self {
-        Self::CreateDir {
+    fn new(kind: PromptKind, parent: PathBuf) -> Self {
+        Self {
+            kind,
             parent,
             name: String::new(),
             busy: false,
@@ -41,62 +43,54 @@ impl Prompt {
         }
     }
 
+    pub fn create_dir(parent: PathBuf) -> Self {
+        Self::new(PromptKind::CreateDir, parent)
+    }
+
+    pub fn create_file(parent: PathBuf) -> Self {
+        Self::new(PromptKind::CreateFile, parent)
+    }
+
+    pub fn kind(&self) -> PromptKind {
+        self.kind
+    }
+
     /// Replaces the typed name and clears any error: a new keystroke means the
     /// previous complaint no longer applies.
     pub fn set_name(&mut self, name: String) {
-        match self {
-            Prompt::CreateDir {
-                name: current,
-                error,
-                ..
-            } => {
-                *current = name;
-                *error = None;
-            }
-        }
+        self.name = name;
+        self.error = None;
     }
 
     /// The text the user typed.
     pub fn name(&self) -> &str {
-        match self {
-            Prompt::CreateDir { name, .. } => name,
-        }
+        &self.name
     }
 
     /// Marks the operation as running or finished.
     pub fn set_busy(&mut self, busy: bool) {
-        match self {
-            Prompt::CreateDir { busy: current, .. } => *current = busy,
-        }
+        self.busy = busy;
     }
 
     pub fn busy(&self) -> bool {
-        match self {
-            Prompt::CreateDir { busy, .. } => *busy,
-        }
+        self.busy
     }
 
     /// Shows a validation failure, in the language the UI is in.
     pub fn set_validation_error(&mut self, reason: &'static str) {
-        match self {
-            Prompt::CreateDir { error, .. } => *error = Some(reason.to_string()),
-        }
+        self.error = Some(reason.to_string());
     }
 
     /// Shows a failure from the filesystem.
     pub fn set_error(&mut self, message: String) {
-        match self {
-            Prompt::CreateDir { error, .. } => *error = Some(message),
-        }
+        self.error = Some(message);
     }
 
     pub fn error(&self) -> Option<&str> {
-        match self {
-            Prompt::CreateDir { error, .. } => error.as_deref(),
-        }
+        self.error.as_deref()
     }
 
-    /// Whether the typed name could be a directory name. Empty, `.` and `..`
+    /// Whether the typed name could be a directory or file name. Empty, `.` and `..`
     /// are rejected before the filesystem is touched, so the error appears while
     /// the dialog is still open instead of after a round trip.
     pub fn validate(&self) -> Result<(), &'static str> {
@@ -127,12 +121,9 @@ mod tests {
     use super::*;
 
     fn prompt_with(name: &str) -> Prompt {
-        Prompt::CreateDir {
-            parent: PathBuf::from("/tmp"),
-            name: name.to_string(),
-            busy: false,
-            error: None,
-        }
+        let mut prompt = Prompt::create_dir(PathBuf::from("/tmp"));
+        prompt.set_name(name.to_string());
+        prompt
     }
 
     #[test]

@@ -95,6 +95,7 @@ key_actions! {
     Delete => "delete",
     DeletePermanently => "delete_permanently",
     Mkdir => "mkdir",
+    NewFile => "new_file",
     DriveMenuLeft => "drive_menu_left",
     DriveMenuRight => "drive_menu_right",
     SortByName => "sort_by_name",
@@ -201,6 +202,7 @@ impl KeyAction {
             | Self::CopyPath
             | Self::CopyName
             | Self::Mkdir
+            | Self::NewFile
             | Self::QuickOpen
             | Self::CommandLine
             | Self::FilingStatus
@@ -289,6 +291,7 @@ impl KeyAction {
             Self::Delete => Message::Delete { permanent: false },
             Self::DeletePermanently => Message::Delete { permanent: true },
             Self::Mkdir => Message::CreateDirPrompt,
+            Self::NewFile => Message::CreateFilePrompt,
             Self::DriveMenuLeft => Message::VolumeMenu(PanelSide::Left),
             Self::DriveMenuRight => Message::VolumeMenu(PanelSide::Right),
             Self::SortByName => Message::SortActive(SortColumn::Name),
@@ -430,6 +433,11 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
             Binding::with_modifiers(KeyNamed(F8), Modifiers::SHIFT),
         ),
         (A::Mkdir, Binding::key(KeyNamed(F7))),
+        // Norton Commander's Shift+F4: edit a new file.
+        (
+            A::NewFile,
+            Binding::with_modifiers(KeyNamed(F4), Modifiers::SHIFT),
+        ),
         // Alt (Option on macOS) with F1 or F2 picks the drive of the left or
         // right panel, as in Norton Commander. Not advertised: the bar shows
         // bare keys only, and NC does not list these either.
