@@ -69,7 +69,7 @@ fn shell_command(line: &str, shell: &OsStr) -> Command {
 
 #[cfg(windows)]
 fn shell_command(line: &str, _shell: &OsStr) -> Command {
-    use std::os::windows::process::CommandExt;
+    use std::os::windows::process::CommandExt as _;
     let mut command = Command::new("cmd");
     command.arg("/C").raw_arg(line);
     command
