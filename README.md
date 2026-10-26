@@ -160,6 +160,12 @@ Pre-built binaries for Linux, macOS and Windows are attached to each
 curl -fsSL https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/install.sh | sh
 ```
 
+On Windows:
+
+```powershell
+winget install CosmicDriftGameStudio.ncrs
+```
+
 On Debian and Ubuntu, and on Fedora and openSUSE, the release also has packages
 that pull in the libraries ncrs needs. Download the file for your CPU
 (`x86_64` or `aarch64`) from the release page and install it:
