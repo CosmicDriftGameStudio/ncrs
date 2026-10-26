@@ -876,8 +876,17 @@ with or endorsed by it.
 MIT
 
 Release archives and the macOS app include `THIRD_PARTY_LICENSES.html` with the
-licenses of the dependencies and of the embedded Fira Sans font. To generate it
+licenses of the dependencies, the embedded Fira Sans font and the Lucide icons. To generate it
 locally: `cargo install cargo-about --locked --features cli && cargo about generate about.hbs -o THIRD_PARTY_LICENSES.html`
+
+No dependency may be under GPL, LGPL or AGPL, because those licenses rule out
+the Mac App Store; `deny.toml` explains how `cargo deny` enforces it.
+
+| Shipped or fetched | License | Where its text is |
+| --- | --- | --- |
+| pdfium, the PDF library next to the binary ([pdfium-binaries](https://github.com/bblanchon/pdfium-binaries) build) | BSD-3-Clause; the build itself MIT; bundled components such as FreeType, ICU, libjpeg-turbo and zlib under their own permissive licenses | `licenses/pdfium/` in the archive, `Contents/Resources/licenses/pdfium/` in the macOS app |
+| OCR models (`text-detection.onnx`, `text-recognition.onnx`), downloaded only after asking | CC-BY-SA-4.0 ([ocrs-models](https://github.com/robertknight/ocrs-models), trained on HierText) | not shipped; fetched from the ocrs project |
+| Local AI model `Qwen3-0.6B-Q8_0.gguf`, downloaded only after asking | Apache-2.0 ([Qwen/Qwen3-0.6B-GGUF](https://huggingface.co/Qwen/Qwen3-0.6B-GGUF)) | not shipped; fetched from Hugging Face |
 
 ## Contributing, security, changes
 
