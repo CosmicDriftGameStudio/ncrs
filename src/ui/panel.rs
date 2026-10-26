@@ -13,6 +13,7 @@ use super::layout::{
     COLUMN_HEADER_HEIGHT, DATE_COLUMN_WIDTH, HERMES_COLUMN_WIDTH, ROW_HEIGHT, SIZE_COLUMN_WIDTH,
     TAG_COLUMN_WIDTH,
 };
+use super::panel_history::PanelHistory;
 use super::theme::{self, font_size, size, spacing};
 use crate::fs::{sort_entries, FileEntry, ReadError, SortColumn, SortKey};
 use crate::hermes_column::{
@@ -52,6 +53,11 @@ pub struct PanelState {
     /// How the rows are ordered. Belongs to the panel, so it outlives a reload
     /// and a change of directory.
     pub sort: SortKey,
+    /// The folders this panel was in before, for Back and Forward.
+    pub history: PanelHistory,
+    /// The load a Back or Forward step started: arriving by it is not a new
+    /// visit, so it must not clear Forward.
+    pub history_step_request: Option<u64>,
 }
 
 impl PanelState {
@@ -67,6 +73,8 @@ impl PanelState {
             request_id: 0,
             scroll_remainder: 0.0,
             sort: SortKey::default(),
+            history: PanelHistory::default(),
+            history_step_request: None,
         }
     }
 
@@ -84,6 +92,17 @@ impl PanelState {
 
     pub fn selected_entry(&self) -> Option<&FileEntry> {
         self.entries.get(self.selected)
+    }
+
+    /// Records the move from `previous` in the history once the listing of
+    /// load `request_id` is in. A reload of the same folder and the first load
+    /// are not visits, and neither is the arrival of a Back or Forward step,
+    /// which moved the stacks itself.
+    pub fn record_arrival(&mut self, previous: PathBuf, request_id: u64) {
+        if self.path != previous && self.history_step_request != Some(request_id) {
+            self.history.visit(previous);
+        }
+        self.history_step_request = None;
     }
 
     /// Marks a new load as started and returns its request id.

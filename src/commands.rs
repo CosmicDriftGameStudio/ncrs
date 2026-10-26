@@ -156,6 +156,11 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             Msg::ActionDriveMenuRight,
             Msg::ActionDriveMenuRightTheme,
         ),
+        KeyAction::HistoryBack => Command::plain(action, Go, Msg::ActionHistoryBack),
+        KeyAction::HistoryForward => Command::plain(action, Go, Msg::ActionHistoryForward),
+        KeyAction::AddFavourite => Command::plain(action, Go, Msg::ActionAddFavourite),
+        KeyAction::RemoveFavourite => Command::plain(action, Go, Msg::ActionRemoveFavourite),
+        KeyAction::Favourites => Command::plain(action, Go, Msg::ActionFavourites),
         KeyAction::CommandLine => Command::plain(action, Go, Msg::ActionCommandLine),
         KeyAction::QuickOpen => {
             Command::themed(action, Go, Msg::ActionQuickOpen, Msg::ActionQuickOpenTheme)

@@ -168,6 +168,19 @@ pub enum Message {
     /// A click on the entry at this index: highlight it and go there.
     VolumeMenuClick(usize),
     VolumeMenuClose,
+    /// Delete or Backspace in the drive menu: take the highlighted favourite
+    /// out of the list. A drive row ignores it.
+    VolumeMenuRemove,
+    /// Alt+Left: the active panel returns to the folder it was in before.
+    HistoryBack,
+    /// Alt+Right: undo of [`Message::HistoryBack`].
+    HistoryForward,
+    /// Adds the active panel's folder to the favourites.
+    AddFavourite,
+    /// Takes the active panel's folder out of the favourites.
+    RemoveFavourite,
+    /// Opens the drive menu on the first favourite.
+    OpenFavourites,
 
     // --- context menu (right click, Option tap, Shift+F10) ---
     /// Right click (or Ctrl+click on a Mac) on a row: open the menu at the pointer.

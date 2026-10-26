@@ -74,6 +74,9 @@ binary, so ncrs reads PDFs without anything else installed. `install.sh` and
 ![The drive menu on Alt+F1](docs/screenshots/drive-menu.png)
 
 The drive menu, called Planets in the app (`Alt+F1` for the left panel, `Alt+F2` for the right).
+Below the drives it lists your favourite folders: add the active folder with
+`Ctrl`+`D` (`Cmd`+`D` on macOS), remove one with `Del` in the menu. A favourite whose folder is gone
+stays in the list, dimmed, and says so when you pick it.
 
 ![The context menu](docs/screenshots/context-menu.png)
 
@@ -141,7 +144,9 @@ The defaults. Most of them can be changed in the config file, see [Keys](#keys).
 | `Shift`+`F4`       | New file: creates an empty file under the name asked for and opens it in the editor like `F4`; an existing name is never overwritten |
 | `F8`               | Delete to the trash, after a confirmation |
 | `Shift`+`F8`       | Delete permanently (`Enter` cancels; `Shift`+`F8` again confirms) |
-| `Alt`+`F1` / `Alt`+`F2` | Planets (drive menu) for the left / right panel (`↑`/`↓`, `Home`/`End`, `Enter` goes, `Esc` closes; `Option` on macOS) |
+| `Alt`+`F1` / `Alt`+`F2` | Planets (drive menu) for the left / right panel (`↑`/`↓`, `Home`/`End`, `Enter` goes, `Esc` closes; `Option` on macOS); below the drives come the favourite folders (`Enter` goes, `Del` removes) |
+| `Alt`+`←` / `Alt`+`→` (also `Cmd`+`[` / `Cmd`+`]` on macOS) | Back / forward in the active panel's folder history |
+| `Ctrl`+`D` (`Cmd`+`D` on macOS) | Add the active panel's folder to the favourites (`remove_favourite` and `favourites` have no default key) |
 | Right click / `Shift`+`F10` / `Option` tapped alone | Context menu at the pointer or the cursor row (`↑`/`↓`, `Home`/`End`, `Enter` runs, `Esc` closes; `Ctrl`+click also on a Mac) |
 | Click a column title | Sort that panel by Name / Size / Modified; a second click reverses the order (▲ / ▼). `..` and folders stay on top |
 | `Ctrl`+`F3` / `Ctrl`+`F5` / `Ctrl`+`F6` (macOS: `Cmd`+`1` / `Cmd`+`3` / `Cmd`+`2`) | Sort the active panel by name / modification time / size; again reverses. macOS uses `Cmd`+digit because the system takes `Ctrl`+`F`-keys |
@@ -314,6 +319,7 @@ Actions: `quit`, `open`, `go_up`, `switch_panel`, `switch_language`,
 `toggle_tag`, `tag_up`, `tag_down`, `tag_all`, `clear_tags`, `view`, `edit`,
 `copy`, `move`, `mkdir`, `new_file`, `delete`, `delete_permanently`, `abort_job`,
 `copy_path`, `copy_name`, `drive_menu_left`, `drive_menu_right`,
+`history_back`, `history_forward`, `add_favourite`, `remove_favourite`, `favourites`,
 `sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`, `search`, `quick_open`, `command_line`, `command_palette`, `search_case`,
 `search_whole_word`, `search_regex`, `filing_status`, `filing_setup`. Their
 default keys are in [Keyboard shortcuts](#keyboard-shortcuts).
@@ -544,8 +550,9 @@ size in `state.toml`, next to `index.db` (`~/Library/Application Support/ncrs`
 on macOS, `$XDG_DATA_HOME/ncrs` or `~/.local/share/ncrs` on Linux,
 `%APPDATA%\ncrs` on Windows, `data` in portable mode). ncrs writes it when it
 quits and shortly after a change; `config.toml` is never written for this. A
-folder that is gone opens its nearest existing parent. A missing or broken file
-means the defaults, and you can delete it to start fresh.
+folder that is gone opens its nearest existing parent. Each panel's back and
+forward history (50 steps) and the favourites are kept too. A missing or broken
+file means the defaults, and you can delete it to start fresh.
 
 ### Portable mode
 
