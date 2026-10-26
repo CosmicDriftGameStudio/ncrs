@@ -900,6 +900,8 @@ mod tests {
             Key::Character("c".into()),
             Key::Named(Named::F11),
             Key::Named(Named::Super),
+            Key::Named(Named::ArrowLeft),
+            Key::Named(Named::ArrowRight),
         ] {
             let mut input = InputState::default();
             let messages = feed(

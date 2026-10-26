@@ -156,6 +156,8 @@ KEYS (the defaults; [keys] in the config file changes them):
     F8         delete (to trash)   Shift+F8 delete permanently
     F9         switch language (en/de)
     F10 / Cmd+Q  quit
+    Alt+Left/Right  folder history back / forward (macOS also Cmd+[ / ])
+    Ctrl+D / Cmd+D  add folder to favourites (listed in Alt+F1 / Alt+F2)
 
 VIEW / EDIT:
     F3 and F4 open the file under the cursor (tags are ignored). The programs

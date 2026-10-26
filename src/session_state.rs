@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::fs::{SortColumn, SortKey};
 use crate::messages::PanelSide;
+use crate::ui::panel_history::PanelHistory;
 
 /// Written on save so a later layout can tell old files from new ones.
 pub const STATE_VERSION: u32 = 1;
@@ -58,6 +59,9 @@ pub struct SessionState {
     pub version: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active: Option<PanelSide>,
+    /// Plain values before the tables, so the file keeps its shape.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub favourites: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub window: Option<WindowSize>,
     pub left: PanelRecord,
@@ -77,12 +81,26 @@ pub struct PanelRecord {
     pub path: Option<String>,
     pub sort: SortColumn,
     pub descending: bool,
+    /// The folders Back goes through, oldest first.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub back: Vec<String>,
+    /// The folders Forward goes through; the next one is the last.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub forward: Vec<String>,
 }
 
 /// The folder as text. A non-UTF-8 folder is simply not remembered: TOML has
 /// only UTF-8 strings.
 pub fn record_path(path: &Path) -> Option<String> {
     path.to_str().map(str::to_owned)
+}
+
+/// The folders as text, dropping those that are not UTF-8.
+pub fn record_paths<'a>(paths: impl IntoIterator<Item = &'a PathBuf>) -> Vec<String> {
+    paths
+        .into_iter()
+        .filter_map(|path| record_path(path))
+        .collect()
 }
 
 /// Reads the state. A missing, unreadable or broken file gives the defaults and
@@ -156,6 +174,12 @@ impl PanelRecord {
         nearest_existing_directory(Path::new(self.path.as_deref()?))
     }
 
+    /// The saved Back and Forward stacks, capped again.
+    pub fn history(&self) -> PanelHistory {
+        let paths = |saved: &[String]| saved.iter().map(PathBuf::from).collect();
+        PanelHistory::restored(paths(&self.back), paths(&self.forward))
+    }
+
     pub fn sort_key(&self) -> SortKey {
         SortKey {
             column: self.sort,
@@ -188,7 +212,10 @@ mod tests {
                 path: record_path(folder),
                 sort: SortColumn::Size,
                 descending: true,
+                back: vec!["/a".to_string(), "/b".to_string()],
+                forward: vec!["/c".to_string()],
             },
+            favourites: vec!["/fav/one".to_string(), "/fav/two".to_string()],
             right: PanelRecord::default(),
         }
     }

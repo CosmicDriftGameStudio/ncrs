@@ -88,7 +88,7 @@ use crate::ui::settings as settings_ui;
 use crate::ui::theme_fetch as theme_fetch_ui;
 use crate::ui::titlebar;
 use crate::ui::transfer as transfer_ui;
-use crate::ui::volumes as volumes_view;
+use crate::ui::volumes::{self as volumes_view, FavouriteRow};
 use crate::ui::{conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelProps, PanelState};
 use ncrs_index::{IncludeOutcome, KeyStore, KeyringKeyStore};
 use ncrs_intake::LocationMode;
@@ -293,6 +293,8 @@ fn resets_type_ahead(message: &Message) -> bool {
             | Message::ToggleTag
             | Message::OpenSelected
             | Message::GoUp
+            | Message::HistoryBack
+            | Message::HistoryForward
     )
 }
 
@@ -543,6 +545,13 @@ fn blocked_access_press() -> Option<Message> {
     None
 }
 
+/// Which way Alt+Left / Alt+Right walks a panel's history.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HistoryDirection {
+    Back,
+    Forward,
+}
+
 /// The open drive menu. The list is read when the menu opens, so a drive
 /// plugged in a moment ago is there and one removed since is gone.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -550,7 +559,10 @@ struct VolumeMenu {
     /// The panel that changes drive.
     side: PanelSide,
     volumes: Vec<fs::Volume>,
-    /// The highlighted row, the one Enter goes to.
+    /// Listed below the drives; `present` is read when the menu opens.
+    favourites: Vec<FavouriteRow>,
+    /// The highlighted row, the one Enter goes to. Counts the drives first,
+    /// then the favourites.
     selected: usize,
 }
 
@@ -567,13 +579,37 @@ impl VolumeMenu {
         Self {
             side,
             volumes,
+            favourites: Vec::new(),
             selected,
         }
     }
 
+    fn with_favourites(mut self, favourites: Vec<FavouriteRow>) -> Self {
+        self.favourites = favourites;
+        self
+    }
+
+    /// Drives and favourites together: what `selected` runs over.
+    fn row_count(&self) -> usize {
+        self.volumes.len() + self.favourites.len()
+    }
+
+    fn last_row(&self) -> usize {
+        self.row_count().saturating_sub(1)
+    }
+
     fn move_by(&mut self, delta: isize) {
-        let last = self.volumes.len().saturating_sub(1);
-        self.selected = self.selected.saturating_add_signed(delta).min(last);
+        self.selected = self
+            .selected
+            .saturating_add_signed(delta)
+            .min(self.last_row());
+    }
+
+    /// The index among the favourites when the highlight is on one.
+    fn selected_favourite(&self) -> Option<usize> {
+        self.selected
+            .checked_sub(self.volumes.len())
+            .filter(|index| *index < self.favourites.len())
     }
 }
 
@@ -716,6 +752,8 @@ pub struct App {
     key_state: OnceLock<Arc<KeyStateCell>>,
     /// The drive menu, while it is up.
     volume_menu: Option<VolumeMenu>,
+    /// Folders the user bookmarked, in the order they were added.
+    favourites: Vec<PathBuf>,
     /// The context menu, while it is up.
     context_menu: Option<ContextMenu>,
     /// The fixes for an inquiry (Cmd+.); at most one of it and the context menu.
@@ -1268,6 +1306,7 @@ fn keys_without_prompt(
             Key::Named(Named::ArrowDown) => Some(Message::VolumeMenuMove(1)),
             Key::Named(Named::Home) => Some(Message::VolumeMenuFirst),
             Key::Named(Named::End) => Some(Message::VolumeMenuLast),
+            Key::Named(Named::Delete | Named::Backspace) => Some(Message::VolumeMenuRemove),
             _ => None,
         };
     }
@@ -2027,9 +2066,9 @@ fn user_key_store() -> KeyringKeyStore {
 }
 
 impl App {
-    /// Initial state plus tasks that load both panels.
-    /// Left panel starts in the working directory, right in `$HOME`, so the
-    /// two panels are not the same directory on launch.
+    /// Initial state plus tasks that load both panels. The panels open where
+    /// `saved` left them; without a saved folder the left panel starts in the
+    /// working directory and the right in `$HOME`.
     pub fn new(environment: Environment, saved: SessionState) -> (Self, Task<Message>) {
         let (app, loading) = Self::restored(environment, saved);
         (app, then_install_native_menu(loading))
@@ -2287,6 +2326,7 @@ impl App {
             progress_tx: None,
             key_state: OnceLock::new(),
             volume_menu: None,
+            favourites: Vec::new(),
             context_menu: None,
             quick_fix: None,
             quick_fix_generation: 0,
@@ -2692,10 +2732,19 @@ impl App {
             }
             Message::VolumeMenuLast => {
                 if let Some(menu) = self.volume_menu.as_mut() {
-                    menu.selected = menu.volumes.len().saturating_sub(1);
+                    menu.selected = menu.last_row();
                 }
                 Task::none()
             }
+            Message::VolumeMenuRemove => {
+                self.remove_highlighted_favourite();
+                Task::none()
+            }
+            Message::HistoryBack => self.step_history(HistoryDirection::Back),
+            Message::HistoryForward => self.step_history(HistoryDirection::Forward),
+            Message::AddFavourite => self.add_favourite(),
+            Message::RemoveFavourite => self.remove_favourite(),
+            Message::OpenFavourites => self.open_favourites(),
             Message::VolumeMenuActivate => self.go_to_selected_volume(),
             Message::VolumeMenuClick(index) => {
                 if let Some(menu) = self.volume_menu.as_mut() {
@@ -2842,39 +2891,7 @@ impl App {
                 prompt: kind,
                 request_id,
                 result,
-            } => {
-                if request_id != self.prompt_request_id {
-                    // Dismissed or retried while the operation ran.
-                    return Task::none();
-                }
-                // The queued reload runs here, after the create has reported —
-                // never beside it. On success it selects the new entry; on
-                // failure it still re-reads, because the name may belong to
-                // something else that appeared meanwhile.
-                let created = self
-                    .pending_reload
-                    .as_ref()
-                    .map(|pending| self.panel(pending.side).path.join(&pending.name));
-                let reload = self.pending_reload.take().map(|pending| {
-                    let path = self.panel(pending.side).path.clone();
-                    self.load(pending.side, path, Some(pending.name))
-                });
-
-                match result {
-                    Ok(()) => {
-                        self.prompt = None;
-                        self.prompt_side = None;
-                        if let (PromptKind::CreateFile, Some(path)) = (kind, created) {
-                            self.launch_external(fs::OpenKind::Edit, path, None);
-                        }
-                    }
-                    Err(err) => {
-                        self.set_prompt_busy(false);
-                        self.set_prompt_error_text(&self.prompt_error(&err));
-                    }
-                }
-                reload.unwrap_or_else(Task::none)
-            }
+            } => self.finish_prompt(kind, request_id, result),
 
             Message::DirectoryLoaded {
                 side,
@@ -2887,6 +2904,7 @@ impl App {
             } => {
                 let panel = self.panel_mut(side);
                 if panel.request_id == request_id {
+                    let previous = panel.path.clone();
                     panel.apply_sorted_listing(
                         path,
                         entries,
@@ -2895,6 +2913,7 @@ impl App {
                         rows,
                         Some(sorted_by),
                     );
+                    panel.record_arrival(previous, request_id);
                     self.close_menu_of_reloaded(side);
                 }
                 Task::none()
@@ -3056,19 +3075,7 @@ impl App {
                 native_menu::install(self.lang, &self.keymap, self.menu_availability());
                 Task::none()
             }
-            Message::Quit => {
-                // Written here and now: the runtime stops right after, so no
-                // task would run.
-                if let Some(path) = &self.state_path {
-                    write_session_state(
-                        &self.session_writes,
-                        WriteOrder::FINAL,
-                        path,
-                        &self.session_state(),
-                    );
-                }
-                iced::exit()
-            }
+            Message::Quit => self.quit(),
             // Handled in `update`, which owns the timer's generation check.
             Message::NoticeExpired(_) | Message::SaveSessionState(_) => Task::none(),
         };
@@ -3922,6 +3929,7 @@ impl App {
             let menu_element = volumes_view::view(
                 menu.side,
                 &menu.volumes,
+                &menu.favourites,
                 menu.selected,
                 self.window_size,
                 self.lang,
@@ -5012,14 +5020,173 @@ impl App {
     /// Alt+F1 / Alt+F2: list the drives and highlight the one `side` is on.
     /// Does nothing while a prompt or dialog holds the keyboard.
     fn open_volume_menu(&mut self, side: PanelSide) {
+        self.open_volume_menu_on(side, false);
+    }
+
+    /// The favourites are listed below the drives, so the menu is worth
+    /// opening with only those. `on_favourites` puts the highlight on the first.
+    fn open_volume_menu_on(&mut self, side: PanelSide, on_favourites: bool) {
         if self.overlay_is_open() {
             return;
         }
         let volumes = (self.list_volumes)();
-        if volumes.is_empty() {
+        let favourites: Vec<FavouriteRow> = self
+            .favourites
+            .iter()
+            .map(|path| FavouriteRow {
+                path: path.clone(),
+                present: path.is_dir(),
+            })
+            .collect();
+        if volumes.is_empty() && favourites.is_empty() {
             return;
         }
-        self.volume_menu = Some(VolumeMenu::new(side, volumes, &self.panel(side).path));
+        let mut menu =
+            VolumeMenu::new(side, volumes, &self.panel(side).path).with_favourites(favourites);
+        if on_favourites {
+            menu.selected = menu.volumes.len();
+        }
+        self.volume_menu = Some(menu);
+    }
+
+    /// The create of the name prompt has reported: close the prompt or show
+    /// why it failed, and reload the folder.
+    fn finish_prompt(
+        &mut self,
+        kind: PromptKind,
+        request_id: u64,
+        result: Result<(), fs::CreateDirError>,
+    ) -> Task<Message> {
+        if request_id != self.prompt_request_id {
+            // Dismissed or retried while the operation ran.
+            return Task::none();
+        }
+        // The queued reload runs here, after the create has reported —
+        // never beside it. On success it selects the new entry; on
+        // failure it still re-reads, because the name may belong to
+        // something else that appeared meanwhile.
+        let created = self
+            .pending_reload
+            .as_ref()
+            .map(|pending| self.panel(pending.side).path.join(&pending.name));
+        let reload = self.pending_reload.take().map(|pending| {
+            let path = self.panel(pending.side).path.clone();
+            self.load(pending.side, path, Some(pending.name))
+        });
+
+        match result {
+            Ok(()) => {
+                self.prompt = None;
+                self.prompt_side = None;
+                if let (PromptKind::CreateFile, Some(path)) = (kind, created) {
+                    self.launch_external(fs::OpenKind::Edit, path, None);
+                }
+            }
+            Err(err) => {
+                self.set_prompt_busy(false);
+                self.set_prompt_error_text(&self.prompt_error(&err));
+            }
+        }
+        reload.unwrap_or_else(Task::none)
+    }
+
+    /// Delete or Backspace in the drive menu. A drive row ignores it.
+    fn remove_highlighted_favourite(&mut self) {
+        let Some(menu) = self.volume_menu.as_mut() else {
+            return;
+        };
+        if let Some(index) = menu.selected_favourite() {
+            let removed = menu.favourites.remove(index);
+            self.favourites.retain(|path| *path != removed.path);
+            menu.selected = menu.selected.min(menu.last_row());
+        }
+        // Without drives, the last favourite leaves nothing to pick.
+        if menu.row_count() == 0 {
+            self.volume_menu = None;
+        }
+    }
+
+    /// Writes the session state here and now, then ends the app: the runtime
+    /// stops right after, so no task would run.
+    fn quit(&self) -> Task<Message> {
+        if let Some(path) = &self.state_path {
+            write_session_state(
+                &self.session_writes,
+                WriteOrder::FINAL,
+                path,
+                &self.session_state(),
+            );
+        }
+        iced::exit()
+    }
+
+    fn open_favourites(&mut self) -> Task<Message> {
+        if self.favourites.is_empty() {
+            let text = self.lang.text(Msg::StatusNoFavourites).to_owned();
+            return self.show_notice(text);
+        }
+        self.open_volume_menu_on(self.active_panel, true);
+        Task::none()
+    }
+
+    fn favourite_notice(&mut self, msg: Msg, path: &Path) -> Task<Message> {
+        let text = fill_template(
+            self.lang.text(msg),
+            &[("{path}", &path.display().to_string())],
+        );
+        self.show_notice(text)
+    }
+
+    fn add_favourite(&mut self) -> Task<Message> {
+        let path = self.active_panel().path.clone();
+        let msg = if self.favourites.contains(&path) {
+            Msg::StatusFavouriteAlready
+        } else {
+            self.favourites.push(path.clone());
+            Msg::StatusFavouriteAdded
+        };
+        self.favourite_notice(msg, &path)
+    }
+
+    fn remove_favourite(&mut self) -> Task<Message> {
+        let path = self.active_panel().path.clone();
+        let before = self.favourites.len();
+        self.favourites.retain(|favourite| *favourite != path);
+        let msg = if self.favourites.len() < before {
+            Msg::StatusFavouriteRemoved
+        } else {
+            Msg::StatusFavouriteNotOne
+        };
+        self.favourite_notice(msg, &path)
+    }
+
+    /// Alt+Left / Alt+Right on the active panel. A folder that is gone since
+    /// opens its nearest existing parent, and the arrival does not count as a
+    /// visit, so Forward survives it.
+    fn step_history(&mut self, direction: HistoryDirection) -> Task<Message> {
+        let side = self.active_panel;
+        let current = self.panel(side).path.clone();
+        let history = &mut self.panel_mut(side).history;
+        let stepped = match direction {
+            HistoryDirection::Back => history.step_back(current.clone()),
+            HistoryDirection::Forward => history.step_forward(current.clone()),
+        };
+        let Some(target) = stepped else {
+            return Task::none();
+        };
+        let resolved = session_state::nearest_existing_directory(&target).unwrap_or(target);
+        // Going up to a parent puts the cursor on the folder just left.
+        let select = current
+            .strip_prefix(&resolved)
+            .ok()
+            .and_then(|below| below.components().next())
+            .map(|first| first.as_os_str().to_string_lossy().into_owned());
+        self.job_error = None;
+        self.notice = None;
+        let task = self.load(side, resolved, select);
+        let panel = self.panel_mut(side);
+        panel.history_step_request = Some(panel.request_id);
+        task
     }
 
     /// A click on the "access blocked" error: the Full Disk Access page of
@@ -5044,13 +5211,32 @@ impl App {
         let Some(menu) = self.volume_menu.take() else {
             return Task::none();
         };
-        let Some(volume) = menu.volumes.get(menu.selected) else {
-            return Task::none();
+        let target = match menu.volumes.get(menu.selected) {
+            Some(volume) => volume.path.clone(),
+            None => {
+                let Some(favourite) = menu
+                    .selected
+                    .checked_sub(menu.volumes.len())
+                    .and_then(|index| menu.favourites.get(index))
+                else {
+                    return Task::none();
+                };
+                if !favourite.present {
+                    let text = fill_template(
+                        self.lang.text(Msg::ErrorFavouriteGone),
+                        &[("{path}", &favourite.path.display().to_string())],
+                    );
+                    self.notice = None;
+                    self.set_status_error(&text);
+                    return Task::none();
+                }
+                favourite.path.clone()
+            }
         };
         self.job_error = None;
         self.notice = None;
         self.active_panel = menu.side;
-        self.load(menu.side, volume.path.clone(), None)
+        self.load(menu.side, target, None)
     }
 
     /// Toggles the tag on the cursor row and moves by `delta`, as NC does. The
@@ -5922,6 +6108,11 @@ impl App {
     fn apply_session_state(&mut self, saved: &SessionState) {
         self.left_panel.sort = saved.left.sort_key();
         self.right_panel.sort = saved.right.sort_key();
+        self.left_panel.history = saved.left.history();
+        self.right_panel.history = saved.right.history();
+        // Not checked for existence: a favourite on a drive that is not
+        // plugged in now is still wanted when it is.
+        self.favourites = saved.favourites.iter().map(PathBuf::from).collect();
         if let Some(side) = saved.active {
             self.active_panel = side;
         }
@@ -5938,6 +6129,8 @@ impl App {
             path: session_state::record_path(&panel.path),
             sort: panel.sort.column,
             descending: panel.sort.descending,
+            back: session_state::record_paths(panel.history.back()),
+            forward: session_state::record_paths(panel.history.forward()),
         };
         let current = WindowSize {
             width: self.window_size.width,
@@ -5952,6 +6145,7 @@ impl App {
         SessionState {
             version: session_state::STATE_VERSION,
             active: Some(self.active_panel),
+            favourites: session_state::record_paths(&self.favourites),
             window,
             left: record(&self.left_panel),
             right: record(&self.right_panel),
@@ -9361,6 +9555,7 @@ impl App {
             progress_tx: None,
             key_state: OnceLock::new(),
             volume_menu: None,
+            favourites: Vec::new(),
             context_menu: None,
             quick_fix: None,
             quick_fix_generation: 0,
@@ -10075,6 +10270,28 @@ impl App {
     pub fn open_volume_menu_for_test(&mut self, side: PanelSide, volumes: Vec<fs::Volume>) {
         let current = self.panel(side).path.clone();
         self.volume_menu = Some(VolumeMenu::new(side, volumes, &current));
+    }
+
+    /// `open_volume_menu_for_test` with favourite rows, each with the
+    /// `present` flag the menu would have read from the disk.
+    pub fn open_volume_menu_with_favourites_for_test(
+        &mut self,
+        side: PanelSide,
+        volumes: Vec<fs::Volume>,
+        favourites: &[(&str, bool)],
+        selected: usize,
+    ) {
+        let current = self.panel(side).path.clone();
+        let rows = favourites
+            .iter()
+            .map(|(path, present)| FavouriteRow {
+                path: PathBuf::from(path),
+                present: *present,
+            })
+            .collect();
+        let mut menu = VolumeMenu::new(side, volumes, &current).with_favourites(rows);
+        menu.selected = selected;
+        self.volume_menu = Some(menu);
     }
 
     /// Whether the context menu is up.
@@ -11746,7 +11963,9 @@ mod volume_menu_tests {
         assert_eq!(key(Named::End), Some(Message::VolumeMenuLast));
         assert_eq!(key(Named::Enter), Some(Message::VolumeMenuActivate));
         assert_eq!(key(Named::Escape), Some(Message::VolumeMenuClose));
-        for ignored in [Named::F5, Named::F8, Named::Tab, Named::Backspace] {
+        assert_eq!(key(Named::Delete), Some(Message::VolumeMenuRemove));
+        assert_eq!(key(Named::Backspace), Some(Message::VolumeMenuRemove));
+        for ignored in [Named::F5, Named::F8, Named::Tab] {
             assert_eq!(key(ignored), None, "{ignored:?} reached the panels");
         }
     }
@@ -16574,12 +16793,15 @@ mod session_state_tests {
                 path: session_state::record_path(left),
                 sort: SortColumn::Size,
                 descending: true,
+                ..PanelRecord::default()
             },
             right: PanelRecord {
                 path: session_state::record_path(right),
                 sort: SortColumn::Modified,
                 descending: false,
+                ..PanelRecord::default()
             },
+            ..SessionState::default()
         }
     }
 
@@ -16714,5 +16936,353 @@ mod session_state_tests {
 
         assert_eq!(app.session_save_generation, 0);
         assert!(app.due_session_state(0).is_none());
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod favourites_and_history_tests {
+    use super::*;
+    use crate::ui::panel_history::PanelHistory;
+    use iced_test::futures::futures::StreamExt as _;
+    use iced_test::runtime::{task, Action};
+
+    /// Delivers `message` and everything the tasks it starts report, until
+    /// nothing is left. Only for apps without a state path: the debounce timer
+    /// of a scheduled write would be waited for.
+    async fn settle(app: &mut App, message: Message) {
+        let mut queue = vec![message];
+        while let Some(next) = queue.pop() {
+            let Some(mut stream) = task::into_stream(app.update(next)) else {
+                continue;
+            };
+            while let Some(action) = stream.next().await {
+                if let Action::Output(reported) = action {
+                    queue.push(reported);
+                }
+            }
+        }
+    }
+
+    /// The panel opens `path`, as a typed path or a double click does.
+    async fn go(app: &mut App, path: &Path) {
+        let mut stream = task::into_stream(app.load(PanelSide::Left, path.to_path_buf(), None))
+            .expect("a load task");
+        let mut reports = Vec::new();
+        while let Some(action) = stream.next().await {
+            if let Action::Output(reported) = action {
+                reports.push(reported);
+            }
+        }
+        for reported in reports {
+            settle(app, reported).await;
+        }
+    }
+
+    fn started_in(base: &Path) -> App {
+        let saved = SessionState {
+            left: PanelRecord {
+                path: session_state::record_path(base),
+                ..PanelRecord::default()
+            },
+            ..SessionState::default()
+        };
+        App::restored(Environment::isolated(), saved).0
+    }
+
+    fn cursor_name(app: &App) -> String {
+        app.left_panel
+            .selected_entry()
+            .unwrap()
+            .name
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    fn tree() -> tempfile::TempDir {
+        let scratch = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(scratch.path().join("a").join("b")).unwrap();
+        std::fs::create_dir(scratch.path().join("c")).unwrap();
+        scratch
+    }
+
+    #[tokio::test]
+    async fn back_returns_to_the_folder_with_the_cursor_on_where_it_came_from() {
+        let scratch = tree();
+        let base = scratch.path();
+        let mut app = started_in(base);
+        go(&mut app, base).await;
+        go(&mut app, &base.join("a")).await;
+        go(&mut app, &base.join("a").join("b")).await;
+
+        settle(&mut app, Message::HistoryBack).await;
+        assert_eq!(app.left_panel.path, base.join("a"));
+        assert_eq!(cursor_name(&app), "b");
+
+        settle(&mut app, Message::HistoryBack).await;
+        assert_eq!(app.left_panel.path, base);
+        assert_eq!(cursor_name(&app), "a");
+
+        settle(&mut app, Message::HistoryForward).await;
+        assert_eq!(app.left_panel.path, base.join("a"));
+        settle(&mut app, Message::HistoryForward).await;
+        assert_eq!(app.left_panel.path, base.join("a").join("b"));
+    }
+
+    #[tokio::test]
+    async fn a_reload_of_the_same_folder_records_nothing() {
+        let scratch = tree();
+        let mut app = started_in(scratch.path());
+        go(&mut app, scratch.path()).await;
+        go(&mut app, scratch.path()).await;
+        assert!(app.left_panel.history.back().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_new_visit_after_back_clears_forward() {
+        let scratch = tree();
+        let base = scratch.path();
+        let mut app = started_in(base);
+        go(&mut app, &base.join("a")).await;
+        settle(&mut app, Message::HistoryBack).await;
+        assert_eq!(app.left_panel.history.forward(), [base.join("a")]);
+
+        go(&mut app, &base.join("c")).await;
+
+        assert!(app.left_panel.history.forward().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_step_into_a_deleted_folder_lands_on_its_nearest_existing_parent() {
+        let scratch = tree();
+        let base = scratch.path();
+        let mut app = started_in(base);
+        go(&mut app, &base.join("a")).await;
+        go(&mut app, &base.join("a").join("b")).await;
+        std::fs::remove_dir_all(base.join("a")).unwrap();
+
+        settle(&mut app, Message::HistoryBack).await;
+
+        assert_eq!(app.left_panel.path, base);
+    }
+
+    #[test]
+    fn history_and_favourites_survive_a_restart() {
+        let scratch = tree();
+        let base = scratch.path();
+        let file = scratch.path().join("state.toml");
+        let mut app = started_in(base);
+        app.state_path = Some(file.clone());
+        app.left_panel.history = PanelHistory::restored(
+            vec![base.join("a"), base.join("c")],
+            vec![base.join("a").join("b")],
+        );
+        app.favourites = vec![base.join("c"), base.join("a")];
+
+        drop(app.update(Message::Quit));
+        let environment = Environment {
+            state_path: Some(file.clone()),
+            ..Environment::isolated()
+        };
+        let restored = App::restored(environment, session_state::load(&file)).0;
+
+        assert_eq!(restored.left_panel.history, app.left_panel.history);
+        assert_eq!(restored.favourites, app.favourites);
+    }
+
+    #[test]
+    fn adding_a_favourite_twice_keeps_one_and_says_so() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::AddFavourite));
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("/home/test/links added to favourites")
+        );
+        drop(app.update(Message::AddFavourite));
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("/home/test/links is already a favourite")
+        );
+        assert_eq!(app.favourites, [PathBuf::from("/home/test/links")]);
+    }
+
+    #[test]
+    fn removing_a_favourite_takes_the_active_folder_out() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::RemoveFavourite));
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("/home/test/links is not a favourite")
+        );
+        drop(app.update(Message::AddFavourite));
+        drop(app.update(Message::RemoveFavourite));
+        assert!(app.favourites.is_empty());
+        assert_eq!(
+            app.notice.as_deref(),
+            Some("/home/test/links removed from favourites")
+        );
+    }
+
+    fn two_drives() -> Vec<fs::Volume> {
+        ["one", "two"]
+            .iter()
+            .map(|name| fs::Volume {
+                name: (*name).to_string(),
+                path: PathBuf::from("/").join(name),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_favourites_action_needs_a_favourite_and_opens_on_the_first() {
+        let mut app = App::with_fixed_panels().with_volumes(two_drives);
+        drop(app.update(Message::OpenFavourites));
+        assert_eq!(app.notice.as_deref(), Some("No favourites yet"));
+        assert!(!app.volume_menu_is_open());
+
+        app.favourites = vec![PathBuf::from("/nowhere/at/all")];
+        drop(app.update(Message::OpenFavourites));
+        assert_eq!(app.volume_menu_selected(), Some(2));
+    }
+
+    #[tokio::test]
+    async fn a_click_on_a_favourite_row_opens_its_folder() {
+        let scratch = tree();
+        let favourite = scratch.path().join("c");
+        let mut app = started_in(scratch.path()).with_volumes(two_drives);
+        app.favourites = vec![favourite.clone()];
+        drop(app.update(Message::VolumeMenu(PanelSide::Left)));
+
+        settle(&mut app, Message::VolumeMenuClick(2)).await;
+
+        assert!(!app.volume_menu_is_open());
+        assert_eq!(app.left_panel.path, favourite);
+    }
+
+    #[test]
+    fn the_menu_opens_with_a_favourite_and_no_drives() {
+        let mut app = App::with_fixed_panels().with_volumes(Vec::new);
+        drop(app.update(Message::VolumeMenu(PanelSide::Left)));
+        assert!(!app.volume_menu_is_open());
+
+        app.favourites = vec![PathBuf::from("/nowhere/at/all")];
+        drop(app.update(Message::VolumeMenu(PanelSide::Left)));
+        assert!(app.volume_menu_is_open());
+    }
+
+    #[test]
+    fn a_missing_favourite_reports_and_stays_in_the_list() {
+        let mut app = App::with_fixed_panels().with_volumes(two_drives);
+        app.favourites = vec![PathBuf::from("/nowhere/at/all")];
+        drop(app.update(Message::OpenFavourites));
+
+        drop(app.update(Message::VolumeMenuActivate));
+
+        assert!(!app.volume_menu_is_open());
+        assert_eq!(
+            app.job_error.as_deref(),
+            Some("/nowhere/at/all no longer exists")
+        );
+        assert_eq!(app.favourites, [PathBuf::from("/nowhere/at/all")]);
+    }
+
+    #[test]
+    fn delete_removes_a_favourite_row_and_ignores_a_drive_row() {
+        let mut app = App::with_fixed_panels().with_volumes(two_drives);
+        app.favourites = vec![PathBuf::from("/x/one"), PathBuf::from("/x/two")];
+        drop(app.update(Message::VolumeMenu(PanelSide::Left)));
+        drop(app.update(Message::VolumeMenuFirst));
+
+        drop(app.update(Message::VolumeMenuRemove));
+        assert_eq!(app.favourites.len(), 2, "a drive row is not removable");
+
+        drop(app.update(Message::VolumeMenuLast));
+        drop(app.update(Message::VolumeMenuRemove));
+        assert_eq!(app.favourites, [PathBuf::from("/x/one")]);
+        assert!(app.volume_menu_is_open(), "the menu stays open");
+        assert_eq!(
+            app.volume_menu_selected(),
+            Some(2),
+            "the highlight is clamped"
+        );
+    }
+
+    #[test]
+    fn removing_the_last_favourite_without_drives_closes_the_menu() {
+        let mut app = App::with_fixed_panels().with_volumes(Vec::new);
+        app.favourites = vec![PathBuf::from("/x/one")];
+        drop(app.update(Message::VolumeMenu(PanelSide::Left)));
+
+        drop(app.update(Message::VolumeMenuRemove));
+
+        assert!(app.favourites.is_empty());
+        assert!(!app.volume_menu_is_open());
+    }
+
+    #[test]
+    fn delete_and_backspace_in_the_menu_remove_and_alt_left_is_the_panels() {
+        let in_menu = PromptKeyState {
+            volume_menu: true,
+            ..PromptKeyState::default()
+        };
+        for key in [Named::Delete, Named::Backspace] {
+            assert_eq!(
+                route_key(&in_menu, Key::Named(key), Modifiers::default()),
+                Some(Message::VolumeMenuRemove)
+            );
+        }
+        let panels = PromptKeyState::default();
+        assert_eq!(
+            route_key(&panels, Key::Named(Named::ArrowLeft), Modifiers::ALT),
+            Some(Message::HistoryBack)
+        );
+        assert_eq!(
+            route_key(&panels, Key::Named(Named::ArrowRight), Modifiers::ALT),
+            Some(Message::HistoryForward)
+        );
+    }
+
+    /// The text fields have the arrows with Alt (a word jump): the keys must
+    /// not also walk the history behind them.
+    #[test]
+    fn alt_left_does_not_reach_the_panel_while_a_text_field_has_the_keyboard() {
+        let fields = [
+            PromptKeyState {
+                command_line: true,
+                ..PromptKeyState::default()
+            },
+            PromptKeyState {
+                path_editing: true,
+                ..PromptKeyState::default()
+            },
+            PromptKeyState {
+                open: true,
+                ..PromptKeyState::default()
+            },
+            PromptKeyState {
+                quick_open: true,
+                ..PromptKeyState::default()
+            },
+            PromptKeyState {
+                command_palette: true,
+                ..PromptKeyState::default()
+            },
+            PromptKeyState {
+                search: true,
+                ..PromptKeyState::default()
+            },
+        ];
+        for state in fields {
+            for key in [Named::ArrowLeft, Named::ArrowRight] {
+                let routed = route_key(&state, Key::Named(key), Modifiers::ALT);
+                assert_ne!(routed, Some(Message::HistoryBack));
+                assert_ne!(routed, Some(Message::HistoryForward));
+            }
+        }
     }
 }

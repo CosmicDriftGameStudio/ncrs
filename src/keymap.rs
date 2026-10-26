@@ -98,6 +98,11 @@ key_actions! {
     NewFile => "new_file",
     DriveMenuLeft => "drive_menu_left",
     DriveMenuRight => "drive_menu_right",
+    HistoryBack => "history_back",
+    HistoryForward => "history_forward",
+    AddFavourite => "add_favourite",
+    RemoveFavourite => "remove_favourite",
+    Favourites => "favourites",
     SortByName => "sort_by_name",
     SortByModified => "sort_by_modified",
     SortBySize => "sort_by_size",
@@ -226,6 +231,11 @@ impl KeyAction {
             | Self::DownloadAiModel
             | Self::DriveMenuLeft
             | Self::DriveMenuRight
+            | Self::HistoryBack
+            | Self::HistoryForward
+            | Self::AddFavourite
+            | Self::RemoveFavourite
+            | Self::Favourites
             | Self::SortByName
             | Self::SortByModified
             | Self::SortBySize
@@ -294,6 +304,11 @@ impl KeyAction {
             Self::NewFile => Message::CreateFilePrompt,
             Self::DriveMenuLeft => Message::VolumeMenu(PanelSide::Left),
             Self::DriveMenuRight => Message::VolumeMenu(PanelSide::Right),
+            Self::HistoryBack => Message::HistoryBack,
+            Self::HistoryForward => Message::HistoryForward,
+            Self::AddFavourite => Message::AddFavourite,
+            Self::RemoveFavourite => Message::RemoveFavourite,
+            Self::Favourites => Message::OpenFavourites,
             Self::SortByName => Message::SortActive(SortColumn::Name),
             Self::SortByModified => Message::SortActive(SortColumn::Modified),
             Self::SortBySize => Message::SortActive(SortColumn::Size),
@@ -372,7 +387,7 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
     use Key::{Character, Named as KeyNamed};
     use KeyAction as A;
 
-    vec![
+    let mut bindings = vec![
         // --- Backspace, Enter, Tab and Cmd+Q are not on the function key bar ---
         // Not a bare Q: that letter belongs to type-ahead.
         (
@@ -448,6 +463,21 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
         (
             A::DriveMenuRight,
             Binding::with_modifiers(KeyNamed(F2), Modifiers::ALT),
+        ),
+        // Alt+Left and Alt+Right walk the panel's folders back and forward, as
+        // in a browser.
+        (
+            A::HistoryBack,
+            Binding::with_modifiers(KeyNamed(ArrowLeft), Modifiers::ALT),
+        ),
+        (
+            A::HistoryForward,
+            Binding::with_modifiers(KeyNamed(ArrowRight), Modifiers::ALT),
+        ),
+        // Cmd+D (Ctrl+D elsewhere) bookmarks the folder, as in a browser.
+        (
+            A::AddFavourite,
+            Binding::with_modifiers(Character("d".into()), Modifiers::COMMAND),
         ),
         (A::SortByName, sort_binding(SortColumn::Name)),
         (A::SortByModified, sort_binding(SortColumn::Modified)),
@@ -566,7 +596,19 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
             A::SearchRegex,
             Binding::with_modifiers(Character("r".into()), Modifiers::ALT),
         ),
-    ]
+    ];
+    // Safari's and Finder's back and forward; elsewhere Alt+arrows are enough.
+    if cfg!(target_os = "macos") {
+        bindings.push((
+            A::HistoryBack,
+            Binding::with_modifiers(Character("[".into()), Modifiers::COMMAND),
+        ));
+        bindings.push((
+            A::HistoryForward,
+            Binding::with_modifiers(Character("]".into()), Modifiers::COMMAND),
+        ));
+    }
+    bindings
 }
 
 /// Ctrl+F3, Ctrl+F5 and Ctrl+F6 as in Norton Commander. A Mac takes Ctrl+F-keys
@@ -1381,7 +1423,9 @@ mod tests {
     #[test]
     fn every_action_has_a_default_key_and_no_key_is_twice_bound() {
         // Reached through the command palette (or a menu) only.
-        const WITHOUT_KEY: [KeyAction; 9] = [
+        const WITHOUT_KEY: [KeyAction; 11] = [
+            KeyAction::RemoveFavourite,
+            KeyAction::Favourites,
             KeyAction::FetchTheme,
             KeyAction::DownloadOcrModels,
             KeyAction::DownloadAiModel,

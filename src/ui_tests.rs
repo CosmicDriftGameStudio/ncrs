@@ -882,6 +882,40 @@ mod volume_overlay {
         assert!(matches, "the drive menu does not match volumes_de.png");
     }
 
+    fn app_with_favourites() -> App {
+        let mut app = App::with_fixed_panels();
+        app.open_volume_menu_with_favourites_for_test(
+            PanelSide::Right,
+            vec![volume("Macintosh HD", "/"), volume("test", "/home/test")],
+            &[
+                ("/home/test/Documents", true),
+                ("/Volumes/Gone/Photos", false),
+            ],
+            2,
+        );
+        app
+    }
+
+    #[test]
+    fn the_menu_lists_favourites_below_the_drives() {
+        let matches = simulator(&app_with_favourites())
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/volumes_with_favourites.png")
+            .expect("snapshot comparison");
+        assert!(matches, "does not match volumes_with_favourites.png");
+    }
+
+    #[test]
+    fn the_favourites_match_their_german_snapshot() {
+        let matches = simulator(&app_with_favourites().in_language(Language::German))
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/volumes_with_favourites_de.png")
+            .expect("snapshot comparison");
+        assert!(matches, "does not match volumes_with_favourites_de.png");
+    }
+
     /// A menu that is not drawn would leave the plain panels, compared with the
     /// committed two-panel reference.
     #[test]

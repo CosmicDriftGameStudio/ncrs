@@ -1,12 +1,15 @@
 //! The drive menu for Alt+F1 and Alt+F2: one row per place, the highlighted one
-//! is where Enter goes.
+//! is where Enter goes. Below the drives come the favourite folders.
+
+use std::path::PathBuf;
 
 use iced::widget::container;
 use iced::widget::{button, column, text, Column, Row};
 use iced::{Element, Length, Size};
 
 use super::format;
-use super::frame::{self, DialogSize, Frame, KeyHints};
+use super::frame::{self, DialogSize, Frame, KeyHints, PageHint};
+use super::kit;
 use super::theme::{self, font_size, spacing};
 use crate::fs::Volume;
 use crate::i18n::{Language, Msg};
@@ -25,15 +28,60 @@ const VISIBLE_ROWS: usize = 12;
 const NAME_SHARE: f32 = 0.4;
 const PATH_SHARE: f32 = 0.6;
 
-/// Index of the first row shown when `selected` is highlighted: the window only
-/// moves once the highlight would leave it.
-pub fn first_visible(selected: usize) -> usize {
-    (selected + 1).saturating_sub(VISIBLE_ROWS)
+/// A favourite folder as the menu lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FavouriteRow {
+    pub path: PathBuf,
+    /// Whether the folder existed when the menu opened. A missing one stays in
+    /// the list, dimmed.
+    pub present: bool,
+}
+
+impl FavouriteRow {
+    /// The last component; a root has none and shows the whole path.
+    fn name(&self) -> String {
+        self.path.file_name().map_or_else(
+            || self.path.to_string_lossy().into_owned(),
+            |name| name.to_string_lossy().into_owned(),
+        )
+    }
+}
+
+/// The footer names the key that removes a favourite only while one is
+/// highlighted.
+const FAVOURITE_HINTS: &[PageHint] = &[PageHint {
+    key: "Del",
+    verb: Msg::VolumesHintRemoveFavourite,
+}];
+const NO_HINTS: &[PageHint] = &[];
+
+/// Index of the first line shown when the line at `position` is highlighted:
+/// the window only moves once the highlight would leave it. Lines are the
+/// drives, then the heading of the favourites, then the favourites.
+pub fn first_visible(position: usize) -> usize {
+    (position + 1).saturating_sub(VISIBLE_ROWS)
+}
+
+/// The line `selected` is drawn on: the heading of the favourites sits between
+/// the last drive and the first favourite.
+fn line_of(selected: usize, drive_count: usize) -> usize {
+    if selected >= drive_count {
+        selected + 1
+    } else {
+        selected
+    }
+}
+
+enum Line<'a> {
+    Drive(usize, &'a Volume),
+    Heading,
+    Favourite(usize, &'a FavouriteRow),
 }
 
 pub fn view<'a>(
     side: PanelSide,
     volumes: &'a [Volume],
+    favourites: &'a [FavouriteRow],
     selected: usize,
     window: Size,
     lang: Language,
@@ -43,30 +91,74 @@ pub fn view<'a>(
         PanelSide::Left => Msg::VolumesSubtitleLeft,
         PanelSide::Right => Msg::VolumesSubtitleRight,
     };
-    let first = first_visible(selected);
+    let mut lines: Vec<Line<'a>> = volumes
+        .iter()
+        .enumerate()
+        .map(|(index, volume)| Line::Drive(index, volume))
+        .collect();
+    if !favourites.is_empty() {
+        lines.push(Line::Heading);
+        lines.extend(
+            favourites
+                .iter()
+                .enumerate()
+                .map(|(index, row)| Line::Favourite(volumes.len() + index, row)),
+        );
+    }
+    let first = first_visible(line_of(selected, volumes.len()));
     let row_width = frame::content_width(SIZE, window) - 2.0 * spacing::CELL_PADDING_X;
     let name_chars = frame::chars_that_fit(row_width * NAME_SHARE);
     let path_chars = frame::chars_that_fit(row_width * PATH_SHARE);
-    let rows = volumes
-        .iter()
-        .enumerate()
+    let missing = lang.text(Msg::VolumesMissing);
+    let rows = lines
+        .into_iter()
         .skip(first)
         .take(VISIBLE_ROWS)
-        .map(|(index, volume)| {
+        .map(|line| {
+            let (index, name, path, present) = match line {
+                Line::Heading => {
+                    return column![
+                        kit::divider(palette),
+                        text(lang.text(Msg::VolumesFavouritesHeading))
+                            .size(font_size::BODY)
+                            .color(palette.dim_text),
+                    ]
+                    .padding([0.0, spacing::CELL_PADDING_X])
+                    .spacing(spacing::LINE_GAP)
+                    .into();
+                }
+                Line::Drive(index, volume) => (
+                    index,
+                    volume.name.clone(),
+                    volume.path.to_string_lossy().into_owned(),
+                    true,
+                ),
+                Line::Favourite(index, row) => (
+                    index,
+                    row.name(),
+                    row.path.to_string_lossy().into_owned(),
+                    row.present,
+                ),
+            };
             let is_selected = index == selected;
-            let name_color = if is_selected {
-                palette.cursor_text
-            } else {
-                palette.directory
+            let name_color = match (is_selected, present) {
+                (true, _) => palette.cursor_text,
+                (false, true) => palette.directory,
+                (false, false) => palette.dim_text,
             };
             let path_color = if is_selected {
                 palette.cursor_text
             } else {
                 palette.dim_text
             };
+            let shown_name = if present {
+                format::ellipsize_end(&name, name_chars)
+            } else {
+                format!("{} ({missing})", format::ellipsize_end(&name, name_chars))
+            };
             let content = Row::with_children([
                 container(
-                    text(format::ellipsize_end(volume.name.as_str(), name_chars))
+                    text(shown_name)
                         .size(font_size::BODY)
                         .color(name_color)
                         .wrapping(text::Wrapping::None),
@@ -75,13 +167,10 @@ pub fn view<'a>(
                 .clip(true)
                 .into(),
                 container(
-                    text(format::ellipsize_middle(
-                        &volume.path.to_string_lossy(),
-                        path_chars,
-                    ))
-                    .size(font_size::BODY)
-                    .color(path_color)
-                    .wrapping(text::Wrapping::None),
+                    text(format::ellipsize_middle(&path, path_chars))
+                        .size(font_size::BODY)
+                        .color(path_color)
+                        .wrapping(text::Wrapping::None),
                 )
                 .width(Length::FillPortion(3))
                 .clip(true)
@@ -95,6 +184,7 @@ pub fn view<'a>(
                 .into()
         });
 
+    let on_favourite = !favourites.is_empty() && selected >= volumes.len();
     Frame::new(
         lang.text(subtitle),
         column![Column::with_children(rows)],
@@ -107,5 +197,10 @@ pub fn view<'a>(
     .on_close(Message::VolumeMenuClose)
     // Enter goes to the highlighted row, which the content defines.
     .hints(KeyHints::default())
+    .page_hints(if on_favourite {
+        FAVOURITE_HINTS
+    } else {
+        NO_HINTS
+    })
     .into_element()
 }

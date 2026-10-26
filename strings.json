@@ -265,6 +265,12 @@
       "de": "„{name}“ existiert bereits"
     },
     {
+      "key": "error.favourite_gone",
+      "context": "Shown in the status bar when the user picks a favourite whose folder no longer exists. Takes the folder path. The favourite stays in the list.",
+      "en": "{path} no longer exists",
+      "de": "{path} existiert nicht mehr"
+    },
+    {
       "key": "error.parent_missing",
       "context": "Shown when the panel's own directory no longer exists: it was deleted, renamed or unmounted while the dialog was open. Tells the user the panel is out of date, not that they typed something wrong.",
       "en": "This folder no longer exists",
@@ -323,6 +329,36 @@
       "context": "Status bar confirmation after the user copied the full path of one file or folder to the clipboard. Past participle, short.",
       "en": "Path copied",
       "de": "Pfad kopiert"
+    },
+    {
+      "key": "status.favourite_added",
+      "context": "Status bar notice after the key action add_favourite added the active panel's folder to the favourites. Takes the folder path.",
+      "en": "{path} added to favourites",
+      "de": "{path} zu den Favoriten hinzugefügt"
+    },
+    {
+      "key": "status.favourite_already",
+      "context": "Status bar notice when add_favourite finds the active folder already among the favourites. Takes the folder path.",
+      "en": "{path} is already a favourite",
+      "de": "{path} ist schon ein Favorit"
+    },
+    {
+      "key": "status.favourite_removed",
+      "context": "Status bar notice after remove_favourite took the active panel's folder out of the favourites. Takes the folder path.",
+      "en": "{path} removed from favourites",
+      "de": "{path} aus den Favoriten entfernt"
+    },
+    {
+      "key": "status.favourite_not_one",
+      "context": "Status bar notice when remove_favourite is used on a folder that is not a favourite. Takes the folder path.",
+      "en": "{path} is not a favourite",
+      "de": "{path} ist kein Favorit"
+    },
+    {
+      "key": "status.no_favourites",
+      "context": "Status bar notice when the favourites list is asked for and there is none yet.",
+      "en": "No favourites yet",
+      "de": "Noch keine Favoriten"
     },
     {
       "key": "status.paths_copied",
@@ -581,6 +617,24 @@
       "context": "Line below the title of the drive menu opened with Alt+F2, which picks the place the right panel shows. Imperative; same meaning of 'drive' as in volumes.subtitle_left.",
       "en": "Choose drive (right)",
       "de": "Laufwerk wählen (rechts)"
+    },
+    {
+      "key": "volumes.favourites_heading",
+      "context": "Heading of the section of favourite folders below the drives in the drive menu (Alt+F1, Alt+F2). Plural noun, no punctuation.",
+      "en": "Favourites",
+      "de": "Favoriten"
+    },
+    {
+      "key": "volumes.missing",
+      "context": "Tag after a favourite in the drive menu whose folder no longer exists. One lowercase word.",
+      "en": "missing",
+      "de": "fehlt"
+    },
+    {
+      "key": "volumes.hint_remove_favourite",
+      "context": "Verb next to the Del key cap in the footer of the drive menu, shown while a favourite is highlighted: the key removes it from the list. Only the verb, the key cap is drawn separately.",
+      "en": "remove favourite",
+      "de": "Favorit entfernen"
     },
     {
       "key": "error.delete_failed",
@@ -1067,6 +1121,36 @@
       "context": "Entry of the command palette that runs the key action new_file. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
       "en": "New file",
       "de": "Neue Datei"
+    },
+    {
+      "key": "action.history_back",
+      "context": "Entry of the command palette that runs the key action history_back. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Back",
+      "de": "Zurück"
+    },
+    {
+      "key": "action.history_forward",
+      "context": "Entry of the command palette that runs the key action history_forward. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Forward",
+      "de": "Vorwärts"
+    },
+    {
+      "key": "action.add_favourite",
+      "context": "Entry of the command palette that runs the key action add_favourite. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Add folder to favourites",
+      "de": "Ordner zu Favoriten hinzufügen"
+    },
+    {
+      "key": "action.remove_favourite",
+      "context": "Entry of the command palette that runs the key action remove_favourite. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Remove folder from favourites",
+      "de": "Ordner aus Favoriten entfernen"
+    },
+    {
+      "key": "action.favourites",
+      "context": "Entry of the command palette that runs the key action favourites. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Favourites…",
+      "de": "Favoriten…"
     },
     {
       "key": "action.drive_menu_left",
