@@ -53,6 +53,7 @@ pub mod size {
     pub const TITLE_BAR: f32 = 34.0;
     pub const STATUS_BAR: f32 = 22.0;
     pub const FKEY_BAR: f32 = 24.0;
+    pub const COMMAND_LINE: f32 = 24.0;
     pub const COLUMN_HEADER: f32 = 22.0;
     pub const TAB_WIDTH: f32 = 240.0;
     pub const DOT: f32 = 6.0;

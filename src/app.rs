@@ -16,6 +16,7 @@ use iced::{event, window, Element, Length, Point, Size, Subscription, Task, Them
 use crate::ai_model::{
     download_ai_model, AiModelCard, DownloadError as AiDownloadError, DownloadJob,
 };
+use crate::command_line::{self, CommandLine, ShellOutcome, Submission};
 use crate::command_palette::{CommandPalette, RECENT_LIMIT};
 use crate::config::{
     self, Config, ConfigError, ContrastWarning, Filing, FilingWriteError, VscodeWarning,
@@ -39,11 +40,12 @@ use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 #[cfg(any(target_os = "macos", test))]
 use crate::menu::Availability;
 use crate::messages::{
-    AiModelMessage, ClipboardKind, CommandPaletteMessage, ConflictChoice, FilingSetupMessage,
-    FilingStatusMessage, HermesColumnMessage, HermesFileMessage, HermesFocus, HermesPage, Message,
-    OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, ReorganisationPlanMessage,
-    ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingChange,
-    SettingsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind,
+    AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage, ConflictChoice,
+    FilingSetupMessage, FilingStatusMessage, HermesColumnMessage, HermesFileMessage, HermesFocus,
+    HermesPage, Message, OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage,
+    ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage,
+    SearchMessage, SettingChange, SettingsMessage, ThemeFetchMessage, TitleBarMessage,
+    TransferKind,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -64,6 +66,7 @@ use crate::suggestion_work::{SuggestedRule, SuggestionAccess, INDEX_NOT_OPEN};
 use crate::theme_fetch::{Fetched, Installed, Pick, Stage, ThemeFetch};
 use crate::transfer_dialog::{self, Policy, TransferDialog, TransferDialogMessage};
 use crate::ui::ai_model as ai_model_ui;
+use crate::ui::command_line as command_line_ui;
 use crate::ui::command_palette as command_palette_ui;
 use crate::ui::context_menu as context_menu_view;
 use crate::ui::delete as delete_dialog_view;
@@ -292,9 +295,9 @@ fn resets_type_ahead(message: &Message) -> bool {
     )
 }
 
-/// Other things the user does end the editing of the path: the text field
-/// loses the focus to them without telling the app.
-fn leaves_path_field(message: &Message) -> bool {
+/// Other things the user does end the editing of the path or the command line:
+/// the text field loses the focus to them without telling the app.
+fn leaves_bar_fields(message: &Message) -> bool {
     matches!(
         message,
         Message::RowClicked { .. }
@@ -720,6 +723,7 @@ pub struct App {
     type_ahead: TypeAhead,
     /// The path as typed while the status bar's path field is being edited.
     path_field: Option<String>,
+    command_line: CommandLine,
     /// Id of the latest path check; an older answer is ignored.
     path_check_id: u64,
     /// What a leading `~` in a typed path stands for.
@@ -875,6 +879,8 @@ pub struct PromptKeyState {
     pub transfer_progress: bool,
     /// The path field is being edited: its keys are the text field's.
     pub path_editing: bool,
+    /// The command line has the focus: its field types, Up and Down walk the history.
+    pub command_line: bool,
     /// The search view is up, so the cursor keys move in its results.
     pub search: bool,
     /// Quick Open is up, so the up and down keys move in its hits.
@@ -936,6 +942,7 @@ impl Default for PromptKeyState {
             transfer_dialog: false,
             transfer_progress: false,
             path_editing: false,
+            command_line: false,
             search: false,
             quick_open: false,
             command_palette: false,
@@ -1393,6 +1400,10 @@ fn keys_without_prompt(
             .filter(|_| is_not_typed_by_text_field(&key, key_modifiers));
     }
 
+    if prompt.command_line {
+        return command_line_key(prompt, &key, key_modifiers, scope);
+    }
+
     // Escape is `InputState`'s: the text fields capture it, so it only ever
     // reaches the routing when no field has the focus.
     if prompt.search {
@@ -1404,6 +1415,38 @@ fn keys_without_prompt(
     }
     bound_message(&prompt.keymap, &key, key_modifiers, scope)
         .or_else(|| type_ahead_message(&key, key_modifiers))
+}
+
+/// Keys while the command line has the focus. The field types characters and
+/// digits, so of the bindings only quitting and the key that focused the line
+/// reach through, and only as keys the field does not type. Escape is
+/// `InputState`'s; it arrives here only when the field lost its own focus.
+fn command_line_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    let line = |message| Some(Message::CommandLine(message));
+    match key.as_ref() {
+        Key::Named(Named::Escape) => return line(CommandLineMessage::Leave),
+        Key::Named(Named::ArrowUp) if key_modifiers.is_empty() => {
+            return line(CommandLineMessage::HistoryPrevious)
+        }
+        Key::Named(Named::ArrowDown) if key_modifiers.is_empty() => {
+            return line(CommandLineMessage::HistoryNext)
+        }
+        _ => {}
+    }
+    let message = bound_message(&prompt.keymap, key, key_modifiers, scope)
+        .filter(|_| is_not_typed_by_text_field(key, key_modifiers))?;
+    if message == Message::Quit {
+        Some(message)
+    } else if message == KeyAction::CommandLine.message() {
+        line(CommandLineMessage::Leave)
+    } else {
+        None
+    }
 }
 
 /// The tab shows no panel, so the panel keys do nothing. Of the bindings the
@@ -1806,6 +1849,9 @@ fn repeats(message: &Message) -> bool {
             | Message::ToggleTag
             | Message::TagMove(_)
             | Message::PromptInput(_)
+            | Message::CommandLine(
+                CommandLineMessage::HistoryPrevious | CommandLineMessage::HistoryNext,
+            )
             | Message::VolumeMenuMove(_)
             | Message::VolumeMenuFirst
             | Message::VolumeMenuLast
@@ -2192,6 +2238,7 @@ impl App {
             quick_fix_generation: 0,
             type_ahead: TypeAhead::default(),
             path_field: None,
+            command_line: CommandLine::default(),
             path_check_id: 0,
             home: home.clone(),
             clock: Arc::new(std::time::Instant::now),
@@ -2395,12 +2442,19 @@ impl App {
             }
             return Task::none();
         }
-        if leaves_path_field(&message) {
+        if leaves_bar_fields(&message) {
             self.set_path_field(None);
+            self.command_line.leave();
         }
         let had_search_keys = self.search_has_keys();
         let applied = self.apply(message);
         let task = Task::batch([applied, self.request_hermes_column()]);
+        // A dialog that opens while a line is being typed gets the keys, not the field.
+        if self.command_line.is_focused() && self.command_line_is_blocked() {
+            self.command_line.leave();
+            self.publish_key_state();
+            return Task::batch([task, release_focus()]);
+        }
         // The text field keeps typing into the query until it is told to let
         // go, so leaving the search's panel releases it.
         if had_search_keys && !self.search_has_keys() {
@@ -2596,6 +2650,8 @@ impl App {
             | Message::PathFieldCancel
             | Message::PathChecked { .. }
             | Message::ClickedOutside) => self.update_path_field(path_message),
+
+            Message::CommandLine(line_message) => self.update_command_line(line_message),
 
             // --- delete ---
             Message::Delete { permanent } => self.open_delete_dialog(permanent),
@@ -3247,6 +3303,7 @@ impl App {
     fn update_path_field(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::PathFieldInput(typed) => {
+                self.command_line.leave();
                 self.set_path_field(Some(typed));
                 Task::none()
             }
@@ -3264,10 +3321,178 @@ impl App {
             Message::ClickedOutside => {
                 self.context_menu = None;
                 self.set_path_field(None);
+                self.command_line.leave();
                 Task::none()
             }
             _ => Task::none(),
         }
+    }
+
+    fn update_command_line(&mut self, message: CommandLineMessage) -> Task<Message> {
+        match message {
+            CommandLineMessage::Focus => {
+                if self.command_line_is_blocked() {
+                    return Task::none();
+                }
+                self.command_line.focus();
+                self.set_path_field(None);
+                operation::focus(command_line_ui::COMMAND_LINE_ID).chain(
+                    operation::move_cursor_to_end(command_line_ui::COMMAND_LINE_ID),
+                )
+            }
+            CommandLineMessage::Leave => {
+                self.command_line.leave();
+                release_focus()
+            }
+            CommandLineMessage::Input(text) => {
+                self.command_line.input(text);
+                self.set_path_field(None);
+                Task::none()
+            }
+            CommandLineMessage::HistoryPrevious => self.walk_command_history(CommandLine::previous),
+            CommandLineMessage::HistoryNext => self.walk_command_history(CommandLine::next),
+            CommandLineMessage::Submit => self.submit_command_line(),
+            CommandLineMessage::CdChecked {
+                request_id,
+                side,
+                target,
+                result,
+            } => self.finish_cd_check(request_id, side, &target, result),
+            CommandLineMessage::Finished { command, outcome } => {
+                self.finish_shell_command(&command, outcome)
+            }
+        }
+    }
+
+    /// Settings and the filing setup replace the panel area; an overlay covers it.
+    fn command_line_is_blocked(&self) -> bool {
+        self.overlay_is_open() || self.settings.is_some() || self.filing_setup.is_some()
+    }
+
+    fn walk_command_history(&mut self, step: fn(&mut CommandLine) -> bool) -> Task<Message> {
+        if step(&mut self.command_line) {
+            operation::move_cursor_to_end(command_line_ui::COMMAND_LINE_ID)
+        } else {
+            Task::none()
+        }
+    }
+
+    /// Enter in the command line: `cd` is checked off the UI thread and applied
+    /// to the active panel once the answer is in; anything else runs in the shell.
+    fn submit_command_line(&mut self) -> Task<Message> {
+        let typed = self.command_line.typed().to_owned();
+        match command_line::parse(&typed) {
+            Submission::Empty => {
+                self.command_line.leave();
+                release_focus()
+            }
+            Submission::ChangeDirectory(path) => {
+                self.command_line.remember(&typed);
+                let side = self.active_panel;
+                let target = fs::resolve_typed_path(&self.active_panel().path, &self.home, path);
+                let request_id = self.command_line.next_cd_check();
+                Task::perform(fs::locate(target.clone()), move |result| {
+                    Message::CommandLine(CommandLineMessage::CdChecked {
+                        request_id,
+                        side,
+                        target: target.clone(),
+                        result,
+                    })
+                })
+            }
+            Submission::Shell(line) => {
+                self.command_line.remember(line);
+                self.command_line.started();
+                self.command_line.leave();
+                let directory = self.active_panel().path.clone();
+                let command = line.to_owned();
+                Task::batch([
+                    release_focus(),
+                    Task::perform(
+                        command_line::run(command.clone(), directory),
+                        move |outcome| {
+                            Message::CommandLine(CommandLineMessage::Finished {
+                                command: command.clone(),
+                                outcome,
+                            })
+                        },
+                    ),
+                ])
+            }
+        }
+    }
+
+    /// The answer to a `cd`: a destination loads in the panel and ends the
+    /// line, a problem is reported and leaves the text to be fixed. An answer to
+    /// text that has since changed is dropped.
+    fn finish_cd_check(
+        &mut self,
+        request_id: u64,
+        side: PanelSide,
+        target: &Path,
+        result: Result<fs::Destination, fs::PathProblem>,
+    ) -> Task<Message> {
+        if !self.command_line.is_current_cd_check(request_id) || !self.command_line.is_focused() {
+            return Task::none();
+        }
+        match result {
+            Ok(destination) => {
+                self.command_line.leave();
+                self.job_error = None;
+                self.notice = None;
+                Task::batch([
+                    self.load(side, destination.directory, destination.select),
+                    release_focus(),
+                ])
+            }
+            Err(problem) => {
+                let reason = self.path_problem_text(&problem, target);
+                self.set_status_error(&reason);
+                Task::none()
+            }
+        }
+    }
+
+    /// A shell command ended: its exit status goes to the status bar and both
+    /// panels are re-read, as the command may have changed what they show.
+    fn finish_shell_command(&mut self, command: &str, outcome: ShellOutcome) -> Task<Message> {
+        self.command_line.finished();
+        let reloads = [PanelSide::Left, PanelSide::Right].map(|each| {
+            let path = self.panel(each).path.clone();
+            self.load(each, path, None)
+        });
+        let report = match outcome {
+            ShellOutcome::Exited(code) => {
+                let text = fill_template(
+                    self.lang.text(Msg::CommandLineExitStatus),
+                    &[("{command}", command), ("{code}", &code.to_string())],
+                );
+                if code == 0 {
+                    Ok(text)
+                } else {
+                    Err(text)
+                }
+            }
+            ShellOutcome::NoExitCode => Err(fill_template(
+                self.lang.text(Msg::CommandLineNoExitStatus),
+                &[("{command}", command)],
+            )),
+            ShellOutcome::NotStarted { reason } => Err(fill_template(
+                self.lang.text(Msg::CommandLineNotStarted),
+                &[("{command}", command), ("{reason}", &reason)],
+            )),
+        };
+        let notice = match report {
+            Ok(text) => {
+                self.job_error = None;
+                self.show_notice(text)
+            }
+            Err(text) => {
+                self.set_status_error(&text);
+                Task::none()
+            }
+        };
+        Task::batch(reloads.into_iter().chain([notice]))
     }
 
     /// The rows the menu was opened on are gone. It acts on the active panel,
@@ -3334,21 +3559,25 @@ impl App {
                 ])
             }
             Err(problem) => {
-                let shown = target.display().to_string();
-                let reason = match problem {
-                    fs::PathProblem::Missing => self
-                        .lang
-                        .text(Msg::StatusPathMissing)
-                        .replace("{path}", &shown),
-                    fs::PathProblem::Unreadable { reason } => self
-                        .lang
-                        .text(Msg::StatusPathUnreadable)
-                        .replace("{path}", &shown)
-                        .replace("{reason}", &reason),
-                };
+                let reason = self.path_problem_text(&problem, target);
                 self.set_status_error(&reason);
                 Task::none()
             }
+        }
+    }
+
+    /// Why `target` cannot be opened, for the status bar.
+    fn path_problem_text(&self, problem: &fs::PathProblem, target: &Path) -> String {
+        let shown = target.display().to_string();
+        match problem {
+            fs::PathProblem::Missing => fill_template(
+                self.lang.text(Msg::StatusPathMissing),
+                &[("{path}", &shown)],
+            ),
+            fs::PathProblem::Unreadable { reason } => fill_template(
+                self.lang.text(Msg::StatusPathUnreadable),
+                &[("{path}", &shown), ("{reason}", reason)],
+            ),
         }
     }
 
@@ -3386,6 +3615,7 @@ impl App {
         let job_running = state.job_running;
         let mut input = self.input.lock();
         input.path_editing = state.path_editing;
+        input.command_line = state.command_line;
         input.search_open = search_open;
         input.job_running = job_running;
         input.quick_open = self.quick_open.is_some();
@@ -3471,6 +3701,18 @@ impl App {
         } else {
             container(column![
                 panels,
+                command_line_ui::view(command_line_ui::Props {
+                    prompt: self.active_panel().path.display().to_string(),
+                    typed: self.command_line.typed(),
+                    focused: self.command_line.is_focused(),
+                    focusable: !self.command_line_is_blocked(),
+                    running: self.command_line.running(),
+                    key_label: self
+                        .keymap
+                        .shortcut_label(&KeyAction::CommandLine.message()),
+                    lang: self.lang,
+                    palette: &self.palette,
+                }),
                 fkeys::view(
                     if self.search_has_keys() {
                         &self.search_function_keys
@@ -3837,6 +4079,7 @@ impl App {
             .is_some_and(ContextMenu::submenu_is_open);
         let quick_fix = self.quick_fix.is_some();
         let path_editing = self.path_field.is_some();
+        let command_line = self.command_line.is_focused();
         let search = self.search_has_keys();
         let quick_open = self.quick_open.is_some();
         let command_palette = self.command_palette.is_some();
@@ -3882,6 +4125,7 @@ impl App {
                 context_submenu,
                 quick_fix,
                 path_editing,
+                command_line,
                 search,
                 quick_open,
                 command_palette,
@@ -3918,6 +4162,7 @@ impl App {
                 context_submenu,
                 quick_fix,
                 path_editing,
+                command_line,
                 search,
                 quick_open,
                 command_palette,
@@ -8821,6 +9066,7 @@ impl App {
             quick_fix_generation: 0,
             type_ahead: TypeAhead::default(),
             path_field: None,
+            command_line: CommandLine::default(),
             path_check_id: 0,
             home: PathBuf::from("/home/test"),
             clock: Arc::new(std::time::Instant::now),
@@ -9461,6 +9707,10 @@ impl App {
     /// Replaces the clock type-ahead reads.
     pub fn path_field_for_test(&self) -> Option<&str> {
         self.path_field.as_deref()
+    }
+
+    pub fn command_line_for_test(&self) -> &CommandLine {
+        &self.command_line
     }
 
     /// A config warning in the status bar, for the snapshot tests.
@@ -12203,6 +12453,325 @@ mod type_ahead_tests {
     clippy::indexing_slicing
 )]
 #[cfg(test)]
+mod command_line_tests {
+    use super::*;
+    use crate::commands::command_of;
+
+    const NONE: Modifiers = Modifiers::empty();
+
+    fn line(message: CommandLineMessage) -> Option<Message> {
+        Some(Message::CommandLine(message))
+    }
+
+    fn focused_app() -> App {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::CommandLine(CommandLineMessage::Focus)));
+        app
+    }
+
+    fn type_line(app: &mut App, text: &str) {
+        drop(app.update(Message::CommandLine(CommandLineMessage::Input(
+            text.to_owned(),
+        ))));
+    }
+
+    fn submit(app: &mut App, text: &str) {
+        type_line(app, text);
+        drop(app.update(Message::CommandLine(CommandLineMessage::Submit)));
+    }
+
+    fn cd_answer(
+        app: &App,
+        request_id: u64,
+        result: Result<fs::Destination, fs::PathProblem>,
+    ) -> Message {
+        Message::CommandLine(CommandLineMessage::CdChecked {
+            request_id,
+            side: app.active_panel,
+            target: PathBuf::from("/home/test/links/sub"),
+            result,
+        })
+    }
+
+    fn sub_destination() -> Result<fs::Destination, fs::PathProblem> {
+        Ok(fs::Destination {
+            directory: PathBuf::from("/home/test/links/sub"),
+            select: None,
+        })
+    }
+
+    #[test]
+    fn without_the_focus_letters_stay_type_ahead_and_f2_focuses() {
+        let idle = PromptKeyState::default();
+        let typed = route_key(&idle, Key::Character("l".into()), NONE);
+        assert_eq!(typed, Some(Message::TypeAhead("l".into())));
+        assert_eq!(
+            route_key(&idle, Key::Named(Named::F2), NONE),
+            line(CommandLineMessage::Focus)
+        );
+    }
+
+    #[test]
+    fn with_the_focus_only_history_leaving_and_quitting_get_through() {
+        let state = PromptKeyState {
+            command_line: true,
+            ..PromptKeyState::default()
+        };
+        let route = |key: Key, modifiers| route_key(&state, key, modifiers);
+        assert_eq!(route(Key::Character("5".into()), NONE), None);
+        assert_eq!(route(Key::Named(Named::F5), NONE), None);
+        assert_eq!(route(Key::Named(Named::Tab), NONE), None);
+        assert_eq!(
+            route(Key::Named(Named::ArrowUp), NONE),
+            line(CommandLineMessage::HistoryPrevious)
+        );
+        assert_eq!(
+            route(Key::Named(Named::ArrowDown), NONE),
+            line(CommandLineMessage::HistoryNext)
+        );
+        assert_eq!(
+            route(Key::Named(Named::Escape), NONE),
+            line(CommandLineMessage::Leave)
+        );
+        assert_eq!(
+            route(Key::Named(Named::F2), NONE),
+            line(CommandLineMessage::Leave)
+        );
+        let quit_chord = if cfg!(target_os = "macos") {
+            Modifiers::COMMAND
+        } else {
+            Modifiers::CTRL
+        };
+        assert_eq!(
+            route(Key::Character("q".into()), quit_chord),
+            Some(Message::Quit)
+        );
+    }
+
+    #[test]
+    fn the_history_keys_repeat() {
+        assert!(repeats(&Message::CommandLine(
+            CommandLineMessage::HistoryPrevious
+        )));
+        assert!(!repeats(&Message::CommandLine(CommandLineMessage::Submit)));
+    }
+
+    #[test]
+    fn focusing_ends_a_path_edit_and_is_published_to_the_key_routing() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::PathFieldInput("/typed".into())));
+        drop(app.update(Message::CommandLine(CommandLineMessage::Focus)));
+        assert_eq!(app.path_field_for_test(), None);
+        assert!(app.command_line_for_test().is_focused());
+        assert!(app.prompt_key_state().command_line);
+        assert!(app.input.lock().command_line);
+    }
+
+    #[test]
+    fn typing_in_the_path_field_ends_the_command_line() {
+        let mut app = focused_app();
+        type_line(&mut app, "ls");
+        drop(app.update(Message::PathFieldInput("/typed".into())));
+        assert!(!app.command_line_for_test().is_focused());
+        assert_eq!(app.command_line_for_test().typed(), "");
+    }
+
+    #[test]
+    fn input_sets_the_text_and_leave_clears_it() {
+        let mut app = App::with_fixed_panels();
+        type_line(&mut app, "ls -la");
+        assert_eq!(app.command_line_for_test().typed(), "ls -la");
+        assert!(app.command_line_for_test().is_focused());
+        drop(app.update(Message::CommandLine(CommandLineMessage::Leave)));
+        assert_eq!(app.command_line_for_test().typed(), "");
+        assert!(!app.command_line_for_test().is_focused());
+        assert!(!app.prompt_key_state().command_line);
+    }
+
+    #[test]
+    fn other_actions_end_the_command_line() {
+        let mut app = focused_app();
+        type_line(&mut app, "ls");
+        drop(app.update(Message::SwitchPanel));
+        assert!(!app.command_line_for_test().is_focused());
+        assert_eq!(app.command_line_for_test().typed(), "");
+    }
+
+    #[test]
+    fn a_shell_line_is_cleared_remembered_and_counted_as_running() {
+        let mut app = focused_app();
+        submit(&mut app, "ls");
+        let line = app.command_line_for_test();
+        assert_eq!(line.typed(), "");
+        assert!(!line.is_focused());
+        assert_eq!(line.running(), 1);
+        drop(app.update(Message::CommandLine(CommandLineMessage::Focus)));
+        drop(app.update(Message::CommandLine(CommandLineMessage::HistoryPrevious)));
+        assert_eq!(app.command_line_for_test().typed(), "ls");
+    }
+
+    #[test]
+    fn a_blank_line_just_leaves() {
+        let mut app = focused_app();
+        submit(&mut app, "   ");
+        assert!(!app.command_line_for_test().is_focused());
+        assert_eq!(app.command_line_for_test().running(), 0);
+    }
+
+    #[test]
+    fn cd_keeps_text_and_focus_until_the_answer_is_in() {
+        let mut app = focused_app();
+        submit(&mut app, "cd sub");
+        assert_eq!(app.command_line_for_test().typed(), "cd sub");
+        assert!(app.command_line_for_test().is_focused());
+        assert_eq!(app.command_line_for_test().running(), 0);
+    }
+
+    #[test]
+    fn a_found_directory_is_loaded_and_ends_the_line() {
+        let mut app = focused_app();
+        submit(&mut app, "cd sub");
+        let id = app.command_line.next_cd_check();
+        let before = app.active_panel().request_id;
+        drop(app.update(cd_answer(&app, id, sub_destination())));
+        assert!(!app.command_line_for_test().is_focused());
+        assert_eq!(app.command_line_for_test().typed(), "");
+        assert_ne!(app.active_panel().request_id, before, "a load started");
+    }
+
+    #[test]
+    fn a_missing_directory_is_reported_and_the_line_stays() {
+        let mut app = focused_app();
+        submit(&mut app, "cd sub");
+        let id = app.command_line.next_cd_check();
+        let before = app.active_panel().request_id;
+        drop(app.update(cd_answer(&app, id, Err(fs::PathProblem::Missing))));
+        assert!(app.command_line_for_test().is_focused());
+        assert_eq!(app.command_line_for_test().typed(), "cd sub");
+        assert_eq!(app.active_panel().request_id, before);
+        let error = app.job_error.clone().unwrap();
+        assert!(error.contains("/home/test/links/sub"), "{error}");
+    }
+
+    #[test]
+    fn an_answer_to_text_that_has_changed_is_dropped() {
+        let mut app = focused_app();
+        submit(&mut app, "cd sub");
+        let stale = app.command_line.next_cd_check();
+        type_line(&mut app, "cd sub2");
+        let before = app.active_panel().request_id;
+        drop(app.update(cd_answer(&app, stale, sub_destination())));
+        assert!(app.command_line_for_test().is_focused());
+        assert_eq!(app.command_line_for_test().typed(), "cd sub2");
+        assert_eq!(app.active_panel().request_id, before);
+    }
+
+    fn finished(app: &mut App, outcome: ShellOutcome) {
+        drop(
+            app.update(Message::CommandLine(CommandLineMessage::Finished {
+                command: "make".into(),
+                outcome,
+            })),
+        );
+    }
+
+    #[test]
+    fn a_clean_exit_is_a_notice_and_a_failure_an_error() {
+        let mut app = App::with_fixed_panels();
+        submit(&mut app, "make");
+        app.job_error = Some("old".into());
+        finished(&mut app, ShellOutcome::Exited(0));
+        assert_eq!(app.command_line_for_test().running(), 0);
+        assert_eq!(app.job_error, None);
+        assert!(app
+            .notice
+            .as_deref()
+            .is_some_and(|notice| notice.contains("exit status 0")));
+
+        finished(&mut app, ShellOutcome::Exited(2));
+        assert!(app
+            .job_error
+            .as_deref()
+            .is_some_and(|error| error.contains("exit status 2")));
+    }
+
+    #[test]
+    fn a_command_with_a_placeholder_in_it_is_shown_as_typed() {
+        let mut app = App::with_fixed_panels();
+        drop(
+            app.update(Message::CommandLine(CommandLineMessage::Finished {
+                command: "echo {code}".into(),
+                outcome: ShellOutcome::Exited(1),
+            })),
+        );
+        let error = app.job_error.clone().unwrap();
+        assert!(error.starts_with("echo {code}: exit status 1"), "{error}");
+    }
+
+    #[test]
+    fn a_shell_that_did_not_start_or_was_killed_is_an_error() {
+        let mut app = App::with_fixed_panels();
+        finished(&mut app, ShellOutcome::NoExitCode);
+        assert!(app
+            .job_error
+            .clone()
+            .unwrap()
+            .contains("without an exit status"));
+        finished(
+            &mut app,
+            ShellOutcome::NotStarted {
+                reason: "no such file".into(),
+            },
+        );
+        let error = app.job_error.clone().unwrap();
+        assert!(
+            error.contains("did not start") && error.contains("no such file"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn finishing_reloads_both_panels() {
+        let mut app = App::with_fixed_panels();
+        let before = (app.left_panel.request_id, app.right_panel.request_id);
+        finished(&mut app, ShellOutcome::Exited(0));
+        assert_ne!(app.left_panel.request_id, before.0);
+        assert_ne!(app.right_panel.request_id, before.1);
+    }
+
+    #[test]
+    fn focusing_does_nothing_while_an_overlay_is_open() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::QuickOpen(QuickOpenMessage::Open)));
+        drop(app.update(Message::CommandLine(CommandLineMessage::Focus)));
+        assert!(!app.command_line_for_test().is_focused());
+    }
+
+    #[test]
+    fn an_overlay_that_opens_while_focused_takes_the_focus_away() {
+        let mut app = focused_app();
+        type_line(&mut app, "ls");
+        drop(app.update(Message::VolumeMenu(PanelSide::Left)));
+        assert!(app.volume_menu.is_some());
+        assert!(!app.command_line_for_test().is_focused());
+        assert!(!app.prompt_key_state().command_line);
+    }
+
+    #[test]
+    fn f2_is_a_command_and_labels_the_second_slot() {
+        assert!(command_of(KeyAction::CommandLine).is_some());
+        let app = App::with_fixed_panels();
+        assert_eq!(app.function_keys[1], Some("Cmd line"));
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
 mod path_field_tests {
     use super::*;
 
@@ -12662,9 +13231,9 @@ mod configured_keys_tests {
 
     #[test]
     fn a_rebound_action_routes_on_the_new_key_only() {
-        let state = state_for("[keys]\ncopy = \"F2\"\n");
+        let state = state_for("[keys]\ncopy = \"F12\"\n");
         assert_eq!(
-            route_key(&state, named(Named::F2), Modifiers::default()),
+            route_key(&state, named(Named::F12), Modifiers::default()),
             Some(Message::Transfer(TransferKind::Copy))
         );
         assert_eq!(
@@ -12675,7 +13244,7 @@ mod configured_keys_tests {
 
     #[test]
     fn the_bar_and_the_context_menu_show_the_configured_key() {
-        let config = config_with("[keys]\ncopy = \"F2\"\n");
+        let config = config_with("[keys]\ncommand_line = []\ncopy = \"F2\"\n");
         let mut app = App::with_fixed_panels().with_config(Ok(config));
         assert_eq!(app.function_keys[1], Some("Copy"));
         assert_eq!(app.function_keys[4], None);

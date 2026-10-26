@@ -155,6 +155,7 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             Msg::ActionDriveMenuRight,
             Msg::ActionDriveMenuRightTheme,
         ),
+        KeyAction::CommandLine => Command::plain(action, Go, Msg::ActionCommandLine),
         KeyAction::QuickOpen => {
             Command::themed(action, Go, Msg::ActionQuickOpen, Msg::ActionQuickOpenTheme)
         }

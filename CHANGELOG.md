@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Command line below the panels (`F2`): `cd` changes the active panel's folder,
+  any other line runs in the folder of the active panel through `$SHELL` (`cmd`
+  on Windows), and the status bar shows its exit status once it ends. `↑`/`↓`
+  walk the commands of this session; `Esc` or `F2` goes back to the panels.
+  There is no output view yet. A config that already gives bare `F2` to another
+  action keeps it; the command line then has no key and is in the command list.
+
 ## [0.6.0] — 2026-10-26
 
 ### Added
