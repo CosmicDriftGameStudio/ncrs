@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-10-26
+
 ### Added
 
 - Linux packages: each release has a `.deb` (Debian, Ubuntu) and an `.rpm`
