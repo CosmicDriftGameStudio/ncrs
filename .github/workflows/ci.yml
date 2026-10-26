@@ -416,8 +416,10 @@ jobs:
           # real executable behind it.
           $item = Get-Item $link
           if (-not $item.LinkTarget) { throw "$link is not a link" }
-          $target = Join-Path (Split-Path $link) ($item.LinkTarget | Select-Object -First 1)
-          $folder = Split-Path (Resolve-Path $target).ProviderPath
+          # winget writes an absolute target; GetFullPath keeps it and would
+          # also resolve a relative one against the Links folder.
+          $target = [System.IO.Path]::GetFullPath(($item.LinkTarget | Select-Object -First 1), (Split-Path $link))
+          $folder = Split-Path $target
           if (-not (Test-Path (Join-Path $folder 'pdfium.dll'))) { throw "no pdfium.dll next to $target" }
           # A data folder would make ncrs portable, and winget would delete it
           # on the next upgrade.
