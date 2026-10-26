@@ -537,11 +537,21 @@ threads = 4
   server, nothing is sent.
 - The Inspection shows a row "AI model" with the state while the AI is on.
 
+### Remembered state
+
+ncrs remembers both panels' folders and sort, the active panel and the window
+size in `state.toml`, next to `index.db` (`~/Library/Application Support/ncrs`
+on macOS, `$XDG_DATA_HOME/ncrs` or `~/.local/share/ncrs` on Linux,
+`%APPDATA%\ncrs` on Windows, `data` in portable mode). ncrs writes it when it
+quits and shortly after a change; `config.toml` is never written for this. A
+folder that is gone opens its nearest existing parent. A missing or broken file
+means the defaults, and you can delete it to start fresh.
+
 ### Portable mode
 
 If a folder named `data` sits next to the ncrs executable, ncrs is portable:
-`data/config.toml` and `data/index.db` are used instead of the locations above,
-for the config and the index alike. Inside a macOS `.app` bundle the folder is
+`data/config.toml`, `data/index.db` and `data/state.toml` are used instead of
+the locations above. Inside a macOS `.app` bundle the folder is
 ignored. The Windows release has two ZIPs: `ncrs-x86_64-pc-windows-msvc.zip` uses
 `%APPDATA%\ncrs`, `ncrs-x86_64-pc-windows-msvc-portable.zip` ships with the
 `data` folder. Delete the folder to use `%APPDATA%\ncrs` again.

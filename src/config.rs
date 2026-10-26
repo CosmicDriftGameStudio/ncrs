@@ -646,6 +646,21 @@ pub fn default_index_path() -> Option<PathBuf> {
     index_path_in(portable_data_dir(), |name| std::env::var_os(name))
 }
 
+/// Where the remembered session (panels, sort, window) lives, or `None` when
+/// the variables that say so are missing. The only place that decides it, so a
+/// sandboxed build has one path to change.
+pub fn default_state_path() -> Option<PathBuf> {
+    forbid_user_machine_in_tests("config::default_state_path");
+    state_path_in(portable_data_dir(), |name| std::env::var_os(name))
+}
+
+fn state_path_in(
+    portable: Option<PathBuf>,
+    var: impl Fn(&str) -> Option<OsString>,
+) -> Option<PathBuf> {
+    index_path_in(portable, var).map(|index| index.with_file_name("state.toml"))
+}
+
 /// Windows: `%APPDATA%\ncrs\index.db`.
 #[cfg(windows)]
 fn index_path_from_env(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
@@ -1351,26 +1366,38 @@ fn sub_table<'a>(
 /// A temporary file next to `target`, renamed over it: a crash leaves the old
 /// file or the new one, never half of either.
 fn replace_file(target: &Path, content: &str) -> Result<(), FilingWriteError> {
+    replace_file_atomically(target, ".config.toml.", content)
+        .map_err(|(path, err)| io_error(&path)(err))
+}
+
+/// The body of `replace_file`, shared with the session state. The path in the
+/// error says which one it belongs to: the folder when the temporary file could
+/// not be created, the target otherwise.
+pub fn replace_file_atomically(
+    target: &Path,
+    temp_prefix: &str,
+    content: &str,
+) -> Result<(), (PathBuf, std::io::Error)> {
     use std::io::Write as _;
     let folder = target.parent().unwrap_or_else(|| Path::new("."));
     let mut temporary = tempfile::Builder::new()
-        .prefix(".config.toml.")
+        .prefix(temp_prefix)
         .suffix(".tmp")
         .tempfile_in(folder)
-        .map_err(io_error(folder))?;
+        .map_err(|err| (folder.to_path_buf(), err))?;
     if let Ok(previous) = std::fs::metadata(target) {
         temporary
             .as_file()
             .set_permissions(previous.permissions())
-            .map_err(io_error(target))?;
+            .map_err(|err| (target.to_path_buf(), err))?;
     }
     temporary
         .write_all(content.as_bytes())
         .and_then(|()| temporary.as_file().sync_all())
-        .map_err(io_error(target))?;
+        .map_err(|err| (target.to_path_buf(), err))?;
     temporary
         .persist(target)
-        .map_err(|err| io_error(target)(err.error))?;
+        .map_err(|err| (target.to_path_buf(), err.error))?;
     Ok(())
 }
 
@@ -1779,6 +1806,23 @@ mod tests {
             index_path_in(portable, env(&vars)),
             Some(PathBuf::from("/home/user/ncrs/data/index.db"))
         );
+    }
+
+    #[test]
+    fn the_state_lives_next_to_the_index() {
+        let vars = [
+            ("HOME", "/home/user"),
+            ("APPDATA", r"C:\Users\user\AppData"),
+        ];
+        let portable = Some(PathBuf::from("/home/user/ncrs/data"));
+        assert_eq!(
+            state_path_in(portable, env(&vars)),
+            Some(PathBuf::from("/home/user/ncrs/data/state.toml"))
+        );
+        let index = index_path_in(None, env(&vars)).unwrap();
+        let state = state_path_in(None, env(&vars)).unwrap();
+        assert_eq!(state.parent(), index.parent());
+        assert_eq!(state.file_name().unwrap(), "state.toml");
     }
 
     #[test]

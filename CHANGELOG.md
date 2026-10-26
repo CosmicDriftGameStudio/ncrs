@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- ncrs remembers both panels' folders, their sort, the active panel and the
+  window size across restarts in `state.toml` next to the index. A folder that
+  is gone opens its nearest existing parent; a missing or broken file means the
+  defaults.
 - `Shift+F4` asks for a name, creates an empty file in the active panel's folder
   and opens it in the editor like `F4`, with the cursor on it; an existing name
   is never overwritten. Rebindable as `new_file`, also in the command list.
