@@ -68,6 +68,18 @@ ignore = [
 
 [licenses]
 version = 2
+# GPL, LGPL and AGPL are banned, with no per-crate exception either: the Mac
+# App Store adds usage rules to every app it sells, and the GPL family forbids
+# adding restrictions, so one such crate would keep ncrs out of the store.
+# cargo-deny's license check (version 2) has no deny list; whatever `allow` and
+# `exceptions` do not name fails. Leaving the GPL family out is therefore the
+# ban, and tests/license_policy.rs fails if it is ever added here or to
+# about.toml.
+#
+# A crate offered under a choice passes on its permissive branch: r-efi
+# ("MIT OR Apache-2.0 OR LGPL-2.1-or-later") and self_cell
+# ("Apache-2.0 OR GPL-2.0-only") are used under MIT and Apache-2.0.
+#
 # Permissive only. BSL-1.0 is deliberately absent: it is OSI-listed and
 # MIT-compatible, but it carries a naming condition for resale, and allowing it
 # for the whole tree would hide any future crate that arrives with it.

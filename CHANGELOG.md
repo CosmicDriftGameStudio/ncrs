@@ -15,6 +15,11 @@ All notable changes to this project are documented here. The format follows
   There is no output view yet. A config that already gives bare `F2` to another
   action keeps it; the command line then has no key and is in the command list.
 
+### Fixed
+
+- `THIRD_PARTY_LICENSES.html` now carries the license of the Lucide icons
+  compiled into ncrs.
+
 ## [0.6.0] — 2026-10-26
 
 ### Added
