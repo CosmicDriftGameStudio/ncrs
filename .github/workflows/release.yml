@@ -220,6 +220,7 @@ jobs:
             Cargo.toml
             scripts
             packaging/macos
+            packaging/aur
             assets/ncrs.icns
           sparse-checkout-cone-mode: false
 
@@ -488,6 +489,55 @@ jobs:
           # the installer's fallback to a pinned URL, not before.
           prerelease: false
           generate_release_notes: true
+
+      # Pushes the new PKGBUILD of ncrs-bin to the AUR. A step of this job and
+      # not a job of its own: the `release` environment asks the maintainer for
+      # approval once per job, and the secret lives in that environment, so
+      # setting it is the maintainer's go for the AUR push. The first push to
+      # the empty AUR repository creates the package.
+      - name: Update the AUR package
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${AUR_SSH_PRIVATE_KEY:-}" ]; then
+            {
+              echo "### AUR update skipped"
+              echo "No AUR_SSH_PRIVATE_KEY secret configured; nothing was pushed to the AUR."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::AUR_SSH_PRIVATE_KEY not set; skipping the AUR update."
+            exit 0
+          fi
+
+          version="${REF_NAME#v}"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::not a usable version: $version"
+            exit 1
+          fi
+
+          sha256_x86_64=$(shasum -a 256 dist/ncrs-x86_64-unknown-linux-gnu.tar.gz | cut -d' ' -f1)
+          sha256_aarch64=$(shasum -a 256 dist/ncrs-aarch64-unknown-linux-gnu.tar.gz | cut -d' ' -f1)
+          scripts/aur-package.sh "$version" "$sha256_x86_64" "$sha256_aarch64" "$RUNNER_TEMP/aur-package"
+
+          # The key only ever lives in this folder, which is removed on exit.
+          trap 'rm -rf "$RUNNER_TEMP/aur-ssh"' EXIT
+          (umask 077; mkdir "$RUNNER_TEMP/aur-ssh"; printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > "$RUNNER_TEMP/aur-ssh/key")
+          export GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/aur-ssh/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/packaging/aur/known_hosts -o StrictHostKeyChecking=yes"
+
+          git clone ssh://aur@aur.archlinux.org/ncrs-bin.git "$RUNNER_TEMP/aur-repo"
+          cd "$RUNNER_TEMP/aur-repo"
+          cp "$RUNNER_TEMP/aur-package/PKGBUILD" "$RUNNER_TEMP/aur-package/.SRCINFO" .
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then
+            echo "::notice::the AUR package is already up to date"
+            exit 0
+          fi
+          git -c user.name='Marc Frost' -c user.email='155059128+bender0oo0@users.noreply.github.com' \
+            commit -m "Update to $version"
+          git push origin HEAD:master
 
       # Opens the update pull request in microsoft/winget-pkgs for the release
       # just published. komac forks the repository under the account of the

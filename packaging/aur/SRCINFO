@@ -1,0 +1,35 @@
+# Template: rendered by scripts/aur-package.sh
+pkgbase = ncrs-bin
+	pkgdesc = A dual-panel file manager inspired by Norton Commander, built with iced
+	pkgver = @VERSION@
+	pkgrel = 1
+	url = https://github.com/CosmicDriftGameStudio/ncrs
+	arch = x86_64
+	arch = aarch64
+	license = MIT
+	license = BSD-3-Clause
+	license = Apache-2.0
+	depends = glibc
+	depends = gcc-libs
+	depends = libxkbcommon
+	depends = libxkbcommon-x11
+	depends = wayland
+	depends = libx11
+	depends = libxcursor
+	depends = libxi
+	depends = dbus
+	depends = hicolor-icon-theme
+	optdepends = vulkan-icd-loader: Vulkan rendering
+	optdepends = libglvnd: EGL rendering
+	optdepends = xdg-desktop-portal: file dialogs
+	optdepends = gnome-keyring: saved credentials (any Secret Service provider works)
+	provides = ncrs
+	conflicts = ncrs
+	options = !strip
+	options = !debug
+	source_x86_64 = ncrs-@VERSION@-x86_64.tar.gz::https://github.com/CosmicDriftGameStudio/ncrs/releases/download/v@VERSION@/ncrs-x86_64-unknown-linux-gnu.tar.gz
+	sha256sums_x86_64 = @SHA256_X86_64@
+	source_aarch64 = ncrs-@VERSION@-aarch64.tar.gz::https://github.com/CosmicDriftGameStudio/ncrs/releases/download/v@VERSION@/ncrs-aarch64-unknown-linux-gnu.tar.gz
+	sha256sums_aarch64 = @SHA256_AARCH64@
+
+pkgname = ncrs-bin
