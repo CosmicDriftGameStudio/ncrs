@@ -83,11 +83,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # The build image's glibc is the oldest one the binary runs on;
+          # 24.04 keeps it at 2.39, `ubuntu-latest` would raise it.
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-24.04
             archive: tar.gz
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-24.04
             archive: tar.gz
           - target: x86_64-apple-darwin
             # `macos-latest` is arm64 since macOS 15. Intel runners are
