@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-10-26
+
 ### Added
 
 - Saved queries (Inquiries): searches over your documents by year, tax
@@ -141,6 +143,14 @@ All notable changes to this project are documented here. The format follows
   interface (Rechnung, Beleg ...) in the review list, the quick fix and saved
   queries; kinds you wrote yourself stay as they are, and nothing stored
   changes.
+- Hermes says what it is doing. The status bar shows whether it runs and how
+  many documents are being read, waiting, waiting for you or failed, in red
+  when something is wrong; a click opens the Inspection, which starts with one
+  plain sentence about where things stand. When the PDF library is missing,
+  one notice says so and the PDFs wait instead of each landing in the review
+  list; the review list names the real reason, such as no text read. Long
+  names in lists are cut with "…", the lists scroll with the mouse wheel and
+  trackpad, and Left and Right move between a card's sidebar and its page.
 - In the saved queries page, Left in an empty field moves to the sidebar.
 - A file whose error was followed by a successful run no longer stays marked
   as failed in the Hermes column.
