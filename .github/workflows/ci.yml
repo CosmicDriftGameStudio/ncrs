@@ -345,3 +345,80 @@ jobs:
               test -f /usr/share/icons/hicolor/256x256/apps/ncrs.png
               eval "$VALIDATE"
             '
+
+  # Installs the winget manifests (packaging/winget) with winget itself and
+  # starts what it installed. It tests the manifests against the latest
+  # published release, not against the build of this pull request: winget
+  # installs a zip from a URL, so there is nothing of the PR to install.
+  winget:
+    name: winget install
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Render the manifests for the latest release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          asset=ncrs-x86_64-pc-windows-msvc.zip
+          mkdir release
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$asset" --dir release
+          sha256=$(sha256sum "release/$asset" | cut -d' ' -f1)
+          scripts/winget-manifests.sh "${tag#v}" \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/$asset" \
+            "$sha256" winget-manifests
+          echo "RELEASE_VERSION=${tag#v}" >> "$GITHUB_ENV"
+
+      # The windows-latest image does not list winget, and Windows Server has
+      # no App Installer to begin with. The module installs it on demand.
+      - name: Make sure winget exists
+        shell: pwsh
+        run: |
+          if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+            Install-PackageProvider -Name NuGet -Force | Out-Null
+            Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery
+            Repair-WinGetPackageManager -AllUsers -Latest
+            $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+          }
+          # An installed winget can still be unusable on a fresh image.
+          winget --version
+
+      - name: Install through winget
+        shell: pwsh
+        run: |
+          winget settings --enable LocalManifestFiles
+          winget validate --manifest winget-manifests
+          if ($LASTEXITCODE -ne 0) { throw 'winget validate failed' }
+          winget install --manifest winget-manifests --accept-package-agreements --accept-source-agreements --disable-interactivity
+          if ($LASTEXITCODE -ne 0) { throw 'winget install failed' }
+
+      - name: Start the installed ncrs
+        shell: pwsh
+        run: |
+          # winget puts its Links folder on the user PATH, which this step
+          # does not see yet.
+          $links = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links'
+          $env:Path = "$links;" + $env:Path
+          $link = Join-Path $links 'ncrs.exe'
+          if (-not (Test-Path $link)) { throw "no $link after the install" }
+
+          # Out-String: the binary may not be attached to a console, and then
+          # nothing reaches the pipeline otherwise.
+          $version = (& $link --version | Out-String)
+          if ($version -notlike "ncrs $env:RELEASE_VERSION *") {
+            throw "unexpected --version output: $version"
+          }
+
+          # The link is what winget starts; pdfium is looked up next to the
+          # real executable behind it.
+          $item = Get-Item $link
+          if (-not $item.LinkTarget) { throw "$link is not a link" }
+          $target = Join-Path (Split-Path $link) ($item.LinkTarget | Select-Object -First 1)
+          $folder = Split-Path (Resolve-Path $target).ProviderPath
+          if (-not (Test-Path (Join-Path $folder 'pdfium.dll'))) { throw "no pdfium.dll next to $target" }
+          # A data folder would make ncrs portable, and winget would delete it
+          # on the next upgrade.
+          if (Test-Path (Join-Path $folder 'data')) { throw "unexpected data folder next to $target" }

@@ -349,23 +349,32 @@ const LIBRARY_DIR_VARIABLE: &str = "NCRS_PDFIUM_DIR";
 /// executable, on macOS also the `Frameworks` folder of the app bundle. Debug
 /// builds add `NCRS_PDFIUM_DIR` and the folder the fetch script fills; release
 /// builds read no environment variable, so nobody can make them load another
-/// library.
+/// library. When the executable was started through a symlink, as winget does,
+/// the folder of the real file follows the link's folder.
 pub fn pdfium_library_candidates() -> Vec<PathBuf> {
-    let executable_dir = std::env::current_exe()
-        .ok()
+    let executable = std::env::current_exe().ok();
+    let executable_dir = executable
+        .as_deref()
+        .and_then(Path::parent)
+        .map(Path::to_path_buf);
+    let resolved_dir = executable
+        .and_then(|path| std::fs::canonicalize(path).ok())
         .and_then(|path| path.parent().map(Path::to_path_buf));
     let development = cfg!(debug_assertions).then(|| std::env::var_os(LIBRARY_DIR_VARIABLE));
-    candidates_in(executable_dir, development)
+    candidates_in(executable_dir, resolved_dir, development)
 }
 
 /// `development` is `None` in release builds, otherwise the value of the
 /// override variable.
 fn candidates_in(
     executable_dir: Option<PathBuf>,
+    resolved_dir: Option<PathBuf>,
     development: Option<Option<std::ffi::OsString>>,
 ) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
-    if let Some(dir) = executable_dir {
+    let different_resolved =
+        resolved_dir.filter(|resolved| Some(resolved) != executable_dir.as_ref());
+    for dir in executable_dir.into_iter().chain(different_resolved) {
         if cfg!(target_os = "macos") {
             candidates.push(dir.clone());
             candidates.push(dir.join("..").join("Frameworks"));
@@ -547,7 +556,7 @@ mod tests {
     #[test]
     fn candidates_start_at_the_executable_and_development_ones_follow() {
         let executable = PathBuf::from("/app/bin");
-        let release = candidates_in(Some(executable.clone()), None);
+        let release = candidates_in(Some(executable.clone()), None, None);
         assert_eq!(release.first(), Some(&executable));
         assert!(release
             .iter()
@@ -556,6 +565,7 @@ mod tests {
         let overridden = PathBuf::from("/elsewhere");
         let debug = candidates_in(
             Some(executable.clone()),
+            None,
             Some(Some(overridden.clone().into_os_string())),
         );
         let override_at = debug.iter().position(|dir| *dir == overridden).unwrap();
@@ -565,10 +575,27 @@ mod tests {
             .unwrap();
         assert_eq!(debug.first(), Some(&executable));
         assert!(override_at < fetched_at);
-        let unset = candidates_in(Some(executable), Some(None));
+        let unset = candidates_in(Some(executable), None, Some(None));
         assert!(unset
             .iter()
             .any(|dir| dir.to_string_lossy().contains("target/pdfium")));
+    }
+
+    #[test]
+    fn a_symlinked_launch_tries_the_link_folder_first_and_the_real_one_second() {
+        let link_dir = PathBuf::from("/links");
+        let real_dir = PathBuf::from("/packages/ncrs");
+        let candidates = candidates_in(Some(link_dir.clone()), Some(real_dir.clone()), None);
+        let link_at = candidates.iter().position(|dir| *dir == link_dir).unwrap();
+        let real_at = candidates.iter().position(|dir| *dir == real_dir).unwrap();
+        assert_eq!(link_at, 0);
+        assert!(link_at < real_at);
+        if cfg!(target_os = "macos") {
+            assert!(candidates.contains(&real_dir.join("..").join("Frameworks")));
+        }
+
+        let same = candidates_in(Some(link_dir.clone()), Some(link_dir.clone()), None);
+        assert_eq!(same, candidates_in(Some(link_dir), None, None));
     }
 
     #[test]
