@@ -62,6 +62,7 @@ use crate::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
 use crate::rule_suggestions::RuleSuggestions;
 use crate::saved_queries::SavedQueries;
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
+use crate::session_state::{self, PanelRecord, SessionState, WindowSize, WriteOrder};
 use crate::suggestion_work::{SuggestedRule, SuggestionAccess, INDEX_NOT_OPEN};
 use crate::theme_fetch::{Fetched, Installed, Pick, Stage, ThemeFetch};
 use crate::transfer_dialog::{self, Policy, TransferDialog, TransferDialogMessage};
@@ -732,6 +733,15 @@ pub struct App {
     clock: Arc<dyn Fn() -> std::time::Instant + Send + Sync>,
     /// The window's size, for keeping the context menu inside it.
     window_size: Size,
+    /// Where the session is remembered; `None` writes nothing.
+    state_path: Option<PathBuf>,
+    /// The snapshot last scheduled for writing, so a message that changes
+    /// nothing worth remembering schedules nothing.
+    session_scheduled: SessionState,
+    /// Identifies the newest scheduled write; an older timer finds it moved on.
+    session_save_generation: u64,
+    /// Shared with the background writes so none lands after the one at quit.
+    session_writes: Arc<WriteOrder>,
     /// The pointer and the Option tap, fed by the raw event subscription.
     input: Arc<InputCell>,
     /// Where the drive menu gets its list. Injected so tests offer their own
@@ -1954,10 +1964,24 @@ fn clipboard_text(panel: &PanelState, kind: ClipboardKind) -> Option<ClipboardTe
     })
 }
 
+/// How long the state waits after the last change before it is written. A
+/// resize drag or a quick walk through folders writes once.
+const SESSION_SAVE_DELAY: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Writes the session state. No error reaches the UI: the state is a
+/// convenience, and a failed write must not interrupt the user.
+fn write_session_state(order: &WriteOrder, generation: u64, path: &Path, state: &SessionState) {
+    if let Err(err) = order.save(generation, path, state) {
+        eprintln!("ncrs: {}: {err}", path.display());
+    }
+}
+
 /// Where the app finds its config and index and what holds the index key.
+#[derive(Clone)]
 pub struct Environment {
     pub config_path: Option<PathBuf>,
     pub index_path: Option<PathBuf>,
+    pub state_path: Option<PathBuf>,
     pub key_store: Arc<dyn KeyStore + Send + Sync>,
 }
 
@@ -1966,16 +1990,18 @@ impl std::fmt::Debug for Environment {
         f.debug_struct("Environment")
             .field("config_path", &self.config_path)
             .field("index_path", &self.index_path)
+            .field("state_path", &self.state_path)
             .finish_non_exhaustive()
     }
 }
 
 impl Environment {
     /// The config, index and keychain of the person running ncrs.
-    fn of_the_user() -> Self {
+    pub fn of_the_user() -> Self {
         Self {
             config_path: config::default_path(),
             index_path: config::default_index_path(),
+            state_path: config::default_state_path(),
             key_store: Arc::new(user_key_store()),
         }
     }
@@ -1987,6 +2013,7 @@ impl Environment {
         Self {
             config_path: None,
             index_path: None,
+            state_path: None,
             key_store: Arc::new(ncrs_index::InMemoryKeyStore::empty()),
         }
     }
@@ -2003,16 +2030,25 @@ impl App {
     /// Initial state plus tasks that load both panels.
     /// Left panel starts in the working directory, right in `$HOME`, so the
     /// two panels are not the same directory on launch.
-    pub fn new() -> (Self, Task<Message>) {
-        let (app, loading) = Self::with_environment(Environment::of_the_user());
+    pub fn new(environment: Environment, saved: SessionState) -> (Self, Task<Message>) {
+        let (app, loading) = Self::restored(environment, saved);
         (app, then_install_native_menu(loading))
     }
 
-    /// `new` with the places it reads and writes given instead of looked up.
+    /// `new` with the places it reads and writes given instead of looked up,
+    /// and nothing remembered from an earlier run.
+    #[cfg(test)]
     pub fn with_environment(environment: Environment) -> (Self, Task<Message>) {
+        Self::restored(environment, SessionState::default())
+    }
+
+    /// Starts where `saved` left off: its folders (or their nearest existing
+    /// parent), sort, active panel and window size.
+    pub fn restored(environment: Environment, saved: SessionState) -> (Self, Task<Message>) {
         let Environment {
             config_path,
             index_path,
+            state_path,
             key_store,
         } = environment;
         let loaded = config_path
@@ -2025,8 +2061,18 @@ impl App {
             .as_ref()
             .map(|config| config.filing.clone())
             .unwrap_or_default();
-        let (mut panels, panel_loads) = Self::starting_in(fs::start_dir(), fs::home_dir());
+        let home = fs::home_dir();
+        let (mut panels, panel_loads) = Self::starting_at(
+            saved.left.start_directory().unwrap_or_else(fs::start_dir),
+            saved
+                .right
+                .start_directory()
+                .unwrap_or_else(|| home.clone()),
+            home,
+        );
         panels.config_path = config_path;
+        panels.state_path = state_path;
+        panels.apply_session_state(&saved);
         let (app, filing_start) = panels
             .with_config(loaded)
             .with_filing(&filing, index_path, key_store);
@@ -2189,10 +2235,18 @@ impl App {
     /// Like `new`, with both panels' start directories given. Tests use this
     /// to stay inside their own scratch directory instead of the process-wide
     /// working directory and `$HOME`.
+    #[cfg(test)]
     pub fn starting_in(start: PathBuf, home: PathBuf) -> (Self, Task<Message>) {
+        let right = home.clone();
+        Self::starting_at(start, right, home)
+    }
+
+    /// `starting_in` with the right panel's folder of its own; `home` stays
+    /// what `~` means.
+    fn starting_at(left: PathBuf, right: PathBuf, home: PathBuf) -> (Self, Task<Message>) {
         let mut app = Self {
-            left_panel: PanelState::new(start.clone()),
-            right_panel: PanelState::new(home.clone()),
+            left_panel: PanelState::new(left.clone()),
+            right_panel: PanelState::new(right.clone()),
             active_panel: PanelSide::Left,
             visible_rows: layout::visible_rows(layout::INITIAL_WINDOW_SIZE),
             lang: Language::default(),
@@ -2240,9 +2294,13 @@ impl App {
             path_field: None,
             command_line: CommandLine::default(),
             path_check_id: 0,
-            home: home.clone(),
+            home,
             clock: Arc::new(std::time::Instant::now),
             window_size: layout::INITIAL_WINDOW_SIZE,
+            state_path: None,
+            session_scheduled: SessionState::default(),
+            session_save_generation: 0,
+            session_writes: Arc::default(),
             input: Arc::default(),
             list_volumes: Arc::new(fs::list_volumes),
             search: None,
@@ -2301,8 +2359,8 @@ impl App {
         };
 
         let tasks = Task::batch([
-            app.load(PanelSide::Left, start, None),
-            app.load(PanelSide::Right, home, None),
+            app.load(PanelSide::Left, left, None),
+            app.load(PanelSide::Right, right, None),
         ]);
         (app, tasks)
     }
@@ -2396,6 +2454,9 @@ impl App {
                 .with(Arc::clone(&self.input))
                 .filter_map(|(input, (event, status))| input.lock().handle(&event, status)),
             window::resize_events().map(|(_id, size)| Message::WindowResized(size)),
+            // The close button and Alt+F4 end the app through Quit, which saves
+            // the session first; the window does not close by itself.
+            window::close_requests().map(|_id| Message::Quit),
             native_menu_events(),
             // The transfer's ticks. Taken out of the app because a subscription
             // outlives `&self`; the receiver is taken so the subscription
@@ -2446,9 +2507,31 @@ impl App {
             self.set_path_field(None);
             self.command_line.leave();
         }
+        if let Message::SaveSessionState(generation) = message {
+            return match self.due_session_state(generation) {
+                Some((path, state)) => {
+                    let order = Arc::clone(&self.session_writes);
+                    Task::future(async move {
+                        // A failed write was already reported to stderr.
+                        drop(
+                            tokio::task::spawn_blocking(move || {
+                                write_session_state(&order, generation, &path, &state);
+                            })
+                            .await,
+                        );
+                    })
+                    .discard()
+                }
+                None => Task::none(),
+            };
+        }
         let had_search_keys = self.search_has_keys();
         let applied = self.apply(message);
-        let task = Task::batch([applied, self.request_hermes_column()]);
+        let task = Task::batch([
+            applied,
+            self.request_hermes_column(),
+            self.schedule_session_save(),
+        ]);
         // A dialog that opens while a line is being typed gets the keys, not the field.
         if self.command_line.is_focused() && self.command_line_is_blocked() {
             self.command_line.leave();
@@ -2936,12 +3019,7 @@ impl App {
             }
 
             Message::WindowResized(size) => {
-                self.window_size = size;
-                self.resize_command_palette(size);
-                self.visible_rows = layout::visible_rows(size);
-                self.resize_search(size);
-                self.left_panel.ensure_visible(self.visible_rows);
-                self.right_panel.ensure_visible(self.visible_rows);
+                self.apply_window_size(size);
                 Task::none()
             }
             Message::OpenSearch => self.open_search(),
@@ -2978,9 +3056,21 @@ impl App {
                 native_menu::install(self.lang, &self.keymap, self.menu_availability());
                 Task::none()
             }
-            Message::Quit => iced::exit(),
+            Message::Quit => {
+                // Written here and now: the runtime stops right after, so no
+                // task would run.
+                if let Some(path) = &self.state_path {
+                    write_session_state(
+                        &self.session_writes,
+                        WriteOrder::FINAL,
+                        path,
+                        &self.session_state(),
+                    );
+                }
+                iced::exit()
+            }
             // Handled in `update`, which owns the timer's generation check.
-            Message::NoticeExpired(_) => Task::none(),
+            Message::NoticeExpired(_) | Message::SaveSessionState(_) => Task::none(),
         };
 
         // The keyboard subscription cannot see `&self`, so it reads the routing
@@ -5815,6 +5905,86 @@ impl App {
         } else {
             self.active_panel
         }
+    }
+
+    fn apply_window_size(&mut self, size: Size) {
+        self.window_size = size;
+        self.resize_command_palette(size);
+        self.visible_rows = layout::visible_rows(size);
+        self.resize_search(size);
+        self.left_panel.ensure_visible(self.visible_rows);
+        self.right_panel.ensure_visible(self.visible_rows);
+    }
+
+    /// Puts what an earlier run remembered on top of the fresh start. The first
+    /// listing of each panel arrives sorted the default way and is re-sorted by
+    /// `apply_sorted_listing`, which compares its `sorted_by` with the panel's.
+    fn apply_session_state(&mut self, saved: &SessionState) {
+        self.left_panel.sort = saved.left.sort_key();
+        self.right_panel.sort = saved.right.sort_key();
+        if let Some(side) = saved.active {
+            self.active_panel = side;
+        }
+        if let Some(size) = saved.window_size() {
+            self.apply_window_size(size);
+        }
+        // Starting is not a change: nothing is written until something differs.
+        self.session_scheduled = self.session_state();
+    }
+
+    /// What would be remembered if ncrs quit now.
+    fn session_state(&self) -> SessionState {
+        let record = |panel: &PanelState| PanelRecord {
+            path: session_state::record_path(&panel.path),
+            sort: panel.sort.column,
+            descending: panel.sort.descending,
+        };
+        let current = WindowSize {
+            width: self.window_size.width,
+            height: self.window_size.height,
+        };
+        // A minimised window reports no usable size; the last good one stays.
+        let window = if current.restorable().is_some() {
+            Some(current)
+        } else {
+            self.session_scheduled.window
+        };
+        SessionState {
+            version: session_state::STATE_VERSION,
+            active: Some(self.active_panel),
+            window,
+            left: record(&self.left_panel),
+            right: record(&self.right_panel),
+        }
+    }
+
+    /// Plans a write when the remembered state differs from the last one
+    /// planned. Debounced: the timer carries the generation, so a resize drag
+    /// or a quick walk through folders writes once, after it settles.
+    fn schedule_session_save(&mut self) -> Task<Message> {
+        if self.state_path.is_none() {
+            return Task::none();
+        }
+        let snapshot = self.session_state();
+        if snapshot == self.session_scheduled {
+            return Task::none();
+        }
+        self.session_scheduled = snapshot;
+        self.session_save_generation = self.session_save_generation.wrapping_add(1);
+        let generation = self.session_save_generation;
+        Task::perform(
+            async { tokio::time::sleep(SESSION_SAVE_DELAY).await },
+            move |()| Message::SaveSessionState(generation),
+        )
+    }
+
+    /// The write a timer is entitled to: only the newest generation, and only
+    /// with a state path.
+    fn due_session_state(&self, generation: u64) -> Option<(PathBuf, SessionState)> {
+        if generation != self.session_save_generation {
+            return None;
+        }
+        Some((self.state_path.clone()?, self.session_scheduled.clone()))
     }
 
     fn resize_search(&mut self, window: Size) {
@@ -9201,6 +9371,10 @@ impl App {
             home: PathBuf::from("/home/test"),
             clock: Arc::new(std::time::Instant::now),
             window_size: layout::INITIAL_WINDOW_SIZE,
+            state_path: None,
+            session_scheduled: SessionState::default(),
+            session_save_generation: 0,
+            session_writes: Arc::default(),
             input: Arc::default(),
             list_volumes: Arc::new(fs::list_volumes),
             search: None,
@@ -16367,5 +16541,178 @@ mod settings_tab_tests {
             ))),
         );
         assert_eq!(unfocused.hermes_focus, HermesFocus::Sidebar);
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod session_state_tests {
+    use super::*;
+    use crate::fs::{SortColumn, SortKey};
+
+    fn environment_writing_to(file: &Path) -> Environment {
+        Environment {
+            state_path: Some(file.to_path_buf()),
+            ..Environment::isolated()
+        }
+    }
+
+    fn saved_for(left: &Path, right: &Path) -> SessionState {
+        SessionState {
+            version: session_state::STATE_VERSION,
+            active: Some(PanelSide::Right),
+            window: Some(WindowSize {
+                width: 1000.0,
+                height: 700.0,
+            }),
+            left: PanelRecord {
+                path: session_state::record_path(left),
+                sort: SortColumn::Size,
+                descending: true,
+            },
+            right: PanelRecord {
+                path: session_state::record_path(right),
+                sort: SortColumn::Modified,
+                descending: false,
+            },
+        }
+    }
+
+    fn started(scratch: &tempfile::TempDir) -> App {
+        let left = scratch.path().join("left");
+        let right = scratch.path().join("right");
+        std::fs::create_dir_all(&left).unwrap();
+        std::fs::create_dir_all(&right).unwrap();
+        let file = scratch.path().join("state.toml");
+        App::restored(environment_writing_to(&file), saved_for(&left, &right)).0
+    }
+
+    #[test]
+    fn a_saved_state_is_restored() {
+        let scratch = tempfile::tempdir().unwrap();
+        let app = started(&scratch);
+
+        assert_eq!(app.left_panel.path, scratch.path().join("left"));
+        assert_eq!(app.right_panel.path, scratch.path().join("right"));
+        assert_eq!(
+            app.left_panel.sort,
+            SortKey {
+                column: SortColumn::Size,
+                descending: true
+            }
+        );
+        assert_eq!(app.right_panel.sort.column, SortColumn::Modified);
+        assert_eq!(app.active_panel, PanelSide::Right);
+        assert_eq!(app.window_size, Size::new(1000.0, 700.0));
+    }
+
+    #[test]
+    fn a_deleted_folder_opens_its_nearest_existing_parent() {
+        let scratch = tempfile::tempdir().unwrap();
+        let gone = scratch.path().join("gone").join("deeper");
+        let saved = saved_for(&gone, scratch.path());
+
+        let app = App::restored(Environment::isolated(), saved).0;
+
+        assert_eq!(app.left_panel.path, scratch.path());
+    }
+
+    #[test]
+    fn starting_schedules_no_write() {
+        let scratch = tempfile::tempdir().unwrap();
+        let app = started(&scratch);
+        assert_eq!(app.session_state(), app.session_scheduled);
+        assert_eq!(app.session_save_generation, 0);
+    }
+
+    #[test]
+    fn quitting_writes_what_the_next_start_restores() {
+        let scratch = tempfile::tempdir().unwrap();
+        let mut app = started(&scratch);
+
+        drop(app.update(Message::Quit));
+
+        let written = session_state::load(&scratch.path().join("state.toml"));
+        assert_eq!(
+            written.left.path.as_deref(),
+            scratch.path().join("left").to_str()
+        );
+        assert_eq!(
+            written.right.path.as_deref(),
+            scratch.path().join("right").to_str()
+        );
+        assert_eq!(written.left.sort, SortColumn::Size);
+        assert!(written.left.descending);
+        assert_eq!(written.right.sort, SortColumn::Modified);
+        assert_eq!(written.active, Some(PanelSide::Right));
+    }
+
+    #[test]
+    fn a_sort_change_is_written_once_for_the_newest_generation() {
+        let scratch = tempfile::tempdir().unwrap();
+        let mut app = started(&scratch);
+
+        drop(app.update(Message::SortBy {
+            side: PanelSide::Left,
+            column: SortColumn::Name,
+        }));
+        let first = app.session_save_generation;
+        assert_eq!(first, 1);
+        drop(app.update(Message::SortBy {
+            side: PanelSide::Right,
+            column: SortColumn::Name,
+        }));
+
+        assert_eq!(app.session_save_generation, 2);
+        assert!(app.due_session_state(first).is_none());
+        let (path, state) = app.due_session_state(2).unwrap();
+        assert_eq!(path, scratch.path().join("state.toml"));
+        assert_eq!(state.left.sort, SortColumn::Name);
+        assert_eq!(state.right.sort, SortColumn::Name);
+    }
+
+    #[test]
+    fn a_message_that_changes_nothing_persistent_schedules_nothing() {
+        let scratch = tempfile::tempdir().unwrap();
+        let mut app = started(&scratch);
+
+        drop(app.update(Message::MoveSelection(1)));
+
+        assert_eq!(app.session_save_generation, 0);
+    }
+
+    #[test]
+    fn a_minimised_window_keeps_the_last_good_size() {
+        let scratch = tempfile::tempdir().unwrap();
+        let mut app = started(&scratch);
+
+        drop(app.update(Message::WindowResized(Size::new(0.0, 0.0))));
+
+        assert_eq!(
+            app.session_state().window,
+            Some(WindowSize {
+                width: 1000.0,
+                height: 700.0
+            })
+        );
+    }
+
+    #[test]
+    fn without_a_state_path_nothing_is_scheduled() {
+        let mut app = App::with_environment(Environment::isolated()).0;
+
+        drop(app.update(Message::SortBy {
+            side: PanelSide::Left,
+            column: SortColumn::Size,
+        }));
+        drop(app.update(Message::WindowResized(Size::new(900.0, 600.0))));
+
+        assert_eq!(app.session_save_generation, 0);
+        assert!(app.due_session_state(0).is_none());
     }
 }

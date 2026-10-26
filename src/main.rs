@@ -51,6 +51,7 @@ mod rule_suggestions;
 mod saved_queries;
 mod search_view;
 mod selection;
+mod session_state;
 mod suggestion_work;
 mod theme_fetch;
 mod transfer_dialog;
@@ -74,6 +75,7 @@ use std::env;
 /// `boot` builds the initial state, so tests can start the app in a scratch
 /// directory while `main` passes `App::new`.
 fn program(
+    window_size: iced::Size,
     boot: impl Fn() -> (App, iced::Task<crate::messages::Message>) + 'static,
 ) -> iced::Application<impl iced::Program<State = App, Message = crate::messages::Message>> {
     iced::application(boot, App::update, App::view)
@@ -81,12 +83,14 @@ fn program(
         .theme(App::theme)
         .title(App::title)
         .window(iced::window::Settings {
-            size: ui::layout::INITIAL_WINDOW_SIZE,
+            size: window_size,
             icon: window_icon(),
             ..window_frame()
         })
         .default_font(iced::Font::MONOSPACE)
         .antialiasing(true)
+        // The close request becomes Quit, which saves the session state first.
+        .exit_on_close_request(false)
 }
 
 /// The title bar row in the app draws the title and, off macOS, the window
@@ -168,6 +172,9 @@ CONFIG:
     missing file means the defaults; an invalid one means the defaults plus the
     file and line in the status bar.
 
+    state.toml next to index.db remembers the panels' folders and sort, the
+    active panel and the window size. ncrs writes it; delete it to start fresh.
+
     [keys] gives an action one key or a list of keys; actions not listed keep
     their defaults, [] leaves an action without a key:
         [keys]
@@ -222,5 +229,17 @@ fn main() -> iced::Result {
 
     backend::log_backend();
 
-    program(App::new).run()
+    let environment = app::Environment::of_the_user();
+    let saved = environment
+        .state_path
+        .as_deref()
+        .map(session_state::load)
+        .unwrap_or_default();
+    let window_size = saved
+        .window_size()
+        .unwrap_or(ui::layout::INITIAL_WINDOW_SIZE);
+    program(window_size, move || {
+        App::new(environment.clone(), saved.clone())
+    })
+    .run()
 }

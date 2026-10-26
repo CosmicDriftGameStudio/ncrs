@@ -492,9 +492,10 @@ enum Outcome {
 fn session_in(dir: &Path) -> Session<impl iced::Program<State = App, Message = Message> + 'static> {
     let left = std::fs::canonicalize(dir).expect("a canonical scratch path");
     let right = left.join("home");
-    Session::boot(super::program(move || {
-        App::starting_in(left.clone(), right.clone())
-    }))
+    Session::boot(super::program(
+        crate::ui::layout::INITIAL_WINDOW_SIZE,
+        move || App::starting_in(left.clone(), right.clone()),
+    ))
 }
 
 /// A scratch tree with a source and a target directory — the two panels, and
@@ -569,10 +570,13 @@ fn session_with_trash(
 ) -> Session<impl iced::Program<State = App, Message = Message> + 'static> {
     let left = std::fs::canonicalize(dir).expect("a canonical scratch path");
     let right = left.join("home");
-    Session::boot(super::program(move || {
-        let (app, task) = App::starting_in(left.clone(), right.clone());
-        (app.with_trash(std::sync::Arc::clone(&trash)), task)
-    }))
+    Session::boot(super::program(
+        crate::ui::layout::INITIAL_WINDOW_SIZE,
+        move || {
+            let (app, task) = App::starting_in(left.clone(), right.clone());
+            (app.with_trash(std::sync::Arc::clone(&trash)), task)
+        },
+    ))
 }
 
 /// A trash that is a folder: an entry "in the trash" is one that moved there.
@@ -601,20 +605,23 @@ fn session_with_drives(
 ) -> Session<impl iced::Program<State = App, Message = Message> + 'static> {
     let left = std::fs::canonicalize(dir).expect("a canonical scratch path");
     let right = left.join("home");
-    Session::boot(super::program(move || {
-        let (app, task) = App::starting_in(left.clone(), right.clone());
-        let root = left.clone();
-        let with_drives = app.with_volumes(move || {
-            ["", "files", "links"]
-                .iter()
-                .map(|name| crate::fs::Volume {
-                    name: if name.is_empty() { "Scratch" } else { name }.to_string(),
-                    path: root.join(name),
-                })
-                .collect()
-        });
-        (with_drives, task)
-    }))
+    Session::boot(super::program(
+        crate::ui::layout::INITIAL_WINDOW_SIZE,
+        move || {
+            let (app, task) = App::starting_in(left.clone(), right.clone());
+            let root = left.clone();
+            let with_drives = app.with_volumes(move || {
+                ["", "files", "links"]
+                    .iter()
+                    .map(|name| crate::fs::Volume {
+                        name: if name.is_empty() { "Scratch" } else { name }.to_string(),
+                        path: root.join(name),
+                    })
+                    .collect()
+            });
+            (with_drives, task)
+        },
+    ))
 }
 
 /// Like `session_in`, with a launcher of the test's own: no test may start a
@@ -635,13 +642,16 @@ fn session_with_config(
 ) -> Session<impl iced::Program<State = App, Message = Message> + 'static> {
     let left = std::fs::canonicalize(dir).expect("a canonical scratch path");
     let right = left.join("home");
-    Session::boot(super::program(move || {
-        let (app, task) = App::starting_in(left.clone(), right.clone());
-        let configured = app
-            .with_config(load())
-            .with_launcher(std::sync::Arc::clone(&launcher));
-        (configured, task)
-    }))
+    Session::boot(super::program(
+        crate::ui::layout::INITIAL_WINDOW_SIZE,
+        move || {
+            let (app, task) = App::starting_in(left.clone(), right.clone());
+            let configured = app
+                .with_config(load())
+                .with_launcher(std::sync::Arc::clone(&launcher));
+            (configured, task)
+        },
+    ))
 }
 
 /// A launcher that only writes down what it was asked to start.

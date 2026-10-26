@@ -3,9 +3,12 @@
 use std::cmp::Ordering;
 use std::ffi::OsString;
 
+use serde::{Deserialize, Serialize};
+
 use super::FileEntry;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum SortColumn {
     #[default]
     Name,

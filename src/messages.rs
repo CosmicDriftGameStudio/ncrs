@@ -8,6 +8,7 @@ use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
 
 use iced::Size;
+use serde::{Deserialize, Serialize};
 
 use crate::ai_model::DownloadError as AiDownloadError;
 use crate::app::{RowFailure, Transfer};
@@ -38,7 +39,8 @@ use crate::theme_fetch::{Fetched, Installed};
 use crate::transfer_dialog::TransferDialogMessage;
 
 /// Identifies one of the two file panels.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum PanelSide {
     Left,
     Right,
@@ -98,6 +100,9 @@ pub enum Message {
     /// The status bar's notice of this generation has been up long enough. An
     /// older timer finds a newer notice and leaves it.
     NoticeExpired(u64),
+    /// The debounce of this generation has run out: write the session state,
+    /// unless a newer change has scheduled a later write.
+    SaveSessionState(u64),
     /// Path or name of the tagged rows, else the cursor row, to the clipboard.
     CopyToClipboard(ClipboardKind),
     /// The user answered the conflict dialog.
