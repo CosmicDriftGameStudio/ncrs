@@ -14,6 +14,37 @@ permissions:
   contents: read
 
 jobs:
+  # The release generates THIRD_PARTY_LICENSES.html from about.toml. A
+  # dependency under a license about.toml does not accept would only fail
+  # at the release tag; here it fails on the pull request that adds it. The
+  # file also goes into the archives and packages `targets` lays out. Once is
+  # enough: about.toml covers all release targets.
+  licenses:
+    name: Third-party licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      # `--features cli` is required: without it cargo-about 0.9 installs no
+      # binary. Same pin as in release.yml.
+      - name: Install cargo-about
+        run: cargo install cargo-about --locked --version 0.9.2 --features cli
+
+      - name: Generate THIRD_PARTY_LICENSES.html
+        run: cargo about generate about.hbs -o THIRD_PARTY_LICENSES.html
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: third-party-licenses
+          path: THIRD_PARTY_LICENSES.html
+          if-no-files-found: error
+          retention-days: 1
+
   check:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -35,16 +66,6 @@ jobs:
         run: |
           cargo install cargo-deny --locked
           cargo deny check advisories licenses bans sources
-
-      # The release generates THIRD_PARTY_LICENSES.html from about.toml. A
-      # dependency under a license about.toml does not accept would only fail
-      # at the release tag; here it fails on the pull request that adds it.
-      # Once is enough: about.toml covers all release targets.
-      - name: Third-party licenses
-        if: runner.os == 'Linux'
-        run: |
-          cargo install cargo-about --locked --version 0.9.2 --features cli
-          cargo about generate about.hbs -o /dev/null
 
       # The PDF tests load the pdfium library at runtime. The script checks the
       # download against a pinned checksum. The library sits in lib/ on macOS
@@ -151,6 +172,7 @@ jobs:
   # Do not test release.yml itself with workflow_dispatch or a probe tag: that
   # publishes the assets again and breaks the Homebrew cask.
   targets:
+    needs: licenses
     name: build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -183,7 +205,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             pkg-config libxkbcommon-dev libwayland-dev libx11-dev libfontconfig1-dev \
-            cmake libclang-dev
+            cmake libclang-dev rpm
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
@@ -211,10 +233,14 @@ jobs:
       - name: Build
         run: cargo build --workspace --release --target ${{ matrix.target }} --features ncrs/gpu-with-fallback
 
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: third-party-licenses
+
       # Lays the release archive out like the release does, so a missing
       # pdfium library or binary fails on the pull request, not at the tag.
       # The layout listing in the log shows what the archive holds. Nothing is
-      # uploaded or signed here.
+      # signed or published here.
       - name: Fetch pdfium for the archive
         shell: bash
         run: scripts/fetch-pdfium.sh ${{ matrix.target }} target/pdfium-archive
@@ -224,7 +250,29 @@ jobs:
         run: |
           binary=target/${{ matrix.target }}/release/ncrs
           if [ "${{ runner.os }}" = Windows ]; then binary="$binary.exe"; fi
-          scripts/package.sh archive ${{ matrix.target }} "$binary" target/pdfium-archive target/package
+          scripts/package.sh archive ${{ matrix.target }} "$binary" target/pdfium-archive target/package \
+            --licenses THIRD_PARTY_LICENSES.html
+
+      # The .deb and .rpm are built from the staged archive. The linux-packages
+      # job below installs them on real distributions.
+      - name: Package the .deb and .rpm
+        if: runner.os == 'Linux'
+        run: |
+          scripts/fetch-nfpm.sh target/nfpm
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          scripts/package.sh linux-packages ${{ matrix.target }} \
+            target/package/ncrs-${{ matrix.target }} "$version" target/package target/nfpm/nfpm
+
+      - name: Upload the .deb and .rpm
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: linux-packages-${{ matrix.target }}
+          path: |
+            target/package/ncrs-${{ matrix.target }}.deb
+            target/package/ncrs-${{ matrix.target }}.rpm
+          retention-days: 1
+          if-no-files-found: error
 
       - name: Package the macOS app
         if: runner.os == 'macOS'
@@ -236,3 +284,64 @@ jobs:
             *) min_macos=10.15 ;;
           esac
           scripts/package.sh app target/package/ncrs-${{ matrix.target }} "$version" "$min_macos" target/package-app
+
+  # Installs the packages the targets job built on a clean Debian-family and a
+  # clean Fedora image, each on its own CPU architecture, and starts the
+  # binary. This is what catches a missing dependency or a wrong path, which
+  # the build itself cannot.
+  linux-packages:
+    needs: targets
+    name: install ${{ matrix.target }} on ${{ matrix.image }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu]
+        image: ["ubuntu:24.04", "fedora:44"]
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          # Native arm64, so the aarch64 package runs instead of being emulated.
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+          - image: ubuntu:24.04
+            extension: deb
+            install: apt-get update -qq && apt-get install -y ./ncrs.deb desktop-file-utils
+            validate: desktop-file-validate /usr/share/applications/ncrs.desktop
+          - image: fedora:44
+            extension: rpm
+            install: dnf install -y ./ncrs.rpm
+            # Fedora's desktop-file-utils is checked on the Ubuntu leg.
+            validate: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          sparse-checkout: Cargo.toml
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: linux-packages-${{ matrix.target }}
+          path: packages
+
+      - name: Install and start
+        env:
+          PACKAGE: ncrs-${{ matrix.target }}.${{ matrix.extension }}
+          INSTALL: ${{ matrix.install }}
+          VALIDATE: ${{ matrix.validate }}
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          cp "packages/$PACKAGE" "packages/ncrs.${{ matrix.extension }}"
+          # The binary resolves symlinks before it looks for libpdfium.so, so
+          # the check follows /usr/bin/ncrs the same way.
+          docker run --rm --volume "$PWD/packages:/packages:ro" --workdir /packages \
+            --env INSTALL --env VALIDATE --env VERSION="$version" \
+            "${{ matrix.image }}" bash -euc '
+              export DEBIAN_FRONTEND=noninteractive
+              eval "$INSTALL"
+              ncrs --version | grep -F "ncrs $VERSION "
+              test -f "$(dirname "$(readlink -f "$(command -v ncrs)")")/libpdfium.so"
+              test -f /usr/share/applications/ncrs.desktop
+              test -f /usr/share/icons/hicolor/256x256/apps/ncrs.png
+              eval "$VALIDATE"
+            '
