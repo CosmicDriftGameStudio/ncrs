@@ -255,10 +255,19 @@ impl KeyAction {
         }
     }
 
-    /// Bare F2 was free until 0.6, so a config may give it to another action.
-    /// That config keeps working: its binding wins over this built-in one.
+    /// Keys that became defaults after a config could already have given them
+    /// to another action: bare F2 in 0.6, Shift+F4, the history keys and
+    /// primary+D in 0.7. Such a config keeps working: its binding wins over
+    /// the built-in one, and the action keeps its other keys.
     pub fn yields_its_built_in_key(self) -> bool {
-        matches!(self, Self::CommandLine)
+        matches!(
+            self,
+            Self::CommandLine
+                | Self::NewFile
+                | Self::HistoryBack
+                | Self::HistoryForward
+                | Self::AddFavourite
+        )
     }
 
     /// The action works on the file under the cursor and only means something
@@ -1309,6 +1318,76 @@ mod tests {
         assert_eq!(
             keymap.function_keys(Language::English, KeyScope::Panel)[1],
             Some("Copy")
+        );
+    }
+
+    #[test]
+    fn an_older_config_keeps_the_keys_that_became_defaults_in_0_7() {
+        let keymap = rebound(
+            "[keys]\nmkdir = [\"F7\", \"primary+d\"]\ncopy = [\"F5\", \"shift+F4\", \"primary+[\"]\nmove = [\"F6\", \"alt+Left\", \"alt+Right\"]\n",
+        );
+        let in_panel = |key: Key, modifiers| keymap.map_key(&key, modifiers, KeyScope::Panel);
+
+        assert_eq!(
+            in_panel(Key::Character("d".into()), Modifiers::COMMAND),
+            Some(Message::CreateDirPrompt)
+        );
+        assert_eq!(
+            in_panel(Key::Named(Named::F4), Modifiers::SHIFT),
+            Some(Message::Transfer(TransferKind::Copy))
+        );
+        assert_eq!(
+            in_panel(Key::Character("[".into()), Modifiers::COMMAND),
+            Some(Message::Transfer(TransferKind::Copy))
+        );
+        assert_eq!(
+            in_panel(Key::Named(Named::ArrowLeft), Modifiers::ALT),
+            Some(Message::Transfer(TransferKind::Move))
+        );
+        assert_eq!(keymap.bindings_of(KeyAction::AddFavourite).count(), 0);
+        assert_eq!(keymap.bindings_of(KeyAction::NewFile).count(), 0);
+        let built_in = Keymap::built_in();
+        assert_eq!(
+            keymap.bindings_of(KeyAction::HistoryForward).count(),
+            built_in.bindings_of(KeyAction::HistoryForward).count() - 1
+        );
+
+        // History loses only the keys taken from it and keeps the rest of its
+        // defaults, whichever the platform has.
+        let taken = [
+            Binding::with_modifiers(Key::Named(Named::ArrowLeft), Modifiers::ALT),
+            Binding::with_modifiers(Key::Character("[".into()), Modifiers::COMMAND),
+        ];
+        let kept: Vec<&Binding> = built_in
+            .bindings_of(KeyAction::HistoryBack)
+            .filter(|binding| !taken.contains(binding))
+            .collect();
+        assert_eq!(
+            keymap
+                .bindings_of(KeyAction::HistoryBack)
+                .collect::<Vec<_>>(),
+            kept
+        );
+    }
+
+    #[test]
+    fn history_keeps_alt_left_when_its_other_key_is_taken() {
+        let keymap = rebound("[keys]\ncopy = [\"F5\", \"primary+[\"]\n");
+        assert_eq!(
+            keymap.map_key(
+                &Key::Named(Named::ArrowLeft),
+                Modifiers::ALT,
+                KeyScope::Panel
+            ),
+            Some(Message::HistoryBack)
+        );
+        assert_eq!(
+            keymap.map_key(
+                &Key::Character("[".into()),
+                Modifiers::COMMAND,
+                KeyScope::Panel
+            ),
+            Some(Message::Transfer(TransferKind::Copy))
         );
     }
 
