@@ -20,6 +20,55 @@ localization with per-string translator context work, and there is a
 and theming are planned but not built — see [ROADMAP.md](ROADMAP.md)
 for the state, the licensing audit and the reasoning behind the order.
 
+## Install
+
+| System | Command |
+| --- | --- |
+| macOS | `brew install --cask cosmicdriftgamestudio/ncrs/ncrs` |
+| Debian, Ubuntu | `sudo apt install ./ncrs-x86_64-unknown-linux-gnu.deb` |
+| Fedora | `sudo dnf install ./ncrs-x86_64-unknown-linux-gnu.rpm` |
+| openSUSE | `sudo zypper install ./ncrs-x86_64-unknown-linux-gnu.rpm` |
+
+On Windows, and without a package manager on Linux and macOS, use the install
+script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/install.sh | sh
+```
+
+On Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/install.ps1 | iex
+```
+
+The `.deb` and `.rpm` files are attached to each [release](../../releases/latest);
+download the one for your CPU (`x86_64` or `aarch64`) first. They pull in the
+libraries ncrs needs. The Linux binaries, packaged or
+not, need glibc 2.39 or newer: Ubuntu 24.04, Debian 13, Fedora 40, openSUSE
+Tumbleweed, Arch Linux and later. On an older distribution, build ncrs from
+source (see [Build & run](#build--run)).
+
+On macOS, Homebrew installs `ncrs.app` into Applications (Launchpad, Dock,
+Spotlight) and puts `ncrs` on your `PATH`. The cask lives in the tap
+[`CosmicDriftGameStudio/homebrew-ncrs`](https://github.com/CosmicDriftGameStudio/homebrew-ncrs);
+it is not in homebrew-cask upstream. Started from Finder, the Dock or
+Launchpad, the left panel opens in `$HOME` instead of `/`. From a terminal it
+still opens in the working directory.
+
+`install.sh` installs into `~/.local/bin`, verifies the download checksum,
+needs no `sudo`, and is safe to re-run. Remove it again with:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/install.sh | sh -s -- --uninstall
+```
+
+Set `NCRS_BIN_DIR` to install elsewhere, or `NCRS_REPO` if you fork it.
+
+Every package, archive and the app contain the PDF library (pdfium) next to the
+binary, so ncrs reads PDFs without anything else installed. `install.sh` and
+`install.ps1` put it beside the installed binary.
+
 ## Screenshots
 
 ![The drive menu on Alt+F1](docs/screenshots/drive-menu.png)
@@ -150,67 +199,6 @@ files below the active panel's directory, hidden ones too and without following
 links, up to 250,000 files (the status line says when it stopped there).
 `↑`/`↓` pick a hit, `Enter` (or a click) shows its directory in the active panel
 with the cursor on the file, and `Esc` closes the box.
-
-## Install
-
-Pre-built binaries for Linux, macOS and Windows are attached to each
-[release](../../releases). On Linux and macOS:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/install.sh | sh
-```
-
-On Windows:
-
-```powershell
-winget install CosmicDriftGameStudio.ncrs
-```
-
-On Debian and Ubuntu, and on Fedora and openSUSE, the release also has packages
-that pull in the libraries ncrs needs. Download the file for your CPU
-(`x86_64` or `aarch64`) from the release page and install it:
-
-```bash
-sudo apt install ./ncrs-x86_64-unknown-linux-gnu.deb
-sudo dnf install ./ncrs-x86_64-unknown-linux-gnu.rpm
-```
-
-The Linux binaries, packaged or not, need glibc 2.39 or newer: Ubuntu 24.04,
-Debian 13, Fedora 40, openSUSE Tumbleweed and later. On an older distribution,
-build ncrs from source (see [Build & run](#build--run)).
-
-On macOS, Homebrew is the better choice: it installs `ncrs.app` into
-Applications (Launchpad, Dock, Spotlight) and puts `ncrs` on your `PATH`:
-
-```bash
-brew install --cask cosmicdriftgamestudio/ncrs/ncrs
-```
-
-The cask lives in the tap
-[`CosmicDriftGameStudio/homebrew-ncrs`](https://github.com/CosmicDriftGameStudio/homebrew-ncrs).
-It is not in homebrew-cask upstream.
-
-Started from Finder, the Dock or Launchpad, the left panel opens in `$HOME`
-instead of `/`. From a terminal it still opens in the working directory.
-
-`install.sh` installs into `~/.local/bin`, verifies the download checksum,
-needs no `sudo`, and is safe to re-run. Remove it again with:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/install.sh | sh -s -- --uninstall
-```
-
-Set `NCRS_BIN_DIR` to install elsewhere, or `NCRS_REPO` if you fork it.
-
-The archives and the app contain the PDF library (pdfium) next to the binary,
-so ncrs reads PDFs without anything else installed. `install.sh` and
-`install.ps1` put it beside the installed binary.
-
-On Windows (PowerShell):
-
-```powershell
-irm https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/install.ps1 | iex
-```
 
 ## Drives on macOS
 

@@ -1,0 +1,41 @@
+# Template: rendered by scripts/aur-package.sh
+# Maintainer: Marc Frost <155059128+bender0oo0@users.noreply.github.com>
+pkgname=ncrs-bin
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='A dual-panel file manager inspired by Norton Commander, built with iced'
+arch=('x86_64' 'aarch64')
+url='https://github.com/CosmicDriftGameStudio/ncrs'
+license=('MIT' 'BSD-3-Clause' 'Apache-2.0')
+# Hard dependencies are what the binary needs to start or to show a window:
+# the linked libraries and the ones winit and rfd load with dlopen.
+depends=('glibc' 'gcc-libs' 'libxkbcommon' 'libxkbcommon-x11' 'wayland' 'libx11' 'libxcursor' 'libxi' 'dbus' 'hicolor-icon-theme')
+optdepends=('vulkan-icd-loader: Vulkan rendering'
+            'libglvnd: EGL rendering'
+            'xdg-desktop-portal: file dialogs'
+            'gnome-keyring: saved credentials (any Secret Service provider works)')
+provides=('ncrs')
+conflicts=('ncrs')
+options=('!strip' '!debug')
+source_x86_64=("ncrs-$pkgver-x86_64.tar.gz::$url/releases/download/v$pkgver/ncrs-x86_64-unknown-linux-gnu.tar.gz")
+source_aarch64=("ncrs-$pkgver-aarch64.tar.gz::$url/releases/download/v$pkgver/ncrs-aarch64-unknown-linux-gnu.tar.gz")
+sha256sums_x86_64=('@SHA256_X86_64@')
+sha256sums_aarch64=('@SHA256_AARCH64@')
+
+package() {
+  cd "ncrs-$CARCH-unknown-linux-gnu"
+
+  # libpdfium.so is only looked up next to the resolved executable, so both
+  # live in one folder and /usr/bin/ncrs is a symlink into it.
+  install -Dm755 ncrs "$pkgdir/usr/lib/ncrs/ncrs"
+  install -Dm644 libpdfium.so "$pkgdir/usr/lib/ncrs/libpdfium.so"
+  install -d "$pkgdir/usr/bin"
+  ln -s /usr/lib/ncrs/ncrs "$pkgdir/usr/bin/ncrs"
+
+  install -Dm644 share/applications/ncrs.desktop "$pkgdir/usr/share/applications/ncrs.desktop"
+  find share/icons/hicolor -type f -exec install -Dm644 {} "$pkgdir/usr/{}" \;
+
+  install -Dm644 LICENSE THIRD_PARTY_LICENSES.html -t "$pkgdir/usr/share/licenses/$pkgname"
+  install -Dm644 licenses/pdfium/* -t "$pkgdir/usr/share/licenses/$pkgname/pdfium"
+  install -Dm644 README.md -t "$pkgdir/usr/share/doc/$pkgname"
+}

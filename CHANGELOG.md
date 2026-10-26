@@ -11,8 +11,6 @@ All notable changes to this project are documented here. The format follows
 - Linux packages: each release has a `.deb` (Debian, Ubuntu) and an `.rpm`
   (Fedora, openSUSE) for x86_64 and aarch64. They install the libraries ncrs
   needs and put ncrs into the application menu.
-- Windows: `winget install CosmicDriftGameStudio.ncrs`. Each release submits
-  its update to the winget package repository.
 
 ### Fixed
 

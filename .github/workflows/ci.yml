@@ -264,7 +264,8 @@ jobs:
           scripts/package.sh linux-packages ${{ matrix.target }} \
             target/package/ncrs-${{ matrix.target }} "$version" target/package target/nfpm/nfpm
 
-      - name: Upload the .deb and .rpm
+      # The archive goes along for the aur job, which builds from it.
+      - name: Upload the .deb, .rpm and archive
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -272,6 +273,7 @@ jobs:
           path: |
             target/package/ncrs-${{ matrix.target }}.deb
             target/package/ncrs-${{ matrix.target }}.rpm
+            target/package/ncrs-${{ matrix.target }}.tar.gz
           retention-days: 1
           if-no-files-found: error
 
@@ -345,6 +347,52 @@ jobs:
               test -f /usr/share/applications/ncrs.desktop
               test -f /usr/share/icons/hicolor/256x256/apps/ncrs.png
               eval "$VALIDATE"
+            '
+
+  # Builds the AUR package (packaging/aur) with makepkg from the archive the
+  # targets job made and installs it on a clean Arch image. Only x86_64: the
+  # image has no aarch64 variant, but the aarch64 checksum is rendered too.
+  aur:
+    needs: targets
+    name: AUR package
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: linux-packages-*
+          merge-multiple: true
+          path: packages
+
+      - name: Render the package files
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          sha256_x86_64=$(sha256sum packages/ncrs-x86_64-unknown-linux-gnu.tar.gz | cut -d' ' -f1)
+          sha256_aarch64=$(sha256sum packages/ncrs-aarch64-unknown-linux-gnu.tar.gz | cut -d' ' -f1)
+          scripts/aur-package.sh "$version" "$sha256_x86_64" "$sha256_aarch64" aur
+          # With the archive next to the PKGBUILD makepkg verifies the checksum
+          # against this file instead of downloading the release.
+          cp packages/ncrs-x86_64-unknown-linux-gnu.tar.gz "aur/ncrs-$version-x86_64.tar.gz"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Build, install and start
+        run: |
+          docker run --rm --volume "$PWD/aur:/aur:ro" --env VERSION \
+            archlinux:base-devel bash -euc '
+              pacman -Syu --noconfirm
+              pacman -S --noconfirm --needed $(. /aur/PKGBUILD; echo "${depends[@]}")
+              useradd --create-home builder
+              cp -a /aur /home/builder/pkg
+              chown -R builder /home/builder/pkg
+              su builder -c "cd ~/pkg && makepkg --printsrcinfo | diff -u .SRCINFO - && makepkg --noconfirm"
+              pacman -U --noconfirm /home/builder/pkg/ncrs-bin-*.pkg.tar.*
+              ncrs --version | grep -F "ncrs $VERSION "
+              test -f "$(dirname "$(readlink -f "$(command -v ncrs)")")/libpdfium.so"
+              test -f /usr/share/applications/ncrs.desktop
+              test -f /usr/share/icons/hicolor/256x256/apps/ncrs.png
+              test -f /usr/share/licenses/ncrs-bin/LICENSE
             '
 
   # Installs the winget manifests (packaging/winget) with winget itself and
