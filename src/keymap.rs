@@ -1264,10 +1264,16 @@ mod tests {
 
     #[test]
     fn only_the_command_line_gives_its_built_in_key_away() {
-        let (_, reason) = failure("[keys]\ncopy = \"F3\"\n");
-        assert!(reason.contains("already bound to view"), "{reason}");
-        let (_, reason) = failure("[keys]\ncopy = \"F2\"\nmove = \"F2\"\n");
-        assert!(reason.contains("already bound to copy"), "{reason}");
+        let (_, clash_with_view) = failure("[keys]\ncopy = \"F3\"\n");
+        assert!(
+            clash_with_view.contains("already bound to view"),
+            "{clash_with_view}"
+        );
+        let (_, clash_on_f2) = failure("[keys]\ncopy = \"F2\"\nmove = \"F2\"\n");
+        assert!(
+            clash_on_f2.contains("already bound to copy"),
+            "{clash_on_f2}"
+        );
     }
 
     #[test]
