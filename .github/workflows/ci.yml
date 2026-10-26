@@ -179,10 +179,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Same pin as release.yml: the build image sets the glibc floor.
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-24.04
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-24.04
           - target: x86_64-apple-darwin
             # `macos-latest` is arm64; Intel has its own label.
             os: macos-15-intel
