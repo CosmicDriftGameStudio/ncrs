@@ -10,10 +10,12 @@ All notable changes to this project are documented here. The format follows
 
 - Back and forward through each panel's folder history (`Alt`+`←`/`→`, also
   `Cmd`+`[`/`]` on macOS) and favourite folders (`Ctrl`+`D`, `Cmd`+`D` on macOS,
-  adds the active folder; they are listed below the drives in `Alt`+`F1`/`F2`, `Del` removes
-  one). History and favourites are remembered across restarts; rebindable as
-  `history_back`, `history_forward`, `add_favourite`, `remove_favourite`,
-  `favourites`.
+  adds the active folder; they are listed below the drives in `Alt`+`F1`/`F2`,
+  `Del` removes one). History and favourites are remembered across restarts;
+  rebindable as `history_back`, `history_forward`, `add_favourite`,
+  `remove_favourite`, `favourites`. A config that already gives one of the new
+  default keys (these and `Shift+F4`) to another action keeps it; the new
+  action only loses that key.
 - ncrs remembers both panels' folders, their sort, the active panel and the
   window size across restarts in `state.toml` next to the index. A folder that
   is gone opens its nearest existing parent; a missing or broken file means the

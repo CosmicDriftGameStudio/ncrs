@@ -299,7 +299,11 @@ edit = "F3"
   `copy`, `move`, `delete`, `delete_permanently`, `abort_job`, `switch_language`,
   `switch_panel` and the tag actions in both; the rest only in the panel.
   `primary+q` and `ctrl+q` are the same key on Linux and Windows, so a file can
-  be fine on a Mac and conflict elsewhere.
+  be fine on a Mac and conflict elsewhere. Keys that became defaults later give
+  way to a binding of your own instead: `F2` (`command_line`), `Shift+F4`
+  (`new_file`), the history keys (`history_back`, `history_forward`) and
+  `primary+d` (`add_favourite`). The action keeps its other keys and the
+  command list.
 - Not allowed: `Escape` (it closes dialogs and menus and stops jobs); letters and
   digits without `ctrl`, `alt`, `cmd` or `primary`, because they jump to a file
   name; `shift` with a character that is not a letter (`shift+8` arrives as `*`,
