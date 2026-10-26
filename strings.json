@@ -193,6 +193,12 @@
       "de": "Ordner erstellen"
     },
     {
+      "key": "dialog.new_file.title",
+      "context": "Title of the new-file dialog (Shift+F4), which asks for a name, creates an empty file and opens it in the editor. Imperative, matches the create-directory title.",
+      "en": "New file",
+      "de": "Neue Datei"
+    },
+    {
       "key": "dialog.mkdir.label",
       "context": "Label next to the text field for the new directory name. One or two words, no colon.",
       "en": "Name",
@@ -1055,6 +1061,12 @@
       "context": "Entry of the command palette that runs the key action mkdir. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
       "en": "Create folder",
       "de": "Ordner anlegen"
+    },
+    {
+      "key": "action.new_file",
+      "context": "Entry of the command palette that runs the key action new_file. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "New file",
+      "de": "Neue Datei"
     },
     {
       "key": "action.drive_menu_left",

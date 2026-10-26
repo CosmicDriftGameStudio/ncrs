@@ -2699,12 +2699,11 @@ impl App {
             // keystroke belongs to it, and Enter must not open a directory.
             Message::CreateDirPrompt => {
                 let parent = self.active_panel().path.clone();
-                self.prompt = Some(Prompt::create_dir(parent));
-                self.prompt_side = Some(self.active_panel);
-                // The field has to be focused or the prompt swallows every
-                // keystroke: `TextInput` only takes keys while focused, and
-                // giving it an Id does not focus it.
-                operation::focus(FIELD_ID)
+                self.open_prompt(Prompt::create_dir(parent))
+            }
+            Message::CreateFilePrompt => {
+                let parent = self.active_panel().path.clone();
+                self.open_prompt(Prompt::create_file(parent))
             }
             Message::PromptInput(text) => {
                 if let Some(prompt) = self.prompt.as_mut() {
@@ -2720,6 +2719,7 @@ impl App {
                     self.set_prompt_error(reason);
                     return Task::none();
                 }
+                let kind = prompt.kind();
                 let side = self.prompt_side.unwrap_or(self.active_panel);
                 let parent = self.panel(side).path.clone();
                 let new_name = prompt.name().trim().to_string();
@@ -2727,16 +2727,18 @@ impl App {
                 self.prompt_request_id = request_id;
                 self.set_prompt_busy(true);
 
-                // The new directory's name, carried through the task so the
+                // The new entry's name, carried through the task so the
                 // reload can select it.
                 let target = parent.join(&new_name);
-                let create = Task::perform(fs::create_dir(target), move |result| {
-                    Message::PromptFinished {
-                        prompt: PromptKind::CreateDir,
-                        request_id,
-                        result,
-                    }
-                });
+                let finished = move |result| Message::PromptFinished {
+                    prompt: kind,
+                    request_id,
+                    result,
+                };
+                let create = match kind {
+                    PromptKind::CreateDir => Task::perform(fs::create_dir(target), finished),
+                    PromptKind::CreateFile => Task::perform(fs::create_file(target), finished),
+                };
 
                 // The reload belongs *after* the create, not beside it.
                 // Running both at once races: a read that finishes first sees a
@@ -2754,9 +2756,7 @@ impl App {
                 Task::none()
             }
             Message::PromptFinished {
-                // The prompt kind is fixed by the only operation that sends
-                // this today; a second one will want it back.
-                prompt: _kind,
+                prompt: kind,
                 request_id,
                 result,
             } => {
@@ -2765,9 +2765,13 @@ impl App {
                     return Task::none();
                 }
                 // The queued reload runs here, after the create has reported —
-                // never beside it. On success it selects the new directory; on
+                // never beside it. On success it selects the new entry; on
                 // failure it still re-reads, because the name may belong to
                 // something else that appeared meanwhile.
+                let created = self
+                    .pending_reload
+                    .as_ref()
+                    .map(|pending| self.panel(pending.side).path.join(&pending.name));
                 let reload = self.pending_reload.take().map(|pending| {
                     let path = self.panel(pending.side).path.clone();
                     self.load(pending.side, path, Some(pending.name))
@@ -2777,6 +2781,9 @@ impl App {
                     Ok(()) => {
                         self.prompt = None;
                         self.prompt_side = None;
+                        if let (PromptKind::CreateFile, Some(path)) = (kind, created) {
+                            self.launch_external(fs::OpenKind::Edit, path, None);
+                        }
                     }
                     Err(err) => {
                         self.set_prompt_busy(false);
@@ -5096,6 +5103,16 @@ impl App {
             self.load(each, path, None)
         });
         Task::batch(tasks.into_iter().chain([self.restart_search()]))
+    }
+
+    /// F7 and Shift+F4: the name prompt for the active panel's folder.
+    fn open_prompt(&mut self, prompt: Prompt) -> Task<Message> {
+        self.prompt = Some(prompt);
+        self.prompt_side = Some(self.active_panel);
+        // The field has to be focused or the prompt swallows every
+        // keystroke: `TextInput` only takes keys while focused, and
+        // giving it an Id does not focus it.
+        operation::focus(FIELD_ID)
     }
 
     /// F3 / F4: the row under the cursor goes to the external program. Tags
@@ -8565,6 +8582,28 @@ mod prompt_routing {
     }
 
     #[test]
+    fn shift_f4_opens_the_new_file_prompt_only_when_none_is_open() {
+        let closed = app();
+        assert_eq!(
+            route_key(
+                &closed.prompt_key_state(),
+                Key::Named(Named::F4),
+                Modifiers::SHIFT
+            ),
+            Some(Message::CreateFilePrompt)
+        );
+        let open = with_prompt();
+        assert_ne!(
+            route_key(
+                &open.prompt_key_state(),
+                Key::Named(Named::F4),
+                Modifiers::SHIFT
+            ),
+            Some(Message::CreateFilePrompt)
+        );
+    }
+
+    #[test]
     fn enter_submits_and_escape_cancels() {
         let app = with_prompt();
         assert_eq!(
@@ -8953,6 +8992,97 @@ mod reload_order {
             "the prompt closed on failure, so the user cannot correct the name"
         );
         assert!(!app.prompt.as_ref().unwrap().busy());
+    }
+
+    #[derive(Default)]
+    struct RecordingLauncher(std::sync::Mutex<Vec<fs::OpenCommand>>);
+
+    impl fs::Launcher for RecordingLauncher {
+        fn launch(&self, command: &fs::OpenCommand) -> Result<(), String> {
+            self.0
+                .lock()
+                .map_err(|poisoned| poisoned.to_string())?
+                .push(command.clone());
+            Ok(())
+        }
+    }
+
+    /// An app on `base` with the new-file prompt submitted for `name`, and the
+    /// result of the real `create_file` delivered, as the runtime would.
+    async fn submit_new_file(base: &Path, name: &str) -> (App, Arc<RecordingLauncher>) {
+        let launcher = Arc::new(RecordingLauncher::default());
+        let mut app = App::with_environment(Environment::isolated())
+            .0
+            .with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>);
+        app.open_programs = config::OpenPrograms {
+            edit: Some(config::ProgramLine::new("editor", &[])),
+            ..config::OpenPrograms::default()
+        };
+        app.left_panel.path = base.to_path_buf();
+        drop(app.update(Message::CreateFilePrompt));
+        app.prompt.as_mut().unwrap().set_name(name.into());
+        drop(app.update(Message::PromptSubmit));
+
+        let result = fs::create_file(base.join(name)).await;
+        drop(app.update(Message::PromptFinished {
+            prompt: PromptKind::CreateFile,
+            request_id: app.prompt_request_id,
+            result,
+        }));
+        (app, launcher)
+    }
+
+    #[tokio::test]
+    async fn a_new_file_is_created_opened_in_the_editor_and_selected() {
+        let scratch = scratch("new-file");
+        let base = scratch.path().to_path_buf();
+
+        let (mut app, launcher) = submit_new_file(&base, "note.txt").await;
+
+        assert!(app.prompt.is_none(), "the prompt stayed open after success");
+        assert_eq!(std::fs::read(base.join("note.txt")).unwrap(), b"");
+        let calls = launcher.0.lock().unwrap().clone();
+        assert_eq!(calls.len(), 1, "the editor was not started exactly once");
+        assert_eq!(calls[0].program, "editor");
+        assert_eq!(
+            calls[0].args.last().unwrap(),
+            base.join("note.txt").as_os_str()
+        );
+
+        // The reload that follows puts the cursor on the new name.
+        let listing = fs::read_directory(base.clone(), fs::SortKey::default()).await;
+        let request_id = app.left_panel.begin_load();
+        drop(app.update(Message::DirectoryLoaded {
+            side: PanelSide::Left,
+            request_id,
+            path: listing.path,
+            entries: listing.entries,
+            error: listing.error,
+            sorted_by: listing.sorted_by,
+            select: Some("note.txt".into()),
+        }));
+        assert_eq!(
+            app.left_panel
+                .selected_entry()
+                .map(|entry| entry.path.clone()),
+            Some(base.join("note.txt"))
+        );
+    }
+
+    #[tokio::test]
+    async fn an_existing_name_is_refused_and_nothing_is_opened() {
+        let scratch = scratch("new-file-taken");
+        let base = scratch.path().to_path_buf();
+        std::fs::write(base.join("note.txt"), b"keep me").unwrap();
+
+        let (app, launcher) = submit_new_file(&base, "note.txt").await;
+
+        let prompt = app.prompt.as_ref().expect("the prompt stays for a retry");
+        assert!(!prompt.busy());
+        assert_eq!(prompt.name(), "note.txt");
+        assert!(prompt.error().is_some_and(|text| text.contains("note.txt")));
+        assert_eq!(std::fs::read(base.join("note.txt")).unwrap(), b"keep me");
+        assert!(launcher.0.lock().unwrap().is_empty());
     }
 
     /// A result for a request the app has moved past changes nothing — not the
@@ -9417,6 +9547,15 @@ impl App {
         if let Some(prompt) = app.prompt.as_mut() {
             prompt.set_name("neuer ordner".to_string());
         }
+        app
+    }
+
+    /// The new-file prompt on fixed data, for its reference image.
+    pub fn with_fixed_new_file_prompt() -> Self {
+        let mut app = Self::with_fixed_panels();
+        let mut prompt = Prompt::create_file(PathBuf::from("/home/test/links"));
+        prompt.set_name("notes.txt".to_string());
+        app.prompt = Some(prompt);
         app
     }
 

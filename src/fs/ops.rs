@@ -19,13 +19,36 @@ pub async fn create_dir(path: PathBuf) -> Result<(), CreateDirError> {
         })
 }
 
-/// Why a directory could not be created. Carries no user-facing text; the UI
-/// layer formats it in the active language.
+/// Creates one empty file.
+///
+/// `create_new` is what guarantees an existing file (or directory) is never
+/// overwritten or truncated: the open fails atomically instead of checking first.
+pub async fn create_file(path: PathBuf) -> Result<(), CreateDirError> {
+    let for_error = path.clone();
+    tokio::task::spawn_blocking(move || {
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .map(drop)
+    })
+    .await
+    .map_err(|join| CreateDirError::TaskFailed {
+        reason: join.to_string(),
+    })?
+    .map_err(|source| CreateDirError::AlreadyExists {
+        path: for_error,
+        source,
+    })
+}
+
+/// Why a directory or file could not be created. Carries no user-facing text;
+/// the UI layer formats it in the active language.
 #[derive(Debug)]
 pub enum CreateDirError {
     /// The filesystem refused. `source` distinguishes the cases a user needs
     /// told apart — the name is taken, or the parent does not exist — and both
-    /// arrive here from `create_dir`.
+    /// arrive here from `create_dir` and `create_file`.
     AlreadyExists { path: PathBuf, source: io::Error },
     /// The background task failed, not the filesystem operation.
     TaskFailed { reason: String },
@@ -120,6 +143,31 @@ mod tests {
             .prefix(&format!("ncrs-{label}-"))
             .tempdir()
             .expect("a scratch directory")
+    }
+
+    #[tokio::test]
+    async fn a_new_file_is_created_empty() {
+        let scratch = scratch_dir("ops-create-file");
+        let target = scratch.path().join("note.txt");
+
+        create_file(target.clone()).await.unwrap();
+
+        assert_eq!(std::fs::read(&target).unwrap(), Vec::<u8>::new());
+    }
+
+    #[tokio::test]
+    async fn an_existing_file_is_never_overwritten() {
+        let scratch = scratch_dir("ops-create-file-taken");
+        let target = scratch.path().join("note.txt");
+        std::fs::write(&target, b"keep me").unwrap();
+
+        let err = create_file(target.clone()).await.unwrap_err();
+
+        assert_eq!(
+            err.io_error().map(io::Error::kind),
+            Some(io::ErrorKind::AlreadyExists)
+        );
+        assert_eq!(std::fs::read(&target).unwrap(), b"keep me");
     }
 
     #[tokio::test]

@@ -219,6 +219,8 @@ pub enum Message {
     // --- Modal prompt (see crate::dialog) ---
     /// F7: open the create-directory prompt.
     CreateDirPrompt,
+    /// Shift+F4: open the new-file prompt.
+    CreateFilePrompt,
     /// A keystroke went to the open prompt.
     PromptInput(String),
     /// The user confirmed the prompt.
