@@ -383,7 +383,8 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
   davon den Kopier-Vorgang und die Tastatur betreffen und nicht später unterzuschieben sind.
   **Stand:** Punkt 2 (Queue mit Fortschritt) und 3 (Konfliktdialog mit „Für alle“) kamen mit T7,
   Punkt 4 (Sortierung nach Name/Size/Modified, ohne Extension) mit #24. Von Punkt 1 gibt
-  es nur die editierbare Pfadzeile (#24), keine Kommandozeile. Punkt 5 ist offen.
+  es die editierbare Pfadzeile (#24) und die Kommandozeile über der Statusbar (F2, `cd`
+  und Shell-Befehle, Verlauf pro Sitzung; die Statusbar bleibt). Punkt 5 ist offen.
 
   **1. Command-Line unten (ersetzt die Statusbar)**
   In NC ist die untere Leiste die *Kommandozeile*, nicht eine Statusanzeige: man tippt

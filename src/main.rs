@@ -14,6 +14,7 @@ mod ui_tests;
 mod ai_model;
 mod app;
 mod backend;
+mod command_line;
 mod command_palette;
 mod commands;
 mod config;

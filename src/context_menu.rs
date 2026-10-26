@@ -8,9 +8,10 @@ use crate::fs::OpenKind;
 use crate::hermes_column::FolderRole;
 use crate::i18n::Msg;
 use crate::messages::{
-    ClipboardKind, CommandPaletteMessage, HermesFileMessage, Message, QuickFixMessage,
-    QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage,
-    SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage, TransferKind,
+    ClipboardKind, CommandLineMessage, CommandPaletteMessage, HermesFileMessage, Message,
+    QuickFixMessage, QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage,
+    RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage,
+    TransferKind,
 };
 use crate::transfer_dialog::TransferDialogMessage;
 use crate::ui::layout::{
@@ -591,6 +592,9 @@ pub struct InputState {
     /// The path field is being edited, so Escape and Tab leave it. Kept here
     /// because the text field captures those keys before the key routing.
     pub path_editing: bool,
+    /// The command line has the focus: its text field captures Escape before
+    /// the key routing.
+    pub command_line: bool,
     /// The search view is up and nothing is on top of it: Escape closes it,
     /// and an Option tap opens no menu on the panel it hides.
     pub search_open: bool,
@@ -650,6 +654,9 @@ impl InputState {
                 if self.path_editing && leaves_field {
                     return Some(Message::PathFieldCancel);
                 }
+                if self.command_line && matches!(key, Key::Named(Named::Escape)) {
+                    return Some(Message::CommandLine(CommandLineMessage::Leave));
+                }
                 if self.quick_open && matches!(key, Key::Named(Named::Escape)) {
                     return Some(Message::QuickOpen(QuickOpenMessage::Close));
                 }
@@ -700,6 +707,7 @@ impl InputState {
                 let tapped = self.alt_tap.modifiers_changed(*modifiers);
                 (tapped
                     && !self.path_editing
+                    && !self.command_line
                     && !self.search_open
                     && !self.quick_open
                     && !self.command_palette
@@ -1057,6 +1065,38 @@ mod tests {
             input.handle(&click, event::Status::Ignored),
             Some(Message::ClickedOutside)
         );
+    }
+
+    #[test]
+    fn escape_leaves_the_command_line_and_tab_does_not() {
+        let mut input = InputState {
+            command_line: true,
+            ..InputState::default()
+        };
+        assert_eq!(
+            input.handle(
+                &key_pressed(Key::Named(Named::Escape)),
+                event::Status::Captured
+            ),
+            Some(Message::CommandLine(CommandLineMessage::Leave))
+        );
+        assert_eq!(
+            input.handle(
+                &key_pressed(Key::Named(Named::Tab)),
+                event::Status::Captured
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn a_tap_while_the_command_line_has_the_focus_opens_nothing() {
+        let mut input = InputState {
+            command_line: true,
+            ..InputState::default()
+        };
+        let tap = [modifiers(Modifiers::ALT), modifiers(Modifiers::empty())];
+        assert!(feed(&mut input, &tap).is_empty());
     }
 
     #[test]

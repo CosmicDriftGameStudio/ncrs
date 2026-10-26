@@ -16,10 +16,10 @@ use crate::hermes_column::FolderRole;
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::messages::{
-    AiModelMessage, ClipboardKind, CommandPaletteMessage, FilingSetupMessage, FilingStatusMessage,
-    HermesFileMessage, OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage,
-    ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage,
-    SearchMessage, SettingsMessage, ThemeFetchMessage, TransferKind,
+    AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage, FilingSetupMessage,
+    FilingStatusMessage, HermesFileMessage, OcrModelsMessage, PanelSide, QuickFixMessage,
+    QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage,
+    SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage, TransferKind,
 };
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
@@ -109,6 +109,7 @@ key_actions! {
     Last => "last",
     Search => "search",
     QuickOpen => "quick_open",
+    CommandLine => "command_line",
     CommandPalette => "command_palette",
     FilingStatus => "filing_status",
     FilingSetup => "filing_setup",
@@ -201,6 +202,7 @@ impl KeyAction {
             | Self::CopyName
             | Self::Mkdir
             | Self::QuickOpen
+            | Self::CommandLine
             | Self::FilingStatus
             | Self::FilingSetup
             | Self::RuleSuggestions
@@ -239,6 +241,12 @@ impl KeyAction {
             | (Reach::SearchOnly, KeyScope::Search) => true,
             (Reach::PanelOnly, KeyScope::Search) | (Reach::SearchOnly, KeyScope::Panel) => false,
         }
+    }
+
+    /// Bare F2 was free until 0.6, so a config may give it to another action.
+    /// That config keeps working: its binding wins over this built-in one.
+    pub fn yields_its_built_in_key(self) -> bool {
+        matches!(self, Self::CommandLine)
     }
 
     /// The action works on the file under the cursor and only means something
@@ -295,6 +303,7 @@ impl KeyAction {
             Self::Last => Message::SelectLast,
             Self::Search => Message::OpenSearch,
             Self::QuickOpen => Message::QuickOpen(QuickOpenMessage::Open),
+            Self::CommandLine => Message::CommandLine(CommandLineMessage::Focus),
             Self::CommandPalette => Message::CommandPalette(CommandPaletteMessage::Toggle),
             Self::FilingStatus => Message::FilingStatus(FilingStatusMessage::Toggle),
             Self::FilingSetup => Message::FilingSetup(FilingSetupMessage::Toggle),
@@ -343,6 +352,7 @@ impl KeyAction {
             Self::Move => Some(Msg::ShortcutMove),
             Self::Delete => Some(Msg::ShortcutDelete),
             Self::Mkdir => Some(Msg::ShortcutMkdir),
+            Self::CommandLine => Some(Msg::ShortcutCommandLine),
             _ => None,
         }
     }
@@ -474,6 +484,9 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
             A::QuickOpen,
             Binding::with_modifiers(Character("p".into()), Modifiers::COMMAND),
         ),
+        // F2 was Norton Commander's user menu, the key that ran user commands;
+        // Alt+F2 stays the right drive menu.
+        (A::CommandLine, Binding::key(KeyNamed(F2))),
         // VS Code's Command Palette; F1 opens it there too.
         (
             A::CommandPalette,
@@ -632,7 +645,10 @@ impl Keymap {
     /// ones; `[]` leaves it without a key. Two actions on one key are an
     /// error when both work in the same area (panel or search), also when the
     /// other one only has its built-in key: silently letting one win would
-    /// hide the other action without a word.
+    /// hide the other action without a word. The exception is a built-in key
+    /// that an older config may already use for something else
+    /// ([`KeyAction::yields_its_built_in_key`]): the config wins and the
+    /// action keeps the command list only.
     pub fn with_overrides(overrides: &KeySection) -> Result<Self, KeymapError> {
         let mut rebound: Vec<KeyAction> = Vec::new();
         for entry in &overrides.entries {
@@ -646,6 +662,7 @@ impl Keymap {
             .filter(|(action, _)| !rebound.contains(action))
             .collect();
         let mut configured: Vec<(KeyAction, Vec<Binding>)> = Vec::new();
+        let mut yielded: Vec<(KeyAction, Binding)> = Vec::new();
         for entry in &overrides.entries {
             let name = entry.action.as_ref();
             let action = KeyAction::from_name(name).ok_or_else(|| KeymapError {
@@ -677,11 +694,18 @@ impl Keymap {
                         reason: format!("{text:?} is fixed in the search view"),
                     });
                 }
-                if let Some((other, _)) = taken
+                let holder = taken
                     .iter()
                     .find(|(other, held)| *held == binding && shares_a_scope(*other, action))
+                    .map(|(other, _)| *other);
+                if let Some(other) = holder
+                    .filter(|other| !rebound.contains(other) && other.yields_its_built_in_key())
                 {
-                    let advice = if rebound.contains(other) {
+                    taken
+                        .retain(|(held_action, held)| !(*held_action == other && *held == binding));
+                    yielded.push((other, binding.clone()));
+                } else if let Some(other) = holder {
+                    let advice = if rebound.contains(&other) {
                         String::new()
                     } else {
                         format!("; give {} other keys too, or []", other.name())
@@ -701,7 +725,9 @@ impl Keymap {
         let mut placed: Vec<KeyAction> = Vec::new();
         for (action, binding) in default_bindings() {
             if !rebound.contains(&action) {
-                bindings.push((action, binding));
+                if !yielded.contains(&(action, binding.clone())) {
+                    bindings.push((action, binding));
+                }
             } else if !placed.contains(&action) {
                 placed.push(action);
                 for (configured_action, keys) in &configured {
@@ -1120,7 +1146,7 @@ mod tests {
             en,
             [
                 Some("Commands"),
-                None,
+                Some("Cmd line"),
                 Some("View"),
                 Some("Edit"),
                 Some("Copy"),
@@ -1194,9 +1220,54 @@ mod tests {
             Some(Message::VolumeMenu(PanelSide::Right))
         );
         assert_eq!(map_key(Key::Named(Named::F2), Modifiers::SHIFT), None);
-        // Bare F2 stays free for the user menu.
-        assert_eq!(map_key(Key::Named(Named::F2), Modifiers::default()), None);
-        assert_eq!(function_keys(Language::English)[1], None);
+    }
+
+    #[test]
+    fn bare_f2_focuses_the_command_line_in_the_panel_and_not_in_the_search() {
+        assert_eq!(
+            map_key(Key::Named(Named::F2), Modifiers::default()),
+            Some(Message::CommandLine(CommandLineMessage::Focus))
+        );
+        assert_eq!(
+            Keymap::default().map_key(
+                &Key::Named(Named::F2),
+                Modifiers::default(),
+                KeyScope::Search
+            ),
+            None
+        );
+        assert_eq!(function_keys(Language::English)[1], Some("Cmd line"));
+        assert_eq!(function_keys(Language::German)[1], Some("Kommando"));
+    }
+
+    #[test]
+    fn an_older_config_that_puts_copy_on_f2_keeps_it() {
+        let keymap = rebound("[keys]\ncopy = \"F2\"\n");
+        assert_eq!(
+            keymap.map_key(
+                &Key::Named(Named::F2),
+                Modifiers::default(),
+                KeyScope::Panel
+            ),
+            Some(Message::Transfer(TransferKind::Copy))
+        );
+        assert_eq!(keymap.bindings_of(KeyAction::CommandLine).count(), 0);
+        assert_eq!(
+            keymap.shortcut_label(&KeyAction::CommandLine.message()),
+            None
+        );
+        assert_eq!(
+            keymap.function_keys(Language::English, KeyScope::Panel)[1],
+            Some("Copy")
+        );
+    }
+
+    #[test]
+    fn only_the_command_line_gives_its_built_in_key_away() {
+        let (_, reason) = failure("[keys]\ncopy = \"F3\"\n");
+        assert!(reason.contains("already bound to view"), "{reason}");
+        let (_, reason) = failure("[keys]\ncopy = \"F2\"\nmove = \"F2\"\n");
+        assert!(reason.contains("already bound to copy"), "{reason}");
     }
 
     #[test]
@@ -1355,7 +1426,7 @@ mod tests {
 
     #[test]
     fn a_rebound_action_answers_the_new_key_and_not_the_old_one() {
-        let keymap = rebound("[keys]\ncopy = \"F2\"\n");
+        let keymap = rebound("[keys]\ncommand_line = []\ncopy = \"F2\"\n");
         let copy = Some(Message::Transfer(TransferKind::Copy));
         assert_eq!(press(&keymap, named(Named::F2), Modifiers::default()), copy);
         assert_eq!(press(&keymap, named(Named::F5), Modifiers::default()), None);
@@ -1412,10 +1483,10 @@ mod tests {
     /// line is the one that is reported, not the later action.
     #[test]
     fn a_clash_of_two_named_actions_is_reported_at_the_later_line() {
-        let (line, reason) = failure("[keys]\nmove = \"F2\"\n\ncopy = \"F2\"\n");
+        let (line, reason) = failure("[keys]\nmove = \"F12\"\n\ncopy = \"F12\"\n");
         assert_eq!(line, Some(4));
         assert!(reason.contains("move"), "{reason}");
-        let (reversed_line, _) = failure("[keys]\ncopy = \"F2\"\nmove = \"F2\"\n");
+        let (reversed_line, _) = failure("[keys]\ncopy = \"F12\"\nmove = \"F12\"\n");
         assert_eq!(reversed_line, Some(3));
     }
 
@@ -1428,7 +1499,7 @@ mod tests {
 
     #[test]
     fn an_unknown_action_is_reported_at_its_own_line() {
-        let (line, reason) = failure("[keys]\ncopy = \"F2\"\n\nfoo = \"F7\"\n");
+        let (line, reason) = failure("[keys]\ncopy = \"F12\"\n\nfoo = \"F7\"\n");
         assert_eq!(line, Some(4));
         assert_eq!(reason, "unknown action \"foo\"");
     }
@@ -1438,7 +1509,7 @@ mod tests {
         let (line, reason) = failure("[keys]\nquit = [\n  \"F10\",\n  \"ctrl+xyz\",\n]\n");
         assert_eq!(line, Some(4));
         assert_eq!(reason, "unknown key \"xyz\" in \"ctrl+xyz\"");
-        let (second_line, _) = failure("[keys]\ncopy = \"F2\"\nquit = \"hyper+q\"\n");
+        let (second_line, _) = failure("[keys]\ncopy = \"F12\"\nquit = \"hyper+q\"\n");
         assert_eq!(second_line, Some(3));
     }
 
@@ -1528,11 +1599,11 @@ mod tests {
     #[test]
     fn the_readme_example_loads_as_written() {
         let keymap = rebound(
-            "[keys]\n# F2 copies, F5 does nothing any more.\ncopy = \"F2\"\n# Several keys for one action.\nquit = [\"F10\", \"primary+q\"]\n# No key at all; the context menu still offers it.\ndelete_permanently = []\n# A key that belongs to another action has to be freed there too:\n# F3 and F4 swapped.\nview = \"F4\"\nedit = \"F3\"\n",
+            "[keys]\n# F12 copies, F5 does nothing any more.\ncopy = \"F12\"\n# Several keys for one action.\nquit = [\"F10\", \"primary+q\"]\n# No key at all; the context menu still offers it.\ndelete_permanently = []\n# A key that belongs to another action has to be freed there too:\n# F3 and F4 swapped.\nview = \"F4\"\nedit = \"F3\"\n",
         );
         let bare = Modifiers::default();
         assert_eq!(
-            press(&keymap, named(Named::F2), bare),
+            press(&keymap, named(Named::F12), bare),
             Some(Message::Transfer(TransferKind::Copy))
         );
         assert_eq!(press(&keymap, named(Named::F5), bare), None);

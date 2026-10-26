@@ -4253,6 +4253,48 @@
       "context": "Entry of the command list and the menu that runs the key action hermes_inspect: opens the Hermes inspection page for the file under the cursor.",
       "en": "Show in inspection",
       "de": "In der Inspektion zeigen"
+    },
+    {
+      "key": "shortcut.command_line",
+      "context": "Label of the F2 slot in the function key bar at the bottom of the window. The key moves the focus to the command line below the panels; at most 8 characters.",
+      "en": "Cmd line",
+      "de": "Kommando"
+    },
+    {
+      "key": "action.command_line",
+      "context": "Entry of the command palette that runs the key action command_line. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Go to the command line",
+      "de": "Zur Kommandozeile"
+    },
+    {
+      "key": "command_line.hint",
+      "context": "Dim label at the right end of the command line while it is empty and does not have the focus, beside the key cap of the key that focuses it.",
+      "en": "Command line",
+      "de": "Kommandozeile"
+    },
+    {
+      "key": "command_line.running",
+      "context": "Right end of the command line while shell commands started from it are still running. {count} is the number of running commands.",
+      "en": "Running: {count}",
+      "de": "Läuft: {count}"
+    },
+    {
+      "key": "command_line.exit_status",
+      "context": "Status bar notice when a command typed into the command line ended with an exit status. {command} is the typed line, {code} the exit status number.",
+      "en": "{command}: exit status {code}",
+      "de": "{command}: Exit-Status {code}"
+    },
+    {
+      "key": "command_line.no_exit_status",
+      "context": "Status bar error when a command typed into the command line was ended by a signal and so has no exit status. {command} is the typed line.",
+      "en": "{command}: ended without an exit status",
+      "de": "{command}: ohne Exit-Status beendet"
+    },
+    {
+      "key": "command_line.not_started",
+      "context": "Status bar error when the shell for a command typed into the command line could not be started. {command} is the typed line, {reason} the system's explanation.",
+      "en": "{command}: the shell did not start: {reason}",
+      "de": "{command}: Die Shell ließ sich nicht starten: {reason}"
     }
   ]
 }

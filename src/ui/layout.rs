@@ -8,6 +8,7 @@ pub const INITIAL_WINDOW_SIZE: Size = Size::new(1200.0, 760.0);
 
 pub const STATUSBAR_HEIGHT: f32 = size::STATUS_BAR;
 pub const FKEYBAR_HEIGHT: f32 = size::FKEY_BAR;
+pub const COMMAND_LINE_HEIGHT: f32 = size::COMMAND_LINE;
 /// The row across the window top that holds the path tabs, the Hermes chip and
 /// the Lab button (and the window buttons where the system draws none).
 pub const TITLE_BAR_HEIGHT: f32 = size::TITLE_BAR;
@@ -44,7 +45,11 @@ pub const HERMES_COLUMN_WIDTH: f32 = 124.0;
 /// lay out, and `visible_rows` uses this sum, so a change to any of them moves
 /// both sides together. Adding a header without adding it here would silently
 /// shorten the list, which is what the tests below guard against.
-const CHROME: f32 = STATUSBAR_HEIGHT + FKEYBAR_HEIGHT + TITLE_BAR_HEIGHT + COLUMN_HEADER_HEIGHT;
+const CHROME: f32 = STATUSBAR_HEIGHT
+    + FKEYBAR_HEIGHT
+    + COMMAND_LINE_HEIGHT
+    + TITLE_BAR_HEIGHT
+    + COLUMN_HEADER_HEIGHT;
 
 /// Number of file rows that fit into a panel for a given window size.
 pub fn visible_rows(window: Size) -> usize {
@@ -114,16 +119,16 @@ mod tests {
     #[test]
     fn a_full_height_window_fits_the_expected_rows() {
         let window = Size::new(1200.0, 760.0);
-        // Chrome: status 22 + function keys 24 + title bar 34 + column header
-        // 22 = 102. 760 - 102 = 658; 658 / 22 = 29.9, so 29 rows.
-        assert_eq!(visible_rows(window), 29);
+        // Chrome: status 22 + function keys 24 + command line 24 + title bar 34
+        // + column header 22 = 126. 760 - 126 = 634; 634 / 22 = 28.8, so 28 rows.
+        assert_eq!(visible_rows(window), 28);
     }
 
     #[test]
     fn the_search_view_gives_its_extra_header_the_rows_it_needs() {
         let window = Size::new(1200.0, 760.0);
-        // (658 + 22 - 124) / 22 = 25.3
-        assert_eq!(search_visible_rows(window), 25);
+        // (634 + 22 - 124) / 22 = 24.2
+        assert_eq!(search_visible_rows(window), 24);
         assert_eq!(search_visible_rows(Size::new(1200.0, 10.0)), 1);
     }
 
@@ -133,7 +138,7 @@ mod tests {
     fn the_initial_window_shows_the_same_rows() {
         assert_eq!(
             visible_rows(INITIAL_WINDOW_SIZE),
-            29,
+            28,
             "the initial size no longer matches the documented row count"
         );
     }
@@ -154,7 +159,11 @@ mod tests {
     /// resized or forgotten here.
     #[test]
     fn chrome_matches_the_constants_the_view_uses() {
-        let expected = STATUSBAR_HEIGHT + FKEYBAR_HEIGHT + TITLE_BAR_HEIGHT + COLUMN_HEADER_HEIGHT;
+        let expected = STATUSBAR_HEIGHT
+            + FKEYBAR_HEIGHT
+            + COMMAND_LINE_HEIGHT
+            + TITLE_BAR_HEIGHT
+            + COLUMN_HEADER_HEIGHT;
         assert_eq!(
             CHROME, expected,
             "CHROME and the view's constants have drifted apart"

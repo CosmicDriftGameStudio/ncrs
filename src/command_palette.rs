@@ -970,7 +970,7 @@ mod tests {
     fn an_override_shows_in_the_list() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
-        std::fs::write(&path, "[keys]\nfiling_status = \"F11\"\ncopy = \"F2\"\n").unwrap();
+        std::fs::write(&path, "[keys]\nfiling_status = \"F11\"\ncopy = \"F12\"\n").unwrap();
         let keymap = (*crate::config::load(&path).unwrap().keymap).clone();
         shortcuts_match(&keymap);
         let palette = CommandPalette::new(KeyScope::Panel, Language::English, &keymap, &[]);
@@ -984,7 +984,7 @@ mod tests {
                 .clone()
         };
         assert_eq!(shortcut_of(KeyAction::FilingStatus).as_deref(), Some("F11"));
-        assert_eq!(shortcut_of(KeyAction::Copy).as_deref(), Some("F2"));
+        assert_eq!(shortcut_of(KeyAction::Copy).as_deref(), Some("F12"));
     }
 
     #[test]

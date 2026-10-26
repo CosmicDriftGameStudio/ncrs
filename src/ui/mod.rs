@@ -3,6 +3,7 @@
 //! so they can be reused in other contexts.
 
 pub mod ai_model;
+pub mod command_line;
 pub mod command_palette;
 pub mod conflict;
 pub mod context_menu;

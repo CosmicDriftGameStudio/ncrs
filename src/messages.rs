@@ -11,6 +11,7 @@ use iced::Size;
 
 use crate::ai_model::DownloadError as AiDownloadError;
 use crate::app::{RowFailure, Transfer};
+use crate::command_line::ShellOutcome;
 use crate::config::{Config, Filing, FilingWriteError};
 use crate::dialog::PromptKind;
 use crate::execute::UndoReport;
@@ -317,6 +318,9 @@ pub enum Message {
 
     // --- Quick Open (Cmd/Ctrl+P) ---
     QuickOpen(QuickOpenMessage),
+
+    // --- Command line below the panels (F2) ---
+    CommandLine(CommandLineMessage),
 
     // --- Command palette (Cmd/Ctrl+Shift+P) ---
     CommandPalette(CommandPaletteMessage),
@@ -845,6 +849,30 @@ pub enum QuickOpenMessage {
     Activate,
     RowActivated(usize),
     Close,
+}
+
+/// Everything the command line below the panels sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CommandLineMessage {
+    Focus,
+    Leave,
+    Input(String),
+    Submit,
+    HistoryPrevious,
+    HistoryNext,
+    /// The background look at the directory a `cd` asked for. An answer whose
+    /// `request_id` is not the latest is dropped.
+    CdChecked {
+        request_id: u64,
+        side: PanelSide,
+        target: PathBuf,
+        result: Result<Destination, PathProblem>,
+    },
+    /// A shell command ended.
+    Finished {
+        command: String,
+        outcome: ShellOutcome,
+    },
 }
 
 /// Everything the command palette sends.

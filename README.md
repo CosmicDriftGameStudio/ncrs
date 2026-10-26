@@ -134,6 +134,7 @@ The defaults. Most of them can be changed in the config file, see [Keys](#keys).
 | `Option`+`Cmd`+`C` / `Ctrl`+`Alt`+`C` | Copy the path of the tagged rows (else the cursor row) to the clipboard |
 | `Ctrl`+`Cmd`+`C` / `Ctrl`+`Shift`+`C` | Copy the name of the tagged rows (else the cursor row) to the clipboard |
 | Click the path in the status bar | Edit the path (`Enter` goes there, `~` is home, `Esc` puts the current path back); the icon beside it copies the folder path |
+| `F2`               | Focus the command line below the panels: `cd` changes the active panel's folder, any other command runs in the shell in that folder (the status bar shows its exit status; its output is not shown). `↑`/`↓` walk the commands of this session, `Esc` or `F2` goes back to the panels |
 | `F3` / `F4`        | View / edit the file under the cursor in an external program (programs configurable, see [Configuration](#configuration)) |
 | `F5` / `F6`        | Copy / move to the other panel          |
 | `F7`               | Create directory                        |
@@ -266,8 +267,8 @@ of keys:
 
 ```toml
 [keys]
-# F2 copies, F5 does nothing any more.
-copy = "F2"
+# F12 copies, F5 does nothing any more.
+copy = "F12"
 # Several keys for one action.
 quit = ["F10", "primary+q"]
 # No key at all; the context menu still offers it.
@@ -312,7 +313,7 @@ Actions: `quit`, `open`, `go_up`, `switch_panel`, `switch_language`,
 `toggle_tag`, `tag_up`, `tag_down`, `tag_all`, `clear_tags`, `view`, `edit`,
 `copy`, `move`, `mkdir`, `delete`, `delete_permanently`, `abort_job`,
 `copy_path`, `copy_name`, `drive_menu_left`, `drive_menu_right`,
-`sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`, `search`, `quick_open`, `command_palette`, `search_case`,
+`sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`, `search`, `quick_open`, `command_line`, `command_palette`, `search_case`,
 `search_whole_word`, `search_regex`, `filing_status`, `filing_setup`. Their
 default keys are in [Keyboard shortcuts](#keyboard-shortcuts).
 

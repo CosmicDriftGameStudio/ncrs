@@ -1,0 +1,125 @@
+//! The command line between the panels and the function key bar: the active
+//! panel's path as its prompt, then a field. Lines, not boxes, like the bars
+//! around it.
+
+use iced::widget::{column, container, mouse_area, opaque, row, space, stack, text, text_input};
+use iced::{alignment, mouse, Element, Font, Length};
+
+use super::kit::{self, Icon};
+use super::layout::COMMAND_LINE_HEIGHT;
+use super::theme::{self, font_size, spacing};
+use crate::app::fill_template;
+use crate::i18n::{Language, Msg};
+use crate::messages::{CommandLineMessage, Message};
+use crate::palette::Palette;
+
+pub const COMMAND_LINE_ID: &str = "command-line";
+
+const PROMPT_MAX_WIDTH: f32 = 360.0;
+const ROW_PADDING_X: f32 = 10.0;
+
+pub struct Props<'a> {
+    pub prompt: String,
+    pub typed: &'a str,
+    pub focused: bool,
+    /// False while a dialog or a page covers the panels.
+    pub focusable: bool,
+    pub running: usize,
+    /// The label of the key that focuses the line, if one is bound.
+    pub key_label: Option<String>,
+    pub lang: Language,
+    pub palette: &'a Palette,
+}
+
+pub fn view<'a>(props: Props<'a>) -> Element<'a, Message> {
+    let Props {
+        prompt,
+        typed,
+        focused,
+        focusable,
+        running,
+        key_label,
+        lang,
+        palette,
+    } = props;
+    let dim = |content: String| {
+        text(content)
+            .size(font_size::SMALL)
+            .color(palette.dim_text)
+            .wrapping(text::Wrapping::None)
+    };
+
+    let prompt_path = container(
+        text(prompt)
+            .size(font_size::FILE)
+            .font(Font::MONOSPACE)
+            .color(palette.dim_text)
+            .wrapping(text::Wrapping::None),
+    )
+    .max_width(PROMPT_MAX_WIDTH)
+    .clip(true);
+    let chevron = kit::icon(
+        Icon::ChevronRight,
+        if focused {
+            palette.accent
+        } else {
+            palette.dim_text
+        },
+    );
+    let field = text_input("", typed)
+        .id(COMMAND_LINE_ID)
+        .on_input(|text| Message::CommandLine(CommandLineMessage::Input(text)))
+        .on_submit(Message::CommandLine(CommandLineMessage::Submit))
+        .size(font_size::FILE)
+        .font(Font::MONOSPACE)
+        .padding(0.0)
+        .style(theme::path_input(palette))
+        .width(Length::Fill);
+
+    let mut line = row![prompt_path, chevron, field]
+        .spacing(spacing::XS)
+        .align_y(alignment::Vertical::Center);
+    if running > 0 {
+        line = line.push(dim(fill_template(
+            lang.text(Msg::CommandLineRunning),
+            &[("{count}", &running.to_string())],
+        )));
+    } else if !focused && typed.is_empty() {
+        if let Some(label) = key_label {
+            line = line.push(kit::key_cap(&label, palette));
+        }
+        line = line.push(dim(lang.text(Msg::CommandLineHint).to_owned()));
+    }
+
+    let bar = column![
+        theme::horizontal_rule(if focused {
+            palette.accent
+        } else {
+            palette.border_inactive
+        }),
+        container(line)
+            .padding([0.0, ROW_PADDING_X])
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .align_y(alignment::Vertical::Center)
+            .style(theme::statusbar(palette)),
+    ]
+    .height(COMMAND_LINE_HEIGHT);
+    if focused {
+        return bar.into();
+    }
+    // A click into the field would focus only the widget, and the keys would
+    // keep going to the panels. The layer on top takes the click and focuses
+    // the line through the app instead; under a dialog it takes the click
+    // and does nothing.
+    let cover = space().width(Length::Fill).height(Length::Fill);
+    let click_layer: Element<'a, Message> = if focusable {
+        mouse_area(cover)
+            .on_press(Message::CommandLine(CommandLineMessage::Focus))
+            .interaction(mouse::Interaction::Text)
+            .into()
+    } else {
+        opaque(cover)
+    };
+    stack![bar, click_layer].into()
+}
