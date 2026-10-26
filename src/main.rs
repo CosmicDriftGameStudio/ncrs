@@ -106,6 +106,13 @@ fn window_frame() -> iced::window::Settings {
 fn window_frame() -> iced::window::Settings {
     iced::window::Settings {
         decorations: false,
+        // Wayland docks and task switchers match a window to its launcher by
+        // this id, so it has to be the basename of ncrs.desktop.
+        #[cfg(target_os = "linux")]
+        platform_specific: iced::window::settings::PlatformSpecific {
+            application_id: "ncrs".to_owned(),
+            ..iced::window::settings::PlatformSpecific::default()
+        },
         ..iced::window::Settings::default()
     }
 }

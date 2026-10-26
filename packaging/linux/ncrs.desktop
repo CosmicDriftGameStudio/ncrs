@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ncrs
+GenericName=File Manager
+Comment=A dual-panel file manager inspired by Norton Commander, built with iced
+Exec=ncrs
+Icon=ncrs
+Terminal=false
+Categories=System;FileTools;FileManager;
+StartupWMClass=ncrs

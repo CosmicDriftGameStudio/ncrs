@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
-# Lays out a release: the archives of the build job and the unsigned macOS app.
+# Lays out a release: the archives of the build job, the unsigned macOS app and
+# the Linux .deb and .rpm.
 # One place, so the PR build, the release build and the signing step cannot
 # drift apart. Runs on macOS, Linux and Windows (git-bash).
 #
 #   package.sh archive <triple> <binary> <pdfium-dir> <out-dir> [--licenses <file>]
 #   package.sh app <dir-with-binary-and-lib> <version> <min-macos> <out-dir> [--licenses <file>]
+#   package.sh linux-packages <triple> <stage-dir> <version> <out-dir> <nfpm-binary>
 #
-# <pdfium-dir> is what scripts/fetch-pdfium.sh unpacked. Both commands end
+# <pdfium-dir> is what scripts/fetch-pdfium.sh unpacked. archive and app end
 # with a layout check that lists the result and fails when the binary or the
 # library is missing.
+#
+# <stage-dir> is the folder `archive --licenses` leaves behind
+# (<out-dir>/ncrs-<triple>), <nfpm-binary> what scripts/fetch-nfpm.sh unpacked.
+# linux-packages writes <out-dir>/ncrs-<triple>.deb and .rpm.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -26,6 +32,8 @@ absolute() {
     echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
   fi
 }
+
+ICON_SIZES="32 48 64 128 256 512"
 
 # Prints "<library file name> <subfolder of the fetch-pdfium output>".
 library_for() {
@@ -118,6 +126,21 @@ package_archive() {
   cp "$pdfium_dir/LICENSE" "$stage/licenses/pdfium/"
   cp -R "$pdfium_dir/licenses/." "$stage/licenses/pdfium/"
   local expected=("$binary_name" "$library_name" LICENSE README.md ROADMAP.md licenses/pdfium/LICENSE)
+  case "$triple" in
+    *-linux-*)
+      # Laid out like /usr/share, so the .deb and .rpm take the tree as it is
+      # and a package built from the tarball (the AUR one) installs it with a
+      # plain copy.
+      mkdir -p "$stage/share/applications" "$stage/share/icons"
+      cp "$repo_root/packaging/linux/ncrs.desktop" "$stage/share/applications/"
+      cp -R "$repo_root/packaging/linux/icons/hicolor" "$stage/share/icons/"
+      expected+=(share/applications/ncrs.desktop)
+      local icon_size
+      for icon_size in $ICON_SIZES; do
+        expected+=("share/icons/hicolor/${icon_size}x${icon_size}/apps/ncrs.png")
+      done
+      ;;
+  esac
   if [ -n "$licenses" ]; then
     cp "$licenses" "$stage/THIRD_PARTY_LICENSES.html"
     expected+=(THIRD_PARTY_LICENSES.html)
@@ -199,11 +222,148 @@ package_app() {
   check_layout "$app" "${expected[@]}"
 }
 
+# NEEDED sonames of an ELF file, one per line.
+needed_sonames() {
+  readelf -d "$1" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p'
+}
+
+# Highest version of one symbol-version family (GLIBC_2.39 -> 2.39) that the
+# given ELF files require, or nothing when they use none. `readelf -V` reads
+# the file itself, so this works on a cross-built aarch64 binary too.
+highest_symbol_version() {
+  local family="$1"
+  shift
+  local file
+  for file in "$@"; do
+    readelf -V "$file"
+  done | grep -o "Name: ${family}_[0-9][0-9.]*" | sed "s/^Name: ${family}_//" | sort -uV | tail -n 1 || true
+}
+
+package_linux() {
+  [ "$#" -eq 5 ] || usage
+  local triple="$1" stage version out_dir nfpm
+  stage="$(absolute "$2")"
+  version="$3"
+  mkdir -p "$4"
+  out_dir="$(absolute "$4")"
+  nfpm="$(absolute "$5")"
+
+  local arch
+  case "$triple" in
+    x86_64-unknown-linux-gnu) arch=amd64 ;;
+    aarch64-unknown-linux-gnu) arch=arm64 ;;
+    *) echo "error: no Linux packages for target: $triple" >&2; exit 2 ;;
+  esac
+  printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.+~-][0-9A-Za-z.+~-]+)?$' \
+    || { echo "error: not a usable package version: $version" >&2; exit 2; }
+
+  local binary="$stage/ncrs" library="$stage/libpdfium.so" path
+  for path in ncrs libpdfium.so LICENSE README.md THIRD_PARTY_LICENSES.html \
+    licenses/pdfium/LICENSE share/applications/ncrs.desktop share/icons/hicolor; do
+    [ -e "$stage/$path" ] || { echo "error: no $path in $stage" >&2; exit 1; }
+  done
+
+  # What the dynamic loader needs before main() runs. Anything outside this
+  # list has to be declared as a dependency below on purpose, so a new
+  # link-time library cannot slip into the package unnoticed.
+  local allowed=" libc.so.6 libm.so.6 libgcc_s.so.1 libstdc++.so.6 libpthread.so.0 libdl.so.2 ld-linux-x86-64.so.2 ld-linux-aarch64.so.1 "
+  local file soname unexpected=0
+  for file in "$binary" "$library"; do
+    for soname in $(needed_sonames "$file"); do
+      case "$allowed" in
+        *" $soname "*) ;;
+        *)
+          echo "error: $(basename "$file") links $soname, which linux-packages does not declare." >&2
+          echo "       Add it to the allowlist in scripts/package.sh and to the dependencies in packaging/linux/nfpm.yaml." >&2
+          unexpected=1
+          ;;
+      esac
+    done
+  done
+  [ "$unexpected" -eq 0 ] || exit 1
+
+  # The lowest glibc / libstdc++ / libgcc the binaries run on is whatever they
+  # were linked against, so it is read from them, not written down.
+  local glibc glibcxx cxxabi gcc
+  glibc="$(highest_symbol_version GLIBC "$binary" "$library")"
+  glibcxx="$(highest_symbol_version GLIBCXX "$binary" "$library")"
+  cxxabi="$(highest_symbol_version CXXABI "$binary" "$library")"
+  gcc="$(highest_symbol_version GCC "$binary" "$library")"
+  [ -n "$glibc" ] || { echo "error: no GLIBC_ symbol versions found in $binary" >&2; exit 1; }
+  echo "minimum versions: glibc ${glibc}, GLIBCXX ${glibcxx:-none}, CXXABI ${cxxabi:-none}, GCC ${gcc:-none}"
+
+  # Capability names of the rpm. Soname capabilities instead of package names
+  # because Fedora, RHEL and openSUSE name the packages differently.
+  rpm_capability() {
+    if [ -n "$2" ]; then echo "$1($2)(64bit)"; else echo "$1()(64bit)"; fi
+  }
+  # Debian's libstdc++6 and libgcc-s1 carry the gcc version (14.2.0), not the
+  # GLIBCXX_ or GCC_ symbol version, so only libc6 can be versioned. A
+  # libstdc++ too old for the binary comes with a glibc too old for it as well.
+  export NCRS_STAGE="$stage" NCRS_VERSION="$version" NCRS_ARCH="$arch"
+  export NCRS_DEB_LIBC="libc6 (>= ${glibc})"
+  NCRS_RPM_LIBC="$(rpm_capability libc.so.6 "GLIBC_${glibc}")"
+  NCRS_RPM_LIBSTDCXX="$(rpm_capability libstdc++.so.6 "${glibcxx:+GLIBCXX_$glibcxx}")"
+  NCRS_RPM_CXXABI="$(rpm_capability libstdc++.so.6 "${cxxabi:+CXXABI_$cxxabi}")"
+  NCRS_RPM_LIBGCC="$(rpm_capability libgcc_s.so.1 "${gcc:+GCC_$gcc}")"
+  export NCRS_RPM_LIBC NCRS_RPM_LIBSTDCXX NCRS_RPM_CXXABI NCRS_RPM_LIBGCC
+
+  local config="$repo_root/packaging/linux/nfpm.yaml" format built
+  for format in deb rpm; do
+    built="$out_dir/ncrs-$triple.$format"
+    rm -f "$built"
+    "$nfpm" package --config "$config" --packager "$format" --target "$built"
+    [ -f "$built" ] || { echo "error: nfpm wrote no $built" >&2; exit 1; }
+  done
+
+  local expected=(
+    usr/lib/ncrs/ncrs usr/lib/ncrs/libpdfium.so usr/bin/ncrs
+    usr/share/applications/ncrs.desktop
+    usr/share/doc/ncrs/LICENSE usr/share/doc/ncrs/README.md
+    usr/share/doc/ncrs/THIRD_PARTY_LICENSES.html usr/share/doc/ncrs/licenses/pdfium/LICENSE
+  )
+  local icon_size
+  for icon_size in $ICON_SIZES; do
+    expected+=("usr/share/icons/hicolor/${icon_size}x${icon_size}/apps/ncrs.png")
+  done
+
+  # Package contents, one path per line without a leading "./" or "/".
+  local listing
+  if command -v dpkg-deb >/dev/null 2>&1; then
+    listing="$(dpkg-deb -c "$out_dir/ncrs-$triple.deb" | awk '{print $6}' | sed 's|^\./||; s|^/||')"
+    check_listing "ncrs-$triple.deb" "$listing" "${expected[@]}"
+  else
+    echo "(no dpkg-deb here; ncrs-$triple.deb is not listed)"
+  fi
+  if command -v rpm >/dev/null 2>&1; then
+    listing="$(rpm -qlp "$out_dir/ncrs-$triple.rpm" | sed 's|^/||')"
+    check_listing "ncrs-$triple.rpm" "$listing" "${expected[@]}"
+  else
+    echo "(no rpm here; ncrs-$triple.rpm is not listed)"
+  fi
+}
+
+# Lists a package's files and fails when one of the expected paths is not in it.
+check_listing() {
+  local name="$1" listing="$2" missing=0 path
+  shift 2
+  echo "contents of $name:"
+  echo "$listing"
+  for path in "$@"; do
+    if ! echo "$listing" | grep -qx "$path"; then
+      echo "error: $name does not contain $path" >&2
+      missing=1
+    fi
+  done
+  return "$missing"
+}
+
 [ "$#" -ge 1 ] || usage
 command="$1"
 shift
 case "$command" in
   archive) package_archive "$@" ;;
   app) package_app "$@" ;;
+  linux-packages) package_linux "$@" ;;
   *) usage ;;
 esac

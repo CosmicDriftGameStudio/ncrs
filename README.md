@@ -160,6 +160,19 @@ Pre-built binaries for Linux, macOS and Windows are attached to each
 curl -fsSL https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/install.sh | sh
 ```
 
+On Debian and Ubuntu, and on Fedora and openSUSE, the release also has packages
+that pull in the libraries ncrs needs. Download the file for your CPU
+(`x86_64` or `aarch64`) from the release page and install it:
+
+```bash
+sudo apt install ./ncrs-x86_64-unknown-linux-gnu.deb
+sudo dnf install ./ncrs-x86_64-unknown-linux-gnu.rpm
+```
+
+The Linux binaries, packaged or not, need glibc 2.39 or newer: Ubuntu 24.04,
+Debian 13, Fedora 40, openSUSE Tumbleweed and later. On an older distribution,
+build ncrs from source (see [Build & run](#build--run)).
+
 On macOS, Homebrew is the better choice: it installs `ncrs.app` into
 Applications (Launchpad, Dock, Spotlight) and puts `ncrs` on your `PATH`:
 

@@ -1,0 +1,104 @@
+# Config of the .deb and .rpm, read by `package.sh linux-packages`, which sets
+# the NCRS_* variables from the staged archive and from the ELF files in it.
+name: ncrs
+arch: ${NCRS_ARCH}
+platform: linux
+version: ${NCRS_VERSION}
+release: "1"
+section: utils
+priority: optional
+maintainer: CosmicDriftGameStudio
+homepage: https://github.com/CosmicDriftGameStudio/ncrs
+license: MIT
+description: |
+  A dual-panel file manager inspired by Norton Commander, built with iced
+
+# Both libraries sit in one folder because a release build looks for
+# libpdfium.so only next to the executable (it resolves symlinks, so the
+# /usr/bin entry is enough). Outside the library path, so no other program
+# picks up this pdfium build.
+# `expand` lets src take the NCRS_STAGE variable; nfpm leaves paths alone otherwise.
+contents:
+  - src: ${NCRS_STAGE}/ncrs
+    expand: true
+    dst: /usr/lib/ncrs/ncrs
+    file_info:
+      mode: 0755
+  - src: ${NCRS_STAGE}/libpdfium.so
+    expand: true
+    dst: /usr/lib/ncrs/libpdfium.so
+    file_info:
+      mode: 0644
+  - src: /usr/lib/ncrs/ncrs
+    dst: /usr/bin/ncrs
+    type: symlink
+  - src: ${NCRS_STAGE}/share/applications/ncrs.desktop
+    expand: true
+    dst: /usr/share/applications/ncrs.desktop
+  - src: ${NCRS_STAGE}/share/icons/hicolor
+    expand: true
+    dst: /usr/share/icons/hicolor
+    type: tree
+  - src: ${NCRS_STAGE}/LICENSE
+    expand: true
+    dst: /usr/share/doc/ncrs/LICENSE
+  - src: ${NCRS_STAGE}/README.md
+    expand: true
+    dst: /usr/share/doc/ncrs/README.md
+  - src: ${NCRS_STAGE}/THIRD_PARTY_LICENSES.html
+    expand: true
+    dst: /usr/share/doc/ncrs/THIRD_PARTY_LICENSES.html
+  - src: ${NCRS_STAGE}/licenses/pdfium
+    expand: true
+    dst: /usr/share/doc/ncrs/licenses/pdfium
+    type: tree
+
+# Hard dependencies are what the binary needs to start or to show a window:
+# the libraries link-time (libc, libstdc++, libgcc) and the ones winit and rfd
+# (file dialogs) load with dlopen, which no packager can see in the ELF headers.
+# The keyring speaks D-Bus in pure Rust (zbus) and needs only a running Secret
+# Service, hence the suggested gnome-keyring.
+# The graphics libraries are only recommended: the renderer falls back to
+# tiny-skia when Vulkan and EGL are missing. Capabilities (sonames) instead of
+# package names in the rpm, so Fedora and openSUSE both resolve them.
+overrides:
+  deb:
+    depends:
+      - ${NCRS_DEB_LIBC}
+      - libstdc++6
+      - libgcc-s1
+      - libxkbcommon0
+      - libxkbcommon-x11-0
+      - libwayland-client0
+      - libx11-6
+      - libx11-xcb1
+      - libxcursor1
+      - libxi6
+      - libdbus-1-3
+    recommends:
+      - libvulkan1
+      - libegl1
+      - libwayland-egl1
+      # File dialogs go through the desktop portal.
+      - xdg-desktop-portal
+    suggests:
+      # Saved credentials need a Secret Service provider.
+      - gnome-keyring
+  rpm:
+    depends:
+      - ${NCRS_RPM_LIBC}
+      - ${NCRS_RPM_LIBSTDCXX}
+      - ${NCRS_RPM_CXXABI}
+      - ${NCRS_RPM_LIBGCC}
+      - libxkbcommon.so.0()(64bit)
+      - libxkbcommon-x11.so.0()(64bit)
+      - libwayland-client.so.0()(64bit)
+      - libX11.so.6()(64bit)
+      - libX11-xcb.so.1()(64bit)
+      - libXcursor.so.1()(64bit)
+      - libXi.so.6()(64bit)
+      - libdbus-1.so.3()(64bit)
+    recommends:
+      - libvulkan.so.1()(64bit)
+      - libEGL.so.1()(64bit)
+      - libwayland-egl.so.1()(64bit)
