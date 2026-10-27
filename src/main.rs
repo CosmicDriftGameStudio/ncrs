@@ -30,6 +30,7 @@ mod hermes_column;
 mod hermes_status;
 mod i18n;
 mod jobs;
+mod key_bindings;
 mod keymap;
 mod list_window;
 #[cfg(any(target_os = "macos", test))]

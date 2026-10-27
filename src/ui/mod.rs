@@ -16,6 +16,7 @@ pub mod fkeys;
 pub mod format;
 pub mod frame;
 pub mod hermes;
+pub mod key_bindings;
 pub mod key_intercept;
 pub mod kit;
 pub mod layout;

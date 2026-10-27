@@ -4391,6 +4391,228 @@
       "context": "Status bar error when the shell for a command typed into the command line could not be started. {command} is the typed line, {reason} the system's explanation.",
       "en": "{command}: the shell did not start: {reason}",
       "de": "{command}: Die Shell ließ sich nicht starten: {reason}"
+    },
+    {
+      "key": "action.key_bindings",
+      "context": "Entry of the command palette that runs the key action key_bindings, which opens the dialog listing every keyboard shortcut. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Keyboard shortcuts",
+      "de": "Tastenkürzel"
+    },
+    {
+      "key": "action.cursor_up",
+      "context": "Name of the key action cursor_up in the keyboard shortcuts dialog: moves the cursor of the file panel one row up. As short as a menu entry.",
+      "en": "Cursor up",
+      "de": "Cursor nach oben"
+    },
+    {
+      "key": "action.cursor_down",
+      "context": "Name of the key action cursor_down in the keyboard shortcuts dialog: moves the cursor of the file panel one row down. As short as a menu entry.",
+      "en": "Cursor down",
+      "de": "Cursor nach unten"
+    },
+    {
+      "key": "action.page_up",
+      "context": "Name of the key action page_up in the keyboard shortcuts dialog: moves the cursor of the file panel one page up. As short as a menu entry.",
+      "en": "Page up",
+      "de": "Seite nach oben"
+    },
+    {
+      "key": "action.page_down",
+      "context": "Name of the key action page_down in the keyboard shortcuts dialog: moves the cursor of the file panel one page down. As short as a menu entry.",
+      "en": "Page down",
+      "de": "Seite nach unten"
+    },
+    {
+      "key": "action.first",
+      "context": "Name of the key action first in the keyboard shortcuts dialog: moves the cursor of the file panel to its first row. As short as a menu entry.",
+      "en": "First row",
+      "de": "Erste Zeile"
+    },
+    {
+      "key": "action.last",
+      "context": "Name of the key action last in the keyboard shortcuts dialog: moves the cursor of the file panel to its last row. As short as a menu entry.",
+      "en": "Last row",
+      "de": "Letzte Zeile"
+    },
+    {
+      "key": "action.tag_up",
+      "context": "Name of the key action tag_up in the keyboard shortcuts dialog: tags the row under the cursor and moves the cursor one row up. As short as a menu entry.",
+      "en": "Tag and move up",
+      "de": "Markieren und nach oben"
+    },
+    {
+      "key": "action.tag_down",
+      "context": "Name of the key action tag_down in the keyboard shortcuts dialog: tags the row under the cursor and moves the cursor one row down. As short as a menu entry.",
+      "en": "Tag and move down",
+      "de": "Markieren und nach unten"
+    },
+    {
+      "key": "key_bindings.title",
+      "context": "Title of the dialog that lists every keyboard shortcut and lets the user rebind them.",
+      "en": "Keyboard shortcuts",
+      "de": "Tastenkürzel"
+    },
+    {
+      "key": "key_bindings.title_theme",
+      "context": "Playful theme name shown dimmed next to the title of the keyboard shortcuts dialog, in the Futurama theme of the app: the switchboard of the Planet Express ship.",
+      "en": "Planet Express switchboard",
+      "de": "Planet-Express-Schaltpult"
+    },
+    {
+      "key": "key_bindings.search_placeholder",
+      "context": "Placeholder of the search field of the keyboard shortcuts dialog. Typing searches the action names; pressing a key combination finds the action bound to it.",
+      "en": "Search by name, or press a key combination",
+      "de": "Nach Namen suchen oder Tastenkombination drücken"
+    },
+    {
+      "key": "key_bindings.column_action",
+      "context": "Column heading in the keyboard shortcuts dialog over the names of the actions.",
+      "en": "Action",
+      "de": "Aktion"
+    },
+    {
+      "key": "key_bindings.column_group",
+      "context": "Column heading in the keyboard shortcuts dialog over the menu group an action belongs to (File, Edit, View ...).",
+      "en": "Group",
+      "de": "Gruppe"
+    },
+    {
+      "key": "key_bindings.column_keys",
+      "context": "Column heading in the keyboard shortcuts dialog over the keys bound to each action.",
+      "en": "Keys",
+      "de": "Tasten"
+    },
+    {
+      "key": "key_bindings.changed",
+      "context": "Small tag in a row of the keyboard shortcuts dialog when the action does not have the keys the app ships with. One short word.",
+      "en": "changed",
+      "de": "geändert"
+    },
+    {
+      "key": "key_bindings.no_key",
+      "context": "Shown dimmed in a row of the keyboard shortcuts dialog when no key is bound to the action.",
+      "en": "no key",
+      "de": "keine Taste"
+    },
+    {
+      "key": "key_bindings.recording",
+      "context": "Shown in the row being rebound in the keyboard shortcuts dialog while the app waits for the new key combination.",
+      "en": "Press the new key combination",
+      "de": "Neue Tastenkombination drücken"
+    },
+    {
+      "key": "key_bindings.recording_note",
+      "context": "Footer note of the keyboard shortcuts dialog while it waits for a new key combination. Esc is the key name.",
+      "en": "Press the new key combination. Esc cancels.",
+      "de": "Neue Tastenkombination drücken. Esc bricht ab."
+    },
+    {
+      "key": "key_bindings.clash",
+      "context": "Warning in the keyboard shortcuts dialog before a key is taken from another action. {key} is the key combination, {action} the name of the action that has it now.",
+      "en": "{key} is bound to {action}. Take it from there?",
+      "de": "{key} liegt auf {action}. Dort wegnehmen?"
+    },
+    {
+      "key": "key_bindings.take",
+      "context": "Button in the keyboard shortcuts dialog that takes a key from the action that has it and gives it to the selected one.",
+      "en": "Take key",
+      "de": "Taste übernehmen"
+    },
+    {
+      "key": "key_bindings.reset_all_question",
+      "context": "Question in the keyboard shortcuts dialog before every action gets the keys the app ships with again.",
+      "en": "Give every action its built-in keys again?",
+      "de": "Allen Aktionen wieder ihre eingebauten Tasten geben?"
+    },
+    {
+      "key": "key_bindings.reset",
+      "context": "Button in the keyboard shortcuts dialog that gives the selected action the keys the app ships with again.",
+      "en": "Reset",
+      "de": "Zurücksetzen"
+    },
+    {
+      "key": "key_bindings.reset_all",
+      "context": "Button in the keyboard shortcuts dialog that gives every action the keys the app ships with again. Asks first.",
+      "en": "Reset all",
+      "de": "Alle zurücksetzen"
+    },
+    {
+      "key": "key_bindings.add_key",
+      "context": "Button in the keyboard shortcuts dialog that records a further key for the selected action.",
+      "en": "Add key",
+      "de": "Taste hinzufügen"
+    },
+    {
+      "key": "key_bindings.remove_key",
+      "context": "Button in the keyboard shortcuts dialog that removes the focused key of the selected action.",
+      "en": "Remove key",
+      "de": "Taste entfernen"
+    },
+    {
+      "key": "key_bindings.change_key",
+      "context": "Button in the keyboard shortcuts dialog that records a new key in place of the focused one.",
+      "en": "Change key",
+      "de": "Taste ändern"
+    },
+    {
+      "key": "key_bindings.refused_unnamed",
+      "context": "Error in the keyboard shortcuts dialog when the pressed key has no name the config file can store, such as F13 or a media key.",
+      "en": "This key cannot be stored in the config.",
+      "de": "Diese Taste lässt sich nicht in der Konfiguration speichern."
+    },
+    {
+      "key": "key_bindings.refused_needs_modifier",
+      "context": "Error in the keyboard shortcuts dialog when a plain letter or digit is pressed: alone it jumps to a file name (type-ahead). Ctrl, Alt and Cmd are key names.",
+      "en": "Letters and digits need Ctrl, Alt or Cmd: alone they jump to a file name.",
+      "de": "Buchstaben und Ziffern brauchen Ctrl, Alt oder Cmd: allein springen sie zu einem Dateinamen."
+    },
+    {
+      "key": "key_bindings.refused_escape",
+      "context": "Error in the keyboard shortcuts dialog: Escape cannot be bound because it closes dialogs and stops jobs.",
+      "en": "Esc is reserved: it closes dialogs and stops jobs.",
+      "de": "Esc ist vergeben: Es schließt Dialoge und stoppt Aufträge."
+    },
+    {
+      "key": "key_bindings.refused_fixed_in_search",
+      "context": "Error in the keyboard shortcuts dialog: the search view handles this key itself, so a search action cannot take it.",
+      "en": "The search view uses this key itself.",
+      "de": "Die Suche nutzt diese Taste selbst."
+    },
+    {
+      "key": "key_bindings.too_many",
+      "context": "Error in the keyboard shortcuts dialog when an action already has the most keys allowed. {count} is that number.",
+      "en": "An action takes at most {count} keys.",
+      "de": "Eine Aktion nimmt höchstens {count} Tasten."
+    },
+    {
+      "key": "key_bindings.already_bound",
+      "context": "Notice in the keyboard shortcuts dialog when the pressed key is already one of the selected action's keys. {key} is the key combination.",
+      "en": "{key} is already a key of this action.",
+      "de": "{key} ist schon eine Taste dieser Aktion."
+    },
+    {
+      "key": "key_bindings.not_written",
+      "context": "Error in the keyboard shortcuts dialog when the change could not be saved to the config file. {reason} is the explanation.",
+      "en": "Not saved: {reason}",
+      "de": "Nicht gespeichert: {reason}"
+    },
+    {
+      "key": "key_bindings.hint_change",
+      "context": "Verb next to the Enter key in the footer hints of the keyboard shortcuts dialog: records a new key for the focused one. One word.",
+      "en": "change",
+      "de": "ändern"
+    },
+    {
+      "key": "key_bindings.hint_remove",
+      "context": "Verb next to the Backspace key in the footer hints of the keyboard shortcuts dialog: removes the focused key. One word.",
+      "en": "remove",
+      "de": "entfernen"
+    },
+    {
+      "key": "key_bindings.hint_reset",
+      "context": "Verb next to the Shift+Backspace key in the footer hints of the keyboard shortcuts dialog: gives the action its built-in keys again. One word.",
+      "en": "reset",
+      "de": "zurücksetzen"
     }
   ]
 }

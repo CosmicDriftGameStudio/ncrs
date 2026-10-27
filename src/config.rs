@@ -25,7 +25,7 @@ use serde::Deserialize;
 use serde_spanned::Spanned;
 
 use crate::i18n::Language;
-use crate::keymap::Keymap;
+use crate::keymap::{KeyAction, Keymap};
 use crate::palette::{ColorRole, Palette, ThemePreset, PRESET_KEY, VSCODE_KEY};
 use crate::vscode_theme::VscodeTheme;
 
@@ -1016,6 +1016,19 @@ fn write_filing_locations_with_home(
         return Err(FilingWriteError::Rule(FilingRuleViolation::NoTarget));
     }
     check_filing_rules(locations).map_err(FilingWriteError::Rule)?;
+    write_edited(path, home, |source| {
+        with_filing_locations(source, path, locations)
+    })
+}
+
+/// Replaces the config at `path` with `edit` applied to its text, then reads
+/// it back. Both the text before and the text after must load, so nothing
+/// the loader would reject reaches the file, and the replacement is atomic.
+fn write_edited(
+    path: &Path,
+    home: Option<&Path>,
+    edit: impl FnOnce(&str) -> Result<String, FilingWriteError>,
+) -> Result<Config, FilingWriteError> {
     let target = resolve_write_target(path)?;
     let source = read_source(&target).map_err(FilingWriteError::Config)?;
     // The edit is based on exactly this text, so a mistake in it would be
@@ -1023,7 +1036,7 @@ fn write_filing_locations_with_home(
     if let Some(text) = &source {
         parse_config(text, path, home).map_err(FilingWriteError::Config)?;
     }
-    let edited = with_filing_locations(source.as_deref().unwrap_or_default(), path, locations)?;
+    let edited = edit(source.as_deref().unwrap_or_default())?;
     parse_config(&edited, path, home).map_err(FilingWriteError::Config)?;
     replace_file(&target, &edited)?;
     load_with_home(path, home).map_err(FilingWriteError::Config)
@@ -1042,15 +1055,9 @@ fn write_vscode_theme_with_home(
     relative: &str,
     home: Option<&Path>,
 ) -> Result<Config, FilingWriteError> {
-    let target = resolve_write_target(path)?;
-    let source = read_source(&target).map_err(FilingWriteError::Config)?;
-    if let Some(text) = &source {
-        parse_config(text, path, home).map_err(FilingWriteError::Config)?;
-    }
-    let edited = with_vscode_theme(source.as_deref().unwrap_or_default(), path, relative)?;
-    parse_config(&edited, path, home).map_err(FilingWriteError::Config)?;
-    replace_file(&target, &edited)?;
-    load_with_home(path, home).map_err(FilingWriteError::Config)
+    write_edited(path, home, |source| {
+        with_vscode_theme(source, path, relative)
+    })
 }
 
 /// `source` with `vscode = "<relative>"` in `[theme]`, which is created when
@@ -1182,15 +1189,64 @@ fn write_setting(
     setting: Setting,
     home: Option<&Path>,
 ) -> Result<Config, FilingWriteError> {
-    let target = resolve_write_target(path)?;
-    let source = read_source(&target).map_err(FilingWriteError::Config)?;
-    if let Some(text) = &source {
-        parse_config(text, path, home).map_err(FilingWriteError::Config)?;
+    write_edited(path, home, |source| with_setting(source, path, &setting))
+}
+
+/// What one action gets in `[keys]`: the listed keys as `[keys]` spells
+/// them, or `None` to drop its line, so that it has its built-in keys again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyChange {
+    pub action: KeyAction,
+    pub chords: Option<Vec<String>>,
+}
+
+const KEYS_TABLE: &str = "keys";
+
+/// Writes the lines of `changes` to `[keys]` and leaves every other action,
+/// line and comment as written. The result must load, so a clash or a key
+/// the keymap refuses leaves the file unchanged and comes back as `Config`.
+pub fn write_keys(path: &Path, changes: &[KeyChange]) -> Result<Config, FilingWriteError> {
+    write_keys_with_home(path, changes, home_from_env().as_deref())
+}
+
+fn write_keys_with_home(
+    path: &Path,
+    changes: &[KeyChange],
+    home: Option<&Path>,
+) -> Result<Config, FilingWriteError> {
+    write_edited(path, home, |source| with_keys(source, path, changes))
+}
+
+/// `source` with the lines of `changes` in `[keys]`. The table is created
+/// only for a line to write: dropping lines from a file without one leaves
+/// it as it is.
+fn with_keys(source: &str, path: &Path, changes: &[KeyChange]) -> Result<String, FilingWriteError> {
+    let mut document = parse_document(source, path)?;
+    let writes_a_line = changes.iter().any(|change| change.chords.is_some());
+    if !writes_a_line && !document.contains_key(KEYS_TABLE) {
+        return Ok(document.to_string());
     }
-    let edited = with_setting(source.as_deref().unwrap_or_default(), path, &setting)?;
-    parse_config(&edited, path, home).map_err(FilingWriteError::Config)?;
-    replace_file(&target, &edited)?;
-    load_with_home(path, home).map_err(FilingWriteError::Config)
+    let keys = sub_table(document.as_table_mut(), KEYS_TABLE, false)
+        .ok_or_else(|| not_a_table(path, KEYS_TABLE))?;
+    for change in changes {
+        let name = change.action.name();
+        let Some(chords) = &change.chords else {
+            keys.remove(name);
+            continue;
+        };
+        let value = toml_edit::Value::Array(chords.iter().map(String::as_str).collect());
+        match keys.get_mut(name).and_then(toml_edit::Item::as_value_mut) {
+            Some(existing) => {
+                let decor = existing.decor().clone();
+                *existing = value;
+                *existing.decor_mut() = decor;
+            }
+            None => {
+                keys.insert(name, toml_edit::Item::Value(value));
+            }
+        }
+    }
+    Ok(document.to_string())
 }
 
 /// `source` with the setting's value in place, its tables created when
@@ -2865,6 +2921,75 @@ mod tests {
         assert!(matches!(written.filing.ai, AiSetting::Local { .. }));
         let off = write_setting(&path, ai_enabled_setting(false), None).unwrap();
         assert_eq!(off.filing.ai, AiSetting::Off);
+    }
+
+    fn key_change(action: KeyAction, chords: Option<&[&str]>) -> KeyChange {
+        KeyChange {
+            action,
+            chords: chords.map(|list| list.iter().map(|chord| (*chord).to_owned()).collect()),
+        }
+    }
+
+    #[test]
+    fn written_keys_replace_only_their_lines_and_keep_the_comments() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "lang = \"de\"\n\n# my keys\n[keys]\nquit = \"f10\" # old habit\nview = [\"f3\"]\n",
+        )
+        .unwrap();
+
+        let written = write_keys_with_home(
+            &path,
+            &[
+                key_change(KeyAction::Quit, Some(&["primary+q", "f10"])),
+                key_change(KeyAction::View, None),
+                key_change(KeyAction::Edit, Some(&["f4", "shift+f4"])),
+            ],
+            None,
+        )
+        .unwrap();
+
+        let text = lines_of(&path);
+        assert_eq!(
+            text,
+            "lang = \"de\"\n\n# my keys\n[keys]\nquit = [\"primary+q\", \"f10\"] # old habit\nedit = [\"f4\", \"shift+f4\"]\n"
+        );
+        let names: Vec<&str> = written
+            .keys
+            .entries
+            .iter()
+            .map(|entry| entry.action.get_ref().as_str())
+            .collect();
+        assert_eq!(names, ["quit", "edit"]);
+    }
+
+    #[test]
+    fn dropping_keys_from_a_file_without_them_adds_no_table() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("config.toml");
+        std::fs::write(&path, "lang = \"en\"\n").unwrap();
+        write_keys_with_home(&path, &[key_change(KeyAction::Quit, None)], None).unwrap();
+        assert_eq!(lines_of(&path), "lang = \"en\"\n");
+    }
+
+    #[test]
+    fn keys_that_clash_are_not_written() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("config.toml");
+        let text = "[keys]\nquit = \"f10\"\n";
+        std::fs::write(&path, text).unwrap();
+        let result =
+            write_keys_with_home(&path, &[key_change(KeyAction::View, Some(&["f10"]))], None);
+        assert!(
+            matches!(
+                result,
+                Err(FilingWriteError::Config(ConfigError::Invalid { .. }))
+            ),
+            "{result:?}"
+        );
+        assert_eq!(lines_of(&path), text);
     }
 
     #[test]

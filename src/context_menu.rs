@@ -8,10 +8,10 @@ use crate::fs::OpenKind;
 use crate::hermes_column::FolderRole;
 use crate::i18n::Msg;
 use crate::messages::{
-    ClipboardKind, CommandLineMessage, CommandPaletteMessage, HermesFileMessage, Message,
-    QuickFixMessage, QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage,
-    RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage,
-    TransferKind,
+    ClipboardKind, CommandLineMessage, CommandPaletteMessage, HermesFileMessage,
+    KeyBindingsMessage, Message, QuickFixMessage, QuickOpenMessage, ReorganisationPlanMessage,
+    ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingsMessage,
+    ThemeFetchMessage, TransferKind,
 };
 use crate::transfer_dialog::TransferDialogMessage;
 use crate::ui::layout::{
@@ -605,6 +605,9 @@ pub struct InputState {
     pub quick_open: bool,
     /// The command palette is up: same as Quick Open.
     pub command_palette: bool,
+    /// The keyboard shortcuts dialog is up and records no key: same as Quick
+    /// Open. While it records, Escape is the routing's, which cancels.
+    pub key_bindings: bool,
     /// The theme download card is up: same as Quick Open.
     pub theme_fetch: bool,
     /// The rule suggestions view is up: same as Quick Open.
@@ -663,6 +666,9 @@ impl InputState {
                 if self.command_palette && matches!(key, Key::Named(Named::Escape)) {
                     return Some(Message::CommandPalette(CommandPaletteMessage::Close));
                 }
+                if self.key_bindings && matches!(key, Key::Named(Named::Escape)) {
+                    return Some(Message::KeyBindings(KeyBindingsMessage::Close));
+                }
                 if self.theme_fetch && matches!(key, Key::Named(Named::Escape)) {
                     return Some(Message::ThemeFetch(ThemeFetchMessage::Close));
                 }
@@ -711,6 +717,7 @@ impl InputState {
                     && !self.search_open
                     && !self.quick_open
                     && !self.command_palette
+                    && !self.key_bindings
                     && !self.theme_fetch
                     && !self.rule_suggestions
                     && !self.review_list

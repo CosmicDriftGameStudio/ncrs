@@ -132,6 +132,26 @@ pub fn key_cap_in_row<'a>(
     cap(label, highlighted, palette)
 }
 
+/// The one key cap of a highlighted row that an edit acts on: filled in the
+/// highlight's text color, so it stands out from the outlined caps beside it.
+pub fn key_cap_focused<'a>(label: &str, palette: &Palette) -> Element<'a, Message> {
+    let base = theme::key_cap(palette, true);
+    let (fill, ink) = (palette.cursor_text, palette.cursor);
+    container(
+        text(label.to_owned())
+            .size(font_size::KEY_CAP)
+            .wrapping(Wrapping::None),
+    )
+    .padding([0.0, spacing::XS - 1.0])
+    .style(move |theme: &Theme| {
+        let mut style = base(theme);
+        style.background = Some(fill.into());
+        style.text_color = Some(ink);
+        style
+    })
+    .into()
+}
+
 fn cap<'a>(label: &str, on_fill: bool, palette: &Palette) -> Element<'a, Message> {
     let base = theme::key_cap(palette, on_fill);
     container(
