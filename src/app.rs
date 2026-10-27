@@ -16955,8 +16955,8 @@ mod session_state_tests {
 
         drop(app.update(Message::SwitchPanel));
         assert_eq!(app.session_save_generation, 1);
-        let (_, state) = app.due_session_state(1).unwrap();
-        assert_eq!(state.active, Some(PanelSide::Left));
+        let (_, after_switch) = app.due_session_state(1).unwrap();
+        assert_eq!(after_switch.active, Some(PanelSide::Left));
 
         drop(app.update(Message::RowClicked {
             side: PanelSide::Right,
@@ -16964,8 +16964,8 @@ mod session_state_tests {
             on_tag: false,
         }));
         assert_eq!(app.session_save_generation, 2);
-        let (_, state) = app.due_session_state(2).unwrap();
-        assert_eq!(state.active, Some(PanelSide::Right));
+        let (_, after_click) = app.due_session_state(2).unwrap();
+        assert_eq!(after_click.active, Some(PanelSide::Right));
     }
 
     #[test]
