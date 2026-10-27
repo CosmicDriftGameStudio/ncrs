@@ -56,9 +56,9 @@ impl ContextAction {
             ContextAction::Open
             | ContextAction::Copy
             | ContextAction::CopyPath
-            | ContextAction::CopyName => true,
-            ContextAction::View
-            | ContextAction::Edit
+            | ContextAction::CopyName
+            | ContextAction::View => true,
+            ContextAction::Edit
             | ContextAction::Move
             | ContextAction::NewFolder
             | ContextAction::Trash

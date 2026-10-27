@@ -129,17 +129,62 @@ const EXECUTABLE_EXTENSIONS: &[&str] = &[
     "cpl",
     "jar",
     "reg",
+    // Windows: shortcuts, help and installer files, packages
+    "appref-ms",
+    "application",
+    "settingcontent-ms",
+    "library-ms",
+    "search-ms",
+    "scf",
+    "chm",
+    "hlp",
+    "inf",
+    "msp",
+    "mst",
+    "psm1",
+    "wsc",
+    "sct",
+    "ws",
+    "gadget",
+    "diagcab",
+    "appx",
+    "msix",
+    "appxbundle",
+    "msixbundle",
+    "appinstaller",
+    // macOS: location files, profiles, installers, plug-ins
+    "fileloc",
+    "inetloc",
+    "webloc",
+    "mobileconfig",
+    "pkg",
+    "mpkg",
+    "prefpane",
+    "saver",
+    "shortcut",
+    // Linux: packages
+    "deb",
+    "rpm",
+    "flatpakref",
+    "snap",
 ];
 
 /// Whether the system opener might run `path` instead of showing it: an
 /// executable file (the link is followed, as the opener follows it) or an
 /// extension from `EXECUTABLE_EXTENSIONS`.
 pub fn could_execute(path: &Path) -> bool {
-    let listed = path.extension().is_some_and(|raw| {
+    listed_extension(path) || has_exec_bit(path)
+}
+
+/// The extension is read after trailing dots and spaces are cut off, as
+/// Windows does when it opens the file: `evil.exe.` is `evil.exe`.
+fn listed_extension(path: &Path) -> bool {
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let trimmed = name.trim_end_matches(['.', ' ']);
+    Path::new(trimmed).extension().is_some_and(|raw| {
         let lowered = raw.to_string_lossy().to_ascii_lowercase();
         EXECUTABLE_EXTENSIONS.contains(&lowered.as_str())
-    });
-    listed || has_exec_bit(path)
+    })
 }
 
 #[cfg(unix)]
@@ -525,6 +570,39 @@ mod tests {
         }
         assert!(!could_execute(Path::new("/x/nonexistent.txt")));
         assert!(!could_execute(Path::new("/x/noextension")));
+    }
+
+    #[test]
+    fn trailing_dots_and_spaces_do_not_hide_the_extension() {
+        for name in ["evil.exe.", "evil.exe ", "run.SH..", "x.bat . ."] {
+            assert!(could_execute(Path::new(name)), "{name:?}");
+        }
+        for name in ["a.txt", "a.txt.", "readme", "...", " "] {
+            assert!(!could_execute(Path::new(name)), "{name:?}");
+        }
+    }
+
+    #[test]
+    fn launcher_file_types_of_every_system_count_as_executable() {
+        for name in [
+            "a.appref-ms",
+            "b.settingcontent-ms",
+            "c.chm",
+            "d.msix",
+            "e.webloc",
+            "f.INETLOC",
+            "g.pkg",
+            "h.mobileconfig",
+            "i.deb",
+            "j.rpm",
+            "k.flatpakref",
+            "l.snap",
+        ] {
+            assert!(could_execute(Path::new(name)), "{name}");
+        }
+        for name in ["a.iso", "b.img", "c.vhd", "d.dmg"] {
+            assert!(!could_execute(Path::new(name)), "{name}");
+        }
     }
 
     #[cfg(unix)]

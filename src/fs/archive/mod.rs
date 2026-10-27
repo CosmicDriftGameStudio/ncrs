@@ -9,6 +9,7 @@ mod extract;
 mod index;
 mod names;
 mod sevenz;
+mod view;
 
 use std::ffi::{OsStr, OsString};
 use std::io;
@@ -19,6 +20,7 @@ use std::time::SystemTime;
 pub use extract::copy_out;
 pub use index::{ArchiveIndex, Totals};
 pub use sevenz::{refusal_of, SevenZipRefusal};
+pub use view::{extract_for_view, ViewCopies};
 
 use super::FileEntry;
 

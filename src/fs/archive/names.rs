@@ -20,7 +20,7 @@ pub fn safe_components(raw: &str) -> Option<Vec<String>> {
         if components.is_empty() && is_drive_prefix(part) {
             return None;
         }
-        if cfg!(windows) && (part.contains(':') || is_device_name(part)) {
+        if cfg!(windows) && (part.contains(':') || is_device_name(part) || ends_unseen(part)) {
             return None;
         }
         components.push(part.to_owned());
@@ -34,6 +34,12 @@ fn is_drive_prefix(part: &str) -> bool {
         (chars.next(), chars.next(), chars.next()),
         (Some(letter), Some(':'), None) if letter.is_ascii_alphabetic()
     )
+}
+
+/// Win32 cuts trailing dots and spaces off a name, so `evil.exe.` would become
+/// `evil.exe`.
+fn ends_unseen(part: &str) -> bool {
+    part.ends_with(['.', ' '])
 }
 
 /// Windows opens `CON`, `NUL` and friends as devices whatever the extension.
@@ -134,6 +140,19 @@ mod tests {
         assert!(parts("com0").is_some());
         assert!(parts("console").is_some());
         assert!(parts("COM10").is_some());
+    }
+
+    #[test]
+    fn names_ending_in_a_dot_or_space_are_refused_on_windows_only() {
+        for raw in ["evil.exe.", "evil.exe ", "dir/run.bat..", "a/b. "] {
+            let expected = if cfg!(windows) {
+                None
+            } else {
+                parts_unchecked(raw)
+            };
+            assert_eq!(parts(raw), expected, "{raw:?}");
+        }
+        assert!(parts("a.b/c .d").is_some());
     }
 
     fn parts_unchecked(raw: &str) -> Option<Vec<String>> {

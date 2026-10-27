@@ -27,6 +27,7 @@ pub enum JobKind {
     Delete,
     Reorganise,
     File,
+    Extract,
 }
 
 impl JobKind {
@@ -37,6 +38,7 @@ impl JobKind {
             JobKind::Delete => crate::i18n::Msg::JobDelete,
             JobKind::Reorganise => crate::i18n::Msg::JobReorganise,
             JobKind::File => crate::i18n::Msg::JobFile,
+            JobKind::Extract => crate::i18n::Msg::JobExtract,
         }
     }
 }

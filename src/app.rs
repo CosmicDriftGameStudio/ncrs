@@ -109,13 +109,14 @@ const SEARCH_BATCH: usize = 256;
 /// What a panel inside an archive refuses: everything that would change or
 /// hand over the files in it, anything that takes the panel's path or
 /// selection into the config or to Hermes, and an archive inside an archive.
+/// Viewing is allowed: it works on a copy, see `open_external`.
 /// Keys, the command list and the context menu all end up here; the lists of
 /// what may run are `allowed_in_archive` on the three action enums.
 fn archive_refusal(panel: &PanelState, message: &Message) -> Option<Msg> {
     panel.archive.as_ref()?;
     match message {
         Message::Transfer(TransferKind::Move)
-        | Message::OpenExternal(_)
+        | Message::OpenExternal(fs::OpenKind::Edit)
         | Message::Delete { .. }
         | Message::CreateDirPrompt
         | Message::CreateFilePrompt
@@ -599,6 +600,13 @@ struct Deletion {
     side: PanelSide,
 }
 
+/// The archive file F3 is unpacking, and the folder it goes to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Extracting {
+    archive: PathBuf,
+    slot: PathBuf,
+}
+
 /// Which keys the open delete dialog answers to.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum DeleteKeys {
@@ -808,6 +816,11 @@ pub struct App {
     delete_dialog: Option<Deletion>,
     /// The delete that is running.
     deleting: Option<Deletion>,
+    /// The folders F3 unpacks archive files into. `None` when there is no
+    /// cache folder to put them in.
+    view_copies: Option<fs::archive::ViewCopies>,
+    /// The file F3 is unpacking, while its job runs.
+    extracting: Option<Extracting>,
     /// The button the open dialog has focused, counted from the left.
     dialog_focus: usize,
     /// Modifiers held right now, for Cmd/Ctrl-click on a row.
@@ -2196,6 +2209,8 @@ pub struct Environment {
     pub config_path: Option<PathBuf>,
     pub index_path: Option<PathBuf>,
     pub state_path: Option<PathBuf>,
+    /// The cache folder F3 unpacks archive files into.
+    pub view_copies_dir: Option<PathBuf>,
     pub key_store: Arc<dyn KeyStore + Send + Sync>,
 }
 
@@ -2205,6 +2220,7 @@ impl std::fmt::Debug for Environment {
             .field("config_path", &self.config_path)
             .field("index_path", &self.index_path)
             .field("state_path", &self.state_path)
+            .field("view_copies_dir", &self.view_copies_dir)
             .finish_non_exhaustive()
     }
 }
@@ -2216,6 +2232,7 @@ impl Environment {
             config_path: config::default_path(),
             index_path: config::default_index_path(),
             state_path: config::default_state_path(),
+            view_copies_dir: config::default_view_copies_dir(),
             key_store: Arc::new(user_key_store()),
         }
     }
@@ -2228,6 +2245,7 @@ impl Environment {
             config_path: None,
             index_path: None,
             state_path: None,
+            view_copies_dir: None,
             key_store: Arc::new(ncrs_index::InMemoryKeyStore::empty()),
         }
     }
@@ -2263,6 +2281,7 @@ impl App {
             config_path,
             index_path,
             state_path,
+            view_copies_dir,
             key_store,
         } = environment;
         let loaded = config_path
@@ -2287,6 +2306,9 @@ impl App {
         );
         panels.config_path = config_path;
         panels.state_path = state_path;
+        panels.view_copies = view_copies_dir
+            .as_deref()
+            .and_then(|dir| fs::archive::ViewCopies::open(dir).ok());
         panels.apply_session_state(&saved);
         let (app, filing_start) = panels
             .with_config(loaded)
@@ -2489,6 +2511,8 @@ impl App {
             transfer_rows_done: 0,
             delete_dialog: None,
             deleting: None,
+            view_copies: None,
+            extracting: None,
             dialog_focus: 0,
             modifiers: Modifiers::default(),
             trash: Arc::new(fs::SystemTrash),
@@ -2823,25 +2847,7 @@ impl App {
             // A delete in flight finishes its current entry even so: it runs in
             // `spawn_blocking`, which cannot be cancelled, so the panel may
             // still list that entry for a moment after the abort.
-            Message::AbortJob => {
-                if self.jobs.abort_running() {
-                    self.job_done = 0;
-                    self.job_progress = None;
-                    // Both halves go together: a sender kept without its
-                    // receiver makes every later transfer fail on a closed
-                    // channel. Dropping the receiver is also what stops the
-                    // blocking copy, whose next tick cannot be sent.
-                    self.progress_rx = None;
-                    self.progress_tx = None;
-                    if self.deleting.is_some() {
-                        self.end_delete()
-                    } else {
-                        self.end_transfer()
-                    }
-                } else {
-                    Task::none()
-                }
-            }
+            Message::AbortJob => self.abort_job(),
 
             // One row of a transfer finished. Continue with the next, or ask
             // about a name that is in the way.
@@ -2897,10 +2903,13 @@ impl App {
                 }
             }
 
-            Message::OpenExternal(kind) => {
-                self.open_external(kind);
-                Task::none()
-            }
+            Message::OpenExternal(kind) => self.open_external(kind),
+
+            Message::ViewExtracted {
+                generation,
+                slot,
+                result,
+            } => self.view_extracted(generation, slot, result),
 
             #[cfg(target_os = "macos")]
             Message::OpenPrivacySettings => {
@@ -3099,7 +3108,12 @@ impl App {
                 archive,
             } => {
                 let panel = self.panel_mut(side);
+                let mut left_archive = None;
                 if panel.request_id == request_id {
+                    left_archive = panel
+                        .archive
+                        .take()
+                        .filter(|old| Some(old) != archive.as_ref());
                     panel.archive = archive;
                     let previous = panel.path.clone();
                     panel.apply_sorted_listing(
@@ -3112,6 +3126,9 @@ impl App {
                     );
                     panel.record_arrival(previous, request_id);
                     self.close_menu_of_reloaded(side);
+                }
+                if let Some(old) = left_archive {
+                    self.drop_view_copies_of(&old);
                 }
                 Task::none()
             }
@@ -5284,7 +5301,7 @@ impl App {
                 self.prompt = None;
                 self.prompt_side = None;
                 if let (PromptKind::CreateFile, Some(path)) = (kind, created) {
-                    self.launch_external(fs::OpenKind::Edit, path, None);
+                    self.launch_external(fs::OpenKind::Edit, path, None, false);
                 }
             }
             Err(err) => {
@@ -5313,7 +5330,7 @@ impl App {
 
     /// Writes the session state here and now, then ends the app: the runtime
     /// stops right after, so no task would run.
-    fn quit(&self) -> Task<Message> {
+    fn quit(&mut self) -> Task<Message> {
         if let Some(path) = &self.state_path {
             write_session_state(
                 &self.session_writes,
@@ -5321,6 +5338,9 @@ impl App {
                 path,
                 &self.session_state(),
             );
+        }
+        if let Some(copies) = self.view_copies.as_mut() {
+            copies.close();
         }
         iced::exit()
     }
@@ -5598,8 +5618,9 @@ impl App {
 
     /// F3 / F4: the row under the cursor goes to the external program. Tags
     /// are ignored, as in Norton Commander; `..` and directories have nothing
-    /// to view or edit.
-    fn open_external(&mut self, kind: fs::OpenKind) {
+    /// to view or edit. A file inside an archive is unpacked first, and only
+    /// viewing works: the copy is thrown away, so an edit would be lost.
+    fn open_external(&mut self, kind: fs::OpenKind) -> Task<Message> {
         let target = match self.open_search_view() {
             Some(search) => search.cursor_target().filter(|(path, _)| !path.is_dir()),
             None => self
@@ -5608,14 +5629,217 @@ impl App {
                 .filter(|entry| !entry.is_parent && !entry.is_dir)
                 .map(|entry| (entry.path.clone(), None)),
         };
-        if let Some((path, line)) = target {
-            self.launch_external(kind, path, line);
+        let Some((path, line)) = target else {
+            return Task::none();
+        };
+        let in_archive = fs::archive::locate_in_archive(&path)
+            .filter(|location| !location.inner.is_empty())
+            .map(|location| location.archive);
+        match (in_archive, kind) {
+            (Some(_), fs::OpenKind::Edit) => {
+                let text = self.lang.text(Msg::StatusArchiveReadOnly).to_owned();
+                self.set_status_error(&text);
+                Task::none()
+            }
+            (Some(archive), fs::OpenKind::View) => self.view_from_archive(path, archive),
+            (None, _) => {
+                self.launch_external(kind, path, line, false);
+                Task::none()
+            }
+        }
+    }
+
+    /// Starts unpacking `source`, a file in `archive`, for the viewer. The
+    /// viewer starts when the copy is there, see `view_extracted`.
+    fn view_from_archive(&mut self, source: PathBuf, archive: PathBuf) -> Task<Message> {
+        // A transfer or delete under way, or a dialog about to start one, owns
+        // the queue and `generation`; unpacking beside it would lose its result.
+        if self.jobs.is_busy()
+            || self.transfer.is_some()
+            || self.deleting.is_some()
+            || self.delete_dialog.is_some()
+            || self.transfer_dialog.is_some()
+            || self.pending_conflict.is_some()
+        {
+            let text = self.lang.text(Msg::StatusArchiveViewBusy).to_owned();
+            return self.show_notice(text);
+        }
+        let made = self
+            .view_copies
+            .as_mut()
+            .and_then(|copies| copies.slot(&archive).ok());
+        let Some(slot) = made else {
+            let text = self.lang.text(Msg::ErrorArchiveViewUnavailable).to_owned();
+            self.set_status_error(&text);
+            return Task::none();
+        };
+        self.job_error = None;
+        self.notice = None;
+        self.job_done = 0;
+        self.job_progress = None;
+        let progress_tx = self.progress_sender();
+        let generation = self.generation;
+        self.extracting = Some(Extracting {
+            archive,
+            slot: slot.clone(),
+        });
+        self.jobs.enqueue(jobs::Job {
+            kind: jobs::JobKind::Extract,
+            path: source.clone(),
+            total: None,
+        });
+        self.jobs
+            .start_next(|_| {
+                Task::perform(
+                    tokio::task::spawn_blocking({
+                        let unpack_into = slot.clone();
+                        move || {
+                            let mut progress = fs::transfer::Reporting::new(&progress_tx);
+                            fs::archive::extract_for_view(&source, &unpack_into, &mut progress)
+                        }
+                    }),
+                    move |outcome| {
+                        let result = match outcome {
+                            Ok(Ok(copy)) => Ok(copy),
+                            Ok(Err(err)) => Err(RowFailure::from_io(err)),
+                            Err(join) => Err(RowFailure::Other(join.to_string())),
+                        };
+                        Message::ViewExtracted {
+                            generation,
+                            slot,
+                            result,
+                        }
+                    },
+                )
+            })
+            .unwrap_or_else(Task::none)
+    }
+
+    /// The copy for the viewer is there, or unpacking it failed.
+    fn view_extracted(
+        &mut self,
+        generation: u64,
+        slot: PathBuf,
+        result: Result<PathBuf, RowFailure>,
+    ) -> Task<Message> {
+        if generation != self.generation {
+            // The unpacking thread removed the slot itself when it failed.
+            if result.is_ok() {
+                self.discard_view_slot(&slot);
+            }
+            return Task::none();
+        }
+        self.jobs.finish();
+        self.job_progress = None;
+        let finished = self.extracting.take();
+        match result {
+            Ok(copy) => {
+                let still_open = finished.is_some_and(|job| self.panel_is_in_archive(&job.archive));
+                if still_open {
+                    self.launch_external(fs::OpenKind::View, copy, None, true);
+                } else {
+                    self.discard_view_slot(&slot);
+                }
+            }
+            Err(failure) => {
+                if let Some(copies) = self.view_copies.as_mut() {
+                    copies.forget_slot(&slot);
+                }
+                let text = match failure {
+                    RowFailure::Refused(refusal) => self
+                        .lang
+                        .text(match refusal {
+                            fs::archive::SevenZipRefusal::Encrypted => Msg::ErrorArchiveEncrypted,
+                            fs::archive::SevenZipRefusal::DictionaryTooLarge => {
+                                Msg::ErrorArchiveDictionaryTooLarge
+                            }
+                        })
+                        .to_owned(),
+                    RowFailure::Conflict(reason) | RowFailure::Other(reason) => reason,
+                };
+                self.set_status_error(&text);
+            }
+        }
+        Task::none()
+    }
+
+    fn discard_view_slot(&mut self, slot: &Path) {
+        if let Some(copies) = self.view_copies.as_mut() {
+            copies.discard(slot);
+        }
+    }
+
+    fn panel_is_in_archive(&self, archive: &Path) -> bool {
+        [PanelSide::Left, PanelSide::Right]
+            .into_iter()
+            .any(|side| self.panel(side).archive.as_deref() == Some(archive))
+    }
+
+    /// Stops the running job, see `Message::AbortJob`.
+    fn abort_job(&mut self) -> Task<Message> {
+        if !self.jobs.abort_running() {
+            return Task::none();
+        }
+        self.drop_progress_channel();
+        if self.extracting.is_some() {
+            self.end_extraction();
+            Task::none()
+        } else if self.deleting.is_some() {
+            self.end_delete()
+        } else {
+            self.end_transfer()
+        }
+    }
+
+    /// Both halves of the progress channel go together: a sender kept without
+    /// its receiver makes every later transfer fail on a closed channel.
+    /// Dropping the receiver is also what stops a blocking copy, whose next
+    /// tick cannot be sent.
+    fn drop_progress_channel(&mut self) {
+        self.job_done = 0;
+        self.job_progress = None;
+        self.progress_rx = None;
+        self.progress_tx = None;
+    }
+
+    /// Ends the bookkeeping of an unpacking whose job was stopped; its result
+    /// is ignored if it still arrives. The slot stays known: the unpacking
+    /// thread removes it when it notices the stop, and if it finished first,
+    /// the copy goes with the others of its archive.
+    fn end_extraction(&mut self) {
+        self.generation = self.generation.wrapping_add(1);
+        self.extracting = None;
+    }
+
+    /// A panel has left `archive`: the copies made for the viewer go, unless
+    /// the other panel is still in it. A running unpacking stops first.
+    fn drop_view_copies_of(&mut self, archive: &Path) {
+        if self.panel_is_in_archive(archive) {
+            return;
+        }
+        if self
+            .extracting
+            .as_ref()
+            .is_some_and(|extracting| extracting.archive == archive)
+        {
+            self.jobs.abort_running();
+            self.drop_progress_channel();
+            self.end_extraction();
+        }
+        if let Some(copies) = self.view_copies.as_mut() {
+            copies.release(archive);
         }
     }
 
     /// Hands `path` to the program for `kind`, at `line` when the program
-    /// takes one.
-    fn launch_external(&mut self, kind: fs::OpenKind, path: PathBuf, line: Option<u64>) {
+    /// takes one. `from_archive` marks a copy unpacked for viewing.
+    fn launch_external(
+        &mut self,
+        kind: fs::OpenKind,
+        path: PathBuf,
+        line: Option<u64>,
+        from_archive: bool,
+    ) {
         self.job_error = None;
         self.notice = None;
         let name = path
@@ -5625,23 +5849,14 @@ impl App {
         let executable = fs::could_execute(&path);
         let Some(command) = fs::open_command(&self.open_programs, kind, &path, executable, line)
         else {
-            let keys: Vec<String> = [
-                Message::OpenExternal(fs::OpenKind::View),
-                Message::OpenExternal(fs::OpenKind::Edit),
-            ]
-            .iter()
-            .filter_map(|opener| self.keymap.shortcut_label(opener))
-            .collect();
-            let message = if keys.is_empty() {
+            let message = if from_archive {
+                // The edit key is refused in an archive, so it is not offered.
                 fill_template(
-                    self.lang.text(Msg::ErrorOpenRefusedNoKey),
+                    self.lang.text(Msg::ErrorArchiveViewExecutable),
                     &[("{name}", &name)],
                 )
             } else {
-                fill_template(
-                    self.lang.text(Msg::ErrorOpenRefused),
-                    &[("{name}", &name), ("{keys}", &keys.join("/"))],
-                )
+                self.open_refused_text(&name)
             };
             self.set_status_error(&message);
             return;
@@ -5653,6 +5868,27 @@ impl App {
                 .replace("{name}", &name)
                 .replace("{reason}", &reason);
             self.set_status_error(&message);
+        }
+    }
+
+    fn open_refused_text(&self, name: &str) -> String {
+        let keys: Vec<String> = [
+            Message::OpenExternal(fs::OpenKind::View),
+            Message::OpenExternal(fs::OpenKind::Edit),
+        ]
+        .iter()
+        .filter_map(|opener| self.keymap.shortcut_label(opener))
+        .collect();
+        if keys.is_empty() {
+            fill_template(
+                self.lang.text(Msg::ErrorOpenRefusedNoKey),
+                &[("{name}", name)],
+            )
+        } else {
+            fill_template(
+                self.lang.text(Msg::ErrorOpenRefused),
+                &[("{name}", name), ("{keys}", &keys.join("/"))],
+            )
         }
     }
 
@@ -5706,6 +5942,10 @@ impl App {
         if self.transfer.is_some() {
             self.transfer_mask_visible = true;
             return Task::none();
+        }
+        if self.extracting.is_some() {
+            let text = self.lang.text(Msg::StatusArchiveViewBusy).to_owned();
+            return self.show_notice(text);
         }
         if self.prompt.is_some()
             || self.pending_conflict.is_some()
@@ -6707,7 +6947,7 @@ impl App {
         };
         match target {
             (path, Some(line)) => {
-                self.launch_external(fs::OpenKind::Edit, path, Some(line));
+                self.launch_external(fs::OpenKind::Edit, path, Some(line), false);
                 Task::none()
             }
             (path, None) => {
@@ -10245,6 +10485,8 @@ impl App {
             transfer_rows_done: 0,
             delete_dialog: None,
             deleting: None,
+            view_copies: None,
+            extracting: None,
             dialog_focus: 0,
             modifiers: Modifiers::default(),
             trash: Arc::new(fs::SystemTrash),
@@ -10950,6 +11192,13 @@ impl App {
         !self.jobs.is_busy()
     }
 
+    /// Whether F3 is unpacking a file out of an archive.
+    ///
+    /// Read by the end-to-end tests, which cannot reach the private field.
+    pub fn is_extracting_for_test(&self) -> bool {
+        self.extracting.is_some()
+    }
+
     /// Whether a transfer is waiting on the overwrite dialog.
     ///
     /// Read by the end-to-end tests, which cannot reach the private field.
@@ -11019,6 +11268,14 @@ impl App {
     /// Replaces the launcher, so a test never starts a real program.
     pub fn with_launcher(mut self, launcher: Arc<dyn fs::Launcher>) -> Self {
         self.launcher = launcher;
+        self
+    }
+
+    /// Opens the folder F3 unpacks archive files into at `root`, so a test
+    /// unpacks into its own.
+    #[cfg(test)]
+    pub fn with_view_copies_in(mut self, root: &Path) -> Self {
+        self.view_copies = fs::archive::ViewCopies::open(root).ok();
         self
     }
 
@@ -18748,5 +19005,400 @@ mod quick_open_documents_tests {
             palette.entry(hit).map(|entry| &entry.target),
             Some(crate::command_palette::Target::Setting { .. })
         )));
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod archive_view_tests {
+    use super::*;
+    use crate::fs::archive::fixtures::{scratch, write_archive, Item};
+    use crate::fs::{FileEntry, SortKey};
+    use std::ffi::OsString;
+
+    #[derive(Default)]
+    struct Recorded(Mutex<Vec<fs::OpenCommand>>);
+
+    impl fs::Launcher for Recorded {
+        fn launch(&self, command: &fs::OpenCommand) -> Result<(), String> {
+            self.0
+                .lock()
+                .map_err(|poisoned| poisoned.to_string())?
+                .push(command.clone());
+            Ok(())
+        }
+    }
+
+    fn app_with_copies(root: &Path) -> App {
+        App::with_environment(Environment::isolated())
+            .0
+            .with_launcher(Arc::new(Recorded::default()) as Arc<dyn fs::Launcher>)
+            .with_view_copies_in(root)
+    }
+
+    fn leave(app: &mut App, side: PanelSide) {
+        let request_id = app.panel_mut(side).begin_load();
+        drop(app.update(Message::DirectoryLoaded {
+            side,
+            request_id,
+            path: PathBuf::from("/"),
+            entries: Vec::new(),
+            error: None,
+            sorted_by: SortKey::default(),
+            select: None,
+            archive: None,
+        }));
+    }
+
+    /// The state F3 leaves behind while its job runs, without a thread: the
+    /// slot exists, the job is the running one.
+    fn pretend_extracting(app: &mut App, archive: &Path) -> PathBuf {
+        let slot = app.view_copies.as_mut().unwrap().slot(archive).unwrap();
+        app.extracting = Some(Extracting {
+            archive: archive.to_path_buf(),
+            slot: slot.clone(),
+        });
+        app.jobs.enqueue(jobs::Job {
+            kind: jobs::JobKind::Extract,
+            path: archive.to_path_buf(),
+            total: None,
+        });
+        assert!(app.jobs.start_next(|_| Task::none()).is_some());
+        slot
+    }
+
+    /// A panel standing in the zip `name` in `dir`, the cursor on its `a.txt`.
+    fn app_in_zip(dir: &Path, copies: Option<&Path>) -> (App, Arc<Recorded>) {
+        let archive = dir.join("v.zip");
+        write_archive(&archive, &[Item::File("a.txt", b"inside")]);
+        let launcher = Arc::new(Recorded::default());
+        let mut app = App::with_environment(Environment::isolated())
+            .0
+            .with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>);
+        if let Some(root) = copies {
+            app = app.with_view_copies_in(root);
+        }
+        let panel = app.panel_mut(PanelSide::Left);
+        panel.path = archive.clone();
+        panel.archive = Some(archive.clone());
+        panel.entries = vec![FileEntry {
+            name: OsString::from("a.txt"),
+            path: archive.join("a.txt"),
+            is_dir: false,
+            is_symlink: false,
+            is_parent: false,
+            size: 6,
+            modified: None,
+        }];
+        panel.selected = 0;
+        (app, launcher)
+    }
+
+    #[tokio::test]
+    async fn the_copies_go_when_the_last_panel_leaves_the_archive() {
+        let dir = scratch("view-leave");
+        let archive = dir.path().join("x.zip");
+        let mut app = app_with_copies(&dir.path().join("cache"));
+        let slot = app.view_copies.as_mut().unwrap().slot(&archive).unwrap();
+        app.panel_mut(PanelSide::Left).archive = Some(archive.clone());
+        app.panel_mut(PanelSide::Right).archive = Some(archive.clone());
+
+        leave(&mut app, PanelSide::Left);
+        assert!(slot.exists(), "the other panel is still in the archive");
+
+        leave(&mut app, PanelSide::Right);
+        assert!(!slot.exists());
+    }
+
+    #[tokio::test]
+    async fn quitting_removes_every_copy_and_the_folder_of_the_run() {
+        let dir = scratch("view-quit");
+        let cache = dir.path().join("cache");
+        let archive = dir.path().join("x.zip");
+        let mut app = app_with_copies(&cache);
+        let slot = app.view_copies.as_mut().unwrap().slot(&archive).unwrap();
+        std::fs::write(slot.join("a.txt"), "x").unwrap();
+
+        drop(app.update(Message::Quit));
+
+        assert_eq!(std::fs::read_dir(&cache).unwrap().count(), 0);
+    }
+
+    #[tokio::test]
+    async fn the_copies_of_another_archive_stay() {
+        let dir = scratch("view-leave-other");
+        let (here, there) = (dir.path().join("x.zip"), dir.path().join("y.zip"));
+        let mut app = app_with_copies(&dir.path().join("cache"));
+        let of_there = app.view_copies.as_mut().unwrap().slot(&there).unwrap();
+        app.panel_mut(PanelSide::Left).archive = Some(here);
+
+        leave(&mut app, PanelSide::Left);
+
+        assert!(of_there.exists());
+    }
+
+    #[tokio::test]
+    async fn leaving_the_archive_stops_its_unpacking() {
+        let dir = scratch("view-leave-running");
+        let archive = dir.path().join("x.zip");
+        let mut app = app_with_copies(&dir.path().join("cache"));
+        let slot = pretend_extracting(&mut app, &archive);
+        let generation = app.generation;
+        app.panel_mut(PanelSide::Left).archive = Some(archive);
+
+        leave(&mut app, PanelSide::Left);
+
+        assert!(app.extracting.is_none());
+        assert!(!app.jobs.is_busy(), "the job is still running");
+        assert_ne!(app.generation, generation, "a late result would be taken");
+        assert!(!slot.exists());
+    }
+
+    #[tokio::test]
+    async fn leaving_another_archive_leaves_the_unpacking_alone() {
+        let dir = scratch("view-leave-running-other");
+        let (here, there) = (dir.path().join("x.zip"), dir.path().join("y.zip"));
+        let mut app = app_with_copies(&dir.path().join("cache"));
+        let slot = pretend_extracting(&mut app, &there);
+        app.panel_mut(PanelSide::Left).archive = Some(here);
+
+        leave(&mut app, PanelSide::Left);
+
+        assert!(app.extracting.is_some());
+        assert!(app.jobs.is_busy());
+        assert!(slot.exists());
+    }
+
+    #[tokio::test]
+    async fn a_busy_queue_starts_no_unpacking() {
+        let dir = scratch("view-busy");
+        let (mut app, launcher) = app_in_zip(dir.path(), Some(&dir.path().join("cache")));
+        app.jobs.enqueue(jobs::Job {
+            kind: jobs::JobKind::Copy,
+            path: PathBuf::new(),
+            total: None,
+        });
+
+        drop(app.update(Message::OpenExternal(fs::OpenKind::View)));
+
+        assert_eq!(
+            app.notice.as_deref(),
+            Some(app.lang.text(Msg::StatusArchiveViewBusy))
+        );
+        assert!(app.extracting.is_none());
+        assert_eq!(app.jobs.waiting(), 1, "a job was queued behind the copy");
+        assert!(launcher.0.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_copy_started_while_a_file_is_unpacked_is_refused_and_the_queue_survives() {
+        let dir = scratch("view-copy-during");
+        let archive = dir.path().join("v.zip");
+        let (mut app, _launcher) = app_in_zip(dir.path(), Some(&dir.path().join("cache")));
+        let slot = pretend_extracting(&mut app, &archive);
+
+        drop(app.update(Message::Transfer(TransferKind::Copy)));
+
+        assert!(app.transfer_dialog.is_none(), "the dialog opened");
+        assert_eq!(
+            app.notice.as_deref(),
+            Some(app.lang.text(Msg::StatusArchiveViewBusy))
+        );
+        assert!(app.jobs.is_busy(), "the unpacking was dropped");
+        assert!(app.extracting.is_some());
+
+        let copy = slot.join("a.txt");
+        std::fs::write(&copy, "x").unwrap();
+        drop(app.update(Message::ViewExtracted {
+            slot,
+            result: Ok(copy),
+            generation: app.generation,
+        }));
+
+        assert!(!app.jobs.is_busy(), "the queue is stuck");
+        assert!(app.extracting.is_none());
+    }
+
+    /// Puts `app` in the state `name` says: something else owns the queue.
+    fn make_busy_with(name: &str, app: &mut App, folder: &Path) {
+        let file = folder.join("s.txt");
+        let transfer = Transfer {
+            kind: TransferKind::Copy,
+            sources: vec![file.clone()],
+            target: folder.to_path_buf(),
+        };
+        let deletion = Deletion {
+            sources: vec![file.clone()],
+            permanent: false,
+            side: PanelSide::Left,
+        };
+        match name {
+            "transfer" => app.transfer = Some(transfer),
+            "deleting" => app.deleting = Some(deletion),
+            "delete dialog" => app.delete_dialog = Some(deletion),
+            "transfer dialog" => {
+                app.transfer_dialog = Some(TransferDialog::new(
+                    1,
+                    TransferKind::Copy,
+                    vec![file],
+                    folder.to_path_buf(),
+                ));
+            }
+            _ => app.pending_conflict = Some(PendingConflict { transfer, index: 0 }),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_view_does_not_start_beside_a_transfer_a_delete_or_their_dialogs() {
+        for name in [
+            "transfer",
+            "deleting",
+            "delete dialog",
+            "transfer dialog",
+            "conflict",
+        ] {
+            let dir = scratch("view-beside");
+            let (mut app, launcher) = app_in_zip(dir.path(), Some(&dir.path().join("cache")));
+            make_busy_with(name, &mut app, dir.path());
+
+            drop(app.update(Message::OpenExternal(fs::OpenKind::View)));
+
+            assert_eq!(
+                app.notice.as_deref(),
+                Some(app.lang.text(Msg::StatusArchiveViewBusy)),
+                "{name}"
+            );
+            assert!(app.extracting.is_none(), "{name}");
+            assert!(!app.jobs.is_busy(), "{name}");
+            assert!(launcher.0.lock().unwrap().is_empty(), "{name}");
+        }
+    }
+
+    #[tokio::test]
+    async fn without_a_cache_folder_the_view_says_so() {
+        let dir = scratch("view-no-cache");
+        let (mut app, launcher) = app_in_zip(dir.path(), None);
+
+        drop(app.update(Message::OpenExternal(fs::OpenKind::View)));
+
+        assert_eq!(
+            app.job_error.as_deref(),
+            Some(app.lang.text(Msg::ErrorArchiveViewUnavailable))
+        );
+        assert!(!app.jobs.is_busy());
+        assert!(launcher.0.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_edit_that_got_past_the_refusal_is_still_read_only() {
+        let dir = scratch("view-edit");
+        let (mut app, launcher) = app_in_zip(dir.path(), Some(&dir.path().join("cache")));
+
+        drop(app.update(Message::OpenExternal(fs::OpenKind::Edit)));
+
+        assert_eq!(
+            app.job_error.as_deref(),
+            Some(app.lang.text(Msg::StatusArchiveReadOnly))
+        );
+        assert!(!app.jobs.is_busy());
+        assert!(launcher.0.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_refused_archive_is_named_when_unpacking_fails() {
+        let dir = scratch("view-refused");
+        let archive = dir.path().join("x.7z");
+        let mut app = app_with_copies(&dir.path().join("cache"));
+        let slot = pretend_extracting(&mut app, &archive);
+
+        drop(app.update(Message::ViewExtracted {
+            slot,
+            result: Err(RowFailure::Refused(fs::archive::SevenZipRefusal::Encrypted)),
+            generation: app.generation,
+        }));
+
+        assert_eq!(
+            app.job_error.as_deref(),
+            Some(app.lang.text(Msg::ErrorArchiveEncrypted))
+        );
+        assert!(app.extracting.is_none());
+        assert!(!app.jobs.is_busy());
+    }
+
+    #[tokio::test]
+    async fn a_result_of_a_stopped_run_removes_its_copy_and_starts_nothing() {
+        let dir = scratch("view-stale");
+        let archive = dir.path().join("x.zip");
+        let mut app = app_with_copies(&dir.path().join("cache"));
+        let launcher = Arc::new(Recorded::default());
+        app = app.with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>);
+        let slot = app.view_copies.as_mut().unwrap().slot(&archive).unwrap();
+        let copy = slot.join("a.txt");
+        std::fs::write(&copy, "x").unwrap();
+        let stale = app.generation.wrapping_sub(1);
+
+        drop(app.update(Message::ViewExtracted {
+            slot: slot.clone(),
+            result: Ok(copy),
+            generation: stale,
+        }));
+
+        assert!(!slot.exists());
+        assert!(launcher.0.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_copy_that_arrives_after_the_panel_left_is_removed_unseen() {
+        let dir = scratch("view-late");
+        let archive = dir.path().join("x.zip");
+        let mut app = app_with_copies(&dir.path().join("cache"));
+        let launcher = Arc::new(Recorded::default());
+        app = app.with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>);
+        let slot = pretend_extracting(&mut app, &archive);
+        let copy = slot.join("a.txt");
+        std::fs::write(&copy, "x").unwrap();
+
+        drop(app.update(Message::ViewExtracted {
+            slot: slot.clone(),
+            result: Ok(copy),
+            generation: app.generation,
+        }));
+
+        assert!(!slot.exists());
+        assert!(launcher.0.lock().unwrap().is_empty());
+        assert!(!app.jobs.is_busy());
+    }
+
+    /// Linux has no editor to fall back to, so an executable-looking copy has
+    /// no program to show it in unless the config names one.
+    #[cfg(not(any(target_os = "macos", windows)))]
+    #[tokio::test]
+    async fn a_script_without_an_editor_is_refused_without_naming_the_edit_key() {
+        let dir = scratch("view-script");
+        let script = dir.path().join("run.sh");
+        std::fs::write(&script, "#!/bin/sh").unwrap();
+        let launcher = Arc::new(Recorded::default());
+        let mut app = App::with_environment(Environment::isolated())
+            .0
+            .with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>);
+
+        app.launch_external(fs::OpenKind::View, script, None, true);
+
+        assert!(launcher.0.lock().unwrap().is_empty());
+        let shown = app.job_error.unwrap();
+        assert!(shown.contains("run.sh"), "{shown}");
+        assert!(!shown.contains("F4"), "{shown}");
+        assert_eq!(
+            shown,
+            fill_template(
+                Language::default().text(Msg::ErrorArchiveViewExecutable),
+                &[("{name}", "run.sh")]
+            )
+        );
     }
 }

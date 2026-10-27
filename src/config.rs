@@ -790,6 +790,49 @@ fn index_path_from_env(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf
         .map(|dir| dir.join("ncrs").join("index.db"))
 }
 
+/// Where F3 puts the copy of a file it unpacks from an archive, or `None`
+/// when the variables that say so are missing. A cache folder: the copies
+/// are temporary and nothing there is worth a backup.
+pub fn default_view_copies_dir() -> Option<PathBuf> {
+    forbid_user_machine_in_tests("config::default_view_copies_dir");
+    view_copies_dir_in(portable_data_dir(), |name| std::env::var_os(name))
+}
+
+fn view_copies_dir_in(
+    portable: Option<PathBuf>,
+    var: impl Fn(&str) -> Option<OsString>,
+) -> Option<PathBuf> {
+    match portable {
+        Some(dir) => Some(dir.join("view")),
+        None => view_copies_dir_from_env(var),
+    }
+}
+
+/// Windows: `%LOCALAPPDATA%\ncrs\view`.
+#[cfg(windows)]
+fn view_copies_dir_from_env(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    absolute(var("LOCALAPPDATA")).map(|dir| dir.join("ncrs").join("view"))
+}
+
+/// macOS: `~/Library/Caches/ncrs/view`.
+#[cfg(target_os = "macos")]
+fn view_copies_dir_from_env(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    absolute(var("HOME")).map(|home| {
+        home.join("Library")
+            .join("Caches")
+            .join("ncrs")
+            .join("view")
+    })
+}
+
+/// Other Unix: `$XDG_CACHE_HOME` if set and absolute, else `~/.cache`.
+#[cfg(not(any(target_os = "macos", windows)))]
+fn view_copies_dir_from_env(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    absolute(var("XDG_CACHE_HOME"))
+        .or_else(|| absolute(var("HOME")).map(|home| home.join(".cache")))
+        .map(|dir| dir.join("ncrs").join("view"))
+}
+
 /// The home directory `~` stands for. Like the config path, only an absolute
 /// one counts.
 fn home_from_env() -> Option<PathBuf> {
@@ -2271,6 +2314,60 @@ mod tests {
         );
         assert_eq!(index_path_from_env(env(&[("APPDATA", "rel")])), None);
         assert_eq!(index_path_from_env(env(&[])), None);
+    }
+
+    #[test]
+    fn portable_mode_keeps_the_view_copies_in_the_data_folder() {
+        let portable = std::env::temp_dir().join("ncrs").join("data");
+        let vars = [("HOME", "/home/user"), ("LOCALAPPDATA", "/local")];
+        assert_eq!(
+            view_copies_dir_in(Some(portable.clone()), env(&vars)),
+            Some(portable.join("view"))
+        );
+    }
+
+    #[cfg(not(any(target_os = "macos", windows)))]
+    #[test]
+    fn linux_view_copies_prefer_an_absolute_xdg_cache_home() {
+        let found =
+            view_copies_dir_from_env(env(&[("XDG_CACHE_HOME", "/x/cache"), ("HOME", "/h")]));
+        assert_eq!(found, Some(PathBuf::from("/x/cache/ncrs/view")));
+        for xdg in ["rel/cache", ""] {
+            let fallback =
+                view_copies_dir_from_env(env(&[("XDG_CACHE_HOME", xdg), ("HOME", "/h")]));
+            assert_eq!(fallback, Some(PathBuf::from("/h/.cache/ncrs/view")));
+        }
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn no_usable_home_means_no_view_copies_dir() {
+        assert_eq!(view_copies_dir_from_env(env(&[])), None);
+        assert_eq!(view_copies_dir_from_env(env(&[("HOME", "")])), None);
+        assert_eq!(view_copies_dir_from_env(env(&[("HOME", "rel")])), None);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_view_copies_live_in_library_caches_and_ignore_xdg() {
+        let found =
+            view_copies_dir_from_env(env(&[("XDG_CACHE_HOME", "/x/cache"), ("HOME", "/h")]));
+        assert_eq!(found, Some(PathBuf::from("/h/Library/Caches/ncrs/view")));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_view_copies_use_local_appdata() {
+        let found = view_copies_dir_from_env(env(&[("LOCALAPPDATA", r"C:\Users\u\AppData\Local")]));
+        assert_eq!(
+            found,
+            Some(PathBuf::from(r"C:\Users\u\AppData\Local\ncrs\view"))
+        );
+        assert_eq!(
+            view_copies_dir_from_env(env(&[("LOCALAPPDATA", "rel")])),
+            None
+        );
+        assert_eq!(view_copies_dir_from_env(env(&[])), None);
     }
 
     fn load_filing(content: &str, home: Option<&Path>) -> Result<Config, ConfigError> {
