@@ -19,7 +19,9 @@ use std::time::SystemTime;
 
 pub use extract::copy_out;
 pub use index::{ArchiveIndex, Totals};
+pub use names::safe_components;
 pub use sevenz::{refusal_of, SevenZipRefusal};
+pub use view::restrict_to_owner;
 pub use view::{extract_for_view, ViewCopies};
 
 use super::FileEntry;

@@ -22,6 +22,13 @@ pub enum ReadError {
     ArchiveEncrypted,
     /// A 7z archive whose dictionary is larger than ncrs unpacks.
     ArchiveDictionaryTooLarge,
+    /// The connection to the server of a panel is gone; opening the folder
+    /// again connects anew.
+    RemoteDisconnected { server: super::remote::ServerId },
+    /// The server did not answer in time.
+    RemoteTimeout { host: String },
+    /// The server refused to list the folder. The inner string is its message.
+    Remote { reason: String },
 }
 
 impl std::fmt::Display for ReadError {
@@ -29,7 +36,8 @@ impl std::fmt::Display for ReadError {
         match self {
             ReadError::CannotRead { reason }
             | ReadError::AccessBlocked { reason }
-            | ReadError::TaskFailed { reason } => f.write_str(reason),
+            | ReadError::TaskFailed { reason }
+            | ReadError::Remote { reason } => f.write_str(reason),
             ReadError::EntriesLeftOut { count } => {
                 write!(f, "{count} entries left out of the archive")
             }
@@ -37,6 +45,8 @@ impl std::fmt::Display for ReadError {
             ReadError::ArchiveDictionaryTooLarge => {
                 f.write_str("the archive needs too much memory to unpack")
             }
+            ReadError::RemoteDisconnected { server } => write!(f, "connection to {server} lost"),
+            ReadError::RemoteTimeout { host } => write!(f, "{host} did not answer in time"),
         }
     }
 }

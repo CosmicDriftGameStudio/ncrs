@@ -8,6 +8,7 @@ mod grants;
 mod open;
 mod ops;
 mod reader;
+pub mod remote;
 mod sandbox;
 pub mod search;
 mod sort;

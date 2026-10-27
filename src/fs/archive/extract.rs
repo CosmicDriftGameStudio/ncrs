@@ -13,7 +13,7 @@ use super::index::{open_tar, open_zip, tar_time, zip_error, zip_time, EntryKind}
 use super::names::safe_components;
 use super::sevenz;
 use super::{index_of, locate_in_archive, ArchiveFormat, ArchiveLocation};
-use crate::fs::transfer::{transfer, Counting, Move, OnConflict, Progress};
+use crate::fs::transfer::{resolve_conflict, transfer, Counting, Move, OnConflict, Progress};
 
 /// How much of one file is written between two checks for a cancel. Small
 /// enough that Escape stops a huge file within a moment, never the whole file
@@ -91,22 +91,6 @@ fn unpack_into_staging<P: Progress>(
         ));
     }
     Ok(written)
-}
-
-/// `false` when the item is to be skipped.
-fn resolve_conflict(target: &Path, conflict: OnConflict) -> io::Result<bool> {
-    match std::fs::symlink_metadata(target) {
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(true),
-        Err(error) => Err(error),
-        Ok(_) => match conflict {
-            OnConflict::Fail => Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                format!("{} already exists", target.display()),
-            )),
-            OnConflict::Skip => Ok(false),
-            OnConflict::Overwrite => Ok(true),
-        },
-    }
 }
 
 struct Plan<'a> {

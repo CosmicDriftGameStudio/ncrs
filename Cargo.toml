@@ -28,10 +28,11 @@ workspace = true
 # end-to-end tests drive the app through, so without it `tests/` could not use
 # the real `main` wiring and would have to duplicate it.
 iced = { version = "0.14", default-features = false, features = ["tokio", "fira-sans", "x11", "wayland", "advanced", "svg"] }
-# Only what the code uses: spawn_blocking, #[tokio::test] and the multi-thread
-# runtime iced's executor needs. "full" also pulls mio, socket2, signal-hook-registry
-# and wasi — network and signal machinery a file manager has no use for.
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+# Only what the code uses: spawn_blocking, #[tokio::test], the multi-thread
+# runtime iced's executor needs and, for the SFTP connection, TCP ("net", which
+# russh switches on as well). "full" also pulls signal-hook-registry and wasi,
+# machinery a file manager has no use for.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 trash = "5.2.9"
 # toml_edit rather than toml: the config file will be written back (keymap,
@@ -96,6 +97,22 @@ sevenz-rust2 = { version = "0.24.1", default-features = false, features = ["defl
 # The real home folder and the bookmarks that keep a folder grant in the App
 # Sandbox. Only the `sandbox` feature (the App Store build) brings it in.
 ncrs-sandbox = { path = "crates/ncrs-sandbox", version = "0.0.0", optional = true }
+# SFTP, password login only. ring as crypto backend (the default aws-lc-rs would
+# add a second C library), no `rsa` feature: the rsa crate behind it has an open
+# advisory (RUSTSEC-2023-0071), so servers that offer only RSA host keys are not
+# supported yet. Both are pinned, and russh pins ssh-key to a release candidate
+# that must match.
+russh = { version = "=0.65.0", default-features = false, features = ["ring"] }
+russh-sftp = "=3.0.1"
+# The login passwords of saved servers, one keychain entry per server; the same
+# crate and version as the index key in ncrs-index.
+keyring = "4.2"
+# Host names in known_hosts files can be hashed (`|1|salt|hash`, HMAC-SHA1).
+hmac = "0.13"
+sha1 = "0.11"
+data-encoding = "2"
+# A typed password is wiped from memory when it is dropped.
+zeroize = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # The native menu bar on macOS, built from the command list. macOS only: Linux

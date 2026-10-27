@@ -306,6 +306,22 @@ fn place<S: Source, P: Progress>(
     Ok(done)
 }
 
+/// `false` when the item is to be skipped.
+pub fn resolve_conflict(target: &Path, conflict: OnConflict) -> io::Result<bool> {
+    match std::fs::symlink_metadata(target) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(true),
+        Err(error) => Err(error),
+        Ok(_) => match conflict {
+            OnConflict::Fail => Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("{} already exists", target.display()),
+            )),
+            OnConflict::Skip => Ok(false),
+            OnConflict::Overwrite => Ok(true),
+        },
+    }
+}
+
 /// The prefix of the hidden name a move across devices copies to first. A
 /// leftover of an interrupted move is found by it.
 pub fn partial_prefix(target: &Path) -> String {
