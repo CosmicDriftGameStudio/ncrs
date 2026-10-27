@@ -16934,6 +16934,40 @@ mod session_state_tests {
         assert_eq!(app.left_panel.selected, 0);
     }
 
+    #[tokio::test]
+    async fn the_active_panel_is_still_the_saved_one_once_the_listings_are_in() {
+        let scratch = tempfile::tempdir().unwrap();
+        let left = folder_with_files(&scratch, "left");
+        let right = folder_with_files(&scratch, "right");
+        let saved = saved_for(&left, &right);
+        assert_eq!(saved.active, Some(PanelSide::Right));
+
+        let app = started_and_listed(saved).await;
+
+        assert_eq!(app.active_panel, PanelSide::Right);
+    }
+
+    #[test]
+    fn switching_panels_schedules_a_write_of_the_new_active_panel() {
+        let scratch = tempfile::tempdir().unwrap();
+        let mut app = started(&scratch);
+        assert_eq!(app.active_panel, PanelSide::Right);
+
+        drop(app.update(Message::SwitchPanel));
+        assert_eq!(app.session_save_generation, 1);
+        let (_, state) = app.due_session_state(1).unwrap();
+        assert_eq!(state.active, Some(PanelSide::Left));
+
+        drop(app.update(Message::RowClicked {
+            side: PanelSide::Right,
+            index: 0,
+            on_tag: false,
+        }));
+        assert_eq!(app.session_save_generation, 2);
+        let (_, state) = app.due_session_state(2).unwrap();
+        assert_eq!(state.active, Some(PanelSide::Right));
+    }
+
     #[test]
     fn an_empty_panel_records_no_cursor() {
         let scratch = tempfile::tempdir().unwrap();
