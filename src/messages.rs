@@ -13,13 +13,15 @@ use serde::{Deserialize, Serialize};
 use crate::ai_model::DownloadError as AiDownloadError;
 use crate::app::{RowFailure, Transfer};
 use crate::command_line::ShellOutcome;
-use crate::config::{Config, Filing, FilingWriteError};
+use crate::config::{
+    AiProviderChoice, AiProviderName, Config, Filing, FilingWriteError, ProgramLine,
+};
 use crate::dialog::PromptKind;
 use crate::execute::UndoReport;
 use crate::filing::{FilingMessage, IndexFigures};
 use crate::filing_work::FilingSummary;
 use crate::fs::search::SearchEvent;
-use crate::fs::CreateDirError;
+use crate::fs::{CreateDirError, OpenKind};
 use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
 use crate::hermes_column::{ColumnReading, ColumnStage, FileDetail, FolderRole};
 use crate::i18n::Language;
@@ -29,7 +31,7 @@ use crate::keymap::Binding;
 use crate::keymap::KeyAction;
 use crate::ocr_models::DownloadError;
 use crate::open_vsx::FetchError;
-use crate::palette::ThemePreset;
+use crate::palette::{ColorRole, ThemePreset};
 use crate::query_work::{ExportSummary, QueryHit};
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
 use crate::review_list::FormField;
@@ -374,22 +376,54 @@ pub enum Message {
 pub enum SettingsFeature {
     Look,
     Language,
+    Programs,
+    Keys,
     Hermes,
 }
 
 impl SettingsFeature {
-    pub const ALL: [Self; 3] = [Self::Look, Self::Language, Self::Hermes];
+    pub const ALL: [Self; 5] = [
+        Self::Look,
+        Self::Language,
+        Self::Programs,
+        Self::Keys,
+        Self::Hermes,
+    ];
 }
 
 /// A setting the settings tab changes: applied at once and written to the
 /// config.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingChange {
     Preset(ThemePreset),
     Language(Language),
     HermesEnabled(bool),
     Load(Load),
     AiEnabled(bool),
+    /// `None` hands the file to the system default again.
+    Program {
+        kind: OpenKind,
+        line: Option<ProgramLine>,
+    },
+    /// The theme file as `[theme] vscode` names it, `None` drops it.
+    VscodeTheme(Option<String>),
+    /// `#rrggbb` or `#rgb`, `None` leaves the role to the color scheme.
+    Color {
+        role: ColorRole,
+        color: Option<String>,
+    },
+    AiProvider(AiProviderChoice),
+}
+
+/// A text field of the settings tab. What is typed stays a draft until
+/// Enter, which checks it and writes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum SettingField {
+    Program(OpenKind),
+    Color(ColorRole),
+    AiThreads,
+    AiEndpoint,
+    AiModel,
 }
 
 /// Everything the settings tab sends.
@@ -401,6 +435,20 @@ pub enum SettingsMessage {
     Select(SettingsFeature),
     SearchChanged(String),
     Change(SettingChange),
+    Edit {
+        field: SettingField,
+        text: String,
+    },
+    Submit(SettingField),
+    /// Opens the system file dialog for the program behind F3 or F4.
+    PickProgram(OpenKind),
+    ProgramPicked {
+        kind: OpenKind,
+        path: Option<PathBuf>,
+    },
+    PickThemeFile,
+    ThemeFilePicked(Option<PathBuf>),
+    ChooseProvider(AiProviderName),
     /// The config as read back after the write of `change`.
     Written {
         change: SettingChange,

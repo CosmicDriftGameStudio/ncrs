@@ -231,13 +231,12 @@ macro_rules! color_roles {
     ($($variant:ident => $name:literal),+ $(,)?) => {
         /// Something in the window a user can recolor. The name is what
         /// `[theme]` calls it.
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
         pub enum ColorRole {
             $($variant),+
         }
 
         impl ColorRole {
-            #[cfg(test)]
             pub const ALL: &'static [ColorRole] = &[$(Self::$variant),+];
 
             pub fn name(self) -> &'static str {
@@ -250,6 +249,13 @@ macro_rules! color_roles {
                 match name {
                     $($name => Some(Self::$variant),)+
                     _ => None,
+                }
+            }
+
+            /// The id of the role's field in the settings tab.
+            pub fn field_id(self) -> &'static str {
+                match self {
+                    $(Self::$variant => concat!("settings-color-", $name)),+
                 }
             }
         }
@@ -493,8 +499,6 @@ pub struct LowContrast {
     pub ratio: f32,
 }
 
-/// `#rrggbb` or `#rgb`. Alpha is refused: a translucent panel would show the
-/// window behind it, which nothing here is drawn to handle.
 /// The candidate with the most contrast against `ground`.
 pub fn most_readable(ground: Color, candidates: [Color; 2]) -> Color {
     let [first, second] = candidates;
@@ -505,7 +509,15 @@ pub fn most_readable(ground: Color, candidates: [Color; 2]) -> Color {
     }
 }
 
-fn parse_color(text: &str) -> Result<Color, String> {
+/// `color` as `#rrggbb`, the way `[theme]` takes it.
+pub fn hex(color: Color) -> String {
+    let [r, g, b, _alpha] = color.into_rgba8();
+    format!("#{r:02x}{g:02x}{b:02x}")
+}
+
+/// `#rrggbb` or `#rgb`. Alpha is refused: a translucent panel would show the
+/// window behind it, which nothing here is drawn to handle.
+pub fn parse_color(text: &str) -> Result<Color, String> {
     let not_a_color = || format!("{text:?} is not a color, expected \"#rrggbb\" or \"#rgb\"");
     let digits = text.strip_prefix('#').ok_or_else(not_a_color)?;
     if !digits.bytes().all(|byte| byte.is_ascii_hexdigit()) {

@@ -3572,9 +3572,9 @@
     },
     {
       "key": "settings.feature_look_intro",
-      "context": "Line under the heading of the appearance page on the settings tab.",
-      "en": "How ncrs looks.",
-      "de": "Wie ncrs aussieht."
+      "context": "Line under the heading of the appearance page on the settings tab: a color field left empty takes the color of the chosen scheme and VS Code theme.",
+      "en": "How ncrs looks. A color left empty comes from the scheme and the theme.",
+      "de": "Wie ncrs aussieht. Eine leere Farbe kommt aus dem Schema und dem Theme."
     },
     {
       "key": "settings.feature_language",
@@ -3662,15 +3662,15 @@
     },
     {
       "key": "settings.row_vscode",
-      "context": "Name of a setting on the appearance page: the VS Code color theme file that the config names. Shown read only.",
+      "context": "Name of a setting on the appearance page: the VS Code color theme file laid over the color scheme.",
       "en": "VS Code theme",
       "de": "VS-Code-Theme"
     },
     {
       "key": "settings.row_vscode_note",
-      "context": "Explanation under the VS Code theme setting: the file named in the config is laid over the color scheme.",
-      "en": "The theme file named in config.toml, laid over the color scheme.",
-      "de": "Die Theme-Datei aus der config.toml, über das Farbschema gelegt."
+      "context": "Explanation under the VS Code theme setting: a theme file chosen on disk is laid over the color scheme.",
+      "en": "A theme file (JSON), laid over the color scheme.",
+      "de": "Eine Theme-Datei (JSON), über das Farbschema gelegt."
     },
     {
       "key": "settings.vscode_none",
@@ -3848,9 +3848,9 @@
     },
     {
       "key": "settings.row_ai_provider_note",
-      "context": "Explanation under the AI provider: it is set in the file and cannot be changed here.",
-      "en": "Set in config.toml.",
-      "de": "Wird in der config.toml eingestellt."
+      "context": "Explanation under the AI provider setting: the model can run on this machine or on a server of the user's own.",
+      "en": "Where the model runs.",
+      "de": "Wo das Modell läuft."
     },
     {
       "key": "settings.provider_local",
@@ -3887,6 +3887,366 @@
       "context": "Notice in the status bar after a setting was written to the file but only takes effect when the program starts again.",
       "en": "Saved in config.toml. Takes effect at the next start.",
       "de": "In der config.toml gespeichert. Gilt ab dem nächsten Start."
+    },
+    {
+      "key": "settings.feature_programs",
+      "context": "Entry of the feature list on the settings tab: the programs that view and edit files (F3 and F4). One word, noun.",
+      "en": "Programs",
+      "de": "Programme"
+    },
+    {
+      "key": "settings.feature_programs_intro",
+      "context": "Line under the heading of the programs page on the settings tab.",
+      "en": "The programs F3 and F4 open a file with.",
+      "de": "Die Programme, mit denen F3 und F4 eine Datei öffnen."
+    },
+    {
+      "key": "settings.feature_keys",
+      "context": "Entry of the feature list on the settings tab: which keys run which command.",
+      "en": "Keyboard shortcuts",
+      "de": "Tastenkürzel"
+    },
+    {
+      "key": "settings.feature_keys_intro",
+      "context": "Line under the heading of the keyboard shortcuts page on the settings tab.",
+      "en": "Which keys run which command.",
+      "de": "Welche Tasten welchen Befehl ausführen."
+    },
+    {
+      "key": "settings.row_viewer",
+      "context": "Name of a setting on the programs page: the program F3 opens a file with to look at it.",
+      "en": "Viewer (F3)",
+      "de": "Betrachter (F3)"
+    },
+    {
+      "key": "settings.row_viewer_note",
+      "context": "Explanation under the viewer setting: an empty field means the system opens the file with its own program; a word with spaces must be put in quotes.",
+      "en": "Empty: the system default. Put a word with spaces in quotes.",
+      "de": "Leer: das System entscheidet. Wörter mit Leerzeichen in Anführungszeichen."
+    },
+    {
+      "key": "settings.row_editor",
+      "context": "Name of a setting on the programs page: the program F4 opens a file with to change it.",
+      "en": "Editor (F4)",
+      "de": "Editor (F4)"
+    },
+    {
+      "key": "settings.row_editor_note",
+      "context": "Explanation under the editor setting: an empty field means the viewer or the system default is used; the words {path} and {line} in an argument stand for the file and the line.",
+      "en": "Empty: the viewer or the system default. {path} and {line} stand for the file and the line.",
+      "de": "Leer: der Betrachter oder das System. {path} und {line} stehen für Datei und Zeile."
+    },
+    {
+      "key": "settings.programs_sandbox_note",
+      "context": "Added to the explanation of the viewer and editor settings in the App Store version, which may only start apps.",
+      "en": "The App Store version can only open apps.",
+      "de": "Die App-Store-Version kann nur Apps öffnen."
+    },
+    {
+      "key": "settings.program_placeholder",
+      "context": "Placeholder in the empty viewer or editor field on the programs page: the operating system decides which program opens the file.",
+      "en": "system default",
+      "de": "Systemstandard"
+    },
+    {
+      "key": "settings.choose",
+      "context": "Button on the settings tab that opens the system dialog to pick a file. The ellipsis says a dialog follows.",
+      "en": "Choose…",
+      "de": "Auswählen…"
+    },
+    {
+      "key": "settings.default",
+      "context": "Button on the settings tab that removes a program or file from the config so the built-in behaviour applies again.",
+      "en": "Default",
+      "de": "Standard"
+    },
+    {
+      "key": "settings.remove",
+      "context": "Button next to the VS Code theme setting that stops using the theme file. One word, verb.",
+      "en": "Remove",
+      "de": "Entfernen"
+    },
+    {
+      "key": "settings.row_open_vsx",
+      "context": "Name of a setting on the appearance page: downloading a VS Code theme from the Open VSX registry. Open VSX is a proper name.",
+      "en": "From Open VSX",
+      "de": "Aus Open VSX"
+    },
+    {
+      "key": "settings.row_open_vsx_note",
+      "context": "Explanation under the Open VSX setting: a theme is downloaded by its ID or its link and then used.",
+      "en": "Downloads a theme by its ID or link and uses it.",
+      "de": "Lädt ein Theme über seine ID oder seinen Link und verwendet es."
+    },
+    {
+      "key": "settings.vscode_problem",
+      "context": "Shown under the VS Code theme setting when the theme file could not be used in full. Takes the reason, which is English and stays untranslated.",
+      "en": "Not applied in full: {reason}",
+      "de": "Nicht ganz übernommen: {reason}"
+    },
+    {
+      "key": "settings.group_colors",
+      "context": "Heading of the group of color settings on the appearance page: one row per part of the window.",
+      "en": "Colors",
+      "de": "Farben"
+    },
+    {
+      "key": "settings.color_background",
+      "context": "Name of a color setting on the appearance page: the background of the whole window.",
+      "en": "Window background",
+      "de": "Fensterhintergrund"
+    },
+    {
+      "key": "settings.color_panel",
+      "context": "Name of a color setting on the appearance page: the background of the two file panels.",
+      "en": "Panel background",
+      "de": "Panelhintergrund"
+    },
+    {
+      "key": "settings.color_text",
+      "context": "Name of a color setting on the appearance page: the normal text color.",
+      "en": "Text",
+      "de": "Text"
+    },
+    {
+      "key": "settings.color_dim_text",
+      "context": "Name of a color setting on the appearance page: text that matters less, such as notes and disabled entries.",
+      "en": "Dim text",
+      "de": "Gedämpfter Text"
+    },
+    {
+      "key": "settings.color_directory",
+      "context": "Name of a color setting on the appearance page: the names of folders in the panels.",
+      "en": "Folders",
+      "de": "Ordner"
+    },
+    {
+      "key": "settings.color_cursor",
+      "context": "Name of a color setting on the appearance page: the bar on the current row of a panel.",
+      "en": "Cursor bar",
+      "de": "Cursorbalken"
+    },
+    {
+      "key": "settings.color_cursor_text",
+      "context": "Name of a color setting on the appearance page: the text on the cursor bar and in the title bar.",
+      "en": "Text on the cursor",
+      "de": "Text auf dem Cursor"
+    },
+    {
+      "key": "settings.color_tagged",
+      "context": "Name of a color setting on the appearance page: rows the user marked for a command.",
+      "en": "Marked files",
+      "de": "Markierte Dateien"
+    },
+    {
+      "key": "settings.color_border",
+      "context": "Name of a color setting on the appearance page: the frame of the active panel.",
+      "en": "Active frame",
+      "de": "Aktiver Rahmen"
+    },
+    {
+      "key": "settings.color_bar",
+      "context": "Name of a color setting on the appearance page: the title bar of the active panel.",
+      "en": "Title bar",
+      "de": "Titelleiste"
+    },
+    {
+      "key": "settings.color_bar_inactive",
+      "context": "Name of a color setting on the appearance page: the title bar and frame of the inactive panel.",
+      "en": "Inactive bars",
+      "de": "Inaktive Leisten"
+    },
+    {
+      "key": "settings.color_status_bar",
+      "context": "Name of a color setting on the appearance page: the bar at the bottom of the window.",
+      "en": "Status bar",
+      "de": "Statusleiste"
+    },
+    {
+      "key": "settings.color_dialog",
+      "context": "Name of a color setting on the appearance page: the background of dialogs and cards.",
+      "en": "Dialogs",
+      "de": "Dialoge"
+    },
+    {
+      "key": "settings.color_menu",
+      "context": "Name of a color setting on the appearance page: the background of menus and the command list.",
+      "en": "Menus",
+      "de": "Menüs"
+    },
+    {
+      "key": "settings.color_accent",
+      "context": "Name of a color setting on the appearance page: the color that highlights, such as shortcut letters.",
+      "en": "Accent",
+      "de": "Akzent"
+    },
+    {
+      "key": "settings.color_success",
+      "context": "Name of a color setting on the appearance page: messages about something that worked.",
+      "en": "Success",
+      "de": "Erfolg"
+    },
+    {
+      "key": "settings.color_error",
+      "context": "Name of a color setting on the appearance page: error messages.",
+      "en": "Error",
+      "de": "Fehler"
+    },
+    {
+      "key": "settings.contrast_low",
+      "context": "Shown under a color setting whose text color is hard to read on its background. Takes the name of the background color setting and the contrast ratio, such as 2.1.",
+      "en": "Hard to read on {background}: contrast {ratio}:1.",
+      "de": "Schwer lesbar auf {background}: Kontrast {ratio}:1."
+    },
+    {
+      "key": "settings.problem_color",
+      "context": "Shown under a color setting when the typed value is not a color: it must be a # with six or three hex digits.",
+      "en": "Use #rrggbb or #rgb.",
+      "de": "Bitte #rrggbb oder #rgb."
+    },
+    {
+      "key": "settings.problem_program_empty",
+      "context": "Shown under the viewer or editor setting when the typed line has no program in front.",
+      "en": "Name the program first.",
+      "de": "Zuerst das Programm nennen."
+    },
+    {
+      "key": "settings.problem_program_nul",
+      "context": "Shown under the viewer or editor setting when the typed line contains a NUL character, which no program can take.",
+      "en": "Contains a NUL character.",
+      "de": "Enthält ein NUL-Zeichen."
+    },
+    {
+      "key": "settings.problem_program_relative",
+      "context": "Shown under the viewer or editor setting when the program is a relative path, which would depend on the folder ncrs started in.",
+      "en": "Use a program name from PATH or an absolute path.",
+      "de": "Bitte einen Programmnamen aus PATH oder einen absoluten Pfad."
+    },
+    {
+      "key": "settings.problem_unclosed_quote",
+      "context": "Shown under the viewer or editor setting when a quote in the typed line is opened but not closed.",
+      "en": "A quote is not closed.",
+      "de": "Ein Anführungszeichen ist nicht geschlossen."
+    },
+    {
+      "key": "settings.problem_only_apps",
+      "context": "Shown under the viewer or editor setting in the App Store version when the picked file is not an app.",
+      "en": "Only an app can be chosen here.",
+      "de": "Hier lässt sich nur eine App wählen."
+    },
+    {
+      "key": "settings.problem_path_not_text",
+      "context": "Shown on the settings tab when the path of a picked file has characters the config file cannot hold.",
+      "en": "The path of this file cannot be saved.",
+      "de": "Der Pfad dieser Datei lässt sich nicht speichern."
+    },
+    {
+      "key": "settings.problem_threads",
+      "context": "Shown under the threads setting when the typed value is not a whole number from 1 up.",
+      "en": "A number from 1 up, or empty.",
+      "de": "Eine Zahl ab 1 oder leer."
+    },
+    {
+      "key": "settings.problem_endpoint",
+      "context": "Shown under the endpoint setting when the typed address cannot be used. Takes the reason, which is English and stays untranslated.",
+      "en": "Not usable: {reason}",
+      "de": "Nicht verwendbar: {reason}"
+    },
+    {
+      "key": "settings.problem_endpoint_not_local",
+      "context": "Shown under the endpoint setting when the address is not on this machine, which is all that is allowed for now.",
+      "en": "Must be on this machine for now: localhost, 127.0.0.1 or ::1.",
+      "de": "Muss vorerst auf diesem Rechner liegen: localhost, 127.0.0.1 oder ::1."
+    },
+    {
+      "key": "settings.problem_needed",
+      "context": "Shown under the endpoint or model name setting when it is empty but the own server needs it.",
+      "en": "Needed for an own server.",
+      "de": "Für einen eigenen Server nötig."
+    },
+    {
+      "key": "settings.row_ai_threads",
+      "context": "Name of a setting in the AI group of the filing page: how many processor threads the local model may use.",
+      "en": "Threads",
+      "de": "Threads"
+    },
+    {
+      "key": "settings.row_ai_threads_note",
+      "context": "Explanation under the threads setting: an empty field lets Hermes pick the number itself.",
+      "en": "Empty: Hermes decides.",
+      "de": "Leer: Hermes entscheidet."
+    },
+    {
+      "key": "settings.threads_placeholder",
+      "context": "Placeholder in the empty threads field: the number is chosen automatically.",
+      "en": "automatic",
+      "de": "automatisch"
+    },
+    {
+      "key": "settings.row_ai_endpoint",
+      "context": "Name of a setting in the AI group of the filing page: the web address of the own AI server.",
+      "en": "Endpoint",
+      "de": "Endpunkt"
+    },
+    {
+      "key": "settings.row_ai_endpoint_note",
+      "context": "Explanation under the endpoint setting: the address of the server, which must be on this machine for now.",
+      "en": "An address on this machine, such as http://localhost:11434.",
+      "de": "Eine Adresse auf diesem Rechner, etwa http://localhost:11434."
+    },
+    {
+      "key": "settings.row_ai_model_name",
+      "context": "Name of a setting in the AI group of the filing page: the name of the model on the own server.",
+      "en": "Model name",
+      "de": "Modellname"
+    },
+    {
+      "key": "settings.row_ai_model_name_note",
+      "context": "Explanation under the model name setting: the name the server knows the model by.",
+      "en": "The name the server knows the model by.",
+      "de": "Der Name, unter dem der Server das Modell kennt."
+    },
+    {
+      "key": "settings.row_keys",
+      "context": "Name of the setting on the keyboard shortcuts page: the keys of all commands, changed in a dialog.",
+      "en": "Keys of the commands",
+      "de": "Tasten der Befehle"
+    },
+    {
+      "key": "settings.row_keys_note",
+      "context": "Explanation under the keys setting: the dialog lists every command, finds one by name or by its key and records new keys.",
+      "en": "Find a command by name or key and record new keys.",
+      "de": "Einen Befehl über Namen oder Taste finden und neue Tasten aufnehmen."
+    },
+    {
+      "key": "settings.keys_changed",
+      "context": "Value of the keys setting: how many commands have keys of the user's own. Takes the number.",
+      "en": "{count} changed",
+      "de": "{count} geändert"
+    },
+    {
+      "key": "settings.keys_built_in",
+      "context": "Value of the keys setting when every command has the keys it ships with.",
+      "en": "all built in",
+      "de": "alle eingebaut"
+    },
+    {
+      "key": "settings.keys_edit",
+      "context": "Button on the keyboard shortcuts page that opens the keyboard shortcuts dialog. The ellipsis says a dialog follows.",
+      "en": "Edit…",
+      "de": "Bearbeiten…"
+    },
+    {
+      "key": "settings.config_broken",
+      "context": "Box at the top of the settings tab when the config file does not load: nothing can be saved until it is fixed. Takes the file path and the reason, which is English and stays untranslated.",
+      "en": "The config file {path} cannot be used: {reason}. Nothing is saved until it is fixed.",
+      "de": "Die Konfigurationsdatei {path} ist nicht verwendbar: {reason}. Bis sie behoben ist, wird nichts gespeichert."
+    },
+    {
+      "key": "settings.config_broken_at_line",
+      "context": "Box at the top of the settings tab when the config file has an error at a known line: nothing can be saved until it is fixed. Takes the file path, the line number and the reason, which is English and stays untranslated.",
+      "en": "The config file {path} has an error in line {line}: {reason}. Nothing is saved until it is fixed.",
+      "de": "Die Konfigurationsdatei {path} hat einen Fehler in Zeile {line}: {reason}. Bis sie behoben ist, wird nichts gespeichert."
     },
     {
       "key": "transfer.title_copy",

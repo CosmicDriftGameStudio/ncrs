@@ -395,6 +395,28 @@ pub fn form_row_wide<'a>(
     control_width: f32,
     palette: &Palette,
 ) -> Element<'a, Message> {
+    form_row_with_problem(
+        label,
+        theme_name,
+        description,
+        None,
+        control,
+        control_width,
+        palette,
+    )
+}
+
+/// [`form_row_wide`] with what is wrong with the value in the error color
+/// under the description.
+pub fn form_row_with_problem<'a>(
+    label: &str,
+    theme_name: Option<&str>,
+    description: Option<&str>,
+    problem: Option<&str>,
+    control: Element<'a, Message>,
+    control_width: f32,
+    palette: &Palette,
+) -> Element<'a, Message> {
     let mut names = Row::new()
         .push(paragraph(label.to_owned(), palette))
         .spacing(spacing::S);
@@ -404,6 +426,9 @@ pub fn form_row_wide<'a>(
     let mut left = column![names].spacing(spacing::XS / 2.0);
     if let Some(text_below) = description {
         left = left.push(dim(text_below.to_owned(), palette));
+    }
+    if let Some(wrong) = problem {
+        left = left.push(error_line(wrong.to_owned(), palette));
     }
     column![
         row![

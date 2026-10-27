@@ -4140,7 +4140,8 @@ mod settings_tab {
 
     use super::*;
     use crate::config::{AiSetting, Filing, FilingLocation};
-    use crate::messages::{SettingChange, SettingsFeature, SettingsMessage};
+    use crate::fs::OpenKind;
+    use crate::messages::{SettingChange, SettingField, SettingsFeature, SettingsMessage};
     use crate::palette::ThemePreset;
 
     fn hermes_config() -> Filing {
@@ -4192,6 +4193,87 @@ mod settings_tab {
         let app = || App::with_settings_open(SettingsFeature::Hermes, hermes_config());
         matches_snapshot(&app().in_language(Language::German), "settings_hermes_de");
         matches_snapshot(&app().in_language(Language::English), "settings_hermes_en");
+    }
+
+    fn both_languages(app: impl Fn() -> App, name: &str) {
+        matches_snapshot(&app().in_language(Language::German), &format!("{name}_de"));
+        matches_snapshot(&app().in_language(Language::English), &format!("{name}_en"));
+    }
+
+    fn settings_with(feature: SettingsFeature, source: &str) -> App {
+        App::with_settings_file(feature, Ok(crate::config::from_text(source).unwrap()))
+    }
+
+    #[test]
+    fn the_programs_page_matches_its_snapshots_with_a_refused_editor() {
+        both_languages(
+            || {
+                let mut app = settings_with(
+                    SettingsFeature::Programs,
+                    "[open]\nview = [\"less\", \"-R\"]\n",
+                );
+                let editor = SettingField::Program(OpenKind::Edit);
+                drop(app.update(Message::Settings(SettingsMessage::Edit {
+                    field: editor,
+                    text: "bin/edit {path}".to_owned(),
+                })));
+                drop(app.update(Message::Settings(SettingsMessage::Submit(editor))));
+                app
+            },
+            "settings_programs",
+        );
+    }
+
+    #[test]
+    fn the_keys_page_matches_its_snapshots() {
+        both_languages(
+            || App::with_settings_open(SettingsFeature::Keys, Filing::default()),
+            "settings_keys",
+        );
+    }
+
+    #[test]
+    fn the_colors_match_their_snapshots_with_a_contrast_warning_at_its_row() {
+        both_languages(
+            || {
+                let mut app = settings_with(
+                    SettingsFeature::Look,
+                    "[theme]\ntext = \"#4a4a4a\"\naccent = \"#e0b050\"\n",
+                );
+                drop(app.update(Message::Settings(SettingsMessage::SearchChanged(
+                    "text".to_owned(),
+                ))));
+                app
+            },
+            "settings_colors",
+        );
+    }
+
+    #[test]
+    fn an_own_ai_server_matches_its_snapshots() {
+        both_languages(
+            || {
+                settings_with(
+                    SettingsFeature::Hermes,
+                    "[modules.filing.ai]\nprovider = \"http\"\n\
+                     endpoint = \"http://localhost:11434\"\nmodel = \"qwen2.5:7b\"\n",
+                )
+            },
+            "settings_ai_server",
+        );
+    }
+
+    #[test]
+    fn a_config_that_does_not_load_is_named_at_the_top() {
+        both_languages(
+            || {
+                App::with_settings_file(
+                    SettingsFeature::Language,
+                    crate::config::from_text("lang = \"en\"\n[open]\nview = \"less\"\n"),
+                )
+            },
+            "settings_broken",
+        );
     }
 
     fn messages_after_click(app: &App, label: &str) -> Vec<Message> {

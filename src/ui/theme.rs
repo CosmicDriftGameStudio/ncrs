@@ -543,6 +543,20 @@ pub fn outlined_in(outline: Color) -> impl Fn(&Theme) -> container::Style {
     }
 }
 
+/// A small box filled with a color, outlined so that it shows on a ground of
+/// the same color.
+pub fn swatch(fill: Color, outline: Color) -> impl Fn(&Theme) -> container::Style {
+    move |_theme| container::Style {
+        background: Some(fill.into()),
+        border: Border {
+            color: outline,
+            width: spacing::BORDER_WIDTH,
+            radius: radius::CONTROL.into(),
+        },
+        ..container::Style::default()
+    }
+}
+
 /// An inquiry is yellow in every preset; the palette has no warning role.
 const INQUIRY_YELLOW: Color = Color {
     r: 0.898,

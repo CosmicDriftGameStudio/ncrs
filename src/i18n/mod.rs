@@ -215,6 +215,10 @@ mod tests {
                 // Names of color schemes.
                 | Msg::SettingsPresetCosmic
                 | Msg::SettingsPresetDracula
+                // Words German took over unchanged.
+                | Msg::SettingsRowEditor
+                | Msg::SettingsColorText
+                | Msg::SettingsRowAiThreads
                 // The app's name heads the macOS app menu in every language.
                 | Msg::MenuApp
         )

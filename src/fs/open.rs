@@ -20,10 +20,17 @@ use std::process::{Command, Stdio};
 use crate::config::{OpenPrograms, ProgramLine};
 
 /// What the user wants done with the file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum OpenKind {
     View,
     Edit,
+}
+
+/// Whether this is the macOS App Store build, which runs in the App Sandbox
+/// and may start another program only as an app (`open -a`). Only whether
+/// the variable is set is looked at.
+pub fn runs_in_app_sandbox() -> bool {
+    cfg!(target_os = "macos") && std::env::var_os("APP_SANDBOX_CONTAINER_ID").is_some()
 }
 
 /// A program and its arguments, ready to start. Built by `open_command`.

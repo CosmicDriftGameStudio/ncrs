@@ -227,7 +227,13 @@ System Settings > Privacy & Security > Full Disk Access.
 
 ## Configuration
 
-ncrs reads an optional TOML file:
+ncrs reads an optional TOML file. Every value in it can also be set in the
+settings tab (`Cmd`+`,`, `Ctrl`+`,` on Linux and Windows): appearance and
+colors, language, the viewer and editor, keyboard shortcuts and Hermes with
+its AI provider. The tab writes only the changed lines and keeps comments and
+order, refuses a value that would not load and shows why at its row. A file
+with an error still opens the tab, which names the line and saves nothing
+until it is fixed.
 
 | System | Location |
 |---|---|
@@ -238,7 +244,7 @@ ncrs reads an optional TOML file:
 ```toml
 version = 1
 # Start language: "en" or "de". F9 switches it for the running session only;
-# ncrs writes the config file only from the filing setup.
+# the settings tab writes it to this file.
 lang = "de"
 
 [open]
