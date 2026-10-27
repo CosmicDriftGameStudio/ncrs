@@ -87,6 +87,9 @@ pub struct PanelRecord {
     /// The folders Forward goes through; the next one is the last.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub forward: Vec<String>,
+    /// The name of the entry under the cursor; none for an empty folder.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
 }
 
 /// The folder as text. A non-UTF-8 folder is simply not remembered: TOML has
@@ -174,6 +177,16 @@ impl PanelRecord {
         nearest_existing_directory(Path::new(self.path.as_deref()?))
     }
 
+    /// The entry to put the cursor on in the first listing. Only for the saved
+    /// folder itself: a name from a folder that has gone says nothing about its
+    /// parent.
+    pub fn start_cursor(&self) -> Option<String> {
+        let saved = Path::new(self.path.as_deref()?);
+        (self.start_directory()? == saved)
+            .then(|| self.cursor.clone())
+            .flatten()
+    }
+
     /// The saved Back and Forward stacks, capped again.
     pub fn history(&self) -> PanelHistory {
         let paths = |saved: &[String]| saved.iter().map(PathBuf::from).collect();
@@ -214,6 +227,7 @@ mod tests {
                 descending: true,
                 back: vec!["/a".to_string(), "/b".to_string()],
                 forward: vec!["/c".to_string()],
+                cursor: Some("notes.txt".to_string()),
             },
             favourites: vec!["/fav/one".to_string(), "/fav/two".to_string()],
             right: PanelRecord::default(),
@@ -229,6 +243,18 @@ mod tests {
         save(&file, &state).unwrap();
 
         assert_eq!(load(&file), state);
+    }
+
+    #[test]
+    fn a_state_saved_before_the_cursor_was_remembered_still_loads() {
+        let scratch = tempfile::tempdir().unwrap();
+        let file = scratch.path().join("state.toml");
+        std::fs::write(&file, "version = 1\n[left]\npath = \"/x\"\n").unwrap();
+
+        let state = load(&file);
+
+        assert_eq!(state.left.path.as_deref(), Some("/x"));
+        assert_eq!(state.left.cursor, None);
     }
 
     #[test]

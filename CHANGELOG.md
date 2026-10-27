@@ -16,9 +16,9 @@ All notable changes to this project are documented here. The format follows
   `remove_favourite`, `favourites`. A config that already gives one of the new
   default keys (these and `Shift+F4`) to another action keeps it; the new
   action only loses that key.
-- ncrs remembers both panels' folders, their sort, the active panel and the
-  window size across restarts in `state.toml` next to the index. A folder that
-  is gone opens its nearest existing parent; a missing or broken file means the
+- ncrs remembers both panels' folders, their sort, the cursor row, the active
+  panel and the window size across restarts in `state.toml` next to the index.
+  A folder that is gone opens its nearest existing parent; a missing or broken file means the
   defaults.
 - `Shift+F4` asks for a name, creates an empty file in the active panel's folder
   and opens it in the editor like `F4`, with the cursor on it; an existing name

@@ -549,12 +549,13 @@ threads = 4
 
 ### Remembered state
 
-ncrs remembers both panels' folders and sort, the active panel and the window
-size in `state.toml`, next to `index.db` (`~/Library/Application Support/ncrs`
-on macOS, `$XDG_DATA_HOME/ncrs` or `~/.local/share/ncrs` on Linux,
+ncrs remembers both panels' folders, sort and cursor row, the active panel and
+the window size in `state.toml`, next to `index.db`
+(`~/Library/Application Support/ncrs` on macOS, `$XDG_DATA_HOME/ncrs` or `~/.local/share/ncrs` on Linux,
 `%APPDATA%\ncrs` on Windows, `data` in portable mode). ncrs writes it when it
 quits and shortly after a change; `config.toml` is never written for this. A
-folder that is gone opens its nearest existing parent. Each panel's back and
+folder that is gone opens its nearest existing parent (with the cursor on the
+first row); so does a cursor entry that is gone. Each panel's back and
 forward history (50 steps) and the favourites are kept too. A missing or broken
 file means the defaults, and you can delete it to start fresh.
 
