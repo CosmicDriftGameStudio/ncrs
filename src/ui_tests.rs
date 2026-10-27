@@ -380,6 +380,65 @@ mod tests {
         );
     }
 
+    fn quick_open_with_documents(language: Language) -> App {
+        use crate::filing::{FoundDocument, TextSource};
+        let mut app = App::with_fixed_panels()
+            .in_language(language)
+            .with_ready_hermes_for_test();
+        app.open_quick_open_for_test(
+            &["README.md", "src/config.rs", "tests/config_rs_test.rs"],
+            "",
+        );
+        app.type_into_quick_open_for_test("cfgrs");
+        let found = |path: &str, read_by| FoundDocument {
+            path: std::path::PathBuf::from(path),
+            read_by,
+        };
+        app.deliver_documents_for_test(Ok(vec![
+            found(
+                "/Users/me/Documents/Insurance/policy-2024.pdf",
+                TextSource::Pdf,
+            ),
+            found(
+                "/Users/me/Documents/Scans/receipt-0412.jpg",
+                TextSource::Ocr,
+            ),
+            found(
+                "/Users/me/Documents/Notes/cfgrs-notes.txt",
+                TextSource::Text,
+            ),
+        ]));
+        app
+    }
+
+    #[test]
+    fn quick_open_documents_match_their_snapshot() {
+        let app = quick_open_with_documents(Language::English);
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/quick_open_documents_en.png")
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "quick open does not match tests/snapshots/quick_open_documents_en.png"
+        );
+    }
+
+    #[test]
+    fn quick_open_documents_match_their_german_snapshot() {
+        let app = quick_open_with_documents(Language::German);
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/quick_open_documents_de.png")
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "quick open does not match tests/snapshots/quick_open_documents_de.png"
+        );
+    }
+
     #[test]
     fn a_long_path_does_not_change_the_quick_open_frame() {
         let short = {

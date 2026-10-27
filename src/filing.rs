@@ -643,6 +643,74 @@ impl ColumnReader {
     }
 }
 
+/// How the text of a found document was read, as far as the file type says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextSource {
+    Pdf,
+    Ocr,
+    Text,
+}
+
+impl TextSource {
+    /// The index does not store how a text was read, so this follows the file
+    /// type: a scanned PDF, which was read by OCR, counts as `Pdf`.
+    fn of_file(path: &Path) -> Self {
+        if ncrs_intake::is_image_file(path) {
+            Self::Ocr
+        } else if path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("pdf"))
+        {
+            Self::Pdf
+        } else {
+            Self::Text
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FoundDocument {
+    pub path: PathBuf,
+    pub read_by: TextSource,
+}
+
+/// Looks documents up by their text, on a blocking thread like
+/// [`ColumnReader`].
+pub struct DocumentFinder {
+    slot: IndexSlot,
+}
+
+impl fmt::Debug for DocumentFinder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DocumentFinder").finish_non_exhaustive()
+    }
+}
+
+impl DocumentFinder {
+    /// The documents whose text has all `words`, the last one as a beginning,
+    /// best match first. A document whose file is gone is left out.
+    pub fn find(&self, words: &str, limit: usize) -> Result<Vec<FoundDocument>, String> {
+        let guard = lock(&self.slot);
+        let index = guard.as_ref().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
+        let ids = index
+            .search_text_prefix(words, limit)
+            .map_err(|err| err.to_string())?;
+        let mut found = Vec::with_capacity(ids.len());
+        for id in ids {
+            let Some(document) = index.document(id).map_err(|err| err.to_string())? else {
+                continue;
+            };
+            if document.missing_since.is_none() {
+                found.push(FoundDocument {
+                    read_by: TextSource::of_file(&document.path),
+                    path: document.path,
+                });
+            }
+        }
+        Ok(found)
+    }
+}
+
 /// Every index goes through here before the watcher and the pipeline see it,
 /// so a move that was interrupted is settled before anything looks at the files.
 fn put_index(slot: &IndexSlot, index: Index) {
@@ -863,6 +931,16 @@ impl FilingModule {
     pub fn column_reader(&self) -> Option<ColumnReader> {
         match self.phase {
             Phase::Ready => Some(ColumnReader {
+                slot: Arc::clone(&self.index),
+            }),
+            _ => None,
+        }
+    }
+
+    /// Like [`Self::column_reader`]: looks at the phase only.
+    pub fn document_finder(&self) -> Option<DocumentFinder> {
+        match self.phase {
+            Phase::Ready => Some(DocumentFinder {
                 slot: Arc::clone(&self.index),
             }),
             _ => None,
@@ -1622,6 +1700,55 @@ mod tests {
 
         assert_ne!(runner.snapshot().state, ncrs_pipeline::RunnerState::Off);
         drop(runner);
+    }
+
+    #[test]
+    fn a_document_is_found_by_the_beginning_of_a_word_only_its_text_has() {
+        use ncrs_index::{ContentHash, DocumentSource, NewDocument};
+
+        let dir = TempDir::new().unwrap();
+        let module = FilingModule::in_phase(Phase::Ready);
+        let mut index = Index::create_plain(&dir.path().join("index.db")).unwrap();
+        let mut add = |seed: u8, name: &str, text: &str| {
+            let id = index
+                .insert_document(&NewDocument {
+                    hash: ContentHash([seed; 32]),
+                    path: PathBuf::from(name),
+                    source: DocumentSource::Inbox,
+                    received_at: chrono::Utc::now(),
+                    stamp: None,
+                })
+                .unwrap();
+            index.set_document_text(id, text).unwrap();
+            id
+        };
+        add(1, "inbox/scan-1.pdf", "Rechnung Nr. 4711");
+        let gone = add(2, "inbox/scan-2.PDF", "Rechnung Nr. 12");
+        add(3, "inbox/photo.JPG", "Rechnung am Strand");
+        add(4, "inbox/notes.txt", "Mahnung");
+        index.mark_document_missing(gone).unwrap();
+        put_index(&module.index, index);
+
+        let found = module.document_finder().unwrap().find("rechn", 10).unwrap();
+
+        let listed: Vec<(PathBuf, TextSource)> = found
+            .into_iter()
+            .map(|document| (document.path, document.read_by))
+            .collect();
+        assert_eq!(listed.len(), 2, "{listed:?}");
+        assert!(listed.contains(&(PathBuf::from("inbox/scan-1.pdf"), TextSource::Pdf)));
+        assert!(listed.contains(&(PathBuf::from("inbox/photo.JPG"), TextSource::Ocr)));
+    }
+
+    #[test]
+    fn the_document_finder_exists_in_ready_only_and_fails_without_an_index() {
+        assert!(FilingModule::in_phase(Phase::Starting)
+            .document_finder()
+            .is_none());
+        let finder = FilingModule::in_phase(Phase::Ready)
+            .document_finder()
+            .unwrap();
+        assert_eq!(finder.find("x", 5), Err(INDEX_NOT_OPEN.to_owned()));
     }
 
     #[test]

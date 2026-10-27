@@ -964,6 +964,13 @@ pub enum QuickOpenMessage {
         hits: Vec<crate::quick_open::Hit>,
         chunks_scored: usize,
     },
+    /// The full-text search for the text of `generation` in the box of
+    /// `walk_generation` is done. An answer of an older text is dropped.
+    DocumentsFound {
+        walk_generation: u64,
+        generation: u64,
+        result: Result<Vec<crate::filing::FoundDocument>, String>,
+    },
     Move(isize),
     Activate,
     RowActivated(usize),

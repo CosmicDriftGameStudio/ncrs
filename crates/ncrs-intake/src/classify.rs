@@ -76,6 +76,11 @@ fn lowercase_extension(path: &Path) -> String {
         .unwrap_or_default()
 }
 
+/// Whether the file is a picture, whose text only OCR can read.
+pub fn is_image_file(path: &Path) -> bool {
+    IMAGE_EXTENSIONS.contains(&lowercase_extension(path).as_str())
+}
+
 /// Whether the text chain can read files of this kind. Images it cannot.
 pub fn text_is_readable(path: &Path) -> bool {
     DOCUMENT_EXTENSIONS.contains(&lowercase_extension(path).as_str())

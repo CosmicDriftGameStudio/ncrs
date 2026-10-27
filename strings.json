@@ -842,9 +842,9 @@
     },
     {
       "key": "quickopen.placeholder",
-      "context": "Placeholder of the text field of the Quick Open box, shown while it is empty. A short instruction.",
-      "en": "Type part of a file name",
-      "de": "Teil eines Dateinamens tippen"
+      "context": "Placeholder of the text field of the Quick Open box, shown while it is empty. A short instruction; the part after the dot says that typing > switches the box to the command list.",
+      "en": "Type part of a file name · > for commands",
+      "de": "Teil eines Dateinamens tippen · > für Befehle"
     },
     {
       "key": "quickopen.status_walking",
@@ -869,6 +869,12 @@
       "context": "Status line of the Quick Open box when nothing that was typed matches a file name.",
       "en": "No matching files",
       "de": "Keine passenden Dateien"
+    },
+    {
+      "key": "quickopen.documents",
+      "context": "Heading of the section in the Quick Open box (Ctrl+P / Cmd+P) that lists documents found by their text, below the files found by their name. Shown only when Hermes has an index.",
+      "en": "Documents",
+      "de": "Dokumente"
     },
     {
       "key": "command_palette.placeholder",
