@@ -213,13 +213,13 @@ Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
 
 # Tasks – Basis-Feature
 
-**Stand 2026-10-26: T1–T14 erledigt, T6d teilweise, T15–T18 offen.** Release 0.6.0,
+**Stand 2026-10-27: T1–T14 und T18 erledigt, T15–T17 offen.** Release 0.7.0,
 1027 Tests (`cargo test --workspace`, davon 5 `#[ignore]`) inkl. UI-Tests mit Pixelvergleich.
 
 | Block | Inhalt | Stand |
 |---|---|---|
 | A | CI, Installer, Release, `strings.json` | ✅ fertig (T1–T5, T5b), dazu signierte und notarisierte macOS-App |
-| B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | 🔶 F3–F8, Config, Keymap, Theme und Startsprache fertig, T6d teilweise — T14 (Suche und Quick Open) fertig — **T6d (Rest: Kommandozeile, Favoriten/Historie) ist der nächste Task** |
+| B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | 🔶 F3–F8, Config, Keymap, Theme und Startsprache fertig, T6d (Kommandozeile, Favoriten, Verlauf) und T14 (Suche und Quick Open) fertig — **als Nächstes 0.8.0: Netz, Archive lesen, Einstellungen** |
 | C | Netzwerk-Mounts, Archive | 🔶 Laufwerksmenü fertig, T15–T17 offen |
 
 Legende: **[P]** Pflicht für ein benutzbares Basis-Feature, **[S]** später. Reihenfolge =
@@ -378,13 +378,13 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
   eine Genauigkeit zu behaupten, die der Test nicht hat. `in_operation` hat noch keinen
   Aufrufer: die Regel wird in T7 beim Bauen der Operation gebraucht.
 
-- [ ] **T6d – Bedienungsleisten und Ablage (Architektur, vor F5/F6/F8)**
+- [x] **T6d – Bedienungsleisten und Ablage (Architektur, vor F5/F6/F8)**
   Fünf Anforderungen, die zusammen eine Struktur brauchen. Hier aufgenommen, weil drei
   davon den Kopier-Vorgang und die Tastatur betreffen und nicht später unterzuschieben sind.
   **Stand:** Punkt 2 (Queue mit Fortschritt) und 3 (Konfliktdialog mit „Für alle“) kamen mit T7,
   Punkt 4 (Sortierung nach Name/Size/Modified, ohne Extension) mit #24. Von Punkt 1 gibt
   es die editierbare Pfadzeile (#24) und die Kommandozeile über der Statusbar (F2, `cd`
-  und Shell-Befehle, Verlauf pro Sitzung; die Statusbar bleibt). Punkt 5 ist offen.
+  und Shell-Befehle, Verlauf pro Sitzung; die Statusbar bleibt). Punkt 5 (Favoriten und Verlauf pro Panel) kam mit 0.7.0 (#123).
 
   **1. Command-Line unten (ersetzt die Statusbar)**
   In NC ist die untere Leiste die *Kommandozeile*, nicht eine Statusanzeige: man tippt
@@ -535,4 +535,4 @@ weiß ich nur durch deine Beobachtung — die steht als Messung im README, nicht
 | T10 | TOML oder JSON für die Config? | **entschieden: TOML**, besser für Handeditierung. |
 | T13 | Sprachauswahl persistent | **entschieden und gebaut:** `lang` in der Config setzt die Startsprache, F9 schaltet nur die Sitzung um; die Config bleibt read-only, es wird nichts zurückgeschrieben. |
 | T14 | Suche: `glob` oder inkrementell? | **offen.** Die Filterlogik ist in beiden testbar, das Timing nicht. |
-| T18 | Settings | **geplant für 0.7.0 (#122):** Pfade, Tabs, Sortierung und Fenstergröße in einer eigenen Zustandsdatei neben der Config; `config.toml` bleibt read-only. |
+| T18 | Settings | **erledigt in 0.7.0 (#122):** Pfade, Tabs, Sortierung und Fenstergröße in einer eigenen Zustandsdatei neben der Config; `config.toml` bleibt read-only. |
