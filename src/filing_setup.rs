@@ -281,6 +281,40 @@ pub fn pick_folder_with_system_dialog(start_in: &Path) -> Task<Option<PathBuf>> 
     })
 }
 
+/// What the file dialog of the settings tab picks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilePick {
+    /// The program behind F3 or F4; only app bundles in the App Store build.
+    Program { apps_only: bool },
+    /// A VS Code color theme.
+    ThemeFile,
+}
+
+/// Opens the system file dialog for `pick` and yields the file picked, or
+/// `None` when it was cancelled. Called from `update`, like
+/// [`pick_folder_with_system_dialog`].
+pub fn pick_file_with_system_dialog(pick: FilePick) -> Task<Option<PathBuf>> {
+    let plain_dialog = rfd::AsyncFileDialog::new();
+    let dialog = match pick {
+        FilePick::Program { apps_only } => {
+            let in_apps = if cfg!(target_os = "macos") {
+                plain_dialog.set_directory("/Applications")
+            } else {
+                plain_dialog
+            };
+            if apps_only {
+                in_apps.add_filter("App", &["app"])
+            } else {
+                in_apps
+            }
+        }
+        FilePick::ThemeFile => plain_dialog.add_filter("JSON", &["json"]),
+    };
+    Task::perform(dialog.pick_file(), |chosen| {
+        chosen.map(|handle| handle.path().to_path_buf())
+    })
+}
+
 /// Blocking. The canonical path of the folder a panel shows: the rules
 /// compare canonical paths, and the intake works on them too.
 pub fn resolve_folder(folder: &Path) -> Result<PathBuf, String> {

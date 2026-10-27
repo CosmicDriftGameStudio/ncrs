@@ -25,7 +25,7 @@ use crate::context_menu::{ContextAction, ContextMenu, HermesAction, HermesMenu, 
 use crate::dialog::{Prompt, PromptKind};
 use crate::execute;
 use crate::filing::{FilingMessage, FilingModule, LocationStatus, Phase, Work, WorkOutcome};
-use crate::filing_setup::{self, FilingSetup, SetupNote};
+use crate::filing_setup::{self, FilePick, FilingSetup, SetupNote};
 use crate::filing_status::{FilingStatus, SNAPSHOT_EVERY};
 use crate::filing_work::FilingSummary;
 use crate::fs::{self, CreateDirError};
@@ -644,8 +644,24 @@ fn write_setting_change(
         SettingChange::HermesEnabled(enabled) => config::write_filing_enabled(path, enabled),
         SettingChange::Load(load) => config::write_filing_load(path, load),
         SettingChange::AiEnabled(enabled) => config::write_ai_enabled(path, enabled),
+        SettingChange::Program { kind, line } => config::write_program(path, kind, line.as_ref()),
+        SettingChange::VscodeTheme(Some(file)) => config::write_vscode_theme(path, &file),
+        SettingChange::VscodeTheme(None) => config::remove_vscode_theme(path),
+        SettingChange::Color { role, color } => config::write_color(path, role, color.as_deref()),
+        SettingChange::AiProvider(choice) => config::write_ai_provider(path, &choice),
     };
     written.map(Box::new)
+}
+
+/// What `[theme] vscode` says for a picked theme file. One inside the
+/// config's folder is named from there, as the downloaded ones are, so that
+/// the folder can move with it. `None` when the path is not text.
+fn theme_file_entry(config_path: Option<&Path>, picked: &Path) -> Option<String> {
+    let named = config_path
+        .and_then(Path::parent)
+        .and_then(|folder| picked.strip_prefix(folder).ok())
+        .unwrap_or(picked);
+    named.to_str().map(str::to_owned)
 }
 
 /// When a saved filing list takes effect.
@@ -871,6 +887,8 @@ pub struct App {
     /// the dialog is asked for, and AppKit allows that only on the main thread,
     /// which is the one that runs `update`.
     pick_folder: fn(&Path) -> Task<Option<PathBuf>>,
+    /// The file dialog of the settings tab; same rule as `pick_folder`.
+    pick_file: fn(FilePick) -> Task<Option<PathBuf>>,
     /// The card that fetches a color theme, while it is up.
     theme_fetch: Option<ThemeFetch>,
     /// Counts the cards opened, so the late answer of a closed one is dropped.
@@ -2458,6 +2476,7 @@ impl App {
             vscode_theme: None,
             resolve_folder: filing_setup::resolve_folder,
             pick_folder: filing_setup::pick_folder_with_system_dialog,
+            pick_file: filing_setup::pick_file_with_system_dialog,
             theme_fetch: None,
             theme_fetch_generation: 0,
             rule_suggestions: None,
@@ -7635,17 +7654,10 @@ impl App {
             label,
             license,
         } = installed;
-        self.vscode_theme = config.vscode_theme_path().map(str::to_owned);
-        self.palette = config.palette;
-        // The warnings of the look before this one no longer apply.
-        if matches!(
-            self.config_problem,
-            Some(ConfigProblem::LowContrast(_) | ConfigProblem::VscodeTheme(_))
-        ) {
-            self.config_problem = None;
-            self.config_error = None;
+        if let Some(state) = self.settings.as_mut() {
+            state.file = Ok(Box::new(config.clone()));
         }
-        self.report_look_warnings(config.contrast_warning, config.vscode_warning);
+        self.apply_look(config);
         let shown_license =
             license.unwrap_or_else(|| self.lang.text(Msg::ThemeFetchLicenseNotStated).to_owned());
         let notice = fill_template(
@@ -7669,6 +7681,10 @@ impl App {
             filing: &self.filing_config,
             ai_status: self.filing.as_ref().map(FilingModule::ai_status),
             home: &self.home,
+            keys_changed: KeyAction::ALL
+                .iter()
+                .filter(|&&action| !self.keymap.has_built_in_keys(action))
+                .count(),
             lang: self.lang,
             palette: &self.palette,
         });
@@ -7686,35 +7702,129 @@ impl App {
 
     fn update_settings(&mut self, message: SettingsMessage) -> Task<Message> {
         match message {
-            SettingsMessage::Toggle if self.settings.is_some() => self.close_settings(),
+            SettingsMessage::Toggle if self.settings.is_some() => {
+                self.leave_settings_page(Self::close_settings)
+            }
             SettingsMessage::Toggle => self.open_settings(),
-            SettingsMessage::Close => self.close_settings(),
-            SettingsMessage::Select(feature) => {
-                if let Some(state) = self.settings.as_mut() {
-                    state.feature = feature;
-                }
-                Task::none()
-            }
-            SettingsMessage::SearchChanged(query) => {
-                if let Some(state) = self.settings.as_mut() {
-                    state.query = query;
-                }
-                Task::none()
-            }
-            SettingsMessage::Change(change) => self.write_setting(change),
-            SettingsMessage::Written { change, result } => match result {
-                Ok(config) => {
-                    self.settings_failure = None;
-                    if let Some(state) = self.settings.as_mut() {
-                        state.changed += 1;
+            SettingsMessage::Close => self.leave_settings_page(Self::close_settings),
+            SettingsMessage::Select(feature)
+                if self
+                    .settings
+                    .as_ref()
+                    .is_some_and(|state| state.feature != feature) =>
+            {
+                self.leave_settings_page(|app| {
+                    if let Some(state) = app.settings.as_mut() {
+                        state.feature = feature;
                     }
-                    self.apply_setting(change, *config)
-                }
-                Err(error) => {
-                    self.settings_failure = Some(self.settings_write_failure(&error));
                     Task::none()
+                })
+            }
+            SettingsMessage::Select(_) => Task::none(),
+            SettingsMessage::SearchChanged(query) => self.in_settings(|state| {
+                state.query = query;
+                None
+            }),
+            SettingsMessage::Edit { field, text } => self.in_settings(|state| {
+                state.edit(field, text);
+                None
+            }),
+            SettingsMessage::Submit(field) => self.in_settings(|state| state.submit(field)),
+            SettingsMessage::ChooseProvider(provider) => {
+                self.in_settings(|state| state.choose_provider(provider))
+            }
+            SettingsMessage::PickProgram(kind) => {
+                let apps_only = self.settings.as_ref().is_some_and(|state| state.sandboxed);
+                (self.pick_file)(FilePick::Program { apps_only }).map(move |path| {
+                    Message::Settings(SettingsMessage::ProgramPicked { kind, path })
+                })
+            }
+            SettingsMessage::ProgramPicked {
+                kind,
+                path: Some(path),
+            } => self.in_settings(|state| state.picked_program(kind, &path)),
+            SettingsMessage::PickThemeFile => (self.pick_file)(FilePick::ThemeFile)
+                .map(|path| Message::Settings(SettingsMessage::ThemeFilePicked(path))),
+            SettingsMessage::ThemeFilePicked(Some(path)) => self.theme_file_picked(&path),
+            SettingsMessage::ProgramPicked { path: None, .. }
+            | SettingsMessage::ThemeFilePicked(None) => Task::none(),
+            SettingsMessage::Change(change) => self.write_setting(change),
+            SettingsMessage::Written { change, result } => self.setting_written(change, result),
+        }
+    }
+
+    /// Writes the values typed on the page without Enter, one after the
+    /// other, and runs `then`. A wrong value keeps the page as it is: it shows
+    /// at its row and `then` does not run.
+    fn leave_settings_page(
+        &mut self,
+        then: impl FnOnce(&mut Self) -> Task<Message>,
+    ) -> Task<Message> {
+        let Some(changes) = self
+            .settings
+            .as_mut()
+            .and_then(settings_ui::SettingsState::leave)
+        else {
+            return Task::none();
+        };
+        let writes = changes
+            .into_iter()
+            .map(|change| self.write_setting(change))
+            .reduce(Task::chain)
+            .unwrap_or_else(Task::none);
+        Task::batch([then(self), writes])
+    }
+
+    /// Runs `edit` on the open tab and writes the change it asks for.
+    fn in_settings(
+        &mut self,
+        edit: impl FnOnce(&mut settings_ui::SettingsState) -> Option<SettingChange>,
+    ) -> Task<Message> {
+        match self.settings.as_mut().and_then(edit) {
+            Some(change) => self.write_setting(change),
+            None => Task::none(),
+        }
+    }
+
+    fn theme_file_picked(&mut self, path: &Path) -> Task<Message> {
+        match theme_file_entry(self.config_path.as_deref(), path) {
+            Some(file) => self.write_setting(SettingChange::VscodeTheme(Some(file))),
+            None => {
+                self.settings_failure =
+                    Some(self.lang.text(Msg::SettingsProblemPathNotText).to_owned());
+                Task::none()
+            }
+        }
+    }
+
+    fn setting_written(
+        &mut self,
+        change: SettingChange,
+        result: Result<Box<Config>, FilingWriteError>,
+    ) -> Task<Message> {
+        match result {
+            Ok(config) => {
+                self.settings_failure = None;
+                if let Some(state) = self.settings.as_mut() {
+                    state.written(&change, &config);
                 }
-            },
+                self.apply_setting(change, *config)
+            }
+            Err(error) => {
+                let failure = self.settings_write_failure(&error);
+                let at_its_row = match self.settings.as_mut() {
+                    Some(state) => state.refused(&change, failure.clone()),
+                    None => false,
+                };
+                if at_its_row {
+                    Task::none()
+                } else if self.settings.is_some() {
+                    self.settings_failure = Some(failure);
+                    Task::none()
+                } else {
+                    self.show_notice(failure)
+                }
+            }
         }
     }
 
@@ -7731,7 +7841,17 @@ impl App {
             .as_deref()
             .and_then(crate::filing::ocr_models_dir)
             .is_some_and(|dir| dir.read_dir().is_ok_and(|mut files| files.next().is_some()));
-        self.settings = Some(settings_ui::SettingsState::new(ocr_models_present));
+        // Read again rather than kept from the start: the tab shows the values
+        // as the file spells them, and the file may have changed since.
+        let file = match &self.config_path {
+            Some(path) => config::load(path).map(Box::new),
+            None => Ok(Box::default()),
+        };
+        self.settings = Some(settings_ui::SettingsState::new(
+            ocr_models_present,
+            file,
+            crate::fs::runs_in_app_sandbox(),
+        ));
         release_focus()
     }
 
@@ -7753,8 +7873,16 @@ impl App {
         };
         self.settings_failure = None;
         let written_path = config_path.clone();
+        let written_change = change.clone();
+        // Started only when the task runs, so writes chained one after the
+        // other do not read the file at the same time.
         Task::perform(
-            tokio::task::spawn_blocking(move || write_setting_change(&written_path, change)),
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    write_setting_change(&written_path, written_change)
+                })
+                .await
+            },
             move |joined| {
                 Message::Settings(SettingsMessage::Written {
                     change,
@@ -7772,18 +7900,14 @@ impl App {
     /// Takes over what the file now says about `change`.
     fn apply_setting(&mut self, change: SettingChange, config: Config) -> Task<Message> {
         match change {
-            SettingChange::Preset(_) => {
-                self.theme_preset = config.theme_preset();
-                self.vscode_theme = config.vscode_theme_path().map(str::to_owned);
-                self.palette = config.palette;
-                if matches!(
-                    self.config_problem,
-                    Some(ConfigProblem::LowContrast(_) | ConfigProblem::VscodeTheme(_))
-                ) {
-                    self.config_problem = None;
-                    self.config_error = None;
-                }
-                self.report_look_warnings(config.contrast_warning, config.vscode_warning);
+            SettingChange::Preset(_)
+            | SettingChange::VscodeTheme(_)
+            | SettingChange::Color { .. } => {
+                self.apply_look(config);
+                Task::none()
+            }
+            SettingChange::Program { .. } => {
+                self.open_programs = config.open;
                 Task::none()
             }
             SettingChange::Language(lang) => {
@@ -7795,7 +7919,9 @@ impl App {
                 self.set_pipeline_load(load);
                 Task::none()
             }
-            SettingChange::HermesEnabled(_) | SettingChange::AiEnabled(_) => {
+            SettingChange::HermesEnabled(_)
+            | SettingChange::AiEnabled(_)
+            | SettingChange::AiProvider(_) => {
                 let (applies, task) = self.apply_saved_filing(config.filing);
                 if matches!(applies, SavedFilingApplies::AtNextStart) {
                     let notice = self.lang.text(Msg::SettingsSavedNextStart).to_owned();
@@ -7805,6 +7931,22 @@ impl App {
                 }
             }
         }
+    }
+
+    /// Takes over the look `config` describes; the warnings about the look
+    /// before it no longer apply.
+    fn apply_look(&mut self, config: Config) {
+        self.theme_preset = config.theme_preset();
+        self.vscode_theme = config.vscode_theme_path().map(str::to_owned);
+        self.palette = config.palette;
+        if matches!(
+            self.config_problem,
+            Some(ConfigProblem::LowContrast(_) | ConfigProblem::VscodeTheme(_))
+        ) {
+            self.config_problem = None;
+            self.config_error = None;
+        }
+        self.report_look_warnings(config.contrast_warning, config.vscode_warning);
     }
 
     fn settings_write_failure(&self, error: &FilingWriteError) -> String {
@@ -9935,6 +10077,7 @@ impl App {
             vscode_theme: None,
             resolve_folder: |folder| Ok(folder.to_path_buf()),
             pick_folder: |_| Task::none(),
+            pick_file: |_| Task::none(),
             theme_fetch: None,
             theme_fetch_generation: 0,
             rule_suggestions: None,
@@ -10365,9 +10508,30 @@ impl App {
     pub fn with_settings_open(feature: crate::messages::SettingsFeature, filing: Filing) -> Self {
         let mut app = Self::with_fixed_panels();
         app.filing_config = filing;
-        let mut state = settings_ui::SettingsState::new(false);
+        let mut state = settings_ui::SettingsState::new(false, Ok(Box::default()), false);
         state.feature = feature;
         app.settings = Some(state);
+        app
+    }
+
+    /// Fixed panels with the settings tab open on `feature`, showing `file`
+    /// as the config read when it opened. A config that loads is in effect.
+    pub fn with_settings_file(
+        feature: crate::messages::SettingsFeature,
+        file: Result<Config, ConfigError>,
+    ) -> Self {
+        let filing = file
+            .as_ref()
+            .map(|config| config.filing.clone())
+            .unwrap_or_default();
+        let mut app = Self::with_settings_open(feature, filing);
+        if let Ok(config) = &file {
+            app.open_programs = config.open.clone();
+            app.apply_look(config.clone());
+        }
+        if let Some(state) = app.settings.as_mut() {
+            state.file = file.map(Box::new);
+        }
         app
     }
 
@@ -16970,7 +17134,8 @@ mod ai_model_tests {
 #[cfg(test)]
 mod settings_tab_tests {
     use super::*;
-    use crate::messages::SettingsFeature;
+    use crate::messages::{SettingField, SettingsFeature};
+    use crate::palette::ColorRole;
 
     fn open(app: &mut App) {
         drop(app.update(Message::Settings(SettingsMessage::Toggle)));
@@ -17048,6 +17213,151 @@ mod settings_tab_tests {
         })));
         assert_eq!(app.lang, Language::English);
         assert!(app.settings_failure.as_deref().unwrap().contains("denied"));
+    }
+
+    #[test]
+    fn a_written_program_takes_effect_for_the_next_f3() {
+        let mut app = App::with_settings_file(SettingsFeature::Programs, Ok(Config::default()));
+        let line = config::ProgramLine::new("bat", &[]);
+        let change = SettingChange::Program {
+            kind: crate::fs::OpenKind::View,
+            line: Some(line.clone()),
+        };
+        let written = config::from_text("[open]\nview = [\"bat\"]\n").unwrap();
+        drop(app.update(Message::Settings(SettingsMessage::Written {
+            change,
+            result: Ok(Box::new(written)),
+        })));
+        assert_eq!(app.open_programs.view, Some(line));
+    }
+
+    #[test]
+    fn a_written_color_is_painted_at_once() {
+        let mut app = App::with_settings_file(SettingsFeature::Look, Ok(Config::default()));
+        let written = config::from_text("[theme]\naccent = \"#ff0000\"\n").unwrap();
+        drop(app.update(Message::Settings(SettingsMessage::Written {
+            change: SettingChange::Color {
+                role: ColorRole::Accent,
+                color: Some("#ff0000".to_owned()),
+            },
+            result: Ok(Box::new(written)),
+        })));
+        assert_eq!(
+            app.palette.color(ColorRole::Accent),
+            iced::Color::from_rgb8(0xFF, 0, 0)
+        );
+    }
+
+    #[test]
+    fn a_refused_field_value_is_shown_at_its_row_and_not_in_the_status_bar() {
+        let mut app = App::with_settings_file(SettingsFeature::Look, Ok(Config::default()));
+        let field = SettingField::Color(ColorRole::Accent);
+        drop(app.update(Message::Settings(SettingsMessage::Written {
+            change: SettingChange::Color {
+                role: ColorRole::Accent,
+                color: Some("#ff0000".to_owned()),
+            },
+            result: Err(FilingWriteError::Io {
+                path: PathBuf::from("/x/config.toml"),
+                reason: "denied".to_owned(),
+            }),
+        })));
+        assert!(app.settings_failure.is_none());
+        let state = app.settings.as_ref().unwrap();
+        assert!(
+            matches!(state.problems.get(&field), Some(settings_ui::FieldProblem::Write(text)) if text.contains("denied"))
+        );
+    }
+
+    fn typed_without_enter(app: &mut App, field: SettingField, text: &str) {
+        drop(app.update(Message::Settings(SettingsMessage::Edit {
+            field,
+            text: text.to_owned(),
+        })));
+    }
+
+    #[test]
+    fn a_wrong_value_typed_without_enter_keeps_the_page_and_the_tab() {
+        let mut app = App::with_settings_file(SettingsFeature::Look, Ok(Config::default()));
+        let accent = SettingField::Color(ColorRole::Accent);
+        typed_without_enter(&mut app, accent, "red");
+
+        drop(app.update(Message::Settings(SettingsMessage::Select(
+            SettingsFeature::Language,
+        ))));
+        let state = app.settings.as_ref().unwrap();
+        assert_eq!(state.feature, SettingsFeature::Look);
+        assert_eq!(
+            state.problems.get(&accent),
+            Some(&settings_ui::FieldProblem::Color)
+        );
+
+        drop(app.update(Message::Settings(SettingsMessage::Close)));
+        assert!(app.settings.is_some());
+        assert_eq!(app.settings.as_ref().unwrap().field_text(accent), "red");
+    }
+
+    #[test]
+    fn a_right_value_typed_without_enter_lets_the_page_change_and_the_tab_close() {
+        let mut app = App::with_settings_file(SettingsFeature::Look, Ok(Config::default()));
+        typed_without_enter(&mut app, SettingField::Color(ColorRole::Accent), "#ff0");
+        drop(app.update(Message::Settings(SettingsMessage::Select(
+            SettingsFeature::Language,
+        ))));
+        assert_eq!(
+            app.settings.as_ref().unwrap().feature,
+            SettingsFeature::Language
+        );
+        drop(app.update(Message::Settings(SettingsMessage::Close)));
+        assert!(app.settings.is_none());
+    }
+
+    #[test]
+    fn a_write_that_fails_after_the_tab_closed_shows_in_the_status_bar() {
+        let mut app = App::with_settings_file(SettingsFeature::Look, Ok(Config::default()));
+        drop(app.update(Message::Settings(SettingsMessage::Close)));
+        drop(app.update(Message::Settings(SettingsMessage::Written {
+            change: SettingChange::Color {
+                role: ColorRole::Accent,
+                color: Some("#ff0000".to_owned()),
+            },
+            result: Err(FilingWriteError::Io {
+                path: PathBuf::from("/x/config.toml"),
+                reason: "denied".to_owned(),
+            }),
+        })));
+        assert!(app.notice_for_test().unwrap().contains("denied"));
+    }
+
+    #[test]
+    fn a_theme_file_next_to_the_config_is_named_from_its_folder() {
+        let config_path = Path::new("/home/me/.config/ncrs/config.toml");
+        assert_eq!(
+            theme_file_entry(
+                Some(config_path),
+                Path::new("/home/me/.config/ncrs/themes/night.json")
+            ),
+            Some("themes/night.json".to_owned())
+        );
+        assert_eq!(
+            theme_file_entry(Some(config_path), Path::new("/opt/themes/day.json")),
+            Some("/opt/themes/day.json".to_owned())
+        );
+    }
+
+    #[test]
+    fn the_tab_opens_on_a_config_that_does_not_load_and_names_the_error() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("config.toml");
+        std::fs::write(&path, "lang = 3\n").unwrap();
+        let mut app = App::with_fixed_panels();
+        app.config_path = Some(path);
+        open(&mut app);
+        let state = app.settings.as_ref().expect("the tab is open");
+        assert_eq!(
+            state.file.as_ref().err().and_then(ConfigError::line),
+            Some(1)
+        );
     }
 
     #[test]

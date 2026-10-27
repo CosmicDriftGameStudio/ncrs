@@ -13,7 +13,7 @@
 use std::ffi::OsString;
 use std::fmt;
 use std::io::Read as _;
-use std::num::{NonZeroU32, NonZeroUsize};
+use std::num::{NonZeroI64, NonZeroU32, NonZeroUsize};
 use std::ops::Range;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -24,6 +24,7 @@ use serde::de::{Deserializer, Error as _, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use serde_spanned::Spanned;
 
+use crate::fs::OpenKind;
 use crate::i18n::Language;
 use crate::keymap::{KeyAction, Keymap};
 use crate::palette::{ColorRole, Palette, ThemePreset, PRESET_KEY, VSCODE_KEY};
@@ -440,25 +441,127 @@ impl ProgramLine {
         &self.args
     }
 
-    fn parse(mut words: Vec<String>) -> Result<Self, &'static str> {
+    /// The program, then the arguments: the array `[open]` holds.
+    pub fn words(&self) -> impl Iterator<Item = &str> {
+        std::iter::once(self.program.as_str()).chain(self.args.iter().map(String::as_str))
+    }
+
+    /// The line as the settings tab shows it: words split at spaces, a word
+    /// with a space or a quote in quotes. There are no escapes: a word with
+    /// both kinds of quote is written as quoted runs next to each other,
+    /// which [`Self::from_text`] joins back into the one word.
+    pub fn to_text(&self) -> String {
+        self.words().map(quoted_word).collect::<Vec<_>>().join(" ")
+    }
+
+    /// The line typed in the settings tab, read as [`Self::to_text`] writes it.
+    pub fn from_text(line: &str) -> Result<Self, ProgramLineProblem> {
+        Self::parse(split_words(line)?)
+    }
+
+    /// Opens a file with the app bundle at `app` through `open -a`, the one
+    /// way the sandboxed macOS build may start another program.
+    pub fn opening_app(app: &str) -> Self {
+        Self::new("open", &["-a", app])
+    }
+
+    fn parse(mut words: Vec<String>) -> Result<Self, ProgramLineProblem> {
         if words.is_empty() {
-            return Err("needs at least the program");
+            return Err(ProgramLineProblem::NoProgram);
         }
         let program = words.remove(0);
         if program.trim().is_empty() {
-            return Err("the program is empty");
+            return Err(ProgramLineProblem::EmptyProgram);
         }
         if program.contains('\0') || words.iter().any(|arg| arg.contains('\0')) {
-            return Err("contains a NUL character");
+            return Err(ProgramLineProblem::Nul);
         }
         if depends_on_working_directory(&program) {
-            return Err("use a program name from PATH or an absolute path");
+            return Err(ProgramLineProblem::RelativePath);
         }
         Ok(Self {
             program,
             args: words,
         })
     }
+}
+
+/// Why a program line cannot be used.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProgramLineProblem {
+    NoProgram,
+    EmptyProgram,
+    Nul,
+    RelativePath,
+    /// Only typed text has quotes.
+    UnclosedQuote,
+}
+
+impl ProgramLineProblem {
+    /// The reason in a config error, which is not translated.
+    pub fn reason(self) -> &'static str {
+        match self {
+            Self::NoProgram => "needs at least the program",
+            Self::EmptyProgram => "the program is empty",
+            Self::Nul => "contains a NUL character",
+            Self::RelativePath => "use a program name from PATH or an absolute path",
+            Self::UnclosedQuote => "a quote is not closed",
+        }
+    }
+}
+
+const QUOTES: [char; 2] = ['"', '\''];
+
+fn quoted_word(word: &str) -> String {
+    let needs_quotes =
+        word.is_empty() || word.contains(char::is_whitespace) || word.contains(QUOTES);
+    if !needs_quotes {
+        return word.to_owned();
+    }
+    if !word.contains('"') {
+        return format!("\"{word}\"");
+    }
+    if !word.contains('\'') {
+        return format!("'{word}'");
+    }
+    let mut quoted = String::new();
+    let mut run_quote: Option<char> = None;
+    for c in word.chars() {
+        let quote = if c == '"' { '\'' } else { '"' };
+        if run_quote != Some(quote) {
+            quoted.extend(run_quote);
+            quoted.push(quote);
+            run_quote = Some(quote);
+        }
+        quoted.push(c);
+    }
+    quoted.extend(run_quote);
+    quoted
+}
+
+/// Words split at whitespace; a run in double or single quotes is one word
+/// without its quotes.
+fn split_words(line: &str) -> Result<Vec<String>, ProgramLineProblem> {
+    let mut words = Vec::new();
+    let mut current: Option<String> = None;
+    let mut open_quote: Option<char> = None;
+    for c in line.chars() {
+        match open_quote {
+            Some(quote) if c == quote => open_quote = None,
+            Some(_) => current.get_or_insert_with(String::new).push(c),
+            None if QUOTES.contains(&c) => {
+                open_quote = Some(c);
+                current.get_or_insert_with(String::new);
+            }
+            None if c.is_whitespace() => words.extend(current.take()),
+            None => current.get_or_insert_with(String::new).push(c),
+        }
+    }
+    if open_quote.is_some() {
+        return Err(ProgramLineProblem::UnclosedQuote);
+    }
+    words.extend(current);
+    Ok(words)
 }
 
 /// A relative program with a separator, or on Windows a drive-relative one
@@ -479,7 +582,7 @@ fn is_separator(c: char) -> bool {
 impl<'de> Deserialize<'de> for ProgramLine {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let words = Vec::<String>::deserialize(deserializer)?;
-        Self::parse(words).map_err(D::Error::custom)
+        Self::parse(words).map_err(|problem| D::Error::custom(problem.reason()))
     }
 }
 
@@ -752,6 +855,13 @@ pub fn read_source(path: &Path) -> Result<Option<String>, ConfigError> {
             })
         }
     }
+}
+
+/// The config `source` describes, as if read from `config.toml`, for tests
+/// that need a loaded one without a file.
+#[cfg(test)]
+pub fn from_text(source: &str) -> Result<Config, ConfigError> {
+    parse_config(source, Path::new("config.toml"), None)
 }
 
 /// Every check `load` makes on the text; `path` only names the file in errors.
@@ -1087,24 +1197,27 @@ fn with_vscode_theme(
 }
 
 /// One value the settings page changes: the tables it sits in, its key and
-/// what it becomes. Only the `*_setting` functions below build one, so every
-/// value is one the loader accepts.
+/// what it becomes, `None` to drop its line. Only the `*_setting` functions
+/// below build one; what they cannot rule out the loader catches before the
+/// file is replaced.
 struct Setting {
     tables: &'static [&'static str],
     key: &'static str,
-    value: toml_edit::Value,
+    value: Option<toml_edit::Value>,
 }
 
 const THEME_TABLE: &str = "theme";
 const MODULES_TABLE: &str = "modules";
 const FILING_TABLE: &str = "filing";
 const AI_TABLE: &str = "ai";
+const OPEN_TABLE: &str = "open";
+const AI_TABLES: &[&str] = &[MODULES_TABLE, FILING_TABLE, AI_TABLE];
 
 fn theme_preset_setting(preset: ThemePreset) -> Setting {
     Setting {
         tables: &[THEME_TABLE],
         key: PRESET_KEY,
-        value: preset.name().into(),
+        value: Some(preset.name().into()),
     }
 }
 
@@ -1112,7 +1225,7 @@ fn language_setting(language: Language) -> Setting {
     Setting {
         tables: &[],
         key: "lang",
-        value: language.code().into(),
+        value: Some(language.code().into()),
     }
 }
 
@@ -1120,7 +1233,7 @@ fn filing_enabled_setting(enabled: bool) -> Setting {
     Setting {
         tables: &[MODULES_TABLE, FILING_TABLE],
         key: "enabled",
-        value: enabled.into(),
+        value: Some(enabled.into()),
     }
 }
 
@@ -1134,15 +1247,15 @@ fn filing_load_setting(load: Load) -> Setting {
     Setting {
         tables: &[MODULES_TABLE, FILING_TABLE],
         key: "load",
-        value,
+        value: Some(value),
     }
 }
 
 fn ai_enabled_setting(enabled: bool) -> Setting {
     Setting {
-        tables: &[MODULES_TABLE, FILING_TABLE, AI_TABLE],
+        tables: AI_TABLES,
         key: "enabled",
-        value: enabled.into(),
+        value: Some(enabled.into()),
     }
 }
 
@@ -1184,12 +1297,132 @@ pub fn write_ai_enabled(path: &Path, enabled: bool) -> Result<Config, FilingWrit
     )
 }
 
+fn program_setting(kind: OpenKind, line: Option<&ProgramLine>) -> Setting {
+    Setting {
+        tables: &[OPEN_TABLE],
+        key: match kind {
+            OpenKind::View => "view",
+            OpenKind::Edit => "edit",
+        },
+        value: line.map(|words| toml_edit::Value::Array(words.words().collect())),
+    }
+}
+
+fn vscode_theme_setting(file: Option<&str>) -> Setting {
+    Setting {
+        tables: &[THEME_TABLE],
+        key: VSCODE_KEY,
+        value: file.map(toml_edit::Value::from),
+    }
+}
+
+fn color_setting(role: ColorRole, color: Option<&str>) -> Setting {
+    Setting {
+        tables: &[THEME_TABLE],
+        key: role.name(),
+        value: color.map(toml_edit::Value::from),
+    }
+}
+
+/// The provider and the keys that belong to it; the keys of the other
+/// provider are dropped, since the loader refuses them next to this one.
+fn ai_provider_settings(choice: &AiProviderChoice) -> [Setting; 4] {
+    let (provider, threads, endpoint, model) = match choice {
+        AiProviderChoice::Local { threads } => (
+            AiProviderName::Local,
+            threads.map(|count| NonZeroI64::from(count).get().into()),
+            None,
+            None,
+        ),
+        AiProviderChoice::Http { endpoint, model } => (
+            AiProviderName::Http,
+            None,
+            Some(endpoint.as_str().into()),
+            Some(model.as_str().into()),
+        ),
+    };
+    let setting = |key, value| Setting {
+        tables: AI_TABLES,
+        key,
+        value,
+    };
+    [
+        setting("provider", Some(provider_text(provider).into())),
+        setting("threads", threads),
+        setting("endpoint", endpoint),
+        setting("model", model),
+    ]
+}
+
+/// What the settings tab sets in `[modules.filing.ai]` besides `enabled`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AiProviderChoice {
+    /// `None` leaves the thread count to the module.
+    Local {
+        threads: Option<NonZeroU32>,
+    },
+    Http {
+        endpoint: String,
+        model: String,
+    },
+}
+
+/// Sets `view` or `edit` in `[open]`, `None` drops it so that the system
+/// default opens the file; same guarantees as [`write_theme_preset`].
+pub fn write_program(
+    path: &Path,
+    kind: OpenKind,
+    line: Option<&ProgramLine>,
+) -> Result<Config, FilingWriteError> {
+    write_setting(
+        path,
+        program_setting(kind, line),
+        home_from_env().as_deref(),
+    )
+}
+
+/// Drops `vscode` from `[theme]`; same guarantees as [`write_theme_preset`].
+pub fn remove_vscode_theme(path: &Path) -> Result<Config, FilingWriteError> {
+    write_setting(path, vscode_theme_setting(None), home_from_env().as_deref())
+}
+
+/// Sets the color of `role` in `[theme]`, `None` drops it so that the color
+/// scheme decides; same guarantees as [`write_theme_preset`].
+pub fn write_color(
+    path: &Path,
+    role: ColorRole,
+    color: Option<&str>,
+) -> Result<Config, FilingWriteError> {
+    write_setting(path, color_setting(role, color), home_from_env().as_deref())
+}
+
+/// Sets the provider in `[modules.filing.ai]` with its keys; same guarantees
+/// as [`write_theme_preset`].
+pub fn write_ai_provider(
+    path: &Path,
+    choice: &AiProviderChoice,
+) -> Result<Config, FilingWriteError> {
+    write_settings(
+        path,
+        &ai_provider_settings(choice),
+        home_from_env().as_deref(),
+    )
+}
+
 fn write_setting(
     path: &Path,
     setting: Setting,
     home: Option<&Path>,
 ) -> Result<Config, FilingWriteError> {
-    write_edited(path, home, |source| with_setting(source, path, &setting))
+    write_settings(path, &[setting], home)
+}
+
+fn write_settings(
+    path: &Path,
+    settings: &[Setting],
+    home: Option<&Path>,
+) -> Result<Config, FilingWriteError> {
+    write_edited(path, home, |source| with_settings(source, path, settings))
 }
 
 /// What one action gets in `[keys]`: the listed keys as `[keys]` spells
@@ -1249,11 +1482,39 @@ fn with_keys(source: &str, path: &Path, changes: &[KeyChange]) -> Result<String,
     Ok(document.to_string())
 }
 
-/// `source` with the setting's value in place, its tables created when
-/// missing. An existing value keeps the comment on its line.
-fn with_setting(source: &str, path: &Path, setting: &Setting) -> Result<String, FilingWriteError> {
+/// `source` with the settings in place, in order.
+fn with_settings(
+    source: &str,
+    path: &Path,
+    settings: &[Setting],
+) -> Result<String, FilingWriteError> {
     let mut document = parse_document(source, path)?;
-    let mut table = document.as_table_mut();
+    for setting in settings {
+        put_setting(document.as_table_mut(), path, setting)?;
+    }
+    Ok(document.to_string())
+}
+
+/// A value goes in place, its tables created when missing; an existing one
+/// keeps the comment on its line. A dropped value creates no table.
+fn put_setting(
+    root: &mut toml_edit::Table,
+    path: &Path,
+    setting: &Setting,
+) -> Result<(), FilingWriteError> {
+    let Some(value) = &setting.value else {
+        let found = setting
+            .tables
+            .iter()
+            .try_fold(root as &mut dyn toml_edit::TableLike, |table, name| {
+                table.get_mut(name)?.as_table_like_mut()
+            });
+        if let Some(table) = found {
+            table.remove(setting.key);
+        }
+        return Ok(());
+    };
+    let mut table = root;
     for (depth, name) in setting.tables.iter().enumerate() {
         let implicit = depth + 1 < setting.tables.len();
         table = sub_table(table, name, implicit).ok_or_else(|| not_a_table(path, name))?;
@@ -1264,14 +1525,14 @@ fn with_setting(source: &str, path: &Path, setting: &Setting) -> Result<String, 
     {
         Some(existing) => {
             let decor = existing.decor().clone();
-            *existing = setting.value.clone();
+            *existing = value.clone();
             *existing.decor_mut() = decor;
         }
         None => {
-            table.insert(setting.key, toml_edit::Item::Value(setting.value.clone()));
+            table.insert(setting.key, toml_edit::Item::Value(value.clone()));
         }
     }
-    Ok(document.to_string())
+    Ok(())
 }
 
 impl Config {
@@ -1508,28 +1769,49 @@ fn resolve_ai(section: Option<&Spanned<AiSection>>) -> Result<AiSetting, FilingE
             };
             let endpoint = ai.endpoint.as_ref().ok_or_else(|| missing("endpoint"))?;
             let model = ai.model.as_ref().ok_or_else(|| missing("model"))?;
-            ncrs_ai::check_endpoint(endpoint.get_ref()).map_err(|problem| FilingError {
+            check_ai_endpoint(endpoint.get_ref()).map_err(|problem| FilingError {
                 span: endpoint.span(),
-                reason: format!("endpoint is not usable: {problem}"),
+                reason: problem.reason(),
             })?;
-            let on_this_machine =
-                ncrs_ai::endpoint_is_local(endpoint.get_ref()).map_err(|problem| FilingError {
-                    span: endpoint.span(),
-                    reason: format!("endpoint is not usable: {problem}"),
-                })?;
-            if !on_this_machine {
-                return Err(FilingError {
-                    span: endpoint.span(),
-                    reason:
-                        "endpoint must be on this machine (localhost, 127.0.0.1 or ::1) for now"
-                            .to_owned(),
-                });
-            }
             Ok(AiSetting::Http {
                 endpoint: endpoint.get_ref().clone(),
                 model: model.get_ref().clone(),
             })
         }
+    }
+}
+
+/// Why `endpoint` cannot be the address of `provider = "http"`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AiEndpointProblem {
+    /// Not an address the client takes; the text says why.
+    Unusable(String),
+    /// Not on this machine.
+    NotLocal,
+}
+
+impl AiEndpointProblem {
+    /// The reason in a config error, which is not translated.
+    fn reason(&self) -> String {
+        match self {
+            Self::Unusable(problem) => format!("endpoint is not usable: {problem}"),
+            Self::NotLocal => {
+                "endpoint must be on this machine (localhost, 127.0.0.1 or ::1) for now".to_owned()
+            }
+        }
+    }
+}
+
+/// The checks `load` makes on `endpoint`, for the settings tab to make them
+/// before anything is written.
+pub fn check_ai_endpoint(endpoint: &str) -> Result<(), AiEndpointProblem> {
+    let unusable =
+        |problem: ncrs_ai::EndpointProblem| AiEndpointProblem::Unusable(problem.to_string());
+    ncrs_ai::check_endpoint(endpoint).map_err(unusable)?;
+    if ncrs_ai::endpoint_is_local(endpoint).map_err(unusable)? {
+        Ok(())
+    } else {
+        Err(AiEndpointProblem::NotLocal)
     }
 }
 
@@ -2921,6 +3203,213 @@ mod tests {
         assert!(matches!(written.filing.ai, AiSetting::Local { .. }));
         let off = write_setting(&path, ai_enabled_setting(false), None).unwrap();
         assert_eq!(off.filing.ai, AiSetting::Off);
+    }
+
+    #[test]
+    fn a_program_line_reads_back_as_it_is_shown() {
+        let line = ProgramLine::from_text("  code --wait  \"{path}:{line}\" ").unwrap();
+        assert_eq!(line, ProgramLine::new("code", &["--wait", "{path}:{line}"]));
+        let spaced_program = if cfg!(windows) {
+            r"C:\Program Files\Sublime Text\subl.exe"
+        } else {
+            "/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl"
+        };
+        let spaced = ProgramLine::new(spaced_program, &["", "it's"]);
+        assert_eq!(ProgramLine::from_text(&spaced.to_text()), Ok(spaced));
+        let quoted_program = if cfg!(windows) {
+            r"C:\my editor\run.exe"
+        } else {
+            "/opt/my editor/run"
+        };
+        assert_eq!(
+            ProgramLine::from_text(&format!("'{quoted_program}' -n")),
+            Ok(ProgramLine::new(quoted_program, &["-n"]))
+        );
+    }
+
+    #[test]
+    fn a_word_with_both_quotes_and_a_space_reads_back_the_same() {
+        let mixed = ProgramLine::new(
+            if cfg!(windows) {
+                r"C:\Tools\printf.exe"
+            } else {
+                "/usr/bin/printf"
+            },
+            &["say \"it's\" now", "\"'", "'\"", "a\"\"b'c d", "\"\"", "''"],
+        );
+        let shown = mixed.to_text();
+        assert_eq!(ProgramLine::from_text(&shown), Ok(mixed), "{shown}");
+    }
+
+    #[test]
+    fn a_program_line_the_loader_would_refuse_is_refused_as_text() {
+        assert_eq!(
+            ProgramLine::from_text("   "),
+            Err(ProgramLineProblem::NoProgram)
+        );
+        assert_eq!(
+            ProgramLine::from_text("\"\" -x"),
+            Err(ProgramLineProblem::EmptyProgram)
+        );
+        assert_eq!(
+            ProgramLine::from_text("bin/edit"),
+            Err(ProgramLineProblem::RelativePath)
+        );
+        assert_eq!(
+            ProgramLine::from_text("vim \"x"),
+            Err(ProgramLineProblem::UnclosedQuote)
+        );
+    }
+
+    #[test]
+    fn a_program_is_written_to_open_and_dropped_again() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("config.toml");
+        std::fs::write(&path, "lang = \"en\"\n").unwrap();
+        let line = ProgramLine::opening_app("/Applications/TextEdit.app");
+
+        let written =
+            write_setting(&path, program_setting(OpenKind::Edit, Some(&line)), None).unwrap();
+
+        assert_eq!(written.open.edit, Some(line));
+        let text = lines_of(&path);
+        assert!(
+            text.contains("[open]\nedit = [\"open\", \"-a\", \"/Applications/TextEdit.app\"]\n"),
+            "{text}"
+        );
+        let dropped = write_setting(&path, program_setting(OpenKind::Edit, None), None).unwrap();
+        assert_eq!(dropped.open, OpenPrograms::default());
+        assert!(lines_of(&path).starts_with("lang = \"en\"\n"));
+    }
+
+    #[test]
+    fn a_dropped_value_creates_no_table_and_leaves_a_file_without_it_alone() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("config.toml");
+        let before = "# mine\nlang = \"de\"\n";
+        std::fs::write(&path, before).unwrap();
+
+        write_setting(&path, color_setting(ColorRole::Accent, None), None).unwrap();
+        write_setting(&path, vscode_theme_setting(None), None).unwrap();
+
+        assert_eq!(lines_of(&path), before);
+    }
+
+    #[test]
+    fn a_color_is_set_and_dropped_and_a_bad_one_never_reaches_the_file() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("config.toml");
+        std::fs::write(&path, "[theme]\npreset = \"classic\" # base\n").unwrap();
+
+        let written = write_setting(
+            &path,
+            color_setting(ColorRole::Accent, Some("#ff0000")),
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            written.palette.color(ColorRole::Accent),
+            iced::Color::from_rgb8(0xFF, 0, 0)
+        );
+        let before = lines_of(&path);
+        let refused = write_setting(&path, color_setting(ColorRole::Accent, Some("red")), None);
+        assert!(matches!(refused, Err(FilingWriteError::Config(_))));
+        assert_eq!(lines_of(&path), before);
+
+        let dropped = write_setting(&path, color_setting(ColorRole::Accent, None), None).unwrap();
+        assert_eq!(dropped.palette, ThemePreset::Classic.palette());
+        assert_eq!(lines_of(&path), "[theme]\npreset = \"classic\" # base\n");
+    }
+
+    #[test]
+    fn the_vscode_theme_is_dropped_from_its_section() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "[theme]\nvscode = \"gone.json\"\naccent = \"#123\"\n",
+        )
+        .unwrap();
+
+        let written = write_setting(&path, vscode_theme_setting(None), None).unwrap();
+
+        assert_eq!(written.vscode_theme_path(), None);
+        assert_eq!(lines_of(&path), "[theme]\naccent = \"#123\"\n");
+    }
+
+    #[test]
+    fn switching_the_ai_provider_takes_the_keys_of_the_other_one_away() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "[modules.filing.ai]\nenabled = true\nprovider = \"local\"\nthreads = 2\n",
+        )
+        .unwrap();
+        let http = AiProviderChoice::Http {
+            endpoint: "http://127.0.0.1:11434".to_owned(),
+            model: "llama".to_owned(),
+        };
+
+        let written = write_settings(&path, &ai_provider_settings(&http), None).unwrap();
+
+        assert_eq!(
+            written.filing.ai,
+            AiSetting::Http {
+                endpoint: "http://127.0.0.1:11434".to_owned(),
+                model: "llama".to_owned(),
+            }
+        );
+        assert!(!lines_of(&path).contains("threads"));
+        let local = AiProviderChoice::Local {
+            threads: NonZeroU32::new(3),
+        };
+        let back = write_settings(&path, &ai_provider_settings(&local), None).unwrap();
+        assert_eq!(
+            back.filing.ai,
+            AiSetting::Local {
+                threads: NonZeroU32::new(3)
+            }
+        );
+        let text = lines_of(&path);
+        assert!(
+            !text.contains("endpoint") && !text.contains("model"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn an_inline_ai_table_loses_a_dropped_key_too() {
+        let base = tempfile::tempdir().unwrap();
+        let path = base.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "[modules.filing]\nai = { provider = \"http\", endpoint = \"http://localhost:1\", model = \"m\" }\n",
+        )
+        .unwrap();
+        let local = AiProviderChoice::Local { threads: None };
+
+        let written = write_settings(&path, &ai_provider_settings(&local), None).unwrap();
+
+        assert_eq!(written.filing.ai, AiSetting::Off);
+        let text = lines_of(&path);
+        assert!(
+            !text.contains("endpoint") && !text.contains("model"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn an_endpoint_off_this_machine_is_refused_before_the_write() {
+        assert_eq!(check_ai_endpoint("http://localhost:11434"), Ok(()));
+        assert_eq!(
+            check_ai_endpoint("https://example.com:11434"),
+            Err(AiEndpointProblem::NotLocal)
+        );
+        assert!(matches!(
+            check_ai_endpoint("ftp://localhost"),
+            Err(AiEndpointProblem::Unusable(_))
+        ));
     }
 
     fn key_change(action: KeyAction, chords: Option<&[&str]>) -> KeyChange {

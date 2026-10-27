@@ -16,6 +16,16 @@ All notable changes to this project are documented here. The format follows
   confirmed. Changes apply at once and write only the changed `[keys]` lines,
   keeping the rest of the config and its comments. A config that already gives
   `primary+k` to another action keeps it.
+- The settings tab covers the whole config, so the App Store build, whose
+  `config.toml` sits in the sandbox container, needs no file editing. New pages
+  Programs (viewer and editor, typed or chosen with a file dialog; the store
+  build takes apps only) and Keyboard shortcuts (opens the dialog). Appearance
+  gains every `[theme]` color with a swatch and the contrast warning at its
+  row, and a VS Code theme file to choose or remove. Hermes gains the AI
+  provider with threads, or endpoint and model name for an own server. A typed
+  value is saved with `Enter`, or when the page changes or the tab closes. A
+  value that would not load is shown at its row and never written, and the page
+  stays; a config with an error still opens the tab and names the line.
 
 ## [0.7.0] — 2026-10-27
 
