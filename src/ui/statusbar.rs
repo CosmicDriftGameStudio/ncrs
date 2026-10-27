@@ -376,12 +376,15 @@ fn format_error(error: &ReadError, path: &std::path::Path, lang: Language) -> St
         ReadError::AccessBlocked { .. } => Msg::ErrorAccessBlocked,
         ReadError::TaskFailed { .. } => Msg::ErrorTaskFailed,
         ReadError::EntriesLeftOut { .. } => Msg::ErrorArchiveEntriesLeftOut,
+        ReadError::ArchiveEncrypted => Msg::ErrorArchiveEncrypted,
+        ReadError::ArchiveDictionaryTooLarge => Msg::ErrorArchiveDictionaryTooLarge,
     };
     let reason = match error {
         ReadError::CannotRead { reason }
         | ReadError::AccessBlocked { reason }
         | ReadError::TaskFailed { reason } => reason.clone(),
         ReadError::EntriesLeftOut { count } => count.to_string(),
+        ReadError::ArchiveEncrypted | ReadError::ArchiveDictionaryTooLarge => String::new(),
     };
     lang.text(msg)
         .replace("{path}", &path.display().to_string())
@@ -449,6 +452,32 @@ mod tests {
         assert_eq!(
             format_error(&err, Path::new("/tmp"), Language::English),
             "Directory read task failed: cancelled"
+        );
+    }
+
+    #[test]
+    fn an_encrypted_archive_says_so_in_both_languages() {
+        let err = ReadError::ArchiveEncrypted;
+        assert_eq!(
+            format_error(&err, Path::new("/tmp/a.7z"), Language::English),
+            "This archive is encrypted; ncrs cannot open it yet"
+        );
+        assert_eq!(
+            format_error(&err, Path::new("/tmp/a.7z"), Language::German),
+            "Dieses Archiv ist verschlüsselt; ncrs kann es noch nicht öffnen"
+        );
+    }
+
+    #[test]
+    fn an_archive_with_a_huge_dictionary_says_so_in_both_languages() {
+        let err = ReadError::ArchiveDictionaryTooLarge;
+        assert_eq!(
+            format_error(&err, Path::new("/tmp/a.7z"), Language::English),
+            "This 7z archive needs more than 256 MB of memory to unpack; ncrs does not open it"
+        );
+        assert_eq!(
+            format_error(&err, Path::new("/tmp/a.7z"), Language::German),
+            "Dieses 7z-Archiv braucht zum Entpacken mehr als 256 MB Speicher; ncrs öffnet es nicht"
         );
     }
 

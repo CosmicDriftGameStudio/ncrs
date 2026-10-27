@@ -10,6 +10,7 @@ use zip::result::ZipError;
 use zip::ZipArchive;
 
 use super::names::safe_components;
+use super::sevenz;
 use super::ArchiveFormat;
 
 /// An archive with more entries than this is refused rather than indexed: the
@@ -85,6 +86,7 @@ impl ArchiveIndex {
     pub fn build(path: &Path, format: ArchiveFormat) -> io::Result<Self> {
         match format {
             ArchiveFormat::Zip => build_zip(path),
+            ArchiveFormat::SevenZip => build_sevenz(path),
             ArchiveFormat::Tar | ArchiveFormat::TarGz | ArchiveFormat::TarZst => {
                 build_tar(path, format)
             }
@@ -200,7 +202,7 @@ pub fn open_tar(path: &Path, format: ArchiveFormat) -> io::Result<tar::Archive<B
     let stream: Box<dyn Read> = match format {
         ArchiveFormat::TarGz => Box::new(flate2::read::MultiGzDecoder::new(file)),
         ArchiveFormat::TarZst => Box::new(zstd::stream::read::Decoder::with_buffer(file)?),
-        ArchiveFormat::Tar | ArchiveFormat::Zip => Box::new(file),
+        ArchiveFormat::Tar | ArchiveFormat::Zip | ArchiveFormat::SevenZip => Box::new(file),
     };
     Ok(tar::Archive::new(stream))
 }
@@ -249,6 +251,30 @@ fn build_zip(path: &Path) -> io::Result<ArchiveIndex> {
                 },
             )?,
             None => index.leave_out()?,
+        }
+    }
+    Ok(index)
+}
+
+fn build_sevenz(path: &Path) -> io::Result<ArchiveIndex> {
+    let reader = sevenz::open(path)?;
+    let mut index = ArchiveIndex::default();
+    for entry in &reader.archive().files {
+        let kind = sevenz::kind_of(entry);
+        match safe_components(entry.name()) {
+            Some(components) if kind != EntryKind::Other => index.add(
+                &components,
+                Node {
+                    is_dir: kind == EntryKind::Dir,
+                    size: if kind == EntryKind::Dir {
+                        0
+                    } else {
+                        entry.size()
+                    },
+                    modified: sevenz::modified(entry),
+                },
+            )?,
+            _ => index.leave_out()?,
         }
     }
     Ok(index)

@@ -461,7 +461,7 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
 ## Block C – Erweiterung (nicht Basis, aber im Plan)
 
 - [x] **Alt+F1 / Alt+F2 – Laufwerksmenü** – wählt das Ziel des linken bzw. rechten Panels aus den Orten der Finder-Seitenleiste (macOS: `/`, `/Volumes`, Home, iCloud Drive; Linux: `/`, Home, Mounts unter `/media`, `/run/media`, `/mnt`; Windows: Laufwerksbuchstaben). Listet nur Namen, kein `stat`, damit ein toter Mount nicht hängt. Alt+F3…F10 sind noch frei.
-- [x] **T16 – Archiv-Support lesend** (K5, #124) – zip, tar, tar.gz und tar.zst öffnen sich mit Enter
+- [x] **T16 – Archiv-Support lesend** (K5, #124) – zip, tar, tar.gz, tar.zst und 7z (#148) öffnen sich mit Enter
   wie ein Ordner, `..` führt zurück auf das Archiv. F5 kopiert heraus, über die Copy-Queue und den
   Konfliktdialog; entpackt wird in einen versteckten Ordner im Ziel und erst dann umbenannt.
   Einträge mit `..`, absoluten Pfaden oder Laufwerksangaben sowie Links und Sonderdateien werden
@@ -481,7 +481,7 @@ Größen sind Schätzungen (S bis ein Tag, M zwei bis vier Tage, L eine Woche un
 | Version | Thema | Bausteine |
 |---|---|---|
 | 0.7.0 | Bedienung komplett, Risiko zuerst | S1 Sandbox-Test (#120) · K1 Kommandozeile, T6d.1 (#121) · K2 Favoriten und Verlauf, T6d.5 (#123) · K3 Zustand merken, T18 (#122) |
-| 0.8.0 | Netz, Archive lesen, Einstellungen | K4 Netzwerk-Mounts, T15 (#125) · K5 Archive lesen, T16 (#124) ✅ · A0 Sandbox-Grundlagen (#126) · E1 Einstellungen für die ganze Config (#142) ✅ · E2 Tastenkürzel-Dialog (#143) ✅ · Quick Open findet Dokumente (#147) · 7z lesen (#148) |
+| 0.8.0 | Netz, Archive lesen, Einstellungen | K4 Netzwerk-Mounts, T15 (#125) · K5 Archive lesen, T16 (#124) ✅ · A0 Sandbox-Grundlagen (#126) · E1 Einstellungen für die ganze Config (#142) ✅ · E2 Tastenkürzel-Dialog (#143) ✅ · Quick Open findet Dokumente (#147) ✅ · 7z lesen (#148) ✅ |
 | 0.9.0 | Schreiben und Versprechen | K6 Archive schreiben, T17 (#127) · V1 Config versioniert (#128) · V2 Index-Migration (#129) · V3 100k-Dateien-Messung (#130) · V4 Lizenzen für den Store (#131), darin About-Dialog mit den Drittlizenzen (#149) · H1 Hermes als Beta (#132) |
 | 1.0.0 | App Store | A1 Sandbox-Build (#133) · A2 App Store Connect (#134) · A3 Store-Auftritt (#135) · A4 Review und Release (#136) |
 

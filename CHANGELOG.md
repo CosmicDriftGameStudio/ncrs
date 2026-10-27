@@ -38,6 +38,11 @@ All notable changes to this project are documented here. The format follows
   Running a hit opens the settings tab on that page with the row in view and
   highlighted. They are listed under "Settings" after the commands and only
   while something is typed.
+- 7z archives (`.7z`) open like the other archives, with LZMA, LZMA2, deflate
+  and the BCJ filters; the same name rules and read-only limits apply. An
+  encrypted 7z (content or file list) is refused with a message ("This archive
+  is encrypted; ncrs cannot open it yet") instead of a read error, and so is
+  one that needs more than 256 MB of memory to unpack.
 - Archives open like folders: `Enter` on a `.zip`, `.tar`, `.tar.gz`/`.tgz` or
   `.tar.zst`/`.tzst` lists its content in the panel, `..` leaves it with the
   cursor on the archive. `F5` copies entries out through the copy queue and the

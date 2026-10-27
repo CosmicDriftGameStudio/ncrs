@@ -181,6 +181,18 @@
       "de": "{count} Einträge ausgelassen: unsichere Pfade, Links oder Sonderdateien"
     },
     {
+      "key": "error.archive_dictionary_too_large",
+      "context": "Status bar error for a panel that tried to open a 7z archive whose compression dictionary is larger than 256 MB, so unpacking it could use more memory than ncrs allows. A hostile or unusual file, not a read error. Futurama theme with plain text.",
+      "en": "This 7z archive needs more than 256 MB of memory to unpack; ncrs does not open it",
+      "de": "Dieses 7z-Archiv braucht zum Entpacken mehr als 256 MB Speicher; ncrs öffnet es nicht"
+    },
+    {
+      "key": "error.archive_encrypted",
+      "context": "Status bar error for a panel that tried to open a 7z archive whose content or file list is password-protected. ncrs cannot decrypt archives yet, so it only says so; it is not a read error and not a wrong password.",
+      "en": "This archive is encrypted; ncrs cannot open it yet",
+      "de": "Dieses Archiv ist verschlüsselt; ncrs kann es noch nicht öffnen"
+    },
+    {
       "key": "shortcut.commands",
       "context": "Label of the F1 slot in the function key bar at the bottom of the window. The key opens the command palette; at most 8 characters.",
       "en": "Commands",

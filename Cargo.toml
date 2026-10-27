@@ -89,6 +89,10 @@ tar = { version = "0.4.46", default-features = false }
 flate2 = { version = "1.1.10", default-features = false, features = ["zlib-rs"] }
 # .tar.zst. No default features: no legacy format support, no zdict builder.
 zstd = { version = "0.14.3", default-features = false }
+# .7z, read only. Pure Rust and Apache-2.0, unlike 7-Zip and libarchive (LGPL).
+# LZMA, LZMA2 and the BCJ filters are always on; `deflate` reuses the zlib-rs
+# backend above. No `aes256`: an encrypted archive is refused, not decrypted.
+sevenz-rust2 = { version = "0.24.1", default-features = false, features = ["deflate"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # The native menu bar on macOS, built from the command list. macOS only: Linux
@@ -129,6 +133,8 @@ iced_test = "0.14"
 iced_selector = "0.14"
 # The checksum of the bytes a test server hands out for the AI model download.
 sha2 = "0.10"
+# Writes the 7z archives the tests read; the release build only decodes.
+sevenz-rust2 = { version = "0.24.1", default-features = false, features = ["compress", "deflate"] }
 
 # crates/ncrs-ocr-vision/Cargo.toml repeats these tables with unsafe_code =
 # "deny"; change both together.
