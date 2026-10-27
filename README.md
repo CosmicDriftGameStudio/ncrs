@@ -75,7 +75,7 @@ binary, so ncrs reads PDFs without anything else installed. `install.sh` and
 
 The drive menu, called Planets in the app (`Alt+F1` for the left panel, `Alt+F2` for the right).
 Below the drives it lists your favourite folders: add the active folder with
-`Ctrl`+`D` (`Cmd`+`D` on macOS), remove one with `Del` in the menu. A favourite whose folder is gone
+`Ctrl`+`D` (`Cmd`+`D` on macOS), remove one with `Del` (`⌫` on macOS) in the menu. A favourite whose folder is gone
 stays in the list, dimmed, and says so when you pick it.
 
 ![The context menu](docs/screenshots/context-menu.png)
@@ -144,7 +144,7 @@ The defaults. Most of them can be changed in the config file, see [Keys](#keys).
 | `Shift`+`F4`       | New file: creates an empty file under the name asked for and opens it in the editor like `F4`; an existing name is never overwritten |
 | `F8`               | Delete to the trash, after a confirmation |
 | `Shift`+`F8`       | Delete permanently (`Enter` cancels; `Shift`+`F8` again confirms) |
-| `Alt`+`F1` / `Alt`+`F2` | Planets (drive menu) for the left / right panel (`↑`/`↓`, `Home`/`End`, `Enter` goes, `Esc` closes; `Option` on macOS); below the drives come the favourite folders (`Enter` goes, `Del` removes) |
+| `Alt`+`F1` / `Alt`+`F2` | Planets (drive menu) for the left / right panel (`↑`/`↓`, `Home`/`End`, `Enter` goes, `Esc` closes; `Option` on macOS); below the drives come the favourite folders (`Enter` goes, `Del` (`⌫` on macOS) removes) |
 | `Alt`+`←` / `Alt`+`→` (also `Cmd`+`[` / `Cmd`+`]` on macOS) | Back / forward in the active panel's folder history |
 | `Ctrl`+`D` (`Cmd`+`D` on macOS) | Add the active panel's folder to the favourites (`remove_favourite` and `favourites` have no default key) |
 | Right click / `Shift`+`F10` / `Option` tapped alone | Context menu at the pointer or the cursor row (`↑`/`↓`, `Home`/`End`, `Enter` runs, `Esc` closes; `Ctrl`+click also on a Mac) |

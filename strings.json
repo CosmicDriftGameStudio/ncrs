@@ -632,7 +632,7 @@
     },
     {
       "key": "volumes.hint_remove_favourite",
-      "context": "Verb next to the Del key cap in the footer of the drive menu, shown while a favourite is highlighted: the key removes it from the list. Only the verb, the key cap is drawn separately.",
+      "context": "Verb next to the key cap (Del, ⌫ on macOS) in the footer of the drive menu, shown while a favourite is highlighted: the key removes it from the list. Only the verb, the key cap is drawn separately.",
       "en": "remove favourite",
       "de": "Favorit entfernen"
     },
