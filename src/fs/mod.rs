@@ -1,5 +1,6 @@
 //! Filesystem layer. Knows nothing about the UI.
 
+pub mod archive;
 mod delete;
 mod entry;
 mod open;

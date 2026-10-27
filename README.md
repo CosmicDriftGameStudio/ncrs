@@ -114,6 +114,8 @@ The same window in German, switched with F9.
   drive letters, the same places as in the Finder sidebar; see [Drives on macOS](#drives-on-macos)
 - Smell-o-scope (search) in file names and contents below a directory, in the panel, the way
   VS Code does it: see [Search](#search)
+- Archives (zip, tar, tar.gz, tar.zst) open with `Enter` and are browsed like folders; `F5`
+  copies out of them. Read-only for now; entries with `..` or absolute paths are left out
 - Localized UI (English/German) with a translator note on every string, so the UI can
   be translated mechanically without reading the code
 - Runs on Linux, macOS and Windows

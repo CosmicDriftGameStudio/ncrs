@@ -690,6 +690,35 @@ mod conflict_overlay {
     clippy::indexing_slicing
 )]
 #[cfg(test)]
+mod archive_panel {
+    use super::*;
+
+    #[test]
+    fn a_delete_inside_an_archive_says_the_archive_is_read_only() {
+        for (lang, name) in [
+            (Language::English, "archive_read_only_en"),
+            (Language::German, "archive_read_only_de"),
+        ] {
+            let mut app = App::with_fixed_panels().in_language(lang);
+            app.show_archive_read_only_for_test();
+            let matches = simulator(&app)
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(matches, "the panel does not match {name}.png");
+        }
+    }
+}
+
+// reason: a failing assertion is the signal in a test, so unwrap belongs here
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
 mod transfer_overlay {
     use super::*;
 

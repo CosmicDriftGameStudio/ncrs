@@ -1,7 +1,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use super::{sort_entries, FileEntry, SortKey};
+use super::{archive, sort_entries, FileEntry, SortKey};
 
 /// Why a directory read failed, without any user-facing text. The message is
 /// formatted by the UI layer, which owns the language.
@@ -15,6 +15,9 @@ pub enum ReadError {
     AccessBlocked { reason: String },
     /// The background task itself failed, not the filesystem operation.
     TaskFailed { reason: String },
+    /// An archive was listed without some entries: paths that would leave the
+    /// folder they are copied to, links and special files.
+    EntriesLeftOut { count: usize },
 }
 
 impl std::fmt::Display for ReadError {
@@ -23,6 +26,9 @@ impl std::fmt::Display for ReadError {
             ReadError::CannotRead { reason }
             | ReadError::AccessBlocked { reason }
             | ReadError::TaskFailed { reason } => f.write_str(reason),
+            ReadError::EntriesLeftOut { count } => {
+                write!(f, "{count} entries left out of the archive")
+            }
         }
     }
 }
@@ -38,6 +44,8 @@ pub struct Listing {
     /// The order `entries` was sorted in, so a panel can tell whether its own
     /// key has changed since the read began.
     pub sorted_by: SortKey,
+    /// The archive file, when `path` lies inside one.
+    pub archive: Option<PathBuf>,
 }
 
 /// Reads `path` on tokio's blocking thread pool so the UI never blocks.
@@ -46,17 +54,12 @@ pub async fn read_directory(path: PathBuf, sorted_by: SortKey) -> Listing {
     let result = tokio::task::spawn_blocking(move || read_sync(&target, sorted_by)).await;
 
     match result {
-        Ok(Ok(entries)) => Listing {
+        Ok(read) => Listing {
             path,
-            entries,
-            error: None,
+            entries: read.entries,
+            error: read.error,
             sorted_by,
-        },
-        Ok(Err(err)) => Listing {
-            entries: parent_only(&path),
-            error: Some(read_error(&err)),
-            path,
-            sorted_by,
+            archive: read.archive,
         },
         Err(join_err) => Listing {
             entries: parent_only(&path),
@@ -65,6 +68,7 @@ pub async fn read_directory(path: PathBuf, sorted_by: SortKey) -> Listing {
             }),
             path,
             sorted_by,
+            archive: None,
         },
     }
 }
@@ -83,17 +87,64 @@ fn read_error(err: &io::Error) -> ReadError {
     }
 }
 
-fn read_sync(path: &Path, sorted_by: SortKey) -> io::Result<Vec<FileEntry>> {
-    let mut entries: Vec<FileEntry> = std::fs::read_dir(path)?
-        .filter_map(Result::ok)
-        .map(|e| FileEntry::from_dir_entry(&e))
-        .collect();
+/// What one blocking read found, before it is put into a [`Listing`].
+struct Read {
+    entries: Vec<FileEntry>,
+    error: Option<ReadError>,
+    archive: Option<PathBuf>,
+}
 
+fn read_sync(path: &Path, sorted_by: SortKey) -> Read {
+    match std::fs::read_dir(path) {
+        Ok(dir) => Read {
+            entries: with_parent(
+                dir.filter_map(Result::ok)
+                    .map(|e| FileEntry::from_dir_entry(&e))
+                    .collect(),
+                path,
+                sorted_by,
+            ),
+            error: None,
+            archive: None,
+        },
+        Err(err) => match archive::locate_in_archive(path) {
+            Some(location) => read_archive(path, &location, sorted_by),
+            None => Read {
+                entries: parent_only(path),
+                error: Some(read_error(&err)),
+                archive: None,
+            },
+        },
+    }
+}
+
+/// An archive that cannot be read still gets its `..`, so the panel can leave.
+fn read_archive(path: &Path, location: &archive::ArchiveLocation, sorted_by: SortKey) -> Read {
+    let archive = Some(location.archive.clone());
+    match archive::list(location) {
+        Ok(listing) => Read {
+            entries: with_parent(listing.entries, path, sorted_by),
+            error: (listing.left_out > 0).then_some(ReadError::EntriesLeftOut {
+                count: listing.left_out,
+            }),
+            archive,
+        },
+        Err(err) => Read {
+            entries: parent_only(path),
+            error: Some(ReadError::CannotRead {
+                reason: err.to_string(),
+            }),
+            archive,
+        },
+    }
+}
+
+fn with_parent(mut entries: Vec<FileEntry>, path: &Path, sorted_by: SortKey) -> Vec<FileEntry> {
     if let Some(parent) = path.parent() {
         entries.push(FileEntry::parent(parent));
     }
     sort_entries(&mut entries, sorted_by);
-    Ok(entries)
+    entries
 }
 
 fn parent_only(path: &Path) -> Vec<FileEntry> {
@@ -211,6 +262,73 @@ mod tests {
         assert!(listing.error.is_some());
         assert_eq!(listing.entries.len(), 1);
         assert!(listing.entries[0].is_parent);
+        assert_eq!(listing.archive, None);
+    }
+
+    fn names_of(listing: &Listing) -> Vec<String> {
+        listing
+            .entries
+            .iter()
+            .map(|e| e.name.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn a_path_inside_an_archive_lists_like_a_folder_with_its_parent() {
+        use crate::fs::archive::fixtures::{write_archive, Item};
+        let scratch = scratch_dir("read-archive");
+        let archive = scratch.path().join("box.tar.gz");
+        write_archive(
+            &archive,
+            &[Item::File("2024/a.txt", b"a"), Item::File("top.txt", b"t")],
+        );
+
+        let root = read_directory(archive.clone(), SortKey::default()).await;
+        assert_eq!(names_of(&root), ["..", "2024", "top.txt"]);
+        assert_eq!(root.entries[0].path, scratch.path());
+        assert_eq!(root.archive.as_deref(), Some(archive.as_path()));
+        assert_eq!(root.error, None);
+
+        let inside = read_directory(archive.join("2024"), SortKey::default()).await;
+        assert_eq!(names_of(&inside), ["..", "a.txt"]);
+        assert_eq!(inside.entries[0].path, archive);
+        assert_eq!(inside.archive.as_deref(), Some(archive.as_path()));
+    }
+
+    #[tokio::test]
+    async fn entries_an_archive_may_not_deliver_are_reported_not_hidden() {
+        use crate::fs::archive::fixtures::{write_archive, Item};
+        let scratch = scratch_dir("read-archive-left-out");
+        let archive = scratch.path().join("bad.zip");
+        write_archive(
+            &archive,
+            &[Item::File("../evil.txt", b"e"), Item::File("ok.txt", b"o")],
+        );
+
+        let listing = read_directory(archive, SortKey::default()).await;
+
+        assert_eq!(names_of(&listing), ["..", "ok.txt"]);
+        assert_eq!(listing.error, Some(ReadError::EntriesLeftOut { count: 1 }));
+    }
+
+    #[tokio::test]
+    async fn a_broken_or_missing_place_in_an_archive_keeps_only_the_way_out() {
+        use crate::fs::archive::fixtures::{write_archive, Item};
+        let scratch = scratch_dir("read-archive-broken");
+        let broken = scratch.path().join("broken.zip");
+        std::fs::write(&broken, b"not an archive").unwrap();
+        let good = scratch.path().join("good.zip");
+        write_archive(&good, &[Item::File("a.txt", b"a")]);
+
+        let listing = read_directory(broken.clone(), SortKey::default()).await;
+        assert_eq!(names_of(&listing), [".."]);
+        assert!(matches!(listing.error, Some(ReadError::CannotRead { .. })));
+        assert_eq!(listing.archive, Some(broken));
+
+        let missing = read_directory(good.join("nope"), SortKey::default()).await;
+        assert_eq!(names_of(&missing), [".."]);
+        assert!(matches!(missing.error, Some(ReadError::CannotRead { .. })));
+        assert_eq!(missing.archive, Some(good));
     }
 }
 

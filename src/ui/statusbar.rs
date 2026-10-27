@@ -375,16 +375,19 @@ fn format_error(error: &ReadError, path: &std::path::Path, lang: Language) -> St
         ReadError::CannotRead { .. } => Msg::ErrorCannotRead,
         ReadError::AccessBlocked { .. } => Msg::ErrorAccessBlocked,
         ReadError::TaskFailed { .. } => Msg::ErrorTaskFailed,
+        ReadError::EntriesLeftOut { .. } => Msg::ErrorArchiveEntriesLeftOut,
     };
     let reason = match error {
         ReadError::CannotRead { reason }
         | ReadError::AccessBlocked { reason }
-        | ReadError::TaskFailed { reason } => reason.as_str(),
+        | ReadError::TaskFailed { reason } => reason.clone(),
+        ReadError::EntriesLeftOut { count } => count.to_string(),
     };
     lang.text(msg)
         .replace("{path}", &path.display().to_string())
-        .replace("{reason}", reason)
-        .replace("{error}", reason)
+        .replace("{reason}", &reason)
+        .replace("{error}", &reason)
+        .replace("{count}", &reason)
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
@@ -446,6 +449,19 @@ mod tests {
         assert_eq!(
             format_error(&err, Path::new("/tmp"), Language::English),
             "Directory read task failed: cancelled"
+        );
+    }
+
+    #[test]
+    fn left_out_archive_entries_are_counted_in_the_message() {
+        let err = ReadError::EntriesLeftOut { count: 3 };
+        assert_eq!(
+            format_error(&err, Path::new("/tmp/a.zip"), Language::English),
+            "3 entries left out: unsafe paths, links or special files"
+        );
+        assert_eq!(
+            format_error(&err, Path::new("/tmp/a.zip"), Language::German),
+            "3 Einträge ausgelassen: unsichere Pfade, Links oder Sonderdateien"
         );
     }
 }

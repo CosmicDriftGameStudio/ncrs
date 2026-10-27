@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use crate::fs::archive;
 use crate::fs::transfer::OnConflict;
 use crate::messages::TransferKind;
 
@@ -97,6 +98,21 @@ pub struct Scan {
     pub unreadable: usize,
 }
 
+impl Scan {
+    /// An entry that is on no disk: counted from the archive's index, or
+    /// unreadable when it is not in one either.
+    fn count_archive_entry(&mut self, path: &Path) {
+        match archive::measure(path) {
+            Some(inside) => {
+                self.files += inside.files;
+                self.folders += inside.folders;
+                self.bytes += inside.bytes;
+            }
+            None => self.unreadable += 1,
+        }
+    }
+}
+
 /// Walks `sources` without following links, until done or `cancel` is set.
 /// Blocking: the app calls it on the blocking pool.
 pub fn scan(sources: &[PathBuf], cancel: &AtomicBool) -> Scan {
@@ -107,7 +123,7 @@ pub fn scan(sources: &[PathBuf], cancel: &AtomicBool) -> Scan {
             break;
         }
         let Ok(meta) = std::fs::symlink_metadata(&path) else {
-            found.unreadable += 1;
+            found.count_archive_entry(&path);
             continue;
         };
         if !meta.is_dir() {
@@ -154,6 +170,10 @@ pub enum Refusal {
     InsideSource,
     /// The system would not say (permission, a mount that does not answer).
     Unreadable,
+    /// The target is an archive or lies inside one; archives are read only.
+    IntoArchive,
+    /// A move was asked for entries that lie inside an archive.
+    MoveFromArchive,
 }
 
 fn refusal_of(error: &io::Error) -> Refusal {
@@ -172,12 +192,31 @@ fn refusal_of(error: &io::Error) -> Refusal {
 /// way it would past a comparison of the text. The last component of a source
 /// is not resolved: copying a link copies the link, so the source *is* the
 /// link, not what it points to.
-pub fn validate(sources: &[PathBuf], target: &Path) -> Result<PathBuf, Refusal> {
-    let resolved = std::fs::canonicalize(target).map_err(|error| refusal_of(&error))?;
+pub fn validate(
+    kind: TransferKind,
+    sources: &[PathBuf],
+    target: &Path,
+) -> Result<PathBuf, Refusal> {
+    let resolved = match std::fs::canonicalize(target) {
+        Ok(resolved) => resolved,
+        Err(_) if archive::locate_in_archive(target).is_some() => return Err(Refusal::IntoArchive),
+        Err(error) => return Err(refusal_of(&error)),
+    };
+    if archive::is_archive_file(&resolved) {
+        return Err(Refusal::IntoArchive);
+    }
     if !resolved.is_dir() {
         return Err(Refusal::NotAFolder);
     }
     for source in sources {
+        // An entry of an archive is on no disk: it has no folder to be the same
+        // as and nothing the target could lie inside.
+        if lies_in_archive(source) {
+            if kind == TransferKind::Move {
+                return Err(Refusal::MoveFromArchive);
+            }
+            continue;
+        }
         let (Some(parent), Some(name)) = (source.parent(), source.file_name()) else {
             continue;
         };
@@ -190,6 +229,10 @@ pub fn validate(sources: &[PathBuf], target: &Path) -> Result<PathBuf, Refusal> 
         }
     }
     Ok(resolved)
+}
+
+fn lies_in_archive(source: &Path) -> bool {
+    std::fs::symlink_metadata(source).is_err() && archive::locate_in_archive(source).is_some()
 }
 
 /// The open confirmation. The selection is resolved once, when the key is
@@ -482,7 +525,11 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         write(&root.path().join("from/a.txt"), 1);
 
-        let result = validate(&[root.path().join("from/a.txt")], &root.path().join("nope"));
+        let result = validate(
+            TransferKind::Copy,
+            &[root.path().join("from/a.txt")],
+            &root.path().join("nope"),
+        );
 
         assert_eq!(result, Err(Refusal::Missing));
     }
@@ -494,6 +541,7 @@ mod tests {
         write(&root.path().join("file.txt"), 1);
 
         let result = validate(
+            TransferKind::Copy,
             &[root.path().join("from/a.txt")],
             &root.path().join("file.txt"),
         );
@@ -506,7 +554,11 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         write(&root.path().join("from/a.txt"), 1);
 
-        let result = validate(&[root.path().join("from/a.txt")], &root.path().join("from"));
+        let result = validate(
+            TransferKind::Copy,
+            &[root.path().join("from/a.txt")],
+            &root.path().join("from"),
+        );
 
         assert_eq!(result, Err(Refusal::SameFolder));
     }
@@ -518,11 +570,15 @@ mod tests {
         let sources = vec![root.path().join("from/tree")];
 
         assert_eq!(
-            validate(&sources, &root.path().join("from/tree")),
+            validate(TransferKind::Copy, &sources, &root.path().join("from/tree")),
             Err(Refusal::InsideSource)
         );
         assert_eq!(
-            validate(&sources, &root.path().join("from/tree/deep")),
+            validate(
+                TransferKind::Copy,
+                &sources,
+                &root.path().join("from/tree/deep")
+            ),
             Err(Refusal::InsideSource)
         );
     }
@@ -534,7 +590,11 @@ mod tests {
         std::fs::create_dir_all(root.path().join("to")).unwrap();
         let sneaky = root.path().join("to/../from/tree/deep");
 
-        let result = validate(&[root.path().join("from/tree")], &sneaky);
+        let result = validate(
+            TransferKind::Copy,
+            &[root.path().join("from/tree")],
+            &sneaky,
+        );
 
         assert_eq!(result, Err(Refusal::InsideSource));
     }
@@ -552,6 +612,7 @@ mod tests {
         .unwrap();
 
         let result = validate(
+            TransferKind::Copy,
             &[root.path().join("from/tree")],
             &root.path().join("to/shortcut"),
         );
@@ -568,6 +629,7 @@ mod tests {
             .unwrap();
 
         let result = validate(
+            TransferKind::Copy,
             &[root.path().join("from/link")],
             &root.path().join("from/real"),
         );
@@ -586,6 +648,7 @@ mod tests {
         std::fs::create_dir_all(root.path().join("to")).unwrap();
 
         let result = validate(
+            TransferKind::Copy,
             &[root.path().join("from/tree")],
             &root.path().join("to/../to"),
         );
@@ -594,6 +657,75 @@ mod tests {
             result,
             Ok(std::fs::canonicalize(root.path().join("to")).unwrap())
         );
+    }
+
+    fn zip_in(root: &Path) -> PathBuf {
+        use crate::fs::archive::fixtures::{write_archive, Item};
+        let archive = root.join("box.zip");
+        write_archive(
+            &archive,
+            &[Item::File("in/a.txt", b"abc"), Item::File("b.txt", b"12")],
+        );
+        archive
+    }
+
+    #[test]
+    fn an_archive_or_a_place_in_one_is_no_target() {
+        let root = tempfile::tempdir().unwrap();
+        write(&root.path().join("from/a.txt"), 1);
+        let archive = zip_in(root.path());
+        let sources = [root.path().join("from/a.txt")];
+
+        for target in [archive.clone(), archive.join("in"), archive.join("gone")] {
+            for kind in [TransferKind::Copy, TransferKind::Move] {
+                assert_eq!(
+                    validate(kind, &sources, &target),
+                    Err(Refusal::IntoArchive),
+                    "{kind:?} {target:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn entries_of_an_archive_can_be_copied_but_not_moved() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("to")).unwrap();
+        let archive = zip_in(root.path());
+        let sources = [archive.join("in"), archive.join("b.txt")];
+
+        assert_eq!(
+            validate(TransferKind::Copy, &sources, &root.path().join("to")),
+            Ok(std::fs::canonicalize(root.path().join("to")).unwrap())
+        );
+        assert_eq!(
+            validate(TransferKind::Copy, &sources, root.path()),
+            Ok(std::fs::canonicalize(root.path()).unwrap()),
+            "the folder holding the archive is a fine place to copy out to"
+        );
+        assert_eq!(
+            validate(TransferKind::Move, &sources, &root.path().join("to")),
+            Err(Refusal::MoveFromArchive)
+        );
+    }
+
+    #[test]
+    fn the_scan_counts_what_is_inside_an_archive_source() {
+        let root = tempfile::tempdir().unwrap();
+        let archive = zip_in(root.path());
+
+        let found = scan(&[archive.join("in"), archive.join("b.txt")], &never());
+
+        assert_eq!(
+            found,
+            Scan {
+                files: 2,
+                folders: 1,
+                bytes: 5,
+                unreadable: 0
+            }
+        );
+        assert_eq!(scan(&[archive.join("gone")], &never()).unreadable, 1);
     }
 
     #[test]
