@@ -15,6 +15,7 @@ pub mod filing_status;
 pub mod fkeys;
 pub mod format;
 pub mod frame;
+pub mod grant;
 pub mod hermes;
 pub mod key_bindings;
 pub mod key_intercept;

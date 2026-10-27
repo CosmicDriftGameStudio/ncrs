@@ -165,12 +165,27 @@ fn parent_only(path: &Path) -> Vec<FileEntry> {
     path.parent().map(FileEntry::parent).into_iter().collect()
 }
 
-/// The user's home directory, falling back to the current dir or `/`.
+/// The user's home directory, falling back to the current dir or `/`. In the
+/// App Sandbox it is the real home, not the container `$HOME` names.
 pub fn home_dir() -> PathBuf {
-    std::env::var_os("HOME")
-        .or_else(|| std::env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
-        .filter(|p| p.is_dir())
+    home_dir_with(super::sandbox_home(), |name| std::env::var_os(name))
+}
+
+/// `home_dir` with the real home of the sandbox and the environment given.
+/// The real home is taken as it is: the sandbox may refuse to look at it before
+/// the user has granted it, and a failed `is_dir` must not send the panels to
+/// the working directory.
+fn home_dir_with(
+    sandbox_home: Option<PathBuf>,
+    var: impl Fn(&str) -> Option<std::ffi::OsString>,
+) -> PathBuf {
+    sandbox_home
+        .or_else(|| {
+            var("HOME")
+                .or_else(|| var("USERPROFILE"))
+                .map(PathBuf::from)
+                .filter(|p| p.is_dir())
+        })
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| PathBuf::from("/"))
 }
@@ -358,6 +373,30 @@ mod tests {
         assert_eq!(names_of(&missing), [".."]);
         assert!(matches!(missing.error, Some(ReadError::CannotRead { .. })));
         assert_eq!(missing.archive, Some(good));
+    }
+
+    #[test]
+    fn the_sandbox_home_wins_over_a_home_variable_that_names_the_container() {
+        let container = scratch_dir("container");
+        let real = scratch_dir("real-home").path().join("not-listable-yet");
+        let var = |name: &str| (name == "HOME").then(|| container.path().as_os_str().to_owned());
+
+        assert_eq!(home_dir_with(Some(real.clone()), var), real);
+    }
+
+    #[test]
+    fn without_a_sandbox_home_the_variable_decides() {
+        let home = scratch_dir("home");
+        let var = |name: &str| (name == "HOME").then(|| home.path().as_os_str().to_owned());
+
+        assert_eq!(home_dir_with(None, var), home.path());
+    }
+
+    #[test]
+    fn a_home_variable_that_is_no_directory_falls_back_to_the_working_directory() {
+        let var = |_: &str| Some(std::ffi::OsString::from("no-such-home-folder"));
+
+        assert_eq!(home_dir_with(None, var), std::env::current_dir().unwrap());
     }
 }
 

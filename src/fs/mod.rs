@@ -3,9 +3,12 @@
 pub mod archive;
 mod delete;
 mod entry;
+#[cfg(any(all(feature = "sandbox", target_os = "macos"), test))]
+mod grants;
 mod open;
 mod ops;
 mod reader;
+mod sandbox;
 pub mod search;
 mod sort;
 pub mod transfer;
@@ -23,6 +26,9 @@ pub use open::{
 };
 pub use ops::{create_dir, create_file, CreateDirError};
 pub use reader::{home_dir, read_directory, start_dir, ReadError};
+pub use sandbox::{
+    grant_start_dir, preferred_home, restore_grants, sandbox_active, sandbox_home, SandboxAccess,
+};
 pub use sort::{sort_entries, SortColumn, SortKey};
 pub use typed_path::{locate, resolve as resolve_typed_path, Destination, PathProblem};
 pub use volumes::{list_volumes, Volume};

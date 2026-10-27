@@ -17,8 +17,8 @@ use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::messages::{
     AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage, FilingSetupMessage,
-    FilingStatusMessage, HermesFileMessage, KeyBindingsMessage, OcrModelsMessage, PanelSide,
-    QuickFixMessage, QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage,
+    FilingStatusMessage, GrantMessage, HermesFileMessage, KeyBindingsMessage, OcrModelsMessage,
+    PanelSide, QuickFixMessage, QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage,
     RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage,
     TransferKind,
 };
@@ -138,6 +138,7 @@ key_actions! {
     KeyBindings => "key_bindings",
     DownloadOcrModels => "download_ocr_models",
     DownloadAiModel => "download_ai_model",
+    GrantFolderAccess => "grant_folder_access",
     SearchCase => "search_case",
     SearchWholeWord => "search_whole_word",
     SearchRegex => "search_regex",
@@ -232,6 +233,7 @@ impl KeyAction {
             | Self::KeyBindings
             | Self::DownloadOcrModels
             | Self::DownloadAiModel
+            | Self::GrantFolderAccess
             | Self::DriveMenuLeft
             | Self::DriveMenuRight
             | Self::HistoryBack
@@ -364,10 +366,19 @@ impl KeyAction {
             Self::KeyBindings => Message::KeyBindings(KeyBindingsMessage::Open),
             Self::DownloadOcrModels => Message::OcrModels(OcrModelsMessage::Open),
             Self::DownloadAiModel => Message::AiModel(AiModelMessage::Open),
+            Self::GrantFolderAccess => Message::Grant(GrantMessage::Open),
             Self::SearchCase => Message::Search(SearchMessage::ToggleCase),
             Self::SearchWholeWord => Message::Search(SearchMessage::ToggleWholeWord),
             Self::SearchRegex => Message::Search(SearchMessage::ToggleRegex),
         }
+    }
+
+    /// Whether this build offers the action. Only the folder grants of the App
+    /// Store build are left out elsewhere: a build that can open every folder
+    /// has nothing to grant, so the command list and the shortcuts dialog do
+    /// not show it.
+    pub fn is_offered(self) -> bool {
+        self != Self::GrantFolderAccess || crate::fs::sandbox_active()
     }
 
     /// Whether a panel inside an archive may run the action. Only what takes
@@ -420,6 +431,7 @@ impl KeyAction {
             | Self::KeyBindings
             | Self::DownloadOcrModels
             | Self::DownloadAiModel
+            | Self::GrantFolderAccess
             | Self::SearchCase
             | Self::SearchWholeWord
             | Self::SearchRegex
@@ -1757,12 +1769,13 @@ mod tests {
     #[test]
     fn every_action_has_a_default_key_and_no_key_is_twice_bound() {
         // Reached through the command palette (or a menu) only.
-        const WITHOUT_KEY: [KeyAction; 11] = [
+        const WITHOUT_KEY: [KeyAction; 12] = [
             KeyAction::RemoveFavourite,
             KeyAction::Favourites,
             KeyAction::FetchTheme,
             KeyAction::DownloadOcrModels,
             KeyAction::DownloadAiModel,
+            KeyAction::GrantFolderAccess,
             KeyAction::HermesHandToInbox,
             KeyAction::HermesSetInbox,
             KeyAction::HermesSetFilingLocation,

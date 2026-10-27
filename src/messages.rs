@@ -368,6 +368,9 @@ pub enum Message {
     OcrModels(OcrModelsMessage),
     AiModel(AiModelMessage),
 
+    // --- Folder grants of the App Store build ---
+    Grant(GrantMessage),
+
     // --- Settings tab ---
     Settings(SettingsMessage),
     KeyBindings(KeyBindingsMessage),
@@ -953,6 +956,26 @@ pub enum AiModelMessage {
     Downloaded {
         generation: u64,
         result: Result<(), AiDownloadError>,
+    },
+}
+
+/// Everything the folder grants of the App Store build send.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GrantMessage {
+    /// The key action: opens the system folder dialog, or says that this
+    /// build needs no grants.
+    Open,
+    /// The dialog's button: opens the system folder dialog and keeps the
+    /// dialog up until a folder is chosen.
+    Choose,
+    /// The dialog's other button, and Escape.
+    Later,
+    /// The system folder dialog answered; `None` when it was cancelled.
+    Picked(Option<PathBuf>),
+    /// The grant of the folder was saved, or why it could not be.
+    Saved {
+        folder: PathBuf,
+        result: Result<(), String>,
     },
 }
 

@@ -834,13 +834,16 @@ fn view_copies_dir_from_env(var: impl Fn(&str) -> Option<OsString>) -> Option<Pa
 }
 
 /// The home directory `~` stands for. Like the config path, only an absolute
-/// one counts.
+/// one counts. In the App Sandbox it is the real home, not the container that
+/// `$HOME` names: `~` in a config value means the user's folders.
 fn home_from_env() -> Option<PathBuf> {
     #[cfg(windows)]
     let variable = "USERPROFILE";
     #[cfg(not(windows))]
     let variable = "HOME";
-    absolute(std::env::var_os(variable))
+    crate::fs::preferred_home(crate::fs::sandbox_home(), || {
+        absolute(std::env::var_os(variable))
+    })
 }
 
 /// Reads the config at `path`. A missing file gives the defaults.
@@ -2528,6 +2531,21 @@ mod tests {
         let climbing = filing_text(true, &[location("'~/../x'", archive)]);
         let (line, _) = filing_error(&climbing, Some(home.path()));
         assert_eq!(line, Some(4));
+    }
+
+    #[test]
+    fn a_tilde_is_the_real_home_when_the_sandbox_knows_it() {
+        let real = tempfile::tempdir().unwrap();
+        let container = tempfile::tempdir().unwrap();
+        let home = crate::fs::preferred_home(Some(real.path().to_path_buf()), || {
+            Some(container.path().to_path_buf())
+        });
+        let archive = "mode = \"archive\"\ntarget = true";
+        let text = filing_text(true, &[location("'~/archive-a'", archive)]);
+
+        let filing = load_filing(&text, home.as_deref()).unwrap().filing;
+
+        assert_eq!(filing.locations[0].path, real.path().join("archive-a"));
     }
 
     fn load_of(setting: &str) -> Load {

@@ -68,6 +68,14 @@ All notable changes to this project are documented here. The format follows
   `F3` says so and unpacks nothing. A slow viewer may find its copy gone when
   you leave the archive right away. `F4` stays refused, as an edit would be
   lost with the copy.
+- Groundwork for the Mac App Store build, behind the `sandbox` cargo feature
+  that no release uses yet; normal builds are unchanged. Inside the App Sandbox
+  the start folder and the drive menu use the real home folder instead of the
+  container, `~` in the config means the real home, folder grants are kept as
+  security-scoped bookmarks and restored at every start, the index key lives
+  under its own keychain service, and delete goes to the trash through the file
+  manager. At the start the app asks to allow the home folder as long as it
+  cannot be read; "Grant folder access…" in the command list adds more.
 - `F3` and `F4` treat more launcher file types as executable: installers and
   packages (`.pkg`, `.msix`, `.deb`, `.rpm`), shortcuts and location files
   (`.webloc`, `.inetloc`, `.appref-ms`), help files (`.chm`, `.hlp`) and the

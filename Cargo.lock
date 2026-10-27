@@ -2529,6 +2529,7 @@ dependencies = [
  "ncrs-intake",
  "ncrs-ocr-vision",
  "ncrs-pipeline",
+ "ncrs-sandbox",
  "nucleo-matcher",
  "rfd",
  "same-file",
@@ -2614,6 +2615,16 @@ dependencies = [
  "ncrs-ai",
  "ncrs-index",
  "ncrs-intake",
+ "tempfile",
+]
+
+[[package]]
+name = "ncrs-sandbox"
+version = "0.0.0"
+dependencies = [
+ "nix",
+ "objc2 0.6.4",
+ "objc2-foundation 0.3.2",
  "tempfile",
 ]
 

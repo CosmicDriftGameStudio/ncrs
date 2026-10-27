@@ -1,0 +1,80 @@
+[package]
+name = "ncrs-sandbox"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "Real home and security-scoped bookmarks for the ncrs App Store build, macOS only"
+license = "MIT"
+publish = false
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Already in the lock through the credential store and the file watcher.
+nix = { version = "0.31", default-features = false, features = ["user"] }
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSData", "NSError", "NSString", "NSURL"] }
+
+[dev-dependencies]
+tempfile = "3.27"
+
+# Kept in sync with [workspace.lints] in the root Cargo.toml, except that
+# unsafe_code is "deny" here: cargo cannot inherit the workspace table and
+# override one lint. Every unsafe block has its own allow and a SAFETY note.
+[lints.rust]
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+
+[lints.clippy]
+restriction = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+indexing_slicing = "warn"
+absolute_paths = "allow"
+allow_attributes = "allow"
+allow_attributes_without_reason = "allow"
+arbitrary_source_item_ordering = "allow"
+arithmetic_side_effects = "allow"
+as_conversions = "allow"
+blanket_clippy_restriction_lints = "allow"
+create_dir = "allow"
+else_if_without_else = "allow"
+implicit_return = "allow"
+min_ident_chars = "allow"
+missing_inline_in_public_items = "allow"
+mod_module_files = "allow"
+needless_pass_by_value = "allow"
+pattern_type_mismatch = "allow"
+question_mark_used = "allow"
+single_call_fn = "allow"
+single_char_lifetime_names = "allow"
+std_instead_of_core = "allow"
+string_add = "allow"
+string_add_assign = "allow"
+string_lit_as_bytes = "allow"
+todo = "allow"
+unnecessary_debug_formatting = "allow"
+unnecessary_literal_unwrap = "allow"
+unnecessary_result_map_or_else = "allow"
+missing_docs_in_private_items = "allow"
+print_stderr = "allow"
+print_stdout = "allow"
+missing_trait_methods = "allow"
+module_name_repetitions = "allow"
+non_ascii_literal = "allow"
+pub_use = "allow"
+std_instead_of_alloc = "allow"
+str_to_string = "allow"
+exhaustive_enums = "allow"
+exhaustive_structs = "allow"
+multiple_inherent_impl = "allow"
+float_arithmetic = "allow"
+integer_division_remainder_used = "allow"
+impl_trait_in_params = "allow"
+let_underscore_untyped = "allow"
+let_underscore_must_use = "allow"
+wildcard_enum_match_arm = "allow"
+default_numeric_fallback = "allow"
+string_slice = "allow"
+inline_modules = "allow"
+inline_trait_bounds = "allow"

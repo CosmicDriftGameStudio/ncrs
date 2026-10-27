@@ -5051,6 +5051,60 @@
       "context": "Verb next to the Shift+Backspace key in the footer hints of the keyboard shortcuts dialog: gives the action its built-in keys again. One word.",
       "en": "reset",
       "de": "zurücksetzen"
+    },
+    {
+      "key": "action.grant_folder_access",
+      "context": "Entry of the command palette and the menu bar that runs the key action grant_folder_access, which opens the system folder dialog so the user can allow the App Store version to open another folder or drive. The plain name of what the action does, as short as a menu entry; it has no key. The ellipsis says a dialog follows. Listed only in the App Store version.",
+      "en": "Grant folder access…",
+      "de": "Ordner freigeben…"
+    },
+    {
+      "key": "grant.title",
+      "context": "Title of the dialog shown at the start of the App Store version while the home folder cannot be opened. The app runs in the macOS App Sandbox and may open only folders the user allows.",
+      "en": "Allow access to your files",
+      "de": "Zugriff auf deine Dateien erlauben"
+    },
+    {
+      "key": "grant.intro",
+      "context": "Explanation in the dialog that asks the user to allow access to the home folder. macOS lets the App Store version open only the folders the user chooses in a system dialog; one choice of the home folder covers everything below it. Drives and network volumes need a choice of their own.",
+      "en": "ncrs from the App Store runs in the macOS sandbox and can only open folders you allow. Choose your home folder to browse all of it. A drive or another volume needs its own choice.",
+      "de": "ncrs aus dem App Store läuft in der macOS-Sandbox und kann nur Ordner öffnen, die du freigibst. Wähle deinen Home-Ordner, um alles darin zu durchsuchen. Ein Laufwerk oder ein anderes Volume braucht eine eigene Freigabe."
+    },
+    {
+      "key": "grant.remembered",
+      "context": "Second paragraph of the dialog that asks for access to the home folder: the choice is kept, and the command of the command palette adds more folders later. It names the command by its label.",
+      "en": "Your choice is remembered. Later, \"Grant folder access…\" in the command list adds more folders.",
+      "de": "Deine Wahl wird gemerkt. Später fügt „Ordner freigeben…“ in der Befehlsliste weitere Ordner hinzu."
+    },
+    {
+      "key": "grant.later",
+      "context": "Button of the dialog that asks for access to the home folder: closes it without granting anything. The dialog comes back at the next start. One word.",
+      "en": "Later",
+      "de": "Später"
+    },
+    {
+      "key": "grant.choose",
+      "context": "Button of the dialog that asks for access to the home folder: opens the system folder dialog, in the home folder, to choose the folder to allow. The ellipsis says a dialog follows.",
+      "en": "Grant access…",
+      "de": "Freigeben…"
+    },
+    {
+      "key": "grant.not_needed",
+      "context": "Notice in the status bar when the key action grant_folder_access runs outside the App Store version, which needs no folder grants because it can open every folder.",
+      "en": "Granting folders is only needed in the App Store version",
+      "de": "Ordner freigeben braucht nur die App-Store-Fassung"
+    },
+    {
+      "key": "grant.added",
+      "context": "Notice in the status bar after the user allowed a folder in the App Store version and the choice was saved. Takes the folder.",
+      "en": "Access granted: {folder}",
+      "de": "Zugriff freigegeben: {folder}"
+    },
+    {
+      "key": "grant.failed",
+      "context": "Error in the status bar when the access the user allowed to a folder could not be saved, so it would be lost at the next start. Takes the folder and the reason, which stays untranslated.",
+      "en": "Could not save the access to {folder}: {reason}",
+      "de": "Der Zugriff auf {folder} konnte nicht gespeichert werden: {reason}"
     }
   ]
 }

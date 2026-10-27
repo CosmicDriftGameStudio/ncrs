@@ -44,11 +44,11 @@ use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 use crate::menu::Availability;
 use crate::messages::{
     AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage, ConflictChoice,
-    FilingSetupMessage, FilingStatusMessage, HermesColumnMessage, HermesFileMessage, HermesFocus,
-    HermesPage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide, QuickFixMessage,
-    QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage,
-    SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage, ThemeFetchMessage,
-    TitleBarMessage, TransferKind,
+    FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesColumnMessage, HermesFileMessage,
+    HermesFocus, HermesPage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide,
+    QuickFixMessage, QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage,
+    RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage,
+    ThemeFetchMessage, TitleBarMessage, TransferKind,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -78,6 +78,7 @@ use crate::ui::dialog::FIELD_ID;
 use crate::ui::filing as filing_ui;
 use crate::ui::filing_setup as filing_setup_ui;
 use crate::ui::filing_status as filing_status_ui;
+use crate::ui::grant as grant_ui;
 use crate::ui::hermes::Badges;
 use crate::ui::key_bindings as key_bindings_ui;
 use crate::ui::ocr_models as ocr_models_ui;
@@ -397,6 +398,7 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
             | Message::OcrModels(OcrModelsMessage::Open)
             | Message::AiModel(AiModelMessage::Open)
+            | Message::Grant(GrantMessage::Open)
             | Message::Settings(_)
             | Message::FilingStatus(FilingStatusMessage::Open)
             | Message::FilingSetup(
@@ -1021,6 +1023,11 @@ pub struct App {
     download_ocr_models: fn(&Path) -> Result<(), DownloadError>,
     /// The card that asks before the AI model is downloaded, while it is up.
     ai_model: Option<AiModelCard>,
+    /// The dialog that asks for access to the home folder, while it is up.
+    grant_dialog: bool,
+    /// The App Sandbox side: whether it applies, where grants are kept, and
+    /// the checks that touch the system. Injected so tests need no sandbox.
+    sandbox: fs::SandboxAccess,
     /// Counts the cards opened, so the late answer of a closed one is dropped.
     ai_model_generation: u64,
     /// The card opened by itself for a missing model; once per start, so a
@@ -1094,6 +1101,8 @@ pub struct PromptKeyState {
     pub ocr_models: bool,
     /// The AI model card is up, so keys answer it like a button dialog.
     pub ai_model: bool,
+    /// The dialog that asks for access to the home folder is up.
+    pub grant_dialog: bool,
     /// The settings tab is up, so the panel keys are inert and Escape closes it.
     pub settings: bool,
     /// The delete dialog is up, so keys answer it.
@@ -1142,6 +1151,7 @@ impl Default for PromptKeyState {
             reorganisation_plan: false,
             ocr_models: false,
             ai_model: false,
+            grant_dialog: false,
             settings: false,
             delete_dialog: DeleteKeys::default(),
             volume_menu: false,
@@ -1329,16 +1339,23 @@ fn rule_suggestions_key(
     }
 }
 
-fn ocr_models_key(key: Key, key_modifiers: Modifiers) -> Option<Message> {
-    match key.as_ref() {
-        Key::Named(Named::Escape) => Some(Message::OcrModels(OcrModelsMessage::Close)),
-        _ => dialog_focus_key(key, key_modifiers),
+/// What Escape sends while one of the small button dialogs is up: the OCR
+/// models card, the AI model card or the folder grant dialog.
+fn card_close_message(prompt: &PromptKeyState) -> Option<Message> {
+    if prompt.ocr_models {
+        Some(Message::OcrModels(OcrModelsMessage::Close))
+    } else if prompt.ai_model {
+        Some(Message::AiModel(AiModelMessage::Close))
+    } else if prompt.grant_dialog {
+        Some(Message::Grant(GrantMessage::Later))
+    } else {
+        None
     }
 }
 
-fn ai_model_key(key: Key, key_modifiers: Modifiers) -> Option<Message> {
+fn card_dialog_key(close: Message, key: Key, key_modifiers: Modifiers) -> Option<Message> {
     match key.as_ref() {
-        Key::Named(Named::Escape) => Some(Message::AiModel(AiModelMessage::Close)),
+        Key::Named(Named::Escape) => Some(close),
         _ => dialog_focus_key(key, key_modifiers),
     }
 }
@@ -1475,12 +1492,10 @@ fn keys_without_prompt(
         return key_bindings_key(prompt, &key, key_modifiers);
     }
 
-    // Cancel has the focus when it opens, so Enter alone never downloads.
-    if prompt.ocr_models {
-        return ocr_models_key(key, key_modifiers);
-    }
-    if prompt.ai_model {
-        return ai_model_key(key, key_modifiers);
+    // Cancel has the focus when a download card opens, so Enter alone never
+    // downloads.
+    if let Some(close) = card_close_message(prompt) {
+        return card_dialog_key(close, key, key_modifiers);
     }
 
     if prompt.conflict_open {
@@ -2251,9 +2266,18 @@ impl Environment {
     }
 }
 
+/// The keychain service of the App Store build. Its own name keeps that build
+/// from reading, or replacing, the key an installed ncrs keeps under "ncrs":
+/// the two have different indexes, and a key that does not open one is lost
+/// for it.
+const APP_STORE_KEY_SERVICE: &str = "ncrs-appstore";
+
 /// The one place the app builds the system keychain store.
 fn user_key_store() -> KeyringKeyStore {
     config::forbid_user_machine_in_tests("the system keychain");
+    if fs::sandbox_active() {
+        return KeyringKeyStore::with_service(APP_STORE_KEY_SERVICE);
+    }
     config::portable_data_dir()
         .map_or_else(KeyringKeyStore::new, |dir| KeyringKeyStore::portable(&dir))
 }
@@ -2306,6 +2330,8 @@ impl App {
         );
         panels.config_path = config_path;
         panels.state_path = state_path;
+        panels.sandbox = fs::SandboxAccess::detect(index_path.as_deref());
+        panels.open_grant_dialog_if_needed();
         panels.view_copies = view_copies_dir
             .as_deref()
             .and_then(|dir| fs::archive::ViewCopies::open(dir).ok());
@@ -2605,6 +2631,8 @@ impl App {
             ai_model_generation: 0,
             ai_model_asked: false,
             download_ai_model,
+            grant_dialog: false,
+            sandbox: fs::SandboxAccess::detect(None),
         };
 
         let tasks = Task::batch([
@@ -3265,6 +3293,7 @@ impl App {
             Message::ReorganisationUndone(result) => self.reorganisation_undone(result),
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::AiModel(model_message) => self.update_ai_model(model_message),
+            Message::Grant(grant_message) => self.update_grant(grant_message),
             Message::Settings(settings_message) => self.update_settings(settings_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => self.update_filing_status(page_message),
@@ -4178,6 +4207,16 @@ impl App {
             return Stack::with_children([root, dialog::scrim(card_element)]).into();
         }
 
+        if self.grant_dialog {
+            let dialog_element = grant_ui::view(
+                self.dialog_focus,
+                self.window_size,
+                self.lang,
+                &self.palette,
+            );
+            return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
+        }
+
         // The conflict dialog comes first, before the prompt. A conflict is
         // asked *after* the prompt is gone — the user submitted, and the name
         // turned out to be taken — so behind the prompt's early return the
@@ -4428,6 +4467,7 @@ impl App {
         let reorganisation_plan = self.reorganisation.is_some();
         let ocr_models = self.ocr_models.is_some();
         let ai_model = self.ai_model.is_some();
+        let grant_dialog = self.grant_dialog;
         let settings = self.settings.is_some();
         let transfer_dialog = self.transfer_dialog.is_some();
         let transfer_progress = self.progress_mask_is_open();
@@ -4466,6 +4506,7 @@ impl App {
                 reorganisation_plan,
                 ocr_models,
                 ai_model,
+                grant_dialog,
                 settings,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
@@ -4505,6 +4546,7 @@ impl App {
                 reorganisation_plan,
                 ocr_models,
                 ai_model,
+                grant_dialog,
                 settings,
                 conflict_open: self.pending_conflict.is_some(),
                 transfer_dialog,
@@ -4826,7 +4868,11 @@ impl App {
     }
 
     fn dialog_button_count(&self) -> usize {
-        if self.delete_dialog.is_some() || self.ocr_models.is_some() || self.ai_model.is_some() {
+        if self.delete_dialog.is_some()
+            || self.ocr_models.is_some()
+            || self.ai_model.is_some()
+            || self.grant_dialog
+        {
             2
         } else if self.pending_conflict.is_some() {
             3
@@ -4857,6 +4903,13 @@ impl App {
                 self.press_ai_model_button()
             } else {
                 self.close_ai_model()
+            };
+        }
+        if self.grant_dialog {
+            return if self.dialog_focus == grant_ui::GRANT_FOCUS {
+                self.update_grant(GrantMessage::Choose)
+            } else {
+                self.update_grant(GrantMessage::Later)
             };
         }
         if self.pending_conflict.is_some() {
@@ -4895,6 +4948,7 @@ impl App {
             || self.reorganisation.is_some()
             || self.ocr_models.is_some()
             || self.ai_model.is_some()
+            || self.grant_dialog
             || self.filing_status.page_open()
     }
 
@@ -8553,6 +8607,110 @@ impl App {
         self.show_notice(notice)
     }
 
+    fn update_grant(&mut self, message: GrantMessage) -> Task<Message> {
+        match message {
+            GrantMessage::Open => {
+                if !self.sandbox.active {
+                    let text = self.lang.text(Msg::GrantNotNeeded).to_owned();
+                    return self.show_notice(text);
+                }
+                if self.blocking_overlay_is_open() {
+                    return Task::none();
+                }
+                self.context_menu = None;
+                self.pick_grant_folder()
+            }
+            GrantMessage::Choose => self.pick_grant_folder(),
+            GrantMessage::Later => {
+                self.grant_dialog = false;
+                Task::none()
+            }
+            GrantMessage::Picked(None) => Task::none(),
+            GrantMessage::Picked(Some(folder)) => self.grant_picked_folder(folder),
+            GrantMessage::Saved { folder, result } => self.grant_saved(&folder, result),
+        }
+    }
+
+    /// Opens the system folder dialog in the real home, where the user is most
+    /// likely to look. Called from `update`, like every use of `pick_folder`.
+    fn pick_grant_folder(&mut self) -> Task<Message> {
+        (self.pick_folder)(&fs::grant_start_dir())
+            .map(|folder| Message::Grant(GrantMessage::Picked(folder)))
+    }
+
+    /// Saves the access the user just gave, while the open panel's access is
+    /// fresh, and shows both panels again: the folder may be one they could not
+    /// read.
+    fn grant_picked_folder(&mut self, folder: PathBuf) -> Task<Message> {
+        // The dialog goes either way: behind it the status bar is dimmed, and
+        // a failure is read there. "Grant folder access…" tries again.
+        self.grant_dialog = false;
+        let Some(dir) = self.sandbox.grants_dir.clone() else {
+            return self.grant_saved(
+                &folder,
+                Err("there is no data folder to keep it in".to_owned()),
+            );
+        };
+        // Right away, while the access the panel gave is fresh, but not on the
+        // thread that draws: making a bookmark and writing its file can take a
+        // moment on a slow volume.
+        let grant = self.sandbox.grant;
+        let saved = folder.clone();
+        Task::perform(
+            async move {
+                tokio::task::spawn_blocking(move || grant(&dir, &saved))
+                    .await
+                    .unwrap_or_else(|failure| Err(failure.to_string()))
+            },
+            move |result| {
+                Message::Grant(GrantMessage::Saved {
+                    folder: folder.clone(),
+                    result,
+                })
+            },
+        )
+    }
+
+    /// The grant of `folder` is saved, or not: both panels load again when it
+    /// is, since the folder may be one they could not read.
+    fn grant_saved(&mut self, folder: &Path, saved: Result<(), String>) -> Task<Message> {
+        let name = folder.to_string_lossy();
+        let report = match saved {
+            Ok(()) => Ok(fill_template(
+                self.lang.text(Msg::GrantAdded),
+                &[("{folder}", &name)],
+            )),
+            Err(reason) => Err(fill_template(
+                self.lang.text(Msg::GrantFailed),
+                &[("{folder}", &name), ("{reason}", &reason)],
+            )),
+        };
+        match report {
+            Ok(text) => {
+                self.job_error = None;
+                let reloads = [PanelSide::Left, PanelSide::Right].map(|each| {
+                    let path = self.panel(each).path.clone();
+                    self.load(each, path, None)
+                });
+                let notice = self.show_notice(text);
+                Task::batch(reloads.into_iter().chain([notice]))
+            }
+            Err(text) => {
+                self.set_status_error(&text);
+                Task::none()
+            }
+        }
+    }
+
+    /// Asks for the home folder when the sandbox is on and home cannot be
+    /// listed. Asked again at every start while that stays so.
+    fn open_grant_dialog_if_needed(&mut self) {
+        if self.sandbox.needs_home_grant() {
+            self.dialog_focus = grant_ui::GRANT_FOCUS;
+            self.grant_dialog = true;
+        }
+    }
+
     fn update_key_bindings(&mut self, message: KeyBindingsMessage) -> Task<Message> {
         use KeyBindingsMessage as Shortcuts;
         match message {
@@ -10579,6 +10737,8 @@ impl App {
             ai_model_generation: 0,
             ai_model_asked: false,
             download_ai_model: |_| Err(AiDownloadError::NoDataFolder),
+            grant_dialog: false,
+            sandbox: fs::SandboxAccess::inactive(),
         };
         for (side, names) in [
             (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
@@ -19400,5 +19560,301 @@ mod archive_view_tests {
                 &[("{name}", "run.sh")]
             )
         );
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod grant_tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
+
+    use super::*;
+
+    static PICKS: AtomicUsize = AtomicUsize::new(0);
+    static GRANTED: Mutex<Vec<(PathBuf, PathBuf)>> = Mutex::new(Vec::new());
+
+    fn counting_picker(_: &Path) -> Task<Option<PathBuf>> {
+        PICKS.fetch_add(1, Ordering::SeqCst);
+        Task::none()
+    }
+
+    /// A picker that must not be asked: the counter above is shared by the
+    /// tests that run beside each other, so "not asked" is not one of its
+    /// readings.
+    fn forbidden_picker(_: &Path) -> Task<Option<PathBuf>> {
+        panic!("the folder dialog was opened")
+    }
+
+    fn recording_grant(dir: &Path, folder: &Path) -> Result<(), String> {
+        let mut recorded = GRANTED.lock().map_err(|err| err.to_string())?;
+        recorded.push((dir.to_path_buf(), folder.to_path_buf()));
+        Ok(())
+    }
+
+    fn refusing_grant(_: &Path, _: &Path) -> Result<(), String> {
+        Err("bookmark refused".to_owned())
+    }
+
+    fn sandboxed(readable: bool, grant: fn(&Path, &Path) -> Result<(), String>) -> App {
+        let mut app = App::with_fixed_panels();
+        app.pick_folder = counting_picker;
+        app.sandbox = fs::SandboxAccess {
+            active: true,
+            grants_dir: Some(PathBuf::from("grants-of-this-test")),
+            home_readable: if readable { || true } else { || false },
+            grant,
+        };
+        app
+    }
+
+    fn send(app: &mut App, message: GrantMessage) {
+        drop(app.update(Message::Grant(message)));
+    }
+
+    /// What the tasks `message` starts report, not yet delivered.
+    async fn reports(app: &mut App, message: GrantMessage) -> Vec<Message> {
+        use iced_test::futures::futures::StreamExt as _;
+        use iced_test::runtime::{task, Action};
+        let mut found = Vec::new();
+        if let Some(mut stream) = task::into_stream(app.update(Message::Grant(message))) {
+            while let Some(action) = stream.next().await {
+                if let Action::Output(reported) = action {
+                    found.push(reported);
+                }
+            }
+        }
+        found
+    }
+
+    /// Picks `folder` and delivers the answer of the thread that saves it.
+    async fn pick(app: &mut App, folder: PathBuf) {
+        for reported in reports(app, GrantMessage::Picked(Some(folder))).await {
+            drop(app.update(reported));
+        }
+    }
+
+    fn granted_for(folder: &Path) -> Vec<PathBuf> {
+        GRANTED
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, granted)| granted == folder)
+            .map(|(dir, _)| dir.clone())
+            .collect()
+    }
+
+    #[test]
+    fn the_dialog_opens_only_in_the_sandbox_while_home_cannot_be_read() {
+        let mut closed_home = sandboxed(false, recording_grant);
+        closed_home.open_grant_dialog_if_needed();
+        assert!(closed_home.grant_dialog);
+        assert!(closed_home.blocking_overlay_is_open());
+
+        let mut open_home = sandboxed(true, recording_grant);
+        open_home.open_grant_dialog_if_needed();
+        assert!(!open_home.grant_dialog);
+
+        let mut outside = sandboxed(false, recording_grant);
+        outside.sandbox.active = false;
+        outside.open_grant_dialog_if_needed();
+        assert!(!outside.grant_dialog);
+    }
+
+    #[test]
+    fn a_normal_start_opens_no_dialog() {
+        let (app, _) = App::with_environment(Environment::isolated());
+        assert!(!app.grant_dialog);
+        assert!(!app.sandbox.active);
+    }
+
+    #[test]
+    fn later_closes_the_dialog_and_grants_nothing() {
+        let mut app = sandboxed(false, recording_grant);
+        app.open_grant_dialog_if_needed();
+
+        send(&mut app, GrantMessage::Later);
+
+        assert!(!app.grant_dialog);
+        assert!(!app.blocking_overlay_is_open());
+        assert!(
+            app.sandbox.active,
+            "the sandbox stays on, only the dialog goes"
+        );
+        assert!(app.status_error().is_none());
+    }
+
+    #[test]
+    fn escape_is_later_and_enter_presses_the_focused_button() {
+        let mut app = sandboxed(false, recording_grant);
+        app.open_grant_dialog_if_needed();
+        let route = |current: &App, key: Named| {
+            route_key(
+                &current.prompt_key_state(),
+                Key::Named(key),
+                Modifiers::default(),
+            )
+        };
+
+        assert_eq!(
+            route(&app, Named::Escape),
+            Some(Message::Grant(GrantMessage::Later))
+        );
+        assert_eq!(app.dialog_focus, grant_ui::GRANT_FOCUS);
+        assert_eq!(route(&app, Named::Enter), Some(Message::DialogActivate));
+
+        drop(app.update(Message::DialogFocus(-1)));
+        assert_eq!(app.dialog_focus, grant_ui::LATER_FOCUS);
+        drop(app.update(Message::DialogActivate));
+        assert!(!app.grant_dialog, "Enter on Later closes it");
+    }
+
+    #[test]
+    fn choosing_opens_the_folder_dialog_and_keeps_the_dialog_up() {
+        let mut app = sandboxed(false, recording_grant);
+        app.open_grant_dialog_if_needed();
+        let picks = PICKS.load(Ordering::SeqCst);
+
+        drop(app.update(Message::DialogActivate));
+
+        assert!(PICKS.load(Ordering::SeqCst) > picks);
+        assert!(app.grant_dialog);
+    }
+
+    #[test]
+    fn a_cancelled_folder_dialog_changes_nothing() {
+        let mut app = sandboxed(false, recording_grant);
+        app.open_grant_dialog_if_needed();
+
+        send(&mut app, GrantMessage::Picked(None));
+
+        assert!(app.grant_dialog);
+        assert!(app.status_error().is_none());
+    }
+
+    #[tokio::test]
+    async fn a_chosen_folder_is_saved_off_the_ui_thread_and_both_panels_load_again() {
+        let folder = PathBuf::from("chosen-and-saved");
+        let mut app = sandboxed(false, recording_grant);
+        app.open_grant_dialog_if_needed();
+        let before = (app.left_panel.request_id, app.right_panel.request_id);
+
+        let reported = reports(&mut app, GrantMessage::Picked(Some(folder.clone()))).await;
+
+        assert!(!app.grant_dialog, "the dialog goes at the choice");
+        assert_eq!(
+            (app.left_panel.request_id, app.right_panel.request_id),
+            before,
+            "nothing reloads before the grant is saved"
+        );
+        assert_eq!(
+            reported,
+            [Message::Grant(GrantMessage::Saved {
+                folder: folder.clone(),
+                result: Ok(()),
+            })]
+        );
+        assert_eq!(
+            granted_for(&folder),
+            vec![PathBuf::from("grants-of-this-test")]
+        );
+        for message in reported {
+            drop(app.update(message));
+        }
+        assert_ne!(app.left_panel.request_id, before.0);
+        assert_ne!(app.right_panel.request_id, before.1);
+        assert!(app.notice.as_deref().unwrap().contains("chosen-and-saved"));
+        assert!(app.status_error().is_none());
+    }
+
+    #[tokio::test]
+    async fn a_grant_that_cannot_be_saved_is_reported_and_loads_nothing() {
+        let mut app = sandboxed(false, refusing_grant);
+        app.open_grant_dialog_if_needed();
+        let before = (app.left_panel.request_id, app.right_panel.request_id);
+
+        pick(&mut app, PathBuf::from("refused")).await;
+
+        let error = app.status_error().unwrap();
+        assert!(
+            error.contains("refused") && error.contains("bookmark refused"),
+            "{error}"
+        );
+        assert!(!app.grant_dialog, "the status bar must not stay dimmed");
+        assert_eq!(
+            (app.left_panel.request_id, app.right_panel.request_id),
+            before
+        );
+    }
+
+    #[tokio::test]
+    async fn without_a_data_folder_the_grant_is_refused_and_not_attempted() {
+        let folder = PathBuf::from("no-data-folder");
+        let mut app = sandboxed(false, recording_grant);
+        app.sandbox.grants_dir = None;
+
+        pick(&mut app, folder.clone()).await;
+
+        assert!(granted_for(&folder).is_empty());
+        assert!(app.status_error().unwrap().contains("data folder"));
+    }
+
+    #[test]
+    fn the_command_opens_the_folder_dialog_in_the_sandbox() {
+        let mut app = sandboxed(true, recording_grant);
+        let picks = PICKS.load(Ordering::SeqCst);
+
+        drop(app.update(KeyAction::GrantFolderAccess.message()));
+
+        assert!(PICKS.load(Ordering::SeqCst) > picks);
+        assert!(!app.grant_dialog, "only the first start shows the dialog");
+    }
+
+    #[test]
+    fn the_command_does_nothing_while_another_dialog_is_up() {
+        let mut app = sandboxed(true, recording_grant);
+        app.pick_folder = forbidden_picker;
+        app.open_delete_dialog_for_test(1, false);
+
+        drop(app.update(KeyAction::GrantFolderAccess.message()));
+    }
+
+    #[test]
+    fn outside_the_sandbox_the_command_says_it_is_not_needed() {
+        let mut app = App::with_fixed_panels();
+        app.pick_folder = forbidden_picker;
+
+        drop(app.update(KeyAction::GrantFolderAccess.message()));
+
+        assert!(app.notice.as_deref().unwrap().contains("App Store"));
+    }
+
+    #[test]
+    fn the_command_is_listed_only_in_the_sandbox() {
+        let listed =
+            crate::commands::all().any(|command| command.action == KeyAction::GrantFolderAccess);
+        assert_eq!(listed, fs::sandbox_active());
+        assert!(!fs::sandbox_active(), "tests never run in the sandbox");
+    }
+
+    #[test]
+    fn the_app_store_build_keeps_its_key_apart_from_the_installed_one() {
+        assert_eq!(APP_STORE_KEY_SERVICE, "ncrs-appstore");
+    }
+
+    #[test]
+    fn the_command_has_no_key_and_works_in_an_archive() {
+        assert!(KeyAction::GrantFolderAccess.allowed_in_archive());
+        assert!(Keymap::built_in()
+            .bindings_of(KeyAction::GrantFolderAccess)
+            .next()
+            .is_none());
     }
 }

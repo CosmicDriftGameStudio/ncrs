@@ -217,6 +217,7 @@ impl KeyBindings {
             .collect();
         let mut rows: Vec<Row> = KeyAction::ALL
             .iter()
+            .filter(|action| action.is_offered())
             .map(|action| row_of(*action, self.lang, keymap))
             .filter(|row| match &self.key_filter {
                 Some(binding) => row.keys.contains(binding),
@@ -595,10 +596,23 @@ mod tests {
     }
 
     #[test]
+    fn the_grant_action_is_not_listed_outside_the_sandbox() {
+        let keymap = Keymap::built_in();
+        let dialog = KeyBindings::new(Language::English, &keymap);
+        assert!(!crate::fs::sandbox_active());
+        assert!(dialog
+            .rows()
+            .iter()
+            .all(|row| row.action != KeyAction::GrantFolderAccess));
+        assert_eq!(dialog.rows().len(), KeyAction::ALL.len() - 1);
+    }
+
+    #[test]
     fn every_action_is_listed_by_its_name_in_the_ui_language() {
         let keymap = Keymap::built_in();
         let dialog = KeyBindings::new(Language::German, &keymap);
-        assert_eq!(dialog.rows().len(), KeyAction::ALL.len());
+        let offered = KeyAction::ALL.iter().filter(|a| a.is_offered()).count();
+        assert_eq!(dialog.rows().len(), offered);
         for row in dialog.rows() {
             assert!(
                 action_label(row.action).is_some(),

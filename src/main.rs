@@ -233,6 +233,7 @@ fn main() -> iced::Result {
     backend::log_backend();
 
     let environment = app::Environment::of_the_user();
+    fs::restore_grants(environment.index_path.as_deref());
     let saved = environment
         .state_path
         .as_deref()
