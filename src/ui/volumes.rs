@@ -11,6 +11,7 @@ use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints, PageHint};
 use super::kit;
 use super::theme::{self, font_size, spacing};
+use crate::fs::remote::ServerId;
 use crate::fs::Volume;
 use crate::i18n::{Language, Msg};
 use crate::messages::{Message, PanelSide};
@@ -47,6 +48,26 @@ impl FavouriteRow {
     }
 }
 
+/// A server as the menu lists it: a saved one, or one connected now.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerRow {
+    pub label: String,
+    /// The address, which is also the path the panel is sent to.
+    pub url: PathBuf,
+    pub server: ServerId,
+    /// The connection is open at the moment.
+    pub connected: bool,
+}
+
+const SERVER_HINTS: &[PageHint] = &[PageHint {
+    key: if cfg!(target_os = "macos") {
+        "⌫"
+    } else {
+        "Del"
+    },
+    verb: Msg::VolumesHintDisconnect,
+}];
+
 /// The footer names the key that removes a favourite only while one is
 /// highlighted.
 const FAVOURITE_HINTS: &[PageHint] = &[PageHint {
@@ -62,36 +83,52 @@ const NO_HINTS: &[PageHint] = &[];
 
 /// Index of the first line shown when the line at `position` is highlighted:
 /// the window only moves once the highlight would leave it. Lines are the
-/// drives, then the heading of the favourites, then the favourites.
+/// drives, then the heading of the favourites and the favourites, then the
+/// heading of the servers and the servers.
 pub fn first_visible(position: usize) -> usize {
     (position + 1).saturating_sub(VISIBLE_ROWS)
 }
 
-/// The line `selected` is drawn on: the heading of the favourites sits between
-/// the last drive and the first favourite.
-fn line_of(selected: usize, drive_count: usize) -> usize {
-    if selected >= drive_count {
+/// The line `selected` is drawn on: a heading sits in front of the favourites
+/// and in front of the servers, when there are any.
+fn line_of(selected: usize, drive_count: usize, favourite_count: usize) -> usize {
+    if selected < drive_count {
+        selected
+    } else if selected < drive_count + favourite_count {
         selected + 1
     } else {
-        selected
+        selected + usize::from(favourite_count > 0) + 1
     }
 }
 
 enum Line<'a> {
     Drive(usize, &'a Volume),
-    Heading,
+    Heading(Msg),
     Favourite(usize, &'a FavouriteRow),
+    Server(usize, &'a ServerRow),
+}
+
+/// What the menu lists, in this order.
+#[derive(Debug, Clone, Copy)]
+pub struct MenuRows<'a> {
+    pub volumes: &'a [Volume],
+    pub favourites: &'a [FavouriteRow],
+    pub servers: &'a [ServerRow],
 }
 
 pub fn view<'a>(
     side: PanelSide,
-    volumes: &'a [Volume],
-    favourites: &'a [FavouriteRow],
+    listed: MenuRows<'a>,
     selected: usize,
     window: Size,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
+    let MenuRows {
+        volumes,
+        favourites,
+        servers,
+    } = listed;
     let subtitle = match side {
         PanelSide::Left => Msg::VolumesSubtitleLeft,
         PanelSide::Right => Msg::VolumesSubtitleRight,
@@ -102,7 +139,7 @@ pub fn view<'a>(
         .map(|(index, volume)| Line::Drive(index, volume))
         .collect();
     if !favourites.is_empty() {
-        lines.push(Line::Heading);
+        lines.push(Line::Heading(Msg::VolumesFavouritesHeading));
         lines.extend(
             favourites
                 .iter()
@@ -110,7 +147,17 @@ pub fn view<'a>(
                 .map(|(index, row)| Line::Favourite(volumes.len() + index, row)),
         );
     }
-    let first = first_visible(line_of(selected, volumes.len()));
+    if !servers.is_empty() {
+        lines.push(Line::Heading(Msg::VolumesServersHeading));
+        let before = volumes.len() + favourites.len();
+        lines.extend(
+            servers
+                .iter()
+                .enumerate()
+                .map(|(index, row)| Line::Server(before + index, row)),
+        );
+    }
+    let first = first_visible(line_of(selected, volumes.len(), favourites.len()));
     let row_width = frame::content_width(SIZE, window) - 2.0 * spacing::CELL_PADDING_X;
     let name_chars = frame::chars_that_fit(row_width * NAME_SHARE);
     let path_chars = frame::chars_that_fit(row_width * PATH_SHARE);
@@ -121,10 +168,10 @@ pub fn view<'a>(
         .take(VISIBLE_ROWS)
         .map(|line| {
             let (index, name, path, present) = match line {
-                Line::Heading => {
+                Line::Heading(title) => {
                     return column![
                         kit::divider(palette),
-                        text(lang.text(Msg::VolumesFavouritesHeading))
+                        text(lang.text(title))
                             .size(font_size::BODY)
                             .color(palette.dim_text),
                     ]
@@ -144,6 +191,14 @@ pub fn view<'a>(
                     row.path.to_string_lossy().into_owned(),
                     row.present,
                 ),
+                Line::Server(index, row) => {
+                    let name = if row.connected {
+                        format!("{} ({})", row.label, lang.text(Msg::VolumesServerConnected))
+                    } else {
+                        row.label.clone()
+                    };
+                    (index, name, row.url.to_string_lossy().into_owned(), true)
+                }
             };
             let is_selected = index == selected;
             let name_color = match (is_selected, present) {
@@ -189,7 +244,12 @@ pub fn view<'a>(
                 .into()
         });
 
-    let on_favourite = !favourites.is_empty() && selected >= volumes.len();
+    let on_favourite = !favourites.is_empty()
+        && (volumes.len()..volumes.len() + favourites.len()).contains(&selected);
+    let on_connected_server = selected
+        .checked_sub(volumes.len() + favourites.len())
+        .and_then(|index| servers.get(index))
+        .is_some_and(|row| row.connected);
     Frame::new(
         lang.text(subtitle),
         column![Column::with_children(rows)],
@@ -204,6 +264,8 @@ pub fn view<'a>(
     .hints(KeyHints::default())
     .page_hints(if on_favourite {
         FAVOURITE_HINTS
+    } else if on_connected_server {
+        SERVER_HINTS
     } else {
         NO_HINTS
     })

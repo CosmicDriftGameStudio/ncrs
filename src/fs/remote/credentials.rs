@@ -57,6 +57,7 @@ impl KeyringPasswords {
     }
 
     fn entry(&self, server: &ServerId) -> Result<keyring::Entry, String> {
+        crate::config::forbid_user_machine_in_tests("the system keychain for SFTP passwords");
         let (service, account) = self.names(server);
         keyring::Entry::new(service, &account).map_err(|error| error.to_string())
     }

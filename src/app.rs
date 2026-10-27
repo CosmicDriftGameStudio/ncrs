@@ -30,6 +30,10 @@ use crate::filing::{
 use crate::filing_setup::{self, FilePick, FilingSetup, SetupNote};
 use crate::filing_status::{FilingStatus, SNAPSHOT_EVERY};
 use crate::filing_work::FilingSummary;
+use crate::fs::remote::credentials::KeyringPasswords;
+use crate::fs::remote::credentials::PasswordStore;
+use crate::fs::remote::session::{ConnectFailure, Pool};
+use crate::fs::remote::{KnownHostsFiles, RemotePath, Secret, ServerId};
 use crate::fs::{self, CreateDirError};
 use crate::hermes_column::{
     role_of, ColumnRequest, ColumnStage, ColumnView, FileDetail, FolderRole, HermesColumn,
@@ -44,11 +48,11 @@ use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 use crate::menu::Availability;
 use crate::messages::{
     AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage, ConflictChoice,
-    FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesColumnMessage, HermesFileMessage,
-    HermesFocus, HermesPage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide,
-    QuickFixMessage, QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage,
-    RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage,
-    ThemeFetchMessage, TitleBarMessage, TransferKind,
+    ConnectField, FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesColumnMessage,
+    HermesFileMessage, HermesFocus, HermesPage, KeyBindingsMessage, Message, OcrModelsMessage,
+    PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage,
+    ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingChange,
+    SettingsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -58,6 +62,7 @@ use crate::palette::{Palette, ThemePreset};
 use crate::query_work::{self, QueryAccess};
 use crate::quick_fix::{field_to_fix, QuickFix, QuickFixAction};
 use crate::quick_open::{DocumentRequest, QuickOpen, MAX_DOCUMENT_HITS, QUICK_OPEN_FILE_LIMIT};
+use crate::remote_dialog::{self, ConnectDialog, Missing, Then};
 use crate::reorganisation_plan::ReorganisationView;
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
 use crate::review_list::{FormField, ReviewList};
@@ -84,6 +89,7 @@ use crate::ui::key_bindings as key_bindings_ui;
 use crate::ui::ocr_models as ocr_models_ui;
 use crate::ui::quick_fix as quick_fix_view;
 use crate::ui::quick_open as quick_open_ui;
+use crate::ui::remote as remote_ui;
 use crate::ui::reorganisation_plan as reorganisation_plan_ui;
 use crate::ui::review_list as review_list_ui;
 use crate::ui::rule_suggestions as rule_suggestions_ui;
@@ -93,7 +99,7 @@ use crate::ui::settings as settings_ui;
 use crate::ui::theme_fetch as theme_fetch_ui;
 use crate::ui::titlebar;
 use crate::ui::transfer as transfer_ui;
-use crate::ui::volumes::{self as volumes_view, FavouriteRow};
+use crate::ui::volumes::{self as volumes_view, FavouriteRow, ServerRow};
 use crate::ui::{conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelProps, PanelState};
 use ncrs_index::{IncludeOutcome, KeyStore, KeyringKeyStore};
 use ncrs_intake::LocationMode;
@@ -141,6 +147,38 @@ fn archive_refusal(panel: &PanelState, message: &Message) -> Option<Msg> {
         {
             Some(Msg::StatusArchiveNested)
         }
+        _ => None,
+    }
+}
+
+/// What a panel on an SFTP server refuses: what would change something there,
+/// the command line, which runs on this computer, and whatever would take the
+/// folder into the config or to Hermes. Browsing, viewing and copying are what
+/// it does; the lists of what may run are `allowed_on_server` on the three
+/// action enums.
+fn remote_refusal(panel: &PanelState, message: &Message) -> Option<Msg> {
+    panel.remote()?;
+    match message {
+        Message::CommandLine(CommandLineMessage::Focus) => Some(Msg::StatusRemoteNoShell),
+        Message::Transfer(TransferKind::Move)
+        | Message::OpenExternal(_)
+        | Message::Transfer(TransferKind::Copy)
+        | Message::Delete { .. }
+        | Message::CreateDirPrompt
+        | Message::CreateFilePrompt
+        | Message::OpenSearch
+        | Message::AddFavourite
+        | Message::RemoveFavourite
+        | Message::QuickFix(QuickFixMessage::Open)
+        | Message::FilingSetup(FilingSetupMessage::AddPanelFolder(_))
+        | Message::HermesFile(
+            HermesFileMessage::HandToInbox
+            | HermesFileMessage::ProcessAgain
+            | HermesFileMessage::SetRole(_)
+            | HermesFileMessage::ToggleExclusion
+            | HermesFileMessage::ShowInInspection,
+        )
+        | Message::QuickOpen(QuickOpenMessage::Open) => Some(Msg::StatusRemoteReadOnly),
         _ => None,
     }
 }
@@ -399,6 +437,7 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::OcrModels(OcrModelsMessage::Open)
             | Message::AiModel(AiModelMessage::Open)
             | Message::Grant(GrantMessage::Open)
+            | Message::Remote(RemoteMessage::OpenConnect)
             | Message::Settings(_)
             | Message::FilingStatus(FilingStatusMessage::Open)
             | Message::FilingSetup(
@@ -656,8 +695,10 @@ struct VolumeMenu {
     volumes: Vec<fs::Volume>,
     /// Listed below the drives; `present` is read when the menu opens.
     favourites: Vec<FavouriteRow>,
+    /// The servers, below the favourites.
+    servers: Vec<ServerRow>,
     /// The highlighted row, the one Enter goes to. Counts the drives first,
-    /// then the favourites.
+    /// then the favourites, then the servers.
     selected: usize,
 }
 
@@ -675,6 +716,7 @@ impl VolumeMenu {
             side,
             volumes,
             favourites: Vec::new(),
+            servers: Vec::new(),
             selected,
         }
     }
@@ -684,9 +726,14 @@ impl VolumeMenu {
         self
     }
 
-    /// Drives and favourites together: what `selected` runs over.
+    fn with_servers(mut self, servers: Vec<ServerRow>) -> Self {
+        self.servers = servers;
+        self
+    }
+
+    /// Drives, favourites and servers together: what `selected` runs over.
     fn row_count(&self) -> usize {
-        self.volumes.len() + self.favourites.len()
+        self.volumes.len() + self.favourites.len() + self.servers.len()
     }
 
     fn last_row(&self) -> usize {
@@ -705,6 +752,13 @@ impl VolumeMenu {
         self.selected
             .checked_sub(self.volumes.len())
             .filter(|index| *index < self.favourites.len())
+    }
+
+    /// The index among the servers when the highlight is on one.
+    fn selected_server(&self) -> Option<usize> {
+        self.selected
+            .checked_sub(self.volumes.len() + self.favourites.len())
+            .filter(|index| *index < self.servers.len())
     }
 }
 
@@ -1028,6 +1082,15 @@ pub struct App {
     /// The App Sandbox side: whether it applies, where grants are kept, and
     /// the checks that touch the system. Injected so tests need no sandbox.
     sandbox: fs::SandboxAccess,
+    /// The connections to SFTP servers.
+    remote: Arc<Pool>,
+    /// Where the passwords the user asked to remember are kept.
+    passwords: Arc<dyn PasswordStore>,
+    /// The dialog that connects to a server, while it is up.
+    connect_dialog: Option<ConnectDialog>,
+    /// Counts the attempts to connect, so the late answer of an old one is
+    /// dropped.
+    connect_attempts: u64,
     /// Counts the cards opened, so the late answer of a closed one is dropped.
     ai_model_generation: u64,
     /// The card opened by itself for a missing model; once per start, so a
@@ -1103,6 +1166,9 @@ pub struct PromptKeyState {
     pub ai_model: bool,
     /// The dialog that asks for access to the home folder is up.
     pub grant_dialog: bool,
+    /// The dialog that connects to a server is up, so the text fields take the
+    /// typing and Tab moves between them.
+    pub connect_dialog: bool,
     /// The settings tab is up, so the panel keys are inert and Escape closes it.
     pub settings: bool,
     /// The delete dialog is up, so keys answer it.
@@ -1152,6 +1218,7 @@ impl Default for PromptKeyState {
             ocr_models: false,
             ai_model: false,
             grant_dialog: false,
+            connect_dialog: false,
             settings: false,
             delete_dialog: DeleteKeys::default(),
             volume_menu: false,
@@ -1438,6 +1505,27 @@ fn context_menu_key(prompt: &PromptKeyState, key: &Key) -> Option<Message> {
     }
 }
 
+/// The keys of the connect dialog: its fields take the typing and Enter, Tab
+/// goes from one to the next, Escape closes it. Of the bindings only quitting
+/// reaches past it.
+fn connect_dialog_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    match key.as_ref() {
+        Key::Named(Named::Escape) => Some(Message::Remote(RemoteMessage::Cancel)),
+        Key::Named(Named::Enter) => Some(Message::Remote(RemoteMessage::Submit)),
+        Key::Named(Named::Tab) => Some(Message::Remote(RemoteMessage::FocusField {
+            backwards: key_modifiers.shift(),
+        })),
+        _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
+            .filter(|message| *message == Message::Quit)
+            .filter(|_| is_not_typed_by_text_field(key, key_modifiers)),
+    }
+}
+
 fn keys_without_prompt(
     prompt: &PromptKeyState,
     key: Key,
@@ -1490,6 +1578,12 @@ fn keys_without_prompt(
 
     if prompt.key_bindings {
         return key_bindings_key(prompt, &key, key_modifiers);
+    }
+
+    // The fields take the typing and Enter; Tab goes from one to the next. Of
+    // the bindings only quitting reaches past the dialog.
+    if prompt.connect_dialog {
+        return connect_dialog_key(prompt, &key, key_modifiers, scope);
     }
 
     // Cancel has the focus when a download card opens, so Enter alone never
@@ -2163,6 +2257,15 @@ pub fn route_key(prompt: &PromptKeyState, key: Key, modifiers: Modifiers) -> Opt
     }
 }
 
+/// `name` in `folder`. A folder on a server is joined as text, because
+/// `Path::join` would put a backslash in on Windows.
+fn child_path(folder: &Path, name: &std::ffi::OsStr) -> PathBuf {
+    match (RemotePath::parse(folder), name.to_str()) {
+        (Some(place), Some(plain)) => place.join(plain).to_path_buf(),
+        _ => folder.join(name),
+    }
+}
+
 /// What goes on the clipboard, and for how many rows.
 #[derive(Debug, PartialEq, Eq)]
 struct ClipboardText {
@@ -2180,6 +2283,7 @@ fn clipboard_text(panel: &PanelState, kind: ClipboardKind) -> Option<ClipboardTe
             text: panel.path.to_string_lossy().into_owned(),
         });
     }
+    let child = |name: &std::ffi::OsStr| child_path(&panel.path, name);
     let render = |path: &std::path::Path, name: &std::ffi::OsStr| match kind {
         ClipboardKind::Name => name.to_string_lossy().into_owned(),
         ClipboardKind::Path | ClipboardKind::Directory => path.to_string_lossy().into_owned(),
@@ -2189,7 +2293,7 @@ fn clipboard_text(panel: &PanelState, kind: ClipboardKind) -> Option<ClipboardTe
             .selection
             .ordered(&panel.entries)
             .into_iter()
-            .map(|entry| render(&panel.path.join(&entry.name), &entry.name))
+            .map(|entry| render(&child(&entry.name), &entry.name))
             .collect()
     } else {
         let entry = panel.selected_entry()?;
@@ -2197,7 +2301,7 @@ fn clipboard_text(panel: &PanelState, kind: ClipboardKind) -> Option<ClipboardTe
             let own_name = panel.path.file_name().unwrap_or(panel.path.as_os_str());
             vec![render(&panel.path, own_name)]
         } else {
-            vec![render(&panel.path.join(&entry.name), &entry.name)]
+            vec![render(&child(&entry.name), &entry.name)]
         }
     };
     (!lines.is_empty()).then(|| ClipboardText {
@@ -2227,6 +2331,12 @@ pub struct Environment {
     /// The cache folder F3 unpacks archive files into.
     pub view_copies_dir: Option<PathBuf>,
     pub key_store: Arc<dyn KeyStore + Send + Sync>,
+    /// Where the passwords of SFTP servers are kept, when the user asks for it.
+    pub passwords: Arc<dyn PasswordStore>,
+    /// The user's OpenSSH `known_hosts`, which is only read.
+    pub ssh_known_hosts: Option<PathBuf>,
+    /// The host keys the user confirmed in ncrs.
+    pub own_known_hosts: Option<PathBuf>,
 }
 
 impl std::fmt::Debug for Environment {
@@ -2236,6 +2346,8 @@ impl std::fmt::Debug for Environment {
             .field("index_path", &self.index_path)
             .field("state_path", &self.state_path)
             .field("view_copies_dir", &self.view_copies_dir)
+            .field("ssh_known_hosts", &self.ssh_known_hosts)
+            .field("own_known_hosts", &self.own_known_hosts)
             .finish_non_exhaustive()
     }
 }
@@ -2249,6 +2361,9 @@ impl Environment {
             state_path: config::default_state_path(),
             view_copies_dir: config::default_view_copies_dir(),
             key_store: Arc::new(user_key_store()),
+            passwords: Arc::new(KeyringPasswords::new()),
+            ssh_known_hosts: Some(config::default_ssh_known_hosts_path()),
+            own_known_hosts: config::default_known_hosts_path(),
         }
     }
 
@@ -2262,6 +2377,9 @@ impl Environment {
             state_path: None,
             view_copies_dir: None,
             key_store: Arc::new(ncrs_index::InMemoryKeyStore::empty()),
+            passwords: Arc::new(fs::remote::credentials::InMemoryPasswords::default()),
+            ssh_known_hosts: None,
+            own_known_hosts: None,
         }
     }
 }
@@ -2307,6 +2425,9 @@ impl App {
             state_path,
             view_copies_dir,
             key_store,
+            passwords,
+            ssh_known_hosts,
+            own_known_hosts,
         } = environment;
         let loaded = config_path
             .as_deref()
@@ -2331,6 +2452,11 @@ impl App {
         panels.config_path = config_path;
         panels.state_path = state_path;
         panels.sandbox = fs::SandboxAccess::detect(index_path.as_deref());
+        panels.remote = Arc::new(Pool::over_tcp(KnownHostsFiles {
+            ssh: ssh_known_hosts,
+            own: own_known_hosts,
+        }));
+        panels.passwords = passwords;
         panels.open_grant_dialog_if_needed();
         panels.view_copies = view_copies_dir
             .as_deref()
@@ -2633,6 +2759,10 @@ impl App {
             download_ai_model,
             grant_dialog: false,
             sandbox: fs::SandboxAccess::detect(None),
+            remote: Arc::new(Pool::over_tcp(KnownHostsFiles::default())),
+            passwords: Arc::new(KeyringPasswords::new()),
+            connect_dialog: None,
+            connect_attempts: 0,
         };
 
         let tasks = Task::batch([
@@ -2968,10 +3098,7 @@ impl App {
                 }
                 Task::none()
             }
-            Message::VolumeMenuRemove => {
-                self.remove_highlighted_favourite();
-                Task::none()
-            }
+            Message::VolumeMenuRemove => self.remove_highlighted_row(),
             Message::HistoryBack => self.step_history(HistoryDirection::Back),
             Message::HistoryForward => self.step_history(HistoryDirection::Forward),
             Message::AddFavourite => self.add_favourite(),
@@ -3294,6 +3421,7 @@ impl App {
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::AiModel(model_message) => self.update_ai_model(model_message),
             Message::Grant(grant_message) => self.update_grant(grant_message),
+            Message::Remote(remote_message) => self.update_remote(remote_message),
             Message::Settings(settings_message) => self.update_settings(settings_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => self.update_filing_status(page_message),
@@ -3721,6 +3849,15 @@ impl App {
                 self.command_line.leave();
                 release_focus()
             }
+            // Neither a `cd` nor a command means anything on a server: the
+            // line runs on this computer.
+            Submission::ChangeDirectory(_) | Submission::Shell(_)
+                if self.active_panel().remote().is_some() =>
+            {
+                let text = self.lang.text(Msg::StatusRemoteNoShell).to_owned();
+                self.set_status_error(&text);
+                Task::none()
+            }
             Submission::ChangeDirectory(path) => {
                 self.command_line.remember(&typed);
                 let side = self.active_panel;
@@ -3857,6 +3994,11 @@ impl App {
             return release_focus();
         }
         let side = self.active_panel;
+        // Before anything that asks the disk: an address, or a path typed
+        // while the panel is on a server, is no path of this computer.
+        if let Some(opened) = self.open_typed_remote(side, typed) {
+            return opened;
+        }
         let target = fs::resolve_typed_path(&self.active_panel().path, &self.home, typed);
         self.path_check_id = self.path_check_id.wrapping_add(1);
         let request_id = self.path_check_id;
@@ -3868,6 +4010,57 @@ impl App {
                 result,
             }
         })
+    }
+
+    /// What typing `typed` into the path field does when it names a server: an
+    /// `sftp://` address opens it (or the connect dialog, when the address has
+    /// no user), a path typed over a server's folder is read on that server.
+    /// `None` for an ordinary path.
+    fn open_typed_remote(&mut self, side: PanelSide, typed: &str) -> Option<Task<Message>> {
+        let is_address = typed
+            .get(..7)
+            .is_some_and(|scheme| scheme.eq_ignore_ascii_case("sftp://"));
+        let target = if is_address {
+            match fs::remote::parse_url(typed) {
+                Ok(url) => match url.remote_path() {
+                    Some(place) => place,
+                    None => {
+                        self.set_path_field(None);
+                        let opened = self.open_connect_dialog_for(&url);
+                        return Some(Task::batch([opened, release_focus()]));
+                    }
+                },
+                Err(_) => {
+                    let text = self.lang.text(Msg::ErrorRemoteUrlInvalid).to_owned();
+                    self.set_status_error(&text);
+                    return Some(Task::none());
+                }
+            }
+        } else {
+            let place = RemotePath::parse(&self.active_panel().path)?;
+            let home = self
+                .remote
+                .session(place.server())
+                .map_or_else(|| "/".to_owned(), |session| session.home().to_owned());
+            place.resolve_typed(typed, &home)
+        };
+        self.set_path_field(None);
+        self.job_error = None;
+        self.notice = None;
+        Some(Task::batch([
+            self.load(side, target.to_path_buf(), None),
+            release_focus(),
+        ]))
+    }
+
+    /// The connect dialog for an address that names no user.
+    fn open_connect_dialog_for(&mut self, url: &fs::remote::RemoteUrl) -> Task<Message> {
+        if self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        self.connect_attempts = self.connect_attempts.wrapping_add(1);
+        self.connect_dialog = Some(ConnectDialog::for_address(self.connect_attempts, url));
+        operation::focus(remote_ui::field_id(ConnectField::User))
     }
 
     /// The answer to [`Self::go_to_typed_path`]: a destination closes the field
@@ -4163,8 +4356,11 @@ impl App {
         if let Some(menu) = self.volume_menu.as_ref() {
             let menu_element = volumes_view::view(
                 menu.side,
-                &menu.volumes,
-                &menu.favourites,
+                volumes_view::MenuRows {
+                    volumes: &menu.volumes,
+                    favourites: &menu.favourites,
+                    servers: &menu.servers,
+                },
                 menu.selected,
                 self.window_size,
                 self.lang,
@@ -4205,6 +4401,12 @@ impl App {
                 &self.palette,
             );
             return Stack::with_children([root, dialog::scrim(card_element)]).into();
+        }
+
+        if let Some(dialog) = self.connect_dialog.as_ref() {
+            let dialog_element =
+                remote_ui::view(dialog, self.window_size, self.lang, &self.palette);
+            return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
         }
 
         if self.grant_dialog {
@@ -4468,6 +4670,7 @@ impl App {
         let ocr_models = self.ocr_models.is_some();
         let ai_model = self.ai_model.is_some();
         let grant_dialog = self.grant_dialog;
+        let connect_dialog = self.connect_dialog.is_some();
         let settings = self.settings.is_some();
         let transfer_dialog = self.transfer_dialog.is_some();
         let transfer_progress = self.progress_mask_is_open();
@@ -4507,6 +4710,7 @@ impl App {
                 ocr_models,
                 ai_model,
                 grant_dialog,
+                connect_dialog,
                 settings,
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
@@ -4547,6 +4751,7 @@ impl App {
                 ocr_models,
                 ai_model,
                 grant_dialog,
+                connect_dialog,
                 settings,
                 conflict_open: self.pending_conflict.is_some(),
                 transfer_dialog,
@@ -4949,6 +5154,7 @@ impl App {
             || self.ocr_models.is_some()
             || self.ai_model.is_some()
             || self.grant_dialog
+            || self.connect_dialog.is_some()
             || self.filing_status.page_open()
     }
 
@@ -5314,15 +5520,40 @@ impl App {
                 present: path.is_dir(),
             })
             .collect();
-        if volumes.is_empty() && favourites.is_empty() {
+        let servers = self.server_rows();
+        if volumes.is_empty() && favourites.is_empty() && servers.is_empty() {
             return;
         }
-        let mut menu =
-            VolumeMenu::new(side, volumes, &self.panel(side).path).with_favourites(favourites);
+        let mut menu = VolumeMenu::new(side, volumes, &self.panel(side).path)
+            .with_favourites(favourites)
+            .with_servers(servers);
         if on_favourites {
             menu.selected = menu.volumes.len();
         }
+        // A panel on a server opens the menu on that server.
+        if let Some(current) = self.panel(side).remote() {
+            if let Some(index) = menu.servers.iter().position(|row| row.server == current) {
+                menu.selected = menu.volumes.len() + menu.favourites.len() + index;
+            }
+        }
         self.volume_menu = Some(menu);
+    }
+
+    /// The servers the drive menu lists: those connected now, by name.
+    fn server_rows(&self) -> Vec<ServerRow> {
+        let mut rows: Vec<ServerRow> = self
+            .remote
+            .connected()
+            .into_iter()
+            .map(|server| ServerRow {
+                label: server.to_string(),
+                url: server.root_path(),
+                server,
+                connected: true,
+            })
+            .collect();
+        rows.sort_by(|a, b| a.label.cmp(&b.label));
+        rows
     }
 
     /// The create of the name prompt has reported: close the prompt or show
@@ -5367,19 +5598,30 @@ impl App {
     }
 
     /// Delete or Backspace in the drive menu. A drive row ignores it.
-    fn remove_highlighted_favourite(&mut self) {
+    fn remove_highlighted_row(&mut self) -> Task<Message> {
         let Some(menu) = self.volume_menu.as_mut() else {
-            return;
+            return Task::none();
         };
+        let mut task = Task::none();
         if let Some(index) = menu.selected_favourite() {
             let removed = menu.favourites.remove(index);
             self.favourites.retain(|path| *path != removed.path);
             menu.selected = menu.selected.min(menu.last_row());
+        } else if let Some(index) = menu.selected_server() {
+            // A server is closed from its row; a connected one leaves the list.
+            let row = menu.servers.remove(index);
+            menu.selected = menu.selected.min(menu.last_row());
+            task = Task::done(Message::Remote(RemoteMessage::Disconnect(row.server)));
         }
         // Without drives, the last favourite leaves nothing to pick.
-        if menu.row_count() == 0 {
+        if self
+            .volume_menu
+            .as_ref()
+            .is_some_and(|open| open.row_count() == 0)
+        {
             self.volume_menu = None;
         }
+        task
     }
 
     /// Writes the session state here and now, then ends the app: the runtime
@@ -5396,6 +5638,7 @@ impl App {
         if let Some(copies) = self.view_copies.as_mut() {
             copies.close();
         }
+        self.remote.close_all();
         iced::exit()
     }
 
@@ -5453,13 +5696,23 @@ impl App {
         let Some(target) = stepped else {
             return Task::none();
         };
-        let resolved = session_state::nearest_existing_directory(&target).unwrap_or(target);
-        // Going up to a parent puts the cursor on the folder just left.
-        let select = current
-            .strip_prefix(&resolved)
-            .ok()
-            .and_then(|below| below.components().next())
-            .map(|first| first.as_os_str().to_string_lossy().into_owned());
+        let (resolved, select) = if let Some(place) = RemotePath::parse(&target) {
+            // Whether a folder on a server is still there is found out by
+            // opening it; going up puts the cursor on the folder just left.
+            let left = RemotePath::parse(&current)
+                .filter(|from| from.parent().as_ref() == Some(&place))
+                .and_then(|from| from.file_name().map(str::to_owned));
+            (target, left)
+        } else {
+            let resolved = session_state::nearest_existing_directory(&target).unwrap_or(target);
+            // Going up to a parent puts the cursor on the folder just left.
+            let select = current
+                .strip_prefix(&resolved)
+                .ok()
+                .and_then(|below| below.components().next())
+                .map(|first| first.as_os_str().to_string_lossy().into_owned());
+            (resolved, select)
+        };
         self.job_error = None;
         self.notice = None;
         let task = self.load(side, resolved, select);
@@ -5492,6 +5745,15 @@ impl App {
         };
         let target = match menu.volumes.get(menu.selected) {
             Some(volume) => volume.path.clone(),
+            None if menu.selected_server().is_some() => {
+                let Some(row) = menu
+                    .selected_server()
+                    .and_then(|index| menu.servers.get(index))
+                else {
+                    return Task::none();
+                };
+                row.url.clone()
+            }
             None => {
                 let Some(favourite) = menu
                     .selected
@@ -6561,7 +6823,7 @@ impl App {
             return self.go_up(side);
         }
         let opens_as_folder =
-            entry.is_dir || (panel.archive.is_none() && fs::archive::is_archive_name(&entry.name));
+            entry.is_dir || (!panel.is_virtual() && fs::archive::is_archive_name(&entry.name));
         if !opens_as_folder {
             // Placeholder for file actions (view / edit / open with …).
             return Task::none();
@@ -6572,7 +6834,8 @@ impl App {
 
     /// A panel inside an archive can be read and copied from, nothing else.
     fn apply_unless_refused(&mut self, message: Message) -> Task<Message> {
-        match archive_refusal(self.panel(self.source_side()), &message) {
+        let panel = self.panel(self.source_side());
+        match archive_refusal(panel, &message).or_else(|| remote_refusal(panel, &message)) {
             Some(refusal) => {
                 let text = self.lang.text(refusal).to_string();
                 self.set_status_error(&text);
@@ -6586,6 +6849,15 @@ impl App {
     /// we came from.
     fn go_up(&mut self, side: PanelSide) -> Task<Message> {
         let current = &self.panel(side).path;
+        // A server path is cut as text: `Path::parent` would answer `sftp:` at
+        // the root and does not know the root of a server.
+        if let Some(place) = RemotePath::parse(current) {
+            let Some(above) = place.parent() else {
+                return Task::none();
+            };
+            let came_from = place.file_name().map(str::to_owned);
+            return self.load(side, above.to_path_buf(), came_from);
+        }
         let Some(parent) = current.parent().map(PathBuf::from) else {
             return Task::none();
         };
@@ -6664,6 +6936,9 @@ impl App {
             // panel inside one is remembered as standing on the archive file.
             let (path, cursor) = match panel.archive.as_deref().and_then(archive_file_place) {
                 Some((folder, name)) => (session_state::record_path(folder), Some(name)),
+                // A server is never written to the file; the panel comes back
+                // in the home folder.
+                None if panel.remote().is_some() => (session_state::record_path(&self.home), None),
                 None => (
                     session_state::record_path(&panel.path),
                     panel
@@ -6799,7 +7074,9 @@ impl App {
 
     /// Searches again now, for when the files changed under the results.
     fn restart_search(&mut self) -> Task<Message> {
-        if !self.search_open {
+        // The search walks the disk of this computer; a panel on a server has
+        // nothing for it to walk.
+        if !self.search_open || self.panel(self.search_side).remote().is_some() {
             return Task::none();
         }
         self.search_handle = None;
@@ -9303,7 +9580,7 @@ impl App {
 
     fn request_panel_column(&mut self, side: PanelSide) -> Option<Task<Message>> {
         let panel = self.panel(side);
-        if panel.loading || panel.archive.is_some() {
+        if panel.loading || panel.is_virtual() {
             return None;
         }
         let directory = panel.path.clone();
@@ -9360,7 +9637,7 @@ impl App {
 
     /// The review of the file under the cursor, once, when it is an inquiry.
     fn request_cursor_detail(&mut self) -> Option<Task<Message>> {
-        if self.active_panel().archive.is_some() {
+        if self.active_panel().is_virtual() {
             return None;
         }
         let path = self.active_panel().selected_entry()?.path.clone();
@@ -9649,6 +9926,11 @@ impl App {
 
     /// Starts an async directory read for `side`.
     fn load(&mut self, side: PanelSide, path: PathBuf, select: Option<String>) -> Task<Message> {
+        // A server is told from the text of the path before anything else
+        // looks at it: nothing here may hand such a path to the local disk.
+        if let Some(remote) = RemotePath::parse(&path) {
+            return self.load_remote(side, remote, select);
+        }
         let panel = self.panel_mut(side);
         let request_id = panel.begin_load();
         Task::perform(fs::read_directory(path, panel.sort), move |listing| {
@@ -9664,6 +9946,573 @@ impl App {
             }
         })
     }
+
+    /// Opens a folder on a server in `side`. With a connection the listing is
+    /// read; without one the keychain is asked for the password first, so a
+    /// server whose password was remembered reconnects without a question.
+    fn load_remote(
+        &mut self,
+        side: PanelSide,
+        remote: RemotePath,
+        select: Option<String>,
+    ) -> Task<Message> {
+        let sort = self.panel(side).sort;
+        let request_id = self.panel_mut(side).begin_load();
+        if self.remote.is_connected(remote.server()) {
+            return remote_listing(
+                Arc::clone(&self.remote),
+                side,
+                request_id,
+                remote,
+                sort,
+                select,
+            );
+        }
+        let passwords = Arc::clone(&self.passwords);
+        let server = remote.server().clone();
+        Task::perform(
+            async move {
+                tokio::task::spawn_blocking(move || passwords.get(&server))
+                    .await
+                    .unwrap_or_else(|failure| Err(failure.to_string()))
+            },
+            move |result| {
+                Message::Remote(RemoteMessage::PasswordLoaded {
+                    side,
+                    request_id,
+                    remote: remote.clone(),
+                    select: select.clone(),
+                    result,
+                })
+            },
+        )
+    }
+
+    fn update_remote(&mut self, message: RemoteMessage) -> Task<Message> {
+        match message {
+            RemoteMessage::OpenConnect => self.open_connect_dialog(),
+            RemoteMessage::Field(field, text) => {
+                if let Some(dialog) = self.connect_dialog.as_mut() {
+                    dialog.set(field, text);
+                }
+                Task::none()
+            }
+            RemoteMessage::Password(password) => {
+                if let Some(dialog) = self.connect_dialog.as_mut() {
+                    dialog.set_password(password);
+                }
+                Task::none()
+            }
+            RemoteMessage::ToggleRemember => {
+                if let Some(dialog) = self.connect_dialog.as_mut() {
+                    dialog.toggle_remember();
+                }
+                Task::none()
+            }
+            RemoteMessage::FocusField { backwards } => {
+                if backwards {
+                    operation::focus_previous()
+                } else {
+                    operation::focus_next()
+                }
+            }
+            RemoteMessage::Submit => self.submit_connect_dialog(),
+            RemoteMessage::Cancel => self.cancel_connect_dialog(),
+            RemoteMessage::Connected { attempt, result } => self.connection_made(attempt, result),
+            RemoteMessage::TrustHostKey => self.trust_host_key(),
+            RemoteMessage::HostKeyLearned { attempt, result } => {
+                self.host_key_learned(attempt, result)
+            }
+            RemoteMessage::DisconnectActive => match self.active_panel().remote() {
+                Some(server) => self.disconnect_server(&server),
+                None => {
+                    let text = self.lang.text(Msg::StatusRemoteNotConnected).to_owned();
+                    self.show_notice(text)
+                }
+            },
+            RemoteMessage::Disconnect(server) => self.disconnect_server(&server),
+            RemoteMessage::PasswordLoaded {
+                side,
+                request_id,
+                remote,
+                select,
+                result,
+            } => self.password_loaded(side, request_id, remote, select, result),
+            RemoteMessage::AutoConnected {
+                side,
+                request_id,
+                remote,
+                select,
+                password,
+                result,
+            } => self.auto_connected(side, request_id, remote, select, password, result),
+            RemoteMessage::PasswordStored(result) => {
+                if let Err(reason) = result {
+                    let text = fill_template(
+                        self.lang.text(Msg::ErrorRemoteKeychain),
+                        &[("{reason}", &reason)],
+                    );
+                    self.set_status_error(&text);
+                }
+                Task::none()
+            }
+        }
+    }
+
+    fn open_connect_dialog(&mut self) -> Task<Message> {
+        if self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        self.context_menu = None;
+        self.connect_attempts = self.connect_attempts.wrapping_add(1);
+        self.connect_dialog = Some(ConnectDialog::new(self.connect_attempts));
+        operation::focus(remote_ui::field_id(ConnectField::Host))
+    }
+
+    fn submit_connect_dialog(&mut self) -> Task<Message> {
+        let Some(dialog) = self.connect_dialog.as_ref() else {
+            return Task::none();
+        };
+        if *dialog.stage() != remote_dialog::Stage::Editing {
+            return Task::none();
+        }
+        match dialog.target() {
+            Ok(_) => self.start_connecting(),
+            Err(missing) => operation::focus(remote_ui::field_id(match missing {
+                Missing::Host => ConnectField::Host,
+                Missing::Port => ConnectField::Port,
+                Missing::User => ConnectField::User,
+                Missing::Password => ConnectField::Password,
+            })),
+        }
+    }
+
+    /// Locks the dialog and connects with what it holds.
+    fn start_connecting(&mut self) -> Task<Message> {
+        self.connect_attempts = self.connect_attempts.wrapping_add(1);
+        let attempt = self.connect_attempts;
+        let Some(dialog) = self.connect_dialog.as_mut() else {
+            return Task::none();
+        };
+        let Ok((server, _)) = dialog.target() else {
+            return Task::none();
+        };
+        dialog.next_attempt(attempt);
+        dialog.set_stage(remote_dialog::Stage::Connecting);
+        let password = dialog.password().clone();
+        let pool = Arc::clone(&self.remote);
+        Task::perform(
+            async move { pool.connect(&server, &password).await },
+            move |result| Message::Remote(RemoteMessage::Connected { attempt, result }),
+        )
+    }
+
+    fn cancel_connect_dialog(&mut self) -> Task<Message> {
+        let Some(mut dialog) = self.connect_dialog.take() else {
+            return Task::none();
+        };
+        // The folder that started the dialog is not coming: the panel stops
+        // waiting for it.
+        if let Some(then) = dialog.take_then() {
+            let panel = self.panel_mut(then.side);
+            if panel.request_id == then.request_id {
+                panel.loading = false;
+            }
+        }
+        Task::none()
+    }
+
+    fn connection_made(
+        &mut self,
+        attempt: u64,
+        result: Result<(), ConnectFailure>,
+    ) -> Task<Message> {
+        if self.connect_dialog.as_ref().map(ConnectDialog::attempt) != Some(attempt) {
+            return Task::none();
+        }
+        match result {
+            Ok(()) => self.finish_connect(),
+            Err(failure) => {
+                self.connect_failed(failure);
+                Task::none()
+            }
+        }
+    }
+
+    /// Back to editing with the reason, or on to the question about an unknown
+    /// server.
+    fn connect_failed(&mut self, failure: ConnectFailure) {
+        let host = self
+            .connect_dialog
+            .as_ref()
+            .map(|dialog| dialog.value(ConnectField::Host).to_owned())
+            .unwrap_or_default();
+        let text = self.connect_failure_text(&failure, &host);
+        let Some(dialog) = self.connect_dialog.as_mut() else {
+            return;
+        };
+        match failure {
+            ConnectFailure::UnknownHost { fingerprint, key } => {
+                dialog.set_stage(remote_dialog::Stage::HostKey { fingerprint, key });
+            }
+            _ => {
+                dialog.set_stage(remote_dialog::Stage::Editing);
+                dialog.set_error(text);
+            }
+        }
+    }
+
+    fn connect_failure_text(&self, failure: &ConnectFailure, host: &str) -> String {
+        let lang = self.lang;
+        match failure {
+            ConnectFailure::UnknownHost { .. } => String::new(),
+            ConnectFailure::HostKeyChanged { file, line, .. } => fill_template(
+                lang.text(Msg::ErrorRemoteHostkeyChanged),
+                &[
+                    ("{host}", host),
+                    ("{file}", &file.display().to_string()),
+                    ("{line}", &line.to_string()),
+                ],
+            ),
+            ConnectFailure::HostKeyOtherType { file, line, .. } => fill_template(
+                lang.text(Msg::ErrorRemoteHostkeyOtherType),
+                &[
+                    ("{host}", host),
+                    ("{file}", &file.display().to_string()),
+                    ("{line}", &line.to_string()),
+                ],
+            ),
+            ConnectFailure::KnownHostsUnreadable { file, reason } => fill_template(
+                lang.text(Msg::ErrorRemoteKnownHostsUnreadable),
+                &[
+                    ("{file}", &file.display().to_string()),
+                    ("{reason}", reason),
+                ],
+            ),
+            ConnectFailure::PasswordNotOffered => fill_template(
+                lang.text(Msg::ErrorRemotePasswordNotOffered),
+                &[("{host}", host)],
+            ),
+            ConnectFailure::HostKeyRevoked => fill_template(
+                lang.text(Msg::ErrorRemoteHostkeyRevoked),
+                &[("{host}", host)],
+            ),
+            ConnectFailure::AuthFailed => lang.text(Msg::ErrorRemoteAuthFailed).to_owned(),
+            ConnectFailure::Timeout => {
+                fill_template(lang.text(Msg::ErrorRemoteTimeout), &[("{host}", host)])
+            }
+            ConnectFailure::NoCommonAlgorithm => fill_template(
+                lang.text(Msg::ErrorRemoteNoCommonAlgorithm),
+                &[("{host}", host)],
+            ),
+            ConnectFailure::Unreachable(reason) => fill_template(
+                lang.text(Msg::ErrorRemoteUnreachable),
+                &[("{host}", host), ("{reason}", reason)],
+            ),
+            ConnectFailure::Keychain(reason) => {
+                fill_template(lang.text(Msg::ErrorRemoteKeychain), &[("{reason}", reason)])
+            }
+        }
+    }
+
+    /// The connection is made: the dialog closes, the password goes to the
+    /// keychain when asked, and the panel opens the folder it was waiting for.
+    fn finish_connect(&mut self) -> Task<Message> {
+        let Some(mut dialog) = self.connect_dialog.take() else {
+            return Task::none();
+        };
+        let Ok((server, typed_path)) = dialog.target() else {
+            return Task::none();
+        };
+        let then = dialog.take_then();
+        let mut tasks = Vec::new();
+        if dialog.remember() {
+            let passwords = Arc::clone(&self.passwords);
+            let (stored_for, password) = (server.clone(), dialog.password().clone());
+            tasks.push(Task::perform(
+                async move {
+                    tokio::task::spawn_blocking(move || passwords.set(&stored_for, &password))
+                        .await
+                        .unwrap_or_else(|failure| Err(failure.to_string()))
+                },
+                |result| Message::Remote(RemoteMessage::PasswordStored(result)),
+            ));
+        }
+        let home = self
+            .remote
+            .session(&server)
+            .map_or_else(|| "/".to_owned(), |session| session.home().to_owned());
+        let start = RemotePath::new(server.clone(), &home);
+        let side = then
+            .as_ref()
+            .map_or(self.active_panel, |waiting| waiting.side);
+        let (target, select) = match (typed_path, then) {
+            (Some(typed), _) => (start.resolve_typed(&typed, &home).to_path_buf(), None),
+            (None, Some(Then { path, select, .. }))
+                if RemotePath::parse(&path).is_some_and(|place| *place.server() == server) =>
+            {
+                (path, select)
+            }
+            _ => (start.to_path_buf(), None),
+        };
+        self.job_error = None;
+        let text = fill_template(
+            self.lang.text(Msg::StatusRemoteConnected),
+            &[("{server}", &server.to_string())],
+        );
+        tasks.push(self.show_notice(text));
+        tasks.push(self.load(side, target, select));
+        Task::batch(tasks)
+    }
+
+    fn trust_host_key(&mut self) -> Task<Message> {
+        let Some(dialog) = self.connect_dialog.as_mut() else {
+            return Task::none();
+        };
+        let remote_dialog::Stage::HostKey { key, .. } = dialog.stage().clone() else {
+            return Task::none();
+        };
+        let Ok((server, _)) = dialog.target() else {
+            return Task::none();
+        };
+        self.connect_attempts = self.connect_attempts.wrapping_add(1);
+        let attempt = self.connect_attempts;
+        dialog.next_attempt(attempt);
+        dialog.set_stage(remote_dialog::Stage::Connecting);
+        let pool = Arc::clone(&self.remote);
+        Task::perform(
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    pool.trust(&server, &key).map_err(|error| error.to_string())
+                })
+                .await
+                .unwrap_or_else(|failure| Err(failure.to_string()))
+            },
+            move |result| Message::Remote(RemoteMessage::HostKeyLearned { attempt, result }),
+        )
+    }
+
+    fn host_key_learned(&mut self, attempt: u64, result: Result<(), String>) -> Task<Message> {
+        if self.connect_dialog.as_ref().map(ConnectDialog::attempt) != Some(attempt) {
+            return Task::none();
+        }
+        match result {
+            Ok(()) => self.start_connecting(),
+            Err(reason) => {
+                let text = fill_template(
+                    self.lang.text(Msg::ErrorRemoteFailed),
+                    &[("{reason}", &reason)],
+                );
+                if let Some(dialog) = self.connect_dialog.as_mut() {
+                    dialog.set_stage(remote_dialog::Stage::Editing);
+                    dialog.set_error(text);
+                }
+                Task::none()
+            }
+        }
+    }
+
+    /// Closes the connection. A panel that was on the server goes home.
+    fn disconnect_server(&mut self, server: &ServerId) -> Task<Message> {
+        self.remote.forget(server);
+        let text = fill_template(
+            self.lang.text(Msg::StatusRemoteDisconnected),
+            &[("{server}", &server.to_string())],
+        );
+        let mut tasks = vec![self.show_notice(text)];
+        for side in [PanelSide::Left, PanelSide::Right] {
+            if self.panel(side).remote().as_ref() == Some(server) {
+                let home = self.home.clone();
+                tasks.push(self.load(side, home, None));
+            }
+        }
+        Task::batch(tasks)
+    }
+
+    fn password_loaded(
+        &mut self,
+        side: PanelSide,
+        request_id: u64,
+        remote: RemotePath,
+        select: Option<String>,
+        stored: Result<Option<Secret>, String>,
+    ) -> Task<Message> {
+        if self.panel(side).request_id != request_id {
+            return Task::none();
+        }
+        match stored {
+            Ok(Some(password)) => {
+                let pool = Arc::clone(&self.remote);
+                let server = remote.server().clone();
+                Task::perform(
+                    async move {
+                        let outcome = pool.connect(&server, &password).await;
+                        (password, outcome)
+                    },
+                    move |(kept, result)| {
+                        Message::Remote(RemoteMessage::AutoConnected {
+                            side,
+                            request_id,
+                            remote: remote.clone(),
+                            select: select.clone(),
+                            password: kept,
+                            result,
+                        })
+                    },
+                )
+            }
+            Ok(None) => self.ask_for_password(side, request_id, remote, select, None, None),
+            Err(reason) => self.ask_for_password(
+                side,
+                request_id,
+                remote,
+                select,
+                None,
+                Some(ConnectFailure::Keychain(reason)),
+            ),
+        }
+    }
+
+    fn auto_connected(
+        &mut self,
+        side: PanelSide,
+        request_id: u64,
+        remote: RemotePath,
+        select: Option<String>,
+        password: Secret,
+        result: Result<(), ConnectFailure>,
+    ) -> Task<Message> {
+        if self.panel(side).request_id != request_id {
+            return Task::none();
+        }
+        match result {
+            Ok(()) => {
+                let sort = self.panel(side).sort;
+                remote_listing(
+                    Arc::clone(&self.remote),
+                    side,
+                    request_id,
+                    remote,
+                    sort,
+                    select,
+                )
+            }
+            // A password that no longer fits is not kept, so that it is not
+            // tried again with every folder, and not offered again.
+            Err(ConnectFailure::AuthFailed) => {
+                let forget = self.forget_remembered_password(remote.server());
+                let ask = self.ask_for_password(
+                    side,
+                    request_id,
+                    remote,
+                    select,
+                    None,
+                    Some(ConnectFailure::AuthFailed),
+                );
+                Task::batch([forget, ask])
+            }
+            Err(failure) => self.ask_for_password(
+                side,
+                request_id,
+                remote,
+                select,
+                Some(password),
+                Some(failure),
+            ),
+        }
+    }
+
+    /// Removes what the keychain holds for `server`, off the UI thread.
+    fn forget_remembered_password(&self, server: &ServerId) -> Task<Message> {
+        let passwords = Arc::clone(&self.passwords);
+        let gone = server.clone();
+        Task::perform(
+            async move {
+                tokio::task::spawn_blocking(move || passwords.forget(&gone))
+                    .await
+                    .unwrap_or_else(|failure| Err(failure.to_string()))
+            },
+            |result| Message::Remote(RemoteMessage::PasswordStored(result)),
+        )
+    }
+
+    /// Opens the connect dialog for the server of a folder that was asked for.
+    /// Another dialog being up, the panel is told it has no connection instead.
+    fn ask_for_password(
+        &mut self,
+        side: PanelSide,
+        request_id: u64,
+        remote: RemotePath,
+        select: Option<String>,
+        password: Option<Secret>,
+        failure: Option<ConnectFailure>,
+    ) -> Task<Message> {
+        let server = remote.server().clone();
+        if self.blocking_overlay_is_open() {
+            return Task::done(Message::DirectoryLoaded {
+                side,
+                request_id,
+                path: remote.to_path_buf(),
+                entries: remote
+                    .parent()
+                    .map(|above| fs::FileEntry::parent(&above.to_path_buf()))
+                    .into_iter()
+                    .collect(),
+                error: Some(fs::ReadError::RemoteDisconnected { server }),
+                sorted_by: self.panel(side).sort,
+                select: None,
+                archive: None,
+            });
+        }
+        let host_text = server.host.clone();
+        let failure_text = failure
+            .as_ref()
+            .map(|reason| self.connect_failure_text(reason, &host_text));
+        self.connect_attempts = self.connect_attempts.wrapping_add(1);
+        let then = Then {
+            side,
+            path: remote.to_path_buf(),
+            select,
+            request_id,
+        };
+        let mut dialog = ConnectDialog::for_server(self.connect_attempts, &server, Some(then));
+        if let Some(remembered) = password {
+            dialog.keep_password(remembered);
+        }
+        match (failure, failure_text) {
+            (Some(ConnectFailure::UnknownHost { fingerprint, key }), _) => {
+                dialog.set_stage(remote_dialog::Stage::HostKey { fingerprint, key });
+            }
+            (Some(_), Some(text)) => dialog.set_error(text),
+            _ => {}
+        }
+        self.connect_dialog = Some(dialog);
+        operation::focus(remote_ui::field_id(ConnectField::Password))
+    }
+}
+
+/// Reads a folder on a server and reports it as a panel's listing.
+fn remote_listing(
+    pool: Arc<Pool>,
+    side: PanelSide,
+    request_id: u64,
+    remote: RemotePath,
+    sort: fs::SortKey,
+    select: Option<String>,
+) -> Task<Message> {
+    Task::perform(
+        async move { fs::remote::list::list(&pool, remote, sort).await },
+        move |listing| Message::DirectoryLoaded {
+            side,
+            request_id,
+            path: listing.path,
+            entries: listing.entries,
+            error: listing.error,
+            sorted_by: listing.sorted_by,
+            select: select.clone(),
+            archive: listing.archive,
+        },
+    )
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
@@ -10739,6 +11588,10 @@ impl App {
             download_ai_model: |_| Err(AiDownloadError::NoDataFolder),
             grant_dialog: false,
             sandbox: fs::SandboxAccess::inactive(),
+            remote: Arc::new(Pool::over_tcp(KnownHostsFiles::default())),
+            passwords: Arc::new(fs::remote::credentials::InMemoryPasswords::default()),
+            connect_dialog: None,
+            connect_attempts: 0,
         };
         for (side, names) in [
             (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
@@ -11146,6 +11999,13 @@ impl App {
         app
     }
 
+    /// Fixed panels with the connect dialog up.
+    pub fn with_connect_dialog(dialog: ConnectDialog) -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.connect_dialog = Some(dialog);
+        app
+    }
+
     /// Fixed panels with the settings tab open on `feature`, with `filing` as
     /// the config says.
     pub fn with_settings_open(feature: crate::messages::SettingsFeature, filing: Filing) -> Self {
@@ -11436,6 +12296,18 @@ impl App {
     #[cfg(test)]
     pub fn with_view_copies_in(mut self, root: &Path) -> Self {
         self.view_copies = fs::archive::ViewCopies::open(root).ok();
+        self
+    }
+
+    /// Puts connections of the test's own in: no test reaches a network.
+    pub fn with_remote(mut self, pool: Arc<Pool>) -> Self {
+        self.remote = pool;
+        self
+    }
+
+    /// Puts a password store of the test's own in; none is the user's keychain.
+    pub fn with_passwords(mut self, passwords: Arc<dyn PasswordStore>) -> Self {
+        self.passwords = passwords;
         self
     }
 
@@ -19856,5 +20728,893 @@ mod grant_tests {
             .bindings_of(KeyAction::GrantFolderAccess)
             .next()
             .is_none());
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod remote_panel_tests {
+    use super::*;
+    use crate::context_menu::{ContextAction, HermesAction};
+    use crate::fs::remote::credentials::InMemoryPasswords;
+    use crate::fs::remote::test_server::{Fixture, HOME, PASSWORD, USER};
+    use iced_test::futures::futures::StreamExt as _;
+    use iced_test::runtime::{task, Action};
+
+    const HOST: &str = "test.invalid";
+
+    fn url(path: &str) -> PathBuf {
+        Fixture::at(path).to_path_buf()
+    }
+
+    /// Delivers `message` and everything the tasks it starts report.
+    async fn settle(app: &mut App, message: Message) {
+        let mut queue = vec![message];
+        while let Some(next) = queue.pop() {
+            let Some(mut stream) = task::into_stream(app.update(next)) else {
+                continue;
+            };
+            while let Some(action) = stream.next().await {
+                // The timer of a notice is waited for, not delivered: the
+                // notice is what a test looks at afterwards.
+                if let Action::Output(reported) = action {
+                    if !matches!(reported, Message::NoticeExpired(_)) {
+                        queue.push(reported);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Runs the tasks `task` starts to the end, and what they report.
+    async fn run(app: &mut App, task: Task<Message>) {
+        let Some(mut stream) = task::into_stream(task) else {
+            return;
+        };
+        let mut reports = Vec::new();
+        while let Some(action) = stream.next().await {
+            if let Action::Output(reported) = action {
+                reports.push(reported);
+            }
+        }
+        for reported in reports {
+            settle(app, reported).await;
+        }
+    }
+
+    /// What the tasks `message` starts report, not delivered.
+    async fn reports(app: &mut App, message: Message) -> Vec<Message> {
+        let mut found = Vec::new();
+        if let Some(mut stream) = task::into_stream(app.update(message)) {
+            while let Some(action) = stream.next().await {
+                if let Action::Output(reported) = action {
+                    if !matches!(reported, Message::NoticeExpired(_)) {
+                        found.push(reported);
+                    }
+                }
+            }
+        }
+        found
+    }
+
+    /// Opens `path` in `side` and runs what that starts to the end.
+    async fn open(app: &mut App, side: PanelSide, path: PathBuf, select: Option<String>) {
+        let task = app.load(side, path, select);
+        run(app, task).await;
+    }
+
+    fn app_over(fixture: &Fixture) -> App {
+        App::with_environment(Environment::isolated())
+            .0
+            .with_remote(Arc::clone(&fixture.pool))
+    }
+
+    async fn type_into(app: &mut App, host: &str, user: &str, password: &str) {
+        for message in [
+            RemoteMessage::Field(ConnectField::Host, host.to_owned()),
+            RemoteMessage::Field(ConnectField::User, user.to_owned()),
+            RemoteMessage::Password(Secret::new(password.to_owned())),
+        ] {
+            settle(app, Message::Remote(message)).await;
+        }
+    }
+
+    fn names(app: &App, side: PanelSide) -> Vec<String> {
+        app.panel(side)
+            .entries
+            .iter()
+            .map(|entry| entry.name.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn every_action_is_refused_on_a_server_exactly_when_it_is_not_allowed() {
+        let panel = PanelState::new(url("/home"));
+        assert!(panel.remote().is_some());
+        let refused = |message: &Message| remote_refusal(&panel, message).is_some();
+        for action in KeyAction::ALL {
+            assert_eq!(
+                refused(&action.message()),
+                !action.allowed_on_server(),
+                "{action:?}"
+            );
+        }
+        for action in ContextAction::ALL {
+            assert_eq!(
+                refused(&action.message()),
+                !action.allowed_on_server(),
+                "{action:?}"
+            );
+        }
+        for action in HermesAction::ALL {
+            assert_eq!(
+                refused(&action.message()),
+                !action.allowed_on_server(),
+                "{action:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_local_panel_refuses_nothing_for_being_local() {
+        let panel = PanelState::new(std::env::temp_dir());
+        for action in KeyAction::ALL {
+            assert_eq!(
+                remote_refusal(&panel, &action.message()),
+                None,
+                "{action:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_refusal_says_what_works_and_why_the_command_line_does_not() {
+        let panel = PanelState::new(url("/"));
+        assert_eq!(
+            remote_refusal(&panel, &Message::Delete { permanent: false }),
+            Some(Msg::StatusRemoteReadOnly)
+        );
+        assert_eq!(
+            remote_refusal(&panel, &Message::CommandLine(CommandLineMessage::Focus)),
+            Some(Msg::StatusRemoteNoShell)
+        );
+    }
+
+    #[test]
+    fn a_refused_key_on_a_server_panel_shows_the_notice_and_does_nothing() {
+        let mut app = App::with_environment(Environment::isolated()).0;
+        app.left_panel.path = url("/home");
+
+        drop(app.update(Message::Delete { permanent: true }));
+
+        assert!(!app.delete_dialog_is_open());
+        assert_eq!(
+            app.status_error(),
+            Some("Files on the server can only be browsed, viewed and copied for now.")
+        );
+    }
+
+    #[test]
+    fn a_server_panel_is_remembered_as_home_and_history_drops_server_paths() {
+        let mut app = App::with_environment(Environment::isolated()).0;
+        let local = std::env::temp_dir();
+        app.left_panel.path = url("/home/tester");
+        app.left_panel.history.visit(local.clone());
+        app.left_panel.history.visit(url("/etc"));
+        app.left_panel.history.visit(url("/home"));
+        app.right_panel.path = url("/srv");
+        app.favourites = vec![local.clone()];
+
+        let state = app.session_state();
+
+        assert_eq!(state.left.path, session_state::record_path(&app.home));
+        assert_eq!(state.left.cursor, None);
+        assert_eq!(state.right.path, session_state::record_path(&app.home));
+        assert_eq!(
+            state.left.back,
+            [session_state::record_path(&local).unwrap()]
+        );
+        let text = format!("{state:?}");
+        assert!(!text.contains("sftp"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn typing_an_sftp_address_opens_the_connect_dialog_without_touching_the_disk() {
+        let fixture = Fixture::trusted();
+        let mut app = app_over(&fixture);
+        drop(app.update(Message::PathFieldInput(
+            "sftp://example.org:2222/srv/files".into(),
+        )));
+
+        let reported = reports(&mut app, Message::PathFieldSubmit).await;
+
+        let dialog = app.connect_dialog.as_ref().unwrap();
+        assert_eq!(dialog.value(ConnectField::Host), "example.org");
+        assert_eq!(dialog.value(ConnectField::Port), "2222");
+        assert_eq!(dialog.value(ConnectField::User), "");
+        assert_eq!(dialog.value(ConnectField::StartPath), "/srv/files");
+        assert_eq!(app.path_field_for_test(), None);
+        assert!(
+            !reported
+                .iter()
+                .any(|message| matches!(message, Message::PathChecked { .. })),
+            "no look at the disk was started: {reported:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_bad_sftp_address_is_reported_and_leaves_the_field() {
+        let mut app = App::with_environment(Environment::isolated()).0;
+        drop(app.update(Message::PathFieldInput("sftp://host:99999/x".into())));
+
+        settle(&mut app, Message::PathFieldSubmit).await;
+
+        assert_eq!(app.status_error(), Some("Not a valid sftp:// address"));
+        assert!(app.connect_dialog.is_none());
+        assert!(app.path_field_for_test().is_some());
+    }
+
+    #[tokio::test]
+    async fn loading_a_disconnected_server_asks_for_the_password() {
+        let fixture = Fixture::trusted();
+        let mut app = app_over(&fixture);
+
+        open(
+            &mut app,
+            PanelSide::Left,
+            url("/home/tester"),
+            Some("x".into()),
+        )
+        .await;
+
+        let dialog = app.connect_dialog.as_ref().unwrap();
+        assert_eq!(dialog.value(ConnectField::Host), HOST);
+        assert_eq!(dialog.value(ConnectField::User), USER);
+        assert_eq!(dialog.value(ConnectField::Password), "");
+        assert!(app.left_panel.loading, "the panel waits for the answer");
+        assert!(!fixture.pool.is_connected(&Fixture::id()));
+        assert!(app.prompt_key_state().connect_dialog);
+        assert!(app.blocking_overlay_is_open());
+    }
+
+    #[tokio::test]
+    async fn a_second_folder_while_a_dialog_is_up_is_told_there_is_no_connection() {
+        let fixture = Fixture::trusted();
+        let mut app = app_over(&fixture);
+        settle(&mut app, Message::Remote(RemoteMessage::OpenConnect)).await;
+
+        open(&mut app, PanelSide::Right, url("/home"), None).await;
+
+        assert!(matches!(
+            app.right_panel.error,
+            Some(fs::ReadError::RemoteDisconnected { .. })
+        ));
+        assert_eq!(app.right_panel.path, url("/home"));
+    }
+
+    #[tokio::test]
+    async fn stored_password_reconnects_without_asking() {
+        let fixture = Fixture::trusted();
+        std::fs::write(fixture.server.local("/home/tester/a.txt"), "a").unwrap();
+        let mut app = app_over(&fixture)
+            .with_passwords(Arc::new(InMemoryPasswords::with(&Fixture::id(), PASSWORD)));
+
+        open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
+
+        assert!(app.connect_dialog.is_none());
+        assert!(fixture.pool.is_connected(&Fixture::id()));
+        assert_eq!(app.left_panel.path, url("/home/tester"));
+        assert_eq!(names(&app, PanelSide::Left), ["..", "a.txt"]);
+        assert_eq!(app.left_panel.error, None);
+    }
+
+    #[tokio::test]
+    async fn a_stored_password_that_no_longer_fits_is_forgotten_and_asked_for_again() {
+        let fixture = Fixture::trusted();
+        let passwords = Arc::new(InMemoryPasswords::with(&Fixture::id(), "old password"));
+        let mut app =
+            app_over(&fixture).with_passwords(Arc::<InMemoryPasswords>::clone(&passwords));
+
+        open(&mut app, PanelSide::Left, url("/home"), None).await;
+
+        let dialog = app.connect_dialog.as_ref().unwrap();
+        assert_eq!(dialog.error(), Some("User name or password is wrong"));
+        assert_eq!(dialog.value(ConnectField::Password), "");
+        assert_eq!(
+            passwords.get(&Fixture::id()).unwrap(),
+            None,
+            "the keychain no longer holds the old password"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_stored_password_is_kept_when_the_trouble_is_not_the_password() {
+        // A server that is down says nothing about the password.
+        let fixture = Fixture::untrusted();
+        let passwords = Arc::new(InMemoryPasswords::with(&Fixture::id(), PASSWORD));
+        let mut app =
+            app_over(&fixture).with_passwords(Arc::<InMemoryPasswords>::clone(&passwords));
+
+        open(&mut app, PanelSide::Left, url("/home"), None).await;
+
+        assert!(matches!(
+            app.connect_dialog.as_ref().unwrap().stage(),
+            remote_dialog::Stage::HostKey { .. }
+        ));
+        assert!(passwords.get(&Fixture::id()).unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn a_key_of_another_type_is_refused_in_the_dialog_with_no_way_to_trust() {
+        let fixture = Fixture::untrusted();
+        std::fs::write(
+            fixture.known.ssh.as_deref().unwrap(),
+            format!(
+                "test.invalid {}\n",
+                crate::fs::remote::test_server::ECDSA_PUBLIC
+            ),
+        )
+        .unwrap();
+        let mut app = app_over(&fixture);
+        settle(&mut app, Message::Remote(RemoteMessage::OpenConnect)).await;
+        type_into(&mut app, HOST, USER, PASSWORD).await;
+
+        settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
+        settle(&mut app, Message::Remote(RemoteMessage::TrustHostKey)).await;
+
+        let dialog = app.connect_dialog.as_ref().unwrap();
+        assert_eq!(*dialog.stage(), remote_dialog::Stage::Editing);
+        let error = dialog.error().unwrap();
+        assert!(
+            error.contains("offers a different key type") && error.contains("Refused"),
+            "{error}"
+        );
+        assert!(!fixture.server.control.events().contains(&"password"));
+    }
+
+    #[tokio::test]
+    async fn an_unreadable_host_key_file_is_named_and_cannot_be_trusted_past() {
+        let fixture = Fixture::untrusted();
+        std::fs::create_dir(fixture.known.ssh.as_deref().unwrap()).unwrap();
+        let mut app = app_over(&fixture);
+        settle(&mut app, Message::Remote(RemoteMessage::OpenConnect)).await;
+        type_into(&mut app, HOST, USER, PASSWORD).await;
+
+        settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
+
+        let dialog = app.connect_dialog.as_ref().unwrap();
+        assert_eq!(*dialog.stage(), remote_dialog::Stage::Editing);
+        let error = dialog.error().unwrap();
+        assert!(
+            error.contains("ssh_known_hosts")
+                && error.contains("could not be read, so the server cannot be checked"),
+            "{error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_server_without_password_login_says_so() {
+        let fixture =
+            Fixture::over(crate::fs::remote::test_server::TestServer::without_password_login());
+        std::fs::write(
+            fixture.known.own.as_deref().unwrap(),
+            format!(
+                "test.invalid {}\n",
+                crate::fs::remote::test_server::public_key_text()
+            ),
+        )
+        .unwrap();
+        let mut app = app_over(&fixture);
+        settle(&mut app, Message::Remote(RemoteMessage::OpenConnect)).await;
+        type_into(&mut app, HOST, USER, PASSWORD).await;
+
+        settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
+
+        assert_eq!(
+            app.connect_dialog.as_ref().unwrap().error(),
+            Some("test.invalid does not accept password sign-in")
+        );
+    }
+
+    #[tokio::test]
+    async fn the_password_is_in_no_debug_text_of_a_message_either() {
+        let secret = Secret::new("hunter2-the-password".to_owned());
+        let fixture = Fixture::trusted();
+        let failed = fixture.pool.connect(&Fixture::id(), &secret).await;
+        assert_eq!(failed, Err(ConnectFailure::AuthFailed));
+        let unknown = Fixture::untrusted()
+            .pool
+            .connect(&Fixture::id(), &secret)
+            .await;
+        let mut shown = String::new();
+        for result in [failed, unknown] {
+            shown.push_str(&format!(
+                "{:?}{:?}{:?}",
+                Message::Remote(RemoteMessage::Connected {
+                    attempt: 1,
+                    result: result.clone(),
+                }),
+                Message::Remote(RemoteMessage::AutoConnected {
+                    side: PanelSide::Left,
+                    request_id: 1,
+                    remote: RemotePath::new(Fixture::id(), "/"),
+                    select: None,
+                    password: secret.clone(),
+                    result,
+                }),
+                Message::Remote(RemoteMessage::Password(secret.clone())),
+            ));
+        }
+        assert!(
+            !shown.contains("hunter2"),
+            "the password leaked into {shown}"
+        );
+        assert!(shown.contains("***"));
+    }
+
+    #[test]
+    fn no_text_of_a_failure_carries_the_password_and_each_names_its_host() {
+        let app = App::with_environment(Environment::isolated()).0;
+        let secret = "hunter2-the-password";
+        let failures = [
+            ConnectFailure::AuthFailed,
+            ConnectFailure::Timeout,
+            ConnectFailure::HostKeyRevoked,
+            ConnectFailure::NoCommonAlgorithm,
+            ConnectFailure::PasswordNotOffered,
+            ConnectFailure::Unreachable("refused".to_owned()),
+            ConnectFailure::Keychain("locked".to_owned()),
+            ConnectFailure::HostKeyChanged {
+                fingerprint: "SHA256:x".to_owned(),
+                file: PathBuf::from("known_hosts"),
+                line: 3,
+            },
+            ConnectFailure::HostKeyOtherType {
+                fingerprint: "SHA256:x".to_owned(),
+                file: PathBuf::from("known_hosts"),
+                line: 4,
+            },
+            ConnectFailure::KnownHostsUnreadable {
+                file: PathBuf::from("known_hosts"),
+                reason: "denied".to_owned(),
+            },
+        ];
+        for failure in failures {
+            for lang in [Language::English, Language::German] {
+                let mut speaking = App::with_environment(Environment::isolated()).0;
+                speaking.lang = lang;
+                let text = speaking.connect_failure_text(&failure, "files.example.org");
+                assert!(
+                    !text.contains(secret) && !text.is_empty(),
+                    "{failure:?}: {text}"
+                );
+                let names_host = matches!(
+                    failure,
+                    ConnectFailure::AuthFailed
+                        | ConnectFailure::Keychain(_)
+                        | ConnectFailure::KnownHostsUnreadable { .. }
+                ) || text.contains("files.example.org");
+                assert!(names_host, "{failure:?}: {text}");
+            }
+        }
+        drop(app);
+    }
+
+    #[tokio::test]
+    async fn the_dialog_connects_opens_the_home_folder_and_remembers_the_password() {
+        let fixture = Fixture::trusted();
+        let passwords = Arc::new(InMemoryPasswords::default());
+        let mut app =
+            app_over(&fixture).with_passwords(Arc::<InMemoryPasswords>::clone(&passwords));
+        settle(&mut app, Message::Remote(RemoteMessage::OpenConnect)).await;
+        type_into(&mut app, "Test.Invalid", USER, PASSWORD).await;
+        settle(&mut app, Message::Remote(RemoteMessage::ToggleRemember)).await;
+
+        settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
+
+        assert!(app.connect_dialog.is_none());
+        assert_eq!(app.left_panel.path, url(HOME));
+        assert_eq!(app.left_panel.error, None);
+        assert_eq!(
+            app.notice_for_test(),
+            Some("Connected to tester@test.invalid")
+        );
+        let stored = passwords.get(&Fixture::id()).unwrap().unwrap();
+        assert_eq!(stored.expose(), PASSWORD);
+    }
+
+    #[tokio::test]
+    async fn without_the_tick_the_password_is_not_stored() {
+        let fixture = Fixture::trusted();
+        let passwords = Arc::new(InMemoryPasswords::default());
+        let mut app =
+            app_over(&fixture).with_passwords(Arc::<InMemoryPasswords>::clone(&passwords));
+        settle(&mut app, Message::Remote(RemoteMessage::OpenConnect)).await;
+        type_into(&mut app, HOST, USER, PASSWORD).await;
+
+        settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
+
+        assert!(fixture.pool.is_connected(&Fixture::id()));
+        assert_eq!(passwords.get(&Fixture::id()).unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn a_start_folder_typed_in_the_dialog_is_opened() {
+        let fixture = Fixture::trusted();
+        std::fs::create_dir_all(fixture.server.local("/srv/files")).unwrap();
+        let mut app = app_over(&fixture);
+        settle(&mut app, Message::Remote(RemoteMessage::OpenConnect)).await;
+        type_into(&mut app, HOST, USER, PASSWORD).await;
+        settle(
+            &mut app,
+            Message::Remote(RemoteMessage::Field(
+                ConnectField::StartPath,
+                "/srv/files".into(),
+            )),
+        )
+        .await;
+
+        settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
+
+        assert_eq!(app.left_panel.path, url("/srv/files"));
+    }
+
+    #[tokio::test]
+    async fn an_unknown_server_asks_before_the_password_goes_and_trusts_on_request() {
+        let fixture = Fixture::untrusted();
+        let mut app = app_over(&fixture);
+        settle(&mut app, Message::Remote(RemoteMessage::OpenConnect)).await;
+        type_into(&mut app, HOST, USER, PASSWORD).await;
+
+        settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
+
+        let dialog = app.connect_dialog.as_ref().unwrap();
+        let remote_dialog::Stage::HostKey { fingerprint, .. } = dialog.stage() else {
+            panic!("{:?}", dialog.stage());
+        };
+        assert!(fingerprint.starts_with("SHA256:"));
+        assert!(!fixture.server.control.events().contains(&"password"));
+        assert!(!fixture.pool.is_connected(&Fixture::id()));
+
+        settle(&mut app, Message::Remote(RemoteMessage::TrustHostKey)).await;
+
+        assert!(app.connect_dialog.is_none());
+        assert!(fixture.pool.is_connected(&Fixture::id()));
+        let learned = std::fs::read_to_string(fixture.known.own.as_deref().unwrap()).unwrap();
+        assert!(learned.contains("\ntest.invalid ssh-ed25519 "), "{learned}");
+    }
+
+    #[tokio::test]
+    async fn a_wrong_password_stays_in_the_dialog_with_the_reason() {
+        let fixture = Fixture::trusted();
+        let mut app = app_over(&fixture);
+        settle(&mut app, Message::Remote(RemoteMessage::OpenConnect)).await;
+        type_into(&mut app, HOST, USER, "nope").await;
+
+        settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
+
+        let dialog = app.connect_dialog.as_ref().unwrap();
+        assert_eq!(*dialog.stage(), remote_dialog::Stage::Editing);
+        assert_eq!(dialog.error(), Some("User name or password is wrong"));
+        assert!(!format!("{dialog:?}").contains("nope"));
+    }
+
+    #[tokio::test]
+    async fn a_changed_host_key_is_refused_with_no_way_to_trust_it() {
+        let fixture = Fixture::over(crate::fs::remote::test_server::TestServer::with_other_key());
+        std::fs::write(
+            fixture.known.own.as_deref().unwrap(),
+            format!(
+                "test.invalid {}\n",
+                crate::fs::remote::test_server::public_key_text()
+            ),
+        )
+        .unwrap();
+        let mut app = app_over(&fixture);
+        settle(&mut app, Message::Remote(RemoteMessage::OpenConnect)).await;
+        type_into(&mut app, HOST, USER, PASSWORD).await;
+
+        settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
+        settle(&mut app, Message::Remote(RemoteMessage::TrustHostKey)).await;
+
+        let dialog = app.connect_dialog.as_ref().unwrap();
+        assert_eq!(*dialog.stage(), remote_dialog::Stage::Editing);
+        let error = dialog.error().unwrap();
+        assert!(
+            error.contains("has changed") && error.contains("line 1"),
+            "{error}"
+        );
+        assert!(!fixture.server.control.events().contains(&"password"));
+    }
+
+    #[tokio::test]
+    async fn escape_closes_the_dialog_and_the_panel_stops_waiting() {
+        let fixture = Fixture::trusted();
+        let mut app = app_over(&fixture);
+        open(&mut app, PanelSide::Left, url("/home"), None).await;
+        assert!(app.left_panel.loading);
+
+        let route = route_key(
+            &app.prompt_key_state(),
+            Key::Named(Named::Escape),
+            Modifiers::default(),
+        );
+        assert_eq!(route, Some(Message::Remote(RemoteMessage::Cancel)));
+        settle(&mut app, Message::Remote(RemoteMessage::Cancel)).await;
+
+        assert!(app.connect_dialog.is_none());
+        assert!(!app.left_panel.loading);
+    }
+
+    #[tokio::test]
+    async fn enter_in_the_dialog_connects_and_tab_walks_the_fields() {
+        let fixture = Fixture::trusted();
+        let mut app = app_over(&fixture);
+        settle(&mut app, Message::Remote(RemoteMessage::OpenConnect)).await;
+        let state = app.prompt_key_state();
+        let key = |named, modifiers| route_key(&state, Key::Named(named), modifiers);
+
+        assert_eq!(
+            key(Named::Enter, Modifiers::default()),
+            Some(Message::Remote(RemoteMessage::Submit))
+        );
+        assert_eq!(
+            key(Named::Tab, Modifiers::default()),
+            Some(Message::Remote(RemoteMessage::FocusField {
+                backwards: false
+            }))
+        );
+        assert_eq!(
+            key(Named::Tab, Modifiers::SHIFT),
+            Some(Message::Remote(RemoteMessage::FocusField {
+                backwards: true
+            }))
+        );
+    }
+
+    #[tokio::test]
+    async fn an_incomplete_dialog_does_not_connect() {
+        let fixture = Fixture::trusted();
+        let mut app = app_over(&fixture);
+        settle(&mut app, Message::Remote(RemoteMessage::OpenConnect)).await;
+
+        settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
+
+        assert_eq!(
+            *app.connect_dialog.as_ref().unwrap().stage(),
+            remote_dialog::Stage::Editing
+        );
+        assert_eq!(fixture.server.control.dials(), 0);
+    }
+
+    #[tokio::test]
+    async fn going_up_on_a_server_cuts_the_address_as_text() {
+        let fixture = Fixture::connected().await;
+        let mut app = app_over(&fixture);
+        open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
+        assert_eq!(app.left_panel.path, url("/home/tester"));
+
+        settle(&mut app, Message::GoUp).await;
+        assert_eq!(app.left_panel.path, url("/home"));
+        assert_eq!(app.left_panel.selected_entry().unwrap().name, "tester");
+
+        settle(&mut app, Message::GoUp).await;
+        assert_eq!(app.left_panel.path, url("/"));
+        assert!(app.left_panel.entries.iter().all(|entry| !entry.is_parent));
+
+        let before = app.left_panel.request_id;
+        settle(&mut app, Message::GoUp).await;
+        assert_eq!(app.left_panel.request_id, before, "the root has no parent");
+        assert_eq!(app.left_panel.path, url("/"));
+    }
+
+    #[tokio::test]
+    async fn enter_on_a_folder_and_on_dot_dot_walk_a_server() {
+        let fixture = Fixture::connected().await;
+        std::fs::create_dir_all(fixture.server.local("/home/tester/docs")).unwrap();
+        let mut app = app_over(&fixture);
+        open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
+        let docs = app
+            .left_panel
+            .entries
+            .iter()
+            .position(|e| e.name == "docs")
+            .unwrap();
+        app.left_panel.selected = docs;
+
+        settle(&mut app, Message::OpenSelected).await;
+        assert_eq!(app.left_panel.path, url("/home/tester/docs"));
+
+        app.left_panel.selected = 0;
+        settle(&mut app, Message::OpenSelected).await;
+        assert_eq!(app.left_panel.path, url("/home/tester"));
+        assert_eq!(app.left_panel.selected_entry().unwrap().name, "docs");
+    }
+
+    #[tokio::test]
+    async fn an_archive_on_a_server_is_not_opened_like_a_folder() {
+        let fixture = Fixture::connected().await;
+        std::fs::write(fixture.server.local("/home/tester/pack.zip"), "not a zip").unwrap();
+        let mut app = app_over(&fixture);
+        open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
+        app.left_panel.selected = app
+            .left_panel
+            .entries
+            .iter()
+            .position(|e| e.name == "pack.zip")
+            .unwrap();
+        let before = app.left_panel.request_id;
+
+        settle(&mut app, Message::OpenSelected).await;
+
+        assert_eq!(app.left_panel.request_id, before);
+        assert_eq!(app.left_panel.path, url("/home/tester"));
+    }
+
+    #[tokio::test]
+    async fn history_walks_server_paths_back_and_forward() {
+        let fixture = Fixture::connected().await;
+        std::fs::create_dir_all(fixture.server.local("/home/tester/docs")).unwrap();
+        let mut app = app_over(&fixture);
+        open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
+        open(&mut app, PanelSide::Left, url("/home/tester/docs"), None).await;
+
+        settle(&mut app, Message::HistoryBack).await;
+        assert_eq!(app.left_panel.path, url("/home/tester"));
+        assert_eq!(app.left_panel.selected_entry().unwrap().name, "docs");
+
+        settle(&mut app, Message::HistoryForward).await;
+        assert_eq!(app.left_panel.path, url("/home/tester/docs"));
+    }
+
+    #[tokio::test]
+    async fn a_path_typed_over_a_server_folder_is_read_on_the_server() {
+        let fixture = Fixture::connected().await;
+        std::fs::create_dir_all(fixture.server.local("/home/tester/docs")).unwrap();
+        let mut app = app_over(&fixture);
+        open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
+
+        for (typed, expected) in [
+            ("docs", "/home/tester/docs"),
+            ("..", "/home/tester"),
+            ("~", HOME),
+            ("/", "/"),
+        ] {
+            drop(app.update(Message::PathFieldInput(typed.into())));
+            settle(&mut app, Message::PathFieldSubmit).await;
+            assert_eq!(app.left_panel.path, url(expected), "{typed}");
+            assert_eq!(app.path_field_for_test(), None);
+        }
+    }
+
+    #[tokio::test]
+    async fn the_command_line_does_not_run_on_a_server() {
+        let fixture = Fixture::connected().await;
+        let mut app = app_over(&fixture);
+        open(&mut app, PanelSide::Left, url("/home"), None).await;
+        drop(app.update(Message::CommandLine(CommandLineMessage::Input(
+            "touch x".into(),
+        ))));
+
+        settle(&mut app, Message::CommandLine(CommandLineMessage::Submit)).await;
+
+        assert_eq!(
+            app.status_error(),
+            Some("The command line does not run on a server")
+        );
+        assert!(!app.jobs.is_busy());
+    }
+
+    #[tokio::test]
+    async fn copy_path_on_a_server_is_the_address() {
+        let fixture = Fixture::connected().await;
+        std::fs::write(fixture.server.local("/home/tester/a.txt"), "a").unwrap();
+        let mut app = app_over(&fixture);
+        open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
+        app.left_panel.selected = app
+            .left_panel
+            .entries
+            .iter()
+            .position(|e| e.name == "a.txt")
+            .unwrap();
+
+        let copied = clipboard_text(app.panel(PanelSide::Left), ClipboardKind::Path).unwrap();
+
+        assert_eq!(copied.text, "sftp://tester@test.invalid/home/tester/a.txt");
+    }
+
+    #[tokio::test]
+    async fn the_drive_menu_lists_connected_servers_and_delete_disconnects() {
+        let fixture = Fixture::connected().await;
+        let mut app = app_over(&fixture).with_volumes(Vec::new);
+        open(&mut app, PanelSide::Left, url("/home"), None).await;
+
+        drop(app.update(Message::VolumeMenu(PanelSide::Left)));
+        let menu = app.volume_menu.as_ref().unwrap();
+        assert_eq!(menu.servers.len(), 1);
+        assert_eq!(menu.servers[0].label, "tester@test.invalid");
+        assert!(menu.servers[0].connected);
+        assert_eq!(menu.selected, 0, "a panel on a server opens the menu on it");
+
+        settle(&mut app, Message::VolumeMenuRemove).await;
+
+        assert!(!fixture.pool.is_connected(&Fixture::id()));
+        assert!(app.volume_menu.is_none());
+        assert_eq!(app.left_panel.path, app.home, "the panel went home");
+        assert!(app
+            .notice_for_test()
+            .unwrap()
+            .starts_with("Disconnected from"));
+    }
+
+    #[tokio::test]
+    async fn choosing_a_server_in_the_drive_menu_opens_its_root() {
+        let fixture = Fixture::connected().await;
+        let mut app = app_over(&fixture).with_volumes(Vec::new);
+        drop(app.update(Message::VolumeMenu(PanelSide::Right)));
+
+        settle(&mut app, Message::VolumeMenuActivate).await;
+
+        assert_eq!(app.right_panel.path, url("/"));
+        assert_eq!(app.right_panel.error, None);
+    }
+
+    #[tokio::test]
+    async fn the_disconnect_command_without_a_server_says_so() {
+        let fixture = Fixture::trusted();
+        let mut app = app_over(&fixture);
+
+        settle(&mut app, KeyAction::DisconnectServer.message()).await;
+
+        assert_eq!(app.notice_for_test(), Some("This panel is not on a server"));
+    }
+
+    #[tokio::test]
+    async fn the_disconnect_command_closes_the_connection_of_the_active_panel() {
+        let fixture = Fixture::connected().await;
+        let mut app = app_over(&fixture);
+        open(&mut app, PanelSide::Left, url("/home"), None).await;
+
+        settle(&mut app, KeyAction::DisconnectServer.message()).await;
+
+        assert!(!fixture.pool.is_connected(&Fixture::id()));
+    }
+
+    #[tokio::test]
+    async fn quit_closes_all_connections() {
+        let fixture = Fixture::connected().await;
+        let mut app = app_over(&fixture);
+
+        drop(app.update(Message::Quit));
+
+        assert!(!fixture.pool.is_connected(&Fixture::id()));
+    }
+
+    #[tokio::test]
+    async fn the_connect_commands_are_in_the_command_list() {
+        let listed: Vec<KeyAction> = crate::commands::all()
+            .map(|command| command.action)
+            .collect();
+        assert!(listed.contains(&KeyAction::ConnectServer));
+        assert!(listed.contains(&KeyAction::DisconnectServer));
+    }
+
+    #[tokio::test]
+    async fn the_connect_command_opens_the_dialog_and_is_blocked_by_another_one() {
+        let fixture = Fixture::trusted();
+        let mut app = app_over(&fixture);
+        app.open_delete_dialog_for_test(1, false);
+
+        settle(&mut app, KeyAction::ConnectServer.message()).await;
+        assert!(app.connect_dialog.is_none());
+
+        app.delete_dialog = None;
+        settle(&mut app, KeyAction::ConnectServer.message()).await;
+        assert!(app.connect_dialog.is_some());
     }
 }

@@ -20,6 +20,8 @@ use crate::dialog::PromptKind;
 use crate::execute::UndoReport;
 use crate::filing::{FilingMessage, IndexFigures};
 use crate::filing_work::FilingSummary;
+use crate::fs::remote::session::ConnectFailure;
+use crate::fs::remote::{RemotePath, Secret, ServerId};
 use crate::fs::search::SearchEvent;
 use crate::fs::{CreateDirError, OpenKind};
 use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
@@ -370,6 +372,9 @@ pub enum Message {
 
     // --- Folder grants of the App Store build ---
     Grant(GrantMessage),
+
+    // --- SFTP servers ---
+    Remote(RemoteMessage),
 
     // --- Settings tab ---
     Settings(SettingsMessage),
@@ -977,6 +982,70 @@ pub enum GrantMessage {
         folder: PathBuf,
         result: Result<(), String>,
     },
+}
+
+/// A field of the dialog that connects to a server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ConnectField {
+    Host,
+    Port,
+    User,
+    Password,
+    StartPath,
+}
+
+/// Everything the SFTP connections and their dialog send.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RemoteMessage {
+    /// The key action and the command: opens the connect dialog.
+    OpenConnect,
+    /// What was typed into a field other than the password.
+    Field(ConnectField, String),
+    Password(Secret),
+    ToggleRemember,
+    /// Tab: the next field, or the one before it.
+    FocusField {
+        backwards: bool,
+    },
+    Submit,
+    Cancel,
+    /// The answer to the attempt the dialog made. Dropped when the dialog has
+    /// been closed or has started another attempt since.
+    Connected {
+        attempt: u64,
+        result: Result<(), ConnectFailure>,
+    },
+    TrustHostKey,
+    /// The host key was written to the file of ncrs; connect again.
+    HostKeyLearned {
+        attempt: u64,
+        result: Result<(), String>,
+    },
+    /// The command and its key action: closes the connection of the active
+    /// panel's server.
+    DisconnectActive,
+    Disconnect(ServerId),
+    /// What the keychain holds for the server of a folder that was asked for
+    /// while there is no connection. Dropped when the panel has asked for
+    /// something else since.
+    PasswordLoaded {
+        side: PanelSide,
+        request_id: u64,
+        remote: RemotePath,
+        select: Option<String>,
+        result: Result<Option<Secret>, String>,
+    },
+    /// The silent connection with a password from the keychain is done.
+    AutoConnected {
+        side: PanelSide,
+        request_id: u64,
+        remote: RemotePath,
+        select: Option<String>,
+        password: Secret,
+        result: Result<(), ConnectFailure>,
+    },
+    /// The password was stored in the keychain, or why it was not.
+    PasswordStored(Result<(), String>),
 }
 
 /// Everything Quick Open sends.

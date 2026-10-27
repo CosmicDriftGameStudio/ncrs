@@ -5189,6 +5189,156 @@
       "context": "Error when a file name sent by a server could not be created on this computer, for example because it contains a path separator. The whole copy is stopped and nothing is left behind. Takes the name.",
       "en": "The name {name} from the server cannot be created here",
       "de": "Der Name {name} vom Server lässt sich hier nicht anlegen"
+    },
+    {
+      "key": "action.connect_server",
+      "context": "Entry of the command palette and the menu bar that runs the key action connect_server, which opens the dialog to connect to an SFTP server. The plain name of what the action does, as short as a menu entry; it has no key. The ellipsis says a dialog follows.",
+      "en": "Connect to server…",
+      "de": "Mit Server verbinden …"
+    },
+    {
+      "key": "action.connect_server.theme",
+      "context": "Theme name of the key action connect_server, shown dimmed after its plain name action.connect_server in the command palette, and matched when typing. A playful name (the delivery ship in Futurama); the plain name beside it says what the action does.",
+      "en": "Planet Express ship",
+      "de": "Planet-Express-Schiff"
+    },
+    {
+      "key": "action.disconnect_server",
+      "context": "Entry of the command palette and the menu bar that runs the key action disconnect_server, which closes the connection to the server the active panel shows. The plain name of what the action does, as short as a menu entry; it has no key.",
+      "en": "Disconnect server",
+      "de": "Server trennen"
+    },
+    {
+      "key": "action.disconnect_server.theme",
+      "context": "Theme name of the key action disconnect_server, shown dimmed after its plain name action.disconnect_server in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Back to Earth",
+      "de": "Zurück zur Erde"
+    },
+    {
+      "key": "remote.dialog_title",
+      "context": "Title of the dialog in which the user connects to an SFTP server: host, port, user name and password.",
+      "en": "Connect to server",
+      "de": "Mit Server verbinden"
+    },
+    {
+      "key": "remote.host",
+      "context": "Label and placeholder of the field for the host name or address of the server in the connect dialog.",
+      "en": "Host",
+      "de": "Host"
+    },
+    {
+      "key": "remote.port",
+      "context": "Label and placeholder of the field for the port of the server in the connect dialog. Left empty, it means 22.",
+      "en": "Port",
+      "de": "Port"
+    },
+    {
+      "key": "remote.user",
+      "context": "Label and placeholder of the field for the user name on the server in the connect dialog.",
+      "en": "User",
+      "de": "Benutzer"
+    },
+    {
+      "key": "remote.password",
+      "context": "Label and placeholder of the password field in the connect dialog. The text typed there is hidden. Only passwords are supported, no key files.",
+      "en": "Password",
+      "de": "Passwort"
+    },
+    {
+      "key": "remote.remember",
+      "context": "Label of the checkbox in the connect dialog that stores the password in the system keychain, one entry per server, so the next connection asks for nothing.",
+      "en": "Remember password in the keychain",
+      "de": "Passwort im Schlüsselbund merken"
+    },
+    {
+      "key": "remote.save",
+      "context": "Label of the checkbox in the connect dialog that adds the server to the list of saved servers in the config file. The password is never written there.",
+      "en": "Save in the server list",
+      "de": "In der Serverliste speichern"
+    },
+    {
+      "key": "remote.start_path",
+      "context": "Label and placeholder of the optional field in the connect dialog for the folder on the server to open first. Left empty, the home folder of the login opens.",
+      "en": "Start folder (optional)",
+      "de": "Startordner (optional)"
+    },
+    {
+      "key": "remote.connect",
+      "context": "Button of the connect dialog that connects to the server. Verb, one word.",
+      "en": "Connect",
+      "de": "Verbinden"
+    },
+    {
+      "key": "remote.connecting",
+      "context": "Dimmed line in the connect dialog while the connection is being made.",
+      "en": "Connecting…",
+      "de": "Verbinde …"
+    },
+    {
+      "key": "remote.hostkey_title",
+      "context": "Title of the dialog stage that asks whether to trust a server ncrs has not seen before. Nothing has been sent to the server at that point, no password.",
+      "en": "Unknown server",
+      "de": "Unbekannter Server"
+    },
+    {
+      "key": "remote.hostkey_body",
+      "context": "Text of the dialog stage that asks whether to trust an unknown server. Takes the host and the SHA256 fingerprint of its host key; the user compares it with the one the administrator of the server gives.",
+      "en": "{host} is not known yet. Compare the fingerprint with the one the server's administrator gives you: {fingerprint}",
+      "de": "{host} ist noch unbekannt. Fingerabdruck mit dem vom Server-Admin genannten vergleichen: {fingerprint}"
+    },
+    {
+      "key": "remote.hostkey_trust",
+      "context": "Button of the dialog stage that asks whether to trust an unknown server: remembers its host key and connects. Several words.",
+      "en": "Trust and connect",
+      "de": "Vertrauen und verbinden"
+    },
+    {
+      "key": "status.remote_read_only",
+      "context": "Status bar notice when a key or command that would change something on a server is used in a panel that shows one: only browsing, viewing and copying work there for now.",
+      "en": "Files on the server can only be browsed, viewed and copied for now.",
+      "de": "Dateien auf dem Server lassen sich vorerst nur ansehen und kopieren."
+    },
+    {
+      "key": "status.remote_no_shell",
+      "context": "Status bar notice when the command line is used while the active panel shows a server: commands run on this computer only, not on the server.",
+      "en": "The command line does not run on a server",
+      "de": "Die Kommandozeile läuft nicht auf einem Server"
+    },
+    {
+      "key": "status.remote_connected",
+      "context": "Notice in the status bar after the connection to a server was made. Takes the server as user@host.",
+      "en": "Connected to {server}",
+      "de": "Verbunden mit {server}"
+    },
+    {
+      "key": "status.remote_disconnected",
+      "context": "Notice in the status bar after the user closed the connection to a server. Takes the server as user@host.",
+      "en": "Disconnected from {server}",
+      "de": "Verbindung zu {server} getrennt"
+    },
+    {
+      "key": "status.remote_not_connected",
+      "context": "Notice in the status bar when the key action disconnect_server runs while the active panel does not show a server.",
+      "en": "This panel is not on a server",
+      "de": "Dieses Fenster zeigt keinen Server"
+    },
+    {
+      "key": "volumes.servers_heading",
+      "context": "Heading of the part of the drive menu that lists servers: the saved ones and those connected now.",
+      "en": "Servers",
+      "de": "Server"
+    },
+    {
+      "key": "volumes.server_connected",
+      "context": "Marker after a server in the drive menu whose connection is open at the moment. One word.",
+      "en": "connected",
+      "de": "verbunden"
+    },
+    {
+      "key": "volumes.hint_disconnect",
+      "context": "Verb next to the Backspace or Del key in the footer of the drive menu while a connected server is highlighted: closes its connection. One word, like volumes.hint_remove_favourite.",
+      "en": "disconnect",
+      "de": "trennen"
     }
   ]
 }

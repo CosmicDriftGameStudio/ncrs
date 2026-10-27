@@ -11,6 +11,7 @@ use std::sync::{Mutex, PoisonError};
 
 use serde::{Deserialize, Serialize};
 
+use crate::fs::remote::RemotePath;
 use crate::fs::{archive, SortColumn, SortKey};
 use crate::messages::PanelSide;
 use crate::ui::panel_history::PanelHistory;
@@ -95,6 +96,11 @@ pub struct PanelRecord {
 /// The folder as text. A non-UTF-8 folder is simply not remembered: TOML has
 /// only UTF-8 strings.
 pub fn record_path(path: &Path) -> Option<String> {
+    // A server is not remembered: its address could not be opened again
+    // without the password, and the file must never hold one.
+    if RemotePath::parse(path).is_some() {
+        return None;
+    }
     path.to_str().map(str::to_owned)
 }
 
@@ -110,6 +116,10 @@ pub fn record_paths<'a>(paths: impl IntoIterator<Item = &'a PathBuf>) -> Vec<Str
 /// folder holding the archive, because the state file must not make a restart
 /// open an archive, which may be gone or replaced by then.
 pub fn history_place(path: &Path) -> PathBuf {
+    // A place on a server is no path on this computer: the disk is not asked.
+    if RemotePath::parse(path).is_some() {
+        return path.to_path_buf();
+    }
     // Nearly every entry is a plain folder, so the disk is asked only when the
     // entry or a name above it looks like an archive.
     let may_be_inside = path
@@ -498,5 +508,23 @@ mod tests {
         use std::os::unix::ffi::OsStrExt as _;
         let path = Path::new(std::ffi::OsStr::from_bytes(b"/tmp/\xff"));
         assert_eq!(record_path(path), None);
+    }
+
+    #[test]
+    fn a_server_is_never_written_down() {
+        let server = Path::new("sftp://marc@example.org/home/marc");
+        assert_eq!(record_path(server), None);
+        let local = std::env::temp_dir();
+        let history = vec![
+            PathBuf::from("sftp://marc@example.org/a.zip"),
+            local.clone(),
+            PathBuf::from("sftp://marc@example.org/"),
+        ];
+        assert_eq!(record_history(&history), [record_path(&local).unwrap()]);
+        assert_eq!(
+            history_place(&history[0]),
+            history[0],
+            "the disk is not asked about an address"
+        );
     }
 }

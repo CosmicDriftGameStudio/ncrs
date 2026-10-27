@@ -62,6 +62,25 @@ impl Dial for TcpDial {
     }
 }
 
+/// The dial of the tests that were not given a server: it refuses, so no test
+/// reaches a network.
+#[derive(Debug)]
+struct NoNetwork;
+
+impl Dial for NoNetwork {
+    fn dial<'a>(
+        &'a self,
+        _server: &'a ServerId,
+    ) -> BoxFuture<'a, io::Result<Box<dyn AsyncReadWrite>>> {
+        Box::pin(async {
+            Err(io::Error::new(
+                io::ErrorKind::ConnectionRefused,
+                "no network in tests",
+            ))
+        })
+    }
+}
+
 /// Why a connection could not be made.
 #[derive(Clone, PartialEq)]
 pub enum ConnectFailure {
@@ -325,16 +344,19 @@ impl Pool {
     }
 
     /// The pool the app runs with: real sockets and the limits of
-    /// [`Timeouts::default`].
+    /// [`Timeouts::default`]. In the tests there is no network: whatever tries
+    /// to connect is refused, and a test that wants a server puts one in with
+    /// [`Pool::new`].
     pub fn over_tcp(known: KnownHostsFiles) -> Self {
         let timeouts = Timeouts::default();
-        Self::new(
+        let dial: Arc<dyn Dial> = if cfg!(test) {
+            Arc::new(NoNetwork)
+        } else {
             Arc::new(TcpDial {
                 timeout: timeouts.connect,
-            }),
-            known,
-            timeouts,
-        )
+            })
+        };
+        Self::new(dial, known, timeouts)
     }
 
     pub fn timeouts(&self) -> Timeouts {
@@ -361,6 +383,13 @@ impl Pool {
 
     pub fn is_connected(&self, server: &ServerId) -> bool {
         self.session(server).is_some()
+    }
+
+    /// The servers with a live connection, in no particular order.
+    pub fn connected(&self) -> Vec<ServerId> {
+        let mut sessions = self.sessions();
+        sessions.retain(|_, session| session.is_alive());
+        sessions.keys().cloned().collect()
     }
 
     /// Drops the connection, so the next use connects again. The server is told

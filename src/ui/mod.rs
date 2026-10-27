@@ -27,6 +27,7 @@ pub mod panel_history;
 pub mod picker;
 pub mod quick_fix;
 pub mod quick_open;
+pub mod remote;
 pub mod reorganisation_plan;
 pub mod review_list;
 pub mod rule_suggestions;

@@ -238,6 +238,18 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             Msg::ActionDownloadAiModelTheme,
         ),
         KeyAction::GrantFolderAccess => Command::plain(action, File, Msg::ActionGrantFolderAccess),
+        KeyAction::ConnectServer => Command::themed(
+            action,
+            Go,
+            Msg::ActionConnectServer,
+            Msg::ActionConnectServerTheme,
+        ),
+        KeyAction::DisconnectServer => Command::themed(
+            action,
+            Go,
+            Msg::ActionDisconnectServer,
+            Msg::ActionDisconnectServerTheme,
+        ),
         KeyAction::CommandPalette => Command::themed(
             action,
             Help,

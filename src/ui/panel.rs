@@ -15,6 +15,7 @@ use super::layout::{
 };
 use super::panel_history::PanelHistory;
 use super::theme::{self, font_size, size, spacing};
+use crate::fs::remote::{RemotePath, ServerId};
 use crate::fs::{sort_entries, FileEntry, ReadError, SortColumn, SortKey};
 use crate::hermes_column::{
     abbreviated, role_message, state_label, summary_items, ColumnView, FolderRole, FolderSummary,
@@ -96,6 +97,18 @@ impl PanelState {
 
     pub fn selected_entry(&self) -> Option<&FileEntry> {
         self.entries.get(self.selected)
+    }
+
+    /// The server the panel shows a folder of. Told from the text of the path,
+    /// never from the disk.
+    pub fn remote(&self) -> Option<ServerId> {
+        RemotePath::parse(&self.path).map(|place| place.server().clone())
+    }
+
+    /// The panel shows something that is not a folder on this computer: the
+    /// inside of an archive, or a folder on a server.
+    pub fn is_virtual(&self) -> bool {
+        self.archive.is_some() || self.remote().is_some()
     }
 
     /// Records the move from `previous` in the history once the listing of

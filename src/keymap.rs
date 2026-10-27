@@ -18,9 +18,9 @@ use crate::messages::Message;
 use crate::messages::{
     AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage, FilingSetupMessage,
     FilingStatusMessage, GrantMessage, HermesFileMessage, KeyBindingsMessage, OcrModelsMessage,
-    PanelSide, QuickFixMessage, QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage,
-    RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage,
-    TransferKind,
+    PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage,
+    ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingsMessage,
+    ThemeFetchMessage, TransferKind,
 };
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
@@ -139,6 +139,8 @@ key_actions! {
     DownloadOcrModels => "download_ocr_models",
     DownloadAiModel => "download_ai_model",
     GrantFolderAccess => "grant_folder_access",
+    ConnectServer => "connect_server",
+    DisconnectServer => "disconnect_server",
     SearchCase => "search_case",
     SearchWholeWord => "search_whole_word",
     SearchRegex => "search_regex",
@@ -234,6 +236,8 @@ impl KeyAction {
             | Self::DownloadOcrModels
             | Self::DownloadAiModel
             | Self::GrantFolderAccess
+            | Self::ConnectServer
+            | Self::DisconnectServer
             | Self::DriveMenuLeft
             | Self::DriveMenuRight
             | Self::HistoryBack
@@ -367,6 +371,8 @@ impl KeyAction {
             Self::DownloadOcrModels => Message::OcrModels(OcrModelsMessage::Open),
             Self::DownloadAiModel => Message::AiModel(AiModelMessage::Open),
             Self::GrantFolderAccess => Message::Grant(GrantMessage::Open),
+            Self::ConnectServer => Message::Remote(RemoteMessage::OpenConnect),
+            Self::DisconnectServer => Message::Remote(RemoteMessage::DisconnectActive),
             Self::SearchCase => Message::Search(SearchMessage::ToggleCase),
             Self::SearchWholeWord => Message::Search(SearchMessage::ToggleWholeWord),
             Self::SearchRegex => Message::Search(SearchMessage::ToggleRegex),
@@ -432,11 +438,92 @@ impl KeyAction {
             | Self::DownloadOcrModels
             | Self::DownloadAiModel
             | Self::GrantFolderAccess
+            | Self::ConnectServer
+            | Self::DisconnectServer
             | Self::SearchCase
             | Self::SearchWholeWord
             | Self::SearchRegex
             | Self::View => true,
             Self::Edit
+            | Self::Move
+            | Self::Delete
+            | Self::DeletePermanently
+            | Self::Mkdir
+            | Self::NewFile
+            | Self::AddFavourite
+            | Self::RemoveFavourite
+            | Self::Search
+            | Self::QuickOpen
+            | Self::HermesQuickFix
+            | Self::HermesHandToInbox
+            | Self::HermesProcessAgain
+            | Self::HermesSetInbox
+            | Self::HermesSetFilingLocation
+            | Self::HermesSetArchive
+            | Self::HermesExclude
+            | Self::HermesInspect => false,
+        }
+    }
+
+    /// Whether a panel on an SFTP server may run the action. It is what an
+    /// archive allows, less the command line, which runs on this computer, and
+    /// plus the actions that connect and disconnect. Viewing and copying are
+    /// not allowed yet. No catch-all arm: a new
+    /// action has to be decided.
+    #[cfg(test)]
+    pub fn allowed_on_server(self) -> bool {
+        match self {
+            Self::CommandLine => false,
+            Self::Quit
+            | Self::GoUp
+            | Self::Open
+            | Self::SwitchPanel
+            | Self::SwitchLanguage
+            | Self::ToggleTag
+            | Self::TagDown
+            | Self::TagUp
+            | Self::TagAll
+            | Self::ClearTags
+            | Self::AbortJob
+            | Self::CopyPath
+            | Self::CopyName
+            | Self::DriveMenuLeft
+            | Self::DriveMenuRight
+            | Self::HistoryBack
+            | Self::HistoryForward
+            | Self::Favourites
+            | Self::SortByName
+            | Self::SortByModified
+            | Self::SortBySize
+            | Self::ContextMenu
+            | Self::CursorUp
+            | Self::CursorDown
+            | Self::PageUp
+            | Self::PageDown
+            | Self::First
+            | Self::Last
+            | Self::CommandPalette
+            | Self::FilingStatus
+            | Self::FilingSetup
+            | Self::RuleSuggestions
+            | Self::ReviewList
+            | Self::SavedQueries
+            | Self::ReorganisationPlan
+            | Self::UndoReorganisation
+            | Self::FetchTheme
+            | Self::Settings
+            | Self::KeyBindings
+            | Self::DownloadOcrModels
+            | Self::DownloadAiModel
+            | Self::GrantFolderAccess
+            | Self::ConnectServer
+            | Self::DisconnectServer
+            | Self::SearchCase
+            | Self::SearchWholeWord
+            | Self::SearchRegex => true,
+            Self::Edit
+            | Self::View
+            | Self::Copy
             | Self::Move
             | Self::Delete
             | Self::DeletePermanently
@@ -1769,13 +1856,15 @@ mod tests {
     #[test]
     fn every_action_has_a_default_key_and_no_key_is_twice_bound() {
         // Reached through the command palette (or a menu) only.
-        const WITHOUT_KEY: [KeyAction; 12] = [
+        const WITHOUT_KEY: [KeyAction; 14] = [
             KeyAction::RemoveFavourite,
             KeyAction::Favourites,
             KeyAction::FetchTheme,
             KeyAction::DownloadOcrModels,
             KeyAction::DownloadAiModel,
             KeyAction::GrantFolderAccess,
+            KeyAction::ConnectServer,
+            KeyAction::DisconnectServer,
             KeyAction::HermesHandToInbox,
             KeyAction::HermesSetInbox,
             KeyAction::HermesSetFilingLocation,

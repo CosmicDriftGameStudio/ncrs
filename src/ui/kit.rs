@@ -455,7 +455,35 @@ pub fn text_field<'a>(
     on_submit: Message,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    field_in(placeholder, value, id, on_input, on_submit, None, palette)
+    field_in(
+        placeholder,
+        value,
+        id,
+        on_input,
+        on_submit,
+        Look::Plain,
+        palette,
+    )
+}
+
+/// A text field that shows dots instead of what is typed, for a password.
+pub fn secret_field<'a>(
+    placeholder: &str,
+    value: &str,
+    id: &'static str,
+    on_input: Option<impl Fn(String) -> Message + 'a>,
+    on_submit: Message,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    field_in(
+        placeholder,
+        value,
+        id,
+        on_input,
+        on_submit,
+        Look::Secret,
+        palette,
+    )
 }
 
 /// A text field for a path or a name, set in the monospace font.
@@ -473,9 +501,19 @@ pub fn mono_text_field<'a>(
         id,
         on_input,
         on_submit,
-        Some(Font::MONOSPACE),
+        Look::Mono,
         palette,
     )
+}
+
+/// How a text field shows what is typed.
+#[derive(Clone, Copy)]
+enum Look {
+    Plain,
+    /// The monospace font, for paths and names.
+    Mono,
+    /// Dots, for a password.
+    Secret,
 }
 
 fn field_in<'a>(
@@ -484,13 +522,15 @@ fn field_in<'a>(
     id: &'static str,
     on_input: Option<impl Fn(String) -> Message + 'a>,
     on_submit: Message,
-    forced_font: Option<Font>,
+    look: Look,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let plain = text_input(placeholder, value).id(id);
-    let fonted = match forced_font {
-        Some(chosen) => plain.font(chosen),
-        None => plain,
+    let plain = text_input(placeholder, value)
+        .id(id)
+        .secure(matches!(look, Look::Secret));
+    let fonted = match look {
+        Look::Mono => plain.font(Font::MONOSPACE),
+        Look::Plain | Look::Secret => plain,
     };
     let field = match on_input {
         Some(typed) => fonted.on_input(typed).on_submit(on_submit),

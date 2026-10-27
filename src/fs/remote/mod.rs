@@ -23,7 +23,7 @@ pub mod known_hosts;
 pub mod list;
 pub mod session;
 #[cfg(test)]
-mod test_server;
+pub mod test_server;
 pub mod transfer;
 
 use std::fmt;

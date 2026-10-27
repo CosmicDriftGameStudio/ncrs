@@ -44,6 +44,7 @@ mod palette;
 mod query_work;
 mod quick_fix;
 mod quick_open;
+mod remote_dialog;
 mod reorganisation_plan;
 mod reorganisation_work;
 mod review_list;

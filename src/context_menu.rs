@@ -66,6 +66,22 @@ impl ContextAction {
         }
     }
 
+    /// Whether a panel on an SFTP server may run the entry. See
+    /// `KeyAction::allowed_on_server`.
+    #[cfg(test)]
+    pub fn allowed_on_server(self) -> bool {
+        match self {
+            ContextAction::Open | ContextAction::CopyPath | ContextAction::CopyName => true,
+            ContextAction::Edit
+            | ContextAction::View
+            | ContextAction::Copy
+            | ContextAction::Move
+            | ContextAction::NewFolder
+            | ContextAction::Trash
+            | ContextAction::DeletePermanently => false,
+        }
+    }
+
     pub fn message(self) -> Message {
         match self {
             ContextAction::Open => Message::OpenSelected,
@@ -164,6 +180,22 @@ impl HermesAction {
     /// path inside an archive is no place Hermes knows.
     #[cfg(test)]
     pub fn allowed_in_archive(self) -> bool {
+        match self {
+            HermesAction::ShowSuggestion
+            | HermesAction::HandToInbox
+            | HermesAction::ProcessAgain
+            | HermesAction::SetInbox
+            | HermesAction::SetFilingLocation
+            | HermesAction::SetArchive
+            | HermesAction::Exclude
+            | HermesAction::Include
+            | HermesAction::Inspect => false,
+        }
+    }
+
+    /// Hermes knows no place on a server either.
+    #[cfg(test)]
+    pub fn allowed_on_server(self) -> bool {
         match self {
             HermesAction::ShowSuggestion
             | HermesAction::HandToInbox
