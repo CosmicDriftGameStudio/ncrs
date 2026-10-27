@@ -18,6 +18,10 @@ pub enum ReadError {
     /// An archive was listed without some entries: paths that would leave the
     /// folder they are copied to, links and special files.
     EntriesLeftOut { count: usize },
+    /// An archive whose content or header is encrypted, which ncrs cannot open.
+    ArchiveEncrypted,
+    /// A 7z archive whose dictionary is larger than ncrs unpacks.
+    ArchiveDictionaryTooLarge,
 }
 
 impl std::fmt::Display for ReadError {
@@ -28,6 +32,10 @@ impl std::fmt::Display for ReadError {
             | ReadError::TaskFailed { reason } => f.write_str(reason),
             ReadError::EntriesLeftOut { count } => {
                 write!(f, "{count} entries left out of the archive")
+            }
+            ReadError::ArchiveEncrypted => f.write_str("the archive is encrypted"),
+            ReadError::ArchiveDictionaryTooLarge => {
+                f.write_str("the archive needs too much memory to unpack")
             }
         }
     }
@@ -131,8 +139,14 @@ fn read_archive(path: &Path, location: &archive::ArchiveLocation, sorted_by: Sor
         },
         Err(err) => Read {
             entries: parent_only(path),
-            error: Some(ReadError::CannotRead {
-                reason: err.to_string(),
+            error: Some(match archive::refusal_of(&err) {
+                Some(archive::SevenZipRefusal::Encrypted) => ReadError::ArchiveEncrypted,
+                Some(archive::SevenZipRefusal::DictionaryTooLarge) => {
+                    ReadError::ArchiveDictionaryTooLarge
+                }
+                None => ReadError::CannotRead {
+                    reason: err.to_string(),
+                },
             }),
             archive,
         },
@@ -309,6 +323,21 @@ mod tests {
 
         assert_eq!(names_of(&listing), ["..", "ok.txt"]);
         assert_eq!(listing.error, Some(ReadError::EntriesLeftOut { count: 1 }));
+    }
+
+    #[tokio::test]
+    async fn an_encrypted_archive_is_reported_as_such_and_keeps_the_way_out() {
+        use crate::fs::archive::fixtures::ENCRYPTED_7Z;
+        let scratch = scratch_dir("read-archive-encrypted");
+        for (file, bytes) in ENCRYPTED_7Z {
+            let archive = scratch.path().join(file);
+            std::fs::write(&archive, bytes).unwrap();
+
+            let listing = read_directory(archive, SortKey::default()).await;
+
+            assert_eq!(names_of(&listing), [".."], "{file}");
+            assert_eq!(listing.error, Some(ReadError::ArchiveEncrypted), "{file}");
+        }
     }
 
     #[tokio::test]

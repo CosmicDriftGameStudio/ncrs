@@ -8,6 +8,7 @@
 mod extract;
 mod index;
 mod names;
+mod sevenz;
 
 use std::ffi::{OsStr, OsString};
 use std::io;
@@ -17,6 +18,7 @@ use std::time::SystemTime;
 
 pub use extract::copy_out;
 pub use index::{ArchiveIndex, Totals};
+pub use sevenz::{refusal_of, SevenZipRefusal};
 
 use super::FileEntry;
 
@@ -26,6 +28,7 @@ pub enum ArchiveFormat {
     Tar,
     TarGz,
     TarZst,
+    SevenZip,
 }
 
 impl ArchiveFormat {
@@ -40,6 +43,8 @@ impl ArchiveFormat {
             Some(Self::TarGz)
         } else if ends(&[".tar.zst", ".tzst"]) {
             Some(Self::TarZst)
+        } else if ends(&[".7z"]) {
+            Some(Self::SevenZip)
         } else {
             None
         }
@@ -189,7 +194,8 @@ pub mod fixtures;
 #[cfg(test)]
 mod tests {
     use super::fixtures::{
-        scratch, write_archive, Item, ALL_FORMATS, BSDTAR_UMLAUT_NAME, BSDTAR_ZIP,
+        scratch, write_archive, Item, ALL_FORMATS, BSDTAR_ARCHIVES, BSDTAR_UMLAUT_NAME,
+        DICTIONARY_512M_7Z, DICTIONARY_64M_7Z, ENCRYPTED_7Z,
     };
     use super::*;
 
@@ -208,7 +214,9 @@ mod tests {
             ("a.tar.zst", Some(ArchiveFormat::TarZst)),
             ("a.tzst", Some(ArchiveFormat::TarZst)),
             ("a.gz", None),
-            ("a.7z", None),
+            ("a.7z", Some(ArchiveFormat::SevenZip)),
+            ("A.7Z", Some(ArchiveFormat::SevenZip)),
+            ("a.7z.txt", None),
             ("zip", None),
             ("a.tar.bz2", None),
             ("a.zip.txt", None),
@@ -276,28 +284,30 @@ mod tests {
     }
 
     #[test]
-    fn a_zip_written_by_bsdtar_lists_its_folder_umlaut_name_and_empty_file() {
-        let dir = scratch("bsdtar-list");
-        let archive = dir.path().join("bsdtar.zip");
-        std::fs::write(&archive, BSDTAR_ZIP).unwrap();
+    fn an_archive_written_by_bsdtar_lists_its_folder_umlaut_name_and_empty_file() {
+        for (file, bytes) in BSDTAR_ARCHIVES {
+            let dir = scratch("bsdtar-list");
+            let archive = dir.path().join(file);
+            std::fs::write(&archive, bytes).unwrap();
 
-        assert_eq!(
-            names_in(&at(&archive, &[])),
-            [
-                ("Unterordner".to_owned(), true),
-                ("leer.txt".to_owned(), false)
-            ]
-        );
-        let inside = list(&at(&archive, &["Unterordner"])).unwrap();
-        let names: Vec<_> = inside
-            .entries
-            .iter()
-            .map(|entry| (entry.name.to_string_lossy().into_owned(), entry.size))
-            .collect();
-        assert_eq!(names, [(BSDTAR_UMLAUT_NAME.to_owned(), 23)]);
-        let top = list(&at(&archive, &[])).unwrap();
-        let empty_file = top.entries.iter().find(|entry| entry.name == "leer.txt");
-        assert_eq!(empty_file.map(|entry| entry.size), Some(0));
+            assert_eq!(
+                names_in(&at(&archive, &[])),
+                [
+                    ("Unterordner".to_owned(), true),
+                    ("leer.txt".to_owned(), false)
+                ]
+            );
+            let inside = list(&at(&archive, &["Unterordner"])).unwrap();
+            let names: Vec<_> = inside
+                .entries
+                .iter()
+                .map(|entry| (entry.name.to_string_lossy().into_owned(), entry.size))
+                .collect();
+            assert_eq!(names, [(BSDTAR_UMLAUT_NAME.to_owned(), 23)]);
+            let top = list(&at(&archive, &[])).unwrap();
+            let empty_file = top.entries.iter().find(|entry| entry.name == "leer.txt");
+            assert_eq!(empty_file.map(|entry| entry.size), Some(0));
+        }
     }
 
     #[test]
@@ -334,6 +344,86 @@ mod tests {
             std::fs::write(&archive, b"this is not an archive at all, just text").unwrap();
             assert!(list(&at(&archive, &[])).is_err(), "{file}");
         }
+    }
+
+    #[test]
+    fn an_encrypted_7z_is_refused_with_its_own_error_for_listing_and_copying() {
+        for (file, bytes) in ENCRYPTED_7Z {
+            let dir = scratch("encrypted");
+            let archive = dir.path().join(file);
+            std::fs::write(&archive, bytes).unwrap();
+
+            let listed = list(&at(&archive, &[])).unwrap_err();
+            assert_eq!(
+                refusal_of(&listed),
+                Some(SevenZipRefusal::Encrypted),
+                "{file}: {listed}"
+            );
+
+            let out = dir.path().join("out");
+            std::fs::create_dir(&out).unwrap();
+            let copied = copy_out(
+                &archive.join("secret.txt"),
+                &out,
+                &mut crate::fs::transfer::Counting,
+                crate::fs::transfer::OnConflict::Fail,
+            )
+            .unwrap_err();
+            assert_eq!(
+                refusal_of(&copied),
+                Some(SevenZipRefusal::Encrypted),
+                "{file}: {copied}"
+            );
+            assert_eq!(std::fs::read_dir(&out).unwrap().count(), 0, "{file}");
+        }
+    }
+
+    #[test]
+    fn a_7z_with_a_huge_dictionary_is_refused_but_the_largest_preset_opens() {
+        let dir = scratch("dictionary");
+        let out = dir.path().join("out");
+        std::fs::create_dir(&out).unwrap();
+        for (file, bytes) in DICTIONARY_512M_7Z {
+            let huge = dir.path().join(file);
+            std::fs::write(&huge, bytes).unwrap();
+            let listed = list(&at(&huge, &[])).unwrap_err();
+            assert_eq!(
+                refusal_of(&listed),
+                Some(SevenZipRefusal::DictionaryTooLarge),
+                "{file}: {listed}"
+            );
+            let copied = copy_out(
+                &huge.join("a.txt"),
+                &out,
+                &mut crate::fs::transfer::Counting,
+                crate::fs::transfer::OnConflict::Fail,
+            )
+            .unwrap_err();
+            assert_eq!(
+                refusal_of(&copied),
+                Some(SevenZipRefusal::DictionaryTooLarge),
+                "{file}: {copied}"
+            );
+        }
+        assert_eq!(std::fs::read_dir(&out).unwrap().count(), 0);
+
+        for (file, bytes) in DICTIONARY_64M_7Z {
+            let ultra = dir.path().join(file);
+            std::fs::write(&ultra, bytes).unwrap();
+            assert_eq!(
+                names_in(&at(&ultra, &[])),
+                [("a.txt".to_owned(), false)],
+                "{file}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_broken_7z_is_not_called_encrypted() {
+        let dir = scratch("not-encrypted");
+        let archive = dir.path().join("b.7z");
+        std::fs::write(&archive, b"7z but not really, just some text here").unwrap();
+        assert_eq!(refusal_of(&list(&at(&archive, &[])).unwrap_err()), None);
     }
 
     #[test]

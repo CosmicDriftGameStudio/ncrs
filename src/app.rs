@@ -532,6 +532,9 @@ fn is_context_click(modifiers: Modifiers) -> bool {
 pub enum RowFailure {
     /// The target already exists, and the user can say what to do about it.
     Conflict(String),
+    /// A 7z archive ncrs refuses to unpack; the text is chosen in the user's
+    /// language when it is shown, not when the copy fails.
+    Refused(fs::archive::SevenZipRefusal),
     /// Anything else, shown as it came.
     Other(String),
 }
@@ -541,6 +544,8 @@ impl RowFailure {
         use std::io::ErrorKind;
         if err.kind() == ErrorKind::AlreadyExists {
             RowFailure::Conflict(err.to_string())
+        } else if let Some(refusal) = fs::archive::refusal_of(&err) {
+            RowFailure::Refused(refusal)
         } else {
             RowFailure::Other(err.to_string())
         }
@@ -2875,6 +2880,16 @@ impl App {
                     }
                     // Rows before this one are already done, so the panels are
                     // reloaded to show them.
+                    Err(RowFailure::Refused(refusal)) => {
+                        let text = self.lang.text(match refusal {
+                            fs::archive::SevenZipRefusal::Encrypted => Msg::ErrorArchiveEncrypted,
+                            fs::archive::SevenZipRefusal::DictionaryTooLarge => {
+                                Msg::ErrorArchiveDictionaryTooLarge
+                            }
+                        });
+                        self.set_status_error(text);
+                        self.end_transfer()
+                    }
                     Err(RowFailure::Other(reason)) => {
                         self.set_status_error(&reason);
                         self.end_transfer()
@@ -12001,6 +12016,44 @@ mod conflict_tests {
         let _started = app.start_transfer(TransferKind::Copy);
 
         assert_eq!(app.conflict_rule, None);
+    }
+
+    #[tokio::test]
+    async fn a_refused_7z_copy_shows_the_text_of_the_language() {
+        use crate::fs::archive::fixtures::{DICTIONARY_512M_7Z, ENCRYPTED_7Z};
+        let dir = tempfile::tempdir().unwrap();
+        let (file, bytes) = ENCRYPTED_7Z[0];
+        let encrypted = dir.path().join(file);
+        std::fs::write(&encrypted, bytes).unwrap();
+        let (huge_file, huge_bytes) = DICTIONARY_512M_7Z[1];
+        let huge = dir.path().join(huge_file);
+        std::fs::write(&huge, huge_bytes).unwrap();
+        let cases = [
+            (encrypted.join("secret.txt"), Msg::ErrorArchiveEncrypted),
+            (huge.join("a.txt"), Msg::ErrorArchiveDictionaryTooLarge),
+        ];
+        for lang in [Language::English, Language::German] {
+            for (source, expected) in &cases {
+                let error = fs::archive::copy_out(
+                    source,
+                    dir.path(),
+                    &mut fs::transfer::Counting,
+                    fs::transfer::OnConflict::Fail,
+                )
+                .unwrap_err();
+                let (mut app, _scratch) = with_conflict();
+                app.lang = lang;
+                let _started = app.start_transfer(TransferKind::Copy);
+
+                let _task = app.update(Message::TransferRowDone {
+                    result: Err(RowFailure::from_io(error)),
+                    index: 0,
+                    generation: app.generation,
+                });
+
+                assert_eq!(app.job_error.as_deref(), Some(lang.text(*expected)));
+            }
+        }
     }
 
     /// A late result from a stopped transfer must not steer the next one: here

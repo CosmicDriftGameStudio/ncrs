@@ -11,6 +11,7 @@ use std::time::SystemTime;
 
 use super::index::{open_tar, open_zip, tar_time, zip_error, zip_time, EntryKind};
 use super::names::safe_components;
+use super::sevenz;
 use super::{index_of, locate_in_archive, ArchiveFormat, ArchiveLocation};
 use crate::fs::transfer::{transfer, Counting, Move, OnConflict, Progress};
 
@@ -166,6 +167,7 @@ fn unpack<P: Progress>(
     };
     match location.format {
         ArchiveFormat::Zip => unpack_zip(&location.archive, &mut writer)?,
+        ArchiveFormat::SevenZip => unpack_sevenz(&location.archive, &mut writer)?,
         ArchiveFormat::Tar | ArchiveFormat::TarGz | ArchiveFormat::TarZst => {
             unpack_tar(&location.archive, location.format, &mut writer)?;
         }
@@ -206,6 +208,41 @@ fn unpack_zip<P: Progress>(archive: &Path, writer: &mut Writer<P>) -> io::Result
         }
     }
     Ok(())
+}
+
+/// Solid blocks are decoded in order and cannot be entered halfway, so every
+/// entry is read to its end, and only the wanted ones are written.
+fn unpack_sevenz<P: Progress>(archive: &Path, writer: &mut Writer<P>) -> io::Result<()> {
+    let mut reader = sevenz::open(archive)?;
+    reader
+        .for_each_entries(|entry, mut content| {
+            visit_sevenz_entry(entry, &mut content, writer).map_err(sevenz_rust2::Error::from)?;
+            Ok(true)
+        })
+        .map_err(sevenz::io_error)
+}
+
+fn visit_sevenz_entry<P: Progress>(
+    entry: &sevenz_rust2::ArchiveEntry,
+    content: &mut &mut dyn Read,
+    writer: &mut Writer<P>,
+) -> io::Result<()> {
+    writer.progress.keep_going()?;
+    let kind = sevenz::kind_of(entry);
+    let destination = match safe_components(entry.name()) {
+        Some(components) => writer.plan.destination(&components, kind)?,
+        None => None,
+    };
+    match destination {
+        Some(dest) if kind == EntryKind::Dir => writer.folder(&dest),
+        Some(dest) => writer.file(
+            &dest,
+            content,
+            sevenz::unix_mode(entry),
+            sevenz::modified(entry),
+        ),
+        None => writer.skip(content),
+    }
 }
 
 fn unpack_tar<P: Progress>(
@@ -276,6 +313,16 @@ impl<P: Progress> Writer<'_, P> {
         self.step()
     }
 
+    /// Reads `content` to its end without keeping it.
+    fn skip<R: Read>(&mut self, content: &mut R) -> io::Result<()> {
+        loop {
+            self.progress.keep_going()?;
+            if io::copy(&mut content.by_ref().take(CHUNK), &mut io::sink())? == 0 {
+                return Ok(());
+            }
+        }
+    }
+
     fn step(&mut self) -> io::Result<()> {
         self.done += 1;
         self.progress.advanced(self.done, self.plan.total)
@@ -305,8 +352,8 @@ fn apply_mode(_file: &File, _mode: Option<u32>) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::super::fixtures::{
-        scratch, write_archive, Item, ALL_FORMATS, BSDTAR_UMLAUT_CONTENT, BSDTAR_UMLAUT_NAME,
-        BSDTAR_ZIP,
+        scratch, write_archive, Item, ALL_FORMATS, BSDTAR_ARCHIVES, BSDTAR_UMLAUT_CONTENT,
+        BSDTAR_UMLAUT_NAME,
     };
     use super::*;
 
@@ -385,35 +432,37 @@ mod tests {
     }
 
     #[test]
-    fn a_zip_written_by_bsdtar_comes_out_with_names_content_and_the_empty_file() {
-        let dir = scratch("bsdtar-out");
-        let archive = dir.path().join("bsdtar.zip");
-        std::fs::write(&archive, BSDTAR_ZIP).unwrap();
-        let out = out_dir(dir.path());
+    fn an_archive_written_by_bsdtar_comes_out_with_names_content_and_the_empty_file() {
+        for (file, bytes) in BSDTAR_ARCHIVES {
+            let dir = scratch("bsdtar-out");
+            let archive = dir.path().join(file);
+            std::fs::write(&archive, bytes).unwrap();
+            let out = out_dir(dir.path());
 
-        let folder = copy_out(
-            &archive.join("Unterordner"),
-            &out,
-            &mut Counting,
-            OnConflict::Fail,
-        )
-        .unwrap();
-        let empty = copy_out(
-            &archive.join("leer.txt"),
-            &out,
-            &mut Counting,
-            OnConflict::Fail,
-        )
-        .unwrap();
+            let folder = copy_out(
+                &archive.join("Unterordner"),
+                &out,
+                &mut Counting,
+                OnConflict::Fail,
+            )
+            .unwrap();
+            let empty = copy_out(
+                &archive.join("leer.txt"),
+                &out,
+                &mut Counting,
+                OnConflict::Fail,
+            )
+            .unwrap();
 
-        assert_eq!((folder, empty), (2, 1));
-        assert_eq!(names_in(&out), ["Unterordner", "leer.txt"]);
-        assert_eq!(names_in(&out.join("Unterordner")), [BSDTAR_UMLAUT_NAME]);
-        assert_eq!(
-            std::fs::read_to_string(out.join("Unterordner").join(BSDTAR_UMLAUT_NAME)).unwrap(),
-            BSDTAR_UMLAUT_CONTENT
-        );
-        assert_eq!(std::fs::read(out.join("leer.txt")).unwrap(), b"");
+            assert_eq!((folder, empty), (2, 1));
+            assert_eq!(names_in(&out), ["Unterordner", "leer.txt"]);
+            assert_eq!(names_in(&out.join("Unterordner")), [BSDTAR_UMLAUT_NAME]);
+            assert_eq!(
+                std::fs::read_to_string(out.join("Unterordner").join(BSDTAR_UMLAUT_NAME)).unwrap(),
+                BSDTAR_UMLAUT_CONTENT
+            );
+            assert_eq!(std::fs::read(out.join("leer.txt")).unwrap(), b"");
+        }
     }
 
     #[test]
@@ -457,21 +506,21 @@ mod tests {
             Item::File("ok/../../evil2.txt", b"evil"),
             Item::Link("ok/inner-link", "../../outside"),
             Item::File("ok/sub/../../evil3.txt", b"evil"),
+            Item::File("C:/x.txt", b"drive"),
         ]
     }
 
     #[test]
     fn hostile_entries_are_left_out_and_never_written() {
-        for (file, _) in ALL_FORMATS
-            .iter()
-            .filter(|(file, _)| file.ends_with(".zip") || file.ends_with(".tar.gz"))
-        {
+        for (file, _) in ALL_FORMATS.iter().filter(|(file, _)| {
+            file.ends_with(".zip") || file.ends_with(".tar.gz") || file.ends_with(".7z")
+        }) {
             let dir = scratch("hostile");
             let archive = dir.path().join(file);
             write_archive(&archive, &hostile());
             let location = locate_in_archive(&archive).unwrap();
             let listing = super::super::list(&location).unwrap();
-            assert_eq!(listing.left_out, 6, "{file}");
+            assert_eq!(listing.left_out, 7, "{file}");
 
             let out = out_dir(dir.path());
             for entry in &listing.entries {
@@ -490,6 +539,48 @@ mod tests {
             assert!(!parent.join("evil2.txt").exists());
             assert!(!dir.path().join("evil3.txt").exists());
         }
+    }
+
+    #[test]
+    fn a_solid_block_gives_each_entry_its_own_content() {
+        use sevenz_rust2::{ArchiveEntry, ArchiveWriter, SourceReader};
+        let dir = scratch("solid");
+        let archive = dir.path().join("solid.7z");
+        let mut writer = ArchiveWriter::new(File::create(&archive).unwrap()).unwrap();
+        writer
+            .push_archive_entries(
+                vec![
+                    ArchiveEntry::new_file("a/one.txt"),
+                    ArchiveEntry::new_file("a/two.txt"),
+                    ArchiveEntry::new_file("a/three.txt"),
+                ],
+                vec![
+                    SourceReader::from(&b"one"[..]),
+                    SourceReader::from(&b"twotwo"[..]),
+                    SourceReader::from(&b"three"[..]),
+                ],
+            )
+            .unwrap();
+        writer.finish().unwrap();
+        let out = out_dir(dir.path());
+
+        copy_out(
+            &archive.join("a").join("two.txt"),
+            &out,
+            &mut Counting,
+            OnConflict::Fail,
+        )
+        .unwrap();
+        copy_out(
+            &archive.join("a").join("three.txt"),
+            &out,
+            &mut Counting,
+            OnConflict::Fail,
+        )
+        .unwrap();
+
+        assert_eq!(std::fs::read(out.join("two.txt")).unwrap(), b"twotwo");
+        assert_eq!(std::fs::read(out.join("three.txt")).unwrap(), b"three");
     }
 
     #[test]
