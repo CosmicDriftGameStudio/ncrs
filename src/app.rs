@@ -24,7 +24,9 @@ use crate::config::{
 use crate::context_menu::{ContextAction, ContextMenu, HermesAction, HermesMenu, InputState};
 use crate::dialog::{Prompt, PromptKind};
 use crate::execute;
-use crate::filing::{FilingMessage, FilingModule, LocationStatus, Phase, Work, WorkOutcome};
+use crate::filing::{
+    DocumentFinder, FilingMessage, FilingModule, LocationStatus, Phase, Work, WorkOutcome,
+};
 use crate::filing_setup::{self, FilePick, FilingSetup, SetupNote};
 use crate::filing_status::{FilingStatus, SNAPSHOT_EVERY};
 use crate::filing_work::FilingSummary;
@@ -55,7 +57,7 @@ use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
 use crate::palette::{Palette, ThemePreset};
 use crate::query_work::{self, QueryAccess};
 use crate::quick_fix::{field_to_fix, QuickFix, QuickFixAction};
-use crate::quick_open::{QuickOpen, QUICK_OPEN_FILE_LIMIT};
+use crate::quick_open::{DocumentRequest, QuickOpen, MAX_DOCUMENT_HITS, QUICK_OPEN_FILE_LIMIT};
 use crate::reorganisation_plan::ReorganisationView;
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
 use crate::review_list::{FormField, ReviewList};
@@ -159,6 +161,28 @@ fn archive_file_place(archive: &Path) -> Option<(&Path, String)> {
 
 fn search_batch(generation: u64, events: Vec<fs::search::SearchEvent>) -> Message {
     Message::Search(SearchMessage::Events { generation, events })
+}
+
+fn document_search_task(request: DocumentRequest, finder: DocumentFinder) -> Task<Message> {
+    let DocumentRequest {
+        walk_generation,
+        generation,
+        words,
+    } = request;
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || finder.find(&words, MAX_DOCUMENT_HITS))
+                .await
+                .unwrap_or_else(|failure| Err(failure.to_string()))
+        },
+        move |result| {
+            Message::QuickOpen(QuickOpenMessage::DocumentsFound {
+                walk_generation,
+                generation,
+                result,
+            })
+        },
+    )
 }
 
 fn quick_open_batch(generation: u64, events: Vec<fs::search::SearchEvent>) -> Message {
@@ -6710,7 +6734,8 @@ impl App {
         )
         .abortable();
         self.quick_open_walk = Some(handle.abort_on_drop());
-        self.quick_open = Some(QuickOpen::new(root, generation));
+        let documents_enabled = self.document_finder().is_some();
+        self.quick_open = Some(QuickOpen::new(root, generation).with_documents(documents_enabled));
         Task::batch([focus, task])
     }
 
@@ -8573,10 +8598,26 @@ impl App {
             return Task::none();
         };
         match message {
-            QuickOpenMessage::QueryChanged(text) => match quick_open.set_query(text) {
-                Some(ranking) => Task::perform(ranking.run_in_background(), std::convert::identity),
-                None => Task::none(),
-            },
+            QuickOpenMessage::QueryChanged(text) => {
+                if let Some(rest) = text.strip_prefix('>') {
+                    let commands_query = rest.to_owned();
+                    return self.switch_quick_open_to_commands(commands_query);
+                }
+                let ranking = quick_open
+                    .set_query(text)
+                    .map(|job| Task::perform(job.run_in_background(), std::convert::identity));
+                // Apart from the name ranking: the names never wait for it.
+                let documents = self.start_documents_search();
+                Task::batch(ranking.into_iter().chain([documents]))
+            }
+            QuickOpenMessage::DocumentsFound {
+                walk_generation,
+                generation,
+                result,
+            } => {
+                quick_open.apply_documents(walk_generation, generation, result);
+                Task::none()
+            }
             QuickOpenMessage::Events { generation, events } => {
                 if generation == quick_open.walk_generation() {
                     quick_open.apply_events(events);
@@ -8606,6 +8647,39 @@ impl App {
             }
             QuickOpenMessage::Open | QuickOpenMessage::Close => Task::none(),
         }
+    }
+
+    /// Asks for the documents of the typed text, on a blocking thread.
+    fn start_documents_search(&mut self) -> Task<Message> {
+        let lookup = self.document_finder();
+        let Some(quick_open) = self.quick_open.as_mut() else {
+            return Task::none();
+        };
+        let Some(wanted) = quick_open.request_documents() else {
+            return Task::none();
+        };
+        match lookup {
+            Some(finder) => document_search_task(wanted, finder),
+            None => {
+                quick_open.apply_documents(
+                    wanted.walk_generation,
+                    wanted.generation,
+                    Err(String::from("no index")),
+                );
+                Task::none()
+            }
+        }
+    }
+
+    /// A `>` typed first: the box gives way to the command list, with the rest
+    /// of the text as its query.
+    fn switch_quick_open_to_commands(&mut self, query: String) -> Task<Message> {
+        let closed = self.close_quick_open();
+        let opened = self.open_command_palette();
+        if let Some(palette) = self.command_palette.as_mut() {
+            palette.set_query(query);
+        }
+        Task::batch([closed, opened])
     }
 
     /// Enter on a hit: the active panel shows the file's directory with the
@@ -8745,6 +8819,12 @@ impl App {
 
     /// The column shows only while the filing module is ready and has places
     /// to look at; otherwise the panels are drawn as they always were.
+    /// The full-text lookup of Hermes, when its module is ready. Without an
+    /// index it answers with an error, which the box shows as no section.
+    fn document_finder(&self) -> Option<DocumentFinder> {
+        self.filing.as_ref().and_then(FilingModule::document_finder)
+    }
+
     fn hermes_active(&self) -> bool {
         self.filing.as_ref().is_some_and(|module| {
             matches!(module.phase(), Phase::Ready) && module.has_configured_locations()
@@ -10758,6 +10838,45 @@ impl App {
         let mut app = Self::with_fixed_panels();
         app.reorganisation = Some(view);
         app
+    }
+
+    /// A ready Hermes module without an index, so Quick Open asks for documents.
+    pub fn with_ready_hermes_for_test(mut self) -> Self {
+        self.filing = Some(FilingModule::in_phase_with_index(Phase::Ready, false));
+        self
+    }
+
+    /// Opens Quick Open, ranks `files` for `query` and types the text, as the
+    /// field would. Hands the answer to the full-text search back to `update`.
+    pub fn type_into_quick_open_for_test(&mut self, query: &str) {
+        drop(
+            self.update(Message::QuickOpen(QuickOpenMessage::QueryChanged(
+                query.to_owned(),
+            ))),
+        );
+        self.rank_quick_open_for_test();
+    }
+
+    /// Finishes the name ranking the way its background task would.
+    fn rank_quick_open_for_test(&mut self) {
+        if let Some(quick_open) = self.quick_open.as_mut() {
+            quick_open.rank_now();
+        }
+    }
+
+    pub fn deliver_documents_for_test(
+        &mut self,
+        result: Result<Vec<crate::filing::FoundDocument>, String>,
+    ) {
+        let Some(quick_open) = self.quick_open.as_ref() else {
+            return;
+        };
+        let message = QuickOpenMessage::DocumentsFound {
+            walk_generation: quick_open.walk_generation(),
+            generation: quick_open.documents_generation(),
+            result,
+        };
+        drop(self.update(Message::QuickOpen(message)));
     }
 
     pub fn quick_open_for_test(&self) -> Option<&QuickOpen> {
@@ -18467,5 +18586,114 @@ mod settings_in_command_list_tests {
             app.settings_for_test().unwrap().feature,
             SettingsFeature::Programs
         );
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod quick_open_documents_tests {
+    use super::*;
+    use crate::filing::{FoundDocument, TextSource};
+    use crate::quick_open::DocumentsState;
+
+    const FILES: &[&str] = &["src/config.rs", "docs/config.md"];
+
+    fn hermes_app() -> App {
+        let mut app = App::with_fixed_panels().with_ready_hermes_for_test();
+        app.open_quick_open_for_test(FILES, "");
+        app
+    }
+
+    fn name_hits(app: &App) -> Vec<String> {
+        let quick_open = app.quick_open_for_test().unwrap();
+        quick_open
+            .hits()
+            .iter()
+            .map(|hit| quick_open.relative_path(hit).to_owned())
+            .collect()
+    }
+
+    fn scan() -> FoundDocument {
+        FoundDocument {
+            path: PathBuf::from("/inbox/scan.pdf"),
+            read_by: TextSource::Pdf,
+        }
+    }
+
+    #[test]
+    fn name_hits_stand_while_the_full_text_search_runs_and_when_it_fails() {
+        let mut app = hermes_app();
+        app.type_into_quick_open_for_test("config");
+        let names = name_hits(&app);
+        assert_eq!(names.len(), 2);
+        assert_eq!(
+            app.quick_open_for_test().unwrap().documents_state(),
+            DocumentsState::Searching
+        );
+
+        app.deliver_documents_for_test(Err("index is busy".to_owned()));
+
+        assert_eq!(
+            app.quick_open_for_test().unwrap().documents_state(),
+            DocumentsState::Failed
+        );
+        assert!(app.quick_open_for_test().unwrap().documents().is_empty());
+        assert_eq!(name_hits(&app), names);
+    }
+
+    #[test]
+    fn found_documents_come_after_the_name_hits_and_enter_reveals_one() {
+        let mut app = hermes_app();
+        app.type_into_quick_open_for_test("config");
+        let names = name_hits(&app);
+
+        app.deliver_documents_for_test(Ok(vec![scan()]));
+        assert_eq!(name_hits(&app), names);
+        drop(app.update(Message::QuickOpen(QuickOpenMessage::Move(2))));
+        assert_eq!(
+            app.quick_open_for_test().unwrap().selected_path(),
+            Some(PathBuf::from("/inbox/scan.pdf"))
+        );
+
+        drop(app.update(Message::QuickOpen(QuickOpenMessage::Activate)));
+        assert!(app.quick_open_for_test().is_none());
+    }
+
+    #[test]
+    fn without_hermes_there_is_no_documents_section() {
+        let mut app = App::with_fixed_panels();
+        app.open_quick_open_for_test(FILES, "");
+        app.type_into_quick_open_for_test("config");
+
+        let quick_open = app.quick_open_for_test().unwrap();
+        assert_eq!(quick_open.documents_state(), DocumentsState::Idle);
+        assert_eq!(quick_open.hits().len(), 2);
+        app.deliver_documents_for_test(Ok(vec![scan()]));
+        assert!(app.quick_open_for_test().unwrap().documents().is_empty());
+    }
+
+    #[test]
+    fn a_greater_than_sign_first_switches_to_the_command_list_with_settings() {
+        let mut app = App::with_fixed_panels();
+        app.open_quick_open_for_test(FILES, "");
+
+        drop(
+            app.update(Message::QuickOpen(QuickOpenMessage::QueryChanged(
+                ">language".to_owned(),
+            ))),
+        );
+
+        assert!(app.quick_open_for_test().is_none());
+        let palette = app.command_palette_for_test().unwrap();
+        assert_eq!(palette.query(), "language");
+        assert!(palette.hits().any(|hit| matches!(
+            palette.entry(hit).map(|entry| &entry.target),
+            Some(crate::command_palette::Target::Setting { .. })
+        )));
     }
 }

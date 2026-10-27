@@ -26,7 +26,7 @@ pub use archive_profile::{
     learn_archive, pattern_per_document, propose_target, subtree_per_document, ArchiveDocument,
     DocumentPattern,
 };
-pub use classify::{classify, text_is_readable, Skip};
+pub use classify::{classify, is_image_file, text_is_readable, Skip};
 pub use error::IntakeError;
 pub use extract::{
     extract_amount, extract_date, extract_number, parse_amount, parse_currency, parse_date,

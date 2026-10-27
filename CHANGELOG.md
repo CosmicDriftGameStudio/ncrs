@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Quick Open (`Cmd`+`P`, `Ctrl`+`P`) also finds documents by their content
+  when Hermes has an index: a "Documents" section below the file name hits
+  lists up to five documents, including text read from PDFs and by OCR, with
+  the file name, its folder and a PDF or OCR mark. `Enter` puts the panel
+  cursor on the file. The name hits stay on top and appear at once; the text
+  search runs apart and never moves them. A `>` first switches to the command
+  list, settings included.
 - Keyboard shortcuts dialog (`Cmd`+`K`, `Ctrl`+`K` on Linux and Windows, also in
   the command list): every action with its group and keys. Search by name or by
   pressing a key; `Enter` records a new key, a second key can be added, `Del`

@@ -11,11 +11,15 @@ use std::sync::Arc;
 use nucleo_matcher::pattern::{AtomKind, CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
 
+use crate::filing::FoundDocument;
 use crate::fs::search::SearchEvent;
 use crate::messages::{Message, QuickOpenMessage};
 
 /// Hits listed under the field.
 pub const MAX_HITS: usize = 12;
+
+/// Document hits listed below the name hits.
+pub const MAX_DOCUMENT_HITS: usize = 5;
 
 /// Files listed before the walk gives up. A repository checkout with `target/`
 /// already has about 90 000. The walk runs in parallel and in no order by
@@ -39,6 +43,24 @@ pub struct Hit {
     pub highlight: Vec<Range<usize>>,
 }
 
+/// Where the full-text search for the typed text stands. Only the documents
+/// section depends on it; the name hits never wait for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocumentsState {
+    Idle,
+    Searching,
+    /// No index, or the search failed: the section stays away, no error shown.
+    Failed,
+}
+
+/// What the app needs to start the full-text search for the typed text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocumentRequest {
+    pub walk_generation: u64,
+    pub generation: u64,
+    pub words: String,
+}
+
 #[derive(Debug)]
 pub struct QuickOpen {
     root: PathBuf,
@@ -60,6 +82,14 @@ pub struct QuickOpen {
     scored_chunks: usize,
     /// The query generation whose background ranking has not come back yet.
     pending_rescore: Option<u64>,
+    /// Full-text hits, listed after the name hits; the cursor runs on from the
+    /// last name hit into them.
+    documents: Vec<FoundDocument>,
+    /// Counts the full-text searches; an answer of an older one is dropped.
+    documents_generation: u64,
+    documents_state: DocumentsState,
+    /// Off without Hermes or an index: then there is no documents section.
+    documents_enabled: bool,
 }
 
 /// A full ranking over a snapshot of the candidates, for a worker thread.
@@ -253,7 +283,86 @@ impl QuickOpen {
             current_generation: Arc::new(AtomicU64::new(0)),
             scored_chunks: 0,
             pending_rescore: None,
+            documents: Vec::new(),
+            documents_generation: 0,
+            documents_state: DocumentsState::Idle,
+            documents_enabled: false,
         }
+    }
+
+    /// Turns the documents section on, for a box opened while Hermes has an
+    /// index to ask.
+    pub fn with_documents(mut self, enabled: bool) -> Self {
+        self.documents_enabled = enabled;
+        self
+    }
+
+    pub fn documents(&self) -> &[FoundDocument] {
+        &self.documents
+    }
+
+    #[cfg(test)]
+    pub fn documents_generation(&self) -> u64 {
+        self.documents_generation
+    }
+
+    #[cfg(test)]
+    pub fn documents_state(&self) -> DocumentsState {
+        self.documents_state
+    }
+
+    /// Starts a full-text search for the typed text, apart from the name
+    /// ranking. Nothing to ask when the section is off or the text is empty;
+    /// documents of an earlier text are dropped then.
+    pub fn request_documents(&mut self) -> Option<DocumentRequest> {
+        self.documents_generation = self.documents_generation.wrapping_add(1);
+        self.documents.clear();
+        self.clamp_cursor();
+        let words = self.query.trim();
+        if !self.documents_enabled || words.is_empty() {
+            self.documents_state = DocumentsState::Idle;
+            return None;
+        }
+        self.documents_state = DocumentsState::Searching;
+        Some(DocumentRequest {
+            walk_generation: self.walk_generation,
+            generation: self.documents_generation,
+            words: words.to_owned(),
+        })
+    }
+
+    /// The answer of a full-text search. One of an older text or another box
+    /// is dropped. Name hits are never touched.
+    pub fn apply_documents(
+        &mut self,
+        walk_generation: u64,
+        generation: u64,
+        result: Result<Vec<FoundDocument>, String>,
+    ) {
+        if walk_generation != self.walk_generation
+            || generation != self.documents_generation
+            || self.documents_state != DocumentsState::Searching
+        {
+            return;
+        }
+        match result {
+            Ok(mut found) => {
+                found.truncate(MAX_DOCUMENT_HITS);
+                self.documents = found;
+                self.documents_state = DocumentsState::Idle;
+            }
+            Err(_) => self.documents_state = DocumentsState::Failed,
+        }
+        self.clamp_cursor();
+    }
+
+    /// Name hits and document hits, one cursor over both.
+    fn row_count(&self) -> usize {
+        self.hits.len() + self.documents.len()
+    }
+
+    fn clamp_cursor(&mut self) {
+        self.cursor = self.cursor.min(self.row_count().saturating_sub(1));
     }
 
     pub fn root(&self) -> &Path {
@@ -303,18 +412,24 @@ impl QuickOpen {
         !pattern_for(&self.query).atoms.is_empty()
     }
 
+    /// The file under the cursor: a name hit, then the documents.
     pub fn selected_path(&self) -> Option<PathBuf> {
-        let hit = self.hits.get(self.cursor)?;
-        Some(self.root.join(self.relative_path(hit)))
+        if let Some(hit) = self.hits.get(self.cursor) {
+            return Some(self.root.join(self.relative_path(hit)));
+        }
+        let document = self
+            .documents
+            .get(self.cursor.checked_sub(self.hits.len())?)?;
+        Some(document.path.clone())
     }
 
     pub fn move_cursor(&mut self, delta: isize) {
-        let last = self.hits.len().saturating_sub(1);
-        self.cursor = self.cursor.saturating_add_signed(delta).min(last);
+        self.cursor = self.cursor.saturating_add_signed(delta);
+        self.clamp_cursor();
     }
 
     pub fn select(&mut self, index: usize) {
-        if index < self.hits.len() {
+        if index < self.row_count() {
             self.cursor = index;
         }
     }
@@ -414,6 +529,12 @@ impl QuickOpen {
         if found.is_empty() {
             return;
         }
+        // Name hits arriving above the documents push them down; the cursor
+        // on a document goes with it.
+        let on_document = self
+            .cursor
+            .checked_sub(self.hits.len())
+            .filter(|_| !self.hits.is_empty());
         let kept_selection = self.hits.get(self.cursor).map(|hit| (hit.chunk, hit.index));
         self.hits = merge_hits(&self.candidates, std::mem::take(&mut self.hits), found);
         self.cursor = kept_selection
@@ -422,8 +543,11 @@ impl QuickOpen {
                     .iter()
                     .position(|hit| hit.chunk == chunk && hit.index == index)
             })
-            .unwrap_or(self.cursor)
-            .min(self.hits.len().saturating_sub(1));
+            .unwrap_or(self.cursor);
+        if let Some(offset) = on_document {
+            self.cursor = self.hits.len() + offset;
+        }
+        self.clamp_cursor();
     }
 }
 
@@ -744,6 +868,150 @@ mod tests {
             quick_open.selected_path(),
             Some(PathBuf::from("/r").join("src/config.rs"))
         );
+    }
+
+    fn document(path: &str) -> FoundDocument {
+        FoundDocument {
+            path: PathBuf::from(path),
+            read_by: crate::filing::TextSource::Pdf,
+        }
+    }
+
+    fn with_documents_on(files: &[&str], query: &str) -> QuickOpen {
+        let mut quick_open = QuickOpen::new(PathBuf::from("/r"), 1).with_documents(true);
+        quick_open.apply_events(file_events("/r", files));
+        type_and_rank(&mut quick_open, query);
+        quick_open
+    }
+
+    fn names(quick_open: &QuickOpen) -> Vec<String> {
+        quick_open
+            .hits()
+            .iter()
+            .map(|hit| quick_open.relative_path(hit).to_owned())
+            .collect()
+    }
+
+    #[test]
+    fn name_hits_stand_while_the_full_text_search_runs_and_after_it_failed() {
+        let mut quick_open = with_documents_on(&["rechnung.txt", "notes.md"], "rechnung");
+        let before = names(&quick_open);
+        assert_eq!(before, ["rechnung.txt"]);
+
+        let request = quick_open.request_documents().unwrap();
+        assert_eq!(quick_open.documents_state(), DocumentsState::Searching);
+        assert_eq!(names(&quick_open), before);
+        assert!(quick_open.documents().is_empty());
+
+        quick_open.apply_documents(
+            request.walk_generation,
+            request.generation,
+            Err("index busy".to_owned()),
+        );
+        assert_eq!(quick_open.documents_state(), DocumentsState::Failed);
+        assert_eq!(names(&quick_open), before);
+        assert!(quick_open.documents().is_empty());
+        assert_eq!(
+            quick_open.selected_path(),
+            Some(PathBuf::from("/r/rechnung.txt"))
+        );
+    }
+
+    #[test]
+    fn arriving_documents_leave_the_name_hits_and_their_cursor_alone() {
+        let mut quick_open = with_documents_on(&["rechnung.txt"], "rechnung");
+        let before = quick_open.hits().to_vec();
+        let request = quick_open.request_documents().unwrap();
+        quick_open.apply_documents(
+            request.walk_generation,
+            request.generation,
+            Ok(vec![document("/d/a.pdf"), document("/d/b.pdf")]),
+        );
+        assert_eq!(quick_open.hits(), before);
+        assert_eq!(quick_open.cursor(), 0);
+        assert_eq!(quick_open.documents().len(), 2);
+    }
+
+    #[test]
+    fn the_cursor_runs_from_the_last_name_hit_into_the_documents_and_back() {
+        let mut quick_open = with_documents_on(&["a1.txt", "a2.txt"], "a");
+        let request = quick_open.request_documents().unwrap();
+        quick_open.apply_documents(
+            request.walk_generation,
+            request.generation,
+            Ok(vec![document("/d/one.pdf"), document("/d/two.pdf")]),
+        );
+        let names_count = quick_open.hits().len();
+        assert_eq!(names_count, 2);
+        quick_open.move_cursor(1);
+        assert_eq!(
+            quick_open.selected_path(),
+            Some(PathBuf::from("/r").join(names(&quick_open)[1].as_str()))
+        );
+        quick_open.move_cursor(1);
+        assert_eq!(
+            quick_open.selected_path(),
+            Some(PathBuf::from("/d/one.pdf"))
+        );
+        quick_open.move_cursor(5);
+        assert_eq!(
+            quick_open.selected_path(),
+            Some(PathBuf::from("/d/two.pdf"))
+        );
+        quick_open.move_cursor(-2);
+        assert_eq!(quick_open.cursor(), 1);
+    }
+
+    #[test]
+    fn at_most_five_documents_are_kept() {
+        let mut quick_open = with_documents_on(&["a.txt"], "a");
+        let request = quick_open.request_documents().unwrap();
+        let many = (0..9).map(|i| document(&format!("/d/{i}.pdf"))).collect();
+        quick_open.apply_documents(request.walk_generation, request.generation, Ok(many));
+        assert_eq!(quick_open.documents().len(), MAX_DOCUMENT_HITS);
+    }
+
+    #[test]
+    fn an_answer_for_older_text_is_dropped() {
+        let mut quick_open = with_documents_on(&["a.txt"], "a");
+        let old = quick_open.request_documents().unwrap();
+        type_and_rank(&mut quick_open, "ab");
+        let new = quick_open.request_documents().unwrap();
+        quick_open.apply_documents(
+            old.walk_generation,
+            old.generation,
+            Ok(vec![document("/d/old.pdf")]),
+        );
+        assert!(quick_open.documents().is_empty());
+        assert_eq!(quick_open.documents_state(), DocumentsState::Searching);
+        quick_open.apply_documents(
+            new.walk_generation,
+            new.generation,
+            Ok(vec![document("/d/new.pdf")]),
+        );
+        assert_eq!(quick_open.documents().len(), 1);
+    }
+
+    #[test]
+    fn without_documents_enabled_nothing_is_requested() {
+        let mut quick_open = open("/r", &["a.txt"]);
+        type_and_rank(&mut quick_open, "a");
+        assert_eq!(quick_open.request_documents(), None);
+        assert_eq!(quick_open.documents_state(), DocumentsState::Idle);
+    }
+
+    #[test]
+    fn an_empty_text_requests_nothing_and_drops_old_documents() {
+        let mut quick_open = with_documents_on(&["a.txt"], "a");
+        let request = quick_open.request_documents().unwrap();
+        quick_open.apply_documents(
+            request.walk_generation,
+            request.generation,
+            Ok(vec![document("/d/a.pdf")]),
+        );
+        assert_eq!(quick_open.set_query("  ".to_owned()).map(|_| ()), None);
+        assert_eq!(quick_open.request_documents(), None);
+        assert!(quick_open.documents().is_empty());
     }
 
     /// Run with `cargo test --release quick_open_timing -- --ignored --nocapture`.

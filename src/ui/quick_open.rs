@@ -1,11 +1,16 @@
 //! The Quick Open box: a text field, a status line and the best matches with
 //! the matched characters marked. Pure view over [`QuickOpen`].
 
-use iced::{Element, Size};
+use iced::widget::text::Wrapping;
+use iced::widget::{container, row, text};
+use iced::{alignment, Element, Length, Size};
 
 use super::kit;
+use super::layout::ROW_HEIGHT;
 use super::picker;
+use super::theme::{font_size, spacing};
 use crate::app::fill_template;
+use crate::filing::{FoundDocument, TextSource};
 use crate::i18n::{Language, Msg};
 use crate::messages::{Message, QuickOpenMessage};
 use crate::palette::Palette;
@@ -38,12 +43,34 @@ pub fn view<'a>(
         palette,
     );
 
-    let rows = quick_open
+    let mut rows: Vec<Element<'a, Message>> = quick_open
         .hits()
         .iter()
         .enumerate()
         .map(|(index, hit)| hit_row(quick_open, hit, index, window, palette))
         .collect();
+    if !quick_open.documents().is_empty() {
+        rows.push(documents_header(
+            lang.text(Msg::QuickopenDocuments),
+            palette,
+        ));
+        let first = quick_open.hits().len();
+        rows.extend(
+            quick_open
+                .documents()
+                .iter()
+                .enumerate()
+                .map(|(offset, document)| {
+                    document_row(
+                        document,
+                        first + offset,
+                        quick_open.cursor(),
+                        window,
+                        palette,
+                    )
+                }),
+        );
+    }
 
     picker::frame(
         picker::Content {
@@ -92,6 +119,79 @@ fn hit_row<'a>(
             picker::row_chars(window, 0.0),
             palette,
         ),
+        to_quick_open(QuickOpenMessage::RowActivated(index)),
+        selected,
+        true,
+        palette,
+    )
+}
+
+/// The heading of the documents section, not a place for the cursor.
+fn documents_header<'a>(label: &str, palette: &Palette) -> Element<'a, Message> {
+    container(
+        text(label.to_uppercase())
+            .size(font_size::COLUMN_HEADER)
+            .color(palette.dim_text)
+            .wrapping(Wrapping::None),
+    )
+    .height(ROW_HEIGHT)
+    .padding([0.0, spacing::CELL_PADDING_X])
+    .align_y(alignment::Vertical::Center)
+    .into()
+}
+
+/// Characters kept free for the gaps and the mark beside a document's name.
+const MARK_GAP_CHARS: usize = 8;
+
+/// A folder is never cut shorter than this.
+const MIN_FOLDER_CHARS: usize = 12;
+
+/// The mark after the name: how the text was read, nothing for plain text.
+fn read_by_mark(source: TextSource) -> Option<&'static str> {
+    match source {
+        TextSource::Pdf => Some("PDF"),
+        TextSource::Ocr => Some("OCR"),
+        TextSource::Text => None,
+    }
+}
+
+fn document_row<'a>(
+    document: &FoundDocument,
+    index: usize,
+    cursor: usize,
+    window: Size,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let selected = index == cursor;
+    let name = document
+        .path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let folder = document
+        .path
+        .parent()
+        .map(|folder| folder.display().to_string())
+        .unwrap_or_default();
+    let mark = read_by_mark(document.read_by).unwrap_or_default();
+    let room = picker::row_chars(window, 0.0);
+    let folder_room = room
+        .saturating_sub(name.chars().count() + mark.len() + MARK_GAP_CHARS)
+        .max(MIN_FOLDER_CHARS);
+    let line = row![
+        container(
+            row![
+                picker::highlighted(&name, &[], selected, room, palette),
+                picker::highlighted_dim(&folder, &[], selected, folder_room, palette),
+            ]
+            .spacing(spacing::SECTION_GAP)
+        )
+        .width(Length::Fill),
+        picker::highlighted_dim(mark, &[], selected, MARK_GAP_CHARS, palette),
+    ]
+    .align_y(alignment::Vertical::Center);
+    kit::list_row(
+        line.into(),
         to_quick_open(QuickOpenMessage::RowActivated(index)),
         selected,
         true,

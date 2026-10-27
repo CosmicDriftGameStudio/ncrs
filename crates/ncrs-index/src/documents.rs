@@ -247,11 +247,20 @@ impl Index {
     /// Best match first. The input is the user's words, not FTS5 syntax: every
     /// word is quoted, so all of them must match and operators are plain text.
     pub fn search_text(&self, words: &str, limit: usize) -> Result<Vec<DocumentId>, IndexError> {
-        let query = words
-            .split_whitespace()
-            .map(|word| format!("\"{}\"", word.replace('"', "\"\"")))
-            .collect::<Vec<_>>()
-            .join(" ");
+        self.run_text_query(&match_query(words, false), limit)
+    }
+
+    /// Like [`Self::search_text`], but the last word only has to begin a word of
+    /// the text, so a result is there while the user is still typing.
+    pub fn search_text_prefix(
+        &self,
+        words: &str,
+        limit: usize,
+    ) -> Result<Vec<DocumentId>, IndexError> {
+        self.run_text_query(&match_query(words, true), limit)
+    }
+
+    fn run_text_query(&self, query: &str, limit: usize) -> Result<Vec<DocumentId>, IndexError> {
         if query.is_empty() {
             return Ok(Vec::new());
         }
@@ -321,6 +330,28 @@ pub fn require_document(conn: &Connection, id: DocumentId) -> Result<(), IndexEr
     } else {
         Err(IndexError::DocumentNotFound(id))
     }
+}
+
+/// The words as an FTS5 query, each one quoted; with `prefix_last` the last one
+/// carries the prefix star. Empty when there is no word.
+fn match_query(words: &str, prefix_last: bool) -> String {
+    let quoted: Vec<String> = words
+        .split_whitespace()
+        .map(|word| format!("\"{}\"", word.replace('"', "\"\"")))
+        .collect();
+    let last = quoted.len().saturating_sub(1);
+    quoted
+        .into_iter()
+        .enumerate()
+        .map(|(at, word)| {
+            if prefix_last && at == last {
+                format!("{word}*")
+            } else {
+                word
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 #[cfg(test)]
@@ -473,6 +504,53 @@ mod tests {
         assert!(index.search_text("absent", 10).unwrap().is_empty());
         assert!(index.search_text("   ", 10).unwrap().is_empty());
         assert_eq!(index.search_text("nr", 1).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn the_prefix_search_finds_a_word_by_its_beginning() {
+        let (_dir, mut index) = encrypted_index();
+        let id = indexed_with_text(&mut index, 1, "Rechnung Nr. 4711 von Company A");
+        indexed_with_text(&mut index, 2, "Mahnung Nr. 12 von Agency B");
+
+        assert_eq!(index.search_text_prefix("rechn", 10).unwrap(), vec![id]);
+        assert_eq!(
+            index.search_text_prefix("company rech", 10).unwrap(),
+            vec![id]
+        );
+        assert!(index.search_text("rechn", 10).unwrap().is_empty());
+        assert!(index
+            .search_text_prefix("rech agency", 10)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn the_prefix_search_folds_diacritics_and_quotes_its_input() {
+        let (_dir, mut index) = encrypted_index();
+        let id = indexed_with_text(&mut index, 1, "Gebühr für Januar");
+
+        assert_eq!(index.search_text_prefix("gebu", 10).unwrap(), vec![id]);
+        assert_eq!(index.search_text_prefix("Gebüh", 10).unwrap(), vec![id]);
+        for input in [
+            "\"",
+            "AND",
+            "col:x",
+            "*",
+            "-x",
+            "\"unterminated",
+            "NEAR(a b)",
+        ] {
+            index.search_text_prefix(input, 10).unwrap();
+        }
+    }
+
+    #[test]
+    fn the_prefix_search_of_nothing_finds_nothing() {
+        let (_dir, mut index) = encrypted_index();
+        indexed_with_text(&mut index, 1, "Rechnung");
+
+        assert!(index.search_text_prefix("", 10).unwrap().is_empty());
+        assert!(index.search_text_prefix("   ", 10).unwrap().is_empty());
     }
 
     #[test]
