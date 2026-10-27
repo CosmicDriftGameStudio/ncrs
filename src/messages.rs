@@ -129,6 +129,17 @@ pub enum Message {
         generation: u64,
     },
 
+    /// The file F3 unpacked from an archive is ready, or unpacking failed.
+    ViewExtracted {
+        /// The copy's folder, so a result that arrives after its job was
+        /// stopped can still clean up after itself.
+        slot: std::path::PathBuf,
+        /// The path of the copy.
+        result: Result<std::path::PathBuf, RowFailure>,
+        /// The run it belongs to; a result of a stopped one only removes its slot.
+        generation: u64,
+    },
+
     /// Left/Right/Tab in a button dialog: move the focus by one.
     DialogFocus(isize),
     /// Enter in a button dialog: press the focused button.

@@ -465,8 +465,11 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
   wie ein Ordner, `..` führt zurück auf das Archiv. F5 kopiert heraus, über die Copy-Queue und den
   Konfliktdialog; entpackt wird in einen versteckten Ordner im Ziel und erst dann umbenannt.
   Einträge mit `..`, absoluten Pfaden oder Laufwerksangaben sowie Links und Sonderdateien werden
-  ausgelassen und in der Statuszeile gezählt. F3/F4/F6/F7/F8 sind im Archiv gesperrt (Hinweis
-  „Versiegeltes Brustfach“), Ziel eines Kopierens kann ein Archiv noch nicht sein.
+  ausgelassen und in der Statuszeile gezählt. F4/F6/F7/F8 sind im Archiv gesperrt (Hinweis
+  „Versiegeltes Brustfach“), Ziel eines Kopierens kann ein Archiv noch nicht sein. F3 zeigt eine
+  Datei aus dem Archiv über eine temporäre Kopie im Cache-Ordner an (#151): nur für den Besitzer
+  lesbar, entfernt beim Verlassen des Archivs und beim Beenden, Reste eines Absturzes räumt der
+  nächste Start ab.
 - [ ] **T15 – Netzwerk-Mounts** (macOS/Linux), **T17 – Archiv-Support schreibend** – Umfang
   siehe Abschnitt 4
 
@@ -481,7 +484,7 @@ Größen sind Schätzungen (S bis ein Tag, M zwei bis vier Tage, L eine Woche un
 | Version | Thema | Bausteine |
 |---|---|---|
 | 0.7.0 | Bedienung komplett, Risiko zuerst | S1 Sandbox-Test (#120) · K1 Kommandozeile, T6d.1 (#121) · K2 Favoriten und Verlauf, T6d.5 (#123) · K3 Zustand merken, T18 (#122) |
-| 0.8.0 | Netz, Archive lesen, Einstellungen | K4 Netzwerk-Mounts, T15 (#125) · K5 Archive lesen, T16 (#124) ✅ · A0 Sandbox-Grundlagen (#126) · E1 Einstellungen für die ganze Config (#142) ✅ · E2 Tastenkürzel-Dialog (#143) ✅ · Quick Open findet Dokumente (#147) ✅ · 7z lesen (#148) ✅ |
+| 0.8.0 | Netz, Archive lesen, Einstellungen | K4 Netzwerk-Mounts, T15 (#125) · K5 Archive lesen, T16 (#124) ✅ · A0 Sandbox-Grundlagen (#126) · E1 Einstellungen für die ganze Config (#142) ✅ · E2 Tastenkürzel-Dialog (#143) ✅ · Quick Open findet Dokumente (#147) ✅ · 7z lesen (#148) ✅ · F3 im Archiv (#151) ✅ |
 | 0.9.0 | Schreiben und Versprechen | K6 Archive schreiben, T17 (#127) · V1 Config versioniert (#128) · V2 Index-Migration (#129) · V3 100k-Dateien-Messung (#130) · V4 Lizenzen für den Store (#131), darin About-Dialog mit den Drittlizenzen (#149) · H1 Hermes als Beta (#132) |
 | 1.0.0 | App Store | A1 Sandbox-Build (#133) · A2 App Store Connect (#134) · A3 Store-Auftritt (#135) · A4 Review und Release (#136) |
 

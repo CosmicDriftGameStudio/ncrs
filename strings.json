@@ -325,6 +325,12 @@
       "de": "Lege ab…"
     },
     {
+      "key": "job.extract",
+      "context": "Status bar while a file is being unpacked from an archive into a temporary copy so the viewer can open it. Same shape as job.copy.",
+      "en": "Extracting…",
+      "de": "Entpacke…"
+    },
+    {
       "key": "job.create_dir",
       "context": "Status bar while a directory is being created. Same shape as job.copy.",
       "en": "Creating…",
@@ -689,6 +695,24 @@
       "context": "Status bar when the view or edit key refuses a file because opening it with the system could run it (script, app, shortcut). Takes the file name and {keys}, the view and edit keys joined with a slash, spelled as the app spells keys (e.g. F3/F4); keep {keys} as is.",
       "en": "{name} could be executed, so {keys} will not open it",
       "de": "{name} könnte ausgeführt werden und wird mit {keys} nicht geöffnet"
+    },
+    {
+      "key": "status.archive_view_busy",
+      "context": "Status bar notice when the view key is pressed on a file in an archive while another job (a copy, for example) is still running. Viewing needs the file unpacked first, and only one job runs at a time; the user can press the key again later.",
+      "en": "Another job is running; try again when it is done",
+      "de": "Es läuft noch ein anderer Auftrag; danach noch einmal versuchen"
+    },
+    {
+      "key": "error.archive_view_unavailable",
+      "context": "Status bar error when the view key is pressed on a file in an archive but ncrs has no folder for the temporary copy: the cache folder could not be created or the system names none. Nothing was unpacked.",
+      "en": "No folder for temporary copies, so this file cannot be viewed from the archive. Copy it out instead.",
+      "de": "Kein Ordner für temporäre Kopien, die Datei lässt sich daher nicht aus dem Archiv ansehen. Stattdessen herauskopieren."
+    },
+    {
+      "key": "error.archive_view_executable",
+      "context": "Status bar error when the view key is pressed on a file in an archive that could run (script, app, shortcut) and no editor program is set to show it in. Takes the file name. No key names: the edit key is refused inside an archive, so it must not be suggested.",
+      "en": "{name} could be executed, ncrs does not view it from an archive",
+      "de": "{name} könnte ausgeführt werden und wird nicht aus dem Archiv angezeigt"
     },
     {
       "key": "error.open_refused_no_key",

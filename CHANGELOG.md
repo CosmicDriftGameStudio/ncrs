@@ -50,10 +50,30 @@ All notable changes to this project are documented here. The format follows
   only then renamed into place, so a cancel or a broken archive leaves nothing
   half-written. Entries with `..`, absolute paths or drive prefixes, links and
   special files are left out and counted in the status bar. Archives are
-  read-only for now: `F3`, `F4`, `F6`, `F7`, `Shift+F4`, `F8`, search and Quick
+  read-only for now: `F4`, `F6`, `F7`, `Shift+F4`, `F8`, search and Quick
   Open say so instead of acting, and an archive cannot be a copy target yet. A
   panel inside an archive is remembered as the folder holding it, with the
   cursor on the archive.
+- `F3` views a file inside a zip, tar or 7z archive: it is unpacked into a
+  temporary copy, and the viewer opens that copy. On macOS and Linux the copy
+  and its folders can only be read by you; on Windows that rests on the access
+  rights of the cache folder, and in portable mode they are as open as the
+  `data` folder is. The copies live in the cache folder
+  (`~/Library/Caches/ncrs/view` on macOS, `$XDG_CACHE_HOME/ncrs/view` or
+  `~/.cache/ncrs/view` on Linux,
+  `%LOCALAPPDATA%\ncrs\view` on Windows, `data/view` in portable mode). They
+  are removed once no panel shows the archive any more and when ncrs quits, and
+  what a crash left behind is removed at the next start. The unpacking is a job
+  in the status bar that `Esc` or `Ctrl`+`C` stops; while another job runs,
+  `F3` says so and unpacks nothing. A slow viewer may find its copy gone when
+  you leave the archive right away. `F4` stays refused, as an edit would be
+  lost with the copy.
+- `F3` and `F4` treat more launcher file types as executable: installers and
+  packages (`.pkg`, `.msix`, `.deb`, `.rpm`), shortcuts and location files
+  (`.webloc`, `.inetloc`, `.appref-ms`), help files (`.chm`, `.hlp`) and the
+  like. They go to the editor or are refused instead of being run. A name that
+  ends in dots or spaces (`evil.exe.`) is judged without them, and Windows
+  refuses such names inside archives.
 
 ## [0.7.0] — 2026-10-27
 

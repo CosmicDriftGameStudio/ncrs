@@ -372,8 +372,8 @@ impl KeyAction {
 
     /// Whether a panel inside an archive may run the action. Only what takes
     /// neither the panel's path nor its selection as input for writing,
-    /// launching, the config or Hermes. No catch-all arm: a new action has to
-    /// be decided.
+    /// launching, the config or Hermes; viewing is the exception, as it works
+    /// on a copy. No catch-all arm: a new action has to be decided.
     #[cfg(test)]
     pub fn allowed_in_archive(self) -> bool {
         match self {
@@ -422,9 +422,9 @@ impl KeyAction {
             | Self::DownloadAiModel
             | Self::SearchCase
             | Self::SearchWholeWord
-            | Self::SearchRegex => true,
-            Self::View
-            | Self::Edit
+            | Self::SearchRegex
+            | Self::View => true,
+            Self::Edit
             | Self::Move
             | Self::Delete
             | Self::DeletePermanently
