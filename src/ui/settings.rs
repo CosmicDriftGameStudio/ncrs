@@ -24,7 +24,7 @@ use super::titlebar::tab_label;
 use crate::app::fill_template;
 use crate::config::{
     check_ai_endpoint, AiEndpointProblem, AiProviderChoice, AiProviderName, AiSection, AiSetting,
-    Config, ConfigError, Filing, ProgramLine, ProgramLineProblem,
+    Config, ConfigError, Filing, ProgramLine, ProgramLineProblem, ServerEntry,
 };
 use crate::filing::AiStatus;
 use crate::filing_setup::shown_path;
@@ -32,7 +32,8 @@ use crate::fs::OpenKind;
 use crate::i18n::{Language, Msg};
 use crate::messages::{
     AiModelMessage, FilingSetupMessage, KeyBindingsMessage, Message, OcrModelsMessage,
-    SettingChange, SettingField, SettingsFeature, SettingsMessage, ThemeFetchMessage,
+    RemoteMessage, SettingChange, SettingField, SettingsFeature, SettingsMessage,
+    ThemeFetchMessage,
 };
 use crate::palette::{hex, parse_color, ColorRole, Palette, ThemePreset};
 
@@ -46,6 +47,7 @@ const LANGUAGE_KEY: &str = "lang";
 const FILING_SECTION: &str = "[modules.filing]";
 const OPEN_SECTION: &str = "[open]";
 const KEYS_SECTION: &str = "[keys]";
+const SERVERS_SECTION: &str = "[[servers]]";
 
 const VIEWER_FIELD_ID: &str = "settings-program-view";
 const EDITOR_FIELD_ID: &str = "settings-program-edit";
@@ -371,7 +373,8 @@ fn fields_of(change: &SettingChange) -> Vec<SettingField> {
         | SettingChange::HermesEnabled(_)
         | SettingChange::Load(_)
         | SettingChange::AiEnabled(_)
-        | SettingChange::VscodeTheme(_) => Vec::new(),
+        | SettingChange::VscodeTheme(_)
+        | SettingChange::Servers(_) => Vec::new(),
     }
 }
 
@@ -419,6 +422,8 @@ pub struct SettingsView<'a> {
     pub preset: ThemePreset,
     pub vscode_theme: Option<&'a str>,
     pub filing: &'a Filing,
+    /// The saved SFTP servers.
+    pub servers: &'a [ServerEntry],
     /// `None` while the filing module is not running.
     pub ai_status: Option<AiStatus>,
     pub home: &'a Path,
@@ -517,6 +522,7 @@ fn feature_label(feature: SettingsFeature) -> Msg {
         SettingsFeature::Language => Msg::SettingsFeatureLanguage,
         SettingsFeature::Programs => Msg::SettingsFeaturePrograms,
         SettingsFeature::Keys => Msg::SettingsFeatureKeys,
+        SettingsFeature::Servers => Msg::SettingsFeatureServers,
         SettingsFeature::Hermes => Msg::SettingsFeatureHermes,
     }
 }
@@ -527,7 +533,8 @@ fn feature_theme_name(feature: SettingsFeature) -> Option<Msg> {
         SettingsFeature::Look
         | SettingsFeature::Language
         | SettingsFeature::Programs
-        | SettingsFeature::Keys => None,
+        | SettingsFeature::Keys
+        | SettingsFeature::Servers => None,
     }
 }
 
@@ -537,6 +544,7 @@ fn feature_intro(feature: SettingsFeature) -> Msg {
         SettingsFeature::Language => Msg::SettingsFeatureLanguageIntro,
         SettingsFeature::Programs => Msg::SettingsFeatureProgramsIntro,
         SettingsFeature::Keys => Msg::SettingsFeatureKeysIntro,
+        SettingsFeature::Servers => Msg::SettingsFeatureServersIntro,
         SettingsFeature::Hermes => Msg::SettingsFeatureHermesIntro,
     }
 }
@@ -547,6 +555,7 @@ fn feature_config_place(feature: SettingsFeature) -> &'static str {
         SettingsFeature::Language => LANGUAGE_KEY,
         SettingsFeature::Programs => OPEN_SECTION,
         SettingsFeature::Keys => KEYS_SECTION,
+        SettingsFeature::Servers => SERVERS_SECTION,
         SettingsFeature::Hermes => FILING_SECTION,
     }
 }
@@ -882,6 +891,82 @@ fn keys_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
             ),
             lang,
         )],
+    }]
+}
+
+fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
+    let lang = view.lang;
+    let palette = view.palette;
+    let add = |label: Msg, button: Msg| SettingRow {
+        label: lang.text(label).to_owned(),
+        theme_name: None,
+        config_key: None,
+        description: None,
+        problem: None,
+        control: kit::button(
+            lang.text(button),
+            Some(Message::Remote(RemoteMessage::OpenAdd)),
+            Tone::Secondary,
+            palette,
+        ),
+        control_width: None,
+    };
+    if view.servers.is_empty() {
+        return vec![Group {
+            title: String::new(),
+            rows: vec![add(
+                Msg::SettingsServersEmpty,
+                Msg::SettingsServersAddButton,
+            )],
+        }];
+    }
+    let mut rows: Vec<SettingRow<'a>> = view
+        .servers
+        .iter()
+        .enumerate()
+        .map(|(index, server)| {
+            let remaining: Vec<ServerEntry> = view
+                .servers
+                .iter()
+                .enumerate()
+                .filter(|(other, _)| *other != index)
+                .map(|(_, kept)| kept.clone())
+                .collect();
+            let mut detail = server.server_id().to_string();
+            if let Some(folder) = &server.path {
+                detail.push(' ');
+                detail.push_str(folder);
+            }
+            SettingRow {
+                label: server.label(),
+                theme_name: None,
+                config_key: None,
+                description: Some(detail),
+                problem: None,
+                control: row![
+                    kit::button(
+                        lang.text(Msg::RemoteConnect),
+                        Some(Message::Remote(RemoteMessage::OpenServer(server.url()))),
+                        Tone::Secondary,
+                        palette,
+                    ),
+                    kit::button(
+                        lang.text(Msg::SettingsServersRemove),
+                        Some(change(SettingChange::Servers(remaining))),
+                        Tone::Secondary,
+                        palette,
+                    ),
+                ]
+                .spacing(spacing::S)
+                .into(),
+                control_width: None,
+            }
+        })
+        .collect();
+    rows.push(add(Msg::SettingsServersAdd, Msg::SettingsServersAddButton));
+    vec![Group {
+        title: String::new(),
+        rows,
     }]
 }
 
@@ -1222,6 +1307,7 @@ fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group
         SettingsFeature::Language => language_groups(view),
         SettingsFeature::Programs => programs_groups(view),
         SettingsFeature::Keys => keys_groups(view),
+        SettingsFeature::Servers => servers_groups(view),
         SettingsFeature::Hermes => hermes_groups(view),
     }
 }
@@ -1606,6 +1692,7 @@ mod tests {
             preset: ThemePreset::Cosmic,
             vscode_theme: None,
             filing: &filing,
+            servers: &[],
             ai_status: None,
             home: Path::new("/home/test"),
             keys_changed: 0,

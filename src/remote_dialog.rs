@@ -54,6 +54,7 @@ pub struct ConnectDialog {
     user: String,
     password: Secret,
     remember: bool,
+    save: bool,
     start_path: String,
     stage: Stage,
     error: Option<String>,
@@ -68,6 +69,7 @@ impl fmt::Debug for ConnectDialog {
             .field("user", &self.user)
             .field("password", &"***")
             .field("remember", &self.remember)
+            .field("save", &self.save)
             .field("start_path", &self.start_path)
             .field("stage", &self.stage)
             .field("error", &self.error)
@@ -85,6 +87,7 @@ impl ConnectDialog {
             user: String::new(),
             password: Secret::default(),
             remember: false,
+            save: false,
             start_path: String::new(),
             stage: Stage::Editing,
             error: None,
@@ -138,6 +141,11 @@ impl ConnectDialog {
         self.stage != Stage::Editing
     }
 
+    #[cfg(test)]
+    pub fn then(&self) -> Option<&Then> {
+        self.then.as_ref()
+    }
+
     pub fn take_then(&mut self) -> Option<Then> {
         self.then.take()
     }
@@ -186,6 +194,22 @@ impl ConnectDialog {
 
     pub fn remember(&self) -> bool {
         self.remember
+    }
+
+    /// Whether the server goes into the list of saved servers.
+    pub fn save(&self) -> bool {
+        self.save
+    }
+
+    pub fn with_save(mut self, save: bool) -> Self {
+        self.save = save;
+        self
+    }
+
+    pub fn toggle_save(&mut self) {
+        if !self.is_locked() {
+            self.save = !self.save;
+        }
     }
 
     pub fn toggle_remember(&mut self) {
@@ -303,10 +327,11 @@ mod tests {
 
         dialog.set(ConnectField::Host, "other".to_owned());
         dialog.toggle_remember();
+        dialog.toggle_save();
         dialog.set_password(Secret::new("changed".to_owned()));
 
         assert_eq!(dialog.value(ConnectField::Host), "Example.org");
-        assert!(!dialog.remember());
+        assert!(!dialog.remember() && !dialog.save());
         assert_eq!(dialog.password().expose(), "hunter2");
     }
 

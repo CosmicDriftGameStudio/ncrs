@@ -116,6 +116,9 @@ The same window in German, switched with F9.
   VS Code does it: see [Search](#search)
 - Archives (zip, tar, tar.gz, tar.zst, 7z) open with `Enter` and are browsed like folders; `F5`
   copies out of them. Read-only for now; entries with `..` or absolute paths are left out
+- SFTP servers open like folders (password login): "Connect to server…" in the command
+  list, a saved server in the drive menu, or `sftp://user@host/path` in the path field.
+  Browse, view (`F3`) and copy (`F5`) in both directions; see [SFTP servers](#sftp-servers)
 - Localized UI (English/German) with a translator note on every string, so the UI can
   be translated mechanically without reading the code
 - Runs on Linux, macOS and Windows
@@ -226,6 +229,53 @@ System Settings > Privacy & Security > Full Disk Access.
 - Restart the terminal after granting.
 - `tccutil reset SystemPolicyNetworkVolumes dev.cosmicdrift.ncrs` resets an earlier
   "Don't Allow" for `ncrs.app`.
+
+## SFTP servers
+
+A server opens in a panel like any folder. Connect with "Connect to server…" (command
+list, no key by default), pick a saved server in the drive menu (`Alt`+`F1`/`F2`), or
+type `sftp://user@host[:port]/path` into the path field. Login is by password only: no
+key files and no ssh-agent.
+
+- **Host keys.** The first time ncrs meets a server it shows the SHA256 fingerprint and
+  asks before it sends the password. Confirmed keys go to `known_hosts` next to the
+  index, never to `~/.ssh/known_hosts`, which ncrs only reads. The server is asked for
+  the key type on record first. A key that differs from a recorded one, a key of
+  another type than the one on record for that host and port, and a key marked
+  `@revoked` are refused without a way to trust them. A `known_hosts` file that exists
+  but cannot be read (permissions; in the App Store version, before the home folder is
+  allowed) leaves an unknown server unchecked, and ncrs does not offer to trust it.
+  Servers that offer only RSA host keys, and servers that take no password (key or
+  keyboard-interactive login only), are not supported yet.
+- **Passwords.** "Remember password in the keychain" keeps it in the system credential
+  store, one entry per `user@host:port` (service `ncrs-sftp`, `ncrs-appstore-sftp` in the
+  App Store build, which never touches the entries of an installed ncrs). It is never
+  written to a file, and `sftp://user:password@host` is refused. A remembered password
+  the server no longer accepts is removed from the keychain.
+- **What works.** Browsing, `F3` (a temporary copy, removed when the panel leaves the
+  server; on macOS and Linux readable by you only) and `F5` in both directions through
+  the copy queue and the conflict dialog. Links are shown, but not copied: `F3` or `F5`
+  on a link on the server (or a local link sent to a server) fails with a note, and links
+  inside a folder are left out. Names with control or bidirectional characters are not
+  listed and are refused when a copy meets one. A copy is written under a hidden
+  `.ncrs-partial-…` name and renamed when complete; when the connection breaks during an
+  upload, such a leftover can stay on the server and is safe to delete. Everything that would change something on a server, the command
+  line, search and Quick Open say so instead of running. Not supported yet: moving,
+  copying between servers, counting ahead, resuming, public-key login, `ssh_config`.
+- **Saved servers** are `[[servers]]` entries in `config.toml` (or the Servers page of
+  the settings tab, which also forgets the password of a removed one):
+
+```toml
+[[servers]]
+name = "Work"          # optional; shown in the drive menu
+host = "files.example.org"
+port = 2222            # optional, default 22
+user = "marc"
+path = "/srv/files"    # optional start folder, absolute
+```
+
+A server is never written to `state.toml`: after a restart its panel is in the home
+folder.
 
 ## Configuration
 

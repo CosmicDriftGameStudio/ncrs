@@ -4716,4 +4716,113 @@ mod connect_dialog {
             "Vertrauen und verbinden"
         ));
     }
+
+    fn matches_snapshot(dialog: ConnectDialog, language: Language, name: &str) {
+        let app = App::with_connect_dialog(dialog).in_language(language);
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image(format!("tests/snapshots/{name}.png"))
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the dialog does not match tests/snapshots/{name}.png"
+        );
+    }
+
+    #[test]
+    fn the_form_matches_its_snapshots() {
+        let mut dialog = filled();
+        dialog.set(ConnectField::StartPath, "/srv/files".to_owned());
+        dialog.set_error("User name or password is wrong".to_owned());
+        matches_snapshot(dialog.clone(), Language::English, "connect_dialog_en");
+        matches_snapshot(dialog, Language::German, "connect_dialog_de");
+    }
+
+    #[test]
+    fn the_host_key_question_matches_its_snapshots() {
+        matches_snapshot(unknown_server(), Language::English, "connect_hostkey_en");
+        matches_snapshot(unknown_server(), Language::German, "connect_hostkey_de");
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod servers_page {
+    use super::*;
+    use crate::messages::{RemoteMessage, SettingChange, SettingsFeature, SettingsMessage};
+    use std::path::PathBuf;
+
+    fn page(source: &str) -> App {
+        App::with_settings_file(
+            SettingsFeature::Servers,
+            Ok(crate::config::from_text(source).unwrap()),
+        )
+    }
+
+    const TWO: &str = "[[servers]]\nname = \"Work\"\nhost = \"files.example.org\"\nuser = \"marc\"\npath = \"/srv\"\n\n[[servers]]\nhost = \"home.example.org\"\nport = 2222\nuser = \"marc\"\n";
+
+    fn messages_after_click(app: &App, label: &str) -> Vec<Message> {
+        let mut sim = simulator(app);
+        sim.click(label).expect("the clicked label");
+        sim.into_messages().collect()
+    }
+
+    #[test]
+    fn the_page_lists_each_server_with_its_address() {
+        let app = page(TWO);
+        let mut sim = simulator(&app);
+        for label in [
+            "Work",
+            "marc@files.example.org /srv",
+            "marc@home.example.org:2222",
+        ] {
+            assert!(sim.find(label).is_ok(), "{label}");
+        }
+        sim.find("Add server…").unwrap();
+    }
+
+    #[test]
+    fn connect_opens_the_server_and_remove_writes_the_list_without_it() {
+        let app = page(TWO);
+        assert_eq!(
+            messages_after_click(&app, "Connect"),
+            [Message::Remote(RemoteMessage::OpenServer(PathBuf::from(
+                "sftp://marc@files.example.org/srv"
+            )))]
+        );
+        let sent = messages_after_click(&app, "Remove");
+        let [Message::Settings(SettingsMessage::Change(SettingChange::Servers(rest)))] =
+            sent.as_slice()
+        else {
+            panic!("{sent:?}");
+        };
+        assert_eq!(rest.len(), 1);
+        assert_eq!(rest[0].host, "home.example.org");
+    }
+
+    #[test]
+    fn an_empty_list_says_so_and_offers_to_add() {
+        let app = page("");
+        simulator(&app).find("No saved servers").unwrap();
+        assert_eq!(
+            messages_after_click(&app, "Add…"),
+            [Message::Remote(RemoteMessage::OpenAdd)]
+        );
+    }
+
+    #[test]
+    fn the_page_is_worded_in_german_too() {
+        let app = page(TWO).in_language(Language::German);
+        let mut sim = simulator(&app);
+        sim.find("Entfernen").unwrap();
+        sim.find("Verbinden").unwrap();
+    }
 }

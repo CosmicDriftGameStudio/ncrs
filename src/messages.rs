@@ -14,7 +14,7 @@ use crate::ai_model::DownloadError as AiDownloadError;
 use crate::app::{RowFailure, Transfer};
 use crate::command_line::ShellOutcome;
 use crate::config::{
-    AiProviderChoice, AiProviderName, Config, Filing, FilingWriteError, ProgramLine,
+    AiProviderChoice, AiProviderName, Config, Filing, FilingWriteError, ProgramLine, ServerEntry,
 };
 use crate::dialog::PromptKind;
 use crate::execute::UndoReport;
@@ -399,15 +399,17 @@ pub enum SettingsFeature {
     Language,
     Programs,
     Keys,
+    Servers,
     Hermes,
 }
 
 impl SettingsFeature {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Look,
         Self::Language,
         Self::Programs,
         Self::Keys,
+        Self::Servers,
         Self::Hermes,
     ];
 }
@@ -434,6 +436,8 @@ pub enum SettingChange {
         color: Option<String>,
     },
     AiProvider(AiProviderChoice),
+    /// The whole list of saved SFTP servers, as it is to be written.
+    Servers(Vec<ServerEntry>),
 }
 
 /// A text field of the settings tab. What is typed stays a draft until
@@ -1015,6 +1019,11 @@ pub enum RemoteMessage {
         attempt: u64,
         result: Result<(), ConnectFailure>,
     },
+    ToggleSave,
+    /// Opens the connect dialog with the box that saves the server ticked.
+    OpenAdd,
+    /// A saved server was chosen: its address opens in the active panel.
+    OpenServer(PathBuf),
     TrustHostKey,
     /// The host key was written to the file of ncrs; connect again.
     HostKeyLearned {

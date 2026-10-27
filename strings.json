@@ -5363,6 +5363,42 @@
       "context": "Status bar error when the view key is pressed on a file on an SFTP server that could run (script, app, shortcut) and no editor program is set to show it in. Takes the file name. No key names: the edit key is refused on a server, so it must not be suggested.",
       "en": "{name} could be executed, ncrs does not view it from a server",
       "de": "{name} könnte ausgeführt werden und wird nicht vom Server angezeigt"
+    },
+    {
+      "key": "settings.feature_servers",
+      "context": "Entry of the feature list on the settings tab: the saved SFTP servers.",
+      "en": "Servers",
+      "de": "Server"
+    },
+    {
+      "key": "settings.feature_servers_intro",
+      "context": "Line under the heading of the servers page on the settings tab. The servers are saved in the config file without their passwords; a password is kept in the keychain only if the user asked for it.",
+      "en": "SFTP servers you can open from the drive menu. Passwords stay in the keychain, never in the config.",
+      "de": "SFTP-Server, die sich im Laufwerksmenü öffnen lassen. Passwörter bleiben im Schlüsselbund, nie in der Konfiguration."
+    },
+    {
+      "key": "settings.servers_add",
+      "context": "Label of the row on the servers page of the settings tab that adds a server. Its button opens the connect dialog with the box that saves the server ticked. The ellipsis says a dialog follows.",
+      "en": "Add server…",
+      "de": "Server hinzufügen …"
+    },
+    {
+      "key": "settings.servers_add_button",
+      "context": "Button on the servers page of the settings tab, in the row that adds a server: opens the connect dialog. Short, like the other buttons of the page.",
+      "en": "Add…",
+      "de": "Hinzufügen …"
+    },
+    {
+      "key": "settings.servers_remove",
+      "context": "Button on the servers page of the settings tab that removes a saved server from the list. It also forgets the password the keychain holds for it.",
+      "en": "Remove",
+      "de": "Entfernen"
+    },
+    {
+      "key": "settings.servers_empty",
+      "context": "Row on the servers page of the settings tab while no server is saved.",
+      "en": "No saved servers",
+      "de": "Keine gespeicherten Server"
     }
   ]
 }

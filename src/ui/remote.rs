@@ -131,6 +131,13 @@ fn form<'a>(
             locked,
             palette,
         ),
+        tick(
+            lang.text(Msg::RemoteSave),
+            dialog.save(),
+            RemoteMessage::ToggleSave,
+            locked,
+            palette,
+        ),
     ]
     .spacing(spacing::LINE_GAP);
     if locked {
