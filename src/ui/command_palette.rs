@@ -118,12 +118,13 @@ fn command_row<'a>(
     let theme_room = room.saturating_sub(label_chars + NAME_GAP);
     let theme_text = entry
         .theme_name
+        .as_deref()
         .filter(|_| theme_room >= MIN_THEME_CHARS)
         .map(|name| {
             picker::highlighted_dim(name, &hit.theme_highlight, selected, theme_room, palette)
         });
     let names = row![picker::highlighted(
-        entry.label,
+        &entry.label,
         &hit.label_highlight,
         selected,
         room,

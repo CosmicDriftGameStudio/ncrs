@@ -174,6 +174,21 @@ pub fn mode_field_accent(palette: &Palette) -> impl Fn(&Theme) -> container::Sty
 /// How strongly the chosen entry of the feature list is tinted.
 const FEATURE_TINT: f32 = 0.2;
 
+/// The setting a command-list hit brought into view: tinted and outlined like
+/// the chosen entry of the feature list.
+pub fn marked_setting(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
+    move |_theme| container::Style {
+        background: Some(Background::Color(colors.cursor.scale_alpha(FEATURE_TINT))),
+        border: Border {
+            color: colors.cursor,
+            width: spacing::BORDER_WIDTH,
+            radius: radius::CONTROL.into(),
+        },
+        ..container::Style::default()
+    }
+}
+
 /// An entry of the feature list on the settings tab; the chosen one is tinted
 /// and outlined in the cursor color.
 pub fn feature_item(

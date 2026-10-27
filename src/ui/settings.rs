@@ -67,6 +67,9 @@ const NAV_ENTRY_GAP: f32 = 1.0;
 pub struct SettingsState {
     pub feature: SettingsFeature,
     pub query: String,
+    /// The row a hit of the command list asked for, drawn marked until the
+    /// next search or page.
+    pub marked_row: Option<String>,
     /// Settings changed since the tab was opened.
     pub changed: usize,
     /// Whether the folder of the text recognition models has files; looked up
@@ -110,6 +113,7 @@ impl SettingsState {
         Self {
             feature: SettingsFeature::Look,
             query: String::new(),
+            marked_row: None,
             changed: 0,
             ocr_models_present,
             file,
@@ -118,6 +122,14 @@ impl SettingsState {
             provider: None,
             sandboxed,
         }
+    }
+
+    /// Brings a page, or one row of it, into view: the row's label becomes the
+    /// search, so the tab's own filter leaves it on the page.
+    pub fn show(&mut self, feature: SettingsFeature, row: Option<String>) {
+        self.feature = feature;
+        self.query = row.clone().unwrap_or_default();
+        self.marked_row = row;
     }
 
     fn config(&self) -> Option<&Config> {
@@ -418,7 +430,11 @@ pub struct SettingsView<'a> {
 
 struct SettingRow<'a> {
     label: String,
+    /// The Futurama name, from a `Msg`; the only name the command list takes.
     theme_name: Option<String>,
+    /// The key in the config or theme file, shown where the theme name is but
+    /// never offered to the command list.
+    config_key: Option<String>,
     description: Option<String>,
     /// What is wrong with the value, under the description.
     problem: Option<String>,
@@ -601,6 +617,7 @@ fn simple_row<'a>(
     SettingRow {
         label: lang.text(label).to_owned(),
         theme_name: None,
+        config_key: None,
         description: note.map(|msg| lang.text(msg).to_owned()),
         problem: None,
         control,
@@ -764,7 +781,8 @@ fn color_row<'a>(role: ColorRole, view: &SettingsView<'a>) -> SettingRow<'a> {
     .align_y(alignment::Vertical::Center);
     SettingRow {
         label: view.lang.text(color_label(role)).to_owned(),
-        theme_name: Some(role.name().to_owned()),
+        theme_name: None,
+        config_key: Some(role.name().to_owned()),
         description: None,
         problem: field_problem(field, view).or_else(|| contrast_problem(role, view)),
         control: control.into(),
@@ -822,6 +840,7 @@ fn program_row<'a>(kind: OpenKind, view: &SettingsView<'a>) -> SettingRow<'a> {
     SettingRow {
         label: lang.text(label).to_owned(),
         theme_name: None,
+        config_key: None,
         description: Some(description),
         problem: field_problem(field, view),
         control: control.into(),
@@ -900,6 +919,7 @@ fn folder_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         return vec![SettingRow {
             label: lang.text(Msg::SettingsFoldersEmpty).to_owned(),
             theme_name: None,
+            config_key: None,
             description: None,
             problem: None,
             control: kit::button(
@@ -941,6 +961,7 @@ fn folder_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
             SettingRow {
                 label: lang.text(label).to_owned(),
                 theme_name: Some(lang.text(theme_name).to_owned()),
+                config_key: None,
                 description: Some(description),
                 problem: None,
                 control: with_button(
@@ -1225,8 +1246,48 @@ fn row_matches(setting: &SettingRow<'_>, query: &str) -> bool {
     contains_query(&setting.label, query)
         || setting
             .theme_name
-            .as_deref()
-            .is_some_and(|name| contains_query(name, query))
+            .iter()
+            .chain(&setting.config_key)
+            .any(|name| contains_query(name, query))
+}
+
+/// What the command list can open: a page, or one setting of a page.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsTarget {
+    pub feature: SettingsFeature,
+    /// The label of the row; `None` for the page itself.
+    pub row: Option<String>,
+    pub label: String,
+    pub theme_name: Option<String>,
+}
+
+/// Every page and every row of every page, from the same rows the tab's search
+/// goes through.
+pub fn search_targets(view: &SettingsView<'_>) -> Vec<SettingsTarget> {
+    let lang = view.lang;
+    let mut targets = Vec::new();
+    for feature in SettingsFeature::ALL {
+        let page = lang.text(feature_label(feature));
+        targets.push(SettingsTarget {
+            feature,
+            row: None,
+            label: fill_template(
+                lang.text(Msg::CommandPaletteSettingsPage),
+                &[("{page}", page)],
+            ),
+            theme_name: feature_theme_name(feature).map(|name| lang.text(name).to_owned()),
+        });
+        let rows = groups_of(feature, view)
+            .into_iter()
+            .flat_map(|group| group.rows);
+        targets.extend(rows.map(|setting| SettingsTarget {
+            feature,
+            row: Some(setting.label.clone()),
+            label: setting.label,
+            theme_name: setting.theme_name,
+        }));
+    }
+    targets
 }
 
 /// The features the search leaves, in their order.
@@ -1355,15 +1416,26 @@ fn page<'a>(shown: Option<SettingsFeature>, view: &SettingsView<'a>) -> Element<
             .into_iter()
             .filter(|setting| whole_feature || row_matches(setting, &query))
             .map(|setting| {
-                kit::form_row_with_problem(
+                let marked = view.state.marked_row.as_deref() == Some(setting.label.as_str());
+                let form_row = kit::form_row_with_problem(
                     &setting.label,
-                    setting.theme_name.as_deref(),
+                    setting
+                        .theme_name
+                        .as_deref()
+                        .or(setting.config_key.as_deref()),
                     setting.description.as_deref(),
                     setting.problem.as_deref(),
                     setting.control,
                     setting.control_width.unwrap_or(size::CONTROL_WIDTH),
                     palette,
-                )
+                );
+                if marked {
+                    container(form_row)
+                        .style(theme::marked_setting(palette))
+                        .into()
+                } else {
+                    form_row
+                }
             })
             .collect();
         if rows.is_empty() {
@@ -1522,6 +1594,61 @@ mod tests {
     fn typed(state: &mut SettingsState, field: SettingField, text: &str) -> Option<SettingChange> {
         state.edit(field, text.to_owned());
         state.submit(field)
+    }
+
+    #[test]
+    fn the_command_list_gets_every_page_and_every_row_the_tab_search_filters() {
+        let state = state_of("");
+        let filing = Filing::default();
+        let palette = Palette::default();
+        let view = SettingsView {
+            state: &state,
+            preset: ThemePreset::Cosmic,
+            vscode_theme: None,
+            filing: &filing,
+            ai_status: None,
+            home: Path::new("/home/test"),
+            keys_changed: 0,
+            lang: Language::English,
+            palette: &palette,
+        };
+
+        let targets = search_targets(&view);
+
+        for feature in SettingsFeature::ALL {
+            let page = targets
+                .iter()
+                .find(|target| target.feature == feature && target.row.is_none())
+                .unwrap();
+            assert!(page.label.starts_with("Settings: "), "{}", page.label);
+            let rows: Vec<String> = groups_of(feature, &view)
+                .into_iter()
+                .flat_map(|group| group.rows)
+                .map(|setting| setting.label)
+                .collect();
+            let listed: Vec<String> = targets
+                .iter()
+                .filter(|target| target.feature == feature)
+                .filter_map(|target| target.row.clone())
+                .collect();
+            assert_eq!(listed, rows, "{feature:?}");
+        }
+        assert!(targets
+            .iter()
+            .any(|target| target.row.as_deref() == Some("Viewer (F3)")));
+    }
+
+    #[test]
+    fn showing_a_row_filters_to_it_and_marks_it_and_showing_a_page_clears_both() {
+        let mut state = state_of("");
+        state.show(SettingsFeature::Programs, Some("Viewer (F3)".to_owned()));
+        assert_eq!(state.feature, SettingsFeature::Programs);
+        assert_eq!(state.query, "Viewer (F3)");
+        assert_eq!(state.marked_row.as_deref(), Some("Viewer (F3)"));
+
+        state.show(SettingsFeature::Keys, None);
+        assert_eq!(state.query, "");
+        assert_eq!(state.marked_row, None);
     }
 
     #[test]

@@ -9,6 +9,8 @@ use std::ops::Range;
 use crate::commands::{self, CommandGroup};
 use crate::i18n::{Language, Msg};
 use crate::keymap::{KeyAction, KeyScope, Keymap};
+use crate::messages::SettingsFeature;
+use crate::ui::settings::SettingsTarget;
 
 /// Rows shown at once, headers included, in the smallest window; the list
 /// scrolls past that.
@@ -17,14 +19,59 @@ pub const MIN_VISIBLE_ROWS: usize = 12;
 /// Commands listed under "Recent" while the field is empty.
 pub const RECENT_LIMIT: usize = 5;
 
+/// What running an entry does.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Target {
+    Command(KeyAction),
+    /// Opens the settings tab on a page, with the row in view when there is one.
+    Setting {
+        feature: SettingsFeature,
+        row: Option<String>,
+    },
+}
+
+/// The groups of the list. Not [`CommandGroup`] alone: that one also drives the
+/// menu bar, which has no place for settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PaletteGroup {
+    Command(CommandGroup),
+    /// After every command group, so a command wins a tie.
+    Settings,
+}
+
+impl PaletteGroup {
+    fn label(self) -> Msg {
+        match self {
+            Self::Command(group) => group.label(),
+            Self::Settings => Msg::ActionSettings,
+        }
+    }
+
+    fn theme_name(self) -> Option<Msg> {
+        match self {
+            Self::Command(group) => group.theme_name(),
+            Self::Settings => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
-    pub action: KeyAction,
-    pub group: CommandGroup,
-    pub label: &'static str,
-    pub theme_name: Option<&'static str>,
+    pub target: Target,
+    pub group: PaletteGroup,
+    pub label: String,
+    pub theme_name: Option<String>,
     /// The first key bound to the action, spelled for this platform.
     pub shortcut: Option<String>,
+}
+
+impl Entry {
+    pub fn command(&self) -> Option<KeyAction> {
+        match self.target {
+            Target::Command(action) => Some(action),
+            Target::Setting { .. } => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,14 +148,30 @@ impl CommandPalette {
     /// not up.
     pub fn without_hermes_file_commands(mut self) -> Self {
         self.entries
-            .retain(|entry| !entry.action.acts_on_hermes_file());
+            .retain(|entry| !entry.command().is_some_and(KeyAction::acts_on_hermes_file));
         self.rank();
         self
     }
 
     /// Drops one command that cannot run for the row under the cursor.
     pub fn without_command(mut self, action: KeyAction) -> Self {
-        self.entries.retain(|entry| entry.action != action);
+        self.entries.retain(|entry| entry.command() != Some(action));
+        self.rank();
+        self
+    }
+
+    /// Adds the settings pages and settings, found by a query only.
+    pub fn with_settings(mut self, targets: Vec<SettingsTarget>) -> Self {
+        self.entries.extend(targets.into_iter().map(|target| Entry {
+            target: Target::Setting {
+                feature: target.feature,
+                row: target.row,
+            },
+            group: PaletteGroup::Settings,
+            label: target.label,
+            theme_name: target.theme_name,
+            shortcut: None,
+        }));
         self.rank();
         self
     }
@@ -172,11 +235,11 @@ impl CommandPalette {
         }
     }
 
-    pub fn selected_action(&self) -> Option<KeyAction> {
+    pub fn selected_target(&self) -> Option<Target> {
         let Some(Row::Hit(hit)) = self.rows.get(self.cursor) else {
             return None;
         };
-        self.entry(hit).map(|entry| entry.action)
+        self.entry(hit).map(|entry| entry.target.clone())
     }
 
     fn hit_positions(&self) -> impl Iterator<Item = usize> + '_ {
@@ -218,7 +281,11 @@ impl CommandPalette {
         let recent: Vec<Row> = self
             .recent
             .iter()
-            .filter_map(|&action| self.entries.iter().position(|entry| entry.action == action))
+            .filter_map(|&action| {
+                self.entries
+                    .iter()
+                    .position(|entry| entry.command() == Some(action))
+            })
             .take(RECENT_LIMIT)
             .map(|entry| Row::Hit(plain_hit(entry)))
             .collect();
@@ -232,7 +299,8 @@ impl CommandPalette {
         }
         let order: Vec<usize> = CommandGroup::ALL
             .iter()
-            .flat_map(|&group| {
+            .map(|&group| PaletteGroup::Command(group))
+            .flat_map(|group| {
                 let mut ids: Vec<usize> = (0..self.entries.len())
                     .filter(|&entry| self.entries.get(entry).is_some_and(|e| e.group == group))
                     .collect();
@@ -268,14 +336,14 @@ impl CommandPalette {
         // A group is listed once: the groups with the best hit first, then in
         // their fixed order; inside a group by tier, then by label.
         let group_of = |entry: usize| self.entries.get(entry).map(|candidate| candidate.group);
-        let best_tier_of = |group: Option<CommandGroup>| {
+        let best_tier_of = |group: Option<PaletteGroup>| {
             found
                 .iter()
                 .filter(|(_, hit)| group_of(hit.entry) == group)
                 .map(|(tier, _)| *tier)
                 .min()
         };
-        let mut best: Vec<(Option<CommandGroup>, Option<Tier>)> = Vec::new();
+        let mut best: Vec<(Option<PaletteGroup>, Option<Tier>)> = Vec::new();
         for (_, hit) in &found {
             let group = group_of(hit.entry);
             if !best.iter().any(|(seen, _)| *seen == group) {
@@ -420,9 +488,9 @@ type Assignment = Vec<(usize, usize)>;
 
 fn word_text<'a>(entry: &'a Entry, word: &Word) -> &'a str {
     let text = if word.in_theme {
-        entry.theme_name.unwrap_or_default()
+        entry.theme_name.as_deref().unwrap_or_default()
     } else {
-        entry.label
+        &entry.label
     };
     text.get(word.range.clone()).unwrap_or_default()
 }
@@ -468,8 +536,8 @@ struct Match {
 /// does not.
 fn match_words(entry: &Entry, query: &[Vec<char>], typed: &str) -> Option<Match> {
     let mut words = Vec::new();
-    words_of(entry.label, false, &mut words);
-    if let Some(theme_name) = entry.theme_name {
+    words_of(&entry.label, false, &mut words);
+    if let Some(theme_name) = entry.theme_name.as_deref() {
         words_of(theme_name, true, &mut words);
     }
     let in_order = assign_in_order(entry, &words, query);
@@ -479,7 +547,10 @@ fn match_words(entry: &Entry, query: &[Vec<char>], typed: &str) -> Option<Match>
     else {
         // Whole-word prefixes, not fuzzy: a fuzzy name match would also find
         // unrelated commands. There is nothing to highlight in the label.
-        return words_start_name(typed, entry.action.name()).then(|| Match {
+        let named = entry
+            .command()
+            .is_some_and(|action| words_start_name(typed, action.name()));
+        return named.then(|| Match {
             tier: Tier::ConfigName,
             label_highlight: Vec::new(),
             theme_highlight: Vec::new(),
@@ -487,9 +558,10 @@ fn match_words(entry: &Entry, query: &[Vec<char>], typed: &str) -> Option<Match>
     };
 
     let whole: Vec<char> = typed.trim().chars().map(fold).collect();
-    let tier = if starts_with_folded(entry.label, &whole)
+    let tier = if starts_with_folded(&entry.label, &whole)
         || entry
             .theme_name
+            .as_deref()
             .is_some_and(|theme_name| starts_with_folded(theme_name, &whole))
     {
         Tier::Start
@@ -534,10 +606,10 @@ fn entries(scope: KeyScope, lang: Language, keymap: &Keymap) -> Vec<Entry> {
         .filter(|command| command.action != KeyAction::CommandPalette)
         .filter(|command| command.action.works_in(scope))
         .map(|command| Entry {
-            action: command.action,
-            group: command.group,
-            label: lang.text(command.label),
-            theme_name: command.theme_name.map(|name| lang.text(name)),
+            target: Target::Command(command.action),
+            group: PaletteGroup::Command(command.group),
+            label: lang.text(command.label).to_owned(),
+            theme_name: command.theme_name.map(|name| lang.text(name).to_owned()),
             shortcut: keymap.shortcut_label(&command.action.message()),
         })
         .collect()
@@ -565,10 +637,10 @@ mod tests {
         palette
     }
 
-    fn labels(palette: &CommandPalette) -> Vec<&'static str> {
+    fn labels(palette: &CommandPalette) -> Vec<&str> {
         palette
             .hits()
-            .map(|hit| palette.entry(hit).unwrap().label)
+            .map(|hit| palette.entry(hit).unwrap().label.as_str())
             .collect()
     }
 
@@ -576,14 +648,14 @@ mod tests {
         let palette = asked(lang, query);
         palette
             .hits()
-            .map(|hit| palette.entry(hit).unwrap().action)
+            .map(|hit| palette.entry(hit).unwrap().command().unwrap())
             .collect()
     }
 
     fn actions_of(palette: &CommandPalette) -> Vec<KeyAction> {
         palette
             .hits()
-            .map(|hit| palette.entry(hit).unwrap().action)
+            .map(|hit| palette.entry(hit).unwrap().command().unwrap())
             .collect()
     }
 
@@ -617,7 +689,7 @@ mod tests {
     fn the_theme_name_is_marked_where_it_matched() {
         let palette = asked(Language::English, "smell");
         let hit = palette.hits().next().unwrap();
-        let theme_name = palette.entry(hit).unwrap().theme_name.unwrap();
+        let theme_name = palette.entry(hit).unwrap().theme_name.clone().unwrap();
         let marked: Vec<&str> = hit
             .theme_highlight
             .iter()
@@ -638,7 +710,7 @@ mod tests {
         let palette = asked(Language::English, "quick open");
         let hit = palette
             .hits()
-            .find(|hit| palette.entry(hit).unwrap().action == KeyAction::QuickOpen)
+            .find(|hit| palette.entry(hit).unwrap().command().unwrap() == KeyAction::QuickOpen)
             .unwrap();
         assert!(hit.label_highlight.is_empty());
         assert!(hit.theme_highlight.is_empty());
@@ -690,7 +762,7 @@ mod tests {
         let entry = palette
             .hits()
             .map(|hit| palette.entry(hit).unwrap())
-            .find(|entry| entry.action == KeyAction::Move)
+            .find(|entry| entry.command().unwrap() == KeyAction::Move)
             .unwrap();
         let tier_of = |query: &str| match_words(entry, &query_words(query), query).map(|m| m.tier);
         assert_eq!(tier_of("move to"), Some(Tier::Start));
@@ -707,7 +779,8 @@ mod tests {
     fn a_better_tier_is_listed_before_a_worse_one() {
         // "Fetch color theme…" has a word that starts with "co" but does not
         // start with it, so it comes after the labels that do.
-        let labels = labels(&asked(Language::English, "co"));
+        let asked_co = asked(Language::English, "co");
+        let labels = labels(&asked_co);
         let color = labels
             .iter()
             .position(|label| label.contains("color"))
@@ -766,7 +839,7 @@ mod tests {
                 let palette = asked(lang, query);
                 let words = query_words(query);
                 // The group of each hit with the best tier any hit of it has.
-                let mut listed: Vec<(Tier, CommandGroup)> = Vec::new();
+                let mut listed: Vec<(Tier, PaletteGroup)> = Vec::new();
                 for hit in palette.hits() {
                     let entry = palette.entry(hit).unwrap();
                     let tier = match_words(entry, &words, query).unwrap().tier;
@@ -789,10 +862,13 @@ mod tests {
         // in the fixed order).
         let palette = asked(Language::English, "in");
         let first = palette.hits().next().unwrap();
-        assert_eq!(palette.entry(first).unwrap().group, CommandGroup::Hermes);
+        assert_eq!(
+            palette.entry(first).unwrap().group,
+            PaletteGroup::Command(CommandGroup::Hermes)
+        );
         assert!(palette
             .hits()
-            .any(|hit| palette.entry(hit).unwrap().action == KeyAction::Search));
+            .any(|hit| palette.entry(hit).unwrap().command().unwrap() == KeyAction::Search));
     }
 
     #[test]
@@ -858,7 +934,7 @@ mod tests {
             .skip(1)
             .take(3)
             .map(|row| match row {
-                Row::Hit(hit) => palette.entry(hit).unwrap().action,
+                Row::Hit(hit) => palette.entry(hit).unwrap().command().unwrap(),
                 Row::Header(_) => panic!("three hits come first"),
             })
             .collect();
@@ -866,12 +942,12 @@ mod tests {
         assert_eq!(headers(&palette).get(1), Some(&"File"));
         let again = palette
             .hits()
-            .filter(|hit| palette.entry(hit).unwrap().action == KeyAction::Copy)
+            .filter(|hit| palette.entry(hit).unwrap().command().unwrap() == KeyAction::Copy)
             .count();
         assert_eq!(again, 2, "a recent command is also in its group");
         assert_eq!(
-            palette.selected_action(),
-            Some(KeyAction::Copy),
+            palette.selected_target(),
+            Some(Target::Command(KeyAction::Copy)),
             "the most recent one is highlighted"
         );
     }
@@ -943,12 +1019,12 @@ mod tests {
                 let entry = palette.entry(hit).unwrap();
                 assert_eq!(
                     entry.shortcut,
-                    keymap.shortcut_label(&entry.action.message()),
+                    keymap.shortcut_label(&entry.command().unwrap().message()),
                     "{}",
-                    entry.action.name()
+                    entry.command().unwrap().name()
                 );
-                if !seen.contains(&entry.action) {
-                    seen.push(entry.action);
+                if !seen.contains(&entry.command().unwrap()) {
+                    seen.push(entry.command().unwrap());
                 }
             }
         }
@@ -978,7 +1054,7 @@ mod tests {
             palette
                 .hits()
                 .map(|hit| palette.entry(hit).unwrap())
-                .find(|entry| entry.action == action)
+                .find(|entry| entry.command().unwrap() == action)
                 .unwrap()
                 .shortcut
                 .clone()
@@ -1039,7 +1115,7 @@ mod tests {
             palette
                 .hits()
                 .map(|hit| palette.entry(hit).unwrap())
-                .find(|entry| entry.action == action)
+                .find(|entry| entry.command().unwrap() == action)
                 .unwrap()
                 .shortcut
                 .clone()
@@ -1051,9 +1127,9 @@ mod tests {
     #[test]
     fn the_hermes_file_commands_are_listed_only_while_the_column_is_up() {
         let listed = |palette: &CommandPalette| {
-            palette
-                .hits()
-                .any(|hit| palette.entry(hit).unwrap().action == KeyAction::HermesProcessAgain)
+            palette.hits().any(|hit| {
+                palette.entry(hit).unwrap().command().unwrap() == KeyAction::HermesProcessAgain
+            })
         };
         let with = palette(KeyScope::Panel, Language::English);
         assert!(listed(&with));
@@ -1061,7 +1137,7 @@ mod tests {
         assert!(!listed(&without));
         assert!(without
             .hits()
-            .any(|hit| without.entry(hit).unwrap().action == KeyAction::FilingStatus));
+            .any(|hit| without.entry(hit).unwrap().command().unwrap() == KeyAction::FilingStatus));
     }
 
     #[test]
@@ -1070,9 +1146,132 @@ mod tests {
             .without_command(KeyAction::HermesProcessAgain);
         let actions: Vec<KeyAction> = palette
             .hits()
-            .map(|hit| palette.entry(hit).unwrap().action)
+            .map(|hit| palette.entry(hit).unwrap().command().unwrap())
             .collect();
         assert!(!actions.contains(&KeyAction::HermesProcessAgain));
         assert!(actions.contains(&KeyAction::HermesExclude));
+    }
+
+    fn setting_targets(lang: Language) -> Vec<SettingsTarget> {
+        let (page, viewer) = match lang {
+            Language::English => ("Settings: Programs", "Viewer (F3)"),
+            Language::German => ("Einstellungen: Programme", "Betrachter (F3)"),
+        };
+        vec![
+            SettingsTarget {
+                feature: SettingsFeature::Programs,
+                row: None,
+                label: page.to_owned(),
+                theme_name: None,
+            },
+            SettingsTarget {
+                feature: SettingsFeature::Programs,
+                row: Some(viewer.to_owned()),
+                label: viewer.to_owned(),
+                theme_name: None,
+            },
+        ]
+    }
+
+    fn with_settings(lang: Language, query: &str) -> CommandPalette {
+        let mut palette = palette(KeyScope::Panel, lang).with_settings(setting_targets(lang));
+        palette.set_query(query.to_owned());
+        palette
+    }
+
+    fn setting_hits(palette: &CommandPalette) -> Vec<(SettingsFeature, Option<String>)> {
+        palette
+            .hits()
+            .filter_map(|hit| match &palette.entry(hit).unwrap().target {
+                Target::Setting { feature, row } => Some((*feature, row.clone())),
+                Target::Command(_) => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_settings_page_is_found_by_its_name_in_both_languages() {
+        for (lang, query) in [
+            (Language::English, "settings prog"),
+            (Language::German, "einstellungen prog"),
+        ] {
+            let palette = with_settings(lang, query);
+            assert!(
+                setting_hits(&palette).contains(&(SettingsFeature::Programs, None)),
+                "{lang:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn one_setting_is_found_by_its_label_in_both_languages() {
+        for (lang, query, label) in [
+            (Language::English, "viewer", "Viewer (F3)"),
+            (Language::German, "betrachter", "Betrachter (F3)"),
+        ] {
+            let palette = with_settings(lang, query);
+            assert_eq!(
+                setting_hits(&palette),
+                [(SettingsFeature::Programs, Some(label.to_owned()))],
+                "{lang:?}"
+            );
+            assert_eq!(headers(&palette), [lang.text(Msg::ActionSettings)]);
+        }
+    }
+
+    #[test]
+    fn a_command_comes_before_a_setting_of_the_same_tier() {
+        let targets = vec![SettingsTarget {
+            feature: SettingsFeature::Programs,
+            row: Some("Search depth".to_owned()),
+            label: "Search depth".to_owned(),
+            theme_name: None,
+        }];
+        let mut palette = palette(KeyScope::Panel, Language::English).with_settings(targets);
+        palette.set_query("search".to_owned());
+        let first = palette.hits().next().unwrap();
+        assert!(palette.entry(first).unwrap().command().is_some());
+        let last = palette.hits().last().unwrap();
+        assert_eq!(palette.entry(last).unwrap().group, PaletteGroup::Settings);
+    }
+
+    #[test]
+    fn settings_are_not_in_the_overview_and_recent_is_untouched() {
+        let recent = [KeyAction::Copy];
+        let with = CommandPalette::new(
+            KeyScope::Panel,
+            Language::English,
+            &Keymap::default(),
+            &recent,
+        )
+        .with_settings(setting_targets(Language::English));
+        let without = CommandPalette::new(
+            KeyScope::Panel,
+            Language::English,
+            &Keymap::default(),
+            &recent,
+        );
+        assert_eq!(with.rows(), without.rows());
+        assert!(setting_hits(&with).is_empty());
+        assert_eq!(headers(&with)[0], "Recent");
+    }
+
+    #[test]
+    fn a_setting_is_never_found_through_a_config_name() {
+        let mut palette = with_settings(Language::English, "viewer");
+        palette.set_query("quick open".to_owned());
+        assert!(setting_hits(&palette).is_empty());
+    }
+
+    #[test]
+    fn running_a_setting_gives_its_target() {
+        let palette = with_settings(Language::English, "viewer");
+        assert_eq!(
+            palette.selected_target(),
+            Some(Target::Setting {
+                feature: SettingsFeature::Programs,
+                row: Some("Viewer (F3)".to_owned()),
+            })
+        );
     }
 }

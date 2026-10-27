@@ -2276,7 +2276,9 @@ mod command_palette {
             .iter()
             .position(|row| match row {
                 crate::command_palette::Row::Hit(hit) => {
-                    palette.entry(hit).map(|entry| entry.action)
+                    palette
+                        .entry(hit)
+                        .and_then(crate::command_palette::Entry::command)
                         == Some(crate::keymap::KeyAction::SwitchLanguage)
                 }
                 crate::command_palette::Row::Header(_) => false,
@@ -2342,6 +2344,22 @@ mod command_palette {
         open(&mut app);
         typed(&mut app, "st");
         snapshot_of(&app, "tests/snapshots/command_palette_query_de.png");
+    }
+
+    #[test]
+    fn commands_and_settings_match_their_snapshot() {
+        let mut app = App::with_fixed_panels();
+        open(&mut app);
+        typed(&mut app, "language");
+        snapshot_of(&app, "tests/snapshots/command_palette_settings.png");
+    }
+
+    #[test]
+    fn commands_and_settings_match_their_german_snapshot() {
+        let mut app = App::with_fixed_panels().in_language(Language::German);
+        open(&mut app);
+        typed(&mut app, "sprache");
+        snapshot_of(&app, "tests/snapshots/command_palette_settings_de.png");
     }
 }
 

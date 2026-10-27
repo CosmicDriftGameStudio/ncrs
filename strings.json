@@ -997,6 +997,12 @@
       "de": "NC-rs"
     },
     {
+      "key": "command_palette.settings_page",
+      "context": "Name of a settings page in the command palette, which lists the settings pages beside the commands. {page} is the name of the page, such as Programs or Look; keep the colon, which sets the page apart from the commands of the same name.",
+      "en": "Settings: {page}",
+      "de": "Einstellungen: {page}"
+    },
+    {
       "key": "command_palette.recent",
       "context": "Heading above the commands that were run last, at the top of the command palette while the field is empty.",
       "en": "Recent",

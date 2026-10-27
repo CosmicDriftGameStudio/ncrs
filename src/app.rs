@@ -17,7 +17,7 @@ use crate::ai_model::{
     download_ai_model, AiModelCard, DownloadError as AiDownloadError, DownloadJob,
 };
 use crate::command_line::{self, CommandLine, ShellOutcome, Submission};
-use crate::command_palette::{CommandPalette, RECENT_LIMIT};
+use crate::command_palette::{CommandPalette, Target, RECENT_LIMIT};
 use crate::config::{
     self, Config, ConfigError, ContrastWarning, Filing, FilingWriteError, KeyChange, VscodeWarning,
 };
@@ -7758,11 +7758,11 @@ impl App {
         Task::batch([release_focus(), self.show_notice(notice)])
     }
 
-    fn settings_area<'a>(
+    fn settings_view<'a>(
         &'a self,
         state: &'a settings_ui::SettingsState,
-    ) -> Container<'a, Message> {
-        let page = settings_ui::view(&settings_ui::SettingsView {
+    ) -> settings_ui::SettingsView<'a> {
+        settings_ui::SettingsView {
             state,
             preset: self.theme_preset,
             vscode_theme: self.vscode_theme.as_deref(),
@@ -7775,7 +7775,14 @@ impl App {
                 .count(),
             lang: self.lang,
             palette: &self.palette,
-        });
+        }
+    }
+
+    fn settings_area<'a>(
+        &'a self,
+        state: &'a settings_ui::SettingsState,
+    ) -> Container<'a, Message> {
+        let page = settings_ui::view(&self.settings_view(state));
         let bar = settings_ui::status_bar(&settings_ui::StatusBar {
             changed: state.changed,
             failure: self.settings_failure.as_deref(),
@@ -7804,13 +7811,18 @@ impl App {
                 self.leave_settings_page(|app| {
                     if let Some(state) = app.settings.as_mut() {
                         state.feature = feature;
+                        state.marked_row = None;
                     }
                     Task::none()
                 })
             }
-            SettingsMessage::Select(_) => Task::none(),
+            SettingsMessage::Select(_) => self.in_settings(|state| {
+                state.marked_row = None;
+                None
+            }),
             SettingsMessage::SearchChanged(query) => self.in_settings(|state| {
                 state.query = query;
+                state.marked_row = None;
                 None
             }),
             SettingsMessage::Edit { field, text } => self.in_settings(|state| {
@@ -7924,6 +7936,11 @@ impl App {
         self.set_path_field(None);
         self.notice = None;
         self.settings_failure = None;
+        self.settings = Some(self.fresh_settings_state());
+        release_focus()
+    }
+
+    fn fresh_settings_state(&self) -> settings_ui::SettingsState {
         let ocr_models_present = self
             .filing_index_path
             .as_deref()
@@ -7935,12 +7952,7 @@ impl App {
             Some(path) => config::load(path).map(Box::new),
             None => Ok(Box::default()),
         };
-        self.settings = Some(settings_ui::SettingsState::new(
-            ocr_models_present,
-            file,
-            crate::fs::runs_in_app_sandbox(),
-        ));
-        release_focus()
+        settings_ui::SettingsState::new(ocr_models_present, file, crate::fs::runs_in_app_sandbox())
     }
 
     fn close_settings(&mut self) -> Task<Message> {
@@ -8435,6 +8447,15 @@ impl App {
         } else if !self.hermes_action_enabled(HermesAction::ProcessAgain) {
             palette = palette.without_command(KeyAction::HermesProcessAgain);
         }
+        let fresh;
+        let state = match &self.settings {
+            Some(open) => open,
+            None => {
+                fresh = self.fresh_settings_state();
+                &fresh
+            }
+        };
+        palette = palette.with_settings(settings_ui::search_targets(&self.settings_view(state)));
         palette.set_visible_rows(command_palette_ui::visible_rows(self.window_size));
         self.command_palette = Some(palette);
         focus
@@ -8480,15 +8501,42 @@ impl App {
     /// comes first and is chained, not batched: a prompt the action opens
     /// takes the focus after the palette gave it up.
     fn run_command_palette(&mut self) -> Task<Message> {
-        let Some(action) = self
+        let Some(target) = self
             .command_palette
             .as_ref()
-            .and_then(CommandPalette::selected_action)
+            .and_then(CommandPalette::selected_target)
         else {
             return Task::none();
         };
         let closed = self.close_command_palette();
-        closed.chain(self.run_command(action))
+        match target {
+            Target::Command(action) => closed.chain(self.run_command(action)),
+            Target::Setting { feature, row } => {
+                Task::batch([closed, self.show_setting(feature, row)])
+            }
+        }
+    }
+
+    /// Opens the settings tab, unless something blocks it, on `feature`, with
+    /// `row` in view.
+    fn show_setting(
+        &mut self,
+        feature: crate::messages::SettingsFeature,
+        row: Option<String>,
+    ) -> Task<Message> {
+        if self.settings.is_some() {
+            return self.leave_settings_page(|app| {
+                if let Some(state) = app.settings.as_mut() {
+                    state.show(feature, row);
+                }
+                Task::none()
+            });
+        }
+        let opened = self.open_settings();
+        if let Some(state) = self.settings.as_mut() {
+            state.show(feature, row);
+        }
+        opened
     }
 
     /// Runs a command chosen from the command list or the menu bar: what its
@@ -10563,6 +10611,10 @@ impl App {
 
     pub fn search_is_open_for_test(&self) -> bool {
         self.search_open
+    }
+
+    pub fn settings_for_test(&self) -> Option<&settings_ui::SettingsState> {
+        self.settings.as_ref()
     }
 
     pub fn command_palette_for_test(&self) -> Option<&CommandPalette> {
@@ -16249,7 +16301,7 @@ mod command_palette_tests {
         let regex = palette
             .hits()
             .filter_map(|hit| palette.entry(hit))
-            .any(|entry| entry.action == keymap::KeyAction::SearchRegex);
+            .any(|entry| entry.command() == Some(keymap::KeyAction::SearchRegex));
         assert!(regex);
     }
 
@@ -16386,15 +16438,15 @@ mod command_palette_tests {
                 crate::command_palette::Row::Hit(hit) => palette.entry(hit),
                 crate::command_palette::Row::Header(_) => None,
             })
-            .map(|entry| entry.action)
+            .filter_map(|entry| entry.command())
             .collect();
         assert_eq!(
             first_hits,
             [keymap::KeyAction::SwitchPanel, keymap::KeyAction::TagAll]
         );
         assert_eq!(
-            palette.selected_action(),
-            Some(keymap::KeyAction::SwitchPanel)
+            palette.selected_target(),
+            Some(Target::Command(keymap::KeyAction::SwitchPanel))
         );
     }
 
@@ -16417,7 +16469,7 @@ mod command_palette_tests {
         let entry = palette
             .hits()
             .filter_map(|hit| palette.entry(hit))
-            .find(|entry| entry.action == keymap::KeyAction::FilingStatus)
+            .find(|entry| entry.command() == Some(keymap::KeyAction::FilingStatus))
             .unwrap();
         assert_eq!(entry.shortcut.as_deref(), Some("F11"));
     }
@@ -16430,7 +16482,7 @@ mod command_palette_tests {
         let entry = palette
             .hits()
             .filter_map(|hit| palette.entry(hit))
-            .find(|entry| entry.action == keymap::KeyAction::DeletePermanently)
+            .find(|entry| entry.command() == Some(keymap::KeyAction::DeletePermanently))
             .unwrap();
         assert_eq!(entry.shortcut, None);
     }
@@ -18339,5 +18391,81 @@ mod archive_panel_tests {
             session_state::record_path(archive_file().parent().unwrap())
         );
         assert_eq!(record.cursor.as_deref(), Some("fotos.zip"));
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod settings_in_command_list_tests {
+    use super::*;
+    use crate::messages::SettingsFeature;
+
+    fn run_query(query: &str) -> App {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::CommandPalette(CommandPaletteMessage::Toggle)));
+        drop(app.update(Message::CommandPalette(
+            CommandPaletteMessage::QueryChanged(query.to_owned()),
+        )));
+        drop(app.update(Message::CommandPalette(CommandPaletteMessage::Run)));
+        app
+    }
+
+    #[test]
+    fn running_a_page_opens_the_settings_tab_on_it() {
+        let app = run_query("settings programs");
+
+        assert!(app.command_palette_for_test().is_none());
+        let state = app.settings_for_test().unwrap();
+        assert_eq!(state.feature, SettingsFeature::Programs);
+        assert_eq!(state.query, "");
+        assert_eq!(state.marked_row, None);
+    }
+
+    #[test]
+    fn running_a_single_setting_brings_its_row_into_view_marked() {
+        let app = run_query("viewer");
+
+        let state = app.settings_for_test().unwrap();
+        assert_eq!(state.feature, SettingsFeature::Programs);
+        let label = app.lang.text(Msg::SettingsRowViewer);
+        assert_eq!(state.query, label);
+        assert_eq!(state.marked_row.as_deref(), Some(label));
+    }
+
+    #[test]
+    fn searching_or_choosing_a_page_unmarks_the_row() {
+        let mut searched = run_query("viewer");
+        drop(
+            searched.update(Message::Settings(SettingsMessage::SearchChanged(
+                "edit".to_owned(),
+            ))),
+        );
+        assert_eq!(searched.settings_for_test().unwrap().marked_row, None);
+
+        let mut chosen = run_query("viewer");
+        drop(chosen.update(Message::Settings(SettingsMessage::Select(
+            SettingsFeature::Look,
+        ))));
+        assert_eq!(chosen.settings_for_test().unwrap().marked_row, None);
+    }
+
+    #[test]
+    fn a_setting_runs_from_the_list_while_the_tab_is_already_open() {
+        let mut app = App::with_settings_open(SettingsFeature::Look, Filing::default());
+        drop(app.update(Message::CommandPalette(CommandPaletteMessage::Toggle)));
+        drop(app.update(Message::CommandPalette(
+            CommandPaletteMessage::QueryChanged("viewer".to_owned()),
+        )));
+        drop(app.update(Message::CommandPalette(CommandPaletteMessage::Run)));
+
+        assert_eq!(
+            app.settings_for_test().unwrap().feature,
+            SettingsFeature::Programs
+        );
     }
 }
