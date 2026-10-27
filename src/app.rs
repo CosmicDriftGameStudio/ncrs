@@ -2108,6 +2108,7 @@ impl App {
                 .start_directory()
                 .unwrap_or_else(|| home.clone()),
             home,
+            [saved.left.start_cursor(), saved.right.start_cursor()],
         );
         panels.config_path = config_path;
         panels.state_path = state_path;
@@ -2277,12 +2278,19 @@ impl App {
     #[cfg(test)]
     pub fn starting_in(start: PathBuf, home: PathBuf) -> (Self, Task<Message>) {
         let right = home.clone();
-        Self::starting_at(start, right, home)
+        Self::starting_at(start, right, home, [None, None])
     }
 
     /// `starting_in` with the right panel's folder of its own; `home` stays
     /// what `~` means.
-    fn starting_at(left: PathBuf, right: PathBuf, home: PathBuf) -> (Self, Task<Message>) {
+    /// `cursors` name the entries the first listings put the cursor on.
+    fn starting_at(
+        left: PathBuf,
+        right: PathBuf,
+        home: PathBuf,
+        cursors: [Option<String>; 2],
+    ) -> (Self, Task<Message>) {
+        let [left_cursor, right_cursor] = cursors;
         let mut app = Self {
             left_panel: PanelState::new(left.clone()),
             right_panel: PanelState::new(right.clone()),
@@ -2399,8 +2407,8 @@ impl App {
         };
 
         let tasks = Task::batch([
-            app.load(PanelSide::Left, left, None),
-            app.load(PanelSide::Right, right, None),
+            app.load(PanelSide::Left, left, left_cursor),
+            app.load(PanelSide::Right, right, right_cursor),
         ]);
         (app, tasks)
     }
@@ -6131,6 +6139,10 @@ impl App {
             descending: panel.sort.descending,
             back: session_state::record_paths(panel.history.back()),
             forward: session_state::record_paths(panel.history.forward()),
+            cursor: panel
+                .selected_entry()
+                .filter(|entry| !entry.is_parent)
+                .and_then(|entry| entry.name.to_str().map(str::to_owned)),
         };
         let current = WindowSize {
             width: self.window_size.width,
@@ -16831,6 +16843,102 @@ mod session_state_tests {
         assert_eq!(app.right_panel.sort.column, SortColumn::Modified);
         assert_eq!(app.active_panel, PanelSide::Right);
         assert_eq!(app.window_size, Size::new(1000.0, 700.0));
+    }
+
+    /// Starts from `saved` and delivers the first listings, as the running
+    /// app would. Without a state path, so no write timer is waited for.
+    async fn started_and_listed(saved: SessionState) -> App {
+        use iced_test::futures::futures::StreamExt as _;
+        use iced_test::runtime::{task, Action};
+
+        let (mut app, start) = App::restored(Environment::isolated(), saved);
+        let mut stream = task::into_stream(start).expect("the first loads");
+        let mut reports = Vec::new();
+        while let Some(action) = stream.next().await {
+            if let Action::Output(reported) = action {
+                reports.push(reported);
+            }
+        }
+        for reported in reports {
+            drop(app.update(reported));
+        }
+        app
+    }
+
+    fn cursor_name(panel: &PanelState) -> Option<String> {
+        panel
+            .selected_entry()
+            .map(|entry| entry.name.to_string_lossy().into_owned())
+    }
+
+    fn folder_with_files(scratch: &tempfile::TempDir, name: &str) -> PathBuf {
+        let folder = scratch.path().join(name);
+        std::fs::create_dir_all(&folder).unwrap();
+        for file in ["alpha.txt", "beta.txt", "gamma.txt"] {
+            std::fs::write(folder.join(file), "x").unwrap();
+        }
+        folder
+    }
+
+    #[tokio::test]
+    async fn the_cursor_row_comes_back_and_is_in_view() {
+        let scratch = tempfile::tempdir().unwrap();
+        let left = folder_with_files(&scratch, "left");
+        let right = folder_with_files(&scratch, "right");
+        let mut saved = saved_for(&left, &right);
+        saved.left.cursor = Some("gamma.txt".to_string());
+        saved.window = None;
+
+        let mut app = started_and_listed(saved).await;
+        assert_eq!(cursor_name(&app.left_panel).as_deref(), Some("gamma.txt"));
+        assert_eq!(cursor_name(&app.right_panel).as_deref(), Some(".."));
+        assert!(app.left_panel.selected >= app.left_panel.scroll_offset);
+
+        assert_eq!(
+            app.session_state().left.cursor.as_deref(),
+            Some("gamma.txt")
+        );
+        app.left_panel.select(0, app.visible_rows);
+        assert_eq!(
+            app.session_state().left.cursor,
+            None,
+            "`..` is not recorded"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_cursor_entry_that_is_gone_leaves_the_cursor_on_the_first_row() {
+        let scratch = tempfile::tempdir().unwrap();
+        let left = folder_with_files(&scratch, "left");
+        let right = folder_with_files(&scratch, "right");
+        let mut saved = saved_for(&left, &right);
+        saved.left.cursor = Some("deleted.txt".to_string());
+
+        let app = started_and_listed(saved).await;
+
+        assert_eq!(app.left_panel.selected, 0);
+    }
+
+    #[tokio::test]
+    async fn the_cursor_is_not_carried_over_to_the_parent_of_a_deleted_folder() {
+        let scratch = tempfile::tempdir().unwrap();
+        let right = folder_with_files(&scratch, "right");
+        std::fs::write(scratch.path().join("left-file"), "x").unwrap();
+        let gone = scratch.path().join("gone");
+        let mut saved = saved_for(&gone, &right);
+        saved.left.cursor = Some("left-file".to_string());
+
+        let app = started_and_listed(saved).await;
+
+        assert_eq!(app.left_panel.path, scratch.path());
+        assert_eq!(app.left_panel.selected, 0);
+    }
+
+    #[test]
+    fn an_empty_panel_records_no_cursor() {
+        let scratch = tempfile::tempdir().unwrap();
+        let app = started(&scratch);
+        assert_eq!(app.session_state().left.cursor, None);
     }
 
     #[test]
