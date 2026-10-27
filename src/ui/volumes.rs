@@ -50,9 +50,8 @@ impl FavouriteRow {
 /// The footer names the key that removes a favourite only while one is
 /// highlighted.
 const FAVOURITE_HINTS: &[PageHint] = &[PageHint {
-    // The Mac key that sends Backspace is labelled ⌫ and has no Del. Not in
-    // tests: the snapshots are rendered on Linux and must match on every host.
-    key: if cfg!(all(target_os = "macos", not(test))) {
+    // The Mac key that sends Backspace is labelled ⌫ and has no Del.
+    key: if cfg!(target_os = "macos") {
         "⌫"
     } else {
         "Del"
