@@ -19,7 +19,7 @@ use crate::ai_model::{
 use crate::command_line::{self, CommandLine, ShellOutcome, Submission};
 use crate::command_palette::{CommandPalette, RECENT_LIMIT};
 use crate::config::{
-    self, Config, ConfigError, ContrastWarning, Filing, FilingWriteError, VscodeWarning,
+    self, Config, ConfigError, ContrastWarning, Filing, FilingWriteError, KeyChange, VscodeWarning,
 };
 use crate::context_menu::{ContextAction, ContextMenu, HermesAction, HermesMenu, InputState};
 use crate::dialog::{Prompt, PromptKind};
@@ -36,16 +36,17 @@ use crate::hermes_column::{
 use crate::hermes_status::HermesStatus;
 use crate::i18n::{Language, Msg};
 use crate::jobs::{self, JobEvent};
+use crate::key_bindings::KeyBindings;
 use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 #[cfg(any(target_os = "macos", test))]
 use crate::menu::Availability;
 use crate::messages::{
     AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage, ConflictChoice,
     FilingSetupMessage, FilingStatusMessage, HermesColumnMessage, HermesFileMessage, HermesFocus,
-    HermesPage, Message, OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage,
-    ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage,
-    SearchMessage, SettingChange, SettingsMessage, ThemeFetchMessage, TitleBarMessage,
-    TransferKind,
+    HermesPage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide, QuickFixMessage,
+    QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage,
+    SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage, ThemeFetchMessage,
+    TitleBarMessage, TransferKind,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -76,6 +77,7 @@ use crate::ui::filing as filing_ui;
 use crate::ui::filing_setup as filing_setup_ui;
 use crate::ui::filing_status as filing_status_ui;
 use crate::ui::hermes::Badges;
+use crate::ui::key_bindings as key_bindings_ui;
 use crate::ui::ocr_models as ocr_models_ui;
 use crate::ui::quick_fix as quick_fix_view;
 use crate::ui::quick_open as quick_open_ui;
@@ -308,6 +310,7 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::OpenSearch
             | Message::QuickOpen(QuickOpenMessage::Open)
             | Message::CommandPalette(CommandPaletteMessage::Toggle)
+            | Message::KeyBindings(KeyBindingsMessage::Open)
             | Message::ThemeFetch(ThemeFetchMessage::Open)
             | Message::RuleSuggestions(RuleSuggestionsMessage::Open)
             | Message::ReviewList(ReviewListMessage::Open)
@@ -613,17 +616,28 @@ impl VolumeMenu {
     }
 }
 
+/// Held by a write of the config. Each writer reads, edits and writes the
+/// whole file: two quick changes on the blocking pool would otherwise lose
+/// one of them.
+fn one_config_writer() -> std::sync::MutexGuard<'static, ()> {
+    static ONE_WRITER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    ONE_WRITER
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// The writer of the config for an edit in the keyboard shortcuts dialog.
+fn write_key_changes(path: &Path, changes: &[KeyChange]) -> Result<Box<Config>, FilingWriteError> {
+    let _writing = one_config_writer();
+    config::write_keys(path, changes).map(Box::new)
+}
+
 /// The writer of the config for one change of the settings tab.
 fn write_setting_change(
     path: &Path,
     change: SettingChange,
 ) -> Result<Box<Config>, FilingWriteError> {
-    // Each writer reads, edits and writes the whole file: two quick clicks on
-    // the blocking pool would otherwise lose one of the changes.
-    static ONE_WRITER: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _writing = ONE_WRITER
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _writing = one_config_writer();
     let written = match change {
         SettingChange::Preset(preset) => config::write_theme_preset(path, preset),
         SettingChange::Language(lang) => config::write_language(path, lang),
@@ -808,6 +822,8 @@ pub struct App {
     quick_open_walk: Option<iced::task::Handle>,
     /// The command palette (Cmd/Ctrl+Shift+P), while its box is up.
     command_palette: Option<CommandPalette>,
+    /// The keyboard shortcuts dialog, while it is up.
+    key_bindings: Option<KeyBindings>,
     /// The commands run from the command list this session, most recent
     /// first. Not kept across runs.
     recent_commands: Vec<KeyAction>,
@@ -935,6 +951,10 @@ pub struct PromptKeyState {
     pub quick_open: bool,
     /// The command palette is up, so the up and down keys move in its entries.
     pub command_palette: bool,
+    /// The keyboard shortcuts dialog is up: its keys edit the bindings.
+    pub key_bindings: bool,
+    /// The dialog waits for a key to record: every key but Escape is that key.
+    pub key_bindings_recording: bool,
     /// The filing status page is up, so its keys act on the pipeline.
     pub filing_status: bool,
     /// The filing setup is up, so Escape closes it.
@@ -994,6 +1014,8 @@ impl Default for PromptKeyState {
             search: false,
             quick_open: false,
             command_palette: false,
+            key_bindings: false,
+            key_bindings_recording: false,
             filing_status: false,
             filing_setup: false,
             filing_card: false,
@@ -1336,6 +1358,10 @@ fn keys_without_prompt(
         };
     }
 
+    if prompt.key_bindings {
+        return key_bindings_key(prompt, &key, key_modifiers);
+    }
+
     // Cancel has the focus when it opens, so Enter alone never downloads.
     if prompt.ocr_models {
         return ocr_models_key(key, key_modifiers);
@@ -1498,6 +1524,53 @@ fn command_line_key(
     }
 }
 
+/// The keyboard shortcuts dialog. While it records, every key but Escape is
+/// the key recorded, also one bound to something else. Otherwise the search
+/// field takes the typing and Enter (and `InputState` takes Escape); a key it
+/// does not type searches for what is bound to it, and the list takes the
+/// arrows, Delete and Backspace.
+fn key_bindings_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+) -> Option<Message> {
+    use KeyBindingsMessage as Shortcuts;
+    let shortcuts = |message| Some(Message::KeyBindings(message));
+    let is_escape = matches!(key.as_ref(), Key::Named(Named::Escape));
+    if prompt.key_bindings_recording {
+        if is_escape {
+            return shortcuts(Shortcuts::CancelRecording);
+        }
+        return shortcuts(Shortcuts::Recorded(keymap::recorded_binding(
+            key,
+            key_modifiers,
+        )?));
+    }
+    let plain = key_modifiers.is_empty();
+    let page = isize::try_from(crate::key_bindings::VISIBLE_ROWS).unwrap_or(1);
+    match key.as_ref() {
+        Key::Named(Named::Escape) => None,
+        Key::Named(Named::Enter) if plain => shortcuts(Shortcuts::Record),
+        Key::Named(Named::ArrowUp) if plain => shortcuts(Shortcuts::Move(-1)),
+        Key::Named(Named::ArrowDown) if plain => shortcuts(Shortcuts::Move(1)),
+        Key::Named(Named::PageUp) if plain => shortcuts(Shortcuts::Move(-page)),
+        Key::Named(Named::PageDown) if plain => shortcuts(Shortcuts::Move(page)),
+        Key::Named(Named::ArrowLeft) if plain => shortcuts(Shortcuts::MoveKey(-1)),
+        Key::Named(Named::ArrowRight) if plain => shortcuts(Shortcuts::MoveKey(1)),
+        Key::Named(Named::Delete | Named::Backspace) if plain => shortcuts(Shortcuts::RemoveKey),
+        Key::Named(Named::Delete | Named::Backspace) if key_modifiers == Modifiers::SHIFT => {
+            shortcuts(Shortcuts::Reset)
+        }
+        Key::Character(typed) if (key_modifiers - Modifiers::SHIFT).is_empty() => {
+            shortcuts(Shortcuts::Typed(typed.to_string()))
+        }
+        _ => shortcuts(Shortcuts::SearchByKey(keymap::recorded_binding(
+            key,
+            key_modifiers,
+        )?)),
+    }
+}
+
 /// The tab shows no panel, so the panel keys do nothing. Of the bindings the
 /// command list, the key that closes the tab and quitting reach through. A
 /// card opened from the tab has the Escape first.
@@ -1519,6 +1592,7 @@ fn settings_key(
             *message == Message::Quit
                 || *message == KeyAction::CommandPalette.message()
                 || *message == KeyAction::Settings.message()
+                || *message == KeyAction::KeyBindings.message()
         })
         .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
 }
@@ -1910,6 +1984,7 @@ fn repeats(message: &Message) -> bool {
             | Message::QuickFix(QuickFixMessage::Move(_))
             | Message::QuickOpen(QuickOpenMessage::Move(_))
             | Message::CommandPalette(CommandPaletteMessage::Move(_))
+            | Message::KeyBindings(KeyBindingsMessage::Move(_) | KeyBindingsMessage::MoveKey(_))
             | Message::ThemeFetch(ThemeFetchMessage::Move(_))
             | Message::RuleSuggestions(RuleSuggestionsMessage::Move(_))
             | Message::ReviewList(ReviewListMessage::Move(_))
@@ -2361,6 +2436,7 @@ impl App {
             quick_open_walk_generation: 0,
             quick_open_walk: None,
             command_palette: None,
+            key_bindings: None,
             recent_commands: Vec::new(),
             filing: None,
             pipeline: None,
@@ -3055,6 +3131,7 @@ impl App {
             Message::CommandPalette(command_palette) => {
                 self.update_command_palette(command_palette)
             }
+            Message::KeyBindings(shortcuts) => self.update_key_bindings(shortcuts),
             Message::ThemeFetch(fetch_message) => self.update_theme_fetch(fetch_message),
             Message::RuleSuggestions(suggestions) => self.update_rule_suggestions(suggestions),
             Message::ReviewList(review) => self.update_review_list(review),
@@ -3732,6 +3809,10 @@ impl App {
         input.job_running = job_running;
         input.quick_open = self.quick_open.is_some();
         input.command_palette = self.command_palette.is_some();
+        input.key_bindings = self
+            .key_bindings
+            .as_ref()
+            .is_some_and(|shortcuts| !shortcuts.is_recording());
         input.theme_fetch = self.theme_fetch.is_some();
         input.rule_suggestions = self.rule_suggestions.is_some();
         input.review_list = self.review_list.is_some();
@@ -4043,6 +4124,12 @@ impl App {
             return Stack::with_children([root, dialog::scrim(box_element)]).into();
         }
 
+        if let Some(shortcuts) = self.key_bindings.as_ref() {
+            let dialog_element =
+                key_bindings_ui::view(shortcuts, self.window_size, self.lang, &self.palette);
+            return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
+        }
+
         if let Some(command_palette) = self.command_palette.as_ref() {
             let box_element = command_palette_ui::view(
                 command_palette,
@@ -4196,6 +4283,11 @@ impl App {
         let search = self.search_has_keys();
         let quick_open = self.quick_open.is_some();
         let command_palette = self.command_palette.is_some();
+        let key_bindings = self.key_bindings.is_some();
+        let key_bindings_recording = self
+            .key_bindings
+            .as_ref()
+            .is_some_and(KeyBindings::is_recording);
         let filing_status = self.filing_status.page_open();
         let filing_setup = self.filing_setup.is_some();
         let filing_card = self
@@ -4242,6 +4334,8 @@ impl App {
                 search,
                 quick_open,
                 command_palette,
+                key_bindings,
+                key_bindings_recording,
                 filing_status,
                 filing_setup,
                 filing_card,
@@ -4279,6 +4373,8 @@ impl App {
                 search,
                 quick_open,
                 command_palette,
+                key_bindings,
+                key_bindings_recording,
                 filing_status,
                 filing_setup,
                 filing_card,
@@ -4674,6 +4770,7 @@ impl App {
             || self.volume_menu.is_some()
             || self.quick_open.is_some()
             || self.command_palette.is_some()
+            || self.key_bindings.is_some()
             || self.theme_fetch.is_some()
             || self.rule_suggestions.is_some()
             || self.review_list.is_some()
@@ -7934,6 +8031,157 @@ impl App {
         self.show_notice(notice)
     }
 
+    fn update_key_bindings(&mut self, message: KeyBindingsMessage) -> Task<Message> {
+        use KeyBindingsMessage as Shortcuts;
+        match message {
+            Shortcuts::Open => return self.open_key_bindings(),
+            Shortcuts::Close => return self.close_key_bindings(),
+            Shortcuts::Written(result) => {
+                self.key_bindings_written(result);
+                return Task::none();
+            }
+            _ => {}
+        }
+        let keymap = Arc::clone(&self.keymap);
+        let Some(shortcuts) = self.key_bindings.as_mut() else {
+            return Task::none();
+        };
+        let edit = match message {
+            Shortcuts::SearchChanged(query) => {
+                shortcuts.set_query(query, &keymap);
+                None
+            }
+            Shortcuts::Typed(typed) => {
+                let query = format!("{}{typed}", shortcuts.query());
+                shortcuts.set_query(query, &keymap);
+                return operation::focus(key_bindings_ui::SEARCH_FIELD_ID).chain(
+                    operation::move_cursor_to_end(key_bindings_ui::SEARCH_FIELD_ID),
+                );
+            }
+            Shortcuts::SearchByKey(binding) => {
+                shortcuts.search_by_key(binding, &keymap);
+                None
+            }
+            // The list takes the keys from the field: Left, Right and the
+            // keys that remove would edit the text otherwise.
+            Shortcuts::Move(delta) => {
+                shortcuts.move_cursor(delta);
+                return release_focus();
+            }
+            Shortcuts::Select { row, key } => {
+                shortcuts.select(row, key);
+                return release_focus();
+            }
+            Shortcuts::MoveKey(delta) => {
+                shortcuts.move_key_cursor(delta);
+                None
+            }
+            Shortcuts::Scrolled(delta) => {
+                shortcuts.scroll(delta);
+                None
+            }
+            Shortcuts::Record => {
+                let changes = shortcuts.activate(&keymap);
+                if changes.is_none() {
+                    return release_focus();
+                }
+                changes
+            }
+            Shortcuts::RecordAdditional => {
+                shortcuts.record_additional();
+                return release_focus();
+            }
+            Shortcuts::Recorded(binding) => shortcuts.recorded(binding, &keymap),
+            Shortcuts::CancelRecording => {
+                shortcuts.cancel();
+                None
+            }
+            Shortcuts::RemoveKey => shortcuts.remove_key(),
+            Shortcuts::Reset => shortcuts.reset(&keymap),
+            Shortcuts::ResetAll => {
+                shortcuts.ask_reset_all();
+                None
+            }
+            Shortcuts::Confirm => shortcuts.confirm(&keymap),
+            Shortcuts::Dismiss => {
+                shortcuts.dismiss();
+                None
+            }
+            Shortcuts::Open | Shortcuts::Close | Shortcuts::Written(_) => None,
+        };
+        edit.map_or_else(Task::none, |changes| self.write_key_bindings(changes))
+    }
+
+    /// The key, the command list or the settings tab. Pressed while the
+    /// dialog is up, it only gives the search field the focus again.
+    fn open_key_bindings(&mut self) -> Task<Message> {
+        let focus = operation::focus(key_bindings_ui::SEARCH_FIELD_ID);
+        if self.key_bindings.is_some() {
+            return focus;
+        }
+        if self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        self.context_menu = None;
+        self.key_bindings = Some(KeyBindings::new(self.lang, &self.keymap));
+        focus
+    }
+
+    /// Escape and the close button: a clash or a question goes first.
+    fn close_key_bindings(&mut self) -> Task<Message> {
+        let Some(shortcuts) = self.key_bindings.as_mut() else {
+            return Task::none();
+        };
+        if shortcuts.escape() {
+            return Task::none();
+        }
+        self.key_bindings = None;
+        release_focus()
+    }
+
+    /// Writes the `[keys]` lines of an edit on a blocking thread; the keymap
+    /// read back is the one in effect from then on.
+    fn write_key_bindings(&mut self, changes: Vec<KeyChange>) -> Task<Message> {
+        let Some(config_path) = self.config_path.clone() else {
+            let failure = self.lang.text(Msg::FilingSetupNoConfigPath).to_owned();
+            if let Some(shortcuts) = self.key_bindings.as_mut() {
+                shortcuts.written(&self.keymap, Some(failure));
+            }
+            return Task::none();
+        };
+        if let Some(shortcuts) = self.key_bindings.as_mut() {
+            shortcuts.start_writing();
+        }
+        let written_path = config_path.clone();
+        Task::perform(
+            tokio::task::spawn_blocking(move || write_key_changes(&written_path, &changes)),
+            move |joined| {
+                Message::KeyBindings(KeyBindingsMessage::Written(joined.unwrap_or_else(|join| {
+                    Err(FilingWriteError::Io {
+                        path: config_path,
+                        reason: join.to_string(),
+                    })
+                })))
+            },
+        )
+    }
+
+    /// Takes over the keys the file now has: the panels, the function key
+    /// bar and the menu answer them at once.
+    fn key_bindings_written(&mut self, result: Result<Box<Config>, FilingWriteError>) {
+        let failure = match result {
+            Ok(config) => {
+                self.keymap = config.keymap;
+                self.refresh_function_keys();
+                None
+            }
+            Err(error) => Some(self.settings_write_failure(&error)),
+        };
+        if let Some(shortcuts) = self.key_bindings.as_mut() {
+            shortcuts.written(&self.keymap, failure);
+        }
+    }
+
     /// Cmd/Ctrl+Shift+P: lists the actions that work where the keys are now.
     /// Pressed while the box is up, it only gives the field the focus again.
     fn open_command_palette(&mut self) -> Task<Message> {
@@ -8979,6 +9227,77 @@ mod prompt_routing {
         );
     }
 
+    /// The dialog takes the arrows, Enter and Delete, while recording every
+    /// key but Escape becomes the new key, and a chord the search field does
+    /// not type searches by key.
+    #[test]
+    fn the_shortcuts_dialog_takes_the_keys_it_lists() {
+        use crate::keymap::Binding;
+        let mut commander = app();
+        let shortcuts = |message| Some(Message::KeyBindings(message));
+        let routed = route_key(
+            &commander.prompt_key_state(),
+            Key::Character("k".into()),
+            Modifiers::COMMAND,
+        );
+        assert_eq!(routed, shortcuts(KeyBindingsMessage::Open));
+        drop(commander.update(Message::KeyBindings(KeyBindingsMessage::Open)));
+        assert!(commander.key_bindings.is_some());
+
+        let with = |dialog_open: &App, key: Key, modifiers| {
+            route_key(&dialog_open.prompt_key_state(), key, modifiers)
+        };
+        let plain = Modifiers::default();
+        assert_eq!(
+            with(&commander, Key::Named(Named::ArrowDown), plain),
+            shortcuts(KeyBindingsMessage::Move(1))
+        );
+        assert_eq!(
+            with(&commander, Key::Named(Named::Delete), plain),
+            shortcuts(KeyBindingsMessage::RemoveKey)
+        );
+        assert_eq!(
+            with(&commander, Key::Named(Named::Backspace), Modifiers::SHIFT),
+            shortcuts(KeyBindingsMessage::Reset)
+        );
+        assert_eq!(
+            with(&commander, Key::Character("a".into()), plain),
+            shortcuts(KeyBindingsMessage::Typed("a".to_owned()))
+        );
+        let ctrl_f5 = Binding::with_modifiers(Key::Named(Named::F5), Modifiers::CTRL);
+        assert_eq!(
+            with(&commander, Key::Named(Named::F5), Modifiers::CTRL),
+            shortcuts(KeyBindingsMessage::SearchByKey(ctrl_f5))
+        );
+        assert_eq!(with(&commander, Key::Named(Named::Escape), plain), None);
+
+        let enter = with(&commander, Key::Named(Named::Enter), plain);
+        assert_eq!(enter, shortcuts(KeyBindingsMessage::Record));
+        drop(commander.update(Message::KeyBindings(KeyBindingsMessage::Record)));
+        assert!(commander
+            .key_bindings
+            .as_ref()
+            .is_some_and(KeyBindings::is_recording));
+        assert_eq!(
+            with(&commander, Key::Named(Named::F12), plain),
+            shortcuts(KeyBindingsMessage::Recorded(Binding::with_modifiers(
+                Key::Named(Named::F12),
+                plain
+            )))
+        );
+        assert_eq!(
+            with(&commander, Key::Named(Named::Delete), plain),
+            shortcuts(KeyBindingsMessage::Recorded(Binding::with_modifiers(
+                Key::Named(Named::Delete),
+                plain
+            )))
+        );
+        assert_eq!(
+            with(&commander, Key::Named(Named::Escape), plain),
+            shortcuts(KeyBindingsMessage::CancelRecording)
+        );
+    }
+
     #[test]
     fn enter_submits_and_escape_cancels() {
         let app = with_prompt();
@@ -9594,6 +9913,7 @@ impl App {
             quick_open_walk_generation: 0,
             quick_open_walk: None,
             command_palette: None,
+            key_bindings: None,
             recent_commands: Vec::new(),
             filing: None,
             pipeline: None,

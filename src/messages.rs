@@ -24,6 +24,7 @@ use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, Sort
 use crate::hermes_column::{ColumnReading, ColumnStage, FileDetail, FolderRole};
 use crate::i18n::Language;
 use crate::jobs::JobEvent;
+use crate::keymap::Binding;
 #[cfg(any(target_os = "macos", test))]
 use crate::keymap::KeyAction;
 use crate::ocr_models::DownloadError;
@@ -354,6 +355,7 @@ pub enum Message {
 
     // --- Settings tab ---
     Settings(SettingsMessage),
+    KeyBindings(KeyBindingsMessage),
 
     // --- Native menu bar (macOS) ---
     /// A command chosen from the menu bar or the command list.
@@ -404,6 +406,53 @@ pub enum SettingsMessage {
         change: SettingChange,
         result: Result<Box<Config>, FilingWriteError>,
     },
+}
+
+/// Everything the keyboard shortcuts dialog sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum KeyBindingsMessage {
+    /// The key, the command list and the settings tab open the dialog.
+    Open,
+    Close,
+    SearchChanged(String),
+    /// A character typed while the list has the keys: it goes to the search
+    /// field, which takes the keys again.
+    Typed(String),
+    /// A chord pressed in the search field: finds what it is bound to.
+    SearchByKey(Binding),
+    /// The arrows: a row up or down.
+    Move(isize),
+    /// The arrows: the key cap left or right; past the last one is the slot
+    /// that adds a key.
+    MoveKey(isize),
+    /// A click on a row, or on one of its key caps.
+    Select {
+        row: usize,
+        key: Option<usize>,
+    },
+    Scrolled(iced::mouse::ScrollDelta),
+    /// Enter: records a new key for the focused cap, or a further one on the
+    /// slot that adds a key.
+    Record,
+    /// Records a further key for the selected action.
+    RecordAdditional,
+    /// The key pressed while recording.
+    Recorded(Binding),
+    /// Escape while recording.
+    CancelRecording,
+    /// Delete or Backspace: removes the focused key.
+    RemoveKey,
+    /// Back to the keys the action ships with.
+    Reset,
+    /// Asks before every action goes back to its built-in keys.
+    ResetAll,
+    /// Takes the key from the action it is bound to, or confirms a reset of
+    /// everything.
+    Confirm,
+    /// Leaves the clash or the question without changing anything.
+    Dismiss,
+    /// The config as read back after a write.
+    Written(Result<Box<Config>, FilingWriteError>),
 }
 
 /// What the title bar asks of the window.

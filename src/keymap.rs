@@ -17,9 +17,10 @@ use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::messages::{
     AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage, FilingSetupMessage,
-    FilingStatusMessage, HermesFileMessage, OcrModelsMessage, PanelSide, QuickFixMessage,
-    QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage,
-    SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage, TransferKind,
+    FilingStatusMessage, HermesFileMessage, KeyBindingsMessage, OcrModelsMessage, PanelSide,
+    QuickFixMessage, QuickOpenMessage, ReorganisationPlanMessage, ReviewListMessage,
+    RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage,
+    TransferKind,
 };
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
@@ -134,6 +135,7 @@ key_actions! {
     UndoReorganisation => "undo_reorganisation",
     FetchTheme => "fetch_theme",
     Settings => "settings",
+    KeyBindings => "key_bindings",
     DownloadOcrModels => "download_ocr_models",
     DownloadAiModel => "download_ai_model",
     SearchCase => "search_case",
@@ -227,6 +229,7 @@ impl KeyAction {
             | Self::UndoReorganisation
             | Self::FetchTheme
             | Self::Settings
+            | Self::KeyBindings
             | Self::DownloadOcrModels
             | Self::DownloadAiModel
             | Self::DriveMenuLeft
@@ -257,8 +260,8 @@ impl KeyAction {
 
     /// Keys that became defaults after a config could already have given them
     /// to another action: bare F2 in 0.6, Shift+F4, the history keys and
-    /// primary+D in 0.7. Such a config keeps working: its binding wins over
-    /// the built-in one, and the action keeps its other keys.
+    /// primary+D in 0.7, primary+K in 0.8. Such a config keeps working: its
+    /// binding wins over the built-in one, and the action keeps its other keys.
     pub fn yields_its_built_in_key(self) -> bool {
         matches!(
             self,
@@ -267,6 +270,7 @@ impl KeyAction {
                 | Self::HistoryBack
                 | Self::HistoryForward
                 | Self::AddFavourite
+                | Self::KeyBindings
         )
     }
 
@@ -357,6 +361,7 @@ impl KeyAction {
             Self::UndoReorganisation => Message::UndoReorganisation,
             Self::FetchTheme => Message::ThemeFetch(ThemeFetchMessage::Open),
             Self::Settings => Message::Settings(SettingsMessage::Toggle),
+            Self::KeyBindings => Message::KeyBindings(KeyBindingsMessage::Open),
             Self::DownloadOcrModels => Message::OcrModels(OcrModelsMessage::Open),
             Self::DownloadAiModel => Message::AiModel(AiModelMessage::Open),
             Self::SearchCase => Message::Search(SearchMessage::ToggleCase),
@@ -545,6 +550,11 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
             A::Settings,
             Binding::with_modifiers(Character(",".into()), Modifiers::COMMAND),
         ),
+        // The keyboard shortcuts, K for keys; Cmd+K, Ctrl+K elsewhere.
+        (
+            A::KeyBindings,
+            Binding::with_modifiers(Character("k".into()), Modifiers::COMMAND),
+        ),
         // The filing status page; Cmd+Shift+D, Ctrl+Shift+D elsewhere.
         (
             A::FilingStatus,
@@ -643,7 +653,7 @@ pub fn sort_binding(column: SortColumn) -> Binding {
 
 /// More keys than anyone binds to one action; a bound on what a config file
 /// can make the lookup walk through.
-const MAX_KEYS_PER_ACTION: usize = 16;
+pub const MAX_KEYS_PER_ACTION: usize = 16;
 
 /// Invisible formatting characters (Unicode category Cf): a key written with
 /// one would look like another in the error line and the status bar.
@@ -800,7 +810,6 @@ impl Keymap {
     }
 
     /// The keys of `action`, the first-listed first.
-    #[cfg(any(target_os = "macos", test))]
     pub fn bindings_of(&self, action: KeyAction) -> impl Iterator<Item = &Binding> {
         self.bindings
             .iter()
@@ -826,40 +835,24 @@ impl Keymap {
             .bindings
             .iter()
             .find(|(action, _)| action.message() == *message)?;
-        let Binding { key, modifiers } = binding;
-        let key_name = match key {
-            Key::Named(named) => format!("{named:?}"),
-            Key::Character(character) => character.to_uppercase(),
-            _ => return None,
-        };
-        let mut label = String::new();
-        if cfg!(target_os = "macos") {
-            for (held, symbol) in [
-                (modifiers.control(), "⌃"),
-                (modifiers.alt(), "⌥"),
-                (modifiers.shift(), "⇧"),
-                (modifiers.logo(), "⌘"),
-            ] {
-                if held {
-                    label.push_str(symbol);
-                }
-            }
-            label.push_str(&key_name);
-        } else {
-            for (held, name) in [
-                (modifiers.control(), "Ctrl"),
-                (modifiers.alt(), "Alt"),
-                (modifiers.shift(), "Shift"),
-                (modifiers.logo(), "Super"),
-            ] {
-                if held {
-                    label.push_str(name);
-                    label.push('+');
-                }
-            }
-            label.push_str(&key_name);
-        }
-        Some(label)
+        binding_label(binding)
+    }
+
+    /// Whether `action` has exactly the keys it ships with, in that order.
+    pub fn has_built_in_keys(&self, action: KeyAction) -> bool {
+        self.bindings_of(action)
+            .eq(built_in_bindings_of(action).iter())
+    }
+
+    /// The other action that `binding` would collide with if `action` took
+    /// it: one that holds it and works in an area `action` works in too.
+    pub fn holder_of(&self, action: KeyAction, binding: &Binding) -> Option<KeyAction> {
+        self.bindings
+            .iter()
+            .find(|(other, held)| {
+                *other != action && held == binding && shares_a_scope(*other, action)
+            })
+            .map(|(other, _)| *other)
     }
 
     /// The labels of the function key bar, derived from the bindings: slot
@@ -895,6 +888,193 @@ impl Keymap {
 
 /// Slots in the function key bar: F1 to F10.
 pub const FUNCTION_KEY_COUNT: usize = 10;
+
+/// A key spelled for this platform: `F5`, `⇧F8`, `⌥⌘C` on a Mac,
+/// `Ctrl+Alt+C` elsewhere. `None` for a key that has no printable name.
+pub fn binding_label(binding: &Binding) -> Option<String> {
+    let Binding { key, modifiers } = binding;
+    let key_name = match key {
+        Key::Named(named) => format!("{named:?}"),
+        Key::Character(character) => character.to_uppercase(),
+        Key::Unidentified => return None,
+    };
+    let mut label = String::new();
+    if cfg!(target_os = "macos") {
+        for (held, symbol) in [
+            (modifiers.control(), "⌃"),
+            (modifiers.alt(), "⌥"),
+            (modifiers.shift(), "⇧"),
+            (modifiers.logo(), "⌘"),
+        ] {
+            if held {
+                label.push_str(symbol);
+            }
+        }
+        label.push_str(&key_name);
+    } else {
+        for (held, name) in [
+            (modifiers.control(), "Ctrl"),
+            (modifiers.alt(), "Alt"),
+            (modifiers.shift(), "Shift"),
+            (modifiers.logo(), "Super"),
+        ] {
+            if held {
+                label.push_str(name);
+                label.push('+');
+            }
+        }
+        label.push_str(&key_name);
+    }
+    Some(label)
+}
+
+/// The keys `action` ships with, the first-listed first.
+pub fn built_in_bindings_of(action: KeyAction) -> Vec<Binding> {
+    default_bindings()
+        .into_iter()
+        .filter(|(bound, _)| *bound == action)
+        .map(|(_, binding)| binding)
+        .collect()
+}
+
+/// The binding a key pressed to be recorded stands for, with the Shift rules
+/// the lookup applies: a letter keeps Shift and is written in lower case, any
+/// other character already carries Shift in itself (`*` is Shift+8), a named
+/// key keeps it (Shift+F8 is not F8). `None` while only a modifier is down.
+pub fn recorded_binding(key: &Key, modifiers: Modifiers) -> Option<Binding> {
+    use key::Named;
+    match key {
+        Key::Named(
+            Named::Shift
+            | Named::Control
+            | Named::Alt
+            | Named::AltGraph
+            | Named::Super
+            | Named::Meta
+            | Named::Hyper
+            | Named::Fn
+            | Named::FnLock
+            | Named::CapsLock
+            | Named::NumLock
+            | Named::ScrollLock
+            | Named::Symbol
+            | Named::SymbolLock,
+        )
+        | Key::Unidentified => None,
+        Key::Named(_) => Some(Binding::with_modifiers(key.clone(), modifiers)),
+        Key::Character(typed) => {
+            let held = if typed.chars().all(char::is_alphabetic) {
+                modifiers
+            } else {
+                modifiers - Modifiers::SHIFT
+            };
+            Some(Binding::with_modifiers(
+                Key::Character(typed.to_lowercase().into()),
+                held,
+            ))
+        }
+    }
+}
+
+/// Why a recorded key cannot be written to `[keys]` for an action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyRefusal {
+    /// The key has no name in the config file, e.g. F13 or a media key.
+    Unnamed,
+    /// A letter or digit without Ctrl, Alt or Cmd would shadow type-ahead.
+    NeedsModifier,
+    /// Escape closes dialogs and menus and stops jobs.
+    Escape,
+    /// The search view handles the key itself.
+    FixedInSearch,
+}
+
+/// The text `[keys]` stores for `binding` when `action` takes it, checked
+/// against the rules [`Keymap::with_overrides`] applies to a single key: the
+/// text reads back as exactly this binding.
+pub fn configurable_chord(action: KeyAction, binding: &Binding) -> Result<String, KeyRefusal> {
+    if binding.key == Key::Named(key::Named::Escape) {
+        return Err(KeyRefusal::Escape);
+    }
+    let text = chord_text(binding).ok_or(KeyRefusal::Unnamed)?;
+    match parse_chord(&text) {
+        Ok(parsed) if parsed == *binding => {}
+        Ok(_) => return Err(KeyRefusal::Unnamed),
+        Err(_) => {
+            let types_a_name = matches!(&binding.key, Key::Character(character)
+                if character.chars().all(char::is_alphanumeric));
+            return Err(if types_a_name {
+                KeyRefusal::NeedsModifier
+            } else {
+                KeyRefusal::Unnamed
+            });
+        }
+    }
+    if !action.works_in(KeyScope::Panel) && is_fixed_in_search(binding) {
+        return Err(KeyRefusal::FixedInSearch);
+    }
+    Ok(text)
+}
+
+/// `binding` as `[keys]` writes it, the inverse of [`parse_chord`]: the
+/// platform's command modifier is `primary`, so the file means the same key
+/// on a Mac and elsewhere.
+fn chord_text(binding: &Binding) -> Option<String> {
+    use key::Named;
+    let mut parts: Vec<String> = Vec::new();
+    let mut rest = binding.modifiers;
+    if rest.contains(Modifiers::COMMAND) {
+        parts.push("primary".to_owned());
+        rest -= Modifiers::COMMAND;
+    }
+    for (modifier, name) in [
+        (Modifiers::CTRL, "ctrl"),
+        (Modifiers::ALT, "alt"),
+        (Modifiers::SHIFT, "shift"),
+        (Modifiers::LOGO, "super"),
+    ] {
+        if rest.contains(modifier) {
+            parts.push(name.to_owned());
+        }
+    }
+    let key_name = match &binding.key {
+        Key::Character(character) if character.as_str() == "+" => "plus".to_owned(),
+        Key::Character(character) => character.to_string(),
+        Key::Named(named) => match named {
+            Named::F1 => "f1",
+            Named::F2 => "f2",
+            Named::F3 => "f3",
+            Named::F4 => "f4",
+            Named::F5 => "f5",
+            Named::F6 => "f6",
+            Named::F7 => "f7",
+            Named::F8 => "f8",
+            Named::F9 => "f9",
+            Named::F10 => "f10",
+            Named::F11 => "f11",
+            Named::F12 => "f12",
+            Named::Enter => "enter",
+            Named::Tab => "tab",
+            Named::Backspace => "backspace",
+            Named::Space => "space",
+            Named::Insert => "insert",
+            Named::Delete => "delete",
+            Named::Home => "home",
+            Named::End => "end",
+            Named::PageUp => "pageup",
+            Named::PageDown => "pagedown",
+            Named::ArrowUp => "up",
+            Named::ArrowDown => "down",
+            Named::ArrowLeft => "left",
+            Named::ArrowRight => "right",
+            _ => return None,
+        }
+        .to_owned(),
+        Key::Unidentified => return None,
+    };
+    parts.push(key_name);
+    Some(parts.join("+"))
+}
 
 /// The number of a bare function key, 1 to 10.
 fn function_key_number(key: &Key) -> Option<usize> {
@@ -1788,6 +1968,62 @@ mod tests {
         assert_eq!(
             press(&keymap, Key::Character("+".into()), Modifiers::default()),
             Some(Message::Transfer(TransferKind::Move))
+        );
+    }
+
+    /// The dialog writes what it records; every default key has to survive
+    /// the trip through the file unchanged.
+    #[test]
+    fn every_default_key_is_written_as_text_that_reads_back_as_itself() {
+        for (action, binding) in default_bindings() {
+            let text = configurable_chord(action, &binding)
+                .unwrap_or_else(|refusal| panic!("{}: {refusal:?}", action.name()));
+            assert_eq!(parse_chord(&text), Ok(binding), "{}", action.name());
+        }
+        let primary_k = Binding::with_modifiers(Key::Character("k".into()), Modifiers::COMMAND);
+        assert_eq!(
+            configurable_chord(KeyAction::KeyBindings, &primary_k),
+            Ok("primary+k".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_recorded_key_keeps_shift_only_where_the_lookup_does() {
+        let bare = |key: Key| Binding::with_modifiers(key, Modifiers::default());
+        let shift_ctrl = Modifiers::SHIFT | Modifiers::CTRL;
+        assert_eq!(
+            recorded_binding(&Key::Character("A".into()), shift_ctrl),
+            Some(Binding::with_modifiers(
+                Key::Character("a".into()),
+                shift_ctrl
+            ))
+        );
+        assert_eq!(
+            recorded_binding(&Key::Character("*".into()), shift_ctrl),
+            Some(Binding::with_modifiers(
+                Key::Character("*".into()),
+                Modifiers::CTRL
+            ))
+        );
+        assert_eq!(
+            recorded_binding(&named(Named::F8), Modifiers::SHIFT),
+            Some(Binding::with_modifiers(named(Named::F8), Modifiers::SHIFT))
+        );
+        assert_eq!(
+            recorded_binding(&named(Named::Shift), Modifiers::SHIFT),
+            None
+        );
+        assert_eq!(
+            configurable_chord(KeyAction::Copy, &bare(Key::Character("x".into()))),
+            Err(KeyRefusal::NeedsModifier)
+        );
+        assert_eq!(
+            configurable_chord(KeyAction::Copy, &bare(named(Named::F13))),
+            Err(KeyRefusal::Unnamed)
+        );
+        assert_eq!(
+            configurable_chord(KeyAction::Copy, &bare(named(Named::Escape))),
+            Err(KeyRefusal::Escape)
         );
     }
 

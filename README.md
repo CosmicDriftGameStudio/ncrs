@@ -120,7 +120,8 @@ The same window in German, switched with F9.
 
 ## Keyboard shortcuts
 
-The defaults. Most of them can be changed in the config file, see [Keys](#keys).
+The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd`+`K`,
+`Ctrl`+`K` on Linux and Windows) or in the config file, see [Keys](#keys).
 
 | Key                | Action                                   |
 |--------------------|------------------------------------------|
@@ -158,6 +159,7 @@ The defaults. Most of them can be changed in the config file, see [Keys](#keys).
 | `Backspace`        | Go to parent directory                   |
 | `Tab`              | Switch active panel                      |
 | `F9`               | Switch language for this session (start: `lang`) |
+| `Cmd`+`K` / `Ctrl`+`K` | Keyboard shortcuts: every action with its keys. Type to search by name, or press a key to find what it does. `Enter` records a new key for the selected action, `←`/`→` pick one of its keys or the slot that adds one, `Del` (`⌫` on a Mac) removes the key, `Shift`+`Del` resets the action. A key another action holds is only taken after you confirm. Changes apply at once and are written to `[keys]` |
 | `F10` / `Cmd`+`Q` / `Ctrl`+`Q` | Quit                                     |
 
 On macOS every command is also in the menu bar (File, Edit, View, Go, Search, Filing, Window,
@@ -268,8 +270,10 @@ edit = ["open", "-t"]
 
 ### Keys
 
-`[keys]` rebinds actions. Each entry names an action and gives one key or a list
-of keys:
+`[keys]` rebinds actions. The keyboard shortcuts dialog (`Cmd`+`K`, `Ctrl`+`K`
+on Linux and Windows) writes this section for you, only the lines of the actions
+you changed, and keeps the rest of the file and its comments. Each entry names an
+action and gives one key or a list of keys:
 
 ```toml
 [keys]
@@ -301,8 +305,8 @@ edit = "F3"
   `primary+q` and `ctrl+q` are the same key on Linux and Windows, so a file can
   be fine on a Mac and conflict elsewhere. Keys that became defaults later give
   way to a binding of your own instead: `F2` (`command_line`), `Shift+F4`
-  (`new_file`), the history keys (`history_back`, `history_forward`) and
-  `primary+d` (`add_favourite`). The action keeps its other keys and the
+  (`new_file`), the history keys (`history_back`, `history_forward`),
+  `primary+d` (`add_favourite`) and `primary+k` (`key_bindings`). The action keeps its other keys and the
   command list.
 - Not allowed: `Escape` (it closes dialogs and menus and stops jobs); letters and
   digits without `ctrl`, `alt`, `cmd` or `primary`, because they jump to a file
@@ -325,7 +329,7 @@ Actions: `quit`, `open`, `go_up`, `switch_panel`, `switch_language`,
 `copy_path`, `copy_name`, `drive_menu_left`, `drive_menu_right`,
 `history_back`, `history_forward`, `add_favourite`, `remove_favourite`, `favourites`,
 `sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`, `search`, `quick_open`, `command_line`, `command_palette`, `search_case`,
-`search_whole_word`, `search_regex`, `filing_status`, `filing_setup`. Their
+`search_whole_word`, `search_regex`, `filing_status`, `filing_setup`, `key_bindings`. Their
 default keys are in [Keyboard shortcuts](#keyboard-shortcuts).
 
 ### Colors

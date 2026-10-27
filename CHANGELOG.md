@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Keyboard shortcuts dialog (`Cmd`+`K`, `Ctrl`+`K` on Linux and Windows, also in
+  the command list): every action with its group and keys. Search by name or by
+  pressing a key; `Enter` records a new key, a second key can be added, `Del`
+  removes one, `Shift`+`Del` resets the action, and "Reset all" asks first. A key
+  another action holds is shown before anything is saved and only taken when
+  confirmed. Changes apply at once and write only the changed `[keys]` lines,
+  keeping the rest of the config and its comments. A config that already gives
+  `primary+k` to another action keeps it.
+
 ## [0.7.0] — 2026-10-27
 
 ### Added
