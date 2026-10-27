@@ -23,13 +23,17 @@ use russh_sftp::client::fs::Metadata;
 use russh_sftp::protocol::OpenFlags;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::runtime::Handle;
+use tokio::sync::mpsc;
 use tokio::time::timeout;
 
 use super::list::is_plain_name;
 use super::session::{Pool, RemoteError, Session};
 use super::{is_deceptive, RemotePath, ServerId, Timeouts, CHUNK};
 use crate::fs::archive::{restrict_to_owner, safe_components};
-use crate::fs::transfer::{resolve_conflict, transfer, Counting, Move, OnConflict, Progress};
+use crate::fs::transfer::{
+    resolve_conflict, transfer, Counting, Move, OnConflict, Progress, Reporting, Tick,
+};
+use crate::messages::TransferKind;
 
 /// A name from a server that cannot be created here. Carried inside an
 /// `io::Error` of kind `InvalidData`, so the UI can word it in its language.
@@ -281,6 +285,40 @@ fn fetch_for_view<P: Progress>(
     // A cancel that came while the last block was written ends here.
     progress.keep_going()?;
     Ok(copy)
+}
+
+/// What a transfer between `from` and `to` does when a server is on either
+/// side, reporting progress as `fs::transfer::run_reporting` does. `None` when
+/// both are paths on this computer: the caller does it then. A move across a
+/// server is not offered, and neither is a copy from one server to another.
+pub fn run_reporting(
+    pool: &Pool,
+    from: &Path,
+    to: &Path,
+    kind: TransferKind,
+    conflict: OnConflict,
+    sender: &mpsc::UnboundedSender<Tick>,
+) -> Option<io::Result<usize>> {
+    let (source, target) = (RemotePath::parse(from), RemotePath::parse(to));
+    if source.is_none() && target.is_none() {
+        return None;
+    }
+    let unsupported = |what: &str| {
+        Some(Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            what.to_owned(),
+        )))
+    };
+    if kind == TransferKind::Move {
+        return unsupported("moving to or from a server is not supported; copy instead");
+    }
+    let mut reporting = Reporting::new(sender);
+    match (source, target) {
+        (Some(_), Some(_)) => unsupported("copying between servers is not supported"),
+        (Some(there), None) => Some(download(pool, &there, to, &mut reporting, conflict)),
+        (None, Some(there)) => Some(upload(pool, from, &there, &mut reporting, conflict)),
+        (None, None) => None,
+    }
 }
 
 /// A hidden name for what is being written, unlikely to be taken. The open

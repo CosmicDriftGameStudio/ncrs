@@ -467,8 +467,7 @@ impl KeyAction {
 
     /// Whether a panel on an SFTP server may run the action. It is what an
     /// archive allows, less the command line, which runs on this computer, and
-    /// plus the actions that connect and disconnect. Viewing and copying are
-    /// not allowed yet. No catch-all arm: a new
+    /// plus the actions that connect and disconnect. No catch-all arm: a new
     /// action has to be decided.
     #[cfg(test)]
     pub fn allowed_on_server(self) -> bool {
@@ -520,10 +519,10 @@ impl KeyAction {
             | Self::DisconnectServer
             | Self::SearchCase
             | Self::SearchWholeWord
-            | Self::SearchRegex => true,
-            Self::Edit
+            | Self::SearchRegex
             | Self::View
-            | Self::Copy
+            | Self::Copy => true,
+            Self::Edit
             | Self::Move
             | Self::Delete
             | Self::DeletePermanently

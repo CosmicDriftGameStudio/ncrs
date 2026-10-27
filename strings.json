@@ -5339,6 +5339,30 @@
       "context": "Verb next to the Backspace or Del key in the footer of the drive menu while a connected server is highlighted: closes its connection. One word, like volumes.hint_remove_favourite.",
       "en": "disconnect",
       "de": "trennen"
+    },
+    {
+      "key": "transfer.error_move_remote",
+      "context": "Error in the copy and move dialog when a move is asked to or from an SFTP server. Moving would delete the source, which is not offered across a server for now; copying is.",
+      "en": "Moving to or from a server is not supported; copy instead",
+      "de": "Verschieben auf/von einem Server geht nicht; stattdessen kopieren"
+    },
+    {
+      "key": "transfer.error_server_to_server",
+      "context": "Error in the copy and move dialog when the source and the target are both on SFTP servers. Copying has to go through this computer, which is not offered for now.",
+      "en": "Copying between servers is not supported",
+      "de": "Kopieren zwischen Servern geht nicht"
+    },
+    {
+      "key": "error.remote_view_unavailable",
+      "context": "Status bar error when the view key is pressed on a file on an SFTP server but ncrs has no folder for the temporary copy: the cache folder could not be created or the system names none. Nothing was fetched.",
+      "en": "No folder for temporary copies, so this file cannot be viewed from the server. Copy it out instead.",
+      "de": "Kein Ordner für temporäre Kopien, die Datei lässt sich daher nicht vom Server ansehen. Stattdessen herauskopieren."
+    },
+    {
+      "key": "error.remote_view_executable",
+      "context": "Status bar error when the view key is pressed on a file on an SFTP server that could run (script, app, shortcut) and no editor program is set to show it in. Takes the file name. No key names: the edit key is refused on a server, so it must not be suggested.",
+      "en": "{name} could be executed, ncrs does not view it from a server",
+      "de": "{name} könnte ausgeführt werden und wird nicht vom Server angezeigt"
     }
   ]
 }

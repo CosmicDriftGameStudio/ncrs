@@ -161,8 +161,7 @@ fn remote_refusal(panel: &PanelState, message: &Message) -> Option<Msg> {
     match message {
         Message::CommandLine(CommandLineMessage::Focus) => Some(Msg::StatusRemoteNoShell),
         Message::Transfer(TransferKind::Move)
-        | Message::OpenExternal(_)
-        | Message::Transfer(TransferKind::Copy)
+        | Message::OpenExternal(fs::OpenKind::Edit)
         | Message::Delete { .. }
         | Message::CreateDirPrompt
         | Message::CreateFilePrompt
@@ -482,6 +481,11 @@ fn release_focus() -> Task<Message> {
 /// Counts what the selection of `dialog` holds, off the UI thread. The dialog's
 /// stop flag ends the walk when the dialog goes away.
 fn scan_task(dialog: &TransferDialog) -> Task<Message> {
+    // Nothing on a server is counted: that would be a listing of the whole
+    // tree before the copy.
+    if dialog.counts_unknown() {
+        return Task::none();
+    }
     let (id, sources, stop) = (dialog.id(), dialog.sources().to_vec(), dialog.stop_flag());
     Task::perform(
         tokio::task::spawn_blocking(move || transfer_dialog::scan(&sources, &stop)),
@@ -497,6 +501,9 @@ fn scan_task(dialog: &TransferDialog) -> Task<Message> {
 /// Counts which top-level names of the selection the typed target already
 /// has, off the UI thread. The result carries the edit it was counted for.
 fn conflicts_task(dialog: &TransferDialog) -> Task<Message> {
+    if dialog.involves_server() {
+        return Task::none();
+    }
     let (id, edit, stop) = (dialog.id(), dialog.edit(), dialog.stop_flag());
     let (sources, target) = (dialog.sources().to_vec(), dialog.target_path());
     Task::perform(
@@ -577,6 +584,9 @@ pub enum RowFailure {
     /// A 7z archive ncrs refuses to unpack; the text is chosen in the user's
     /// language when it is shown, not when the copy fails.
     Refused(fs::archive::SevenZipRefusal),
+    /// A server sent a name that cannot be created here; the text is chosen in
+    /// the user's language when it is shown.
+    UnsafeName(String),
     /// Anything else, shown as it came.
     Other(String),
 }
@@ -584,7 +594,13 @@ pub enum RowFailure {
 impl RowFailure {
     pub fn from_io(err: std::io::Error) -> Self {
         use std::io::ErrorKind;
-        if err.kind() == ErrorKind::AlreadyExists {
+        let unsafe_name = err
+            .get_ref()
+            .and_then(|inner| inner.downcast_ref::<fs::remote::transfer::UnsafeName>())
+            .map(|named| named.0.clone());
+        if let Some(name) = unsafe_name {
+            RowFailure::UnsafeName(name)
+        } else if err.kind() == ErrorKind::AlreadyExists {
             RowFailure::Conflict(err.to_string())
         } else if let Some(refusal) = fs::archive::refusal_of(&err) {
             RowFailure::Refused(refusal)
@@ -639,6 +655,21 @@ struct Deletion {
     /// The panel the entries came from, which is cleared and reloaded at the
     /// end even if the user switches panels meanwhile.
     side: PanelSide,
+}
+
+/// What a file handed to the viewer or editor is a copy of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CopyOf {
+    /// Nothing: it is the file itself.
+    Nothing,
+    Archive,
+    Server,
+}
+
+/// Whether a group of view copies is a server's, told by its key: the root
+/// address of the server.
+fn group_is_server(group: &Path) -> bool {
+    RemotePath::parse(group).is_some()
 }
 
 /// The archive file F3 is unpacking, and the folder it goes to.
@@ -3054,6 +3085,14 @@ impl App {
                         self.set_status_error(text);
                         self.end_transfer()
                     }
+                    Err(RowFailure::UnsafeName(name)) => {
+                        let text = fill_template(
+                            self.lang.text(Msg::ErrorRemoteUnsafeName),
+                            &[("{name}", &name)],
+                        );
+                        self.set_status_error(&text);
+                        self.end_transfer()
+                    }
                     Err(RowFailure::Other(reason)) => {
                         self.set_status_error(&reason);
                         self.end_transfer()
@@ -3264,7 +3303,9 @@ impl App {
             } => {
                 let panel = self.panel_mut(side);
                 let mut left_archive = None;
+                let mut left_server = None;
                 if panel.request_id == request_id {
+                    let before = panel.remote();
                     left_archive = panel
                         .archive
                         .take()
@@ -3280,10 +3321,14 @@ impl App {
                         Some(sorted_by),
                     );
                     panel.record_arrival(previous, request_id);
+                    left_server = before.filter(|server| panel.remote().as_ref() != Some(server));
                     self.close_menu_of_reloaded(side);
                 }
                 if let Some(old) = left_archive {
                     self.drop_view_copies_of(&old);
+                }
+                if let Some(server) = left_server {
+                    self.drop_view_copies_of(&server.root_path());
                 }
                 Task::none()
             }
@@ -5586,7 +5631,7 @@ impl App {
                 self.prompt = None;
                 self.prompt_side = None;
                 if let (PromptKind::CreateFile, Some(path)) = (kind, created) {
-                    self.launch_external(fs::OpenKind::Edit, path, None, false);
+                    self.launch_external(fs::OpenKind::Edit, path, None, CopyOf::Nothing);
                 }
             }
             Err(err) => {
@@ -5948,6 +5993,18 @@ impl App {
         let Some((path, line)) = target else {
             return Task::none();
         };
+        // A file on a server is fetched, never opened in place: the path is an
+        // address, and the program would get nothing it can open.
+        if let Some(source) = RemotePath::parse(&path) {
+            return match kind {
+                fs::OpenKind::Edit => {
+                    let text = self.lang.text(Msg::StatusRemoteReadOnly).to_owned();
+                    self.set_status_error(&text);
+                    Task::none()
+                }
+                fs::OpenKind::View => self.view_from_server(source),
+            };
+        }
         let in_archive = fs::archive::locate_in_archive(&path)
             .filter(|location| !location.inner.is_empty())
             .map(|location| location.archive);
@@ -5959,7 +6016,7 @@ impl App {
             }
             (Some(archive), fs::OpenKind::View) => self.view_from_archive(path, archive),
             (None, _) => {
-                self.launch_external(kind, path, line, false);
+                self.launch_external(kind, path, line, CopyOf::Nothing);
                 Task::none()
             }
         }
@@ -5968,6 +6025,37 @@ impl App {
     /// Starts unpacking `source`, a file in `archive`, for the viewer. The
     /// viewer starts when the copy is there, see `view_extracted`.
     fn view_from_archive(&mut self, source: PathBuf, archive: PathBuf) -> Task<Message> {
+        let shown = source.clone();
+        self.start_view_copy(archive, shown, jobs::JobKind::Extract, move |slot, tx| {
+            let mut progress = fs::transfer::Reporting::new(tx);
+            fs::archive::extract_for_view(&source, slot, &mut progress)
+        })
+    }
+
+    /// Starts fetching `source`, a file on a server, for the viewer. The copies
+    /// of one server are kept together under its root address, as those of an
+    /// archive are under the archive.
+    fn view_from_server(&mut self, source: RemotePath) -> Task<Message> {
+        let pool = Arc::clone(&self.remote);
+        let (key, shown) = (source.server().root_path(), source.to_path_buf());
+        self.start_view_copy(key, shown, jobs::JobKind::Copy, move |slot, tx| {
+            let mut progress = fs::transfer::Reporting::new(tx);
+            fs::remote::transfer::download_for_view(&pool, &source, slot, &mut progress)
+        })
+    }
+
+    /// The job behind F3 on an entry that is not on the disk: makes a slot for
+    /// the copy under `group`, runs `work` on the blocking pool to fill it, and
+    /// reports as `ViewExtracted`.
+    fn start_view_copy(
+        &mut self,
+        group: PathBuf,
+        shown: PathBuf,
+        kind: jobs::JobKind,
+        work: impl FnOnce(&Path, &mpsc::UnboundedSender<fs::transfer::Tick>) -> std::io::Result<PathBuf>
+            + Send
+            + 'static,
+    ) -> Task<Message> {
         // A transfer or delete under way, or a dialog about to start one, owns
         // the queue and `generation`; unpacking beside it would lose its result.
         if self.jobs.is_busy()
@@ -5983,9 +6071,16 @@ impl App {
         let made = self
             .view_copies
             .as_mut()
-            .and_then(|copies| copies.slot(&archive).ok());
+            .and_then(|copies| copies.slot(&group).ok());
         let Some(slot) = made else {
-            let text = self.lang.text(Msg::ErrorArchiveViewUnavailable).to_owned();
+            let text = self
+                .lang
+                .text(if group_is_server(&group) {
+                    Msg::ErrorRemoteViewUnavailable
+                } else {
+                    Msg::ErrorArchiveViewUnavailable
+                })
+                .to_owned();
             self.set_status_error(&text);
             return Task::none();
         };
@@ -5996,12 +6091,12 @@ impl App {
         let progress_tx = self.progress_sender();
         let generation = self.generation;
         self.extracting = Some(Extracting {
-            archive,
+            archive: group,
             slot: slot.clone(),
         });
         self.jobs.enqueue(jobs::Job {
-            kind: jobs::JobKind::Extract,
-            path: source.clone(),
+            kind,
+            path: shown,
             total: None,
         });
         self.jobs
@@ -6009,10 +6104,7 @@ impl App {
                 Task::perform(
                     tokio::task::spawn_blocking({
                         let unpack_into = slot.clone();
-                        move || {
-                            let mut progress = fs::transfer::Reporting::new(&progress_tx);
-                            fs::archive::extract_for_view(&source, &unpack_into, &mut progress)
-                        }
+                        move || work(&unpack_into, &progress_tx)
                     }),
                     move |outcome| {
                         let result = match outcome {
@@ -6050,9 +6142,16 @@ impl App {
         let finished = self.extracting.take();
         match result {
             Ok(copy) => {
-                let still_open = finished.is_some_and(|job| self.panel_is_in_archive(&job.archive));
-                if still_open {
-                    self.launch_external(fs::OpenKind::View, copy, None, true);
+                let still_open = finished
+                    .as_ref()
+                    .is_some_and(|job| self.panel_shows(&job.archive));
+                if let (true, Some(job)) = (still_open, finished) {
+                    let origin = if group_is_server(&job.archive) {
+                        CopyOf::Server
+                    } else {
+                        CopyOf::Archive
+                    };
+                    self.launch_external(fs::OpenKind::View, copy, None, origin);
                 } else {
                     self.discard_view_slot(&slot);
                 }
@@ -6071,6 +6170,10 @@ impl App {
                             }
                         })
                         .to_owned(),
+                    RowFailure::UnsafeName(name) => fill_template(
+                        self.lang.text(Msg::ErrorRemoteUnsafeName),
+                        &[("{name}", &name)],
+                    ),
                     RowFailure::Conflict(reason) | RowFailure::Other(reason) => reason,
                 };
                 self.set_status_error(&text);
@@ -6085,10 +6188,16 @@ impl App {
         }
     }
 
-    fn panel_is_in_archive(&self, archive: &Path) -> bool {
-        [PanelSide::Left, PanelSide::Right]
-            .into_iter()
-            .any(|side| self.panel(side).archive.as_deref() == Some(archive))
+    /// Whether a panel is in `place`: an archive, or the root address of the
+    /// server whose folder it shows.
+    fn panel_shows(&self, place: &Path) -> bool {
+        [PanelSide::Left, PanelSide::Right].into_iter().any(|side| {
+            let panel = self.panel(side);
+            panel.archive.as_deref() == Some(place)
+                || panel
+                    .remote()
+                    .is_some_and(|server| server.root_path() == place)
+        })
     }
 
     /// Stops the running job, see `Message::AbortJob`.
@@ -6130,7 +6239,7 @@ impl App {
     /// A panel has left `archive`: the copies made for the viewer go, unless
     /// the other panel is still in it. A running unpacking stops first.
     fn drop_view_copies_of(&mut self, archive: &Path) {
-        if self.panel_is_in_archive(archive) {
+        if self.panel_shows(archive) {
             return;
         }
         if self
@@ -6148,13 +6257,14 @@ impl App {
     }
 
     /// Hands `path` to the program for `kind`, at `line` when the program
-    /// takes one. `from_archive` marks a copy unpacked for viewing.
+    /// takes one. `from` says whether `path` is a temporary copy made for
+    /// viewing, and of what.
     fn launch_external(
         &mut self,
         kind: fs::OpenKind,
         path: PathBuf,
         line: Option<u64>,
-        from_archive: bool,
+        from: CopyOf,
     ) {
         self.job_error = None;
         self.notice = None;
@@ -6165,10 +6275,15 @@ impl App {
         let executable = fs::could_execute(&path);
         let Some(command) = fs::open_command(&self.open_programs, kind, &path, executable, line)
         else {
-            let message = if from_archive {
-                // The edit key is refused in an archive, so it is not offered.
+            let message = if from != CopyOf::Nothing {
+                // The edit key is refused in an archive and on a server, so it
+                // is not offered.
                 fill_template(
-                    self.lang.text(Msg::ErrorArchiveViewExecutable),
+                    self.lang.text(if from == CopyOf::Server {
+                        Msg::ErrorRemoteViewExecutable
+                    } else {
+                        Msg::ErrorArchiveViewExecutable
+                    }),
                     &[("{name}", &name)],
                 )
             } else {
@@ -6278,7 +6393,13 @@ impl App {
         self.notice = None;
         self.transfer_dialogs_opened = self.transfer_dialogs_opened.wrapping_add(1);
         let base = preset.unwrap_or_else(|| self.panel(self.source_side().other()).path.clone());
-        let dialog = TransferDialog::new(self.transfer_dialogs_opened, kind, sources, base);
+        let remote_home = RemotePath::parse(&base).and_then(|place| {
+            self.remote
+                .session(place.server())
+                .map(|session| session.home().to_owned())
+        });
+        let dialog = TransferDialog::new(self.transfer_dialogs_opened, kind, sources, base)
+            .with_remote_home(remote_home);
         let scan = scan_task(&dialog);
         let conflicts = conflicts_task(&dialog);
         self.transfer_dialog = Some(dialog);
@@ -6376,6 +6497,16 @@ impl App {
                 }
             };
         let (kind, sources, policy) = (open.kind(), open.sources().to_vec(), open.policy());
+        if let Some(place) = RemotePath::parse(&target) {
+            if !self.remote.is_connected(place.server()) {
+                let text = fill_template(
+                    self.lang.text(Msg::ErrorRemoteDisconnected),
+                    &[("{server}", &place.server().to_string())],
+                );
+                self.set_status_error(&text);
+                return Task::none();
+            }
+        }
         self.transfer_dialog = None;
         Task::batch([
             release_focus(),
@@ -6685,9 +6816,10 @@ impl App {
 
         let generation = self.generation;
         let target = transfer.target.clone();
+        let pool = Arc::clone(&self.remote);
         let job = jobs::Job {
             kind: transfer.kind.job_kind(),
-            path: target.join(source.file_name().unwrap_or_default()),
+            path: child_path(&target, source.file_name().unwrap_or_default()),
             total: None,
         };
         // One row per job keeps a conflict answerable between two files.
@@ -6702,8 +6834,25 @@ impl App {
                     let kind = transfer.kind;
                     move || {
                         // Reports as it goes, so the bar moves during a long
-                        // copy rather than jumping at the end.
-                        crate::fs::transfer::run_reporting(&from, &to, kind, conflict, &progress_tx)
+                        // copy rather than jumping at the end. A server on
+                        // either side is the SFTP layer's.
+                        fs::remote::transfer::run_reporting(
+                            &pool,
+                            &from,
+                            &to,
+                            kind,
+                            conflict,
+                            &progress_tx,
+                        )
+                        .unwrap_or_else(|| {
+                            crate::fs::transfer::run_reporting(
+                                &from,
+                                &to,
+                                kind,
+                                conflict,
+                                &progress_tx,
+                            )
+                        })
                     }
                 }),
                 move |outcome| {
@@ -7278,7 +7427,7 @@ impl App {
         };
         match target {
             (path, Some(line)) => {
-                self.launch_external(fs::OpenKind::Edit, path, Some(line), false);
+                self.launch_external(fs::OpenKind::Edit, path, Some(line), CopyOf::Nothing);
                 Task::none()
             }
             (path, None) => {
@@ -20419,7 +20568,7 @@ mod archive_view_tests {
             .0
             .with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>);
 
-        app.launch_external(fs::OpenKind::View, script, None, true);
+        app.launch_external(fs::OpenKind::View, script, None, CopyOf::Archive);
 
         assert!(launcher.0.lock().unwrap().is_empty());
         let shown = app.job_error.unwrap();
@@ -21616,5 +21765,392 @@ mod remote_panel_tests {
         app.delete_dialog = None;
         settle(&mut app, KeyAction::ConnectServer.message()).await;
         assert!(app.connect_dialog.is_some());
+    }
+
+    #[derive(Default)]
+    struct Recorded(Mutex<Vec<fs::OpenCommand>>);
+
+    impl fs::Launcher for Recorded {
+        fn launch(&self, command: &fs::OpenCommand) -> Result<(), String> {
+            self.0
+                .lock()
+                .map_err(|poisoned| poisoned.to_string())?
+                .push(command.clone());
+            Ok(())
+        }
+    }
+
+    fn select(app: &mut App, side: PanelSide, name: &str) {
+        let panel = app.panel_mut(side);
+        panel.selected = panel.entries.iter().position(|e| e.name == name).unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn f3_on_a_server_file_fetches_a_copy_and_hands_it_to_the_viewer() {
+        let fixture = Fixture::connected().await;
+        std::fs::write(
+            fixture.server.local("/home/tester/notes.txt"),
+            "from the server",
+        )
+        .unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let launcher = Arc::new(Recorded::default());
+        let mut app = app_over(&fixture)
+            .with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>)
+            .with_view_copies_in(&cache.path().join("view"));
+        open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
+        select(&mut app, PanelSide::Left, "notes.txt");
+
+        settle(&mut app, Message::OpenExternal(fs::OpenKind::View)).await;
+
+        let launched = launcher.0.lock().unwrap().clone();
+        assert_eq!(launched.len(), 1);
+        let copy = PathBuf::from(launched[0].args.last().unwrap());
+        assert_eq!(copy.file_name().unwrap(), "notes.txt");
+        assert_eq!(std::fs::read_to_string(&copy).unwrap(), "from the server");
+        assert!(copy.starts_with(cache.path()), "{copy:?}");
+        assert!(!app.jobs.is_busy());
+        assert!(app.extracting.is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn the_copy_goes_when_the_last_panel_leaves_the_server() {
+        let fixture = Fixture::connected().await;
+        std::fs::write(fixture.server.local("/home/tester/notes.txt"), "x").unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let mut app = app_over(&fixture)
+            .with_launcher(Arc::new(Recorded::default()) as Arc<dyn fs::Launcher>)
+            .with_view_copies_in(&cache.path().join("view"));
+        open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
+        select(&mut app, PanelSide::Left, "notes.txt");
+        settle(&mut app, Message::OpenExternal(fs::OpenKind::View)).await;
+        let copies = || {
+            walk(&cache.path().join("view"))
+                .iter()
+                .filter(|path| path.ends_with("notes.txt"))
+                .count()
+        };
+        assert_eq!(copies(), 1);
+
+        open(&mut app, PanelSide::Left, std::env::temp_dir(), None).await;
+
+        assert_eq!(copies(), 0);
+    }
+
+    fn walk(dir: &Path) -> Vec<PathBuf> {
+        let mut found = Vec::new();
+        for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                found.extend(walk(&path));
+            }
+            found.push(path);
+        }
+        found
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn f3_on_a_server_file_that_is_gone_says_why_and_leaves_no_copy() {
+        let fixture = Fixture::connected().await;
+        std::fs::write(fixture.server.local("/home/tester/gone.txt"), "x").unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let launcher = Arc::new(Recorded::default());
+        let mut app = app_over(&fixture)
+            .with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>)
+            .with_view_copies_in(&cache.path().join("view"));
+        open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
+        select(&mut app, PanelSide::Left, "gone.txt");
+        std::fs::remove_file(fixture.server.local("/home/tester/gone.txt")).unwrap();
+
+        settle(&mut app, Message::OpenExternal(fs::OpenKind::View)).await;
+
+        assert!(launcher.0.lock().unwrap().is_empty());
+        assert!(app.status_error().is_some());
+        assert!(walk(&cache.path().join("view"))
+            .iter()
+            .all(|p| !p.ends_with("gone.txt")));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn f3_is_refused_while_another_job_runs() {
+        let fixture = Fixture::connected().await;
+        std::fs::write(fixture.server.local("/home/tester/a.txt"), "x").unwrap();
+        let cache = tempfile::tempdir().unwrap();
+        let mut app = app_over(&fixture)
+            .with_launcher(Arc::new(Recorded::default()) as Arc<dyn fs::Launcher>)
+            .with_view_copies_in(&cache.path().join("view"));
+        open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
+        select(&mut app, PanelSide::Left, "a.txt");
+        app.jobs.enqueue(jobs::Job {
+            kind: jobs::JobKind::Copy,
+            path: PathBuf::from("x"),
+            total: None,
+        });
+        assert!(app.jobs.start_next(|_| Task::none()).is_some());
+
+        drop(app.update(Message::OpenExternal(fs::OpenKind::View)));
+
+        assert!(app.extracting.is_none());
+        assert_eq!(
+            app.notice_for_test(),
+            Some("Another job is running; try again when it is done")
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn f5_copies_a_server_file_to_the_other_panel_and_reloads_it() {
+        let fixture = Fixture::connected().await;
+        std::fs::write(fixture.server.local("/home/tester/doc.txt"), "downloaded").unwrap();
+        let local = tempfile::tempdir().unwrap();
+        let mut app = app_over(&fixture);
+        open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
+        open(&mut app, PanelSide::Right, local.path().to_path_buf(), None).await;
+        select(&mut app, PanelSide::Left, "doc.txt");
+
+        let task = app.start_transfer(TransferKind::Copy);
+        run(&mut app, task).await;
+
+        assert_eq!(
+            std::fs::read_to_string(local.path().join("doc.txt")).unwrap(),
+            "downloaded"
+        );
+        assert!(app.transfer.is_none());
+        assert_eq!(app.status_error(), None);
+        assert!(names(&app, PanelSide::Right).contains(&"doc.txt".to_owned()));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn f5_copies_a_local_file_to_a_server_folder_and_reloads_it() {
+        let fixture = Fixture::connected().await;
+        let local = tempfile::tempdir().unwrap();
+        std::fs::write(local.path().join("up.txt"), "uploaded").unwrap();
+        let mut app = app_over(&fixture);
+        open(&mut app, PanelSide::Left, local.path().to_path_buf(), None).await;
+        open(&mut app, PanelSide::Right, url("/home/tester"), None).await;
+        select(&mut app, PanelSide::Left, "up.txt");
+
+        let task = app.start_transfer(TransferKind::Copy);
+        run(&mut app, task).await;
+
+        assert_eq!(
+            std::fs::read_to_string(fixture.server.local("/home/tester/up.txt")).unwrap(),
+            "uploaded"
+        );
+        assert_eq!(app.status_error(), None);
+        assert!(names(&app, PanelSide::Right).contains(&"up.txt".to_owned()));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_name_taken_on_the_server_asks_and_overwrite_replaces_it() {
+        let fixture = Fixture::connected().await;
+        std::fs::write(fixture.server.local("/home/tester/same.txt"), "old").unwrap();
+        let local = tempfile::tempdir().unwrap();
+        std::fs::write(local.path().join("same.txt"), "new").unwrap();
+        let mut app = app_over(&fixture);
+        open(&mut app, PanelSide::Left, local.path().to_path_buf(), None).await;
+        open(&mut app, PanelSide::Right, url("/home/tester"), None).await;
+        select(&mut app, PanelSide::Left, "same.txt");
+
+        let task = app.start_transfer(TransferKind::Copy);
+        run(&mut app, task).await;
+        assert!(
+            app.pending_conflict.is_some(),
+            "the conflict dialog is asked"
+        );
+        assert_eq!(
+            std::fs::read_to_string(fixture.server.local("/home/tester/same.txt")).unwrap(),
+            "old"
+        );
+
+        settle(
+            &mut app,
+            Message::TransferConflict(ConflictChoice::ThisOverwrite),
+        )
+        .await;
+
+        assert_eq!(
+            std::fs::read_to_string(fixture.server.local("/home/tester/same.txt")).unwrap(),
+            "new"
+        );
+        assert!(app.pending_conflict.is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_dropped_connection_during_a_copy_is_reported_not_hidden() {
+        let fixture = Fixture::connected().await;
+        std::fs::write(fixture.server.local("/home/tester/doc.txt"), "x").unwrap();
+        let local = tempfile::tempdir().unwrap();
+        let mut app = app_over(&fixture);
+        open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
+        open(&mut app, PanelSide::Right, local.path().to_path_buf(), None).await;
+        select(&mut app, PanelSide::Left, "doc.txt");
+        fixture.pool.forget(&Fixture::id());
+
+        let task = app.start_transfer(TransferKind::Copy);
+        run(&mut app, task).await;
+
+        assert!(app.status_error().is_some());
+        assert!(!local.path().join("doc.txt").exists());
+    }
+
+    #[test]
+    fn move_to_or_from_a_server_is_refused_in_the_transfer_dialog() {
+        let server_file = url("/home/tester/a.txt");
+        let local_file = std::env::temp_dir().join("ncrs-never-read.txt");
+        let local_folder = std::env::temp_dir();
+        assert_eq!(
+            transfer_dialog::validate(
+                TransferKind::Move,
+                std::slice::from_ref(&server_file),
+                &local_folder,
+            ),
+            Err(transfer_dialog::Refusal::MoveFromServer)
+        );
+        assert_eq!(
+            transfer_dialog::validate(TransferKind::Move, &[local_file], &url("/home/tester")),
+            Err(transfer_dialog::Refusal::MoveToServer)
+        );
+    }
+
+    #[test]
+    fn an_sftp_text_that_is_no_address_is_refused_and_never_looked_up_on_the_disk() {
+        let local = vec![std::env::temp_dir().join("ncrs-never-read.txt")];
+        for typed in [
+            "sftp://host:99999/x",
+            "SFTP://no-user.example.org/x",
+            "sftp://u:secret@host/x",
+            "sftp:// u@h/x",
+            "sftp://",
+        ] {
+            let mut dialog = TransferDialog::new(1, TransferKind::Copy, local.clone(), url("/"));
+            dialog.type_target(typed.to_owned());
+            assert!(dialog.involves_server(), "{typed}: nothing is counted");
+            assert_eq!(
+                transfer_dialog::validate(TransferKind::Copy, &local, &dialog.target_path()),
+                Err(transfer_dialog::Refusal::BadAddress),
+                "{typed}"
+            );
+        }
+        let mut dialog = TransferDialog::new(1, TransferKind::Copy, local.clone(), url("/"));
+        dialog.type_target("sftp://tester@test.invalid/srv".to_owned());
+        assert_eq!(
+            transfer_dialog::validate(TransferKind::Copy, &local, &dialog.target_path()),
+            Ok(url("/srv"))
+        );
+    }
+
+    #[tokio::test]
+    async fn confirming_a_bad_address_shows_the_refusal_and_starts_nothing() {
+        let fixture = Fixture::connected().await;
+        let local = tempfile::tempdir().unwrap();
+        std::fs::write(local.path().join("a.txt"), "x").unwrap();
+        let mut app = app_over(&fixture);
+        open(&mut app, PanelSide::Left, local.path().to_path_buf(), None).await;
+        select(&mut app, PanelSide::Left, "a.txt");
+        drop(app.update(Message::Transfer(TransferKind::Copy)));
+        drop(
+            app.update(Message::TransferDialog(TransferDialogMessage::TargetInput(
+                "sftp://host:99999/x".to_owned(),
+            ))),
+        );
+
+        drop(app.update(Message::TransferDialog(TransferDialogMessage::Confirm)));
+
+        let dialog = app.transfer_dialog.as_ref().unwrap();
+        assert_eq!(dialog.refusal(), Some(transfer_dialog::Refusal::BadAddress));
+        assert!(app.transfer.is_none());
+    }
+
+    #[test]
+    fn server_to_server_copy_is_refused() {
+        let result = transfer_dialog::validate(
+            TransferKind::Copy,
+            &[url("/home/tester/a.txt")],
+            &RemotePath::new(ServerId::new("other", "elsewhere.invalid", 22), "/").to_path_buf(),
+        );
+        assert_eq!(result, Err(transfer_dialog::Refusal::ServerToServer));
+    }
+
+    #[test]
+    fn a_server_target_is_not_looked_up_on_the_disk() {
+        let result = transfer_dialog::validate(
+            TransferKind::Copy,
+            &[std::env::temp_dir().join("ncrs-never-read.txt")],
+            &url("/home/tester"),
+        );
+        assert_eq!(result, Ok(url("/home/tester")));
+    }
+
+    #[test]
+    fn the_target_typed_in_the_dialog_is_read_as_an_address_over_a_server() {
+        let source = vec![std::env::temp_dir().join("a.txt")];
+        let over_server = |typed: &str| {
+            let mut dialog =
+                TransferDialog::new(1, TransferKind::Copy, source.clone(), url("/home/tester"))
+                    .with_remote_home(Some(HOME.to_owned()));
+            dialog.type_target(typed.to_owned());
+            dialog.target_path()
+        };
+        assert_eq!(over_server("/home/tester"), url("/home/tester"));
+        assert_eq!(over_server("sub"), url("/home/tester/sub"));
+        assert_eq!(over_server(".."), url("/home"));
+        assert_eq!(over_server("~/up"), url("/home/tester/up"));
+        assert_eq!(
+            over_server("sftp://tester@test.invalid:2222/x"),
+            PathBuf::from("sftp://tester@test.invalid:2222/x")
+        );
+        let mut local = TransferDialog::new(1, TransferKind::Copy, source, std::env::temp_dir());
+        local.type_target("sftp://tester@test.invalid/srv".to_owned());
+        assert_eq!(local.target_path(), url("/srv"));
+        assert!(local.involves_server());
+    }
+
+    #[tokio::test]
+    async fn nothing_is_counted_on_a_server_before_the_copy() {
+        let fixture = Fixture::connected().await;
+        let local = tempfile::tempdir().unwrap();
+        let mut app = app_over(&fixture);
+        open(&mut app, PanelSide::Left, url("/home"), None).await;
+        open(&mut app, PanelSide::Right, local.path().to_path_buf(), None).await;
+        select(&mut app, PanelSide::Left, "tester");
+
+        let reported = reports(&mut app, Message::Transfer(TransferKind::Copy)).await;
+
+        assert!(
+            !reported.iter().any(|message| matches!(
+                message,
+                Message::TransferDialog(
+                    TransferDialogMessage::Scanned { .. }
+                        | TransferDialogMessage::ConflictsCounted { .. }
+                )
+            )),
+            "{reported:?}"
+        );
+        assert!(app.transfer_dialog.as_ref().unwrap().counts_unknown());
+    }
+
+    #[tokio::test]
+    async fn confirming_a_move_from_a_server_shows_the_refusal_and_keeps_the_dialog() {
+        let fixture = Fixture::connected().await;
+        let local = tempfile::tempdir().unwrap();
+        let mut app = app_over(&fixture);
+        open(&mut app, PanelSide::Left, url("/home"), None).await;
+        open(&mut app, PanelSide::Right, local.path().to_path_buf(), None).await;
+        select(&mut app, PanelSide::Left, "tester");
+        drop(app.update(Message::Transfer(TransferKind::Copy)));
+        drop(
+            app.update(Message::TransferDialog(TransferDialogMessage::SetKind(
+                TransferKind::Move,
+            ))),
+        );
+
+        drop(app.update(Message::TransferDialog(TransferDialogMessage::Confirm)));
+
+        let dialog = app.transfer_dialog.as_ref().unwrap();
+        assert_eq!(
+            dialog.refusal(),
+            Some(transfer_dialog::Refusal::MoveFromServer)
+        );
+        assert!(app.transfer.is_none());
     }
 }

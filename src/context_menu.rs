@@ -71,10 +71,12 @@ impl ContextAction {
     #[cfg(test)]
     pub fn allowed_on_server(self) -> bool {
         match self {
-            ContextAction::Open | ContextAction::CopyPath | ContextAction::CopyName => true,
-            ContextAction::Edit
-            | ContextAction::View
+            ContextAction::Open
             | ContextAction::Copy
+            | ContextAction::CopyPath
+            | ContextAction::CopyName
+            | ContextAction::View => true,
+            ContextAction::Edit
             | ContextAction::Move
             | ContextAction::NewFolder
             | ContextAction::Trash
