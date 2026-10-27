@@ -26,6 +26,11 @@ All notable changes to this project are documented here. The format follows
   value is saved with `Enter`, or when the page changes or the tab closes. A
   value that would not load is shown at its row and never written, and the page
   stays; a config with an error still opens the tab and names the line.
+- The command list (`Cmd`+`Shift`+`P`) also finds every settings page ("Settings:
+  Programs") and every single setting ("Viewer (F3)", "Accent", "AI provider").
+  Running a hit opens the settings tab on that page with the row in view and
+  highlighted. They are listed under "Settings" after the commands and only
+  while something is typed.
 - Archives open like folders: `Enter` on a `.zip`, `.tar`, `.tar.gz`/`.tgz` or
   `.tar.zst`/`.tzst` lists its content in the panel, `..` leaves it with the
   cursor on the archive. `F5` copies entries out through the copy queue and the
