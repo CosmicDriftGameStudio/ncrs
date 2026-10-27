@@ -370,6 +370,81 @@ impl KeyAction {
         }
     }
 
+    /// Whether a panel inside an archive may run the action. Only what takes
+    /// neither the panel's path nor its selection as input for writing,
+    /// launching, the config or Hermes. No catch-all arm: a new action has to
+    /// be decided.
+    #[cfg(test)]
+    pub fn allowed_in_archive(self) -> bool {
+        match self {
+            Self::Quit
+            | Self::GoUp
+            | Self::Open
+            | Self::SwitchPanel
+            | Self::SwitchLanguage
+            | Self::ToggleTag
+            | Self::TagDown
+            | Self::TagUp
+            | Self::TagAll
+            | Self::ClearTags
+            | Self::AbortJob
+            | Self::CopyPath
+            | Self::CopyName
+            | Self::Copy
+            | Self::DriveMenuLeft
+            | Self::DriveMenuRight
+            | Self::HistoryBack
+            | Self::HistoryForward
+            | Self::Favourites
+            | Self::SortByName
+            | Self::SortByModified
+            | Self::SortBySize
+            | Self::ContextMenu
+            | Self::CursorUp
+            | Self::CursorDown
+            | Self::PageUp
+            | Self::PageDown
+            | Self::First
+            | Self::Last
+            | Self::CommandLine
+            | Self::CommandPalette
+            | Self::FilingStatus
+            | Self::FilingSetup
+            | Self::RuleSuggestions
+            | Self::ReviewList
+            | Self::SavedQueries
+            | Self::ReorganisationPlan
+            | Self::UndoReorganisation
+            | Self::FetchTheme
+            | Self::Settings
+            | Self::KeyBindings
+            | Self::DownloadOcrModels
+            | Self::DownloadAiModel
+            | Self::SearchCase
+            | Self::SearchWholeWord
+            | Self::SearchRegex => true,
+            Self::View
+            | Self::Edit
+            | Self::Move
+            | Self::Delete
+            | Self::DeletePermanently
+            | Self::Mkdir
+            | Self::NewFile
+            | Self::AddFavourite
+            | Self::RemoveFavourite
+            | Self::Search
+            | Self::QuickOpen
+            | Self::HermesQuickFix
+            | Self::HermesHandToInbox
+            | Self::HermesProcessAgain
+            | Self::HermesSetInbox
+            | Self::HermesSetFilingLocation
+            | Self::HermesSetArchive
+            | Self::HermesExclude
+            | Self::HermesInspect => false,
+        }
+    }
+
     /// The translated hint the header shows. `None` for actions that are bound
     /// but not advertised, like the arrow keys: the header has room for five
     /// or six hints, not twenty.

@@ -120,7 +120,7 @@ Projekt mit Hobby-Umfang. Meine grobe Schätzung, in Tagen, **ohne** Community-I
 | Keymap-Konfiguration | 1,5 | braucht 3.1 |
 | Theming (TOML → theme.rs) | 2 | Colors sind heute schon sauber separiert |
 | Netzwerk-Mounts (Profil-Management) | 3 | Siehe Warnung unten |
-| Archiv-Support (lesend) | 4–6 | `zip`+`tar`+`zstd`; **Crate-Lizenzen ungeprüft**, s. u. |
+| Archiv-Support (lesend) | 4–6 | `zip`+`tar`+`flate2`+`zstd`; Lizenzen geprüft (MIT/Apache-2.0, `zstd` BSD-3-Clause), `cargo deny` grün |
 | Archiv-Support (schreibend) | 6–10 | deutlich mehr, Umfang hängt am Format |
 | i18n **Rest** (Persistenz, `strings.json`, build.rs) | 1–2 | Texte selbst sind fertig, s. Abschnitt 2 |
 | Plugin-System | 5–8 | siehe 3.1 — Config *ist* die Plugin-Schnittstelle |
@@ -145,10 +145,10 @@ Zahl von mir planst, die ich nicht verteidigen kann.
 
 **Was an dieser Tabelle geprüft ist und was nicht:** Die Zahlen sind meine Schätzung,
 keine Messung. Verifiziert habe ich die Lizenzaudit (Abschnitt 2) und die
-i18n-Zerlegung — beides objektiv prüfbar. Die Crate-Lizenzen für Archiv-Support und
-die `trash`-Crate sind **Annahmen** (Cargo-Cache bzw. crates.io-Angabe) und vor der
-Umsetzung zu prüfen. Klar ist nur die Richtung: `7z`/RAR sind für ein MIT-Projekt
-praktisch ausgeschlossen, `zip`/`tar`/`zstd` nicht.
+i18n-Zerlegung — beides objektiv prüfbar. Die Crate-Lizenzen für Archiv-Support sind
+seit T16 geprüft (`cargo deny`), die der `trash`-Crate ist eine **Annahme**
+(crates.io-Angabe) und vor der Umsetzung zu prüfen. RAR bleibt für ein MIT-Projekt
+ausgeschlossen, 7z lesend kommt mit #148 (s. „Entschieden“).
 
 ## 5. Reihenfolge — vorgeschlagen
 
@@ -213,14 +213,14 @@ Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
 
 # Tasks – Basis-Feature
 
-**Stand 2026-10-27: T1–T14 und T18 erledigt, T15–T17 offen.** Release 0.7.0,
+**Stand 2026-10-27: T1–T14, T16 und T18 erledigt, T15 und T17 offen.** Release 0.7.0,
 1027 Tests (`cargo test --workspace`, davon 5 `#[ignore]`) inkl. UI-Tests mit Pixelvergleich.
 
 | Block | Inhalt | Stand |
 |---|---|---|
 | A | CI, Installer, Release, `strings.json` | ✅ fertig (T1–T5, T5b), dazu signierte und notarisierte macOS-App |
 | B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | 🔶 F3–F8, Config, Keymap, Theme und Startsprache fertig, T6d (Kommandozeile, Favoriten, Verlauf) und T14 (Suche und Quick Open) fertig — **als Nächstes 0.8.0: Netz, Archive lesen, Einstellungen** |
-| C | Netzwerk-Mounts, Archive | 🔶 Laufwerksmenü fertig, T15–T17 offen |
+| C | Netzwerk-Mounts, Archive | 🔶 Laufwerksmenü und Archive lesen (T16) fertig, T15 und T17 offen |
 
 Legende: **[P]** Pflicht für ein benutzbares Basis-Feature, **[S]** später. Reihenfolge =
 Abhängigkeit, nicht Bequemlichkeit. Jeder Task endet grün: `cargo fmt --check`,
@@ -461,8 +461,14 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
 ## Block C – Erweiterung (nicht Basis, aber im Plan)
 
 - [x] **Alt+F1 / Alt+F2 – Laufwerksmenü** – wählt das Ziel des linken bzw. rechten Panels aus den Orten der Finder-Seitenleiste (macOS: `/`, `/Volumes`, Home, iCloud Drive; Linux: `/`, Home, Mounts unter `/media`, `/run/media`, `/mnt`; Windows: Laufwerksbuchstaben). Listet nur Namen, kein `stat`, damit ein toter Mount nicht hängt. Alt+F3…F10 sind noch frei.
-- [ ] **T15 – Netzwerk-Mounts** (macOS/Linux), **T16 – Archiv-Support lesend**,
-  **T17 – Archiv-Support schreibend** – Umfang siehe Abschnitt 4
+- [x] **T16 – Archiv-Support lesend** (K5, #124) – zip, tar, tar.gz und tar.zst öffnen sich mit Enter
+  wie ein Ordner, `..` führt zurück auf das Archiv. F5 kopiert heraus, über die Copy-Queue und den
+  Konfliktdialog; entpackt wird in einen versteckten Ordner im Ziel und erst dann umbenannt.
+  Einträge mit `..`, absoluten Pfaden oder Laufwerksangaben sowie Links und Sonderdateien werden
+  ausgelassen und in der Statuszeile gezählt. F3/F4/F6/F7/F8 sind im Archiv gesperrt (Hinweis
+  „Versiegeltes Brustfach“), Ziel eines Kopierens kann ein Archiv noch nicht sein.
+- [ ] **T15 – Netzwerk-Mounts** (macOS/Linux), **T17 – Archiv-Support schreibend** – Umfang
+  siehe Abschnitt 4
 
 ## Weg zu 1.0.0 (Plan vom 2026-10-26)
 
@@ -475,8 +481,8 @@ Größen sind Schätzungen (S bis ein Tag, M zwei bis vier Tage, L eine Woche un
 | Version | Thema | Bausteine |
 |---|---|---|
 | 0.7.0 | Bedienung komplett, Risiko zuerst | S1 Sandbox-Test (#120) · K1 Kommandozeile, T6d.1 (#121) · K2 Favoriten und Verlauf, T6d.5 (#123) · K3 Zustand merken, T18 (#122) |
-| 0.8.0 | Netz, Archive lesen, Einstellungen | K4 Netzwerk-Mounts, T15 (#125) · K5 Archive lesen, T16 (#124) · A0 Sandbox-Grundlagen (#126) · E1 Einstellungen für die ganze Config (#142) ✅ · E2 Tastenkürzel-Dialog (#143) ✅ |
-| 0.9.0 | Schreiben und Versprechen | K6 Archive schreiben, T17 (#127) · V1 Config versioniert (#128) · V2 Index-Migration (#129) · V3 100k-Dateien-Messung (#130) · V4 Lizenzen für den Store (#131) · H1 Hermes als Beta (#132) |
+| 0.8.0 | Netz, Archive lesen, Einstellungen | K4 Netzwerk-Mounts, T15 (#125) · K5 Archive lesen, T16 (#124) ✅ · A0 Sandbox-Grundlagen (#126) · E1 Einstellungen für die ganze Config (#142) ✅ · E2 Tastenkürzel-Dialog (#143) ✅ · Quick Open findet Dokumente (#147) · 7z lesen (#148) |
+| 0.9.0 | Schreiben und Versprechen | K6 Archive schreiben, T17 (#127) · V1 Config versioniert (#128) · V2 Index-Migration (#129) · V3 100k-Dateien-Messung (#130) · V4 Lizenzen für den Store (#131), darin About-Dialog mit den Drittlizenzen (#149) · H1 Hermes als Beta (#132) |
 | 1.0.0 | App Store | A1 Sandbox-Build (#133) · A2 App Store Connect (#134) · A3 Store-Auftritt (#135) · A4 Review und Release (#136) |
 
 Abhängigkeiten: S1 vor K3, K4 und A0 · K3 vor K2, A0 und V1 · K5 vor K6 · V2 vor H1 ·
@@ -485,8 +491,8 @@ unter #89.
 
 Entschieden:
 - **Preis:** Einmalkauf 9,99 €, kein Abo.
-- **Archivformate für 1.0:** zip, tar, tar.gz, tar.zst. 7z und RAR nicht (Lizenz), 7z
-  später höchstens lesend.
+- **Archivformate für 1.0:** zip, tar, tar.gz, tar.zst; 7z lesend kommt mit #148 in
+  0.8.0. RAR nicht, s. „Nach 1.0“.
 - **Schnitt:** jede Zwischenversion bringt etwas, das man bedienen kann.
 - **Store-Fassung (S1, #120):** volle Fassung, keine Lite. Eine Freigabe des
   Home-Ordners samt Bookmark deckt alle Kernpfade ab, jedes externe Volume braucht eine
@@ -497,7 +503,11 @@ Entschieden:
   `config.toml` im Sandbox-Container, also muss alles darin auch in der App einstellbar
   sein.
 
-Nach 1.0: 7z/RAR, Plugins, Mail als Hermes-Quelle, iOS.
+Nach 1.0:
+- **RAR:** Es gibt keinen brauchbaren Rust-Decoder, und die UnRAR-Lizenz ist nicht
+  OSI-anerkannt, passt also nicht zu einem MIT-Projekt. Erst wieder ansehen, wenn sich
+  eins von beidem ändert.
+- Plugins, Mail als Hermes-Quelle, iOS.
 
 ## Was das Testen über den Aufbau gelehrt hat
 

@@ -26,6 +26,17 @@ All notable changes to this project are documented here. The format follows
   value is saved with `Enter`, or when the page changes or the tab closes. A
   value that would not load is shown at its row and never written, and the page
   stays; a config with an error still opens the tab and names the line.
+- Archives open like folders: `Enter` on a `.zip`, `.tar`, `.tar.gz`/`.tgz` or
+  `.tar.zst`/`.tzst` lists its content in the panel, `..` leaves it with the
+  cursor on the archive. `F5` copies entries out through the copy queue and the
+  conflict dialog; they are unpacked into a hidden folder in the target and
+  only then renamed into place, so a cancel or a broken archive leaves nothing
+  half-written. Entries with `..`, absolute paths or drive prefixes, links and
+  special files are left out and counted in the status bar. Archives are
+  read-only for now: `F3`, `F4`, `F6`, `F7`, `Shift+F4`, `F8`, search and Quick
+  Open say so instead of acting, and an archive cannot be a copy target yet. A
+  panel inside an archive is remembered as the folder holding it, with the
+  cursor on the archive.
 
 ## [0.7.0] — 2026-10-27
 

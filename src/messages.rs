@@ -74,6 +74,8 @@ pub enum Message {
         sorted_by: SortKey,
         /// Entry name to select after loading (e.g. the dir we came from).
         select: Option<String>,
+        /// The archive file, when `path` lies inside one.
+        archive: Option<PathBuf>,
     },
 
     // --- Navigation inside the active panel ---

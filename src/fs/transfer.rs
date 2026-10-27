@@ -20,6 +20,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use tokio::sync::mpsc;
 
+use super::archive;
+
 /// What to do with the source after a successful operation.
 ///
 /// Copy and move are the same walk, so they are one function and two of these.
@@ -89,6 +91,12 @@ pub trait Progress {
     /// One more item done. Returning `Err` stops the whole operation with that
     /// error, which is how a cancel arrives.
     fn advanced(&mut self, done: usize, total: usize) -> io::Result<()>;
+
+    /// Asked between the blocks of one large file, where no item completes for
+    /// a long time. `Err` stops the operation like a failed `advanced`.
+    fn keep_going(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 /// Counts items and never stops.
@@ -142,6 +150,13 @@ impl Progress for Reporting<'_> {
         self.sender
             .send(Tick { done, total })
             .map_err(|closed| io::Error::other(format!("the app is gone: {closed}")))
+    }
+
+    fn keep_going(&mut self) -> io::Result<()> {
+        if self.sender.is_closed() {
+            return Err(io::Error::other("the app is gone"));
+        }
+        Ok(())
     }
 }
 
@@ -711,6 +726,9 @@ pub fn run_reporting(
     sender: &mpsc::UnboundedSender<Tick>,
 ) -> io::Result<usize> {
     let mut reporting = Reporting::new(sender);
+    if let Some(result) = out_of_archive(source, target_dir, kind, &mut reporting, conflict) {
+        return result;
+    }
     match kind {
         crate::messages::TransferKind::Copy => {
             transfer(source, target_dir, &Copy, &mut reporting, conflict)
@@ -719,6 +737,29 @@ pub fn run_reporting(
             transfer(source, target_dir, &Move, &mut reporting, conflict)
         }
     }
+}
+
+/// A source that is not on disk but is a path inside an archive is copied out
+/// of it. `None` for every other source.
+fn out_of_archive<P: Progress>(
+    source: &Path,
+    target_dir: &Path,
+    kind: crate::messages::TransferKind,
+    progress: &mut P,
+    conflict: OnConflict,
+) -> Option<io::Result<usize>> {
+    if std::fs::symlink_metadata(source).is_ok() || archive::locate_in_archive(source).is_none() {
+        return None;
+    }
+    Some(match kind {
+        crate::messages::TransferKind::Copy => {
+            archive::copy_out(source, target_dir, progress, conflict)
+        }
+        crate::messages::TransferKind::Move => Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "moving out of an archive is not supported; copy instead",
+        )),
+    })
 }
 
 /// Counts but does not report. For a caller that only wants the work done —
@@ -731,6 +772,9 @@ pub fn run(
     kind: crate::messages::TransferKind,
     conflict: OnConflict,
 ) -> io::Result<usize> {
+    if let Some(result) = out_of_archive(source, target_dir, kind, &mut Counting, conflict) {
+        return result;
+    }
     match kind {
         crate::messages::TransferKind::Copy => {
             transfer(source, target_dir, &Copy, &mut Counting, conflict)
@@ -1523,5 +1567,77 @@ mod reporting_tests {
         assert_eq!(done, 6);
         assert!(rx.try_recv().is_err(), "run sent a tick anyway");
         let _ = tx;
+    }
+
+    fn zip_with_a_file(dir: &Path) -> PathBuf {
+        use crate::fs::archive::fixtures::{write_archive, Item};
+        let archive = dir.join("box.zip");
+        write_archive(&archive, &[Item::File("in/doc.txt", b"content")]);
+        archive
+    }
+
+    #[tokio::test]
+    async fn a_source_inside_an_archive_is_copied_out_with_progress() {
+        let dir = scratch("from-archive");
+        let archive = zip_with_a_file(dir.path());
+        let dst = dir.path().join("dst");
+        fs::create_dir_all(&dst).unwrap();
+        let source = archive.join("in").join("doc.txt");
+
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let done = run_reporting(
+            &source,
+            &dst,
+            crate::messages::TransferKind::Copy,
+            OnConflict::Fail,
+            &tx,
+        )
+        .unwrap();
+
+        assert_eq!(done, 1);
+        assert_eq!(fs::read(dst.join("doc.txt")).unwrap(), b"content");
+        assert_eq!(rx.try_recv().ok(), Some(Tick { done: 1, total: 1 }));
+        assert!(archive.is_file(), "the archive stays");
+    }
+
+    #[test]
+    fn a_move_out_of_an_archive_is_refused_and_changes_nothing() {
+        let dir = scratch("move-from-archive");
+        let archive = zip_with_a_file(dir.path());
+        let dst = dir.path().join("dst");
+        fs::create_dir_all(&dst).unwrap();
+
+        let err = run(
+            &archive.join("in"),
+            &dst,
+            crate::messages::TransferKind::Move,
+            OnConflict::Fail,
+        )
+        .unwrap_err();
+
+        assert_eq!(err.kind(), io::ErrorKind::Unsupported);
+        assert_eq!(fs::read_dir(&dst).unwrap().count(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_closed_channel_stops_a_copy_out_of_an_archive() {
+        let dir = scratch("closed-archive");
+        let archive = zip_with_a_file(dir.path());
+        let dst = dir.path().join("dst");
+        fs::create_dir_all(&dst).unwrap();
+        let (tx, rx) = mpsc::unbounded_channel();
+        drop(rx);
+
+        let err = run_reporting(
+            &archive.join("in"),
+            &dst,
+            crate::messages::TransferKind::Copy,
+            OnConflict::Fail,
+            &tx,
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("app is gone"), "got {err}");
+        assert_eq!(fs::read_dir(&dst).unwrap().count(), 0);
     }
 }

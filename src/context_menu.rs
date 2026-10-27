@@ -34,6 +34,38 @@ pub enum ContextAction {
 }
 
 impl ContextAction {
+    #[cfg(test)]
+    pub const ALL: [ContextAction; 10] = [
+        ContextAction::Open,
+        ContextAction::View,
+        ContextAction::Edit,
+        ContextAction::Copy,
+        ContextAction::Move,
+        ContextAction::NewFolder,
+        ContextAction::CopyPath,
+        ContextAction::CopyName,
+        ContextAction::Trash,
+        ContextAction::DeletePermanently,
+    ];
+
+    /// Whether a panel inside an archive may run the entry; see
+    /// `KeyAction::allowed_in_archive`.
+    #[cfg(test)]
+    pub fn allowed_in_archive(self) -> bool {
+        match self {
+            ContextAction::Open
+            | ContextAction::Copy
+            | ContextAction::CopyPath
+            | ContextAction::CopyName => true,
+            ContextAction::View
+            | ContextAction::Edit
+            | ContextAction::Move
+            | ContextAction::NewFolder
+            | ContextAction::Trash
+            | ContextAction::DeletePermanently => false,
+        }
+    }
+
     pub fn message(self) -> Message {
         match self {
             ContextAction::Open => Message::OpenSelected,
@@ -115,6 +147,36 @@ pub enum HermesAction {
 }
 
 impl HermesAction {
+    #[cfg(test)]
+    pub const ALL: [HermesAction; 9] = [
+        HermesAction::ShowSuggestion,
+        HermesAction::HandToInbox,
+        HermesAction::ProcessAgain,
+        HermesAction::SetInbox,
+        HermesAction::SetFilingLocation,
+        HermesAction::SetArchive,
+        HermesAction::Exclude,
+        HermesAction::Include,
+        HermesAction::Inspect,
+    ];
+
+    /// Every Hermes entry works on the file or folder under the cursor, whose
+    /// path inside an archive is no place Hermes knows.
+    #[cfg(test)]
+    pub fn allowed_in_archive(self) -> bool {
+        match self {
+            HermesAction::ShowSuggestion
+            | HermesAction::HandToInbox
+            | HermesAction::ProcessAgain
+            | HermesAction::SetInbox
+            | HermesAction::SetFilingLocation
+            | HermesAction::SetArchive
+            | HermesAction::Exclude
+            | HermesAction::Include
+            | HermesAction::Inspect => false,
+        }
+    }
+
     pub fn message(self) -> Message {
         match self {
             HermesAction::ShowSuggestion => Message::QuickFix(QuickFixMessage::Open),

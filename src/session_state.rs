@@ -11,7 +11,7 @@ use std::sync::{Mutex, PoisonError};
 
 use serde::{Deserialize, Serialize};
 
-use crate::fs::{SortColumn, SortKey};
+use crate::fs::{archive, SortColumn, SortKey};
 use crate::messages::PanelSide;
 use crate::ui::panel_history::PanelHistory;
 
@@ -106,6 +106,38 @@ pub fn record_paths<'a>(paths: impl IntoIterator<Item = &'a PathBuf>) -> Vec<Str
         .collect()
 }
 
+/// The folder a history entry stands for: a place inside an archive is the
+/// folder holding the archive, because the state file must not make a restart
+/// open an archive, which may be gone or replaced by then.
+pub fn history_place(path: &Path) -> PathBuf {
+    // Nearly every entry is a plain folder, so the disk is asked only when the
+    // entry or a name above it looks like an archive.
+    let may_be_inside = path
+        .ancestors()
+        .any(|ancestor| ancestor.file_name().is_some_and(archive::is_archive_name));
+    if may_be_inside {
+        if let Some(location) = archive::locate_in_archive(path) {
+            if let Some(folder) = location.archive.parent() {
+                return folder.to_path_buf();
+            }
+        }
+    }
+    path.to_path_buf()
+}
+
+/// A history stack as text, with its archive places mapped to real folders and
+/// the repeats that leaves next to each other dropped.
+pub fn record_history<'a>(paths: impl IntoIterator<Item = &'a PathBuf>) -> Vec<String> {
+    let mut places: Vec<PathBuf> = Vec::new();
+    for path in paths {
+        let place = history_place(path);
+        if places.last() != Some(&place) {
+            places.push(place);
+        }
+    }
+    record_paths(&places)
+}
+
 /// Reads the state. A missing, unreadable or broken file gives the defaults and
 /// never stops ncrs from starting.
 pub fn load(path: &Path) -> SessionState {
@@ -145,13 +177,21 @@ pub fn save(path: &Path, state: &SessionState) -> io::Result<()> {
 
 /// The first of `path` and its ancestors that is a folder. Relative paths are
 /// refused: they would mean whatever the working directory is at that moment.
+///
+/// A place inside an archive file is returned as it is: the archive is what
+/// exists, and the listing says if the folder in it does not.
 pub fn nearest_existing_directory(path: &Path) -> Option<PathBuf> {
     if !path.is_absolute() {
         return None;
     }
-    path.ancestors()
-        .find(|candidate| candidate.is_dir())
-        .map(Path::to_path_buf)
+    let nearest = path
+        .ancestors()
+        .find(|candidate| candidate.is_dir() || archive::is_archive_file(candidate))?;
+    if nearest.is_dir() {
+        Some(nearest.to_path_buf())
+    } else {
+        Some(path.to_path_buf())
+    }
 }
 
 impl SessionState {
@@ -189,7 +229,15 @@ impl PanelRecord {
 
     /// The saved Back and Forward stacks, capped again.
     pub fn history(&self) -> PanelHistory {
-        let paths = |saved: &[String]| saved.iter().map(PathBuf::from).collect();
+        // Mapped again on the way in: a file written before archive places
+        // were mapped on the way out may still hold them.
+        let paths = |saved: &[String]| {
+            let places: Vec<PathBuf> = saved.iter().map(PathBuf::from).collect();
+            record_history(&places)
+                .into_iter()
+                .map(PathBuf::from)
+                .collect()
+        };
         PanelHistory::restored(paths(&self.back), paths(&self.forward))
     }
 
@@ -338,6 +386,95 @@ mod tests {
             Some(scratch.path().to_path_buf())
         );
         assert_eq!(nearest_existing_directory(Path::new("relative/dir")), None);
+    }
+
+    #[test]
+    fn a_place_in_an_archive_stays_where_it_is() {
+        use crate::fs::archive::fixtures::{write_archive, Item};
+        let scratch = tempfile::tempdir().unwrap();
+        let archive = scratch.path().join("fotos.zip");
+        write_archive(&archive, &[Item::File("2024/a.jpg", b"a")]);
+        let inside = archive.join("2024").join("gone");
+
+        assert_eq!(nearest_existing_directory(&inside), Some(inside.clone()));
+        assert_eq!(nearest_existing_directory(&archive), Some(archive.clone()));
+        let plain_file = scratch.path().join("plain.txt");
+        std::fs::write(&plain_file, b"x").unwrap();
+        assert_eq!(
+            nearest_existing_directory(&plain_file.join("below")),
+            Some(scratch.path().to_path_buf()),
+            "only an archive makes a file a place"
+        );
+    }
+
+    #[test]
+    fn history_places_in_an_archive_become_the_folder_holding_it_without_repeats() {
+        use crate::fs::archive::fixtures::{write_archive, Item};
+        let scratch = tempfile::tempdir().unwrap();
+        let archive = scratch.path().join("fotos.zip");
+        write_archive(&archive, &[Item::File("2024/a.jpg", b"a")]);
+        let other = scratch.path().join("other");
+        std::fs::create_dir(&other).unwrap();
+
+        let history = [
+            scratch.path().to_path_buf(),
+            archive.clone(),
+            archive.join("2024"),
+            other.clone(),
+        ];
+        assert_eq!(
+            record_history(&history),
+            record_paths(&[scratch.path().to_path_buf(), other]),
+            "the three entries on and in the archive collapse into one"
+        );
+    }
+
+    #[test]
+    fn going_back_after_a_restart_never_lands_in_an_archive() {
+        use crate::fs::archive::fixtures::{write_archive, Item};
+        let scratch = tempfile::tempdir().unwrap();
+        let archive = scratch.path().join("fotos.zip");
+        write_archive(&archive, &[Item::File("2024/a.jpg", b"a")]);
+
+        let mut history = PanelHistory::default();
+        history.visit(scratch.path().to_path_buf());
+        history.visit(archive.clone());
+        history.visit(archive.join("2024"));
+        let state_file = scratch.path().join("state.toml");
+        let state = SessionState {
+            left: PanelRecord {
+                back: record_history(history.back()),
+                forward: record_history(history.forward()),
+                ..PanelRecord::default()
+            },
+            ..SessionState::default()
+        };
+        save(&state_file, &state).unwrap();
+
+        let mut restored = load(&state_file).left.history();
+        let target = restored
+            .step_back(scratch.path().to_path_buf())
+            .expect("a folder to go back to");
+        assert!(target.is_dir(), "{} is not a folder", target.display());
+        assert_eq!(target, scratch.path());
+    }
+
+    #[test]
+    fn an_old_state_file_holding_archive_places_is_cleaned_on_load() {
+        use crate::fs::archive::fixtures::{write_archive, Item};
+        let scratch = tempfile::tempdir().unwrap();
+        let archive = scratch.path().join("fotos.zip");
+        write_archive(&archive, &[Item::File("2024/a.jpg", b"a")]);
+        let record = PanelRecord {
+            back: record_paths(&[archive.clone(), archive.join("2024")]),
+            ..PanelRecord::default()
+        };
+        let mut history = record.history();
+        assert_eq!(
+            history.step_back(PathBuf::new()),
+            Some(scratch.path().to_path_buf())
+        );
+        assert_eq!(history.step_back(PathBuf::new()), None);
     }
 
     #[test]

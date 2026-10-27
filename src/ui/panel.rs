@@ -58,6 +58,9 @@ pub struct PanelState {
     /// The load a Back or Forward step started: arriving by it is not a new
     /// visit, so it must not clear Forward.
     pub history_step_request: Option<u64>,
+    /// The archive file the panel is standing in right now; set from the
+    /// listing that put it there.
+    pub archive: Option<PathBuf>,
 }
 
 impl PanelState {
@@ -75,6 +78,7 @@ impl PanelState {
             sort: SortKey::default(),
             history: PanelHistory::default(),
             history_step_request: None,
+            archive: None,
         }
     }
 

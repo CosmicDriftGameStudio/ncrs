@@ -104,6 +104,59 @@ const SEARCH_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(25
 /// files does not make thousands of updates.
 const SEARCH_BATCH: usize = 256;
 
+/// What a panel inside an archive refuses: everything that would change or
+/// hand over the files in it, anything that takes the panel's path or
+/// selection into the config or to Hermes, and an archive inside an archive.
+/// Keys, the command list and the context menu all end up here; the lists of
+/// what may run are `allowed_in_archive` on the three action enums.
+fn archive_refusal(panel: &PanelState, message: &Message) -> Option<Msg> {
+    panel.archive.as_ref()?;
+    match message {
+        Message::Transfer(TransferKind::Move)
+        | Message::OpenExternal(_)
+        | Message::Delete { .. }
+        | Message::CreateDirPrompt
+        | Message::CreateFilePrompt
+        | Message::OpenSearch
+        | Message::AddFavourite
+        | Message::RemoveFavourite
+        | Message::QuickFix(QuickFixMessage::Open)
+        | Message::FilingSetup(FilingSetupMessage::AddPanelFolder(_))
+        | Message::HermesFile(
+            HermesFileMessage::HandToInbox
+            | HermesFileMessage::ProcessAgain
+            | HermesFileMessage::SetRole(_)
+            | HermesFileMessage::ToggleExclusion
+            | HermesFileMessage::ShowInInspection,
+        )
+        | Message::QuickOpen(QuickOpenMessage::Open) => Some(Msg::StatusArchiveReadOnly),
+        Message::OpenSelected
+            if panel.selected_entry().is_some_and(|entry| {
+                !entry.is_dir && !entry.is_parent && fs::archive::is_archive_name(&entry.name)
+            }) =>
+        {
+            Some(Msg::StatusArchiveNested)
+        }
+        _ => None,
+    }
+}
+
+/// Where a shell command of this panel runs. A path inside an archive is no
+/// directory a process can start in, so it runs in the folder the archive
+/// lies in.
+fn shell_directory(panel: &PanelState) -> PathBuf {
+    panel
+        .archive
+        .as_deref()
+        .and_then(archive_file_place)
+        .map_or_else(|| panel.path.clone(), |(folder, _)| folder.to_path_buf())
+}
+
+/// The folder an archive lies in and its file name.
+fn archive_file_place(archive: &Path) -> Option<(&Path, String)> {
+    Some((archive.parent()?, archive.file_name()?.to_str()?.to_owned()))
+}
+
 fn search_batch(generation: u64, events: Vec<fs::search::SearchEvent>) -> Message {
     Message::Search(SearchMessage::Events { generation, events })
 }
@@ -2669,7 +2722,7 @@ impl App {
             };
         }
         let had_search_keys = self.search_has_keys();
-        let applied = self.apply(message);
+        let applied = self.apply_unless_refused(message);
         let task = Task::batch([
             applied,
             self.request_hermes_column(),
@@ -3004,9 +3057,11 @@ impl App {
                 error,
                 sorted_by,
                 select,
+                archive,
             } => {
                 let panel = self.panel_mut(side);
                 if panel.request_id == request_id {
+                    panel.archive = archive;
                     let previous = panel.path.clone();
                     panel.apply_sorted_listing(
                         path,
@@ -3046,20 +3101,7 @@ impl App {
                 Task::none()
             }
 
-            Message::OpenSelected => {
-                let Some(entry) = self.active_panel().selected_entry() else {
-                    return Task::none();
-                };
-                if entry.is_parent {
-                    self.go_up(self.active_panel)
-                } else if entry.is_dir {
-                    let path = entry.path.clone();
-                    self.load(self.active_panel, path, None)
-                } else {
-                    // Placeholder for file actions (view / edit / open with …).
-                    Task::none()
-                }
-            }
+            Message::OpenSelected => self.open_selected(),
             Message::GoUp => self.go_up(self.active_panel),
             Message::TypeAhead(typed) => {
                 self.jump_to_typed(&typed);
@@ -3612,7 +3654,7 @@ impl App {
                 self.command_line.remember(line);
                 self.command_line.started();
                 self.command_line.leave();
-                let directory = self.active_panel().path.clone();
+                let directory = shell_directory(self.active_panel());
                 let command = line.to_owned();
                 Task::batch([
                     release_focus(),
@@ -5730,13 +5772,14 @@ impl App {
         let Some(open) = self.transfer_dialog.as_mut() else {
             return Task::none();
         };
-        let target = match transfer_dialog::validate(open.sources(), &open.target_path()) {
-            Ok(target) => target,
-            Err(refusal) => {
-                open.refuse(refusal);
-                return Task::none();
-            }
-        };
+        let target =
+            match transfer_dialog::validate(open.kind(), open.sources(), &open.target_path()) {
+                Ok(target) => target,
+                Err(refusal) => {
+                    open.refuse(refusal);
+                    return Task::none();
+                }
+            };
         let (kind, sources, policy) = (open.kind(), open.sources().to_vec(), open.policy());
         self.transfer_dialog = None;
         Task::batch([
@@ -6173,6 +6216,39 @@ impl App {
         }
     }
 
+    /// Enter: up, into a folder, or into an archive file. An archive inside an
+    /// archive is refused before this runs.
+    fn open_selected(&mut self) -> Task<Message> {
+        let side = self.active_panel;
+        let panel = self.active_panel();
+        let Some(entry) = panel.selected_entry() else {
+            return Task::none();
+        };
+        if entry.is_parent {
+            return self.go_up(side);
+        }
+        let opens_as_folder =
+            entry.is_dir || (panel.archive.is_none() && fs::archive::is_archive_name(&entry.name));
+        if !opens_as_folder {
+            // Placeholder for file actions (view / edit / open with …).
+            return Task::none();
+        }
+        let path = entry.path.clone();
+        self.load(side, path, None)
+    }
+
+    /// A panel inside an archive can be read and copied from, nothing else.
+    fn apply_unless_refused(&mut self, message: Message) -> Task<Message> {
+        match archive_refusal(self.panel(self.source_side()), &message) {
+            Some(refusal) => {
+                let text = self.lang.text(refusal).to_string();
+                self.set_status_error(&text);
+                Task::none()
+            }
+            None => self.apply(message),
+        }
+    }
+
     /// Navigates `side` to its parent directory, re-selecting the directory
     /// we came from.
     fn go_up(&mut self, side: PanelSide) -> Task<Message> {
@@ -6249,16 +6325,28 @@ impl App {
 
     /// What would be remembered if ncrs quit now.
     fn session_state(&self) -> SessionState {
-        let record = |panel: &PanelState| PanelRecord {
-            path: session_state::record_path(&panel.path),
-            sort: panel.sort.column,
-            descending: panel.sort.descending,
-            back: session_state::record_paths(panel.history.back()),
-            forward: session_state::record_paths(panel.history.forward()),
-            cursor: panel
-                .selected_entry()
-                .filter(|entry| !entry.is_parent)
-                .and_then(|entry| entry.name.to_str().map(str::to_owned)),
+        let record = |panel: &PanelState| {
+            // A restart must not unpack a large tar.zst before the panel shows
+            // anything, and the archive may be gone or replaced by then, so a
+            // panel inside one is remembered as standing on the archive file.
+            let (path, cursor) = match panel.archive.as_deref().and_then(archive_file_place) {
+                Some((folder, name)) => (session_state::record_path(folder), Some(name)),
+                None => (
+                    session_state::record_path(&panel.path),
+                    panel
+                        .selected_entry()
+                        .filter(|entry| !entry.is_parent)
+                        .and_then(|entry| entry.name.to_str().map(str::to_owned)),
+                ),
+            };
+            PanelRecord {
+                path,
+                sort: panel.sort.column,
+                descending: panel.sort.descending,
+                back: session_state::record_history(panel.history.back()),
+                forward: session_state::record_history(panel.history.forward()),
+                cursor,
+            }
         };
         let current = WindowSize {
             width: self.window_size.width,
@@ -8674,7 +8762,7 @@ impl App {
 
     fn request_panel_column(&mut self, side: PanelSide) -> Option<Task<Message>> {
         let panel = self.panel(side);
-        if panel.loading {
+        if panel.loading || panel.archive.is_some() {
             return None;
         }
         let directory = panel.path.clone();
@@ -8731,6 +8819,9 @@ impl App {
 
     /// The review of the file under the cursor, once, when it is an inquiry.
     fn request_cursor_detail(&mut self) -> Option<Task<Message>> {
+        if self.active_panel().archive.is_some() {
+            return None;
+        }
         let path = self.active_panel().selected_entry()?.path.clone();
         if !self.hermes_column.wants_detail(&path) || !self.hermes_detail_reads.insert(path.clone())
         {
@@ -9028,6 +9119,7 @@ impl App {
                 error: listing.error,
                 sorted_by: listing.sorted_by,
                 select: select.clone(),
+                archive: listing.archive,
             }
         })
     }
@@ -9209,6 +9301,7 @@ mod perf_numbers {
             error: None,
             sorted_by: SortKey::default(),
             select: None,
+            archive: None,
         }));
     }
 
@@ -9897,6 +9990,7 @@ mod reload_order {
             error: listing.error,
             sorted_by: listing.sorted_by,
             select: Some("note.txt".into()),
+            archive: listing.archive,
         }));
         assert_eq!(
             app.left_panel
@@ -10876,6 +10970,32 @@ impl App {
         }));
         dialog.set_conflicts(dialog.edit(), 3);
         self.transfer_dialog = Some(dialog);
+    }
+
+    /// Puts the left panel inside a fixed archive and asks for a delete there,
+    /// so the notice that archives are read-only shows, for the snapshot tests.
+    pub fn show_archive_read_only_for_test(&mut self) {
+        let folder = PathBuf::from("/home/test/fotos.zip/2024");
+        let entry = |name: &str, is_dir: bool, is_parent: bool, size: u64| fs::FileEntry {
+            name: std::ffi::OsString::from(name),
+            path: folder.join(name),
+            is_dir,
+            is_symlink: false,
+            is_parent,
+            size,
+            modified: None,
+        };
+        let mut panel = PanelState::new(folder.clone());
+        panel.archive = Some(PathBuf::from("/home/test/fotos.zip"));
+        panel.entries = vec![
+            entry("..", true, true, 0),
+            entry("urlaub", true, false, 0),
+            entry("strand.jpg", false, false, 2_400_000),
+            entry("sonnenuntergang.jpg", false, false, 3_100_000),
+            entry("notizen.txt", false, false, 812),
+        ];
+        self.left_panel = panel;
+        drop(self.apply_unless_refused(Message::Delete { permanent: false }));
     }
 
     /// Shows the progress mask of a fixed copy that is `done` of `total`
@@ -12896,6 +13016,7 @@ mod context_menu_tests {
             error: None,
             sorted_by: fs::SortKey::default(),
             select: None,
+            archive: None,
         }
     }
 
@@ -18056,5 +18177,167 @@ mod favourites_and_history_tests {
                 assert_ne!(routed, Some(Message::HistoryForward));
             }
         }
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod archive_panel_tests {
+    use super::*;
+    use crate::fs::FileEntry;
+    use std::ffi::OsString;
+
+    fn archive_file() -> PathBuf {
+        Path::new("/x").join("fotos.zip")
+    }
+
+    fn entry(name: &str, is_dir: bool) -> FileEntry {
+        FileEntry {
+            name: OsString::from(name),
+            path: archive_file().join(name),
+            is_dir,
+            is_symlink: false,
+            is_parent: false,
+            size: 1,
+            modified: None,
+        }
+    }
+
+    fn panel_in_archive(entries: Vec<FileEntry>) -> PanelState {
+        let mut panel = PanelState::new(archive_file().join("2024"));
+        panel.archive = Some(archive_file());
+        panel.entries = entries;
+        panel
+    }
+
+    #[test]
+    fn a_panel_outside_an_archive_refuses_nothing() {
+        let mut panel = panel_in_archive(vec![entry("inner.zip", false)]);
+        panel.archive = None;
+        for message in [
+            Message::Transfer(TransferKind::Move),
+            Message::OpenSelected,
+            Message::CreateDirPrompt,
+        ] {
+            assert!(archive_refusal(&panel, &message).is_none());
+        }
+    }
+
+    #[test]
+    fn a_panel_inside_an_archive_refuses_what_would_change_it() {
+        let panel = panel_in_archive(vec![entry("a.txt", false)]);
+        for message in [
+            Message::Transfer(TransferKind::Move),
+            Message::CreateDirPrompt,
+            Message::CreateFilePrompt,
+            Message::OpenSearch,
+        ] {
+            assert!(
+                matches!(
+                    archive_refusal(&panel, &message),
+                    Some(Msg::StatusArchiveReadOnly)
+                ),
+                "{message:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_action_is_refused_in_an_archive_exactly_when_it_is_not_allowed() {
+        use crate::context_menu::{ContextAction, HermesAction};
+        use crate::keymap::KeyAction;
+
+        // The panel holds nothing that is an archive, so `Open` is not the
+        // nested case, which depends on the selection.
+        let panel = panel_in_archive(vec![entry("a.txt", false)]);
+        let refused = |message: &Message| archive_refusal(&panel, message).is_some();
+        for action in KeyAction::ALL {
+            assert_eq!(
+                refused(&action.message()),
+                !action.allowed_in_archive(),
+                "{action:?}"
+            );
+        }
+        for action in ContextAction::ALL {
+            assert_eq!(
+                refused(&action.message()),
+                !action.allowed_in_archive(),
+                "{action:?}"
+            );
+        }
+        for action in HermesAction::ALL {
+            assert_eq!(
+                refused(&action.message()),
+                !action.allowed_in_archive(),
+                "{action:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn adding_the_panel_folder_to_the_filing_setup_is_refused_in_an_archive() {
+        use crate::messages::FilingSetupMessage;
+        let panel = panel_in_archive(vec![entry("a.txt", false)]);
+        let message = Message::FilingSetup(FilingSetupMessage::AddPanelFolder(
+            ncrs_intake::LocationMode::Inbox,
+        ));
+        assert!(matches!(
+            archive_refusal(&panel, &message),
+            Some(Msg::StatusArchiveReadOnly)
+        ));
+    }
+
+    #[test]
+    fn copy_and_browsing_stay_allowed_inside_an_archive() {
+        let panel = panel_in_archive(vec![entry("a.txt", false), entry("sub", true)]);
+        for message in [
+            Message::Transfer(TransferKind::Copy),
+            Message::GoUp,
+            Message::OpenSelected,
+        ] {
+            assert!(archive_refusal(&panel, &message).is_none(), "{message:?}");
+        }
+    }
+
+    #[test]
+    fn a_shell_command_in_an_archive_runs_in_the_folder_holding_it() {
+        let folder = tempfile::tempdir().unwrap();
+        let archive = folder.path().join("fotos.zip");
+        let mut panel = panel_in_archive(Vec::new());
+        panel.path = archive.join("2024");
+        panel.archive = Some(archive);
+        assert_eq!(shell_directory(&panel), folder.path());
+
+        panel.archive = None;
+        panel.path = folder.path().to_path_buf();
+        assert_eq!(shell_directory(&panel), folder.path());
+    }
+
+    #[test]
+    fn an_archive_inside_an_archive_is_not_opened() {
+        let panel = panel_in_archive(vec![entry("inner.tar.gz", false)]);
+        assert!(matches!(
+            archive_refusal(&panel, &Message::OpenSelected),
+            Some(Msg::StatusArchiveNested)
+        ));
+    }
+
+    #[test]
+    fn a_panel_in_an_archive_is_recorded_as_standing_on_the_archive_file() {
+        let mut app = App::with_environment(Environment::isolated()).0;
+        app.left_panel = panel_in_archive(vec![entry("a.txt", false)]);
+
+        let record = app.session_state().left;
+
+        assert_eq!(
+            record.path,
+            session_state::record_path(archive_file().parent().unwrap())
+        );
+        assert_eq!(record.cursor.as_deref(), Some("fotos.zip"));
     }
 }

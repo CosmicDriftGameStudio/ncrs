@@ -50,6 +50,8 @@ fn refusal_text(refusal: Refusal, lang: Language) -> &'static str {
         Refusal::SameFolder => Msg::TransferErrorSameFolder,
         Refusal::InsideSource => Msg::TransferErrorInside,
         Refusal::Unreadable => Msg::TransferErrorUnreadable,
+        Refusal::IntoArchive => Msg::TransferErrorIntoArchive,
+        Refusal::MoveFromArchive => Msg::TransferErrorMoveFromArchive,
     })
 }
 

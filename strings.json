@@ -175,6 +175,12 @@
       "de": "Lesen fehlgeschlagen: {reason}"
     },
     {
+      "key": "error.archive_entries_left_out",
+      "context": "Status bar notice for a panel that browses an archive, when some entries are not listed because their path would leave the folder they are copied to, or because they are links or special files. Keep the {count} placeholder.",
+      "en": "{count} entries left out: unsafe paths, links or special files",
+      "de": "{count} Einträge ausgelassen: unsichere Pfade, Links oder Sonderdateien"
+    },
+    {
       "key": "shortcut.commands",
       "context": "Label of the F1 slot in the function key bar at the bottom of the window. The key opens the command palette; at most 8 characters.",
       "en": "Commands",
@@ -329,6 +335,18 @@
       "context": "Status bar confirmation after the user copied the full path of one file or folder to the clipboard. Past participle, short.",
       "en": "Path copied",
       "de": "Pfad kopiert"
+    },
+    {
+      "key": "status.archive_read_only",
+      "context": "Status bar notice when the user tries to change something (move, delete, create, edit) while a panel browses an archive. Archives can only be read for now. 'Sealed chest compartment' is a wink at the Futurama chest of the app's Hermes theme; the second sentence says what to do instead.",
+      "en": "Sealed chest compartment: archives can only be read for now. Copy the files out first.",
+      "de": "Versiegeltes Brustfach: Archive lassen sich vorerst nur lesen. Erst die Dateien herauskopieren."
+    },
+    {
+      "key": "status.archive_nested",
+      "context": "Status bar notice when the user presses Enter on an archive that lies inside another archive. Opening nested archives is not supported; copying it out first works.",
+      "en": "An archive inside an archive opens once you copy it out",
+      "de": "Ein Archiv im Archiv öffnet sich erst nach dem Herauskopieren"
     },
     {
       "key": "status.favourite_added",
@@ -4385,6 +4403,18 @@
       "context": "Error under the target field when the target is the folder the selected entries are already in.",
       "en": "Source and target are the same folder",
       "de": "Quelle und Ziel sind derselbe Ordner"
+    },
+    {
+      "key": "transfer.error_into_archive",
+      "context": "Error under the target field when the target is an archive or a folder inside one. Writing into archives is not supported yet.",
+      "en": "Archives cannot be written to yet",
+      "de": "In Archive lässt sich noch nicht schreiben"
+    },
+    {
+      "key": "transfer.error_move_from_archive",
+      "context": "Error under the target field when the user wants to move (F6) entries out of an archive. Archives are read only, so only copying works.",
+      "en": "Files can only be copied out of an archive, not moved",
+      "de": "Aus einem Archiv lässt sich nur kopieren, nicht verschieben"
     },
     {
       "key": "transfer.error_inside",
