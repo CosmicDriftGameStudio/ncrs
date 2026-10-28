@@ -536,6 +536,7 @@ jobs:
           cat SHA256SUMS
 
       - name: Publish release
+        id: publish
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
         with:
           files: dist/*
@@ -726,3 +727,170 @@ jobs:
             --version "$version" \
             --urls "https://github.com/$REPOSITORY/releases/download/$REF_NAME/ncrs-x86_64-pc-windows-msvc.zip" \
             --submit
+
+      # Last and gated on the outcome of the publish step: the GitHub assets,
+      # brew, AUR and winget are out before it, a failed upload fails the job
+      # without blocking them, and a failure in those steps does not suppress
+      # it. Push only: a workflow_dispatch on a tag is a re-run and would
+      # collide with the build number already uploaded. CFBundleVersion is the
+      # X.Y.Z version (package_app), unique per real tag, so a rejected build
+      # needs a new patch tag.
+      - name: Upload the App Store build
+        if: ${{ !cancelled() && steps.publish.outcome == 'success' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          # base64, like the Developer ID certificate above.
+          MAS_APP_CERTIFICATE_P12: ${{ secrets.MAS_APP_CERTIFICATE_P12 }}
+          MAS_INSTALLER_CERTIFICATE_P12: ${{ secrets.MAS_INSTALLER_CERTIFICATE_P12 }}
+          MAS_CERTIFICATE_PASSWORD: ${{ secrets.MAS_CERTIFICATE_PASSWORD }}
+          MAS_PROVISIONING_PROFILE: ${{ secrets.MAS_PROVISIONING_PROFILE }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          VERSION="${REF_NAME#v}"
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "### App Store upload skipped: pre-release tag" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          missing=""
+          for name in MAS_APP_CERTIFICATE_P12 MAS_INSTALLER_CERTIFICATE_P12 MAS_CERTIFICATE_PASSWORD \
+            MAS_PROVISIONING_PROFILE APPLE_ID APPLE_APP_SPECIFIC_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              missing="$missing $name"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            {
+              echo "### App Store upload skipped"
+              echo "Missing secrets:$missing"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::App Store upload skipped, missing secrets:$missing"
+            exit 0
+          fi
+
+          umask 077
+          work="$RUNNER_TEMP/app-store"
+          mkdir "$work"
+
+          KEYCHAIN="$RUNNER_TEMP/app-store.keychain-db"
+          PASS=$(uuidgen)
+          security create-keychain -p "$PASS" "$KEYCHAIN"
+          trap 'security delete-keychain "$KEYCHAIN" 2>/dev/null || true; rm -rf "$work"' EXIT
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$PASS" "$KEYCHAIN"
+
+          printf '%s' "$MAS_APP_CERTIFICATE_P12" | tr -d '[:space:]' | base64 -D > "$work/app.p12"
+          if [ ! -s "$work/app.p12" ]; then
+            echo "::error::the decoded certificate is empty — MAS_APP_CERTIFICATE_P12 is not valid base64"
+            exit 1
+          fi
+          printf '%s' "$MAS_INSTALLER_CERTIFICATE_P12" | tr -d '[:space:]' | base64 -D > "$work/installer.p12"
+          if [ ! -s "$work/installer.p12" ]; then
+            echo "::error::the decoded certificate is empty — MAS_INSTALLER_CERTIFICATE_P12 is not valid base64"
+            exit 1
+          fi
+          printf '%s' "$MAS_PROVISIONING_PROFILE" | tr -d '[:space:]' | base64 -D > "$work/ncrs.provisionprofile"
+          if [ ! -s "$work/ncrs.provisionprofile" ]; then
+            echo "::error::the decoded profile is empty — MAS_PROVISIONING_PROFILE is not valid base64"
+            exit 1
+          fi
+
+          security import "$work/app.p12" -k "$KEYCHAIN" -P "$MAS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security import "$work/installer.p12" -k "$KEYCHAIN" -P "$MAS_CERTIFICATE_PASSWORD" -T /usr/bin/productbuild
+          rm -f "$work/app.p12" "$work/installer.p12"
+          # Back to the default before the bundle is built: the .pkg records
+          # its modes, and an app installed owner-only does not start for
+          # anyone but root.
+          umask 022
+
+          # Apple Distribution and the installer certificate chain to this
+          # intermediate; the runner image is not guaranteed to have it. An
+          # intermediate is no trust anchor, the chain still has to end at
+          # Apple's root.
+          curl --fail --silent --show-error --location -o "$work/AppleWWDRCAG3.cer" \
+            https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer
+          security import "$work/AppleWWDRCAG3.cer" -k "$KEYCHAIN"
+
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$PASS" "$KEYCHAIN" > /dev/null
+          # The signing step's trap deleted its keychain, so the search list
+          # points at a dead file.
+          security list-keychain -d user -s "$KEYCHAIN"
+
+          APP_IDENTITY="Apple Distribution: Marc Frost (2ZJ4C4D9SP)"
+          INSTALLER_IDENTITY="3rd Party Mac Developer Installer: Marc Frost (2ZJ4C4D9SP)"
+          if ! security find-certificate -c "$APP_IDENTITY" "$KEYCHAIN" > /dev/null; then
+            echo "::error::no certificate named $APP_IDENTITY in MAS_APP_CERTIFICATE_P12"
+            exit 1
+          fi
+          if ! security find-certificate -c "$INSTALLER_IDENTITY" "$KEYCHAIN" > /dev/null; then
+            echo "::error::no certificate named $INSTALLER_IDENTITY in MAS_INSTALLER_CERTIFICATE_P12"
+            exit 1
+          fi
+
+          for t in x86_64-apple-darwin aarch64-apple-darwin; do
+            mkdir "$work/$t"
+            tar -xzf "artifacts/ncrs-$t/ncrs-$t.tar.gz" -C "$work/$t"
+            for f in "$work/$t/ncrs-$t/ncrs" "$work/$t/ncrs-$t/libpdfium.dylib" "artifacts/sandbox-binary-$t/ncrs"; do
+              if [ ! -f "$f" ]; then
+                echo "::error::missing $f"
+                exit 1
+              fi
+            done
+          done
+          cp -R "$work/aarch64-apple-darwin/ncrs-aarch64-apple-darwin" "$work/universal"
+          lipo -create "$work/x86_64-apple-darwin/ncrs-x86_64-apple-darwin/libpdfium.dylib" \
+            "$work/aarch64-apple-darwin/ncrs-aarch64-apple-darwin/libpdfium.dylib" \
+            -output "$work/universal/libpdfium.dylib"
+          lipo -create artifacts/sandbox-binary-x86_64-apple-darwin/ncrs \
+            artifacts/sandbox-binary-aarch64-apple-darwin/ncrs \
+            -output "$work/ncrs-store"
+          chmod +x "$work/ncrs-store"
+          scripts/package.sh store-app "$work/universal" "$work/ncrs-store" "$VERSION" \
+            "$work/ncrs.provisionprofile" "$work/store" \
+            --licenses artifacts/third-party-licenses/THIRD_PARTY_LICENSES.html
+          app="$work/store/ncrs.app"
+
+          # The profile must grant exactly the identifiers the app is signed
+          # with, and be an App Store one: a development or ad-hoc profile
+          # lists devices. The identifiers are not secret.
+          PLISTBUDDY=/usr/libexec/PlistBuddy
+          security cms -D -i "$work/ncrs.provisionprofile" > "$work/profile.plist"
+          for key in com.apple.application-identifier com.apple.developer.team-identifier; do
+            in_profile=$("$PLISTBUDDY" -c "Print :Entitlements:$key" "$work/profile.plist") \
+              || { echo "::error::the profile grants no $key"; exit 1; }
+            in_app=$("$PLISTBUDDY" -c "Print :$key" "$work/store/store.entitlements") \
+              || { echo "::error::store.entitlements has no $key"; exit 1; }
+            if [ "$in_profile" != "$in_app" ]; then
+              echo "::error::$key is $in_profile in the profile but $in_app in the entitlements"
+              exit 1
+            fi
+          done
+          if "$PLISTBUDDY" -c 'Print :ProvisionedDevices' "$work/profile.plist" > /dev/null 2>&1; then
+            echo "::error::MAS_PROVISIONING_PROFILE lists devices: a development or ad-hoc profile, not an App Store one"
+            exit 1
+          fi
+
+          codesign --force --sign "$APP_IDENTITY" --keychain "$KEYCHAIN" "$app/Contents/Frameworks/libpdfium.dylib"
+          codesign --force --sign "$APP_IDENTITY" --keychain "$KEYCHAIN" \
+            --entitlements "$work/store/store.entitlements" "$app"
+          scripts/package.sh check-store "$app" "$work/ncrs.provisionprofile" arm64 x86_64
+
+          pkg="$work/ncrs-$VERSION.pkg"
+          productbuild --component "$app" /Applications --sign "$INSTALLER_IDENTITY" --keychain "$KEYCHAIN" "$pkg"
+          pkgutil --check-signature "$pkg"
+
+          # App Store Connect rejects builds from too old an SDK (ITMS-90725);
+          # this shows the SDK and minimum macOS of every slice, as the build
+          # jobs linked them (this runner's own SDK does not matter).
+          xcrun vtool -show-build "$app/Contents/MacOS/ncrs" || true
+          xcrun vtool -show-build "$app/Contents/Frameworks/libpdfium.dylib" || true
+
+          # @env: keeps the password out of the argument list.
+          xcrun altool --validate-app -f "$pkg" -t macos -u "$APPLE_ID" -p @env:APPLE_APP_SPECIFIC_PASSWORD
+          xcrun altool --upload-app -f "$pkg" -t macos -u "$APPLE_ID" -p @env:APPLE_APP_SPECIFIC_PASSWORD
+
+          echo "Uploaded build $VERSION (universal) to App Store Connect. Export compliance is answered there per build." >> "$GITHUB_STEP_SUMMARY"

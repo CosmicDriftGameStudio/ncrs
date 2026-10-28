@@ -14,6 +14,13 @@ All notable changes to this project are documented here. The format follows
   Developer ID and the App Sandbox entitlements of
   `packaging/macos/sandbox.entitlements`. The pull request build packs and
   ad-hoc signs it.
+- A real release tag (no pre-release) uploads a universal App Store build to
+  App Store Connect once the GitHub release is published: bundle ID
+  `dev.cosmicdrift.ncrs`, the sandbox entitlements plus application and team
+  identifier, the provisioning profile embedded, signed with Apple
+  Distribution, the `.pkg` signed with the installer certificate. Without the
+  MAS secrets the step is skipped. The pull request build packs and ad-hoc
+  signs it with a placeholder profile.
 
 ### Changed
 

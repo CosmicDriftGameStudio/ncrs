@@ -321,6 +321,28 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$app"
           scripts/package.sh check-sandbox "$app" sandboxed
 
+      # After the sandboxed step because it reuses its binary in
+      # target/<t>/release/ncrs. A pull request has no profile and no identity,
+      # so a placeholder profile and ad-hoc signatures; the release signs the
+      # same layout with Apple Distribution.
+      - name: Package the App Store app
+        if: matrix.target == 'aarch64-apple-darwin'
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          printf 'placeholder provisioning profile\n' > target/placeholder.provisionprofile
+          # Owner-only, like the profile the release decodes from its secret.
+          chmod 600 target/placeholder.provisionprofile
+          scripts/package.sh store-app target/package/ncrs-aarch64-apple-darwin target/aarch64-apple-darwin/release/ncrs "$version" target/placeholder.provisionprofile target/package-store-app
+          app=target/package-store-app/ncrs.app
+          codesign --force --sign - "$app/Contents/Frameworks/libpdfium.dylib"
+          codesign --force --sign - --entitlements target/package-store-app/store.entitlements "$app"
+          scripts/package.sh check-store "$app" target/placeholder.provisionprofile arm64
+          productbuild --component "$app" /Applications target/package-store-app/ncrs.pkg
+          rm -rf target/package-store-app/expanded
+          pkgutil --expand-full target/package-store-app/ncrs.pkg target/package-store-app/expanded
+          cmp target/placeholder.provisionprofile "$(find target/package-store-app/expanded -name embedded.provisionprofile | head -n 1)"
+
   # Installs the packages the targets job built on a clean Debian-family and a
   # clean Fedora image, each on its own CPU architecture, and starts the
   # binary. This is what catches a missing dependency or a wrong path, which

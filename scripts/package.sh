@@ -8,6 +8,8 @@
 #   package.sh app <dir-with-binary-and-lib> <version> <min-macos> <out-dir> [--licenses <file>]
 #   package.sh sandbox-app <dir-with-binary-and-lib> <sandbox-binary> <version> <min-macos> <out-dir> [--licenses <file>]
 #   package.sh check-sandbox <app> sandboxed|plain
+#   package.sh store-app <dir-with-binary-and-lib> <store-binary> <version> <profile> <out-dir> [--licenses <file>]
+#   package.sh check-store <app> <profile> <arch>...
 #   package.sh linux-packages <triple> <stage-dir> <version> <out-dir> <nfpm-binary>
 #
 # sandbox-app is app with the binary swapped for <sandbox-binary> (the build
@@ -15,6 +17,12 @@
 # from the one of the normal app, both write <out-dir>/ncrs.app.
 # check-sandbox reads the entitlements of a signed app and fails unless the App
 # Sandbox is on (sandboxed) or not on (plain).
+# store-app is app for the Mac App Store: <store-binary> (the sandbox build,
+# universal), the store bundle ID, <profile> embedded as
+# Contents/embedded.provisionprofile and <out-dir>/store.entitlements (the
+# sandbox ones plus application and team identifier) to sign the bundle with.
+# check-store verifies the signed result: bundle ID, entitlements, the embedded
+# profile equal to <profile> and every <arch> in the executable and the library.
 #
 # <pdfium-dir> is what scripts/fetch-pdfium.sh unpacked. archive and app end
 # with a layout check that lists the result and fails when the binary or the
@@ -47,6 +55,12 @@ ICON_SIZES="32 48 64 128 256 512"
 # the Launch Services entry of the Developer ID app and leaves the ID of the
 # later App Store app untouched.
 SANDBOX_BUNDLE_ID=dev.cosmicdrift.ncrs.sandbox
+
+STORE_BUNDLE_ID=dev.cosmicdrift.ncrs
+STORE_TEAM_ID=2ZJ4C4D9SP
+# The store app is universal: 10.15 is the floor of the x86_64 slice, the
+# arm64 slice carries 11.0 in its own load command (the Xcode convention).
+STORE_MIN_MACOS=10.15
 
 # Prints "<library file name> <subfolder of the fetch-pdfium output>".
 library_for() {
@@ -235,24 +249,50 @@ package_app() {
   check_layout "$app" "${expected[@]}"
 }
 
-package_sandbox_app() {
-  [ "$#" -ge 5 ] || usage
-  local source_dir="$1" sandbox_binary="$2"
-  shift 2
-  [ -f "$sandbox_binary" ] || { echo "error: no sandbox binary at $sandbox_binary" >&2; exit 1; }
+# package_app with the binary swapped for <binary> and the given bundle ID.
+package_app_with_binary() {
+  [ "$#" -ge 6 ] || usage
+  local bundle_id="$1" source_dir="$2" swapped_binary="$3"
+  shift 3
+  [ -f "$swapped_binary" ] || { echo "error: no binary at $swapped_binary" >&2; exit 1; }
   local out_dir="$3"
 
   local stage_root
   stage_root="$(mktemp -d)"
-  mkdir -p "$stage_root/ncrs-sandbox"
-  cp -R "$source_dir/." "$stage_root/ncrs-sandbox"
-  cp "$sandbox_binary" "$stage_root/ncrs-sandbox/ncrs"
+  mkdir -p "$stage_root/ncrs-swapped"
+  cp -R "$source_dir/." "$stage_root/ncrs-swapped"
+  cp "$swapped_binary" "$stage_root/ncrs-swapped/ncrs"
   # upload-artifact drops the executable bit.
-  chmod +x "$stage_root/ncrs-sandbox/ncrs"
+  chmod +x "$stage_root/ncrs-swapped/ncrs"
 
-  package_app "$stage_root/ncrs-sandbox" "$@"
-  plutil -replace CFBundleIdentifier -string "$SANDBOX_BUNDLE_ID" "$(absolute "$out_dir")/ncrs.app/Contents/Info.plist"
+  package_app "$stage_root/ncrs-swapped" "$@"
+  plutil -replace CFBundleIdentifier -string "$bundle_id" "$(absolute "$out_dir")/ncrs.app/Contents/Info.plist"
   rm -rf "$stage_root"
+}
+
+package_sandbox_app() {
+  [ "$#" -ge 5 ] || usage
+  package_app_with_binary "$SANDBOX_BUNDLE_ID" "$@"
+}
+
+package_store_app() {
+  [ "$#" -ge 5 ] || usage
+  local source_dir="$1" store_binary="$2" version="$3" profile="$4" out_dir="$5"
+  shift 5
+  [ -f "$profile" ] || { echo "error: no provisioning profile at $profile" >&2; exit 1; }
+  package_app_with_binary "$STORE_BUNDLE_ID" "$source_dir" "$store_binary" "$version" "$STORE_MIN_MACOS" "$out_dir" "$@"
+  out_dir="$(absolute "$out_dir")"
+  # Before any signing, so the seal covers it.
+  cp "$profile" "$out_dir/ncrs.app/Contents/embedded.provisionprofile"
+  # The secret it came from is decoded owner-only, and cp keeps that mode.
+  chmod 0644 "$out_dir/ncrs.app/Contents/embedded.provisionprofile"
+  cp "$repo_root/packaging/macos/sandbox.entitlements" "$out_dir/store.entitlements"
+  # PlistBuddy, not plutil: plutil splits keys on dots.
+  /usr/libexec/PlistBuddy \
+    -c "Add :com.apple.application-identifier string $STORE_TEAM_ID.$STORE_BUNDLE_ID" \
+    -c "Add :com.apple.developer.team-identifier string $STORE_TEAM_ID" \
+    "$out_dir/store.entitlements"
+  echo "wrote $out_dir/store.entitlements and the embedded profile"
 }
 
 # Fails unless the signed app has (sandboxed) or lacks (plain) the App Sandbox
@@ -281,6 +321,44 @@ check_sandbox() {
     exit 1
   fi
   echo "$app is $actual, as expected"
+}
+
+# Fails unless the signed app is the App Store app: store bundle ID, sandbox,
+# application and team identifier in the entitlements, the given profile
+# embedded and both slices in the executable and the library.
+check_store() {
+  [ "$#" -ge 3 ] || usage
+  local app="$1" profile="$2" bundle_id entitlements file arch
+  shift 2
+  codesign --verify --deep --strict "$app" \
+    || { echo "error: $app does not pass codesign --verify --deep --strict" >&2; exit 1; }
+  bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")"
+  [ "$bundle_id" = "$STORE_BUNDLE_ID" ] \
+    || { echo "error: bundle ID is $bundle_id, expected $STORE_BUNDLE_ID" >&2; exit 1; }
+  check_sandbox "$app" sandboxed
+  entitlements="$(codesign -d --entitlements - --xml "$app" 2>/dev/null | tr -d '[:space:]')"
+  local expected_entitlement
+  for expected_entitlement in \
+    "<key>com.apple.application-identifier</key><string>$STORE_TEAM_ID.$STORE_BUNDLE_ID</string>" \
+    "<key>com.apple.developer.team-identifier</key><string>$STORE_TEAM_ID</string>"; do
+    case "$entitlements" in
+      *"$expected_entitlement"*) ;;
+      *) echo "error: entitlements of $app lack $expected_entitlement" >&2; exit 1 ;;
+    esac
+  done
+  cmp "$app/Contents/embedded.provisionprofile" "$profile" \
+    || { echo "error: embedded.provisionprofile differs from $profile" >&2; exit 1; }
+  # The installer keeps these modes; an owner-only file is unreadable for the user.
+  local unreadable
+  unreadable="$(find "$app" ! -perm -o+r | head -n 1)"
+  [ -z "$unreadable" ] || { echo "error: $unreadable is not world-readable" >&2; exit 1; }
+  for file in "$app/Contents/MacOS/ncrs" "$app/Contents/Frameworks/libpdfium.dylib"; do
+    for arch in "$@"; do
+      lipo "$file" -verify_arch "$arch" \
+        || { echo "error: $file lacks the $arch slice" >&2; exit 1; }
+    done
+  done
+  echo "$app is the App Store app ($*), as expected"
 }
 
 # NEEDED sonames of an ELF file, one per line.
@@ -427,6 +505,8 @@ case "$command" in
   app) package_app "$@" ;;
   sandbox-app) package_sandbox_app "$@" ;;
   check-sandbox) check_sandbox "$@" ;;
+  store-app) package_store_app "$@" ;;
+  check-store) check_store "$@" ;;
   linux-packages) package_linux "$@" ;;
   *) usage ;;
 esac
