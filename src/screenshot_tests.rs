@@ -19,6 +19,9 @@ use crate::messages::{Message, PanelSide};
 const OUTPUT_DIRECTORY: &str = "docs/screenshots";
 const WINDOW_SIZE: iced::Size = iced::Size::new(1280.0, 640.0);
 const VISIBLE_ROWS: usize = 17;
+const STORE_DIRECTORY: &str = "docs/store-screenshots";
+/// 16:10 as the Mac App Store requires; rendered at 2x it is 2560×1600.
+const STORE_WINDOW_SIZE: iced::Size = iced::Size::new(1280.0, 800.0);
 
 struct Row {
     name: &'static str,
@@ -196,8 +199,12 @@ fn drives() -> Vec<Volume> {
 /// to the file name, so it renders into an empty directory and the single
 /// file that appears there is copied to the wanted name.
 fn write_screenshot(app: &App, file_name: &str) {
+    write_screenshot_to(app, OUTPUT_DIRECTORY, WINDOW_SIZE, file_name);
+}
+
+fn write_screenshot_to(app: &App, directory: &str, size: iced::Size, file_name: &str) {
     let scratch = tempfile::tempdir().expect("scratch directory");
-    let mut simulator = Simulator::with_size(iced::Settings::default(), WINDOW_SIZE, app.view());
+    let mut simulator = Simulator::with_size(iced::Settings::default(), size, app.view());
     simulator
         .snapshot(&iced::Theme::Dark)
         .expect("the view should render")
@@ -210,8 +217,8 @@ fn write_screenshot(app: &App, file_name: &str) {
         .find(|path| path.extension().is_some_and(|extension| extension == "png"))
         .expect("the renderer wrote no png");
 
-    std::fs::create_dir_all(OUTPUT_DIRECTORY).expect("output directory");
-    let target = PathBuf::from(OUTPUT_DIRECTORY).join(file_name);
+    std::fs::create_dir_all(directory).expect("output directory");
+    let target = PathBuf::from(directory).join(file_name);
     std::fs::copy(&written, &target).expect("copy the screenshot");
     assert!(target.exists(), "{} was not written", target.display());
 }
@@ -248,5 +255,53 @@ mod tests {
         let mut search = showcase_app();
         search.show_search_results_for_test("hello", showcase_search_results());
         write_screenshot(&search, "search.png");
+    }
+
+    #[test]
+    #[ignore = "writes docs/store-screenshots; run with `cargo test store_screenshots -- --ignored`"]
+    fn store_screenshots() {
+        for language in ["en", "de"] {
+            let showcase = || {
+                let mut app = showcase_app();
+                if language == "de" {
+                    drop(app.update(Message::SwitchLanguage));
+                }
+                app
+            };
+
+            let main = showcase();
+
+            let mut search = showcase();
+            search.show_search_results_for_test("hello", showcase_search_results());
+
+            let mut context = showcase();
+            context.set_pointer_for_test(iced::Point::new(260.0, 150.0));
+            drop(context.update(Message::ContextMenuAt {
+                side: PanelSide::Left,
+                index: 5,
+            }));
+
+            let mut menu = showcase();
+            menu.open_volume_menu_for_test(PanelSide::Left, drives());
+
+            let mut delete = showcase();
+            drop(delete.update(Message::Delete { permanent: false }));
+
+            let scenes = [
+                ("1-main", main),
+                ("2-search", search),
+                ("3-context-menu", context),
+                ("4-drive-menu", menu),
+                ("5-delete", delete),
+            ];
+            for (name, app) in scenes {
+                write_screenshot_to(
+                    &app,
+                    STORE_DIRECTORY,
+                    STORE_WINDOW_SIZE,
+                    &format!("{language}-{name}.png"),
+                );
+            }
+        }
     }
 }
