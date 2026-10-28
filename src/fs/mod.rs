@@ -29,7 +29,8 @@ pub use open::{
 pub use ops::{create_dir, create_file, CreateDirError};
 pub use reader::{home_dir, read_directory, start_dir, ReadError};
 pub use sandbox::{
-    grant_start_dir, preferred_home, restore_grants, sandbox_active, sandbox_home, SandboxAccess,
+    grant_start_dir, grant_start_dir_for, preferred_home, restore_grants, sandbox_active,
+    sandbox_home, SandboxAccess,
 };
 pub use sort::{sort_entries, SortColumn, SortKey};
 pub use typed_path::{locate, resolve as resolve_typed_path, Destination, PathProblem};

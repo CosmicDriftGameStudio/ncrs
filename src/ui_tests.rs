@@ -1218,6 +1218,7 @@ mod status_notice {
                 job_press: None,
                 filing: None,
                 on_blocked_press: None,
+                blocked_by_sandbox: false,
                 notice: app.notice_for_test(),
                 hermes_line: None,
             },
@@ -1561,6 +1562,26 @@ mod filing_cards {
         // Directories are drawn with a leading slash.
         sim.click("/Documents").expect("a panel row");
         sim.into_messages().collect()
+    }
+
+    #[test]
+    fn a_double_click_on_a_panel_row_activates_it() {
+        let app = App::with_fixed_panels();
+        let mut sim = simulator(&app);
+        sim.click("/Documents").expect("a panel row");
+        sim.click("/Documents").expect("a panel row");
+        let messages: Vec<Message> = sim.into_messages().collect();
+        assert!(
+            matches!(
+                messages.as_slice(),
+                [
+                    Message::RowClicked { .. },
+                    Message::RowClicked { .. },
+                    Message::RowActivated { .. }
+                ]
+            ),
+            "{messages:?}"
+        );
     }
 
     #[test]
@@ -2466,7 +2487,7 @@ mod theme_fetch_card {
     use crate::vsix::Brightness;
 
     const HELP: &str =
-        "Downloads only from Open VSX. Nothing goes out before you press Enter or Fetch.";
+        "Downloads from Open VSX, or a theme file from the https link you give. Nothing goes out before you press Enter or Fetch.";
 
     fn fetch_message(message: ThemeFetchMessage) -> Message {
         Message::ThemeFetch(message)

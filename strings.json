@@ -169,6 +169,12 @@
       "de": "macOS sperrt den Zugriff. ncrs oder dem Terminal, aus dem es gestartet wurde, Festplattenvollzugriff geben (Klick öffnet)"
     },
     {
+      "key": "error.access_blocked_sandbox",
+      "context": "Status bar error in the App Store build when macOS refused to read the directory shown at the left of the bar, so no path in the text. The line is cut off at the window edge: keep it short. The line is a button that opens the system folder dialog, where the user allows ncrs to open the folder.",
+      "en": "macOS blocks access to this folder. Click to allow ncrs to open it",
+      "de": "macOS sperrt den Zugriff auf diesen Ordner. Klick erlaubt ncrs, ihn zu öffnen"
+    },
+    {
       "key": "error.task_failed",
       "context": "Status bar error shown when the background read task itself failed, not the filesystem. Internal error, users should rarely see it. Keep the {reason} placeholder.",
       "en": "Directory read task failed: {reason}",
@@ -218,15 +224,15 @@
     },
     {
       "key": "dialog.pack.title",
-      "context": "Title of the pack dialog (Alt+F5), which asks for the name of a new archive in the folder of the other panel and packs the selected files into it. Imperative, matches the create-directory title.",
+      "context": "Title of the pack dialog (Alt+F5), which asks for the path of a new archive (by default in the folder of the other panel) and packs the selected files into it. Imperative, matches the create-directory title.",
       "en": "Pack into archive",
       "de": "In Archiv packen"
     },
     {
       "key": "dialog.pack.label",
-      "context": "Label next to the text field for the name of the new archive. The ending decides the format (zip, tar, tar.gz, tar.zst, 7z). One or two words, no colon.",
-      "en": "Archive name",
-      "de": "Name des Archivs"
+      "context": "Label next to the text field of the pack dialog. The field holds the full path of the new archive; a name without a folder is taken relative to the other panel. The ending decides the format (zip, tar, tar.gz, tar.zst, 7z). A few words, no colon.",
+      "en": "Archive path",
+      "de": "Pfad des Archivs"
     },
     {
       "key": "dialog.pack.confirm",
@@ -293,6 +299,12 @@
       "context": "Shown in the pack dialog when the typed name does not end in a known archive extension, so ncrs cannot tell the format. Lists the endings.",
       "en": "The name must end in .zip, .tar, .tar.gz, .tgz, .tar.zst, .tzst or .7z",
       "de": "Der Name muss auf .zip, .tar, .tar.gz, .tgz, .tar.zst, .tzst oder .7z enden"
+    },
+    {
+      "key": "error.pack_folder_missing",
+      "context": "Shown in the pack dialog when the folder in the typed archive path does not exist. The dialog does not create folders.",
+      "en": "The folder for this archive does not exist",
+      "de": "Der Ordner für dieses Archiv existiert nicht"
     },
     {
       "key": "error.pack_exists",
@@ -398,9 +410,9 @@
     },
     {
       "key": "status.pack_unavailable",
-      "context": "Status bar notice when the pack key is pressed but a panel is inside an archive or on an SFTP server. Packing reads from one folder of this computer and writes a new archive into the folder of the other panel.",
-      "en": "Packing needs two folders on this computer: neither panel may be inside an archive or on a server",
-      "de": "Zum Packen müssen beide Panels Ordner dieses Computers zeigen, nicht ein Archiv und keinen Server"
+      "context": "Status bar notice when the pack key is pressed in a panel that is inside an archive or on an SFTP server. Packing reads from a folder of this computer; an archive or server in the other panel is fine, the new archive then goes beside the files.",
+      "en": "Packing needs files from a folder on this computer, not from an archive or a server",
+      "de": "Packen braucht Dateien aus einem Ordner dieses Computers, nicht aus einem Archiv oder von einem Server"
     },
     {
       "key": "status.packed",
@@ -855,14 +867,14 @@
     {
       "key": "search.query_placeholder",
       "context": "Placeholder of the search text field at the top of the search view, shown while it is empty. A short verb or noun.",
-      "en": "Search",
-      "de": "Suchen"
+      "en": "Text in files",
+      "de": "Text in Dateien"
     },
     {
       "key": "search.files_label",
       "context": "Label in front of the field that limits the search to file names matching patterns (the include field). Ends with a colon, kept short: the label column is narrow.",
-      "en": "Files:",
-      "de": "Dateien:"
+      "en": "File names:",
+      "de": "Dateinamen:"
     },
     {
       "key": "search.exclude_label",
@@ -939,8 +951,8 @@
     {
       "key": "search.hint",
       "context": "Summary line of the search view while both the search field and the Files field are empty: tells what typing does.",
-      "en": "Type to search file contents, or fill in Files for a name search",
-      "de": "Tippen sucht in Dateiinhalten, nur „Dateien“ ausgefüllt sucht nach Namen"
+      "en": "Type to search file contents, or fill in File names for a name search",
+      "de": "Tippen sucht in Dateiinhalten, nur „Dateinamen“ ausgefüllt sucht nach Namen"
     },
     {
       "key": "search.error_pattern",
@@ -2282,15 +2294,15 @@
     },
     {
       "key": "theme_fetch.placeholder",
-      "context": "Placeholder of the text field in the theme download card, shown while it is empty. The extension ID has the form publisher.name; a link to the extension is accepted too.",
-      "en": "publisher.name or link",
-      "de": "Herausgeber.name oder Link"
+      "context": "Placeholder of the text field in the theme download card, shown while it is empty. The extension ID has the form publisher.name; a link to the extension or an https link to a theme file (.json) is accepted too. Short: the field is narrow.",
+      "en": "publisher.name, link or theme.json URL",
+      "de": "Herausgeber.name, Link oder theme.json-URL"
     },
     {
       "key": "theme_fetch.help",
-      "context": "Help line under the text field in the theme download card. Open VSX is the open extension registry; the name stays as it is. Its downloads may come from a second Open VSX host, so the line names the registry, not a single host.",
-      "en": "Downloads only from Open VSX. Nothing goes out before you press Enter or Fetch.",
-      "de": "Lädt nur von Open VSX. Es geht nichts raus, bevor du Enter oder Holen drückst."
+      "context": "Help line under the text field in the theme download card. Open VSX is the open extension registry; the name stays as it is. Its downloads may come from a second Open VSX host, so the line names the registry, not a single host. A theme file link is fetched from the host it names, over https only.",
+      "en": "Downloads from Open VSX, or a theme file from the https link you give. Nothing goes out before you press Enter or Fetch.",
+      "de": "Lädt von Open VSX oder eine Theme-Datei vom https-Link, den du angibst. Es geht nichts raus, bevor du Enter oder Holen drückst."
     },
     {
       "key": "theme_fetch.fetch",
@@ -4142,9 +4154,9 @@
     },
     {
       "key": "settings.row_open_vsx_note",
-      "context": "Explanation under the Open VSX setting: a theme is downloaded by its ID or its link and then used.",
-      "en": "Downloads a theme by its ID or link and uses it.",
-      "de": "Lädt ein Theme über seine ID oder seinen Link und verwendet es."
+      "context": "Explanation under the Open VSX setting: a theme is downloaded by its ID or its link, or from an https link to a VS Code theme file (.json), and then used.",
+      "en": "Downloads a theme by its ID or link, or from an https link to a theme .json file, and uses it.",
+      "de": "Lädt ein Theme über seine ID oder seinen Link oder von einem https-Link auf eine Theme-.json-Datei und verwendet es."
     },
     {
       "key": "settings.vscode_problem",

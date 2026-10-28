@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use jsonc_parser::{parse_to_value, JsonValue, ParseOptions};
 
-use crate::config::{ConfigError, FilingWriteError};
+use crate::config::{ConfigError, FilingWriteError, SIZE_LIMIT};
 
 const API_BASE: &str = "https://open-vsx.org/api/";
 const DOWNLOAD_PREFIX: &str = "https://open-vsx.org/";
@@ -19,6 +19,7 @@ pub const MAX_REDIRECTS: usize = 3;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_METADATA_BYTES: u64 = 1024 * 1024;
 const MAX_PART_LENGTH: usize = 128;
+const MAX_THEME_FILE_NAME: usize = 120;
 
 /// The largest package taken; ureq's own default would be 10 MiB.
 pub const MAX_VSIX_BYTES: u64 = 20 * 1024 * 1024;
@@ -102,6 +103,93 @@ fn is_valid_part(part: &str) -> bool {
         .is_some_and(|first| first.is_ascii_alphanumeric())
         && part.len() <= MAX_PART_LENGTH
         && characters.all(|next| next.is_ascii_alphanumeric() || next == '_' || next == '-')
+}
+
+/// A direct link to a VS Code theme file: `https` only, no user info, no port
+/// but 443, and a name that ends in `.json` or `.jsonc`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThemeFileUrl {
+    url: String,
+    file_name: String,
+}
+
+impl ThemeFileUrl {
+    pub fn parse(input: &str) -> Option<Self> {
+        let url = input.trim();
+        if url.chars().any(|ch| ch.is_control() || ch.is_whitespace()) {
+            return None;
+        }
+        let after_scheme = url.strip_prefix("https://")?;
+        let authority = after_scheme.split(['/', '?', '#']).next()?;
+        let rest = after_scheme.strip_prefix(authority).unwrap_or_default();
+        let host = match authority.split_once(':') {
+            Some((host, "443")) => host,
+            Some(_) => return None,
+            None => authority,
+        };
+        let host_is_plain = host
+            .chars()
+            .next()
+            .is_some_and(|first| first.is_ascii_alphanumeric())
+            && host
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '.' || ch == '-');
+        if !host_is_plain {
+            return None;
+        }
+        let path = rest.split(['?', '#']).next().unwrap_or_default();
+        let last = path.rsplit('/').next().unwrap_or_default();
+        let lower = last.to_ascii_lowercase();
+        if !(lower.ends_with(".json") || lower.ends_with(".jsonc")) || last.starts_with('.') {
+            return None;
+        }
+        let file_name: String = format!("{host}-{last}")
+            .chars()
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_') {
+                    ch
+                } else {
+                    '_'
+                }
+            })
+            .take(MAX_THEME_FILE_NAME)
+            .collect();
+        Some(Self {
+            url: url.to_owned(),
+            file_name,
+        })
+    }
+
+    /// The name the file gets on disk: host and file name of the link, reduced
+    /// to `[A-Za-z0-9._-]`.
+    pub fn file_name(&self) -> &str {
+        &self.file_name
+    }
+}
+
+/// What the user typed in the theme card: an extension on Open VSX, or a link
+/// to one theme file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ThemeSource {
+    Extension(ExtensionId),
+    File(ThemeFileUrl),
+}
+
+impl ThemeSource {
+    pub fn parse(input: &str) -> Option<Self> {
+        ExtensionId::parse(input)
+            .map(Self::Extension)
+            .or_else(|| ThemeFileUrl::parse(input).map(Self::File))
+    }
+}
+
+impl fmt::Display for ThemeSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Extension(id) => id.fmt(f),
+            Self::File(link) => f.write_str(&link.url),
+        }
+    }
 }
 
 /// What Open VSX knows about an extension, and its package.
@@ -235,9 +323,9 @@ fn check_download_url(url: &str) -> Result<(), FetchError> {
     check_download_host(url)
 }
 
-fn check_declared_size(declared: Option<u64>) -> Result<(), FetchError> {
+fn check_declared_size(declared: Option<u64>, limit: u64) -> Result<(), FetchError> {
     match declared {
-        Some(length) if length > MAX_VSIX_BYTES => Err(FetchError::TooLarge),
+        Some(length) if length > limit => Err(FetchError::TooLarge),
         _ => Ok(()),
     }
 }
@@ -288,7 +376,29 @@ fn fetch_metadata(agent: &ureq::Agent, id: &ExtensionId) -> Result<Metadata, Fet
     Ok(metadata)
 }
 
-fn download(agent: &ureq::Agent, first_url: &str) -> Result<Vec<u8>, FetchError> {
+/// A redirect of a theme file link may go anywhere, as long as it stays on
+/// `https` and names no user.
+fn check_https_target(url: &str) -> Result<(), FetchError> {
+    let refused = || FetchError::DownloadRefused {
+        host: shown_host(url),
+    };
+    let after_scheme = url.strip_prefix("https://").ok_or_else(refused)?;
+    let authority = after_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    if authority.is_empty() || authority.contains('@') {
+        return Err(refused());
+    }
+    Ok(())
+}
+
+fn download(
+    agent: &ureq::Agent,
+    first_url: &str,
+    limit: u64,
+    check_target: fn(&str) -> Result<(), FetchError>,
+) -> Result<Vec<u8>, FetchError> {
     let mut url = first_url.to_owned();
     for hop in 0..=MAX_REDIRECTS {
         let mut response = agent.get(&url).call().map_err(network_error)?;
@@ -303,18 +413,18 @@ fn download(agent: &ureq::Agent, first_url: &str) -> Result<Vec<u8>, FetchError>
                 .and_then(|value| value.to_str().ok())
                 .unwrap_or_default()
                 .to_owned();
-            check_download_host(&target)?;
+            check_target(&target)?;
             url = target;
             continue;
         }
         if status != 200 {
             return Err(FetchError::Status(status));
         }
-        check_declared_size(response.body().content_length())?;
+        check_declared_size(response.body().content_length(), limit)?;
         return response
             .body_mut()
             .with_config()
-            .limit(MAX_VSIX_BYTES)
+            .limit(limit)
             .read_to_vec()
             .map_err(network_error);
     }
@@ -326,7 +436,12 @@ fn download(agent: &ureq::Agent, first_url: &str) -> Result<Vec<u8>, FetchError>
 pub fn fetch_extension(id: &ExtensionId) -> Result<FetchedExtension, FetchError> {
     let agent = agent();
     let metadata = fetch_metadata(&agent, id)?;
-    let vsix = download(&agent, &metadata.download_url)?;
+    let vsix = download(
+        &agent,
+        &metadata.download_url,
+        MAX_VSIX_BYTES,
+        check_download_host,
+    )?;
     Ok(FetchedExtension {
         id: id.clone(),
         display_name: metadata.display_name,
@@ -334,6 +449,12 @@ pub fn fetch_extension(id: &ExtensionId) -> Result<FetchedExtension, FetchError>
         license: metadata.license,
         vsix: vsix.into(),
     })
+}
+
+/// Downloads the theme file a link names, at most as big as a theme file
+/// inside a package may be. Blocks: call it from a blocking thread only.
+pub fn fetch_theme_file(link: &ThemeFileUrl) -> Result<Vec<u8>, FetchError> {
+    download(&agent(), &link.url, SIZE_LIMIT, check_https_target)
 }
 
 impl From<FilingWriteError> for FetchError {
@@ -449,6 +570,79 @@ mod tests {
         assert_eq!(ExtensionId::parse(&too_long), None);
         let longest = format!("{}.b", "a".repeat(128));
         assert!(ExtensionId::parse(&longest).is_some());
+    }
+
+    #[test]
+    fn a_link_to_a_theme_file_is_told_from_an_extension_id() {
+        let link = "https://raw.githubusercontent.com/user/repo/main/themes/dark.json?raw=1";
+        let Some(ThemeSource::File(file)) = ThemeSource::parse(link) else {
+            panic!("a theme file link");
+        };
+        assert_eq!(file.file_name(), "raw.githubusercontent.com-dark.json");
+        assert!(matches!(
+            ThemeSource::parse("example.dark-themes"),
+            Some(ThemeSource::Extension(_))
+        ));
+        assert!(matches!(
+            ThemeSource::parse("https://open-vsx.org/extension/example/dark-themes"),
+            Some(ThemeSource::Extension(_))
+        ));
+    }
+
+    #[test]
+    fn only_https_links_to_json_files_without_user_info_are_theme_files() {
+        for text in [
+            "http://example.com/theme.json",
+            "ftp://example.com/theme.json",
+            "https://example.com/theme.txt",
+            "https://example.com/",
+            "https://example.com/dir/",
+            "https://user@example.com/theme.json",
+            "https://example.com:8443/theme.json",
+            "https://example.com/theme.json and more",
+            "https://exa mple.com/theme.json",
+            "https:///theme.json",
+            "https://example.com/.json",
+            "example.com/theme.json",
+        ] {
+            assert_eq!(ThemeSource::parse(text), None, "{text:?}");
+        }
+        assert!(ThemeFileUrl::parse("https://example.com:443/a/Theme.JSONC").is_some());
+    }
+
+    #[test]
+    fn the_file_name_on_disk_holds_no_separator() {
+        let link = ThemeFileUrl::parse("https://example.com/a/b%2F..%5Cc.json").unwrap();
+        assert_eq!(link.file_name(), "example.com-b_2F.._5Cc.json");
+    }
+
+    #[test]
+    fn a_theme_file_bigger_than_the_limit_is_refused() {
+        assert_eq!(check_declared_size(Some(SIZE_LIMIT), SIZE_LIMIT), Ok(()));
+        assert_eq!(
+            check_declared_size(Some(SIZE_LIMIT + 1), SIZE_LIMIT),
+            Err(FetchError::TooLarge)
+        );
+        assert_eq!(check_declared_size(None, SIZE_LIMIT), Ok(()));
+    }
+
+    #[test]
+    fn a_redirect_of_a_theme_file_stays_on_https() {
+        assert_eq!(check_https_target("https://cdn.example.com/a.json"), Ok(()));
+        for url in [
+            "http://cdn.example.com/a.json",
+            "https://user@cdn.example.com/a.json",
+            "https:///a.json",
+            "",
+        ] {
+            assert!(
+                matches!(
+                    check_https_target(url),
+                    Err(FetchError::DownloadRefused { .. })
+                ),
+                "{url:?}"
+            );
+        }
     }
 
     #[test]
@@ -619,10 +813,13 @@ mod tests {
 
     #[test]
     fn a_package_declared_bigger_than_the_limit_is_refused_before_reading() {
-        assert_eq!(check_declared_size(None), Ok(()));
-        assert_eq!(check_declared_size(Some(MAX_VSIX_BYTES)), Ok(()));
+        assert_eq!(check_declared_size(None, MAX_VSIX_BYTES), Ok(()));
         assert_eq!(
-            check_declared_size(Some(MAX_VSIX_BYTES + 1)),
+            check_declared_size(Some(MAX_VSIX_BYTES), MAX_VSIX_BYTES),
+            Ok(())
+        );
+        assert_eq!(
+            check_declared_size(Some(MAX_VSIX_BYTES + 1), MAX_VSIX_BYTES),
             Err(FetchError::TooLarge)
         );
     }

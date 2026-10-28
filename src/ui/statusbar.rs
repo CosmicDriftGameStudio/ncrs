@@ -135,6 +135,9 @@ pub struct Activity<'a, M> {
     /// Makes the "access blocked" error a button. `None` where there is no
     /// settings page to open.
     pub on_blocked_press: Option<M>,
+    /// The press asks for a folder grant instead of opening the privacy
+    /// settings, and the text says so.
+    pub blocked_by_sandbox: bool,
     /// A confirmation that goes away by itself. It takes the right end of the
     /// bar from the filing progress and stands beside an error.
     pub notice: Option<&'a str>,
@@ -165,6 +168,7 @@ pub fn view<'a, M: Clone + 'a>(
         job_press,
         filing,
         on_blocked_press,
+        blocked_by_sandbox,
         notice,
         hermes_line,
     } = activity;
@@ -184,7 +188,7 @@ pub fn view<'a, M: Clone + 'a>(
             .wrapping(text::Wrapping::None)
             .into()
     } else if let Some(error) = &panel.error {
-        let line = text(format_error(error, &panel.path, lang))
+        let line = text(format_error(error, &panel.path, lang, blocked_by_sandbox))
             .size(font_size::SMALL)
             .color(palette.error)
             .wrapping(text::Wrapping::None);
@@ -370,9 +374,15 @@ fn hermes_details<'a, M: 'a>(name: &str, line: String, palette: &Palette) -> Ele
 /// Renders a read error in the current language. The path comes from the panel
 /// that failed, the reason from the OS; both templates name their placeholders
 /// identically in every language, so word order is free to differ.
-fn format_error(error: &ReadError, path: &std::path::Path, lang: Language) -> String {
+fn format_error(
+    error: &ReadError,
+    path: &std::path::Path,
+    lang: Language,
+    blocked_by_sandbox: bool,
+) -> String {
     let msg = match error {
         ReadError::CannotRead { .. } => Msg::ErrorCannotRead,
+        ReadError::AccessBlocked { .. } if blocked_by_sandbox => Msg::ErrorAccessBlockedSandbox,
         ReadError::AccessBlocked { .. } => Msg::ErrorAccessBlocked,
         ReadError::TaskFailed { .. } => Msg::ErrorTaskFailed,
         ReadError::EntriesLeftOut { .. } => Msg::ErrorArchiveEntriesLeftOut,
@@ -427,11 +437,11 @@ mod tests {
         let path = Path::new("/etc/shadow");
 
         assert_eq!(
-            format_error(&cannot_read(), path, Language::English),
+            format_error(&cannot_read(), path, Language::English, false),
             "Cannot read /etc/shadow: Permission denied"
         );
         assert_eq!(
-            format_error(&cannot_read(), path, Language::German),
+            format_error(&cannot_read(), path, Language::German, false),
             "/etc/shadow nicht lesbar: Permission denied"
         );
     }
@@ -443,12 +453,28 @@ mod tests {
         };
         let path = Path::new("/Volumes/Vault");
         assert_eq!(
-            format_error(&err, path, Language::English),
+            format_error(&err, path, Language::English, false),
             "macOS blocks access. Give ncrs, or the terminal that started it, Full Disk Access (click to open)"
         );
         assert_eq!(
-            format_error(&err, path, Language::German),
+            format_error(&err, path, Language::German, false),
             "macOS sperrt den Zugriff. ncrs oder dem Terminal, aus dem es gestartet wurde, Festplattenvollzugriff geben (Klick öffnet)"
+        );
+    }
+
+    #[test]
+    fn blocked_access_in_the_sandbox_offers_to_allow_the_folder() {
+        let err = ReadError::AccessBlocked {
+            reason: "Operation not permitted".to_string(),
+        };
+        let path = Path::new("/Users");
+        assert_eq!(
+            format_error(&err, path, Language::English, true),
+            "macOS blocks access to this folder. Click to allow ncrs to open it"
+        );
+        assert_eq!(
+            format_error(&err, path, Language::German, true),
+            "macOS sperrt den Zugriff auf diesen Ordner. Klick erlaubt ncrs, ihn zu öffnen"
         );
     }
 
@@ -458,7 +484,7 @@ mod tests {
             reason: "cancelled".to_string(),
         };
         assert_eq!(
-            format_error(&err, Path::new("/tmp"), Language::English),
+            format_error(&err, Path::new("/tmp"), Language::English, false),
             "Directory read task failed: cancelled"
         );
     }
@@ -467,11 +493,11 @@ mod tests {
     fn an_encrypted_archive_says_so_in_both_languages() {
         let err = ReadError::ArchiveEncrypted;
         assert_eq!(
-            format_error(&err, Path::new("/tmp/a.7z"), Language::English),
+            format_error(&err, Path::new("/tmp/a.7z"), Language::English, false),
             "This archive is encrypted; ncrs cannot open it yet"
         );
         assert_eq!(
-            format_error(&err, Path::new("/tmp/a.7z"), Language::German),
+            format_error(&err, Path::new("/tmp/a.7z"), Language::German, false),
             "Dieses Archiv ist verschlüsselt; ncrs kann es noch nicht öffnen"
         );
     }
@@ -480,11 +506,11 @@ mod tests {
     fn an_archive_with_a_huge_dictionary_says_so_in_both_languages() {
         let err = ReadError::ArchiveDictionaryTooLarge;
         assert_eq!(
-            format_error(&err, Path::new("/tmp/a.7z"), Language::English),
+            format_error(&err, Path::new("/tmp/a.7z"), Language::English, false),
             "This 7z archive needs more than 256 MB of memory to unpack; ncrs does not open it"
         );
         assert_eq!(
-            format_error(&err, Path::new("/tmp/a.7z"), Language::German),
+            format_error(&err, Path::new("/tmp/a.7z"), Language::German, false),
             "Dieses 7z-Archiv braucht zum Entpacken mehr als 256 MB Speicher; ncrs öffnet es nicht"
         );
     }
@@ -493,11 +519,11 @@ mod tests {
     fn left_out_archive_entries_are_counted_in_the_message() {
         let err = ReadError::EntriesLeftOut { count: 3 };
         assert_eq!(
-            format_error(&err, Path::new("/tmp/a.zip"), Language::English),
+            format_error(&err, Path::new("/tmp/a.zip"), Language::English, false),
             "3 entries left out: unsafe paths, links or special files"
         );
         assert_eq!(
-            format_error(&err, Path::new("/tmp/a.zip"), Language::German),
+            format_error(&err, Path::new("/tmp/a.zip"), Language::German, false),
             "3 Einträge ausgelassen: unsichere Pfade, Links oder Sonderdateien"
         );
     }

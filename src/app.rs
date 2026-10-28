@@ -60,7 +60,7 @@ use crate::messages::{
 #[cfg(target_os = "macos")]
 use crate::native_menu;
 use crate::ocr_models::{download_models, DownloadError, OcrModelsCard};
-use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
+use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension, ThemeFileUrl, ThemeSource};
 use crate::palette::{Palette, ThemePreset};
 use crate::query_work::{self, QueryAccess};
 use crate::quick_fix::{field_to_fix, QuickFix, QuickFixAction};
@@ -429,6 +429,7 @@ fn resets_type_ahead(message: &Message) -> bool {
             | Message::SwitchPanel
             | Message::ActivatePanel(_)
             | Message::RowClicked { .. }
+            | Message::RowActivated { .. }
             | Message::TagMove(_)
             | Message::ToggleTag
             | Message::OpenSelected
@@ -444,6 +445,7 @@ fn leaves_bar_fields(message: &Message) -> bool {
     matches!(
         message,
         Message::RowClicked { .. }
+            | Message::RowActivated { .. }
             | Message::Transfer(_)
             | Message::OpenSearch
             | Message::QuickOpen(QuickOpenMessage::Open)
@@ -567,6 +569,21 @@ fn install_picked_theme(pick: &Pick, config_path: &Path) -> Result<Box<Installed
         config,
         label: theme.label.clone(),
         license: fetched.extension.license.clone(),
+    }))
+}
+
+/// The blocking part of installing a theme from a link: the download, the
+/// check that it is a theme, the files and the config.
+fn install_theme_from_link(
+    link: &ThemeFileUrl,
+    config_path: &Path,
+) -> Result<Box<Installed>, FetchError> {
+    let bytes = open_vsx::fetch_theme_file(link)?;
+    let (config, label) = crate::vsix::install_theme_file(&bytes, link.file_name(), config_path)?;
+    Ok(Box::new(Installed {
+        config,
+        label,
+        license: None,
     }))
 }
 
@@ -713,9 +730,10 @@ struct ArchiveWrite {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ArchiveWriteKind {
-    /// A new archive of this name in the other panel's folder.
+    /// A new archive of this name in `folder`, by default the other panel's.
     Pack {
         name: String,
+        folder: PathBuf,
     },
     CopyIn,
     Delete,
@@ -741,14 +759,16 @@ struct PendingConflict {
 }
 
 /// What a click on the "access blocked" error sends. Only macOS has a privacy
-/// settings page to open, and only there does the message exist.
-#[cfg(target_os = "macos")]
-fn blocked_access_press() -> Option<Message> {
-    Some(Message::OpenPrivacySettings)
-}
-
-#[cfg(not(target_os = "macos"))]
-fn blocked_access_press() -> Option<Message> {
+/// settings page to open, and only there does the message exist. In the
+/// sandbox the click asks for access to the blocked folder instead, since Full
+/// Disk Access does not reach into the sandbox.
+fn blocked_access_press(sandbox_active: bool, blocked: &Path) -> Option<Message> {
+    if sandbox_active {
+        return Some(Message::Grant(GrantMessage::OpenFor(blocked.to_path_buf())));
+    }
+    #[cfg(target_os = "macos")]
+    return Some(Message::OpenPrivacySettings);
+    #[cfg(not(target_os = "macos"))]
     None
 }
 
@@ -2957,6 +2977,9 @@ impl App {
                 .with(Arc::clone(&self.input))
                 .filter_map(|(input, (event, status))| input.lock().handle(&event, status)),
             window::resize_events().map(|(_id, size)| Message::WindowResized(size)),
+            window::events().filter_map(|(_id, event)| {
+                matches!(event, window::Event::Focused).then_some(Message::WindowFocused)
+            }),
             // The close button and Alt+F4 end the app through Quit, which saves
             // the session first; the window does not close by itself.
             window::close_requests().map(|_id| Message::Quit),
@@ -3518,10 +3541,13 @@ impl App {
                 Task::none()
             }
 
+            Message::RowActivated { side, index } => self.activate_row(side, index),
+
             Message::WindowResized(size) => {
                 self.apply_window_size(size);
                 Task::none()
             }
+            Message::WindowFocused => self.reload_local_panels(),
             Message::OpenSearch => self.open_search(),
             Message::Search(search) => self.update_search(search),
             Message::QuickOpen(quick_open) => self.update_quick_open(quick_open),
@@ -4323,10 +4349,13 @@ impl App {
                     }),
                 },
                 self.lang,
-                move |index, on_tag| Message::RowClicked {
-                    side,
-                    index,
-                    on_tag,
+                move |index, click| match click {
+                    panel::RowClick::Open => Message::RowActivated { side, index },
+                    panel::RowClick::Tag | panel::RowClick::Cursor => Message::RowClicked {
+                        side,
+                        index,
+                        on_tag: click == panel::RowClick::Tag,
+                    },
                 },
                 move |index| Message::ContextMenuAt { side, index },
                 move |column| Message::SortBy { side, column },
@@ -4391,7 +4420,11 @@ impl App {
                             TransferDialogMessage::ShowProgress,
                         )),
                         filing: self.filing_badge(),
-                        on_blocked_press: blocked_access_press(),
+                        on_blocked_press: blocked_access_press(
+                            self.sandbox.active,
+                            &self.active_panel().path,
+                        ),
+                        blocked_by_sandbox: cfg!(target_os = "macos") && self.sandbox.active,
                         notice: self.notice.as_deref(),
                         hermes_line: self.hermes_line(),
                     },
@@ -6352,6 +6385,32 @@ impl App {
     /// Alt+F5: the name prompt for a new archive in the other panel's folder,
     /// with the name of the single entry, or of the folder they are in, as a
     /// start.
+    /// A double click on a row: the row's Enter, unless it is a context click
+    /// or a context menu is open.
+    fn activate_row(&mut self, side: PanelSide, index: usize) -> Task<Message> {
+        if is_context_click(self.modifiers) || self.context_menu.is_some() {
+            return Task::none();
+        }
+        self.active_panel = side;
+        let rows = self.visible_rows;
+        self.panel_mut(side).select(index, rows);
+        self.update(Message::OpenSelected)
+    }
+
+    /// Reads both panels again, except those inside an archive or on a server.
+    fn reload_local_panels(&mut self) -> Task<Message> {
+        let reloads = [PanelSide::Left, PanelSide::Right].map(|side| {
+            let panel = self.panel(side);
+            (!panel.is_virtual()).then(|| (side, panel.path.clone()))
+        });
+        Task::batch(
+            reloads
+                .into_iter()
+                .flatten()
+                .map(|(side, path)| self.load(side, path, None)),
+        )
+    }
+
     fn open_pack_prompt(&mut self) -> Task<Message> {
         if self.jobs.is_busy()
             || self.prompt.is_some()
@@ -6363,8 +6422,14 @@ impl App {
             return Task::none();
         }
         let source_side = self.source_side();
-        let target_side = source_side.other();
-        if self.panel(source_side).is_virtual() || self.panel(target_side).is_virtual() {
+        // An archive or a server in the other panel cannot take the new
+        // archive, so it goes beside the files; the field shows where.
+        let target_side = if self.panel(source_side.other()).is_virtual() {
+            source_side
+        } else {
+            source_side.other()
+        };
+        if self.panel(source_side).is_virtual() {
             let text = self.lang.text(Msg::StatusPackUnavailable).to_owned();
             self.set_status_error(&text);
             return Task::none();
@@ -6377,7 +6442,7 @@ impl App {
         self.notice = None;
         let name = suggested_archive_name(&sources);
         let target = self.panel(target_side).path.clone();
-        self.prompt = Some(Prompt::pack(target, sources, name));
+        self.prompt = Some(Prompt::pack(target, sources, &name));
         self.prompt_side = Some(target_side);
         operation::focus(FIELD_ID)
     }
@@ -6393,12 +6458,16 @@ impl App {
             return Task::none();
         };
         let target_side = self.prompt_side.take().unwrap_or(self.active_panel);
-        let name = prompt.name().trim().to_owned();
-        let archive = prompt.parent().join(&name);
+        let archive = prompt.archive_path();
+        let name = archive
+            .file_name()
+            .map(|file_name| file_name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let folder = archive.parent().map(Path::to_path_buf).unwrap_or_default();
         let sources = prompt.sources().to_vec();
         let write = ArchiveWrite {
             side: target_side.other(),
-            what: ArchiveWriteKind::Pack { name },
+            what: ArchiveWriteKind::Pack { name, folder },
         };
         let packed = archive.clone();
         self.start_archive_write(jobs::JobKind::Pack, archive, write, move |progress| {
@@ -6539,7 +6608,7 @@ impl App {
 
     fn written_text(&self, write: &ArchiveWrite, report: fs::archive::WriteReport) -> String {
         let mut text = match &write.what {
-            ArchiveWriteKind::Pack { name } => {
+            ArchiveWriteKind::Pack { name, .. } => {
                 fill_template(self.lang.text(Msg::StatusPacked), &[("{name}", name)])
             }
             ArchiveWriteKind::CopyIn => self.lang.text(Msg::StatusArchiveCopiedIn).to_owned(),
@@ -6587,7 +6656,7 @@ impl App {
         let tasks = [PanelSide::Left, PanelSide::Right].map(|each| {
             let path = self.panel(each).path.clone();
             let select = match &write.what {
-                ArchiveWriteKind::Pack { name } if each != write.side => Some(name.clone()),
+                ArchiveWriteKind::Pack { name, folder } if path == *folder => Some(name.clone()),
                 ArchiveWriteKind::Pack { .. }
                 | ArchiveWriteKind::CopyIn
                 | ArchiveWriteKind::Delete => None,
@@ -8812,7 +8881,8 @@ impl App {
         };
         match card.stage() {
             Stage::Input => match card.start() {
-                Some(id) => self.start_theme_download(id),
+                Some(ThemeSource::Extension(id)) => self.start_theme_download(id),
+                Some(ThemeSource::File(link)) => self.start_theme_link_install(link),
                 None => Task::none(),
             },
             Stage::Choosing { .. } => match card.choose() {
@@ -8832,6 +8902,26 @@ impl App {
                 let result =
                     joined.unwrap_or_else(|join| Err(FetchError::Network(join.to_string())));
                 Message::ThemeFetch(ThemeFetchMessage::Fetched { generation, result })
+            },
+        )
+    }
+
+    fn start_theme_link_install(&mut self, link: ThemeFileUrl) -> Task<Message> {
+        let Some(config_path) = self.config_path.clone() else {
+            return self.fail_theme_fetch(FetchError::NoConfigPath);
+        };
+        let generation = self.theme_fetch_generation;
+        let failed_path = config_path.display().to_string();
+        Task::perform(
+            tokio::task::spawn_blocking(move || install_theme_from_link(&link, &config_path)),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| {
+                    Err(FetchError::WriteFailed {
+                        path: failed_path,
+                        reason: join.to_string(),
+                    })
+                });
+                Message::ThemeFetch(ThemeFetchMessage::Installed { generation, result })
             },
         )
     }
@@ -9521,6 +9611,14 @@ impl App {
                 }
                 self.context_menu = None;
                 self.pick_grant_folder()
+            }
+            GrantMessage::OpenFor(blocked) => {
+                if self.blocking_overlay_is_open() {
+                    return Task::none();
+                }
+                self.context_menu = None;
+                (self.pick_folder)(&fs::grant_start_dir_for(&blocked))
+                    .map(|folder| Message::Grant(GrantMessage::Picked(folder)))
             }
             GrantMessage::Choose => self.pick_grant_folder(),
             GrantMessage::Later => {
@@ -12700,7 +12798,7 @@ impl App {
         app.prompt = Some(Prompt::pack(
             PathBuf::from("/home/test/links"),
             vec![PathBuf::from("/home/test/fotos")],
-            "fotos.zip".to_string(),
+            "fotos.zip",
         ));
         app
     }
@@ -13606,6 +13704,46 @@ mod mouse_tagging {
             })
             .collect();
         app
+    }
+
+    #[tokio::test]
+    async fn a_double_click_on_a_folder_opens_it_like_enter() {
+        let base = tempfile::tempdir().unwrap();
+        std::fs::create_dir(base.path().join("sub")).unwrap();
+        let mut app = App::with_fixed_panels();
+        app.left_panel = PanelState::new(base.path().to_path_buf());
+        app.active_panel = PanelSide::Right;
+        let mut stream = iced_test::runtime::task::into_stream(app.load(
+            PanelSide::Left,
+            base.path().into(),
+            None,
+        ))
+        .unwrap();
+        while let Some(action) = futures::StreamExt::next(&mut stream).await {
+            if let iced_test::runtime::Action::Output(reported) = action {
+                drop(app.update(reported));
+            }
+        }
+        let index = app
+            .left_panel
+            .entries
+            .iter()
+            .position(|entry| entry.name == "sub")
+            .unwrap();
+
+        let opening = app.update(Message::RowActivated {
+            side: PanelSide::Left,
+            index,
+        });
+        let mut opened = iced_test::runtime::task::into_stream(opening).unwrap();
+        while let Some(action) = futures::StreamExt::next(&mut opened).await {
+            if let iced_test::runtime::Action::Output(reported) = action {
+                drop(app.update(reported));
+            }
+        }
+
+        assert_eq!(app.active_panel, PanelSide::Left);
+        assert_eq!(app.left_panel.path, base.path().join("sub"));
     }
 
     /// A click on the star tags; a click anywhere else does not. Without the
@@ -20660,6 +20798,18 @@ mod archive_panel_tests {
     }
 
     #[test]
+    fn packing_beside_an_archive_suggests_the_own_folder() {
+        let mut app = App::with_fixed_panels();
+        app.left_panel.entries = vec![entry("fotos", true)];
+        app.right_panel = panel_in_archive(Vec::new());
+        drop(app.update(Message::PackPrompt));
+        assert_eq!(
+            app.prompt.as_ref().map(Prompt::archive_path),
+            Some(PathBuf::from("/home/test/links/fotos.zip"))
+        );
+    }
+
+    #[test]
     fn a_shell_command_in_an_archive_runs_in_the_folder_holding_it() {
         let folder = tempfile::tempdir().unwrap();
         let archive = folder.path().join("fotos.zip");
@@ -21331,6 +21481,36 @@ mod grant_tests {
 
     fn send(app: &mut App, message: GrantMessage) {
         drop(app.update(Message::Grant(message)));
+    }
+
+    static STARTED_IN: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+
+    fn recording_picker(start: &Path) -> Task<Option<PathBuf>> {
+        STARTED_IN.lock().unwrap().push(start.to_path_buf());
+        Task::none()
+    }
+
+    #[test]
+    fn a_blocked_folder_opens_the_dialog_at_the_folder() {
+        let mut app = sandboxed(true, recording_grant);
+        app.pick_folder = recording_picker;
+        let blocked = std::env::temp_dir().join("ncrs-blocked-test-folder");
+        send(&mut app, GrantMessage::OpenFor(blocked));
+        assert!(STARTED_IN.lock().unwrap().contains(&std::env::temp_dir()));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_blocked_error_asks_for_a_grant_only_in_the_sandbox() {
+        let blocked = Path::new("/Users");
+        assert_eq!(
+            blocked_access_press(true, blocked),
+            Some(Message::Grant(GrantMessage::OpenFor(blocked.to_path_buf())))
+        );
+        assert_eq!(
+            blocked_access_press(false, blocked),
+            Some(Message::OpenPrivacySettings)
+        );
     }
 
     /// What the tasks `message` starts report, not yet delivered.
@@ -23166,5 +23346,86 @@ mod about_tests {
             launched.first().and_then(|call| call.args.last()),
             Some(&std::ffi::OsString::from(REPOSITORY_URL))
         );
+    }
+}
+
+// reason: a failing assertion is the signal in a test
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod window_focus_tests {
+    use super::*;
+    use iced_test::futures::futures::StreamExt as _;
+    use iced_test::runtime::{task, Action};
+
+    async fn deliver(app: &mut App, message: Message) {
+        let mut queue = vec![message];
+        while let Some(next) = queue.pop() {
+            let Some(mut stream) = task::into_stream(app.update(next)) else {
+                continue;
+            };
+            while let Some(action) = stream.next().await {
+                if let Action::Output(reported) = action {
+                    queue.push(reported);
+                }
+            }
+        }
+    }
+
+    fn size_of(app: &App, name: &str) -> u64 {
+        app.left_panel
+            .entries
+            .iter()
+            .find(|entry| entry.name == name)
+            .unwrap()
+            .size
+    }
+
+    #[tokio::test]
+    async fn focus_returning_rereads_local_panels_and_keeps_cursor_and_tags() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["a.txt", "b.txt", "c.txt"] {
+            std::fs::write(dir.path().join(name), "").unwrap();
+        }
+        let mut app = App::with_fixed_panels();
+        app.left_panel = PanelState::new(dir.path().to_path_buf());
+        let first = app.load(PanelSide::Left, dir.path().to_path_buf(), None);
+        let mut stream = task::into_stream(first).unwrap();
+        while let Some(action) = stream.next().await {
+            if let Action::Output(reported) = action {
+                deliver(&mut app, reported).await;
+            }
+        }
+        let rows = app.visible_rows;
+        let index = app
+            .left_panel
+            .entries
+            .iter()
+            .position(|entry| entry.name == "b.txt")
+            .unwrap();
+        app.left_panel.select(index, rows);
+        app.left_panel.selection.toggle(&"c.txt".into());
+        assert_eq!(size_of(&app, "b.txt"), 0);
+
+        std::fs::write(dir.path().join("b.txt"), "edited").unwrap();
+        deliver(&mut app, Message::WindowFocused).await;
+
+        assert_eq!(size_of(&app, "b.txt"), 6);
+        assert_eq!(app.left_panel.selected_entry().unwrap().name, "b.txt");
+        assert!(app.left_panel.selection.is_tagged(&"c.txt".into()));
+    }
+
+    #[tokio::test]
+    async fn focus_returning_leaves_a_panel_inside_an_archive_alone() {
+        let mut app = App::with_fixed_panels();
+        app.left_panel.archive = Some(PathBuf::from("/home/test/a.zip"));
+        let request_before = app.left_panel.request_id;
+        drop(app.update(Message::WindowFocused));
+        assert_eq!(app.left_panel.request_id, request_before);
+        assert_ne!(app.right_panel.request_id, 0);
     }
 }

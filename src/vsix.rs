@@ -15,6 +15,7 @@ use zip::ZipArchive;
 
 use crate::config::{self, Config, SIZE_LIMIT};
 use crate::open_vsx::{shown_text, ExtensionId, FetchError, MAX_SHOWN_CHARS, MAX_VSIX_BYTES};
+use crate::vscode_theme::VscodeTheme;
 
 const PACKAGE_JSON: &str = "extension/package.json";
 const LICENSE_LIMIT: u64 = 256 * 1024;
@@ -29,6 +30,8 @@ const LICENSE_NAMES: [&str; 6] = [
 
 /// The folder next to the config file that holds the installed themes.
 const THEMES_FOLDER: &str = "themes";
+/// Below `themes/`, the theme files that came from a link.
+const WEB_THEMES_FOLDER: &str = "web";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Brightness {
@@ -301,6 +304,48 @@ pub fn install_theme(
     write_files(&folder, &files)?;
     let relative = format!("{THEMES_FOLDER}/{id}/{}", files.theme.path);
     Ok(config::write_vscode_theme(config_path, &relative)?)
+}
+
+/// Puts a theme file that came from a link below `themes/web/` next to the
+/// config file and points `[theme] vscode` at it. The file must be a usable
+/// theme: it is read back with the theme reader before it takes its place.
+/// Returns the config read back and the name to show.
+pub fn install_theme_file(
+    bytes: &[u8],
+    file_name: &str,
+    config_path: &Path,
+) -> Result<(Config, String), FetchError> {
+    if bytes.len() as u64 > SIZE_LIMIT {
+        return Err(FetchError::FileTooLarge(file_name.to_owned()));
+    }
+    let config_folder = config_path.parent().ok_or(FetchError::NoConfigPath)?;
+    let folder = config_folder.join(THEMES_FOLDER).join(WEB_THEMES_FOLDER);
+    std::fs::create_dir_all(&folder).map_err(|err| write_failed(&folder, &err))?;
+    let target = folder.join(file_name);
+    let candidate = folder.join(format!("{file_name}.part"));
+    std::fs::write(&candidate, bytes).map_err(|err| write_failed(&candidate, &err))?;
+    let theme = VscodeTheme::load(&candidate);
+    let unusable = theme.problem.or_else(|| {
+        theme
+            .colors
+            .is_empty()
+            .then(|| "no usable colors".to_owned())
+    });
+    if let Some(reason) = unusable {
+        drop(std::fs::remove_file(&candidate));
+        return Err(FetchError::BadJson {
+            file: file_name.to_owned(),
+            reason,
+        });
+    }
+    std::fs::rename(&candidate, &target).map_err(|err| write_failed(&target, &err))?;
+    let relative = format!("{THEMES_FOLDER}/{WEB_THEMES_FOLDER}/{file_name}");
+    let config = config::write_vscode_theme(config_path, &relative)?;
+    let label = file_name
+        .rsplit_once('.')
+        .map_or(file_name, |(stem, _)| stem)
+        .to_owned();
+    Ok((config, label))
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
@@ -775,5 +820,66 @@ pub mod tests {
             "{result:?}"
         );
         assert!(!config_path.exists());
+    }
+
+    const WEB_THEME: &str = r##"{"colors": {"editor.background": "#102030"}}"##;
+
+    #[test]
+    fn a_theme_file_from_a_link_is_installed_below_themes_web() {
+        let base = tempfile::tempdir().unwrap();
+        let config_path = base.path().join("config.toml");
+
+        let (config, label) =
+            install_theme_file(WEB_THEME.as_bytes(), "example.com-dark.json", &config_path)
+                .unwrap();
+
+        assert_eq!(label, "example.com-dark");
+        assert!(base
+            .path()
+            .join("themes/web/example.com-dark.json")
+            .is_file());
+        assert!(!base
+            .path()
+            .join("themes/web/example.com-dark.json.part")
+            .exists());
+        let text = std::fs::read_to_string(&config_path).unwrap();
+        assert!(text.contains("themes/web/example.com-dark.json"), "{text}");
+        drop(config);
+    }
+
+    #[test]
+    fn a_link_that_is_no_theme_leaves_the_old_theme_and_the_config_alone() {
+        let base = tempfile::tempdir().unwrap();
+        let config_path = base.path().join("config.toml");
+        install_theme_file(WEB_THEME.as_bytes(), "example.com-dark.json", &config_path).unwrap();
+        let before = std::fs::read_to_string(&config_path).unwrap();
+
+        for bad in [
+            &b"<html>not json</html>"[..],
+            b"{}",
+            b"{\"colors\": {}}",
+            b"[1]",
+        ] {
+            let result = install_theme_file(bad, "example.com-dark.json", &config_path);
+            assert!(
+                matches!(result, Err(FetchError::BadJson { .. })),
+                "{result:?}"
+            );
+        }
+        let too_big = vec![b' '; usize::try_from(SIZE_LIMIT).unwrap() + 1];
+        assert!(matches!(
+            install_theme_file(&too_big, "example.com-dark.json", &config_path),
+            Err(FetchError::FileTooLarge(_))
+        ));
+
+        assert_eq!(
+            std::fs::read_to_string(base.path().join("themes/web/example.com-dark.json")).unwrap(),
+            WEB_THEME
+        );
+        assert_eq!(std::fs::read_to_string(&config_path).unwrap(), before);
+        assert!(!base
+            .path()
+            .join("themes/web/example.com-dark.json.part")
+            .exists());
     }
 }
