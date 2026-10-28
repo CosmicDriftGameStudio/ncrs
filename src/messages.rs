@@ -368,6 +368,7 @@ pub enum Message {
 
     // --- Text recognition models (command palette: download them after asking) ---
     OcrModels(OcrModelsMessage),
+    About(AboutMessage),
     AiModel(AiModelMessage),
 
     // --- Folder grants of the App Store build ---
@@ -936,6 +937,15 @@ pub enum ThemeFetchMessage {
         generation: u64,
         result: Result<Box<Installed>, FetchError>,
     },
+}
+
+/// Everything the about card sends.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AboutMessage {
+    Open,
+    Close,
+    OpenLicenses,
+    OpenRepository,
 }
 
 /// Everything the card that asks for the text recognition models sends.

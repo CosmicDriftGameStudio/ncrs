@@ -23,7 +23,8 @@ pub use open::privacy_settings_command;
 #[cfg(test)]
 pub use open::OpenCommand;
 pub use open::{
-    could_execute, open_command, runs_in_app_sandbox, Launcher, OpenKind, SystemLauncher,
+    could_execute, open_command, runs_in_app_sandbox, system_open_command, Launcher, OpenKind,
+    SystemLauncher,
 };
 pub use ops::{create_dir, create_file, CreateDirError};
 pub use reader::{home_dir, read_directory, start_dir, ReadError};

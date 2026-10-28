@@ -461,6 +461,11 @@ jobs:
             rm -rf "$workdir"
           done
 
+      - name: Licenses file for the About dialog
+        # The About dialog of a build without the file links to this release
+        # asset, so it has to exist on every release.
+        run: cp artifacts/third-party-licenses/THIRD_PARTY_LICENSES.html dist/
+
       - name: Checksums
         # After notarization, never before: signing rewrites the binary, so a
         # checksum computed earlier would describe a file nobody downloads.

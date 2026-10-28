@@ -216,6 +216,8 @@ mod tests {
                 | Msg::SettingsPresetCosmic
                 | Msg::SettingsPresetDracula
                 // Words German took over unchanged.
+                | Msg::AboutVersion
+                | Msg::AboutRepository
                 | Msg::SettingsRowEditor
                 | Msg::SettingsColorText
                 | Msg::SettingsRowAiThreads
