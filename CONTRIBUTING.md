@@ -51,6 +51,17 @@ Install `rustup` before working on this: `rust-toolchain.toml` pins the
 compiler, and a Homebrew Rust ignores that pin, so a local build can silently
 use a different compiler than CI.
 
+## Changing the index schema
+
+The index schema is the numbered SQL files in `crates/ncrs-index/src/migrations/`,
+listed in `MIGRATIONS`. A change is a new step with the next number; a step that
+a release has shipped is never edited, because indexes in the wild have already
+run it. All pending steps run in one transaction, so a failing step leaves the
+file as it was. The tests open the fixture of every earlier release
+(`crates/ncrs-index/tests/fixtures`) and must keep passing; a release that
+changes the schema adds a fixture written by that release, with the generator
+next to it.
+
 ## Commit messages
 
 Explain what was wrong and what changed, not which lines were touched. A

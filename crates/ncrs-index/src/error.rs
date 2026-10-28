@@ -53,8 +53,13 @@ pub enum IndexError {
         found: u32,
         supported: u32,
     },
-    /// `PRAGMA foreign_key_check` found rows after a migration ran.
-    ForeignKeyViolation,
+    /// A schema step failed, or left rows that violate a foreign key. Nothing of the update was kept: the file is at
+    /// the version `from` it was found at, with its old content.
+    MigrationFailed {
+        from: u32,
+        step: u32,
+        reason: String,
+    },
     /// A value read from the database is not one the code writes.
     CorruptValue {
         column: &'static str,
@@ -115,9 +120,11 @@ impl fmt::Display for IndexError {
                 f,
                 "the index schema is version {found}, this build supports up to {supported}"
             ),
-            Self::ForeignKeyViolation => {
-                write!(f, "a migration left rows that violate a foreign key")
-            }
+            Self::MigrationFailed { from, step, reason } => write!(
+                f,
+                "updating the index from schema version {from} failed at step {step}: {reason}; \
+                 the index file was left unchanged"
+            ),
             Self::CorruptValue { column, value } => {
                 write!(f, "the index holds an unknown value '{value}' in {column}")
             }

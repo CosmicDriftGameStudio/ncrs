@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows
 - The README lists timings for 100,000 files: opening, sorting, searching by name
   and by content, copying and tagging, with the machine they were measured on
   and the known limits.
+- An index from 0.6.0 or later opens and is migrated, and a failed migration
+  leaves the index file as it was and says which step failed.
 
 ## [0.8.0] — 2026-10-28
 

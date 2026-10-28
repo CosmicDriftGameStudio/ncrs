@@ -2342,6 +2342,15 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_open_offers_no_way_to_create_a_new_index_over_the_file() {
+        let mut module = FilingModule::in_phase(Phase::Failed("broken".to_owned()));
+
+        assert!(module.update(FilingMessage::CreateIndex).is_none());
+
+        assert_eq!(module.phase(), &Phase::Failed("broken".to_owned()));
+    }
+
+    #[test]
     fn dismiss_does_not_discard_the_shown_recovery_key() {
         let mut module = FilingModule::in_phase(Phase::ShowRecoveryKey {
             key: FilingModule::fixed_recovery_key(),
