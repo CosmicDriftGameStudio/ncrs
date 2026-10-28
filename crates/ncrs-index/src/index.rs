@@ -624,7 +624,17 @@ mod tests {
 
         let broken = [TABLE_A, "CREATE TABLE b (id INTEGER); THIS IS NOT SQL;"];
         let err = Index::open_with_migrations(&path, &store, &broken).unwrap_err();
-        assert!(matches!(err, IndexError::Sqlite(_)), "{err}");
+        assert!(
+            matches!(
+                err,
+                IndexError::MigrationFailed {
+                    from: 1,
+                    step: 2,
+                    ..
+                }
+            ),
+            "{err}"
+        );
 
         let index = Index::open_with_migrations(&path, &store, &[TABLE_A]).unwrap();
         assert_eq!(user_version(&index), 1);
@@ -830,7 +840,11 @@ mod tests {
                         INSERT INTO c VALUES (5);";
 
         let err = Index::open_with_migrations(&path, &store, &[TABLE_A, dangling]).unwrap_err();
-        assert!(matches!(err, IndexError::ForeignKeyViolation), "{err}");
+        assert!(
+            matches!(&err, IndexError::MigrationFailed { from: 1, step: 2, reason } if reason.contains("foreign key")),
+            "{err}"
+        );
+        assert!(err.to_string().contains("left unchanged"), "{err}");
 
         let index = Index::open_with_migrations(&path, &store, &[TABLE_A]).unwrap();
         assert_eq!(user_version(&index), 1);
@@ -892,5 +906,200 @@ mod tests {
         assert_eq!(index.statistics().unwrap().open_reviews, 1);
         index.resolve_review(entry).unwrap();
         assert_eq!(index.statistics().unwrap().open_reviews, 0);
+    }
+
+    const FIXTURE_V0_6_0: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/index-v0.6.0.db"
+    );
+    const PROBE_COLUMN: &str = "ALTER TABLE document ADD COLUMN probe INTEGER";
+
+    /// A copy of the index release 0.6.0 wrote, and the store holding the key
+    /// it was written with (bytes 0x00 to 0x1f).
+    fn copy_of_the_v0_6_0_index() -> (TempDir, PathBuf, InMemoryKeyStore) {
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        fs::copy(FIXTURE_V0_6_0, &path).unwrap();
+        let key: Vec<u8> = (0..32).collect();
+        (dir, path, InMemoryKeyStore::with_entry(key))
+    }
+
+    fn migrations_and(extra: &[&'static str]) -> Vec<&'static str> {
+        MIGRATIONS.iter().chain(extra).copied().collect()
+    }
+
+    fn has_column(index: &Index, table: &str, column: &str) -> bool {
+        index
+            .conn
+            .query_row(
+                &format!("SELECT count(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
+                [column],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap()
+            == 1
+    }
+
+    fn assert_v0_6_0_content(index: &Index) {
+        use crate::model::{DocumentSource, DocumentStatus, TaxContext};
+
+        assert!(index.is_encrypted());
+        let invoice = index
+            .document_by_path(Path::new("archive/2026/Company A/invoice-4711.pdf"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(invoice.id.get(), 1);
+        assert_eq!(invoice.source, DocumentSource::Archive);
+        assert_eq!(invoice.status, DocumentStatus::Filed);
+        assert_eq!(invoice.fields.sender.as_deref(), Some("Company A"));
+        assert_eq!(invoice.fields.kind.as_deref(), Some("Invoice"));
+        assert_eq!(invoice.fields.tax_context, Some(TaxContext::Company));
+        assert_eq!(invoice.fields.number.as_deref(), Some("4711"));
+        assert_eq!(
+            invoice.fields.date.map(|date| date.to_string()).as_deref(),
+            Some("2026-01-15")
+        );
+        let amount = invoice.fields.amount.clone().unwrap();
+        assert_eq!(
+            (amount.minor_units, amount.currency.as_str()),
+            (11900, "EUR")
+        );
+        assert_eq!(
+            invoice
+                .fields
+                .tags
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["2026", "services"]
+        );
+
+        let receipt = index
+            .document_by_path(Path::new("inbox/scan-2.pdf"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (receipt.id.get(), receipt.status),
+            (2, DocumentStatus::Planned)
+        );
+        let notice = index
+            .document_by_path(Path::new("inbox/scan-3.pdf"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (notice.id.get(), notice.status),
+            (3, DocumentStatus::InReview)
+        );
+
+        assert_v0_6_0_search_and_other_tables(index, &invoice, &receipt, &notice);
+    }
+
+    fn assert_v0_6_0_search_and_other_tables(
+        index: &Index,
+        invoice: &crate::model::Document,
+        receipt: &crate::model::Document,
+        notice: &crate::model::Document,
+    ) {
+        use crate::model::{ReviewReason, TextMatch};
+
+        assert_eq!(index.search_text("hosting", 10).unwrap(), [invoice.id]);
+        assert_eq!(index.search_text("chair", 10).unwrap(), [receipt.id]);
+        assert_eq!(index.search_text("Finanzamt", 10).unwrap(), [notice.id]);
+        assert!(index.search_text("nonexistentword", 10).unwrap().is_empty());
+
+        let rules = index.rules().unwrap();
+        assert_eq!(rules.len(), 1);
+        let rule = &rules[0].spec;
+        assert_eq!(
+            rule.match_text,
+            Some(TextMatch::Contains("Invoice".to_owned()))
+        );
+        assert_eq!(rule.match_sender.as_deref(), Some("Company A"));
+        assert_eq!(rule.filing_pattern, "{year}/{sender}");
+        assert!(rule.confirmed);
+
+        let reviews = index.open_reviews().unwrap();
+        assert_eq!(reviews.len(), 1);
+        assert_eq!(reviews[0].document_id, notice.id);
+        assert_eq!(reviews[0].reason, ReviewReason::NoMatchingRule);
+
+        let profile = index.location_profile(Path::new("archive")).unwrap();
+        assert_eq!(profile.len(), 1);
+        assert_eq!(profile[0].subtree, "2026");
+        assert_eq!(profile[0].pattern.as_deref(), Some("{year}/{sender}"));
+
+        let queries = index.saved_queries().unwrap();
+        assert_eq!(queries.len(), 1);
+        assert_eq!(queries[0].name, "Invoices 2026");
+        assert_eq!(queries[0].spec.year, Some(2026));
+        assert_eq!(queries[0].spec.full_text.as_deref(), Some("hosting"));
+    }
+
+    #[test]
+    fn an_index_written_by_release_0_6_0_opens_with_all_its_content() {
+        let (_dir, path, store) = copy_of_the_v0_6_0_index();
+
+        let index = Index::open_with_migrations(&path, &store, MIGRATIONS).unwrap();
+
+        assert_eq!(
+            user_version(&index),
+            u32::try_from(MIGRATIONS.len()).unwrap()
+        );
+        assert_v0_6_0_content(&index);
+    }
+
+    #[test]
+    fn a_later_step_migrates_the_release_0_6_0_index_and_keeps_its_content() {
+        let (_dir, path, store) = copy_of_the_v0_6_0_index();
+        let steps = migrations_and(&[PROBE_COLUMN]);
+
+        let index = Index::open_with_migrations(&path, &store, &steps).unwrap();
+
+        assert_eq!(user_version(&index), 10);
+        assert!(has_column(&index, "document", "probe"));
+        assert_v0_6_0_content(&index);
+        drop(index);
+        let reopened = Index::open_with_migrations(&path, &store, &steps).unwrap();
+        assert_eq!(user_version(&reopened), 10);
+    }
+
+    #[test]
+    fn a_failing_second_step_leaves_the_release_0_6_0_file_byte_for_byte_as_it_was() {
+        let (_dir, path, store) = copy_of_the_v0_6_0_index();
+        let before = fs::read(&path).unwrap();
+        let steps = migrations_and(&[PROBE_COLUMN, "CREATE TABLE document (x)"]);
+
+        let err = Index::open_with_migrations(&path, &store, &steps).unwrap_err();
+
+        assert!(
+            matches!(
+                err,
+                IndexError::MigrationFailed {
+                    from: 9,
+                    step: 11,
+                    ..
+                }
+            ),
+            "{err}"
+        );
+        assert!(err.to_string().contains("left unchanged"), "{err}");
+        assert_eq!(fs::read(&path).unwrap(), before);
+        let index = Index::open_with_migrations(&path, &store, MIGRATIONS).unwrap();
+        assert_eq!(user_version(&index), 9);
+        assert!(!has_column(&index, "document", "probe"));
+        assert_v0_6_0_content(&index);
+    }
+
+    #[test]
+    fn foreign_keys_are_back_on_after_a_failed_migration() {
+        let conn_result = {
+            let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+            let failed = crate::migrations::run_migrations(&mut conn, &[TABLE_A, "NOT SQL"]);
+            let on: i64 = conn
+                .pragma_query_value(None, "foreign_keys", |row| row.get(0))
+                .unwrap();
+            (failed.is_err(), on)
+        };
+        assert_eq!(conn_result, (true, 1));
     }
 }
