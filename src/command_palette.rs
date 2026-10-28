@@ -53,6 +53,13 @@ impl PaletteGroup {
             Self::Settings => None,
         }
     }
+
+    fn beta_mark(self) -> Option<Msg> {
+        match self {
+            Self::Command(CommandGroup::Hermes) => Some(Msg::HermesBeta),
+            Self::Command(_) | Self::Settings => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,6 +85,7 @@ impl Entry {
 pub struct Header {
     pub label: &'static str,
     pub theme_name: Option<&'static str>,
+    pub beta_mark: Option<&'static str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -294,6 +302,7 @@ impl CommandPalette {
             rows.push(Row::Header(Header {
                 label: self.lang.text(Msg::CommandPaletteRecent),
                 theme_name: None,
+                beta_mark: None,
             }));
             rows.extend(recent);
         }
@@ -386,6 +395,7 @@ impl CommandPalette {
                         .group
                         .theme_name()
                         .map(|name| self.lang.text(name)),
+                    beta_mark: candidate.group.beta_mark().map(|name| self.lang.text(name)),
                 }));
             }
             rows.push(Row::Hit(hit));
@@ -914,6 +924,13 @@ mod tests {
             panic!("the Hermes group");
         };
         assert_eq!(hermes.theme_name, Some("Hermes"));
+        assert_eq!(hermes.beta_mark, Some("Beta"));
+        let marked = palette
+            .rows()
+            .iter()
+            .filter(|row| matches!(row, Row::Header(header) if header.beta_mark.is_some()))
+            .count();
+        assert_eq!(marked, 1, "only the Hermes group carries the mark");
         let mut again = super::tests::palette(KeyScope::Panel, Language::English);
         again.set_query(String::new());
         assert_eq!(palette.rows(), again.rows());

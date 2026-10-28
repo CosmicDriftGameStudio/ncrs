@@ -17,6 +17,11 @@ All notable changes to this project are documented here. The format follows
 - An index from 0.6.0 or later opens and is migrated, and a failed migration
   leaves the index file as it was and says which step failed.
 
+### Changed
+
+- Hermes is marked as a beta in its sidebar, the settings and the command list
+  (`F1`); the README says what that means.
+
 ## [0.8.0] — 2026-10-28
 
 ### Added

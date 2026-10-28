@@ -967,6 +967,12 @@
       "de": "Hermes"
     },
     {
+      "key": "hermes.beta",
+      "context": "Small mark after the name Hermes (sidebar of the filing pages, settings, command list): the module is a beta, its behaviour, rules and screens may still change; the index carries over between versions.",
+      "en": "Beta",
+      "de": "Beta"
+    },
+    {
       "key": "group.window",
       "context": "Heading of a group of commands in the command palette (and, later, a menu of the same name). One or two words.",
       "en": "Window",

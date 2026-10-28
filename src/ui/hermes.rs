@@ -113,7 +113,15 @@ pub fn nav<'a>(
             ))
             .into()
     });
-    Column::with_children(items).into()
+    let heading = row![
+        label(lang.text(Msg::GroupHermesTheme).to_owned(), palette.text),
+        label(lang.text(Msg::HermesBeta).to_owned(), palette.dim_text),
+    ]
+    .spacing(spacing::S)
+    .align_y(alignment::Vertical::Center)
+    .height(size::SIDEBAR_ITEM)
+    .padding([0.0, spacing::CELL_PADDING_X]);
+    Column::new().push(heading).extend(items).into()
 }
 
 /// The page before (`step` below zero) or after the one open, or `None` at

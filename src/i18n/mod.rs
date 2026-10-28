@@ -212,6 +212,8 @@ mod tests {
                 | Msg::GroupHermesTheme
                 // The module's name heads its column.
                 | Msg::ColumnHermes
+                // The loanword, the same in both languages.
+                | Msg::HermesBeta
                 // Names of color schemes.
                 | Msg::SettingsPresetCosmic
                 | Msg::SettingsPresetDracula

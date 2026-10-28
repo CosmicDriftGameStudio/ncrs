@@ -538,6 +538,17 @@ fn feature_theme_name(feature: SettingsFeature) -> Option<Msg> {
     }
 }
 
+fn feature_beta_mark(feature: SettingsFeature) -> Option<Msg> {
+    match feature {
+        SettingsFeature::Hermes => Some(Msg::HermesBeta),
+        SettingsFeature::Look
+        | SettingsFeature::Language
+        | SettingsFeature::Programs
+        | SettingsFeature::Keys
+        | SettingsFeature::Servers => None,
+    }
+}
+
 fn feature_intro(feature: SettingsFeature) -> Msg {
     match feature {
         SettingsFeature::Look => Msg::SettingsFeatureLookIntro,
@@ -1416,6 +1427,14 @@ fn nav<'a>(
                     .wrapping(Wrapping::None),
             );
         }
+        if let Some(beta_mark) = feature_beta_mark(feature) {
+            label = label.push(
+                text(lang.text(beta_mark).to_owned())
+                    .size(font_size::SMALL)
+                    .color(palette.dim_text)
+                    .wrapping(Wrapping::None),
+            );
+        }
         entries = entries.push(
             button(container(label).center_y(Length::Fill))
                 .on_press(Message::Settings(SettingsMessage::Select(feature)))
@@ -1459,6 +1478,13 @@ fn heading<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Element<'a,
     if let Some(theme_name) = feature_theme_name(feature) {
         title = title.push(
             text(lang.text(theme_name).to_owned())
+                .size(font_size::TITLE)
+                .color(palette.dim_text),
+        );
+    }
+    if let Some(beta_mark) = feature_beta_mark(feature) {
+        title = title.push(
+            text(lang.text(beta_mark).to_owned())
                 .size(font_size::TITLE)
                 .color(palette.dim_text),
         );
