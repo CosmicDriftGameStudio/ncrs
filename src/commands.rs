@@ -112,6 +112,7 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
         KeyAction::Move => Command::plain(action, File, Msg::ActionMove),
         KeyAction::Mkdir => Command::plain(action, File, Msg::ActionMkdir),
         KeyAction::NewFile => Command::plain(action, File, Msg::ActionNewFile),
+        KeyAction::Pack => Command::themed(action, File, Msg::ActionPack, Msg::ActionPackTheme),
         KeyAction::Delete => {
             Command::themed(action, File, Msg::ActionDelete, Msg::ActionDeleteTheme)
         }

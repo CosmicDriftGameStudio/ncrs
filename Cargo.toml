@@ -90,10 +90,11 @@ tar = { version = "0.4.46", default-features = false }
 flate2 = { version = "1.1.10", default-features = false, features = ["zlib-rs"] }
 # .tar.zst. No default features: no legacy format support, no zdict builder.
 zstd = { version = "0.14.3", default-features = false }
-# .7z, read only. Pure Rust and Apache-2.0, unlike 7-Zip and libarchive (LGPL).
+# .7z. Pure Rust and Apache-2.0, unlike 7-Zip and libarchive (LGPL).
 # LZMA, LZMA2 and the BCJ filters are always on; `deflate` reuses the zlib-rs
-# backend above. No `aes256`: an encrypted archive is refused, not decrypted.
-sevenz-rust2 = { version = "0.24.1", default-features = false, features = ["deflate"] }
+# backend above. `compress` is the LZMA2 encoder for writing. No `aes256`: an
+# encrypted archive is refused, not decrypted.
+sevenz-rust2 = { version = "0.24.1", default-features = false, features = ["compress", "deflate"] }
 # The real home folder and the bookmarks that keep a folder grant in the App
 # Sandbox. Only the `sandbox` feature (the App Store build) brings it in.
 ncrs-sandbox = { path = "crates/ncrs-sandbox", version = "0.0.0", optional = true }

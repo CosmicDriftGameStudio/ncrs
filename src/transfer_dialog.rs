@@ -5,6 +5,7 @@
 //! Everything that touches the disk is a free function taking plain paths, so
 //! the app runs it on the blocking pool and the tests run it on a tempdir.
 
+use std::ffi::OsStr;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -150,12 +151,22 @@ pub fn scan(sources: &[PathBuf], cancel: &AtomicBool) -> Scan {
 
 /// How many top-level names of `sources` the folder `target` already has.
 /// Looked up without following links, so a dangling link counts as taken:
-/// the copy would run into it too.
+/// the copy would run into it too. A folder inside an archive is read from the
+/// archive's index.
 pub fn count_conflicts(sources: &[PathBuf], target: &Path, cancel: &AtomicBool) -> usize {
-    sources
+    let names = sources
         .iter()
         .take_while(|_| !cancel.load(Ordering::Relaxed))
-        .filter_map(|source| source.file_name())
+        .filter_map(|source| source.file_name());
+    if let Some(location) = archive::locate_in_archive(target) {
+        let Ok(listing) = archive::list(&location) else {
+            return 0;
+        };
+        return names
+            .filter(|name| listing.entries.iter().any(|entry| entry.name == **name))
+            .count();
+    }
+    names
         .filter(|name| std::fs::symlink_metadata(target.join(name)).is_ok())
         .count()
 }
@@ -171,8 +182,14 @@ pub enum Refusal {
     InsideSource,
     /// The system would not say (permission, a mount that does not answer).
     Unreadable,
-    /// The target is an archive or lies inside one; archives are read only.
+    /// A move was asked into an archive or a folder inside one; only copying
+    /// goes in.
     IntoArchive,
+    /// Entries of an archive were asked into an archive, or the target lies
+    /// inside an archive that is itself inside an archive.
+    ArchiveInArchive,
+    /// Entries on a server were asked into an archive.
+    ServerToArchive,
     /// A move was asked for entries that lie inside an archive.
     MoveFromArchive,
     /// A move was asked to a folder on a server.
@@ -230,21 +247,40 @@ pub fn validate(
     if target_on_server {
         return Ok(target.to_path_buf());
     }
-    let resolved = match std::fs::canonicalize(target) {
-        Ok(resolved) => resolved,
-        Err(_) if archive::locate_in_archive(target).is_some() => return Err(Refusal::IntoArchive),
-        Err(error) => return Err(refusal_of(&error)),
+    // `into` is the way through the archive when the target is one, or a
+    // place in one.
+    let (resolved, into) = match std::fs::canonicalize(target) {
+        Ok(resolved) if archive::is_archive_file(&resolved) => (resolved, Some(Vec::new())),
+        Ok(resolved) => (resolved, None),
+        Err(error) => match archive::locate_in_archive(target) {
+            Some(location) => {
+                let archive = std::fs::canonicalize(&location.archive)
+                    .map_err(|canonical| refusal_of(&canonical))?;
+                (archive, Some(location.inner))
+            }
+            None => return Err(refusal_of(&error)),
+        },
     };
-    if archive::is_archive_file(&resolved) {
-        return Err(Refusal::IntoArchive);
-    }
-    if !resolved.is_dir() {
+    if let Some(inner) = &into {
+        if kind == TransferKind::Move {
+            return Err(Refusal::IntoArchive);
+        }
+        if inner
+            .iter()
+            .any(|part| archive::is_archive_name(OsStr::new(part)))
+        {
+            return Err(Refusal::ArchiveInArchive);
+        }
+    } else if !resolved.is_dir() {
         return Err(Refusal::NotAFolder);
     }
     for source in sources {
-        // An entry on a server is on no disk of this computer either: its
-        // folder cannot be this target's, and the target is no part of it.
         if RemotePath::parse(source).is_some() {
+            if into.is_some() {
+                return Err(Refusal::ServerToArchive);
+            }
+            // An entry on a server is on no disk of this computer either: its
+            // folder cannot be this target's, and the target is no part of it.
             continue;
         }
         // An entry of an archive is on no disk: it has no folder to be the same
@@ -253,20 +289,28 @@ pub fn validate(
             if kind == TransferKind::Move {
                 return Err(Refusal::MoveFromArchive);
             }
+            if into.is_some() {
+                return Err(Refusal::ArchiveInArchive);
+            }
             continue;
         }
         let (Some(parent), Some(name)) = (source.parent(), source.file_name()) else {
             continue;
         };
         let resolved_parent = std::fs::canonicalize(parent).map_err(|error| refusal_of(&error))?;
-        if resolved_parent == resolved {
+        if into.is_none() && resolved_parent == resolved {
             return Err(Refusal::SameFolder);
         }
+        // For an archive this also catches the archive being a selected
+        // entry, or lying below a selected folder.
         if resolved.starts_with(resolved_parent.join(name)) {
             return Err(Refusal::InsideSource);
         }
     }
-    Ok(resolved)
+    Ok(match into {
+        Some(inner) => inner.iter().fold(resolved, |path, part| path.join(part)),
+        None => resolved,
+    })
 }
 
 /// Whether `text` starts like a server address, whatever follows.
@@ -751,21 +795,101 @@ mod tests {
     }
 
     #[test]
-    fn an_archive_or_a_place_in_one_is_no_target() {
+    fn an_archive_or_a_place_in_one_takes_a_copy_but_no_move() {
         let root = tempfile::tempdir().unwrap();
         write(&root.path().join("from/a.txt"), 1);
         let archive = zip_in(root.path());
+        let canonical = std::fs::canonicalize(&archive).unwrap();
         let sources = [root.path().join("from/a.txt")];
 
-        for target in [archive.clone(), archive.join("in"), archive.join("gone")] {
-            for kind in [TransferKind::Copy, TransferKind::Move] {
-                assert_eq!(
-                    validate(kind, &sources, &target),
-                    Err(Refusal::IntoArchive),
-                    "{kind:?} {target:?}"
-                );
-            }
+        for (target, expected) in [
+            (archive.clone(), canonical.clone()),
+            (archive.join("in"), canonical.join("in")),
+        ] {
+            assert_eq!(
+                validate(TransferKind::Copy, &sources, &target),
+                Ok(expected),
+                "{target:?}"
+            );
+            assert_eq!(
+                validate(TransferKind::Move, &sources, &target),
+                Err(Refusal::IntoArchive),
+                "{target:?}"
+            );
         }
+        // Whether the folder is in the archive is for the job to find out: it
+        // would have to read the whole archive here.
+        assert_eq!(
+            validate(TransferKind::Copy, &sources, &archive.join("gone")),
+            Ok(canonical.join("gone"))
+        );
+    }
+
+    #[test]
+    fn archives_in_archives_and_servers_are_refused_as_sources_for_an_archive() {
+        let root = tempfile::tempdir().unwrap();
+        write(&root.path().join("from/a.txt"), 1);
+        let archive = zip_in(root.path());
+        let other = root.path().join("other.zip");
+        std::fs::copy(&archive, &other).unwrap();
+
+        assert_eq!(
+            validate(TransferKind::Copy, &[archive.join("b.txt")], &other),
+            Err(Refusal::ArchiveInArchive)
+        );
+        assert_eq!(
+            validate(
+                TransferKind::Copy,
+                &[root.path().join("from/a.txt")],
+                &archive.join("in/inner.zip/deeper")
+            ),
+            Err(Refusal::ArchiveInArchive),
+            "a folder below an archive that is itself in an archive"
+        );
+        assert_eq!(
+            validate(
+                TransferKind::Copy,
+                &[PathBuf::from("sftp://tester@test.invalid:2222/x")],
+                &archive
+            ),
+            Err(Refusal::ServerToArchive)
+        );
+    }
+
+    #[test]
+    fn an_archive_does_not_take_itself_or_the_folder_it_lies_in() {
+        let root = tempfile::tempdir().unwrap();
+        let archive = zip_in(root.path());
+
+        assert_eq!(
+            validate(TransferKind::Copy, std::slice::from_ref(&archive), &archive),
+            Err(Refusal::InsideSource)
+        );
+        assert_eq!(
+            validate(
+                TransferKind::Copy,
+                &[root.path().to_path_buf()],
+                &archive.join("in")
+            ),
+            Err(Refusal::InsideSource)
+        );
+    }
+
+    #[test]
+    fn conflicts_in_an_archive_folder_are_counted_from_the_archive() {
+        let root = tempfile::tempdir().unwrap();
+        write(&root.path().join("from/a.txt"), 1);
+        write(&root.path().join("from/b.txt"), 1);
+        write(&root.path().join("from/in"), 1);
+        let archive = zip_in(root.path());
+        let sources = vec![
+            root.path().join("from/a.txt"),
+            root.path().join("from/b.txt"),
+            root.path().join("from/in"),
+        ];
+
+        assert_eq!(count_conflicts(&sources, &archive, &never()), 2);
+        assert_eq!(count_conflicts(&sources, &archive.join("in"), &never()), 1);
     }
 
     #[test]

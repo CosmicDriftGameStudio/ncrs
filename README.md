@@ -117,7 +117,13 @@ The same window in German, switched with F9.
 - Smell-o-scope (search) in file names and contents below a directory, in the panel, the way
   VS Code does it: see [Search](#search)
 - Archives (zip, tar, tar.gz, tar.zst, 7z) open with `Enter` and are browsed like folders; `F5`
-  copies out of them. Read-only for now; entries with `..` or absolute paths are left out
+  copies out of them, `Alt`+`F5` packs the selection into a new archive in the other panel,
+  `F5` into an open archive adds to it and `F8` in one deletes entries (permanently).
+  Moving into an archive and editing in it are refused; entries with `..` or absolute paths
+  are left out. A change rewrites the whole archive into a temporary file next to it (free
+  space of about its size is needed) and replaces the original only when that succeeded; a
+  7z archive is recompressed completely, and tar extras (extended attributes, sub-second
+  times) are not kept. Links and special files in the selection are skipped and counted.
 - SFTP servers open like folders (password login): "Connect to server…" in the command
   list, a saved server in the drive menu, or `sftp://user@host/path` in the path field.
   Browse, view (`F3`) and copy (`F5`) in both directions; see [SFTP servers](#sftp-servers)
@@ -148,6 +154,7 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `F2`               | Focus the command line below the panels: `cd` changes the active panel's folder, any other command runs in the shell in that folder (the status bar shows its exit status; its output is not shown). `↑`/`↓` walk the commands of this session, `Esc` or `F2` goes back to the panels |
 | `F3` / `F4`        | View / edit the file under the cursor in an external program (programs configurable, see [Configuration](#configuration)) |
 | `F5` / `F6`        | Copy / move to the other panel          |
+| `Alt`+`F5`         | Pack the tagged rows (else the cursor row) into a new archive in the other panel's folder; asks for the name (ends in `.zip`, `.tar`, `.tar.gz`, `.tgz`, `.tar.zst`, `.tzst` or `.7z`) |
 | `F7`               | Create directory                        |
 | `Shift`+`F4`       | New file: creates an empty file under the name asked for and opens it in the editor like `F4`; an existing name is never overwritten |
 | `F8`               | Delete to the trash, after a confirmation |
@@ -392,7 +399,7 @@ edit = "F3"
 Actions: `quit`, `open`, `go_up`, `switch_panel`, `switch_language`,
 `cursor_up`, `cursor_down`, `page_up`, `page_down`, `first`, `last`,
 `toggle_tag`, `tag_up`, `tag_down`, `tag_all`, `clear_tags`, `view`, `edit`,
-`copy`, `move`, `mkdir`, `new_file`, `delete`, `delete_permanently`, `abort_job`,
+`copy`, `move`, `pack`, `mkdir`, `new_file`, `delete`, `delete_permanently`, `abort_job`,
 `copy_path`, `copy_name`, `drive_menu_left`, `drive_menu_right`,
 `history_back`, `history_forward`, `add_favourite`, `remove_favourite`, `favourites`,
 `sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`, `search`, `quick_open`, `command_line`, `command_palette`, `search_case`,

@@ -18,7 +18,7 @@ use crate::fs::transfer::{resolve_conflict, transfer, Counting, Move, OnConflict
 /// How much of one file is written between two checks for a cancel. Small
 /// enough that Escape stops a huge file within a moment, never the whole file
 /// in memory.
-const CHUNK: u64 = 1 << 20;
+pub(in crate::fs::archive) const CHUNK: u64 = 1 << 20;
 
 /// Copies the archive entry at `source` into `target_dir`, keeping its name,
 /// and returns how many entries it wrote.

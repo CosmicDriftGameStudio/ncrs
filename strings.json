@@ -217,6 +217,24 @@
       "de": "Neue Datei"
     },
     {
+      "key": "dialog.pack.title",
+      "context": "Title of the pack dialog (Alt+F5), which asks for the name of a new archive in the folder of the other panel and packs the selected files into it. Imperative, matches the create-directory title.",
+      "en": "Pack into archive",
+      "de": "In Archiv packen"
+    },
+    {
+      "key": "dialog.pack.label",
+      "context": "Label next to the text field for the name of the new archive. The ending decides the format (zip, tar, tar.gz, tar.zst, 7z). One or two words, no colon.",
+      "en": "Archive name",
+      "de": "Name des Archivs"
+    },
+    {
+      "key": "dialog.pack.confirm",
+      "context": "Confirm button in the pack dialog. Verb, what the button does.",
+      "en": "Pack",
+      "de": "Packen"
+    },
+    {
       "key": "dialog.mkdir.label",
       "context": "Label next to the text field for the new directory name. One or two words, no colon.",
       "en": "Name",
@@ -269,6 +287,18 @@
       "context": "Shown when the typed name contains a path separator. The new directory is always created inside the current one, so tell the user to use a plain name.",
       "en": "A name cannot contain / or \\\\",
       "de": "Ein Name darf kein / oder \\ enthalten"
+    },
+    {
+      "key": "error.pack_extension",
+      "context": "Shown in the pack dialog when the typed name does not end in a known archive extension, so ncrs cannot tell the format. Lists the endings.",
+      "en": "The name must end in .zip, .tar, .tar.gz, .tgz, .tar.zst, .tzst or .7z",
+      "de": "Der Name muss auf .zip, .tar, .tar.gz, .tgz, .tar.zst, .tzst oder .7z enden"
+    },
+    {
+      "key": "error.pack_exists",
+      "context": "Shown in the pack dialog when a file or folder of that name is already in the target folder. The dialog never replaces an archive; the user picks another name.",
+      "en": "A file or folder with this name already exists here",
+      "de": "Hier gibt es schon eine Datei oder einen Ordner mit diesem Namen"
     },
     {
       "key": "error.mkdir_failed",
@@ -325,6 +355,12 @@
       "de": "Lege ab…"
     },
     {
+      "key": "job.pack",
+      "context": "Status bar while files are being packed into a new archive. Same shape as job.copy.",
+      "en": "Packing…",
+      "de": "Packe…"
+    },
+    {
       "key": "job.extract",
       "context": "Status bar while a file is being unpacked from an archive into a temporary copy so the viewer can open it. Same shape as job.copy.",
       "en": "Extracting…",
@@ -356,9 +392,63 @@
     },
     {
       "key": "status.archive_read_only",
-      "context": "Status bar notice when the user tries to change something (move, delete, create, edit) while a panel browses an archive. Archives can only be read for now. 'Sealed chest compartment' is a wink at the Futurama chest of the app's Hermes theme; the second sentence says what to do instead.",
-      "en": "Sealed chest compartment: archives can only be read for now. Copy the files out first.",
-      "de": "Versiegeltes Brustfach: Archive lassen sich vorerst nur lesen. Erst die Dateien herauskopieren."
+      "context": "Status bar notice when the user tries to do something an archive panel still refuses (move, edit, create a folder or file, rename, search, Hermes actions). Copying into an archive (F5) and deleting from it (F8) work; everything else is read only. 'Sealed chest compartment' is a wink at the Futurama chest of the app's Hermes theme; the second sentence says what works instead.",
+      "en": "Sealed chest compartment: in an archive only copying in (F5) and deleting (F8) work, not moving or editing. Copy the files out first.",
+      "de": "Versiegeltes Brustfach: In einem Archiv gehen nur Hineinkopieren (F5) und Löschen (F8), kein Verschieben oder Bearbeiten. Erst die Dateien herauskopieren."
+    },
+    {
+      "key": "status.pack_unavailable",
+      "context": "Status bar notice when the pack key is pressed but a panel is inside an archive or on an SFTP server. Packing reads from one folder of this computer and writes a new archive into the folder of the other panel.",
+      "en": "Packing needs two folders on this computer: neither panel may be inside an archive or on a server",
+      "de": "Zum Packen müssen beide Panels Ordner dieses Computers zeigen, nicht ein Archiv und keinen Server"
+    },
+    {
+      "key": "status.packed",
+      "context": "Status bar notice after files were packed into a new archive. Takes the archive's file name.",
+      "en": "Packed into {name}",
+      "de": "In {name} gepackt"
+    },
+    {
+      "key": "status.archive_copied_in",
+      "context": "Status bar notice after files were copied into an archive (F5 with an archive as the target).",
+      "en": "Copied into the archive",
+      "de": "Ins Archiv kopiert"
+    },
+    {
+      "key": "status.archive_deleted",
+      "context": "Status bar notice after entries were deleted from an archive (F8).",
+      "en": "Deleted from the archive",
+      "de": "Aus dem Archiv gelöscht"
+    },
+    {
+      "key": "status.archive_skipped",
+      "context": "Appended to the notice after a pack or copy into an archive when links or special files (pipes, sockets, devices) of the selection were left out, or names that are not valid text. Takes the count. Starts with a separator and a space.",
+      "en": "; {count} links or special files left out",
+      "de": "; {count} Links oder Sonderdateien ausgelassen"
+    },
+    {
+      "key": "status.archive_kept",
+      "context": "Appended to the notice after a copy into an archive with the policy Skip, when names were already in the archive and were kept as they were. Takes the count. Starts with a separator and a space.",
+      "en": "; {count} names already in the archive, kept",
+      "de": "; {count} Namen waren schon im Archiv und blieben"
+    },
+    {
+      "key": "error.archive_name_taken",
+      "context": "Status bar error when a copy into an archive stopped because a name is already in the archive and the policy was Ask, which an archive cannot do per file. Takes the detail, which names the entry. Tells the user the two other choices of the copy dialog.",
+      "en": "{detail}. Copy again and choose Overwrite or Skip in the dialog.",
+      "de": "{detail}. Noch einmal kopieren und im Dialog Überschreiben oder Überspringen wählen."
+    },
+    {
+      "key": "error.archive_write_failed",
+      "context": "Status bar error when packing, copying into or deleting from an archive failed. Takes the system's reason. The archive and the files were not changed.",
+      "en": "The archive was not changed: {reason}",
+      "de": "Das Archiv wurde nicht verändert: {reason}"
+    },
+    {
+      "key": "status.archive_write_busy",
+      "context": "Status bar notice when a pack, a copy into an archive or a delete from one is asked for while another job still runs. Only one job runs at a time; the user can try again when it is done.",
+      "en": "Another job is still running; try again when it is done",
+      "de": "Ein anderer Auftrag läuft noch; später noch einmal versuchen"
     },
     {
       "key": "status.archive_nested",
@@ -1175,6 +1265,18 @@
       "context": "Entry of the command palette that runs the key action delete_permanently. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
       "en": "Delete permanently",
       "de": "Endgültig löschen"
+    },
+    {
+      "key": "action.pack",
+      "context": "Entry of the command palette that runs the key action pack. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Pack into archive",
+      "de": "In Archiv packen"
+    },
+    {
+      "key": "action.pack.theme",
+      "context": "Theme name of the key action pack, shown dimmed after its plain name action.pack in the command palette, and matched when typing. A playful name, a wink at the chest of the app's Hermes theme; the plain name beside it says what the action does.",
+      "en": "Into the chest",
+      "de": "Ab in die Truhe"
     },
     {
       "key": "action.mkdir",
@@ -4454,9 +4556,21 @@
     },
     {
       "key": "transfer.error_into_archive",
-      "context": "Error under the target field when the target is an archive or a folder inside one. Writing into archives is not supported yet.",
-      "en": "Archives cannot be written to yet",
-      "de": "In Archive lässt sich noch nicht schreiben"
+      "context": "Error under the target field when the user wants to move (F6) entries into an archive or a folder inside one. Only copying into an archive works, because a move would delete the originals after rewriting the archive.",
+      "en": "Files can only be copied into an archive, not moved",
+      "de": "In ein Archiv lässt sich nur kopieren, nicht verschieben"
+    },
+    {
+      "key": "transfer.error_archive_nested",
+      "context": "Error under the target field when entries of one archive are to go into another archive, or the target lies inside an archive that is itself inside an archive. Neither is supported; copying out to a folder first works.",
+      "en": "Archives inside archives are not supported; copy the files out to a folder first",
+      "de": "Archive in Archiven werden nicht unterstützt; erst in einen Ordner herauskopieren"
+    },
+    {
+      "key": "transfer.error_server_to_archive",
+      "context": "Error under the target field when files on an SFTP server are to be copied into an archive. Copying them to a folder on this computer first works.",
+      "en": "Files from a server cannot go straight into an archive; copy them to a folder first",
+      "de": "Dateien von einem Server gehen nicht direkt in ein Archiv; erst in einen Ordner kopieren"
     },
     {
       "key": "transfer.error_move_from_archive",

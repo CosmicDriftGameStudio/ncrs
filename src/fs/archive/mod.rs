@@ -2,14 +2,15 @@
 //! archive file followed by the way through it (`/x/fotos.zip/2024/a.jpg`), so
 //! the rest of the app needs no path type of its own for it.
 //!
-//! Read only: [`ArchiveFormat`] and [`ArchiveIndex`] are what a writer would
-//! build on.
+//! Reading never changes an archive. Writing (`pack`, `add`, `delete`) builds
+//! a complete new archive next to it and replaces the old one at the end.
 
 mod extract;
 mod index;
 mod names;
 mod sevenz;
 mod view;
+mod write;
 
 use std::ffi::{OsStr, OsString};
 use std::io;
@@ -23,6 +24,7 @@ pub use names::safe_components;
 pub use sevenz::{refusal_of, SevenZipRefusal};
 pub use view::restrict_to_owner;
 pub use view::{extract_for_view, ViewCopies};
+pub use write::{add, delete, pack, WriteReport};
 
 use super::FileEntry;
 
@@ -169,6 +171,11 @@ fn index_of(location: &ArchiveLocation) -> io::Result<Arc<ArchiveIndex>> {
         recent.remove(0);
     }
     Ok(index)
+}
+
+fn forget(archive: &Path) {
+    let mut recent = RECENT.lock().unwrap_or_else(PoisonError::into_inner);
+    recent.retain(|((known, _, _), _)| known != archive);
 }
 
 fn recently_used(key: &IndexKey) -> Option<Arc<ArchiveIndex>> {

@@ -20,6 +20,10 @@ All notable changes to this project are documented here. The format follows
   `CosmicDriftGameStudio/homebrew-ncrs`, with the version and both hashes;
   it is merged there by hand. Without the `HOMEBREW_TAP_TOKEN` secret the
   step is skipped.
+- Archives can be written: `Alt`+`F5` packs the selection into a new zip, tar,
+  tar.gz, tar.zst or 7z archive in the other panel, `F5` into an open archive
+  adds files, and `F8` in one deletes entries. The archive is rewritten into a
+  temporary file and replaced only on success; `Ctrl`+`C` leaves it as it was.
 
 ### Changed
 

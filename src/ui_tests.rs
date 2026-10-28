@@ -287,6 +287,22 @@ mod tests {
     }
 
     #[test]
+    fn the_pack_prompt_matches_its_snapshots() {
+        for (lang, name) in [
+            (Language::English, "pack_prompt_en"),
+            (Language::German, "pack_prompt_de"),
+        ] {
+            let app = App::with_fixed_pack_prompt().in_language(lang);
+            let matches = simulator(&app)
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(matches, "the pack prompt does not match {name}.png");
+        }
+    }
+
+    #[test]
     fn the_new_file_prompt_matches_its_snapshot() {
         let app = App::with_fixed_new_file_prompt();
         let matches = simulator(&app)
@@ -753,7 +769,7 @@ mod archive_panel {
     use super::*;
 
     #[test]
-    fn a_delete_inside_an_archive_says_the_archive_is_read_only() {
+    fn a_move_inside_an_archive_says_the_archive_is_read_only() {
         for (lang, name) in [
             (Language::English, "archive_read_only_en"),
             (Language::German, "archive_read_only_de"),

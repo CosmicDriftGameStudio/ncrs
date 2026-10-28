@@ -871,11 +871,15 @@ mod tests {
         // theme names "Inspection" and "Inventory" (Hermes group, after Search
         // in the fixed order).
         let palette = asked(Language::English, "in");
-        let first = palette.hits().next().unwrap();
-        assert_eq!(
-            palette.entry(first).unwrap().group,
-            PaletteGroup::Command(CommandGroup::Hermes)
-        );
+        let position_of = |group| {
+            palette
+                .hits()
+                .position(|hit| palette.entry(hit).unwrap().group == group)
+        };
+        let hermes = position_of(PaletteGroup::Command(CommandGroup::Hermes));
+        let search = position_of(PaletteGroup::Command(CommandGroup::Search));
+        assert!(hermes.is_some());
+        assert!(hermes < search, "{hermes:?} {search:?}");
         assert!(palette
             .hits()
             .any(|hit| palette.entry(hit).unwrap().command().unwrap() == KeyAction::Search));
