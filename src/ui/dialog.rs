@@ -44,6 +44,11 @@ pub fn view<'a>(
             lang.text(Msg::DialogMkdirLabel),
             lang.text(Msg::DialogMkdirCreate),
         ),
+        PromptKind::Pack => (
+            lang.text(Msg::DialogPackTitle),
+            lang.text(Msg::DialogPackLabel),
+            lang.text(Msg::DialogPackConfirm),
+        ),
     };
 
     let field = kit::text_field(
@@ -102,6 +107,8 @@ fn validation_message(reason: &str) -> Option<Msg> {
         "empty_name" => Some(Msg::ErrorEmptyName),
         "reserved_name" => Some(Msg::ErrorReservedName),
         "separator_not_allowed" => Some(Msg::ErrorSeparatorNotAllowed),
+        "archive_extension" => Some(Msg::ErrorPackExtension),
+        "archive_exists" => Some(Msg::ErrorPackExists),
         _ => None,
     }
 }

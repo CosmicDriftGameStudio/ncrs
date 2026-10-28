@@ -9,6 +9,8 @@
 //! text that caused it.
 use std::path::PathBuf;
 
+use crate::fs::archive;
+
 /// Which operation the prompt is collecting input for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PromptKind {
@@ -16,6 +18,9 @@ pub enum PromptKind {
     CreateDir,
     /// Shift+F4 — ask for a file name to create in the active panel and edit.
     CreateFile,
+    /// Alt+F5 — ask for the file name of a new archive in the other panel's
+    /// folder and pack the selection into it.
+    Pack,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,6 +31,8 @@ pub struct Prompt {
     /// What the user typed. Kept across a failed attempt so the error sits
     /// next to the text that caused it.
     name: String,
+    /// What a pack prompt packs; empty for the others.
+    sources: Vec<PathBuf>,
     /// Set while the operation runs.
     busy: bool,
     /// Why the last attempt failed, in the active language.
@@ -38,6 +45,7 @@ impl Prompt {
             kind,
             parent,
             name: String::new(),
+            sources: Vec::new(),
             busy: false,
             error: None,
         }
@@ -49,6 +57,24 @@ impl Prompt {
 
     pub fn create_file(parent: PathBuf) -> Self {
         Self::new(PromptKind::CreateFile, parent)
+    }
+
+    /// The pack prompt for the folder `parent`, with the name already typed.
+    pub fn pack(parent: PathBuf, sources: Vec<PathBuf>, name: String) -> Self {
+        Self {
+            sources,
+            name,
+            ..Self::new(PromptKind::Pack, parent)
+        }
+    }
+
+    /// The folder the new entry goes into.
+    pub fn parent(&self) -> &std::path::Path {
+        &self.parent
+    }
+
+    pub fn sources(&self) -> &[PathBuf] {
+        &self.sources
     }
 
     pub fn kind(&self) -> PromptKind {
@@ -92,7 +118,8 @@ impl Prompt {
 
     /// Whether the typed name could be a directory or file name. Empty, `.` and `..`
     /// are rejected before the filesystem is touched, so the error appears while
-    /// the dialog is still open instead of after a round trip.
+    /// the dialog is still open instead of after a round trip. A pack name also
+    /// needs a known archive ending and must not be taken in the folder.
     pub fn validate(&self) -> Result<(), &'static str> {
         let name = self.name().trim();
         if name.is_empty() {
@@ -103,6 +130,14 @@ impl Prompt {
         }
         if name.contains('/') || name.contains('\\') {
             return Err("separator_not_allowed");
+        }
+        if self.kind == PromptKind::Pack {
+            if !archive::is_archive_name(name.as_ref()) {
+                return Err("archive_extension");
+            }
+            if std::fs::symlink_metadata(self.parent.join(name)).is_ok() {
+                return Err("archive_exists");
+            }
         }
         Ok(())
     }
@@ -155,6 +190,47 @@ mod tests {
     fn a_traversal_name_is_rejected_before_it_can_be_joined() {
         assert!(prompt_with("..").validate().is_err());
         assert!(prompt_with("a/b").validate().is_err());
+    }
+
+    fn pack_prompt_in(folder: &std::path::Path, name: &str) -> Prompt {
+        Prompt::pack(folder.to_path_buf(), Vec::new(), name.to_string())
+    }
+
+    #[test]
+    fn a_pack_name_needs_a_known_ending_and_a_free_name() {
+        let folder = tempfile::tempdir().unwrap();
+        std::fs::write(folder.path().join("taken.zip"), b"x").unwrap();
+
+        assert_eq!(
+            pack_prompt_in(folder.path(), "new.tar.zst").validate(),
+            Ok(())
+        );
+        assert_eq!(pack_prompt_in(folder.path(), "New.ZIP").validate(), Ok(()));
+        assert_eq!(
+            pack_prompt_in(folder.path(), "notes.txt").validate(),
+            Err("archive_extension")
+        );
+        assert_eq!(
+            pack_prompt_in(folder.path(), "noending").validate(),
+            Err("archive_extension")
+        );
+        assert_eq!(
+            pack_prompt_in(folder.path(), "taken.zip").validate(),
+            Err("archive_exists")
+        );
+        assert_eq!(
+            pack_prompt_in(folder.path(), "a/b.zip").validate(),
+            Err("separator_not_allowed")
+        );
+        assert_eq!(
+            pack_prompt_in(folder.path(), "").validate(),
+            Err("empty_name")
+        );
+    }
+
+    #[test]
+    fn a_name_that_is_no_archive_is_fine_for_the_other_prompts() {
+        assert_eq!(prompt_with("notes.txt").validate(), Ok(()));
     }
 
     /// Whitespace around a name is easy to type and should not create a

@@ -57,12 +57,10 @@ impl ContextAction {
             | ContextAction::Copy
             | ContextAction::CopyPath
             | ContextAction::CopyName
-            | ContextAction::View => true,
-            ContextAction::Edit
-            | ContextAction::Move
-            | ContextAction::NewFolder
             | ContextAction::Trash
-            | ContextAction::DeletePermanently => false,
+            | ContextAction::DeletePermanently
+            | ContextAction::View => true,
+            ContextAction::Edit | ContextAction::Move | ContextAction::NewFolder => false,
         }
     }
 

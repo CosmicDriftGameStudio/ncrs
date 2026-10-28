@@ -165,6 +165,12 @@ pub enum Message {
     DeleteConfirm,
     /// The user dismissed the delete dialog.
     DeleteCancel,
+    /// A pack, a copy into an archive or a delete from one finished.
+    ArchiveWritten {
+        result: Result<crate::fs::archive::WriteReport, RowFailure>,
+        /// The write it belongs to; the result of a stopped one is dropped.
+        generation: u64,
+    },
     /// One entry of a delete finished.
     DeleteRowDone {
         /// The reason, as the OS or the trash worded it; the app adds the name.
@@ -257,6 +263,8 @@ pub enum Message {
     CreateDirPrompt,
     /// Shift+F4: open the new-file prompt.
     CreateFilePrompt,
+    /// Alt+F5: ask for the name of a new archive in the other panel's folder.
+    PackPrompt,
     /// A keystroke went to the open prompt.
     PromptInput(String),
     /// The user confirmed the prompt.

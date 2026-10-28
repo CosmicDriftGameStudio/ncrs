@@ -97,6 +97,7 @@ key_actions! {
     DeletePermanently => "delete_permanently",
     Mkdir => "mkdir",
     NewFile => "new_file",
+    Pack => "pack",
     DriveMenuLeft => "drive_menu_left",
     DriveMenuRight => "drive_menu_right",
     HistoryBack => "history_back",
@@ -214,6 +215,7 @@ impl KeyAction {
             | Self::CopyName
             | Self::Mkdir
             | Self::NewFile
+            | Self::Pack
             | Self::QuickOpen
             | Self::CommandLine
             | Self::FilingStatus
@@ -323,6 +325,7 @@ impl KeyAction {
             Self::DeletePermanently => Message::Delete { permanent: true },
             Self::Mkdir => Message::CreateDirPrompt,
             Self::NewFile => Message::CreateFilePrompt,
+            Self::Pack => Message::PackPrompt,
             Self::DriveMenuLeft => Message::VolumeMenu(PanelSide::Left),
             Self::DriveMenuRight => Message::VolumeMenu(PanelSide::Right),
             Self::HistoryBack => Message::HistoryBack,
@@ -393,7 +396,8 @@ impl KeyAction {
     /// Whether a panel inside an archive may run the action. Only what takes
     /// neither the panel's path nor its selection as input for writing,
     /// launching, the config or Hermes; viewing is the exception, as it works
-    /// on a copy. No catch-all arm: a new action has to be decided.
+    /// on a copy, and so are copying in and deleting, which rewrite the
+    /// archive. No catch-all arm: a new action has to be decided.
     #[cfg(test)]
     pub fn allowed_in_archive(self) -> bool {
         match self {
@@ -447,13 +451,14 @@ impl KeyAction {
             | Self::SearchCase
             | Self::SearchWholeWord
             | Self::SearchRegex
+            | Self::Delete
+            | Self::DeletePermanently
             | Self::View => true,
             Self::Edit
             | Self::Move
-            | Self::Delete
-            | Self::DeletePermanently
             | Self::Mkdir
             | Self::NewFile
+            | Self::Pack
             | Self::AddFavourite
             | Self::RemoveFavourite
             | Self::Search
@@ -533,6 +538,7 @@ impl KeyAction {
             | Self::DeletePermanently
             | Self::Mkdir
             | Self::NewFile
+            | Self::Pack
             | Self::AddFavourite
             | Self::RemoveFavourite
             | Self::Search
@@ -644,6 +650,11 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
         (
             A::NewFile,
             Binding::with_modifiers(KeyNamed(F4), Modifiers::SHIFT),
+        ),
+        // Alt+F5 packs into an archive, as in Norton Commander.
+        (
+            A::Pack,
+            Binding::with_modifiers(KeyNamed(F5), Modifiers::ALT),
         ),
         // Alt (Option on macOS) with F1 or F2 picks the drive of the left or
         // right panel, as in Norton Commander. Not advertised: the bar shows

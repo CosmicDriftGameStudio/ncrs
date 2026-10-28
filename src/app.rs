@@ -117,18 +117,35 @@ const SEARCH_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(25
 /// files does not make thousands of updates.
 const SEARCH_BATCH: usize = 256;
 
+/// The name a new archive starts with: the entry's own name for one, the name
+/// of the folder they are in for several.
+fn suggested_archive_name(sources: &[PathBuf]) -> String {
+    let named = match sources {
+        [only] => only.file_name(),
+        many => many
+            .first()
+            .and_then(|first| first.parent())
+            .and_then(Path::file_name),
+    };
+    format!(
+        "{}.zip",
+        named.map_or_else(|| "archive".into(), |name| name.to_string_lossy())
+    )
+}
+
 /// What a panel inside an archive refuses: everything that would change or
-/// hand over the files in it, anything that takes the panel's path or
-/// selection into the config or to Hermes, and an archive inside an archive.
-/// Viewing is allowed: it works on a copy, see `open_external`.
+/// hand over the files in it except deleting and copying into it (both
+/// rewrite the archive), anything that takes the panel's path or selection
+/// into the config or to Hermes, and an archive inside an archive. Viewing is
+/// allowed: it works on a copy, see `open_external`.
 /// Keys, the command list and the context menu all end up here; the lists of
 /// what may run are `allowed_in_archive` on the three action enums.
 fn archive_refusal(panel: &PanelState, message: &Message) -> Option<Msg> {
     panel.archive.as_ref()?;
     match message {
+        Message::PackPrompt => Some(Msg::StatusPackUnavailable),
         Message::Transfer(TransferKind::Move)
         | Message::OpenExternal(fs::OpenKind::Edit)
-        | Message::Delete { .. }
         | Message::CreateDirPrompt
         | Message::CreateFilePrompt
         | Message::OpenSearch
@@ -164,6 +181,7 @@ fn remote_refusal(panel: &PanelState, message: &Message) -> Option<Msg> {
     panel.remote()?;
     match message {
         Message::CommandLine(CommandLineMessage::Focus) => Some(Msg::StatusRemoteNoShell),
+        Message::PackPrompt => Some(Msg::StatusPackUnavailable),
         Message::Transfer(TransferKind::Move)
         | Message::OpenExternal(fs::OpenKind::Edit)
         | Message::Delete { .. }
@@ -684,6 +702,25 @@ struct Extracting {
     slot: PathBuf,
 }
 
+/// A pack, a copy into an archive or a delete from one, while its job runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ArchiveWrite {
+    /// The panel the entries came from, which is cleared and reloaded at the
+    /// end even if the user switches panels meanwhile.
+    side: PanelSide,
+    what: ArchiveWriteKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ArchiveWriteKind {
+    /// A new archive of this name in the other panel's folder.
+    Pack {
+        name: String,
+    },
+    CopyIn,
+    Delete,
+}
+
 /// Which keys the open delete dialog answers to.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum DeleteKeys {
@@ -914,6 +951,8 @@ pub struct App {
     view_copies: Option<fs::archive::ViewCopies>,
     /// The file F3 is unpacking, while its job runs.
     extracting: Option<Extracting>,
+    /// The pack, copy into an archive or delete from one that is running.
+    archive_write: Option<ArchiveWrite>,
     /// The button the open dialog has focused, counted from the left.
     dialog_focus: usize,
     /// Modifiers held right now, for Cmd/Ctrl-click on a row.
@@ -2717,6 +2756,7 @@ impl App {
             deleting: None,
             view_copies: None,
             extracting: None,
+            archive_write: None,
             dialog_focus: 0,
             modifiers: Modifiers::default(),
             trash: Arc::new(fs::SystemTrash),
@@ -3260,11 +3300,24 @@ impl App {
                 let parent = self.active_panel().path.clone();
                 self.open_prompt(Prompt::create_file(parent))
             }
+            Message::PackPrompt => self.open_pack_prompt(),
+            Message::ArchiveWritten { result, generation } => {
+                self.archive_written(generation, result)
+            }
             Message::PromptInput(text) => {
                 if let Some(prompt) = self.prompt.as_mut() {
                     prompt.set_name(text);
                 }
                 Task::none()
+            }
+            // Its own arm, not an early return: starting the job changes what the
+            // keys mean, and the routing state is published after the match.
+            Message::PromptSubmit
+                if self.prompt.as_ref().is_some_and(|prompt| {
+                    prompt.kind() == PromptKind::Pack && prompt.validate().is_ok()
+                }) =>
+            {
+                self.start_pack()
             }
             Message::PromptSubmit => {
                 let Some(prompt) = self.prompt.as_ref() else {
@@ -3293,6 +3346,8 @@ impl App {
                 let create = match kind {
                     PromptKind::CreateDir => Task::perform(fs::create_dir(target), finished),
                     PromptKind::CreateFile => Task::perform(fs::create_file(target), finished),
+                    // Taken out above: a pack has its own job.
+                    PromptKind::Pack => Task::none(),
                 };
 
                 // The reload belongs *after* the create, not beside it.
@@ -5940,12 +5995,14 @@ impl App {
         if sources.is_empty() {
             return Task::none();
         }
+        // An archive has no trash: its entries go for good.
+        let permanent_on_this_side = permanent || self.panel(self.source_side()).archive.is_some();
         self.job_error = None;
         self.notice = None;
-        self.dialog_focus = delete_dialog_view::default_focus(permanent);
+        self.dialog_focus = delete_dialog_view::default_focus(permanent_on_this_side);
         self.delete_dialog = Some(Deletion {
             sources,
-            permanent,
+            permanent: permanent_on_this_side,
             side: self.source_side(),
         });
         Task::none()
@@ -5996,6 +6053,9 @@ impl App {
         let Some(deletion) = self.delete_dialog.take() else {
             return Task::none();
         };
+        if let Some(archive) = self.panel(deletion.side).archive.clone() {
+            return self.start_archive_delete(archive, deletion);
+        }
         self.deleting = Some(deletion);
         self.generation = self.generation.wrapping_add(1);
         self.run_delete_row(0)
@@ -6247,15 +6307,7 @@ impl App {
                     copies.forget_slot(&slot);
                 }
                 let text = match failure {
-                    RowFailure::Refused(refusal) => self
-                        .lang
-                        .text(match refusal {
-                            fs::archive::SevenZipRefusal::Encrypted => Msg::ErrorArchiveEncrypted,
-                            fs::archive::SevenZipRefusal::DictionaryTooLarge => {
-                                Msg::ErrorArchiveDictionaryTooLarge
-                            }
-                        })
-                        .to_owned(),
+                    RowFailure::Refused(refusal) => self.refusal_text(refusal),
                     RowFailure::UnsafeName(name) => fill_template(
                         self.lang.text(Msg::ErrorRemoteUnsafeName),
                         &[("{name}", &name)],
@@ -6286,6 +6338,265 @@ impl App {
         })
     }
 
+    fn refusal_text(&self, refusal: fs::archive::SevenZipRefusal) -> String {
+        self.lang
+            .text(match refusal {
+                fs::archive::SevenZipRefusal::Encrypted => Msg::ErrorArchiveEncrypted,
+                fs::archive::SevenZipRefusal::DictionaryTooLarge => {
+                    Msg::ErrorArchiveDictionaryTooLarge
+                }
+            })
+            .to_owned()
+    }
+
+    /// Alt+F5: the name prompt for a new archive in the other panel's folder,
+    /// with the name of the single entry, or of the folder they are in, as a
+    /// start.
+    fn open_pack_prompt(&mut self) -> Task<Message> {
+        if self.jobs.is_busy()
+            || self.prompt.is_some()
+            || self.pending_conflict.is_some()
+            || self.delete_dialog.is_some()
+            || self.transfer_dialog.is_some()
+            || self.transfer.is_some()
+        {
+            return Task::none();
+        }
+        let source_side = self.source_side();
+        let target_side = source_side.other();
+        if self.panel(source_side).is_virtual() || self.panel(target_side).is_virtual() {
+            let text = self.lang.text(Msg::StatusPackUnavailable).to_owned();
+            self.set_status_error(&text);
+            return Task::none();
+        }
+        let sources = self.action_sources();
+        if sources.is_empty() {
+            return Task::none();
+        }
+        self.job_error = None;
+        self.notice = None;
+        let name = suggested_archive_name(&sources);
+        let target = self.panel(target_side).path.clone();
+        self.prompt = Some(Prompt::pack(target, sources, name));
+        self.prompt_side = Some(target_side);
+        operation::focus(FIELD_ID)
+    }
+
+    /// Enter in the pack prompt, once its name passed `Prompt::validate`: the
+    /// prompt closes and one job writes the archive.
+    fn start_pack(&mut self) -> Task<Message> {
+        if self.jobs.is_busy() {
+            let text = self.lang.text(Msg::StatusArchiveWriteBusy).to_owned();
+            return self.show_notice(text);
+        }
+        let Some(prompt) = self.prompt.take() else {
+            return Task::none();
+        };
+        let target_side = self.prompt_side.take().unwrap_or(self.active_panel);
+        let name = prompt.name().trim().to_owned();
+        let archive = prompt.parent().join(&name);
+        let sources = prompt.sources().to_vec();
+        let write = ArchiveWrite {
+            side: target_side.other(),
+            what: ArchiveWriteKind::Pack { name },
+        };
+        let packed = archive.clone();
+        self.start_archive_write(jobs::JobKind::Pack, archive, write, move |progress| {
+            fs::archive::pack(&sources, &packed, progress)
+        })
+    }
+
+    /// F5 with an archive, or a folder in one, as the target: one job rewrites
+    /// the archive with the selection added. `Ask` cannot ask per file here, so
+    /// it stops at the first name in the way and says what the dialog offers.
+    fn begin_copy_into_archive(
+        &mut self,
+        location: fs::archive::ArchiveLocation,
+        sources: Vec<PathBuf>,
+        policy: Policy,
+    ) -> Task<Message> {
+        let write = ArchiveWrite {
+            side: self.source_side(),
+            what: ArchiveWriteKind::CopyIn,
+        };
+        let conflict = policy.on_conflict();
+        let fs::archive::ArchiveLocation { archive, inner, .. } = location;
+        let shown = archive.clone();
+        self.start_archive_write(jobs::JobKind::Copy, shown, write, move |progress| {
+            fs::archive::add(&archive, &inner, &sources, conflict, progress)
+        })
+    }
+
+    /// The delete dialog of a panel inside `archive` was confirmed.
+    fn start_archive_delete(&mut self, archive: PathBuf, deletion: Deletion) -> Task<Message> {
+        let write = ArchiveWrite {
+            side: deletion.side,
+            what: ArchiveWriteKind::Delete,
+        };
+        let shown = archive.clone();
+        self.start_archive_write(jobs::JobKind::Delete, shown, write, move |progress| {
+            let entries = deletion
+                .sources
+                .iter()
+                .map(|path| {
+                    fs::archive::locate_in_archive(path)
+                        .filter(|place| place.archive == archive && !place.inner.is_empty())
+                        .map(|place| place.inner)
+                        .ok_or_else(|| {
+                            std::io::Error::new(
+                                std::io::ErrorKind::InvalidInput,
+                                "the entry is not in this archive",
+                            )
+                        })
+                })
+                .collect::<std::io::Result<Vec<_>>>()?;
+            fs::archive::delete(&archive, &entries, progress)
+        })
+    }
+
+    /// Runs `work` on the blocking pool as the one job of the queue. It reports
+    /// as `ArchiveWritten`; Escape closes the progress channel, which makes the
+    /// writer drop its temporary file and leave the archive as it was.
+    fn start_archive_write(
+        &mut self,
+        kind: jobs::JobKind,
+        shown: PathBuf,
+        write: ArchiveWrite,
+        work: impl FnOnce(&mut fs::transfer::Reporting<'_>) -> std::io::Result<fs::archive::WriteReport>
+            + Send
+            + 'static,
+    ) -> Task<Message> {
+        if self.jobs.is_busy()
+            || self.transfer.is_some()
+            || self.deleting.is_some()
+            || self.extracting.is_some()
+            || self.archive_write.is_some()
+        {
+            let text = self.lang.text(Msg::StatusArchiveWriteBusy).to_owned();
+            return self.show_notice(text);
+        }
+        self.job_error = None;
+        self.notice = None;
+        self.job_done = 0;
+        self.job_progress = None;
+        let progress_tx = self.progress_sender();
+        self.generation = self.generation.wrapping_add(1);
+        let generation = self.generation;
+        self.archive_write = Some(write);
+        self.jobs.enqueue(jobs::Job {
+            kind,
+            path: shown,
+            total: None,
+        });
+        self.jobs
+            .start_next(|_| {
+                Task::perform(
+                    tokio::task::spawn_blocking(move || {
+                        let mut progress = fs::transfer::Reporting::new(&progress_tx);
+                        work(&mut progress)
+                    }),
+                    move |outcome| {
+                        let result = match outcome {
+                            Ok(Ok(report)) => Ok(report),
+                            Ok(Err(err)) => Err(RowFailure::from_io(err)),
+                            Err(join) => Err(RowFailure::Other(join.to_string())),
+                        };
+                        Message::ArchiveWritten { result, generation }
+                    },
+                )
+            })
+            .unwrap_or_else(Task::none)
+    }
+
+    fn archive_written(
+        &mut self,
+        generation: u64,
+        result: Result<fs::archive::WriteReport, RowFailure>,
+    ) -> Task<Message> {
+        if generation != self.generation {
+            return Task::none();
+        }
+        self.jobs.finish();
+        self.job_progress = None;
+        let Some(write) = self.archive_write.take() else {
+            return Task::none();
+        };
+        self.generation = self.generation.wrapping_add(1);
+        let notice = match result {
+            Ok(report) => Some(self.written_text(&write, report)),
+            Err(failure) => {
+                let text = self.write_failure_text(&write, failure);
+                self.set_status_error(&text);
+                None
+            }
+        };
+        let reload = self.end_archive_write(&write);
+        match notice {
+            Some(text) => Task::batch([self.show_notice(text), reload]),
+            None => reload,
+        }
+    }
+
+    fn written_text(&self, write: &ArchiveWrite, report: fs::archive::WriteReport) -> String {
+        let mut text = match &write.what {
+            ArchiveWriteKind::Pack { name } => {
+                fill_template(self.lang.text(Msg::StatusPacked), &[("{name}", name)])
+            }
+            ArchiveWriteKind::CopyIn => self.lang.text(Msg::StatusArchiveCopiedIn).to_owned(),
+            ArchiveWriteKind::Delete => self.lang.text(Msg::StatusArchiveDeleted).to_owned(),
+        };
+        for (count, template) in [
+            (report.skipped, Msg::StatusArchiveSkipped),
+            (report.kept_existing, Msg::StatusArchiveKept),
+        ] {
+            if count > 0 {
+                text.push_str(&fill_template(
+                    self.lang.text(template),
+                    &[("{count}", &count.to_string())],
+                ));
+            }
+        }
+        text
+    }
+
+    fn write_failure_text(&self, write: &ArchiveWrite, failure: RowFailure) -> String {
+        match failure {
+            RowFailure::Refused(refusal) => self.refusal_text(refusal),
+            RowFailure::Conflict(detail) if write.what == ArchiveWriteKind::CopyIn => {
+                fill_template(
+                    self.lang.text(Msg::ErrorArchiveNameTaken),
+                    &[("{detail}", &detail)],
+                )
+            }
+            RowFailure::Conflict(reason)
+            | RowFailure::UnsafeName(reason)
+            | RowFailure::Other(reason) => fill_template(
+                self.lang.text(Msg::ErrorArchiveWriteFailed),
+                &[("{reason}", &reason)],
+            ),
+        }
+    }
+
+    /// Ends the bookkeeping of a write that finished, failed or was stopped:
+    /// the tags of a delete refer to entries that may be gone, and both panels
+    /// are read again, the new archive of a pack selected.
+    fn end_archive_write(&mut self, write: &ArchiveWrite) -> Task<Message> {
+        if write.what == ArchiveWriteKind::Delete {
+            self.panel_mut(write.side).selection.clear();
+        }
+        let tasks = [PanelSide::Left, PanelSide::Right].map(|each| {
+            let path = self.panel(each).path.clone();
+            let select = match &write.what {
+                ArchiveWriteKind::Pack { name } if each != write.side => Some(name.clone()),
+                ArchiveWriteKind::Pack { .. }
+                | ArchiveWriteKind::CopyIn
+                | ArchiveWriteKind::Delete => None,
+            };
+            self.load(each, path, select)
+        });
+        Task::batch(tasks.into_iter().chain([self.restart_search()]))
+    }
+
     /// Stops the running job, see `Message::AbortJob`.
     fn abort_job(&mut self) -> Task<Message> {
         if !self.jobs.abort_running() {
@@ -6295,6 +6606,9 @@ impl App {
         if self.extracting.is_some() {
             self.end_extraction();
             Task::none()
+        } else if let Some(write) = self.archive_write.take() {
+            self.generation = self.generation.wrapping_add(1);
+            self.end_archive_write(&write)
         } else if self.deleting.is_some() {
             self.end_delete()
         } else {
@@ -6468,6 +6782,7 @@ impl App {
             || self.pending_conflict.is_some()
             || self.delete_dialog.is_some()
             || self.transfer_dialog.is_some()
+            || self.archive_write.is_some()
         {
             return Task::none();
         }
@@ -6594,6 +6909,10 @@ impl App {
             }
         }
         self.transfer_dialog = None;
+        if let Some(location) = fs::archive::locate_in_archive(&target) {
+            let into = self.begin_copy_into_archive(location, sources, policy);
+            return Task::batch([release_focus(), into]);
+        }
         Task::batch([
             release_focus(),
             self.begin_transfer(kind, sources, target, policy),
@@ -11969,6 +12288,7 @@ impl App {
             deleting: None,
             view_copies: None,
             extracting: None,
+            archive_write: None,
             dialog_focus: 0,
             modifiers: Modifiers::default(),
             trash: Arc::new(fs::SystemTrash),
@@ -12371,6 +12691,17 @@ impl App {
         let mut prompt = Prompt::create_file(PathBuf::from("/home/test/links"));
         prompt.set_name("notes.txt".to_string());
         app.prompt = Some(prompt);
+        app
+    }
+
+    /// The pack prompt on fixed data, for its reference image.
+    pub fn with_fixed_pack_prompt() -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.prompt = Some(Prompt::pack(
+            PathBuf::from("/home/test/links"),
+            vec![PathBuf::from("/home/test/fotos")],
+            "fotos.zip".to_string(),
+        ));
         app
     }
 
@@ -12947,7 +13278,7 @@ impl App {
         self.transfer_dialog = Some(dialog);
     }
 
-    /// Puts the left panel inside a fixed archive and asks for a delete there,
+    /// Puts the left panel inside a fixed archive and asks for a move there,
     /// so the notice that archives are read-only shows, for the snapshot tests.
     pub fn show_archive_read_only_for_test(&mut self) {
         let folder = PathBuf::from("/home/test/fotos.zip/2024");
@@ -12970,7 +13301,7 @@ impl App {
             entry("notizen.txt", false, false, 812),
         ];
         self.left_panel = panel;
-        drop(self.apply_unless_refused(Message::Delete { permanent: false }));
+        drop(self.apply_unless_refused(Message::Transfer(TransferKind::Move)));
     }
 
     /// Shows the progress mask of a fixed copy that is `done` of `total`
@@ -20306,15 +20637,26 @@ mod archive_panel_tests {
     }
 
     #[test]
-    fn copy_and_browsing_stay_allowed_inside_an_archive() {
+    fn copy_delete_and_browsing_stay_allowed_inside_an_archive() {
         let panel = panel_in_archive(vec![entry("a.txt", false), entry("sub", true)]);
         for message in [
             Message::Transfer(TransferKind::Copy),
+            Message::Delete { permanent: false },
+            Message::Delete { permanent: true },
             Message::GoUp,
             Message::OpenSelected,
         ] {
             assert!(archive_refusal(&panel, &message).is_none(), "{message:?}");
         }
+    }
+
+    #[test]
+    fn packing_from_or_into_an_archive_is_refused() {
+        let panel = panel_in_archive(vec![entry("a.txt", false)]);
+        assert!(matches!(
+            archive_refusal(&panel, &Message::PackPrompt),
+            Some(Msg::StatusPackUnavailable)
+        ));
     }
 
     #[test]

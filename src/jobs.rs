@@ -28,6 +28,7 @@ pub enum JobKind {
     Reorganise,
     File,
     Extract,
+    Pack,
 }
 
 impl JobKind {
@@ -39,6 +40,7 @@ impl JobKind {
             JobKind::Reorganise => crate::i18n::Msg::JobReorganise,
             JobKind::File => crate::i18n::Msg::JobFile,
             JobKind::Extract => crate::i18n::Msg::JobExtract,
+            JobKind::Pack => crate::i18n::Msg::JobPack,
         }
     }
 }
