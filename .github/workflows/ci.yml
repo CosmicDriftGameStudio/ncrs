@@ -409,6 +409,32 @@ jobs:
               test -f /usr/share/licenses/ncrs-bin/LICENSE
             '
 
+  # Renders the Homebrew cask (packaging/homebrew) with dummy values and checks
+  # that it parses and carries them, so a broken template fails here and not
+  # in the tap after a release.
+  homebrew:
+    name: Homebrew cask
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Render and check the cask
+        run: |
+          set -euo pipefail
+          sha256_arm=$(printf '1%.0s' $(seq 64))
+          sha256_intel=$(printf '2%.0s' $(seq 64))
+          scripts/homebrew-cask.sh 1.2.3 "$sha256_arm" "$sha256_intel" homebrew
+          ruby -c homebrew/ncrs.rb
+          grep -Fq 'version "1.2.3"' homebrew/ncrs.rb
+          grep -Fq "arm:   \"$sha256_arm\"" homebrew/ncrs.rb
+          grep -Fq "intel: \"$sha256_intel\"" homebrew/ncrs.rb
+          if grep -Fq '@' homebrew/ncrs.rb; then
+            echo "::error::a placeholder is left in the cask"
+            exit 1
+          fi
+
   # Installs the winget manifests (packaging/winget) with winget itself and
   # starts what it installed. It tests the manifests against the latest
   # published release, not against the build of this pull request: winget

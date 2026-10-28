@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format follows
   and the known limits.
 - An index from 0.6.0 or later opens and is migrated, and a failed migration
   leaves the index file as it was and says which step failed.
+- The release opens the pull request that bumps the Homebrew cask in
+  `CosmicDriftGameStudio/homebrew-ncrs`, with the version and both hashes;
+  it is merged there by hand. Without the `HOMEBREW_TAP_TOKEN` secret the
+  step is skipped.
 
 ### Changed
 

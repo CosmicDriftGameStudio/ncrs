@@ -52,9 +52,11 @@ source (see [Build & run](#build--run)).
 On macOS, Homebrew installs `ncrs.app` into Applications (Launchpad, Dock,
 Spotlight) and puts `ncrs` on your `PATH`. The cask lives in the tap
 [`CosmicDriftGameStudio/homebrew-ncrs`](https://github.com/CosmicDriftGameStudio/homebrew-ncrs);
-it is not in homebrew-cask upstream. Started from Finder, the Dock or
-Launchpad, the left panel opens in `$HOME` instead of `/`. From a terminal it
-still opens in the working directory.
+it is not in homebrew-cask upstream. Each release opens the pull request that
+bumps the cask there; it is merged by hand, so `brew` can lag a fresh release
+for a while. Started from Finder, the Dock or Launchpad, the left panel opens
+in `$HOME` instead of `/`. From a terminal it still opens in the working
+directory.
 
 `install.sh` installs into `~/.local/bin`, verifies the download checksum,
 needs no `sudo`, and is safe to re-run. Remove it again with:
