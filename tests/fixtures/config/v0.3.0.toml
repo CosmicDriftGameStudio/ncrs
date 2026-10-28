@@ -1,0 +1,31 @@
+version = 1
+# Start language: "en" or "de". F9 switches it for the running session only;
+# ncrs never writes the config file.
+lang = "de"
+
+[open]
+# F3. Without {path} the file is added as the last argument.
+view = ["open"]
+# F4, and F3 on files that could run (scripts, apps): must be a text editor.
+edit = ["open", "-t"]
+# To open a search result at its line instead:
+# edit = ["code", "--goto", "{path}:{line}"]
+
+[keys]
+# F2 copies, F5 does nothing any more.
+copy = "F2"
+# Several keys for one action.
+quit = ["F10", "primary+q"]
+# No key at all; the context menu still offers it.
+delete_permanently = []
+# A key that belongs to another action has to be freed there too:
+# F3 and F4 swapped.
+view = "F4"
+edit = "F3"
+
+[theme]
+# "default" (the dark teal look) or "classic" (Norton Commander blue).
+preset = "classic"
+# Then single roles, as "#rrggbb" or "#rgb".
+directory = "#ffff55"
+tagged = "#a50"

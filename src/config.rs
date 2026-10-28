@@ -30,7 +30,11 @@ use crate::keymap::{KeyAction, Keymap};
 use crate::palette::{ColorRole, Palette, ThemePreset, PRESET_KEY, VSCODE_KEY};
 use crate::vscode_theme::VscodeTheme;
 
-/// The only version this build reads.
+const FIRST_VERSION: u32 = 1;
+
+/// The newest version this build reads. A change that would reject or
+/// reinterpret what an older file says raises it and converts the older form
+/// while loading, in memory; the file is never rewritten to migrate it.
 pub const CURRENT_VERSION: u32 = 1;
 
 /// A config is a few lines; anything bigger is not one, and reading it would
@@ -421,26 +425,31 @@ impl<'de> Deserialize<'de> for KeySection {
     }
 }
 
-/// The `version` key. Anything but `CURRENT_VERSION` is refused, so a file
-/// from a newer ncrs is not half understood.
+/// The `version` key: a missing one is the first version. Anything outside
+/// `FIRST_VERSION..=CURRENT_VERSION` is refused, so a file from a newer ncrs
+/// is not half understood.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Version(u32);
 
 impl Default for Version {
     fn default() -> Self {
-        Self(CURRENT_VERSION)
+        Self(FIRST_VERSION)
     }
 }
 
 impl<'de> Deserialize<'de> for Version {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let number = u32::deserialize(deserializer)?;
-        if number == CURRENT_VERSION {
-            Ok(Self(number))
-        } else {
+        if number < FIRST_VERSION {
             Err(D::Error::custom(format!(
-                "unsupported version {number}, this ncrs reads version {CURRENT_VERSION}"
+                "version {number} does not exist, the first version is {FIRST_VERSION}"
             )))
+        } else if number > CURRENT_VERSION {
+            Err(D::Error::custom(format!(
+                "config.toml is version {number}, written by a newer ncrs; this ncrs reads up to version {CURRENT_VERSION}"
+            )))
+        } else {
+            Ok(Self(number))
         }
     }
 }
@@ -2185,9 +2194,181 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_version_means_the_current_one() {
+    fn a_missing_version_means_version_1() {
         let config = load_text("[open]\nview = [\"viewer\"]\n");
-        assert_eq!(config.version, Version::default());
+        assert_eq!(config.version, Version(1));
+        assert_eq!(load_text("version = 1\n").version, Version(1));
+    }
+
+    #[test]
+    fn version_0_does_not_exist() {
+        let (line, reason) = error_line("version = 0\n");
+        assert_eq!(line, Some(1));
+        assert_eq!(reason, "version 0 does not exist, the first version is 1");
+    }
+
+    // Absolute on each platform, or a `~/` path below it is refused.
+    #[cfg(windows)]
+    const FIXTURE_HOME: &str = r"C:\Users\test";
+    #[cfg(not(windows))]
+    const FIXTURE_HOME: &str = "/home/test";
+
+    fn load_fixture(text: &str) -> Config {
+        parse_config(
+            text,
+            Path::new("config.toml"),
+            Some(Path::new(FIXTURE_HOME)),
+        )
+        .unwrap()
+    }
+
+    fn pressed(
+        config: &Config,
+        key: iced::keyboard::key::Named,
+    ) -> Option<crate::messages::Message> {
+        config.keymap.map_key(
+            &iced::keyboard::Key::Named(key),
+            iced::keyboard::Modifiers::default(),
+            crate::keymap::KeyScope::Panel,
+        )
+    }
+
+    fn assert_the_0_3_0_settings(config: &Config) {
+        use crate::messages::{Message, TransferKind};
+        use iced::keyboard::key::Named;
+        assert_eq!(config.version, Version(1));
+        assert_eq!(config.lang, Some(Language::German));
+        let view = config.open.view.as_ref().unwrap();
+        assert_eq!((view.program(), view.args()), ("open", &[] as &[String]));
+        let edit = config.open.edit.as_ref().unwrap();
+        assert_eq!(
+            (edit.program(), edit.args()),
+            ("open", &["-t".to_owned()][..])
+        );
+        assert_eq!(
+            pressed(config, Named::F2),
+            Some(Message::Transfer(TransferKind::Copy))
+        );
+        assert_eq!(pressed(config, Named::F5), None);
+        assert_eq!(
+            pressed(config, Named::F3),
+            Some(Message::OpenExternal(crate::fs::OpenKind::Edit))
+        );
+        assert_eq!(
+            pressed(config, Named::F4),
+            Some(Message::OpenExternal(crate::fs::OpenKind::View))
+        );
+        assert_eq!(config.keymap.bindings_of(KeyAction::Quit).count(), 2);
+        assert_eq!(
+            config
+                .keymap
+                .bindings_of(KeyAction::DeletePermanently)
+                .count(),
+            0
+        );
+        let classic = ThemePreset::Classic.palette();
+        assert_eq!(config.palette.background, classic.background);
+        assert_eq!(
+            config.palette.directory,
+            iced::Color::from_rgb8(0xff, 0xff, 0x55)
+        );
+        assert_eq!(
+            config.palette.tagged,
+            iced::Color::from_rgb8(0xaa, 0x55, 0x00)
+        );
+    }
+
+    fn assert_the_filing_settings(config: &Config) {
+        let home = Path::new(FIXTURE_HOME);
+        let filing = &config.filing;
+        assert!(filing.enabled);
+        assert_eq!(filing.load, Load::Balanced);
+        assert_eq!(
+            filing.locations,
+            [
+                FilingLocation {
+                    path: home.join("Inbox"),
+                    mode: LocationMode::Inbox,
+                    images: false,
+                    is_target: false,
+                },
+                FilingLocation {
+                    path: home.join("Documents/Archive"),
+                    mode: LocationMode::Archive,
+                    images: true,
+                    is_target: true,
+                },
+            ]
+        );
+        assert_ne!(filing.ai, AiSetting::Off);
+    }
+
+    #[test]
+    fn the_config_of_0_3_0_still_loads() {
+        let config = load_fixture(include_str!("../tests/fixtures/config/v0.3.0.toml"));
+        assert_the_0_3_0_settings(&config);
+        assert!(!config.filing.enabled);
+    }
+
+    #[test]
+    fn the_config_of_0_5_0_still_loads() {
+        let config = load_fixture(include_str!("../tests/fixtures/config/v0.5.0.toml"));
+        assert_the_0_3_0_settings(&config);
+        assert_the_filing_settings(&config);
+    }
+
+    #[test]
+    fn the_config_of_0_7_0_still_loads() {
+        use crate::messages::{Message, TransferKind};
+        use iced::keyboard::key::Named;
+        let config = load_fixture(include_str!("../tests/fixtures/config/v0.7.0.toml"));
+        assert_eq!(config.lang, Some(Language::German));
+        assert_eq!(
+            pressed(&config, Named::F12),
+            Some(Message::Transfer(TransferKind::Copy))
+        );
+        assert_eq!(pressed(&config, Named::F5), None);
+        assert_eq!(
+            pressed(&config, Named::F3),
+            Some(Message::OpenExternal(crate::fs::OpenKind::Edit))
+        );
+        assert_eq!(config.keymap.bindings_of(KeyAction::Quit).count(), 2);
+        assert_eq!(
+            config.palette.directory,
+            iced::Color::from_rgb8(0xff, 0xff, 0x55)
+        );
+        assert_the_filing_settings(&config);
+    }
+
+    #[test]
+    fn a_writer_refuses_a_file_of_a_newer_version_and_leaves_it_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        for text in ["version = 2\nlang = \"en\"\n", "version = 0\n"] {
+            let path = write(&dir, text.as_bytes());
+            let err = write_language(&path, Language::German).unwrap_err();
+            assert!(
+                matches!(
+                    err,
+                    FilingWriteError::Config(ConfigError::Invalid { line: Some(1), .. })
+                ),
+                "{err:?}"
+            );
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), text);
+        }
+    }
+
+    #[test]
+    fn a_writer_does_not_touch_the_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(&dir, b"# mine\nversion = 1\n");
+        write_language(&path, Language::German).unwrap();
+        let written = std::fs::read_to_string(&path).unwrap();
+        assert!(written.starts_with("# mine\nversion = 1\n"), "{written}");
+        let without_version = write(&dir, b"lang = \"en\"\n");
+        write_language(&without_version, Language::German).unwrap();
+        assert!(!std::fs::read_to_string(&without_version)
+            .unwrap()
+            .contains("version"));
     }
 
     #[test]
@@ -2266,7 +2447,7 @@ mod tests {
             ),
             (
                 "version = 2\n",
-                "unsupported version 2, this ncrs reads version 1",
+                "config.toml is version 2, written by a newer ncrs; this ncrs reads up to version 1",
             ),
         ];
         for (text, expected) in cases {

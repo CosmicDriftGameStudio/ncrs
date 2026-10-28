@@ -19,6 +19,9 @@ use crate::ui::panel_history::PanelHistory;
 /// Written on save so a later layout can tell old files from new ones.
 pub const STATE_VERSION: u32 = 1;
 
+/// A file without `version`, or with 0, is the first layout.
+const FIRST_STATE_VERSION: u32 = 1;
+
 /// Larger than any real state file; guards against reading something that is
 /// not one.
 const MAX_STATE_BYTES: u64 = 1024 * 1024;
@@ -167,8 +170,20 @@ pub fn load(path: &Path) -> SessionState {
         return fall_back(format!("{size} bytes is too large for a state file"));
     }
     match std::fs::read_to_string(path) {
-        Ok(text) => match toml_edit::de::from_str(&text) {
-            Ok(state) => state,
+        Ok(text) => match toml_edit::de::from_str::<SessionState>(&text) {
+            Ok(state) if state.version > STATE_VERSION => {
+                eprintln!(
+                    "ncrs: {}: state.toml is version {}, written by a newer ncrs; \
+                     starting with the defaults and leaving the file alone",
+                    path.display(),
+                    state.version
+                );
+                SessionState::default()
+            }
+            Ok(state) => SessionState {
+                version: state.version.max(FIRST_STATE_VERSION),
+                ..state
+            },
             Err(err) => fall_back(err.to_string()),
         },
         Err(err) if err.kind() == io::ErrorKind::NotFound => SessionState::default(),
@@ -176,8 +191,27 @@ pub fn load(path: &Path) -> SessionState {
     }
 }
 
-/// Writes the state atomically, creating its folder if needed.
+/// Whether the file at `path` is a state of a newer ncrs, which `load` left
+/// alone and `save` must not replace with an older layout.
+fn holds_newer_version(path: &Path) -> bool {
+    #[derive(Deserialize)]
+    struct StoredVersion {
+        #[serde(default)]
+        version: u32,
+    }
+    std::fs::metadata(path).is_ok_and(|meta| meta.len() <= MAX_STATE_BYTES)
+        && std::fs::read_to_string(path)
+            .ok()
+            .and_then(|text| toml_edit::de::from_str::<StoredVersion>(&text).ok())
+            .is_some_and(|stored| stored.version > STATE_VERSION)
+}
+
+/// Writes the state atomically, creating its folder if needed. A file of a
+/// newer version stays as it is.
 pub fn save(path: &Path, state: &SessionState) -> io::Result<()> {
+    if holds_newer_version(path) {
+        return Ok(());
+    }
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -313,6 +347,69 @@ mod tests {
 
         assert_eq!(state.left.path.as_deref(), Some("/x"));
         assert_eq!(state.left.cursor, None);
+    }
+
+    #[test]
+    fn a_state_file_of_0_7_0_loads_with_its_values() {
+        let scratch = tempfile::tempdir().unwrap();
+        let file = scratch.path().join("state.toml");
+        std::fs::write(&file, include_str!("../tests/fixtures/state/v0.7.0.toml")).unwrap();
+
+        let state = load(&file);
+
+        assert_eq!(state.version, 1);
+        assert_eq!(state.active, Some(PanelSide::Right));
+        assert_eq!(
+            state.favourites,
+            [
+                "/home/test/Documents",
+                "/home/test/Projects/ncrs",
+                "/srv/scans"
+            ]
+        );
+        assert_eq!(
+            state.window,
+            Some(WindowSize {
+                width: 1280.0,
+                height: 800.0
+            })
+        );
+        assert_eq!(state.left.path.as_deref(), Some("/home/test/Documents"));
+        assert_eq!(state.left.sort, SortColumn::Modified);
+        assert!(state.left.descending);
+        assert_eq!(state.left.back, ["/home/test", "/home/test/Downloads"]);
+        assert_eq!(state.left.forward, ["/home/test/Documents/2024"]);
+        assert_eq!(state.left.cursor.as_deref(), Some("invoice-2024-03.pdf"));
+        assert_eq!(state.right.sort, SortColumn::Name);
+        assert!(!state.right.descending);
+        assert_eq!(state.right.cursor.as_deref(), Some("Cargo.toml"));
+    }
+
+    #[test]
+    fn a_state_without_a_version_loads_as_version_1() {
+        let scratch = tempfile::tempdir().unwrap();
+        let file = scratch.path().join("state.toml");
+        std::fs::write(&file, "[left]\npath = \"/x\"\n").unwrap();
+
+        let state = load(&file);
+
+        assert_eq!(state.version, 1);
+        assert_eq!(state.left.path.as_deref(), Some("/x"));
+        std::fs::write(&file, "version = 0\n[left]\npath = \"/y\"\n").unwrap();
+        assert_eq!(load(&file).version, 1);
+    }
+
+    #[test]
+    fn a_state_of_a_newer_version_gives_the_defaults_and_is_not_overwritten() {
+        let scratch = tempfile::tempdir().unwrap();
+        let file = scratch.path().join("state.toml");
+        let newer = "version = 2\nfuture = \"x\"\n[left]\npath = \"/x\"\n";
+        std::fs::write(&file, newer).unwrap();
+
+        assert_eq!(load(&file), SessionState::default());
+        save(&file, &sample(scratch.path())).unwrap();
+
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), newer);
     }
 
     #[test]
