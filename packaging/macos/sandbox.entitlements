@@ -2,8 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   Entitlements of the sandboxed macOS app (the build with the `sandbox`
-  feature, asset ncrs-sandbox-<target>.app.zip). Only that app is signed with
-  this file; the normal app and the bare binary carry no entitlements.
+  feature, asset ncrs-sandbox-<target>.app.zip). The normal app and the bare
+  binary carry no entitlements.
+
+  It is also the base of the App Store entitlements: `package.sh store-app`
+  copies it and adds the application identifier and the team identifier,
+  which the provisioning profile must match.
 
   Left out on purpose:
   - Starting programs needs none. In the sandbox F3 and F4 start the viewer
