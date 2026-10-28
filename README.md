@@ -545,6 +545,11 @@ target = true
 - `load` has the names `gentle`, `balanced` and `full`; the Inspection shows
   them as "By the book", "Business as usual" and "Grade 36" (full load).
 
+Hermes is a beta. Every new version migrates the index and keeps its documents
+(the index has a schema version and the migrations are tested), but the
+behaviour, rules and screens of Hermes may still change before it leaves beta.
+1.0 does not wait for it.
+
 The filing module is called Hermes in the app. In the setup and on the
 Inspection the config terms read like this:
 

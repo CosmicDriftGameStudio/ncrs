@@ -159,6 +159,14 @@ fn header_row<'a>(header: &Header, palette: &Palette) -> Element<'a, Message> {
                 .wrapping(Wrapping::None),
         );
     }
+    if let Some(beta_mark) = header.beta_mark {
+        line = line.push(
+            text(beta_mark.to_owned())
+                .size(font_size::COLUMN_HEADER)
+                .color(palette.dim_text)
+                .wrapping(Wrapping::None),
+        );
+    }
     container(line)
         .height(ROW_HEIGHT)
         .padding([0.0, spacing::CELL_PADDING_X])

@@ -2376,6 +2376,16 @@ mod command_palette {
     }
 
     #[test]
+    fn the_hermes_group_is_marked_beta_in_both_languages() {
+        for language in [Language::English, Language::German] {
+            let mut app = App::with_fixed_panels().in_language(language);
+            open(&mut app);
+            typed(&mut app, "hermes");
+            assert!(shows(&app, "Beta"), "{language:?}");
+        }
+    }
+
+    #[test]
     fn the_empty_list_matches_its_snapshot() {
         let mut app = App::with_fixed_panels();
         open(&mut app);
@@ -2681,6 +2691,11 @@ mod review_list_card {
             list,
             "Nothing to review. Documents land here when Hermes cannot file them itself: without readable text or without a matching rule."
         ));
+    }
+
+    #[test]
+    fn the_sidebar_marks_hermes_as_beta() {
+        assert!(shows(loaded_list(), "Beta"));
     }
 
     #[test]
@@ -4382,6 +4397,15 @@ mod settings_tab {
             &app().in_language(Language::English),
             "settings_appearance_en",
         );
+    }
+
+    #[test]
+    fn the_filing_page_is_marked_beta_in_both_languages() {
+        for language in [Language::English, Language::German] {
+            let app = App::with_settings_open(SettingsFeature::Hermes, hermes_config())
+                .in_language(language);
+            assert!(simulator(&app).find("Beta").is_ok(), "{language:?}");
+        }
     }
 
     #[test]
