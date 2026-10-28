@@ -213,14 +213,14 @@ Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
 
 # Tasks – Basis-Feature
 
-**Stand 2026-10-28: T1–T16 und T18 erledigt, T17 offen.** Release 0.8.0,
-2175 Tests (`cargo test --workspace`, davon 8 `#[ignore]`) inkl. UI-Tests mit Pixelvergleich.
+**Stand 2026-10-28: T1–T18 erledigt.** Release 0.9.0,
+2246 Tests (`cargo test --workspace`, davon 8 `#[ignore]`) inkl. UI-Tests mit Pixelvergleich.
 
 | Block | Inhalt | Stand |
 |---|---|---|
 | A | CI, Installer, Release, `strings.json` | ✅ fertig (T1–T5, T5b), dazu signierte und notarisierte macOS-App |
-| B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | 🔶 F3–F8, Config, Keymap, Theme und Startsprache fertig, T6d (Kommandozeile, Favoriten, Verlauf) und T14 (Suche und Quick Open) fertig, mit 0.8.0 die ganze Config und die Tastenkürzel in der App — **als Nächstes 0.9.0: Archive schreiben, Config und Index migrieren, Hermes als Beta** |
-| C | Netzwerk-Mounts, Archive | 🔶 Laufwerksmenü, SFTP-Server (T15) und Archive lesen (T16) fertig, T17 offen |
+| B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | ✅ F3–F8, Config, Keymap, Theme und Startsprache fertig, T6d (Kommandozeile, Favoriten, Verlauf) und T14 (Suche und Quick Open) fertig, mit 0.8.0 die ganze Config und die Tastenkürzel in der App, mit 0.9.0 versionierte Config und Index-Migration — **als Nächstes 1.0.0: App Store** |
+| C | Netzwerk-Mounts, Archive | ✅ Laufwerksmenü, SFTP-Server (T15), Archive lesen (T16) und schreiben (T17) fertig |
 
 Legende: **[P]** Pflicht für ein benutzbares Basis-Feature, **[S]** später. Reihenfolge =
 Abhängigkeit, nicht Bequemlichkeit. Jeder Task endet grün: `cargo fmt --check`,
@@ -473,7 +473,9 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
 - [x] **T15 – Netzwerk** (K4, #125) – eigener SFTP-Client statt Mounts: Server im Panel
   durchsuchen, F3 und F5 in beide Richtungen, gespeicherte Server in der Config und im
   Einstellungs-Tab; Host-Keys gegen `known_hosts`, Passwörter im Schlüsselbund (0.8.0)
-- [ ] **T17 – Archiv-Support schreibend** (K6, #127) – Umfang siehe Abschnitt 4
+- [x] **T17 – Archiv-Support schreibend** (K6, #127) – `Alt`+`F5` packt in zip, tar,
+  tar.gz, tar.zst oder 7z, `F5` kopiert in ein offenes Archiv, `F8` löscht darin endgültig
+  nach Rückfrage; umgeschrieben wird in eine Temp-Datei, ersetzt nur bei Erfolg (0.9.0)
 
 ## Weg zu 1.0.0 (Plan vom 2026-10-26)
 
@@ -487,8 +489,10 @@ Größen sind Schätzungen (S bis ein Tag, M zwei bis vier Tage, L eine Woche un
 |---|---|---|
 | 0.7.0 | Bedienung komplett, Risiko zuerst | S1 Sandbox-Test (#120) · K1 Kommandozeile, T6d.1 (#121) · K2 Favoriten und Verlauf, T6d.5 (#123) · K3 Zustand merken, T18 (#122) |
 | 0.8.0 | Netz, Archive lesen, Einstellungen | K4 Netzwerk-Mounts, T15 (#125) ✅ · K5 Archive lesen, T16 (#124) ✅ · A0 Sandbox-Grundlagen (#126) ✅ · E1 Einstellungen für die ganze Config (#142) ✅ · E2 Tastenkürzel-Dialog (#143) ✅ · Quick Open findet Dokumente (#147) ✅ · 7z lesen (#148) ✅ · F3 im Archiv (#151) ✅ |
-| 0.9.0 | Schreiben und Versprechen | K6 Archive schreiben, T17 (#127) · V1 Config versioniert (#128) · V2 Index-Migration (#129) · V3 100k-Dateien-Messung (#130) · V4 Lizenzen für den Store (#131), darin About-Dialog mit den Drittlizenzen (#149) · H1 Hermes als Beta (#132) |
-| 1.0.0 | App Store | A1 Sandbox-Build (#133) · A2 App Store Connect (#134) · A3 Store-Auftritt (#135) · A4 Review und Release (#136) |
+| 0.9.0 | Schreiben und Versprechen | K6 Archive schreiben, T17 (#127) ✅ · V1 Config versioniert (#128) ✅ · V2 Index-Migration (#129) ✅ · V3 100k-Dateien-Messung (#130) ✅ · V4 Lizenzen für den Store (#131), darin About-Dialog mit den Drittlizenzen (#149) ✅ · H1 Hermes als Beta (#132) ✅ · Homebrew-Tap aus dem Release (#191) ✅ |
+| 1.0.0 | App Store | A1 Sandbox-Build (#133) · A2 App Store Connect (#134) · A3 Store-Auftritt (#135) · A4 Review und Release (#136) · App-Icon im Cosmic-Theme (#190) |
+| 1.1.0 | Drag & Drop, Einfügen | Dateien ins Panel ziehen (#159) · zwischen Panels und hinaus ziehen (#160) · Einfügen aus der Zwischenablage (#161) |
+| 1.2.0 | Hermes verständlich und treffsicher | Tracker #164: Futurama als Sprachvariante, Erkennung messen, Bedingungssprache, Regel-Seite, Live try, eigene Steuerkontexte, Wiedervorlage mit Vorschau, Auswertungen, Hermes-Suche |
 
 Abhängigkeiten: S1 vor K3, K4 und A0 · K3 vor K2, A0 und V1 · K5 vor K6 · V2 vor H1 ·
 A0, K4, K6, E1 und E2 vor A1 · A1 vor A2 und A3 · alles vor A4. winget und AUR laufen nebenher
