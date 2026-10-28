@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements of the sandboxed macOS app (the build with the `sandbox`
+  feature, asset ncrs-sandbox-<target>.app.zip). Only that app is signed with
+  this file; the normal app and the bare binary carry no entitlements.
+
+  Left out on purpose:
+  - Starting programs needs none. In the sandbox F3 and F4 start the viewer
+    or editor through `open -a` (src/fs/open.rs), which Launch Services runs
+    outside the sandbox; a program spawned directly inherits the sandbox, and
+    no entitlement lets it run third-party binaries.
+  - com.apple.security.automation.apple-events: the trash goes through
+    NSFileManager in the sandbox (src/fs/delete.rs), not through the Finder.
+  - com.apple.security.network.server: ncrs listens on no port.
+  - Hardened runtime exceptions (JIT, library validation): the normal app runs
+    hardened without any, and libpdfium is signed by the same team.
+  - Temporary exceptions: the App Store refuses them.
+-->
+<plist version="1.0">
+<dict>
+	<!-- The App Sandbox itself: what the App Store requires. -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- Folders the user picks in the open panel (the home folder grant,
+	     Hermes folders) can be listed, copied into, renamed and deleted from:
+	     F5-F8, archives written in place. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<!-- Security-scoped bookmarks, so a granted folder stays reachable after a
+	     restart (src/fs/grants.rs). -->
+	<key>com.apple.security.files.bookmarks.app-scope</key>
+	<true/>
+	<!-- Outgoing connections: SFTP servers, the HTTP model providers of Hermes
+	     (also on localhost), the AI model download and the theme download
+	     from Open VSX. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+</dict>
+</plist>

@@ -179,12 +179,30 @@ jobs:
           scripts/package.sh linux-packages ${{ matrix.target }} \
             ncrs-${{ matrix.target }} "$version" . target/nfpm/nfpm
 
+      # After Package, because it overwrites target/<target>/release/ncrs. A bare
+      # file in its own artifact, so Collect archives does not publish it: the
+      # release job packs and signs it into the sandboxed app.
+      - name: Build the sandboxed binary
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cargo build --release --features gpu-with-fallback,sandbox --target ${{ matrix.target }}
+          mkdir -p sandbox-binary
+          cp target/${{ matrix.target }}/release/ncrs sandbox-binary/ncrs
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ncrs-${{ matrix.target }}
           path: |
             ncrs-${{ matrix.target }}.*
             ncrs-${{ matrix.target }}-portable.zip
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: runner.os == 'macOS'
+        with:
+          name: sandbox-binary-${{ matrix.target }}
+          path: sandbox-binary/ncrs
           if-no-files-found: error
 
   release:
@@ -252,6 +270,9 @@ jobs:
         # way out is System Settings > Privacy > Open Anyway. That is the
         # first thing a new user sees, and it is why the file has to be
         # notarized before it is uploaded, not after.
+        #
+        # Besides the normal app, a sandboxed one is published as
+        # ncrs-sandbox-<target>.app.zip. It is not part of the Homebrew cask.
         #
         # Not `if: secrets.… != ''`: GitHub rejects that outright, with
         # "Unrecognized named-value: 'secrets'" at parse time, which takes the
@@ -427,6 +448,34 @@ jobs:
             # ditto, not zip: it keeps the signature's extended attributes and
             # symlinks. The checksum step below covers this file too.
             ditto -c -k --keepParent "$app" "dist/ncrs-$target.app.zip"
+
+            # The sandboxed app: the binary built with the sandbox feature in
+            # the same layout, with its own bundle ID. It carries the App
+            # Sandbox entitlements and is notarized on its own, like the
+            # normal app. Its zip name matches the verification loop below.
+            sandbox_binary="artifacts/sandbox-binary-$target/ncrs"
+            test -f "$sandbox_binary" \
+              || { echo "::error::no sandboxed binary for $target"; exit 1; }
+            scripts/package.sh sandbox-app "$dir" "$sandbox_binary" "$VERSION" "$min_macos" "$workdir/sandbox" \
+              --licenses artifacts/third-party-licenses/THIRD_PARTY_LICENSES.html
+            sandbox_app="$workdir/sandbox/ncrs.app"
+
+            codesign --force --sign "$APPLE_TEAM_ID" \
+              --options runtime --timestamp "$sandbox_app/Contents/Frameworks/libpdfium.dylib"
+            codesign --force --sign "$APPLE_TEAM_ID" \
+              --options runtime --timestamp \
+              --entitlements packaging/macos/sandbox.entitlements "$sandbox_app"
+            codesign --verify --deep --strict --verbose=2 "$sandbox_app"
+            scripts/package.sh check-sandbox "$sandbox_app" sandboxed
+
+            ditto -c -k --keepParent "$sandbox_app" "$workdir/ncrs-sandbox-notarize.zip"
+            xcrun notarytool submit "$workdir/ncrs-sandbox-notarize.zip" \
+              --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --wait --timeout 20m
+            xcrun stapler staple "$sandbox_app"
+            xcrun stapler validate "$sandbox_app"
+            ditto -c -k --keepParent "$sandbox_app" "dist/ncrs-sandbox-$target.app.zip"
             rm -rf "$workdir"
             echo "::endgroup::"
           done
@@ -449,6 +498,13 @@ jobs:
             xcrun stapler validate "$workdir/ncrs.app"
             codesign --verify --strict --verbose=2 \
               "$workdir/ncrs.app/Contents/Frameworks/libpdfium.dylib"
+            # Proves the normal app stays without entitlements and the
+            # sandboxed one keeps them through notarization and the zip.
+            case "$(basename "$app_zip")" in
+              ncrs-sandbox-*) expected=sandboxed ;;
+              *) expected=plain ;;
+            esac
+            scripts/package.sh check-sandbox "$workdir/ncrs.app" "$expected"
             rm -rf "$workdir"
           done
           for archive in dist/ncrs-*-apple-darwin.tar.gz; do

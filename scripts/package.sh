@@ -6,7 +6,15 @@
 #
 #   package.sh archive <triple> <binary> <pdfium-dir> <out-dir> [--licenses <file>]
 #   package.sh app <dir-with-binary-and-lib> <version> <min-macos> <out-dir> [--licenses <file>]
+#   package.sh sandbox-app <dir-with-binary-and-lib> <sandbox-binary> <version> <min-macos> <out-dir> [--licenses <file>]
+#   package.sh check-sandbox <app> sandboxed|plain
 #   package.sh linux-packages <triple> <stage-dir> <version> <out-dir> <nfpm-binary>
+#
+# sandbox-app is app with the binary swapped for <sandbox-binary> (the build
+# with the sandbox feature) and the sandbox bundle ID. <out-dir> must differ
+# from the one of the normal app, both write <out-dir>/ncrs.app.
+# check-sandbox reads the entitlements of a signed app and fails unless the App
+# Sandbox is on (sandboxed) or not on (plain).
 #
 # <pdfium-dir> is what scripts/fetch-pdfium.sh unpacked. archive and app end
 # with a layout check that lists the result and fails when the binary or the
@@ -34,6 +42,11 @@ absolute() {
 }
 
 ICON_SIZES="32 48 64 128 256 512"
+
+# Own bundle ID, so the sandboxed app gets its own container, does not take over
+# the Launch Services entry of the Developer ID app and leaves the ID of the
+# later App Store app untouched.
+SANDBOX_BUNDLE_ID=dev.cosmicdrift.ncrs.sandbox
 
 # Prints "<library file name> <subfolder of the fetch-pdfium output>".
 library_for() {
@@ -222,6 +235,54 @@ package_app() {
   check_layout "$app" "${expected[@]}"
 }
 
+package_sandbox_app() {
+  [ "$#" -ge 5 ] || usage
+  local source_dir="$1" sandbox_binary="$2"
+  shift 2
+  [ -f "$sandbox_binary" ] || { echo "error: no sandbox binary at $sandbox_binary" >&2; exit 1; }
+  local out_dir="$3"
+
+  local stage_root
+  stage_root="$(mktemp -d)"
+  mkdir -p "$stage_root/ncrs-sandbox"
+  cp -R "$source_dir/." "$stage_root/ncrs-sandbox"
+  cp "$sandbox_binary" "$stage_root/ncrs-sandbox/ncrs"
+  # upload-artifact drops the executable bit.
+  chmod +x "$stage_root/ncrs-sandbox/ncrs"
+
+  package_app "$stage_root/ncrs-sandbox" "$@"
+  plutil -replace CFBundleIdentifier -string "$SANDBOX_BUNDLE_ID" "$(absolute "$out_dir")/ncrs.app/Contents/Info.plist"
+  rm -rf "$stage_root"
+}
+
+# Fails unless the signed app has (sandboxed) or lacks (plain) the App Sandbox
+# entitlement.
+check_sandbox() {
+  [ "$#" -eq 2 ] || usage
+  local app="$1" expected="$2" entitlements
+  case "$expected" in
+    sandboxed | plain) ;;
+    *) usage ;;
+  esac
+  # A bundle without a seal still lists its linker-signed executable, so the
+  # entitlements query alone does not tell signed from unsigned.
+  codesign --verify "$app" 2>/dev/null \
+    || { echo "error: $app is not signed" >&2; exit 1; }
+  entitlements="$(codesign -d --entitlements - --xml "$app" 2>/dev/null)" \
+    || { echo "error: cannot read the entitlements of $app" >&2; exit 1; }
+  entitlements="$(printf '%s' "$entitlements" | tr -d '[:space:]')"
+  local sandbox_entitlement='<key>com.apple.security.app-sandbox</key><true/>'
+  local actual=plain
+  case "$entitlements" in
+    *"$sandbox_entitlement"*) actual=sandboxed ;;
+  esac
+  if [ "$actual" != "$expected" ]; then
+    echo "error: $app is $actual, expected $expected" >&2
+    exit 1
+  fi
+  echo "$app is $actual, as expected"
+}
+
 # NEEDED sonames of an ELF file, one per line.
 needed_sonames() {
   readelf -d "$1" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p'
@@ -364,6 +425,8 @@ shift
 case "$command" in
   archive) package_archive "$@" ;;
   app) package_app "$@" ;;
+  sandbox-app) package_sandbox_app "$@" ;;
+  check-sandbox) check_sandbox "$@" ;;
   linux-packages) package_linux "$@" ;;
   *) usage ;;
 esac
