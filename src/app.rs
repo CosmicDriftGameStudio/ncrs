@@ -10960,6 +10960,8 @@ mod perf_numbers {
     //! is not part of any number here.
 
     use super::*;
+    use crate::fs::search::{self, SearchEvent, SearchQuery, SearchTotals};
+    use crate::fs::transfer::{self, OnConflict};
     use crate::fs::{read_directory, sort_entries, FileEntry, SortColumn, SortKey};
     use std::time::{Duration, Instant};
 
@@ -10967,6 +10969,11 @@ mod perf_numbers {
     const MIDDLE_RUN: usize = 3;
     const RUNS: usize = 2 * MIDDLE_RUN + 1;
     const STEPS: u32 = 1_000;
+    /// Every `MARKED_EVERY`th file holds this word, for the content search.
+    const MARKER: &str = "needle-marker";
+    const MARKED_EVERY: usize = 1_000;
+    /// One file in twenty: the names ending in these two digits.
+    const NAME_GLOB: &str = "*05.txt;*25.txt;*45.txt;*65.txt;*85.txt";
 
     fn median(mut samples: Vec<Duration>) -> Duration {
         assert_eq!(samples.len(), RUNS);
@@ -11006,7 +11013,8 @@ mod perf_numbers {
         median(samples)
     }
 
-    /// One directory in twenty, files of up to 4 KiB.
+    /// One directory in twenty, files of up to 4 KiB, and the marker word at
+    /// the start of every `MARKED_EVERY`th file.
     fn populated_dir(entry_count: usize) -> tempfile::TempDir {
         let dir = tempfile::Builder::new()
             .prefix("ncrs-perf-")
@@ -11016,7 +11024,10 @@ mod perf_numbers {
             if i % 20 == 0 {
                 std::fs::create_dir(dir.path().join(format!("dir_{i:06}"))).unwrap();
             } else {
-                let content = vec![b'x'; i % 4096];
+                let mut content = vec![b'x'; i % 4096];
+                if i % MARKED_EVERY == 1 {
+                    content = format!("{MARKER} {}", "x".repeat(i % 4096)).into_bytes();
+                }
                 std::fs::write(dir.path().join(format!("File_{i:06}.txt")), content).unwrap();
             }
         }
@@ -11064,6 +11075,58 @@ mod perf_numbers {
         start.elapsed() / STEPS
     }
 
+    /// Runs the search the dialog runs, until its `Finished` event, and
+    /// returns the median of `RUNS` timings after one warm-up.
+    async fn search_median(query: &SearchQuery) -> (Duration, SearchTotals) {
+        let mut samples = Vec::with_capacity(RUNS);
+        let mut totals = None;
+        for run in 0..=RUNS {
+            let compiled = search::compile(query).unwrap();
+            let start = Instant::now();
+            let mut events = search::spawn(compiled);
+            while let Some(event) = events.recv().await {
+                if let SearchEvent::Finished(finished) = event {
+                    totals = Some(finished);
+                    break;
+                }
+            }
+            if run > 0 {
+                samples.push(start.elapsed());
+            }
+        }
+        (median(samples), totals.unwrap())
+    }
+
+    /// Tags every entry of the left panel and builds the view, with the
+    /// tags cleared before each run.
+    fn tag_all_and_view(app: &mut App) -> Duration {
+        let shared = std::cell::RefCell::new(app);
+        median_time(
+            || drop(shared.borrow_mut().update(Message::ClearTags)),
+            |()| {
+                let mut borrowed = shared.borrow_mut();
+                drop(borrowed.update(Message::TagAll));
+                drop(borrowed.view());
+            },
+        )
+    }
+
+    /// What F5 costs on the UI thread with everything tagged: the dialog is
+    /// built and the next view drawn. The scan and the conflict count it
+    /// starts run on the blocking pool and are not part of it.
+    fn copy_dialog_and_view(app: &mut App) -> Duration {
+        drop(app.update(Message::TagAll));
+        let shared = std::cell::RefCell::new(app);
+        median_time(
+            || shared.borrow_mut().transfer_dialog = None,
+            |()| {
+                let mut borrowed = shared.borrow_mut();
+                drop(borrowed.update(Message::Transfer(TransferKind::Copy)));
+                drop(borrowed.view());
+            },
+        )
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     #[ignore = "prints timings, run with --release --ignored --nocapture"]
     async fn print_performance_table() {
@@ -11080,6 +11143,7 @@ mod perf_numbers {
         );
         println!("|---:|---:|---:|---:|---:|---:|---:|---:|");
 
+        let mut second_table = Vec::new();
         for entry_count in ENTRY_COUNTS {
             let dir = populated_dir(entry_count);
             let path = dir.path();
@@ -11127,10 +11191,61 @@ mod perf_numbers {
                 shown(page_down),
                 shown(end),
             );
+
+            let tag_all = tag_all_and_view(&mut app);
+            let copy_dialog = copy_dialog_and_view(&mut app);
+            app.transfer_dialog = None;
+
+            let by_name_query = SearchQuery {
+                include: NAME_GLOB.to_owned(),
+                ..SearchQuery::new(path.to_path_buf(), "")
+            };
+            let (name_search, name_totals) = search_median(&by_name_query).await;
+            let (content_search, content_totals) =
+                search_median(&SearchQuery::new(path.to_path_buf(), MARKER)).await;
+            assert_eq!(content_totals.files, entry_count.div_ceil(MARKED_EVERY));
+
+            let target = tempfile::Builder::new()
+                .prefix("ncrs-perf-copy-")
+                .tempdir()
+                .unwrap();
+            let start = Instant::now();
+            let copied = transfer::transfer(
+                path,
+                target.path(),
+                &transfer::Copy,
+                &mut transfer::Counting,
+                OnConflict::Fail,
+            )
+            .unwrap();
+            let copy = start.elapsed();
+            assert_eq!(copied, entry_count + 1);
+            second_table.push(format!(
+                "| {entry_count} | {} ({} hits) | {} ({} hits) | {} | {} | {} |",
+                shown(name_search),
+                name_totals.files,
+                shown(content_search),
+                content_totals.files,
+                shown(copy),
+                shown(tag_all),
+                shown(copy_dialog),
+            ));
+        }
+        println!(
+            "\n| Entries | Search by name | Search by content | Copy folder (one run) \
+             | Tag all + view | F5 with all tagged + view |"
+        );
+        println!("|---:|---:|---:|---:|---:|---:|");
+        for row in second_table {
+            println!("{row}");
         }
         println!(
             "\nOpen directory: readdir, one stat per entry and the sort by name, warm \
-             page cache. Build view: the widget tree only, without rasterising.\n"
+             page cache. Build view: the widget tree only, without rasterising. \
+             Searches: median of seven runs from compile to the finished event, on the \
+             blocking pool; name search matches one file in twenty, content search the \
+             files holding the marker word. Copy: one run to a new folder on the same \
+             disk. The last two columns run on the UI thread.\n"
         );
     }
 }

@@ -747,31 +747,39 @@ for them. And `Snapshot` offers no bytes, only a comparison against a file.
 
 ## Performance
 
-One ignored test measures loading a large directory and moving through it, and
-prints a Markdown table you can paste into an issue:
+One ignored test measures loading a large directory, moving through it,
+searching it and copying it, and prints two Markdown tables you can paste into
+an issue:
 
 ```bash
 cargo test --release --bin ncrs perf_numbers -- --ignored --nocapture
 ```
 
 It creates directories of 1,000, 10,000 and 100,000 entries (one in twenty a
-directory, files up to 4 KiB), reads each through the same code a panel uses,
-and drives the app with the same messages a key press sends. The key columns
-are the mean of 1,000 presses, the others the median of seven runs, warm page
-cache. Apple M4 Pro, 48 GB, macOS 26.6:
+directory, files up to 4 KiB, a marker word in every thousandth file), reads
+each through the same code a panel uses, and drives the app with the same
+messages a key press sends. The key columns are the mean of 1,000 presses, the
+others the median of seven runs, warm page cache; the copy is one run. Apple
+M4 Pro, 48 GB, macOS 26.6.2:
 
-| Entries | Open directory | Sort by name / size / date | Hand to panel | Build view | ↓ + view | PgDn + view |
-|---:|---:|---:|---:|---:|---:|---:|
-| 1,000 | 1.6–3.1 ms | 33 µs / 31 µs / 29 µs | 14 µs | 34 µs | 30 µs | 29 µs |
-| 10,000 | 22–28 ms | 0.33 ms / 0.42 ms / 0.31 ms | 0.14 ms | 29 µs | 29 µs | 30 µs |
-| 100,000 | 258–346 ms | 3.2 ms / 6.5 ms / 3.1 ms | 1.4 ms | 28 µs | 29 µs | 29 µs |
+| Entries | Open directory | Sort by name / size / date | Hand to panel | Build view (top / end) | ↓ + view | PgDn + view | End + view |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1,000 | 1.59 ms | 34 µs / 29 µs / 27 µs | 14 µs | 41 µs / 34 µs | 36 µs | 36 µs | 35 µs |
+| 10,000 | 24.9 ms | 0.31 ms / 0.49 ms / 0.30 ms | 0.14 ms | 34 µs / 35 µs | 35 µs | 35 µs | 35 µs |
+| 100,000 | 251 ms | 3.2 ms / 7.5 ms / 3.0 ms | 1.5 ms | 34 µs / 35 µs | 35 µs | 35 µs | 35 µs |
+
+| Entries | Search by name | Search by content | Copy folder (one run) | Tag all + view | F5 with all tagged + view |
+|---:|---:|---:|---:|---:|---:|
+| 1,000 | 3.5 ms (50 hits) | 13 ms (1 hit) | 84 ms | 0.10 ms | 0.14 ms |
+| 10,000 | 12 ms (500 hits) | 141 ms (10 hits) | 0.98 s | 0.82 ms | 1.0 ms |
+| 100,000 | 94 ms (5,000 hits) | 4.6 s (100 hits) | 10.5 s | 10 ms | 11 ms |
 
 What the columns are, and what they leave out:
 
 - **Open directory** is `readdir`, one `stat` per entry and the sort by name, on
-  tokio's blocking pool. The `stat` calls are nearly all of it; the range is
-  three runs. The UI stays responsive meanwhile: the panel keeps the old
-  listing, marked as loading, until the new one arrives.
+  tokio's blocking pool. The `stat` calls are nearly all of it. The UI stays
+  responsive meanwhile: the panel keeps the old listing, marked as loading,
+  until the new one arrives.
 - **Hand to panel** is what happens when the listing arrives: tags kept,
   cursor placed.
 - **Build view** and the key columns are the widget tree `view` returns,
@@ -779,8 +787,27 @@ What the columns are, and what they leave out:
   does not grow with the directory. Rasterising that tree on the GPU or CPU
   happens afterwards in iced and is **not** in these numbers; see
   [Graphics backend](#graphics-backend) for what that costs in practice.
+- **Search by name** is the search dialog's walk with a pattern that matches
+  one file in twenty (`*05.txt;*25.txt;…`), from compiling the query to the
+  finished event, on the blocking pool.
+- **Search by content** is the same walk looking for a word that is in every
+  thousandth file, so every file is opened and read.
+- **Copy folder** is `transfer` of the whole folder to a new folder on the
+  same disk, one run, on a blocking thread. **Tag all + view** and **F5 with
+  all tagged + view** run on the UI thread: tagging every entry, and building
+  the copy dialog for them, each followed by the next `view`. The scan and the
+  conflict count the dialog starts run on the blocking pool and are not in it.
+
+Known limits at 100,000 files:
+
+- Copying is bound by the disk and the filesystem, one file after the other
+  (about 0.1 ms per file here); a cold cache or a network drive makes it slower.
+- Searching by content reads every file, so it takes seconds and scales with the
+  amount of data, not the number of names; a search by name does not read files.
 - A cold cache, a network drive or a slow disk change **Open directory** and
-  nothing else.
+  the searches, and nothing the UI thread does.
+- Nothing on the UI thread takes more than about 11 ms at 100,000 entries;
+  tagging everything and opening the copy dialog are the largest.
 
 ## Build & run
 
