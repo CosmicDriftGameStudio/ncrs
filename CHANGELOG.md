@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- About dialog: the macOS app menu entry "About ncrs" and the command list
+  (`F1`) show the version, the license and the repository, and open the file
+  with the licenses of the third-party libraries.
+
 ## [0.8.0] — 2026-10-28
 
 ### Added

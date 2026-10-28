@@ -12,7 +12,7 @@ use crate::messages::Message;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MenuModel {
     /// The app menu holds the commands that belong there on a Mac instead of
-    /// in their group: Quit.
+    /// in their group: About first, Quit last.
     pub app: Vec<MenuItemSpec>,
     pub menus: Vec<MenuSpec>,
 }
@@ -32,7 +32,7 @@ pub struct MenuItemSpec {
     pub accelerator: Option<Binding>,
 }
 
-const APP_MENU_ACTION: KeyAction = KeyAction::Quit;
+const APP_MENU_ACTIONS: [KeyAction; 2] = [KeyAction::About, KeyAction::Quit];
 
 impl MenuModel {
     pub fn build(lang: Language, keymap: &Keymap) -> Self {
@@ -44,9 +44,10 @@ impl MenuModel {
                 .find(|binding| is_safe_as_key_equivalent(binding))
                 .cloned(),
         };
-        let app = commands::command_of(APP_MENU_ACTION)
+        let app = APP_MENU_ACTIONS
+            .iter()
+            .filter_map(|&action| commands::command_of(action))
             .map(item_of)
-            .into_iter()
             .collect();
         let menus = CommandGroup::ALL
             .iter()
@@ -54,7 +55,9 @@ impl MenuModel {
                 group,
                 title: titled(lang, group.label(), group.theme_name()),
                 items: commands::all()
-                    .filter(|command| command.group == group && command.action != APP_MENU_ACTION)
+                    .filter(|command| {
+                        command.group == group && !APP_MENU_ACTIONS.contains(&command.action)
+                    })
                     .map(item_of)
                     .collect(),
             })
@@ -182,19 +185,40 @@ mod tests {
             for item in &menu.items {
                 let command = commands::command_of(item.action).unwrap();
                 assert_eq!(command.group, menu.group, "{}", item.action.name());
-                assert_ne!(item.action, KeyAction::Quit, "Quit is in the app menu");
+                assert!(
+                    !APP_MENU_ACTIONS.contains(&item.action),
+                    "{} is in the app menu",
+                    item.action.name()
+                );
                 seen.push(item.action);
             }
         }
         assert_eq!(
             model.app.iter().map(|item| item.action).collect::<Vec<_>>(),
-            [KeyAction::Quit]
+            [KeyAction::About, KeyAction::Quit]
         );
-        seen.push(KeyAction::Quit);
+        seen.extend(APP_MENU_ACTIONS);
         let mut expected: Vec<KeyAction> = commands::all().map(|command| command.action).collect();
         seen.sort();
         expected.sort();
         assert_eq!(seen, expected);
+    }
+
+    #[test]
+    fn about_leads_the_app_menu_and_is_a_help_command() {
+        let model = MenuModel::build(Language::English, &Keymap::default());
+        assert_eq!(
+            model.app.first().map(|item| item.action),
+            Some(KeyAction::About)
+        );
+        assert_eq!(
+            model.app.first().map(|item| item.title.as_str()),
+            Some("About ncrs (Planet Express crew roster)")
+        );
+        assert_eq!(
+            commands::command_of(KeyAction::About).map(|command| command.group),
+            Some(CommandGroup::Help)
+        );
     }
 
     #[test]

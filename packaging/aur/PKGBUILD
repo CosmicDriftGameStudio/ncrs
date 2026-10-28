@@ -35,6 +35,7 @@ package() {
   install -Dm644 share/applications/ncrs.desktop "$pkgdir/usr/share/applications/ncrs.desktop"
   find share/icons/hicolor -type f -exec install -Dm644 {} "$pkgdir/usr/{}" \;
 
+  install -Dm644 THIRD_PARTY_LICENSES.html -t "$pkgdir/usr/lib/ncrs"
   install -Dm644 LICENSE THIRD_PARTY_LICENSES.html -t "$pkgdir/usr/share/licenses/$pkgname"
   install -Dm644 licenses/pdfium/* -t "$pkgdir/usr/share/licenses/$pkgname/pdfium"
   install -Dm644 README.md -t "$pkgdir/usr/share/doc/$pkgname"

@@ -86,6 +86,18 @@ pub fn privacy_settings_command() -> OpenCommand {
     }
 }
 
+/// The system's default opener on `target`, a file or an address, as one
+/// argument of its own. Never a shell.
+pub fn system_open_command(target: impl Into<OsString>) -> OpenCommand {
+    let (opener, _) = default_programs();
+    let mut args: Vec<OsString> = opener.args().iter().map(OsString::from).collect();
+    args.push(target.into());
+    OpenCommand {
+        program: opener.program().into(),
+        args,
+    }
+}
+
 /// Extensions of files the system opener would run or install rather than
 /// show, compared case-insensitively.
 const EXECUTABLE_EXTENSIONS: &[&str] = &[

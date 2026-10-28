@@ -979,12 +979,6 @@
       "de": "Hilfe"
     },
     {
-      "key": "menu.about",
-      "context": "The first entry of the app menu on a Mac: shows the version and licenses of the app.",
-      "en": "About NC-rs",
-      "de": "Über NC-rs"
-    },
-    {
       "key": "menu.services",
       "context": "Entry of the app menu on a Mac that opens the system's list of services other apps offer.",
       "en": "Services",
@@ -5399,6 +5393,66 @@
       "context": "Row on the servers page of the settings tab while no server is saved.",
       "en": "No saved servers",
       "de": "Keine gespeicherten Server"
+    },
+    {
+      "key": "action.about",
+      "context": "Entry of the command list and the app menu on a Mac that runs the key action about, which opens the card with the version, the licence and the third-party licences of the app. The name of what the action does, as short as a menu entry; it has no key.",
+      "en": "About ncrs",
+      "de": "Über ncrs"
+    },
+    {
+      "key": "action.about.theme",
+      "context": "Theme name of the key action about, shown dimmed after its plain name action.about in the command list, and matched when typing. A playful name (the crew of the delivery ship, in the Futurama theme of the app); the plain name beside it says what the action does.",
+      "en": "Planet Express crew roster",
+      "de": "Planet-Express-Besatzungsliste"
+    },
+    {
+      "key": "about.title",
+      "context": "Title of the card that shows the version, the licence and the third-party licences of the app.",
+      "en": "About ncrs",
+      "de": "Über ncrs"
+    },
+    {
+      "key": "about.title_theme",
+      "context": "Playful theme name shown dimmed next to the title of the about card, in the Futurama theme of the app: the crew roster of the Planet Express ship.",
+      "en": "Planet Express crew roster",
+      "de": "Planet-Express-Besatzungsliste"
+    },
+    {
+      "key": "about.version",
+      "context": "Line of the about card with the version of the app. {version} is the version number, like 1.2.3.",
+      "en": "Version {version}",
+      "de": "Version {version}"
+    },
+    {
+      "key": "about.license",
+      "context": "Line of the about card that names the licence ncrs itself is under.",
+      "en": "MIT License",
+      "de": "MIT-Lizenz"
+    },
+    {
+      "key": "about.repository",
+      "context": "Button of the about card that opens the project page of ncrs in the browser. One word.",
+      "en": "Repository",
+      "de": "Repository"
+    },
+    {
+      "key": "about.licenses",
+      "context": "Button of the about card that opens the file with the licences of the libraries ncrs is built from.",
+      "en": "Third-party licenses",
+      "de": "Lizenzen von Drittanbietern"
+    },
+    {
+      "key": "about.close",
+      "context": "Button of the about card that closes it. One word, verb.",
+      "en": "Close",
+      "de": "Schließen"
+    },
+    {
+      "key": "about.licenses_missing",
+      "context": "Line of the about card shown when the file with the third-party licences is not part of this copy of ncrs, for example a build from source. {url} is the web address where the same file can be read.",
+      "en": "The licence file is not part of this build. Read it online: {url}",
+      "de": "Die Lizenzdatei gehört nicht zu diesem Build. Online lesen: {url}"
     }
   ]
 }

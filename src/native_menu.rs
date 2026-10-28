@@ -117,7 +117,10 @@ fn build(
     let menu = Menu::new();
 
     let app_menu = Submenu::new(lang.text(Msg::MenuApp), true);
-    app_menu.append(&PredefinedMenuItem::about(text(Msg::MenuAbout), None))?;
+    let (about, quit) = model.app.split_at(model.app.len().min(1));
+    for spec in about {
+        app_menu.append(&item_of(spec))?;
+    }
     app_menu.append(&PredefinedMenuItem::separator())?;
     app_menu.append(&PredefinedMenuItem::services(text(Msg::MenuServices)))?;
     app_menu.append(&PredefinedMenuItem::separator())?;
@@ -125,7 +128,7 @@ fn build(
     app_menu.append(&PredefinedMenuItem::hide_others(text(Msg::MenuHideOthers)))?;
     app_menu.append(&PredefinedMenuItem::show_all(text(Msg::MenuShowAll)))?;
     app_menu.append(&PredefinedMenuItem::separator())?;
-    for spec in &model.app {
+    for spec in quit {
         app_menu.append(&item_of(spec))?;
     }
     menu.append(&app_menu)?;

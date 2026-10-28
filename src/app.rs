@@ -13,6 +13,7 @@ use iced::widget::{
 };
 use iced::{event, window, Element, Length, Point, Size, Subscription, Task, Theme};
 
+use crate::about::{AboutCard, REPOSITORY_URL};
 use crate::ai_model::{
     download_ai_model, AiModelCard, DownloadError as AiDownloadError, DownloadJob,
 };
@@ -48,12 +49,13 @@ use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 #[cfg(any(target_os = "macos", test))]
 use crate::menu::Availability;
 use crate::messages::{
-    AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage, ConflictChoice,
-    ConnectField, FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesColumnMessage,
-    HermesFileMessage, HermesFocus, HermesPage, KeyBindingsMessage, Message, OcrModelsMessage,
-    PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage,
-    ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingChange,
-    SettingsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind,
+    AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
+    ConflictChoice, ConnectField, FilingSetupMessage, FilingStatusMessage, GrantMessage,
+    HermesColumnMessage, HermesFileMessage, HermesFocus, HermesPage, KeyBindingsMessage, Message,
+    OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage,
+    ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage,
+    SearchMessage, SettingChange, SettingsMessage, ThemeFetchMessage, TitleBarMessage,
+    TransferKind,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -75,6 +77,7 @@ use crate::session_state::{self, PanelRecord, SessionState, WindowSize, WriteOrd
 use crate::suggestion_work::{SuggestedRule, SuggestionAccess, INDEX_NOT_OPEN};
 use crate::theme_fetch::{Fetched, Installed, Pick, Stage, ThemeFetch};
 use crate::transfer_dialog::{self, Policy, TransferDialog, TransferDialogMessage};
+use crate::ui::about as about_ui;
 use crate::ui::ai_model as ai_model_ui;
 use crate::ui::command_line as command_line_ui;
 use crate::ui::command_palette as command_palette_ui;
@@ -435,6 +438,7 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::HermesPage(_)
             | Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
             | Message::OcrModels(OcrModelsMessage::Open)
+            | Message::About(AboutMessage::Open)
             | Message::AiModel(AiModelMessage::Open)
             | Message::Grant(GrantMessage::Open)
             | Message::Remote(RemoteMessage::OpenConnect)
@@ -1101,6 +1105,13 @@ pub struct App {
     /// Writes the picked theme and switches it on, on a blocking thread.
     /// Injected so tests write no files.
     install_theme: fn(&Pick, &Path) -> Result<Box<Installed>, FetchError>,
+    /// The about card, while it is up.
+    about: Option<AboutCard>,
+    /// Finds the file with the third-party licenses of this installation.
+    /// Injected so tests do not look at the machine they run on.
+    find_third_party_licenses: fn() -> Option<PathBuf>,
+    /// The version the about card shows.
+    app_version: &'static str,
     /// The card that asks before the OCR models are downloaded, while it is up.
     ocr_models: Option<OcrModelsCard>,
     /// Counts the cards opened, so the late answer of a closed one is dropped.
@@ -1195,6 +1206,8 @@ pub struct PromptKeyState {
     pub hermes_sidebar: bool,
     /// The reorganisation plan view is up, so its keys are the card's.
     pub reorganisation_plan: bool,
+    /// The about card is up, so keys answer it like a button dialog.
+    pub about: bool,
     /// The OCR models card is up, so keys answer it like a button dialog.
     pub ocr_models: bool,
     /// The AI model card is up, so keys answer it like a button dialog.
@@ -1250,6 +1263,7 @@ impl Default for PromptKeyState {
             saved_queries: false,
             hermes_sidebar: false,
             reorganisation_plan: false,
+            about: false,
             ocr_models: false,
             ai_model: false,
             grant_dialog: false,
@@ -1441,10 +1455,12 @@ fn rule_suggestions_key(
     }
 }
 
-/// What Escape sends while one of the small button dialogs is up: the OCR
-/// models card, the AI model card or the folder grant dialog.
+/// What Escape sends while one of the small button dialogs is up: the about
+/// card, the OCR models card, the AI model card or the folder grant dialog.
 fn card_close_message(prompt: &PromptKeyState) -> Option<Message> {
-    if prompt.ocr_models {
+    if prompt.about {
+        Some(Message::About(AboutMessage::Close))
+    } else if prompt.ocr_models {
         Some(Message::OcrModels(OcrModelsMessage::Close))
     } else if prompt.ai_model {
         Some(Message::AiModel(AiModelMessage::Close))
@@ -2786,6 +2802,9 @@ impl App {
             filing_due: false,
             fetch_extension: open_vsx::fetch_extension,
             install_theme: install_picked_theme,
+            about: None,
+            find_third_party_licenses: crate::about::installed_third_party_licenses,
+            app_version: env!("CARGO_PKG_VERSION"),
             ocr_models: None,
             ocr_models_generation: 0,
             download_ocr_models: download_models,
@@ -3469,6 +3488,7 @@ impl App {
             Message::UndoReorganisation => self.undo_reorganisation(),
             Message::DocumentsFiled(result) => self.documents_filed(result),
             Message::ReorganisationUndone(result) => self.reorganisation_undone(result),
+            Message::About(about_message) => self.update_about(about_message),
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::AiModel(model_message) => self.update_ai_model(model_message),
             Message::Grant(grant_message) => self.update_grant(grant_message),
@@ -4432,6 +4452,18 @@ impl App {
             return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
         }
 
+        if let Some(card) = self.about.as_ref() {
+            let card_element = about_ui::view(
+                card,
+                self.app_version,
+                self.dialog_focus,
+                self.window_size,
+                self.lang,
+                &self.palette,
+            );
+            return Stack::with_children([root, dialog::scrim(card_element)]).into();
+        }
+
         if let Some(card) = self.ocr_models.as_ref() {
             let card_element = ocr_models_ui::view(
                 card,
@@ -4718,6 +4750,7 @@ impl App {
         let hermes_sidebar =
             self.hermes_focus == HermesFocus::Sidebar && self.open_hermes_page().is_some();
         let reorganisation_plan = self.reorganisation.is_some();
+        let about = self.about.is_some();
         let ocr_models = self.ocr_models.is_some();
         let ai_model = self.ai_model.is_some();
         let grant_dialog = self.grant_dialog;
@@ -4758,6 +4791,7 @@ impl App {
                 saved_queries,
                 hermes_sidebar,
                 reorganisation_plan,
+                about,
                 ocr_models,
                 ai_model,
                 grant_dialog,
@@ -4799,6 +4833,7 @@ impl App {
                 saved_queries,
                 hermes_sidebar,
                 reorganisation_plan,
+                about,
                 ocr_models,
                 ai_model,
                 grant_dialog,
@@ -5124,7 +5159,9 @@ impl App {
     }
 
     fn dialog_button_count(&self) -> usize {
-        if self.delete_dialog.is_some()
+        if self.about.is_some() {
+            3
+        } else if self.delete_dialog.is_some()
             || self.ocr_models.is_some()
             || self.ai_model.is_some()
             || self.grant_dialog
@@ -5145,6 +5182,13 @@ impl App {
             } else {
                 self.delete_dialog = None;
                 Task::none()
+            };
+        }
+        if self.about.is_some() {
+            return match self.dialog_focus {
+                about_ui::REPOSITORY_FOCUS => self.update_about(AboutMessage::OpenRepository),
+                about_ui::LICENSES_FOCUS => self.update_about(AboutMessage::OpenLicenses),
+                _ => self.update_about(AboutMessage::Close),
             };
         }
         if self.ocr_models.is_some() {
@@ -5202,6 +5246,7 @@ impl App {
             || self.review_list.is_some()
             || self.saved_queries.is_some()
             || self.reorganisation.is_some()
+            || self.about.is_some()
             || self.ocr_models.is_some()
             || self.ai_model.is_some()
             || self.grant_dialog
@@ -8916,6 +8961,50 @@ impl App {
         }
     }
 
+    fn update_about(&mut self, message: AboutMessage) -> Task<Message> {
+        match message {
+            AboutMessage::Open => {
+                if self.blocking_overlay_is_open() {
+                    return Task::none();
+                }
+                self.context_menu = None;
+                self.dialog_focus = about_ui::CLOSE_FOCUS;
+                self.about = Some(AboutCard::new());
+            }
+            AboutMessage::Close => self.about = None,
+            AboutMessage::OpenLicenses => match (self.find_third_party_licenses)() {
+                Some(path) => {
+                    let name = path.file_name().unwrap_or_default().to_string_lossy();
+                    self.launch_from_about(path.clone().into_os_string(), &name);
+                }
+                None => {
+                    if let Some(card) = self.about.as_mut() {
+                        card.report_licenses_missing();
+                    }
+                }
+            },
+            AboutMessage::OpenRepository => {
+                self.launch_from_about(REPOSITORY_URL.into(), REPOSITORY_URL);
+            }
+        }
+        Task::none()
+    }
+
+    /// A launch that fails closes the card, so the error in the status bar is
+    /// not hidden behind it.
+    fn launch_from_about(&mut self, target: std::ffi::OsString, name: &str) {
+        let command = fs::system_open_command(target);
+        if let Err(reason) = self.launcher.launch(&command) {
+            self.about = None;
+            let failure = self
+                .lang
+                .text(Msg::ErrorOpenFailed)
+                .replace("{name}", name)
+                .replace("{reason}", &reason);
+            self.set_status_error(&failure);
+        }
+    }
+
     fn update_ocr_models(&mut self, message: OcrModelsMessage) -> Task<Message> {
         match message {
             OcrModelsMessage::Open => self.open_ocr_models(),
@@ -11850,6 +11939,9 @@ impl App {
             filing_due: false,
             fetch_extension: |_| Err(FetchError::NoConnection("no network in tests".to_owned())),
             install_theme: |_, _| Err(FetchError::NoConfigPath),
+            about: None,
+            find_third_party_licenses: || None,
+            app_version: env!("CARGO_PKG_VERSION"),
             ocr_models: None,
             ocr_models_generation: 0,
             download_ocr_models: |_| Err(DownloadError::NoDataFolder),
@@ -12245,6 +12337,26 @@ impl App {
 
     pub fn theme_fetch_for_test(&self) -> Option<&ThemeFetch> {
         self.theme_fetch.as_ref()
+    }
+
+    pub fn about_for_test(&self) -> Option<&AboutCard> {
+        self.about.as_ref()
+    }
+
+    /// Fixed panels with the about card up, showing a fixed version so a
+    /// release never changes a snapshot.
+    pub fn with_about_card(card: AboutCard) -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.dialog_focus = about_ui::CLOSE_FOCUS;
+        app.app_version = "1.2.3";
+        app.about = Some(card);
+        app
+    }
+
+    /// Makes the licence lookup find (or not find) a file.
+    pub fn with_licenses_finder(mut self, finder: fn() -> Option<PathBuf>) -> Self {
+        self.find_third_party_licenses = finder;
+        self
     }
 
     pub fn ocr_models_for_test(&self) -> Option<&OcrModelsCard> {
@@ -22489,5 +22601,113 @@ mod remote_panel_tests {
 
         assert_eq!(app.saved_servers.len(), 1);
         assert_eq!(app.saved_servers[0].label(), "Work");
+    }
+}
+
+#[cfg(test)]
+mod about_tests {
+    use std::sync::Mutex;
+
+    use super::*;
+
+    #[derive(Default)]
+    struct RecordingLauncher(Mutex<Vec<fs::OpenCommand>>);
+
+    impl fs::Launcher for RecordingLauncher {
+        fn launch(&self, command: &fs::OpenCommand) -> Result<(), String> {
+            if let Ok(mut calls) = self.0.lock() {
+                calls.push(command.clone());
+            }
+            Ok(())
+        }
+    }
+
+    fn calls(launcher: &RecordingLauncher) -> Vec<fs::OpenCommand> {
+        launcher
+            .0
+            .lock()
+            .map(|calls| calls.clone())
+            .unwrap_or_default()
+    }
+
+    fn send(app: &mut App, message: AboutMessage) {
+        drop(app.update(Message::About(message)));
+    }
+
+    fn app_with_launcher(finder: fn() -> Option<PathBuf>) -> (App, Arc<RecordingLauncher>) {
+        let launcher = Arc::new(RecordingLauncher::default());
+        let mut app = App::with_fixed_panels()
+            .with_licenses_finder(finder)
+            .with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>);
+        app.app_version = "1.2.3";
+        (app, launcher)
+    }
+
+    #[test]
+    fn the_about_action_opens_the_card_and_close_and_escape_close_it() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::RunCommand(KeyAction::About)));
+        assert!(app.about_for_test().is_some());
+        assert_eq!(app.dialog_focus, about_ui::CLOSE_FOCUS);
+        send(&mut app, AboutMessage::Close);
+        assert!(app.about_for_test().is_none());
+
+        drop(app.update(Message::RunCommand(KeyAction::About)));
+        let prompt = PromptKeyState {
+            about: true,
+            ..PromptKeyState::default()
+        };
+        assert_eq!(
+            card_close_message(&prompt),
+            Some(Message::About(AboutMessage::Close))
+        );
+    }
+
+    #[test]
+    fn enter_on_the_close_button_closes_the_card() {
+        let mut app = App::with_about_card(AboutCard::new());
+        drop(app.update(Message::DialogActivate));
+        assert!(app.about_for_test().is_none());
+    }
+
+    #[test]
+    fn a_found_licenses_file_is_launched_once_with_its_path_as_last_argument() {
+        let (mut app, launcher) =
+            app_with_launcher(|| Some(PathBuf::from("/opt/ncrs/THIRD_PARTY_LICENSES.html")));
+        send(&mut app, AboutMessage::Open);
+        send(&mut app, AboutMessage::OpenLicenses);
+        let launched = calls(&launcher);
+        assert_eq!(launched.len(), 1);
+        assert_eq!(
+            launched.first().and_then(|call| call.args.last()),
+            Some(&std::ffi::OsString::from(
+                "/opt/ncrs/THIRD_PARTY_LICENSES.html"
+            ))
+        );
+        assert!(app.about_for_test().is_some());
+    }
+
+    #[test]
+    fn a_missing_licenses_file_launches_nothing_and_points_to_the_release() {
+        let (mut app, launcher) = app_with_launcher(|| None);
+        send(&mut app, AboutMessage::Open);
+        send(&mut app, AboutMessage::OpenLicenses);
+        assert!(calls(&launcher).is_empty());
+        assert!(app
+            .about_for_test()
+            .is_some_and(AboutCard::licenses_missing));
+    }
+
+    #[test]
+    fn the_repository_button_launches_the_address() {
+        let (mut app, launcher) = app_with_launcher(|| None);
+        send(&mut app, AboutMessage::Open);
+        send(&mut app, AboutMessage::OpenRepository);
+        let launched = calls(&launcher);
+        assert_eq!(launched.len(), 1);
+        assert_eq!(
+            launched.first().and_then(|call| call.args.last()),
+            Some(&std::ffi::OsString::from(REPOSITORY_URL))
+        );
     }
 }

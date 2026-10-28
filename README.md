@@ -961,7 +961,8 @@ with or endorsed by it.
 MIT
 
 Release archives and the macOS app include `THIRD_PARTY_LICENSES.html` with the
-licenses of the dependencies, the embedded Fira Sans font and the Lucide icons. To generate it
+licenses of the dependencies, the embedded Fira Sans font and the Lucide icons. The About dialog
+(macOS app menu, or "About ncrs" in the `F1` command list) opens it. To generate it
 locally: `cargo install cargo-about --locked --features cli && cargo about generate about.hbs -o THIRD_PARTY_LICENSES.html`
 
 No dependency may be under GPL, LGPL or AGPL, because those licenses rule out

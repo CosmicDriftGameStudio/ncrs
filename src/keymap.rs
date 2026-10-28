@@ -16,11 +16,11 @@ use crate::hermes_column::FolderRole;
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::messages::{
-    AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage, FilingSetupMessage,
-    FilingStatusMessage, GrantMessage, HermesFileMessage, KeyBindingsMessage, OcrModelsMessage,
-    PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage,
-    ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingsMessage,
-    ThemeFetchMessage, TransferKind,
+    AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
+    FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesFileMessage, KeyBindingsMessage,
+    OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage,
+    ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage,
+    SearchMessage, SettingsMessage, ThemeFetchMessage, TransferKind,
 };
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
@@ -136,6 +136,7 @@ key_actions! {
     FetchTheme => "fetch_theme",
     Settings => "settings",
     KeyBindings => "key_bindings",
+    About => "about",
     DownloadOcrModels => "download_ocr_models",
     DownloadAiModel => "download_ai_model",
     GrantFolderAccess => "grant_folder_access",
@@ -233,6 +234,7 @@ impl KeyAction {
             | Self::FetchTheme
             | Self::Settings
             | Self::KeyBindings
+            | Self::About
             | Self::DownloadOcrModels
             | Self::DownloadAiModel
             | Self::GrantFolderAccess
@@ -368,6 +370,7 @@ impl KeyAction {
             Self::FetchTheme => Message::ThemeFetch(ThemeFetchMessage::Open),
             Self::Settings => Message::Settings(SettingsMessage::Toggle),
             Self::KeyBindings => Message::KeyBindings(KeyBindingsMessage::Open),
+            Self::About => Message::About(AboutMessage::Open),
             Self::DownloadOcrModels => Message::OcrModels(OcrModelsMessage::Open),
             Self::DownloadAiModel => Message::AiModel(AiModelMessage::Open),
             Self::GrantFolderAccess => Message::Grant(GrantMessage::Open),
@@ -435,6 +438,7 @@ impl KeyAction {
             | Self::FetchTheme
             | Self::Settings
             | Self::KeyBindings
+            | Self::About
             | Self::DownloadOcrModels
             | Self::DownloadAiModel
             | Self::GrantFolderAccess
@@ -512,6 +516,7 @@ impl KeyAction {
             | Self::FetchTheme
             | Self::Settings
             | Self::KeyBindings
+            | Self::About
             | Self::DownloadOcrModels
             | Self::DownloadAiModel
             | Self::GrantFolderAccess
@@ -1855,10 +1860,11 @@ mod tests {
     #[test]
     fn every_action_has_a_default_key_and_no_key_is_twice_bound() {
         // Reached through the command palette (or a menu) only.
-        const WITHOUT_KEY: [KeyAction; 14] = [
+        const WITHOUT_KEY: [KeyAction; 15] = [
             KeyAction::RemoveFavourite,
             KeyAction::Favourites,
             KeyAction::FetchTheme,
+            KeyAction::About,
             KeyAction::DownloadOcrModels,
             KeyAction::DownloadAiModel,
             KeyAction::GrantFolderAccess,

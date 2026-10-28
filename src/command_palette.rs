@@ -900,7 +900,7 @@ mod tests {
         let palette = palette(KeyScope::Panel, Language::English);
         assert_eq!(
             headers(&palette),
-            ["File", "Edit", "View", "Go", "Search", "Filing"]
+            ["File", "Edit", "View", "Go", "Search", "Filing", "Help"]
         );
         let Some(Row::Header(first)) = palette.rows().first() else {
             panic!("a header comes first");
