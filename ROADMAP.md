@@ -213,14 +213,14 @@ Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
 
 # Tasks – Basis-Feature
 
-**Stand 2026-10-27: T1–T14, T16 und T18 erledigt, T15 und T17 offen.** Release 0.7.0,
-1027 Tests (`cargo test --workspace`, davon 5 `#[ignore]`) inkl. UI-Tests mit Pixelvergleich.
+**Stand 2026-10-28: T1–T16 und T18 erledigt, T17 offen.** Release 0.8.0,
+2175 Tests (`cargo test --workspace`, davon 8 `#[ignore]`) inkl. UI-Tests mit Pixelvergleich.
 
 | Block | Inhalt | Stand |
 |---|---|---|
 | A | CI, Installer, Release, `strings.json` | ✅ fertig (T1–T5, T5b), dazu signierte und notarisierte macOS-App |
-| B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | 🔶 F3–F8, Config, Keymap, Theme und Startsprache fertig, T6d (Kommandozeile, Favoriten, Verlauf) und T14 (Suche und Quick Open) fertig — **als Nächstes 0.8.0: Netz, Archive lesen, Einstellungen** |
-| C | Netzwerk-Mounts, Archive | 🔶 Laufwerksmenü und Archive lesen (T16) fertig, T15 und T17 offen |
+| B | Der Dateimanager: MkDir, Copy, Delete, View/Edit, Config, Suche | 🔶 F3–F8, Config, Keymap, Theme und Startsprache fertig, T6d (Kommandozeile, Favoriten, Verlauf) und T14 (Suche und Quick Open) fertig, mit 0.8.0 die ganze Config und die Tastenkürzel in der App — **als Nächstes 0.9.0: Archive schreiben, Config und Index migrieren, Hermes als Beta** |
+| C | Netzwerk-Mounts, Archive | 🔶 Laufwerksmenü, SFTP-Server (T15) und Archive lesen (T16) fertig, T17 offen |
 
 Legende: **[P]** Pflicht für ein benutzbares Basis-Feature, **[S]** später. Reihenfolge =
 Abhängigkeit, nicht Bequemlichkeit. Jeder Task endet grün: `cargo fmt --check`,
@@ -470,8 +470,10 @@ unterscheidet sich, also gelten macOS-Referenzen nicht für Windows. Gelöst üb
   Datei aus dem Archiv über eine temporäre Kopie im Cache-Ordner an (#151): nur für den Besitzer
   lesbar, entfernt beim Verlassen des Archivs und beim Beenden, Reste eines Absturzes räumt der
   nächste Start ab.
-- [ ] **T15 – Netzwerk-Mounts** (macOS/Linux), **T17 – Archiv-Support schreibend** – Umfang
-  siehe Abschnitt 4
+- [x] **T15 – Netzwerk** (K4, #125) – eigener SFTP-Client statt Mounts: Server im Panel
+  durchsuchen, F3 und F5 in beide Richtungen, gespeicherte Server in der Config und im
+  Einstellungs-Tab; Host-Keys gegen `known_hosts`, Passwörter im Schlüsselbund (0.8.0)
+- [ ] **T17 – Archiv-Support schreibend** (K6, #127) – Umfang siehe Abschnitt 4
 
 ## Weg zu 1.0.0 (Plan vom 2026-10-26)
 
