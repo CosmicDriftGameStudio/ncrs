@@ -14,12 +14,14 @@ use crate::ai_model::DownloadError as AiDownloadError;
 use crate::app::{RowFailure, Transfer};
 use crate::command_line::ShellOutcome;
 use crate::config::{
-    AiProviderChoice, AiProviderName, Config, Filing, FilingWriteError, ProgramLine,
+    AiProviderChoice, AiProviderName, Config, Filing, FilingWriteError, ProgramLine, ServerEntry,
 };
 use crate::dialog::PromptKind;
 use crate::execute::UndoReport;
 use crate::filing::{FilingMessage, IndexFigures};
 use crate::filing_work::FilingSummary;
+use crate::fs::remote::session::ConnectFailure;
+use crate::fs::remote::{RemotePath, Secret, ServerId};
 use crate::fs::search::SearchEvent;
 use crate::fs::{CreateDirError, OpenKind};
 use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
@@ -368,6 +370,12 @@ pub enum Message {
     OcrModels(OcrModelsMessage),
     AiModel(AiModelMessage),
 
+    // --- Folder grants of the App Store build ---
+    Grant(GrantMessage),
+
+    // --- SFTP servers ---
+    Remote(RemoteMessage),
+
     // --- Settings tab ---
     Settings(SettingsMessage),
     KeyBindings(KeyBindingsMessage),
@@ -391,15 +399,17 @@ pub enum SettingsFeature {
     Language,
     Programs,
     Keys,
+    Servers,
     Hermes,
 }
 
 impl SettingsFeature {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Look,
         Self::Language,
         Self::Programs,
         Self::Keys,
+        Self::Servers,
         Self::Hermes,
     ];
 }
@@ -426,6 +436,8 @@ pub enum SettingChange {
         color: Option<String>,
     },
     AiProvider(AiProviderChoice),
+    /// The whole list of saved SFTP servers, as it is to be written.
+    Servers(Vec<ServerEntry>),
 }
 
 /// A text field of the settings tab. What is typed stays a draft until
@@ -954,6 +966,95 @@ pub enum AiModelMessage {
         generation: u64,
         result: Result<(), AiDownloadError>,
     },
+}
+
+/// Everything the folder grants of the App Store build send.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GrantMessage {
+    /// The key action: opens the system folder dialog, or says that this
+    /// build needs no grants.
+    Open,
+    /// The dialog's button: opens the system folder dialog and keeps the
+    /// dialog up until a folder is chosen.
+    Choose,
+    /// The dialog's other button, and Escape.
+    Later,
+    /// The system folder dialog answered; `None` when it was cancelled.
+    Picked(Option<PathBuf>),
+    /// The grant of the folder was saved, or why it could not be.
+    Saved {
+        folder: PathBuf,
+        result: Result<(), String>,
+    },
+}
+
+/// A field of the dialog that connects to a server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ConnectField {
+    Host,
+    Port,
+    User,
+    Password,
+    StartPath,
+}
+
+/// Everything the SFTP connections and their dialog send.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RemoteMessage {
+    /// The key action and the command: opens the connect dialog.
+    OpenConnect,
+    /// What was typed into a field other than the password.
+    Field(ConnectField, String),
+    Password(Secret),
+    ToggleRemember,
+    /// Tab: the next field, or the one before it.
+    FocusField {
+        backwards: bool,
+    },
+    Submit,
+    Cancel,
+    /// The answer to the attempt the dialog made. Dropped when the dialog has
+    /// been closed or has started another attempt since.
+    Connected {
+        attempt: u64,
+        result: Result<(), ConnectFailure>,
+    },
+    ToggleSave,
+    /// Opens the connect dialog with the box that saves the server ticked.
+    OpenAdd,
+    /// A saved server was chosen: its address opens in the active panel.
+    OpenServer(PathBuf),
+    TrustHostKey,
+    /// The host key was written to the file of ncrs; connect again.
+    HostKeyLearned {
+        attempt: u64,
+        result: Result<(), String>,
+    },
+    /// The command and its key action: closes the connection of the active
+    /// panel's server.
+    DisconnectActive,
+    Disconnect(ServerId),
+    /// What the keychain holds for the server of a folder that was asked for
+    /// while there is no connection. Dropped when the panel has asked for
+    /// something else since.
+    PasswordLoaded {
+        side: PanelSide,
+        request_id: u64,
+        remote: RemotePath,
+        select: Option<String>,
+        result: Result<Option<Secret>, String>,
+    },
+    /// The silent connection with a password from the keychain is done.
+    AutoConnected {
+        side: PanelSide,
+        request_id: u64,
+        remote: RemotePath,
+        select: Option<String>,
+        password: Secret,
+        result: Result<(), ConnectFailure>,
+    },
+    /// The password was stored in the keychain, or why it was not.
+    PasswordStored(Result<(), String>),
 }
 
 /// Everything Quick Open sends.

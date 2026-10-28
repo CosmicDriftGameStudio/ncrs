@@ -68,6 +68,47 @@ All notable changes to this project are documented here. The format follows
   `F3` says so and unpacks nothing. A slow viewer may find its copy gone when
   you leave the archive right away. `F4` stays refused, as an edit would be
   lost with the copy.
+- SFTP servers open like folders. "Connect to server…" (command list; there is
+  also "Disconnect server"), a server saved in the drive menu, or an
+  `sftp://user@host[:port]/path` address in the path field connect with a
+  password; no key files, no ssh-agent. The host key is checked before the
+  password is sent: an unknown server shows its SHA256 fingerprint and is only
+  trusted when you say so (the key goes to a `known_hosts` of ncrs's own next to
+  the index, never to `~/.ssh/known_hosts`, which is only read), a changed or
+  revoked key is refused. "Remember password in the keychain" keeps the password
+  in the system credential store, one entry per server, never in a file.
+  Browsing, `F3` (a temporary copy only you can read) and `F5` in both directions
+  through the copy queue and the conflict dialog work on a server; everything
+  that would change something there, the command line, search and Quick Open say
+  so instead. Saved servers are `[[servers]]` entries in `config.toml` (`name`,
+  `host`, `port`, `user`, `path`; no password) and a Servers page in the settings
+  tab, whose "Remove" forgets the password too. Servers are never written to
+  `state.toml`. Not in this version: moving to or from a server, copying between
+  servers, search, Quick Open and Hermes on a server, `F4`, `F6`, `F7`, `F8`,
+  rename and new file on a server, key and ssh-agent login, servers that offer
+  only RSA host keys, `@cert-authority` and wildcard patterns in `known_hosts`,
+  `ssh_config` and ProxyJump, resuming and parallel transfers, counting ahead and
+  conflict counts for copies to or from a server, permissions and modification
+  time of uploaded files, atomic replacement of a file on the server, links on a
+  server (shown, but `F3` and `F5` on one fail with a note and links inside a
+  folder are skipped). The copy for `F3` is readable by you only on macOS and
+  Linux. After a lost connection a hidden `.ncrs-partial-…` file of an upload can
+  stay on the server. A remembered password the server no longer accepts is
+  removed from the keychain; the App Store build uses the keychain service
+  `ncrs-appstore-sftp` and so never touches the entries of an installed ncrs.
+  The server is asked for the key type on record first; a key of another type
+  than the one on record is refused like a changed key, and a `known_hosts` that
+  cannot be read leaves an unknown server unchecked. The App Store build needs
+  the `network.client` entitlement for this, which comes with the sandbox
+  build.
+- Groundwork for the Mac App Store build, behind the `sandbox` cargo feature
+  that no release uses yet; normal builds are unchanged. Inside the App Sandbox
+  the start folder and the drive menu use the real home folder instead of the
+  container, `~` in the config means the real home, folder grants are kept as
+  security-scoped bookmarks and restored at every start, the index key lives
+  under its own keychain service, and delete goes to the trash through the file
+  manager. At the start the app asks to allow the home folder as long as it
+  cannot be read; "Grant folder access…" in the command list adds more.
 - `F3` and `F4` treat more launcher file types as executable: installers and
   packages (`.pkg`, `.msix`, `.deb`, `.rpm`), shortcuts and location files
   (`.webloc`, `.inetloc`, `.appref-ms`), help files (`.chm`, `.hlp`) and the

@@ -52,6 +52,9 @@ fn refusal_text(refusal: Refusal, lang: Language) -> &'static str {
         Refusal::Unreadable => Msg::TransferErrorUnreadable,
         Refusal::IntoArchive => Msg::TransferErrorIntoArchive,
         Refusal::MoveFromArchive => Msg::TransferErrorMoveFromArchive,
+        Refusal::MoveToServer | Refusal::MoveFromServer => Msg::TransferErrorMoveRemote,
+        Refusal::ServerToServer => Msg::TransferErrorServerToServer,
+        Refusal::BadAddress => Msg::ErrorRemoteUrlInvalid,
     })
 }
 
@@ -83,9 +86,14 @@ fn plain_dim<'a>(content: String, palette: &Palette) -> Element<'a, Message> {
 /// "{count} entries · {size}" under the title, the size an ellipsis until the
 /// scan has it.
 fn summary(dialog: &TransferDialog, lang: Language) -> String {
+    let missing = if dialog.counts_unknown() {
+        "–"
+    } else {
+        COUNTING
+    };
     let size = dialog
         .scan()
-        .map_or_else(|| COUNTING.to_string(), |scan| format::size(scan.bytes));
+        .map_or_else(|| missing.to_string(), |scan| format::size(scan.bytes));
     let count = dialog.sources().len();
     let template = lang.text(if count == 1 {
         Msg::TransferSummaryOne
@@ -105,7 +113,13 @@ fn figures<'a>(
     palette: &Palette,
 ) -> Element<'a, Message> {
     let scan = dialog.scan();
-    let counted = |value: Option<String>| value.unwrap_or_else(|| COUNTING.to_string());
+    // Nothing is counted on a server: the figures are not coming.
+    let missing = if dialog.counts_unknown() {
+        "–"
+    } else {
+        COUNTING
+    };
+    let counted = |value: Option<String>| value.unwrap_or_else(|| missing.to_string());
     let mut numbers = vec![
         (
             lang.text(Msg::TransferFigureFiles),

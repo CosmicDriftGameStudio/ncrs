@@ -44,6 +44,7 @@ mod palette;
 mod query_work;
 mod quick_fix;
 mod quick_open;
+mod remote_dialog;
 mod reorganisation_plan;
 mod reorganisation_work;
 mod review_list;
@@ -233,6 +234,7 @@ fn main() -> iced::Result {
     backend::log_backend();
 
     let environment = app::Environment::of_the_user();
+    fs::restore_grants(environment.index_path.as_deref());
     let saved = environment
         .state_path
         .as_deref()

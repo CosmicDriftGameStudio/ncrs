@@ -378,12 +378,18 @@ fn format_error(error: &ReadError, path: &std::path::Path, lang: Language) -> St
         ReadError::EntriesLeftOut { .. } => Msg::ErrorArchiveEntriesLeftOut,
         ReadError::ArchiveEncrypted => Msg::ErrorArchiveEncrypted,
         ReadError::ArchiveDictionaryTooLarge => Msg::ErrorArchiveDictionaryTooLarge,
+        ReadError::RemoteDisconnected { .. } => Msg::ErrorRemoteDisconnected,
+        ReadError::RemoteTimeout { .. } => Msg::ErrorRemoteTimeout,
+        ReadError::Remote { .. } => Msg::ErrorRemoteFailed,
     };
     let reason = match error {
         ReadError::CannotRead { reason }
         | ReadError::AccessBlocked { reason }
-        | ReadError::TaskFailed { reason } => reason.clone(),
+        | ReadError::TaskFailed { reason }
+        | ReadError::Remote { reason } => reason.clone(),
         ReadError::EntriesLeftOut { count } => count.to_string(),
+        ReadError::RemoteDisconnected { server } => server.to_string(),
+        ReadError::RemoteTimeout { host } => host.clone(),
         ReadError::ArchiveEncrypted | ReadError::ArchiveDictionaryTooLarge => String::new(),
     };
     lang.text(msg)
@@ -391,6 +397,8 @@ fn format_error(error: &ReadError, path: &std::path::Path, lang: Language) -> St
         .replace("{reason}", &reason)
         .replace("{error}", &reason)
         .replace("{count}", &reason)
+        .replace("{server}", &reason)
+        .replace("{host}", &reason)
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the

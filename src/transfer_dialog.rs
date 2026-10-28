@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::fs::archive;
+use crate::fs::remote::{self, RemotePath};
 use crate::fs::transfer::OnConflict;
 use crate::messages::TransferKind;
 
@@ -174,6 +175,15 @@ pub enum Refusal {
     IntoArchive,
     /// A move was asked for entries that lie inside an archive.
     MoveFromArchive,
+    /// A move was asked to a folder on a server.
+    MoveToServer,
+    /// A move was asked for entries on a server.
+    MoveFromServer,
+    /// The entries and the target are on servers.
+    ServerToServer,
+    /// The target starts like an address (`sftp://`) but is none: it is not a
+    /// path of this computer either, so the disk is never asked about it.
+    BadAddress,
 }
 
 fn refusal_of(error: &io::Error) -> Refusal {
@@ -197,6 +207,29 @@ pub fn validate(
     sources: &[PathBuf],
     target: &Path,
 ) -> Result<PathBuf, Refusal> {
+    // Before the disk is asked anything: an address is no path of this
+    // computer, and text that starts like one but is none is not either. A
+    // server is only copied to and from.
+    if looks_like_address(&target.to_string_lossy()) && RemotePath::parse(target).is_none() {
+        return Err(Refusal::BadAddress);
+    }
+    let target_on_server = RemotePath::parse(target).is_some();
+    let source_on_server = sources
+        .iter()
+        .any(|source| RemotePath::parse(source).is_some());
+    if kind == TransferKind::Move && (target_on_server || source_on_server) {
+        return Err(if source_on_server {
+            Refusal::MoveFromServer
+        } else {
+            Refusal::MoveToServer
+        });
+    }
+    if target_on_server && source_on_server {
+        return Err(Refusal::ServerToServer);
+    }
+    if target_on_server {
+        return Ok(target.to_path_buf());
+    }
     let resolved = match std::fs::canonicalize(target) {
         Ok(resolved) => resolved,
         Err(_) if archive::locate_in_archive(target).is_some() => return Err(Refusal::IntoArchive),
@@ -209,6 +242,11 @@ pub fn validate(
         return Err(Refusal::NotAFolder);
     }
     for source in sources {
+        // An entry on a server is on no disk of this computer either: its
+        // folder cannot be this target's, and the target is no part of it.
+        if RemotePath::parse(source).is_some() {
+            continue;
+        }
         // An entry of an archive is on no disk: it has no folder to be the same
         // as and nothing the target could lie inside.
         if lies_in_archive(source) {
@@ -231,6 +269,13 @@ pub fn validate(
     Ok(resolved)
 }
 
+/// Whether `text` starts like a server address, whatever follows.
+fn looks_like_address(text: &str) -> bool {
+    text.trim()
+        .get(..7)
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("sftp://"))
+}
+
 fn lies_in_archive(source: &Path) -> bool {
     std::fs::symlink_metadata(source).is_err() && archive::locate_in_archive(source).is_some()
 }
@@ -244,6 +289,8 @@ pub struct TransferDialog {
     sources: Vec<PathBuf>,
     /// What a relative target is relative to: the other panel's folder.
     base: PathBuf,
+    /// The home folder on the server of `base`, for a `~` typed in the target.
+    remote_home: Option<String>,
     target: String,
     policy: Policy,
     scan: Option<Scan>,
@@ -265,6 +312,7 @@ impl TransferDialog {
     pub fn new(id: u64, kind: TransferKind, sources: Vec<PathBuf>, base: PathBuf) -> Self {
         let target = base.display().to_string();
         Self {
+            remote_home: None,
             id,
             kind,
             sources,
@@ -278,6 +326,26 @@ impl TransferDialog {
             refusal: None,
             stop_background: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// Tells the dialog where `~` leads when the target is on a server.
+    pub fn with_remote_home(mut self, home: Option<String>) -> Self {
+        self.remote_home = home;
+        self
+    }
+
+    /// Some of what is to be copied is on a server, so nothing was counted.
+    pub fn counts_unknown(&self) -> bool {
+        self.sources
+            .iter()
+            .any(|source| RemotePath::parse(source).is_some())
+    }
+
+    /// Some of what is to be copied is on a server, or the target is.
+    pub fn involves_server(&self) -> bool {
+        self.counts_unknown()
+            || looks_like_address(&self.target)
+            || RemotePath::parse(&self.target_path()).is_some()
     }
 
     pub const fn id(&self) -> u64 {
@@ -303,6 +371,19 @@ impl TransferDialog {
     /// The typed target as a path: a relative one means "below the other
     /// panel's folder".
     pub fn target_path(&self) -> PathBuf {
+        let typed = self.target.trim();
+        // An address typed in full is the target, whatever the other panel shows.
+        if looks_like_address(typed) {
+            return remote::parse_url(typed)
+                .ok()
+                .and_then(|url| url.remote_path())
+                .map_or_else(|| PathBuf::from(typed), |place| place.to_path_buf());
+        }
+        // Over a server's folder the text is read on the server, as text.
+        if let Some(place) = RemotePath::parse(&self.base) {
+            let home = self.remote_home.as_deref().unwrap_or("/");
+            return place.resolve_typed(typed, home).to_path_buf();
+        }
         self.base.join(&self.target)
     }
 

@@ -221,6 +221,10 @@ mod tests {
                 | Msg::SettingsRowAiThreads
                 // The app's name heads the macOS app menu in every language.
                 | Msg::MenuApp
+                // Words German took over unchanged: the fields of the connect
+                // dialog.
+                | Msg::RemoteHost
+                | Msg::RemotePort
         )
     }
 

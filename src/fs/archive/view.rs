@@ -192,13 +192,13 @@ fn is_unlocked(instance: &Path) -> bool {
 }
 
 #[cfg(unix)]
-fn restrict_to_owner(path: &Path, mode: u32) -> io::Result<()> {
+pub fn restrict_to_owner(path: &Path, mode: u32) -> io::Result<()> {
     use std::os::unix::fs::PermissionsExt as _;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
 }
 
 #[cfg(not(unix))]
-fn restrict_to_owner(_path: &Path, _mode: u32) -> io::Result<()> {
+pub fn restrict_to_owner(_path: &Path, _mode: u32) -> io::Result<()> {
     Ok(())
 }
 

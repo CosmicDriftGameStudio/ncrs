@@ -484,7 +484,7 @@ Größen sind Schätzungen (S bis ein Tag, M zwei bis vier Tage, L eine Woche un
 | Version | Thema | Bausteine |
 |---|---|---|
 | 0.7.0 | Bedienung komplett, Risiko zuerst | S1 Sandbox-Test (#120) · K1 Kommandozeile, T6d.1 (#121) · K2 Favoriten und Verlauf, T6d.5 (#123) · K3 Zustand merken, T18 (#122) |
-| 0.8.0 | Netz, Archive lesen, Einstellungen | K4 Netzwerk-Mounts, T15 (#125) · K5 Archive lesen, T16 (#124) ✅ · A0 Sandbox-Grundlagen (#126) · E1 Einstellungen für die ganze Config (#142) ✅ · E2 Tastenkürzel-Dialog (#143) ✅ · Quick Open findet Dokumente (#147) ✅ · 7z lesen (#148) ✅ · F3 im Archiv (#151) ✅ |
+| 0.8.0 | Netz, Archive lesen, Einstellungen | K4 Netzwerk-Mounts, T15 (#125) ✅ · K5 Archive lesen, T16 (#124) ✅ · A0 Sandbox-Grundlagen (#126) ✅ · E1 Einstellungen für die ganze Config (#142) ✅ · E2 Tastenkürzel-Dialog (#143) ✅ · Quick Open findet Dokumente (#147) ✅ · 7z lesen (#148) ✅ · F3 im Archiv (#151) ✅ |
 | 0.9.0 | Schreiben und Versprechen | K6 Archive schreiben, T17 (#127) · V1 Config versioniert (#128) · V2 Index-Migration (#129) · V3 100k-Dateien-Messung (#130) · V4 Lizenzen für den Store (#131), darin About-Dialog mit den Drittlizenzen (#149) · H1 Hermes als Beta (#132) |
 | 1.0.0 | App Store | A1 Sandbox-Build (#133) · A2 App Store Connect (#134) · A3 Store-Auftritt (#135) · A4 Review und Release (#136) |
 
@@ -500,7 +500,20 @@ Entschieden:
 - **Store-Fassung (S1, #120):** volle Fassung, keine Lite. Eine Freigabe des
   Home-Ordners samt Bookmark deckt alle Kernpfade ab, jedes externe Volume braucht eine
   eigene.
+- **Sandbox-Grundlagen (A0, #126):** Config, State und Index bleiben im Container (dorthin
+  zeigt `$HOME`), Freigaben sind Security-Scoped-Bookmarks in `<Container>/grants/`, und
+  der Index-Schlüssel liegt unter dem Schlüsselbund-Service `ncrs-appstore`, damit die
+  Store-Fassung nie den Eintrag einer normalen Installation anfasst; alles hängt am
+  Cargo-Feature `sandbox` plus Laufzeitcheck.
 - **Netzwerk:** eigener Client (SFTP zuerst), braucht nur `network.client`.
+  **Umgesetzt (K4, #125):** nur Passwort-Anmeldung (kein ssh-agent, keine Schlüsseldateien),
+  Durchsuchen, F3 und F5 in beide Richtungen; F4/F6/F7/F8, Suche, Quick Open, Hermes und die
+  Kommandozeile sagen auf dem Server nur Bescheid. Hostschlüssel werden vor dem Passwort
+  geprüft (`~/.ssh/known_hosts` nur gelesen, eigene Datei daneben), Passwörter liegen je
+  Server im Schlüsselbund. Für die Store-Fassung fehlt noch das Entitlement `network.client`
+  (kommt mit #133), und `~/.ssh/known_hosts` ist im Sandbox nur nach der Home-Freigabe lesbar.
+  Offen für später: Verschieben, Server-zu-Server, RSA-only-Hostkeys, Schlüssel-Anmeldung,
+  Fortsetzen, Vorab-Zählung.
 - **Hermes** ist in der Store-Fassung als Beta dabei.
 - **Einstellungen und Tasten in der App (#142, #143):** In der Store-Fassung liegt
   `config.toml` im Sandbox-Container, also muss alles darin auch in der App einstellbar

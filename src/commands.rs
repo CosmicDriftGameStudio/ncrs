@@ -237,6 +237,19 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             Msg::ActionDownloadAiModel,
             Msg::ActionDownloadAiModelTheme,
         ),
+        KeyAction::GrantFolderAccess => Command::plain(action, File, Msg::ActionGrantFolderAccess),
+        KeyAction::ConnectServer => Command::themed(
+            action,
+            Go,
+            Msg::ActionConnectServer,
+            Msg::ActionConnectServerTheme,
+        ),
+        KeyAction::DisconnectServer => Command::themed(
+            action,
+            Go,
+            Msg::ActionDisconnectServer,
+            Msg::ActionDisconnectServerTheme,
+        ),
         KeyAction::CommandPalette => Command::themed(
             action,
             Help,
@@ -246,10 +259,12 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
     }
 }
 
-/// Every command, in the order of the key actions.
+/// Every command, in the order of the key actions. Granting folders is
+/// offered only where the sandbox makes it necessary: the App Store build.
 pub fn all() -> impl Iterator<Item = Command> {
     KeyAction::ALL
         .iter()
+        .filter(|action| action.is_offered())
         .filter_map(|&action| command_of(action))
 }
 
@@ -291,7 +306,12 @@ mod tests {
 
     #[test]
     fn every_command_has_its_texts_in_both_languages() {
-        for command in all() {
+        // Not `all()`: that leaves out the commands of the App Store build,
+        // and their texts are needed there.
+        for command in KeyAction::ALL
+            .iter()
+            .filter_map(|&action| command_of(action))
+        {
             let name = command.action.name();
             assert_eq!(
                 command.label.key(),

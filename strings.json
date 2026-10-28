@@ -5051,6 +5051,354 @@
       "context": "Verb next to the Shift+Backspace key in the footer hints of the keyboard shortcuts dialog: gives the action its built-in keys again. One word.",
       "en": "reset",
       "de": "zurücksetzen"
+    },
+    {
+      "key": "action.grant_folder_access",
+      "context": "Entry of the command palette and the menu bar that runs the key action grant_folder_access, which opens the system folder dialog so the user can allow the App Store version to open another folder or drive. The plain name of what the action does, as short as a menu entry; it has no key. The ellipsis says a dialog follows. Listed only in the App Store version.",
+      "en": "Grant folder access…",
+      "de": "Ordner freigeben…"
+    },
+    {
+      "key": "grant.title",
+      "context": "Title of the dialog shown at the start of the App Store version while the home folder cannot be opened. The app runs in the macOS App Sandbox and may open only folders the user allows.",
+      "en": "Allow access to your files",
+      "de": "Zugriff auf deine Dateien erlauben"
+    },
+    {
+      "key": "grant.intro",
+      "context": "Explanation in the dialog that asks the user to allow access to the home folder. macOS lets the App Store version open only the folders the user chooses in a system dialog; one choice of the home folder covers everything below it. Drives and network volumes need a choice of their own.",
+      "en": "ncrs from the App Store runs in the macOS sandbox and can only open folders you allow. Choose your home folder to browse all of it. A drive or another volume needs its own choice.",
+      "de": "ncrs aus dem App Store läuft in der macOS-Sandbox und kann nur Ordner öffnen, die du freigibst. Wähle deinen Home-Ordner, um alles darin zu durchsuchen. Ein Laufwerk oder ein anderes Volume braucht eine eigene Freigabe."
+    },
+    {
+      "key": "grant.remembered",
+      "context": "Second paragraph of the dialog that asks for access to the home folder: the choice is kept, and the command of the command palette adds more folders later. It names the command by its label.",
+      "en": "Your choice is remembered. Later, \"Grant folder access…\" in the command list adds more folders.",
+      "de": "Deine Wahl wird gemerkt. Später fügt „Ordner freigeben…“ in der Befehlsliste weitere Ordner hinzu."
+    },
+    {
+      "key": "grant.later",
+      "context": "Button of the dialog that asks for access to the home folder: closes it without granting anything. The dialog comes back at the next start. One word.",
+      "en": "Later",
+      "de": "Später"
+    },
+    {
+      "key": "grant.choose",
+      "context": "Button of the dialog that asks for access to the home folder: opens the system folder dialog, in the home folder, to choose the folder to allow. The ellipsis says a dialog follows.",
+      "en": "Grant access…",
+      "de": "Freigeben…"
+    },
+    {
+      "key": "grant.not_needed",
+      "context": "Notice in the status bar when the key action grant_folder_access runs outside the App Store version, which needs no folder grants because it can open every folder.",
+      "en": "Granting folders is only needed in the App Store version",
+      "de": "Ordner freigeben braucht nur die App-Store-Fassung"
+    },
+    {
+      "key": "grant.added",
+      "context": "Notice in the status bar after the user allowed a folder in the App Store version and the choice was saved. Takes the folder.",
+      "en": "Access granted: {folder}",
+      "de": "Zugriff freigegeben: {folder}"
+    },
+    {
+      "key": "grant.failed",
+      "context": "Error in the status bar when the access the user allowed to a folder could not be saved, so it would be lost at the next start. Takes the folder and the reason, which stays untranslated.",
+      "en": "Could not save the access to {folder}: {reason}",
+      "de": "Der Zugriff auf {folder} konnte nicht gespeichert werden: {reason}"
+    },
+    {
+      "key": "error.remote_hostkey_changed",
+      "context": "Error in the connect dialog when the host key a server offers differs from the one recorded earlier for the same host and key type. The login is refused before any password is sent, because this can be an attack. Takes the host, the file that holds the old key and its line number. There is no button to trust the new key.",
+      "en": "The host key of {host} has changed ({file}, line {line}). Refused: this can be an attack. If the change is expected, remove the old entry.",
+      "de": "Der Hostschlüssel von {host} hat sich geändert ({file}, Zeile {line}). Abgelehnt: das kann ein Angriff sein. Ist die Änderung erwartet, den alten Eintrag entfernen."
+    },
+    {
+      "key": "error.remote_hostkey_revoked",
+      "context": "Error in the connect dialog when the host key of a server is marked as revoked in a known_hosts file. Takes the host.",
+      "en": "The host key of {host} is marked as revoked",
+      "de": "Der Hostschlüssel von {host} ist als widerrufen markiert"
+    },
+    {
+      "key": "error.remote_hostkey_other_type",
+      "context": "Error in the connect dialog when a server offers a host key of another type than the one on record for it in a known_hosts file (an ed25519 key was recorded, and now an ECDSA key comes). Treated like a changed key: refused before any password is sent, no button to trust it. Takes the host, the file that holds the old key and its line number.",
+      "en": "{host} offers a different key type than the one on record ({file}, line {line}). Refused: this can be an attack.",
+      "de": "{host} bietet einen anderen Schlüsseltyp als den eingetragenen ({file}, Zeile {line}). Abgelehnt: das kann ein Angriff sein."
+    },
+    {
+      "key": "error.remote_known_hosts_unreadable",
+      "context": "Error in the connect dialog when a file with known host keys exists but cannot be read (permissions, or the App Store version before the home folder was allowed). The server cannot be checked, so there is no button to trust it. Takes the file and the system's reason, which stays untranslated.",
+      "en": "{file} could not be read, so the server cannot be checked: {reason}",
+      "de": "{file} ist nicht lesbar, der Server lässt sich daher nicht prüfen: {reason}"
+    },
+    {
+      "key": "error.remote_password_not_offered",
+      "context": "Error in the connect dialog when the server does not accept a password at all, for example because it allows only key or keyboard-interactive login. Takes the host.",
+      "en": "{host} does not accept password sign-in",
+      "de": "{host} erlaubt keine Anmeldung per Passwort"
+    },
+    {
+      "key": "error.remote_auth_failed",
+      "context": "Error in the connect dialog when the server did not accept the user name and password.",
+      "en": "User name or password is wrong",
+      "de": "Benutzername oder Passwort falsch"
+    },
+    {
+      "key": "error.remote_timeout",
+      "context": "Error when a server did not answer in time, in the connect dialog and in the status bar of a panel. Takes the host.",
+      "en": "{host} did not answer in time",
+      "de": "{host} antwortet nicht rechtzeitig"
+    },
+    {
+      "key": "error.remote_unreachable",
+      "context": "Error in the connect dialog when no connection to the server could be made. Takes the host and the technical reason, which stays untranslated.",
+      "en": "Cannot reach {host}: {reason}",
+      "de": "{host} nicht erreichbar: {reason}"
+    },
+    {
+      "key": "error.remote_no_common_algorithm",
+      "context": "Error in the connect dialog when the server offers no host key type that ncrs supports. Servers that offer only RSA host keys cannot be used yet. Takes the host.",
+      "en": "{host} offers no key type ncrs supports (RSA-only servers are not supported yet)",
+      "de": "{host} bietet keinen Schlüsseltyp, den ncrs kann (reine RSA-Server noch nicht unterstützt)"
+    },
+    {
+      "key": "error.remote_disconnected",
+      "context": "Status bar notice of a panel that shows a folder on a server whose connection is gone. Opening the folder again connects anew. Takes the server as user@host.",
+      "en": "Connection to {server} lost. Open the folder again to reconnect.",
+      "de": "Verbindung zu {server} getrennt. Ordner erneut öffnen verbindet neu."
+    },
+    {
+      "key": "error.remote_failed",
+      "context": "Status bar notice of a panel when the server refused to list a folder or a request failed. Takes the server's message, which stays untranslated.",
+      "en": "Server error: {reason}",
+      "de": "Serverfehler: {reason}"
+    },
+    {
+      "key": "error.remote_url_invalid",
+      "context": "Error when an address typed into the path field starts with sftp:// but cannot be understood, for example because the port is not a number or a password is part of it.",
+      "en": "Not a valid sftp:// address",
+      "de": "Keine gültige sftp://-Adresse"
+    },
+    {
+      "key": "error.remote_keychain",
+      "context": "Error in the connect dialog when the keychain could not be read or written while a saved password was looked up or stored. Takes the system's reason.",
+      "en": "The keychain could not be used: {reason}",
+      "de": "Schlüsselbund nicht nutzbar: {reason}"
+    },
+    {
+      "key": "error.remote_unsafe_name",
+      "context": "Error when a file name sent by a server could not be created on this computer, for example because it contains a path separator. The whole copy is stopped and nothing is left behind. Takes the name.",
+      "en": "The name {name} from the server cannot be created here",
+      "de": "Der Name {name} vom Server lässt sich hier nicht anlegen"
+    },
+    {
+      "key": "action.connect_server",
+      "context": "Entry of the command palette and the menu bar that runs the key action connect_server, which opens the dialog to connect to an SFTP server. The plain name of what the action does, as short as a menu entry; it has no key. The ellipsis says a dialog follows.",
+      "en": "Connect to server…",
+      "de": "Mit Server verbinden …"
+    },
+    {
+      "key": "action.connect_server.theme",
+      "context": "Theme name of the key action connect_server, shown dimmed after its plain name action.connect_server in the command palette, and matched when typing. A playful name (the delivery ship in Futurama); the plain name beside it says what the action does.",
+      "en": "Planet Express ship",
+      "de": "Planet-Express-Schiff"
+    },
+    {
+      "key": "action.disconnect_server",
+      "context": "Entry of the command palette and the menu bar that runs the key action disconnect_server, which closes the connection to the server the active panel shows. The plain name of what the action does, as short as a menu entry; it has no key.",
+      "en": "Disconnect server",
+      "de": "Server trennen"
+    },
+    {
+      "key": "action.disconnect_server.theme",
+      "context": "Theme name of the key action disconnect_server, shown dimmed after its plain name action.disconnect_server in the command palette, and matched when typing. A playful name; the plain name beside it says what the action does.",
+      "en": "Back to Earth",
+      "de": "Zurück zur Erde"
+    },
+    {
+      "key": "remote.dialog_title",
+      "context": "Title of the dialog in which the user connects to an SFTP server: host, port, user name and password.",
+      "en": "Connect to server",
+      "de": "Mit Server verbinden"
+    },
+    {
+      "key": "remote.host",
+      "context": "Label and placeholder of the field for the host name or address of the server in the connect dialog.",
+      "en": "Host",
+      "de": "Host"
+    },
+    {
+      "key": "remote.port",
+      "context": "Label and placeholder of the field for the port of the server in the connect dialog. Left empty, it means 22.",
+      "en": "Port",
+      "de": "Port"
+    },
+    {
+      "key": "remote.user",
+      "context": "Label and placeholder of the field for the user name on the server in the connect dialog.",
+      "en": "User",
+      "de": "Benutzer"
+    },
+    {
+      "key": "remote.password",
+      "context": "Label and placeholder of the password field in the connect dialog. The text typed there is hidden. Only passwords are supported, no key files.",
+      "en": "Password",
+      "de": "Passwort"
+    },
+    {
+      "key": "remote.remember",
+      "context": "Label of the checkbox in the connect dialog that stores the password in the system keychain, one entry per server, so the next connection asks for nothing.",
+      "en": "Remember password in the keychain",
+      "de": "Passwort im Schlüsselbund merken"
+    },
+    {
+      "key": "remote.save",
+      "context": "Label of the checkbox in the connect dialog that adds the server to the list of saved servers in the config file. The password is never written there.",
+      "en": "Save in the server list",
+      "de": "In der Serverliste speichern"
+    },
+    {
+      "key": "remote.start_path",
+      "context": "Label and placeholder of the optional field in the connect dialog for the folder on the server to open first. Left empty, the home folder of the login opens.",
+      "en": "Start folder (optional)",
+      "de": "Startordner (optional)"
+    },
+    {
+      "key": "remote.connect",
+      "context": "Button of the connect dialog that connects to the server. Verb, one word.",
+      "en": "Connect",
+      "de": "Verbinden"
+    },
+    {
+      "key": "remote.connecting",
+      "context": "Dimmed line in the connect dialog while the connection is being made.",
+      "en": "Connecting…",
+      "de": "Verbinde …"
+    },
+    {
+      "key": "remote.hostkey_title",
+      "context": "Title of the dialog stage that asks whether to trust a server ncrs has not seen before. Nothing has been sent to the server at that point, no password.",
+      "en": "Unknown server",
+      "de": "Unbekannter Server"
+    },
+    {
+      "key": "remote.hostkey_body",
+      "context": "Text of the dialog stage that asks whether to trust an unknown server. Takes the host and the SHA256 fingerprint of its host key; the user compares it with the one the administrator of the server gives.",
+      "en": "{host} is not known yet. Compare the fingerprint with the one the server's administrator gives you: {fingerprint}",
+      "de": "{host} ist noch unbekannt. Fingerabdruck mit dem vom Server-Admin genannten vergleichen: {fingerprint}"
+    },
+    {
+      "key": "remote.hostkey_trust",
+      "context": "Button of the dialog stage that asks whether to trust an unknown server: remembers its host key and connects. Several words.",
+      "en": "Trust and connect",
+      "de": "Vertrauen und verbinden"
+    },
+    {
+      "key": "status.remote_read_only",
+      "context": "Status bar notice when a key or command that would change something on a server is used in a panel that shows one: only browsing, viewing and copying work there for now.",
+      "en": "Files on the server can only be browsed, viewed and copied for now.",
+      "de": "Dateien auf dem Server lassen sich vorerst nur ansehen und kopieren."
+    },
+    {
+      "key": "status.remote_no_shell",
+      "context": "Status bar notice when the command line is used while the active panel shows a server: commands run on this computer only, not on the server.",
+      "en": "The command line does not run on a server",
+      "de": "Die Kommandozeile läuft nicht auf einem Server"
+    },
+    {
+      "key": "status.remote_connected",
+      "context": "Notice in the status bar after the connection to a server was made. Takes the server as user@host.",
+      "en": "Connected to {server}",
+      "de": "Verbunden mit {server}"
+    },
+    {
+      "key": "status.remote_disconnected",
+      "context": "Notice in the status bar after the user closed the connection to a server. Takes the server as user@host.",
+      "en": "Disconnected from {server}",
+      "de": "Verbindung zu {server} getrennt"
+    },
+    {
+      "key": "status.remote_not_connected",
+      "context": "Notice in the status bar when the key action disconnect_server runs while the active panel does not show a server.",
+      "en": "This panel is not on a server",
+      "de": "Dieses Fenster zeigt keinen Server"
+    },
+    {
+      "key": "volumes.servers_heading",
+      "context": "Heading of the part of the drive menu that lists servers: the saved ones and those connected now.",
+      "en": "Servers",
+      "de": "Server"
+    },
+    {
+      "key": "volumes.server_connected",
+      "context": "Marker after a server in the drive menu whose connection is open at the moment. One word.",
+      "en": "connected",
+      "de": "verbunden"
+    },
+    {
+      "key": "volumes.hint_disconnect",
+      "context": "Verb next to the Backspace or Del key in the footer of the drive menu while a connected server is highlighted: closes its connection. One word, like volumes.hint_remove_favourite.",
+      "en": "disconnect",
+      "de": "trennen"
+    },
+    {
+      "key": "transfer.error_move_remote",
+      "context": "Error in the copy and move dialog when a move is asked to or from an SFTP server. Moving would delete the source, which is not offered across a server for now; copying is.",
+      "en": "Moving to or from a server is not supported; copy instead",
+      "de": "Verschieben auf/von einem Server geht nicht; stattdessen kopieren"
+    },
+    {
+      "key": "transfer.error_server_to_server",
+      "context": "Error in the copy and move dialog when the source and the target are both on SFTP servers. Copying has to go through this computer, which is not offered for now.",
+      "en": "Copying between servers is not supported",
+      "de": "Kopieren zwischen Servern geht nicht"
+    },
+    {
+      "key": "error.remote_view_unavailable",
+      "context": "Status bar error when the view key is pressed on a file on an SFTP server but ncrs has no folder for the temporary copy: the cache folder could not be created or the system names none. Nothing was fetched.",
+      "en": "No folder for temporary copies, so this file cannot be viewed from the server. Copy it out instead.",
+      "de": "Kein Ordner für temporäre Kopien, die Datei lässt sich daher nicht vom Server ansehen. Stattdessen herauskopieren."
+    },
+    {
+      "key": "error.remote_view_executable",
+      "context": "Status bar error when the view key is pressed on a file on an SFTP server that could run (script, app, shortcut) and no editor program is set to show it in. Takes the file name. No key names: the edit key is refused on a server, so it must not be suggested.",
+      "en": "{name} could be executed, ncrs does not view it from a server",
+      "de": "{name} könnte ausgeführt werden und wird nicht vom Server angezeigt"
+    },
+    {
+      "key": "settings.feature_servers",
+      "context": "Entry of the feature list on the settings tab: the saved SFTP servers.",
+      "en": "Servers",
+      "de": "Server"
+    },
+    {
+      "key": "settings.feature_servers_intro",
+      "context": "Line under the heading of the servers page on the settings tab. The servers are saved in the config file without their passwords; a password is kept in the keychain only if the user asked for it.",
+      "en": "SFTP servers you can open from the drive menu. Passwords stay in the keychain, never in the config.",
+      "de": "SFTP-Server, die sich im Laufwerksmenü öffnen lassen. Passwörter bleiben im Schlüsselbund, nie in der Konfiguration."
+    },
+    {
+      "key": "settings.servers_add",
+      "context": "Label of the row on the servers page of the settings tab that adds a server. Its button opens the connect dialog with the box that saves the server ticked. The ellipsis says a dialog follows.",
+      "en": "Add server…",
+      "de": "Server hinzufügen …"
+    },
+    {
+      "key": "settings.servers_add_button",
+      "context": "Button on the servers page of the settings tab, in the row that adds a server: opens the connect dialog. Short, like the other buttons of the page.",
+      "en": "Add…",
+      "de": "Hinzufügen …"
+    },
+    {
+      "key": "settings.servers_remove",
+      "context": "Button on the servers page of the settings tab that removes a saved server from the list. It also forgets the password the keychain holds for it.",
+      "en": "Remove",
+      "de": "Entfernen"
+    },
+    {
+      "key": "settings.servers_empty",
+      "context": "Row on the servers page of the settings tab while no server is saved.",
+      "en": "No saved servers",
+      "de": "Keine gespeicherten Server"
     }
   ]
 }

@@ -113,6 +113,16 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # The App Store build. Only macOS has the sandbox code to lint and run;
+      # elsewhere the feature must still compile and change nothing.
+      - name: Clippy, App Store build (macOS)
+        if: runner.os == 'macOS'
+        run: cargo clippy --workspace --all-targets --features sandbox -- -D warnings
+
+      - name: Check, App Store feature (Linux, Windows)
+        if: runner.os != 'macOS'
+        run: cargo check --workspace --all-targets --features sandbox
+
       # Pixel comparisons are only meaningful where the reference images were
       # produced. Font rasterisation differs per operating system, so a
       # reference made on macOS does not match Windows output, and asserting it
@@ -120,6 +130,10 @@ jobs:
       # skipped away from macOS; everything else runs everywhere.
       - name: Tests
         run: cargo test --workspace -- --skip ui_tests
+
+      - name: Tests, App Store build (macOS)
+        if: runner.os == 'macOS'
+        run: cargo test --features sandbox -- --skip ui_tests
 
       # These tests are ignored above because they need the model file. The
       # log is checked for the count: a wrong filter or a missing feature would

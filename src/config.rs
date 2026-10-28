@@ -76,6 +76,61 @@ pub struct Config {
     /// may not exist.
     #[serde(skip)]
     pub filing: Filing,
+    /// The `[[servers]]` entries as written; `load` checks them into `servers`.
+    #[serde(default, rename = "servers")]
+    pub server_sections: Vec<ServerSection>,
+    /// The saved SFTP servers, in the order of the file.
+    #[serde(skip)]
+    pub servers: Vec<ServerEntry>,
+}
+
+/// One `[[servers]]` entry, unchecked. The password is not part of it: it is
+/// asked for, or comes from the keychain.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ServerSection {
+    #[serde(default)]
+    pub name: Option<Spanned<String>>,
+    pub host: Spanned<String>,
+    #[serde(default)]
+    pub port: Option<Spanned<i64>>,
+    pub user: Spanned<String>,
+    /// The folder to open first, an absolute path on the server.
+    #[serde(default)]
+    pub path: Option<Spanned<String>>,
+}
+
+/// A saved SFTP server as `load` checked it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerEntry {
+    /// What the drive menu and the settings call it; the address when none.
+    pub name: Option<String>,
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    pub path: Option<String>,
+}
+
+impl ServerEntry {
+    pub fn server_id(&self) -> crate::fs::remote::ServerId {
+        crate::fs::remote::ServerId::new(&self.user, &self.host, self.port)
+    }
+
+    /// The name, else `user@host`.
+    pub fn label(&self) -> String {
+        self.name
+            .clone()
+            .unwrap_or_else(|| self.server_id().to_string())
+    }
+
+    /// The panel path the entry opens: its start folder, else the root.
+    pub fn url(&self) -> PathBuf {
+        let server = self.server_id();
+        match &self.path {
+            Some(path) => crate::fs::remote::RemotePath::new(server, path).to_path_buf(),
+            None => server.root_path(),
+        }
+    }
 }
 
 /// The `[modules]` table: one sub-table per module.
@@ -764,6 +819,28 @@ fn state_path_in(
     index_path_in(portable, var).map(|index| index.with_file_name("state.toml"))
 }
 
+/// Where the host keys of SFTP servers the user confirmed in ncrs are kept, or
+/// `None` when the variables that say so are missing. In the data folder next
+/// to the index, so the sandboxed build keeps it in its container.
+pub fn default_known_hosts_path() -> Option<PathBuf> {
+    forbid_user_machine_in_tests("config::default_known_hosts_path");
+    known_hosts_path_in(portable_data_dir(), |name| std::env::var_os(name))
+}
+
+fn known_hosts_path_in(
+    portable: Option<PathBuf>,
+    var: impl Fn(&str) -> Option<OsString>,
+) -> Option<PathBuf> {
+    index_path_in(portable, var).map(|index| index.with_file_name("known_hosts"))
+}
+
+/// The user's own OpenSSH `known_hosts`, which ncrs only reads. Inside the App
+/// Sandbox it can be read once the home folder has been granted.
+pub fn default_ssh_known_hosts_path() -> PathBuf {
+    forbid_user_machine_in_tests("config::default_ssh_known_hosts_path");
+    crate::fs::home_dir().join(".ssh").join("known_hosts")
+}
+
 /// Windows: `%APPDATA%\ncrs\index.db`.
 #[cfg(windows)]
 fn index_path_from_env(var: impl Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
@@ -834,13 +911,16 @@ fn view_copies_dir_from_env(var: impl Fn(&str) -> Option<OsString>) -> Option<Pa
 }
 
 /// The home directory `~` stands for. Like the config path, only an absolute
-/// one counts.
+/// one counts. In the App Sandbox it is the real home, not the container that
+/// `$HOME` names: `~` in a config value means the user's folders.
 fn home_from_env() -> Option<PathBuf> {
     #[cfg(windows)]
     let variable = "USERPROFILE";
     #[cfg(not(windows))]
     let variable = "HOME";
-    absolute(std::env::var_os(variable))
+    crate::fs::preferred_home(crate::fs::sandbox_home(), || {
+        absolute(std::env::var_os(variable))
+    })
 }
 
 /// Reads the config at `path`. A missing file gives the defaults.
@@ -967,7 +1047,76 @@ fn parse_config(source: &str, path: &Path, home: Option<&Path>) -> Result<Config
             line: line_at(source.as_bytes(), err.span.start),
             reason: err.reason,
         })?;
+    config.servers =
+        resolve_servers(&config.server_sections).map_err(|err| ConfigError::Invalid {
+            path: path.to_path_buf(),
+            line: line_at(source.as_bytes(), err.span.start),
+            reason: err.reason,
+        })?;
     Ok(config)
+}
+
+/// Checks the `[[servers]]` entries as text; nothing is looked up or opened.
+fn resolve_servers(sections: &[ServerSection]) -> Result<Vec<ServerEntry>, FilingError> {
+    sections
+        .iter()
+        .map(|section| {
+            let word = |value: &Spanned<String>, what: &str, forbidden: &[char]| {
+                let text = value.get_ref();
+                let bad = text.is_empty()
+                    || text
+                        .chars()
+                        .any(|c| c.is_whitespace() || c.is_control() || forbidden.contains(&c));
+                if bad {
+                    return Err(FilingError {
+                        span: value.span(),
+                        reason: format!(
+                            "{what} must not be empty and must not contain spaces or {}",
+                            forbidden
+                                .iter()
+                                .map(|c| format!("`{c}`"))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ),
+                    });
+                }
+                Ok(text.clone())
+            };
+            let host = word(&section.host, "host", &['@', '/'])?;
+            let user = word(&section.user, "user", &['@', '/', ':'])?;
+            let port = match &section.port {
+                None => 22,
+                Some(port) => u16::try_from(*port.get_ref())
+                    .ok()
+                    .filter(|number| *number != 0)
+                    .ok_or_else(|| FilingError {
+                        span: port.span(),
+                        reason: "port must be a number from 1 to 65535".to_owned(),
+                    })?,
+            };
+            let path = match &section.path {
+                None => None,
+                Some(path) if path.get_ref().starts_with('/') => Some(path.get_ref().clone()),
+                Some(path) => {
+                    return Err(FilingError {
+                        span: path.span(),
+                        reason: "path must be absolute: it starts with `/`".to_owned(),
+                    })
+                }
+            };
+            Ok(ServerEntry {
+                name: section
+                    .name
+                    .as_ref()
+                    .map(|name| name.get_ref().trim().to_owned())
+                    .filter(|name| !name.is_empty()),
+                host,
+                port,
+                user,
+                path,
+            })
+        })
+        .collect()
 }
 
 /// The VS Code theme `[theme]` names, read, with where it was named.
@@ -1172,6 +1321,63 @@ fn write_filing_locations_with_home(
     write_edited(path, home, |source| {
         with_filing_locations(source, path, locations)
     })
+}
+
+/// Replaces the `[[servers]]` entries of the config at `path` with `servers`,
+/// keeping every other line, comment and section as written, and returns the
+/// config read back from disk. An empty list removes the entries.
+pub fn write_servers(path: &Path, servers: &[ServerEntry]) -> Result<Config, FilingWriteError> {
+    write_servers_with_home(path, servers, home_from_env().as_deref())
+}
+
+fn write_servers_with_home(
+    path: &Path,
+    servers: &[ServerEntry],
+    home: Option<&Path>,
+) -> Result<Config, FilingWriteError> {
+    write_edited(path, home, |source| with_servers(source, path, servers))
+}
+
+/// `source` with `servers` as its `[[servers]]` entries.
+fn with_servers(
+    source: &str,
+    path: &Path,
+    servers: &[ServerEntry],
+) -> Result<String, FilingWriteError> {
+    let mut document = parse_document(source, path)?;
+    // A comment above the first entry belongs to the list, not to the entry.
+    let first_prefix = document
+        .get("servers")
+        .and_then(toml_edit::Item::as_array_of_tables)
+        .and_then(|old| old.get(0))
+        .and_then(|first| first.decor().prefix().cloned());
+    if servers.is_empty() {
+        document.remove("servers");
+        return Ok(document.to_string());
+    }
+    let mut entries = toml_edit::ArrayOfTables::new();
+    for server in servers {
+        let mut entry = toml_edit::Table::new();
+        if let Some(name) = &server.name {
+            entry.insert("name", toml_edit::value(name.as_str()));
+        }
+        entry.insert("host", toml_edit::value(server.host.as_str()));
+        if server.port != 22 {
+            entry.insert("port", toml_edit::value(i64::from(server.port)));
+        }
+        entry.insert("user", toml_edit::value(server.user.as_str()));
+        if let Some(folder) = &server.path {
+            entry.insert("path", toml_edit::value(folder.as_str()));
+        }
+        if entries.is_empty() {
+            if let Some(prefix) = first_prefix.clone() {
+                entry.decor_mut().set_prefix(prefix);
+            }
+        }
+        entries.push(entry);
+    }
+    document.insert("servers", toml_edit::Item::ArrayOfTables(entries));
+    Ok(document.to_string())
 }
 
 /// Replaces the config at `path` with `edit` applied to its text, then reads
@@ -2207,6 +2413,23 @@ mod tests {
     }
 
     #[test]
+    fn the_known_hosts_of_ncrs_live_next_to_the_index() {
+        let vars = [
+            ("HOME", "/home/user"),
+            ("APPDATA", r"C:\Users\user\AppData"),
+        ];
+        let index = index_path_in(None, env(&vars)).unwrap();
+        let hosts = known_hosts_path_in(None, env(&vars)).unwrap();
+        assert_eq!(hosts.parent(), index.parent());
+        assert_eq!(hosts.file_name().unwrap(), "known_hosts");
+        let portable = Some(PathBuf::from("data"));
+        assert_eq!(
+            known_hosts_path_in(portable, env(&vars)),
+            Some(PathBuf::from("data").join("known_hosts"))
+        );
+    }
+
+    #[test]
     fn config_and_index_share_the_mode() {
         let vars = [
             ("HOME", "/home/user"),
@@ -2528,6 +2751,144 @@ mod tests {
         let climbing = filing_text(true, &[location("'~/../x'", archive)]);
         let (line, _) = filing_error(&climbing, Some(home.path()));
         assert_eq!(line, Some(4));
+    }
+
+    #[test]
+    fn a_tilde_is_the_real_home_when_the_sandbox_knows_it() {
+        let real = tempfile::tempdir().unwrap();
+        let container = tempfile::tempdir().unwrap();
+        let home = crate::fs::preferred_home(Some(real.path().to_path_buf()), || {
+            Some(container.path().to_path_buf())
+        });
+        let archive = "mode = \"archive\"\ntarget = true";
+        let text = filing_text(true, &[location("'~/archive-a'", archive)]);
+
+        let filing = load_filing(&text, home.as_deref()).unwrap().filing;
+
+        assert_eq!(filing.locations[0].path, real.path().join("archive-a"));
+    }
+
+    fn entry(name: Option<&str>, host: &str, port: u16, path: Option<&str>) -> ServerEntry {
+        ServerEntry {
+            name: name.map(str::to_owned),
+            host: host.to_owned(),
+            port,
+            user: "marc".to_owned(),
+            path: path.map(str::to_owned),
+        }
+    }
+
+    #[test]
+    fn servers_section_round_trips_and_keeps_comments() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(
+            &dir,
+            b"# my config\nlang = \"en\"\n\n# the servers\n[[servers]]\nname = \"Work\"\nhost = \"files.example.org\"\nuser = \"marc\"\n\n[theme]\npreset = \"classic\"\n",
+        );
+        let loaded = load_with_home(&path, None).unwrap();
+        assert_eq!(
+            loaded.servers,
+            [entry(Some("Work"), "files.example.org", 22, None)]
+        );
+
+        let wanted = vec![
+            entry(Some("Work"), "files.example.org", 22, None),
+            entry(None, "backup.example.org", 2222, Some("/srv/backup")),
+        ];
+        let written = write_servers_with_home(&path, &wanted, None).unwrap();
+
+        assert_eq!(written.servers, wanted);
+        let text = std::fs::read_to_string(&path).unwrap();
+        for kept in [
+            "# my config",
+            "# the servers",
+            "preset = \"classic\"",
+            "lang = \"en\"",
+        ] {
+            assert!(text.contains(kept), "{kept} is gone from\n{text}");
+        }
+        assert!(text.contains("port = 2222") && !text.contains("port = 22\n"));
+        assert_eq!(load_with_home(&path, None).unwrap().servers, wanted);
+
+        let emptied = write_servers_with_home(&path, &[], None).unwrap();
+        assert!(emptied.servers.is_empty());
+        let left = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            !left.contains("servers") && left.contains("# my config"),
+            "{left}"
+        );
+    }
+
+    #[test]
+    fn writing_servers_to_a_missing_file_creates_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let wanted = vec![entry(None, "h.example.org", 22, None)];
+
+        let written = write_servers_with_home(&path, &wanted, None).unwrap();
+
+        assert_eq!(written.servers, wanted);
+        assert!(std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("[[servers]]"));
+    }
+
+    #[test]
+    fn server_with_bad_port_or_relative_path_is_a_config_error() {
+        let with = |host: &str, user: &str, extra: &str| {
+            format!("[[servers]]\nhost = \"{host}\"\nuser = \"{user}\"\n{extra}\n")
+        };
+        let port_text = "port must be a number from 1 to 65535";
+        let bad = [
+            (with("h", "u", "port = 0"), port_text),
+            (with("h", "u", "port = 70000"), port_text),
+            (with("h", "u", "port = -1"), port_text),
+            (
+                with("h", "u", "path = \"srv/files\""),
+                "path must be absolute",
+            ),
+            (with("a b", "u", ""), "host must not be empty"),
+            (with("", "u", ""), "host must not be empty"),
+            (with("a/b", "u", ""), "host must not be empty"),
+            (with("h", "a@b", ""), "user must not be empty"),
+            (with("h", "a:secret", ""), "user must not be empty"),
+        ];
+        for (text, reason) in bad {
+            let (line, found) = filing_error(&text, None);
+            assert!(found.contains(reason), "{text}: {found}");
+            assert!(line.is_some(), "{text}");
+        }
+    }
+
+    #[test]
+    fn a_server_without_host_or_user_is_a_config_error() {
+        for text in ["[[servers]]\nuser = \"u\"\n", "[[servers]]\nhost = \"h\"\n"] {
+            let (line, reason) = filing_error(text, None);
+            assert!(reason.contains("missing field"), "{reason}");
+            assert!(line.is_some());
+        }
+    }
+
+    #[test]
+    fn a_password_has_no_place_in_the_config() {
+        let text = "[[servers]]\nhost = \"h\"\nuser = \"u\"\npassword = \"secret\"\n";
+        let (_, reason) = filing_error(text, None);
+        assert!(reason.contains("unknown field"), "{reason}");
+        assert!(!reason.contains("secret"));
+    }
+
+    #[test]
+    fn a_saved_server_opens_at_its_start_folder_or_the_root() {
+        assert_eq!(
+            entry(None, "H.example.org", 22, Some("/srv")).url(),
+            PathBuf::from("sftp://marc@h.example.org/srv")
+        );
+        assert_eq!(
+            entry(None, "h.example.org", 2222, None).url(),
+            PathBuf::from("sftp://marc@h.example.org:2222/")
+        );
+        assert_eq!(entry(Some("Work"), "h", 22, None).label(), "Work");
+        assert_eq!(entry(None, "h", 22, None).label(), "marc@h");
     }
 
     fn load_of(setting: &str) -> Load {

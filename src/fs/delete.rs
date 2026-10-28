@@ -21,8 +21,32 @@ pub struct SystemTrash;
 
 impl Trash for SystemTrash {
     fn trash(&self, path: &Path) -> Result<(), String> {
-        trash::delete(path).map_err(|err| err.to_string())
+        move_to_trash(path).map_err(|err| err.to_string())
     }
+}
+
+#[cfg(all(feature = "sandbox", target_os = "macos"))]
+fn move_to_trash(path: &Path) -> Result<(), trash::Error> {
+    trash_context(super::sandbox_active()).delete(path)
+}
+
+#[cfg(not(all(feature = "sandbox", target_os = "macos")))]
+fn move_to_trash(path: &Path) -> Result<(), trash::Error> {
+    trash::delete(path)
+}
+
+/// The App Sandbox does not let the app send AppleEvents to the Finder, which
+/// is how the `trash` crate moves things by default, so there it asks the file
+/// manager directly. That costs the "Put Back" entry on some systems; outside
+/// the sandbox the default stays.
+#[cfg(all(feature = "sandbox", target_os = "macos"))]
+fn trash_context(sandboxed: bool) -> trash::TrashContext {
+    use trash::macos::{DeleteMethod, TrashContextExtMacos as _};
+    let mut context = trash::TrashContext::default();
+    if sandboxed {
+        context.set_delete_method(DeleteMethod::NsFileManager);
+    }
+    context
 }
 
 /// Deletes `path` for good. A symlink is removed itself and never followed: a
@@ -78,6 +102,20 @@ mod tests {
 
         assert!(std::fs::symlink_metadata(&link).is_err(), "link remains");
         assert!(outside.join("keep.txt").is_file(), "target was touched");
+    }
+
+    #[cfg(all(feature = "sandbox", target_os = "macos"))]
+    #[test]
+    fn the_sandbox_trashes_through_the_file_manager_and_nothing_else_does() {
+        use trash::macos::{DeleteMethod, TrashContextExtMacos as _};
+        assert!(matches!(
+            trash_context(true).delete_method(),
+            DeleteMethod::NsFileManager
+        ));
+        assert!(matches!(
+            trash_context(false).delete_method(),
+            DeleteMethod::Finder
+        ));
     }
 
     #[test]
