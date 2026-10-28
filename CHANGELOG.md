@@ -21,6 +21,12 @@ All notable changes to this project are documented here. The format follows
 
 - Hermes is marked as a beta in its sidebar, the settings and the command list
   (`F1`); the README says what that means.
+- The config `version` can be 1 or newer: a file without it is version 1,
+  older versions stay readable, and a file from a newer ncrs is refused with
+  an error that names its version instead of being half understood. The state
+  file of a newer ncrs is left alone: ncrs starts with the defaults and does
+  not save over it. Example configs of 0.3.0, 0.5.0 and 0.7.0 are tested to
+  keep loading.
 
 ## [0.8.0] — 2026-10-28
 

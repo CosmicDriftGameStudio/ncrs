@@ -1,0 +1,22 @@
+version = 1
+active = "right"
+favourites = ["/home/test/Documents", "/home/test/Projects/ncrs", "/srv/scans"]
+
+[window]
+width = 1280.0
+height = 800.0
+
+[left]
+path = "/home/test/Documents"
+sort = "modified"
+descending = true
+back = ["/home/test", "/home/test/Downloads"]
+forward = ["/home/test/Documents/2024"]
+cursor = "invoice-2024-03.pdf"
+
+[right]
+path = "/home/test/Projects/ncrs"
+sort = "name"
+descending = false
+back = ["/home/test"]
+cursor = "Cargo.toml"

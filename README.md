@@ -287,6 +287,13 @@ order, refuses a value that would not load and shows why at its row. A file
 with an error still opens the tab, which names the line and saves nothing
 until it is fixed.
 
+`version` is the version of the file format. Without it a file is version 1,
+and every older version stays readable. A file from a newer ncrs is refused
+with an error that names its version; ncrs never rewrites the file to migrate
+it. The settings tab only changes the lines it writes. The state file
+(`state.toml`) follows the same rule: one from a newer ncrs is left alone, and
+ncrs starts with the defaults.
+
 | System | Location |
 |---|---|
 | macOS | `~/.config/ncrs/config.toml` (`XDG_CONFIG_HOME` is ignored, so a start from the Dock and from a terminal read the same file) |

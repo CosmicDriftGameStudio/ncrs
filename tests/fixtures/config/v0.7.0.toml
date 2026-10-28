@@ -1,0 +1,62 @@
+# The example configs of the README of v0.7.0, one file. Left out: the second [theme]
+# block (vscode = ...), the alternative to the preset block above it.
+
+version = 1
+# Start language: "en" or "de". F9 switches it for the running session only;
+# ncrs writes the config file only from the filing setup.
+lang = "de"
+
+[open]
+# F3. Without {path} the file is added as the last argument.
+view = ["open"]
+# F4, and F3 on files that could run (scripts, apps): must be a text editor.
+edit = ["open", "-t"]
+# To open a search result at its line instead:
+# edit = ["code", "--goto", "{path}:{line}"]
+
+[keys]
+# F12 copies, F5 does nothing any more.
+copy = "F12"
+# Several keys for one action.
+quit = ["F10", "primary+q"]
+# No key at all; the context menu still offers it.
+delete_permanently = []
+# A key that belongs to another action has to be freed there too:
+# F3 and F4 swapped.
+view = "F4"
+edit = "F3"
+
+[theme]
+# "cosmic" (the default), "default" (the earlier dark teal look), "classic"
+# (Norton Commander blue) or "dracula".
+preset = "classic"
+# Then single roles, as "#rrggbb" or "#rgb".
+directory = "#ffff55"
+tagged = "#a50"
+
+[modules.filing]
+enabled = true
+# "gentle", "balanced", "full" or a number of workers.
+load = "balanced"
+
+[[modules.filing.locations]]
+path = "~/Inbox"
+mode = "inbox"
+images = false
+
+[[modules.filing.locations]]
+path = "~/Documents/Archive"
+mode = "archive"
+images = true
+target = true
+
+[modules.filing.ai]
+enabled = true
+# "local" (default) runs a model on this machine; "http" talks to a server.
+provider = "local"
+# local only: threads for the model, 1 or more; left out, ncrs picks.
+threads = 4
+
+# provider = "http" needs both:
+# endpoint = "http://localhost:8080"
+# model = "qwen3"
