@@ -11,6 +11,9 @@ All notable changes to this project are documented here. The format follows
 - About dialog: the macOS app menu entry "About ncrs" and the command list
   (`F1`) show the version, the license and the repository, and open the file
   with the licenses of the third-party libraries.
+- The README lists timings for 100,000 files: opening, sorting, searching by name
+  and by content, copying and tagging, with the machine they were measured on
+  and the known limits.
 
 ## [0.8.0] — 2026-10-28
 
