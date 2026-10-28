@@ -1,12 +1,12 @@
-# Template for the tap CosmicDriftGameStudio/homebrew-ncrs, which is the
-# source of truth. Copy it there after a release and set version and hashes.
+# Template: scripts/homebrew-cask.sh renders it to Casks/ncrs.rb of the tap
+# CosmicDriftGameStudio/homebrew-ncrs, and the release opens the pull request.
 cask "ncrs" do
-  version "0.0.0"
+  version "@VERSION@"
 
   # Both hashes, because Homebrew picks by the machine it runs on: a cask with
   # only one sha256 fails on the other architecture.
-  sha256 arm:   "0000000000000000000000000000000000000000000000000000000000000000",
-         intel: "0000000000000000000000000000000000000000000000000000000000000000"
+  sha256 arm:   "@SHA256_ARM@",
+         intel: "@SHA256_INTEL@"
 
   # Homebrew's vocabulary is arm/intel; the release names the files after the
   # Rust target triple.

@@ -221,6 +221,7 @@ jobs:
             scripts
             packaging/macos
             packaging/aur
+            packaging/homebrew
             assets/ncrs.icns
           sparse-checkout-cone-mode: false
 
@@ -543,6 +544,73 @@ jobs:
           git -c user.name='Marc Frost' -c user.email='155059128+bender0oo0@users.noreply.github.com' \
             commit -m "Update to $version"
           git push origin HEAD:master
+
+      # Opens the pull request that bumps Casks/ncrs.rb in the tap
+      # CosmicDriftGameStudio/homebrew-ncrs; it is merged there by hand. A step
+      # of this job for the same reason as the AUR step above.
+      - name: Open the Homebrew tap update
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          # Fine-grained, limited to homebrew-ncrs: Contents and Pull requests
+          # read/write. The runner's own token cannot write to the tap and is
+          # never used for it.
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${HOMEBREW_TAP_TOKEN:-}" ]; then
+            {
+              echo "### Homebrew tap update skipped"
+              echo "No HOMEBREW_TAP_TOKEN secret configured; no pull request was opened in CosmicDriftGameStudio/homebrew-ncrs."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::HOMEBREW_TAP_TOKEN not set; skipping the Homebrew tap update."
+            exit 0
+          fi
+
+          version="${REF_NAME#v}"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::not a usable version: $version"
+            exit 1
+          fi
+
+          sha256_arm=$(shasum -a 256 dist/ncrs-aarch64-apple-darwin.app.zip | cut -d' ' -f1)
+          sha256_intel=$(shasum -a 256 dist/ncrs-x86_64-apple-darwin.app.zip | cut -d' ' -f1)
+          scripts/homebrew-cask.sh "$version" "$sha256_arm" "$sha256_intel" "$RUNNER_TEMP/homebrew-cask"
+
+          # git gets the token from this helper, which reads it from the
+          # environment: it is never an argument, never in the remote URL or
+          # .git/config. The empty helper first drops the runner's keychain.
+          tap_git() {
+            git -c credential.helper= \
+              -c 'credential.helper=!f() { echo username=x-access-token; echo "password=$HOMEBREW_TAP_TOKEN"; }; f' \
+              "$@"
+          }
+          tap="$RUNNER_TEMP/homebrew-tap"
+          branch="ncrs-$version"
+          tap_git clone --depth 1 https://github.com/CosmicDriftGameStudio/homebrew-ncrs.git "$tap"
+          cd "$tap"
+          git checkout -b "$branch"
+          cp "$RUNNER_TEMP/homebrew-cask/ncrs.rb" Casks/ncrs.rb
+          git add Casks/ncrs.rb
+          if git diff --cached --quiet; then
+            echo "::notice::the cask in the tap is already at $version"
+            exit 0
+          fi
+          git -c user.name='Marc Frost' -c user.email='155059128+bender0oo0@users.noreply.github.com' \
+            commit -m "ncrs $version"
+          # Forced, so a re-run updates the branch of the first attempt.
+          tap_git push --force origin "HEAD:refs/heads/$branch"
+
+          open_prs=$(GH_TOKEN="$HOMEBREW_TAP_TOKEN" gh pr list --repo CosmicDriftGameStudio/homebrew-ncrs \
+            --head "$branch" --state open --json number --jq length)
+          if [ "$open_prs" != 0 ]; then
+            echo "::notice::the pull request for $branch is open already and was updated"
+            exit 0
+          fi
+          GH_TOKEN="$HOMEBREW_TAP_TOKEN" gh pr create --repo CosmicDriftGameStudio/homebrew-ncrs \
+            --head "$branch" --title "ncrs $version" \
+            --body "Bumps the cask to ncrs $version (https://github.com/CosmicDriftGameStudio/ncrs/releases/tag/$REF_NAME)."
 
       # Opens the update pull request in microsoft/winget-pkgs for the release
       # just published. komac forks the repository under the account of the
