@@ -3,38 +3,39 @@
     <clipPath id="body"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>
   </defs>
   <g clip-path="url(#body)">
-    <rect x="100" y="100" width="824" height="824" fill="#0000aa"/>
-    <g fill="none" stroke="#55ffff" stroke-width="12">
-      <rect x="170" y="190" width="322" height="540"/>
-      <rect x="192" y="212" width="278" height="496"/>
-      <rect x="532" y="190" width="322" height="540"/>
-      <rect x="554" y="212" width="278" height="496"/>
+    <rect x="100" y="100" width="824" height="824" fill="#21222C"/>
+    <g fill="#282A36" stroke="#BD93F9" stroke-width="48">
+      <rect x="184" y="216" width="240" height="496"/>
+      <rect x="600" y="216" width="240" height="496"/>
     </g>
-    <rect x="206" y="292" width="254" height="54" fill="#55ffff"/>
-    <rect x="224" y="304" width="150" height="30" fill="#0000aa"/>
-    <rect x="224" y="235" width="200" height="32" fill="#ffff55"/>
-    <rect x="224" y="375" width="230" height="32" fill="#55ffff"/>
-    <rect x="224" y="445" width="150" height="32" fill="#ffff55"/>
-    <rect x="224" y="515" width="210" height="32" fill="#ffffff"/>
-    <rect x="224" y="585" width="170" height="32" fill="#55ffff"/>
-    <rect x="224" y="655" width="220" height="32" fill="#ffff55"/>
-    <rect x="566" y="235" width="210" height="32" fill="#ffffff"/>
-    <rect x="566" y="305" width="170" height="32" fill="#ffff55"/>
-    <rect x="566" y="375" width="230" height="32" fill="#55ffff"/>
-    <rect x="566" y="445" width="150" height="32" fill="#ffffff"/>
-    <rect x="566" y="515" width="220" height="32" fill="#ffff55"/>
-    <rect x="566" y="585" width="190" height="32" fill="#ffffff"/>
-    <rect x="566" y="655" width="170" height="32" fill="#55ffff"/>
-    <rect x="100" y="796" width="824" height="128" fill="#000000"/>
-    <rect x="195" y="822" width="24" height="46" fill="#ffffff"/>
-    <rect x="229" y="822" width="80" height="46" fill="#55ffff"/>
-    <rect x="325" y="822" width="24" height="46" fill="#ffffff"/>
-    <rect x="359" y="822" width="80" height="46" fill="#55ffff"/>
-    <rect x="455" y="822" width="24" height="46" fill="#ffffff"/>
-    <rect x="489" y="822" width="80" height="46" fill="#55ffff"/>
-    <rect x="585" y="822" width="24" height="46" fill="#ffffff"/>
-    <rect x="619" y="822" width="80" height="46" fill="#55ffff"/>
-    <rect x="715" y="822" width="24" height="46" fill="#ffffff"/>
-    <rect x="749" y="822" width="80" height="46" fill="#55ffff"/>
+    <rect x="208" y="304" width="192" height="64" fill="#FF79C6"/>
+    <rect x="240" y="320" width="96" height="32" fill="#282A36"/>
+    <rect x="240" y="256" width="128" height="32" fill="#8BE9FD"/>
+    <rect x="240" y="384" width="128" height="32" fill="#8BE9FD"/>
+    <rect x="240" y="448" width="96" height="32" fill="#F8F8F2"/>
+    <rect x="240" y="512" width="128" height="32" fill="#F1FA8C"/>
+    <rect x="240" y="576" width="64" height="32" fill="#F8F8F2"/>
+    <rect x="240" y="640" width="96" height="32" fill="#6272A4"/>
+    <rect x="656" y="256" width="128" height="32" fill="#F8F8F2"/>
+    <rect x="656" y="320" width="96" height="32" fill="#8BE9FD"/>
+    <rect x="656" y="384" width="128" height="32" fill="#F1FA8C"/>
+    <rect x="656" y="448" width="64" height="32" fill="#F8F8F2"/>
+    <rect x="656" y="512" width="128" height="32" fill="#8BE9FD"/>
+    <rect x="656" y="576" width="96" height="32" fill="#F8F8F2"/>
+    <rect x="656" y="640" width="64" height="32" fill="#6272A4"/>
+    <g fill="#F8F8F2">
+      <rect x="208" y="800" width="32" height="64"/>
+      <rect x="336" y="800" width="32" height="64"/>
+      <rect x="464" y="800" width="32" height="64"/>
+      <rect x="592" y="800" width="32" height="64"/>
+      <rect x="720" y="800" width="32" height="64"/>
+    </g>
+    <g fill="#6272A4">
+      <rect x="240" y="800" width="64" height="64"/>
+      <rect x="368" y="800" width="64" height="64"/>
+      <rect x="496" y="800" width="64" height="64"/>
+      <rect x="624" y="800" width="64" height="64"/>
+      <rect x="752" y="800" width="64" height="64"/>
+    </g>
   </g>
 </svg>

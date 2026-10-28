@@ -15,6 +15,13 @@ All notable changes to this project are documented here. The format follows
   `packaging/macos/sandbox.entitlements`. The pull request build packs and
   ad-hoc signs it.
 
+### Changed
+
+- The app icon is redrawn in the colours of the Dracula preset, with thicker
+  panel frames and rows on a pixel grid so it stays readable at 16 and 32 px.
+  `scripts/icon.sh` rebuilds the PNG, the window icon, the `.icns` and the
+  Linux icons from `assets/icon.svg`.
+
 ## [0.9.0] — 2026-10-28
 
 ### Added
