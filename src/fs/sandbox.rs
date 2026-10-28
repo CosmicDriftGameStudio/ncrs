@@ -102,6 +102,15 @@ pub fn grant_start_dir() -> PathBuf {
     super::home_dir()
 }
 
+/// The open panel for a blocked folder starts in that folder, or in the
+/// nearest folder above it that exists.
+pub fn grant_start_dir_for(blocked: &Path) -> PathBuf {
+    blocked
+        .ancestors()
+        .find(|each| each.is_dir())
+        .map_or_else(grant_start_dir, Path::to_path_buf)
+}
+
 #[cfg(all(feature = "sandbox", target_os = "macos"))]
 fn grant_folder(grants_dir: &Path, folder: &Path) -> Result<(), String> {
     super::grants::GrantStore::new(grants_dir.to_path_buf())
@@ -188,6 +197,16 @@ mod tests {
     fn without_the_feature_the_sandbox_is_never_active() {
         assert!(!sandbox_active());
         assert_eq!(sandbox_home(), None);
+    }
+
+    #[test]
+    fn the_grant_dialog_for_a_blocked_folder_starts_at_the_nearest_existing_one() {
+        let existing = std::env::temp_dir();
+        assert_eq!(grant_start_dir_for(&existing), existing);
+        assert_eq!(
+            grant_start_dir_for(&existing.join("ncrs-no-such-folder").join("deeper")),
+            existing
+        );
     }
 
     /// A developer's shell is no sandbox, with the feature or without.

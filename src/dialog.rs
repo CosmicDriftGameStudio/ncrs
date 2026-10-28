@@ -59,18 +59,20 @@ impl Prompt {
         Self::new(PromptKind::CreateFile, parent)
     }
 
-    /// The pack prompt for the folder `parent`, with the name already typed.
-    pub fn pack(parent: PathBuf, sources: Vec<PathBuf>, name: String) -> Self {
+    /// The pack prompt for the folder `parent`. The field starts as the full
+    /// path of the archive-to-be, so the user sees where it will be made.
+    pub fn pack(parent: PathBuf, sources: Vec<PathBuf>, name: &str) -> Self {
         Self {
             sources,
-            name,
+            name: parent.join(name).to_string_lossy().into_owned(),
             ..Self::new(PromptKind::Pack, parent)
         }
     }
 
-    /// The folder the new entry goes into.
-    pub fn parent(&self) -> &std::path::Path {
-        &self.parent
+    /// Where a pack prompt writes: the typed text, a relative one taken from
+    /// `parent`, an absolute one as it is.
+    pub fn archive_path(&self) -> PathBuf {
+        self.parent.join(self.name.trim()).components().collect()
     }
 
     pub fn sources(&self) -> &[PathBuf] {
@@ -122,6 +124,9 @@ impl Prompt {
     /// needs a known archive ending and must not be taken in the folder.
     pub fn validate(&self) -> Result<(), &'static str> {
         let name = self.name().trim();
+        if self.kind == PromptKind::Pack {
+            return self.validate_pack(name);
+        }
         if name.is_empty() {
             return Err("empty_name");
         }
@@ -131,13 +136,25 @@ impl Prompt {
         if name.contains('/') || name.contains('\\') {
             return Err("separator_not_allowed");
         }
-        if self.kind == PromptKind::Pack {
-            if !archive::is_archive_name(name.as_ref()) {
-                return Err("archive_extension");
-            }
-            if std::fs::symlink_metadata(self.parent.join(name)).is_ok() {
-                return Err("archive_exists");
-            }
+        Ok(())
+    }
+
+    fn validate_pack(&self, typed: &str) -> Result<(), &'static str> {
+        if typed.is_empty() {
+            return Err("empty_name");
+        }
+        let target = self.archive_path();
+        let Some(file_name) = target.file_name() else {
+            return Err("reserved_name");
+        };
+        if !archive::is_archive_name(file_name) {
+            return Err("archive_extension");
+        }
+        if !target.parent().is_some_and(std::path::Path::is_dir) {
+            return Err("archive_folder_missing");
+        }
+        if std::fs::symlink_metadata(&target).is_ok() {
+            return Err("archive_exists");
         }
         Ok(())
     }
@@ -192,12 +209,39 @@ mod tests {
         assert!(prompt_with("a/b").validate().is_err());
     }
 
-    fn pack_prompt_in(folder: &std::path::Path, name: &str) -> Prompt {
-        Prompt::pack(folder.to_path_buf(), Vec::new(), name.to_string())
+    /// The field of a pack prompt as the user left it.
+    fn pack_prompt_in(folder: &std::path::Path, typed: &str) -> Prompt {
+        let mut prompt = Prompt::pack(folder.to_path_buf(), Vec::new(), "start.zip");
+        prompt.set_name(typed.to_string());
+        prompt
     }
 
     #[test]
-    fn a_pack_name_needs_a_known_ending_and_a_free_name() {
+    fn a_pack_prompt_starts_with_the_full_path() {
+        let full = PathBuf::from("/other").join("fotos.zip");
+        let prompt = Prompt::pack(PathBuf::from("/other"), Vec::new(), "fotos.zip");
+        assert_eq!(prompt.name(), full.to_string_lossy());
+        assert_eq!(prompt.archive_path(), full);
+    }
+
+    #[test]
+    fn a_relative_pack_name_is_taken_from_the_other_panel_and_an_absolute_path_as_it_is() {
+        let other = tempfile::tempdir().unwrap();
+        let own = tempfile::tempdir().unwrap();
+        std::fs::create_dir(other.path().join("sub")).unwrap();
+
+        let relative = pack_prompt_in(other.path(), "sub/new.zip");
+        assert_eq!(relative.archive_path(), other.path().join("sub/new.zip"));
+        assert_eq!(relative.validate(), Ok(()));
+
+        let own_file = own.path().join("mine.7z");
+        let absolute = pack_prompt_in(other.path(), own_file.to_str().unwrap());
+        assert_eq!(absolute.archive_path(), own_file);
+        assert_eq!(absolute.validate(), Ok(()));
+    }
+
+    #[test]
+    fn a_pack_name_needs_a_known_ending_a_free_name_and_a_folder() {
         let folder = tempfile::tempdir().unwrap();
         std::fs::write(folder.path().join("taken.zip"), b"x").unwrap();
 
@@ -219,12 +263,16 @@ mod tests {
             Err("archive_exists")
         );
         assert_eq!(
-            pack_prompt_in(folder.path(), "a/b.zip").validate(),
-            Err("separator_not_allowed")
+            pack_prompt_in(folder.path(), "missing/b.zip").validate(),
+            Err("archive_folder_missing")
         );
         assert_eq!(
             pack_prompt_in(folder.path(), "").validate(),
             Err("empty_name")
+        );
+        assert_eq!(
+            pack_prompt_in(folder.path(), "..").validate(),
+            Err("reserved_name")
         );
     }
 

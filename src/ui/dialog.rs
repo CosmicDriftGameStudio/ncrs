@@ -109,6 +109,7 @@ fn validation_message(reason: &str) -> Option<Msg> {
         "separator_not_allowed" => Some(Msg::ErrorSeparatorNotAllowed),
         "archive_extension" => Some(Msg::ErrorPackExtension),
         "archive_exists" => Some(Msg::ErrorPackExists),
+        "archive_folder_missing" => Some(Msg::ErrorPackFolderMissing),
         _ => None,
     }
 }

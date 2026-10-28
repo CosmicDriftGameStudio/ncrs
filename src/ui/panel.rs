@@ -280,16 +280,15 @@ pub struct PanelProps<'a> {
 /// which message a row click produces, keeping the component reusable.
 /// Renders one panel.
 ///
-/// `on_row_click` is called with the row index and whether the click landed in
-/// the tag column: the star toggles the tag, the rest of the row moves the
-/// cursor. One callback with a flag rather than two callbacks, because a row is
-/// one clickable thing with two meanings. `on_row_context` is called with the
-/// row index when the row is right-clicked.
+/// `on_row_click` is called with the row index and what the click did. One
+/// callback rather than one per kind, because a row is one clickable thing
+/// with several meanings. `on_row_context` is called with the row index when
+/// the row is right-clicked.
 pub fn view<'a, M: Clone + 'a>(
     state: &'a PanelState,
     props: PanelProps<'a>,
     lang: Language,
-    on_row_click: impl Fn(usize, bool) -> M,
+    on_row_click: impl Fn(usize, RowClick) -> M,
     on_row_context: impl Fn(usize) -> M,
     on_sort: impl Fn(SortColumn) -> M + 'a,
     on_scroll: impl Fn(ScrollDelta) -> M + 'a,
@@ -330,7 +329,7 @@ pub fn view<'a, M: Clone + 'a>(
                 .width(Length::Fixed(TAG_COLUMN_WIDTH))
                 .height(ROW_HEIGHT)
                 .style(theme::tag_button(palette, mark.tagged))
-                .on_press(on_row_click(index, true)),
+                .on_press(on_row_click(index, RowClick::Tag)),
             );
             // A button takes only the left button, so the right press reaches
             // the area around it.
@@ -339,7 +338,7 @@ pub fn view<'a, M: Clone + 'a>(
                 mark,
                 props.is_active,
                 palette,
-                on_row_click(index, false),
+                |click| on_row_click(index, click),
                 row,
                 hermes.map(|column| HermesCell::of(entry, column, lang, palette)),
             ))
@@ -422,6 +421,17 @@ fn column_header<'a, M: Clone + 'a>(
     .into()
 }
 
+/// What a click on a row of the panel does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowClick {
+    /// The star in the tag column: toggles the tag.
+    Tag,
+    /// The rest of the row: moves the cursor there.
+    Cursor,
+    /// A double click on the row: opens it like Enter.
+    Open,
+}
+
 /// One file row: the name, size and date, clickable as a whole.
 ///
 /// `prefix` is the tag button, built by the caller because it needs its own
@@ -431,7 +441,7 @@ fn file_row<'a, M: Clone + 'a>(
     mark: Selection,
     panel_active: bool,
     palette: &Palette,
-    on_press: M,
+    on_click: impl Fn(RowClick) -> M,
     prefix: Row<'a, M>,
     hermes: Option<HermesCell<'a, M>>,
 ) -> Element<'a, M> {
@@ -493,8 +503,12 @@ fn file_row<'a, M: Clone + 'a>(
         content = content.push(status_cell.status());
     }
 
-    button(content)
-        .on_press(on_press)
+    // A button captures the press, so the double click is read inside it: the
+    // area takes both presses and the button only draws the row.
+    let clicks = mouse_area(content.width(Length::Fill))
+        .on_press(on_click(RowClick::Cursor))
+        .on_double_click(on_click(RowClick::Open));
+    button(clicks)
         .padding([0.0, spacing::CELL_PADDING_X])
         .height(ROW_HEIGHT)
         .width(Length::Fill)

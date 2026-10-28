@@ -3,7 +3,7 @@
 //! view is `ui::theme_fetch`.
 
 use crate::config::Config;
-use crate::open_vsx::{ExtensionId, FetchError, FetchedExtension};
+use crate::open_vsx::{FetchError, FetchedExtension, ThemeSource};
 use crate::vsix::ContributedTheme;
 
 /// An extension downloaded and read: its themes, ready to be picked from.
@@ -75,17 +75,17 @@ impl ThemeFetch {
         }
     }
 
-    /// Enter in the field: the extension to fetch, or the reason the text
-    /// names none. Only the input stage can start.
-    pub fn start(&mut self) -> Option<ExtensionId> {
+    /// Enter in the field: the extension or theme file to fetch, or the reason
+    /// the text names none. Only the input stage can start.
+    pub fn start(&mut self) -> Option<ThemeSource> {
         if !matches!(self.stage, Stage::Input) {
             return None;
         }
-        match ExtensionId::parse(&self.text) {
-            Some(id) => {
+        match ThemeSource::parse(&self.text) {
+            Some(source) => {
                 self.error = None;
                 self.stage = Stage::Fetching;
-                Some(id)
+                Some(source)
             }
             None => {
                 self.error = Some(FetchError::InvalidId);
@@ -165,6 +165,7 @@ impl ThemeFetch {
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use crate::open_vsx::ExtensionId;
     use crate::vsix::Brightness;
 
     pub fn fetched(labels: &[&str]) -> Fetched {

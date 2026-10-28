@@ -310,6 +310,11 @@ pub enum Message {
         index: usize,
         on_tag: bool,
     },
+    /// Double click on a row of a panel: the row's Enter.
+    RowActivated {
+        side: PanelSide,
+        index: usize,
+    },
 
     /// A click on a column title: sort that panel by the column.
     SortBy {
@@ -398,6 +403,8 @@ pub enum Message {
 
     // --- Window / app ---
     WindowResized(Size),
+    /// The window got the focus back: what changed on disk meanwhile shows up.
+    WindowFocused,
     Quit,
 }
 
@@ -992,6 +999,9 @@ pub enum GrantMessage {
     /// The key action: opens the system folder dialog, or says that this
     /// build needs no grants.
     Open,
+    /// The blocked-folder error was clicked: opens the system folder dialog in
+    /// the folder, or the nearest one above it that exists.
+    OpenFor(PathBuf),
     /// The dialog's button: opens the system folder dialog and keeps the
     /// dialog up until a folder is chosen.
     Choose,
