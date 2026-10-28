@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- The release publishes a sandboxed macOS app next to the normal one
+  (`ncrs-sandbox-<target>.app.zip`). It is the build with the `sandbox`
+  feature and the bundle ID `dev.cosmicdrift.ncrs.sandbox`, signed with the
+  Developer ID and the App Sandbox entitlements of
+  `packaging/macos/sandbox.entitlements`. The pull request build packs and
+  ad-hoc signs it.
+
 ## [0.9.0] — 2026-10-28
 
 ### Added

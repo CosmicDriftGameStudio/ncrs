@@ -302,6 +302,25 @@ jobs:
           esac
           scripts/package.sh app target/package/ncrs-${{ matrix.target }} "$version" "$min_macos" target/package-app
 
+      # Ad hoc signature, because a pull request has no signing identity; the
+      # release signs the same layout with the Developer ID.
+      - name: Package the sandboxed macOS app
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cargo build --workspace --release --target ${{ matrix.target }} --features ncrs/gpu-with-fallback,ncrs/sandbox
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          case "${{ matrix.target }}" in
+            aarch64-*) min_macos=11.0 ;;
+            *) min_macos=10.15 ;;
+          esac
+          scripts/package.sh sandbox-app target/package/ncrs-${{ matrix.target }} target/${{ matrix.target }}/release/ncrs "$version" "$min_macos" target/package-sandbox-app
+          app=target/package-sandbox-app/ncrs.app
+          codesign --force --sign - "$app/Contents/Frameworks/libpdfium.dylib"
+          codesign --force --sign - --options runtime --entitlements packaging/macos/sandbox.entitlements "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          scripts/package.sh check-sandbox "$app" sandboxed
+
   # Installs the packages the targets job built on a clean Debian-family and a
   # clean Fedora image, each on its own CPU architecture, and starts the
   # binary. This is what catches a missing dependency or a wrong path, which
