@@ -356,6 +356,16 @@ impl Palette {
         }
     }
 
+    /// Fill and text of the filled button of a prompt: the border color, which
+    /// is a bright accent in every preset, with whichever of the background and
+    /// the text color reads better on it.
+    pub fn primary_button(&self) -> (Color, Color) {
+        (
+            self.border,
+            most_readable(self.border, [self.background, self.text]),
+        )
+    }
+
     /// The pairing of text and ground with the least contrast, when it is below
     /// `READABLE_CONTRAST`.
     ///
@@ -847,6 +857,28 @@ mod tests {
                     "{preset:?} {name}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn the_primary_button_is_readable_and_not_the_cursor_fill_in_every_preset() {
+        for preset in [
+            ThemePreset::Teal,
+            ThemePreset::Classic,
+            ThemePreset::Cosmic,
+            ThemePreset::Dracula,
+        ] {
+            let p = preset.palette();
+            let (fill, text) = p.primary_button();
+            assert!(
+                contrast_ratio(text, fill) >= READABLE_CONTRAST,
+                "{preset:?}"
+            );
+            assert!(
+                contrast_ratio(fill, p.background) >= READABLE_CONTRAST,
+                "{preset:?}"
+            );
+            assert_ne!(fill, p.cursor, "{preset:?}");
         }
     }
 

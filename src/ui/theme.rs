@@ -386,14 +386,12 @@ pub fn dialog_button(
     primary: bool,
 ) -> impl Fn(&Theme, button::Status) -> button::Style {
     let colors = *palette;
+    let (fill, text) = colors.primary_button();
     move |_theme, status| {
         let (background, text_color, border_color) = match status {
             button::Status::Disabled => (None, colors.dim_text, colors.border_inactive),
-            _ if primary => (
-                Some(Background::Color(colors.cursor)),
-                colors.cursor_text,
-                colors.cursor,
-            ),
+            button::Status::Active if primary => (Some(Background::Color(fill)), text, fill),
+            _ if primary => (Some(Background::Color(fill)), text, colors.accent),
             button::Status::Hovered | button::Status::Pressed => (None, colors.text, colors.accent),
             button::Status::Active => (None, colors.text, colors.border),
         };

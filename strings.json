@@ -1652,7 +1652,7 @@
     },
     {
       "key": "hermes_setup.optional_model",
-      "context": "Card of the first-time setup of Hermes (the document filing). Line about the optional AI model. Takes the download size, for example 640 MB.",
+      "context": "Card of the first-time setup of Hermes (the document filing). Line about the optional AI model. Takes the download size, for example 639 MB.",
       "en": "Optional: With the AI model ({size}, runs locally) Hermes also fills in fields for which there is no rule yet. Works later too.",
       "de": "Optional: Mit dem KI-Modell ({size}, läuft lokal) füllt Hermes auch Felder aus, für die es noch keine Regel gibt. Geht auch später."
     },
@@ -6002,7 +6002,7 @@
     },
     {
       "key": "hermes_overview.tile_ai_load",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button of the AI tile that opens the download of the model and starts it. {size} is the download size, for example 640 MB.",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button of the AI tile that opens the download of the model and starts it. {size} is the download size, for example 639 MB.",
       "en": "Load · {size}",
       "de": "Laden · {size}"
     },

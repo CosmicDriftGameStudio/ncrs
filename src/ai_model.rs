@@ -413,7 +413,7 @@ fn attempt(
 }
 
 /// Passes the bytes on and keeps the running total for the card's bar.
-pub(crate) struct CountingReader<'a, R> {
+pub struct CountingReader<'a, R> {
     inner: R,
     base: u64,
     total: &'a AtomicU64,

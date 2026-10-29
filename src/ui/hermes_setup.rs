@@ -52,16 +52,12 @@ pub struct SetupView<'a> {
     pub window: Size,
 }
 
-/// The size of the AI model in whole tens of megabytes, as the card says it.
+/// The size of the AI model, as the card and the download line say it.
 pub fn model_size_label() -> String {
-    const STEP: u64 = 10_000_000;
-    format!(
-        "{} MB",
-        (LOCAL_MODEL.size + STEP.div_euclid(2)).div_euclid(STEP) * 10
-    )
+    super::format::megabytes(LOCAL_MODEL.size)
 }
 
-pub(super) fn on_this_computer(lang: Language, mac: Msg, other: Msg) -> &'static str {
+pub(in crate::ui) fn on_this_computer(lang: Language, mac: Msg, other: Msg) -> &'static str {
     lang.text(if cfg!(target_os = "macos") {
         mac
     } else {
