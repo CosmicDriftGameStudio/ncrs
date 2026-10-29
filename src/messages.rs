@@ -26,6 +26,7 @@ use crate::fs::search::SearchEvent;
 use crate::fs::{CreateDirError, OpenKind};
 use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
 use crate::hermes_column::{ColumnReading, ColumnStage, FileDetail, FolderRole};
+use crate::hermes_setup::FolderSlot;
 use crate::i18n::Language;
 use crate::jobs::JobEvent;
 use crate::keymap::Binding;
@@ -341,6 +342,11 @@ pub enum Message {
 
     // --- Filing setup: the locations, written to the config ---
     FilingSetup(FilingSetupMessage),
+
+    // --- The first-time setup of Hermes ---
+    HermesSetup(HermesSetupMessage),
+    /// Moves the dots of the flow picture one step on.
+    HermesFlowTick,
 
     // --- Rule suggestions: rules read out of how the archive is filed ---
     RuleSuggestions(RuleSuggestionsMessage),
@@ -711,6 +717,31 @@ pub enum FilingSetupMessage {
     Save,
     /// The filing settings read back from the written file.
     Saved(Result<Filing, FilingWriteError>),
+}
+
+/// Everything the first-time setup of Hermes sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HermesSetupMessage {
+    /// Open the system folder dialog for one of the two folders.
+    PickFolder(FolderSlot),
+    /// What the dialog returned; `None` when it was cancelled or could not open.
+    FolderPicked {
+        slot: FolderSlot,
+        folder: Option<PathBuf>,
+    },
+    /// The folder picked, looked up on disk: its canonical path, or why it
+    /// cannot be used.
+    Resolved {
+        slot: FolderSlot,
+        folder: PathBuf,
+        resolved: Result<PathBuf, String>,
+    },
+    ChooseEncrypted(bool),
+    ToggleLoadModel,
+    Start,
+    /// The filing settings read back from the written file.
+    Written(Result<Filing, FilingWriteError>),
+    Later,
 }
 
 /// Everything the reorganisation plan view sends. Running the selection is

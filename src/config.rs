@@ -1840,7 +1840,7 @@ impl Config {
     pub fn theme_preset(&self) -> ThemePreset {
         self.theme_text(PRESET_KEY)
             .and_then(ThemePreset::from_name)
-            .unwrap_or(ThemePreset::Cosmic)
+            .unwrap_or(ThemePreset::DEFAULT)
     }
 
     /// The VS Code theme file `[theme]` names, as written.
@@ -2897,7 +2897,7 @@ mod tests {
         assert!(config.vscode_warning.is_some());
         assert_eq!(
             config.palette.background,
-            crate::palette::ThemePreset::Cosmic.palette().background
+            crate::palette::ThemePreset::DEFAULT.palette().background
         );
     }
 

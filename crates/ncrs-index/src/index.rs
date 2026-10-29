@@ -42,6 +42,12 @@ impl Index {
         Self::create_plain_with_migrations(db_path, MIGRATIONS)
     }
 
+    /// Whether the file at `db_path` is an unencrypted index, judged by its
+    /// header alone; no key is needed.
+    pub fn file_is_plain(db_path: &Path) -> Result<bool, IndexError> {
+        starts_with_plaintext_header(db_path)
+    }
+
     /// Never creates a file. A file with the plain SQLite header is opened
     /// without touching the store; anything else needs the stored key.
     pub fn open(db_path: &Path, store: &dyn KeyStore) -> Result<Self, IndexError> {

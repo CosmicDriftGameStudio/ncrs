@@ -65,22 +65,26 @@ pub struct Palette {
 
 impl Default for Palette {
     fn default() -> Self {
-        ThemePreset::Cosmic.palette()
+        ThemePreset::DEFAULT.palette()
     }
 }
 
 /// A complete palette to start from. `[theme]` roles are applied on top.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThemePreset {
-    /// The look without a `[theme]` section.
+    /// A calm, almost neutral dark grey with muted accents. The look of an
+    /// earlier version, which a config keeps with `preset = "cosmic"`.
     Cosmic,
     /// The earlier dark teal look, still called `"default"` in the config.
     Teal,
     Classic,
+    /// The look without a `[theme]` section.
     Dracula,
 }
 
 impl ThemePreset {
+    pub const DEFAULT: Self = Self::Dracula;
+
     pub const ALL: [ThemePreset; 4] = [Self::Cosmic, Self::Teal, Self::Classic, Self::Dracula];
 
     pub fn name(self) -> &'static str {
@@ -413,7 +417,7 @@ impl Palette {
     ) -> Result<ConfiguredPalette, ThemeError> {
         let mut preset_span = None;
         let mut vscode_span = None;
-        let mut preset = ThemePreset::Cosmic;
+        let mut preset = ThemePreset::DEFAULT;
         for entry in &section.entries {
             if entry.key.as_ref() == PRESET_KEY {
                 let name = entry.value.as_ref();
@@ -623,12 +627,19 @@ mod tests {
     }
 
     #[test]
-    fn without_a_theme_section_the_cosmic_preset_applies() {
+    fn without_a_theme_section_the_default_preset_applies() {
         for text in ["", "[open]\nview = [\"less\"]\n", "[theme]\n"] {
             let config = load_text(text);
-            assert_eq!(config.palette, ThemePreset::Cosmic.palette(), "{text:?}");
+            assert_eq!(config.palette, ThemePreset::Dracula.palette(), "{text:?}");
             assert_eq!(config.contrast_warning, None);
         }
+    }
+
+    #[test]
+    fn a_config_that_names_cosmic_keeps_the_cosmic_look() {
+        let config = load_text("[theme]\npreset = \"cosmic\"\n");
+        assert_eq!(config.palette, ThemePreset::Cosmic.palette());
+        assert_ne!(ThemePreset::Cosmic.palette(), Palette::default());
     }
 
     #[test]
@@ -866,9 +877,9 @@ mod tests {
 
     #[test]
     fn a_light_bar_keeps_the_cosmic_title_text_readable() {
-        let light_bar = load_text("[open]\n\n[theme]\nbar = \"#e0e0e0\"\n").palette;
+        let light_bar = load_text("[open]\n\n[theme]\nbar = \"#e0e0e0\"\npreset = \"cosmic\"\n").palette;
         assert!(contrast_ratio(light_bar.title_text, light_bar.title) >= 3.0);
-        let black_cursor_text = load_text("[open]\n\n[theme]\ncursor_text = \"#000000\"\n").palette;
+        let black_cursor_text = load_text("[open]\n\n[theme]\ncursor_text = \"#000000\"\npreset = \"cosmic\"\n").palette;
         assert!(contrast_ratio(black_cursor_text.title_text, black_cursor_text.title) >= 3.0);
     }
 
@@ -886,7 +897,7 @@ mod tests {
 
     #[test]
     fn a_light_panel_under_the_default_colors_is_reported_but_kept() {
-        let config = load_text("[open]\n\n[theme]\npanel = \"#f4f0ff\"\n");
+        let config = load_text("[open]\n\n[theme]\npanel = \"#f4f0ff\"\npreset = \"cosmic\"\n");
         assert_eq!(config.palette.panel, Color::from_rgb8(0xF4, 0xF0, 0xFF));
         let warning = config.contrast_warning.unwrap();
         assert_eq!(warning.foreground, ColorRole::Directory);

@@ -45,11 +45,6 @@ pub fn view<'a>(
     palette: &Palette,
 ) -> Option<Element<'a, Message>> {
     let card = match module.phase() {
-        Phase::AskEncryption {
-            encrypted,
-            busy,
-            error,
-        } => ask_encryption(*encrypted, *busy, error.as_deref(), lang, palette),
         Phase::ShowRecoveryKey {
             key,
             group,
@@ -73,7 +68,9 @@ pub fn view<'a>(
         ),
         Phase::PlainFileWarning => plain_file_warning(lang, palette),
         Phase::Failed(reason) => failed(reason, lang, palette),
-        Phase::Starting | Phase::Ready | Phase::Dismissed => return None,
+        Phase::Starting | Phase::AskEncryption { .. } | Phase::Ready | Phase::Dismissed => {
+            return None
+        }
     };
     let mut framed = Frame::new(card.title, card.body, SIZE, window, lang, palette)
         .buttons(card.buttons)
@@ -133,56 +130,6 @@ pub fn radio_look(palette: &Palette) -> impl Fn(&Theme, radio::Status) -> radio:
         border_width: 1.0,
         border_color: colors.border,
         text_color: Some(colors.text),
-    }
-}
-
-fn ask_encryption<'a>(
-    encrypted: bool,
-    busy: bool,
-    error: Option<&str>,
-    lang: Language,
-    palette: &Palette,
-) -> Card<'a> {
-    let choice = |label: Msg, value: bool| {
-        radio(lang.text(label), value, Some(encrypted), move |chosen| {
-            filing_message(FilingMessage::ChooseEncrypted(chosen))
-        })
-        .size(14)
-        .text_size(font_size::BODY)
-        .style(radio_look(palette))
-    };
-    let mut body = column![
-        choice(Msg::FilingEncryptionEncrypted, true),
-        choice(Msg::FilingEncryptionPlain, false),
-        paragraph(lang.text(Msg::FilingEncryptionNoteFiles), palette),
-        paragraph(lang.text(Msg::FilingEncryptionNoteIndex), palette),
-        paragraph(lang.text(Msg::FilingEncryptionNoteVault), palette),
-    ]
-    .spacing(spacing::LINE_GAP);
-    if let Some(reason) = error {
-        body = body.push(error_line(
-            fill_template(lang.text(Msg::FilingCreateFailed), &[("{reason}", reason)]),
-            palette,
-        ));
-    }
-    Card {
-        title: lang.text(Msg::FilingEncryptionTitle),
-        body,
-        buttons: vec![
-            quiet_action(
-                lang.text(Msg::FilingNotNow),
-                (!busy).then_some(FilingMessage::Dismiss),
-                false,
-                palette,
-            ),
-            quiet_action(
-                lang.text(Msg::FilingEncryptionCreate),
-                (!busy).then_some(FilingMessage::CreateIndex),
-                true,
-                palette,
-            ),
-        ],
-        enter_submits: false,
     }
 }
 

@@ -1152,8 +1152,7 @@ impl FilingModule {
     pub fn has_card(&self) -> bool {
         matches!(
             self.phase,
-            Phase::AskEncryption { .. }
-                | Phase::ShowRecoveryKey { .. }
+            Phase::ShowRecoveryKey { .. }
                 | Phase::AskRecoveryKey { .. }
                 | Phase::PlainFileWarning
                 | Phase::Failed(_)
@@ -1165,6 +1164,39 @@ impl FilingModule {
     /// cannot be left either.
     pub fn card_can_be_dismissed(&self) -> bool {
         self.has_card() && self.may_dismiss()
+    }
+
+    /// The index does not exist yet and the module waits for the user to have
+    /// it created.
+    pub fn asks_encryption(&self) -> bool {
+        matches!(self.phase, Phase::AskEncryption { .. })
+    }
+
+    /// The index is being created.
+    pub fn is_creating_index(&self) -> bool {
+        matches!(self.phase, Phase::AskEncryption { busy: true, .. })
+    }
+
+    /// Why the last attempt to create the index failed.
+    pub fn index_creation_error(&self) -> Option<&str> {
+        match &self.phase {
+            Phase::AskEncryption { error, .. } => error.as_deref(),
+            _ => None,
+        }
+    }
+
+    /// Chooses the encryption and starts creating the index. Nothing happens
+    /// unless the module asks for it and is not busy.
+    pub fn create_index_with(&mut self, encrypted: bool) -> Option<Work> {
+        self.update(FilingMessage::ChooseEncrypted(encrypted));
+        self.update(FilingMessage::CreateIndex)
+    }
+
+    /// No module that already works on configured locations: a new one may
+    /// take this one's place with what the first-time setup wrote.
+    pub fn can_take_first_setup(&self) -> bool {
+        let works_on_locations = matches!(self.phase, Phase::Ready) && self.has_configured_locations;
+        self.can_be_replaced() && !works_on_locations
     }
 
     fn may_dismiss(&self) -> bool {
@@ -1465,6 +1497,15 @@ impl FilingModule {
         Self {
             index_encrypted: Some(encrypted),
             ..Self::in_phase(phase)
+        }
+    }
+
+    /// Like `in_phase_with_locations`, with the index at `db_path`: work the
+    /// test starts really creates it.
+    pub fn in_phase_with_locations_at(phase: Phase, db_path: PathBuf) -> Self {
+        Self {
+            db_path,
+            ..Self::in_phase_with_locations(phase)
         }
     }
 
@@ -2373,6 +2414,17 @@ mod tests {
         assert!(module.update(FilingMessage::CreateIndex).is_none());
 
         assert_eq!(module.phase(), &Phase::Failed("broken".to_owned()));
+    }
+
+    #[test]
+    fn the_encryption_question_is_the_first_run_card_and_not_the_module_s() {
+        let module = FilingModule::in_phase(Phase::AskEncryption {
+            encrypted: true,
+            busy: false,
+            error: None,
+        });
+        assert!(!module.has_card());
+        assert!(module.asks_encryption());
     }
 
     #[test]
