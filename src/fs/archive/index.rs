@@ -9,7 +9,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use zip::result::ZipError;
 use zip::ZipArchive;
 
-use super::names::safe_components;
+use super::names::{is_apple_double, safe_components};
 use super::sevenz;
 use super::ArchiveFormat;
 
@@ -157,6 +157,9 @@ impl ArchiveIndex {
     /// one name wins, as when unpacking in order.
     fn add(&mut self, components: &[String], node: Node) -> io::Result<()> {
         self.count_entry()?;
+        if is_apple_double(components) {
+            return Ok(());
+        }
         let Some((name, parents)) = components.split_last() else {
             return Ok(());
         };

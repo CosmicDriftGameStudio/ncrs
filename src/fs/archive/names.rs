@@ -28,6 +28,15 @@ pub fn safe_components(raw: &str) -> Option<Vec<String>> {
     Some(components)
 }
 
+/// macOS zips carry each file's resource fork as a `._name` sibling and a
+/// `__MACOSX` folder of them. They mean nothing off a Mac, so listings and
+/// unpacks leave them out. Only archive entries are judged: files on disk
+/// stay visible.
+pub fn is_apple_double(components: &[String]) -> bool {
+    components.iter().any(|part| part == "__MACOSX")
+        || components.last().is_some_and(|name| name.starts_with("._"))
+}
+
 fn is_drive_prefix(part: &str) -> bool {
     let mut chars = part.chars();
     matches!(
@@ -70,6 +79,17 @@ mod tests {
 
     fn some(items: &[&str]) -> Option<Vec<String>> {
         Some(items.iter().map(|item| (*item).to_owned()).collect())
+    }
+
+    #[test]
+    fn apple_double_entries_are_recognised() {
+        let apple = |raw: &str| is_apple_double(&safe_components(raw).unwrap());
+        for raw in ["__MACOSX", "__MACOSX/a/._b", "dir/._x", "._x", "__MACOSX/"] {
+            assert!(apple(raw), "{raw}");
+        }
+        for raw in ["a._b", ".hidden", "_MACOSX", "dir/__MACOSXfoo", "._x/y"] {
+            assert!(!apple(raw), "{raw}");
+        }
     }
 
     #[test]
