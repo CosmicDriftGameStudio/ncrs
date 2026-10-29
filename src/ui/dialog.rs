@@ -44,6 +44,11 @@ pub fn view<'a>(
             lang.text(Msg::DialogMkdirLabel),
             lang.text(Msg::DialogMkdirCreate),
         ),
+        PromptKind::Paste => (
+            lang.text(Msg::DialogPasteTitle),
+            lang.text(Msg::DialogMkdirLabel),
+            lang.text(Msg::DialogPasteConfirm),
+        ),
         PromptKind::Pack => (
             lang.text(Msg::DialogPackTitle),
             lang.text(Msg::DialogPackLabel),

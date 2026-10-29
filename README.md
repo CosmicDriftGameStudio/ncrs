@@ -120,6 +120,12 @@ The same window in German, switched with F9.
   into the active panel, with the same conflict questions as `F5`; the panel is outlined while
   the files are over the window. A drop always copies (move with `F6`). On Wayland the window
   library delivers no drops, so the feature is missing there.
+- `Cmd`+`V` (`Ctrl`+`V` on Windows and Linux) pastes from the system clipboard into the active
+  panel: files copied in the Finder or Explorer are copied like a drop, a picture is saved as a
+  PNG and text as a TXT file after asking for the file name. "Copy files to the clipboard" in the
+  command list (`F1`) puts the selected files on the clipboard for other apps; it has no default
+  key yet, bind `copy_files` to one. On Wayland, clipboard files, pictures and text are only read
+  and written if the compositor supports the data-control protocol.
 - Archives (zip, tar, tar.gz, tar.zst, 7z) open with `Enter` and are browsed like folders; `F5`
   copies out of them, `Alt`+`F5` packs the selection into a new archive in the other panel,
   `F5` into an open archive adds to it and `F8` in one deletes entries (permanently).
@@ -404,7 +410,7 @@ Actions: `quit`, `open`, `go_up`, `switch_panel`, `switch_language`,
 `cursor_up`, `cursor_down`, `page_up`, `page_down`, `first`, `last`,
 `toggle_tag`, `tag_up`, `tag_down`, `tag_all`, `clear_tags`, `view`, `edit`,
 `copy`, `move`, `pack`, `mkdir`, `new_file`, `delete`, `delete_permanently`, `abort_job`,
-`copy_path`, `copy_name`, `drive_menu_left`, `drive_menu_right`,
+`copy_path`, `copy_name`, `copy_files`, `paste`, `drive_menu_left`, `drive_menu_right`,
 `history_back`, `history_forward`, `add_favourite`, `remove_favourite`, `favourites`,
 `sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`, `search`, `quick_open`, `command_line`, `command_palette`, `search_case`,
 `search_whole_word`, `search_regex`, `filing_status`, `filing_setup`, `key_bindings`. Their

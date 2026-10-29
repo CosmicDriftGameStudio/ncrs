@@ -19,6 +19,7 @@ use crate::ai_model::{
     download_ai_model, model_is_installed, AiModelCard, DownloadError as AiDownloadError,
     DownloadJob, InstallOutcome,
 };
+use crate::clipboard_paste::{self, FileListWriter, PastedContent};
 use crate::command_line::{self, CommandLine, ShellOutcome, Submission};
 use crate::command_palette::{CommandPalette, Target, RECENT_LIMIT};
 use crate::config::ServerEntry;
@@ -216,6 +217,22 @@ fn remote_refusal(panel: &PanelState, message: &Message) -> Option<Msg> {
         | Message::QuickOpen(QuickOpenMessage::Open) => Some(Msg::StatusRemoteReadOnly),
         _ => None,
     }
+}
+
+type ClipboardFileWriter = Box<dyn FnMut(&[PathBuf]) -> Result<(), String>>;
+
+/// The system clipboard is read on a blocking thread: on X11 it can wait for
+/// the program that owns the content.
+fn read_clipboard_off_the_ui_thread() -> Task<Option<PastedContent>> {
+    Task::perform(
+        async {
+            tokio::task::spawn_blocking(clipboard_paste::read_system_clipboard)
+                .await
+                .ok()
+                .flatten()
+        },
+        std::convert::identity,
+    )
 }
 
 /// Where a shell command of this panel runs. A path inside an archive is no
@@ -488,6 +505,8 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::ContextMenuAt { .. }
             | Message::ContextMenuKey
             | Message::CopyToClipboard(_)
+            | Message::Paste
+            | Message::CopyFilesToClipboard
             | Message::SwitchPanel
             | Message::ActivatePanel(_)
             | Message::SortBy { .. }
@@ -1272,6 +1291,17 @@ pub struct App {
     pick_folder: fn(&Path) -> Task<Option<PathBuf>>,
     /// The file dialog of the settings tab; same rule as `pick_folder`.
     pick_file: fn(FilePick) -> Task<Option<PathBuf>>,
+    /// Reads the system clipboard for a paste, off the UI thread. Injected so
+    /// tests paste fixed content and never touch the real clipboard.
+    read_clipboard: fn() -> Task<Option<PastedContent>>,
+    /// Puts files on the system clipboard. A closure rather than a function
+    /// pointer: the real one keeps the clipboard open between calls.
+    write_clipboard_files: ClipboardFileWriter,
+    /// The picture or text of a paste while its file name is being asked for.
+    pending_paste: Option<PastedContent>,
+    /// Where a pasted picture or text is written before it is copied into the
+    /// panel. Kept until the next paste so the running copy keeps its source.
+    paste_staging: Option<tempfile::TempDir>,
     /// The card that fetches a color theme, while it is up.
     theme_fetch: Option<ThemeFetch>,
     /// Counts the cards opened, so the late answer of a closed one is dropped.
@@ -3082,6 +3112,13 @@ impl App {
             resolve_folder: filing_setup::resolve_folder,
             pick_folder: filing_setup::pick_folder_with_system_dialog,
             pick_file: filing_setup::pick_file_with_system_dialog,
+            read_clipboard: read_clipboard_off_the_ui_thread,
+            write_clipboard_files: {
+                let mut writer = FileListWriter::default();
+                Box::new(move |files| writer.write(files))
+            },
+            pending_paste: None,
+            paste_staging: None,
             theme_fetch: None,
             theme_fetch_generation: 0,
             rule_suggestions: None,
@@ -3559,6 +3596,9 @@ impl App {
             // --- delete ---
             Message::Delete { permanent } => self.open_delete_dialog(permanent),
             Message::CopyToClipboard(kind) => self.copy_to_clipboard(kind),
+            Message::Paste => self.paste_from_clipboard(),
+            Message::ClipboardRead(content) => self.paste_content(content),
+            Message::CopyFilesToClipboard => self.copy_files_to_clipboard(),
             Message::DeleteCancel => {
                 self.delete_dialog = None;
                 Task::none()
@@ -3620,13 +3660,7 @@ impl App {
             }
             // Its own arm, not an early return: starting the job changes what the
             // keys mean, and the routing state is published after the match.
-            Message::PromptSubmit
-                if self.prompt.as_ref().is_some_and(|prompt| {
-                    prompt.kind() == PromptKind::Pack && prompt.validate().is_ok()
-                }) =>
-            {
-                self.start_pack()
-            }
+            Message::PromptSubmit if self.valid_prompt_has_its_own_job() => self.start_prompt_job(),
             Message::PromptSubmit => {
                 let Some(prompt) = self.prompt.as_ref() else {
                     return Task::none();
@@ -3654,8 +3688,8 @@ impl App {
                 let create = match kind {
                     PromptKind::CreateDir => Task::perform(fs::create_dir(target), finished),
                     PromptKind::CreateFile => Task::perform(fs::create_file(target), finished),
-                    // Taken out above: a pack has its own job.
-                    PromptKind::Pack => Task::none(),
+                    // Taken out above: a pack and a paste have their own jobs.
+                    PromptKind::Pack | PromptKind::Paste => Task::none(),
                 };
 
                 // The reload belongs *after* the create, not beside it.
@@ -3670,6 +3704,7 @@ impl App {
             }
             Message::PromptCancel => {
                 self.prompt = None;
+                self.pending_paste = None;
                 self.prompt_side = None;
                 Task::none()
             }
@@ -7774,21 +7809,27 @@ impl App {
             return Task::none();
         }
         let paths = std::mem::take(&mut self.dropped_files);
-        self.drop_files_into_active_panel(paths)
+        self.copy_external_files_into_active_panel(paths)
     }
 
-    /// Copies files dropped from another app into the active panel. The drop
-    /// carries no cursor position or modifier, so the target is always the
-    /// active panel and the transfer always a copy.
-    fn drop_files_into_active_panel(&mut self, paths: Vec<PathBuf>) -> Task<Message> {
-        if self.transfer.is_some()
+    /// A job runs or a dialog is open, so nothing may start a transfer into
+    /// the active panel.
+    fn transfer_into_panel_is_blocked(&self) -> bool {
+        self.transfer.is_some()
             || self.extracting.is_some()
             || self.prompt.is_some()
             || self.pending_conflict.is_some()
             || self.delete_dialog.is_some()
             || self.transfer_dialog.is_some()
             || self.archive_write.is_some()
-        {
+    }
+
+    /// Copies files that come from outside the panels (dropped from another
+    /// app, pasted from the clipboard) into the active panel. They carry no
+    /// cursor position or modifier, so the target is always the active panel
+    /// and the transfer always a copy.
+    fn copy_external_files_into_active_panel(&mut self, paths: Vec<PathBuf>) -> Task<Message> {
+        if self.transfer_into_panel_is_blocked() {
             let text = self.lang.text(Msg::StatusDropBusy).to_owned();
             return self.show_notice(text);
         }
@@ -7806,6 +7847,142 @@ impl App {
                 self.start_validated_transfer(TransferKind::Copy, paths, resolved, Policy::Ask)
             }
         }
+    }
+
+    /// The prompt is a pack or a paste with a name that passed validation:
+    /// neither creates an entry by itself, each starts its own job.
+    fn valid_prompt_has_its_own_job(&self) -> bool {
+        self.prompt.as_ref().is_some_and(|prompt| {
+            matches!(prompt.kind(), PromptKind::Pack | PromptKind::Paste)
+                && prompt.validate().is_ok()
+        })
+    }
+
+    fn start_prompt_job(&mut self) -> Task<Message> {
+        match self.prompt.as_ref().map(Prompt::kind) {
+            Some(PromptKind::Pack) => self.start_pack(),
+            Some(PromptKind::Paste) => self.submit_paste(),
+            Some(PromptKind::CreateDir | PromptKind::CreateFile) | None => Task::none(),
+        }
+    }
+
+    /// Cmd+V / Ctrl+V: reads the system clipboard, then `paste_content` decides.
+    fn paste_from_clipboard(&mut self) -> Task<Message> {
+        if self.transfer_into_panel_is_blocked() {
+            let text = self.lang.text(Msg::StatusPasteBusy).to_owned();
+            return self.show_notice(text);
+        }
+        (self.read_clipboard)().map(Message::ClipboardRead)
+    }
+
+    /// What the clipboard held: files are copied like a drop, a picture or
+    /// text first asks for the name of the file it becomes.
+    fn paste_content(&mut self, content: Option<PastedContent>) -> Task<Message> {
+        match content {
+            None => {
+                let text = self.lang.text(Msg::StatusClipboardEmpty).to_owned();
+                self.show_notice(text)
+            }
+            Some(PastedContent::Files(files)) => self.copy_external_files_into_active_panel(files),
+            Some(pasted) => self.ask_for_pasted_file_name(pasted),
+        }
+    }
+
+    fn ask_for_pasted_file_name(&mut self, pasted: PastedContent) -> Task<Message> {
+        let Some(kind) = pasted.kind() else {
+            return Task::none();
+        };
+        if self.transfer_into_panel_is_blocked() {
+            let text = self.lang.text(Msg::StatusPasteBusy).to_owned();
+            return self.show_notice(text);
+        }
+        let panel = self.active_panel();
+        let name = clipboard_paste::pasted_name(
+            kind,
+            chrono::Local::now().naive_local(),
+            self.lang,
+            |candidate| panel.entries.iter().any(|entry| entry.name == candidate),
+        );
+        let parent = panel.path.clone();
+        self.pending_paste = Some(pasted);
+        self.open_prompt(Prompt::paste(parent, name))
+    }
+
+    /// The name of a pasted picture or text is confirmed: write it into a
+    /// private folder and copy it into the panel the way F5 would.
+    fn submit_paste(&mut self) -> Task<Message> {
+        let (Some(prompt), Some(bytes)) = (
+            self.prompt.as_ref(),
+            self.pending_paste
+                .as_ref()
+                .and_then(PastedContent::file_bytes),
+        ) else {
+            return Task::none();
+        };
+        let name = prompt.name().trim().to_owned();
+        let written = tempfile::Builder::new()
+            .prefix("ncrs-paste-")
+            .tempdir()
+            .and_then(|folder| {
+                let file = folder.path().join(&name);
+                std::fs::write(&file, bytes)?;
+                Ok((folder, file))
+            });
+        let (folder, file) = match written {
+            Ok(staging) => staging,
+            Err(error) => {
+                self.set_prompt_error_text(&error.to_string());
+                return Task::none();
+            }
+        };
+        self.prompt = None;
+        self.prompt_side = None;
+        self.pending_paste = None;
+        self.paste_staging = Some(folder);
+        self.copy_external_files_into_active_panel(vec![file])
+    }
+
+    /// Puts the tagged files, else the one under the cursor, on the system
+    /// clipboard as files. Only files of this computer's disk can go there.
+    fn copy_files_to_clipboard(&mut self) -> Task<Message> {
+        if self.overlay_is_open() {
+            return Task::none();
+        }
+        let sources = self.action_sources();
+        if sources.is_empty() {
+            return Task::none();
+        }
+        let on_disk = |path: &PathBuf| {
+            RemotePath::parse(path).is_none()
+                && fs::archive::locate_in_archive(path).is_none_or(|place| place.inner.is_empty())
+        };
+        if !sources.iter().all(on_disk) {
+            let text = self
+                .lang
+                .text(Msg::StatusClipboardFilesLocalOnly)
+                .to_owned();
+            return self.show_notice(text);
+        }
+        if let Err(reason) = (self.write_clipboard_files)(&sources) {
+            let text = fill_template(
+                self.lang.text(Msg::ErrorClipboardWriteFailed),
+                &[("{reason}", &reason)],
+            );
+            self.set_status_error(&text);
+            return Task::none();
+        }
+        self.job_error = None;
+        let text = match sources.len() {
+            1 => self
+                .lang
+                .text(Msg::StatusFilesCopiedToClipboardOne)
+                .to_owned(),
+            count => fill_template(
+                self.lang.text(Msg::StatusFilesCopiedToClipboardMany),
+                &[("{count}", &count.to_string())],
+            ),
+        };
+        self.show_notice(text)
     }
 
     /// Starts a transfer whose target passed `transfer_dialog::validate`.
@@ -13988,6 +14165,10 @@ impl App {
             resolve_folder: |folder| Ok(folder.to_path_buf()),
             pick_folder: |_| Task::none(),
             pick_file: |_| Task::none(),
+            read_clipboard: || Task::done(None),
+            write_clipboard_files: Box::new(|_| Ok(())),
+            pending_paste: None,
+            paste_staging: None,
             theme_fetch: None,
             theme_fetch_generation: 0,
             rule_suggestions: None,
@@ -26726,5 +26907,348 @@ mod file_drop_tests {
         drop(app.update(Message::FilesHovered));
         drop(app.update(Message::FileDropped(PathBuf::from("/x"))));
         assert!(!app.drop_hover);
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod clipboard_tests {
+    use super::*;
+    use crate::clipboard_paste::RgbaImage;
+    use crate::fs::FileEntry;
+    use iced_test::futures::futures::StreamExt as _;
+    use iced_test::runtime::{task, Action};
+    use std::cell::RefCell;
+    use std::ffi::OsString;
+    use std::rc::Rc;
+
+    const PNG_SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+
+    struct Pasting {
+        app: App,
+        _root: tempfile::TempDir,
+        target: PathBuf,
+    }
+
+    fn pasting() -> Pasting {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("target");
+        std::fs::create_dir_all(&target).unwrap();
+        let mut app = App::with_environment(Environment::isolated()).0;
+        app.left_panel.path = root.path().join("left");
+        app.right_panel.path = target.clone();
+        app.active_panel = PanelSide::Right;
+        Pasting {
+            app,
+            _root: root,
+            target,
+        }
+    }
+
+    async fn deliver(app: &mut App, message: Message) {
+        let mut queue = vec![message];
+        while let Some(next) = queue.pop() {
+            let Some(mut stream) = task::into_stream(app.update(next)) else {
+                continue;
+            };
+            while let Some(action) = stream.next().await {
+                if let Action::Output(reported) = action {
+                    queue.push(reported);
+                }
+            }
+        }
+    }
+
+    fn pasted_text() -> Option<PastedContent> {
+        Some(PastedContent::Text("zwei\nZeilen \u{fc}\n".to_owned()))
+    }
+
+    fn pasted_picture() -> Option<PastedContent> {
+        clipboard_paste::choose(
+            None,
+            Some(RgbaImage {
+                width: 1,
+                height: 1,
+                rgba: vec![0, 128, 255, 255],
+            }),
+            None,
+        )
+    }
+
+    fn only_file_in(folder: &Path) -> PathBuf {
+        let mut found: Vec<_> = std::fs::read_dir(folder)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .collect();
+        assert_eq!(found.len(), 1, "{found:?}");
+        found.remove(0)
+    }
+
+    #[tokio::test]
+    async fn pasted_text_asks_for_a_name_and_ends_as_a_txt_file_with_exactly_that_text() {
+        let mut case = pasting();
+        case.app.read_clipboard = || Task::done(pasted_text());
+
+        deliver(&mut case.app, Message::Paste).await;
+
+        let name = case
+            .app
+            .prompt
+            .as_ref()
+            .expect("no prompt")
+            .name()
+            .to_owned();
+        assert!(name.starts_with("Pasted "), "{name}");
+        assert!(name.ends_with(".txt"), "{name}");
+        assert_eq!(case.app.prompt.as_ref().unwrap().kind(), PromptKind::Paste);
+
+        deliver(&mut case.app, Message::PromptSubmit).await;
+
+        assert!(case.app.prompt.is_none());
+        assert!(case.app.pending_paste.is_none());
+        let created = only_file_in(&case.target);
+        assert_eq!(created.file_name().unwrap().to_string_lossy(), name);
+        assert_eq!(
+            std::fs::read(created).unwrap(),
+            "zwei\nZeilen \u{fc}\n".as_bytes()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_typed_name_is_the_name_of_the_pasted_file() {
+        let mut case = pasting();
+        case.app.read_clipboard = || Task::done(pasted_text());
+        deliver(&mut case.app, Message::Paste).await;
+
+        drop(case.app.update(Message::PromptInput("notes.txt".into())));
+        deliver(&mut case.app, Message::PromptSubmit).await;
+
+        assert_eq!(
+            std::fs::read_to_string(case.target.join("notes.txt")).unwrap(),
+            "zwei\nZeilen \u{fc}\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_pasted_picture_ends_as_a_png_file() {
+        let mut case = pasting();
+        case.app.read_clipboard = || Task::done(pasted_picture());
+
+        deliver(&mut case.app, Message::Paste).await;
+        let name = case
+            .app
+            .prompt
+            .as_ref()
+            .expect("no prompt")
+            .name()
+            .to_owned();
+        assert!(name.ends_with(".png"), "{name}");
+        deliver(&mut case.app, Message::PromptSubmit).await;
+
+        let bytes = std::fs::read(only_file_in(&case.target)).unwrap();
+        assert!(bytes.starts_with(&PNG_SIGNATURE));
+    }
+
+    #[tokio::test]
+    async fn a_name_with_a_separator_is_refused_and_nothing_is_written() {
+        let mut case = pasting();
+        case.app.read_clipboard = || Task::done(pasted_text());
+        deliver(&mut case.app, Message::Paste).await;
+
+        drop(
+            case.app
+                .update(Message::PromptInput("../escape.txt".into())),
+        );
+        deliver(&mut case.app, Message::PromptSubmit).await;
+
+        assert!(case.app.prompt.as_ref().unwrap().error().is_some());
+        assert!(case.app.paste_staging.is_none());
+        assert_eq!(std::fs::read_dir(&case.target).unwrap().count(), 0);
+    }
+
+    #[tokio::test]
+    async fn escape_drops_the_pasted_content() {
+        let mut case = pasting();
+        case.app.read_clipboard = || Task::done(pasted_text());
+        deliver(&mut case.app, Message::Paste).await;
+        assert!(case.app.pending_paste.is_some());
+
+        drop(case.app.update(Message::PromptCancel));
+
+        assert!(case.app.prompt.is_none());
+        assert!(case.app.pending_paste.is_none());
+        assert_eq!(std::fs::read_dir(&case.target).unwrap().count(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_taken_name_in_the_panel_asks_what_to_do() {
+        let mut case = pasting();
+        case.app.read_clipboard = || Task::done(pasted_text());
+        deliver(&mut case.app, Message::Paste).await;
+        drop(case.app.update(Message::PromptInput("note.txt".into())));
+        std::fs::write(case.target.join("note.txt"), "old").unwrap();
+
+        deliver(&mut case.app, Message::PromptSubmit).await;
+
+        assert!(case.app.pending_conflict.is_some(), "no conflict dialog");
+    }
+
+    #[tokio::test]
+    async fn pasted_files_start_a_copy_into_the_active_panel() {
+        let mut case = pasting();
+        let source = case.target.parent().unwrap().join("outside.txt");
+        std::fs::write(&source, "x").unwrap();
+
+        drop(
+            case.app
+                .update(Message::ClipboardRead(Some(PastedContent::Files(vec![
+                    source.clone(),
+                ])))),
+        );
+
+        let transfer = case.app.transfer.as_ref().expect("no transfer started");
+        assert_eq!(transfer.kind, TransferKind::Copy);
+        assert_eq!(transfer.sources, [source]);
+        assert_eq!(transfer.target, case.target.canonicalize().unwrap());
+    }
+
+    #[tokio::test]
+    async fn an_empty_clipboard_says_so() {
+        let mut case = pasting();
+        drop(case.app.update(Message::ClipboardRead(None)));
+
+        assert_eq!(
+            case.app.notice.as_deref(),
+            Some("The clipboard holds no files, image or text.")
+        );
+        assert!(case.app.prompt.is_none());
+        assert!(case.app.transfer.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_paste_during_a_running_transfer_changes_nothing() {
+        let mut case = pasting();
+        case.app.read_clipboard = || Task::done(pasted_text());
+        let running = Transfer {
+            kind: TransferKind::Move,
+            sources: vec![PathBuf::from("/busy")],
+            target: PathBuf::from("/elsewhere"),
+        };
+        case.app.transfer = Some(running.clone());
+
+        drop(case.app.update(Message::Paste));
+
+        assert_eq!(case.app.transfer.as_ref(), Some(&running));
+        assert!(case.app.prompt.is_none());
+        assert!(case.app.notice.is_some());
+    }
+
+    fn entry_at(path: PathBuf) -> FileEntry {
+        FileEntry {
+            name: OsString::from(path.file_name().unwrap()),
+            path,
+            is_dir: false,
+            is_symlink: false,
+            is_parent: false,
+            size: 1,
+            modified: None,
+        }
+    }
+
+    fn recording_writer(app: &mut App) -> Rc<RefCell<Vec<Vec<PathBuf>>>> {
+        let written = Rc::new(RefCell::new(Vec::new()));
+        let record = Rc::clone(&written);
+        app.write_clipboard_files = Box::new(move |files| {
+            record.borrow_mut().push(files.to_vec());
+            Ok(())
+        });
+        written
+    }
+
+    #[test]
+    fn copy_files_writes_the_cursor_file_and_says_so() {
+        let mut case = pasting();
+        let file = case.target.join("a.txt");
+        case.app.right_panel.entries = vec![entry_at(file.clone())];
+        let written = recording_writer(&mut case.app);
+
+        drop(case.app.update(Message::CopyFilesToClipboard));
+
+        assert_eq!(*written.borrow(), [vec![file]]);
+        assert_eq!(
+            case.app.notice.as_deref(),
+            Some("File copied to the clipboard")
+        );
+    }
+
+    #[test]
+    fn copy_files_writes_all_tagged_files() {
+        let mut case = pasting();
+        let (first, second) = (case.target.join("a.txt"), case.target.join("b.txt"));
+        case.app.right_panel.entries = vec![entry_at(first.clone()), entry_at(second.clone())];
+        case.app
+            .right_panel
+            .selection
+            .tag_all(&case.app.right_panel.entries);
+        let written = recording_writer(&mut case.app);
+
+        drop(case.app.update(Message::CopyFilesToClipboard));
+
+        assert_eq!(*written.borrow(), [vec![first, second]]);
+        assert_eq!(
+            case.app.notice.as_deref(),
+            Some("2 files copied to the clipboard")
+        );
+    }
+
+    #[test]
+    fn copy_files_of_an_archive_entry_says_so_and_writes_nothing() {
+        let mut case = pasting();
+        let archive = case.target.join("fotos.zip");
+        std::fs::write(&archive, "").unwrap();
+        case.app.right_panel.entries = vec![entry_at(archive.join("inner.txt"))];
+        let written = recording_writer(&mut case.app);
+
+        drop(case.app.update(Message::CopyFilesToClipboard));
+
+        assert!(written.borrow().is_empty());
+        assert!(case
+            .app
+            .notice
+            .as_deref()
+            .is_some_and(|text| text.starts_with("Only files on this computer")));
+    }
+
+    #[test]
+    fn copy_files_of_an_archive_file_itself_is_a_plain_file() {
+        let mut case = pasting();
+        let archive = case.target.join("fotos.zip");
+        std::fs::write(&archive, "").unwrap();
+        case.app.right_panel.entries = vec![entry_at(archive.clone())];
+        let written = recording_writer(&mut case.app);
+
+        drop(case.app.update(Message::CopyFilesToClipboard));
+
+        assert_eq!(*written.borrow(), [vec![archive]]);
+    }
+
+    #[test]
+    fn a_refused_clipboard_shows_the_reason() {
+        let mut case = pasting();
+        case.app.right_panel.entries = vec![entry_at(case.target.join("a.txt"))];
+        case.app.write_clipboard_files = Box::new(|_| Err("no display".to_owned()));
+
+        drop(case.app.update(Message::CopyFilesToClipboard));
+
+        assert!(case.app.notice.is_none());
+        assert!(case
+            .app
+            .status_error()
+            .is_some_and(|text| text.contains("no display")));
     }
 }
