@@ -214,6 +214,7 @@ mod tests {
                 | Msg::ColumnHermes
                 // The loanword, the same in both languages.
                 | Msg::HermesBeta
+                | Msg::HermesSetupBadge
                 // Names of color schemes.
                 | Msg::SettingsPresetCosmic
                 | Msg::SettingsPresetDracula

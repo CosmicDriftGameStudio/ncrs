@@ -18,6 +18,8 @@ pub mod format;
 pub mod frame;
 pub mod grant;
 pub mod hermes;
+pub mod hermes_flow;
+pub mod hermes_setup;
 pub mod key_bindings;
 pub mod key_intercept;
 pub mod kit;

@@ -409,9 +409,9 @@ default keys are in [Keyboard shortcuts](#keyboard-shortcuts).
 ### Colors
 
 `[theme]` picks a ready-made palette and changes single colors on top of it.
-There are four: `cosmic` is the default, a calm, almost neutral dark grey with
-muted accents; `default` is the earlier dark teal look; `classic` is Norton
-Commander blue; `dracula` is the Dracula look.
+There are four: `dracula` is the default, the Dracula look; `cosmic` is a calm,
+almost neutral dark grey with muted accents (the look of earlier versions);
+`default` is the earlier dark teal look; `classic` is Norton Commander blue.
 
 The `dracula` preset uses the colors of the
 [Dracula theme](https://draculatheme.com), MIT License, Copyright (c)
@@ -419,8 +419,8 @@ Dracula Theme.
 
 ```toml
 [theme]
-# "cosmic" (the default), "default" (the earlier dark teal look), "classic"
-# (Norton Commander blue) or "dracula".
+# "dracula" (the default), "cosmic" (calm dark grey), "default" (the earlier
+# dark teal look) or "classic" (Norton Commander blue).
 preset = "classic"
 # Then single roles, as "#rrggbb" or "#rgb".
 directory = "#ffff55"
@@ -447,8 +447,8 @@ tagged = "#a50"
 | `success` | Confirmations in the status bar |
 | `error` | Errors |
 
-- Roles not listed keep the preset's colors; without `[theme]` the `cosmic` preset applies.
-  To keep the earlier look, write `[theme]` with `preset = "default"`.
+- Roles not listed keep the preset's colors; without `[theme]` the `dracula` preset applies.
+  To keep an earlier look, write `[theme]` with `preset = "cosmic"` or `preset = "default"`.
   The order in the file does not matter, `preset` always applies first.
 - An unknown role or preset and a color in another form (names, `#rrggbbaa`) are
   errors with the line, handled like any other config error.

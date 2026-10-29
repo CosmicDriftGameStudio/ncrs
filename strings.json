@@ -1477,46 +1477,208 @@
       "de": "Labor"
     },
     {
-      "key": "filing.encryption_title",
-      "context": "Title of the card that asks whether the document index is encrypted. Shown once, when the index does not exist yet.",
-      "en": "Create the document index",
-      "de": "Dokumentenindex anlegen"
-    },
-    {
-      "key": "filing.encryption_encrypted",
-      "context": "Radio option in the index card: the index database is encrypted with a key held by the operating system. Marked as the recommended choice.",
-      "en": "Encrypted index (recommended)",
-      "de": "Verschlüsselter Index (empfohlen)"
-    },
-    {
-      "key": "filing.encryption_plain",
-      "context": "Radio option in the index card: the index database is stored without encryption.",
-      "en": "Unencrypted index",
-      "de": "Unverschlüsselter Index"
-    },
-    {
-      "key": "filing.encryption_note_files",
-      "context": "First explanation paragraph in the index card: encryption of the index does not affect the filed PDF files themselves.",
-      "en": "The filed PDFs stay unencrypted in their folders.",
-      "de": "Die abgelegten PDFs bleiben unverschlüsselt in ihren Ordnern."
-    },
-    {
-      "key": "filing.encryption_note_index",
-      "context": "Second explanation paragraph in the index card: the index contains the full text of every document, which matters when the file is backed up or synced.",
-      "en": "The index holds the full text of all documents in a single file. Keep that in mind for backups and cloud sync.",
-      "de": "Der Index enthält den Volltext aller Dokumente in einer einzigen Datei. Das ist bei Backups und Cloud-Synchronisierung wichtig."
-    },
-    {
       "key": "filing.encryption_note_vault",
       "context": "Third explanation paragraph in the index card: a warning about folders on encrypted drives such as a mounted Cryptomator vault when the index is not encrypted.",
       "en": "With an unencrypted index, do not add folders from an encrypted drive (for example a mounted Cryptomator vault): their text would end up in the index in plain form. ncrs does not detect such drives.",
       "de": "Bei einem unverschlüsselten Index keine Ordner von einem verschlüsselten Laufwerk hinzufügen (zum Beispiel einen eingebundenen Cryptomator-Tresor): Deren Text landet sonst unverschlüsselt im Index. ncrs erkennt solche Laufwerke nicht."
     },
     {
-      "key": "filing.encryption_create",
-      "context": "Button in the index card that creates the index with the chosen option. Verb phrase.",
-      "en": "Create index",
-      "de": "Index anlegen"
+      "key": "hermes_setup.frame_title",
+      "context": "Card of the first-time setup of Hermes (the document filing). Title of the card frame.",
+      "en": "Set up Hermes",
+      "de": "Hermes einrichten"
+    },
+    {
+      "key": "hermes_setup.badge",
+      "context": "Card of the first-time setup of Hermes (the document filing). Small overline above the headline, in capitals. Hermes is the name of the feature; Beta marks it as not final.",
+      "en": "HERMES · BETA",
+      "de": "HERMES · BETA"
+    },
+    {
+      "key": "hermes_setup.title",
+      "context": "Card of the first-time setup of Hermes (the document filing). Headline: the promise of the feature.",
+      "en": "Never sort documents by hand again",
+      "de": "Nie wieder Dokumente von Hand sortieren"
+    },
+    {
+      "key": "hermes_setup.intro_mac",
+      "context": "Card of the first-time setup of Hermes (the document filing). Introduction under the headline, shown on macOS, where the computer is called a Mac.",
+      "en": "Invoices, contracts, scans: Hermes reads every new document, recognises sender, date and amount and files it by your rules in the right place. Nothing leaves this Mac, and nothing is moved before you have confirmed it.",
+      "de": "Rechnungen, Verträge, Scans: Hermes liest jedes neue Dokument, erkennt Absender, Datum und Betrag und legt es nach deinen Regeln an den richtigen Platz. Nichts verlässt diesen Mac, und nichts wird verschoben, bevor du es bestätigt hast."
+    },
+    {
+      "key": "hermes_setup.intro_other",
+      "context": "Card of the first-time setup of Hermes (the document filing). Introduction under the headline, shown on every system but macOS.",
+      "en": "Invoices, contracts, scans: Hermes reads every new document, recognises sender, date and amount and files it by your rules in the right place. Nothing leaves this computer, and nothing is moved before you have confirmed it.",
+      "de": "Rechnungen, Verträge, Scans: Hermes liest jedes neue Dokument, erkennt Absender, Datum und Betrag und legt es nach deinen Regeln an den richtigen Platz. Nichts verlässt diesen Computer, und nichts wird verschoben, bevor du es bestätigt hast."
+    },
+    {
+      "key": "hermes_setup.off_note",
+      "context": "Card of the first-time setup of Hermes (the document filing). Line at the top when Hermes is switched off: starting turns it on.",
+      "en": "Hermes is off. Starting Hermes switches it on.",
+      "de": "Hermes ist aus. Hermes starten schaltet es ein."
+    },
+    {
+      "key": "hermes_setup.flow_inbox",
+      "context": "Card of the first-time setup of Hermes (the document filing). Box of the flow picture: the folder where new documents arrive.",
+      "en": "Inbox",
+      "de": "Eingang"
+    },
+    {
+      "key": "hermes_setup.flow_archive",
+      "context": "Card of the first-time setup of Hermes (the document filing). Box of the flow picture: the folders that already hold documents, drawn dashed.",
+      "en": "Archive",
+      "de": "Archiv"
+    },
+    {
+      "key": "hermes_setup.flow_read",
+      "context": "Card of the first-time setup of Hermes (the document filing). Box of the flow picture: the step that reads a document.",
+      "en": "Reading",
+      "de": "Lesen"
+    },
+    {
+      "key": "hermes_setup.flow_read_note",
+      "context": "Card of the first-time setup of Hermes (the document filing). Second line of the reading box: how a document is read.",
+      "en": "text recognition + AI",
+      "de": "Texterkennung + KI"
+    },
+    {
+      "key": "hermes_setup.flow_rules",
+      "context": "Card of the first-time setup of Hermes (the document filing). Box of the flow picture: the rules that decide where a document goes.",
+      "en": "Rules",
+      "de": "Regeln"
+    },
+    {
+      "key": "hermes_setup.flow_rules_note",
+      "context": "Card of the first-time setup of Hermes (the document filing). Second line of the rules box: where the rules come from.",
+      "en": "learn from you",
+      "de": "lernen von dir"
+    },
+    {
+      "key": "hermes_setup.flow_filed",
+      "context": "Card of the first-time setup of Hermes (the document filing). Box of the flow picture: the filing location, where documents end up.",
+      "en": "Filing",
+      "de": "Ablage"
+    },
+    {
+      "key": "hermes_setup.flow_filed_note",
+      "context": "Card of the first-time setup of Hermes (the document filing). Second line of the filing box: the result.",
+      "en": "neatly sorted",
+      "de": "sauber sortiert"
+    },
+    {
+      "key": "hermes_setup.step_inbox",
+      "context": "Card of the first-time setup of Hermes (the document filing). Heading of step one, the inbox folder.",
+      "en": "1 · Inbox",
+      "de": "1 · Eingang"
+    },
+    {
+      "key": "hermes_setup.step_inbox_text",
+      "context": "Card of the first-time setup of Hermes (the document filing). Explanation of step one: what the inbox folder is.",
+      "en": "The folder where new documents arrive, e.g. Downloads or the scanner folder.",
+      "de": "Der Ordner, in dem neue Dokumente ankommen, z. B. Downloads oder der Scanner-Ordner."
+    },
+    {
+      "key": "hermes_setup.step_location",
+      "context": "Card of the first-time setup of Hermes (the document filing). Heading of step two, the filing location.",
+      "en": "2 · Filing location",
+      "de": "2 · Ablageort"
+    },
+    {
+      "key": "hermes_setup.step_location_text",
+      "context": "Card of the first-time setup of Hermes (the document filing). Explanation of step two: what the filing location is.",
+      "en": "Where Hermes files documents. Hermes takes existing subfolders as a model.",
+      "de": "Wohin Hermes einsortiert. Bestehende Unterordner nimmt Hermes als Vorbild."
+    },
+    {
+      "key": "hermes_setup.step_protection",
+      "context": "Card of the first-time setup of Hermes (the document filing). Heading of step three, the protection of the index.",
+      "en": "3 · Protection",
+      "de": "3 · Schutz"
+    },
+    {
+      "key": "hermes_setup.step_protection_text_mac",
+      "context": "Card of the first-time setup of Hermes (the document filing). Explanation of step three on macOS: the index is stored encrypted on the computer.",
+      "en": "What Hermes knows about your documents is stored encrypted on this Mac.",
+      "de": "Was Hermes über deine Dokumente weiß, liegt verschlüsselt auf diesem Mac."
+    },
+    {
+      "key": "hermes_setup.step_protection_text_other",
+      "context": "Card of the first-time setup of Hermes (the document filing). Explanation of step three on every system but macOS.",
+      "en": "What Hermes knows about your documents is stored encrypted on this computer.",
+      "de": "Was Hermes über deine Dokumente weiß, liegt verschlüsselt auf diesem Computer."
+    },
+    {
+      "key": "hermes_setup.choose_folder",
+      "context": "Card of the first-time setup of Hermes (the document filing). Button that opens the system folder dialog for the inbox or the filing location.",
+      "en": "Choose folder",
+      "de": "Ordner wählen"
+    },
+    {
+      "key": "hermes_setup.not_chosen",
+      "context": "Card of the first-time setup of Hermes (the document filing). Shown in the field of a folder the user has not chosen yet.",
+      "en": "not chosen yet",
+      "de": "noch nicht gewählt"
+    },
+    {
+      "key": "hermes_setup.protect_encrypted",
+      "context": "Card of the first-time setup of Hermes (the document filing). Radio option: the index is encrypted. Marked as the recommended choice.",
+      "en": "Encrypt (recommended)",
+      "de": "Verschlüsseln (empfohlen)"
+    },
+    {
+      "key": "hermes_setup.protect_plain",
+      "context": "Card of the first-time setup of Hermes (the document filing). Radio option: the index is stored without encryption.",
+      "en": "No encryption",
+      "de": "Ohne Verschlüsselung"
+    },
+    {
+      "key": "hermes_setup.index_exists_encrypted",
+      "context": "Card of the first-time setup of Hermes (the document filing). Replaces the protection options when the index file already exists and is encrypted.",
+      "en": "The index already exists and is encrypted.",
+      "de": "Der Index besteht schon und ist verschlüsselt."
+    },
+    {
+      "key": "hermes_setup.index_exists_plain",
+      "context": "Card of the first-time setup of Hermes (the document filing). Replaces the protection options when the index file already exists and is not encrypted.",
+      "en": "The index already exists and is not encrypted.",
+      "de": "Der Index besteht schon und ist nicht verschlüsselt."
+    },
+    {
+      "key": "hermes_setup.index_exists",
+      "context": "Card of the first-time setup of Hermes (the document filing). Replaces the protection options when the index file already exists and its protection is unknown.",
+      "en": "The index already exists.",
+      "de": "Der Index besteht schon."
+    },
+    {
+      "key": "hermes_setup.optional_model",
+      "context": "Card of the first-time setup of Hermes (the document filing). Line about the optional AI model. Takes the download size, for example 640 MB.",
+      "en": "Optional: With the AI model ({size}, runs locally) Hermes also fills in fields for which there is no rule yet. Works later too.",
+      "de": "Optional: Mit dem KI-Modell ({size}, läuft lokal) füllt Hermes auch Felder aus, für die es noch keine Regel gibt. Geht auch später."
+    },
+    {
+      "key": "hermes_setup.load_model_now",
+      "context": "Card of the first-time setup of Hermes (the document filing). Checkbox: download the AI model right after starting.",
+      "en": "load now",
+      "de": "gleich laden"
+    },
+    {
+      "key": "hermes_setup.later",
+      "context": "Card of the first-time setup of Hermes (the document filing). Button that closes the card without setting anything up.",
+      "en": "Later",
+      "de": "Später"
+    },
+    {
+      "key": "hermes_setup.start",
+      "context": "Card of the first-time setup of Hermes (the document filing). Primary button: saves the folders and starts Hermes.",
+      "en": "Start Hermes",
+      "de": "Hermes starten"
+    },
+    {
+      "key": "hermes_setup.creating_index",
+      "context": "Card of the first-time setup of Hermes (the document filing). Line shown while the index is being created.",
+      "en": "Creating the index …",
+      "de": "Index wird angelegt …"
     },
     {
       "key": "filing.not_now",
@@ -3926,7 +4088,7 @@
     },
     {
       "key": "settings.preset_cosmic",
-      "context": "Name of the built-in color scheme Cosmic, the look without any setting. A proper name; keep it.",
+      "context": "Name of the built-in color scheme Cosmic, the calm dark grey look that earlier versions had without any setting. A proper name; keep it.",
       "en": "Cosmic",
       "de": "Cosmic"
     },
