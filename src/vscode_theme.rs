@@ -218,6 +218,11 @@ fn read_included(theme_path: &Path, name: &str) -> Result<HashMap<String, Color>
         .map_err(|reason| format!("include {name:?}: {reason}"))
 }
 
+/// The file a theme `include`s, as written in it.
+pub fn included_name(theme_path: &Path) -> Result<Option<String>, String> {
+    read_theme_file(theme_path).map(|file| file.include)
+}
+
 fn read_theme_file(path: &Path) -> Result<ThemeFile, String> {
     let source = read_source(path)
         .map_err(|err| err.reason().to_owned())?

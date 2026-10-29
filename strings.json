@@ -4465,6 +4465,18 @@
       "de": "Der Pfad dieser Datei lässt sich nicht speichern."
     },
     {
+      "key": "settings.theme_include_not_copied",
+      "context": "Status bar notice in the sandboxed app after a VS Code theme file was picked: the theme includes a second file that could not be copied next to it, so the theme loads without that file's colors. {include} is the included file's name, {reason} says why (the next entry or a system error).",
+      "en": "The theme includes {include}, which could not be copied ({reason}). It loads without those colours.",
+      "de": "Das Theme bindet {include} ein, die Datei ließ sich nicht kopieren ({reason}). Es lädt ohne diese Farben."
+    },
+    {
+      "key": "settings.theme_include_outside_folder",
+      "context": "The {reason} of the previous entry when the included file's name points outside the picked theme's folder (.. or an absolute path).",
+      "en": "it lies outside the theme's folder",
+      "de": "sie liegt außerhalb des Theme-Ordners"
+    },
+    {
       "key": "settings.problem_threads",
       "context": "Shown under the threads setting when the typed value is not a whole number from 1 up.",
       "en": "A number from 1 up, or empty.",

@@ -2,7 +2,7 @@
 //! `view` (pure composition of UI components).
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -935,10 +935,54 @@ fn theme_file_entry(config_path: Option<&Path>, picked: &Path) -> Option<String>
 /// sandbox keeps the theme file a user picked.
 const PICKED_THEMES_FOLDER: &str = "themes/picked";
 
+/// What came of copying a picked theme file.
+struct PickedThemeCopy {
+    /// The entry for `[theme] vscode`.
+    entry: String,
+    include_not_copied: Option<IncludeNotCopied>,
+}
+
+struct IncludeNotCopied {
+    name: String,
+    reason: IncludeProblem,
+}
+
+enum IncludeProblem {
+    OutsideFolder,
+    Unreadable(String),
+}
+
+/// An `include` is copied only when it names a file at or below the theme's
+/// own folder: no `..`, no absolute path, no drive.
+fn include_stays_in_folder(name: &str) -> bool {
+    !name.is_empty()
+        && !name.split(['/', '\\']).any(|part| part == "..")
+        && Path::new(name)
+            .components()
+            .all(|part| matches!(part, Component::Normal(_) | Component::CurDir))
+        && !name.starts_with(['/', '\\'])
+}
+
+fn copy_included_theme_file(picked: &Path, folder: &Path, name: &str) -> Result<(), String> {
+    let source = picked.parent().unwrap_or_else(|| Path::new("")).join(name);
+    let target = folder.join(name);
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    std::fs::copy(source, target)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
 /// Copies a picked theme file below the config's folder and returns the entry
 /// for `[theme] vscode`. The sandbox grants the file only until the app quits,
-/// so a path outside the container would be unreadable at the next start.
-fn copy_picked_theme_file(config_path: &Path, picked: &Path) -> Result<String, FilingWriteError> {
+/// so a path outside the container would be unreadable at the next start. The
+/// one file it `include`s is copied along when it lies below the theme's
+/// folder and is readable.
+fn copy_picked_theme_file(
+    config_path: &Path,
+    picked: &Path,
+) -> Result<PickedThemeCopy, FilingWriteError> {
     let io_failure = |failed: &Path| {
         let owned = failed.to_path_buf();
         move |error: std::io::Error| FilingWriteError::Io {
@@ -960,10 +1004,23 @@ fn copy_picked_theme_file(config_path: &Path, picked: &Path) -> Result<String, F
     std::fs::create_dir_all(&folder).map_err(io_failure(&folder))?;
     let target = folder.join(file_name);
     std::fs::copy(picked, &target).map_err(io_failure(picked))?;
-    Ok(format!(
-        "{PICKED_THEMES_FOLDER}/{}",
-        file_name.to_string_lossy()
-    ))
+    let include_not_copied = match crate::vscode_theme::included_name(picked) {
+        Ok(Some(name)) if !include_stays_in_folder(&name) => Some(IncludeNotCopied {
+            name,
+            reason: IncludeProblem::OutsideFolder,
+        }),
+        Ok(Some(name)) => copy_included_theme_file(picked, &folder, &name)
+            .err()
+            .map(|reason| IncludeNotCopied {
+                name,
+                reason: IncludeProblem::Unreadable(reason),
+            }),
+        Ok(None) | Err(_) => None,
+    };
+    Ok(PickedThemeCopy {
+        entry: format!("{PICKED_THEMES_FOLDER}/{}", file_name.to_string_lossy()),
+        include_not_copied,
+    })
 }
 
 /// When a saved filing list takes effect.
@@ -10224,7 +10281,16 @@ impl App {
     fn theme_file_picked(&mut self, path: &Path) -> Task<Message> {
         if let (true, Some(config_path)) = (self.sandbox.active, self.config_path.as_deref()) {
             return match copy_picked_theme_file(config_path, path) {
-                Ok(file) => self.write_setting(SettingChange::VscodeTheme(Some(file))),
+                Ok(copy) => {
+                    let written = self.write_setting(SettingChange::VscodeTheme(Some(copy.entry)));
+                    match copy.include_not_copied {
+                        Some(problem) => {
+                            let text = self.include_not_copied_text(&problem);
+                            Task::batch([written, self.show_notice(text)])
+                        }
+                        None => written,
+                    }
+                }
                 Err(error) => {
                     self.settings_failure = Some(self.settings_write_failure(&error));
                     Task::none()
@@ -10239,6 +10305,20 @@ impl App {
                 Task::none()
             }
         }
+    }
+
+    fn include_not_copied_text(&self, problem: &IncludeNotCopied) -> String {
+        let reason = match &problem.reason {
+            IncludeProblem::OutsideFolder => self
+                .lang
+                .text(Msg::SettingsThemeIncludeOutsideFolder)
+                .to_owned(),
+            IncludeProblem::Unreadable(reason) => reason.clone(),
+        };
+        fill_template(
+            self.lang.text(Msg::SettingsThemeIncludeNotCopied),
+            &[("{include}", &problem.name), ("{reason}", &reason)],
+        )
     }
 
     fn setting_written(
@@ -25169,23 +25249,141 @@ mod receiver_stream_tests {
 mod hermes_setup_tests {
     use super::*;
 
+    const BASE_THEME: &str = r##"{"colors": {"editor.background": "#102030"}}"##;
+
+    fn picked_in(outside: &TempDir, name: &str, text: &str) -> PathBuf {
+        let path = outside.path().join(name);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(&path, text).unwrap();
+        path
+    }
+
+    fn copied(config_dir: &TempDir, name: &str) -> PathBuf {
+        config_dir.path().join("themes").join("picked").join(name)
+    }
+
     #[test]
     fn a_picked_theme_file_is_copied_next_to_the_config_for_the_sandbox() {
         let config_dir = TempDir::new().unwrap();
         let outside = TempDir::new().unwrap();
-        let picked = outside.path().join("night.json");
-        std::fs::write(&picked, b"{}").unwrap();
+        let picked = picked_in(&outside, "night.json", BASE_THEME);
         let config_path = config_dir.path().join("config.toml");
 
-        let entry = copy_picked_theme_file(&config_path, &picked).unwrap();
+        let copy = copy_picked_theme_file(&config_path, &picked).unwrap();
 
-        assert_eq!(entry, "themes/picked/night.json");
-        let copy = config_dir
+        assert_eq!(copy.entry, "themes/picked/night.json");
+        assert!(copy.include_not_copied.is_none());
+        assert_eq!(
+            std::fs::read(copied(&config_dir, "night.json")).unwrap(),
+            BASE_THEME.as_bytes()
+        );
+    }
+
+    #[test]
+    fn the_included_file_is_copied_along_and_the_theme_loads_with_its_colors() {
+        let config_dir = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let picked = picked_in(
+            &outside,
+            "night.json",
+            r#"{"include": "base/colors.json", "colors": {}}"#,
+        );
+        picked_in(&outside, "base/colors.json", BASE_THEME);
+        let config_path = config_dir.path().join("config.toml");
+
+        let copy = copy_picked_theme_file(&config_path, &picked).unwrap();
+
+        assert!(copy.include_not_copied.is_none());
+        assert_eq!(
+            std::fs::read(copied(&config_dir, "base/colors.json")).unwrap(),
+            BASE_THEME.as_bytes()
+        );
+        let loaded = crate::vscode_theme::VscodeTheme::load(&copied(&config_dir, "night.json"));
+        assert_eq!(loaded.problem, None);
+        let mut palette = Palette::default();
+        loaded.apply(&mut palette);
+        assert_eq!(palette.background, iced::Color::from_rgb8(0x10, 0x20, 0x30));
+    }
+
+    #[test]
+    fn an_include_outside_the_theme_folder_is_not_copied() {
+        let outside = TempDir::new().unwrap();
+        let absolute = outside
             .path()
-            .join("themes")
-            .join("picked")
-            .join("night.json");
-        assert_eq!(std::fs::read(copy).unwrap(), b"{}");
+            .join("abs.json")
+            .to_string_lossy()
+            .into_owned();
+        for include in [
+            "../outside.json",
+            "a/../../outside.json",
+            "/etc/x.json",
+            absolute.as_str(),
+        ] {
+            let config_dir = TempDir::new().unwrap();
+            let work = TempDir::new().unwrap();
+            let picked = picked_in(
+                &work,
+                "theme/night.json",
+                &format!(r#"{{"include": {include:?}, "colors": {{}}}}"#),
+            );
+            picked_in(&work, "outside.json", BASE_THEME);
+            picked_in(&outside, "abs.json", BASE_THEME);
+            let config_path = config_dir.path().join("config.toml");
+
+            let copy = copy_picked_theme_file(&config_path, &picked).unwrap();
+
+            let problem = copy.include_not_copied.expect(include);
+            assert!(
+                matches!(problem.reason, IncludeProblem::OutsideFolder),
+                "{include}"
+            );
+            let names: Vec<_> = std::fs::read_dir(config_dir.path().join("themes/picked"))
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect();
+            assert_eq!(names, ["night.json"], "{include}");
+        }
+    }
+
+    #[test]
+    fn a_missing_include_is_reported_and_the_theme_is_still_copied() {
+        let config_dir = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let picked = picked_in(
+            &outside,
+            "night.json",
+            r#"{"include": "gone.json", "colors": {}}"#,
+        );
+        let config_path = config_dir.path().join("config.toml");
+
+        let copy = copy_picked_theme_file(&config_path, &picked).unwrap();
+
+        assert_eq!(copy.entry, "themes/picked/night.json");
+        assert!(copied(&config_dir, "night.json").exists());
+        let problem = copy.include_not_copied.unwrap();
+        assert_eq!(problem.name, "gone.json");
+        assert!(matches!(problem.reason, IncludeProblem::Unreadable(_)));
+    }
+
+    #[test]
+    fn an_uncopyable_include_shows_a_notice_in_the_sandbox() {
+        let config_dir = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let picked = picked_in(
+            &outside,
+            "night.json",
+            r#"{"include": "../outside.json", "colors": {}}"#,
+        );
+        let mut app = App::with_environment(Environment::isolated()).0;
+        app.sandbox.active = true;
+        app.config_path = Some(config_dir.path().join("config.toml"));
+
+        drop(app.theme_file_picked(&picked));
+
+        let notice = app.notice.expect("a notice");
+        assert!(notice.contains("../outside.json"), "{notice}");
     }
 
     #[test]
@@ -25193,7 +25391,7 @@ mod hermes_setup_tests {
         let config_dir = TempDir::new().unwrap();
         let missing = config_dir.path().join("gone.json");
         let config_path = config_dir.path().join("config.toml");
-        copy_picked_theme_file(&config_path, &missing).unwrap_err();
+        assert!(copy_picked_theme_file(&config_path, &missing).is_err());
     }
     use crate::config::FilingLocation;
     use crate::filing::Phase;
