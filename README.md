@@ -116,6 +116,10 @@ The same window in German, switched with F9.
   drive letters, the same places as in the Finder sidebar; see [Drives on macOS](#drives-on-macos)
 - Smell-o-scope (search) in file names and contents below a directory, in the panel, the way
   VS Code does it: see [Search](#search)
+- Dropping files from the Finder, Explorer or another file manager onto the window copies them
+  into the active panel, with the same conflict questions as `F5`; the panel is outlined while
+  the files are over the window. A drop always copies (move with `F6`). On Wayland the window
+  library delivers no drops, so the feature is missing there.
 - Archives (zip, tar, tar.gz, tar.zst, 7z) open with `Enter` and are browsed like folders; `F5`
   copies out of them, `Alt`+`F5` packs the selection into a new archive in the other panel,
   `F5` into an open archive adds to it and `F8` in one deletes entries (permanently).

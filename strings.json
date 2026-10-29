@@ -823,6 +823,12 @@
       "de": "Es läuft noch ein anderer Auftrag; danach noch einmal versuchen"
     },
     {
+      "key": "status.drop_busy",
+      "context": "Status bar notice when files from another app (Finder, Explorer) are dropped onto the window while a copy or another job is running or a dialog is open. The drop is not carried out; the user can drop again later.",
+      "en": "Drop again when the running job or dialog is done",
+      "de": "Erneut ablegen, wenn der laufende Auftrag oder Dialog fertig ist"
+    },
+    {
       "key": "error.archive_view_unavailable",
       "context": "Status bar error when the view key is pressed on a file in an archive but ncrs has no folder for the temporary copy: the cache folder could not be created or the system names none. Nothing was unpacked.",
       "en": "No folder for temporary copies, so this file cannot be viewed from the archive. Copy it out instead.",

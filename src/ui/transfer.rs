@@ -43,7 +43,7 @@ fn title(kind: TransferKind, lang: Language) -> &'static str {
     })
 }
 
-fn refusal_text(refusal: Refusal, lang: Language) -> &'static str {
+pub fn refusal_text(refusal: Refusal, lang: Language) -> &'static str {
     lang.text(match refusal {
         Refusal::Missing => Msg::TransferErrorMissing,
         Refusal::NotAFolder => Msg::TransferErrorNotFolder,
