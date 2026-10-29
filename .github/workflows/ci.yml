@@ -115,20 +115,20 @@ jobs:
           echo "NCRS_OCR_MODELS_DIR=$GITHUB_WORKSPACE/target/ocr-models" >> "$GITHUB_ENV"
 
       # The tests of the built-in AI model need its file (640 MB). They run on
-      # macOS only, the platform the App Store build ships on: the file would
-      # take 640 MB of cache per operating system, and llama.cpp still compiles
-      # everywhere with the default features. The cache key is the pinned
-      # checksum, so a new pin means a new download; the script checks size and
-      # checksum on a hit as well. The folder sits outside target/ because
-      # rust-cache prunes and saves that.
+      # Linux only: the file would take 640 MB of cache per operating system,
+      # llama.cpp still compiles everywhere with the default features, and on
+      # the macOS runner the same three tests take about 15 minutes instead of
+      # five. The cache key is the pinned checksum, so a new pin means a new
+      # download; the script checks size and checksum on a hit as well. The
+      # folder sits outside target/ because rust-cache prunes and saves that.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: runner.os == 'macOS'
+        if: runner.os == 'Linux'
         with:
           path: .ai-models
           key: ai-model-9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031
 
       - name: Fetch the AI model for the tests
-        if: runner.os == 'macOS'
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           bash scripts/fetch-ai-model.sh .ai-models
@@ -166,7 +166,7 @@ jobs:
       # log is checked for the count: a wrong filter or a missing feature would
       # run no test and still pass.
       - name: Tests with the local AI model
-        if: runner.os == 'macOS'
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           set -o pipefail
