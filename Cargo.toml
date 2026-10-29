@@ -138,6 +138,11 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 # Apple Vision as the first choice for reading scans; ocrs stays the fallback.
 ncrs-ocr-vision = { path = "crates/ncrs-ocr-vision", version = "0.0.0" }
 
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+# Starts the system drag of files out of the window, into the Finder, Explorer
+# or a browser upload. Not on Linux, where it needs GTK.
+drag = { version = "=2.1.1", default-features = false }
+
 [profile.release]
 opt-level = 3
 lto = "thin"

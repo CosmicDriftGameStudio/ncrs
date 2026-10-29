@@ -7,7 +7,7 @@ use ncrs_index::{HermesCounts, IncludeOutcome, RuleId, SavedQuery, SavedQueryId,
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
 
-use iced::Size;
+use iced::{Point, Size};
 use serde::{Deserialize, Serialize};
 
 use crate::ai_model::DownloadError as AiDownloadError;
@@ -322,6 +322,17 @@ pub enum Message {
         index: usize,
         on_tag: bool,
     },
+    /// The pointer entered a panel.
+    PanelEntered(PanelSide),
+    /// The pointer left a panel.
+    PanelExited(PanelSide),
+    /// The pointer moved while a row is held with the left button.
+    PanelDragMoved(Point),
+    /// The left button went up while a row was held.
+    PanelDragReleased,
+    /// The system drag out of the window could not be started, or did.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    DragOutStarted(Result<(), String>),
     /// Double click on a row of a panel: the row's Enter.
     RowActivated {
         side: PanelSide,

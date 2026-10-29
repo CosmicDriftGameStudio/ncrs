@@ -30,6 +30,11 @@ use crate::filing::{FilingMessage, FilingModule, KeyProblem, Phase, SecretText};
 use crate::i18n::Language;
 use crate::messages::Message;
 
+/// Which panel the pointer is over is bookkeeping, not something the user did.
+fn is_action(message: &Message) -> bool {
+    !matches!(message, Message::PanelEntered(_) | Message::PanelExited(_))
+}
+
 fn simulator(app: &App) -> Simulator<'_, Message, iced::Theme> {
     Simulator::with_size(
         iced::Settings::default(),
@@ -1543,7 +1548,7 @@ mod filing_cards {
         let mut sim = simulator(app);
         // Directories are drawn with a leading slash.
         sim.click("/Documents").expect("a panel row");
-        sim.into_messages().collect()
+        sim.into_messages().filter(is_action).collect()
     }
 
     #[test]
@@ -1552,7 +1557,7 @@ mod filing_cards {
         let mut sim = simulator(&app);
         sim.click("/Documents").expect("a panel row");
         sim.click("/Documents").expect("a panel row");
-        let messages: Vec<Message> = sim.into_messages().collect();
+        let messages: Vec<Message> = sim.into_messages().filter(is_action).collect();
         assert!(
             matches!(
                 messages.as_slice(),
@@ -1629,7 +1634,7 @@ mod filing_status_page {
     fn messages_after_click(app: &App, label: &str) -> Vec<Message> {
         let mut sim = simulator(app);
         sim.click(label).expect("the clicked label");
-        sim.into_messages().collect()
+        sim.into_messages().filter(is_action).collect()
     }
 
     fn page_message(message: FilingStatusMessage) -> Message {
@@ -2017,7 +2022,7 @@ mod filing_setup_card {
     fn messages_after_click(app: &App, label: &str) -> Vec<Message> {
         let mut sim = simulator(app);
         sim.click(label).expect("the clicked label");
-        sim.into_messages().collect()
+        sim.into_messages().filter(is_action).collect()
     }
 
     /// The card scrolls: what lies below the fold is reached by the wheel, as
@@ -2194,7 +2199,7 @@ mod filing_setup_card {
             let mut sim = simulator(app);
             // Directories are drawn with a leading slash.
             sim.click("/Documents").expect("a panel row");
-            sim.into_messages().collect()
+            sim.into_messages().filter(is_action).collect()
         };
         let without_setup = row_click(&App::with_fixed_panels());
         assert!(
@@ -2492,7 +2497,7 @@ mod theme_fetch_card {
         let app = App::with_theme_fetch_card(card);
         let mut sim = simulator(&app);
         sim.click(label).expect("the clicked label");
-        sim.into_messages().collect()
+        sim.into_messages().filter(is_action).collect()
     }
 
     #[test]
@@ -4072,7 +4077,7 @@ mod ocr_models_card {
         let app = App::with_ocr_models_card(card);
         let mut sim = simulator(&app);
         sim.click(label).expect("the clicked label");
-        sim.into_messages().collect()
+        sim.into_messages().filter(is_action).collect()
     }
 
     #[test]
@@ -4909,7 +4914,7 @@ mod connect_dialog {
         let app = App::with_connect_dialog(dialog);
         let mut sim = simulator(&app);
         sim.click(label).expect("the clicked label");
-        sim.into_messages().collect()
+        sim.into_messages().filter(is_action).collect()
     }
 
     #[test]

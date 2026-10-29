@@ -717,6 +717,9 @@ pub struct InputState {
     /// The settings tab is up with nothing on top: Escape closes it, even from
     /// its search field, and an Option tap opens no menu.
     pub settings: bool,
+    /// A row is held with the left button: the pointer and the button decide
+    /// whether it becomes a drag.
+    pub panel_drag_armed: bool,
 }
 
 impl InputState {
@@ -734,7 +737,13 @@ impl InputState {
         match event {
             event::Event::Mouse(mouse::Event::CursorMoved { position }) => {
                 self.pointer = *position;
-                None
+                self.panel_drag_armed
+                    .then_some(Message::PanelDragMoved(*position))
+            }
+            event::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
+                if self.panel_drag_armed =>
+            {
+                Some(Message::PanelDragReleased)
             }
             event::Event::Mouse(mouse::Event::ButtonPressed(_)) => {
                 self.alt_tap.cancel();

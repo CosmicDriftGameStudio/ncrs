@@ -126,6 +126,12 @@ The same window in German, switched with F9.
   command list (`F1`) puts the selected files on the clipboard for other apps; its key is
   `Cmd`+`C` (`Ctrl`+`C` on Windows and Linux). On Wayland, clipboard files, pictures and text are only read
   and written if the compositor supports the data-control protocol.
+- Dragging the selection (the tagged rows, else the row under the cursor) onto the other panel opens
+  the copy dialog (`F5`); with `Cmd` held (`Shift` on Windows and Linux) the move dialog (`F6`),
+  with the same rules and conflict questions. On macOS and Windows the files can also be dragged
+  out of the window into the Finder, Explorer or a browser upload, but only files on this
+  computer's disk, not those from archives or servers. On Linux this is not available yet: the
+  drag library needs GTK there.
 - Archives (zip, tar, tar.gz, tar.zst, 7z) open with `Enter` and are browsed like folders; `F5`
   copies out of them, `Alt`+`F5` packs the selection into a new archive in the other panel,
   `F5` into an open archive adds to it and `F8` in one deletes entries (permanently).
