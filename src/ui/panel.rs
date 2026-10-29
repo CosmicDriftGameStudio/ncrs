@@ -606,7 +606,8 @@ impl<'a, M: 'a> HermesCell<'a, M> {
     fn state_icon(&self, state: HermesFileState, with_hint: bool) -> Element<'a, M> {
         let color = theme::hermes_state_color(&self.palette, state);
         let glyph = match state {
-            HermesFileState::Waiting => kit::icon(Icon::Clock, color),
+            HermesFileState::Unread => kit::icon(Icon::Clock, color),
+            HermesFileState::Planned => kit::icon(Icon::CircleArrowRight, color),
             HermesFileState::Reading => kit::icon_rotated(Icon::Loader, color, self.angle),
             HermesFileState::Filed => kit::icon(Icon::CircleCheck, color),
             HermesFileState::Inquiry => kit::icon(Icon::CircleHelp, color),

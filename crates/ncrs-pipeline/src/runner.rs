@@ -102,14 +102,26 @@ pub struct ErrorEntry {
     pub sequence: u64,
 }
 
+/// How the pipeline left a file whose state changed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangeOutcome {
+    /// A step changed the file's state and more steps follow.
+    Advanced,
+    /// The file left the pipeline: filed, planned or waiting for a review.
+    Finished,
+    /// A file that was processed again on request and found nothing to do.
+    Unchanged,
+    /// The step failed on this file.
+    Failed,
+}
+
 /// A file whose state in the index or in the pipeline changed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChangedPath {
     /// Counts up from 1 for the lifetime of a runner.
     pub sequence: u64,
     pub path: PathBuf,
-    /// The step failed on this file.
-    pub failed: bool,
+    pub outcome: ChangeOutcome,
 }
 
 /// The newest changed paths, bounded. A consumer that remembers the sequence it
@@ -124,11 +136,11 @@ struct ChangeLog {
 }
 
 impl ChangeLog {
-    fn push(&mut self, path: &Path, failed: bool) {
+    fn push(&mut self, path: &Path, outcome: ChangeOutcome) {
         if self
             .entries
             .back()
-            .is_some_and(|last| last.path == path && last.failed == failed)
+            .is_some_and(|last| last.path == path && last.outcome == outcome)
         {
             return;
         }
@@ -136,7 +148,7 @@ impl ChangeLog {
         self.entries.push_back(ChangedPath {
             sequence: self.latest,
             path: path.to_path_buf(),
-            failed,
+            outcome,
         });
         while self.entries.len() > MAX_CHANGED_PATHS {
             if let Some(dropped) = self.entries.pop_front() {
@@ -207,7 +219,9 @@ impl Snapshot {
     /// the error no longer describes it.
     pub fn is_superseded(&self, error: &ErrorEntry) -> bool {
         self.changed_paths.iter().any(|change| {
-            !change.failed && change.sequence > error.sequence && change.path == error.file
+            change.outcome != ChangeOutcome::Failed
+                && change.sequence > error.sequence
+                && change.path == error.file
         })
     }
 
@@ -949,7 +963,12 @@ impl State {
             Ok(StepOutcome::Continue) => {
                 counts.done += 1;
                 if step_index == 0 || last_step || item.plan.is_some() || item.review.is_some() {
-                    self.changes.push(&item.path, false);
+                    let change = if last_step {
+                        ChangeOutcome::Finished
+                    } else {
+                        ChangeOutcome::Advanced
+                    };
+                    self.changes.push(&item.path, change);
                 }
                 if last_step {
                     self.left_pipeline += 1;
@@ -967,12 +986,15 @@ impl State {
                 if item.plan.is_some() {
                     self.plans_made += 1;
                 }
-                self.changes.push(&item.path, false);
+                self.changes.push(&item.path, ChangeOutcome::Finished);
                 self.record_document(at);
             }
             Ok(StepOutcome::Unchanged) => {
                 counts.unchanged += 1;
                 self.left_pipeline += 1;
+                if item.force {
+                    self.changes.push(&item.path, ChangeOutcome::Unchanged);
+                }
             }
             Ok(StepOutcome::NotReady) => {
                 // A change that arrived while this ran is already queued and
@@ -988,7 +1010,7 @@ impl State {
             Err(message) => {
                 counts.failed += 1;
                 self.left_pipeline += 1;
-                self.changes.push(&item.path, true);
+                self.changes.push(&item.path, ChangeOutcome::Failed);
                 self.push_error(item.path, Task::Step(name), message, at);
             }
         }
@@ -2241,6 +2263,43 @@ mod tests {
     }
 
     #[test]
+    fn a_reviewed_document_that_a_new_rule_places_leaves_the_review_list_when_processed_again() {
+        let inbox_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        let path = put(&inbox, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let reads = Arc::new(AtomicUsize::new(0));
+        let runner = reviewed_once(&inbox, &fixture, &reads);
+        assert_eq!(
+            fixture.index.lock().unwrap().open_reviews().unwrap().len(),
+            1
+        );
+        fixture
+            .index
+            .lock()
+            .unwrap()
+            .create_rule(&invoice_rule("{number}.pdf", true))
+            .unwrap();
+
+        assert!(runner.process_again(&path));
+
+        runner.wait_for("the file passed again", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[2].done == 2
+        });
+        assert!(fixture
+            .index
+            .lock()
+            .unwrap()
+            .open_reviews()
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            first_document_status(&fixture, &inbox),
+            DocumentStatus::Planned
+        );
+    }
+
+    #[test]
     fn a_document_with_a_missing_field_is_reviewed_with_that_field() {
         let fixture = run_with_rule(&invoice_rule("{year}/{number}.pdf", true));
 
@@ -2267,9 +2326,12 @@ mod tests {
     fn the_change_log_numbers_entries_and_tells_a_slow_consumer_it_missed_some() {
         let mut log = ChangeLog::default();
         for number in 0..MAX_CHANGED_PATHS + 3 {
-            log.push(Path::new(&format!("/in/{number}.pdf")), false);
+            log.push(
+                Path::new(&format!("/in/{number}.pdf")),
+                ChangeOutcome::Finished,
+            );
         }
-        log.push(Path::new("/in/514.pdf"), false);
+        log.push(Path::new("/in/514.pdf"), ChangeOutcome::Finished);
         let mut snapshot = Snapshot::off();
         snapshot.changed_paths = log.entries.iter().cloned().collect();
         snapshot.changed_sequence = log.latest;
@@ -2328,6 +2390,78 @@ mod tests {
             .changed_paths
             .iter()
             .any(|change| change.path == location.path.join("file-2.pdf")));
+    }
+
+    fn leave_every_file_unchanged(_path: &Path) -> Result<StepOutcome, String> {
+        Ok(StepOutcome::Unchanged)
+    }
+
+    #[test]
+    fn a_file_processed_again_is_listed_even_when_nothing_changed() {
+        let (_dir, location) = numbered_files(1);
+        let (step, _started) = probe("probe", None, leave_every_file_unchanged);
+        let runner = start(workers(1), vec![step], &location, Arc::new(FixedClock));
+        let path = location.path.join("file-1.pdf");
+        let first = runner.wait_for("the file seen", |snapshot| {
+            is_idle(snapshot) && snapshot.left_pipeline == 1
+        });
+        assert!(first.changed_paths.is_empty(), "a rescan is not announced");
+
+        assert!(runner.process_again(&path));
+
+        let report = runner.wait_for("the file handled again", |snapshot| {
+            is_idle(snapshot) && snapshot.left_pipeline == 2
+        });
+        let outcomes: Vec<_> = report
+            .changed_paths
+            .iter()
+            .map(|change| (change.path.clone(), change.outcome))
+            .collect();
+        assert_eq!(outcomes, vec![(path, ChangeOutcome::Unchanged)]);
+    }
+
+    #[test]
+    fn a_file_processed_again_without_a_matching_rule_ends_in_review_and_is_announced() {
+        let inbox_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        let path = put(&inbox, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let reads = Arc::new(AtomicUsize::new(0));
+        let runner = reviewed_once(&inbox, &fixture, &reads);
+        let sequence_before = runner.snapshot().changed_sequence;
+
+        assert!(runner.process_again(&path));
+
+        let report = runner.wait_for("the file passed again", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[3].done == 2
+        });
+        assert!(nothing_busy(&report));
+        assert_eq!(
+            first_document_status(&fixture, &inbox),
+            DocumentStatus::InReview
+        );
+        assert_eq!(
+            fixture.index.lock().unwrap().open_reviews().unwrap().len(),
+            1
+        );
+        let last = report.changed_paths.last().unwrap();
+        assert_eq!(last.path, path);
+        assert_eq!(last.outcome, ChangeOutcome::Finished);
+        assert!(last.sequence > sequence_before);
+    }
+
+    #[test]
+    fn a_step_in_the_middle_and_the_end_of_one_file_are_both_listed() {
+        let mut log = ChangeLog::default();
+        let path = Path::new("/in/a.pdf");
+        log.push(path, ChangeOutcome::Advanced);
+        log.push(path, ChangeOutcome::Advanced);
+        log.push(path, ChangeOutcome::Finished);
+        let outcomes: Vec<_> = log.entries.iter().map(|change| change.outcome).collect();
+        assert_eq!(
+            outcomes,
+            vec![ChangeOutcome::Advanced, ChangeOutcome::Finished]
+        );
     }
 
     #[test]

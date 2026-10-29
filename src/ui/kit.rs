@@ -65,10 +65,11 @@ pub enum Icon {
     TriangleAlert,
     Ban,
     ChevronRight,
+    CircleArrowRight,
 }
 
 impl Icon {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Clock,
         Self::Loader,
         Self::CircleCheck,
@@ -76,6 +77,7 @@ impl Icon {
         Self::TriangleAlert,
         Self::Ban,
         Self::ChevronRight,
+        Self::CircleArrowRight,
     ];
 
     const fn bytes(self) -> &'static [u8] {
@@ -87,13 +89,14 @@ impl Icon {
             Self::TriangleAlert => include_bytes!("../../assets/icons/triangle-alert.svg"),
             Self::Ban => include_bytes!("../../assets/icons/ban.svg"),
             Self::ChevronRight => include_bytes!("../../assets/icons/chevron-right.svg"),
+            Self::CircleArrowRight => include_bytes!("../../assets/icons/circle-arrow-right.svg"),
         }
     }
 
     /// Built once: the handle's id is what the renderer caches the parsed
     /// vector by, so a new handle per frame would parse the file every frame.
     fn handle(self) -> svg::Handle {
-        static HANDLES: LazyLock<[svg::Handle; 7]> =
+        static HANDLES: LazyLock<[svg::Handle; 8]> =
             LazyLock::new(|| Icon::ALL.map(|icon| svg::Handle::from_memory(icon.bytes())));
         HANDLES
             .get(self as usize)

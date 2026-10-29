@@ -638,6 +638,9 @@ pub enum FilingStatusMessage {
     Toggle,
     /// The once-a-second look at the pipeline.
     Tick,
+    /// The module and runner of the previous settings are gone; the one of
+    /// the generation starts now.
+    Restarted(u64),
     TogglePause,
     SetLoad(Load),
     /// One worker more (`1`) or fewer (`-1`) than now.
@@ -665,6 +668,11 @@ pub enum HermesColumnMessage {
     Detail {
         path: PathBuf,
         result: Result<Option<FileDetail>, String>,
+    },
+    /// Whether a file read again that finished now waits in the review list.
+    ReadAgainEnded {
+        path: PathBuf,
+        result: Result<bool, String>,
     },
     /// Hermes was told to leave these paths alone.
     Excluded {
@@ -883,6 +891,8 @@ pub enum ReviewListMessage {
         generation: u64,
         result: Result<ConfirmOutcome, String>,
     },
+    /// The AI can read now: every open entry goes through Hermes again.
+    ReadAgainWithAi,
     /// The offer after filing: a rule for this sender.
     CreateRule,
     RuleCreated {
@@ -969,6 +979,8 @@ pub enum OcrModelsMessage {
     Open,
     Close,
     Download,
+    /// The 250 ms look at the byte counter of the running download.
+    Progress,
     /// The download of the generation is done. Dropped when the card was
     /// closed or opened again meanwhile.
     Downloaded {
@@ -985,6 +997,11 @@ pub enum AiModelMessage {
     /// Download, or continue where an earlier download stopped.
     Download,
     Stop,
+    /// The 250 ms look at the byte counter of the running download: nothing to
+    /// change, the redraw is the point.
+    Progress,
+    /// The card after the download could not turn the AI on: opens the setting.
+    ShowAiSetting,
     /// The download of the generation has ended. Dropped when the card was
     /// closed or opened again meanwhile.
     Downloaded {

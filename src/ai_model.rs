@@ -6,8 +6,9 @@
 //! view is `ui::ai_model`.
 
 use std::fmt;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use ncrs_ai::{ModelFileError, ModelPin, PartialDownload, LOCAL_MODEL};
@@ -67,6 +68,24 @@ impl fmt::Display for DownloadError {
 pub struct DownloadJob {
     dir: PathBuf,
     cancel: Arc<AtomicBool>,
+    /// Bytes of the file that are on disk, read by the card for its bar.
+    received: Arc<AtomicU64>,
+}
+
+/// What the card tells after its download ended with the file in place: what
+/// became of the AI switch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallOutcome {
+    /// The AI was off; the switch is being written.
+    TurningOn,
+    /// The AI was off and is on now, and runs with the new model.
+    TurnedOn,
+    /// The AI was off and is on now; the module picks it up at the next start.
+    TurnedOnAtNextStart,
+    /// The AI was on and waited for the file.
+    InUse,
+    /// The AI is still off: the switch could not be written.
+    StillOff,
 }
 
 #[derive(Debug, Clone)]
@@ -79,6 +98,12 @@ pub struct AiModelCard {
     paused: bool,
     error: Option<DownloadError>,
     cancel: Option<Arc<AtomicBool>>,
+    received: Arc<AtomicU64>,
+    /// The file was complete when the card opened.
+    installed: bool,
+    /// This card's download just ended with the file in place.
+    finished: bool,
+    outcome: Option<InstallOutcome>,
 }
 
 impl PartialEq for DownloadJob {
@@ -100,7 +125,50 @@ impl AiModelCard {
             paused: false,
             error: None,
             cancel: None,
+            received: Arc::new(AtomicU64::new(0)),
+            installed: false,
+            finished: false,
+            outcome: None,
         }
+    }
+
+    /// A card for a model that is already in place: it says so and closes.
+    pub fn installed(target: Option<PathBuf>) -> Self {
+        Self {
+            installed: true,
+            ..Self::new(target, false)
+        }
+    }
+
+    pub fn is_installed(&self) -> bool {
+        self.installed
+    }
+
+    /// The download this card ran ended with the file in place.
+    pub fn is_finished(&self) -> bool {
+        self.finished
+    }
+
+    /// Lets a test draw the bar at a chosen point of a running download.
+    #[cfg(test)]
+    pub fn set_received_for_test(&self, bytes: u64) {
+        self.received.store(bytes, Ordering::Relaxed);
+    }
+
+    pub fn outcome(&self) -> Option<InstallOutcome> {
+        self.outcome
+    }
+
+    pub fn set_outcome(&mut self, outcome: InstallOutcome) {
+        if self.finished {
+            self.outcome = Some(outcome);
+        }
+    }
+
+    /// Bytes on disk and bytes in all, while a download runs.
+    pub fn progress(&self) -> Option<(u64, u64)> {
+        self.downloading
+            .then(|| (self.received.load(Ordering::Relaxed), LOCAL_MODEL.size))
     }
 
     pub fn target(&self) -> Option<&Path> {
@@ -143,11 +211,17 @@ impl AiModelCard {
             return None;
         };
         let cancel = Arc::new(AtomicBool::new(false));
+        let received = Arc::new(AtomicU64::new(0));
+        self.received = Arc::clone(&received);
         self.error = None;
         self.paused = false;
         self.downloading = true;
         self.cancel = Some(Arc::clone(&cancel));
-        Some(DownloadJob { dir, cancel })
+        Some(DownloadJob {
+            dir,
+            cancel,
+            received,
+        })
     }
 
     /// The Stop button. The download ends at its next chunk.
@@ -166,7 +240,10 @@ impl AiModelCard {
         self.downloading = false;
         self.cancel = None;
         match result {
-            Ok(()) => true,
+            Ok(()) => {
+                self.finished = true;
+                true
+            }
             Err(DownloadError::Cancelled) => {
                 self.paused = true;
                 self.has_partial = true;
@@ -196,6 +273,14 @@ impl AiModelCard {
             }
         }
     }
+}
+
+/// The model file is in `dir` with the pinned size. Not hashed: a download only
+/// renames a file that passed the check, and hashing 639 MB does not belong in
+/// the code that opens a card.
+pub fn model_is_installed(dir: &Path) -> bool {
+    std::fs::symlink_metadata(dir.join(LOCAL_MODEL.name))
+        .is_ok_and(|metadata| metadata.is_file() && metadata.len() == LOCAL_MODEL.size)
 }
 
 /// Downloads the model into the folder of `job`. Only a running card hands out
@@ -317,12 +402,41 @@ fn attempt(
             .limit(remaining.saturating_add(1))
             .reader();
         let before = partial.offset();
-        let appended = partial.append(reader, &job.cancel);
+        job.received.store(before, Ordering::Relaxed);
+        let counted = CountingReader::new(reader, &job.received);
+        let appended = partial.append(counted, &job.cancel);
         *grew = partial.offset() > before;
         appended?;
         return Ok(partial.finish()?);
     }
     Err(DownloadError::Network(FetchError::TooManyRedirects))
+}
+
+/// Passes the bytes on and keeps the running total for the card's bar.
+pub(in crate) struct CountingReader<'a, R> {
+    inner: R,
+    base: u64,
+    total: &'a AtomicU64,
+}
+
+impl<'a, R> CountingReader<'a, R> {
+    /// Counts on from what `total` holds now.
+    pub(crate) fn new(inner: R, total: &'a AtomicU64) -> Self {
+        Self {
+            inner,
+            base: total.load(Ordering::Relaxed),
+            total,
+        }
+    }
+}
+
+impl<R: Read> Read for CountingReader<'_, R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.inner.read(buf)?;
+        self.base += read as u64;
+        self.total.store(self.base, Ordering::Relaxed);
+        Ok(read)
+    }
 }
 
 /// `Content-Range: bytes <offset>-<last>/<total>` for exactly the bytes asked
@@ -711,6 +825,7 @@ mod tests {
         DownloadJob {
             dir: dir.to_path_buf(),
             cancel: Arc::new(AtomicBool::new(cancelled)),
+            received: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -779,6 +894,52 @@ mod tests {
         assert_eq!(server.range_of(1), Some(format!("bytes={kept}-")));
         assert_eq!(fs::read(dir.path().join("model.gguf")).unwrap(), data);
         assert!(!dir.path().join("model.gguf.part").exists());
+    }
+
+    #[test]
+    fn the_counter_ends_at_the_size_of_the_file() {
+        let data = model_bytes();
+        let pin = pin_of(&data);
+        let server = Server::start(data, |_| Reply::Serve {
+            honour_range: true,
+            cut_after: None,
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let job = job_in(dir.path(), false);
+
+        assert_eq!(run(&server, &job, pin), Ok(()));
+
+        assert_eq!(job.received.load(Ordering::Relaxed), pin.size);
+    }
+
+    #[test]
+    fn a_resumed_download_counts_from_the_bytes_on_disk() {
+        let data = model_bytes();
+        let pin = pin_of(&data);
+        let server = Server::start(data, |index| Reply::Serve {
+            honour_range: true,
+            cut_after: (index == 0).then_some(70_000),
+        });
+        let dir = tempfile::tempdir().unwrap();
+        assert!(run_once(&server, &job_in(dir.path(), false), pin).is_err());
+        let kept = part_len(dir.path());
+        let job = job_in(dir.path(), false);
+
+        assert_eq!(run(&server, &job, pin), Ok(()));
+
+        assert_eq!(job.received.load(Ordering::Relaxed), pin.size);
+        assert!(kept > 0 && kept < pin.size);
+    }
+
+    #[test]
+    fn the_card_reports_progress_only_while_downloading() {
+        let mut card = card();
+        assert_eq!(card.progress(), None);
+        card.start().unwrap();
+        assert_eq!(card.progress(), Some((0, LOCAL_MODEL.size)));
+        assert!(card.finish(Ok(())));
+        assert_eq!(card.progress(), None);
+        assert!(card.is_finished());
     }
 
     #[test]

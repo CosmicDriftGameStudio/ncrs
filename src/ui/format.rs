@@ -6,6 +6,23 @@ use chrono::{DateTime, Local};
 use crate::fs::FileEntry;
 use crate::i18n::Msg;
 
+/// Megabytes (1 MB = 1,000,000 bytes) received and in all, and the percent
+/// done, rounded and as text for the line under a download's bar.
+pub fn download_figures(received: u64, total: u64) -> (String, String, String) {
+    let megabytes = |bytes: u64| (bytes + 500_000).div_euclid(1_000_000);
+    let percent = if total == 0 {
+        0
+    } else {
+        (u128::from(received.min(total)) * 100 + u128::from(total).div_euclid(2))
+            .div_euclid(u128::from(total))
+    };
+    (
+        megabytes(received).to_string(),
+        megabytes(total).to_string(),
+        percent.to_string(),
+    )
+}
+
 /// Human readable size, e.g. `512 B`, `1.4 KB`, `3.0 GB`.
 pub fn size(bytes: u64) -> String {
     const UNITS: [&str; 6] = ["B", "KB", "MB", "GB", "TB", "PB"];
@@ -248,6 +265,17 @@ pub fn fit_middle(text: &str, width_px: f32, font_size: f32) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn download_figures_round_to_megabytes_and_clamp_the_percentage() {
+        let figures = |received, total| download_figures(received, total);
+        assert_eq!(
+            figures(312_400_000, 639_000_000),
+            ("312".to_owned(), "639".to_owned(), "49".to_owned())
+        );
+        assert_eq!(figures(0, 0).2, "0");
+        assert_eq!(figures(900, 600).2, "100");
+    }
 
     #[test]
     fn counts_are_grouped_by_thousands() {

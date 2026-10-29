@@ -222,6 +222,9 @@ mod tests {
                 | Msg::AboutRepository
                 | Msg::SettingsRowEditor
                 | Msg::SettingsColorText
+                // Numbers and a unit only.
+                | Msg::AiModelProgress
+                | Msg::OcrModelsProgress
                 | Msg::SettingsRowAiThreads
                 // The app's name heads the macOS app menu in every language.
                 | Msg::MenuApp

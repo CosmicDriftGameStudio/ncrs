@@ -23,7 +23,10 @@ use crate::ui::review_list::reason_text;
 /// What the status column shows for a file, strongest first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HermesFileState {
-    Waiting,
+    /// Indexed, but no rule or reading has placed it yet.
+    Unread,
+    /// A rule placed it; it is filed on the next round.
+    Planned,
     Reading,
     Filed,
     /// Hermes asked the user a question about the file.
@@ -106,14 +109,15 @@ pub struct SummaryItem {
     pub count: u64,
 }
 
-/// The states that occur in the folder, in the order waiting, reading, filed,
+/// The states that occur in the folder, in the order unread, planned, reading, filed,
 /// inquiry, error. Empty while nothing is counted.
 pub fn summary_items(summary: &FolderSummary) -> Vec<SummaryItem> {
     let Some(counts) = summary.shown_counts() else {
         return Vec::new();
     };
     [
-        (HermesFileState::Waiting, counts.new + counts.planned),
+        (HermesFileState::Unread, counts.new),
+        (HermesFileState::Planned, counts.planned),
         (HermesFileState::Reading, summary.reading as u64),
         (HermesFileState::Filed, counts.filed),
         (HermesFileState::Inquiry, counts.in_review),
@@ -447,7 +451,8 @@ impl HermesColumn {
         Some(match self.stored_state(path)?.status {
             DocumentStatus::InReview => HermesFileState::Inquiry,
             DocumentStatus::Filed => HermesFileState::Filed,
-            DocumentStatus::New | DocumentStatus::Planned => HermesFileState::Waiting,
+            DocumentStatus::New => HermesFileState::Unread,
+            DocumentStatus::Planned => HermesFileState::Planned,
         })
     }
 
@@ -508,7 +513,8 @@ impl HermesColumn {
                 .find(|(failed, _)| failed == path)
                 .and_then(|(_, message)| message.lines().next())
                 .map(|first| format::ellipsize_end(first, ERROR_REASON_CHARS)),
-            HermesFileState::Waiting
+            HermesFileState::Unread
+            | HermesFileState::Planned
             | HermesFileState::Reading
             | HermesFileState::Filed
             | HermesFileState::Excluded => None,
@@ -521,7 +527,8 @@ const ERROR_REASON_CHARS: usize = 70;
 
 pub const fn state_message(state: HermesFileState) -> Msg {
     match state {
-        HermesFileState::Waiting => Msg::HermesColumnStateWaiting,
+        HermesFileState::Unread => Msg::HermesColumnStateUnread,
+        HermesFileState::Planned => Msg::HermesColumnStatePlanned,
         HermesFileState::Reading => Msg::HermesColumnStateReading,
         HermesFileState::Filed => Msg::HermesColumnStateFiled,
         HermesFileState::Inquiry => Msg::HermesColumnStateInquiry,
@@ -624,7 +631,9 @@ mod tests {
     }
 
     use ncrs_index::ReviewReason;
-    use ncrs_pipeline::{Busy, ChangedPath, ErrorEntry, WorkerSnapshot, MAX_CHANGED_PATHS};
+    use ncrs_pipeline::{
+        Busy, ChangeOutcome, ChangedPath, ErrorEntry, WorkerSnapshot, MAX_CHANGED_PATHS,
+    };
     use std::time::UNIX_EPOCH;
 
     use super::*;
@@ -689,7 +698,7 @@ mod tests {
                 .map(|(sequence, path)| ChangedPath {
                     sequence: *sequence,
                     path: p(path),
-                    failed: false,
+                    outcome: ChangeOutcome::Finished,
                 })
                 .collect(),
             changed_sequence: latest,
@@ -754,7 +763,8 @@ mod tests {
         assert_eq!(
             states,
             [
-                (HermesFileState::Waiting, 3),
+                (HermesFileState::Unread, 2),
+                (HermesFileState::Planned, 1),
                 (HermesFileState::Reading, 1),
                 (HermesFileState::Inquiry, 4),
                 (HermesFileState::Error, 5),
@@ -816,7 +826,10 @@ mod tests {
 
         let with_detail = column.status_line(path, Language::English).unwrap();
 
-        assert!(without_detail.starts_with("Inquiry: "), "{without_detail}");
+        assert!(
+            without_detail.starts_with("Please review: "),
+            "{without_detail}"
+        );
         assert!(!without_detail.contains("Suggestion"), "{without_detail}");
         assert!(
             with_detail.ends_with(" \u{b7} Suggestion: Receipts/2025/a.pdf"),
@@ -892,8 +905,8 @@ mod tests {
             ],
         ));
         let state = |name: &str| column.state_of(&p("/d").join(name));
-        assert_eq!(state("new.pdf"), Some(HermesFileState::Waiting));
-        assert_eq!(state("planned.pdf"), Some(HermesFileState::Waiting));
+        assert_eq!(state("new.pdf"), Some(HermesFileState::Unread));
+        assert_eq!(state("planned.pdf"), Some(HermesFileState::Planned));
         assert_eq!(state("review.pdf"), Some(HermesFileState::Inquiry));
         assert_eq!(state("filed.pdf"), Some(HermesFileState::Filed));
         assert_eq!(state("unknown.pdf"), None);
@@ -949,7 +962,7 @@ mod tests {
         let failure = |sequence| ChangedPath {
             sequence,
             path: p("/d/a.pdf"),
-            failed: true,
+            outcome: ChangeOutcome::Failed,
         };
         let mut snapshot = Snapshot::off();
         snapshot.changed_paths = vec![failure(1)];
@@ -968,7 +981,7 @@ mod tests {
         );
 
         snapshot.changed_paths.push(ChangedPath {
-            failed: false,
+            outcome: ChangeOutcome::Finished,
             ..failure(2)
         });
         snapshot.changed_sequence = 2;
@@ -1044,7 +1057,7 @@ mod tests {
         assert_eq!(column.wanted_listings(&listed), directories(&["/a"]));
         assert_eq!(
             column.state_of(&p("/a/x.pdf")),
-            Some(HermesFileState::Waiting)
+            Some(HermesFileState::Unread)
         );
     }
 
@@ -1167,7 +1180,7 @@ mod tests {
 
         assert_eq!(
             column.state_of(&p("/d/Scan/a.pdf")),
-            Some(HermesFileState::Waiting)
+            Some(HermesFileState::Unread)
         );
         let sub = column.summary_of(&p("/d/Scan/sub")).unwrap();
         assert_eq!(sub.direct.unwrap().new, 1);

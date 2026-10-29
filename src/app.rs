@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
+use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use iced::futures;
@@ -15,7 +16,8 @@ use iced::{event, window, Element, Length, Point, Size, Subscription, Task, Them
 
 use crate::about::{AboutCard, REPOSITORY_URL};
 use crate::ai_model::{
-    download_ai_model, AiModelCard, DownloadError as AiDownloadError, DownloadJob,
+    download_ai_model, model_is_installed, AiModelCard, DownloadError as AiDownloadError,
+    DownloadJob, InstallOutcome,
 };
 use crate::command_line::{self, CommandLine, ShellOutcome, Submission};
 use crate::command_palette::{CommandPalette, Target, RECENT_LIMIT};
@@ -111,6 +113,8 @@ use ncrs_pipeline::{Load, RunnerState};
 use tokio::sync::mpsc;
 
 /// How long the search view waits for the next keystroke before it searches.
+/// How often the bar of a model download reads the byte counter.
+const DOWNLOAD_BAR_EVERY: std::time::Duration = std::time::Duration::from_millis(250);
 const SEARCH_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(250);
 
 /// The most events one message carries, so a search that finds thousands of
@@ -303,46 +307,20 @@ fn then_install_native_menu(startup: Task<Message>) -> Task<Message> {
     startup
 }
 
-/// Turns the transfer's channel into a stream for `Subscription::run_with`.
-///
-/// Written out rather than pulled in as `tokio-stream`: it is ten lines, and the
-/// dependency would be there only to avoid them. `run_with` takes the receiver by
-/// reference and clones it per event, so the subscription and the app share one
-/// channel.
-/// Turns the transfer's channel into a stream for `Subscription::run_with`.
-///
-/// The receiver sits behind a `tokio::sync::Mutex` because `recv` needs `&mut`
-/// and the stream state has to be `Send`; `tokio`'s mutex is the one that may
-/// hold its guard across an `await`. There is a single consumer, so the lock is
-/// never contended — it is a way of moving the receiver, not of sharing it.
 /// Turns the transfer's channel into a stream `Subscription::run_with` can use.
 ///
-/// tokio's Mutex rather than std's, because the guard is held across an await and
-/// a std guard may not do that. There is a single consumer, so the lock is a
-/// way of moving the receiver rather than of sharing it.
+/// tokio's Mutex rather than std's, because the guard is held across an await.
+/// There is a single consumer, so the lock is a way of moving the receiver
+/// rather than of sharing it. `recv().await` registers the waker with the
+/// channel, so an empty channel costs nothing until a tick is sent; waking
+/// the task by hand on empty would spin it for as long as the sender lives,
+/// and the app keeps one.
 fn receiver_stream(
     shared: Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<fs::transfer::Tick>>>,
 ) -> impl futures::Stream<Item = fs::transfer::Tick> + 'static {
-    futures::stream::poll_fn(move |cx| {
-        // The lock is taken and dropped inside the poll, so nothing is borrowed
-        // across a yield point. Waking on empty rather than blocking is what
-        // `poll_fn` is for: the stream never has a place to `.await`.
-        let mut guard = match shared.try_lock() {
-            Ok(guard) => guard,
-            Err(_) => {
-                // A poll is already inside; ask to be woken rather than spin.
-                cx.waker().wake_by_ref();
-                return std::task::Poll::Pending;
-            }
-        };
-        match guard.try_recv() {
-            Ok(tick) => std::task::Poll::Ready(Some(tick)),
-            Err(mpsc::error::TryRecvError::Empty) => {
-                cx.waker().wake_by_ref();
-                std::task::Poll::Pending
-            }
-            Err(mpsc::error::TryRecvError::Disconnected) => std::task::Poll::Ready(None),
-        }
+    futures::stream::unfold(shared, |channel| async move {
+        let tick = channel.lock().await.recv().await?;
+        Some((tick, channel))
     })
 }
 
@@ -1198,7 +1176,7 @@ pub struct App {
     ocr_models_generation: u64,
     /// Downloads the OCR models into the folder, on a blocking thread.
     /// Injected so tests need no network.
-    download_ocr_models: fn(&Path) -> Result<(), DownloadError>,
+    download_ocr_models: fn(&Path, &AtomicU64) -> Result<(), DownloadError>,
     /// The card that asks before the AI model is downloaded, while it is up.
     ai_model: Option<AiModelCard>,
     /// The dialog that asks for access to the home folder, while it is up.
@@ -1222,6 +1200,12 @@ pub struct App {
     /// The card opened by itself for a missing model; once per start, so a
     /// "Cancel" is not asked again.
     ai_model_asked: bool,
+    /// Files the user asked to read again and whose end is not yet reported.
+    reading_again: crate::reading_again::ReadingAgain,
+    /// The module is being rebuilt after an AI setting changed: its
+    /// generation and the filing config it starts with.
+    filing_restart: Option<(u64, Filing)>,
+    filing_restart_generation: u64,
     /// Downloads the AI model, on a blocking thread. Injected so tests need no
     /// network.
     download_ai_model: fn(&DownloadJob) -> Result<(), AiDownloadError>,
@@ -2621,6 +2605,9 @@ impl App {
     /// Replaces nothing: the caller has dropped any module and pipeline before.
     fn start_filing_module(&mut self, filing: &Filing) -> Task<Message> {
         self.filing_config = filing.clone();
+        // A new runner counts its plans from zero again; the old count would
+        // keep its first plans from ever being filed.
+        self.plans_filed_for = 0;
         let Some(store) = self.filing_key_store.clone() else {
             return Task::none();
         };
@@ -2892,6 +2879,9 @@ impl App {
             ai_model: None,
             ai_model_generation: 0,
             ai_model_asked: false,
+            reading_again: crate::reading_again::ReadingAgain::default(),
+            filing_restart: None,
+            filing_restart_generation: 0,
             download_ai_model,
             grant_dialog: false,
             sandbox: fs::SandboxAccess::detect(None),
@@ -2989,6 +2979,20 @@ impl App {
             if self.pipeline.is_some() || self.filing_status.page_open() {
                 iced::time::every(SNAPSHOT_EVERY)
                     .map(|_| Message::FilingStatus(FilingStatusMessage::Tick))
+            } else {
+                Subscription::none()
+            },
+            // The bar of a running model download reads a counter the download
+            // thread fills; nothing else wakes the view.
+            if self.ai_model_download_runs() {
+                iced::time::every(DOWNLOAD_BAR_EVERY)
+                    .map(|_| Message::AiModel(AiModelMessage::Progress))
+            } else {
+                Subscription::none()
+            },
+            if self.ocr_models_download_runs() {
+                iced::time::every(DOWNLOAD_BAR_EVERY)
+                    .map(|_| Message::OcrModels(OcrModelsMessage::Progress))
             } else {
                 Subscription::none()
             },
@@ -5271,6 +5275,8 @@ impl App {
     fn dialog_button_count(&self) -> usize {
         if self.about.is_some() {
             3
+        } else if self.model_card_has_one_button() {
+            1
         } else if self.delete_dialog.is_some()
             || self.ocr_models.is_some()
             || self.ai_model.is_some()
@@ -5282,6 +5288,21 @@ impl App {
         } else {
             0
         }
+    }
+
+    /// A model card that has nothing left to ask: it only reports, and has
+    /// Close or Done. The AI card that could not turn the AI on has a second
+    /// button.
+    fn model_card_has_one_button(&self) -> bool {
+        let ocr = self
+            .ocr_models
+            .as_ref()
+            .is_some_and(|card| card.is_installed() || card.is_finished());
+        let ai = self.ai_model.as_ref().is_some_and(|card| {
+            card.is_installed()
+                || (card.is_finished() && card.outcome() != Some(InstallOutcome::StillOff))
+        });
+        ocr || ai
     }
 
     /// Enter in a button dialog: whatever the focused button does.
@@ -5299,6 +5320,20 @@ impl App {
                 about_ui::REPOSITORY_FOCUS => self.update_about(AboutMessage::OpenRepository),
                 about_ui::LICENSES_FOCUS => self.update_about(AboutMessage::OpenLicenses),
                 _ => self.update_about(AboutMessage::Close),
+            };
+        }
+        if self.model_card_has_one_button() {
+            return if self.ocr_models.is_some() {
+                self.close_ocr_models()
+            } else {
+                self.close_ai_model()
+            };
+        }
+        if self.ai_model.as_ref().is_some_and(AiModelCard::is_finished) {
+            return if self.dialog_focus == ai_model_ui::DOWNLOAD_FOCUS {
+                self.update_ai_model(AiModelMessage::ShowAiSetting)
+            } else {
+                self.close_ai_model()
             };
         }
         if self.ocr_models.is_some() {
@@ -5567,6 +5602,9 @@ impl App {
     }
 
     fn process_again(&mut self, path: &Path) -> Task<Message> {
+        let since = self
+            .live_pipeline()
+            .map_or(0, |runner| runner.snapshot().changed_sequence);
         let queued = !self
             .hermes_column
             .state_of(path)
@@ -5576,6 +5614,7 @@ impl App {
                 .is_some_and(|runner| runner.process_again(path));
         let text = if queued {
             self.invalidate_hermes_path(path);
+            self.reading_again.ask(path.to_path_buf(), since);
             fill_template(
                 self.lang.text(Msg::StatusHermesProcessingAgain),
                 &[(
@@ -8192,6 +8231,7 @@ impl App {
         match message {
             ReviewListMessage::Open => self.open_review_list(),
             ReviewListMessage::Close => self.close_review_list(),
+            ReviewListMessage::ReadAgainWithAi => self.read_reviews_again_with_ai(),
             ReviewListMessage::Loaded { generation, result } => {
                 if generation != self.review_list_generation {
                     return Task::none();
@@ -8362,6 +8402,45 @@ impl App {
             Task::none()
         };
         Task::batch([self.run_review_load(), counts])
+    }
+
+    /// Hands every open review to Hermes again, now that the AI can read it.
+    /// Only on the click: nothing is re-read behind the user's back.
+    fn read_reviews_again_with_ai(&mut self) -> Task<Message> {
+        let Some(paths) = self.review_list.as_ref().map(|view| {
+            view.rows()
+                .iter()
+                .map(|row| row.path.clone())
+                .collect::<Vec<_>>()
+        }) else {
+            return Task::none();
+        };
+        let since = self
+            .live_pipeline()
+            .map_or(0, |runner| runner.snapshot().changed_sequence);
+        let queued: Vec<PathBuf> = paths
+            .into_iter()
+            .filter(|path| {
+                self.live_pipeline()
+                    .is_some_and(|runner| runner.process_again(path))
+            })
+            .collect();
+        if queued.is_empty() {
+            return Task::none();
+        }
+        for path in &queued {
+            self.invalidate_hermes_path(path);
+            self.reading_again.ask(path.clone(), since);
+        }
+        let text = if queued.len() == 1 {
+            self.lang.text(Msg::StatusReviewReadAgain).to_owned()
+        } else {
+            fill_template(
+                self.lang.text(Msg::StatusReviewsReadAgain),
+                &[("{count}", &queued.len().to_string())],
+            )
+        };
+        self.show_notice(text)
     }
 
     fn review_field_guide(&self) -> review_list_ui::FieldGuide {
@@ -9234,6 +9313,11 @@ impl App {
                 self.apply_setting(change, *config)
             }
             Err(error) => {
+                if matches!(change, SettingChange::AiEnabled(true)) {
+                    if let Some(card) = self.ai_model.as_mut() {
+                        card.set_outcome(InstallOutcome::StillOff);
+                    }
+                }
                 let failure = self.settings_write_failure(&error);
                 let at_its_row = match self.settings.as_mut() {
                     Some(state) => state.refused(&change, failure.clone()),
@@ -9263,19 +9347,28 @@ impl App {
         release_focus()
     }
 
-    fn fresh_settings_state(&self) -> settings_ui::SettingsState {
-        let ocr_models_present = self
-            .filing_index_path
+    fn ocr_models_present(&self) -> bool {
+        self.filing_index_path
             .as_deref()
             .and_then(crate::filing::ocr_models_dir)
-            .is_some_and(|dir| dir.read_dir().is_ok_and(|mut files| files.next().is_some()));
+            .is_some_and(|dir| dir.read_dir().is_ok_and(|mut files| files.next().is_some()))
+    }
+
+    fn fresh_settings_state(&self) -> settings_ui::SettingsState {
+        let ocr_models_present = self.ocr_models_present();
         // Read again rather than kept from the start: the tab shows the values
         // as the file spells them, and the file may have changed since.
         let file = match &self.config_path {
             Some(path) => config::load(path).map(Box::new),
             None => Ok(Box::default()),
         };
-        settings_ui::SettingsState::new(ocr_models_present, file, crate::fs::runs_in_app_sandbox())
+        let mut state = settings_ui::SettingsState::new(
+            ocr_models_present,
+            file,
+            crate::fs::runs_in_app_sandbox(),
+        );
+        state.text_recognition_built_in = crate::ocr_models::system_reads_scans();
+        state
     }
 
     fn close_settings(&mut self) -> Task<Message> {
@@ -9343,9 +9436,24 @@ impl App {
                 Task::none()
             }
             SettingChange::Servers(_) => self.take_over_servers(config.servers),
-            SettingChange::HermesEnabled(_)
-            | SettingChange::AiEnabled(_)
-            | SettingChange::AiProvider(_) => {
+            SettingChange::AiEnabled(_) | SettingChange::AiProvider(_) => {
+                let (applies, task) = self.apply_ai_change(config.filing);
+                let outcome = if matches!(applies, SavedFilingApplies::Now) {
+                    InstallOutcome::TurnedOn
+                } else {
+                    InstallOutcome::TurnedOnAtNextStart
+                };
+                if let Some(card) = self.ai_model.as_mut() {
+                    card.set_outcome(outcome);
+                }
+                if matches!(applies, SavedFilingApplies::AtNextStart) {
+                    let notice = self.lang.text(Msg::SettingsSavedNextStart).to_owned();
+                    Task::batch([task, self.show_notice(notice)])
+                } else {
+                    task
+                }
+            }
+            SettingChange::HermesEnabled(_) => {
                 let (applies, task) = self.apply_saved_filing(config.filing);
                 if matches!(applies, SavedFilingApplies::AtNextStart) {
                     let notice = self.lang.text(Msg::SettingsSavedNextStart).to_owned();
@@ -9486,6 +9594,7 @@ impl App {
             OcrModelsMessage::Open => self.open_ocr_models(),
             OcrModelsMessage::Close => self.close_ocr_models(),
             OcrModelsMessage::Download => self.start_ocr_models_download(),
+            OcrModelsMessage::Progress => Task::none(),
             OcrModelsMessage::Downloaded { generation, result } => {
                 self.ocr_models_downloaded(generation, result)
             }
@@ -9504,7 +9613,11 @@ impl App {
             .filing_index_path
             .as_deref()
             .and_then(crate::filing::ocr_models_dir);
-        self.ocr_models = Some(OcrModelsCard::new(target));
+        self.ocr_models = Some(if self.ocr_models_present() {
+            OcrModelsCard::installed(target)
+        } else {
+            OcrModelsCard::new(target)
+        });
         Task::none()
     }
 
@@ -9526,10 +9639,11 @@ impl App {
         let Some(target) = self.ocr_models.as_mut().and_then(OcrModelsCard::start) else {
             return Task::none();
         };
+        let received = self.ocr_models.as_ref().map(OcrModelsCard::received);
         let generation = self.ocr_models_generation;
         let download = self.download_ocr_models;
         Task::perform(
-            tokio::task::spawn_blocking(move || download(&target)),
+            tokio::task::spawn_blocking(move || download(&target, &received.unwrap_or_default())),
             move |joined| {
                 let result = joined.unwrap_or_else(|join| {
                     Err(DownloadError::Network(FetchError::Network(
@@ -9555,16 +9669,33 @@ impl App {
         if !card.finish(result) {
             return Task::none();
         }
-        self.ocr_models = None;
         if let Some(settings) = self.settings.as_mut() {
             settings.ocr_models_present = true;
         }
-        let notice = self.lang.text(Msg::OcrModelsInstalled).to_owned();
-        self.show_notice(notice)
+        Task::none()
+    }
+
+    /// The card is open and its download has not ended: the bar needs ticks.
+    fn ai_model_download_runs(&self) -> bool {
+        self.ai_model
+            .as_ref()
+            .is_some_and(AiModelCard::is_downloading)
+    }
+
+    fn ocr_models_download_runs(&self) -> bool {
+        self.ocr_models
+            .as_ref()
+            .is_some_and(OcrModelsCard::is_downloading)
     }
 
     fn update_ai_model(&mut self, message: AiModelMessage) -> Task<Message> {
         match message {
+            AiModelMessage::Progress => Task::none(),
+            AiModelMessage::ShowAiSetting => {
+                self.ai_model = None;
+                let row = self.lang.text(Msg::SettingsRowAiEnabled).to_owned();
+                self.show_setting(crate::messages::SettingsFeature::Hermes, Some(row))
+            }
             AiModelMessage::Open => self.open_ai_model(),
             AiModelMessage::Close => self.close_ai_model(),
             AiModelMessage::Download => self.start_ai_model_download(),
@@ -9595,7 +9726,11 @@ impl App {
         let has_partial = target
             .as_deref()
             .is_some_and(|dir| ncrs_ai::has_partial_download(dir, &ncrs_ai::LOCAL_MODEL));
-        self.ai_model = Some(AiModelCard::new(target, has_partial));
+        self.ai_model = Some(if target.as_deref().is_some_and(model_is_installed) {
+            AiModelCard::installed(target)
+        } else {
+            AiModelCard::new(target, has_partial)
+        });
         Task::none()
     }
 
@@ -9658,12 +9793,26 @@ impl App {
         if !card.finish(result) {
             return Task::none();
         }
-        self.ai_model = None;
+        self.dialog_focus = ai_model_ui::CANCEL_FOCUS;
         if let Some(module) = self.filing.as_ref() {
             module.refresh_ai_model();
         }
-        let notice = self.lang.text(Msg::AiModelInstalled).to_owned();
-        self.show_notice(notice)
+        let ai_is_on = self.filing_config.ai != crate::config::AiSetting::Off;
+        let can_write = self.config_path.is_some();
+        let (outcome, task) = if ai_is_on {
+            (InstallOutcome::InUse, Task::none())
+        } else if can_write {
+            (
+                InstallOutcome::TurningOn,
+                self.write_setting(SettingChange::AiEnabled(true)),
+            )
+        } else {
+            (InstallOutcome::StillOff, Task::none())
+        };
+        if let Some(open_card) = self.ai_model.as_mut() {
+            open_card.set_outcome(outcome);
+        }
+        task
     }
 
     fn update_grant(&mut self, message: GrantMessage) -> Task<Message> {
@@ -10291,9 +10440,19 @@ impl App {
     }
 
     fn filing_badge(&self) -> Option<statusbar::FilingBadge<Message>> {
+        if self.filing_restart.is_some() {
+            return Some(statusbar::FilingBadge {
+                text: self.lang.text(Msg::StatusHermesRestarting).to_owned(),
+                failing: false,
+                on_press: Message::FilingStatus(FilingStatusMessage::Open),
+            });
+        }
         let status = self.hermes_status()?;
         Some(statusbar::FilingBadge {
-            text: status.line(self.lang),
+            text: self
+                .reading_again
+                .line(self.lang)
+                .unwrap_or_else(|| status.line(self.lang)),
             failing: status.is_failing(),
             on_press: Message::FilingStatus(FilingStatusMessage::Open),
         })
@@ -10507,6 +10666,15 @@ impl App {
                 }
                 Task::none()
             }
+            HermesColumnMessage::ReadAgainEnded { path, result } => {
+                let text = crate::reading_again::notice(
+                    self.lang,
+                    &path,
+                    &crate::reading_again::Ending::Finished,
+                    result.ok(),
+                );
+                self.show_notice(text)
+            }
             HermesColumnMessage::Excluded { paths, result } => self.paths_excluded(&paths, result),
         }
     }
@@ -10616,6 +10784,100 @@ impl App {
         )
     }
 
+    /// Reports the files whose new reading has ended. Whether a finished file
+    /// waits for the user is in the index, so that is asked on the blocking
+    /// pool and the notice follows.
+    fn settle_reading_again(&mut self) -> Task<Message> {
+        if self.reading_again.is_empty() {
+            return Task::none();
+        }
+        let ended = self.reading_again.settle(self.filing_status.snapshot());
+        let tasks: Vec<Task<Message>> = ended
+            .into_iter()
+            .map(|(path, ending)| {
+                let access = self
+                    .filing
+                    .as_ref()
+                    .and_then(FilingModule::review_access)
+                    .filter(|_| ending == crate::reading_again::Ending::Finished);
+                match access {
+                    Some(review) => {
+                        let asked = path.clone();
+                        Task::perform(
+                            tokio::task::spawn_blocking(move || {
+                                review.suggestion_for(&asked).map(|found| found.is_some())
+                            }),
+                            move |joined| {
+                                Message::HermesColumn(HermesColumnMessage::ReadAgainEnded {
+                                    path: path.clone(),
+                                    result: joined.unwrap_or_else(|err| Err(err.to_string())),
+                                })
+                            },
+                        )
+                    }
+                    None => {
+                        let text = crate::reading_again::notice(self.lang, &path, &ending, None);
+                        self.show_notice(text)
+                    }
+                }
+            })
+            .collect();
+        Task::batch(tasks)
+    }
+
+    /// The old module and runner are gone from the blocking pool: the new one
+    /// starts from the config the change left.
+    fn filing_restarted(&mut self, generation: u64) -> Task<Message> {
+        match self.filing_restart.take() {
+            Some((current, filing)) if current == generation => {
+                let task = self.start_filing_module(&filing);
+                self.refresh_filing_snapshot();
+                task
+            }
+            other => {
+                self.filing_restart = other;
+                Task::none()
+            }
+        }
+    }
+
+    /// An AI setting changed. The module is rebuilt now when nothing is moving
+    /// files and it may be replaced; otherwise the saved config takes over at
+    /// the next start. Joining the runner's threads blocks, so both are
+    /// dropped on the blocking pool.
+    fn apply_ai_change(&mut self, filing: Filing) -> (SavedFilingApplies, Task<Message>) {
+        if let Some((_, pending)) = self.filing_restart.as_mut() {
+            self.filing_config = filing.clone();
+            *pending = filing;
+            return (SavedFilingApplies::Now, Task::none());
+        }
+        let Some(module) = self.filing.as_ref() else {
+            return self.apply_saved_filing(filing);
+        };
+        let rebuildable =
+            self.filing_key_store.is_some() && module.can_be_replaced() && !self.jobs.is_busy();
+        if !rebuildable {
+            self.filing_config = filing;
+            return (SavedFilingApplies::AtNextStart, Task::none());
+        }
+        self.filing_restart_generation = self.filing_restart_generation.wrapping_add(1);
+        let generation = self.filing_restart_generation;
+        self.filing_config = filing.clone();
+        self.filing_restart = Some((generation, filing));
+        drop(self.reading_again.give_up());
+        let pipeline = self.pipeline.take();
+        let old_module = self.filing.take();
+        self.refresh_filing_snapshot();
+        let dropped = Task::perform(
+            tokio::task::spawn_blocking(move || {
+                drop(pipeline);
+                drop(old_module);
+            }),
+            move |_| Message::FilingStatus(FilingStatusMessage::Restarted(generation)),
+        );
+        (SavedFilingApplies::Now, dropped)
+    }
+
     fn open_filing_status(&mut self) -> Task<Message> {
         if self.blocking_overlay_is_open() {
             return Task::none();
@@ -10652,9 +10914,11 @@ impl App {
                     self.open_filing_status()
                 }
             }
+            FilingStatusMessage::Restarted(generation) => self.filing_restarted(generation),
             FilingStatusMessage::Tick => {
                 self.refresh_filing_snapshot();
                 self.refresh_hermes_column();
+                let settled = self.settle_reading_again();
                 let plans_made = self
                     .live_pipeline()
                     .map_or(0, |runner| runner.snapshot().plans_made);
@@ -10671,9 +10935,9 @@ impl App {
                         Task::none()
                     };
                 if self.filing_status.tick_wants_figures() {
-                    Task::batch([filing, counts, self.request_index_figures()])
+                    Task::batch([filing, counts, settled, self.request_index_figures()])
                 } else {
-                    Task::batch([filing, counts])
+                    Task::batch([filing, counts, settled])
                 }
             }
             FilingStatusMessage::TogglePause => {
@@ -12570,10 +12834,13 @@ impl App {
             app_version: env!("CARGO_PKG_VERSION"),
             ocr_models: None,
             ocr_models_generation: 0,
-            download_ocr_models: |_| Err(DownloadError::NoDataFolder),
+            download_ocr_models: |_, _| Err(DownloadError::NoDataFolder),
             ai_model: None,
             ai_model_generation: 0,
             ai_model_asked: false,
+            reading_again: crate::reading_again::ReadingAgain::default(),
+            filing_restart: None,
+            filing_restart_generation: 0,
             download_ai_model: |_| Err(AiDownloadError::NoDataFolder),
             grant_dialog: false,
             sandbox: fs::SandboxAccess::inactive(),
@@ -18389,6 +18656,58 @@ mod filing_setup_tests {
         assert!(app.filing.as_ref().unwrap().has_configured_locations());
     }
 
+    fn ai_filing() -> Filing {
+        Filing {
+            ai: crate::config::AiSetting::Local { threads: None },
+            ..saved_filing()
+        }
+    }
+
+    #[tokio::test]
+    async fn an_ai_change_rebuilds_the_pipeline_and_a_stale_answer_changes_nothing() {
+        let mut app = app_that_can_start_a_module();
+        app.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
+        app.pipeline = Some(running_pipeline());
+
+        let (applies, _task) = app.apply_ai_change(ai_filing());
+
+        assert!(matches!(applies, SavedFilingApplies::Now));
+        assert!(app.pipeline.is_none() && app.filing.is_none());
+        let (generation, _) = app.filing_restart.clone().expect("a restart is pending");
+        drop(app.filing_restarted(generation.wrapping_add(1)));
+        assert!(app.filing_restart.is_some(), "a stale answer is ignored");
+        drop(app.filing_restarted(generation));
+        assert!(app.filing_restart.is_none());
+    }
+
+    #[tokio::test]
+    async fn an_ai_change_waits_for_the_next_start_while_a_job_runs() {
+        let mut app = app_that_can_start_a_module();
+        app.filing = Some(FilingModule::in_phase_with_locations(Phase::Ready));
+        app.pipeline = Some(running_pipeline());
+        app.jobs.enqueue(jobs::Job {
+            kind: jobs::JobKind::File,
+            path: PathBuf::new(),
+            total: None,
+        });
+
+        let (applies, _task) = app.apply_ai_change(ai_filing());
+
+        assert!(matches!(applies, SavedFilingApplies::AtNextStart));
+        assert!(app.pipeline.is_some() && app.filing.is_some());
+        assert!(app.filing_restart.is_none());
+    }
+
+    #[test]
+    fn a_new_module_files_its_first_plans_even_after_an_older_runner_made_many() {
+        let mut app = app_that_can_start_a_module();
+        app.plans_filed_for = 7;
+
+        drop(app.start_filing_module(&saved_filing()));
+
+        assert_eq!(app.plans_filed_for, 0);
+    }
+
     #[tokio::test]
     async fn a_running_module_with_locations_keeps_them_until_the_next_start() {
         let mut app = app_that_can_start_a_module();
@@ -19522,12 +19841,12 @@ mod ocr_models_tests {
     /// Only the tests that never press Download use the counting one.
     static DOWNLOADS: AtomicUsize = AtomicUsize::new(0);
 
-    fn counting_download(_: &Path) -> Result<(), DownloadError> {
+    fn counting_download(_: &Path, _: &AtomicU64) -> Result<(), DownloadError> {
         DOWNLOADS.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
-    fn quiet_download(_: &Path) -> Result<(), DownloadError> {
+    fn quiet_download(_: &Path, _: &AtomicU64) -> Result<(), DownloadError> {
         Ok(())
     }
 
@@ -19611,7 +19930,7 @@ mod ocr_models_tests {
     }
 
     #[tokio::test]
-    async fn a_finished_download_closes_the_card_and_says_so() {
+    async fn a_finished_download_keeps_the_card_and_says_what_happened() {
         let mut app = app_with_data_folder();
         send(&mut app, OcrModelsMessage::Open);
         send(&mut app, OcrModelsMessage::Download);
@@ -19623,11 +19942,27 @@ mod ocr_models_tests {
                 result: Ok(()),
             },
         );
-        assert!(app.ocr_models_for_test().is_none());
-        assert_eq!(
-            app.notice_for_test(),
-            Some("Text recognition models downloaded. Scanned pages are read from now on.")
+        let card = app.ocr_models_for_test().unwrap();
+        assert!(card.is_finished(), "the card stays and says what happened");
+        assert_eq!(card.progress(), None, "the bar goes away with the download");
+    }
+
+    #[tokio::test]
+    async fn the_ocr_bar_ticks_only_while_the_download_runs() {
+        let mut app = app_with_data_folder();
+        send(&mut app, OcrModelsMessage::Open);
+        assert!(!app.ocr_models_download_runs());
+        send(&mut app, OcrModelsMessage::Download);
+        assert!(app.ocr_models_download_runs());
+        let generation = app.ocr_models_generation;
+        send(
+            &mut app,
+            OcrModelsMessage::Downloaded {
+                generation,
+                result: Ok(()),
+            },
         );
+        assert!(!app.ocr_models_download_runs());
     }
 
     #[tokio::test]
@@ -19779,7 +20114,7 @@ mod ai_model_tests {
     }
 
     #[tokio::test]
-    async fn a_finished_download_closes_the_card_and_says_so() {
+    async fn a_finished_download_keeps_the_card_and_says_what_happened() {
         let mut app = app_with_data_folder();
         send(&mut app, AiModelMessage::Open);
         send(&mut app, AiModelMessage::Download);
@@ -19791,10 +20126,54 @@ mod ai_model_tests {
                 result: Ok(()),
             },
         );
-        assert!(app.ai_model_for_test().is_none());
+        let card = app.ai_model_for_test().unwrap();
+        assert!(card.is_finished(), "the card stays and says what happened");
         assert_eq!(
-            app.notice_for_test(),
-            Some("AI model downloaded. Documents the rules cannot read are passed to it from now on.")
+            card.outcome(),
+            Some(InstallOutcome::StillOff),
+            "the config of this app cannot be written, so the AI stays off"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_bar_ticks_only_while_the_download_runs() {
+        let mut app = app_with_data_folder();
+        assert!(!app.ai_model_download_runs());
+        send(&mut app, AiModelMessage::Open);
+        assert!(!app.ai_model_download_runs(), "an open card alone is idle");
+        send(&mut app, AiModelMessage::Download);
+        assert!(app.ai_model_download_runs());
+        let generation = app.ai_model_generation;
+        send(
+            &mut app,
+            AiModelMessage::Downloaded {
+                generation,
+                result: Ok(()),
+            },
+        );
+        assert!(
+            !app.ai_model_download_runs(),
+            "a finished card needs no ticks"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_finished_download_turns_the_ai_on_when_the_config_can_be_written() {
+        let mut app = app_with_data_folder();
+        app.config_path = Some(PathBuf::from("/example/config.toml"));
+        send(&mut app, AiModelMessage::Open);
+        send(&mut app, AiModelMessage::Download);
+        let generation = app.ai_model_generation;
+        send(
+            &mut app,
+            AiModelMessage::Downloaded {
+                generation,
+                result: Ok(()),
+            },
+        );
+        assert_eq!(
+            app.ai_model_for_test().unwrap().outcome(),
+            Some(InstallOutcome::TurningOn)
         );
     }
 
@@ -23673,5 +24052,56 @@ mod hermes_roles_and_off_tests {
         let settings = app.settings_for_test().unwrap();
         assert_eq!(settings.feature, SettingsFeature::Hermes);
         assert!(app.status_error().is_some());
+    }
+}
+
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[cfg(test)]
+mod receiver_stream_tests {
+    use std::pin::Pin;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::task::{Context, Poll, Wake, Waker};
+
+    use futures::Stream;
+
+    use super::*;
+
+    struct CountingWaker(AtomicUsize);
+
+    impl Wake for CountingWaker {
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    fn poll_once<S: Stream + Unpin>(
+        stream: &mut S,
+        counting: &Arc<CountingWaker>,
+    ) -> Poll<Option<S::Item>> {
+        let waker = Waker::from(Arc::clone(counting));
+        Pin::new(stream).poll_next(&mut Context::from_waker(&waker))
+    }
+
+    #[test]
+    fn an_empty_channel_is_pending_without_waking_anyone() {
+        let (sender, receiver) = mpsc::unbounded_channel();
+        let wakes = Arc::new(CountingWaker(AtomicUsize::new(0)));
+        let mut stream = Box::pin(receiver_stream(Arc::new(tokio::sync::Mutex::new(receiver))));
+
+        assert!(poll_once(&mut stream, &wakes).is_pending());
+        assert!(poll_once(&mut stream, &wakes).is_pending());
+        assert_eq!(wakes.0.load(Ordering::SeqCst), 0, "no busy polling");
+
+        sender
+            .send(fs::transfer::Tick { done: 1, total: 2 })
+            .unwrap();
+        assert_eq!(wakes.0.load(Ordering::SeqCst), 1, "a tick wakes the task");
+        assert_eq!(
+            poll_once(&mut stream, &wakes),
+            Poll::Ready(Some(fs::transfer::Tick { done: 1, total: 2 }))
+        );
+
+        drop(sender);
+        assert_eq!(poll_once(&mut stream, &wakes), Poll::Ready(None));
     }
 }

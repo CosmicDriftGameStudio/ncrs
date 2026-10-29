@@ -306,17 +306,26 @@ fn sub_groups(excluded: bool) -> [Vec<HermesAction>; 4] {
     ]
 }
 
-/// The index after (or before, for a negative `delta`) `from` in `entries`
-/// that can be used; stays at `from` at either end.
-fn step_usable(entries: &[SubEntry], from: usize, delta: isize) -> usize {
-    let mut candidates: Box<dyn Iterator<Item = usize>> = if delta < 0 {
-        Box::new((0..from).rev())
-    } else {
-        Box::new(from + 1..entries.len())
-    };
-    candidates
-        .find(|&index| entries.get(index).is_some_and(|entry| entry.is_usable()))
+/// The usable index after (or before, for a negative `delta`) `from`, going
+/// round: past either end it continues at the other one. Stays at `from` when
+/// no other entry can be used.
+fn next_usable_index(is_usable: &[bool], from: usize, delta: isize) -> usize {
+    let count = is_usable.len();
+    (1..count)
+        .map(|step| {
+            if delta < 0 {
+                (from + count - step % count) % count
+            } else {
+                (from + step) % count
+            }
+        })
+        .find(|&index| is_usable.get(index).copied().unwrap_or(false))
         .unwrap_or(from)
+}
+
+fn step_usable(entries: &[SubEntry], from: usize, delta: isize) -> usize {
+    let usable: Vec<bool> = entries.iter().map(|entry| entry.is_usable()).collect();
+    next_usable_index(&usable, from, delta)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -435,24 +444,15 @@ impl ContextMenu {
     }
 
     /// Moves to the next usable entry in the direction of `delta`, skipping
-    /// separators and greyed-out ones; stays put at either end. In the open
-    /// submenu it moves there.
+    /// separators and greyed-out ones, and goes round at either end. In the
+    /// open submenu it moves there.
     pub fn move_by(&mut self, delta: isize) {
         if let Some(sub) = self.open_sub_mut() {
             sub.selected = step_usable(&sub.entries, sub.selected, delta);
             return;
         }
-        let candidates: Vec<usize> = if delta < 0 {
-            (0..self.selected).rev().collect()
-        } else {
-            (self.selected + 1..self.entries.len()).collect()
-        };
-        if let Some(next) = candidates
-            .into_iter()
-            .find(|&index| self.entries.get(index).is_some_and(|e| e.is_usable()))
-        {
-            self.selected = next;
-        }
+        let usable: Vec<bool> = self.entries.iter().map(|entry| entry.is_usable()).collect();
+        self.selected = next_usable_index(&usable, self.selected, delta);
     }
 
     pub fn select_first(&mut self) {
@@ -901,12 +901,16 @@ mod tests {
         menu.move_by(-1);
         assert_eq!(
             selected_action(&menu),
+            ContextAction::DeletePermanently,
+            "up from the top goes round to the last entry"
+        );
+        menu.move_by(1);
+        assert_eq!(
+            selected_action(&menu),
             ContextAction::Open,
-            "stays at the top"
+            "down from the bottom goes round to the first entry"
         );
         menu.select_last();
-        assert_eq!(selected_action(&menu), ContextAction::DeletePermanently);
-        menu.move_by(1);
         assert_eq!(selected_action(&menu), ContextAction::DeletePermanently);
         menu.move_by(-1);
         assert_eq!(selected_action(&menu), ContextAction::Trash);
@@ -914,6 +918,42 @@ mod tests {
         assert_eq!(selected_action(&menu), ContextAction::CopyName);
         menu.select_first();
         assert_eq!(selected_action(&menu), ContextAction::Open);
+    }
+
+    #[test]
+    fn going_round_in_the_menu_skips_greyed_out_entries_at_both_ends() {
+        let mut menu = menu_with(&[ContextAction::Open, ContextAction::DeletePermanently]);
+        let first = selected_action(&menu);
+        assert_ne!(first, ContextAction::Open);
+        menu.move_by(-1);
+        assert_eq!(selected_action(&menu), ContextAction::Trash);
+        menu.move_by(1);
+        assert_eq!(selected_action(&menu), first);
+    }
+
+    #[test]
+    fn going_round_in_the_submenu_skips_greyed_out_entries_at_both_ends() {
+        let mut menu = hermes_menu(&[HermesAction::ShowSuggestion, HermesAction::Inspect]);
+        menu.select_last();
+        menu.open_submenu();
+        menu.select_first();
+        let first = menu.selected_hermes_action();
+        assert_eq!(first, Some(HermesAction::HandToInbox));
+        menu.move_by(-1);
+        assert_eq!(menu.selected_hermes_action(), Some(HermesAction::Exclude));
+        menu.move_by(1);
+        assert_eq!(menu.selected_hermes_action(), first);
+    }
+
+    #[test]
+    fn going_round_skips_greyed_out_entries_at_both_ends() {
+        let usable = [false, true, false, true, false];
+        assert_eq!(next_usable_index(&usable, 3, 1), 1, "past the end");
+        assert_eq!(next_usable_index(&usable, 1, -1), 3, "before the start");
+        assert_eq!(next_usable_index(&usable, 1, 1), 3);
+        assert_eq!(next_usable_index(&[true], 0, 1), 0, "alone");
+        assert_eq!(next_usable_index(&[false, false], 1, -1), 1, "none usable");
+        assert_eq!(next_usable_index(&[], 0, 1), 0, "empty");
     }
 
     #[test]
@@ -1272,7 +1312,17 @@ mod tests {
         menu.select_last();
         assert_eq!(menu.selected_hermes_action(), Some(HermesAction::Inspect));
         menu.move_by(1);
-        assert_eq!(menu.selected_hermes_action(), Some(HermesAction::Inspect));
+        assert_eq!(
+            menu.selected_hermes_action(),
+            Some(HermesAction::ShowSuggestion),
+            "down from the last entry goes round to the first"
+        );
+        menu.move_by(-1);
+        assert_eq!(
+            menu.selected_hermes_action(),
+            Some(HermesAction::Inspect),
+            "up from the first entry goes round to the last"
+        );
         menu.select_first();
         assert_eq!(
             menu.selected_hermes_action(),

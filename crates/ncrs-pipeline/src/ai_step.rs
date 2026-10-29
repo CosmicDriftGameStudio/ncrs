@@ -5,7 +5,7 @@ use ncrs_ai::{AiError, ExtractedField, ExtractionRequest, Provider};
 use ncrs_index::{Document, DocumentFields, DocumentStatus, Field, IndexError, ReviewReason};
 use ncrs_intake::{plan, LocationMode, PlanInput, Planning, FIELD_ORDER};
 
-use crate::step::{with_index_value, IndexAccess, Item, Step, StepOutcome};
+use crate::step::{resolve_reviews_of, with_index_value, IndexAccess, Item, Step, StepOutcome};
 use crate::steps::NO_INDEX;
 
 /// A field the provider is at least this sure about is written. Below it the
@@ -171,6 +171,7 @@ impl AiStep {
                     index.set_document_fields(id, &filing.fields)?;
                 }
                 index.set_document_status(id, DocumentStatus::Planned)?;
+                resolve_reviews_of(index, id)?;
             }
             Ok::<_, IndexError>(Some(planning))
         })
