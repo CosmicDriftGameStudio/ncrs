@@ -9,7 +9,7 @@ use ncrs_intake::{plan, PlanInput, Planning, StabilityTracker, TextChain, TextEr
 use ncrs_intake::{settle_location, take_in, IntakeError, Location, LocationMode, Outcome};
 
 use crate::ai_step::AiStep;
-use crate::step::{with_index_value, IndexAccess, Item, Step, StepOutcome};
+use crate::step::{resolve_reviews_of, with_index_value, IndexAccess, Item, Step, StepOutcome};
 
 pub const NO_INDEX: &str = "index not open";
 
@@ -204,6 +204,7 @@ impl Step for RulesStep {
             }
             if matches!(planning, Planning::Plan(_)) {
                 index.set_document_status(id, DocumentStatus::Planned)?;
+                resolve_reviews_of(index, id)?;
             }
             Ok::<_, IndexError>(Some(planning))
         })
@@ -248,14 +249,23 @@ impl Step for ReviewStep {
                 .document(id)?
                 .is_some_and(|document| document.status == DocumentStatus::New);
             if needs_review {
-                index.add_review(id, reason)?;
+                match index.add_review(id, reason) {
+                    // Processed again while its review was still open: the
+                    // intake had set it back to new, the open review is the
+                    // state it belongs in.
+                    Err(IndexError::ReviewAlreadyOpen(_)) => {
+                        index.set_document_status(id, DocumentStatus::InReview)?;
+                    }
+                    other => {
+                        other?;
+                    }
+                }
             }
             Ok::<_, IndexError>(())
         })
         .ok_or_else(|| NO_INDEX.to_owned())?;
-        match added {
-            Ok(()) | Err(IndexError::ReviewAlreadyOpen(_)) => Ok(StepOutcome::Finished),
-            Err(err) => Err(err.to_string()),
-        }
+        added
+            .map(|()| StepOutcome::Finished)
+            .map_err(|err| err.to_string())
     }
 }

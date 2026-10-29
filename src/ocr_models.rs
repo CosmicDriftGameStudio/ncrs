@@ -6,13 +6,23 @@
 
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use ncrs_intake::{install_model, OcrModelError, OcrModelFile, OCR_MODELS_HOST, OCR_MODEL_FILES};
 
+use crate::ai_model::CountingReader;
 use crate::open_vsx::{self, FetchError};
 
 /// The only host a model may come from, redirects included.
 const MODEL_HOSTS: [&str; 1] = [OCR_MODELS_HOST];
+
+/// macOS reads scans with its own text recognition, so there is nothing to
+/// download there. Tests behave like the other systems, so that snapshots do
+/// not depend on the machine they run on.
+pub const fn system_reads_scans() -> bool {
+    cfg!(target_os = "macos") && !cfg!(test)
+}
 
 /// What can go wrong between pressing the button and having the files in
 /// place. The card words it with the detail in English.
@@ -55,12 +65,17 @@ impl fmt::Display for DownloadError {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct OcrModelsCard {
     /// Where the files will be saved; `None` without a data folder.
     target: Option<PathBuf>,
     downloading: bool,
     error: Option<DownloadError>,
+    received: Arc<AtomicU64>,
+    /// The download of this card just ended with the files in place.
+    finished: bool,
+    /// The files were all there when the card opened.
+    installed: bool,
 }
 
 impl OcrModelsCard {
@@ -69,7 +84,41 @@ impl OcrModelsCard {
             target,
             downloading: false,
             error: None,
+            received: Arc::new(AtomicU64::new(0)),
+            finished: false,
+            installed: false,
         }
+    }
+
+    /// A card for models that are already in place.
+    pub fn installed(target: Option<PathBuf>) -> Self {
+        Self {
+            installed: true,
+            ..Self::new(target)
+        }
+    }
+
+    pub fn is_installed(&self) -> bool {
+        self.installed
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self.finished
+    }
+
+    /// Bytes read and bytes in all, while a download runs.
+    pub fn progress(&self) -> Option<(u64, u64)> {
+        self.downloading.then(|| {
+            (
+                self.received.load(Ordering::Relaxed),
+                OCR_MODEL_FILES.iter().map(|file| file.size).sum(),
+            )
+        })
+    }
+
+    /// The counter the download of this card fills.
+    pub fn received(&self) -> Arc<AtomicU64> {
+        Arc::clone(&self.received)
     }
 
     pub fn target(&self) -> Option<&Path> {
@@ -95,6 +144,7 @@ impl OcrModelsCard {
             return None;
         };
         self.error = None;
+        self.received.store(0, Ordering::Relaxed);
         self.downloading = true;
         Some(target)
     }
@@ -107,7 +157,10 @@ impl OcrModelsCard {
         }
         self.downloading = false;
         match result {
-            Ok(()) => true,
+            Ok(()) => {
+                self.finished = true;
+                true
+            }
             Err(error) => {
                 self.error = Some(error);
                 false
@@ -118,17 +171,18 @@ impl OcrModelsCard {
 
 /// Downloads both model files into `dir`. Each is held to its pinned size and
 /// checksum and put in place only when it passes; the first failure stops.
-pub fn download_models(dir: &Path) -> Result<(), DownloadError> {
+pub fn download_models(dir: &Path, received: &AtomicU64) -> Result<(), DownloadError> {
     let agent = open_vsx::agent();
     OCR_MODEL_FILES
         .iter()
-        .try_for_each(|file| download_model(&agent, dir, file))
+        .try_for_each(|file| download_model(&agent, dir, file, received))
 }
 
 fn download_model(
     agent: &ureq::Agent,
     dir: &Path,
     file: &OcrModelFile,
+    received: &AtomicU64,
 ) -> Result<(), DownloadError> {
     let mut url = file.url();
     for hop in 0..=open_vsx::MAX_REDIRECTS {
@@ -165,7 +219,8 @@ fn download_model(
             .with_config()
             .limit(file.size.saturating_add(1))
             .reader();
-        return install_model(dir, file, reader).map_err(DownloadError::Install);
+        return install_model(dir, file, CountingReader::new(reader, received))
+            .map_err(DownloadError::Install);
     }
     Err(DownloadError::Network(FetchError::TooManyRedirects))
 }

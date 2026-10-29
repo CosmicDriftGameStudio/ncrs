@@ -114,7 +114,7 @@ pub fn view<'a>(
         palette,
     )
     .title_theme(lang.text(Msg::ActionReviewListTheme))
-    .buttons(buttons(state, lang, palette))
+    .buttons(buttons(state, &guide, lang, palette))
     .sidebar(hermes::nav(HermesPage::Review, badges, lang, palette))
     .on_close(send(ReviewListMessage::Close))
     .hints(KeyHints {
@@ -347,13 +347,26 @@ fn preview<'a>(state: &ReviewList, lang: Language, palette: &Palette) -> Element
     }
 }
 
-fn buttons<'a>(state: &ReviewList, lang: Language, palette: &Palette) -> Vec<Element<'a, Message>> {
+fn buttons<'a>(
+    state: &ReviewList,
+    guide: &FieldGuide,
+    lang: Language,
+    palette: &Palette,
+) -> Vec<Element<'a, Message>> {
     let mut items = vec![kit::button(
         lang.text(Msg::ReviewListClose),
         Some(send(ReviewListMessage::Close)),
         Tone::Secondary,
         palette,
     )];
+    if guide.ai_is_ready && !state.rows().is_empty() {
+        items.push(kit::button(
+            &read_again_label(state.rows().len(), lang),
+            (!state.is_busy()).then(|| send(ReviewListMessage::ReadAgainWithAi)),
+            Tone::Secondary,
+            palette,
+        ));
+    }
     if let Some(filed) = state.filed().filter(|filed| filed.offers_rule()) {
         items.push(kit::button(
             &create_rule_label(filed, lang),
@@ -370,6 +383,17 @@ fn buttons<'a>(state: &ReviewList, lang: Language, palette: &Palette) -> Vec<Ele
         palette,
     ));
     items
+}
+
+fn read_again_label(count: usize, lang: Language) -> String {
+    if count == 1 {
+        lang.text(Msg::ReviewListReadAgainWithAiOne).to_owned()
+    } else {
+        fill_template(
+            lang.text(Msg::ReviewListReadAgainWithAi),
+            &[("{count}", &count.to_string())],
+        )
+    }
 }
 
 fn create_rule_label(filed: &FiledNotice, lang: Language) -> String {

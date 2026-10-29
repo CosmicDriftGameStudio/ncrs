@@ -77,6 +77,8 @@ pub struct SettingsState {
     /// Whether the folder of the text recognition models has files; looked up
     /// when the tab opens and after a download, not on every frame.
     pub ocr_models_present: bool,
+    /// The system reads scans itself (macOS), so there is nothing to download.
+    pub text_recognition_built_in: bool,
     /// The config as read when the tab opened or written since: the values
     /// as the file spells them, which the app keeps only resolved. The error
     /// when it does not load; then nothing can be written.
@@ -118,6 +120,7 @@ impl SettingsState {
             marked_row: None,
             changed: 0,
             ocr_models_present,
+            text_recognition_built_in: false,
             file,
             drafts: HashMap::new(),
             problems: HashMap::new(),
@@ -1031,22 +1034,15 @@ fn folder_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         .locations
         .iter()
         .map(|location| {
-            let (label, theme_name, note) = match (location.mode, location.is_target) {
-                (LocationMode::Inbox, _) => (
-                    Msg::SettingsRowInbox,
-                    Msg::SettingsRowInboxTheme,
-                    Msg::SettingsRowInboxNote,
-                ),
+            let (label, note) = match (location.mode, location.is_target) {
+                (LocationMode::Inbox, _) => (Msg::SettingsRowInbox, Msg::SettingsRowInboxNote),
                 (LocationMode::Archive, true) => (
                     Msg::SettingsRowFilingLocation,
-                    Msg::FilingSetupKindFilingLocation,
                     Msg::SettingsRowFilingLocationNote,
                 ),
-                (LocationMode::Archive, false) => (
-                    Msg::SettingsRowArchive,
-                    Msg::FilingSetupKindArchive,
-                    Msg::SettingsRowArchiveNote,
-                ),
+                (LocationMode::Archive, false) => {
+                    (Msg::FilingSetupKindArchive, Msg::SettingsRowArchiveNote)
+                }
             };
             let mut description = lang.text(note).to_owned();
             if location.images {
@@ -1056,7 +1052,7 @@ fn folder_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
             let path = tab_label(&location.path, view.home, false, FOLDER_CHARS);
             SettingRow {
                 label: lang.text(label).to_owned(),
-                theme_name: Some(lang.text(theme_name).to_owned()),
+                theme_name: None,
                 config_key: None,
                 description: Some(description),
                 problem: None,
@@ -1132,6 +1128,17 @@ fn work_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
 fn ocr_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     let lang = view.lang;
     let palette = view.palette;
+    if view.state.text_recognition_built_in {
+        return vec![simple_row(
+            Msg::SettingsRowTextRecognition,
+            None,
+            status_text(
+                lang.text(Msg::SettingsTextRecognitionBuiltin).to_owned(),
+                palette.success,
+            ),
+            lang,
+        )];
+    }
     let (state, color) = if view.state.ocr_models_present {
         (Msg::SettingsModelsPresent, palette.success)
     } else {
@@ -1158,7 +1165,13 @@ fn ai_model_state(view: &SettingsView<'_>) -> (String, Color) {
             lang.text(Msg::SettingsModelUnknown).to_owned(),
             palette.dim_text,
         ),
-        Some(AiStatus::Off) => (lang.text(Msg::SettingsOff).to_owned(), palette.dim_text),
+        // The row shows only while the config has the AI on, so a module that
+        // still says off was built before that: it picks the switch up at the
+        // next start.
+        Some(AiStatus::Off) => (
+            lang.text(Msg::SettingsModelNextStart).to_owned(),
+            palette.accent,
+        ),
         Some(AiStatus::NotDownloaded) => (
             lang.text(Msg::FilingStatusAiNotDownloaded).to_owned(),
             palette.accent,

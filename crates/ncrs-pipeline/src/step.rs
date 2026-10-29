@@ -2,7 +2,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use ncrs_index::{DocumentId, Index, ReviewReason};
+use ncrs_index::{DocumentId, Index, IndexError, ReviewReason};
 use ncrs_intake::{FilingPlan, Location};
 
 /// One file on its way through the steps.
@@ -54,6 +54,20 @@ pub trait Step: Send + Sync + fmt::Debug {
 pub trait IndexAccess: Send + Sync + fmt::Debug {
     /// False when there is no index to work on; `work` has not run then.
     fn with_index(&self, work: &mut dyn FnMut(&mut Index)) -> bool;
+}
+
+/// A document that waited for a review and is placed after being processed
+/// again has nothing left to review.
+pub(in crate) fn resolve_reviews_of(
+    index: &mut Index,
+    document: DocumentId,
+) -> Result<(), IndexError> {
+    for entry in index.open_reviews()? {
+        if entry.document_id == document {
+            index.resolve_review(entry.id)?;
+        }
+    }
+    Ok(())
 }
 
 /// `None` when there is no index.

@@ -37,16 +37,22 @@
       "de": "Hermes"
     },
     {
-      "key": "hermes_column.state_waiting",
-      "context": "Hover text and status bar word for a file Hermes has queued but not read yet. One word.",
-      "en": "Waiting",
-      "de": "Wartet"
-    },
-    {
       "key": "hermes_column.state_reading",
       "context": "Hover text and status bar word for a file Hermes is reading right now (text, OCR, fields, rule).",
       "en": "Reading",
       "de": "Wird gelesen"
+    },
+    {
+      "key": "hermes_column.state_unread",
+      "context": "Hover text and status bar words for a file Hermes knows about but has not read or placed yet. Short.",
+      "en": "Not read yet",
+      "de": "Noch nicht gelesen"
+    },
+    {
+      "key": "hermes_column.state_planned",
+      "context": "Hover text and status bar words for a file a rule has placed; Hermes moves it into its filing location in the next round. Short.",
+      "en": "About to be filed",
+      "de": "Wird gleich abgelegt"
     },
     {
       "key": "hermes_column.state_filed",
@@ -56,9 +62,9 @@
     },
     {
       "key": "hermes_column.state_inquiry",
-      "context": "Hover text and status bar word for a file Hermes cannot file alone and asks the user about.",
-      "en": "Inquiry",
-      "de": "Rückfrage"
+      "context": "Hover text and status bar words for a file Hermes cannot file alone and asks the user about; the reason follows after a colon. Short.",
+      "en": "Please review",
+      "de": "Bitte prüfen"
     },
     {
       "key": "hermes_column.state_error",
@@ -257,6 +263,18 @@
       "context": "Button that dismisses any dialog without doing anything. Verb. Used by every dialog, so keep it short.",
       "en": "Cancel",
       "de": "Abbrechen"
+    },
+    {
+      "key": "dialog.close",
+      "context": "Button that closes a card or dialog which has nothing left to ask, for example the card of a model that is already installed.",
+      "en": "Close",
+      "de": "Schließen"
+    },
+    {
+      "key": "dialog.done",
+      "context": "Button that closes a card after the work it showed has finished, for example after a download. It is the only button then.",
+      "en": "Done",
+      "de": "Fertig"
     },
     {
       "key": "dialog.hint.escape",
@@ -2551,10 +2569,22 @@
       "de": "Wird geladen…"
     },
     {
+      "key": "ocr_models.progress",
+      "context": "Line under the progress bar of the text recognition card while the files are downloaded. Takes the megabytes received, the megabytes in all (plain numbers, 1 MB = 1,000,000 bytes) and the percent done.",
+      "en": "{received} / {total} MB · {percent} %",
+      "de": "{received} / {total} MB · {percent} %"
+    },
+    {
+      "key": "ocr_models.installed_state",
+      "context": "State shown in the text recognition card when the model files are already in place. One word, shown in the success color.",
+      "en": "Installed",
+      "de": "Installiert"
+    },
+    {
       "key": "ocr_models.installed",
-      "context": "Notice in the status bar after the OCR models were downloaded and checked.",
-      "en": "Text recognition models downloaded. Scanned pages are read from now on.",
-      "de": "Modelle für die Texterkennung geladen. Gescannte Seiten werden ab jetzt gelesen."
+      "context": "Sentence in the text recognition card after the models were downloaded and checked, above its Done button.",
+      "en": "The text recognition models are installed. Hermes now reads scans and images too.",
+      "de": "Die Texterkennungsmodelle sind installiert. Hermes liest jetzt auch Scans und Bilder."
     },
     {
       "key": "ocr_models.error",
@@ -3061,10 +3091,52 @@
       "de": "Angehalten. Der Download wird dort fortgesetzt, wo er aufgehört hat."
     },
     {
-      "key": "ai_model.installed",
-      "context": "Notice in the status bar after the AI model was downloaded and checked.",
-      "en": "AI model downloaded. Documents the rules cannot read are passed to it from now on.",
-      "de": "KI-Modell geladen. Dokumente, die die Regeln nicht lesen können, werden ab jetzt an es übergeben."
+      "key": "ai_model.progress",
+      "context": "Line under the progress bar of the AI model card while the file is downloaded. Takes the megabytes received, the megabytes in all (both plain numbers, 1 MB = 1,000,000 bytes) and the percent done as a number.",
+      "en": "{received} / {total} MB · {percent} %",
+      "de": "{received} / {total} MB · {percent} %"
+    },
+    {
+      "key": "ai_model.installed_state",
+      "context": "State shown in the AI model card when the model file is already in place. One word, shown in the success color.",
+      "en": "Installed",
+      "de": "Installiert"
+    },
+    {
+      "key": "ai_model.turning_on",
+      "context": "Sentence in the AI model card after the download ended while the AI switch is being written to the config.",
+      "en": "The AI model is installed. Turning the AI on …",
+      "de": "Das KI-Modell ist installiert. Die KI wird eingeschaltet …"
+    },
+    {
+      "key": "ai_model.turned_on",
+      "context": "Sentence in the AI model card after the download ended, the AI was off and is on now, and the running Hermes uses it.",
+      "en": "The AI model is installed. AI is now on: Hermes fills in fields for which there is no rule yet.",
+      "de": "Das KI-Modell ist installiert. Die KI ist jetzt an: Hermes füllt auch Felder aus, für die es noch keine Regel gibt."
+    },
+    {
+      "key": "ai_model.turned_on_next_start",
+      "context": "Sentence in the AI model card after the download ended and the AI switch was turned on, but the running Hermes cannot take it over now (files are being moved), so it applies at the next start.",
+      "en": "The AI model is installed. AI is on from the next start: Hermes then fills in fields for which there is no rule yet.",
+      "de": "Das KI-Modell ist installiert. Die KI ist ab dem nächsten Start an: Hermes füllt dann auch Felder aus, für die es noch keine Regel gibt."
+    },
+    {
+      "key": "ai_model.in_use",
+      "context": "Sentence in the AI model card after the download ended while the AI was already switched on and was waiting for the file.",
+      "en": "The AI model is installed. Hermes uses it from now on.",
+      "de": "Das KI-Modell ist installiert. Hermes nutzt es ab jetzt."
+    },
+    {
+      "key": "ai_model.still_off",
+      "context": "Sentence in the AI model card after the download ended when the AI switch could not be turned on by itself. The button below opens the setting.",
+      "en": "The AI model is installed. The AI is still off; turn it on in the settings.",
+      "de": "Das KI-Modell ist installiert. Die KI ist noch aus; schalte sie in den Einstellungen ein."
+    },
+    {
+      "key": "ai_model.turn_on",
+      "context": "Button in the AI model card after the download that opens the setting which turns the AI on. Verb phrase.",
+      "en": "Turn on AI",
+      "de": "KI einschalten"
     },
     {
       "key": "ai_model.error",
@@ -3395,6 +3467,18 @@
       "context": "Button in the review list: files the document with the fields shown.",
       "en": "Confirm",
       "de": "Bestätigen"
+    },
+    {
+      "key": "review_list.read_again_with_ai",
+      "context": "Button in the review list that hands all open reviews to Hermes again, now that the AI can read them. Takes the number of documents (more than one).",
+      "en": "Read {count} documents again with AI",
+      "de": "{count} Dokumente mit KI neu lesen"
+    },
+    {
+      "key": "review_list.read_again_with_ai_one",
+      "context": "Button in the review list that hands its single open review to Hermes again, now that the AI can read it.",
+      "en": "Read the document again with AI",
+      "de": "Dokument mit KI neu lesen"
     },
     {
       "key": "review_list.filed_note",
@@ -3913,12 +3997,6 @@
       "de": "Eingang"
     },
     {
-      "key": "settings.row_inbox_theme",
-      "context": "Theme name next to the inbox folder setting: the pneumatic tube post, where documents arrive.",
-      "en": "Pneumatic tube",
-      "de": "Rohrpost"
-    },
-    {
       "key": "settings.row_inbox_note",
       "context": "Explanation under an inbox folder: Hermes picks up documents there.",
       "en": "Hermes picks up new documents here.",
@@ -3935,12 +4013,6 @@
       "context": "Explanation under the filing location folder.",
       "en": "Hermes files new documents here.",
       "de": "Hierhin legt Hermes neue Dokumente."
-    },
-    {
-      "key": "settings.row_archive",
-      "context": "Name of a folder setting on the filing page: a folder that Hermes only reads. Followed by the word archive.",
-      "en": "Read only",
-      "de": "Nur lesen"
     },
     {
       "key": "settings.row_archive_note",
@@ -4015,6 +4087,24 @@
       "de": "Laden…"
     },
     {
+      "key": "settings.row_text_recognition",
+      "context": "Name of the setting on the filing page that tells how scans and images are read when the system has its own text recognition (macOS). There is nothing to change.",
+      "en": "Text recognition",
+      "de": "Texterkennung"
+    },
+    {
+      "key": "settings.text_recognition_builtin",
+      "context": "Status of the text recognition on the filing page where the system reads scans itself. Shown in the success color.",
+      "en": "Built into macOS",
+      "de": "Eingebaut in macOS"
+    },
+    {
+      "key": "settings.model_next_start",
+      "context": "Status of the AI model on the filing page when the AI is on in the config but the running Hermes started before that and picks it up at the next start. Lower case.",
+      "en": "loads at the next start",
+      "de": "wird beim nächsten Start geladen"
+    },
+    {
       "key": "settings.row_ai_enabled",
       "context": "Name of the setting on the filing page that lets an AI fill in fields it could not read by rules.",
       "en": "AI helps",
@@ -4022,9 +4112,9 @@
     },
     {
       "key": "settings.row_ai_enabled_note",
-      "context": "Explanation under the AI setting: it only fills in fields like sender and date, and the change takes effect when the program starts again.",
-      "en": "Fills in fields like sender and date. Takes effect at the next start.",
-      "de": "Füllt Felder wie Absender und Datum. Gilt ab dem nächsten Start."
+      "context": "Explanation under the AI setting: it only fills in fields like sender and date, and the change applies at once unless files are being moved.",
+      "en": "Fills in fields like sender and date.",
+      "de": "Füllt Felder wie Absender und Datum."
     },
     {
       "key": "settings.row_ai_provider",
@@ -4841,6 +4931,66 @@
       "context": "Status bar message after a file was queued to run through the Hermes steps again. {name} is the file name.",
       "en": "Processing again: {name}",
       "de": "Wird erneut verarbeitet: {name}"
+    },
+    {
+      "key": "status.hermes_restarting",
+      "context": "Status bar text while Hermes is rebuilt after the AI setting changed. It stands where the idle line of Hermes stands.",
+      "en": "Hermes restarting …",
+      "de": "Hermes startet neu …"
+    },
+    {
+      "key": "status.reading_again",
+      "context": "Status bar text while Hermes reads one file again. Takes the file name.",
+      "en": "Reading {name} again …",
+      "de": "liest {name} neu …"
+    },
+    {
+      "key": "status.reading_again_more",
+      "context": "Status bar text while Hermes reads several files again. Takes the file name of the last one asked and the number of the others.",
+      "en": "Reading {name} again … (+{count})",
+      "de": "liest {name} neu … (+{count})"
+    },
+    {
+      "key": "status.again_filed",
+      "context": "Notice when a file read again got its place from the rules and is filed. Takes the file name.",
+      "en": "{name}: filed",
+      "de": "{name}: abgelegt"
+    },
+    {
+      "key": "status.again_review",
+      "context": "Notice when a file read again could not be placed and waits for the user in the review list. Takes the file name.",
+      "en": "{name}: waiting for your review",
+      "de": "{name}: wartet auf deine Prüfung"
+    },
+    {
+      "key": "status.again_failed",
+      "context": "Notice when reading a file again failed. Takes the file name and the reason, which stays as the pipeline worded it.",
+      "en": "{name}: not read: {reason}",
+      "de": "{name}: nicht gelesen: {reason}"
+    },
+    {
+      "key": "status.again_unchanged",
+      "context": "Notice when a file read again led to the same result as before. Takes the file name.",
+      "en": "{name}: unchanged, nothing new was found",
+      "de": "{name}: unverändert, der Inhalt ergibt nichts Neues"
+    },
+    {
+      "key": "status.again_done",
+      "context": "Notice when a file read again is finished and there is nothing more to say about it, for example after Hermes was rebuilt meanwhile. Takes the file name.",
+      "en": "{name}: finished reading",
+      "de": "{name}: fertig gelesen"
+    },
+    {
+      "key": "status.reviews_read_again",
+      "context": "Notice after the button of the review list queued the open reviews to be read again with the AI. Takes the number of documents (more than one).",
+      "en": "{count} documents are being read again",
+      "de": "{count} Dokumente werden neu gelesen"
+    },
+    {
+      "key": "status.review_read_again",
+      "context": "Notice after the button of the review list queued its single open review to be read again with the AI.",
+      "en": "1 document is being read again",
+      "de": "1 Dokument wird neu gelesen"
     },
     {
       "key": "status.hermes_not_processable",

@@ -586,7 +586,7 @@ const EXCLUDED_OPACITY: f32 = 0.55;
 /// The color of a Hermes state in the status column.
 pub fn hermes_state_color(palette: &Palette, state: HermesFileState) -> Color {
     match state {
-        HermesFileState::Waiting => palette.dim_text,
+        HermesFileState::Unread | HermesFileState::Planned => palette.dim_text,
         HermesFileState::Reading => palette.accent,
         HermesFileState::Filed => palette.success,
         HermesFileState::Inquiry => INQUIRY_YELLOW,

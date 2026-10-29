@@ -394,12 +394,20 @@ impl KeyAction {
         }
     }
 
-    /// Whether this build offers the action. Only the folder grants of the App
-    /// Store build are left out elsewhere: a build that can open every folder
-    /// has nothing to grant, so the command list and the shortcuts dialog do
-    /// not show it.
+    /// Whether this build offers the action. A build that can open every
+    /// folder has nothing to grant, and macOS reads scans with its own text
+    /// recognition, so the command list and the shortcuts dialog do not show
+    /// either. The action itself stays, so a config that binds it still loads.
     pub fn is_offered(self) -> bool {
-        self != Self::GrantFolderAccess || crate::fs::sandbox_active()
+        self.is_offered_where(crate::ocr_models::system_reads_scans())
+    }
+
+    fn is_offered_where(self, system_reads_scans: bool) -> bool {
+        match self {
+            Self::GrantFolderAccess => crate::fs::sandbox_active(),
+            Self::DownloadOcrModels => !system_reads_scans,
+            _ => true,
+        }
     }
 
     /// Whether a panel inside an archive may run the action. Only what takes
@@ -1395,6 +1403,13 @@ fn parse_key_name(name: &str) -> Option<Result<Key, String>> {
 )]
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_ocr_download_is_offered_only_where_the_system_does_not_read_scans() {
+        assert!(KeyAction::DownloadOcrModels.is_offered_where(false));
+        assert!(!KeyAction::DownloadOcrModels.is_offered_where(true));
+        assert!(KeyAction::Quit.is_offered_where(true));
+    }
+
     use super::*;
     use crate::config;
     use iced::keyboard::key::Named;

@@ -31,9 +31,26 @@ pub fn view<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
+    if card.is_finished() {
+        return single_button_card(
+            paragraph(lang.text(Msg::OcrModelsInstalled), palette),
+            Msg::DialogDone,
+            focus,
+            window,
+            lang,
+            palette,
+        );
+    }
     let line_chars = frame::content_chars(SIZE, window, 0.0);
-    let mut body =
-        column![paragraph(lang.text(Msg::OcrModelsIntro), palette)].spacing(spacing::LINE_GAP);
+    let intro = if card.is_installed() {
+        text(lang.text(Msg::OcrModelsInstalledState))
+            .size(font_size::BODY)
+            .color(palette.success)
+            .into()
+    } else {
+        paragraph(lang.text(Msg::OcrModelsIntro), palette)
+    };
+    let mut body = column![intro].spacing(spacing::LINE_GAP);
     body = body.push(detail_line(
         fill_template(
             lang.text(Msg::OcrModelsHost),
@@ -84,11 +101,23 @@ pub fn view<'a>(
                 .size(font_size::BODY)
                 .color(palette.dim_text),
         );
+        if let Some((received, total)) = card.progress() {
+            body = body.push(super::ai_model::progress(
+                received,
+                total,
+                Msg::OcrModelsProgress,
+                lang,
+                palette,
+            ));
+        }
     }
     if let Some(error) = card.error() {
         body = body.push(error_line(error_text(error, lang), palette));
     }
 
+    if card.is_installed() {
+        return single_button_card(body.into(), Msg::DialogClose, focus, window, lang, palette);
+    }
     let download =
         (!card.is_downloading()).then_some(Message::OcrModels(OcrModelsMessage::Download));
     let cancel = (!card.is_downloading()).then_some(Message::OcrModels(OcrModelsMessage::Close));
@@ -119,6 +148,36 @@ pub fn view<'a>(
     .hints(KeyHints {
         enter: false,
         tab: true,
+    })
+    .into_element()
+}
+
+fn single_button_card<'a>(
+    body: Element<'a, Message>,
+    label: Msg,
+    focus: usize,
+    window: Size,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    Frame::new(
+        lang.text(Msg::OcrModelsTitle),
+        body,
+        SIZE,
+        window,
+        lang,
+        palette,
+    )
+    .buttons(vec![kit::button(
+        lang.text(label),
+        Some(Message::OcrModels(OcrModelsMessage::Close)),
+        Tone::filled_if(focus == CANCEL_FOCUS),
+        palette,
+    )])
+    .on_close(Message::OcrModels(OcrModelsMessage::Close))
+    .hints(KeyHints {
+        enter: false,
+        tab: false,
     })
     .into_element()
 }

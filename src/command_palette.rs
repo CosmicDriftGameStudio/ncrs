@@ -235,13 +235,28 @@ impl CommandPalette {
         self.rank();
     }
 
-    /// Moves over hits; a header is not a place to stop.
+    /// Moves over hits, going round at either end; a header is not a place to
+    /// stop.
     pub fn move_cursor(&mut self, delta: isize) {
         let places: Vec<usize> = self.hit_positions().collect();
-        let current = places.iter().position(|&place| place == self.cursor);
-        let last = places.len().saturating_sub(1);
-        let target = current.unwrap_or(0).saturating_add_signed(delta).min(last);
-        if let Some(&place) = places.get(target) {
+        let Ok(count) = isize::try_from(places.len()) else {
+            return;
+        };
+        if count == 0 {
+            return;
+        }
+        let current = places
+            .iter()
+            .position(|&place| place == self.cursor)
+            .and_then(|position| isize::try_from(position).ok())
+            .unwrap_or(0);
+        let target = current
+            .wrapping_add(delta.rem_euclid(count))
+            .rem_euclid(count);
+        if let Some(&place) = usize::try_from(target)
+            .ok()
+            .and_then(|index| places.get(index))
+        {
             self.cursor = place;
             self.keep_cursor_in_view();
         }
@@ -916,8 +931,7 @@ mod tests {
                 Some(Row::Hit(_))
             ));
         }
-        palette.move_cursor(isize::MIN);
-        assert_eq!(palette.cursor(), 1, "the first hit sits under its header");
+        assert_eq!(palette.cursor(), 1, "a full round ends on the first hit");
         assert_eq!(palette.visible().start, 0, "its header is in view");
     }
 
@@ -1112,16 +1126,30 @@ mod tests {
     #[test]
     fn the_cursor_stays_in_view_and_inside_the_list() {
         let mut palette = palette(KeyScope::Panel, Language::English);
-        palette.move_cursor(-1);
         assert_eq!(palette.cursor(), 1);
-        palette.move_cursor(isize::MAX);
+        palette.move_cursor(-1);
         let last_hit = palette.rows().len() - 1;
-        assert_eq!(palette.cursor(), last_hit);
+        assert_eq!(palette.cursor(), last_hit, "up from the first goes round");
         let visible = palette.visible();
         assert!(visible.contains(&palette.cursor()), "{visible:?}");
         assert_eq!(visible.len(), MIN_VISIBLE_ROWS);
-        palette.move_cursor(isize::MIN);
+        palette.move_cursor(1);
+        assert_eq!(palette.cursor(), 1, "down from the last goes round");
         assert_eq!(palette.visible().start, 0);
+    }
+
+    #[test]
+    fn the_cursor_goes_round_at_both_ends_and_survives_an_empty_list() {
+        let mut palette = asked(Language::English, "s");
+        let hits = palette.hits().count();
+        for _ in 0..hits {
+            palette.move_cursor(1);
+        }
+        assert_eq!(palette.cursor(), 1, "a full round ends where it began");
+        let mut nothing = asked(Language::English, "zzzzzzzzqq");
+        assert_eq!(nothing.hits().count(), 0);
+        nothing.move_cursor(1);
+        nothing.move_cursor(-1);
     }
 
     #[test]
