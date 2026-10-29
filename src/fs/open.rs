@@ -86,6 +86,21 @@ pub fn privacy_settings_command() -> OpenCommand {
     }
 }
 
+/// Shows the trash folder in the Finder. The sandbox may only start apps
+/// through `open -a`, and `home_dir` is the real home there. A fixed program:
+/// nothing the user typed reaches the command.
+#[cfg(target_os = "macos")]
+pub fn trash_in_finder_command() -> OpenCommand {
+    OpenCommand {
+        program: "/usr/bin/open".into(),
+        args: vec![
+            "-a".into(),
+            "Finder".into(),
+            super::home_dir().join(".Trash").into(),
+        ],
+    }
+}
+
 /// The system's default opener on `target`, a file or an address, as one
 /// argument of its own. Never a shell.
 pub fn system_open_command(target: impl Into<OsString>) -> OpenCommand {
@@ -346,6 +361,16 @@ mod tests {
 
     fn configured(view: Option<ProgramLine>, edit: Option<ProgramLine>) -> OpenPrograms {
         OpenPrograms { view, edit }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_trash_opens_in_the_finder_through_open_dash_a() {
+        let trash = crate::fs::home_dir().join(".Trash");
+        assert_eq!(
+            trash_in_finder_command(),
+            with("/usr/bin/open", &["-a", "Finder"], &trash)
+        );
     }
 
     #[cfg(target_os = "macos")]

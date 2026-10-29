@@ -198,6 +198,8 @@ mod tests {
         matches!(
             msg,
             Msg::ColumnName
+                // The same word in both languages, like ColumnName.
+                | Msg::TrashColumnName
                 | Msg::QuickFixLoading
                 | Msg::MarkerDir
                 | Msg::MarkerUp

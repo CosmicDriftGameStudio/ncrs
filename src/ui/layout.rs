@@ -72,6 +72,12 @@ pub fn search_visible_rows(window: Size) -> usize {
     (rows as isize).max(1) as usize
 }
 
+/// Rows the trash view shows: the panel's, less its title line and the two
+/// hint lines at the bottom.
+pub fn trash_visible_rows(window: Size) -> usize {
+    visible_rows(window).saturating_sub(3).max(1)
+}
+
 /// Where the context menu opens for the cursor row of a panel when it is
 /// opened from the keyboard: just below the row, a little into the name column.
 ///

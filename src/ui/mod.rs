@@ -43,6 +43,7 @@ pub mod theme;
 pub mod theme_fetch;
 pub mod titlebar;
 pub mod transfer;
+pub mod trash;
 pub mod volumes;
 
 pub use panel::{PanelProps, PanelState};

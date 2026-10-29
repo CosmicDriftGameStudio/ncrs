@@ -94,6 +94,14 @@ Windows) takes the place of the active panel and searches below its directory.
 
 F8 asks before it moves the tagged rows to the trash.
 
+To get something back, open the trash view from the Lab (`F1`) or the last row of the drive menu: `Enter` puts the
+cursor row (or the tagged rows) back where they were, creating a folder that is gone, and asks when the name is taken;
+"Overwrite" moves the file in the way to the trash instead of deleting it. `Cmd`+`Z` (`Ctrl`+`Z` on Windows and Linux)
+puts back what the last `F8` moved. On macOS the view lists what ncrs moved to the trash, recorded in `journal.toml`
+next to `state.toml`; ncrs now moves files to the trash through the file manager itself, so the Finder's "Put Back"
+may not offer those items. "Open the trash in the Finder" shows the rest. The App Store build has only that command
+for now: moving items back out of the trash inside the sandbox is not verified yet.
+
 ![The German interface](docs/screenshots/main-de.png)
 
 The same window in German, switched with F9.
@@ -164,6 +172,7 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Shift`+`Up`/`Down`| Tag / untag the row, move up / down     |
 | `*`                | Tag every row (except `..`)             |
 | `Ctrl`+`*`         | Clear all tags                          |
+| `Cmd`+`Z` / `Ctrl`+`Z` | Put back what the last `F8` moved to the trash |
 | `Cmd`+`C` / `Ctrl`+`C` | Copy the tagged files (else the cursor row) to the clipboard as files, for the Finder, Explorer or another app |
 | `Esc` (also `Ctrl`+`C` on a Mac) | Stop the running job; with a dialog open, use the Cancel button in the progress line |
 | `Option`+`Cmd`+`C` / `Ctrl`+`Alt`+`C` | Copy the path of the tagged rows (else the cursor row) to the clipboard |
@@ -398,8 +407,8 @@ edit = "F3"
   be fine on a Mac and conflict elsewhere. Keys that became defaults later give
   way to a binding of your own instead: `F2` (`command_line`), `Shift+F4`
   (`new_file`), the history keys (`history_back`, `history_forward`),
-  `primary+d` (`add_favourite`), `primary+k` (`key_bindings`) and `primary+c`
-  (`copy_files`). The action keeps its other keys and the
+  `primary+d` (`add_favourite`), `primary+k` (`key_bindings`), `primary+c`
+  (`copy_files`) and `primary+z` (`restore_last_deletion`). The action keeps its other keys and the
   command list.
 - Not allowed: `Escape` (it closes dialogs and menus and stops jobs); letters and
   digits without `ctrl`, `alt`, `cmd` or `primary`, because they jump to a file
@@ -419,7 +428,7 @@ Actions: `quit`, `open`, `go_up`, `switch_panel`, `switch_language`,
 `cursor_up`, `cursor_down`, `page_up`, `page_down`, `first`, `last`,
 `toggle_tag`, `tag_up`, `tag_down`, `tag_all`, `clear_tags`, `view`, `edit`,
 `copy`, `move`, `pack`, `mkdir`, `new_file`, `delete`, `delete_permanently`, `abort_job`,
-`copy_path`, `copy_name`, `copy_files`, `paste`, `drive_menu_left`, `drive_menu_right`,
+`copy_path`, `copy_name`, `copy_files`, `paste`, `trash`, `restore_last_deletion`, `open_trash_in_finder`, `drive_menu_left`, `drive_menu_right`,
 `history_back`, `history_forward`, `add_favourite`, `remove_favourite`, `favourites`,
 `sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`, `search`, `quick_open`, `command_line`, `command_palette`, `search_case`,
 `search_whole_word`, `search_regex`, `filing_status`, `filing_setup`, `key_bindings`. Their

@@ -6503,6 +6503,156 @@
       "context": "Status bar notice when Paste is used while a copy or another job is running or a dialog is open. Nothing is pasted; the user can paste again later.",
       "en": "Paste again when the running job or dialog is done",
       "de": "Erneut einfügen, wenn der laufende Auftrag oder Dialog fertig ist"
+    },
+    {
+      "key": "job.restore",
+      "context": "Status bar while entries are being put back from the trash. Same shape as job.delete.",
+      "en": "Restoring…",
+      "de": "Stelle wieder her…"
+    },
+    {
+      "key": "action.trash",
+      "context": "Command that shows the trash in place of a panel, listing what can be put back. Plain name.",
+      "en": "Show the trash",
+      "de": "Papierkorb anzeigen"
+    },
+    {
+      "key": "action.trash.theme",
+      "context": "Theme name of the key action trash, shown dimmed after its plain name action.trash in the command palette, and matched when typing. Matches the garbage ball of action.delete.theme.",
+      "en": "the garbage ball",
+      "de": "der Müllball"
+    },
+    {
+      "key": "action.restore_last_deletion",
+      "context": "Command that puts back what the latest delete (F8) of this session moved to the trash. Plain name.",
+      "en": "Restore the last deletion",
+      "de": "Letztes Löschen zurücknehmen"
+    },
+    {
+      "key": "action.restore_last_deletion.theme",
+      "context": "Theme name of the key action restore_last_deletion, shown dimmed after its plain name in the command palette, and matched when typing. Plays on action.delete.theme, the garbage ball.",
+      "en": "back from the garbage ball",
+      "de": "zurück vom Müllball"
+    },
+    {
+      "key": "action.open_trash_in_finder",
+      "context": "Command that opens the system trash in the Finder (macOS only). Plain name.",
+      "en": "Open the trash in the Finder",
+      "de": "Papierkorb im Finder öffnen"
+    },
+    {
+      "key": "trash.title_everything",
+      "context": "Name of the trash view, shown in the title bar tab, above the list and in the drive menu, when the whole system trash can be listed (Windows, Linux). The count of entries is appended in brackets.",
+      "en": "Trash",
+      "de": "Papierkorb"
+    },
+    {
+      "key": "trash.title_own",
+      "context": "Name of the trash view on macOS, which can only list what ncrs moved to the trash itself. Shown in the title bar tab, above the list and in the drive menu. The count of entries is appended in brackets.",
+      "en": "Recently deleted in ncrs",
+      "de": "Zuletzt in ncrs gelöscht"
+    },
+    {
+      "key": "trash.column_name",
+      "context": "Column heading of the trash view: the name of the entry.",
+      "en": "Name",
+      "de": "Name"
+    },
+    {
+      "key": "trash.column_folder",
+      "context": "Column heading of the trash view: the folder the entry was in before it was deleted.",
+      "en": "Original folder",
+      "de": "Ursprünglicher Ordner"
+    },
+    {
+      "key": "trash.column_deleted",
+      "context": "Column heading of the trash view: when the entry was deleted.",
+      "en": "Deleted",
+      "de": "Gelöscht"
+    },
+    {
+      "key": "trash.empty_everything",
+      "context": "Text of the trash view when the system trash holds nothing.",
+      "en": "The trash is empty.",
+      "de": "Der Papierkorb ist leer."
+    },
+    {
+      "key": "trash.empty_own",
+      "context": "Text of the trash view on macOS when ncrs has not moved anything to the trash that is still there.",
+      "en": "Nothing deleted in ncrs yet.",
+      "de": "In ncrs wurde noch nichts gelöscht."
+    },
+    {
+      "key": "trash.reading",
+      "context": "Text of the trash view while the entries are being read.",
+      "en": "Reading the trash…",
+      "de": "Lese den Papierkorb…"
+    },
+    {
+      "key": "trash.error",
+      "context": "Text of the trash view when the entries could not be read. Takes {reason}.",
+      "en": "The trash could not be read: {reason}",
+      "de": "Der Papierkorb konnte nicht gelesen werden: {reason}"
+    },
+    {
+      "key": "trash.footer",
+      "context": "Hint line at the bottom of the trash view, naming its keys.",
+      "en": "Enter: put back · Space: tag · Esc: close",
+      "de": "Enter: zurücklegen · Leertaste: markieren · Esc: schließen"
+    },
+    {
+      "key": "trash.footer_own_with_key",
+      "context": "Dim line at the bottom of the trash view on macOS: the list is not the whole trash. Takes {key}, the key that opens the trash in the Finder.",
+      "en": "Only what ncrs moved to the trash. Open the trash in the Finder ({key}) for the rest.",
+      "de": "Nur, was ncrs in den Papierkorb gelegt hat. Den Rest zeigt der Papierkorb im Finder ({key})."
+    },
+    {
+      "key": "trash.footer_own",
+      "context": "Same as trash.footer_own_with_key, for when the command has no key.",
+      "en": "Only what ncrs moved to the trash. Open the trash in the Finder for the rest.",
+      "de": "Nur, was ncrs in den Papierkorb gelegt hat. Den Rest zeigt der Papierkorb im Finder."
+    },
+    {
+      "key": "trash.restored",
+      "context": "Status bar notice after entries were put back from the trash. Takes {count}.",
+      "en": "Restored {count} from the trash.",
+      "de": "{count} aus dem Papierkorb wiederhergestellt."
+    },
+    {
+      "key": "trash.restored_left",
+      "context": "Appended to trash.restored when some entries were left in the trash because the user kept what was in their way. Starts with a space. Takes {skipped}.",
+      "en": " {skipped} left in the trash.",
+      "de": " {skipped} im Papierkorb gelassen."
+    },
+    {
+      "key": "trash.restore_failed",
+      "context": "Status bar error when an entry could not be put back. Takes {name} and {reason}.",
+      "en": "{name} could not be restored: {reason}",
+      "de": "{name} konnte nicht wiederhergestellt werden: {reason}"
+    },
+    {
+      "key": "trash.moved_with_key",
+      "context": "Status bar notice after F8 moved entries to the trash. Takes {count} and {key}, the key that puts them back.",
+      "en": "Moved {count} to the trash. {key} puts it back.",
+      "de": "{count} in den Papierkorb verschoben. Mit {key} kommt es zurück."
+    },
+    {
+      "key": "trash.moved",
+      "context": "Same as trash.moved_with_key, for when the command has no key. Takes {count}.",
+      "en": "Moved {count} to the trash.",
+      "de": "{count} in den Papierkorb verschoben."
+    },
+    {
+      "key": "trash.nothing_to_restore",
+      "context": "Status bar notice when the key that restores the last deletion is used and nothing of it is left in the trash.",
+      "en": "Nothing to restore.",
+      "de": "Nichts wiederherzustellen."
+    },
+    {
+      "key": "trash.finder_failed",
+      "context": "Status bar error when the Finder could not be asked to show the trash. Takes {reason}.",
+      "en": "The Finder could not be opened: {reason}",
+      "de": "Der Finder konnte nicht geöffnet werden: {reason}"
     }
   ]
 }

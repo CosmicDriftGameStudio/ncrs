@@ -55,6 +55,8 @@ pub enum TabTitle<'a> {
     },
     /// The search view stands in for the panel; its title is already worded.
     Search(String),
+    /// The trash view stands in for the panel; its title is already worded.
+    Trash(String),
 }
 
 pub use crate::hermes_status::Tone as HermesTone;
@@ -131,7 +133,7 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
     let tab = |tab: &Tab<'a>, id: &'static str, letter_of: Msg| -> Element<'a, Message> {
         let label = match &tab.title {
             TabTitle::Path { path, loading } => tab_label(path, bar.home, *loading, chars),
-            TabTitle::Search(title) => ellipsize_middle(title, chars),
+            TabTitle::Search(title) | TabTitle::Trash(title) => ellipsize_middle(title, chars),
         };
         let letter: String = lang.text(letter_of).chars().take(1).collect();
         let content = button(

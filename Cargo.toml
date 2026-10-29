@@ -34,7 +34,6 @@ iced = { version = "0.14", default-features = false, features = ["tokio", "fira-
 # machinery a file manager has no use for.
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-trash = "5.2.9"
 # toml_edit rather than toml: the config file will be written back (keymap,
 # theme, language picked in the UI), and only toml_edit keeps the user's
 # comments and layout when it does. "parse" and "serde" read it, "display"
@@ -128,13 +127,19 @@ png = "0.18"
 # set above).
 arboard = { version = "3.6", default-features = false, features = ["image-data", "wayland-data-control"] }
 
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+# The trash on Windows and Linux. macOS talks to NSFileManager itself, because
+# the crate cannot list or restore there.
+trash = "5.2.9"
+
 [target.'cfg(target_os = "macos")'.dependencies]
 # The native menu bar on macOS, built from the command list. macOS only: Linux
 # would need GTK, and on Windows installing the menu takes an unsafe call that
 # the app crate forbids. No features, so no GTK and no xdo.
 muda = { version = "=0.21.2", default-features = false }
-# The name of the person using the app, for the sender check of the AI.
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSPathUtilities"] }
+# The name of the person using the app, for the sender check of the AI, and
+# moving entries to the trash and back.
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSPathUtilities", "NSFileManager", "NSURL", "NSError"] }
 # Apple Vision as the first choice for reading scans; ocrs stays the fallback.
 ncrs-ocr-vision = { path = "crates/ncrs-ocr-vision", version = "0.0.0" }
 

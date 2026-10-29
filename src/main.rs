@@ -65,6 +65,7 @@ mod session_state;
 mod suggestion_work;
 mod theme_fetch;
 mod transfer_dialog;
+mod trash_view;
 mod ui;
 mod vscode_theme;
 mod vsix;
@@ -186,6 +187,9 @@ CONFIG:
 
     state.toml next to index.db remembers the panels' folders and sort, the
     active panel and the window size. ncrs writes it; delete it to start fresh.
+
+    journal.toml next to state.toml records what ncrs moved to the trash on
+    macOS, so the trash view can list it and put it back.
 
     [keys] gives an action one key or a list of keys; actions not listed keep
     their defaults, [] leaves an action without a key:

@@ -352,6 +352,22 @@ mod tests {
     }
 
     #[test]
+    fn the_trash_view_matches_its_snapshot() {
+        let app = App::with_fixed_trash();
+        let mut sim = simulator(&app);
+        let matches = sim
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/trash.png")
+            .expect("snapshot comparison");
+
+        assert!(
+            matches,
+            "the trash view does not match tests/snapshots/trash.png"
+        );
+    }
+
+    #[test]
     fn quick_open_matches_its_snapshot() {
         let mut app = App::with_fixed_panels();
         app.open_quick_open_for_test(

@@ -588,6 +588,20 @@ impl crate::fs::Trash for FolderTrash {
         let name = path.file_name().ok_or("no file name")?;
         std::fs::rename(path, self.0.join(name)).map_err(|err| err.to_string())
     }
+
+    fn reach(&self) -> crate::fs::TrashReach {
+        crate::fs::TrashReach::Everything
+    }
+
+    fn list(&self) -> Result<Vec<crate::fs::TrashedItem>, String> {
+        Ok(Vec::new())
+    }
+
+    fn restore(&self, _item: &crate::fs::TrashedItem) -> Result<(), crate::fs::RestoreError> {
+        Err(crate::fs::RestoreError::Failed(
+            "not in this fake".to_string(),
+        ))
+    }
 }
 
 /// A trash that refuses everything, like a volume without one.
@@ -596,6 +610,20 @@ struct RefusingTrash;
 impl crate::fs::Trash for RefusingTrash {
     fn trash(&self, _path: &Path) -> Result<(), String> {
         Err("no trash on this volume".to_string())
+    }
+
+    fn reach(&self) -> crate::fs::TrashReach {
+        crate::fs::TrashReach::FinderOnly
+    }
+
+    fn list(&self) -> Result<Vec<crate::fs::TrashedItem>, String> {
+        Ok(Vec::new())
+    }
+
+    fn restore(&self, _item: &crate::fs::TrashedItem) -> Result<(), crate::fs::RestoreError> {
+        Err(crate::fs::RestoreError::Failed(
+            "no trash on this volume".to_string(),
+        ))
     }
 }
 
@@ -709,7 +737,7 @@ impl crate::fs::Launcher for MissingProgramLauncher {
 mod tests {
     use super::*;
 
-    use crate::messages::ConflictChoice;
+    use crate::messages::{ConflictChoice, TrashMessage};
     use iced::keyboard::key::Named;
 
     /// The panels have to be pointing at the scratch tree before a key means
@@ -1263,6 +1291,222 @@ mod tests {
         assert!(
             !names(&session.app, PanelSide::Left).contains(&"alpha.txt".to_string()),
             "the panel still lists alpha.txt"
+        );
+    }
+
+    /// A trash that is a folder, with the record of what the app put in it, as
+    /// the macOS trash works: the list is the record.
+    struct Bin {
+        folder: tempfile::TempDir,
+        journal: tempfile::TempDir,
+        trash: std::sync::Arc<crate::fs::JournaledTrash<crate::fs::FolderBackend>>,
+    }
+
+    impl Bin {
+        fn new() -> Self {
+            let folder = tempfile::Builder::new()
+                .prefix("ncrs-e2e-bin-")
+                .tempdir()
+                .expect("a trash folder");
+            let journal = tempfile::Builder::new()
+                .prefix("ncrs-e2e-journal-")
+                .tempdir()
+                .expect("a journal folder");
+            let trash = std::sync::Arc::new(crate::fs::JournaledTrash::new(
+                journal.path().join("journal.toml"),
+                crate::fs::FolderBackend(folder.path().to_path_buf()),
+            ));
+            Self {
+                folder,
+                journal,
+                trash,
+            }
+        }
+
+        fn session(
+            &self,
+            dir: &Path,
+        ) -> Session<impl iced::Program<State = App, Message = Message> + 'static> {
+            let trash = std::sync::Arc::clone(&self.trash);
+            session_with_trash(dir, trash)
+        }
+
+        fn journal_text(&self) -> String {
+            std::fs::read_to_string(self.journal.path().join("journal.toml")).unwrap_or_default()
+        }
+
+        /// What lies in the trash folder, as `name -> content`.
+        fn contents(&self) -> Vec<String> {
+            std::fs::read_dir(self.folder.path())
+                .expect("the trash folder")
+                .filter_map(|entry| std::fs::read_to_string(entry.expect("an entry").path()).ok())
+                .collect()
+        }
+    }
+
+    fn open_trash<P: iced::Program<State = App, Message = Message> + 'static>(
+        session: &mut Session<P>,
+    ) {
+        session.send(Message::Trash(TrashMessage::Open));
+        assert!(
+            session.app.trash_view_has_keys(),
+            "the trash view did not open"
+        );
+    }
+
+    /// F8 and Enter on the named rows.
+    fn trash_rows<P: iced::Program<State = App, Message = Message> + 'static>(
+        session: &mut Session<P>,
+        rows: &[&str],
+    ) {
+        session.press(Key::Named(Named::Home));
+        for name in rows {
+            cursor_to(session, name);
+            session.press(Key::Named(Named::Insert));
+        }
+        session.press(Key::Named(Named::F8));
+        session.press(Key::Named(Named::Enter));
+    }
+
+    #[test]
+    fn the_trash_view_puts_a_file_and_a_folder_back_with_their_content() {
+        let dir = scratch("trash-restore");
+        write(&dir.path().join("alpha.txt"), "alpha");
+        write(&dir.path().join("docs/inner.txt"), "inner");
+        let bin = Bin::new();
+        let mut session = bin.session(dir.path());
+        trash_rows(&mut session, &["docs", "alpha.txt"]);
+        assert!(!dir.path().join("alpha.txt").exists());
+        assert!(!dir.path().join("docs").exists());
+
+        open_trash(&mut session);
+        let root = std::fs::canonicalize(dir.path()).expect("the scratch path");
+        let mut listed = session.app.trash_view_originals().expect("an open view");
+        listed.sort();
+        assert_eq!(listed, [root.join("alpha.txt"), root.join("docs")]);
+        session.press(Key::Character("*".into()));
+        session.press(Key::Named(Named::Enter));
+
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("alpha.txt")).expect("alpha.txt is back"),
+            "alpha"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("docs/inner.txt")).expect("docs is back"),
+            "inner"
+        );
+        assert!(session.app.restore_is_idle());
+        assert_eq!(session.app.trash_view_originals(), Some(Vec::new()));
+        assert!(
+            !bin.journal_text().contains("alpha.txt") && !bin.journal_text().contains("docs"),
+            "the journal still lists what came back: {}",
+            bin.journal_text()
+        );
+        assert!(names(&session.app, PanelSide::Left).contains(&"alpha.txt".to_string()));
+    }
+
+    #[test]
+    fn a_taken_name_asks_and_overwriting_sends_the_occupant_to_the_trash() {
+        let dir = scratch("trash-taken");
+        write(&dir.path().join("alpha.txt"), "original");
+        let bin = Bin::new();
+        let mut session = bin.session(dir.path());
+        trash_rows(&mut session, &["alpha.txt"]);
+        write(&dir.path().join("alpha.txt"), "occupant");
+        open_trash(&mut session);
+
+        session.press(Key::Named(Named::Enter));
+        assert!(session.app.conflict_is_pending(), "the restore did not ask");
+        session.press(Key::Named(Named::Escape));
+
+        assert!(!session.app.conflict_is_pending());
+        assert!(session.app.restore_is_idle());
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("alpha.txt")).expect("the occupant"),
+            "occupant",
+            "keeping touched the file in the way"
+        );
+        assert_eq!(
+            session.app.trash_view_originals().map(|list| list.len()),
+            Some(1),
+            "the entry that stayed is not listed"
+        );
+
+        session.press(Key::Named(Named::Enter));
+        assert!(session.app.conflict_is_pending());
+        session.press(Key::Named(Named::Enter));
+
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("alpha.txt")).expect("the original"),
+            "original"
+        );
+        assert_eq!(
+            bin.contents(),
+            ["occupant".to_string()],
+            "the occupant was not moved to the trash"
+        );
+        assert!(session.app.restore_is_idle());
+    }
+
+    #[test]
+    fn a_missing_original_folder_is_created_on_restore() {
+        let dir = scratch("trash-folder");
+        write(&dir.path().join("gone/deep/inner.txt"), "inner");
+        let bin = Bin::new();
+        crate::fs::Trash::trash(&*bin.trash, &dir.path().join("gone/deep/inner.txt"))
+            .expect("trashing");
+        std::fs::remove_dir_all(dir.path().join("gone")).expect("removing the folders");
+        let mut session = bin.session(dir.path());
+        open_trash(&mut session);
+
+        session.press(Key::Named(Named::Enter));
+
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("gone/deep/inner.txt")).expect("restored"),
+            "inner"
+        );
+    }
+
+    #[test]
+    fn the_restore_key_puts_back_exactly_the_latest_deletion() {
+        let dir = scratch("trash-last");
+        write(&dir.path().join("older.txt"), "older");
+        write(&dir.path().join("alpha.txt"), "alpha");
+        write(&dir.path().join("beta.txt"), "beta");
+        let bin = Bin::new();
+        let mut session = bin.session(dir.path());
+        trash_rows(&mut session, &["older.txt"]);
+        trash_rows(&mut session, &["alpha.txt", "beta.txt"]);
+        session.press_with(Key::Character("z".into()), Modifiers::COMMAND);
+
+        assert!(dir.path().join("alpha.txt").is_file());
+        assert!(dir.path().join("beta.txt").is_file());
+        assert!(
+            !dir.path().join("older.txt").exists(),
+            "an earlier deletion came back too"
+        );
+
+        // Nothing is left to put back: the second press changes nothing.
+        session.press_with(Key::Character("z".into()), Modifiers::COMMAND);
+        assert!(!dir.path().join("older.txt").exists());
+    }
+
+    #[test]
+    fn an_entry_taken_out_of_the_trash_behind_the_apps_back_is_not_listed() {
+        let dir = scratch("trash-behind");
+        write(&dir.path().join("alpha.txt"), "alpha");
+        write(&dir.path().join("beta.txt"), "beta");
+        let bin = Bin::new();
+        let mut session = bin.session(dir.path());
+        trash_rows(&mut session, &["alpha.txt", "beta.txt"]);
+        std::fs::remove_file(bin.folder.path().join("alpha.txt")).expect("emptying the trash");
+
+        open_trash(&mut session);
+
+        let root = std::fs::canonicalize(dir.path()).expect("the scratch path");
+        assert_eq!(
+            session.app.trash_view_originals(),
+            Some(vec![root.join("beta.txt")])
         );
     }
 
@@ -1876,10 +2120,17 @@ mod tests {
 
         session.press_with(Key::Named(Named::F1), Modifiers::ALT);
         session.press(Key::Named(Named::End));
+        assert_eq!(
+            session.app.volume_menu_selected(),
+            Some(3),
+            "the trash is the row after the drives"
+        );
+        session.press(Key::Named(Named::ArrowUp));
         assert_eq!(session.app.volume_menu_selected(), Some(2));
         session.press(Key::Named(Named::Home));
         assert_eq!(session.app.volume_menu_selected(), Some(0));
         session.press(Key::Named(Named::End));
+        session.press(Key::Named(Named::ArrowUp));
         session.press(Key::Named(Named::Enter));
 
         let canonical = std::fs::canonicalize(dir.path()).unwrap();
