@@ -6,10 +6,21 @@ use chrono::{DateTime, Local};
 use crate::fs::FileEntry;
 use crate::i18n::Msg;
 
+/// Whole megabytes (1 MB = 1,000,000 bytes), rounded: the one unit and rounding
+/// of a download and of the model that is downloaded.
+fn whole_megabytes(bytes: u64) -> u64 {
+    (bytes + 500_000).div_euclid(1_000_000)
+}
+
+/// `639 MB`: the size of a download as its card and its progress line say it.
+pub fn megabytes(bytes: u64) -> String {
+    format!("{} MB", whole_megabytes(bytes))
+}
+
 /// Megabytes (1 MB = 1,000,000 bytes) received and in all, and the percent
 /// done, rounded and as text for the line under a download's bar.
 pub fn download_figures(received: u64, total: u64) -> (String, String, String) {
-    let megabytes = |bytes: u64| (bytes + 500_000).div_euclid(1_000_000);
+    let megabytes = whole_megabytes;
     let percent = if total == 0 {
         0
     } else {

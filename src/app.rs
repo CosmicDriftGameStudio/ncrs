@@ -24990,6 +24990,10 @@ mod hermes_roles_and_off_tests {
         let config_path = config_dir.path().join("config.toml");
         std::fs::write(&config_path, "").unwrap();
         app.config_path = Some(config_path);
+        // The fixed panels hold Unix paths, which are not absolute on Windows.
+        let documents = config_dir.path().join("Documents");
+        std::fs::create_dir(&documents).unwrap();
+        app.panel_mut(LEFT).entries[DOCUMENTS].path = documents;
         app
     }
 

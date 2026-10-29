@@ -4291,7 +4291,7 @@ mod ai_model_card {
         let pin = ncrs_ai::LOCAL_MODEL;
         for label in [
             "Download from: huggingface.co".to_owned(),
-            format!("{}: {}", pin.name, crate::ui::format::size(pin.size)),
+            format!("{}: {}", pin.name, crate::ui::format::megabytes(pin.size)),
             format!("SHA-256 checksum: {}", pin.sha256),
             "License: Apache-2.0".to_owned(),
             "Saved to: /example/data/ai-models".to_owned(),
@@ -5239,8 +5239,8 @@ mod hermes_setup_card {
     }
 
     #[test]
-    fn the_model_line_names_its_size_rounded_to_ten_megabytes() {
-        assert_eq!(crate::ui::hermes_setup::model_size_label(), "640 MB");
+    fn the_model_line_names_its_size_in_whole_decimal_megabytes() {
+        assert_eq!(crate::ui::hermes_setup::model_size_label(), "639 MB");
     }
 
     #[test]

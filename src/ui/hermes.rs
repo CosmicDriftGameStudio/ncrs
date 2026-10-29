@@ -47,20 +47,15 @@ pub const PAGES: [HermesPage; 6] = [
     HermesPage::Inspection,
 ];
 
-/// The plain name and the theme name of a page.
-fn names(page: HermesPage) -> (Msg, Msg) {
+/// The name of a page in the sidebar.
+fn name(page: HermesPage) -> Msg {
     match page {
-        HermesPage::Overview => (Msg::HermesNavOverview, Msg::HermesNavOverviewTheme),
-        HermesPage::Inspection => (Msg::HermesNavInspection, Msg::HermesNavInspectionTheme),
-        HermesPage::Review => (Msg::ActionReviewList, Msg::ActionReviewListTheme),
-        HermesPage::RuleSuggestions => {
-            (Msg::ActionRuleSuggestions, Msg::ActionRuleSuggestionsTheme)
-        }
-        HermesPage::SavedQueries => (Msg::ActionSavedQueries, Msg::ActionSavedQueriesTheme),
-        HermesPage::Reorganisation => (
-            Msg::ActionReorganisationPlan,
-            Msg::ActionReorganisationPlanTheme,
-        ),
+        HermesPage::Overview => Msg::HermesNavOverview,
+        HermesPage::Inspection => Msg::HermesNavInspection,
+        HermesPage::Review => Msg::ActionReviewList,
+        HermesPage::RuleSuggestions => Msg::ActionRuleSuggestions,
+        HermesPage::SavedQueries => Msg::ActionSavedQueries,
+        HermesPage::Reorganisation => Msg::ActionReorganisationPlan,
     }
 }
 
@@ -82,24 +77,14 @@ pub fn nav<'a>(
         let badge_room = badge.as_ref().map_or(0.0, |digits| {
             format::estimated_width(digits, font_size::BODY) + spacing::S
         });
-        let (plain_msg, theme_msg) = names(page);
         let plain = format::fit_end(
-            lang.text(plain_msg),
+            lang.text(name(page)),
             available - badge_room,
             font_size::BODY,
         );
-        let theme_name = lang.text(theme_msg);
-        let theme_fits = format::estimated_width(&plain, font_size::BODY)
-            + spacing::S
-            + format::estimated_width(theme_name, font_size::BODY)
-            + badge_room
-            <= available;
         let mut content = row![label(plain, plain_color)]
             .spacing(spacing::S)
             .align_y(alignment::Vertical::Center);
-        if theme_fits {
-            content = content.push(label(theme_name.to_owned(), theme_color));
-        }
         content = content.push(container("").width(Length::Fill));
         if let Some(digits) = badge {
             content = content.push(label(digits, theme_color));

@@ -39,7 +39,7 @@ pub fn view<'a>(
         return finished_view(outcome, focus, window, lang, palette);
     }
     let line_chars = frame::content_chars(SIZE, window, 0.0);
-    let size = format::size(LOCAL_MODEL.size);
+    let size = format::megabytes(LOCAL_MODEL.size);
     let intro = if card.is_installed() {
         text(lang.text(Msg::AiModelInstalledState))
             .size(font_size::BODY)
