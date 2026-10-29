@@ -78,10 +78,10 @@ rfd = { version = "=0.17.2", default-features = false, features = ["xdg-portal"]
 jsonc-parser = { version = "=0.34.0", default-features = false }
 # Downloads a VS Code color theme from Open VSX, only when the user asks for it
 # in the command palette. Blocking and HTTPS only (rustls), run off the UI thread.
-ureq = { version = "=3.4.2", default-features = false, features = ["rustls"] }
+ureq = { version = "=3.5.0", default-features = false, features = ["rustls"] }
 # Reads the downloaded .vsix in memory to pick the theme files out of it. Entries
 # are read by name with a size limit and never extracted to disk.
-zip = { version = "=9.0.1", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip = { version = "=9.1.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 # Browsing archives like folders. Entries are unpacked by our own code, never
 # with tar's `unpack`, so one name rule covers every format; no default features
 # keeps the xattr dependency out.
