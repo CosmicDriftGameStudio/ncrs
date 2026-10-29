@@ -106,6 +106,8 @@ impl StartPlan {
             }
             Phase::AskEncryption { .. } | Phase::Failed(_) | Phase::Dismissed => PlanStep::Abandon,
             Phase::Starting
+            | Phase::Encrypting
+            | Phase::StartingOver
             | Phase::ShowRecoveryKey { .. }
             | Phase::AskRecoveryKey { .. }
             | Phase::PlainFileWarning => PlanStep::Wait,

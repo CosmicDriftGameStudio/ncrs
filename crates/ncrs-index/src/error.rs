@@ -42,6 +42,8 @@ pub enum IndexError {
     WrongKey,
     /// `replace_key` was pointed at a plain database, which has no key.
     NotEncrypted,
+    /// `encrypt_plain` was pointed at a database that is already encrypted.
+    NotPlain,
     /// The stored entry is not a 32 byte key.
     InvalidKeyLength {
         found: usize,
@@ -107,6 +109,7 @@ impl fmt::Display for IndexError {
                 f,
                 "the index database is not encrypted, so it has no key to replace"
             ),
+            Self::NotPlain => write!(f, "the index database is already encrypted"),
             Self::InvalidKeyLength { found } => {
                 write!(f, "the stored index key is {found} bytes, expected 32")
             }

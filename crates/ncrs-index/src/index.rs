@@ -1,12 +1,12 @@
 use std::fs::File;
-use std::io::Read as _;
-use std::path::Path;
+use std::io::{ErrorKind, Read as _};
+use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, ErrorCode};
 
 use crate::error::IndexError;
 use crate::key::{IndexKey, RecoveryKey};
-use crate::key_store::KeyStore;
+use crate::key_store::{InMemoryKeyStore, KeyStore};
 use crate::migrations::{run_migrations, MIGRATIONS};
 use crate::model::IndexStatistics;
 
@@ -96,6 +96,33 @@ impl Index {
         } else {
             Err(IndexError::KeyStoreVerificationFailed)
         }
+    }
+
+    /// Encrypts a plain index in place. The data is exported into a copy next
+    /// to the file, the copy is opened with the key, the key goes into the
+    /// store, and only then does the copy replace the plain file. A failure
+    /// before that leaves the plain file as it was; a key made for this run is
+    /// taken out of the store again.
+    ///
+    /// The caller must have closed every connection to `db_path`: on macOS a
+    /// rename over an open file succeeds and the old handle then writes into
+    /// the replaced file.
+    pub fn encrypt_plain(db_path: &Path, store: &dyn KeyStore) -> Result<RecoveryKey, IndexError> {
+        require_existing_file(db_path)?;
+        if !starts_with_plaintext_header(db_path)? {
+            return Err(IndexError::NotPlain);
+        }
+        let copy_path = path_with_suffix(db_path, ENCRYPTING_SUFFIX)?;
+        remove_file_if_present(&copy_path)?;
+        let (key, entry_is_new) = match store.load()? {
+            Some(stored) => (IndexKey::from_stored(&stored)?, false),
+            None => (IndexKey::generate()?, true),
+        };
+        let swapped = export_check_and_swap(db_path, &copy_path, &key, store, entry_is_new);
+        if swapped.is_err() {
+            let _copy_may_not_exist = std::fs::remove_file(&copy_path);
+        }
+        swapped.map(|()| key.recovery_key())
     }
 
     pub fn is_encrypted(&self) -> bool {
@@ -243,10 +270,113 @@ fn store_and_verify(store: &dyn KeyStore, key: &IndexKey) -> Result<(), IndexErr
     }
 }
 
+/// The copy `encrypt_plain` writes; a leftover one is from a stopped run.
+const ENCRYPTING_SUFFIX: &str = ".encrypting";
+
+/// Files SQLite keeps beside the database; none may outlive a replaced one.
+const SIDECAR_SUFFIXES: [&str; 3] = ["-wal", "-shm", "-journal"];
+
+fn path_with_suffix(db_path: &Path, suffix: &str) -> Result<PathBuf, IndexError> {
+    let mut name = db_path
+        .file_name()
+        .ok_or_else(|| IndexError::NonUtf8Path(db_path.to_path_buf()))?
+        .to_os_string();
+    name.push(suffix);
+    Ok(db_path.with_file_name(name))
+}
+
+fn remove_file_if_present(path: &Path) -> Result<(), IndexError> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(IndexError::Io(err)),
+    }
+}
+
+fn export_check_and_swap(
+    db_path: &Path,
+    copy_path: &Path,
+    key: &IndexKey,
+    store: &dyn KeyStore,
+    entry_is_new: bool,
+) -> Result<(), IndexError> {
+    export_encrypted_copy(db_path, copy_path, key)?;
+    check_copy_opens(copy_path, key)?;
+    if entry_is_new {
+        if let Err(err) = store_and_verify(store, key) {
+            let _entry_may_not_exist = store.delete();
+            return Err(err);
+        }
+    }
+    if let Err(err) = replace_with_copy(db_path, copy_path) {
+        if entry_is_new {
+            let _entry_may_not_exist = store.delete();
+        }
+        return Err(err);
+    }
+    sync_parent_directory(db_path);
+    Ok(())
+}
+
+/// The key is a bound parameter, so it appears in no SQL text and no error.
+fn export_encrypted_copy(
+    db_path: &Path,
+    copy_path: &Path,
+    key: &IndexKey,
+) -> Result<(), IndexError> {
+    let copy_text = copy_path
+        .to_str()
+        .ok_or_else(|| IndexError::NonUtf8Path(copy_path.to_path_buf()))?;
+    let conn = Connection::open(db_path)?;
+    // The export copies tables one by one, so rows may not be checked against
+    // tables that are not there yet.
+    conn.pragma_update(None, "foreign_keys", false)?;
+    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    let user_version: u32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    conn.execute(
+        "ATTACH DATABASE ?1 AS encrypted KEY ?2",
+        (copy_text, raw_key_text(key)),
+    )?;
+    conn.execute_batch("PRAGMA encrypted.cipher_compatibility = 4;")?;
+    conn.query_row("SELECT sqlcipher_export('encrypted')", [], |_| Ok(()))?;
+    conn.execute_batch(&format!("PRAGMA encrypted.user_version = {user_version};"))?;
+    conn.execute_batch("DETACH DATABASE encrypted;")?;
+    conn.close().map_err(|(_, err)| err)?;
+    Ok(())
+}
+
+fn check_copy_opens(copy_path: &Path, key: &IndexKey) -> Result<(), IndexError> {
+    let holding_key = InMemoryKeyStore::with_entry(key.as_bytes().to_vec());
+    let copy = Index::open(copy_path, &holding_key)?;
+    if copy.is_encrypted() {
+        Ok(())
+    } else {
+        Err(IndexError::NotEncrypted)
+    }
+}
+
+fn replace_with_copy(db_path: &Path, copy_path: &Path) -> Result<(), IndexError> {
+    for suffix in SIDECAR_SUFFIXES {
+        remove_file_if_present(&path_with_suffix(db_path, suffix)?)?;
+    }
+    std::fs::rename(copy_path, db_path).map_err(IndexError::Io)
+}
+
+/// A directory cannot be synced everywhere; the rename has happened either way.
+fn sync_parent_directory(db_path: &Path) {
+    if let Some(parent) = db_path.parent() {
+        let _not_supported_everywhere = File::open(parent).and_then(|dir| dir.sync_all());
+    }
+}
+
+/// The `x'..'` form skips the passphrase key derivation: the key is already 32
+/// random bytes, so stretching it would only cost start-up time.
+fn raw_key_text(key: &IndexKey) -> String {
+    format!("x'{}'", key.to_hex())
+}
+
 fn unlock(conn: &Connection, key: &IndexKey) -> Result<(), IndexError> {
-    // The raw `x'..'` form skips the passphrase key derivation: the key is
-    // already 32 random bytes, so stretching it would only cost start-up time.
-    conn.execute_batch(&format!("PRAGMA key = \"x'{}'\";", key.to_hex()))?;
+    conn.execute_batch(&format!("PRAGMA key = \"{}\";", raw_key_text(key)))?;
     // Pins the SQLCipher 4 file format. Without it a later SQLCipher major
     // version would apply its own defaults and fail to open existing files.
     conn.execute_batch("PRAGMA cipher_compatibility = 4;")?;
@@ -288,7 +418,7 @@ mod tests {
     use super::*;
     use crate::error::KeyStoreError;
     use crate::key_store::InMemoryKeyStore;
-    use crate::model::ReviewReason;
+    use crate::model::{DocumentId, ReviewReason};
     use crate::test_support::{encrypted_index, new_document, plain_index};
 
     const TABLE_A: &str = "CREATE TABLE a (id INTEGER);";
@@ -1094,6 +1224,134 @@ mod tests {
         assert_eq!(user_version(&index), 9);
         assert!(!has_column(&index, "document", "probe"));
         assert_v0_6_0_content(&index);
+    }
+
+    /// Refuses to store, as a credential store that has gone away does.
+    struct StoreThatRefusesToSave;
+
+    impl KeyStore for StoreThatRefusesToSave {
+        fn load(&self) -> Result<Option<Vec<u8>>, KeyStoreError> {
+            Ok(None)
+        }
+
+        fn store_new(&self, _key: &[u8]) -> Result<(), KeyStoreError> {
+            Err(KeyStoreError::Unavailable("refused".to_owned()))
+        }
+
+        fn replace(&self, _key: &[u8]) -> Result<(), KeyStoreError> {
+            Err(KeyStoreError::Unavailable("refused".to_owned()))
+        }
+
+        fn delete(&self) -> Result<(), KeyStoreError> {
+            Ok(())
+        }
+    }
+
+    fn plain_db_with_a_document(path: &Path) -> DocumentId {
+        let mut index = Index::create_plain(path).unwrap();
+        let id = index.insert_document(&new_document(1)).unwrap();
+        index
+            .set_document_text(id, "invoice for the garden fence")
+            .unwrap();
+        id
+    }
+
+    fn files_beside(dir: &TempDir) -> Vec<String> {
+        let mut names: Vec<String> = fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn encrypting_a_plain_index_keeps_its_rows_version_and_text_search() {
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let id = plain_db_with_a_document(&path);
+        let store = InMemoryKeyStore::empty();
+
+        let recovery_key = Index::encrypt_plain(&path, &store).unwrap();
+
+        assert!(!Index::file_is_plain(&path).unwrap());
+        let index = Index::open(&path, &store).unwrap();
+        assert!(index.is_encrypted());
+        assert_eq!(
+            user_version(&index),
+            u32::try_from(MIGRATIONS.len()).unwrap()
+        );
+        assert_eq!(
+            index.document(id).unwrap().unwrap().path,
+            PathBuf::from("inbox/scan-1.pdf")
+        );
+        assert_eq!(index.search_text("garden", 10).unwrap(), vec![id]);
+        let stored = store.snapshot().unwrap();
+        assert_eq!(recovery_key.key().as_bytes(), stored.as_slice());
+        assert_eq!(files_beside(&dir), vec!["index.db".to_owned()]);
+    }
+
+    #[test]
+    fn encrypting_with_a_key_already_in_the_store_reuses_it_and_keeps_it() {
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        plain_db_with_a_document(&path);
+        let store = InMemoryKeyStore::with_entry(vec![7; 32]);
+
+        Index::encrypt_plain(&path, &store).unwrap();
+
+        assert_eq!(store.snapshot(), Some(vec![7; 32]));
+        assert!(Index::open(&path, &store).unwrap().is_encrypted());
+    }
+
+    #[test]
+    fn a_store_that_refuses_to_save_leaves_the_plain_file_and_no_copy() {
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        plain_db_with_a_document(&path);
+        let before = fs::read(&path).unwrap();
+
+        let err = Index::encrypt_plain(&path, &StoreThatRefusesToSave).unwrap_err();
+
+        assert!(matches!(err, IndexError::KeyStore(_)), "{err}");
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert!(Index::file_is_plain(&path).unwrap());
+        assert_eq!(files_beside(&dir), vec!["index.db".to_owned()]);
+    }
+
+    #[test]
+    fn an_old_copy_from_a_stopped_run_is_replaced() {
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        plain_db_with_a_document(&path);
+        fs::write(dir.path().join("index.db.encrypting"), b"left over").unwrap();
+        let store = InMemoryKeyStore::empty();
+
+        Index::encrypt_plain(&path, &store).unwrap();
+
+        assert_eq!(files_beside(&dir), vec!["index.db".to_owned()]);
+        assert!(Index::open(&path, &store).unwrap().is_encrypted());
+    }
+
+    #[test]
+    fn an_encrypted_index_is_not_encrypted_again() {
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let store = InMemoryKeyStore::empty();
+        create_encrypted_db(&path, &store);
+
+        let err = Index::encrypt_plain(&path, &store).unwrap_err();
+
+        assert!(matches!(err, IndexError::NotPlain), "{err}");
+    }
+
+    #[test]
+    fn a_missing_file_is_not_created_by_encrypting() {
+        let dir = TempDir::new().unwrap();
+        let err = Index::encrypt_plain(&db_in(&dir), &InMemoryKeyStore::empty()).unwrap_err();
+
+        assert!(matches!(err, IndexError::NotFound), "{err}");
+        assert!(files_beside(&dir).is_empty());
     }
 
     #[test]

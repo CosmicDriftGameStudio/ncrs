@@ -782,6 +782,11 @@ pub enum HermesOverviewMessage {
     ContinueSetup,
     TryAgain,
     EnterRecoveryKey,
+    EncryptNow,
+    /// Opens the question whether to remove the index and begin again.
+    AskStartOver,
+    ConfirmStartOver,
+    CancelStartOver,
 }
 
 /// Everything the reorganisation plan view sends. Running the selection is

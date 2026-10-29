@@ -6235,16 +6235,100 @@
       "de": "Hermes hat noch keinen Index. Er entsteht, wenn du Hermes einrichtest."
     },
     {
-      "key": "hermes_overview.key_missing",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence in the protection section when the key of the encrypted index is not in the key store.",
-      "en": "The key to the index is missing. Without it Hermes cannot open the index.",
-      "de": "Der Schlüssel zum Index fehlt. Ohne ihn kann Hermes den Index nicht öffnen."
+      "key": "hermes_overview.key_missing_mac",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence in the protection section on macOS when the key of the encrypted index is not in the keychain.",
+      "en": "The key for the index is missing in the keychain.",
+      "de": "Der Schlüssel für den Index fehlt im Schlüsselbund."
+    },
+    {
+      "key": "hermes_overview.key_missing_other",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence in the protection section on other systems than macOS when the key of the encrypted index is not in the credential store.",
+      "en": "The key for the index is missing in the system's credential store.",
+      "de": "Der Schlüssel für den Index fehlt im Schlüsselspeicher des Systems."
+    },
+    {
+      "key": "hermes_overview.key_mismatch",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence in the protection section when the stored key does not open the encrypted index.",
+      "en": "The stored key does not fit the index.",
+      "de": "Der gespeicherte Schlüssel passt nicht zum Index."
     },
     {
       "key": "hermes_overview.enter_recovery_key",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button in the protection section that opens the card where the recovery key is typed in.",
       "en": "Enter recovery key",
       "de": "Wiederherstellungsschlüssel eingeben"
+    },
+    {
+      "key": "hermes_overview.encrypt_now",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button in the protection section that encrypts the index which is stored unencrypted.",
+      "en": "Encrypt now",
+      "de": "Jetzt verschlüsseln"
+    },
+    {
+      "key": "hermes_overview.start_over",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button in the protection section that opens the question whether to remove the index and begin again. The dots mean a question follows.",
+      "en": "Start over …",
+      "de": "Neu anfangen …"
+    },
+    {
+      "key": "hermes_overview.protection_encrypting",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Word after the protection heading while the index is being encrypted.",
+      "en": "encrypting …",
+      "de": "wird verschlüsselt …"
+    },
+    {
+      "key": "hermes_overview.protection_starting_over",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Word after the protection heading while the index and its key are being removed.",
+      "en": "starting over …",
+      "de": "wird neu angelegt …"
+    },
+    {
+      "key": "hermes_overview.protection_working",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence in the protection section while the index is being encrypted or removed.",
+      "en": "Please wait a moment. Hermes files nothing while this runs.",
+      "de": "Einen Moment bitte. Hermes legt währenddessen nichts ab."
+    },
+    {
+      "key": "hermes_overview.encrypt_failed",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence in the protection section when encrypting did not work; the index stays as it was. {reason} is the cause.",
+      "en": "The index could not be encrypted and stays as it was: {reason}",
+      "de": "Der Index konnte nicht verschlüsselt werden und bleibt, wie er war: {reason}"
+    },
+    {
+      "key": "hermes_overview.start_over_failed",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence in the protection section when removing the index did not work. {reason} is the cause.",
+      "en": "The index could not be removed: {reason}",
+      "de": "Der Index konnte nicht entfernt werden: {reason}"
+    },
+    {
+      "key": "hermes_overview.key_entry_kept",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence in the protection section when the index was removed but its key stays in the key store. {reason} is the cause.",
+      "en": "The index was removed, but its key could not be deleted from the key store: {reason}",
+      "de": "Der Index wurde entfernt, aber sein Schlüssel ließ sich nicht aus dem Schlüsselspeicher löschen: {reason}"
+    },
+    {
+      "key": "hermes_overview.start_over_title",
+      "context": "Title of the question in the Hermes overview whether to remove the index and begin again.",
+      "en": "Start Hermes over?",
+      "de": "Hermes neu anfangen?"
+    },
+    {
+      "key": "hermes_overview.start_over_loss",
+      "context": "Body of the question in the Hermes overview whether to remove the index: names what is lost.",
+      "en": "This removes the index of Hermes with its rules, rule suggestions, saved searches and the undo history. It also removes what it knows about your documents and the entries waiting for review.",
+      "de": "Damit wird der Index von Hermes entfernt, mit seinen Regeln, Regelvorschlägen, gespeicherten Suchen und dem Rückgängig-Verlauf. Auch sein Wissen über deine Dokumente und die Einträge, die auf Prüfung warten, gehen verloren."
+    },
+    {
+      "key": "hermes_overview.start_over_files",
+      "context": "Body of the question in the Hermes overview whether to remove the index: says what stays.",
+      "en": "Your files and folders stay where they are. The key of the index is removed as well. Afterwards you set Hermes up again.",
+      "de": "Deine Dateien und Ordner bleiben, wo sie sind. Auch der Schlüssel des Index wird entfernt. Danach richtest du Hermes neu ein."
+    },
+    {
+      "key": "hermes_overview.start_over_confirm",
+      "context": "Button of the question in the Hermes overview that removes the index. Destructive, red.",
+      "en": "Remove index",
+      "de": "Index entfernen"
     },
     {
       "key": "hermes_overview.off_note",

@@ -599,9 +599,19 @@ fn install_theme_from_link(
 
 /// Runs one blocking step of the filing module off the UI thread.
 fn run_filing_work(work: Work) -> Task<Message> {
+    run_filing_work_after(None, work)
+}
+
+/// Like [`run_filing_work`], with the pipeline dropped first on the same
+/// blocking thread: joining its threads blocks, and the work needs the index
+/// free of them.
+fn run_filing_work_after(pipeline: Option<ncrs_pipeline::Runner>, work: Work) -> Task<Message> {
     let generation = work.generation();
     Task::perform(
-        tokio::task::spawn_blocking(move || work.run()),
+        tokio::task::spawn_blocking(move || {
+            drop(pipeline);
+            work.run()
+        }),
         move |joined| {
             Message::Filing(joined.unwrap_or_else(|join| FilingMessage::WorkDone {
                 generation,
@@ -1015,6 +1025,8 @@ pub struct App {
     transfer_rows_done: usize,
     /// The delete confirmation dialog, while it is up.
     delete_dialog: Option<Deletion>,
+    /// The question whether to remove the Hermes index and begin again.
+    start_over_dialog: bool,
     /// The delete that is running.
     deleting: Option<Deletion>,
     /// The folders F3 unpacks archive files into. `None` when there is no
@@ -1358,6 +1370,8 @@ pub struct PromptKeyState {
     pub settings: bool,
     /// The delete dialog is up, so keys answer it.
     pub delete_dialog: DeleteKeys,
+    /// The question whether to remove the Hermes index is up: keys answer it.
+    pub start_over_dialog: bool,
     /// The drive menu is up, so keys move its highlight.
     pub volume_menu: bool,
     /// The context menu is up, so keys move its highlight.
@@ -1410,6 +1424,7 @@ impl Default for PromptKeyState {
             connect_dialog: false,
             settings: false,
             delete_dialog: DeleteKeys::default(),
+            start_over_dialog: false,
             volume_menu: false,
             context_menu: false,
             context_submenu: false,
@@ -1598,7 +1613,11 @@ fn rule_suggestions_key(
 /// What Escape sends while one of the small button dialogs is up: the about
 /// card, the OCR models card, the AI model card or the folder grant dialog.
 fn card_close_message(prompt: &PromptKeyState) -> Option<Message> {
-    if prompt.hermes_setup {
+    if prompt.start_over_dialog {
+        Some(Message::HermesOverview(
+            HermesOverviewMessage::CancelStartOver,
+        ))
+    } else if prompt.hermes_setup {
         Some(Message::HermesSetup(HermesSetupMessage::Later))
     } else if prompt.about {
         Some(Message::About(AboutMessage::Close))
@@ -2915,6 +2934,7 @@ impl App {
             transfer_mask_visible: false,
             transfer_rows_done: 0,
             delete_dialog: None,
+            start_over_dialog: false,
             deleting: None,
             view_copies: None,
             extracting: None,
@@ -3202,6 +3222,7 @@ impl App {
         if !self.return_to_hermes_overview
             || self.filing_setup.is_some()
             || self.hermes_setup.is_some()
+            || self.filing.as_ref().is_some_and(FilingModule::has_card)
         {
             return Task::none();
         }
@@ -4777,6 +4798,19 @@ impl App {
             return Stack::with_children([root, dialog::scrim(card_element)]).into();
         }
 
+        if self.start_over_dialog {
+            let question = hermes_overview_ui::start_over_dialog(
+                self.dialog_focus,
+                self.window_size,
+                self.lang,
+                &self.palette,
+            );
+            let mut layers = vec![root];
+            layers.extend(self.hermes_overview_view().map(dialog::scrim));
+            layers.push(dialog::scrim(question));
+            return Stack::with_children(layers).into();
+        }
+
         if let Some(page) = self.hermes_overview_view() {
             return Stack::with_children([root, dialog::scrim(page)]).into();
         }
@@ -5069,6 +5103,7 @@ impl App {
         let settings = self.settings.is_some();
         let transfer_dialog = self.transfer_dialog.is_some();
         let transfer_progress = self.progress_mask_is_open();
+        let start_over_dialog = self.start_over_dialog;
         let delete_dialog = match &self.delete_dialog {
             None => DeleteKeys::Closed,
             Some(deletion) if deletion.permanent => DeleteKeys::Permanent,
@@ -5080,6 +5115,7 @@ impl App {
                 job_running,
                 config_error,
                 delete_dialog,
+                start_over_dialog,
                 volume_menu,
                 context_menu,
                 context_submenu,
@@ -5125,6 +5161,7 @@ impl App {
                 job_running,
                 config_error,
                 delete_dialog,
+                start_over_dialog,
                 volume_menu,
                 context_menu,
                 context_submenu,
@@ -5216,6 +5253,7 @@ impl App {
         }
         let work_finished = matches!(message, FilingMessage::WorkDone { .. });
         let was_starting = matches!(module.phase(), Phase::Starting);
+        let was_changing_protection = module.is_changing_protection();
         let work = module.update(message);
         let mut pipeline_started = false;
         if self.pipeline.is_none() && matches!(module.phase(), Phase::Ready) {
@@ -5244,9 +5282,16 @@ impl App {
         let ask_for_ai_model =
             matches!(module.phase(), Phase::Ready) && module.ai_model_is_missing();
         let asks_encryption = module.asks_encryption();
+        let protection_change_wants_a_card = was_changing_protection
+            && !module.is_changing_protection()
+            && (asks_encryption || module.has_card());
         let mut tasks: Vec<Task<Message>> = work.map(run_filing_work).into_iter().collect();
         if asks_encryption && self.hermes_setup.is_none() && self.pending_hermes_start.is_none() {
             self.open_hermes_setup();
+        }
+        if protection_change_wants_a_card && self.hermes_overview.is_some() {
+            tasks.push(self.leave_hermes_overview_state());
+            self.return_to_hermes_overview = true;
         }
         tasks.push(self.advance_hermes_plan());
         tasks.extend(field.map(operation::focus));
@@ -5796,6 +5841,7 @@ impl App {
         } else if self.model_card_has_one_button() {
             1
         } else if self.delete_dialog.is_some()
+            || self.start_over_dialog
             || self.ocr_models.is_some()
             || self.ai_card_is_shown()
             || self.grant_dialog
@@ -5827,6 +5873,14 @@ impl App {
     fn activate_dialog_button(&mut self) -> Task<Message> {
         if self.hermes_setup.is_some() {
             return self.activate_hermes_focus();
+        }
+        if self.start_over_dialog {
+            return if self.dialog_focus == hermes_overview_ui::START_OVER_CONFIRM_FOCUS {
+                self.update_hermes_overview(HermesOverviewMessage::ConfirmStartOver)
+            } else {
+                self.start_over_dialog = false;
+                Task::none()
+            };
         }
         if self.delete_dialog.is_some() {
             return if self.dialog_focus == delete_dialog_view::CONFIRM_FOCUS {
@@ -5908,6 +5962,7 @@ impl App {
             || self.transfer_dialog.is_some()
             || self.progress_mask_is_open()
             || self.delete_dialog.is_some()
+            || self.start_over_dialog
             || self.volume_menu.is_some()
             || self.quick_open.is_some()
             || self.command_palette.is_some()
@@ -9359,8 +9414,12 @@ impl App {
         let module_state = if self.hermes_is_restarting() {
             ModuleState::Starting
         } else {
-            module.map_or(ModuleState::Off, |running| ModuleState::of(running.phase()))
+            module.map_or(ModuleState::Off, |running| match running.phase() {
+                Phase::Dismissed if running.key_problem().is_some() => ModuleState::KeyMissing,
+                phase => ModuleState::of(phase),
+            })
         };
+        let at_rest = !self.jobs.is_busy() && !self.hermes_is_restarting();
         let failure = match module.map(FilingModule::phase) {
             Some(Phase::Failed(reason)) => Some(reason.clone()),
             _ => None,
@@ -9379,6 +9438,10 @@ impl App {
                 .and_then(AiModelCard::progress),
             ocr: OcrFacts::of(crate::ocr_models::system_reads_scans(), state.ocr_models_present()),
             protection: Protection::of(module_state, module.and_then(FilingModule::index_encryption)),
+            key_problem: module.and_then(FilingModule::key_problem),
+            can_encrypt: at_rest && module.is_some_and(FilingModule::can_encrypt),
+            can_start_over: at_rest && module.is_some_and(FilingModule::can_start_over),
+            protection_note: module.and_then(|running| running.protection_note().cloned()),
         }
     }
 
@@ -9516,8 +9579,36 @@ impl App {
                 let write = self.commit_overview_pattern();
                 Task::batch([release_focus(), write])
             }
-            HermesOverviewMessage::Close | HermesOverviewMessage::EnterRecoveryKey => {
-                self.leave_hermes_overview()
+            HermesOverviewMessage::Close => self.leave_hermes_overview(),
+            HermesOverviewMessage::EnterRecoveryKey => {
+                let card = self.update_filing(FilingMessage::AskKeyAgain);
+                Task::batch([card, self.leave_hermes_overview()])
+            }
+            HermesOverviewMessage::EncryptNow => {
+                self.change_protection(FilingModule::begin_encrypting)
+            }
+            HermesOverviewMessage::AskStartOver => {
+                let can_ask = self
+                    .filing
+                    .as_ref()
+                    .is_some_and(FilingModule::can_start_over)
+                    && !self.jobs.is_busy()
+                    && !self.hermes_is_restarting();
+                if can_ask {
+                    self.dialog_focus = hermes_overview_ui::START_OVER_CANCEL_FOCUS;
+                    self.start_over_dialog = true;
+                }
+                Task::none()
+            }
+            HermesOverviewMessage::CancelStartOver => {
+                self.start_over_dialog = false;
+                Task::none()
+            }
+            HermesOverviewMessage::ConfirmStartOver => {
+                if !std::mem::take(&mut self.start_over_dialog) {
+                    return Task::none();
+                }
+                self.change_protection(FilingModule::begin_starting_over)
             }
             HermesOverviewMessage::PatternEdited(text) => {
                 if let Some(state) = self.hermes_overview.as_mut() {
@@ -9574,6 +9665,22 @@ impl App {
             }
             HermesOverviewMessage::TryAgain => self.restart_hermes_module(),
         }
+    }
+
+    /// Stops the pipeline and runs the job that encrypts or removes the index.
+    /// Nothing happens while files move or the module is being rebuilt.
+    fn change_protection(&mut self, begin: fn(&mut FilingModule) -> Option<Work>) -> Task<Message> {
+        if self.jobs.is_busy() || self.hermes_is_restarting() {
+            return Task::none();
+        }
+        let Some(work) = self.filing.as_mut().and_then(begin) else {
+            return Task::none();
+        };
+        drop(self.reading_again.give_up());
+        self.plans_filed_for = 0;
+        let pipeline = self.pipeline.take();
+        self.refresh_filing_snapshot();
+        run_filing_work_after(pipeline, work)
     }
 
     fn load_reviews_to_read_again(&mut self) -> Task<Message> {
@@ -13599,6 +13706,7 @@ impl App {
             transfer_mask_visible: false,
             transfer_rows_done: 0,
             delete_dialog: None,
+            start_over_dialog: false,
             deleting: None,
             view_copies: None,
             extracting: None,
@@ -13800,6 +13908,21 @@ impl App {
         card.set_received_for_test(ncrs_ai::LOCAL_MODEL.size.div_euclid(100) * percent);
         self.ai_model = Some(card);
         self.ai_card_hidden = true;
+        self
+    }
+
+    /// The module's key card was put off, so the overview shows the key as missing.
+    pub fn with_missing_key_for_test(mut self) -> Self {
+        self.filing = self
+            .filing
+            .take()
+            .map(|module| module.dismissed_over(crate::filing::KeyProblem::Missing));
+        self
+    }
+
+    /// The overview with the question whether to remove the index up.
+    pub fn with_start_over_question_for_test(mut self) -> Self {
+        drop(self.update(Message::HermesOverview(HermesOverviewMessage::AskStartOver)));
         self
     }
 
@@ -25783,5 +25906,287 @@ mod hermes_overview_tests {
             .lock()
             .unwrap()
             .contains(&PathBuf::from("/home/test/not-granted")));
+    }
+
+    #[derive(Debug)]
+    struct NoCredentialStore;
+
+    impl KeyStore for NoCredentialStore {
+        fn load(&self) -> Result<Option<Vec<u8>>, ncrs_index::KeyStoreError> {
+            Err(ncrs_index::KeyStoreError::Unavailable("none".to_owned()))
+        }
+
+        fn store_new(&self, _key: &[u8]) -> Result<(), ncrs_index::KeyStoreError> {
+            Err(ncrs_index::KeyStoreError::Unavailable("none".to_owned()))
+        }
+
+        fn replace(&self, _key: &[u8]) -> Result<(), ncrs_index::KeyStoreError> {
+            Err(ncrs_index::KeyStoreError::Unavailable("none".to_owned()))
+        }
+
+        fn delete(&self) -> Result<(), ncrs_index::KeyStoreError> {
+            Ok(())
+        }
+    }
+
+    /// Finds nothing, and cannot keep a new key.
+    #[derive(Debug)]
+    struct RefusingStore;
+
+    impl KeyStore for RefusingStore {
+        fn load(&self) -> Result<Option<Vec<u8>>, ncrs_index::KeyStoreError> {
+            Ok(None)
+        }
+
+        fn store_new(&self, _key: &[u8]) -> Result<(), ncrs_index::KeyStoreError> {
+            Err(ncrs_index::KeyStoreError::Unavailable("locked".to_owned()))
+        }
+
+        fn replace(&self, _key: &[u8]) -> Result<(), ncrs_index::KeyStoreError> {
+            Err(ncrs_index::KeyStoreError::Unavailable("locked".to_owned()))
+        }
+
+        fn delete(&self) -> Result<(), ncrs_index::KeyStoreError> {
+            Ok(())
+        }
+    }
+
+    fn index_in(dir: &TempDir) -> PathBuf {
+        dir.path().join("data").join("index.db")
+    }
+
+    /// The overview over a module that really opened the index at `db`.
+    fn overview_over_index(db: &Path, store: Arc<dyn KeyStore + Send + Sync>) -> App {
+        let (mut module, start) = FilingModule::start(
+            &Filing {
+                enabled: true,
+                ..Filing::default()
+            },
+            Some(db.to_path_buf()),
+            Arc::clone(&store),
+        )
+        .unwrap();
+        if let Some(opening) = start {
+            drop(module.update(opening.run()));
+        }
+        let mut app = App::with_hermes_overview(None, Filing::default(), None);
+        app.filing = Some(module);
+        app.filing_index_path = Some(db.to_path_buf());
+        app.filing_key_store = Some(store);
+        app
+    }
+
+    fn plain_index(db: &Path) {
+        std::fs::create_dir_all(db.parent().unwrap()).unwrap();
+        drop(ncrs_index::Index::create_plain(db).unwrap());
+    }
+
+    fn overview_message(message: HermesOverviewMessage) -> Message {
+        Message::HermesOverview(message)
+    }
+
+    fn facts_of(app: &App) -> OverviewFacts {
+        app.overview_facts(app.hermes_overview.as_ref().unwrap())
+    }
+
+    #[test]
+    fn encrypting_is_offered_for_a_plain_index_with_a_credential_store_only() {
+        let dir = TempDir::new().unwrap();
+        let db = index_in(&dir);
+        plain_index(&db);
+
+        let with_store = overview_over_index(&db, Arc::new(ncrs_index::InMemoryKeyStore::empty()));
+        assert!(facts_of(&with_store).can_encrypt);
+
+        let without_store = overview_over_index(&db, Arc::new(NoCredentialStore));
+        assert!(!facts_of(&without_store).can_encrypt);
+        assert!(facts_of(&without_store).can_start_over);
+    }
+
+    #[tokio::test]
+    async fn encrypting_shows_the_recovery_key_on_a_card_and_returns_to_the_overview_after() {
+        let dir = TempDir::new().unwrap();
+        let db = index_in(&dir);
+        plain_index(&db);
+        let store = Arc::new(ncrs_index::InMemoryKeyStore::empty());
+        let mut app =
+            overview_over_index(&db, Arc::clone(&store) as Arc<dyn KeyStore + Send + Sync>);
+
+        settle(
+            &mut app,
+            overview_message(HermesOverviewMessage::EncryptNow),
+        )
+        .await;
+
+        let module = app.filing.as_ref().unwrap();
+        assert!(matches!(module.phase(), Phase::ShowRecoveryKey { .. }));
+        assert!(!ncrs_index::Index::file_is_plain(&db).unwrap());
+        assert!(store.snapshot().is_some());
+        assert!(
+            app.hermes_overview.is_none(),
+            "the card must not hide under the overview"
+        );
+        assert!(app.return_to_hermes_overview);
+    }
+
+    #[tokio::test]
+    async fn a_failed_encryption_keeps_the_plain_index_open_and_says_why_on_the_overview() {
+        let dir = TempDir::new().unwrap();
+        let db = index_in(&dir);
+        plain_index(&db);
+        let mut app = overview_over_index(&db, Arc::new(RefusingStore));
+
+        settle(
+            &mut app,
+            overview_message(HermesOverviewMessage::EncryptNow),
+        )
+        .await;
+
+        let module = app.filing.as_ref().unwrap();
+        assert_eq!(module.phase(), &Phase::Ready);
+        assert!(module.protection_note().is_some());
+        assert!(ncrs_index::Index::file_is_plain(&db).unwrap());
+        assert!(app.hermes_overview.is_some());
+        assert!(facts_of(&app).protection_note.is_some());
+        assert!(facts_of(&app).can_encrypt, "the user may try again");
+    }
+
+    fn encrypted_index_with_sidecars(db: &Path, store: &ncrs_index::InMemoryKeyStore) {
+        std::fs::create_dir_all(db.parent().unwrap()).unwrap();
+        drop(ncrs_index::Index::create_encrypted(db, store).unwrap());
+        std::fs::write(db.with_file_name("index.db.encrypting"), b"half").unwrap();
+        std::fs::write(db.with_file_name("index.db.bak"), b"mine").unwrap();
+    }
+
+    #[tokio::test]
+    async fn starting_over_asks_first_and_cancelling_removes_nothing() {
+        let dir = TempDir::new().unwrap();
+        let db = index_in(&dir);
+        let store = Arc::new(ncrs_index::InMemoryKeyStore::empty());
+        encrypted_index_with_sidecars(&db, &store);
+        let mut app =
+            overview_over_index(&db, Arc::clone(&store) as Arc<dyn KeyStore + Send + Sync>);
+
+        settle(
+            &mut app,
+            overview_message(HermesOverviewMessage::AskStartOver),
+        )
+        .await;
+        assert!(app.start_over_dialog);
+        assert_eq!(app.dialog_button_count(), 2);
+        assert_eq!(
+            app.dialog_focus,
+            crate::ui::hermes_overview::START_OVER_CANCEL_FOCUS
+        );
+        settle(
+            &mut app,
+            overview_message(HermesOverviewMessage::CancelStartOver),
+        )
+        .await;
+
+        assert!(!app.start_over_dialog);
+        assert!(db.exists() && db.with_file_name("index.db.encrypting").exists());
+        assert!(store.snapshot().is_some());
+        assert!(app.hermes_setup.is_none());
+
+        settle(
+            &mut app,
+            overview_message(HermesOverviewMessage::AskStartOver),
+        )
+        .await;
+        drop(app.activate_dialog_button());
+        assert!(
+            !app.start_over_dialog,
+            "Enter on the default button cancels"
+        );
+        assert!(db.exists());
+    }
+
+    #[test]
+    fn escape_cancels_the_question_before_anything_else_in_the_overview() {
+        let prompt = PromptKeyState {
+            start_over_dialog: true,
+            hermes_overview: true,
+            ..PromptKeyState::default()
+        };
+        assert_eq!(
+            card_close_message(&prompt),
+            Some(overview_message(HermesOverviewMessage::CancelStartOver))
+        );
+    }
+
+    #[tokio::test]
+    async fn confirming_removes_the_index_files_and_the_key_and_opens_the_setup_filled() {
+        let dir = TempDir::new().unwrap();
+        let db = index_in(&dir);
+        let store = Arc::new(ncrs_index::InMemoryKeyStore::empty());
+        encrypted_index_with_sidecars(&db, &store);
+        let mut app =
+            overview_over_index(&db, Arc::clone(&store) as Arc<dyn KeyStore + Send + Sync>);
+        app.filing_config = configured();
+
+        settle(
+            &mut app,
+            overview_message(HermesOverviewMessage::AskStartOver),
+        )
+        .await;
+        settle(
+            &mut app,
+            overview_message(HermesOverviewMessage::ConfirmStartOver),
+        )
+        .await;
+
+        assert!(!app.start_over_dialog);
+        assert!(!db.exists());
+        assert!(!db.with_file_name("index.db.encrypting").exists());
+        assert!(db.with_file_name("index.db.bak").exists());
+        assert_eq!(store.snapshot(), None);
+        assert!(app.filing.as_ref().unwrap().asks_encryption());
+        let setup = app.hermes_setup.as_ref().expect("the setup card opens");
+        assert!(setup.can_start(), "the folders are still filled in");
+        assert!(app.hermes_overview.is_none());
+        assert!(app.return_to_hermes_overview);
+    }
+
+    #[tokio::test]
+    async fn confirming_without_the_question_does_nothing() {
+        let dir = TempDir::new().unwrap();
+        let db = index_in(&dir);
+        plain_index(&db);
+        let mut app = overview_over_index(&db, Arc::new(ncrs_index::InMemoryKeyStore::empty()));
+
+        settle(
+            &mut app,
+            overview_message(HermesOverviewMessage::ConfirmStartOver),
+        )
+        .await;
+
+        assert!(db.exists());
+        assert_eq!(app.filing.as_ref().unwrap().phase(), &Phase::Ready);
+    }
+
+    #[tokio::test]
+    async fn a_dismissed_key_card_shows_as_a_missing_key_on_the_overview() {
+        let dir = TempDir::new().unwrap();
+        let db = index_in(&dir);
+        encrypted_index_with_sidecars(&db, &ncrs_index::InMemoryKeyStore::empty());
+        let mut app = overview_over_index(&db, Arc::new(ncrs_index::InMemoryKeyStore::empty()));
+        drop(app.update(Message::Filing(FilingMessage::Dismiss)));
+
+        let facts = facts_of(&app);
+        assert_eq!(facts.module, ModuleState::KeyMissing);
+        assert_eq!(facts.protection, Protection::Encrypted);
+        assert!(facts.can_start_over);
+
+        settle(
+            &mut app,
+            overview_message(HermesOverviewMessage::EnterRecoveryKey),
+        )
+        .await;
+        assert!(matches!(
+            app.filing.as_ref().unwrap().phase(),
+            Phase::AskRecoveryKey { .. }
+        ));
+        assert!(app.hermes_overview.is_none());
     }
 }

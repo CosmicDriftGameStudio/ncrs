@@ -5312,6 +5312,32 @@ mod hermes_overview_page {
         assert!(matches, "the overview does not match {name}.png");
     }
 
+    /// The page scrolls: its protection section lies below the fold and is
+    /// reached by the wheel, as by a user.
+    fn scrolled_to_the_end(app: &App) -> Simulator<'_, Message, iced::Theme> {
+        let mut sim = simulator(app);
+        sim.point_at(frame_bounds(app).center());
+        let _statuses = sim.simulate([iced::Event::Mouse(iced::mouse::Event::WheelScrolled {
+            delta: iced::mouse::ScrollDelta::Lines { x: 0.0, y: -60.0 },
+        })]);
+        sim
+    }
+
+    fn assert_scrolled_snapshot(app: &App, name: &str) {
+        let matches = scrolled_to_the_end(app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image(format!("tests/snapshots/{name}.png"))
+            .expect("snapshot comparison");
+        assert!(matches, "the overview does not match {name}.png");
+    }
+
+    fn scrolled_clicks(app: &App, label: &str) -> Vec<Message> {
+        let mut sim = scrolled_to_the_end(app);
+        sim.click(label).unwrap();
+        sim.into_messages().collect()
+    }
+
     fn in_both_languages(app: impl Fn() -> App, name: &str) {
         assert_snapshot(&app().in_language(Language::English), &format!("{name}_en"));
         assert_snapshot(&app().in_language(Language::German), &format!("{name}_de"));
@@ -5325,6 +5351,27 @@ mod hermes_overview_page {
             "hermes_overview_downloading",
         );
         in_both_languages(off, "hermes_overview_off");
+    }
+
+    #[test]
+    fn the_question_before_starting_over_matches_its_snapshots() {
+        in_both_languages(
+            || running().with_start_over_question_for_test(),
+            "hermes_overview_reset_confirm",
+        );
+    }
+
+    #[test]
+    fn a_missing_key_matches_its_snapshots() {
+        for (lang, name) in [
+            (Language::English, "hermes_overview_key_missing_en"),
+            (Language::German, "hermes_overview_key_missing_de"),
+        ] {
+            assert_scrolled_snapshot(
+                &running().with_missing_key_for_test().in_language(lang),
+                name,
+            );
+        }
     }
 
     fn clicks(app: &App, label: &str) -> Vec<Message> {
@@ -5363,6 +5410,36 @@ mod hermes_overview_page {
         simulator(&app)
             .find(iced_selector::id(crate::ui::hermes_overview::PATTERN_FIELD_ID))
             .expect("the pattern field is shown while editing");
+    }
+
+    #[test]
+    fn a_missing_key_offers_the_key_a_new_try_and_a_new_start() {
+        let app = running().with_missing_key_for_test();
+        assert_eq!(
+            scrolled_clicks(&app, "Enter recovery key"),
+            [overview_message(HermesOverviewMessage::EnterRecoveryKey)]
+        );
+        assert_eq!(
+            scrolled_clicks(&app, "Try again"),
+            [overview_message(HermesOverviewMessage::TryAgain)]
+        );
+        assert_eq!(
+            scrolled_clicks(&app, "Start over …"),
+            [overview_message(HermesOverviewMessage::AskStartOver)]
+        );
+    }
+
+    #[test]
+    fn the_question_has_cancel_and_a_danger_button() {
+        let app = running().with_start_over_question_for_test();
+        assert_eq!(
+            clicks(&app, "Cancel"),
+            [overview_message(HermesOverviewMessage::CancelStartOver)]
+        );
+        assert_eq!(
+            clicks(&app, "Remove index"),
+            [overview_message(HermesOverviewMessage::ConfirmStartOver)]
+        );
     }
 
     #[test]

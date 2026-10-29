@@ -248,6 +248,10 @@ pub enum Phase {
     },
     PlainFileWarning,
     Ready,
+    /// The plain index is being turned into an encrypted one.
+    Encrypting,
+    /// The index files and the key are being removed.
+    StartingOver,
     Failed(String),
     Dismissed,
 }
@@ -261,6 +265,8 @@ impl Phase {
             Self::AskRecoveryKey { .. } => "AskRecoveryKey",
             Self::PlainFileWarning => "PlainFileWarning",
             Self::Ready => "Ready",
+            Self::Encrypting => "Encrypting",
+            Self::StartingOver => "StartingOver",
             Self::Failed(_) => "Failed",
             Self::Dismissed => "Dismissed",
         }
@@ -269,9 +275,22 @@ impl Phase {
     fn is_busy(&self) -> bool {
         matches!(
             self,
-            Self::AskEncryption { busy: true, .. } | Self::AskRecoveryKey { busy: true, .. }
+            Self::AskEncryption { busy: true, .. }
+                | Self::AskRecoveryKey { busy: true, .. }
+                | Self::Encrypting
+                | Self::StartingOver
         )
     }
+}
+
+/// Why the last attempt to change the protection of the index did not go
+/// through, worded in the view. Never carries key material.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProtectionNote {
+    EncryptFailed(String),
+    StartOverFailed(String),
+    /// The index is gone; its entry in the credential store could not be removed.
+    KeyEntryNotRemoved(String),
 }
 
 /// Why the intake does not get the index right now.
@@ -308,6 +327,13 @@ pub struct FilingModule {
     ai: AiWiring,
     /// Given to the pipeline so it calls no platform API.
     own_name: Option<String>,
+    /// False once the start found the credential store unreachable, so an
+    /// index that is not encrypted cannot be encrypted here.
+    key_store_reachable: bool,
+    protection_note: Option<ProtectionNote>,
+    /// What the card said when "Not now" left it, so the overview can still
+    /// offer the way back to it.
+    dismissed_key_problem: Option<KeyProblem>,
 }
 
 /// The name of the person using the app, as the system has it; `None` where
@@ -456,6 +482,8 @@ pub enum FilingMessage {
     KeySubmit,
     ConfirmPlainFile,
     Dismiss,
+    /// Brings back the key card that "Not now" left.
+    AskKeyAgain,
     WorkDone {
         generation: u64,
         outcome: WorkOutcome,
@@ -471,14 +499,33 @@ pub enum WorkOutcome {
     /// `Some` holds the recovery key of a new encrypted index.
     Created(Result<Option<ShownRecoveryKey>, String>),
     KeyApplied(Result<OpenOutcome, KeyError>),
+    Encrypted(EncryptReport),
+    StartedOver(StartOverReport),
     /// The blocking thread did not finish (it panicked).
     Crashed(String),
+}
+
+/// How `Job::Encrypt` ended, and what the index looks like now.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EncryptReport {
+    result: Result<ShownRecoveryKey, String>,
+    opened: OpenOutcome,
+}
+
+/// How `Job::StartOver` ended, and what the index looks like now.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StartOverReport {
+    result: Result<(), String>,
+    key_entry_warning: Option<String>,
+    opened: OpenOutcome,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum OpenOutcome {
     NoIndexYet,
     Opened,
+    /// An unencrypted index opened, but the credential store cannot be reached.
+    OpenedWithoutKeyStore,
     PlainFileWithKeyEntry,
     KeyMissing,
     KeyMismatch,
@@ -491,10 +538,24 @@ pub enum OpenOutcome {
 
 #[derive(Debug)]
 enum Job {
-    Start { locations: Vec<FilingLocation> },
-    Create { encrypted: bool },
-    Restore { key: RecoveryKey },
-    Replace { key: RecoveryKey },
+    Start {
+        locations: Vec<FilingLocation>,
+    },
+    Create {
+        encrypted: bool,
+    },
+    Restore {
+        key: RecoveryKey,
+    },
+    Replace {
+        key: RecoveryKey,
+    },
+    Encrypt,
+    /// `data_dir` is the folder the module keeps its files in; only an
+    /// `index.db` directly in it is removed.
+    StartOver {
+        data_dir: PathBuf,
+    },
 }
 
 /// One blocking step. Synchronous; the app runs it on a blocking thread.
@@ -540,6 +601,10 @@ impl Work {
                 WorkOutcome::KeyApplied(apply_key(db_path, store, &self.index, |path, target| {
                     Index::replace_key(path, &key, target)
                 }))
+            }
+            Job::Encrypt => WorkOutcome::Encrypted(encrypt_index(db_path, store, &self.index)),
+            Job::StartOver { data_dir } => {
+                WorkOutcome::StartedOver(start_over(db_path, &data_dir, store, &self.index))
             }
         };
         FilingMessage::WorkDone {
@@ -730,13 +795,23 @@ impl DocumentFinder {
 /// Every index goes through here before the watcher and the pipeline see it,
 /// so a move that was interrupted is settled before anything looks at the files.
 fn put_index(slot: &IndexSlot, index: Index) {
+    *lock(slot) = Some(settled(index));
+}
+
+fn settled(index: Index) -> Index {
     // A failure leaves the pending items pending; the next open settles them.
     let _settled_or_retried_next_open = crate::execute::reconcile(&index);
-    *lock(slot) = Some(index);
+    index
 }
 
 /// Never creates the file or its directory: the user has not chosen yet.
 fn open_existing(db_path: &Path, store: &dyn KeyStore, slot: &IndexSlot) -> OpenOutcome {
+    open_into(&mut lock(slot), db_path, store)
+}
+
+/// For a job that keeps the slot locked from closing the index to opening it
+/// again, so no reader sees it half way.
+fn open_into(held: &mut Option<Index>, db_path: &Path, store: &dyn KeyStore) -> OpenOutcome {
     match Index::open(db_path, store) {
         Err(IndexError::NotFound) => OpenOutcome::NoIndexYet,
         Err(IndexError::KeyMissing) => OpenOutcome::KeyMissing,
@@ -751,12 +826,111 @@ fn open_existing(db_path: &Path, store: &dyn KeyStore, slot: &IndexSlot) -> Open
                 // makes an unencrypted file suspicious.
                 match store.load() {
                     Ok(Some(_)) => OpenOutcome::PlainFileWithKeyEntry,
-                    Ok(None) | Err(_) => OpenOutcome::Opened,
+                    Ok(None) => OpenOutcome::Opened,
+                    Err(_) => OpenOutcome::OpenedWithoutKeyStore,
                 }
             };
-            put_index(slot, index);
+            *held = Some(settled(index));
             outcome
         }
+    }
+}
+
+/// After a change that did not go through: the index is back in the state it
+/// was in, so a key entry beside a plain file is no reason to ask again.
+fn reopen_after_failure(
+    held: &mut Option<Index>,
+    db_path: &Path,
+    store: &dyn KeyStore,
+) -> OpenOutcome {
+    match open_into(held, db_path, store) {
+        OpenOutcome::PlainFileWithKeyEntry => OpenOutcome::Opened,
+        other => other,
+    }
+}
+
+/// Closes the index, encrypts the file and opens it again, all under the lock
+/// of the slot. The caller has stopped the pipeline.
+fn encrypt_index(db_path: &Path, store: &dyn KeyStore, slot: &IndexSlot) -> EncryptReport {
+    let mut held = lock(slot);
+    drop(held.take());
+    match Index::encrypt_plain(db_path, store) {
+        Ok(recovery_key) => match open_into(&mut held, db_path, store) {
+            OpenOutcome::Opened => EncryptReport {
+                result: Ok(ShownRecoveryKey::new(recovery_key)),
+                opened: OpenOutcome::Opened,
+            },
+            other => EncryptReport {
+                result: Err(INDEX_NOT_REOPENED.to_owned()),
+                opened: other,
+            },
+        },
+        Err(err) => EncryptReport {
+            result: Err(err.to_string()),
+            opened: reopen_after_failure(&mut held, db_path, store),
+        },
+    }
+}
+
+const INDEX_NOT_REOPENED: &str = "the index could not be opened again";
+const INDEX_FILE_NAME: &str = "index.db";
+
+/// The files of an index, the one the data folder holds and what SQLite and
+/// the encryption leave beside it; the database goes last. Nothing else is
+/// ever removed, and a path that is not `index.db` directly in `data_dir` is
+/// refused.
+fn index_files(db_path: &Path, data_dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let named_right = db_path
+        .file_name()
+        .is_some_and(|name| name == INDEX_FILE_NAME);
+    let parent_folder = db_path
+        .parent()
+        .and_then(|parent| parent.canonicalize().ok());
+    let data_folder = data_dir.canonicalize().ok();
+    let folder = match (named_right, parent_folder, data_folder) {
+        (true, Some(parent), Some(data)) if parent == data => parent,
+        _ => return Err("the index is not where the data folder keeps it".to_owned()),
+    };
+    Ok([".encrypting", "-journal", "-wal", "-shm", ""]
+        .iter()
+        .map(|suffix| folder.join(format!("{INDEX_FILE_NAME}{suffix}")))
+        .collect())
+}
+
+fn remove_if_present(path: &Path) -> std::io::Result<()> {
+    match std::fs::remove_file(path) {
+        Err(err) if err.kind() != std::io::ErrorKind::NotFound => Err(err),
+        Ok(()) | Err(_) => Ok(()),
+    }
+}
+
+/// Closes the index, removes its files and then its key. A failure on the
+/// files opens the index again; one on the key only becomes a warning.
+fn start_over(
+    db_path: &Path,
+    data_dir: &Path,
+    store: &dyn KeyStore,
+    slot: &IndexSlot,
+) -> StartOverReport {
+    let mut held = lock(slot);
+    drop(held.take());
+    let removed = index_files(db_path, data_dir).and_then(|files| {
+        files
+            .iter()
+            .try_for_each(|file| remove_if_present(file))
+            .map_err(|err| err.to_string())
+    });
+    match removed {
+        Ok(()) => StartOverReport {
+            result: Ok(()),
+            key_entry_warning: store.delete().err().map(|err| err.to_string()),
+            opened: open_into(&mut held, db_path, store),
+        },
+        Err(reason) => StartOverReport {
+            result: Err(reason),
+            key_entry_warning: None,
+            opened: reopen_after_failure(&mut held, db_path, store),
+        },
     }
 }
 
@@ -897,6 +1071,9 @@ impl FilingModule {
             pick_group,
             has_configured_locations: !filing.locations.is_empty(),
             index_encrypted: None,
+            key_store_reachable: true,
+            protection_note: None,
+            dismissed_key_problem: None,
         };
         if db_path.is_none() {
             module.phase = Phase::Failed(NO_DATA_DIRECTORY.to_owned());
@@ -1113,6 +1290,7 @@ impl FilingModule {
             Phase::AskEncryption { .. }
             | Phase::ShowRecoveryKey { .. }
             | Phase::AskRecoveryKey { .. } => return Err(HeldReason::WaitingForUser),
+            Phase::Encrypting | Phase::StartingOver => return Err(HeldReason::Starting),
             Phase::PlainFileWarning => return Err(HeldReason::PlainFileUnconfirmed),
             Phase::Dismissed => return Err(HeldReason::Dismissed),
             Phase::Failed(_) => return Err(HeldReason::Failed),
@@ -1204,6 +1382,68 @@ impl FilingModule {
         self.can_be_replaced() && !works_on_locations
     }
 
+    /// The index is open, unencrypted, and the system store can keep a key.
+    pub fn can_encrypt(&self) -> bool {
+        matches!(self.phase, Phase::Ready)
+            && self.index_encrypted == Some(false)
+            && self.key_store_reachable
+    }
+
+    /// Whether the index files may be removed to begin again: the module is
+    /// at rest and has a place for them.
+    pub fn can_start_over(&self) -> bool {
+        let at_rest = match &self.phase {
+            Phase::Ready | Phase::PlainFileWarning | Phase::Failed(_) => true,
+            Phase::AskRecoveryKey { busy, .. } => !busy,
+            Phase::Dismissed => self.dismissed_key_problem.is_some(),
+            _ => false,
+        };
+        at_rest && self.db_path.parent().is_some() && self.db_path.file_name().is_some()
+    }
+
+    /// An encryption or a fresh start is under way.
+    pub fn is_changing_protection(&self) -> bool {
+        matches!(self.phase, Phase::Encrypting | Phase::StartingOver)
+    }
+
+    pub fn protection_note(&self) -> Option<&ProtectionNote> {
+        self.protection_note.as_ref()
+    }
+
+    /// The key problem the user has to solve: on the card, or left behind
+    /// when the card was dismissed.
+    pub fn key_problem(&self) -> Option<KeyProblem> {
+        match &self.phase {
+            Phase::AskRecoveryKey { reason, .. } => Some(*reason),
+            Phase::Dismissed => self.dismissed_key_problem,
+            _ => None,
+        }
+    }
+
+    /// The work closes the index itself; the caller stops the pipeline first.
+    pub fn begin_encrypting(&mut self) -> Option<Work> {
+        if !self.can_encrypt() {
+            return None;
+        }
+        self.protection_note = None;
+        self.index_encrypted = None;
+        self.phase = Phase::Encrypting;
+        Some(self.new_work(Job::Encrypt))
+    }
+
+    /// Removes the index and its key; the caller stops the pipeline first.
+    pub fn begin_starting_over(&mut self) -> Option<Work> {
+        if !self.can_start_over() {
+            return None;
+        }
+        let data_dir = self.db_path.parent()?.to_path_buf();
+        self.protection_note = None;
+        self.dismissed_key_problem = None;
+        self.index_encrypted = None;
+        self.phase = Phase::StartingOver;
+        Some(self.new_work(Job::StartOver { data_dir }))
+    }
+
     fn may_dismiss(&self) -> bool {
         let stays = matches!(
             self.phase,
@@ -1288,8 +1528,18 @@ impl FilingModule {
             }
             FilingMessage::Dismiss => {
                 if self.may_dismiss() {
+                    if let Phase::AskRecoveryKey { reason, .. } = &self.phase {
+                        self.dismissed_key_problem = Some(*reason);
+                    }
                     self.generation = next_generation();
                     self.phase = Phase::Dismissed;
+                }
+                None
+            }
+            FilingMessage::AskKeyAgain => {
+                if let (Phase::Dismissed, Some(reason)) = (&self.phase, self.dismissed_key_problem)
+                {
+                    self.phase = ask_recovery_key(reason);
                 }
                 None
             }
@@ -1389,6 +1639,8 @@ impl FilingModule {
             }
             WorkOutcome::Created(result) => self.finish_create(result),
             WorkOutcome::KeyApplied(result) => self.finish_key(result),
+            WorkOutcome::Encrypted(report) => self.finish_encrypt(report),
+            WorkOutcome::StartedOver(report) => self.finish_start_over(report),
             WorkOutcome::Crashed(reason) => self.finish_crashed(reason),
         }
         // Safe on the UI thread: no pipeline holds the index before `Ready`,
@@ -1406,6 +1658,10 @@ impl FilingModule {
                 error: None,
             },
             OpenOutcome::Opened => Phase::Ready,
+            OpenOutcome::OpenedWithoutKeyStore => {
+                self.key_store_reachable = false;
+                Phase::Ready
+            }
             OpenOutcome::PlainFileWithKeyEntry => Phase::PlainFileWarning,
             OpenOutcome::KeyMissing => ask_recovery_key(KeyProblem::Missing),
             OpenOutcome::KeyMismatch => ask_recovery_key(KeyProblem::Mismatch),
@@ -1446,8 +1702,48 @@ impl FilingModule {
         }
     }
 
+    fn finish_encrypt(&mut self, report: EncryptReport) {
+        if !matches!(self.phase, Phase::Encrypting) {
+            return;
+        }
+        match report.result {
+            Ok(key) => {
+                self.phase = Phase::ShowRecoveryKey {
+                    key,
+                    group: (self.pick_group)(GROUP_COUNT) % GROUP_COUNT,
+                    typed: SecretText::default(),
+                    mismatch: false,
+                };
+            }
+            Err(reason) => {
+                self.protection_note = Some(ProtectionNote::EncryptFailed(reason));
+                self.enter(report.opened);
+            }
+        }
+    }
+
+    fn finish_start_over(&mut self, report: StartOverReport) {
+        if !matches!(self.phase, Phase::StartingOver) {
+            return;
+        }
+        match report.result {
+            Ok(()) => {
+                self.protection_note = report
+                    .key_entry_warning
+                    .map(ProtectionNote::KeyEntryNotRemoved);
+            }
+            Err(reason) => {
+                self.protection_note = Some(ProtectionNote::StartOverFailed(reason));
+            }
+        }
+        self.enter(report.opened);
+    }
+
     fn finish_crashed(&mut self, reason: String) {
-        if matches!(self.phase, Phase::Starting) {
+        if matches!(
+            self.phase,
+            Phase::Starting | Phase::Encrypting | Phase::StartingOver
+        ) {
             self.phase = Phase::Failed(reason);
         } else {
             self.stop_waiting(reason);
@@ -1466,6 +1762,8 @@ impl FilingModule {
                 *error = Some(KeyError::Other(reason));
             }
             Phase::Starting
+            | Phase::Encrypting
+            | Phase::StartingOver
             | Phase::ShowRecoveryKey { .. }
             | Phase::PlainFileWarning
             | Phase::Ready
@@ -1492,9 +1790,19 @@ impl FilingModule {
             pick_group: random_group,
             has_configured_locations: false,
             index_encrypted: None,
+            key_store_reachable: true,
+            protection_note: None,
+            dismissed_key_problem: None,
             ai: AiWiring::Off,
             own_name: None,
         }
+    }
+
+    /// The card for `reason` was put off by the user.
+    pub fn dismissed_over(mut self, reason: KeyProblem) -> Self {
+        self.phase = Phase::Dismissed;
+        self.dismissed_key_problem = Some(reason);
+        self
     }
 
     /// Like `in_phase`, as if the open index had the given encryption.
@@ -1675,6 +1983,10 @@ mod tests {
 
         fn replace(&self, _key: &[u8]) -> Result<(), KeyStoreError> {
             Err(KeyStoreError::Unavailable("no keystore".to_owned()))
+        }
+
+        fn delete(&self) -> Result<(), KeyStoreError> {
+            Ok(())
         }
     }
 
@@ -2513,5 +2825,261 @@ mod tests {
         for group in key_text.split('-') {
             assert!(!phase_debug.contains(group), "{phase_debug}");
         }
+    }
+
+    #[test]
+    fn nothing_that_carries_a_recovery_key_prints_it() {
+        let key_text = FilingModule::varied_recovery_key().display_text();
+        let key = || key_text.parse::<RecoveryKey>().unwrap();
+        let report = || EncryptReport {
+            result: Ok(ShownRecoveryKey::new(key())),
+            opened: OpenOutcome::Opened,
+        };
+        let shown = [
+            format!("{:?}", report()),
+            format!("{:?}", WorkOutcome::Encrypted(report())),
+            format!(
+                "{:?}",
+                FilingMessage::WorkDone {
+                    generation: 1,
+                    outcome: WorkOutcome::Encrypted(report()),
+                }
+            ),
+            format!("{:?}", Job::Restore { key: key() }),
+            format!("{:?}", Job::Replace { key: key() }),
+            format!(
+                "{:?}",
+                Phase::ShowRecoveryKey {
+                    key: ShownRecoveryKey::new(key()),
+                    group: 0,
+                    typed: SecretText::default(),
+                    mismatch: false,
+                }
+            ),
+        ];
+        for debug_text in &shown {
+            for group in key_text.split('-') {
+                assert!(!debug_text.contains(group), "{debug_text}");
+            }
+        }
+    }
+
+    /// Loads fine and has no entry, but cannot keep a new one.
+    #[derive(Debug)]
+    struct RefusesToSave;
+
+    impl KeyStore for RefusesToSave {
+        fn load(&self) -> Result<Option<Vec<u8>>, KeyStoreError> {
+            Ok(None)
+        }
+
+        fn store_new(&self, _key: &[u8]) -> Result<(), KeyStoreError> {
+            Err(KeyStoreError::Unavailable("locked".to_owned()))
+        }
+
+        fn replace(&self, _key: &[u8]) -> Result<(), KeyStoreError> {
+            Err(KeyStoreError::Unavailable("locked".to_owned()))
+        }
+
+        fn delete(&self) -> Result<(), KeyStoreError> {
+            Ok(())
+        }
+    }
+
+    fn begin(module: &mut FilingModule, begin: fn(&mut FilingModule) -> Option<Work>) {
+        let work = begin(module);
+        assert!(
+            work.is_some(),
+            "the change was refused: {:?}",
+            module.phase()
+        );
+        settle(module, work);
+    }
+
+    #[test]
+    fn a_plain_index_is_encrypted_and_its_recovery_key_shown_once() {
+        let dir = TempDir::new().unwrap();
+        let db = db_in(&dir);
+        make_plain(&db);
+        let store = Arc::new(InMemoryKeyStore::empty());
+        let mut module = started(&db, shared(&store));
+        assert!(module.can_encrypt());
+
+        begin(&mut module, FilingModule::begin_encrypting);
+
+        assert!(matches!(module.phase(), Phase::ShowRecoveryKey { .. }));
+        assert!(module.recovery_key_text().is_some());
+        assert!(!Index::file_is_plain(&db).unwrap());
+        assert!(store.snapshot().is_some());
+        assert_eq!(module.index_encryption(), Some(true));
+        assert!(!module.can_encrypt());
+        let Phase::ShowRecoveryKey { group, .. } = module.phase() else {
+            panic!("the key is shown");
+        };
+        let asked = module
+            .recovery_key_text()
+            .unwrap()
+            .split('-')
+            .nth(*group)
+            .unwrap()
+            .to_owned();
+        send(
+            &mut module,
+            FilingMessage::GroupInput(SecretText::from(asked)),
+        );
+        send(&mut module, FilingMessage::GroupSubmit);
+        assert_eq!(module.phase(), &Phase::Ready);
+        assert!(is_open(&module));
+    }
+
+    #[test]
+    fn a_failed_encryption_leaves_the_plain_index_open_and_says_why() {
+        let dir = TempDir::new().unwrap();
+        let db = db_in(&dir);
+        make_plain(&db);
+        let mut module = started(&db, Arc::new(RefusesToSave));
+
+        begin(&mut module, FilingModule::begin_encrypting);
+
+        assert_eq!(module.phase(), &Phase::Ready);
+        assert!(matches!(
+            module.protection_note(),
+            Some(ProtectionNote::EncryptFailed(_))
+        ));
+        assert!(Index::file_is_plain(&db).unwrap());
+        assert!(is_open(&module));
+        assert_eq!(module.index_encryption(), Some(false));
+        assert!(module.can_encrypt());
+    }
+
+    #[test]
+    fn no_encryption_is_offered_without_a_credential_store() {
+        let dir = TempDir::new().unwrap();
+        let db = db_in(&dir);
+        make_plain(&db);
+        let mut module = started(&db, Arc::new(UnavailableStore));
+
+        assert_eq!(module.phase(), &Phase::Ready);
+        assert!(!module.can_encrypt());
+        assert!(module.begin_encrypting().is_none());
+    }
+
+    #[test]
+    fn an_encrypted_index_is_not_encrypted_again() {
+        let dir = TempDir::new().unwrap();
+        let db = db_in(&dir);
+        let store = Arc::new(InMemoryKeyStore::empty());
+        make_encrypted(&db, &store);
+        let module = started(&db, shared(&store));
+
+        assert!(!module.can_encrypt());
+    }
+
+    #[test]
+    fn starting_over_removes_the_index_files_and_the_key_and_asks_again() {
+        let dir = TempDir::new().unwrap();
+        let db = db_in(&dir);
+        let store = Arc::new(InMemoryKeyStore::empty());
+        make_encrypted(&db, &store);
+        let neighbour = data_dir(&dir).join("index.db.bak");
+        fs::write(&neighbour, b"mine").unwrap();
+        fs::write(data_dir(&dir).join("index.db.encrypting"), b"half").unwrap();
+        let mut module = started(&db, shared(&store));
+        assert_eq!(module.phase(), &Phase::Ready);
+
+        begin(&mut module, FilingModule::begin_starting_over);
+
+        assert!(module.asks_encryption());
+        assert!(!db.exists());
+        assert!(!data_dir(&dir).join("index.db.encrypting").exists());
+        assert!(neighbour.exists());
+        assert_eq!(store.snapshot(), None);
+        assert!(module.protection_note().is_none());
+    }
+
+    #[test]
+    fn starting_over_a_plain_index_works_without_a_key_entry() {
+        let dir = TempDir::new().unwrap();
+        let db = db_in(&dir);
+        make_plain(&db);
+        let mut module = started(&db, Arc::new(UnavailableStore));
+
+        begin(&mut module, FilingModule::begin_starting_over);
+
+        assert!(module.asks_encryption());
+        assert!(!db.exists());
+    }
+
+    #[test]
+    fn the_files_to_remove_are_only_the_index_files_in_the_data_folder() {
+        let dir = TempDir::new().unwrap();
+        let data = data_dir(&dir);
+        fs::create_dir_all(&data).unwrap();
+        let other = dir.path().join("other");
+        fs::create_dir_all(&other).unwrap();
+
+        let right = index_files(&data.join("index.db"), &data).unwrap();
+        let names: Vec<_> = right
+            .iter()
+            .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "index.db.encrypting",
+                "index.db-journal",
+                "index.db-wal",
+                "index.db-shm",
+                "index.db",
+            ]
+        );
+        index_files(&data.join("index.db.bak"), &data).unwrap_err();
+        index_files(&data.join("notes.txt"), &data).unwrap_err();
+        index_files(&other.join("index.db"), &data).unwrap_err();
+        index_files(&data.join("index.db"), &data.join("missing")).unwrap_err();
+        index_files(Path::new("index.db"), &data).unwrap_err();
+    }
+
+    #[test]
+    fn a_start_over_of_a_file_not_named_index_db_removes_nothing() {
+        let dir = TempDir::new().unwrap();
+        let db = db_in(&dir);
+        make_plain(&db);
+        let mut module = started(&db, Arc::new(UnavailableStore));
+        module.db_path = data_dir(&dir).join("notes.db");
+
+        begin(&mut module, FilingModule::begin_starting_over);
+
+        assert!(matches!(
+            module.protection_note(),
+            Some(ProtectionNote::StartOverFailed(_))
+        ));
+        assert!(db.exists());
+    }
+
+    #[test]
+    fn a_dismissed_key_card_leaves_the_problem_to_the_overview() {
+        let dir = TempDir::new().unwrap();
+        let db = db_in(&dir);
+        make_encrypted(&db, &InMemoryKeyStore::empty());
+        let mut module = started(&db, Arc::new(InMemoryKeyStore::empty()));
+        assert_eq!(module.key_problem(), Some(KeyProblem::Missing));
+
+        send(&mut module, FilingMessage::Dismiss);
+
+        assert_eq!(module.phase(), &Phase::Dismissed);
+        assert_eq!(module.key_problem(), Some(KeyProblem::Missing));
+        assert!(module.can_start_over());
+        send(&mut module, FilingMessage::AskKeyAgain);
+        assert!(matches!(module.phase(), Phase::AskRecoveryKey { .. }));
+    }
+
+    #[test]
+    fn a_dismissed_module_without_a_key_problem_cannot_start_over() {
+        let mut module = FilingModule::in_phase(Phase::Dismissed);
+
+        assert!(module.key_problem().is_none());
+        assert!(!module.can_start_over());
+        assert!(module.begin_starting_over().is_none());
     }
 }

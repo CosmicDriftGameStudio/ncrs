@@ -197,7 +197,9 @@ fn banner<'a>(page: &OverviewView<'a>, palette: &Palette) -> Option<Element<'a, 
             Some((Msg::HermesOverviewTryAgain, HermesOverviewMessage::TryAgain)),
         ),
         ModuleState::WaitsForYou => (lang.text(Msg::HermesOverviewWaitsNote).to_owned(), None),
-        ModuleState::KeyMissing => (lang.text(Msg::HermesOverviewKeyMissing).to_owned(), None),
+        ModuleState::KeyMissing | ModuleState::Encrypting | ModuleState::StartingOver => {
+            return None
+        }
         ModuleState::Ready | ModuleState::Starting if !facts.has_locations => (
             lang.text(Msg::HermesOverviewNoFoldersNote).to_owned(),
             Some((Msg::HermesOverviewTileFoldersButton, HermesOverviewMessage::ChangeFolders)),
@@ -747,13 +749,27 @@ fn pipeline_controls<'a>(
     .into()
 }
 
-/// The protection; "Encrypt now" and "Start over" are buttons that can join the
-/// row beside the sentence.
+/// The protection: its state, what it means, why the last change failed, and
+/// the buttons that change it. While a change runs the buttons are inactive.
 fn protection_section<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
+    use crate::filing::{KeyProblem, ProtectionNote};
     use crate::hermes_overview::Protection;
 
     let lang = page.lang;
-    let (state_word, sentence) = match page.facts.protection {
+    let facts = &page.facts;
+    let key_missing = facts.module == ModuleState::KeyMissing;
+    let (state_word, sentence) = match facts.protection {
+        Protection::Encrypted if key_missing => (
+            Some(Msg::HermesOverviewProtectionEncrypted),
+            match facts.key_problem {
+                Some(KeyProblem::Mismatch) => lang.text(Msg::HermesOverviewKeyMismatch),
+                _ => on_this_computer(
+                    lang,
+                    Msg::HermesOverviewKeyMissingMac,
+                    Msg::HermesOverviewKeyMissingOther,
+                ),
+            },
+        ),
         Protection::Encrypted => (
             Some(Msg::HermesOverviewProtectionEncrypted),
             on_this_computer(
@@ -770,26 +786,81 @@ fn protection_section<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element
                 Msg::HermesOverviewProtectionPlainOther,
             ),
         ),
+        Protection::Encrypting => (
+            Some(Msg::HermesOverviewProtectionEncrypting),
+            lang.text(Msg::HermesOverviewProtectionWorking),
+        ),
+        Protection::StartingOver => (
+            Some(Msg::HermesOverviewProtectionStartingOver),
+            lang.text(Msg::HermesOverviewProtectionWorking),
+        ),
         Protection::Unknown => (None, lang.text(Msg::HermesOverviewProtectionNone)),
+    };
+    let headline_color = match facts.protection {
+        Protection::Encrypted if !key_missing => palette.success,
+        _ => palette.accent,
     };
     let mut lines = column![].spacing(spacing::S);
     if let Some(headline) = state_word {
-        lines = lines.push(text(lang.text(headline)).size(font_size::ROW).color(
-            if page.facts.protection == Protection::Encrypted {
-                palette.success
-            } else {
-                palette.accent
-            },
-        ));
+        lines = lines.push(
+            text(lang.text(headline))
+                .size(font_size::ROW)
+                .color(headline_color),
+        );
     }
     lines = lines.push(dim(sentence, palette));
-    let mut buttons = Row::new().spacing(spacing::M);
-    if page.facts.module == ModuleState::KeyMissing {
-        buttons = buttons.push(kit::button(
-            lang.text(Msg::HermesOverviewEnterRecoveryKey),
-            Some(send(HermesOverviewMessage::EnterRecoveryKey)),
-            Tone::Primary,
+    if let Some(note) = facts.protection_note.as_ref() {
+        let (template, reason) = match note {
+            ProtectionNote::EncryptFailed(reason) => (Msg::HermesOverviewEncryptFailed, reason),
+            ProtectionNote::StartOverFailed(reason) => (Msg::HermesOverviewStartOverFailed, reason),
+            ProtectionNote::KeyEntryNotRemoved(reason) => (Msg::HermesOverviewKeyEntryKept, reason),
+        };
+        lines = lines.push(error_line(
+            fill_template(lang.text(template), &[("{reason}", reason)]),
             palette,
+        ));
+    }
+    let button = |label: Msg, message: HermesOverviewMessage, enabled: bool, tone: Tone| {
+        kit::button(
+            lang.text(label),
+            enabled.then(|| send(message)),
+            tone,
+            palette,
+        )
+    };
+    let mut buttons = Row::new().spacing(spacing::M);
+    if key_missing {
+        buttons = buttons
+            .push(button(
+                Msg::HermesOverviewEnterRecoveryKey,
+                HermesOverviewMessage::EnterRecoveryKey,
+                facts.can_start_over,
+                Tone::Primary,
+            ))
+            .push(button(
+                Msg::HermesOverviewTryAgain,
+                HermesOverviewMessage::TryAgain,
+                facts.can_start_over,
+                Tone::Secondary,
+            ));
+    } else if facts.can_encrypt || facts.protection == Protection::Encrypting {
+        buttons = buttons.push(button(
+            Msg::HermesOverviewEncryptNow,
+            HermesOverviewMessage::EncryptNow,
+            facts.can_encrypt,
+            Tone::Secondary,
+        ));
+    }
+    let changing = matches!(
+        facts.protection,
+        Protection::Encrypting | Protection::StartingOver
+    );
+    if facts.can_start_over || key_missing || changing {
+        buttons = buttons.push(button(
+            Msg::HermesOverviewStartOver,
+            HermesOverviewMessage::AskStartOver,
+            facts.can_start_over,
+            Tone::Secondary,
         ));
     }
     let content = row![
@@ -799,4 +870,52 @@ fn protection_section<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element
     ]
     .align_y(alignment::Vertical::Center);
     kit::section(lang.text(Msg::HermesOverviewSectionProtection), content, palette)
+}
+
+/// Buttons: Cancel `0`, "Remove index" `1`.
+pub const START_OVER_CANCEL_FOCUS: usize = 0;
+pub const START_OVER_CONFIRM_FOCUS: usize = 1;
+
+/// The question before the index and its key are removed. Opens on Cancel,
+/// so Enter alone never removes anything.
+pub fn start_over_dialog<'a>(
+    focus: usize,
+    window: Size,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let body = column![
+        paragraph(lang.text(Msg::HermesOverviewStartOverLoss), palette),
+        paragraph(lang.text(Msg::HermesOverviewStartOverFiles), palette),
+    ]
+    .spacing(spacing::LINE_GAP);
+    let cancel = send(HermesOverviewMessage::CancelStartOver);
+    Frame::new(
+        lang.text(Msg::HermesOverviewStartOverTitle),
+        body,
+        DialogSize::Medium,
+        window,
+        lang,
+        palette,
+    )
+    .buttons(vec![
+        kit::button(
+            lang.text(Msg::DialogCancel),
+            Some(cancel.clone()),
+            Tone::filled_if(focus == START_OVER_CANCEL_FOCUS),
+            palette,
+        ),
+        kit::button(
+            lang.text(Msg::HermesOverviewStartOverConfirm),
+            Some(send(HermesOverviewMessage::ConfirmStartOver)),
+            Tone::Danger,
+            palette,
+        ),
+    ])
+    .on_close(cancel)
+    .hints(KeyHints {
+        enter: false,
+        tab: true,
+    })
+    .into_element()
 }
