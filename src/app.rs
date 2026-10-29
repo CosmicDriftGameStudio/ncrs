@@ -290,6 +290,9 @@ fn search_events(
 /// A quarter turn per tick, so the spinner of a file being read moves once
 /// a second without a timer of its own.
 const SPINNER_STEP: f32 = std::f32::consts::FRAC_PI_2;
+/// How long to wait for more files after a dropped one. winit sends one event
+/// per file, all in one burst, so the burst becomes one transfer.
+const DROP_SETTLE: std::time::Duration = std::time::Duration::from_millis(100);
 const NOTICE_DURATION: std::time::Duration = std::time::Duration::from_secs(3);
 
 const APP_NAME: &str = "NC-rs";
@@ -1120,6 +1123,12 @@ pub struct App {
     notice: Option<String>,
     /// Counts the notices shown, so a timer can tell if it is still the latest.
     notice_generation: u64,
+    /// Files from another app are held over the window.
+    drop_hover: bool,
+    /// The files of the drop still arriving.
+    dropped_files: Vec<PathBuf>,
+    /// Counts the dropped files, so the settle timer knows the burst is over.
+    drop_generation: u64,
     /// How many items the running job has finished, for the progress bar.
     job_done: usize,
     /// Whether "for all files" is ticked in the conflict dialog. Lives here so
@@ -3008,6 +3017,9 @@ impl App {
             job_error: None,
             notice: None,
             notice_generation: 0,
+            drop_hover: false,
+            dropped_files: Vec::new(),
+            drop_generation: 0,
             job_done: 0,
             conflict_all: false,
             conflict_rule: None,
@@ -3228,8 +3240,12 @@ impl App {
                 .with(Arc::clone(&self.input))
                 .filter_map(|(input, (event, status))| input.lock().handle(&event, status)),
             window::resize_events().map(|(_id, size)| Message::WindowResized(size)),
-            window::events().filter_map(|(_id, event)| {
-                matches!(event, window::Event::Focused).then_some(Message::WindowFocused)
+            window::events().filter_map(|(_id, event)| match event {
+                window::Event::Focused => Some(Message::WindowFocused),
+                window::Event::FileHovered(_) => Some(Message::FilesHovered),
+                window::Event::FilesHoveredLeft => Some(Message::FilesHoverLeft),
+                window::Event::FileDropped(path) => Some(Message::FileDropped(path)),
+                _ => None,
             }),
             // The close button and Alt+F4 end the app through Quit, which saves
             // the session first; the window does not close by itself.
@@ -3817,6 +3833,16 @@ impl App {
                 Task::none()
             }
             Message::WindowFocused => self.reload_local_panels(),
+            Message::FilesHovered => {
+                self.drop_hover = true;
+                Task::none()
+            }
+            Message::FilesHoverLeft => {
+                self.drop_hover = false;
+                Task::none()
+            }
+            Message::FileDropped(path) => self.queue_dropped_file(path),
+            Message::DropSettled(generation) => self.copy_settled_drop(generation),
             Message::OpenSearch => self.open_search(),
             Message::Search(search) => self.update_search(search),
             Message::QuickOpen(quick_open) => self.update_quick_open(quick_open),
@@ -4640,7 +4666,7 @@ impl App {
             )
         };
 
-        let side_view = |side: PanelSide| match self.search.as_ref() {
+        let side_view_plain = |side: PanelSide| match self.search.as_ref() {
             Some(search) if self.search_open && side == self.search_side => search_ui::view(
                 search,
                 self.search_rows,
@@ -4651,6 +4677,23 @@ impl App {
                 &self.toggle_shortcuts(),
             ),
             _ => panel_view(side),
+        };
+
+        let side_view = |side: PanelSide| {
+            let view = side_view_plain(side);
+            if self.drop_hover && side == self.active_panel {
+                Stack::with_children([
+                    view,
+                    container(Space::new())
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .style(theme::outlined_in(self.palette.accent))
+                        .into(),
+                ])
+                .into()
+            } else {
+                view
+            }
         };
 
         let panels = row![
@@ -7689,25 +7732,94 @@ impl App {
                 }
             };
         let (kind, sources, policy) = (open.kind(), open.sources().to_vec(), open.policy());
-        if let Some(place) = RemotePath::parse(&target) {
-            if !self.remote.is_connected(place.server()) {
-                let text = fill_template(
-                    self.lang.text(Msg::ErrorRemoteDisconnected),
-                    &[("{server}", &place.server().to_string())],
-                );
-                self.set_status_error(&text);
-                return Task::none();
-            }
+        if !self.target_server_is_reachable(&target) {
+            return Task::none();
         }
         self.transfer_dialog = None;
-        if let Some(location) = fs::archive::locate_in_archive(&target) {
-            let into = self.begin_copy_into_archive(location, sources, policy);
-            return Task::batch([release_focus(), into]);
-        }
         Task::batch([
             release_focus(),
-            self.begin_transfer(kind, sources, target, policy),
+            self.start_validated_transfer(kind, sources, target, policy),
         ])
+    }
+
+    /// Says so in the status bar when `target` is on a server that is not
+    /// connected.
+    fn target_server_is_reachable(&mut self, target: &Path) -> bool {
+        let Some(place) = RemotePath::parse(target) else {
+            return true;
+        };
+        if self.remote.is_connected(place.server()) {
+            return true;
+        }
+        let text = fill_template(
+            self.lang.text(Msg::ErrorRemoteDisconnected),
+            &[("{server}", &place.server().to_string())],
+        );
+        self.set_status_error(&text);
+        false
+    }
+
+    fn queue_dropped_file(&mut self, path: PathBuf) -> Task<Message> {
+        self.drop_hover = false;
+        self.dropped_files.push(path);
+        self.drop_generation = self.drop_generation.wrapping_add(1);
+        let generation = self.drop_generation;
+        Task::perform(async { tokio::time::sleep(DROP_SETTLE).await }, move |()| {
+            Message::DropSettled(generation)
+        })
+    }
+
+    fn copy_settled_drop(&mut self, generation: u64) -> Task<Message> {
+        if generation != self.drop_generation || self.dropped_files.is_empty() {
+            return Task::none();
+        }
+        let paths = std::mem::take(&mut self.dropped_files);
+        self.drop_files_into_active_panel(paths)
+    }
+
+    /// Copies files dropped from another app into the active panel. The drop
+    /// carries no cursor position or modifier, so the target is always the
+    /// active panel and the transfer always a copy.
+    fn drop_files_into_active_panel(&mut self, paths: Vec<PathBuf>) -> Task<Message> {
+        if self.transfer.is_some()
+            || self.extracting.is_some()
+            || self.prompt.is_some()
+            || self.pending_conflict.is_some()
+            || self.delete_dialog.is_some()
+            || self.transfer_dialog.is_some()
+            || self.archive_write.is_some()
+        {
+            let text = self.lang.text(Msg::StatusDropBusy).to_owned();
+            return self.show_notice(text);
+        }
+        let panel_path = self.active_panel().path.clone();
+        match transfer_dialog::validate(TransferKind::Copy, &paths, &panel_path) {
+            Err(refusal) => {
+                let text = transfer_ui::refusal_text(refusal, self.lang).to_owned();
+                self.set_status_error(&text);
+                Task::none()
+            }
+            Ok(resolved) if !self.target_server_is_reachable(&resolved) => Task::none(),
+            Ok(resolved) => {
+                self.job_error = None;
+                self.notice = None;
+                self.start_validated_transfer(TransferKind::Copy, paths, resolved, Policy::Ask)
+            }
+        }
+    }
+
+    /// Starts a transfer whose target passed `transfer_dialog::validate`.
+    fn start_validated_transfer(
+        &mut self,
+        kind: TransferKind,
+        sources: Vec<PathBuf>,
+        target: PathBuf,
+        policy: Policy,
+    ) -> Task<Message> {
+        if let Some(location) = fs::archive::locate_in_archive(&target) {
+            return self.begin_copy_into_archive(location, sources, policy);
+        }
+        self.begin_transfer(kind, sources, target, policy)
     }
 
     /// Starts the first row of a confirmed transfer and shows its progress.
@@ -13811,6 +13923,9 @@ impl App {
             job_error: None,
             notice: None,
             notice_generation: 0,
+            drop_hover: false,
+            dropped_files: Vec::new(),
+            drop_generation: 0,
             job_done: 0,
             conflict_all: false,
             conflict_rule: None,
@@ -26451,5 +26566,165 @@ mod hermes_overview_tests {
             Phase::AskRecoveryKey { .. }
         ));
         assert!(app.hermes_overview.is_none());
+    }
+}
+
+// reason: a failing assertion is the signal in a test
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod file_drop_tests {
+    use super::*;
+    use iced_test::futures::futures::StreamExt as _;
+    use iced_test::runtime::{task, Action};
+
+    struct Dropping {
+        app: App,
+        _root: tempfile::TempDir,
+        source_file: PathBuf,
+        source_folder: PathBuf,
+        target: PathBuf,
+    }
+
+    fn dropping() -> Dropping {
+        let root = tempfile::tempdir().unwrap();
+        let outside = root.path().join("outside");
+        let source_folder = outside.join("album");
+        let source_file = outside.join("note.txt");
+        let target = root.path().join("target");
+        std::fs::create_dir_all(&source_folder).unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(&source_file, "note").unwrap();
+        std::fs::write(source_folder.join("a.txt"), "a").unwrap();
+        let mut app = App::with_environment(Environment::isolated()).0;
+        app.left_panel.path = root.path().join("left");
+        app.right_panel.path = target.clone();
+        app.active_panel = PanelSide::Right;
+        Dropping {
+            app,
+            _root: root,
+            source_file,
+            source_folder,
+            target,
+        }
+    }
+
+    fn drop_both(case: &mut Dropping) -> u64 {
+        for path in [case.source_file.clone(), case.source_folder.clone()] {
+            drop(case.app.update(Message::FileDropped(path)));
+        }
+        case.app.drop_generation
+    }
+
+    async fn deliver(app: &mut App, message: Message) {
+        let mut queue = vec![message];
+        while let Some(next) = queue.pop() {
+            let Some(mut stream) = task::into_stream(app.update(next)) else {
+                continue;
+            };
+            while let Some(action) = stream.next().await {
+                if let Action::Output(reported) = action {
+                    queue.push(reported);
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_drop_copies_all_files_into_the_active_panel() {
+        let mut case = dropping();
+        let generation = drop_both(&mut case);
+
+        drop(case.app.update(Message::DropSettled(generation)));
+
+        let transfer = case.app.transfer.as_ref().expect("no transfer started");
+        assert_eq!(transfer.kind, TransferKind::Copy);
+        assert_eq!(
+            transfer.sources,
+            [case.source_file.clone(), case.source_folder.clone()]
+        );
+        assert_eq!(transfer.target, case.target.canonicalize().unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_drop_goes_to_the_left_panel_when_that_is_active() {
+        let mut case = dropping();
+        let left = case.app.left_panel.path.clone();
+        std::fs::create_dir_all(&left).unwrap();
+        case.app.active_panel = PanelSide::Left;
+        let generation = drop_both(&mut case);
+
+        drop(case.app.update(Message::DropSettled(generation)));
+
+        assert_eq!(
+            case.app.transfer.as_ref().unwrap().target,
+            left.canonicalize().unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_stale_settle_timer_starts_nothing() {
+        let mut case = dropping();
+        let generation = drop_both(&mut case);
+
+        drop(case.app.update(Message::DropSettled(generation - 1)));
+
+        assert!(case.app.transfer.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_taken_name_in_the_target_asks_what_to_do() {
+        let mut case = dropping();
+        std::fs::write(case.target.join("note.txt"), "old").unwrap();
+        let generation = drop_both(&mut case);
+
+        deliver(&mut case.app, Message::DropSettled(generation)).await;
+
+        assert!(case.app.pending_conflict.is_some(), "no conflict dialog");
+    }
+
+    #[tokio::test]
+    async fn a_drop_during_a_running_transfer_says_so_and_changes_nothing() {
+        let mut case = dropping();
+        let running = Transfer {
+            kind: TransferKind::Move,
+            sources: vec![PathBuf::from("/busy")],
+            target: PathBuf::from("/elsewhere"),
+        };
+        case.app.transfer = Some(running.clone());
+        let generation = drop_both(&mut case);
+
+        drop(case.app.update(Message::DropSettled(generation)));
+
+        assert_eq!(case.app.transfer.as_ref(), Some(&running));
+        assert!(case.app.notice.is_some());
+    }
+
+    #[tokio::test]
+    async fn a_drop_into_the_folder_it_comes_from_is_refused_in_words() {
+        let mut case = dropping();
+        case.app.right_panel.path = case.source_file.parent().unwrap().to_path_buf();
+        let generation = drop_both(&mut case);
+
+        drop(case.app.update(Message::DropSettled(generation)));
+
+        assert!(case.app.transfer.is_none());
+        assert!(case.app.job_error.is_some());
+    }
+
+    #[test]
+    fn hovering_marks_the_panel_until_it_is_left_or_dropped() {
+        let mut app = App::with_environment(Environment::isolated()).0;
+        drop(app.update(Message::FilesHovered));
+        assert!(app.drop_hover);
+        drop(app.update(Message::FilesHoverLeft));
+        assert!(!app.drop_hover);
+        drop(app.update(Message::FilesHovered));
+        drop(app.update(Message::FileDropped(PathBuf::from("/x"))));
+        assert!(!app.drop_hover);
     }
 }

@@ -413,6 +413,14 @@ pub enum Message {
     WindowResized(Size),
     /// The window got the focus back: what changed on disk meanwhile shows up.
     WindowFocused,
+    /// Files from another app are held over the window.
+    FilesHovered,
+    /// The files held over the window were taken away again.
+    FilesHoverLeft,
+    /// One file of a drop; a drop sends one of these per file.
+    FileDropped(PathBuf),
+    /// The drop with this generation has had all its files delivered.
+    DropSettled(u64),
     Quit,
 }
 
