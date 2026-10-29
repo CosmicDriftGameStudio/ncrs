@@ -1430,6 +1430,31 @@ mod tests {
     }
 
     #[test]
+    fn apple_double_entries_survive_a_delete() {
+        for (file, _) in ALL_FORMATS {
+            let dir = scratch("apple");
+            let archive = dir.path().join(file);
+            write_archive(
+                &archive,
+                &[
+                    Item::File("a.txt", b"a"),
+                    Item::File("b.txt", b"b"),
+                    Item::File("__MACOSX/._a.txt", b"x"),
+                    Item::File("._b.txt", b"x"),
+                ],
+            );
+
+            delete(&archive, &[inner(&["a.txt"])], &mut Counting).unwrap();
+            assert_eq!(
+                names_in_file(&archive),
+                ["._b.txt", "__MACOSX/._a.txt", "b.txt"],
+                "{file}"
+            );
+            assert_eq!(listing(&archive, &[]), ["b.txt"], "{file}");
+        }
+    }
+
+    #[test]
     fn a_link_does_not_block_a_name_it_shares_with_a_source() {
         for (file, _) in ALL_FORMATS {
             let dir = scratch("hidden-conflict");

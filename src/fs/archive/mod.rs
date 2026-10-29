@@ -485,6 +485,40 @@ mod tests {
     }
 
     #[test]
+    fn apple_double_entries_are_not_listed_or_counted_in_any_format() {
+        for (file, _) in ALL_FORMATS {
+            let dir = scratch("apple");
+            let archive = dir.path().join(file);
+            write_archive(&archive, &apple_items());
+
+            assert_eq!(
+                names_in(&at(&archive, &[])),
+                [("a.txt".to_owned(), false), ("dir".to_owned(), true)],
+                "{file}"
+            );
+            assert_eq!(
+                names_in(&at(&archive, &["dir"])),
+                [("b.txt".to_owned(), false)],
+                "{file}"
+            );
+            assert_eq!(list(&at(&archive, &[])).unwrap().left_out, 0, "{file}");
+            let index = index_of(&at(&archive, &[])).unwrap();
+            assert_eq!(index.totals(&[]).unwrap().files, 2, "{file}");
+        }
+    }
+
+    fn apple_items() -> Vec<Item<'static>> {
+        vec![
+            Item::File("a.txt", b"a"),
+            Item::File("dir/b.txt", b"b"),
+            Item::File("__MACOSX/._a.txt", b"x"),
+            Item::File("__MACOSX/dir/._b.txt", b"x"),
+            Item::File("._a.txt", b"x"),
+            Item::File("dir/._b.txt", b"x"),
+        ]
+    }
+
+    #[test]
     fn measure_counts_what_a_copy_would_take() {
         let dir = scratch("measure");
         let archive = dir.path().join("m.tar.gz");

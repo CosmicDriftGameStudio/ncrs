@@ -10,7 +10,7 @@ use std::path::{Component, Path, PathBuf};
 use std::time::SystemTime;
 
 use super::index::{open_tar, open_zip, tar_time, zip_error, zip_time, EntryKind};
-use super::names::safe_components;
+use super::names::{is_apple_double, safe_components};
 use super::sevenz;
 use super::{index_of, locate_in_archive, ArchiveFormat, ArchiveLocation};
 use crate::fs::transfer::{resolve_conflict, transfer, Counting, Move, OnConflict, Progress};
@@ -105,6 +105,9 @@ impl Plan<'_> {
     /// Where an archive entry goes in the staging folder, or `None` when it
     /// is not part of what was asked for or is not to be created.
     fn destination(&self, components: &[String], kind: EntryKind) -> io::Result<Option<PathBuf>> {
+        if is_apple_double(components) {
+            return Ok(None);
+        }
         let Some(rest) = components.strip_prefix(self.inner) else {
             return Ok(None);
         };
@@ -522,6 +525,33 @@ mod tests {
             assert!(!parent.join("evil.txt").exists());
             assert!(!parent.join("evil2.txt").exists());
             assert!(!dir.path().join("evil3.txt").exists());
+        }
+    }
+
+    #[test]
+    fn apple_double_entries_are_not_copied_out_in_any_format() {
+        for (file, _) in ALL_FORMATS {
+            let dir = scratch("apple");
+            let archive = dir.path().join(file);
+            write_archive(
+                &archive,
+                &[
+                    Item::File("a.txt", b"a"),
+                    Item::File("dir/b.txt", b"b"),
+                    Item::File("__MACOSX/._a.txt", b"x"),
+                    Item::File("__MACOSX/dir/._b.txt", b"x"),
+                    Item::File("._a.txt", b"x"),
+                    Item::File("dir/._b.txt", b"x"),
+                ],
+            );
+            let location = locate_in_archive(&archive).unwrap();
+            let listing = super::super::list(&location).unwrap();
+            let out = out_dir(dir.path());
+            for entry in &listing.entries {
+                copy_out(&entry.path, &out, &mut Counting, OnConflict::Fail).unwrap();
+            }
+            assert_eq!(names_in(&out), ["a.txt", "dir"], "{file}");
+            assert_eq!(names_in(&out.join("dir")), ["b.txt"], "{file}");
         }
     }
 
