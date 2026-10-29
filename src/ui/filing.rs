@@ -68,9 +68,12 @@ pub fn view<'a>(
         ),
         Phase::PlainFileWarning => plain_file_warning(lang, palette),
         Phase::Failed(reason) => failed(reason, lang, palette),
-        Phase::Starting | Phase::AskEncryption { .. } | Phase::Ready | Phase::Dismissed => {
-            return None
-        }
+        Phase::Starting
+        | Phase::Encrypting
+        | Phase::StartingOver
+        | Phase::AskEncryption { .. }
+        | Phase::Ready
+        | Phase::Dismissed => return None,
     };
     let mut framed = Frame::new(card.title, card.body, SIZE, window, lang, palette)
         .buttons(card.buttons)

@@ -11,7 +11,7 @@ use chrono::NaiveDate;
 use ncrs_index::{DocumentFields, HermesCounts};
 use ncrs_intake::{pattern_is_valid, render_pattern, DEFAULT_PATTERNS};
 
-use crate::filing::{AiStatus, Phase};
+use crate::filing::{AiStatus, KeyProblem, Phase, ProtectionNote};
 
 /// Where the module stands, as far as the overview tells.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,6 +27,10 @@ pub enum ModuleState {
     KeyMissing,
     Failed,
     Dismissed,
+    /// The index is being encrypted.
+    Encrypting,
+    /// The index and its key are being removed.
+    StartingOver,
 }
 
 impl ModuleState {
@@ -40,6 +44,8 @@ impl ModuleState {
             Phase::AskRecoveryKey { .. } => Self::KeyMissing,
             Phase::Failed(_) => Self::Failed,
             Phase::Dismissed => Self::Dismissed,
+            Phase::Encrypting => Self::Encrypting,
+            Phase::StartingOver => Self::StartingOver,
         }
     }
 }
@@ -70,6 +76,10 @@ impl OcrFacts {
 pub enum Protection {
     Encrypted,
     Plain,
+    /// The file is being encrypted now.
+    Encrypting,
+    /// The file is being removed now.
+    StartingOver,
     /// There is no open index to tell by.
     Unknown,
 }
@@ -79,6 +89,8 @@ impl Protection {
     /// there is an encrypted one.
     pub fn of(module: ModuleState, index_encrypted: Option<bool>) -> Self {
         match (module, index_encrypted) {
+            (ModuleState::Encrypting, _) => Self::Encrypting,
+            (ModuleState::StartingOver, _) => Self::StartingOver,
             (ModuleState::KeyMissing, _) | (_, Some(true)) => Self::Encrypted,
             (_, Some(false)) => Self::Plain,
             (_, None) => Self::Unknown,
@@ -196,6 +208,12 @@ pub struct OverviewFacts {
     pub ai_download: Option<(u64, u64)>,
     pub ocr: OcrFacts,
     pub protection: Protection,
+    /// The key of the index is missing or wrong, and the user has not solved it.
+    pub key_problem: Option<KeyProblem>,
+    pub can_encrypt: bool,
+    pub can_start_over: bool,
+    /// Why the last change of the protection did not go through.
+    pub protection_note: Option<ProtectionNote>,
 }
 
 impl OverviewFacts {
@@ -206,7 +224,9 @@ impl OverviewFacts {
     pub fn pill(&self) -> Pill {
         match self.module {
             ModuleState::Off => Pill::Off,
-            ModuleState::Starting => Pill::Starting,
+            ModuleState::Starting | ModuleState::Encrypting | ModuleState::StartingOver => {
+                Pill::Starting
+            }
             ModuleState::WaitsForYou
             | ModuleState::KeyMissing
             | ModuleState::Failed
@@ -425,6 +445,10 @@ mod tests {
             ai_download: None,
             ocr: OcrFacts::BuiltIn,
             protection: Protection::Encrypted,
+            key_problem: None,
+            can_encrypt: false,
+            can_start_over: false,
+            protection_note: None,
         }
     }
 
@@ -465,6 +489,8 @@ mod tests {
     fn the_pill_says_off_and_starting_for_a_module_that_is_not_there() {
         assert_eq!(facts(ModuleState::Off).pill(), Pill::Off);
         assert_eq!(facts(ModuleState::Starting).pill(), Pill::Starting);
+        assert_eq!(facts(ModuleState::Encrypting).pill(), Pill::Starting);
+        assert_eq!(facts(ModuleState::StartingOver).pill(), Pill::Starting);
     }
 
     #[test]
@@ -549,6 +575,15 @@ mod tests {
             Protection::Plain
         );
         assert_eq!(Protection::of(ModuleState::Off, None), Protection::Unknown);
+        assert_eq!(
+            Protection::of(ModuleState::Encrypting, None),
+            Protection::Encrypting
+        );
+        assert_eq!(
+            Protection::of(ModuleState::StartingOver, Some(true)),
+            Protection::StartingOver
+        );
+        assert_eq!(ModuleState::of(&Phase::Encrypting), ModuleState::Encrypting);
     }
 
     #[test]

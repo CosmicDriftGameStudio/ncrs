@@ -22,6 +22,11 @@ pub trait KeyStore {
     /// Called only from `Index::replace_key`, after the new key has proven
     /// that it opens the database.
     fn replace(&self, key: &[u8]) -> Result<(), KeyStoreError>;
+
+    /// Removes this store's own entry; no entry is not an error. Only for an
+    /// index the user started over or a key made for an encryption that did
+    /// not happen.
+    fn delete(&self) -> Result<(), KeyStoreError>;
 }
 
 /// The operating system's credential store: Keychain, Credential Manager or
@@ -191,6 +196,16 @@ impl KeyStore for KeyringKeyStore {
     fn replace(&self, key: &[u8]) -> Result<(), KeyStoreError> {
         self.set_secret(key)
     }
+
+    fn delete(&self) -> Result<(), KeyStoreError> {
+        let Some(entry) = self.entry(false)? else {
+            return Ok(());
+        };
+        match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(err) => Err(unavailable(err)),
+        }
+    }
 }
 
 impl KeyringKeyStore {
@@ -250,6 +265,11 @@ impl KeyStore for InMemoryKeyStore {
         *self.lock() = Some(key.to_vec());
         Ok(())
     }
+
+    fn delete(&self) -> Result<(), KeyStoreError> {
+        *self.lock() = None;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -283,13 +303,18 @@ mod tests {
         store.replace(&replacement).unwrap();
         assert_eq!(store.load().unwrap().unwrap(), replacement);
 
-        store
-            .entry(false)
-            .unwrap()
-            .unwrap()
-            .delete_credential()
-            .unwrap();
+        store.delete().unwrap();
         assert_eq!(store.load().unwrap(), None);
+        store.delete().unwrap();
+    }
+
+    #[test]
+    fn deleting_the_memory_store_entry_empties_it_and_never_fails() {
+        let store = InMemoryKeyStore::with_entry(vec![1; 32]);
+
+        store.delete().unwrap();
+        assert_eq!(store.load().unwrap(), None);
+        store.delete().unwrap();
     }
 
     fn id_file_in(dir: &tempfile::TempDir) -> PathBuf {
