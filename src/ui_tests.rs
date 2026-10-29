@@ -4714,7 +4714,9 @@ mod settings_tab {
         let app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
         assert_eq!(
             messages_after_click(&app, "Open").last(),
-            Some(&Message::FilingStatus(crate::messages::FilingStatusMessage::Open))
+            Some(&Message::FilingStatus(
+                crate::messages::FilingStatusMessage::Open
+            ))
         );
     }
 }
@@ -5191,8 +5193,14 @@ mod hermes_setup_card {
     #[test]
     fn the_card_matches_its_snapshots_in_both_languages() {
         for (lang, suffix) in [(Language::English, "en"), (Language::German, "de")] {
-            assert_snapshot(&empty().in_language(lang), &format!("hermes_setup_empty_{suffix}"));
-            assert_snapshot(&filled().in_language(lang), &format!("hermes_setup_filled_{suffix}"));
+            assert_snapshot(
+                &empty().in_language(lang),
+                &format!("hermes_setup_empty_{suffix}"),
+            );
+            assert_snapshot(
+                &filled().in_language(lang),
+                &format!("hermes_setup_filled_{suffix}"),
+            );
             assert_snapshot(
                 &with_existing_index().in_language(lang),
                 &format!("hermes_setup_existing_index_{suffix}"),
@@ -5408,7 +5416,9 @@ mod hermes_overview_page {
         );
         drop(app.update(overview_message(HermesOverviewMessage::FocusPattern)));
         simulator(&app)
-            .find(iced_selector::id(crate::ui::hermes_overview::PATTERN_FIELD_ID))
+            .find(iced_selector::id(
+                crate::ui::hermes_overview::PATTERN_FIELD_ID,
+            ))
             .expect("the pattern field is shown while editing");
     }
 

@@ -32,10 +32,6 @@ use crate::filing::{
     DocumentFinder, FilingMessage, FilingModule, LocationStatus, Phase, Work, WorkOutcome,
 };
 use crate::filing_setup::{self, FilePick, FilingSetup, SetupNote};
-use crate::hermes_setup::{
-    card_is_done_at, ExistingIndex, FolderSlot, HermesSetup, PlanStep, SetupFocus, SetupOffer,
-    StartPlan,
-};
 use crate::filing_status::{FilingStatus, SNAPSHOT_EVERY};
 use crate::filing_work::FilingSummary;
 use crate::fs::remote::credentials::KeyringPasswords;
@@ -46,6 +42,13 @@ use crate::fs::{self, CreateDirError};
 use crate::hermes_column::{
     role_of, ColumnRequest, ColumnStage, ColumnView, FileDetail, FolderRole, HermesColumn,
     HermesFileState,
+};
+use crate::hermes_overview::{
+    ModuleState, OcrFacts, OverviewFacts, OverviewState, PatternCommit, Protection,
+};
+use crate::hermes_setup::{
+    card_is_done_at, ExistingIndex, FolderSlot, HermesSetup, PlanStep, SetupFocus, SetupOffer,
+    StartPlan,
 };
 use crate::hermes_status::HermesStatus;
 use crate::i18n::{Language, Msg};
@@ -58,12 +61,10 @@ use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
     ConflictChoice, ConnectField, FilingSetupMessage, FilingStatusMessage, GrantMessage,
     HermesColumnMessage, HermesFileMessage, HermesFocus, HermesOverviewMessage, HermesPage,
-    HermesSetupMessage,
-    KeyBindingsMessage, Message,
-    OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage,
-    ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage,
-    SearchMessage, SettingChange, SettingsMessage, ThemeFetchMessage, TitleBarMessage,
-    TransferKind,
+    HermesSetupMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide, QuickFixMessage,
+    QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage,
+    RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage,
+    ThemeFetchMessage, TitleBarMessage, TransferKind,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -96,13 +97,10 @@ use crate::ui::filing as filing_ui;
 use crate::ui::filing_setup as filing_setup_ui;
 use crate::ui::filing_status as filing_status_ui;
 use crate::ui::grant as grant_ui;
-use crate::hermes_overview::{
-    ModuleState, OcrFacts, OverviewFacts, OverviewState, PatternCommit, Protection,
-};
+use crate::ui::hermes::Badges;
 use crate::ui::hermes_flow;
 use crate::ui::hermes_overview as hermes_overview_ui;
 use crate::ui::hermes_setup as hermes_setup_ui;
-use crate::ui::hermes::Badges;
 use crate::ui::key_bindings as key_bindings_ui;
 use crate::ui::ocr_models as ocr_models_ui;
 use crate::ui::quick_fix as quick_fix_view;
@@ -962,7 +960,10 @@ fn copy_picked_theme_file(config_path: &Path, picked: &Path) -> Result<String, F
     std::fs::create_dir_all(&folder).map_err(io_failure(&folder))?;
     let target = folder.join(file_name);
     std::fs::copy(picked, &target).map_err(io_failure(picked))?;
-    Ok(format!("{PICKED_THEMES_FOLDER}/{}", file_name.to_string_lossy()))
+    Ok(format!(
+        "{PICKED_THEMES_FOLDER}/{}",
+        file_name.to_string_lossy()
+    ))
 }
 
 /// When a saved filing list takes effect.
@@ -5510,14 +5511,12 @@ impl App {
                 filing_setup::write_locations(&written_path, &locations)
             }),
             move |joined| {
-                Message::HermesSetup(HermesSetupMessage::Written(joined.unwrap_or_else(
-                    |join| {
-                        Err(FilingWriteError::Io {
-                            path: config_path,
-                            reason: join.to_string(),
-                        })
-                    },
-                )))
+                Message::HermesSetup(HermesSetupMessage::Written(joined.unwrap_or_else(|join| {
+                    Err(FilingWriteError::Io {
+                        path: config_path,
+                        reason: join.to_string(),
+                    })
+                })))
             },
         )
     }
@@ -5638,12 +5637,13 @@ impl App {
                 };
                 match folder {
                     Some(picked) => {
-                        let granted = self.grant_chosen_folder(&picked, |granted_folder, result| {
-                            Message::FilingSetup(FilingSetupMessage::Granted {
-                                folder: granted_folder,
-                                result,
-                            })
-                        });
+                        let granted =
+                            self.grant_chosen_folder(&picked, |granted_folder, result| {
+                                Message::FilingSetup(FilingSetupMessage::Granted {
+                                    folder: granted_folder,
+                                    result,
+                                })
+                            });
                         Task::batch([granted, self.resolve_setup_folder(mode, picked)])
                     }
                     None => {
@@ -9436,8 +9436,14 @@ impl App {
                 .as_ref()
                 .filter(|card| card.is_downloading())
                 .and_then(AiModelCard::progress),
-            ocr: OcrFacts::of(crate::ocr_models::system_reads_scans(), state.ocr_models_present()),
-            protection: Protection::of(module_state, module.and_then(FilingModule::index_encryption)),
+            ocr: OcrFacts::of(
+                crate::ocr_models::system_reads_scans(),
+                state.ocr_models_present(),
+            ),
+            protection: Protection::of(
+                module_state,
+                module.and_then(FilingModule::index_encryption),
+            ),
             key_problem: module.and_then(FilingModule::key_problem),
             can_encrypt: at_rest && module.is_some_and(FilingModule::can_encrypt),
             can_start_over: at_rest && module.is_some_and(FilingModule::can_start_over),
@@ -9701,7 +9707,10 @@ impl App {
     /// in the middle of something.
     fn restart_hermes_module(&mut self) -> Task<Message> {
         let can_restart = self.filing_key_store.is_some()
-            && self.filing.as_ref().is_some_and(FilingModule::can_be_replaced);
+            && self
+                .filing
+                .as_ref()
+                .is_some_and(FilingModule::can_be_replaced);
         if !can_restart {
             return Task::none();
         }
@@ -18191,8 +18200,9 @@ mod config_status_tests {
 
     #[test]
     fn a_low_contrast_is_shown_follows_the_language_and_is_dismissed() {
-        let mut app =
-            App::with_fixed_panels().with_config(Ok(loaded("[theme]\npanel = \"#f4f0ff\"\npreset = \"cosmic\"\n")));
+        let mut app = App::with_fixed_panels().with_config(Ok(loaded(
+            "[theme]\npanel = \"#f4f0ff\"\npreset = \"cosmic\"\n",
+        )));
         assert_eq!(app.palette.panel, iced::Color::from_rgb8(0xF4, 0xF0, 0xFF));
         let shown = app.status_error().unwrap_or_default();
         assert!(shown.contains("line 2"), "{shown}");
@@ -25166,7 +25176,11 @@ mod hermes_setup_tests {
         let entry = copy_picked_theme_file(&config_path, &picked).unwrap();
 
         assert_eq!(entry, "themes/picked/night.json");
-        let copy = config_dir.path().join("themes").join("picked").join("night.json");
+        let copy = config_dir
+            .path()
+            .join("themes")
+            .join("picked")
+            .join("night.json");
         assert_eq!(std::fs::read(copy).unwrap(), b"{}");
     }
 
@@ -25307,7 +25321,11 @@ mod hermes_setup_tests {
             path: PathBuf::from("config.toml"),
             reason: "read-only".to_owned(),
         };
-        drop(app.update(Message::HermesSetup(HermesSetupMessage::Written(Err(error)))));
+        drop(
+            app.update(Message::HermesSetup(HermesSetupMessage::Written(Err(
+                error,
+            )))),
+        );
         assert!(app.pending_hermes_start.is_none());
         let setup = app.hermes_setup.as_ref().unwrap();
         assert!(matches!(setup.note(), Some(SetupNote::SaveFailed(_))));
@@ -25322,9 +25340,11 @@ mod hermes_setup_tests {
             let config_dir = TempDir::new().unwrap();
             let index_dir = TempDir::new().unwrap();
             let mut app = app_at_the_question(&index_dir);
-            drop(app.update(Message::HermesSetup(HermesSetupMessage::ChooseEncrypted(
-                encrypted,
-            ))));
+            drop(
+                app.update(Message::HermesSetup(HermesSetupMessage::ChooseEncrypted(
+                    encrypted,
+                ))),
+            );
             press_start(&mut app, &config_dir);
             drop(
                 app.update(Message::HermesSetup(HermesSetupMessage::Written(Ok(
@@ -25387,7 +25407,10 @@ mod hermes_setup_tests {
         }));
         drop(app.advance_hermes_plan());
         assert!(app.hermes_setup.is_none());
-        assert!(app.pending_hermes_start.is_some(), "the plan waits for Ready");
+        assert!(
+            app.pending_hermes_start.is_some(),
+            "the plan waits for Ready"
+        );
     }
 
     fn app_ready_after_start(load_model: bool, models_dir: &TempDir) -> App {
@@ -25607,9 +25630,9 @@ mod hermes_overview_tests {
     }
 
     fn type_pattern(app: &mut App, pattern: &str) {
-        drop(app.update(Message::HermesOverview(HermesOverviewMessage::PatternEdited(
-            pattern.to_owned(),
-        ))));
+        drop(app.update(Message::HermesOverview(
+            HermesOverviewMessage::PatternEdited(pattern.to_owned()),
+        )));
     }
 
     #[tokio::test]
@@ -25618,16 +25641,32 @@ mod hermes_overview_tests {
         let mut app = overview_with_config_file(&config_dir);
 
         type_pattern(&mut app, "{year}/{sender}");
-        settle(&mut app, Message::HermesOverview(HermesOverviewMessage::PatternSubmit)).await;
+        settle(
+            &mut app,
+            Message::HermesOverview(HermesOverviewMessage::PatternSubmit),
+        )
+        .await;
         let written = std::fs::read_to_string(config_dir.path().join("config.toml")).unwrap();
         assert!(written.contains("{year}/{sender}"), "{written}");
-        assert_eq!(app.filing_config.default_pattern.as_deref(), Some("{year}/{sender}"));
+        assert_eq!(
+            app.filing_config.default_pattern.as_deref(),
+            Some("{year}/{sender}")
+        );
 
         type_pattern(&mut app, "{nonsense");
-        settle(&mut app, Message::HermesOverview(HermesOverviewMessage::PatternSubmit)).await;
+        settle(
+            &mut app,
+            Message::HermesOverview(HermesOverviewMessage::PatternSubmit),
+        )
+        .await;
         let unchanged = std::fs::read_to_string(config_dir.path().join("config.toml")).unwrap();
         assert_eq!(unchanged, written);
-        assert!(app.hermes_overview.as_ref().unwrap().pattern_note().is_some());
+        assert!(app
+            .hermes_overview
+            .as_ref()
+            .unwrap()
+            .pattern_note()
+            .is_some());
     }
 
     #[tokio::test]
@@ -25635,10 +25674,18 @@ mod hermes_overview_tests {
         let config_dir = TempDir::new().unwrap();
         let mut app = overview_with_config_file(&config_dir);
         type_pattern(&mut app, "{year}/{sender}");
-        settle(&mut app, Message::HermesOverview(HermesOverviewMessage::PatternSubmit)).await;
+        settle(
+            &mut app,
+            Message::HermesOverview(HermesOverviewMessage::PatternSubmit),
+        )
+        .await;
 
         type_pattern(&mut app, "");
-        settle(&mut app, Message::HermesOverview(HermesOverviewMessage::PatternSubmit)).await;
+        settle(
+            &mut app,
+            Message::HermesOverview(HermesOverviewMessage::PatternSubmit),
+        )
+        .await;
 
         let written = std::fs::read_to_string(config_dir.path().join("config.toml")).unwrap();
         assert!(!written.contains("default_pattern"), "{written}");
@@ -25649,7 +25696,11 @@ mod hermes_overview_tests {
     async fn changing_the_folders_leaves_the_overview_for_the_card() {
         let mut app = App::with_hermes_overview(Some(Phase::Ready), configured(), None);
 
-        settle(&mut app, Message::HermesOverview(HermesOverviewMessage::ChangeFolders)).await;
+        settle(
+            &mut app,
+            Message::HermesOverview(HermesOverviewMessage::ChangeFolders),
+        )
+        .await;
 
         assert!(app.hermes_overview.is_none());
         assert!(app.filing_setup.is_some());
@@ -25684,7 +25735,9 @@ mod hermes_overview_tests {
     async fn closing_the_folders_card_returns_to_the_overview() {
         let mut app = App::with_hermes_overview(Some(Phase::Ready), configured(), None);
 
-        drop(app.update(Message::HermesOverview(HermesOverviewMessage::ChangeFolders)));
+        drop(app.update(Message::HermesOverview(
+            HermesOverviewMessage::ChangeFolders,
+        )));
         assert!(app.filing_setup.is_some());
         assert!(app.hermes_overview.is_none());
 
@@ -25697,7 +25750,9 @@ mod hermes_overview_tests {
     async fn closing_the_setup_card_opened_from_the_overview_returns_to_it() {
         let mut app = App::with_hermes_overview(Some(Phase::Ready), configured(), None);
 
-        drop(app.update(Message::HermesOverview(HermesOverviewMessage::ContinueSetup)));
+        drop(app.update(Message::HermesOverview(
+            HermesOverviewMessage::ContinueSetup,
+        )));
         assert!(app.hermes_setup.is_some());
         assert!(app.hermes_overview.is_none());
 
@@ -25713,7 +25768,11 @@ mod hermes_overview_tests {
         std::fs::write(&config_path, "").unwrap();
         app.config_path = Some(config_path);
 
-        settle(&mut app, Message::HermesOverview(HermesOverviewMessage::SwitchHermesOn)).await;
+        settle(
+            &mut app,
+            Message::HermesOverview(HermesOverviewMessage::SwitchHermesOn),
+        )
+        .await;
 
         assert!(app.hermes_setup.is_some());
     }
@@ -25755,7 +25814,10 @@ mod hermes_overview_tests {
     #[test]
     fn without_the_field_the_page_has_the_letters_the_sidebar_and_enter() {
         let route = overview_keys(false, false);
-        assert_eq!(route(Key::Named(Named::Escape)), overview(HermesOverviewMessage::Close));
+        assert_eq!(
+            route(Key::Named(Named::Escape)),
+            overview(HermesOverviewMessage::Close)
+        );
         assert_eq!(
             route(Key::Character("p".into())),
             Some(Message::FilingStatus(FilingStatusMessage::TogglePause))
@@ -25781,7 +25843,10 @@ mod hermes_overview_tests {
             Some(Message::HermesFocus(HermesFocus::Sidebar))
         );
         let in_sidebar = overview_keys(false, true);
-        assert_eq!(in_sidebar(Key::Named(Named::ArrowDown)), Some(Message::HermesStep(1)));
+        assert_eq!(
+            in_sidebar(Key::Named(Named::ArrowDown)),
+            Some(Message::HermesStep(1))
+        );
         assert_eq!(
             in_sidebar(Key::Named(Named::Enter)),
             Some(Message::HermesFocus(HermesFocus::Content))
@@ -25813,16 +25878,15 @@ mod hermes_overview_tests {
         type_pattern(&mut app, "{year}");
         assert!(app.prompt_key_state().hermes_overview_editing);
 
-        drop(app.update(Message::HermesOverview(HermesOverviewMessage::SetAiEnabled(false))));
+        drop(app.update(Message::HermesOverview(
+            HermesOverviewMessage::SetAiEnabled(false),
+        )));
         assert!(!app.prompt_key_state().hermes_overview_editing);
     }
 
     #[tokio::test]
     async fn a_folder_picked_in_the_setup_card_is_granted_in_the_sandbox() {
-        let mut app = sandboxed(
-            App::with_hermes_setup(&[], no_offer()),
-            recording_grant,
-        );
+        let mut app = sandboxed(App::with_hermes_setup(&[], no_offer()), recording_grant);
         let picked = PathBuf::from("/home/test/picked-for-the-setup");
 
         settle(
@@ -25839,10 +25903,7 @@ mod hermes_overview_tests {
 
     #[tokio::test]
     async fn a_refused_grant_stays_as_a_sentence_in_the_setup_card() {
-        let mut app = sandboxed(
-            App::with_hermes_setup(&[], no_offer()),
-            refusing_grant,
-        );
+        let mut app = sandboxed(App::with_hermes_setup(&[], no_offer()), refusing_grant);
         let picked = PathBuf::from("/home/test/refused-for-the-setup");
 
         settle(

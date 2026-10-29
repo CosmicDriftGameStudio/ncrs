@@ -4,8 +4,8 @@
 
 use std::path::Path;
 
-use iced::widget::{column, container, row, text, Row, Space};
 use iced::widget::text::Wrapping;
+use iced::widget::{column, container, row, text, Row, Space};
 use iced::{alignment, Color, Element, Length, Size};
 use ncrs_pipeline::{Load, RunnerState};
 
@@ -18,13 +18,11 @@ use super::theme::{self, font_size, spacing};
 use crate::app::fill_template;
 use crate::filing_setup::shown_path;
 use crate::hermes_overview::{
-    built_in_pattern, AiTile, ModuleState, OverviewFacts,
-    OverviewState, PatternNote, Pill, ReviewTile, Tone as TileTone,
+    built_in_pattern, AiTile, ModuleState, OverviewFacts, OverviewState, PatternNote, Pill,
+    ReviewTile, Tone as TileTone,
 };
 use crate::i18n::{Language, Msg};
-use crate::messages::{
-    FilingStatusMessage, HermesOverviewMessage, HermesPage, Message,
-};
+use crate::messages::{FilingStatusMessage, HermesOverviewMessage, HermesPage, Message};
 use crate::palette::Palette;
 
 const SIZE: DialogSize = DialogSize::Card;
@@ -123,7 +121,12 @@ pub fn view<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Messa
         palette,
     )
     .title_theme(lang.text(Msg::HermesNavOverviewTheme))
-    .sidebar(hermes::nav(HermesPage::Overview, page.badges, lang, palette))
+    .sidebar(hermes::nav(
+        HermesPage::Overview,
+        page.badges,
+        lang,
+        palette,
+    ))
     .on_close(send(HermesOverviewMessage::Close))
     .hints(KeyHints::default())
     .page_hints(PAGE_HINTS)
@@ -183,11 +186,17 @@ fn banner<'a>(page: &OverviewView<'a>, palette: &Palette) -> Option<Element<'a, 
     let (sentence, button) = match facts.module {
         ModuleState::Off => (
             lang.text(Msg::HermesOverviewOffNote).to_owned(),
-            Some((Msg::HermesOverviewSwitchOn, HermesOverviewMessage::SwitchHermesOn)),
+            Some((
+                Msg::HermesOverviewSwitchOn,
+                HermesOverviewMessage::SwitchHermesOn,
+            )),
         ),
         ModuleState::Dismissed => (
             lang.text(Msg::HermesOverviewDismissedNote).to_owned(),
-            Some((Msg::HermesOverviewContinueSetup, HermesOverviewMessage::ContinueSetup)),
+            Some((
+                Msg::HermesOverviewContinueSetup,
+                HermesOverviewMessage::ContinueSetup,
+            )),
         ),
         ModuleState::Failed => (
             fill_template(
@@ -202,7 +211,10 @@ fn banner<'a>(page: &OverviewView<'a>, palette: &Palette) -> Option<Element<'a, 
         }
         ModuleState::Ready | ModuleState::Starting if !facts.has_locations => (
             lang.text(Msg::HermesOverviewNoFoldersNote).to_owned(),
-            Some((Msg::HermesOverviewTileFoldersButton, HermesOverviewMessage::ChangeFolders)),
+            Some((
+                Msg::HermesOverviewTileFoldersButton,
+                HermesOverviewMessage::ChangeFolders,
+            )),
         ),
         ModuleState::Ready | ModuleState::Starting => return None,
     };
@@ -270,7 +282,11 @@ fn flow_boxes<'a>(page: &OverviewView<'a>) -> FlowBoxes<'a> {
     let rules_note = if counts.confirmed_rules == 1 {
         lang.text(Msg::HermesOverviewFlowRulesNoteOne).to_owned()
     } else {
-        count_text(Msg::HermesOverviewFlowRulesNote, counts.confirmed_rules, lang)
+        count_text(
+            Msg::HermesOverviewFlowRulesNote,
+            counts.confirmed_rules,
+            lang,
+        )
     };
     let pattern = page.state.pattern_draft();
     let pattern_text = if pattern == built_in_pattern() {
@@ -414,14 +430,20 @@ fn ai_tile<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Messag
         }
         AiTile::Ready => vec![dim(lang.text(Msg::HermesOverviewTileAiReady), palette)],
         AiTile::OwnServer { model } => vec![dim(
-            fill_template(lang.text(Msg::HermesOverviewTileAiOwnServer), &[("{model}", model)]),
+            fill_template(
+                lang.text(Msg::HermesOverviewTileAiOwnServer),
+                &[("{model}", model)],
+            ),
             palette,
         )],
         AiTile::TakesEffectAtRestart => {
             vec![dim(lang.text(Msg::HermesOverviewTileAiRestart), palette)]
         }
         AiTile::Failed(reason) => vec![dim(
-            fill_template(lang.text(Msg::HermesOverviewTileAiFailed), &[("{reason}", reason)]),
+            fill_template(
+                lang.text(Msg::HermesOverviewTileAiFailed),
+                &[("{reason}", reason)],
+            ),
             palette,
         )],
     };
@@ -438,7 +460,8 @@ fn review_tile<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Me
     let state = page.facts.review_tile();
     let (title, text_msg, button) = match state {
         ReviewTile::Waiting(1) => (
-            lang.text(Msg::HermesOverviewTileReviewWaitingOne).to_owned(),
+            lang.text(Msg::HermesOverviewTileReviewWaitingOne)
+                .to_owned(),
             Msg::HermesOverviewTileReviewText,
             true,
         ),
@@ -552,7 +575,11 @@ fn folders_section<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a
     ]
     .spacing(spacing::XL)
     .align_y(alignment::Vertical::Center);
-    kit::section(lang.text(Msg::HermesOverviewSectionFolders), content, palette)
+    kit::section(
+        lang.text(Msg::HermesOverviewSectionFolders),
+        content,
+        palette,
+    )
 }
 
 fn filing_section<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
@@ -608,13 +635,21 @@ fn filing_section<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a,
             palette,
         ));
     }
-    kit::section(lang.text(Msg::HermesOverviewSectionFiling), content, palette)
+    kit::section(
+        lang.text(Msg::HermesOverviewSectionFiling),
+        content,
+        palette,
+    )
 }
 
 fn ai_section<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
     let lang = page.lang;
     let on = page.facts.ai_on;
-    let word = lang.text(if on { Msg::SettingsOn } else { Msg::SettingsOff });
+    let word = lang.text(if on {
+        Msg::SettingsOn
+    } else {
+        Msg::SettingsOff
+    });
     let switch = row![
         kit::checkbox(
             if on { Check::On } else { Check::Off },
@@ -685,7 +720,12 @@ fn load_section<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, M
     ];
     let options: Vec<(&str, Message)> = loads
         .iter()
-        .map(|(label, target)| (lang.text(*label), send(HermesOverviewMessage::SetLoad(*target))))
+        .map(|(label, target)| {
+            (
+                lang.text(*label),
+                send(HermesOverviewMessage::SetLoad(*target)),
+            )
+        })
         .collect();
     let selected = loads
         .iter()
@@ -732,11 +772,21 @@ fn pipeline_controls<'a>(
             palette,
         )
     };
-    let workers_row = row![step("-", -1), paragraph(workers.to_string(), palette), step("+", 1)]
-        .spacing(spacing::M)
-        .align_y(alignment::Vertical::Center);
+    let workers_row = row![
+        step("-", -1),
+        paragraph(workers.to_string(), palette),
+        step("+", 1)
+    ]
+    .spacing(spacing::M)
+    .align_y(alignment::Vertical::Center);
     column![
-        kit::form_row(lang.text(Msg::FilingStatusStateLabel), None, None, pause, palette),
+        kit::form_row(
+            lang.text(Msg::FilingStatusStateLabel),
+            None,
+            None,
+            pause,
+            palette
+        ),
         kit::form_row(
             lang.text(Msg::FilingStatusWorkersLabel),
             None,
@@ -869,7 +919,11 @@ fn protection_section<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element
         buttons,
     ]
     .align_y(alignment::Vertical::Center);
-    kit::section(lang.text(Msg::HermesOverviewSectionProtection), content, palette)
+    kit::section(
+        lang.text(Msg::HermesOverviewSectionProtection),
+        content,
+        palette,
+    )
 }
 
 /// Buttons: Cancel `0`, "Remove index" `1`.

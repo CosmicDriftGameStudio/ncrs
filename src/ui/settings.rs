@@ -20,16 +20,15 @@ use super::layout::{
 use super::theme::{self, font_size, size, spacing};
 use crate::app::fill_template;
 use crate::config::{
-    check_ai_endpoint, AiEndpointProblem, AiProviderChoice, AiProviderName, AiSection,
-    Config, ConfigError, Filing, ProgramLine, ProgramLineProblem, ServerEntry,
+    check_ai_endpoint, AiEndpointProblem, AiProviderChoice, AiProviderName, AiSection, Config,
+    ConfigError, Filing, ProgramLine, ProgramLineProblem, ServerEntry,
 };
 use crate::filing_setup::shown_path;
 use crate::fs::OpenKind;
 use crate::i18n::{Language, Msg};
 use crate::messages::{
-    FilingStatusMessage, KeyBindingsMessage, Message, OcrModelsMessage,
-    RemoteMessage, SettingChange, SettingField, SettingsFeature, SettingsMessage,
-    ThemeFetchMessage,
+    FilingStatusMessage, KeyBindingsMessage, Message, OcrModelsMessage, RemoteMessage,
+    SettingChange, SettingField, SettingsFeature, SettingsMessage, ThemeFetchMessage,
 };
 use crate::palette::{hex, parse_color, ColorRole, Palette, ThemePreset};
 

@@ -280,7 +280,6 @@ impl OverviewFacts {
     pub fn can_read_reviews_again(&self) -> bool {
         self.module == ModuleState::Ready && self.ai_tile().reads() && self.open_reviews() > 0
     }
-
 }
 
 /// The pattern the field starts with when the config has none: the first of
@@ -594,7 +593,10 @@ mod tests {
             ModuleState::of(&Phase::Failed("no".to_owned())),
             ModuleState::Failed
         );
-        assert_eq!(ModuleState::of(&Phase::PlainFileWarning), ModuleState::WaitsForYou);
+        assert_eq!(
+            ModuleState::of(&Phase::PlainFileWarning),
+            ModuleState::WaitsForYou
+        );
     }
 
     #[test]

@@ -85,9 +85,13 @@ pub struct StartPlan {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlanStep {
     Wait,
-    CreateIndex { encrypted: bool },
+    CreateIndex {
+        encrypted: bool,
+    },
     /// The index is open: fetch the model now if the user asked for it.
-    Done { load_model: bool },
+    Done {
+        load_model: bool,
+    },
     /// Nothing more will happen on its own; the card says why.
     Abandon,
 }
@@ -483,7 +487,10 @@ mod tests {
             location(LocationMode::Archive, "filed", true),
         ];
         let mut setup = HermesSetup::new(&configured, offer());
-        assert_eq!(setup.folder(FolderSlot::Inbox), Some(folder("tubes").as_path()));
+        assert_eq!(
+            setup.folder(FolderSlot::Inbox),
+            Some(folder("tubes").as_path())
+        );
         assert_eq!(
             setup.folder(FolderSlot::FilingLocation),
             Some(folder("filed").as_path())
@@ -527,10 +534,17 @@ mod tests {
     fn an_unusable_folder_is_a_note_and_changes_nothing() {
         let mut setup = HermesSetup::new(&[], offer());
         assert!(setup.start_picking(FolderSlot::Inbox));
-        setup.finish_picking(FolderSlot::Inbox, folder("gone"), Err("not found".to_owned()));
+        setup.finish_picking(
+            FolderSlot::Inbox,
+            folder("gone"),
+            Err("not found".to_owned()),
+        );
 
         assert_eq!(setup.folder(FolderSlot::Inbox), None);
-        assert!(matches!(setup.note(), Some(SetupNote::FolderUnusable { .. })));
+        assert!(matches!(
+            setup.note(),
+            Some(SetupNote::FolderUnusable { .. })
+        ));
         assert!(!setup.is_busy());
     }
 
