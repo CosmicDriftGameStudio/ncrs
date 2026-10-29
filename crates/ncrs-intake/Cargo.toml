@@ -36,7 +36,7 @@ ocrs = { version = "=0.13.1", default-features = false, features = ["onnx"] }
 rten = { version = "=0.26.0", default-features = false, features = ["onnx_format"] }
 # Text of .docx and .odt: the zip package and its XML, read in memory with size
 # limits. Both are already in the lock; no features, so no extra dependencies.
-zip = { version = "=9.0.1", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip = { version = "=9.1.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 quick-xml = { version = "=0.41.0", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 tempfile = { version = "3.27", optional = true }
