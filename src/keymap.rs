@@ -274,8 +274,9 @@ impl KeyAction {
 
     /// Keys that became defaults after a config could already have given them
     /// to another action: bare F2 in 0.6, Shift+F4, the history keys and
-    /// primary+D in 0.7, primary+K in 0.8. Such a config keeps working: its
-    /// binding wins over the built-in one, and the action keeps its other keys.
+    /// primary+D in 0.7, primary+K in 0.8, primary+C (`copy_files`) after 1.0.
+    /// Such a config keeps working: its binding wins over the built-in one,
+    /// and the action keeps its other keys.
     pub fn yields_its_built_in_key(self) -> bool {
         matches!(
             self,
@@ -285,6 +286,7 @@ impl KeyAction {
                 | Self::HistoryForward
                 | Self::AddFavourite
                 | Self::KeyBindings
+                | Self::CopyFiles
         )
     }
 
@@ -639,13 +641,15 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
             A::ClearTags,
             Binding::with_modifiers(Character("*".into()), Modifiers::CTRL),
         ),
-        // Ctrl+C stops a running job.
+        // Cmd+C on a Mac, Ctrl+C elsewhere, as in the Finder and Explorer. A
+        // Mac keeps Ctrl+C for stopping a job (see below); elsewhere Escape
+        // stops it where free, else the cancel button in the progress line.
         (
-            A::AbortJob,
-            Binding::with_modifiers(Character("c".into()), Modifiers::CTRL),
+            A::CopyFiles,
+            Binding::with_modifiers(Character("c".into()), Modifiers::COMMAND),
         ),
         // Option+Cmd+C and Ctrl+Cmd+C on a Mac; Ctrl+Alt+C and Ctrl+Shift+C
-        // elsewhere. Plain Ctrl+C stays "stop the job".
+        // elsewhere.
         (
             A::CopyPath,
             Binding::with_modifiers(Character("c".into()), Modifiers::ALT | Modifiers::COMMAND),
@@ -662,7 +666,7 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
             ),
         ),
         // The files, picture or text of the system clipboard go into the active
-        // panel. Copy files to the clipboard (`copy_files`) has no key yet.
+        // panel.
         (
             A::Paste,
             Binding::with_modifiers(Character("v".into()), Modifiers::COMMAND),
@@ -838,6 +842,14 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
             Binding::with_modifiers(Character("r".into()), Modifiers::ALT),
         ),
     ];
+    // Ctrl is not Cmd on a Mac, so Ctrl+C can keep stopping a job there;
+    // elsewhere Ctrl+C is copy_files.
+    if cfg!(target_os = "macos") {
+        bindings.push((
+            A::AbortJob,
+            Binding::with_modifiers(Character("c".into()), Modifiers::CTRL),
+        ));
+    }
     // Safari's and Finder's back and forward; elsewhere Alt+arrows are enough.
     if cfg!(target_os = "macos") {
         bindings.push((
@@ -1026,6 +1038,13 @@ impl Keymap {
                         bindings.extend(keys.iter().map(|key| (action, key.clone())));
                     }
                 }
+            }
+        }
+        // An action without a built-in key (on this platform) is not met in
+        // the loop above; its configured keys go at the end.
+        for (action, keys) in &configured {
+            if !placed.contains(action) {
+                bindings.extend(keys.iter().map(|key| (*action, key.clone())));
             }
         }
         Ok(Self { bindings })
@@ -1909,7 +1928,7 @@ mod tests {
     }
 
     #[test]
-    fn paste_is_on_the_command_chord_and_copy_files_has_no_key() {
+    fn paste_and_copy_files_are_on_the_command_chord() {
         let bindings = default_bindings();
         let paste: Vec<_> = bindings
             .iter()
@@ -1923,9 +1942,18 @@ mod tests {
                 Modifiers::COMMAND
             )]
         );
-        assert!(!bindings
+        let copy_files: Vec<_> = bindings
             .iter()
-            .any(|(action, _)| *action == KeyAction::CopyFiles));
+            .filter(|(action, _)| *action == KeyAction::CopyFiles)
+            .map(|(_, binding)| binding)
+            .collect();
+        assert_eq!(
+            copy_files,
+            [&Binding::with_modifiers(
+                Key::Character("c".into()),
+                Modifiers::COMMAND
+            )]
+        );
         assert_eq!(KeyAction::from_name("paste"), Some(KeyAction::Paste));
         assert_eq!(
             KeyAction::from_name("copy_files"),
@@ -1936,8 +1964,7 @@ mod tests {
     #[test]
     fn every_action_has_a_default_key_and_no_key_is_twice_bound() {
         // Reached through the command palette (or a menu) only.
-        const WITHOUT_KEY: [KeyAction; 16] = [
-            KeyAction::CopyFiles,
+        let mut without_key = vec![
             KeyAction::RemoveFavourite,
             KeyAction::Favourites,
             KeyAction::FetchTheme,
@@ -1954,10 +1981,14 @@ mod tests {
             KeyAction::HermesExclude,
             KeyAction::HermesInspect,
         ];
+        // Ctrl+C is copy_files there; Escape and the cancel button stop a job.
+        if !cfg!(target_os = "macos") {
+            without_key.push(KeyAction::AbortJob);
+        }
         let bindings = default_bindings();
         for action in KeyAction::ALL
             .iter()
-            .filter(|action| !WITHOUT_KEY.contains(action))
+            .filter(|action| !without_key.contains(action))
         {
             assert!(
                 bindings.iter().any(|(bound, _)| bound == action),
@@ -1973,6 +2004,35 @@ mod tests {
                 "{binding:?} is bound twice"
             );
         }
+    }
+
+    #[test]
+    fn a_config_can_give_primary_c_to_abort_job_and_copy_files_loses_its_key() {
+        let keymap = rebound("[keys]\nabort_job = \"primary+c\"\n");
+        assert_eq!(
+            press(&keymap, Key::Character("c".into()), Modifiers::COMMAND),
+            Some(Message::AbortJob)
+        );
+        assert_ne!(
+            map_key(Key::Character("c".into()), Modifiers::COMMAND),
+            Some(Message::AbortJob)
+        );
+        assert!(keymap
+            .shortcut_label(&Message::CopyFilesToClipboard)
+            .is_none());
+    }
+
+    #[test]
+    fn an_action_without_a_built_in_key_takes_its_configured_one() {
+        let keymap = rebound("[keys]\nabout = \"ctrl+alt+shift+b\"\n");
+        assert_eq!(
+            press(
+                &keymap,
+                Key::Character("b".into()),
+                Modifiers::CTRL | Modifiers::ALT | Modifiers::SHIFT
+            ),
+            Some(KeyAction::About.message())
+        );
     }
 
     /// A default the user could not write would make `[keys]` unable to say

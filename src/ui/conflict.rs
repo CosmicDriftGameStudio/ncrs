@@ -31,8 +31,9 @@ pub const OVERWRITE_FOCUS: usize = 2;
 ///
 /// `focus` is the button Enter would press.
 ///
-/// The keys are routed in `app`, not here: Esc answers "keep", Ctrl+C answers
-/// "cancel the whole operation", Space ticks "for all files".
+/// The keys are routed in `app`, not here: Esc answers "keep", the abort key
+/// (Ctrl+C on a Mac) answers "cancel the whole operation", Space ticks
+/// "for all files".
 pub fn view<'a>(
     name: &str,
     lang: Language,

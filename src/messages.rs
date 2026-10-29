@@ -95,8 +95,9 @@ pub enum Message {
     TypeAhead(String),
 
     // --- copy / move (F5, F6) ---
-    /// Ctrl+C or Escape while a job runs: stop it. Its own message rather than
-    /// reusing a key binding, because "stop" only exists while a job does.
+    /// The abort key (Ctrl+C on a Mac) or Escape while a job runs: stop it.
+    /// Its own message rather than reusing a key binding, because "stop"
+    /// only exists while a job does.
     AbortJob,
     /// Escape with the config error up: take it off the status line.
     DismissConfigError,

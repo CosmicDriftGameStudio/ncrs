@@ -1757,7 +1757,7 @@ fn conflict_key(
     match key.as_ref() {
         // Escape means "no" to a question, and "keep" is the no that does
         // not lose data. Cancelling the whole transfer is on the key that
-        // already aborts a job (Ctrl+C unless rebound).
+        // already aborts a job (Ctrl+C on a Mac unless rebound).
         Key::Named(Named::Escape) => Some(Message::TransferConflict(ConflictChoice::ThisKeep)),
         // Space ticks "for all files", as it ticks a checkbox elsewhere.
         Key::Named(Named::Space) => Some(Message::ToggleConflictAll),
@@ -3440,8 +3440,9 @@ impl App {
                 Task::none()
             }
 
-            // Stop the running job. Ctrl+C and Escape both, because a long copy
-            // that cannot be stopped is the case a queue was supposed to fix.
+            // Stop the running job. The abort key (Ctrl+C on a Mac unless
+            // rebound) and Escape both, because a long copy that cannot be
+            // stopped is the case a queue was supposed to fix.
             //
             // A delete in flight finishes its current entry even so: it runs in
             // `spawn_blocking`, which cannot be cancelled, so the panel may
@@ -16337,10 +16338,11 @@ mod conflict_keys {
         );
     }
 
-    /// Ctrl+C cancels the whole operation — the same key that aborts a job, and
-    /// distinct from Escape so the two answers do not collide.
+    /// On a Mac Ctrl+C cancels the whole operation — the key that aborts a job,
+    /// distinct from Escape so the two answers do not collide. Elsewhere Ctrl+C
+    /// is copy_files, which the dialog must not turn into a clipboard write.
     #[test]
-    fn ctrl_c_cancels_the_operation() {
+    fn ctrl_c_cancels_the_operation_on_a_mac_and_does_nothing_elsewhere() {
         let (mut app, _scratch) = app_with_conflict();
         app.pending_conflict = Some(PendingConflict {
             transfer: Transfer {
@@ -16351,10 +16353,12 @@ mod conflict_keys {
             index: 0,
         });
 
+        let expected =
+            cfg!(target_os = "macos").then(|| Message::TransferConflict(ConflictChoice::Cancel));
         assert_eq!(
             press(&app, Key::Character("c".into()), Modifiers::CTRL),
-            Some(Message::TransferConflict(ConflictChoice::Cancel)),
-            "Ctrl+C does not cancel the operation"
+            expected,
+            "Ctrl+C in the conflict dialog does the wrong thing"
         );
     }
 
@@ -17204,17 +17208,27 @@ mod copy_to_clipboard_tests {
         }
     }
 
-    #[cfg(not(target_os = "macos"))]
     #[test]
-    fn ctrl_shift_c_copies_the_name_and_ctrl_c_still_aborts() {
+    fn ctrl_c_copies_the_files_off_a_mac_and_stops_the_job_on_one() {
+        let (command_c, ctrl_c) = if cfg!(target_os = "macos") {
+            (Modifiers::LOGO, Message::AbortJob)
+        } else {
+            (Modifiers::CTRL, Message::CopyFilesToClipboard)
+        };
         assert_eq!(
-            path_chord_routes("C", Code::KeyC, Modifiers::CTRL | Modifiers::SHIFT),
-            Some(Message::CopyToClipboard(ClipboardKind::Name))
+            path_chord_routes("c", Code::KeyC, command_c),
+            Some(Message::CopyFilesToClipboard)
         );
         assert_eq!(
             path_chord_routes("c", Code::KeyC, Modifiers::CTRL),
-            Some(Message::AbortJob)
+            Some(ctrl_c)
         );
+        if !cfg!(target_os = "macos") {
+            assert_eq!(
+                path_chord_routes("C", Code::KeyC, Modifiers::CTRL | Modifiers::SHIFT),
+                Some(Message::CopyToClipboard(ClipboardKind::Name))
+            );
+        }
     }
 
     #[test]
