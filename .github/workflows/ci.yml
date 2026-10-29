@@ -19,13 +19,70 @@ permissions:
   contents: read
 
 jobs:
+  # Decides which of the expensive jobs run. The release does not build: it
+  # takes over what `targets` built on the push to main for the tagged commit.
+  # So `targets` (and with it linux-packages and aur) always runs on main, and
+  # on a pull request only when something that goes into the build or the
+  # packages changed. `check` always runs; it is a required check.
+  changes:
+    name: Changed files
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.filter.outputs.build }}
+      homebrew: ${{ steps.filter.outputs.homebrew }}
+      winget: ${{ steps.filter.outputs.winget }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          PULL_REQUEST_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = pull_request ]; then base=$PULL_REQUEST_BASE; else base=$PUSH_BEFORE; fi
+
+          # No usable base (new branch, force push): count everything as changed.
+          everything=false
+          if [ -z "$base" ] || [ -z "${base//0/}" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            everything=true
+            files=""
+          else
+            files=$(git diff --name-only "$base" HEAD)
+          fi
+          echo "$files"
+
+          touched() { [ "$everything" = true ] || grep -Eq "$1" <<< "$files"; }
+          emit() { if "${@:2}"; then echo "$1=true" >> "$GITHUB_OUTPUT"; else echo "$1=false" >> "$GITHUB_OUTPUT"; fi; }
+
+          # Build and packaging inputs: manifests, build scripts, toolchain,
+          # license policy, packaging files, assets, the workflows themselves.
+          build_paths='^(Cargo\.toml|Cargo\.lock|about\.hbs|about\.toml|deny\.toml|rust-toolchain.*|\.cargo/|scripts/|packaging/|assets/|\.github/workflows/)|(^|/)(Cargo\.toml|build\.rs)$'
+          homebrew_paths='^(packaging/homebrew/|scripts/homebrew-cask\.sh$|\.github/workflows/ci\.yml$)'
+          winget_paths='^(packaging/winget/|packaging/windows/|scripts/winget-manifests\.sh$|scripts/fetch-komac\.sh$|\.github/workflows/ci\.yml$)'
+
+          if [ "$EVENT" = push ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            emit build touched "$build_paths"
+          fi
+          emit homebrew touched "$homebrew_paths"
+          emit winget touched "$winget_paths"
+
   # The release generates THIRD_PARTY_LICENSES.html from about.toml. A
   # dependency under a license about.toml does not accept would only fail
   # at the release tag; here it fails on the pull request that adds it. The
-  # file also goes into the archives and packages `targets` lays out. Once is
-  # enough: about.toml covers all release targets.
+  # file also goes into the archives and packages `targets` lays out, and the
+  # release signs it into the apps. Once is enough: about.toml covers all
+  # release targets.
   licenses:
     name: Third-party licenses
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -35,8 +92,9 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
-      # Prebuilt binary, same pin as in release.yml. The release binary has the
-      # CLI that `cargo install` needs `--features cli` for.
+      # Prebuilt binary, pinned so the licenses file does not change with a new
+      # cargo-about version. The release binary has the CLI that
+      # `cargo install` needs `--features cli` for.
       - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         with:
           tool: cargo-about@0.9.2
@@ -49,7 +107,8 @@ jobs:
           name: third-party-licenses
           path: THIRD_PARTY_LICENSES.html
           if-no-files-found: error
-          retention-days: 1
+          # A release tagged days later takes this file from the push run.
+          retention-days: ${{ github.event_name == 'push' && 90 || 1 }}
 
   check:
     name: ${{ matrix.os }}
@@ -61,7 +120,7 @@ jobs:
     # Line tables are enough for backtraces and keep target/ (and the cache)
     # much smaller than full debug info. Set here and not workflow-wide: the
     # variables are part of the rust-cache key, and `targets` must keep the
-    # key of the release build.
+    # key of the `targets` build.
     env:
       RUST_BACKTRACE: 1
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
@@ -206,22 +265,26 @@ jobs:
           fi
           echo "ok: the no-backend build fails its own test"
 
-  # The release builds five targets, and ncrs-index compiles SQLCipher and
-  # OpenSSL from C source for each. A missing compiler, header or linker should
-  # fail on the pull request, not at the release tag. Same matrix and setup as
-  # `build` in release.yml, without signing, packing or upload.
+  # The release builds nothing: it signs and publishes what this job built on
+  # the push to main for the tagged commit. ncrs-index compiles SQLCipher and
+  # OpenSSL from C source for each of the five targets, so a missing compiler,
+  # header or linker should fail on the pull request, not at the release tag.
+  # The artifacts are laid out exactly as the release needs them; nothing is
+  # signed or published here.
   #
   # Do not test release.yml itself with workflow_dispatch or a probe tag: that
   # publishes the assets again and breaks the Homebrew cask.
   targets:
-    needs: licenses
+    needs: [changes, licenses]
+    if: needs.changes.outputs.build == 'true'
     name: build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Same pin as release.yml: the build image sets the glibc floor.
+          # The build image's glibc is the oldest one the binary runs on;
+          # 24.04 keeps it at 2.39, `ubuntu-latest` would raise it.
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-24.04
           - target: aarch64-unknown-linux-gnu
@@ -250,8 +313,7 @@ jobs:
             pkg-config libxkbcommon-dev libwayland-dev libx11-dev libfontconfig1-dev \
             cmake libclang-dev rpm
 
-      # Same cache as `build` in release.yml (same key, same build command), so
-      # a release restores what main built. Only main saves.
+      # Only main saves.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: target-${{ matrix.target }}
@@ -283,44 +345,29 @@ jobs:
         with:
           name: third-party-licenses
 
-      # Lays the release archive out like the release does, so a missing
-      # pdfium library or binary fails on the pull request, not at the tag.
-      # The layout listing in the log shows what the archive holds. Nothing is
-      # signed or published here.
-      - name: Fetch pdfium for the archive
+      # The library is the one the app loads at runtime, next to the binary.
+      - name: Fetch pdfium
         shell: bash
-        run: scripts/fetch-pdfium.sh ${{ matrix.target }} target/pdfium-archive
+        run: scripts/fetch-pdfium.sh ${{ matrix.target }} target/pdfium
 
-      - name: Package the archive
+      - name: Package
         shell: bash
         run: |
           binary=target/${{ matrix.target }}/release/ncrs
           if [ "${{ runner.os }}" = Windows ]; then binary="$binary.exe"; fi
-          scripts/package.sh archive ${{ matrix.target }} "$binary" target/pdfium-archive target/package \
+          scripts/package.sh archive ${{ matrix.target }} "$binary" target/pdfium . \
             --licenses THIRD_PARTY_LICENSES.html
 
-      # The .deb and .rpm are built from the staged archive. The linux-packages
-      # job below installs them on real distributions.
+      # From the staged archive above, so the packages hold the very binary,
+      # library and licenses of the tarball. They are named
+      # ncrs-<target>.deb/.rpm, which the upload glob below picks up.
       - name: Package the .deb and .rpm
         if: runner.os == 'Linux'
         run: |
           scripts/fetch-nfpm.sh target/nfpm
           version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
           scripts/package.sh linux-packages ${{ matrix.target }} \
-            target/package/ncrs-${{ matrix.target }} "$version" target/package target/nfpm/nfpm
-
-      # The archive goes along for the aur job, which builds from it.
-      - name: Upload the .deb, .rpm and archive
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: linux-packages-${{ matrix.target }}
-          path: |
-            target/package/ncrs-${{ matrix.target }}.deb
-            target/package/ncrs-${{ matrix.target }}.rpm
-            target/package/ncrs-${{ matrix.target }}.tar.gz
-          retention-days: 1
-          if-no-files-found: error
+            ncrs-${{ matrix.target }} "$version" . target/nfpm/nfpm
 
       - name: Package the macOS app
         if: runner.os == 'macOS'
@@ -331,7 +378,18 @@ jobs:
             aarch64-*) min_macos=11.0 ;;
             *) min_macos=10.15 ;;
           esac
-          scripts/package.sh app target/package/ncrs-${{ matrix.target }} "$version" "$min_macos" target/package-app
+          scripts/package.sh app ncrs-${{ matrix.target }} "$version" "$min_macos" target/package-app
+
+      # After Package, because it overwrites target/<target>/release/ncrs. A bare
+      # file in its own artifact, so the release does not publish it: it packs
+      # and signs it into the sandboxed app.
+      - name: Build the sandboxed binary
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          cargo build --release --features gpu-with-fallback,sandbox --target ${{ matrix.target }}
+          mkdir -p sandbox-binary
+          cp target/${{ matrix.target }}/release/ncrs sandbox-binary/ncrs
 
       # Ad hoc signature, because a pull request has no signing identity; the
       # release signs the same layout with the Developer ID.
@@ -339,23 +397,21 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          cargo build --release --features gpu-with-fallback,sandbox --target ${{ matrix.target }}
           version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
           case "${{ matrix.target }}" in
             aarch64-*) min_macos=11.0 ;;
             *) min_macos=10.15 ;;
           esac
-          scripts/package.sh sandbox-app target/package/ncrs-${{ matrix.target }} target/${{ matrix.target }}/release/ncrs "$version" "$min_macos" target/package-sandbox-app
+          scripts/package.sh sandbox-app ncrs-${{ matrix.target }} sandbox-binary/ncrs "$version" "$min_macos" target/package-sandbox-app
           app=target/package-sandbox-app/ncrs.app
           codesign --force --sign - "$app/Contents/Frameworks/libpdfium.dylib"
           codesign --force --sign - --options runtime --entitlements packaging/macos/sandbox.entitlements "$app"
           codesign --verify --deep --strict --verbose=2 "$app"
           scripts/package.sh check-sandbox "$app" sandboxed
 
-      # After the sandboxed step because it reuses its binary in
-      # target/<t>/release/ncrs. A pull request has no profile and no identity,
-      # so a placeholder profile and ad-hoc signatures; the release signs the
-      # same layout with Apple Distribution.
+      # A pull request has no profile and no identity, so a placeholder profile
+      # and ad-hoc signatures; the release signs the same layout with Apple
+      # Distribution.
       - name: Package the App Store app
         if: matrix.target == 'aarch64-apple-darwin'
         shell: bash
@@ -364,7 +420,7 @@ jobs:
           printf 'placeholder provisioning profile\n' > target/placeholder.provisionprofile
           # Owner-only, like the profile the release decodes from its secret.
           chmod 600 target/placeholder.provisionprofile
-          scripts/package.sh store-app target/package/ncrs-aarch64-apple-darwin target/aarch64-apple-darwin/release/ncrs "$version" target/placeholder.provisionprofile target/package-store-app
+          scripts/package.sh store-app ncrs-aarch64-apple-darwin sandbox-binary/ncrs "$version" target/placeholder.provisionprofile target/package-store-app
           app=target/package-store-app/ncrs.app
           codesign --force --sign - "$app/Contents/Frameworks/libpdfium.dylib"
           codesign --force --sign - --entitlements target/package-store-app/store.entitlements "$app"
@@ -373,6 +429,25 @@ jobs:
           rm -rf target/package-store-app/expanded
           pkgutil --expand-full target/package-store-app/ncrs.pkg target/package-store-app/expanded
           cmp target/placeholder.provisionprofile "$(find target/package-store-app/expanded -name embedded.provisionprofile | head -n 1)"
+
+      # What the release signs and publishes, and what linux-packages and aur
+      # install. The retention covers the time until a tag is cut on this commit.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ncrs-${{ matrix.target }}
+          path: |
+            ncrs-${{ matrix.target }}.*
+            ncrs-${{ matrix.target }}-portable.zip
+          if-no-files-found: error
+          retention-days: ${{ github.event_name == 'push' && 90 || 1 }}
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: runner.os == 'macOS'
+        with:
+          name: sandbox-binary-${{ matrix.target }}
+          path: sandbox-binary/ncrs
+          if-no-files-found: error
+          retention-days: ${{ github.event_name == 'push' && 90 || 1 }}
 
   # Installs the packages the targets job built on a clean Debian-family and a
   # clean Fedora image, each on its own CPU architecture, and starts the
@@ -410,7 +485,7 @@ jobs:
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: linux-packages-${{ matrix.target }}
+          name: ncrs-${{ matrix.target }}
           path: packages
 
       - name: Install and start
@@ -447,7 +522,7 @@ jobs:
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          pattern: linux-packages-*
+          pattern: ncrs-*-linux-gnu
           merge-multiple: true
           path: packages
 
@@ -485,6 +560,8 @@ jobs:
   # that it parses and carries them, so a broken template fails here and not
   # in the tap after a release.
   homebrew:
+    needs: changes
+    if: needs.changes.outputs.homebrew == 'true'
     name: Homebrew cask
     runs-on: ubuntu-24.04
     steps:
@@ -512,6 +589,8 @@ jobs:
   # published release, not against the build of this pull request: winget
   # installs a zip from a URL, so there is nothing of the PR to install.
   winget:
+    needs: changes
+    if: needs.changes.outputs.winget == 'true'
     name: winget install
     runs-on: windows-latest
     steps:
