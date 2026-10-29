@@ -61,6 +61,9 @@ pub struct Palette {
     /// The label box behind a function key's name.
     pub fkey_label: Color,
     pub fkey_label_text: Color,
+    /// The role whose color fills the primary button of a prompt. Cosmic takes
+    /// the cursor, because its border is a muted grey-violet that reads as disabled.
+    pub primary_button_role: ColorRole,
 }
 
 impl Default for Palette {
@@ -132,6 +135,7 @@ impl ThemePreset {
                 fkey_number: Color::from_rgb8(0xCF, 0xCD, 0xD6),
                 fkey_label: Color::from_rgb8(0x7F, 0xA8, 0x8A),
                 fkey_label_text: Color::from_rgb8(0x14, 0x13, 0x18),
+                primary_button_role: ColorRole::Cursor,
             },
             Self::Teal => Palette {
                 background: Color::from_rgb(0.035, 0.047, 0.098),
@@ -163,6 +167,7 @@ impl ThemePreset {
                 fkey_number: Color::from_rgb(0.850, 0.870, 0.920),
                 fkey_label: Color::from_rgb(0.180, 0.690, 0.760),
                 fkey_label_text: Color::from_rgb(0.020, 0.040, 0.090),
+                primary_button_role: ColorRole::Border,
             },
             Self::Classic => Palette {
                 background: Color::from_rgb8(0x00, 0x00, 0x00),
@@ -194,6 +199,7 @@ impl ThemePreset {
                 fkey_number: Color::from_rgb8(0xFF, 0xFF, 0xFF),
                 fkey_label: Color::from_rgb8(0x00, 0xAA, 0xAA),
                 fkey_label_text: Color::from_rgb8(0x00, 0x00, 0x00),
+                primary_button_role: ColorRole::Border,
             },
             // Colors from the Dracula theme (draculatheme.com), MIT license.
             Self::Dracula => Palette {
@@ -226,6 +232,7 @@ impl ThemePreset {
                 fkey_number: Color::from_rgb8(0xF8, 0xF8, 0xF2),
                 fkey_label: Color::from_rgb8(0x44, 0x47, 0x5A),
                 fkey_label_text: Color::from_rgb8(0xF8, 0xF8, 0xF2),
+                primary_button_role: ColorRole::Border,
             },
         }
     }
@@ -356,14 +363,12 @@ impl Palette {
         }
     }
 
-    /// Fill and text of the filled button of a prompt: the border color, which
-    /// is a bright accent in every preset, with whichever of the background and
-    /// the text color reads better on it.
+    /// Fill and text of the filled button of a prompt: the color of the role the
+    /// preset picks, with whichever of the background and the text color reads
+    /// better on it.
     pub fn primary_button(&self) -> (Color, Color) {
-        (
-            self.border,
-            most_readable(self.border, [self.background, self.text]),
-        )
+        let fill = self.color(self.primary_button_role);
+        (fill, most_readable(fill, [self.background, self.text]))
     }
 
     /// The pairing of text and ground with the least contrast, when it is below
@@ -861,7 +866,7 @@ mod tests {
     }
 
     #[test]
-    fn the_primary_button_is_readable_and_not_the_cursor_fill_in_every_preset() {
+    fn the_primary_button_is_readable_in_every_preset() {
         for preset in [
             ThemePreset::Teal,
             ThemePreset::Classic,
@@ -878,8 +883,33 @@ mod tests {
                 contrast_ratio(fill, p.background) >= READABLE_CONTRAST,
                 "{preset:?}"
             );
-            assert_ne!(fill, p.cursor, "{preset:?}");
         }
+    }
+
+    #[test]
+    fn the_primary_button_is_green_in_cosmic_and_the_border_elsewhere() {
+        let cosmic = ThemePreset::Cosmic.palette();
+        assert_eq!(
+            cosmic.primary_button().0,
+            Color::from_rgb8(0x7F, 0xA8, 0x8A)
+        );
+        assert_eq!(cosmic.primary_button().0, cosmic.cursor);
+        for preset in [
+            ThemePreset::Teal,
+            ThemePreset::Classic,
+            ThemePreset::Dracula,
+        ] {
+            let p = preset.palette();
+            assert_eq!(p.primary_button().0, p.border, "{preset:?}");
+        }
+    }
+
+    #[test]
+    fn a_user_role_recolors_the_primary_button() {
+        let mut p = ThemePreset::Cosmic.palette();
+        let blue = Color::from_rgb8(0x20, 0x40, 0xC0);
+        p.set(ColorRole::Cursor, blue);
+        assert_eq!(p.primary_button().0, blue);
     }
 
     #[test]
