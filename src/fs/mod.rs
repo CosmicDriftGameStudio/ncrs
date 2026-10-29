@@ -8,6 +8,8 @@ mod grants;
 mod open;
 mod ops;
 mod reader;
+#[cfg(test)]
+mod real_trash_tests;
 pub mod remote;
 mod sandbox;
 pub mod search;
