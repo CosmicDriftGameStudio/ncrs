@@ -2676,7 +2676,9 @@ mod review_list_card {
 
     use super::*;
     use crate::messages::{HermesFocus, HermesPage, ReviewListMessage};
-    use crate::review_list::tests::{loaded_list, long_list};
+    use crate::review_list::tests::{
+        default_pattern_list, loaded_list, long_list, nothing_recognised_list,
+    };
     use crate::review_list::{FormField, ReviewList};
     use crate::review_work::ConfirmOutcome;
     use crate::rule_suggestions::RuleSuggestions;
@@ -2711,7 +2713,7 @@ mod review_list_card {
             "Sender",
             "Tax context",
             "Filing pattern",
-            "Will be filed as: Company A/2024-03-09_invoice",
+            "Will be filed as Company A/2024-03-09_invoice.pdf",
             "Confirm",
             "Close",
         ] {
@@ -2867,7 +2869,7 @@ mod review_list_card {
     }
 
     fn matches_snapshot_focused(list: ReviewList, focus: HermesFocus, name: &str) {
-        let language = if name.contains("_de") {
+        let language = if name.ends_with("_de") {
             Language::German
         } else {
             Language::English
@@ -2893,6 +2895,31 @@ mod review_list_card {
         matches_snapshot(after_filing(), "review_list_filed_en");
     }
 
+    #[test]
+    fn the_default_pattern_is_named_in_the_reason_and_previewed() {
+        for label in [
+            "Default pattern, please check",
+            "No rule matches",
+            "Will be filed as 2024/20240309_Frost_3318.pdf",
+        ] {
+            assert!(shows(default_pattern_list(), label), "{label}");
+        }
+    }
+
+    #[test]
+    fn a_document_with_nothing_recognised_says_so() {
+        assert!(shows(
+            nothing_recognised_list(),
+            "No rule and nothing recognised"
+        ));
+    }
+
+    #[test]
+    fn the_default_pattern_matches_its_snapshots() {
+        matches_snapshot(default_pattern_list(), "review_list_default_pattern_en");
+        matches_snapshot(default_pattern_list(), "review_list_default_pattern_de");
+    }
+
     fn without_rules(list: ReviewList, language: Language) -> App {
         App::with_review_list(list)
             .in_language(language)
@@ -2901,7 +2928,7 @@ mod review_list_card {
 
     #[test]
     fn the_page_explains_empty_fields_while_there_are_no_rules_and_no_ai() {
-        let hint = "No rules yet. Fill in one document and confirm it, then Hermes suggests a rule. Or load the AI model, then it fills in the fields itself.";
+        let hint = "No rules yet. Hermes suggests a default pattern for each document: check the fields and confirm. Load the AI model and it fills in the fields itself.";
         let counts_unknown = App::with_review_list(loaded_list());
         simulator(&counts_unknown).find(hint).unwrap_err();
         let with_rules =
@@ -4318,11 +4345,11 @@ mod ai_model_card {
     }
 
     #[test]
-    fn a_running_download_can_be_stopped_but_not_closed() {
+    fn a_running_download_has_only_the_stop_button() {
         let mut running = card();
         running.start().unwrap();
         assert!(shows(running.clone(), "Downloading…"));
-        assert!(messages_after_click(running.clone(), "Cancel").is_empty());
+        assert!(!shows(running.clone(), "Cancel"));
         assert_eq!(
             messages_after_click(running, "Stop"),
             [Message::AiModel(AiModelMessage::Stop)]
@@ -4441,6 +4468,7 @@ mod ai_model_card {
         let installed = AiModelCard::installed(Some(PathBuf::from("/example/data/ai-models")));
         assert!(shows(installed.clone(), "Installed"));
         assert!(!shows(installed.clone(), "Download"));
+        assert!(!shows(installed.clone(), "Download from: huggingface.co"));
         assert_eq!(
             messages_after_click(installed.clone(), "Close"),
             [Message::AiModel(AiModelMessage::Close)]
@@ -4532,6 +4560,7 @@ mod settings_tab {
             ],
             load: Default::default(),
             ai: AiSetting::Local { threads: None },
+            default_pattern: None,
         }
     }
 

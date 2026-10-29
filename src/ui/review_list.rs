@@ -5,9 +5,12 @@
 //! The text of a document never shows up here as anything but a value in a
 //! field the user can read and change.
 
+use std::path::Path;
+
 use iced::widget::{column, row};
 use iced::{alignment, Element, Size};
-use ncrs_index::{Field, ReviewReason, TaxContext};
+use ncrs_index::{DocumentFields, Field, ReviewReason, TaxContext};
+use ncrs_intake::PatternSource;
 
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
@@ -15,6 +18,8 @@ use super::hermes::{self, Badges};
 use super::kit::{self, dim, error_line, form_row, paragraph, Columns, Tone};
 use super::theme::spacing;
 use crate::app::fill_template;
+use crate::filing_setup::shown_path;
+use crate::filing_work::target_of;
 use crate::i18n::{Language, Msg};
 use crate::messages::{HermesFocus, HermesPage, Message, ReviewListMessage};
 use crate::palette::Palette;
@@ -60,11 +65,19 @@ impl FieldGuide {
     }
 }
 
+/// Where documents are filed, to show the whole path a pattern gives.
+#[derive(Debug, Clone, Copy)]
+pub struct PreviewRoot<'a> {
+    pub archive: Option<&'a Path>,
+    pub home: &'a Path,
+}
+
 pub fn view<'a>(
     state: &'a ReviewList,
     window: Size,
     badges: Badges,
     guide: FieldGuide,
+    root: PreviewRoot<'_>,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
@@ -90,7 +103,7 @@ pub fn view<'a>(
     } else {
         body = body.push(list(state, line_chars, badges.focus, lang, palette));
         body = body.push(form(state, lang, palette));
-        body = body.push(preview(state, lang, palette));
+        body = body.push(preview(state, root, lang, palette));
     }
     if let Some(problem) = state.problem() {
         body = body.push(error_line(problem_text(problem, lang), palette));
@@ -156,6 +169,28 @@ pub fn reason_text(reason: ReviewReason, text_state: TextState, lang: Language) 
     }
 }
 
+fn fields_are_empty(fields: &DocumentFields) -> bool {
+    *fields == DocumentFields::default()
+}
+
+/// The reason of a row: where the pattern comes from and whether anything
+/// was recognised refine "no rule matches"; every other reason stays.
+fn row_reason_text(item: &ReviewItem, source: Option<PatternSource>, lang: Language) -> String {
+    let refined = match (item.reason, item.text_state, source) {
+        (ReviewReason::NoMatchingRule, _, Some(PatternSource::Default)) => {
+            Some(Msg::ReviewListReasonDefaultPattern)
+        }
+        (ReviewReason::NoMatchingRule, TextState::Read, None) if fields_are_empty(&item.fields) => {
+            Some(Msg::ReviewListReasonNothingRecognised)
+        }
+        _ => None,
+    };
+    refined.map_or_else(
+        || reason_text(item.reason, item.text_state, lang),
+        |message| lang.text(message).to_owned(),
+    )
+}
+
 fn field_name(field: Field) -> Msg {
     match field {
         Field::Sender => Msg::ReviewListFieldSender,
@@ -211,7 +246,11 @@ fn list<'a>(
             };
             let content = row![
                 columns.path_cell(0, &file_name(item), color),
-                columns.cell(1, &reason_text(item.reason, item.text_state, lang), color),
+                columns.cell(
+                    1,
+                    &row_reason_text(item, state.pattern_source(item), lang),
+                    color
+                ),
                 columns.cell(2, item.fields.sender.as_deref().unwrap_or_default(), color),
                 columns.cell(
                     3,
@@ -334,12 +373,33 @@ fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element
     .into()
 }
 
-fn preview<'a>(state: &ReviewList, lang: Language, palette: &Palette) -> Element<'a, Message> {
-    match state.preview() {
-        Some(path) => paragraph(
+fn preview<'a>(
+    state: &ReviewList,
+    root: PreviewRoot<'_>,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    if let Some(relative) = state.preview() {
+        let source = state
+            .selected()
+            .map(|item| item.path.as_path())
+            .unwrap_or_else(|| Path::new(""));
+        let shown = match root.archive {
+            Some(archive) => shown_path(&target_of(archive, &relative, source), root.home),
+            None => target_of(Path::new(""), &relative, source)
+                .display()
+                .to_string(),
+        };
+        return paragraph(
+            fill_template(lang.text(Msg::ReviewListPreview), &[("{path}", &shown)]),
+            palette,
+        );
+    }
+    match state.missing_field() {
+        Some(field) => dim(
             fill_template(
-                lang.text(Msg::ReviewListPreview),
-                &[("{path}", &path.display().to_string())],
+                lang.text(Msg::ReviewListPreviewMissingField),
+                &[("{field}", lang.text(field_name(field)))],
             ),
             palette,
         ),

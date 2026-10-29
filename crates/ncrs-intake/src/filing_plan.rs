@@ -197,17 +197,29 @@ fn first_missing(fields: &DocumentFields, spec: &RuleSpec, pattern: &Pattern) ->
                 Field::Sender | Field::Kind | Field::TaxContext => false,
             }
     };
-    let present = |field: Field| match field {
+    FIELD_ORDER
+        .into_iter()
+        .find(|&field| needed(field) && !field_is_present(fields, field))
+}
+
+fn field_is_present(fields: &DocumentFields, field: Field) -> bool {
+    match field {
         Field::Sender => fields.sender.as_deref().and_then(sanitise_value).is_some(),
         Field::Kind => fields.kind.as_deref().and_then(sanitise_value).is_some(),
         Field::TaxContext => fields.tax_context.is_some(),
         Field::Date => fields.date.is_some(),
         Field::Number => fields.number.as_deref().and_then(sanitise_value).is_some(),
         Field::Amount => fields.amount.is_some(),
-    };
+    }
+}
+
+/// The first field the pattern uses that is empty in `fields`; `None` when
+/// none is, or the pattern does not read.
+pub fn missing_field(source: &str, fields: &DocumentFields) -> Option<Field> {
+    let pattern = Pattern::parse(source)?;
     FIELD_ORDER
         .into_iter()
-        .find(|&field| needed(field) && !present(field))
+        .find(|&field| pattern.uses(field) && !field_is_present(fields, field))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

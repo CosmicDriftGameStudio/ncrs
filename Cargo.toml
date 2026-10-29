@@ -120,6 +120,8 @@ zeroize = "1"
 # would need GTK, and on Windows installing the menu takes an unsafe call that
 # the app crate forbids. No features, so no GTK and no xdo.
 muda = { version = "=0.21.2", default-features = false }
+# The name of the person using the app, for the sender check of the AI.
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSPathUtilities"] }
 # Apple Vision as the first choice for reading scans; ocrs stays the fallback.
 ncrs-ocr-vision = { path = "crates/ncrs-ocr-vision", version = "0.0.0" }
 

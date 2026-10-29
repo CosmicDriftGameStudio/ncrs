@@ -58,7 +58,7 @@ pub trait IndexAccess: Send + Sync + fmt::Debug {
 
 /// A document that waited for a review and is placed after being processed
 /// again has nothing left to review.
-pub(in crate) fn resolve_reviews_of(
+pub(crate) fn resolve_reviews_of(
     index: &mut Index,
     document: DocumentId,
 ) -> Result<(), IndexError> {

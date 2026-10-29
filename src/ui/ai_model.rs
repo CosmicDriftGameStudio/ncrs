@@ -49,12 +49,14 @@ pub fn view<'a>(
         paragraph(lang.text(Msg::AiModelIntro), palette)
     };
     let mut body = column![intro].spacing(spacing::LINE_GAP);
-    body = body
-        .push(detail_line(
+    if !card.is_installed() {
+        body = body.push(detail_line(
             fill_template(lang.text(Msg::AiModelHost), &[("{host}", AI_MODEL_HOST)]),
             line_chars,
             palette,
-        ))
+        ));
+    }
+    body = body
         .push(detail_line(
             fill_template(
                 lang.text(Msg::AiModelFile),
@@ -156,7 +158,25 @@ pub fn view<'a>(
             Some(Message::AiModel(AiModelMessage::Download)),
         )
     };
-    let cancel = (!card.is_downloading()).then_some(Message::AiModel(AiModelMessage::Close));
+    let action_button = kit::button(
+        lang.text(action_label),
+        action,
+        Tone::filled_if(focus == DOWNLOAD_FOCUS || card.is_downloading()),
+        palette,
+    );
+    let buttons = if card.is_downloading() {
+        vec![action_button]
+    } else {
+        vec![
+            kit::button(
+                lang.text(Msg::DialogCancel),
+                Some(Message::AiModel(AiModelMessage::Close)),
+                Tone::filled_if(focus == CANCEL_FOCUS),
+                palette,
+            ),
+            action_button,
+        ]
+    };
     Frame::new(
         lang.text(Msg::AiModelTitle),
         body,
@@ -165,20 +185,7 @@ pub fn view<'a>(
         lang,
         palette,
     )
-    .buttons(vec![
-        kit::button(
-            lang.text(Msg::DialogCancel),
-            cancel,
-            Tone::filled_if(focus == CANCEL_FOCUS),
-            palette,
-        ),
-        kit::button(
-            lang.text(action_label),
-            action,
-            Tone::filled_if(focus == DOWNLOAD_FOCUS),
-            palette,
-        ),
-    ])
+    .buttons(buttons)
     .on_close(Message::AiModel(AiModelMessage::Close))
     // Enter presses the focused button, which starts on Cancel.
     .hints(KeyHints {
