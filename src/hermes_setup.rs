@@ -349,6 +349,10 @@ impl HermesSetup {
     pub fn written(&mut self) {
         self.writing = false;
     }
+
+    pub fn show_note(&mut self, note: SetupNote) {
+        self.note = Some(note);
+    }
 }
 
 // reason: a failing assertion is the signal in a test

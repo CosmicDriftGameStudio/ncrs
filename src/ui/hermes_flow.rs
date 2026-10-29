@@ -2,6 +2,8 @@
 //! reading and rules to the filing location. Built from boxes and lines with
 //! dots on them; the caller counts `step` up to make the dots move.
 
+use std::borrow::Cow;
+
 use iced::widget::{column, container, text, Row, Space, Stack};
 use iced::{alignment, Border, Color, Element, Length, Theme};
 
@@ -27,8 +29,8 @@ const LINE_MARGIN: f32 = 8.0;
 /// A box of the picture: a name and, under it, a short line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FlowBox<'a> {
-    pub title: &'a str,
-    pub note: Option<&'a str>,
+    pub title: Cow<'a, str>,
+    pub note: Option<Cow<'a, str>>,
 }
 
 /// The texts of the five boxes: where documents arrive, where the filed ones

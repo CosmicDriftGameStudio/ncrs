@@ -1591,7 +1591,7 @@ mod filing_status_page {
     use std::time::{Duration, SystemTime};
 
     use ncrs_pipeline::{
-        Busy, ErrorEntry, Load, RunnerState, Snapshot, StepSnapshot, Task, WorkerSnapshot,
+        Busy, ErrorEntry, RunnerState, Snapshot, StepSnapshot, Task, WorkerSnapshot,
     };
 
     use super::*;
@@ -1812,34 +1812,20 @@ mod filing_status_page {
     }
 
     #[test]
-    fn the_page_shows_every_state_and_the_button_that_fits_it() {
+    fn the_page_shows_every_state_and_offers_no_controls() {
         let cases = [
-            (RunnerState::Off, "Off", "Pause"),
-            (RunnerState::Idle, "Idle", "Pause"),
-            (RunnerState::Running, "Running", "Pause"),
-            (RunnerState::Paused, "Paused", "Resume"),
+            (RunnerState::Off, "Off"),
+            (RunnerState::Idle, "Idle"),
+            (RunnerState::Running, "Running"),
+            (RunnerState::Paused, "Paused"),
         ];
-        for (state, state_text, button) in cases {
+        for (state, state_text) in cases {
             let app = page(snapshot(state, 0, 0));
             assert!(shows(&app, state_text), "{state:?}: {state_text}");
-            assert!(shows(&app, button), "{state:?}: {button}");
-            let other = if button == "Pause" { "Resume" } else { "Pause" };
-            assert!(!shows(&app, other), "{state:?}: {other}");
+            for control in ["Pause", "Resume", "Business as usual"] {
+                assert!(!shows(&app, control), "{state:?}: {control}");
+            }
         }
-    }
-
-    #[test]
-    fn the_buttons_ask_for_a_pause_and_a_load() {
-        let app = page(snapshot(RunnerState::Running, 3, 0));
-
-        assert_eq!(
-            messages_after_click(&app, "Pause"),
-            [page_message(FilingStatusMessage::TogglePause)]
-        );
-        assert_eq!(
-            messages_after_click(&app, "Business as usual"),
-            [page_message(FilingStatusMessage::SetLoad(Load::Balanced))]
-        );
     }
 
     #[test]
@@ -3875,7 +3861,7 @@ mod title_bar {
     }
 
     #[test]
-    fn a_click_on_the_hermes_chip_opens_the_inspection() {
+    fn a_click_on_the_hermes_chip_opens_the_overview() {
         let mut app = with_hermes().with_starting_hermes_for_test();
         let messages = messages_after_click(&app, HERMES_CHIP_ID);
         assert_eq!(
@@ -3885,7 +3871,7 @@ mod title_bar {
         for message in messages {
             drop(app.update(message));
         }
-        assert!(app.filing_status_page_is_open_for_test());
+        assert!(app.hermes_overview_is_open_for_test());
     }
 
     #[test]
@@ -4695,13 +4681,41 @@ mod settings_tab {
     #[test]
     fn the_search_filters_the_rows_by_label() {
         let mut app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
-        simulator(&app).find("Folders").expect("the folders group");
+        simulator(&app).find("Hermes on").expect("the switch");
         drop(app.update(Message::Settings(SettingsMessage::SearchChanged(
-            "load".to_owned(),
+            "threads".to_owned(),
         ))));
-        let folders_hidden = simulator(&app).find("Folders").is_err();
-        assert!(folders_hidden);
-        simulator(&app).find("Load").expect("the load row");
+        let switch_hidden = simulator(&app).find("Hermes on").is_err();
+        assert!(switch_hidden);
+        simulator(&app).find("Threads").expect("the threads row");
+    }
+
+    #[test]
+    fn the_technical_rows_are_folded_until_opened_or_found() {
+        let mut app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
+        let shows = |shown: &App, label: &str| simulator(shown).find(label).is_ok();
+        assert!(shows(&app, "Advanced"));
+        assert!(!shows(&app, "Recognition models"));
+
+        drop(app.update(Message::Settings(SettingsMessage::ToggleAdvanced)));
+        assert!(shows(&app, "Recognition models"));
+
+        drop(app.update(Message::Settings(SettingsMessage::ToggleAdvanced)));
+        assert!(!shows(&app, "Recognition models"));
+
+        drop(app.update(Message::Settings(SettingsMessage::SearchChanged(
+            "recognition".to_owned(),
+        ))));
+        assert!(shows(&app, "Recognition models"));
+    }
+
+    #[test]
+    fn open_hermes_asks_for_the_overview() {
+        let app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
+        assert_eq!(
+            messages_after_click(&app, "Open").last(),
+            Some(&Message::FilingStatus(crate::messages::FilingStatusMessage::Open))
+        );
     }
 }
 
@@ -5229,5 +5243,133 @@ mod hermes_setup_card {
             crate::i18n::Msg::HermesSetupIntroOther
         });
         simulator(&empty()).find(intro).unwrap();
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod hermes_overview_page {
+    use std::path::PathBuf;
+
+    use ncrs_index::HermesCounts;
+    use ncrs_intake::LocationMode;
+
+    use super::*;
+    use crate::config::{AiSetting, Filing, FilingLocation};
+    use crate::messages::HermesOverviewMessage;
+
+    fn configured() -> Filing {
+        let at = |path: &str, mode, is_target| FilingLocation {
+            path: PathBuf::from(path),
+            mode,
+            images: false,
+            is_target,
+        };
+        Filing {
+            enabled: true,
+            locations: vec![
+                at("/home/test/Scans", LocationMode::Inbox, false),
+                at("/home/test/Documents", LocationMode::Archive, true),
+            ],
+            load: Default::default(),
+            ai: AiSetting::Local { threads: None },
+            default_pattern: None,
+        }
+    }
+
+    fn five_open() -> HermesCounts {
+        HermesCounts {
+            open_reviews: 5,
+            ..HermesCounts::default()
+        }
+    }
+
+    fn running() -> App {
+        App::with_hermes_overview(Some(Phase::Ready), configured(), Some(five_open()))
+    }
+
+    fn off() -> App {
+        let config = Filing {
+            enabled: false,
+            ..configured()
+        };
+        App::with_hermes_overview(None, config, None)
+    }
+
+    fn assert_snapshot(app: &App, name: &str) {
+        let matches = simulator(app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image(format!("tests/snapshots/{name}.png"))
+            .expect("snapshot comparison");
+        assert!(matches, "the overview does not match {name}.png");
+    }
+
+    fn in_both_languages(app: impl Fn() -> App, name: &str) {
+        assert_snapshot(&app().in_language(Language::English), &format!("{name}_en"));
+        assert_snapshot(&app().in_language(Language::German), &format!("{name}_de"));
+    }
+
+    #[test]
+    fn the_overview_matches_its_snapshots() {
+        in_both_languages(running, "hermes_overview_running");
+        in_both_languages(
+            || running().with_ai_download_at_for_test(49),
+            "hermes_overview_downloading",
+        );
+        in_both_languages(off, "hermes_overview_off");
+    }
+
+    fn clicks(app: &App, label: &str) -> Vec<Message> {
+        let mut sim = simulator(app);
+        sim.click(label).unwrap();
+        sim.into_messages().collect()
+    }
+
+    fn overview_message(message: HermesOverviewMessage) -> Message {
+        Message::HermesOverview(message)
+    }
+
+    #[test]
+    fn the_buttons_send_what_they_say() {
+        let app = running();
+        let load_model = format!("Load · {}", crate::ui::hermes_setup::model_size_label());
+        assert_eq!(
+            clicks(&app, &load_model),
+            [overview_message(HermesOverviewMessage::LoadAiModel)]
+        );
+        assert_eq!(
+            clicks(&app, "Change…"),
+            [overview_message(HermesOverviewMessage::ChangeFolders)]
+        );
+    }
+
+    #[test]
+    fn a_click_on_the_pattern_opens_the_field_for_editing() {
+        let mut app = running();
+        let pattern = crate::hermes_overview::built_in_pattern();
+        assert_eq!(
+            clicks(&app, pattern),
+            [overview_message(HermesOverviewMessage::FocusPattern)]
+        );
+        drop(app.update(overview_message(HermesOverviewMessage::FocusPattern)));
+        simulator(&app)
+            .find(iced_selector::id(crate::ui::hermes_overview::PATTERN_FIELD_ID))
+            .expect("the pattern field is shown while editing");
+    }
+
+    #[test]
+    fn hermes_off_offers_to_switch_it_on() {
+        assert_eq!(
+            clicks(&off(), "Switch Hermes on"),
+            [overview_message(HermesOverviewMessage::SwitchHermesOn)]
+        );
     }
 }

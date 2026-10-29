@@ -395,6 +395,13 @@ fn note_text(
             true,
         ),
         SetupNote::SaveFailed(error) => (write_failure_text(error, chosen, context), true),
+        SetupNote::GrantFailed { folder, reason } => (
+            fill_template(
+                lang.text(Msg::FilingSetupGrantFailed),
+                &[("{path}", &shown(folder)), ("{reason}", reason)],
+            ),
+            true,
+        ),
     }
 }
 

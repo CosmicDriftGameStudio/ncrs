@@ -26,6 +26,12 @@ pub enum SetupNote {
     },
     NoConfigPath,
     SaveFailed(FilingWriteError),
+    /// The folder is chosen, but the access to it could not be kept for the
+    /// next start.
+    GrantFailed {
+        folder: PathBuf,
+        reason: String,
+    },
 }
 
 /// What keeps the list from being saved. Shown at once, so the user sees what
@@ -215,6 +221,10 @@ impl FilingSetup {
 
     /// For a failure before the save could start, such as a missing config path.
     pub fn refuse_saving(&mut self, note: SetupNote) {
+        self.note = Some(note);
+    }
+
+    pub fn show_note(&mut self, note: SetupNote) {
         self.note = Some(note);
     }
 }
