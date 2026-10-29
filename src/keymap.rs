@@ -89,6 +89,8 @@ key_actions! {
     AbortJob => "abort_job",
     CopyPath => "copy_path",
     CopyName => "copy_name",
+    CopyFiles => "copy_files",
+    Paste => "paste",
     View => "view",
     Edit => "edit",
     Copy => "copy",
@@ -213,6 +215,8 @@ impl KeyAction {
             | Self::Open
             | Self::CopyPath
             | Self::CopyName
+            | Self::CopyFiles
+            | Self::Paste
             | Self::Mkdir
             | Self::NewFile
             | Self::Pack
@@ -326,6 +330,8 @@ impl KeyAction {
             Self::AbortJob => Message::AbortJob,
             Self::CopyPath => Message::CopyToClipboard(ClipboardKind::Path),
             Self::CopyName => Message::CopyToClipboard(ClipboardKind::Name),
+            Self::CopyFiles => Message::CopyFilesToClipboard,
+            Self::Paste => Message::Paste,
             Self::View => Message::OpenExternal(OpenKind::View),
             Self::Edit => Message::OpenExternal(OpenKind::Edit),
             Self::Copy => Message::Transfer(TransferKind::Copy),
@@ -431,6 +437,8 @@ impl KeyAction {
             | Self::AbortJob
             | Self::CopyPath
             | Self::CopyName
+            | Self::CopyFiles
+            | Self::Paste
             | Self::Copy
             | Self::DriveMenuLeft
             | Self::DriveMenuRight
@@ -512,6 +520,8 @@ impl KeyAction {
             | Self::AbortJob
             | Self::CopyPath
             | Self::CopyName
+            | Self::CopyFiles
+            | Self::Paste
             | Self::DriveMenuLeft
             | Self::DriveMenuRight
             | Self::HistoryBack
@@ -650,6 +660,12 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
                     Modifiers::CTRL | Modifiers::SHIFT
                 },
             ),
+        ),
+        // The files, picture or text of the system clipboard go into the active
+        // panel. Copy files to the clipboard (`copy_files`) has no key yet.
+        (
+            A::Paste,
+            Binding::with_modifiers(Character("v".into()), Modifiers::COMMAND),
         ),
         (A::View, Binding::key(KeyNamed(F3))),
         (A::Edit, Binding::key(KeyNamed(F4))),
@@ -1893,9 +1909,35 @@ mod tests {
     }
 
     #[test]
+    fn paste_is_on_the_command_chord_and_copy_files_has_no_key() {
+        let bindings = default_bindings();
+        let paste: Vec<_> = bindings
+            .iter()
+            .filter(|(action, _)| *action == KeyAction::Paste)
+            .map(|(_, binding)| binding)
+            .collect();
+        assert_eq!(
+            paste,
+            [&Binding::with_modifiers(
+                Key::Character("v".into()),
+                Modifiers::COMMAND
+            )]
+        );
+        assert!(!bindings
+            .iter()
+            .any(|(action, _)| *action == KeyAction::CopyFiles));
+        assert_eq!(KeyAction::from_name("paste"), Some(KeyAction::Paste));
+        assert_eq!(
+            KeyAction::from_name("copy_files"),
+            Some(KeyAction::CopyFiles)
+        );
+    }
+
+    #[test]
     fn every_action_has_a_default_key_and_no_key_is_twice_bound() {
         // Reached through the command palette (or a menu) only.
-        const WITHOUT_KEY: [KeyAction; 15] = [
+        const WITHOUT_KEY: [KeyAction; 16] = [
+            KeyAction::CopyFiles,
             KeyAction::RemoveFavourite,
             KeyAction::Favourites,
             KeyAction::FetchTheme,

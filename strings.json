@@ -6425,6 +6425,72 @@
       "context": "Title of the folded group of technical settings on the Hermes settings page. One word.",
       "en": "Advanced",
       "de": "Erweitert"
+    },
+    {
+      "key": "clipboard.pasted_name_prefix",
+      "context": "First word of the file name that Paste gives a picture or text from the clipboard, followed by date and time and the ending: \"Pasted 2026-10-28 08.15.txt\". One word, no trailing space, no characters a file name cannot hold.",
+      "en": "Pasted",
+      "de": "Eingefügt"
+    },
+    {
+      "key": "action.paste",
+      "context": "Entry of the command palette that runs the key action paste. It copies files from the clipboard into the active panel, or saves a picture as PNG or text as TXT there; the key bound to it is shown beside it.",
+      "en": "Paste files, image or text",
+      "de": "Dateien, Bild oder Text einfügen"
+    },
+    {
+      "key": "action.copy_files",
+      "context": "Entry of the command palette that runs the key action copy_files. It puts the tagged files, or the one under the cursor, on the system clipboard as files, so Finder or Explorer can paste them; the key bound to it, if any, is shown beside it.",
+      "en": "Copy files to the clipboard",
+      "de": "Dateien in die Zwischenablage kopieren"
+    },
+    {
+      "key": "status.clipboard_empty",
+      "context": "Status bar notice after Paste when the system clipboard holds no files, no picture and no text, or cannot be read.",
+      "en": "The clipboard holds no files, image or text.",
+      "de": "Die Zwischenablage enthält keine Dateien, kein Bild und keinen Text."
+    },
+    {
+      "key": "status.files_copied_to_clipboard_one",
+      "context": "Status bar confirmation after the user put one file or folder on the system clipboard as a file. Past participle, short.",
+      "en": "File copied to the clipboard",
+      "de": "Datei in die Zwischenablage kopiert"
+    },
+    {
+      "key": "status.files_copied_to_clipboard_many",
+      "context": "Status bar confirmation after the user put several files or folders on the system clipboard as files. Takes the count, which is always two or more.",
+      "en": "{count} files copied to the clipboard",
+      "de": "{count} Dateien in die Zwischenablage kopiert"
+    },
+    {
+      "key": "status.clipboard_files_local_only",
+      "context": "Status bar notice when \"Copy files to the clipboard\" is used on entries inside an archive or on an SFTP server. Only files on the local disk can go on the system clipboard as files; nothing was copied.",
+      "en": "Only files on this computer's disk can be copied to the clipboard. Copy them to a folder first.",
+      "de": "Nur Dateien von der Platte dieses Computers lassen sich in die Zwischenablage kopieren. Kopiere sie zuerst in einen Ordner."
+    },
+    {
+      "key": "error.clipboard_write_failed",
+      "context": "Status bar error when the system clipboard refused the files. Takes the reason the system gave.",
+      "en": "Could not copy the files to the clipboard: {reason}",
+      "de": "Die Dateien konnten nicht in die Zwischenablage kopiert werden: {reason}"
+    },
+    {
+      "key": "dialog.paste_title",
+      "context": "Title of the dialog that asks for the file name when a picture or text from the clipboard is pasted into a folder.",
+      "en": "Paste from the clipboard",
+      "de": "Aus der Zwischenablage einfügen"
+    },
+    {
+      "key": "dialog.paste_confirm",
+      "context": "Confirm button of the dialog that names the file a pasted picture or text is saved as. Verb.",
+      "en": "Paste",
+      "de": "Einfügen"
+    },
+    {
+      "key": "status.paste_busy",
+      "context": "Status bar notice when Paste is used while a copy or another job is running or a dialog is open. Nothing is pasted; the user can paste again later.",
+      "en": "Paste again when the running job or dialog is done",
+      "de": "Erneut einfügen, wenn der laufende Auftrag oder Dialog fertig ist"
     }
   ]
 }

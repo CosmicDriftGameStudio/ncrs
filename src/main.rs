@@ -15,6 +15,7 @@ mod about;
 mod ai_model;
 mod app;
 mod backend;
+mod clipboard_paste;
 mod command_line;
 mod command_palette;
 mod commands;

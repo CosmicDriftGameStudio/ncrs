@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::ai_model::DownloadError as AiDownloadError;
 use crate::app::{RowFailure, Transfer};
+use crate::clipboard_paste::PastedContent;
 use crate::command_line::ShellOutcome;
 use crate::config::{
     AiProviderChoice, AiProviderName, Config, Filing, FilingWriteError, ProgramLine, ServerEntry,
@@ -113,6 +114,15 @@ pub enum Message {
     SaveSessionState(u64),
     /// Path or name of the tagged rows, else the cursor row, to the clipboard.
     CopyToClipboard(ClipboardKind),
+    /// Cmd+V / Ctrl+V: read the system clipboard and bring what it holds into
+    /// the active panel.
+    Paste,
+    /// The system clipboard has been read for a paste; `None` when it holds
+    /// nothing usable.
+    ClipboardRead(Option<PastedContent>),
+    /// The tagged files, else the one under the cursor, to the system
+    /// clipboard as files.
+    CopyFilesToClipboard,
     /// The user answered the conflict dialog.
     TransferConflict(ConflictChoice),
     /// Ticks or unticks "for all files" in the conflict dialog.

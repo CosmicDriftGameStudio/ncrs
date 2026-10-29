@@ -136,6 +136,8 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
         ),
         KeyAction::CopyPath => Command::plain(action, Edit, Msg::ActionCopyPath),
         KeyAction::CopyName => Command::plain(action, Edit, Msg::ActionCopyName),
+        KeyAction::CopyFiles => Command::plain(action, Edit, Msg::ActionCopyFiles),
+        KeyAction::Paste => Command::plain(action, Edit, Msg::ActionPaste),
         KeyAction::ContextMenu => Command::plain(action, Edit, Msg::ActionContextMenu),
         KeyAction::SortByName => Command::plain(action, View, Msg::ActionSortByName),
         KeyAction::SortByModified => Command::plain(action, View, Msg::ActionSortByModified),

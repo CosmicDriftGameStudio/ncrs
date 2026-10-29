@@ -114,6 +114,19 @@ sha1 = "0.11"
 data-encoding = "2"
 # A typed password is wiped from memory when it is dropped.
 zeroize = "1"
+# Cmd+V / Ctrl+V pastes files, an image or text from the system clipboard, and
+# "Copy files to the clipboard" puts a file list on it. "image-data" reads and
+# writes the picture; no other defaults.
+arboard = { version = "3.6", default-features = false, features = ["image-data"] }
+# Encodes a pasted picture as PNG. Already in the tree through arboard's image
+# dependency and iced.
+png = "0.18"
+
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+# Without the data-control protocol the clipboard cannot be read or written on
+# a Wayland desktop that has no X11 clipboard (Cargo adds this to the feature
+# set above).
+arboard = { version = "3.6", default-features = false, features = ["image-data", "wayland-data-control"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # The native menu bar on macOS, built from the command list. macOS only: Linux

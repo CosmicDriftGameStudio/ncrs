@@ -21,6 +21,9 @@ pub enum PromptKind {
     /// Alt+F5 — ask for the file name of a new archive in the other panel's
     /// folder and pack the selection into it.
     Pack,
+    /// Cmd+V with a picture or text on the clipboard — ask for the name of the
+    /// file it is saved as in the active panel.
+    Paste,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +60,14 @@ impl Prompt {
 
     pub fn create_file(parent: PathBuf) -> Self {
         Self::new(PromptKind::CreateFile, parent)
+    }
+
+    /// The paste prompt for the folder `parent`, with the suggested file name.
+    pub fn paste(parent: PathBuf, name: String) -> Self {
+        Self {
+            name,
+            ..Self::new(PromptKind::Paste, parent)
+        }
     }
 
     /// The pack prompt for the folder `parent`. The field starts as the full
