@@ -21,6 +21,11 @@ targets = [
     { triple = "aarch64-apple-darwin" },
     { triple = "x86_64-pc-windows-msvc" },
 ]
+# `drag` is a macOS and Windows dependency only, but cargo-deny filters each
+# edge on its own, so drag's Linux edge to GTK counts although no build takes
+# it (`cargo tree --target x86_64-unknown-linux-gnu` has no gtk). Without this,
+# glib-macros brings an unmaintained-crate advisory for code nobody compiles.
+exclude = ["gtk", "gdk", "gdkx11"]
 
 [advisories]
 version = 2

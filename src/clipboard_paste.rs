@@ -77,7 +77,7 @@ pub fn choose(
         .map(PastedContent::Text)
 }
 
-fn encode_png(image: &RgbaImage) -> Option<Vec<u8>> {
+pub fn encode_png(image: &RgbaImage) -> Option<Vec<u8>> {
     let mut png = Vec::new();
     let mut encoder = png::Encoder::new(&mut png, image.width, image.height);
     encoder.set_color(png::ColorType::Rgba);

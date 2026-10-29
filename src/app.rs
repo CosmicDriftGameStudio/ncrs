@@ -72,6 +72,7 @@ use crate::native_menu;
 use crate::ocr_models::{download_models, DownloadError, OcrModelsCard};
 use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension, ThemeFileUrl, ThemeSource};
 use crate::palette::{Palette, ThemePreset};
+use crate::panel_drag::{self, PanelDrag};
 use crate::query_work::{self, QueryAccess};
 use crate::quick_fix::{field_to_fix, QuickFix, QuickFixAction};
 use crate::quick_open::{DocumentRequest, QuickOpen, MAX_DOCUMENT_HITS, QUICK_OPEN_FILE_LIMIT};
@@ -423,6 +424,13 @@ impl TypeAhead {
         self.prefix.clear();
         self.last_typed = None;
     }
+}
+
+/// Not inside an archive and not on an SFTP server: something other apps can
+/// be handed by path.
+fn is_file_on_local_disk(path: &Path) -> bool {
+    RemotePath::parse(path).is_none()
+        && fs::archive::locate_in_archive(path).is_none_or(|place| place.inner.is_empty())
 }
 
 /// Moving the cursor or the focus by other means ends a prefix.
@@ -1144,6 +1152,10 @@ pub struct App {
     notice_generation: u64,
     /// Files from another app are held over the window.
     drop_hover: bool,
+    /// A row is held with the left button; it is a drag once the pointer moved.
+    panel_drag: Option<PanelDrag>,
+    /// The panel under the pointer, which is where a drag can be dropped.
+    hovered_panel: Option<PanelSide>,
     /// The files of the drop still arriving.
     dropped_files: Vec<PathBuf>,
     /// Counts the dropped files, so the settle timer knows the burst is over.
@@ -3048,6 +3060,8 @@ impl App {
             notice: None,
             notice_generation: 0,
             drop_hover: false,
+            panel_drag: None,
+            hovered_panel: None,
             dropped_files: Vec::new(),
             drop_generation: 0,
             job_done: 0,
@@ -3859,8 +3873,15 @@ impl App {
                         }
                     }
                 }
+                self.arm_panel_drag(side, on_tag);
                 Task::none()
             }
+            panel_message @ (Message::PanelEntered(_)
+            | Message::PanelExited(_)
+            | Message::PanelDragMoved(_)
+            | Message::PanelDragReleased) => self.update_panel_pointer(panel_message),
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            Message::DragOutStarted(started) => self.drag_out_started(started),
 
             Message::RowActivated { side, index } => self.activate_row(side, index),
 
@@ -4698,7 +4719,11 @@ impl App {
                 },
                 move |index| Message::ContextMenuAt { side, index },
                 move |column| Message::SortBy { side, column },
-                move |delta| Message::PanelScrolled { side, delta },
+                panel::PanelPointer {
+                    scrolled: move |delta| Message::PanelScrolled { side, delta },
+                    entered: Message::PanelEntered(side),
+                    exited: Message::PanelExited(side),
+                },
             )
         };
 
@@ -4717,7 +4742,7 @@ impl App {
 
         let side_view = |side: PanelSide| {
             let view = side_view_plain(side);
-            if self.drop_hover && side == self.active_panel {
+            if self.is_drop_target(side) {
                 Stack::with_children([
                     view,
                     container(Space::new())
@@ -7943,6 +7968,108 @@ impl App {
         self.copy_external_files_into_active_panel(vec![file])
     }
 
+    /// Files from another app held over the window outline the active panel;
+    /// a row dragged over the other panel outlines that one.
+    fn is_drop_target(&self, side: PanelSide) -> bool {
+        let drag_hovers_side = self.panel_drag.is_some_and(|drag| {
+            drag.is_dragging() && drag.source().other() == side && self.hovered_panel == Some(side)
+        });
+        (self.drop_hover && side == self.active_panel) || drag_hovers_side
+    }
+
+    /// A press on the star only tags, so it never starts a drag.
+    fn arm_panel_drag(&mut self, side: PanelSide, on_tag: bool) {
+        if on_tag {
+            return;
+        }
+        let mut input = self.input.lock();
+        self.panel_drag = Some(PanelDrag::new(side, input.pointer));
+        input.panel_drag_armed = true;
+    }
+
+    fn update_panel_pointer(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::PanelEntered(side) => self.hovered_panel = Some(side),
+            Message::PanelExited(side) if self.hovered_panel == Some(side) => {
+                self.hovered_panel = None;
+            }
+            Message::PanelDragMoved(position) => return self.move_panel_drag(position),
+            Message::PanelDragReleased => return self.finish_panel_drag(),
+            _ => {}
+        }
+        Task::none()
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn drag_out_started(&mut self, started: Result<(), String>) -> Task<Message> {
+        if let Err(reason) = started {
+            let text = fill_template(
+                self.lang.text(Msg::ErrorDragOutFailed),
+                &[("{reason}", &reason)],
+            );
+            self.set_status_error(&text);
+        }
+        Task::none()
+    }
+
+    fn end_panel_drag(&mut self) -> Option<PanelDrag> {
+        self.input.lock().panel_drag_armed = false;
+        self.panel_drag.take()
+    }
+
+    fn move_panel_drag(&mut self, position: Point) -> Task<Message> {
+        let Some(drag) = self.panel_drag.as_mut() else {
+            return Task::none();
+        };
+        drag.moved_to(position);
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        if drag.is_dragging() && panel_drag::is_outside(position, self.window_size) {
+            return self.start_drag_out();
+        }
+        Task::none()
+    }
+
+    /// Dropping on the other panel asks the F5 or F6 question for it.
+    fn finish_panel_drag(&mut self) -> Task<Message> {
+        let Some(drag) = self.end_panel_drag() else {
+            return Task::none();
+        };
+        if !drag.is_dragging()
+            || self.overlay_is_open()
+            || self.hovered_panel != Some(drag.source().other())
+        {
+            return Task::none();
+        }
+        self.active_panel = drag.source();
+        let kind = if panel_drag::move_modifier_held(self.modifiers) {
+            TransferKind::Move
+        } else {
+            TransferKind::Copy
+        };
+        self.open_transfer_dialog_to(kind, None)
+    }
+
+    /// The pointer left the window with files held: hands them to the system
+    /// drag, which takes over the mouse until the drop.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn start_drag_out(&mut self) -> Task<Message> {
+        self.end_panel_drag();
+        let sources = self.action_sources();
+        if sources.is_empty() {
+            return Task::none();
+        }
+        if !sources.iter().all(|path| is_file_on_local_disk(path)) {
+            let text = self.lang.text(Msg::StatusDragOutLocalOnly).to_owned();
+            return self.show_notice(text);
+        }
+        window::latest()
+            .and_then(move |id| {
+                let files = sources.clone();
+                window::run(id, move |window| crate::drag_out::start(window, files))
+            })
+            .map(Message::DragOutStarted)
+    }
+
     /// Puts the tagged files, else the one under the cursor, on the system
     /// clipboard as files. Only files of this computer's disk can go there.
     fn copy_files_to_clipboard(&mut self) -> Task<Message> {
@@ -7953,11 +8080,7 @@ impl App {
         if sources.is_empty() {
             return Task::none();
         }
-        let on_disk = |path: &PathBuf| {
-            RemotePath::parse(path).is_none()
-                && fs::archive::locate_in_archive(path).is_none_or(|place| place.inner.is_empty())
-        };
-        if !sources.iter().all(on_disk) {
+        if !sources.iter().all(|path| is_file_on_local_disk(path)) {
             let text = self
                 .lang
                 .text(Msg::StatusClipboardFilesLocalOnly)
@@ -14102,6 +14225,8 @@ impl App {
             notice: None,
             notice_generation: 0,
             drop_hover: false,
+            panel_drag: None,
+            hovered_panel: None,
             dropped_files: Vec::new(),
             drop_generation: 0,
             job_done: 0,
@@ -15488,6 +15613,139 @@ mod mouse_tagging {
             })
             .collect();
         app
+    }
+
+    fn feed(app: &mut App, event: event::Event) -> Option<Message> {
+        let emitted = app.input.lock().handle(&event, event::Status::Ignored);
+        if let Some(message) = emitted.clone() {
+            drop(app.update(message));
+        }
+        emitted
+    }
+
+    fn pointer_at(x: f32, y: f32) -> event::Event {
+        event::Event::Mouse(iced::mouse::Event::CursorMoved {
+            position: Point::new(x, y),
+        })
+    }
+
+    fn left_released() -> event::Event {
+        event::Event::Mouse(iced::mouse::Event::ButtonReleased(
+            iced::mouse::Button::Left,
+        ))
+    }
+
+    fn press_row_one(app: &mut App) {
+        feed(app, pointer_at(50.0, 50.0));
+        drop(app.update(Message::RowClicked {
+            side: PanelSide::Left,
+            index: 1,
+            on_tag: false,
+        }));
+    }
+
+    fn move_modifier() -> Modifiers {
+        if cfg!(target_os = "macos") {
+            Modifiers::COMMAND
+        } else {
+            Modifiers::SHIFT
+        }
+    }
+
+    #[test]
+    fn the_input_reports_no_drag_while_no_row_is_held() {
+        let mut app = app_with_files();
+
+        assert_eq!(feed(&mut app, pointer_at(20.0, 20.0)), None);
+        assert_eq!(feed(&mut app, left_released()), None);
+    }
+
+    #[test]
+    fn a_click_without_movement_only_selects() {
+        let mut app = app_with_files();
+        press_row_one(&mut app);
+        drop(app.update(Message::PanelEntered(PanelSide::Right)));
+
+        feed(&mut app, pointer_at(52.0, 50.0));
+        feed(&mut app, left_released());
+
+        assert!(app.transfer_dialog.is_none());
+        assert_eq!(app.left_panel.selected, 1);
+        assert!(!app.left_panel.selection.any_tagged());
+        assert!(app.panel_drag.is_none());
+    }
+
+    #[tokio::test]
+    async fn dragging_a_row_onto_the_other_panel_asks_the_copy_question() {
+        let mut app = app_with_files();
+        press_row_one(&mut app);
+
+        feed(&mut app, pointer_at(70.0, 50.0));
+        drop(app.update(Message::PanelEntered(PanelSide::Right)));
+        feed(&mut app, left_released());
+
+        let dialog = app.transfer_dialog.as_ref().expect("the dialog opens");
+        assert_eq!(dialog.kind(), TransferKind::Copy);
+        assert_eq!(dialog.target_path(), PathBuf::from("/right"));
+        assert_eq!(dialog.sources(), [PathBuf::from("/left/f1.txt")]);
+    }
+
+    #[tokio::test]
+    async fn the_move_modifier_at_the_drop_asks_the_move_question() {
+        let mut app = app_with_files();
+        press_row_one(&mut app);
+
+        feed(&mut app, pointer_at(70.0, 50.0));
+        drop(app.update(Message::PanelEntered(PanelSide::Right)));
+        drop(app.update(Message::ModifiersChanged(move_modifier())));
+        feed(&mut app, left_released());
+
+        let dialog = app.transfer_dialog.as_ref().expect("the dialog opens");
+        assert_eq!(dialog.kind(), TransferKind::Move);
+    }
+
+    #[test]
+    fn the_other_panel_is_outlined_while_a_drag_hovers_it() {
+        let mut app = app_with_files();
+        press_row_one(&mut app);
+        drop(app.update(Message::PanelEntered(PanelSide::Right)));
+        assert!(!app.is_drop_target(PanelSide::Right));
+
+        feed(&mut app, pointer_at(70.0, 50.0));
+
+        assert!(app.is_drop_target(PanelSide::Right));
+        assert!(!app.is_drop_target(PanelSide::Left));
+    }
+
+    #[test]
+    fn dropping_a_row_on_its_own_panel_does_nothing() {
+        let mut app = app_with_files();
+        press_row_one(&mut app);
+
+        feed(&mut app, pointer_at(70.0, 50.0));
+        drop(app.update(Message::PanelEntered(PanelSide::Left)));
+        feed(&mut app, left_released());
+
+        assert!(app.transfer_dialog.is_none());
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn dragging_a_server_file_out_of_the_window_shows_the_local_only_notice() {
+        let mut app = app_with_files();
+        app.left_panel.entries[1].path =
+            RemotePath::new(ServerId::new("user", "files.invalid", 22), "/f1.txt").to_path_buf();
+        press_row_one(&mut app);
+
+        feed(&mut app, pointer_at(70.0, 50.0));
+        feed(&mut app, pointer_at(-30.0, 50.0));
+
+        assert_eq!(
+            app.notice.as_deref(),
+            Some(app.lang.text(Msg::StatusDragOutLocalOnly))
+        );
+        assert!(app.panel_drag.is_none());
+        assert!(!app.input.lock().panel_drag_armed);
     }
 
     #[tokio::test]

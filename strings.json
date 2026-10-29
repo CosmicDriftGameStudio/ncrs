@@ -6475,6 +6475,18 @@
       "de": "Die Dateien konnten nicht in die Zwischenablage kopiert werden: {reason}"
     },
     {
+      "key": "status.drag_out_local_only",
+      "context": "Status bar notice when files are dragged out of the window while the selection is inside an archive or on an SFTP server. Only files on the local disk can be dragged out; nothing was dragged.",
+      "en": "Only files on this computer's disk can be dragged out of ncrs. Copy them to a folder first.",
+      "de": "Nur Dateien von der Platte dieses Computers lassen sich aus ncrs herausziehen. Kopiere sie zuerst in einen Ordner."
+    },
+    {
+      "key": "error.drag_out_failed",
+      "context": "Status bar error when the system refused to start dragging files out of the window. Takes the reason the system gave.",
+      "en": "Could not drag the files out of ncrs: {reason}",
+      "de": "Die Dateien konnten nicht aus ncrs herausgezogen werden: {reason}"
+    },
+    {
       "key": "dialog.paste_title",
       "context": "Title of the dialog that asks for the file name when a picture or text from the clipboard is pasted into a folder.",
       "en": "Paste from the clipboard",

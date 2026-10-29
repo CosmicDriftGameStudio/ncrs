@@ -276,6 +276,14 @@ pub struct PanelProps<'a> {
     pub hermes: Option<ColumnView<'a>>,
 }
 
+/// What the pointer does over a panel: the wheel, and entering and leaving.
+#[derive(Debug)]
+pub struct PanelPointer<M, S> {
+    pub scrolled: S,
+    pub entered: M,
+    pub exited: M,
+}
+
 /// Renders a file panel. Generic over the message type: the caller decides
 /// which message a row click produces, keeping the component reusable.
 /// Renders one panel.
@@ -291,7 +299,7 @@ pub fn view<'a, M: Clone + 'a>(
     on_row_click: impl Fn(usize, RowClick) -> M,
     on_row_context: impl Fn(usize) -> M,
     on_sort: impl Fn(SortColumn) -> M + 'a,
-    on_scroll: impl Fn(ScrollDelta) -> M + 'a,
+    pointer: PanelPointer<M, impl Fn(ScrollDelta) -> M + 'a>,
 ) -> Element<'a, M> {
     let palette = &props.palette;
     let hermes = props.hermes;
@@ -356,7 +364,9 @@ pub fn view<'a, M: Clone + 'a>(
         ]
         .apply_frame(palette),
     )
-    .on_scroll(on_scroll)
+    .on_scroll(pointer.scrolled)
+    .on_enter(pointer.entered)
+    .on_exit(pointer.exited)
     .into()
 }
 
