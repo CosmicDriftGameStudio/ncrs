@@ -27,8 +27,8 @@ jobs:
   licenses:
     name: Third-party licenses
     runs-on: ubuntu-latest
-    # Installs a crate from crates.io, so it gets no write token: whatever
-    # runs here cannot touch the repository or the release.
+    # Runs a prebuilt binary downloaded from GitHub, so it gets no write token:
+    # whatever runs here cannot touch the repository or the release.
     permissions:
       contents: read
     # Same guard as `build`: the file ships inside the signed archives, so it
@@ -42,11 +42,12 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
-      # `--features cli` is required: without it cargo-about 0.9 installs no
-      # binary. Pinned and --locked so a release does not change with a new
-      # cargo-about version.
-      - name: Install cargo-about
-        run: cargo install cargo-about --locked --version 0.9.2 --features cli
+      # Prebuilt binary, pinned so a release does not change with a new
+      # cargo-about version. The release binary has the CLI that `cargo install`
+      # needs `--features cli` for.
+      - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+        with:
+          tool: cargo-about@0.9.2
 
       # Once for all five targets (about.toml lists them), so every archive
       # gets the same file and the Windows-only crates are not missed.
@@ -123,9 +124,12 @@ jobs:
             pkg-config libxkbcommon-dev libwayland-dev libx11-dev libfontconfig1-dev \
             cmake libclang-dev rpm
 
+      # Restores the cache the CI `targets` job saved on main (same key, same
+      # build command). A tag run never saves.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
-          key: ${{ matrix.target }}
+          shared-key: target-${{ matrix.target }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # aarch64 Linux is cross-compiled on the x86_64 runner.
       - name: Add cross linker for aarch64 Linux
