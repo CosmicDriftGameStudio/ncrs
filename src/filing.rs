@@ -1378,7 +1378,8 @@ impl FilingModule {
     /// No module that already works on configured locations: a new one may
     /// take this one's place with what the first-time setup wrote.
     pub fn can_take_first_setup(&self) -> bool {
-        let works_on_locations = matches!(self.phase, Phase::Ready) && self.has_configured_locations;
+        let works_on_locations =
+            matches!(self.phase, Phase::Ready) && self.has_configured_locations;
         self.can_be_replaced() && !works_on_locations
     }
 

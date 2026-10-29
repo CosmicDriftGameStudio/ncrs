@@ -55,11 +55,18 @@ pub struct SetupView<'a> {
 /// The size of the AI model in whole tens of megabytes, as the card says it.
 pub fn model_size_label() -> String {
     const STEP: u64 = 10_000_000;
-    format!("{} MB", (LOCAL_MODEL.size + STEP.div_euclid(2)).div_euclid(STEP) * 10)
+    format!(
+        "{} MB",
+        (LOCAL_MODEL.size + STEP.div_euclid(2)).div_euclid(STEP) * 10
+    )
 }
 
 pub(super) fn on_this_computer(lang: Language, mac: Msg, other: Msg) -> &'static str {
-    lang.text(if cfg!(target_os = "macos") { mac } else { other })
+    lang.text(if cfg!(target_os = "macos") {
+        mac
+    } else {
+        other
+    })
 }
 
 pub fn view<'a>(card: &SetupView<'a>, palette: &Palette) -> Element<'a, Message> {
@@ -71,11 +78,7 @@ pub fn view<'a>(card: &SetupView<'a>, palette: &Palette) -> Element<'a, Message>
     }
     body = body
         .push(header(lang, palette))
-        .push(hermes_flow::flow(
-            card.flow_step,
-            flow_boxes(lang),
-            palette,
-        ))
+        .push(hermes_flow::flow(card.flow_step, flow_boxes(lang), palette))
         .push(steps(card, palette));
     if card.setup.offer().model_download {
         body = body.push(model_offer(card, palette));
@@ -274,10 +277,13 @@ fn folder_choice<'a>(
         .saturating_sub(frame::chars_that_fit(TILE_RESERVED));
     let field: Element<'a, Message> = match card.setup.folder(slot) {
         Some(path) => container(
-            text(format::ellipsize_middle(&shown_path(path, card.home), chars))
-                .size(font_size::BODY)
-                .color(palette.text)
-                .wrapping(Wrapping::None),
+            text(format::ellipsize_middle(
+                &shown_path(path, card.home),
+                chars,
+            ))
+            .size(font_size::BODY)
+            .color(palette.text)
+            .wrapping(Wrapping::None),
         )
         .padding(FIELD_PADDING)
         .width(Length::Fill)
@@ -338,7 +344,11 @@ fn protection<'a>(card: &SetupView<'a>, palette: &Palette) -> Element<'a, Messag
         focus_ring(row.into(), card.focus == Some(element), palette)
     };
     column![
-        option(Msg::HermesSetupProtectEncrypted, true, SetupFocus::Encrypted),
+        option(
+            Msg::HermesSetupProtectEncrypted,
+            true,
+            SetupFocus::Encrypted
+        ),
         option(Msg::HermesSetupProtectPlain, false, SetupFocus::Plain),
     ]
     .spacing(spacing::XS)

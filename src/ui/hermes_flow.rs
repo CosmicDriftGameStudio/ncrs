@@ -95,8 +95,17 @@ pub fn flow<'a>(step: u32, boxes: FlowBoxes<'a>, palette: &Palette) -> Element<'
 
     Row::new()
         .push(ends)
-        .push(container(inbound).padding([0.0, LINE_MARGIN]).width(Length::FillPortion(1)))
-        .push(step_box(boxes.reading, palette.border_inactive, false, palette))
+        .push(
+            container(inbound)
+                .padding([0.0, LINE_MARGIN])
+                .width(Length::FillPortion(1)),
+        )
+        .push(step_box(
+            boxes.reading,
+            palette.border_inactive,
+            false,
+            palette,
+        ))
         .push(between_boxes(
             step,
             Dots {
@@ -105,7 +114,12 @@ pub fn flow<'a>(step: u32, boxes: FlowBoxes<'a>, palette: &Palette) -> Element<'
             },
             palette,
         ))
-        .push(step_box(boxes.rules, palette.border_inactive, false, palette))
+        .push(step_box(
+            boxes.rules,
+            palette.border_inactive,
+            false,
+            palette,
+        ))
         .push(between_boxes(
             step,
             Dots {
@@ -185,9 +199,7 @@ fn with_dots<'a>(rail: Element<'a, Message>, step: u32, dots: Dots) -> Element<'
         let position = dot_position(step, *offset).clamp(1, LINE_PORTIONS - 1);
         layers.push(
             Row::new()
-                .push(Space::new().width(Length::FillPortion(
-                    u16::try_from(position).unwrap_or(1),
-                )))
+                .push(Space::new().width(Length::FillPortion(u16::try_from(position).unwrap_or(1))))
                 .push(dot(dots.color))
                 .push(Space::new().width(Length::FillPortion(
                     u16::try_from(LINE_PORTIONS - position).unwrap_or(1),
@@ -234,8 +246,16 @@ mod tests {
 
     #[test]
     fn dots_with_different_offsets_are_in_different_places() {
-        let places: Vec<u32> = THREE_DOTS.iter().map(|offset| dot_position(0, *offset)).collect();
-        assert!(places.windows(2).all(|pair| matches!(pair, [first, second] if first != second)), "{places:?}");
+        let places: Vec<u32> = THREE_DOTS
+            .iter()
+            .map(|offset| dot_position(0, *offset))
+            .collect();
+        assert!(
+            places
+                .windows(2)
+                .all(|pair| matches!(pair, [first, second] if first != second)),
+            "{places:?}"
+        );
     }
 
     #[test]

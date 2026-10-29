@@ -877,9 +877,12 @@ mod tests {
 
     #[test]
     fn a_light_bar_keeps_the_cosmic_title_text_readable() {
-        let light_bar = load_text("[open]\n\n[theme]\nbar = \"#e0e0e0\"\npreset = \"cosmic\"\n").palette;
+        let light_bar =
+            load_text("[open]\n\n[theme]\nbar = \"#e0e0e0\"\npreset = \"cosmic\"\n").palette;
         assert!(contrast_ratio(light_bar.title_text, light_bar.title) >= 3.0);
-        let black_cursor_text = load_text("[open]\n\n[theme]\ncursor_text = \"#000000\"\npreset = \"cosmic\"\n").palette;
+        let black_cursor_text =
+            load_text("[open]\n\n[theme]\ncursor_text = \"#000000\"\npreset = \"cosmic\"\n")
+                .palette;
         assert!(contrast_ratio(black_cursor_text.title_text, black_cursor_text.title) >= 3.0);
     }
 
