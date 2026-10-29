@@ -4,6 +4,47 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] — 2026-10-29
+
+### Added
+
+- Hermes explains itself on its first start: a setup card shows inbox,
+  reading, rules and filing as a small animation and asks for the inbox, the
+  filing location and the protection in three steps, with the AI model as an
+  optional download.
+- An overview page is the first Hermes page and the one place for folders,
+  text recognition, the AI model, load, the default filing pattern and
+  protection. A plain index can be encrypted later ("Encrypt now"), and
+  "Start over" removes only the index and its key, keeping the folders.
+- Every review entry without a rule starts with a default filing pattern,
+  `{year}/{year}{month}{day}_{sender}_{number}`, with fallbacks for a missing
+  sender or number, and shows where the document would go. Nothing is filed
+  before it is confirmed.
+- The AI model download shows its progress and a finished or installed
+  state, and switches AI on. Switching AI rebuilds Hermes in the background.
+
+### Changed
+
+- Dracula is the default look; `cosmic` stays one setting away. Primary
+  buttons take the preset's border colour.
+- Settings keep only "Hermes on", a button to the overview and a folded
+  "Advanced" section. Folder roles can be set before any location exists,
+  and the settings speak of inbox, filing location and archive.
+- The AI is told that the sender is who issued the document; a sender that
+  is the user's own name is left empty.
+- Menus and the command list wrap around at their ends. "Process again" says
+  what it does and what came of it.
+- On macOS the system reads scans, so the text recognition download is not
+  offered there.
+- A folder the sandbox blocks says so and a click opens the folder dialog
+  there. Panels are read again when the window gets the focus back, a double
+  click opens a row, and a theme can be installed from an https link.
+
+### Fixed
+
+- The app kept several cores busy after its first background job: the
+  progress stream woke itself on an empty channel.
+
 ## [0.9.1] — 2026-10-28
 
 ### Added

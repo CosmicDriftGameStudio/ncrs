@@ -213,7 +213,7 @@ Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
 
 # Tasks – Basis-Feature
 
-**Stand 2026-10-28: T1–T18 erledigt.** Release 0.9.1,
+**Stand 2026-10-29: T1–T18 erledigt.** Release 1.0.0,
 2246 Tests (`cargo test --workspace`, davon 8 `#[ignore]`) inkl. UI-Tests mit Pixelvergleich.
 
 | Block | Inhalt | Stand |
@@ -490,7 +490,7 @@ Größen sind Schätzungen (S bis ein Tag, M zwei bis vier Tage, L eine Woche un
 | 0.7.0 | Bedienung komplett, Risiko zuerst | S1 Sandbox-Test (#120) · K1 Kommandozeile, T6d.1 (#121) · K2 Favoriten und Verlauf, T6d.5 (#123) · K3 Zustand merken, T18 (#122) |
 | 0.8.0 | Netz, Archive lesen, Einstellungen | K4 Netzwerk-Mounts, T15 (#125) ✅ · K5 Archive lesen, T16 (#124) ✅ · A0 Sandbox-Grundlagen (#126) ✅ · E1 Einstellungen für die ganze Config (#142) ✅ · E2 Tastenkürzel-Dialog (#143) ✅ · Quick Open findet Dokumente (#147) ✅ · 7z lesen (#148) ✅ · F3 im Archiv (#151) ✅ |
 | 0.9.0 | Schreiben und Versprechen | K6 Archive schreiben, T17 (#127) ✅ · V1 Config versioniert (#128) ✅ · V2 Index-Migration (#129) ✅ · V3 100k-Dateien-Messung (#130) ✅ · V4 Lizenzen für den Store (#131), darin About-Dialog mit den Drittlizenzen (#149) ✅ · H1 Hermes als Beta (#132) ✅ · Homebrew-Tap aus dem Release (#191) ✅ |
-| 1.0.0 | App Store | A1 Sandbox-Build (#133, Abnahme offen) · A2 App Store Connect (#134) ✅ · A3 Store-Auftritt (#135) · A4 Review und Release (#136) · App-Icon in den Dracula-Farben (#190) ✅ |
+| 1.0.0 | App Store | A1 Sandbox-Build (#133) ✅ · A2 App Store Connect (#134) ✅ · A3 Store-Auftritt (#135) · A4 Review und Release (#136) · App-Icon in den Dracula-Farben (#190) ✅ |
 | 1.1.0 | Drag & Drop, Einfügen | Dateien ins Panel ziehen (#159) · zwischen Panels und hinaus ziehen (#160) · Einfügen aus der Zwischenablage (#161) |
 | 1.2.0 | Hermes verständlich und treffsicher | Tracker #164: Futurama als Sprachvariante, Erkennung messen, Bedingungssprache, Regel-Seite, Live try, eigene Steuerkontexte, Wiedervorlage mit Vorschau, Auswertungen, Hermes-Suche |
 
