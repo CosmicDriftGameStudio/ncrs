@@ -1714,6 +1714,7 @@ mod tests {
                 Arc::new(SharedIndex(Arc::clone(&self.index))),
                 Arc::new(chain),
                 None,
+                None,
             )
         }
     }

@@ -20,11 +20,22 @@ const CONFIDENT: f32 = 0.8;
 pub struct AiStep {
     index: Arc<dyn IndexAccess>,
     provider: Arc<dyn Provider>,
+    /// The name of the person using the app; a sender that is this name is the
+    /// addressee the provider mistook for the sender.
+    own_name: Option<String>,
 }
 
 impl AiStep {
-    pub fn new(index: Arc<dyn IndexAccess>, provider: Arc<dyn Provider>) -> Self {
-        Self { index, provider }
+    pub fn new(
+        index: Arc<dyn IndexAccess>,
+        provider: Arc<dyn Provider>,
+        own_name: Option<String>,
+    ) -> Self {
+        Self {
+            index,
+            provider,
+            own_name,
+        }
     }
 
     fn document(&self, item: &Item) -> Result<Option<Document>, String> {
@@ -36,6 +47,38 @@ impl AiStep {
             .map_err(|err| err.to_string())?;
         Ok(document.filter(|found| found.status == DocumentStatus::New))
     }
+}
+
+const SALUTATIONS: [&str; 8] = ["herr", "frau", "hr", "fr", "mr", "mrs", "ms", "dr"];
+
+/// Lowercase words without surrounding punctuation, leading salutations dropped.
+fn name_words(text: &str) -> Vec<String> {
+    let words = text
+        .split_whitespace()
+        .map(|word| {
+            word.trim_matches(|c: char| !c.is_alphanumeric())
+                .to_lowercase()
+        })
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>();
+    let salutations = words
+        .iter()
+        .take_while(|word| SALUTATIONS.contains(&word.as_str()))
+        .count();
+    words.into_iter().skip(salutations).collect()
+}
+
+/// Whether the sender contains the user's own name as a whole sequence of
+/// words, ignoring case, salutations and spacing. Without an own name nothing
+/// is ever the user.
+pub fn sender_is_the_user(sender: &str, own_name: Option<&str>) -> bool {
+    let own = own_name.map(name_words).unwrap_or_default();
+    if own.is_empty() {
+        return false;
+    }
+    name_words(sender)
+        .windows(own.len())
+        .any(|window| window == own.as_slice())
 }
 
 /// An unconfirmed rule needs the user whatever the provider says.
@@ -101,6 +144,10 @@ impl Step for AiStep {
         let (confident, unsure): (Vec<&ExtractedField>, Vec<&ExtractedField>) = extraction
             .fields
             .iter()
+            .filter(|found| {
+                found.field != Field::Sender
+                    || !sender_is_the_user(&found.value, self.own_name.as_deref())
+            })
             .partition(|found| found.confidence >= CONFIDENT);
         let least_sure = FIELD_ORDER
             .into_iter()
@@ -242,6 +289,7 @@ mod tests {
         index: Arc<Mutex<Index>>,
         location: Location,
         file: PathBuf,
+        own_name: Option<String>,
     }
 
     impl Fixture {
@@ -257,6 +305,7 @@ mod tests {
                 _dir: dir,
                 index: Arc::new(Mutex::new(index)),
                 file,
+                own_name: None,
             }
         }
 
@@ -265,6 +314,7 @@ mod tests {
                 Arc::new(SharedIndex(Arc::clone(&self.index))),
                 Arc::new(TextChain::new()),
                 Some(Arc::clone(provider) as Arc<dyn Provider>),
+                self.own_name.clone(),
             )
         }
 
@@ -328,11 +378,51 @@ mod tests {
             Arc::new(SharedIndex(Arc::clone(&fixture.index))),
             Arc::new(TextChain::new()),
             None,
+            None,
         );
         let with = fixture.steps(&Arc::new(reply("0.9")));
 
         assert_eq!(names(without), ["intake", "text", "rules", "review"]);
         assert_eq!(names(with), ["intake", "text", "rules", "ai", "review"]);
+    }
+
+    #[test]
+    fn a_sender_that_is_the_user_stays_empty_and_the_other_fields_are_kept() {
+        let mut fixture = Fixture::new();
+        fixture.own_name = Some("Agency B".to_owned());
+        let provider = Arc::new(reply("0.95"));
+        let steps = fixture.steps(&provider);
+        let document = fixture.add_document(1);
+        let mut item = fixture.item(document, INVOICE_TEXT);
+        item.review = Some(ReviewReason::NoMatchingRule);
+
+        run(&steps, AI, &mut item);
+
+        let fields = fixture.fields(document);
+        assert_eq!(fields.sender, None);
+        assert_eq!(fields.number.as_deref(), Some("9999"));
+        assert_eq!(item.review, Some(ReviewReason::NoMatchingRule));
+    }
+
+    #[test]
+    fn the_own_name_matches_whole_words_without_case_or_salutation() {
+        let own = Some("Marc Frost");
+        assert!(sender_is_the_user("Herr Marc Frost", own));
+        assert!(sender_is_the_user("MARC   FROST", own));
+        assert!(sender_is_the_user("Dr. Marc Frost, Musterweg 1", own));
+        assert!(sender_is_the_user("Mr Marc Frost", own));
+        assert!(!sender_is_the_user("Frost Marc GmbH", own));
+        assert!(!sender_is_the_user("Marcus Frost", own));
+        assert!(!sender_is_the_user("Marc", own));
+        assert!(sender_is_the_user("Marc", Some("Marc")));
+        assert!(!sender_is_the_user("Marcus GmbH", Some("Marc")));
+    }
+
+    #[test]
+    fn without_an_own_name_no_sender_is_emptied() {
+        assert!(!sender_is_the_user("Marc Frost", None));
+        assert!(!sender_is_the_user("Marc Frost", Some("")));
+        assert!(!sender_is_the_user("Marc Frost", Some("Herr")));
     }
 
     #[test]

@@ -21,6 +21,7 @@ pub fn intake_steps(
     index: Arc<dyn IndexAccess>,
     text: Arc<TextChain>,
     ai: Option<Arc<dyn Provider>>,
+    own_name: Option<String>,
 ) -> Vec<Box<dyn Step>> {
     let mut steps: Vec<Box<dyn Step>> = vec![
         Box::new(IntakeStep {
@@ -36,7 +37,11 @@ pub fn intake_steps(
         }),
     ];
     if let Some(provider) = ai {
-        steps.push(Box::new(AiStep::new(Arc::clone(&index), provider)));
+        steps.push(Box::new(AiStep::new(
+            Arc::clone(&index),
+            provider,
+            own_name,
+        )));
     }
     steps.push(Box::new(ReviewStep { index }));
     steps

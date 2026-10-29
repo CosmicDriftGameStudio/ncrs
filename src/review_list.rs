@@ -8,8 +8,10 @@ use std::path::PathBuf;
 
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{DocumentFields, DocumentId, ReviewEntryId, TaxContext};
-use ncrs_intake::render_pattern;
+use ncrs_index::{DocumentFields, DocumentId, Field, ReviewEntryId, TaxContext};
+use ncrs_intake::{
+    choose_pattern, default_pattern_for, missing_field, render_pattern, PatternSource,
+};
 
 use crate::list_window::ListWindow;
 use crate::review_work::{
@@ -44,7 +46,7 @@ pub struct Form {
 }
 
 impl Form {
-    fn of(item: &ReviewItem) -> Self {
+    fn of(item: &ReviewItem, custom_default: Option<&str>) -> Self {
         let fields = &item.fields;
         Self {
             sender: fields.sender.clone().unwrap_or_default(),
@@ -54,7 +56,9 @@ impl Form {
             number: fields.number.clone().unwrap_or_default(),
             amount: fields.amount.as_ref().map(amount_text).unwrap_or_default(),
             tags: tags_text(&fields.tags),
-            pattern: item.proposed_pattern.clone().unwrap_or_default(),
+            pattern: choose_pattern(item.proposed_pattern.as_deref(), custom_default, fields)
+                .map(|chosen| chosen.pattern)
+                .unwrap_or_default(),
         }
     }
 
@@ -173,6 +177,11 @@ pub struct ReviewList {
     wanted: Option<(PathBuf, FormField)>,
     /// The field to focus after the load that found the wanted entry.
     focus_request: Option<FormField>,
+    /// The pattern the user configured for documents no rule covers.
+    custom_default_pattern: Option<String>,
+    /// The pattern field holds what Hermes proposed, not something the user
+    /// typed or a rule gave; it then follows the other fields.
+    pattern_is_default: bool,
 }
 
 impl ReviewList {
@@ -190,7 +199,27 @@ impl ReviewList {
             pending_notice: None,
             wanted: None,
             focus_request: None,
+            custom_default_pattern: None,
+            pattern_is_default: false,
         }
+    }
+
+    /// The pattern proposed for documents without a rule or learned pattern,
+    /// instead of the built-in ones.
+    pub fn with_default_pattern(mut self, pattern: Option<String>) -> Self {
+        self.custom_default_pattern = pattern;
+        self
+    }
+
+    /// Where the proposed pattern of this entry comes from; `None` when no
+    /// pattern fits.
+    pub fn pattern_source(&self, item: &ReviewItem) -> Option<PatternSource> {
+        choose_pattern(
+            item.proposed_pattern.as_deref(),
+            self.custom_default_pattern.as_deref(),
+            &item.fields,
+        )
+        .map(|chosen| chosen.source)
     }
 
     /// Opens the form on the entry of `path` with the cursor in `field` as soon
@@ -252,6 +281,13 @@ impl ReviewList {
     pub fn preview(&self) -> Option<PathBuf> {
         let fields = self.form.fields().ok()?;
         render_pattern(self.form.pattern.trim(), &fields)
+    }
+
+    /// The field the pattern needs and the form leaves empty, if the pattern
+    /// reads and the fields are valid.
+    pub fn missing_field(&self) -> Option<Field> {
+        let fields = self.form.fields().ok()?;
+        missing_field(self.form.pattern.trim(), &fields)
     }
 
     /// The list the work returned. The cursor stays on the entry it was on, if
@@ -330,6 +366,19 @@ impl ReviewList {
         if self.selected().is_some() {
             *self.form.text_mut(field) = text;
             self.problem = None;
+            if field == FormField::Pattern {
+                self.pattern_is_default = false;
+            } else if self.pattern_is_default {
+                self.follow_fields_with_default_pattern();
+            }
+        }
+    }
+
+    fn follow_fields_with_default_pattern(&mut self) {
+        if let Ok(fields) = self.form.fields() {
+            self.form.pattern =
+                default_pattern_for(self.custom_default_pattern.as_deref(), &fields)
+                    .unwrap_or_default();
         }
     }
 
@@ -427,7 +476,14 @@ impl ReviewList {
     /// Takes the form from the entry under the cursor. What went wrong with
     /// the last try belongs to the document it was tried on.
     fn fill_form(&mut self) {
-        self.form = self.selected().map(Form::of).unwrap_or_default();
+        let custom_default = self.custom_default_pattern.clone();
+        self.form = self
+            .selected()
+            .map(|item| Form::of(item, custom_default.as_deref()))
+            .unwrap_or_default();
+        self.pattern_is_default = self
+            .selected()
+            .is_some_and(|item| item.proposed_pattern.is_none());
         self.problem = None;
     }
 }
@@ -509,6 +565,32 @@ pub mod tests {
         list
     }
 
+    /// Two documents no rule covers: one the default pattern fills in, one
+    /// without a date that it cannot.
+    pub fn default_pattern_list() -> ReviewList {
+        let [one, two] = <[_; 2]>::try_from(ids()).unwrap();
+        let mut frost = item(one, "scan-1.pdf", "Frost");
+        frost.proposed_pattern = None;
+        frost.fields.number = Some("3318".to_owned());
+        let mut undated = item(two, "scan-2.pdf", "Agency B");
+        undated.proposed_pattern = None;
+        undated.fields.date = None;
+        let mut list = ReviewList::new();
+        list.loaded(vec![frost, undated]);
+        list
+    }
+
+    /// One document whose text gave nothing.
+    pub fn nothing_recognised_list() -> ReviewList {
+        let [one, _] = <[_; 2]>::try_from(ids()).unwrap();
+        let mut blank = item(one, "scan-1.pdf", "");
+        blank.proposed_pattern = None;
+        blank.fields = DocumentFields::default();
+        let mut list = ReviewList::new();
+        list.loaded(vec![blank]);
+        list
+    }
+
     /// More entries than the list shows, the first with names too long for
     /// the file column and the second with a short one.
     pub fn long_list() -> ReviewList {
@@ -531,6 +613,73 @@ pub mod tests {
                 .collect(),
         );
         list
+    }
+
+    #[test]
+    fn without_a_rule_the_form_starts_with_the_default_pattern_and_files_nothing() {
+        let mut list = default_pattern_list();
+
+        assert_eq!(
+            list.form().pattern,
+            "{year}/{year}{month}{day}_{sender}_{number}"
+        );
+        assert_eq!(
+            list.pattern_source(&list.rows()[0]),
+            Some(PatternSource::Default)
+        );
+        assert_eq!(
+            list.preview(),
+            Some(PathBuf::from("2024/20240309_Frost_3318"))
+        );
+        assert!(list.filed().is_none());
+
+        list.select(1);
+        assert_eq!(list.form().pattern, "", "no date, no pattern");
+        assert_eq!(list.pattern_source(&list.rows()[1]), None);
+    }
+
+    #[test]
+    fn a_rule_pattern_is_kept_over_the_default() {
+        let list = loaded_list();
+
+        assert_eq!(list.form().pattern, "{sender}/{date}_{kind}");
+        assert_eq!(
+            list.pattern_source(&list.rows()[0]),
+            Some(PatternSource::RuleOrProfile)
+        );
+    }
+
+    #[test]
+    fn a_configured_default_replaces_the_built_in_ones() {
+        let [one, _] = <[_; 2]>::try_from(ids()).unwrap();
+        let mut item = item(one, "scan-1.pdf", "Frost");
+        item.proposed_pattern = None;
+        let mut list = ReviewList::new().with_default_pattern(Some("{year}/{kind}".to_owned()));
+        list.loaded(vec![item]);
+
+        assert_eq!(list.form().pattern, "{year}/{kind}");
+    }
+
+    #[test]
+    fn the_default_pattern_follows_the_fields_until_the_pattern_is_typed() {
+        let mut list = default_pattern_list();
+        list.select(1);
+
+        list.set_text(FormField::Date, "2024-03-09".to_owned());
+        assert_eq!(list.form().pattern, "{year}/{year}{month}{day}_{sender}");
+
+        list.set_text(FormField::Pattern, "{kind}".to_owned());
+        list.set_text(FormField::Number, "1".to_owned());
+        assert_eq!(list.form().pattern, "{kind}");
+    }
+
+    #[test]
+    fn the_preview_names_the_field_a_pattern_misses() {
+        let mut list = loaded_list();
+        list.set_text(FormField::Sender, String::new());
+
+        assert_eq!(list.preview(), None);
+        assert_eq!(list.missing_field(), Some(Field::Sender));
     }
 
     #[test]

@@ -18,7 +18,7 @@ use std::ops::Range;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use ncrs_intake::LocationMode;
+use ncrs_intake::{pattern_is_valid, LocationMode};
 use ncrs_pipeline::Load;
 use serde::de::{Deserializer, Error as _, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
@@ -159,6 +159,9 @@ pub struct FilingSection {
     /// Keeps the position of the table for an error about a missing key.
     #[serde(default)]
     pub ai: Option<Spanned<AiSection>>,
+    /// Checked by `resolve_filing`: a pattern Hermes cannot render is ignored.
+    #[serde(default)]
+    pub default_pattern: Option<String>,
 }
 
 /// The `[modules.filing.ai]` section, unchecked.
@@ -275,6 +278,9 @@ pub struct Filing {
     /// capped when the pipeline starts.
     pub load: Load,
     pub ai: AiSetting,
+    /// The one pattern proposed for documents no rule covers, instead of the
+    /// built-in ones; only ever a pattern `pattern_is_valid` accepts.
+    pub default_pattern: Option<String>,
 }
 
 /// A location with an expanded, absolute, `..`-free path. Not looked up on
@@ -1180,6 +1186,12 @@ fn resolve_filing(section: &FilingSection, home: Option<&Path>) -> Result<Filing
         locations: Vec::new(),
         load: resolve_load(section.load.as_ref())?,
         ai: resolve_ai(section.ai.as_ref())?,
+        default_pattern: section
+            .default_pattern
+            .as_deref()
+            .map(str::trim)
+            .filter(|pattern| pattern_is_valid(pattern))
+            .map(str::to_owned),
     };
     let Some(listed) = &section.locations else {
         return Ok(filing);
@@ -1509,6 +1521,18 @@ fn filing_load_setting(load: Load) -> Setting {
     }
 }
 
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "the overview page that sets it comes next")
+)]
+fn default_pattern_setting(pattern: Option<&str>) -> Setting {
+    Setting {
+        tables: &[MODULES_TABLE, FILING_TABLE],
+        key: "default_pattern",
+        value: pattern.map(toml_edit::Value::from),
+    }
+}
+
 fn ai_enabled_setting(enabled: bool) -> Setting {
     Setting {
         tables: AI_TABLES,
@@ -1544,6 +1568,24 @@ pub fn write_filing_enabled(path: &Path, enabled: bool) -> Result<Config, Filing
 /// Sets `load` in `[modules.filing]`; same guarantees as [`write_theme_preset`].
 pub fn write_filing_load(path: &Path, load: Load) -> Result<Config, FilingWriteError> {
     write_setting(path, filing_load_setting(load), home_from_env().as_deref())
+}
+
+/// Sets `default_pattern` in `[modules.filing]`, or drops the line for
+/// `None`; same guarantees as [`write_theme_preset`]. The loader ignores a
+/// pattern Hermes cannot render, so a caller checks it with `pattern_is_valid`.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "the overview page that sets it comes next")
+)]
+pub fn write_default_pattern(
+    path: &Path,
+    pattern: Option<&str>,
+) -> Result<Config, FilingWriteError> {
+    write_setting(
+        path,
+        default_pattern_setting(pattern.map(str::trim)),
+        home_from_env().as_deref(),
+    )
 }
 
 /// Sets `enabled` in `[modules.filing.ai]`; same guarantees as [`write_theme_preset`].
@@ -2338,6 +2380,52 @@ mod tests {
             iced::Color::from_rgb8(0xff, 0xff, 0x55)
         );
         assert_the_filing_settings(&config);
+    }
+
+    fn default_pattern_of(content: &str) -> Option<String> {
+        load_filing(content, None).unwrap().filing.default_pattern
+    }
+
+    #[test]
+    fn a_valid_default_pattern_is_read_and_an_invalid_one_is_ignored() {
+        assert_eq!(default_pattern_of("[modules.filing]\n"), None);
+        assert_eq!(
+            default_pattern_of("[modules.filing]\ndefault_pattern = \"{year}/{sender}\"\n"),
+            Some("{year}/{sender}".to_owned())
+        );
+        for invalid in ["{nope}/x", "", "/abs/{year}", "{year"] {
+            let text = format!("[modules.filing]\ndefault_pattern = '{invalid}'\n");
+            assert_eq!(default_pattern_of(&text), None, "{invalid}");
+        }
+    }
+
+    #[test]
+    fn the_default_pattern_is_written_changed_and_dropped_keeping_the_rest() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "version = 1\n# my note\nlang = \"en\"\n\n[modules.filing]\nenabled = true\n",
+        )
+        .unwrap();
+
+        let written = write_default_pattern(&path, Some("{year}/{number}")).unwrap();
+        assert_eq!(
+            written.filing.default_pattern.as_deref(),
+            Some("{year}/{number}")
+        );
+        let changed = write_default_pattern(&path, Some("{date}_{sender}")).unwrap();
+        assert_eq!(
+            changed.filing.default_pattern.as_deref(),
+            Some("{date}_{sender}")
+        );
+        let dropped = write_default_pattern(&path, None).unwrap();
+        assert_eq!(dropped.filing.default_pattern, None);
+
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("# my note"));
+        assert!(text.contains("enabled = true"));
+        assert!(!text.contains("default_pattern"));
     }
 
     #[test]

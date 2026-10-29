@@ -2946,6 +2946,7 @@ dependencies = [
  "ncrs-pipeline",
  "ncrs-sandbox",
  "nucleo-matcher",
+ "objc2-foundation 0.3.2",
  "rfd",
  "russh",
  "russh-sftp",

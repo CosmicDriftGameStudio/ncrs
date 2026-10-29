@@ -3219,8 +3219,8 @@
     {
       "key": "review_list.no_rules_hint",
       "context": "Hint line at the top of the review page while Hermes has no confirmed rule yet and the AI model is not ready: why the fields are empty and the two ways to fill them.",
-      "en": "No rules yet. Fill in one document and confirm it, then Hermes suggests a rule. Or load the AI model, then it fills in the fields itself.",
-      "de": "Noch keine Regeln. Fülle ein Dokument einmal aus und bestätige es, dann schlägt Hermes eine Regel vor. Oder lade das KI-Modell, dann füllt es die Felder selbst."
+      "en": "No rules yet. Hermes suggests a default pattern for each document: check the fields and confirm. Load the AI model and it fills in the fields itself.",
+      "de": "Noch keine Regeln. Hermes schlägt für jedes Dokument ein Standardmuster vor: Felder prüfen und bestätigen. Mit dem KI-Modell füllt es die Felder selbst aus."
     },
     {
       "key": "review_list.loading",
@@ -3269,6 +3269,18 @@
       "context": "Review reason in the review list: no rule matched the document.",
       "en": "No rule matches",
       "de": "Keine Regel passt"
+    },
+    {
+      "key": "review_list.reason_default_pattern",
+      "context": "Review reason in the review list: the pattern in the form is the default pattern, not one from a rule.",
+      "en": "Default pattern, please check",
+      "de": "Standardmuster, bitte prüfen"
+    },
+    {
+      "key": "review_list.reason_nothing_recognised",
+      "context": "Review reason in the review list: no rule matches and no field of the document was recognised, so there is no pattern either.",
+      "en": "No rule and nothing recognised",
+      "de": "Keine Regel, nichts erkannt"
     },
     {
       "key": "review_list.reason_image_no_text",
@@ -3405,14 +3417,20 @@
     {
       "key": "review_list.preview",
       "context": "Live preview in the review list. Takes the path the document would be filed under.",
-      "en": "Will be filed as: {path}",
-      "de": "Wird abgelegt als: {path}"
+      "en": "Will be filed as {path}",
+      "de": "Wird abgelegt als {path}"
     },
     {
       "key": "review_list.preview_none",
       "context": "Shown in the review list instead of the preview when the pattern does not fit the fields.",
       "en": "The pattern does not fit the fields yet",
       "de": "Das Muster passt noch nicht zu den Feldern"
+    },
+    {
+      "key": "review_list.preview_missing_field",
+      "context": "Shown in the review list instead of the preview when the pattern needs a field that is empty. Takes the name of that field.",
+      "en": "The pattern needs the field {field}",
+      "de": "Das Muster braucht noch das Feld {field}"
     },
     {
       "key": "review_list.problem_date",

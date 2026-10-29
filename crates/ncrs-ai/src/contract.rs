@@ -120,7 +120,7 @@ pub fn output_schema(open_fields: &[Field]) -> Json {
 
 fn field_schema(field: Field) -> Json {
     let hint = match field {
-        Field::Sender => "who sent the document",
+        Field::Sender => "who issued the document: the letterhead, company or sender line; never the addressee or recipient, never the name after Mr/Mrs/Herr/Frau in the address block",
         Field::Kind => "what kind of document it is, for example invoice",
         Field::TaxContext => "one of company, private, none",
         Field::Date => "the document date as YYYY-MM-DD",

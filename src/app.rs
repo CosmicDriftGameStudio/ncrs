@@ -4717,6 +4717,15 @@ impl App {
                 self.window_size,
                 self.hermes_badges(),
                 self.review_field_guide(),
+                review_list_ui::PreviewRoot {
+                    archive: self
+                        .filing_config
+                        .locations
+                        .iter()
+                        .find(|location| location.is_target)
+                        .map(|location| location.path.as_path()),
+                    home: &self.home,
+                },
                 self.lang,
                 &self.palette,
             );
@@ -7540,8 +7549,14 @@ impl App {
 
     /// A panel inside an archive can be read and copied from, nothing else.
     fn apply_unless_refused(&mut self, message: Message) -> Task<Message> {
-        if self.hermes_is_off() && asks_for_hermes(&message) {
-            return self.explain_hermes_is_off();
+        if asks_for_hermes(&message) {
+            if self.hermes_is_restarting() {
+                let text = self.lang.text(Msg::StatusHermesRestarting).to_owned();
+                return self.show_notice(text);
+            }
+            if self.hermes_is_off() {
+                return self.explain_hermes_is_off();
+            }
         }
         let panel = self.panel(self.source_side());
         match archive_refusal(panel, &message).or_else(|| remote_refusal(panel, &message)) {
@@ -8395,7 +8410,9 @@ impl App {
         }
         self.context_menu = None;
         self.review_list_generation = self.review_list_generation.wrapping_add(1);
-        self.review_list = Some(ReviewList::new());
+        self.review_list = Some(
+            ReviewList::new().with_default_pattern(self.filing_config.default_pattern.clone()),
+        );
         let counts = if self.filing_status.hermes_counts().is_none() {
             self.request_hermes_counts()
         } else {
@@ -10480,8 +10497,13 @@ impl App {
                 .is_some_and(FilingModule::has_configured_locations)
     }
 
+    /// The module is rebuilt after a setting changed; it is not off then.
+    fn hermes_is_restarting(&self) -> bool {
+        self.filing_restart.is_some()
+    }
+
     fn hermes_is_off(&self) -> bool {
-        self.filing.is_none()
+        self.filing.is_none() && !self.hermes_is_restarting()
     }
 
     /// Sends the user to the switch that turns Hermes on, with the reason in
@@ -18357,6 +18379,7 @@ mod filing_tests {
             locations: Vec::new(),
             load: ncrs_pipeline::Load::default(),
             ai: crate::config::AiSetting::Off,
+            default_pattern: None,
         };
 
         let (app, _task) = App::with_fixed_panels().with_filing(&off, Some(db.clone()), store);
@@ -18422,6 +18445,7 @@ mod filing_setup_tests {
             ],
             load: Load::default(),
             ai: crate::config::AiSetting::Off,
+            default_pattern: None,
         }
     }
 
@@ -18766,6 +18790,7 @@ mod filing_setup_tests {
             locations: Vec::new(),
             load: Load::default(),
             ai: crate::config::AiSetting::Off,
+            default_pattern: None,
         };
         let (empty, _empty_start) =
             App::with_fixed_panels().with_filing(&without_locations, None, store());
@@ -24041,6 +24066,19 @@ mod hermes_roles_and_off_tests {
             app.status_error(),
             Some("Hermes is off. Switch it on here to sort your documents.")
         );
+    }
+
+    #[test]
+    fn a_hermes_command_while_hermes_restarts_says_so_and_opens_nothing() {
+        let mut app = App::with_fixed_panels();
+        app.filing_restart = Some((1, Filing::default()));
+        assert!(!app.hermes_is_off());
+
+        drop(app.update(Message::ReviewList(ReviewListMessage::Open)));
+
+        assert!(app.review_list_for_test().is_none());
+        assert!(app.settings_for_test().is_none());
+        assert_eq!(app.notice_for_test(), Some("Hermes restarting …"));
     }
 
     #[test]

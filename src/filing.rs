@@ -306,6 +306,22 @@ pub struct FilingModule {
     /// The AI provider the setting asked for. Built once, so the status page
     /// and the pipeline see the same model.
     ai: AiWiring,
+    /// Given to the pipeline so it calls no platform API.
+    own_name: Option<String>,
+}
+
+/// The name of the person using the app, as the system has it; `None` where
+/// the system has none to give, as nothing else would be more than a guess.
+#[cfg(target_os = "macos")]
+fn own_full_name() -> Option<String> {
+    let full_name = objc2_foundation::NSFullUserName().to_string();
+    let trimmed = full_name.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn own_full_name() -> Option<String> {
+    None
 }
 
 /// How much text of a document the local model takes in; longer ones are cut.
@@ -870,6 +886,7 @@ impl FilingModule {
             .map_or(AiWiring::Off, |path| wire_ai(&filing.ai, path));
         let mut module = Self {
             ai,
+            own_name: own_full_name(),
             db_path: db_path.clone().unwrap_or_default(),
             store,
             index: Arc::default(),
@@ -1033,7 +1050,12 @@ impl FilingModule {
         );
         let runner = Runner::start(
             Settings::new(self.load, logical_cores),
-            intake_steps(Arc::new(handle), Arc::new(chain), self.ai_provider()),
+            intake_steps(
+                Arc::new(handle),
+                Arc::new(chain),
+                self.ai_provider(),
+                self.own_name.clone(),
+            ),
             locations,
             Arc::new(SystemClock),
         );
@@ -1434,6 +1456,7 @@ impl FilingModule {
             has_configured_locations: false,
             index_encrypted: None,
             ai: AiWiring::Off,
+            own_name: None,
         }
     }
 
@@ -1519,6 +1542,7 @@ mod tests {
             locations,
             load: Load::default(),
             ai: crate::config::AiSetting::Off,
+            default_pattern: None,
         }
     }
 
@@ -1958,6 +1982,7 @@ mod tests {
             locations: vec![location(dir.path())],
             load: Load::default(),
             ai: crate::config::AiSetting::Off,
+            default_pattern: None,
         };
 
         assert!(FilingModule::start(&off, Some(db.clone()), shared(&store)).is_none());

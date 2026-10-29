@@ -4,6 +4,7 @@
 
 mod archive_profile;
 mod classify;
+mod default_pattern;
 mod error;
 mod extract;
 mod filing_plan;
@@ -27,13 +28,16 @@ pub use archive_profile::{
     DocumentPattern,
 };
 pub use classify::{classify, is_image_file, text_is_readable, Skip};
+pub use default_pattern::{
+    choose_pattern, default_pattern_for, ChosenPattern, PatternSource, DEFAULT_PATTERNS,
+};
 pub use error::IntakeError;
 pub use extract::{
     extract_amount, extract_date, extract_number, parse_amount, parse_currency, parse_date,
 };
 pub use filing_plan::{
-    contains_condition_holds, pattern_is_valid, plan, render_pattern, FilingPlan, PlanInput,
-    Planning, FIELD_ORDER,
+    contains_condition_holds, missing_field, pattern_is_valid, plan, render_pattern, FilingPlan,
+    PlanInput, Planning, FIELD_ORDER,
 };
 pub use location::{Location, LocationMode};
 pub use ocr::{
