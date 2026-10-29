@@ -1990,11 +1990,11 @@ mod filing_setup_card {
     use crate::config::FilingLocation;
     use crate::messages::FilingSetupMessage;
     use crate::ui::filing_setup::{
-        target_choice_id, ADD_DOCUMENT_FOLDER_ID, ADD_TUBES_FOLDER_ID, USE_PANEL_FOR_DOCUMENTS_ID,
-        USE_PANEL_FOR_TUBES_ID,
+        target_choice_id, ADD_DOCUMENT_FOLDER_ID, ADD_INBOX_FOLDER_ID, USE_PANEL_FOR_DOCUMENTS_ID,
+        USE_PANEL_FOR_INBOX_ID,
     };
 
-    const CHOOSE_CENTRAL: &str = "Choose which folder is the Central Filing.";
+    const CHOOSE_FILING_LOCATION: &str = "Choose which folder is the filing location.";
     const NO_DOCUMENT_FOLDER: &str = "Add at least one folder where you keep your documents.";
     const NO_FOLDER_YET: &str = "No folder yet.";
     const VAULT_NOTE: &str = "With an unencrypted index, do not add folders from an encrypted drive (for example a mounted Cryptomator vault): their text would end up in the index in plain form. ncrs does not detect such drives.";
@@ -2080,7 +2080,7 @@ mod filing_setup_card {
 
         for label in [
             "Hermes",
-            "Tubes: where do new documents arrive?",
+            "Inbox: where do new documents arrive?",
             "Where do you keep your documents?",
             NO_FOLDER_YET,
         ] {
@@ -2114,8 +2114,8 @@ mod filing_setup_card {
 
         for (pick_id, panel_id, mode) in [
             (
-                ADD_TUBES_FOLDER_ID,
-                USE_PANEL_FOR_TUBES_ID,
+                ADD_INBOX_FOLDER_ID,
+                USE_PANEL_FOR_INBOX_ID,
                 LocationMode::Inbox,
             ),
             (
@@ -2138,11 +2138,11 @@ mod filing_setup_card {
     }
 
     #[test]
-    fn one_document_folder_is_the_central_filing_without_radio_buttons() {
+    fn one_document_folder_is_the_filing_location_without_radio_buttons() {
         let app = App::with_filing_setup(&[documents("/home/test/Filed", false)], false);
 
-        assert!(shows(&app, "Central Filing"));
-        assert!(!shows(&app, "Records"));
+        assert!(shows(&app, "Filing location"));
+        assert!(!shows(&app, "Archive"));
         assert!(
             messages_after_click(&app, "~/Filed").is_empty(),
             "a plain path is not a choice"
@@ -2153,8 +2153,8 @@ mod filing_setup_card {
     fn a_choice_between_document_folders_sends_the_global_index() {
         let app = App::with_filing_setup(&filled(), false);
 
-        assert!(shows(&app, "Central Filing"));
-        assert!(shows(&app, "Records"));
+        assert!(shows(&app, "Filing location"));
+        assert!(shows(&app, "Archive"));
         assert_eq!(
             messages_after_clicking_id(&app, target_choice_id(3)),
             [setup_message(FilingSetupMessage::SetTarget(3))]
@@ -2179,7 +2179,7 @@ mod filing_setup_card {
             false,
         );
 
-        assert!(shows(&app, CHOOSE_CENTRAL));
+        assert!(shows(&app, CHOOSE_FILING_LOCATION));
         assert!(messages_after_click(&app, "Save").is_empty());
     }
 
@@ -2893,6 +2893,47 @@ mod review_list_card {
         matches_snapshot(after_filing(), "review_list_filed_en");
     }
 
+    fn without_rules(list: ReviewList, language: Language) -> App {
+        App::with_review_list(list)
+            .in_language(language)
+            .with_hermes_counts(ncrs_index::HermesCounts::default())
+    }
+
+    #[test]
+    fn the_page_explains_empty_fields_while_there_are_no_rules_and_no_ai() {
+        let hint = "No rules yet. Fill in one document and confirm it, then Hermes suggests a rule. Or load the AI model, then it fills in the fields itself.";
+        let counts_unknown = App::with_review_list(loaded_list());
+        simulator(&counts_unknown).find(hint).unwrap_err();
+        let with_rules =
+            App::with_review_list(loaded_list()).with_hermes_counts(ncrs_index::HermesCounts {
+                confirmed_rules: 2,
+                ..Default::default()
+            });
+        simulator(&with_rules).find(hint).unwrap_err();
+        simulator(&without_rules(loaded_list(), Language::English))
+            .find(hint)
+            .unwrap();
+    }
+
+    #[test]
+    fn the_hint_about_missing_rules_matches_its_snapshots() {
+        for (language, name) in [
+            (Language::English, "review_list_no_rules_en"),
+            (Language::German, "review_list_no_rules_de"),
+        ] {
+            let app = without_rules(loaded_list(), language);
+            let matches = simulator(&app)
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(
+                matches,
+                "the view does not match tests/snapshots/{name}.png"
+            );
+        }
+    }
+
     #[test]
     fn long_names_and_a_long_list_stay_inside_their_columns() {
         matches_snapshot(long_list(), "review_list_long_en");
@@ -3378,7 +3419,7 @@ mod rule_suggestions_card {
 
     #[test]
     fn the_view_opens_busy_and_a_missing_index_ends_in_a_complaint() {
-        let mut app = App::with_fixed_panels();
+        let mut app = App::with_fixed_panels().with_starting_hermes_for_test();
 
         let _ = app.update(suggestions_message(RuleSuggestionsMessage::Open));
 
@@ -3392,7 +3433,7 @@ mod rule_suggestions_card {
 
     #[test]
     fn a_late_answer_of_an_earlier_view_is_dropped() {
-        let mut app = App::with_fixed_panels();
+        let mut app = App::with_fixed_panels().with_starting_hermes_for_test();
         let _ = app.update(suggestions_message(RuleSuggestionsMessage::Open));
         let _ = app.update(suggestions_message(RuleSuggestionsMessage::Close));
         let _ = app.update(suggestions_message(RuleSuggestionsMessage::Open));
@@ -3688,7 +3729,7 @@ mod reorganisation_plan_card {
 
     #[test]
     fn opening_without_an_index_ends_in_a_complaint() {
-        let mut app = App::with_fixed_panels();
+        let mut app = App::with_fixed_panels().with_starting_hermes_for_test();
 
         let _ = app.update(plan_message(ReorganisationPlanMessage::Open));
 
@@ -3703,7 +3744,7 @@ mod reorganisation_plan_card {
 
     #[test]
     fn a_late_answer_of_an_earlier_view_is_dropped() {
-        let mut app = App::with_fixed_panels();
+        let mut app = App::with_fixed_panels().with_starting_hermes_for_test();
         let _ = app.update(plan_message(ReorganisationPlanMessage::Open));
         let _ = app.update(plan_message(ReorganisationPlanMessage::Close));
         let _ = app.update(plan_message(ReorganisationPlanMessage::Open));
@@ -3720,7 +3761,7 @@ mod reorganisation_plan_card {
     fn opening_and_closing_the_view_changes_no_file() {
         let archive = archive();
         let before = archive.snapshot();
-        let mut app = App::with_fixed_panels();
+        let mut app = App::with_fixed_panels().with_starting_hermes_for_test();
 
         let _ = app.update(plan_message(ReorganisationPlanMessage::Open));
         let _ = app.update(plan_message(ReorganisationPlanMessage::Loaded {
@@ -3826,7 +3867,7 @@ mod title_bar {
 
     #[test]
     fn a_click_on_the_hermes_chip_opens_the_inspection() {
-        let mut app = with_hermes();
+        let mut app = with_hermes().with_starting_hermes_for_test();
         let messages = messages_after_click(&app, HERMES_CHIP_ID);
         assert_eq!(
             messages,

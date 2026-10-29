@@ -1,5 +1,5 @@
-//! The filing setup: the user adds folders as Tubes (inboxes) and as document
-//! folders (archives), marks which document folder is the Central Filing, and
+//! The filing setup: the user adds folders as inboxes and as document
+//! folders (archives), marks which document folder is the filing location, and
 //! saves the list to `[modules.filing]` in the config file.
 //!
 //! The state only. Looking up a folder and writing the file touch the disk
@@ -33,7 +33,7 @@ pub enum SetupNote {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SetupProblem {
     NoDocumentFolder,
-    ChooseCentralFiling,
+    ChooseFilingLocation,
     Rule(FilingRuleViolation),
 }
 
@@ -89,7 +89,7 @@ impl FilingSetup {
         }
     }
 
-    /// From two document folders on the user picks the Central Filing.
+    /// From two document folders on the user picks the filing location.
     pub fn chooses_target(&self) -> bool {
         self.archive_indices().nth(1).is_some()
     }
@@ -115,7 +115,7 @@ impl FilingSetup {
             return Some(SetupProblem::NoDocumentFolder);
         }
         if self.chooses_target() && self.target_index().is_none() {
-            return Some(SetupProblem::ChooseCentralFiling);
+            return Some(SetupProblem::ChooseFilingLocation);
         }
         config::check_filing_rules(&self.locations_to_save())
             .err()
@@ -175,7 +175,7 @@ impl FilingSetup {
         }
     }
 
-    /// Marks the document folder at `index` as the Central Filing.
+    /// Marks the document folder at `index` as the filing location.
     pub fn set_target(&mut self, index: usize) {
         let is_archive = self
             .chosen
@@ -387,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn one_document_folder_is_the_central_filing_without_a_choice() {
+    fn one_document_folder_is_the_filing_location_without_a_choice() {
         let mut setup = FilingSetup::new(&[]);
         added(&mut setup, LocationMode::Archive, "filed");
 
@@ -415,12 +415,12 @@ mod tests {
 
         assert!(setup.chooses_target());
         assert_eq!(setup.target_index(), None);
-        assert_eq!(setup.problem(), Some(SetupProblem::ChooseCentralFiling));
+        assert_eq!(setup.problem(), Some(SetupProblem::ChooseFilingLocation));
         assert_eq!(setup.start_saving(), None);
 
         setup.set_target(0);
         assert_eq!(setup.target_index(), None, "a tube cannot be the target");
-        assert_eq!(setup.problem(), Some(SetupProblem::ChooseCentralFiling));
+        assert_eq!(setup.problem(), Some(SetupProblem::ChooseFilingLocation));
 
         setup.set_target(2);
         assert!(setup.can_save());
@@ -443,7 +443,7 @@ mod tests {
         assert!(setup.can_save());
 
         setup.remove(1);
-        assert_eq!(setup.problem(), Some(SetupProblem::ChooseCentralFiling));
+        assert_eq!(setup.problem(), Some(SetupProblem::ChooseFilingLocation));
 
         setup.remove(0);
         assert!(!setup.chooses_target());
@@ -712,7 +712,7 @@ mod tests {
         let mut three = configured();
         three.push(location(LocationMode::Archive, "Third", false));
         let refused = locations_with_role(&three, &folder("Filed"), FolderRole::Inbox).unwrap_err();
-        assert_eq!(refused.problem, SetupProblem::ChooseCentralFiling);
+        assert_eq!(refused.problem, SetupProblem::ChooseFilingLocation);
     }
 
     #[test]

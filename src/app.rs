@@ -439,6 +439,27 @@ fn resets_type_ahead(message: &Message) -> bool {
     )
 }
 
+/// The user asks for something only Hermes can do, as opposed to the answers
+/// to what it was asked before.
+fn asks_for_hermes(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::HermesFile(
+            HermesFileMessage::HandToInbox
+                | HermesFileMessage::ProcessAgain
+                | HermesFileMessage::SetRole(_)
+                | HermesFileMessage::ToggleExclusion
+                | HermesFileMessage::ShowInInspection
+        ) | Message::QuickFix(QuickFixMessage::Open)
+            | Message::RuleSuggestions(RuleSuggestionsMessage::Open)
+            | Message::ReviewList(ReviewListMessage::Open)
+            | Message::SavedQueries(SavedQueriesMessage::Open)
+            | Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
+            | Message::FilingStatus(FilingStatusMessage::Open | FilingStatusMessage::Toggle)
+            | Message::UndoReorganisation
+    )
+}
+
 /// Other things the user does end the editing of the path or the command line:
 /// the text field loses the focus to them without telling the app.
 fn leaves_bar_fields(message: &Message) -> bool {
@@ -4691,6 +4712,7 @@ impl App {
                 view,
                 self.window_size,
                 self.hermes_badges(),
+                self.review_field_guide(),
                 self.lang,
                 &self.palette,
             );
@@ -5400,7 +5422,7 @@ impl App {
             )
         });
         let hermes_enabled = |action| self.hermes_action_enabled(action);
-        let hermes = self.hermes_active().then(|| HermesMenu {
+        let hermes = self.hermes_ready().then(|| HermesMenu {
             excluded: self.cursor_is_excluded_from_hermes(),
             is_enabled: &hermes_enabled,
         });
@@ -5469,6 +5491,13 @@ impl App {
             return false;
         };
         let role_free = |role| role_of(&entry.path, &self.filing_config.locations) != Some(role);
+        let needs_locations = !matches!(
+            action,
+            HermesAction::SetInbox | HermesAction::SetFilingLocation | HermesAction::SetArchive
+        );
+        if needs_locations && !self.hermes_active() {
+            return false;
+        }
         match action {
             HermesAction::ShowSuggestion => !self.inquiry_paths().is_empty(),
             HermesAction::HandToInbox => self
@@ -5505,7 +5534,12 @@ impl App {
             | HermesFileMessage::ToggleExclusion
             | HermesFileMessage::ShowInInspection => {}
         }
-        if self.overlay_is_open() || self.search_open || !self.hermes_active() {
+        let available = if matches!(message, HermesFileMessage::SetRole(_)) {
+            self.hermes_ready()
+        } else {
+            self.hermes_active()
+        };
+        if self.overlay_is_open() || self.search_open || !available {
             return Task::none();
         }
         let Some((path, is_dir)) = self
@@ -5567,17 +5601,20 @@ impl App {
             match filing_setup::locations_with_role(&self.filing_config.locations, folder, role) {
                 Ok(chosen) => chosen,
                 Err(refused) => {
-                    let problem = crate::ui::filing_setup::problem_sentence(
-                        refused.problem,
-                        &refused.chosen,
-                        self.lang,
-                        &self.home,
-                    );
-                    let text = fill_template(
-                        self.lang.text(Msg::StatusHermesRoleRefused),
-                        &[("{problem}", &problem)],
-                    );
-                    return self.show_notice(text);
+                    let text = match refused.problem {
+                        crate::filing_setup::SetupProblem::NoDocumentFolder => self
+                            .lang
+                            .text(Msg::StatusHermesRoleNeedsFilingLocation)
+                            .to_owned(),
+                        problem => crate::ui::filing_setup::problem_sentence(
+                            problem,
+                            &refused.chosen,
+                            self.lang,
+                            &self.home,
+                        ),
+                    };
+                    self.set_status_error(&text);
+                    return Task::none();
                 }
             };
         let written_path = config_path.clone();
@@ -5608,11 +5645,18 @@ impl App {
                 Task::batch([task, notice])
             }
             Err(error) => {
+                let reason = crate::ui::filing_setup::write_failure_sentence(
+                    &error,
+                    &self.filing_config.locations,
+                    self.lang,
+                    &self.home,
+                );
                 let text = fill_template(
                     self.lang.text(Msg::StatusHermesRoleFailed),
-                    &[("{reason}", &format!("{error:?}"))],
+                    &[("{reason}", &reason)],
                 );
-                self.show_notice(text)
+                self.set_status_error(&text);
+                Task::none()
             }
         }
     }
@@ -7457,6 +7501,9 @@ impl App {
 
     /// A panel inside an archive can be read and copied from, nothing else.
     fn apply_unless_refused(&mut self, message: Message) -> Task<Message> {
+        if self.hermes_is_off() && asks_for_hermes(&message) {
+            return self.explain_hermes_is_off();
+        }
         let panel = self.panel(self.source_side());
         match archive_refusal(panel, &message).or_else(|| remote_refusal(panel, &message)) {
             Some(refusal) => {
@@ -8309,7 +8356,27 @@ impl App {
         self.context_menu = None;
         self.review_list_generation = self.review_list_generation.wrapping_add(1);
         self.review_list = Some(ReviewList::new());
-        self.run_review_load()
+        let counts = if self.filing_status.hermes_counts().is_none() {
+            self.request_hermes_counts()
+        } else {
+            Task::none()
+        };
+        Task::batch([self.run_review_load(), counts])
+    }
+
+    fn review_field_guide(&self) -> review_list_ui::FieldGuide {
+        review_list_ui::FieldGuide {
+            confirmed_rules: self
+                .filing_status
+                .hermes_counts()
+                .map(|counts| counts.confirmed_rules),
+            ai_is_ready: !matches!(
+                self.filing_status.ai(),
+                crate::filing::AiStatus::Off
+                    | crate::filing::AiStatus::NotDownloaded
+                    | crate::filing::AiStatus::Failed(_)
+            ),
+        }
     }
 
     /// Escape leaves the form first, the list second.
@@ -9880,8 +9947,10 @@ impl App {
         };
         let mut palette =
             CommandPalette::new(scope, self.lang, &self.keymap, &self.recent_commands);
-        if !self.hermes_active() {
+        if !self.hermes_ready() {
             palette = palette.without_hermes_file_commands();
+        } else if !self.hermes_active() {
+            palette = palette.without_hermes_location_commands();
         } else if !self.hermes_action_enabled(HermesAction::ProcessAgain) {
             palette = palette.without_command(KeyAction::HermesProcessAgain);
         }
@@ -10238,10 +10307,34 @@ impl App {
         self.filing.as_ref().and_then(FilingModule::document_finder)
     }
 
+    fn hermes_ready(&self) -> bool {
+        self.filing
+            .as_ref()
+            .is_some_and(|module| matches!(module.phase(), Phase::Ready))
+    }
+
     fn hermes_active(&self) -> bool {
-        self.filing.as_ref().is_some_and(|module| {
-            matches!(module.phase(), Phase::Ready) && module.has_configured_locations()
-        })
+        self.hermes_ready()
+            && self
+                .filing
+                .as_ref()
+                .is_some_and(FilingModule::has_configured_locations)
+    }
+
+    fn hermes_is_off(&self) -> bool {
+        self.filing.is_none()
+    }
+
+    /// Sends the user to the switch that turns Hermes on, with the reason in
+    /// the status bar. The settings tab is brought forward, not opened twice.
+    fn explain_hermes_is_off(&mut self) -> Task<Message> {
+        let row = self.lang.text(Msg::SettingsRowHermesEnabled).to_owned();
+        let shown = self.show_setting(crate::messages::SettingsFeature::Hermes, Some(row));
+        if self.settings.is_some() {
+            let reason = self.lang.text(Msg::StatusHermesIsOff).to_owned();
+            self.set_status_error(&reason);
+        }
+        shown
     }
 
     /// What Hermes says about the file under the cursor of the active panel.
@@ -13044,6 +13137,13 @@ impl App {
         let mut app = Self::with_fixed_panels();
         app.reorganisation = Some(view);
         app
+    }
+
+    /// A Hermes module that is switched on but has no index yet, so its pages
+    /// open and complain instead of reading anything.
+    pub fn with_starting_hermes_for_test(mut self) -> Self {
+        self.filing = Some(FilingModule::in_phase(Phase::Starting));
+        self
     }
 
     /// A ready Hermes module without an index, so Quick Open asks for documents.
@@ -18168,7 +18268,7 @@ mod filing_setup_tests {
         assert_eq!(count(LocationMode::Inbox), 2);
         assert_eq!(count(LocationMode::Archive), 2);
         assert_eq!(app.active_panel().path, panel_folder);
-        assert_eq!(setup.problem(), Some(SetupProblem::ChooseCentralFiling));
+        assert_eq!(setup.problem(), Some(SetupProblem::ChooseFilingLocation));
 
         let filed = setup
             .chosen()
@@ -18787,7 +18887,7 @@ mod command_palette_tests {
 
     #[test]
     fn enter_on_filing_status_opens_the_page_and_closes_the_palette() {
-        let mut app = App::with_fixed_panels();
+        let mut app = App::with_fixed_panels().with_starting_hermes_for_test();
         open_palette(&mut app);
         type_into_palette(&mut app, "inspection");
         drop(app.update(palette_message(CommandPaletteMessage::Run)));
@@ -18798,7 +18898,7 @@ mod command_palette_tests {
 
     #[test]
     fn a_click_on_an_entry_runs_it() {
-        let mut app = App::with_fixed_panels();
+        let mut app = App::with_fixed_panels().with_starting_hermes_for_test();
         open_palette(&mut app);
         type_into_palette(&mut app, "inspection");
         drop(app.update(palette_message(CommandPaletteMessage::Select(1))));
@@ -23427,5 +23527,151 @@ mod window_focus_tests {
         drop(app.update(Message::WindowFocused));
         assert_eq!(app.left_panel.request_id, request_before);
         assert_ne!(app.right_panel.request_id, 0);
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod hermes_roles_and_off_tests {
+    use super::*;
+    use crate::context_menu::{HermesAction, SubEntry};
+    use crate::messages::SettingsFeature;
+    use iced_test::futures::futures::StreamExt as _;
+    use iced_test::runtime::{task, Action};
+
+    const LEFT: PanelSide = PanelSide::Left;
+    // Rows of the fixed left panel: `..`, then "Documents", a directory.
+    const DOCUMENTS: usize = 1;
+
+    /// Delivers `message` and everything the tasks it starts report.
+    async fn settle(app: &mut App, message: Message) {
+        let mut queue = vec![message];
+        while let Some(next) = queue.pop() {
+            let Some(mut stream) = task::into_stream(app.update(next)) else {
+                continue;
+            };
+            while let Some(action) = stream.next().await {
+                if let Action::Output(reported) = action {
+                    if !matches!(reported, Message::NoticeExpired(_)) {
+                        queue.push(reported);
+                    }
+                }
+            }
+        }
+    }
+
+    fn ready_hermes_without_locations(config_dir: &tempfile::TempDir) -> App {
+        let mut app = App::with_fixed_panels();
+        app.filing = Some(FilingModule::in_phase(Phase::Ready));
+        let config_path = config_dir.path().join("config.toml");
+        std::fs::write(&config_path, "").unwrap();
+        app.config_path = Some(config_path);
+        app
+    }
+
+    fn submenu_items(app: &mut App) -> Vec<(HermesAction, bool)> {
+        drop(app.update(Message::ContextMenuAt {
+            side: LEFT,
+            index: DOCUMENTS,
+        }));
+        let menu = app.context_menu.as_mut().unwrap();
+        menu.select_last();
+        assert!(menu.selected_is_hermes());
+        menu.open_submenu();
+        menu.sub_entries()
+            .iter()
+            .filter_map(|entry| match entry {
+                SubEntry::Item { action, enabled } => Some((*action, *enabled)),
+                SubEntry::Separator => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_folder_can_get_a_role_before_any_location_is_set() {
+        let config = tempfile::tempdir().unwrap();
+        let mut app = ready_hermes_without_locations(&config);
+
+        let items = submenu_items(&mut app);
+
+        let enabled = |wanted| items.iter().any(|&(action, on)| action == wanted && on);
+        assert!(enabled(HermesAction::SetInbox));
+        assert!(enabled(HermesAction::SetFilingLocation));
+        assert!(enabled(HermesAction::SetArchive));
+        assert!(!enabled(HermesAction::ProcessAgain));
+        assert!(!enabled(HermesAction::Exclude));
+        assert!(!enabled(HermesAction::HandToInbox));
+    }
+
+    #[tokio::test]
+    async fn setting_the_filing_location_writes_it_to_the_config() {
+        let config = tempfile::tempdir().unwrap();
+        let mut app = ready_hermes_without_locations(&config);
+        app.panel_mut(LEFT).selected = DOCUMENTS;
+
+        settle(
+            &mut app,
+            Message::HermesFile(HermesFileMessage::SetRole(FolderRole::FilingLocation)),
+        )
+        .await;
+
+        let [location] = app.filing_config.locations.as_slice() else {
+            panic!("one location expected: {:?}", app.filing_config.locations);
+        };
+        assert!(location.is_target);
+        assert!(location.path.ends_with("Documents"));
+        let written = std::fs::read_to_string(config.path().join("config.toml")).unwrap();
+        assert!(written.contains("Documents"), "{written}");
+    }
+
+    #[tokio::test]
+    async fn an_inbox_needs_a_filing_location_first_and_the_sentence_stays() {
+        let config = tempfile::tempdir().unwrap();
+        let mut app = ready_hermes_without_locations(&config);
+        app.panel_mut(LEFT).selected = DOCUMENTS;
+
+        settle(
+            &mut app,
+            Message::HermesFile(HermesFileMessage::SetRole(FolderRole::Inbox)),
+        )
+        .await;
+
+        assert_eq!(app.status_error(), Some("Set a filing location first."));
+        assert!(app.filing_config.locations.is_empty());
+    }
+
+    #[test]
+    fn a_hermes_command_while_hermes_is_off_opens_the_switch_with_the_reason() {
+        let mut app = App::with_fixed_panels();
+        assert!(app.filing.is_none());
+
+        drop(app.update(Message::ReviewList(ReviewListMessage::Open)));
+
+        assert!(app.review_list_for_test().is_none());
+        let settings = app.settings_for_test().expect("the settings are up");
+        assert_eq!(settings.feature, SettingsFeature::Hermes);
+        assert_eq!(settings.marked_row.as_deref(), Some("Hermes on"));
+        assert_eq!(
+            app.status_error(),
+            Some("Hermes is off. Switch it on here to sort your documents.")
+        );
+    }
+
+    #[test]
+    fn with_the_settings_already_open_the_command_only_jumps_to_the_switch() {
+        let mut app = App::with_settings_open(SettingsFeature::Look, Filing::default());
+
+        drop(app.update(Message::QuickFix(QuickFixMessage::Open)));
+
+        let settings = app.settings_for_test().unwrap();
+        assert_eq!(settings.feature, SettingsFeature::Hermes);
+        assert!(app.status_error().is_some());
     }
 }

@@ -300,6 +300,15 @@ impl KeyAction {
         )
     }
 
+    /// The action sets the role of a folder, which works before any location
+    /// is configured.
+    pub fn sets_hermes_role(self) -> bool {
+        matches!(
+            self,
+            Self::HermesSetInbox | Self::HermesSetFilingLocation | Self::HermesSetArchive
+        )
+    }
+
     /// The message the key sends. Derived rather than stored next to the key,
     /// so a rebound key cannot send anything but its action.
     pub fn message(self) -> Message {

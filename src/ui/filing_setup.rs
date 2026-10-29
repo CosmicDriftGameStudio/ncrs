@@ -32,13 +32,13 @@ const ADD_ROW_RESERVED: f32 = 320.0;
 
 /// Wrap the two add buttons of each section, so a test can tell the sections
 /// apart: both carry the same labels.
-pub const ADD_TUBES_FOLDER_ID: &str = "filing-setup-add-tubes-folder";
+pub const ADD_INBOX_FOLDER_ID: &str = "filing-setup-add-inbox-folder";
 pub const ADD_DOCUMENT_FOLDER_ID: &str = "filing-setup-add-document-folder";
-pub const USE_PANEL_FOR_TUBES_ID: &str = "filing-setup-use-panel-for-tubes";
+pub const USE_PANEL_FOR_INBOX_ID: &str = "filing-setup-use-panel-for-inbox";
 pub const USE_PANEL_FOR_DOCUMENTS_ID: &str = "filing-setup-use-panel-for-documents";
 
 /// The id of the radio button that makes the document folder at `index` of the
-/// chosen list the Central Filing. A radio button's label is not a text a test
+/// chosen list the filing location. A radio button's label is not a text a test
 /// can find, so it is addressed by this.
 pub fn target_choice_id(index: usize) -> String {
     format!("filing-setup-target-{index}")
@@ -64,11 +64,11 @@ pub fn view<'a>(
 ) -> Element<'a, Message> {
     let lang = context.lang;
     let busy = setup.is_busy();
-    let tubes = kit::section(
-        lang.text(Msg::FilingSetupTubesHeading),
+    let inbox_section = kit::section(
+        lang.text(Msg::FilingSetupInboxHeading),
         kit::stack([
-            paragraph(lang.text(Msg::FilingSetupTubesExplain), palette),
-            dim(lang.text(Msg::FilingSetupTubesExample), palette),
+            paragraph(lang.text(Msg::FilingSetupInboxExplain), palette),
+            dim(lang.text(Msg::FilingSetupInboxExample), palette),
             section_rows(setup, LocationMode::Inbox, busy, context, palette),
             add_buttons(LocationMode::Inbox, busy, context, palette),
         ]),
@@ -87,7 +87,7 @@ pub fn view<'a>(
 
     let mut body = kit::stack([
         paragraph(lang.text(Msg::FilingSetupExplain), palette),
-        tubes,
+        inbox_section,
         documents,
     ]);
 
@@ -164,7 +164,7 @@ fn add_buttons<'a>(
 ) -> Element<'a, Message> {
     let lang = context.lang;
     let (pick_id, panel_id) = match mode {
-        LocationMode::Inbox => (ADD_TUBES_FOLDER_ID, USE_PANEL_FOR_TUBES_ID),
+        LocationMode::Inbox => (ADD_INBOX_FOLDER_ID, USE_PANEL_FOR_INBOX_ID),
         LocationMode::Archive => (ADD_DOCUMENT_FOLDER_ID, USE_PANEL_FOR_DOCUMENTS_ID),
     };
     Row::with_children([
@@ -246,7 +246,7 @@ fn entry_row<'a>(
         .spacing(spacing::CELL_PADDING_X)
         .align_y(Alignment::Center);
     if location.mode == LocationMode::Archive {
-        let is_central = setup.target_index() == Some(index);
+        let is_filing_location = setup.target_index() == Some(index);
         row = row.push(if setup.chooses_target() {
             container(
                 radio(shown, index, setup.target_index(), |chosen| {
@@ -264,10 +264,10 @@ fn entry_row<'a>(
             path_text(shown, palette)
         });
         row = row.push(dim(
-            lang.text(if is_central {
-                Msg::FilingSetupKindCentral
+            lang.text(if is_filing_location {
+                Msg::FilingSetupKindFilingLocation
             } else {
-                Msg::FilingSetupKindRecords
+                Msg::FilingSetupKindArchive
             }),
             palette,
         ));
@@ -332,9 +332,9 @@ fn problem_text(
             .lang
             .text(Msg::FilingSetupProblemNoDocumentFolder)
             .to_owned(),
-        SetupProblem::ChooseCentralFiling => context
+        SetupProblem::ChooseFilingLocation => context
             .lang
-            .text(Msg::FilingSetupProblemChooseCentral)
+            .text(Msg::FilingSetupProblemChooseFilingLocation)
             .to_owned(),
         SetupProblem::Rule(violation) => rule_text(violation, chosen, context),
     }
@@ -394,27 +394,46 @@ fn note_text(
             ),
             true,
         ),
+        SetupNote::SaveFailed(error) => (write_failure_text(error, chosen, context), true),
+    }
+}
+
+/// The sentence for a failed write of the locations outside the card.
+pub fn write_failure_sentence(
+    error: &FilingWriteError,
+    chosen: &[FilingLocation],
+    lang: Language,
+    home: &Path,
+) -> String {
+    let context = SetupContext {
+        current_folder: home,
+        home,
+        index_is_plain: false,
+        lang,
+        window: Size::ZERO,
+    };
+    write_failure_text(error, chosen, &context)
+}
+
+fn write_failure_text(
+    error: &FilingWriteError,
+    chosen: &[FilingLocation],
+    context: &SetupContext<'_>,
+) -> String {
+    let lang = context.lang;
+    let shown = |path: &Path| shown_path(path, context.home);
+    match error {
         // Saving waits for a clean list, so this only happens when the
         // canonical paths reveal an overlap the shown ones hid.
-        SetupNote::SaveFailed(FilingWriteError::Rule(violation)) => {
-            (rule_text(*violation, chosen, context), true)
-        }
-        SetupNote::SaveFailed(FilingWriteError::PathNotText(path)) => (
-            fill_template(
-                lang.text(Msg::FilingSetupPathNotText),
-                &[("{path}", &shown(path))],
-            ),
-            true,
+        FilingWriteError::Rule(violation) => rule_text(*violation, chosen, context),
+        FilingWriteError::PathNotText(path) => fill_template(
+            lang.text(Msg::FilingSetupPathNotText),
+            &[("{path}", &shown(path))],
         ),
-        SetupNote::SaveFailed(FilingWriteError::Config(error)) => {
-            (config_error_text(error, context), true)
-        }
-        SetupNote::SaveFailed(FilingWriteError::Io { path, reason }) => (
-            fill_template(
-                lang.text(Msg::FilingSetupWriteFailed),
-                &[("{path}", &shown(path)), ("{reason}", reason)],
-            ),
-            true,
+        FilingWriteError::Config(config_error) => config_error_text(config_error, context),
+        FilingWriteError::Io { path, reason } => fill_template(
+            lang.text(Msg::FilingSetupWriteFailed),
+            &[("{path}", &shown(path)), ("{reason}", reason)],
         ),
     }
 }
