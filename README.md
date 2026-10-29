@@ -123,8 +123,8 @@ The same window in German, switched with F9.
 - `Cmd`+`V` (`Ctrl`+`V` on Windows and Linux) pastes from the system clipboard into the active
   panel: files copied in the Finder or Explorer are copied like a drop, a picture is saved as a
   PNG and text as a TXT file after asking for the file name. "Copy files to the clipboard" in the
-  command list (`F1`) puts the selected files on the clipboard for other apps; it has no default
-  key yet, bind `copy_files` to one. On Wayland, clipboard files, pictures and text are only read
+  command list (`F1`) puts the selected files on the clipboard for other apps; its key is
+  `Cmd`+`C` (`Ctrl`+`C` on Windows and Linux). On Wayland, clipboard files, pictures and text are only read
   and written if the compositor supports the data-control protocol.
 - Archives (zip, tar, tar.gz, tar.zst, 7z) open with `Enter` and are browsed like folders; `F5`
   copies out of them, `Alt`+`F5` packs the selection into a new archive in the other panel,
@@ -158,6 +158,8 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Shift`+`Up`/`Down`| Tag / untag the row, move up / down     |
 | `*`                | Tag every row (except `..`)             |
 | `Ctrl`+`*`         | Clear all tags                          |
+| `Cmd`+`C` / `Ctrl`+`C` | Copy the tagged files (else the cursor row) to the clipboard as files, for the Finder, Explorer or another app |
+| `Esc` (also `Ctrl`+`C` on a Mac) | Stop the running job; with a dialog open, use the Cancel button in the progress line |
 | `Option`+`Cmd`+`C` / `Ctrl`+`Alt`+`C` | Copy the path of the tagged rows (else the cursor row) to the clipboard |
 | `Ctrl`+`Cmd`+`C` / `Ctrl`+`Shift`+`C` | Copy the name of the tagged rows (else the cursor row) to the clipboard |
 | Click the path in the status bar | Edit the path (`Enter` goes there, `~` is home, `Esc` puts the current path back); the icon beside it copies the folder path |
@@ -390,7 +392,8 @@ edit = "F3"
   be fine on a Mac and conflict elsewhere. Keys that became defaults later give
   way to a binding of your own instead: `F2` (`command_line`), `Shift+F4`
   (`new_file`), the history keys (`history_back`, `history_forward`),
-  `primary+d` (`add_favourite`) and `primary+k` (`key_bindings`). The action keeps its other keys and the
+  `primary+d` (`add_favourite`), `primary+k` (`key_bindings`) and `primary+c`
+  (`copy_files`). The action keeps its other keys and the
   command list.
 - Not allowed: `Escape` (it closes dialogs and menus and stops jobs); letters and
   digits without `ctrl`, `alt`, `cmd` or `primary`, because they jump to a file

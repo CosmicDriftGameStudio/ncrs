@@ -1052,7 +1052,13 @@ mod tests {
 
         let mut session = session_in(dir.path());
         tag_and_press(&mut session, &["alpha.txt", "beta.txt"], Named::F5);
-        session.press_with(Key::Character("c".into()), Modifiers::CTRL);
+        // The abort key on a Mac; elsewhere it has none, and the dialog's
+        // Cancel button is the way.
+        if cfg!(target_os = "macos") {
+            session.press_with(Key::Character("c".into()), Modifiers::CTRL);
+        } else {
+            session.send(Message::TransferConflict(ConflictChoice::Cancel));
+        }
 
         assert!(!session.app.conflict_is_pending(), "the dialog is still up");
         assert!(session.app.job_is_idle());
@@ -1088,11 +1094,11 @@ mod tests {
         );
     }
 
-    /// Ctrl+C stops a running job — the fourth reported symptom was that the
+    /// Escape stops a running job — the fourth reported symptom was that the
     /// queue could not be steered at all.
     ///
     /// Deterministic: F5 is sent but its task is held back, so the job is
-    /// registered and certainly not finished when Ctrl+C arrives. The queue
+    /// registered and certainly not finished when Escape arrives. The queue
     /// must be idle right after the key, which only an abort achieves; a copy
     /// left running would still hold its slot. The aborted task is released
     /// afterwards and must not revive anything.
@@ -1101,7 +1107,7 @@ mod tests {
     /// is built and stops only at its next progress tick, so whether a small
     /// file lands is a race the abort does not promise to win.
     #[test]
-    fn ctrl_c_stops_a_running_copy() {
+    fn escape_stops_a_running_copy() {
         let dir = scratch("abort");
         write(&dir.path().join("alpha.txt"), "a");
 
@@ -1113,10 +1119,10 @@ mod tests {
         ));
         assert!(!session.app.job_is_idle(), "F5 did not start a job");
 
-        session.press_with(Key::Character("c".into()), Modifiers::CTRL);
+        session.press(Key::Named(Named::Escape));
         assert!(
             session.app.job_is_idle(),
-            "the copy is still running after Ctrl+C"
+            "the copy is still running after Escape"
         );
 
         session.drive(held);
@@ -2630,14 +2636,14 @@ mod archive_writing {
         assert!(!names(&session.app, PanelSide::Left).contains(&"a.txt".to_string()));
     }
 
-    // The blocking write starts when its task is built and notices Ctrl+C
+    // The blocking write starts when its task is built and notices Escape
     // only at its next tick, so whether a small write lands is a race the
-    // abort does not promise to win (see `ctrl_c_stops_a_running_copy`).
+    // abort does not promise to win (see `escape_stops_a_running_copy`).
     // What holds either way: the queue is free at once, and the archive is
     // whole or absent, never half written. Cleaning up the partial file on a
     // cancel is tested on the writer itself.
     #[test]
-    fn ctrl_c_during_a_pack_frees_the_queue_and_leaves_no_broken_archive() {
+    fn escape_during_a_pack_frees_the_queue_and_leaves_no_broken_archive() {
         let dir = scratch("pack-abort");
         write(&dir.path().join("alpha.txt"), "abc");
         let mut session = session_in(dir.path());
@@ -2646,10 +2652,10 @@ mod archive_writing {
         let held = session.send_held(Message::PromptSubmit);
         assert!(!session.app.job_is_idle());
 
-        session.press_with(Key::Character("c".into()), Modifiers::CTRL);
+        session.press(Key::Named(Named::Escape));
         assert!(
             session.app.job_is_idle(),
-            "the pack still runs after Ctrl+C"
+            "the pack still runs after Escape"
         );
         session.drive(held);
         session.settle();
@@ -2662,7 +2668,7 @@ mod archive_writing {
     }
 
     #[test]
-    fn ctrl_c_during_a_copy_in_frees_the_queue_and_leaves_the_archive_whole() {
+    fn escape_during_a_copy_in_frees_the_queue_and_leaves_the_archive_whole() {
         let dir = scratch("copy-in-abort");
         write(&dir.path().join("alpha.txt"), "abc");
         let archive = dir.path().join("home").join("box.zip");
@@ -2674,10 +2680,10 @@ mod archive_writing {
         let held = session.send_held(Message::TransferDialog(TransferDialogMessage::Confirm));
         assert!(!session.app.job_is_idle());
 
-        session.press_with(Key::Character("c".into()), Modifiers::CTRL);
+        session.press(Key::Named(Named::Escape));
         assert!(
             session.app.job_is_idle(),
-            "the copy still runs after Ctrl+C"
+            "the copy still runs after Escape"
         );
         session.drive(held);
         session.settle();
@@ -2841,14 +2847,14 @@ mod archive_viewing {
     }
 
     #[test]
-    fn ctrl_c_stops_an_unpacking_and_no_viewer_starts() {
+    fn escape_stops_an_unpacking_and_no_viewer_starts() {
         let (_dir, _cache, launcher, mut session) = inside("view.zip");
         cursor_to(&mut session, "a.txt");
         let held = session.send_held(Message::OpenExternal(crate::fs::OpenKind::View));
         assert!(session.app.is_extracting_for_test());
         assert!(!session.app.job_is_idle());
 
-        session.press_with(Key::Character("c".into()), Modifiers::CTRL);
+        session.press(Key::Named(Named::Escape));
 
         assert!(!session.app.is_extracting_for_test());
         assert!(session.app.job_is_idle());
