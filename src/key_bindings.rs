@@ -604,7 +604,9 @@ mod tests {
             .rows()
             .iter()
             .all(|row| row.action != KeyAction::GrantFolderAccess));
-        assert_eq!(dialog.rows().len(), KeyAction::ALL.len() - 1);
+        // The Finder's trash command is the other action only a Mac lists.
+        let hidden = if cfg!(target_os = "macos") { 1 } else { 2 };
+        assert_eq!(dialog.rows().len(), KeyAction::ALL.len() - hidden);
     }
 
     #[test]

@@ -834,6 +834,20 @@ fn state_path_in(
     index_path_in(portable, var).map(|index| index.with_file_name("state.toml"))
 }
 
+/// Where the record of what ncrs moved to the trash lives (macOS can not list
+/// its trash folder), or `None` when the variables that say so are missing.
+pub fn default_journal_path() -> Option<PathBuf> {
+    forbid_user_machine_in_tests("config::default_journal_path");
+    journal_path_in(portable_data_dir(), |name| std::env::var_os(name))
+}
+
+fn journal_path_in(
+    portable: Option<PathBuf>,
+    var: impl Fn(&str) -> Option<OsString>,
+) -> Option<PathBuf> {
+    index_path_in(portable, var).map(|index| index.with_file_name("journal.toml"))
+}
+
 /// Where the host keys of SFTP servers the user confirmed in ncrs are kept, or
 /// `None` when the variables that say so are missing. In the data folder next
 /// to the index, so the sandboxed build keeps it in its container.
@@ -2671,6 +2685,18 @@ mod tests {
         let state = state_path_in(None, env(&vars)).unwrap();
         assert_eq!(state.parent(), index.parent());
         assert_eq!(state.file_name().unwrap(), "state.toml");
+    }
+
+    #[test]
+    fn the_trash_journal_lives_next_to_the_index() {
+        let vars = [
+            ("HOME", "/home/user"),
+            ("APPDATA", r"C:\Users\user\AppData"),
+        ];
+        let index = index_path_in(None, env(&vars)).unwrap();
+        let journal = journal_path_in(None, env(&vars)).unwrap();
+        assert_eq!(journal.parent(), index.parent());
+        assert_eq!(journal.file_name().unwrap(), "journal.toml");
     }
 
     #[test]

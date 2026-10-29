@@ -20,7 +20,7 @@ use crate::messages::{
     FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesFileMessage, KeyBindingsMessage,
     OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage,
     ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage,
-    SearchMessage, SettingsMessage, ThemeFetchMessage, TransferKind,
+    SearchMessage, SettingsMessage, ThemeFetchMessage, TransferKind, TrashMessage,
 };
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
@@ -97,6 +97,9 @@ key_actions! {
     Move => "move",
     Delete => "delete",
     DeletePermanently => "delete_permanently",
+    Trash => "trash",
+    RestoreLastDeletion => "restore_last_deletion",
+    OpenTrashInFinder => "open_trash_in_finder",
     Mkdir => "mkdir",
     NewFile => "new_file",
     Pack => "pack",
@@ -216,6 +219,9 @@ impl KeyAction {
             | Self::CopyPath
             | Self::CopyName
             | Self::CopyFiles
+            | Self::Trash
+            | Self::RestoreLastDeletion
+            | Self::OpenTrashInFinder
             | Self::Paste
             | Self::Mkdir
             | Self::NewFile
@@ -274,7 +280,8 @@ impl KeyAction {
 
     /// Keys that became defaults after a config could already have given them
     /// to another action: bare F2 in 0.6, Shift+F4, the history keys and
-    /// primary+D in 0.7, primary+K in 0.8, primary+C (`copy_files`) after 1.0.
+    /// primary+D in 0.7, primary+K in 0.8, primary+C (`copy_files`) and primary+Z
+    /// (`restore_last_deletion`) after 1.0.
     /// Such a config keeps working: its binding wins over the built-in one,
     /// and the action keeps its other keys.
     pub fn yields_its_built_in_key(self) -> bool {
@@ -287,6 +294,7 @@ impl KeyAction {
                 | Self::AddFavourite
                 | Self::KeyBindings
                 | Self::CopyFiles
+                | Self::RestoreLastDeletion
         )
     }
 
@@ -333,6 +341,9 @@ impl KeyAction {
             Self::CopyPath => Message::CopyToClipboard(ClipboardKind::Path),
             Self::CopyName => Message::CopyToClipboard(ClipboardKind::Name),
             Self::CopyFiles => Message::CopyFilesToClipboard,
+            Self::Trash => Message::Trash(TrashMessage::Open),
+            Self::RestoreLastDeletion => Message::Trash(TrashMessage::RestoreLast),
+            Self::OpenTrashInFinder => Message::Trash(TrashMessage::OpenInFinder),
             Self::Paste => Message::Paste,
             Self::View => Message::OpenExternal(OpenKind::View),
             Self::Edit => Message::OpenExternal(OpenKind::Edit),
@@ -414,6 +425,10 @@ impl KeyAction {
         match self {
             Self::GrantFolderAccess => crate::fs::sandbox_active(),
             Self::DownloadOcrModels => !system_reads_scans,
+            Self::Trash | Self::RestoreLastDeletion => {
+                !(cfg!(target_os = "macos") && crate::fs::sandbox_active())
+            }
+            Self::OpenTrashInFinder => cfg!(target_os = "macos"),
             _ => true,
         }
     }
@@ -440,6 +455,9 @@ impl KeyAction {
             | Self::CopyPath
             | Self::CopyName
             | Self::CopyFiles
+            | Self::Trash
+            | Self::RestoreLastDeletion
+            | Self::OpenTrashInFinder
             | Self::Paste
             | Self::Copy
             | Self::DriveMenuLeft
@@ -523,6 +541,9 @@ impl KeyAction {
             | Self::CopyPath
             | Self::CopyName
             | Self::CopyFiles
+            | Self::Trash
+            | Self::RestoreLastDeletion
+            | Self::OpenTrashInFinder
             | Self::Paste
             | Self::DriveMenuLeft
             | Self::DriveMenuRight
@@ -681,6 +702,12 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
         (
             A::DeletePermanently,
             Binding::with_modifiers(KeyNamed(F8), Modifiers::SHIFT),
+        ),
+        // Cmd+Z (Ctrl+Z elsewhere) puts back what F8 just moved to the trash,
+        // as the Finder and Explorer undo a delete.
+        (
+            A::RestoreLastDeletion,
+            Binding::with_modifiers(Character("z".into()), Modifiers::COMMAND),
         ),
         (A::Mkdir, Binding::key(KeyNamed(F7))),
         // Norton Commander's Shift+F4: edit a new file.
@@ -1445,6 +1472,37 @@ mod tests {
         assert!(KeyAction::Quit.is_offered_where(true));
     }
 
+    #[test]
+    fn the_trash_actions_are_offered_only_where_they_work() {
+        let on_a_mac = cfg!(target_os = "macos");
+        assert_eq!(KeyAction::OpenTrashInFinder.is_offered(), on_a_mac);
+        let sandboxed_mac = on_a_mac && crate::fs::sandbox_active();
+        assert_eq!(KeyAction::Trash.is_offered(), !sandboxed_mac);
+        assert_eq!(KeyAction::RestoreLastDeletion.is_offered(), !sandboxed_mac);
+    }
+
+    #[test]
+    fn restoring_the_last_deletion_is_on_primary_z_and_yields_it_to_a_config() {
+        let keys: Vec<_> = default_bindings()
+            .into_iter()
+            .filter(|(action, _)| *action == KeyAction::RestoreLastDeletion)
+            .map(|(_, binding)| binding)
+            .collect();
+        assert_eq!(
+            keys,
+            [Binding::with_modifiers(
+                Key::Character("z".into()),
+                Modifiers::COMMAND
+            )]
+        );
+        assert!(KeyAction::RestoreLastDeletion.yields_its_built_in_key());
+        assert!(!KeyAction::Trash.yields_its_built_in_key());
+        assert_eq!(
+            KeyAction::from_name("restore_last_deletion"),
+            Some(KeyAction::RestoreLastDeletion)
+        );
+    }
+
     use super::*;
     use crate::config;
     use iced::keyboard::key::Named;
@@ -1974,6 +2032,8 @@ mod tests {
             KeyAction::GrantFolderAccess,
             KeyAction::ConnectServer,
             KeyAction::DisconnectServer,
+            KeyAction::Trash,
+            KeyAction::OpenTrashInFinder,
             KeyAction::HermesHandToInbox,
             KeyAction::HermesSetInbox,
             KeyAction::HermesSetFilingLocation,

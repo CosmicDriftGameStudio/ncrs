@@ -117,6 +117,8 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             Command::themed(action, File, Msg::ActionDelete, Msg::ActionDeleteTheme)
         }
         KeyAction::DeletePermanently => Command::plain(action, File, Msg::ActionDeletePermanently),
+        KeyAction::Trash => Command::themed(action, File, Msg::ActionTrash, Msg::ActionTrashTheme),
+        KeyAction::OpenTrashInFinder => Command::plain(action, File, Msg::ActionOpenTrashInFinder),
         KeyAction::AbortJob => Command::plain(action, File, Msg::ActionAbortJob),
         KeyAction::Quit => Command::plain(action, File, Msg::ActionQuit),
         KeyAction::ToggleTag => Command::themed(
@@ -138,6 +140,12 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
         KeyAction::CopyName => Command::plain(action, Edit, Msg::ActionCopyName),
         KeyAction::CopyFiles => Command::plain(action, Edit, Msg::ActionCopyFiles),
         KeyAction::Paste => Command::plain(action, Edit, Msg::ActionPaste),
+        KeyAction::RestoreLastDeletion => Command::themed(
+            action,
+            Edit,
+            Msg::ActionRestoreLastDeletion,
+            Msg::ActionRestoreLastDeletionTheme,
+        ),
         KeyAction::ContextMenu => Command::plain(action, Edit, Msg::ActionContextMenu),
         KeyAction::SortByName => Command::plain(action, View, Msg::ActionSortByName),
         KeyAction::SortByModified => Command::plain(action, View, Msg::ActionSortByModified),

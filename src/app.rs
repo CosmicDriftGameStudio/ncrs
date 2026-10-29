@@ -65,7 +65,7 @@ use crate::messages::{
     HermesSetupMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide, QuickFixMessage,
     QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage,
     RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage,
-    ThemeFetchMessage, TitleBarMessage, TransferKind,
+    ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -88,6 +88,7 @@ use crate::session_state::{self, PanelRecord, SessionState, WindowSize, WriteOrd
 use crate::suggestion_work::{SuggestedRule, SuggestionAccess, INDEX_NOT_OPEN};
 use crate::theme_fetch::{Fetched, Installed, Pick, Stage, ThemeFetch};
 use crate::transfer_dialog::{self, Policy, TransferDialog, TransferDialogMessage};
+use crate::trash_view::TrashView;
 use crate::ui::about as about_ui;
 use crate::ui::ai_model as ai_model_ui;
 use crate::ui::command_line as command_line_ui;
@@ -117,6 +118,7 @@ use crate::ui::settings as settings_ui;
 use crate::ui::theme_fetch as theme_fetch_ui;
 use crate::ui::titlebar;
 use crate::ui::transfer as transfer_ui;
+use crate::ui::trash as trash_ui;
 use crate::ui::volumes::{self as volumes_view, FavouriteRow, ServerRow};
 use crate::ui::{conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelProps, PanelState};
 use ncrs_index::{IncludeOutcome, KeyStore, KeyringKeyStore};
@@ -798,6 +800,17 @@ pub enum DeleteKeys {
     Permanent,
 }
 
+/// A put-back from the trash, resolved when Enter is pressed: by the time a
+/// name turns out to be taken the cursor may have moved.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Restoration {
+    items: Vec<fs::TrashedItem>,
+    restored: usize,
+    skipped: usize,
+    /// An "all" answer to the dialog, applied to the rows after it.
+    rule: Option<fs::transfer::OnConflict>,
+}
+
 /// One file waiting for an answer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PendingConflict {
@@ -838,8 +851,11 @@ struct VolumeMenu {
     favourites: Vec<FavouriteRow>,
     /// The servers, below the favourites.
     servers: Vec<ServerRow>,
+    /// The last row, below the servers: what the trash is called here, or
+    /// nothing in a build that has no trash to show.
+    trash: Option<Msg>,
     /// The highlighted row, the one Enter goes to. Counts the drives first,
-    /// then the favourites, then the servers.
+    /// then the favourites, then the servers, then the trash.
     selected: usize,
 }
 
@@ -858,8 +874,14 @@ impl VolumeMenu {
             volumes,
             favourites: Vec::new(),
             servers: Vec::new(),
+            trash: None,
             selected,
         }
+    }
+
+    fn with_trash(mut self, trash: Option<Msg>) -> Self {
+        self.trash = trash;
+        self
     }
 
     fn with_favourites(mut self, favourites: Vec<FavouriteRow>) -> Self {
@@ -874,7 +896,10 @@ impl VolumeMenu {
 
     /// Drives, favourites and servers together: what `selected` runs over.
     fn row_count(&self) -> usize {
-        self.volumes.len() + self.favourites.len() + self.servers.len()
+        self.volumes.len()
+            + self.favourites.len()
+            + self.servers.len()
+            + usize::from(self.trash.is_some())
     }
 
     fn last_row(&self) -> usize {
@@ -893,6 +918,11 @@ impl VolumeMenu {
         self.selected
             .checked_sub(self.volumes.len())
             .filter(|index| *index < self.favourites.len())
+    }
+
+    /// Whether the highlight is on the trash row.
+    fn selected_trash(&self) -> bool {
+        self.trash.is_some() && self.selected + 1 == self.row_count()
     }
 
     /// The index among the servers when the highlight is on one.
@@ -1101,6 +1131,17 @@ pub struct App {
     transfer: Option<Transfer>,
     /// A transfer paused on a name that is already taken.
     pending_conflict: Option<PendingConflict>,
+    /// A restore from the trash, while it runs.
+    restoring: Option<Restoration>,
+    /// The restore paused on a name that is taken: the index of its row.
+    restore_conflict: Option<usize>,
+    /// What the latest F8 run moved to the trash, for the restore key.
+    last_deletion: Vec<PathBuf>,
+    /// The trash view, in place of the panel on `trash_side`.
+    trash_view: Option<TrashView>,
+    trash_side: PanelSide,
+    /// Counts the listings of the trash, so a late one is dropped.
+    trash_generation: u64,
     /// The copy or move confirmation, while it is up.
     transfer_dialog: Option<TransferDialog>,
     /// Counts the confirmations opened, so a result of the background scan can
@@ -1427,6 +1468,9 @@ pub struct PromptKeyState {
     pub command_line: bool,
     /// The search view is up, so the cursor keys move in its results.
     pub search: bool,
+    /// The trash view is up, so the cursor keys move in its rows and Enter
+    /// restores.
+    pub trash: bool,
     /// Quick Open is up, so the up and down keys move in its hits.
     pub quick_open: bool,
     /// The command palette is up, so the up and down keys move in its entries.
@@ -1508,6 +1552,7 @@ impl Default for PromptKeyState {
             path_editing: false,
             command_line: false,
             search: false,
+            trash: false,
             quick_open: false,
             command_palette: false,
             key_bindings: false,
@@ -2035,6 +2080,10 @@ fn keys_without_prompt(
         return command_line_key(prompt, &key, key_modifiers, scope);
     }
 
+    if prompt.trash {
+        return trash_key(prompt, &key, key_modifiers);
+    }
+
     // Escape is `InputState`'s: the text fields capture it, so it only ever
     // reaches the routing when no field has the focus.
     if prompt.search {
@@ -2205,6 +2254,50 @@ fn search_key(prompt: &PromptKeyState, key: &Key, key_modifiers: Modifiers) -> O
             Some(Message::TypeAhead(typed)) => search(SearchMessage::AppendToQuery(typed)),
             _ => None,
         })
+}
+
+/// Keys while the trash view is up: it owns the cursor keys, Enter puts back,
+/// and the tagging keys tag its rows. Of the other bindings only the few that
+/// leave the view reach through; everything else, F5 and F8 included, does
+/// nothing here.
+fn trash_key(prompt: &PromptKeyState, key: &Key, key_modifiers: Modifiers) -> Option<Message> {
+    let trash = |message| Some(Message::Trash(message));
+    let bound = bound_message(&prompt.keymap, key, key_modifiers, KeyScope::Panel);
+    if let Some(message) = bound.as_ref().and_then(trash_tagging) {
+        return trash(message);
+    }
+    if (key_modifiers - Modifiers::SHIFT).is_empty() {
+        match key.as_ref() {
+            Key::Named(Named::Escape) if prompt.job_running => return Some(Message::AbortJob),
+            Key::Named(Named::Escape) => return trash(TrashMessage::Close),
+            Key::Named(Named::ArrowUp) => return trash(TrashMessage::Move(-1)),
+            Key::Named(Named::ArrowDown) => return trash(TrashMessage::Move(1)),
+            Key::Named(Named::PageUp) => return trash(TrashMessage::Page(-1)),
+            Key::Named(Named::PageDown) => return trash(TrashMessage::Page(1)),
+            Key::Named(Named::Home) => return trash(TrashMessage::First),
+            Key::Named(Named::End) => return trash(TrashMessage::Last),
+            Key::Named(Named::Enter) => return trash(TrashMessage::Restore),
+            _ => {}
+        }
+    }
+    bound.filter(|message| {
+        *message == Message::Quit
+            || *message == Message::SwitchPanel
+            || *message == KeyAction::CommandPalette.message()
+            || *message == KeyAction::RestoreLastDeletion.message()
+            || *message == KeyAction::OpenTrashInFinder.message()
+    })
+}
+
+/// The trash view's version of a bound tagging message.
+fn trash_tagging(message: &Message) -> Option<TrashMessage> {
+    match message {
+        Message::ToggleTag => Some(TrashMessage::ToggleTag),
+        Message::TagMove(delta) => Some(TrashMessage::TagMove(*delta)),
+        Message::TagAll => Some(TrashMessage::TagAll),
+        Message::ClearTags => Some(TrashMessage::ClearTags),
+        _ => None,
+    }
 }
 
 fn is_search_toggle(message: &SearchMessage) -> bool {
@@ -2705,6 +2798,8 @@ pub struct Environment {
     pub config_path: Option<PathBuf>,
     pub index_path: Option<PathBuf>,
     pub state_path: Option<PathBuf>,
+    /// The record of what ncrs trashed, where the system gives no list.
+    pub journal_path: Option<PathBuf>,
     /// The cache folder F3 unpacks archive files into.
     pub view_copies_dir: Option<PathBuf>,
     pub key_store: Arc<dyn KeyStore + Send + Sync>,
@@ -2722,6 +2817,7 @@ impl std::fmt::Debug for Environment {
             .field("config_path", &self.config_path)
             .field("index_path", &self.index_path)
             .field("state_path", &self.state_path)
+            .field("journal_path", &self.journal_path)
             .field("view_copies_dir", &self.view_copies_dir)
             .field("ssh_known_hosts", &self.ssh_known_hosts)
             .field("own_known_hosts", &self.own_known_hosts)
@@ -2736,6 +2832,7 @@ impl Environment {
             config_path: config::default_path(),
             index_path: config::default_index_path(),
             state_path: config::default_state_path(),
+            journal_path: config::default_journal_path(),
             view_copies_dir: config::default_view_copies_dir(),
             key_store: Arc::new(user_key_store()),
             passwords: Arc::new(KeyringPasswords::new()),
@@ -2752,6 +2849,7 @@ impl Environment {
             config_path: None,
             index_path: None,
             state_path: None,
+            journal_path: None,
             view_copies_dir: None,
             key_store: Arc::new(ncrs_index::InMemoryKeyStore::empty()),
             passwords: Arc::new(fs::remote::credentials::InMemoryPasswords::default()),
@@ -2800,6 +2898,7 @@ impl App {
             config_path,
             index_path,
             state_path,
+            journal_path,
             view_copies_dir,
             key_store,
             passwords,
@@ -2828,6 +2927,7 @@ impl App {
         );
         panels.config_path = config_path;
         panels.state_path = state_path;
+        panels.trash = fs::system_trash(journal_path);
         panels.sandbox = fs::SandboxAccess::detect(index_path.as_deref());
         panels.remote = Arc::new(Pool::over_tcp(KnownHostsFiles {
             ssh: ssh_known_hosts,
@@ -3038,6 +3138,12 @@ impl App {
             jobs: jobs::Queue::new(),
             transfer: None,
             pending_conflict: None,
+            restoring: None,
+            restore_conflict: None,
+            last_deletion: Vec::new(),
+            trash_view: None,
+            trash_side: PanelSide::Left,
+            trash_generation: 0,
             transfer_dialog: None,
             transfer_dialogs_opened: 0,
             transfer_mask_visible: false,
@@ -3050,7 +3156,7 @@ impl App {
             archive_write: None,
             dialog_focus: 0,
             modifiers: Modifiers::default(),
-            trash: Arc::new(fs::SystemTrash),
+            trash: fs::system_trash(None),
             launcher: Arc::new(fs::SystemLauncher),
             open_programs: config::OpenPrograms::default(),
             config_error: None,
@@ -3462,6 +3568,7 @@ impl App {
             // `spawn_blocking`, which cannot be cancelled, so the panel may
             // still list that entry for a moment after the abort.
             Message::AbortJob => self.abort_job(),
+            Message::Trash(trash_message) => self.update_trash(trash_message),
 
             // One row of a transfer finished. Continue with the next, or ask
             // about a name that is in the way.
@@ -3629,7 +3736,10 @@ impl App {
                 }
                 self.jobs.finish();
                 match result {
-                    Ok(()) => self.run_delete_row(index + 1),
+                    Ok(()) => {
+                        self.remember_trashed(index);
+                        self.run_delete_row(index + 1)
+                    }
                     Err(reason) => {
                         let text = self.delete_failure(index, &reason);
                         self.set_status_error(&text);
@@ -4728,6 +4838,7 @@ impl App {
         };
 
         let side_view_plain = |side: PanelSide| match self.search.as_ref() {
+            _ if self.trash_view.is_some() && side == self.trash_side => self.trash_panel(side),
             Some(search) if self.search_open && side == self.search_side => search_ui::view(
                 search,
                 self.search_rows,
@@ -4905,6 +5016,7 @@ impl App {
                     volumes: &menu.volumes,
                     favourites: &menu.favourites,
                     servers: &menu.servers,
+                    trash: menu.trash,
                 },
                 menu.selected,
                 self.window_size,
@@ -4998,14 +5110,8 @@ impl App {
         // turned out to be taken — so behind the prompt's early return the
         // dialog was never drawn. That was a real bug, and the snapshot test is
         // what found it.
-        if let Some(pending) = self.pending_conflict.as_ref() {
-            let name = pending
-                .transfer
-                .sources
-                .get(pending.index)
-                .and_then(|p| p.file_name())
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
+        if self.conflict_is_open() {
+            let name = self.conflict_name();
             let conflict_element = conflict::view(
                 &name,
                 self.lang,
@@ -5223,6 +5329,7 @@ impl App {
         let path_editing = self.path_field.is_some();
         let command_line = self.command_line.is_focused();
         let search = self.search_has_keys();
+        let trash = self.trash_has_keys();
         let quick_open = self.quick_open.is_some();
         let command_palette = self.command_palette.is_some();
         let key_bindings = self.key_bindings.is_some();
@@ -5285,6 +5392,7 @@ impl App {
                 path_editing,
                 command_line,
                 search,
+                trash,
                 quick_open,
                 command_palette,
                 key_bindings,
@@ -5312,7 +5420,7 @@ impl App {
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
                 // the dialog's keys would fall through to the panels.
-                conflict_open: self.pending_conflict.is_some(),
+                conflict_open: self.conflict_is_open(),
                 transfer_dialog,
                 transfer_progress,
                 ..PromptKeyState::default()
@@ -5331,6 +5439,7 @@ impl App {
                 path_editing,
                 command_line,
                 search,
+                trash,
                 quick_open,
                 command_palette,
                 key_bindings,
@@ -5355,7 +5464,7 @@ impl App {
                 grant_dialog,
                 connect_dialog,
                 settings,
-                conflict_open: self.pending_conflict.is_some(),
+                conflict_open: self.conflict_is_open(),
                 transfer_dialog,
                 transfer_progress,
                 busy: prompt.busy(),
@@ -6008,7 +6117,7 @@ impl App {
             || self.grant_dialog
         {
             2
-        } else if self.pending_conflict.is_some() {
+        } else if self.conflict_is_open() {
             3
         } else {
             0
@@ -6093,7 +6202,7 @@ impl App {
                 self.update_grant(GrantMessage::Later)
             };
         }
-        if self.pending_conflict.is_some() {
+        if self.conflict_is_open() {
             let choice = match self.dialog_focus {
                 conflict::OVERWRITE_FOCUS => ConflictChoice::ThisOverwrite,
                 conflict::KEEP_FOCUS => ConflictChoice::ThisKeep,
@@ -6119,7 +6228,7 @@ impl App {
     fn overlay_apart_from_overview_is_open(&self) -> bool {
         self.prompt.is_some()
             || self.quick_fix.is_some()
-            || self.pending_conflict.is_some()
+            || self.conflict_is_open()
             || self.transfer_dialog.is_some()
             || self.progress_mask_is_open()
             || self.delete_dialog.is_some()
@@ -6536,7 +6645,8 @@ impl App {
         }
         let mut menu = VolumeMenu::new(side, volumes, &self.panel(side).path)
             .with_favourites(favourites)
-            .with_servers(servers);
+            .with_servers(servers)
+            .with_trash(self.trash_menu_row());
         if on_favourites {
             menu.selected = menu.volumes.len();
         }
@@ -6788,6 +6898,9 @@ impl App {
         let Some(menu) = self.volume_menu.take() else {
             return Task::none();
         };
+        if menu.selected_trash() {
+            return self.open_trash_on(menu.side);
+        }
         let target = match menu.volumes.get(menu.selected) {
             Some(volume) => volume.path.clone(),
             None if menu.selected_server().is_some() => {
@@ -6845,7 +6958,7 @@ impl App {
     fn open_delete_dialog(&mut self, permanent: bool) -> Task<Message> {
         if self.jobs.is_busy()
             || self.prompt.is_some()
-            || self.pending_conflict.is_some()
+            || self.conflict_is_open()
             || self.delete_dialog.is_some()
         {
             return Task::none();
@@ -6915,6 +7028,9 @@ impl App {
         if let Some(archive) = self.panel(deletion.side).archive.clone() {
             return self.start_archive_delete(archive, deletion);
         }
+        if !deletion.permanent {
+            self.last_deletion.clear();
+        }
         self.deleting = Some(deletion);
         self.generation = self.generation.wrapping_add(1);
         self.run_delete_row(0)
@@ -6927,7 +7043,8 @@ impl App {
             return Task::none();
         };
         let Some(path) = deletion.sources.get(index).cloned() else {
-            return self.end_delete();
+            let notice = self.moved_to_trash_notice(&deletion);
+            return Task::batch([self.end_delete(), notice]);
         };
         let total = deletion.sources.len();
         self.job_progress = Some(fs::transfer::Tick { done: index, total });
@@ -6970,6 +7087,441 @@ impl App {
             self.load(each, path, None)
         });
         Task::batch(tasks.into_iter().chain([self.restart_search()]))
+    }
+
+    /// Notes that the entry at `index` of a delete went to the trash, for the
+    /// key that puts the latest deletion back. A permanent delete has nothing
+    /// to put back.
+    fn remember_trashed(&mut self, index: usize) {
+        let Some(deletion) = self.deleting.as_ref().filter(|d| !d.permanent) else {
+            return;
+        };
+        if let Some(path) = deletion.sources.get(index) {
+            self.last_deletion.push(path.clone());
+        }
+    }
+
+    /// The notice after a delete that moved everything to a trash that can
+    /// give it back.
+    fn moved_to_trash_notice(&mut self, deletion: &Deletion) -> Task<Message> {
+        if deletion.permanent || self.trash.reach() == fs::TrashReach::FinderOnly {
+            return Task::none();
+        }
+        let count = deletion.sources.len().to_string();
+        let text = match self
+            .keymap
+            .shortcut_label(&KeyAction::RestoreLastDeletion.message())
+        {
+            Some(key) => fill_template(
+                self.lang.text(Msg::TrashMovedWithKey),
+                &[("{count}", &count), ("{key}", &key)],
+            ),
+            None => fill_template(self.lang.text(Msg::TrashMoved), &[("{count}", &count)]),
+        };
+        self.show_notice(text)
+    }
+
+    // --- the trash ---
+
+    fn update_trash(&mut self, message: TrashMessage) -> Task<Message> {
+        let rows = self.trash_rows();
+        match message {
+            TrashMessage::Open => self.open_trash_on(self.source_side()),
+            TrashMessage::Listed { generation, result } => {
+                if generation == self.trash_generation {
+                    if let Some(view) = self.trash_view.as_mut() {
+                        view.set_items(result, rows);
+                    }
+                }
+                Task::none()
+            }
+            TrashMessage::Close => {
+                self.close_trash();
+                release_focus()
+            }
+            TrashMessage::Restore => {
+                let items = self
+                    .trash_view
+                    .as_ref()
+                    .map(TrashView::action_items)
+                    .unwrap_or_default();
+                self.start_restore(items)
+            }
+            TrashMessage::RestoreRowDone {
+                result,
+                index,
+                generation,
+            } => self.restore_row_done(result, index, generation),
+            TrashMessage::RestoreLast => self.restore_last_deletion(),
+            TrashMessage::LastListed { generation, result } => {
+                self.restore_listed_deletion(generation, result)
+            }
+            TrashMessage::OpenInFinder => self.open_trash_in_finder(),
+            view_message => {
+                let Some(view) = self.trash_view.as_mut() else {
+                    return Task::none();
+                };
+                match view_message {
+                    TrashMessage::Move(delta) => view.move_cursor(delta, rows),
+                    TrashMessage::Page(direction) => view.page(direction, rows),
+                    TrashMessage::First => view.first(rows),
+                    TrashMessage::Last => view.last(rows),
+                    TrashMessage::ToggleTag => view.toggle_tag(),
+                    TrashMessage::TagMove(delta) => view.tag_and_move(delta, rows),
+                    TrashMessage::TagAll => view.tag_all(),
+                    TrashMessage::ClearTags => view.clear_tags(),
+                    TrashMessage::RowClicked(index) => view.select(index, rows),
+                    TrashMessage::Scrolled(delta) => view.scroll(delta, rows),
+                    TrashMessage::Open
+                    | TrashMessage::Listed { .. }
+                    | TrashMessage::Close
+                    | TrashMessage::Restore
+                    | TrashMessage::RestoreRowDone { .. }
+                    | TrashMessage::RestoreLast
+                    | TrashMessage::LastListed { .. }
+                    | TrashMessage::OpenInFinder => {}
+                }
+                Task::none()
+            }
+        }
+    }
+
+    /// Rows of the trash view that fit the window.
+    fn trash_rows(&self) -> usize {
+        layout::trash_visible_rows(self.window_size)
+    }
+
+    /// What the last row of the drive menu is called, if this build has one.
+    fn trash_menu_row(&self) -> Option<Msg> {
+        match self.trash.reach() {
+            fs::TrashReach::Everything => Some(Msg::TrashTitleEverything),
+            fs::TrashReach::OwnDeletions => Some(Msg::TrashTitleOwn),
+            fs::TrashReach::FinderOnly => {
+                cfg!(target_os = "macos").then_some(Msg::ActionOpenTrashInFinder)
+            }
+        }
+    }
+
+    /// Shows the trash in place of the panel on `side` and reads it. Where the
+    /// app cannot read the trash, the Finder opens it instead.
+    fn open_trash_on(&mut self, side: PanelSide) -> Task<Message> {
+        if self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        let reach = self.trash.reach();
+        if reach == fs::TrashReach::FinderOnly {
+            return self.open_trash_in_finder();
+        }
+        self.context_menu = None;
+        self.job_error = None;
+        self.notice = None;
+        let closed_search = if self.search_open && self.search_side == side {
+            self.update_search(SearchMessage::Close)
+        } else {
+            Task::none()
+        };
+        self.active_panel = side;
+        self.trash_side = side;
+        self.trash_view = Some(TrashView::new(reach));
+        Task::batch([closed_search, self.list_trash()])
+    }
+
+    fn close_trash(&mut self) {
+        self.trash_view = None;
+        self.trash_generation = self.trash_generation.wrapping_add(1);
+    }
+
+    /// Reads the trash on the blocking pool; the answer carries the generation,
+    /// so a late one finds the view closed or read again.
+    fn list_trash(&mut self) -> Task<Message> {
+        if self.trash_view.is_none() {
+            return Task::none();
+        }
+        self.trash_generation = self.trash_generation.wrapping_add(1);
+        let generation = self.trash_generation;
+        if let Some(view) = self.trash_view.as_mut() {
+            view.begin_reading();
+        }
+        let trash = Arc::clone(&self.trash);
+        Task::perform(
+            tokio::task::spawn_blocking(move || trash.list()),
+            move |outcome| {
+                Message::Trash(TrashMessage::Listed {
+                    generation,
+                    result: outcome.unwrap_or_else(|join| Err(join.to_string())),
+                })
+            },
+        )
+    }
+
+    fn trash_panel(&self, side: PanelSide) -> Element<'_, Message> {
+        let Some(view) = self.trash_view.as_ref() else {
+            return Space::new().into();
+        };
+        trash_ui::view(trash_ui::Props {
+            view,
+            visible_rows: self.trash_rows(),
+            is_active: self.active_panel == side,
+            panel_width: self.window_size.width / 2.0,
+            lang: self.lang,
+            palette: &self.palette,
+            finder_key: self
+                .keymap
+                .shortcut_label(&KeyAction::OpenTrashInFinder.message()),
+        })
+    }
+
+    /// Whether a restore may start: nothing else holds the queue or the keys.
+    fn restore_is_blocked(&self) -> bool {
+        self.jobs.is_busy()
+            || self.prompt.is_some()
+            || self.conflict_is_open()
+            || self.delete_dialog.is_some()
+            || self.transfer_dialog.is_some()
+            || self.restoring.is_some()
+    }
+
+    /// Puts `items` back, one per job, so Escape works between two entries.
+    fn start_restore(&mut self, items: Vec<fs::TrashedItem>) -> Task<Message> {
+        if items.is_empty() || self.restore_is_blocked() {
+            return Task::none();
+        }
+        self.job_error = None;
+        self.notice = None;
+        self.restoring = Some(Restoration {
+            items,
+            restored: 0,
+            skipped: 0,
+            rule: None,
+        });
+        self.generation = self.generation.wrapping_add(1);
+        self.run_restore_row(0, false)
+    }
+
+    /// Puts the entry at `index` back on the blocking pool, or finishes when
+    /// there is none. With `overwrite`, what is in the way goes to the trash
+    /// first: nothing is ever deleted for good here.
+    fn run_restore_row(&mut self, index: usize, overwrite: bool) -> Task<Message> {
+        let Some(restoring) = self.restoring.as_ref() else {
+            return Task::none();
+        };
+        let Some(item) = restoring.items.get(index).cloned() else {
+            return self.end_restore();
+        };
+        let total = restoring.items.len();
+        self.job_progress = Some(fs::transfer::Tick { done: index, total });
+        self.jobs.enqueue(jobs::Job {
+            kind: jobs::JobKind::Restore,
+            path: item.original.clone(),
+            total: Some(total),
+        });
+        let generation = self.generation;
+        let trash = Arc::clone(&self.trash);
+        self.jobs
+            .start_next(|_| {
+                Task::perform(
+                    tokio::task::spawn_blocking(move || {
+                        if overwrite {
+                            trash
+                                .trash(&item.original)
+                                .map_err(fs::RestoreError::Failed)?;
+                        }
+                        trash.restore(&item)
+                    }),
+                    move |outcome| {
+                        Message::Trash(TrashMessage::RestoreRowDone {
+                            result: outcome.unwrap_or_else(|join| {
+                                Err(fs::RestoreError::Failed(join.to_string()))
+                            }),
+                            index,
+                            generation,
+                        })
+                    },
+                )
+            })
+            .unwrap_or_else(Task::none)
+    }
+
+    fn restore_row_done(
+        &mut self,
+        result: Result<(), fs::RestoreError>,
+        index: usize,
+        generation: u64,
+    ) -> Task<Message> {
+        if generation != self.generation {
+            return Task::none();
+        }
+        self.jobs.finish();
+        let rule = self.restoring.as_ref().and_then(|restoring| restoring.rule);
+        match result {
+            Ok(()) => {
+                if let Some(restoring) = self.restoring.as_mut() {
+                    restoring.restored += 1;
+                }
+                self.run_restore_row(index + 1, false)
+            }
+            Err(fs::RestoreError::Taken) => match rule {
+                Some(fs::transfer::OnConflict::Overwrite) => self.run_restore_row(index, true),
+                Some(_) => self.skip_restore_row(index),
+                None => {
+                    self.dialog_focus = conflict::OVERWRITE_FOCUS;
+                    self.restore_conflict = Some(index);
+                    Task::batch([self.close_quick_open(), self.close_command_palette()])
+                }
+            },
+            Err(fs::RestoreError::Failed(reason)) => {
+                let name = self
+                    .restoring
+                    .as_ref()
+                    .and_then(|restoring| restoring.items.get(index))
+                    .and_then(|item| item.original.file_name())
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let text = fill_template(
+                    self.lang.text(Msg::TrashRestoreFailed),
+                    &[("{name}", &name), ("{reason}", &reason)],
+                );
+                self.set_status_error(&text);
+                self.end_restore()
+            }
+        }
+    }
+
+    fn skip_restore_row(&mut self, index: usize) -> Task<Message> {
+        if let Some(restoring) = self.restoring.as_mut() {
+            restoring.skipped += 1;
+        }
+        self.run_restore_row(index + 1, false)
+    }
+
+    /// The answer to the conflict dialog of a restore.
+    fn resume_restore(&mut self, index: usize, choice: ConflictChoice) -> Task<Message> {
+        if choice == ConflictChoice::Cancel {
+            return self.end_restore();
+        }
+        if choice.applies_to_all() {
+            if let Some(restoring) = self.restoring.as_mut() {
+                restoring.rule = Some(choice.conflict());
+            }
+        }
+        match choice.conflict() {
+            fs::transfer::OnConflict::Overwrite => self.run_restore_row(index, true),
+            fs::transfer::OnConflict::Skip | fs::transfer::OnConflict::Fail => {
+                self.skip_restore_row(index)
+            }
+        }
+    }
+
+    /// Ends the restore, finished, failed or stopped: reloads both panels and
+    /// the trash, and says what came back unless an error already speaks.
+    fn end_restore(&mut self) -> Task<Message> {
+        let outcome = self.restoring.take();
+        self.restore_conflict = None;
+        self.conflict_all = false;
+        self.generation = self.generation.wrapping_add(1);
+        self.job_progress = None;
+        let notice = match outcome {
+            Some(done) if self.job_error.is_none() && (done.restored > 0 || done.skipped > 0) => {
+                let mut text = fill_template(
+                    self.lang.text(Msg::TrashRestored),
+                    &[("{count}", &done.restored.to_string())],
+                );
+                if done.skipped > 0 {
+                    text.push_str(&fill_template(
+                        self.lang.text(Msg::TrashRestoredLeft),
+                        &[("{skipped}", &done.skipped.to_string())],
+                    ));
+                }
+                self.show_notice(text)
+            }
+            _ => Task::none(),
+        };
+        let reloads = [PanelSide::Left, PanelSide::Right].map(|each| {
+            let path = self.panel(each).path.clone();
+            self.load(each, path, None)
+        });
+        Task::batch(
+            reloads
+                .into_iter()
+                .chain([self.list_trash(), self.restart_search(), notice]),
+        )
+    }
+
+    /// The key behind "Restore the last deletion": reads the trash, then puts
+    /// back what the latest F8 of this session moved there.
+    fn restore_last_deletion(&mut self) -> Task<Message> {
+        if self.restore_is_blocked() {
+            return Task::none();
+        }
+        if self.last_deletion.is_empty() {
+            return self.show_notice(self.lang.text(Msg::TrashNothingToRestore).to_owned());
+        }
+        self.generation = self.generation.wrapping_add(1);
+        let generation = self.generation;
+        let trash = Arc::clone(&self.trash);
+        Task::perform(
+            tokio::task::spawn_blocking(move || trash.list()),
+            move |outcome| {
+                Message::Trash(TrashMessage::LastListed {
+                    generation,
+                    result: outcome.unwrap_or_else(|join| Err(join.to_string())),
+                })
+            },
+        )
+    }
+
+    /// Of each path the session trashed, the newest entry of the trash with
+    /// exactly that original goes back. Only the paths held in memory count.
+    fn restore_listed_deletion(
+        &mut self,
+        generation: u64,
+        result: Result<Vec<fs::TrashedItem>, String>,
+    ) -> Task<Message> {
+        if generation != self.generation {
+            return Task::none();
+        }
+        let listed = match result {
+            Ok(listed) => listed,
+            Err(reason) => {
+                let text = fill_template(self.lang.text(Msg::TrashError), &[("{reason}", &reason)]);
+                self.set_status_error(&text);
+                return Task::none();
+            }
+        };
+        // A job started while the trash was read: the deletion stays for the
+        // next press.
+        if self.restore_is_blocked() {
+            return Task::none();
+        }
+        let paths = std::mem::take(&mut self.last_deletion);
+        let found: Vec<fs::TrashedItem> = paths
+            .iter()
+            .filter_map(|path| listed.iter().find(|item| item.original == *path).cloned())
+            .collect();
+        if found.is_empty() {
+            return self.show_notice(self.lang.text(Msg::TrashNothingToRestore).to_owned());
+        }
+        self.start_restore(found)
+    }
+
+    /// Shows the trash folder in the Finder, where the app cannot list it.
+    #[cfg(target_os = "macos")]
+    fn open_trash_in_finder(&mut self) -> Task<Message> {
+        if let Err(reason) = self.launcher.launch(&fs::trash_in_finder_command()) {
+            let text = fill_template(
+                self.lang.text(Msg::TrashFinderFailed),
+                &[("{reason}", &reason)],
+            );
+            self.set_status_error(&text);
+        }
+        Task::none()
+    }
+
+    /// Only the Finder has a trash the app cannot list; no other platform
+    /// offers the action.
+    #[cfg(not(target_os = "macos"))]
+    fn open_trash_in_finder(&mut self) -> Task<Message> {
+        Task::none()
     }
 
     /// F7 and Shift+F4: the name prompt for the active panel's folder.
@@ -7068,7 +7620,7 @@ impl App {
             || self.deleting.is_some()
             || self.delete_dialog.is_some()
             || self.transfer_dialog.is_some()
-            || self.pending_conflict.is_some()
+            || self.conflict_is_open()
         {
             let text = self.lang.text(Msg::StatusArchiveViewBusy).to_owned();
             return self.show_notice(text);
@@ -7240,7 +7792,7 @@ impl App {
     fn open_pack_prompt(&mut self) -> Task<Message> {
         if self.jobs.is_busy()
             || self.prompt.is_some()
-            || self.pending_conflict.is_some()
+            || self.conflict_is_open()
             || self.delete_dialog.is_some()
             || self.transfer_dialog.is_some()
             || self.transfer.is_some()
@@ -7506,6 +8058,8 @@ impl App {
             self.end_archive_write(&write)
         } else if self.deleting.is_some() {
             self.end_delete()
+        } else if self.restoring.is_some() {
+            self.end_restore()
         } else {
             self.end_transfer()
         }
@@ -7674,7 +8228,7 @@ impl App {
             return self.show_notice(text);
         }
         if self.prompt.is_some()
-            || self.pending_conflict.is_some()
+            || self.conflict_is_open()
             || self.delete_dialog.is_some()
             || self.transfer_dialog.is_some()
             || self.archive_write.is_some()
@@ -7844,7 +8398,7 @@ impl App {
         self.transfer.is_some()
             || self.extracting.is_some()
             || self.prompt.is_some()
-            || self.pending_conflict.is_some()
+            || self.conflict_is_open()
             || self.delete_dialog.is_some()
             || self.transfer_dialog.is_some()
             || self.archive_write.is_some()
@@ -8174,16 +8728,14 @@ impl App {
     /// Answers a conflict and remembers an "all" answer, so the next
     /// conflict does not ask again.
     fn answer_conflict(&mut self, clicked: ConflictChoice) -> Task<Message> {
+        if let Some(index) = self.restore_conflict.take() {
+            let choice = self.conflict_answer(clicked);
+            return self.resume_restore(index, choice);
+        }
         let Some(pending) = self.pending_conflict.take() else {
             return Task::none();
         };
-        // The tick belonged to the question just answered, so it goes with it.
-        let choice = if self.conflict_all {
-            clicked.for_all()
-        } else {
-            clicked
-        };
-        self.conflict_all = false;
+        let choice = self.conflict_answer(clicked);
         // Cancel ends the transfer; the rows already done stay done.
         if choice == ConflictChoice::Cancel {
             return self.end_transfer();
@@ -8195,6 +8747,40 @@ impl App {
         // transfer standing still after the user answered, which is the one
         // thing the dialog must not do.
         self.resume_transfer(pending, choice)
+    }
+
+    /// The file the open conflict dialog asks about.
+    fn conflict_name(&self) -> String {
+        let path = match (self.pending_conflict.as_ref(), self.restore_conflict) {
+            (Some(pending), _) => pending.transfer.sources.get(pending.index),
+            (None, Some(index)) => self
+                .restoring
+                .as_ref()
+                .and_then(|restoring| restoring.items.get(index))
+                .map(|item| &item.original),
+            (None, None) => None,
+        };
+        path.and_then(|source| source.file_name())
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    }
+
+    /// What the dialog's button means: the tick belonged to the question just
+    /// answered, so it goes with it.
+    fn conflict_answer(&mut self, clicked: ConflictChoice) -> ConflictChoice {
+        let choice = if self.conflict_all {
+            clicked.for_all()
+        } else {
+            clicked
+        };
+        self.conflict_all = false;
+        choice
+    }
+
+    /// Whether a name that is taken waits for an answer, in a transfer or in
+    /// a restore from the trash.
+    fn conflict_is_open(&self) -> bool {
+        self.pending_conflict.is_some() || self.restore_conflict.is_some()
     }
 
     /// Continues a transfer from `index` under the given conflict rule.
@@ -8509,7 +9095,7 @@ impl App {
             waiting: self.jobs.waiting(),
             // Escape belongs to the prompt while one is open, so the hint is
             // only true when nothing else is claiming the key.
-            abortable: self.prompt.is_none() && self.pending_conflict.is_none(),
+            abortable: self.prompt.is_none() && !self.conflict_is_open(),
         })
     }
 
@@ -8651,6 +9237,12 @@ impl App {
     /// The search view is up and its panel is the active one: the keys and the
     /// file actions are the search's. After Tab or a click on the other panel
     /// they are that panel's again, while the search stays on screen.
+    /// The trash view is up and its panel is the active one: its keys are
+    /// the cursor's.
+    fn trash_has_keys(&self) -> bool {
+        self.trash_view.is_some() && self.active_panel == self.trash_side
+    }
+
     fn search_has_keys(&self) -> bool {
         self.search_open && self.active_panel == self.search_side
     }
@@ -8660,6 +9252,8 @@ impl App {
     fn source_side(&self) -> PanelSide {
         if self.search_has_keys() {
             self.search_side
+        } else if self.trash_has_keys() {
+            self.trash_side
         } else {
             self.active_panel
         }
@@ -8808,6 +9402,9 @@ impl App {
         self.job_error = None;
         self.notice = None;
         let side = self.active_panel;
+        if self.trash_side == side {
+            self.close_trash();
+        }
         let root = self.panel(side).path.clone();
         self.search_side = side;
         self.search_open = true;
@@ -11811,9 +12408,14 @@ impl App {
                 Some(search) if self.search_open && side == self.search_side => {
                     titlebar::TabTitle::Search(search_ui::title(search, self.lang))
                 }
-                _ => titlebar::TabTitle::Path {
-                    path: &self.panel(side).path,
-                    loading: self.panel(side).loading,
+                _ => match self.trash_view.as_ref() {
+                    Some(view) if side == self.trash_side => titlebar::TabTitle::Trash(
+                        trash_ui::heading(view.reach, self.lang).to_owned(),
+                    ),
+                    _ => titlebar::TabTitle::Path {
+                        path: &self.panel(side).path,
+                        loading: self.panel(side).loading,
+                    },
                 },
             };
             titlebar::Tab {
@@ -14203,6 +14805,12 @@ impl App {
             jobs: jobs::Queue::new(),
             transfer: None,
             pending_conflict: None,
+            restoring: None,
+            restore_conflict: None,
+            last_deletion: Vec::new(),
+            trash_view: None,
+            trash_side: PanelSide::Left,
+            trash_generation: 0,
             transfer_dialog: None,
             transfer_dialogs_opened: 0,
             transfer_mask_visible: false,
@@ -14215,7 +14823,7 @@ impl App {
             archive_write: None,
             dialog_focus: 0,
             modifiers: Modifiers::default(),
-            trash: Arc::new(fs::SystemTrash),
+            trash: fs::system_trash(None),
             launcher: Arc::new(fs::SystemLauncher),
             open_programs: config::OpenPrograms::default(),
             config_error: None,
@@ -14726,6 +15334,29 @@ impl App {
             open.set_error(message.to_string());
         }
     }
+    /// An app with the trash view up on two fixed entries, for the snapshot.
+    /// Without a deletion time: a date would show the time zone of the machine.
+    pub fn with_fixed_trash() -> Self {
+        let mut app = Self::with_fixed_panels();
+        let entry = |original: &str, key: &str| fs::TrashedItem {
+            original: PathBuf::from(original),
+            deleted_at: 0,
+            key: key.into(),
+        };
+        let mut view = TrashView::new(fs::TrashReach::OwnDeletions);
+        view.set_items(
+            Ok(vec![
+                entry("/home/test/files/report.pdf", "a"),
+                entry("/home/test/links/photos", "b"),
+            ]),
+            app.trash_rows(),
+        );
+        view.toggle_tag();
+        view.move_cursor(1, app.trash_rows());
+        app.trash_view = Some(view);
+        app
+    }
+
     /// An app with the search view up on fixed results, for the snapshot.
     pub fn with_fixed_search() -> Self {
         let mut app = Self::with_fixed_panels();
@@ -15061,7 +15692,27 @@ impl App {
     ///
     /// Read by the end-to-end tests, which cannot reach the private field.
     pub fn conflict_is_pending(&self) -> bool {
-        self.pending_conflict.is_some()
+        self.conflict_is_open()
+    }
+
+    /// The originals the open trash view lists, newest first.
+    pub fn trash_view_originals(&self) -> Option<Vec<PathBuf>> {
+        self.trash_view.as_ref().map(|view| {
+            view.items
+                .iter()
+                .map(|item| item.original.clone())
+                .collect()
+        })
+    }
+
+    /// The trash view is up and its panel is the active one.
+    pub fn trash_view_has_keys(&self) -> bool {
+        self.trash_has_keys()
+    }
+
+    /// Whether the restore is done and its dialog gone.
+    pub fn restore_is_idle(&self) -> bool {
+        self.restoring.is_none() && self.restore_conflict.is_none()
     }
 
     /// Tags the row at `index`, addressed by position the way a keypress is.
@@ -19080,6 +19731,191 @@ mod configured_keys_tests {
         );
     }
 
+    fn app_with_a_trash_that_lists() -> (tempfile::TempDir, App) {
+        let folder = tempfile::tempdir().unwrap();
+        let trash = Arc::new(fs::JournaledTrash::new(
+            folder.path().join("journal.toml"),
+            fs::FolderBackend(folder.path().to_path_buf()),
+        ));
+        (folder, App::with_fixed_panels().with_trash(trash))
+    }
+
+    fn moved(app: &mut App, count: usize) {
+        let sources = (0..count)
+            .map(|index| PathBuf::from(format!("/left/{index}.txt")))
+            .collect();
+        drop(app.moved_to_trash_notice(&Deletion {
+            sources,
+            permanent: false,
+            side: PanelSide::Left,
+        }));
+    }
+
+    #[test]
+    fn the_notice_after_a_delete_names_the_restore_key_or_leaves_it_out() {
+        let (_folder, mut app) = app_with_a_trash_that_lists();
+        moved(&mut app, 2);
+        let key = app
+            .keymap
+            .shortcut_label(&KeyAction::RestoreLastDeletion.message())
+            .unwrap();
+        assert_eq!(
+            app.notice_for_test(),
+            Some(format!("Moved 2 to the trash. {key} puts it back.").as_str())
+        );
+
+        let (_other, app_without_key) = app_with_a_trash_that_lists();
+        let mut unbound =
+            app_without_key.with_config(Ok(config_with("[keys]\nrestore_last_deletion = []\n")));
+        moved(&mut unbound, 1);
+        assert_eq!(
+            unbound.notice_for_test(),
+            Some("Moved 1 to the trash."),
+            "a missing key left a hole in the sentence"
+        );
+    }
+
+    #[test]
+    fn a_trash_the_app_cannot_list_gets_no_restore_promise() {
+        let mut app = App::with_fixed_panels().with_trash(Arc::new(NoListTrash));
+        moved(&mut app, 1);
+        assert_eq!(app.notice_for_test(), None);
+    }
+
+    struct NoListTrash;
+
+    impl fs::Trash for NoListTrash {
+        fn trash(&self, _path: &Path) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn reach(&self) -> fs::TrashReach {
+            fs::TrashReach::FinderOnly
+        }
+
+        fn list(&self) -> Result<Vec<fs::TrashedItem>, String> {
+            Ok(Vec::new())
+        }
+
+        fn restore(&self, _item: &fs::TrashedItem) -> Result<(), fs::RestoreError> {
+            Err(fs::RestoreError::Failed(String::new()))
+        }
+    }
+
+    #[test]
+    fn the_notice_after_a_restore_counts_what_came_back_and_what_stayed() {
+        let (_folder, mut app) = app_with_a_trash_that_lists();
+        app.restoring = Some(Restoration {
+            items: Vec::new(),
+            restored: 2,
+            skipped: 1,
+            rule: None,
+        });
+        drop(app.end_restore());
+        assert_eq!(
+            app.notice_for_test(),
+            Some("Restored 2 from the trash. 1 left in the trash.")
+        );
+        assert!(app.restoring.is_none());
+    }
+
+    #[test]
+    fn a_failed_restore_keeps_its_error_instead_of_a_notice() {
+        let (_folder, mut app) = app_with_a_trash_that_lists();
+        app.restoring = Some(Restoration {
+            items: vec![fs::TrashedItem {
+                original: PathBuf::from("/left/a.txt"),
+                deleted_at: 0,
+                key: "a".into(),
+            }],
+            restored: 1,
+            skipped: 0,
+            rule: None,
+        });
+        let generation = app.generation;
+        drop(app.restore_row_done(
+            Err(fs::RestoreError::Failed("denied".to_string())),
+            0,
+            generation,
+        ));
+        assert!(app
+            .status_error()
+            .is_some_and(|text| text.contains("a.txt")));
+        assert_eq!(app.notice_for_test(), None);
+    }
+
+    fn on_the_trash_view() -> PromptKeyState {
+        PromptKeyState {
+            trash: true,
+            ..PromptKeyState::default()
+        }
+    }
+
+    #[test]
+    fn the_trash_view_restores_on_enter_and_closes_on_escape() {
+        let state = on_the_trash_view();
+        let none = Modifiers::default();
+        assert_eq!(
+            route_key(&state, Key::Named(Named::Enter), none),
+            Some(Message::Trash(TrashMessage::Restore))
+        );
+        assert_eq!(
+            route_key(&state, Key::Named(Named::Escape), none),
+            Some(Message::Trash(TrashMessage::Close))
+        );
+        assert_eq!(
+            route_key(&state, Key::Named(Named::ArrowDown), none),
+            Some(Message::Trash(TrashMessage::Move(1)))
+        );
+        assert_eq!(
+            route_key(&state, Key::Named(Named::End), none),
+            Some(Message::Trash(TrashMessage::Last))
+        );
+        assert_eq!(
+            route_key(&state, Key::Named(Named::Insert), none),
+            Some(Message::Trash(TrashMessage::ToggleTag))
+        );
+        assert_eq!(
+            route_key(&state, Key::Named(Named::ArrowDown), Modifiers::SHIFT),
+            Some(Message::Trash(TrashMessage::TagMove(1)))
+        );
+        let running = PromptKeyState {
+            job_running: true,
+            ..on_the_trash_view()
+        };
+        assert_eq!(
+            route_key(&running, Key::Named(Named::Escape), none),
+            Some(Message::AbortJob),
+            "a restore in flight cannot be stopped"
+        );
+    }
+
+    #[test]
+    fn the_trash_view_ignores_the_file_keys_and_typing_but_lets_a_few_through() {
+        let state = on_the_trash_view();
+        let none = Modifiers::default();
+        for named in [Named::F5, Named::F6, Named::F7, Named::F8, Named::Backspace] {
+            assert_eq!(
+                route_key(&state, Key::Named(named), none),
+                None,
+                "{named:?} reached the panel behind the trash"
+            );
+        }
+        assert_eq!(route_key(&state, character("a"), none), None);
+        assert_eq!(
+            route_key(&state, Key::Named(Named::Tab), none),
+            Some(Message::SwitchPanel)
+        );
+        assert_eq!(
+            route_key(&state, character("z"), Modifiers::COMMAND),
+            Some(Message::Trash(TrashMessage::RestoreLast))
+        );
+        assert_eq!(
+            route_key(&state, character("q"), Modifiers::COMMAND),
+            Some(Message::Quit)
+        );
+    }
+
     fn binding_key_of(typed: &str, physical: Code, modifiers: Modifiers) -> Key {
         binding_key(character(typed), Physical::Code(physical), modifiers)
     }
@@ -22743,17 +23579,22 @@ mod favourites_and_history_tests {
 
         drop(app.update(Message::VolumeMenuLast));
         drop(app.update(Message::VolumeMenuRemove));
+        assert_eq!(app.favourites.len(), 2, "the trash row is not removable");
+        if let Some(menu) = app.volume_menu.as_mut() {
+            menu.selected = menu.last_row().saturating_sub(1);
+        }
+        drop(app.update(Message::VolumeMenuRemove));
         assert_eq!(app.favourites, [PathBuf::from("/x/one")]);
         assert!(app.volume_menu_is_open(), "the menu stays open");
         assert_eq!(
             app.volume_menu_selected(),
-            Some(2),
-            "the highlight is clamped"
+            Some(3),
+            "the highlight lands on the trash row, the last one left"
         );
     }
 
     #[test]
-    fn removing_the_last_favourite_without_drives_closes_the_menu() {
+    fn removing_the_last_favourite_without_drives_leaves_the_trash_row_open() {
         let mut app = App::with_fixed_panels().with_volumes(Vec::new);
         app.favourites = vec![PathBuf::from("/x/one")];
         drop(app.update(Message::VolumeMenu(PanelSide::Left)));
@@ -22761,7 +23602,7 @@ mod favourites_and_history_tests {
         drop(app.update(Message::VolumeMenuRemove));
 
         assert!(app.favourites.is_empty());
-        assert!(!app.volume_menu_is_open());
+        assert!(app.volume_menu_is_open(), "the trash row is still there");
     }
 
     #[test]
@@ -24732,7 +25573,12 @@ mod remote_panel_tests {
         settle(&mut app, Message::VolumeMenuRemove).await;
 
         assert!(!fixture.pool.is_connected(&Fixture::id()));
-        assert!(app.volume_menu.is_none());
+        assert!(
+            app.volume_menu
+                .as_ref()
+                .is_some_and(|open| open.servers.is_empty()),
+            "the trash row keeps the menu open"
+        );
         assert_eq!(app.left_panel.path, app.home, "the panel went home");
         assert!(app
             .notice_for_test()

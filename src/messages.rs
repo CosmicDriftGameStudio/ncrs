@@ -26,6 +26,7 @@ use crate::fs::remote::{RemotePath, Secret, ServerId};
 use crate::fs::search::SearchEvent;
 use crate::fs::{CreateDirError, OpenKind};
 use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
+use crate::fs::{RestoreError, TrashedItem};
 use crate::hermes_column::{ColumnReading, ColumnStage, FileDetail, FolderRole};
 use crate::hermes_setup::FolderSlot;
 use crate::i18n::Language;
@@ -352,6 +353,7 @@ pub enum Message {
     /// it is already there.
     OpenSearch,
     Search(SearchMessage),
+    Trash(TrashMessage),
 
     // --- Filing module: the index and its first-start questions ---
     Filing(FilingMessage),
@@ -668,6 +670,44 @@ pub enum SearchMessage {
     /// The chevron of the file at this index in the results.
     ToggleGroup(usize),
     Scrolled(iced::mouse::ScrollDelta),
+}
+
+/// Everything the trash view and putting entries back send.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TrashMessage {
+    /// Show the trash in place of the active panel.
+    Open,
+    /// What reading the trash gave. Dropped when `generation` is not the
+    /// latest read's.
+    Listed {
+        generation: u64,
+        result: Result<Vec<TrashedItem>, String>,
+    },
+    Close,
+    Move(isize),
+    Page(isize),
+    First,
+    Last,
+    ToggleTag,
+    TagMove(isize),
+    TagAll,
+    ClearTags,
+    RowClicked(usize),
+    Scrolled(iced::mouse::ScrollDelta),
+    /// Put back the tagged rows, else the cursor row.
+    Restore,
+    RestoreRowDone {
+        result: Result<(), RestoreError>,
+        index: usize,
+        generation: u64,
+    },
+    /// Put back what the latest F8 moved to the trash.
+    RestoreLast,
+    LastListed {
+        generation: u64,
+        result: Result<Vec<TrashedItem>, String>,
+    },
+    OpenInFinder,
 }
 
 /// Everything the filing status page sends.
