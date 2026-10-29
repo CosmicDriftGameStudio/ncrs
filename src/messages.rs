@@ -347,6 +347,8 @@ pub enum Message {
     HermesSetup(HermesSetupMessage),
     /// Moves the dots of the flow picture one step on.
     HermesFlowTick,
+    // --- The overview, the first page of the Hermes card ---
+    HermesOverview(HermesOverviewMessage),
 
     // --- Rule suggestions: rules read out of how the archive is filed ---
     RuleSuggestions(RuleSuggestionsMessage),
@@ -479,6 +481,8 @@ pub enum SettingsMessage {
     /// The key and the command list: opens the tab, or closes it when it is up.
     Toggle,
     Close,
+    /// Folds the technical rows of a page open or shut.
+    ToggleAdvanced,
     Select(SettingsFeature),
     SearchChanged(String),
     Change(SettingChange),
@@ -648,7 +652,6 @@ pub enum FilingStatusMessage {
     /// the generation starts now.
     Restarted(u64),
     TogglePause,
-    SetLoad(Load),
     /// One worker more (`1`) or fewer (`-1`) than now.
     StepWorkers(i8),
     IndexFigures(Result<IndexFigures, String>),
@@ -717,6 +720,11 @@ pub enum FilingSetupMessage {
     Save,
     /// The filing settings read back from the written file.
     Saved(Result<Filing, FilingWriteError>),
+    /// The access to a picked folder was kept, or why not (sandbox only).
+    Granted {
+        folder: PathBuf,
+        result: Result<(), String>,
+    },
 }
 
 /// Everything the first-time setup of Hermes sends.
@@ -742,6 +750,38 @@ pub enum HermesSetupMessage {
     /// The filing settings read back from the written file.
     Written(Result<Filing, FilingWriteError>),
     Later,
+    /// The access to a picked folder was kept, or why not (sandbox only).
+    Granted {
+        folder: PathBuf,
+        result: Result<(), String>,
+    },
+}
+
+/// Everything the Hermes overview sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HermesOverviewMessage {
+    Close,
+    PatternEdited(String),
+    /// The key or a click that puts the focus into the pattern field.
+    FocusPattern,
+    /// Escape in the pattern field: the text is entered and the field lets go.
+    LeavePattern,
+    /// Enter in the pattern field, or the page being left.
+    PatternSubmit,
+    PatternWritten(Result<Box<Config>, FilingWriteError>),
+    SetAiEnabled(bool),
+    SetLoad(Load),
+    /// The user wants other folders: the old card, or the setup without any.
+    ChangeFolders,
+    LoadOcrModels,
+    LoadAiModel,
+    ReadReviewsAgainWithAi,
+    ReviewsToReadAgain(Result<Vec<ReviewItem>, String>),
+    ShowOwnServerSettings,
+    SwitchHermesOn,
+    ContinueSetup,
+    TryAgain,
+    EnterRecoveryKey,
 }
 
 /// Everything the reorganisation plan view sends. Running the selection is
@@ -781,11 +821,12 @@ pub enum HermesFocus {
 /// The pages of the Hermes card, in the order of its sidebar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HermesPage {
-    Inspection,
+    Overview,
     Review,
     RuleSuggestions,
     Reorganisation,
     SavedQueries,
+    Inspection,
 }
 
 /// Everything the saved queries page sends.

@@ -1140,6 +1140,11 @@ impl FilingModule {
         self.index_encrypted == Some(false)
     }
 
+    /// `None` until an index is open.
+    pub fn index_encryption(&self) -> Option<bool> {
+        self.index_encrypted
+    }
+
     /// Whether a new module may take this one's place: no create, restore or
     /// replace in flight, and no recovery key on screen that would be lost.
     /// A module dismissed while starting may still run its start job; that job
@@ -1506,6 +1511,15 @@ impl FilingModule {
         Self {
             db_path,
             ..Self::in_phase_with_locations(phase)
+        }
+    }
+
+    /// Like `in_phase`, wired for the AI of `setting`: the local model is
+    /// not downloaded, so it reports that.
+    pub fn in_phase_with_ai(phase: Phase, setting: &AiSetting) -> Self {
+        Self {
+            ai: wire_ai(setting, Path::new("index.db")),
+            ..Self::in_phase(phase)
         }
     }
 

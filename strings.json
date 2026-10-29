@@ -2227,24 +2227,6 @@
       "de": "unverändert"
     },
     {
-      "key": "filing_status.hint_pause",
-      "context": "Verb next to the P key cap in the footer of the filing status page: the key pauses or resumes the pipeline. Only the verb, the key cap is drawn separately.",
-      "en": "pause",
-      "de": "Pause"
-    },
-    {
-      "key": "filing_status.hint_load",
-      "context": "Word next to the 1 2 3 key caps in the footer of the filing status page: the keys choose the load. Only the word, the key caps are drawn separately.",
-      "en": "load",
-      "de": "Last"
-    },
-    {
-      "key": "filing_status.hint_workers",
-      "context": "Word next to the + - key caps in the footer of the filing status page: the keys change the number of workers. Only the word, the key caps are drawn separately.",
-      "en": "workers",
-      "de": "Worker"
-    },
-    {
       "key": "filing_status.hint_errors",
       "context": "Word next to the up and down arrow key caps in the footer of the filing status page: the keys move through the list of errors, Enter opens one. Only the word, the key caps are drawn separately.",
       "en": "errors",
@@ -4051,30 +4033,6 @@
       "de": "Hermes holt neue Dokumente ab, liest sie und legt sie nach deinen Regeln ab."
     },
     {
-      "key": "settings.group_folders",
-      "context": "Heading of a group of settings on the filing page of the settings tab: the folders Hermes works on.",
-      "en": "Folders",
-      "de": "Ordner"
-    },
-    {
-      "key": "settings.group_work",
-      "context": "Heading of a group of settings on the filing page of the settings tab: switching Hermes on and how much computing time it takes.",
-      "en": "Processing",
-      "de": "Verarbeitung"
-    },
-    {
-      "key": "settings.group_ocr",
-      "context": "Heading of a group of settings on the filing page of the settings tab: reading text from scans and images (OCR).",
-      "en": "Text recognition",
-      "de": "Texterkennung"
-    },
-    {
-      "key": "settings.group_ai",
-      "context": "Heading of a group of settings on the filing page of the settings tab: the AI that fills in fields. Two letters, an abbreviation.",
-      "en": "AI",
-      "de": "KI"
-    },
-    {
       "key": "settings.row_preset",
       "context": "Name of a setting on the appearance page: which built-in color scheme the look starts from.",
       "en": "Color scheme",
@@ -4171,66 +4129,6 @@
       "de": "aus"
     },
     {
-      "key": "settings.row_inbox",
-      "context": "Name of a folder setting on the filing page: a folder from which Hermes picks up new documents. Followed by its theme name.",
-      "en": "Inbox",
-      "de": "Eingang"
-    },
-    {
-      "key": "settings.row_inbox_note",
-      "context": "Explanation under an inbox folder: Hermes picks up documents there.",
-      "en": "Hermes picks up new documents here.",
-      "de": "Hier holt Hermes neue Dokumente ab."
-    },
-    {
-      "key": "settings.row_filing_location",
-      "context": "Name of a folder setting on the filing page: the one folder where Hermes files new documents.",
-      "en": "Filing location",
-      "de": "Ablageort"
-    },
-    {
-      "key": "settings.row_filing_location_note",
-      "context": "Explanation under the filing location folder.",
-      "en": "Hermes files new documents here.",
-      "de": "Hierhin legt Hermes neue Dokumente."
-    },
-    {
-      "key": "settings.row_archive_note",
-      "context": "Explanation under a read-only archive folder: Hermes learns from it but moves nothing.",
-      "en": "Hermes learns from it but moves nothing.",
-      "de": "Hermes lernt daraus, verschiebt dort aber nichts."
-    },
-    {
-      "key": "settings.folder_images",
-      "context": "Addition under a folder on the filing page when the folder also takes images.",
-      "en": "Also takes JPG and PNG.",
-      "de": "Nimmt auch JPG und PNG."
-    },
-    {
-      "key": "settings.folders_empty",
-      "context": "Shown in the folders group on the filing page when no folder is chosen yet.",
-      "en": "No folders chosen yet.",
-      "de": "Noch keine Ordner gewählt."
-    },
-    {
-      "key": "settings.change",
-      "context": "Button next to a setting that opens the card where it is changed. The ellipsis says a card follows.",
-      "en": "Change…",
-      "de": "Ändern…"
-    },
-    {
-      "key": "settings.row_load",
-      "context": "Name of the setting on the filing page: how much computing time Hermes may use.",
-      "en": "Load",
-      "de": "Last"
-    },
-    {
-      "key": "settings.row_load_note",
-      "context": "Explanation under the load setting: how much computing time Hermes may take from the machine.",
-      "en": "How much computing time Hermes may take.",
-      "de": "Wie viel Rechenzeit Hermes nehmen darf."
-    },
-    {
       "key": "settings.load_workers",
       "context": "Fourth choice of the load setting, shown only when the config names a number of workers. Takes the number.",
       "en": "{count} workers",
@@ -4279,24 +4177,6 @@
       "de": "Eingebaut in macOS"
     },
     {
-      "key": "settings.model_next_start",
-      "context": "Status of the AI model on the filing page when the AI is on in the config but the running Hermes started before that and picks it up at the next start. Lower case.",
-      "en": "loads at the next start",
-      "de": "wird beim nächsten Start geladen"
-    },
-    {
-      "key": "settings.row_ai_enabled",
-      "context": "Name of the setting on the filing page that lets an AI fill in fields it could not read by rules.",
-      "en": "AI helps",
-      "de": "KI hilft mit"
-    },
-    {
-      "key": "settings.row_ai_enabled_note",
-      "context": "Explanation under the AI setting: it only fills in fields like sender and date, and the change applies at once unless files are being moved.",
-      "en": "Fills in fields like sender and date.",
-      "de": "Füllt Felder wie Absender und Datum."
-    },
-    {
       "key": "settings.row_ai_provider",
       "context": "Name of the setting on the filing page that tells where the AI runs. Shown read only.",
       "en": "Provider",
@@ -4325,18 +4205,6 @@
       "context": "Name of the setting on the filing page that shows the AI model and whether it is there.",
       "en": "Model",
       "de": "Modell"
-    },
-    {
-      "key": "settings.row_ai_model_note",
-      "context": "Explanation under the AI model: where the local model lives.",
-      "en": "Runs on this machine, in the data folder of ncrs.",
-      "de": "Läuft auf diesem Rechner, im Datenordner von ncrs."
-    },
-    {
-      "key": "settings.model_unknown",
-      "context": "Status of the AI model on the settings tab when Hermes is not running, so nothing can be said about the model.",
-      "en": "Hermes is off",
-      "de": "Hermes ist aus"
     },
     {
       "key": "settings.saved_next_start",
@@ -5927,6 +5795,534 @@
       "context": "Line of the about card shown when the file with the third-party licences is not part of this copy of ncrs, for example a build from source. {url} is the web address where the same file can be read.",
       "en": "The licence file is not part of this build. Read it online: {url}",
       "de": "Die Lizenzdatei gehört nicht zu diesem Build. Online lesen: {url}"
+    },
+    {
+      "key": "hermes.nav_overview",
+      "context": "Sidebar entry of the Hermes card that opens the overview page: what Hermes does and what it needs.",
+      "en": "Overview",
+      "de": "Übersicht"
+    },
+    {
+      "key": "hermes.nav_overview.theme",
+      "context": "Theme name shown dimmed behind the sidebar entry hermes.nav_overview. Playful, from the cartoon the module is named after.",
+      "en": "Delivery",
+      "de": "Lieferdienst"
+    },
+    {
+      "key": "hermes_overview.hint_pattern",
+      "context": "Word next to the E key cap in the footer of the Hermes overview: the key puts the cursor into the filing pattern field. Only the word, the key cap is drawn separately.",
+      "en": "pattern",
+      "de": "Muster"
+    },
+    {
+      "key": "hermes_overview.hint_pause",
+      "context": "Verb next to the P key cap in the footer of the Hermes overview: the key pauses or resumes the pipeline. Only the verb, the key cap is drawn separately.",
+      "en": "pause",
+      "de": "Pause"
+    },
+    {
+      "key": "hermes_overview.hint_load",
+      "context": "Word next to the 1 2 3 key caps in the footer of the Hermes overview: the keys choose the load. Only the word, the key caps are drawn separately.",
+      "en": "load",
+      "de": "Last"
+    },
+    {
+      "key": "hermes_overview.hint_workers",
+      "context": "Word next to the + - key caps in the footer of the Hermes overview: the keys change the number of workers. Only the word, the key caps are drawn separately.",
+      "en": "workers",
+      "de": "Worker"
+    },
+    {
+      "key": "hermes_overview.title",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Headline of the page: the promise of the feature.",
+      "en": "Hermes files your documents",
+      "de": "Hermes legt deine Dokumente ab"
+    },
+    {
+      "key": "hermes_overview.intro_mac",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Intro under the headline on macOS. Says where the data stays.",
+      "en": "Put PDFs and scans in the inbox. Hermes reads them, recognises sender, date and amount and files them where your rules say. Everything stays on this Mac.",
+      "de": "Lege PDFs und Scans in den Eingang. Hermes liest sie, erkennt Absender, Datum und Betrag und sortiert sie nach deinen Regeln in den Ablageort. Alles bleibt auf diesem Mac."
+    },
+    {
+      "key": "hermes_overview.intro_other",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Intro under the headline on systems other than macOS. Says where the data stays.",
+      "en": "Put PDFs and scans in the inbox. Hermes reads them, recognises sender, date and amount and files them where your rules say. Everything stays on this computer.",
+      "de": "Lege PDFs und Scans in den Eingang. Hermes liest sie, erkennt Absender, Datum und Betrag und sortiert sie nach deinen Regeln in den Ablageort. Alles bleibt auf diesem Computer."
+    },
+    {
+      "key": "hermes_overview.pill_running",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Status pill next to the headline: Hermes works and nothing waits for the user.",
+      "en": "Running",
+      "de": "Läuft"
+    },
+    {
+      "key": "hermes_overview.pill_needs_you",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Status pill next to the headline: something needs the user (open reviews, a missing key, no folders, a failure).",
+      "en": "Needs you",
+      "de": "Braucht dich"
+    },
+    {
+      "key": "hermes_overview.pill_off",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Status pill next to the headline: Hermes is switched off.",
+      "en": "Off",
+      "de": "Aus"
+    },
+    {
+      "key": "hermes_overview.pill_starting",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Status pill next to the headline while the module starts or is rebuilt after a setting changed.",
+      "en": "Starting …",
+      "de": "Startet …"
+    },
+    {
+      "key": "hermes_overview.flow_inbox_note",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the inbox box of the flow picture: the name of the inbox folder and how many documents are new. {name} is a folder name, {count} a number.",
+      "en": "{name} · {count} new",
+      "de": "{name} · {count} neu"
+    },
+    {
+      "key": "hermes_overview.flow_archive_note",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the archive box of the flow picture: the archive is only read, and how many documents it holds. {count} is a number.",
+      "en": "read only · {count} documents",
+      "de": "nur lesen · {count} Dokumente"
+    },
+    {
+      "key": "hermes_overview.flow_archive_none",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the archive box of the flow picture when the user has no archive folder.",
+      "en": "none yet",
+      "de": "noch keins"
+    },
+    {
+      "key": "hermes_overview.flow_read_ai",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the reading box of the flow picture when the AI model is ready.",
+      "en": "Text recognition and AI find sender, date, amount",
+      "de": "Texterkennung und KI finden Absender, Datum, Betrag"
+    },
+    {
+      "key": "hermes_overview.flow_read_model_missing",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the reading box of the flow picture when the AI is on but its model is not loaded.",
+      "en": "Text recognition finds sender, date, amount · AI model missing",
+      "de": "Texterkennung findet Absender, Datum, Betrag · KI-Modell fehlt"
+    },
+    {
+      "key": "hermes_overview.flow_read_no_ai",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the reading box of the flow picture when the AI is off.",
+      "en": "Text recognition finds sender, date, amount · without AI",
+      "de": "Texterkennung findet Absender, Datum, Betrag · ohne KI"
+    },
+    {
+      "key": "hermes_overview.flow_rules_note",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the rules box of the flow picture: how many rules the user confirmed. {count} is a number, at least 2 or 0.",
+      "en": "learn from every document you confirm · {count} rules",
+      "de": "lernen aus jedem Dokument, das du bestätigst · {count} Regeln"
+    },
+    {
+      "key": "hermes_overview.flow_rules_note_one",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the rules box of the flow picture when exactly one rule is confirmed.",
+      "en": "learn from every document you confirm · 1 rule",
+      "de": "lernen aus jedem Dokument, das du bestätigst · 1 Regel"
+    },
+    {
+      "key": "hermes_overview.flow_filed_note",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the filing box of the flow picture: the filing location and how the documents are sorted into it. {path} is a folder, {pattern} the way the documents are sorted.",
+      "en": "{path} · {pattern}",
+      "de": "{path} · {pattern}"
+    },
+    {
+      "key": "hermes_overview.flow_filed_default",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Short description of the built-in default pattern, in the filing box of the flow picture.",
+      "en": "by year and sender",
+      "de": "nach Jahr und Absender"
+    },
+    {
+      "key": "hermes_overview.tile_folders_title",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the tile about the folders.",
+      "en": "Folders",
+      "de": "Ordner"
+    },
+    {
+      "key": "hermes_overview.tile_folders_ok",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the folders tile when inbox and filing location are set.",
+      "en": "Inbox and filing location are set up",
+      "de": "Eingang und Ablageort sind eingerichtet"
+    },
+    {
+      "key": "hermes_overview.tile_folders_missing",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the folders tile when inbox or filing location is missing.",
+      "en": "Choose an inbox and a filing location",
+      "de": "Wähle einen Eingang und einen Ablageort"
+    },
+    {
+      "key": "hermes_overview.tile_folders_button",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button of the folders tile that opens the setup.",
+      "en": "Set up",
+      "de": "Einrichten"
+    },
+    {
+      "key": "hermes_overview.tile_ocr_title",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the tile about the text recognition that reads scans.",
+      "en": "Text recognition",
+      "de": "Texterkennung"
+    },
+    {
+      "key": "hermes_overview.tile_ocr_ready",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the text recognition tile when scans can be read.",
+      "en": "Ready, also for scans",
+      "de": "Bereit, auch für Scans"
+    },
+    {
+      "key": "hermes_overview.tile_ocr_missing",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the text recognition tile when its models are missing, so scans cannot be read yet.",
+      "en": "Models missing, scans cannot be read yet",
+      "de": "Modelle fehlen, Scans kann Hermes noch nicht lesen"
+    },
+    {
+      "key": "hermes_overview.tile_ocr_button",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button of the text recognition tile that opens the download of the models. One word, verb.",
+      "en": "Load",
+      "de": "Laden"
+    },
+    {
+      "key": "hermes_overview.tile_ai_title",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the tile about the AI model.",
+      "en": "AI model",
+      "de": "KI-Modell"
+    },
+    {
+      "key": "hermes_overview.tile_ai_off",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the AI tile when the user switched the AI off.",
+      "en": "Off · without AI you fill in the fields yourself",
+      "de": "Aus · ohne KI füllst du die Felder selbst"
+    },
+    {
+      "key": "hermes_overview.tile_ai_not_loaded",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the AI tile when the AI is on but the model file is not on this machine.",
+      "en": "Not loaded · without the model you fill in the fields yourself",
+      "de": "Nicht geladen · ohne Modell füllst du die Felder selbst"
+    },
+    {
+      "key": "hermes_overview.tile_ai_load",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button of the AI tile that opens the download of the model and starts it. {size} is the download size, for example 640 MB.",
+      "en": "Load · {size}",
+      "de": "Laden · {size}"
+    },
+    {
+      "key": "hermes_overview.tile_ai_downloading",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the AI tile while the model downloads. {received} and {total} are megabytes as numbers, {percent} a whole percentage.",
+      "en": "{received} of {total} MB · {percent} %",
+      "de": "{received} von {total} MB · {percent} %"
+    },
+    {
+      "key": "hermes_overview.tile_ai_ready",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the AI tile when the model is on and ready.",
+      "en": "On, fills in the fields by itself",
+      "de": "An, füllt Felder selbst"
+    },
+    {
+      "key": "hermes_overview.tile_ai_own_server",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the AI tile when an own server answers instead of the local model. {model} is the model name on that server.",
+      "en": "Own server: {model}",
+      "de": "Eigener Server: {model}"
+    },
+    {
+      "key": "hermes_overview.tile_ai_restart",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the AI tile when the AI was switched on but Hermes only takes it up at its next start.",
+      "en": "On · takes effect when Hermes restarts",
+      "de": "An · gilt, sobald Hermes neu startet"
+    },
+    {
+      "key": "hermes_overview.tile_ai_failed",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the AI tile when the model could not be loaded. {reason} is a short reason.",
+      "en": "Could not load: {reason}",
+      "de": "Konnte nicht geladen werden: {reason}"
+    },
+    {
+      "key": "hermes_overview.tile_review_waiting",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the tile about open reviews. {count} is a number above one.",
+      "en": "{count} wait for you",
+      "de": "{count} warten auf dich"
+    },
+    {
+      "key": "hermes_overview.tile_review_waiting_one",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the tile about open reviews when exactly one waits.",
+      "en": "1 waits for you",
+      "de": "1 wartet auf dich"
+    },
+    {
+      "key": "hermes_overview.tile_review_text",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the open reviews tile: what confirming does.",
+      "en": "Confirm once, then Hermes suggests a rule",
+      "de": "Einmal bestätigen, dann schlägt Hermes eine Regel vor"
+    },
+    {
+      "key": "hermes_overview.tile_review_button",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button of the open reviews tile that opens the review page. One word, verb.",
+      "en": "Review",
+      "de": "Prüfen"
+    },
+    {
+      "key": "hermes_overview.tile_review_clear",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the open reviews tile when nothing waits.",
+      "en": "Nothing open",
+      "de": "Nichts offen"
+    },
+    {
+      "key": "hermes_overview.tile_review_clear_text",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the open reviews tile when nothing waits.",
+      "en": "Hermes files what it can read by itself",
+      "de": "Hermes legt ab, was es selbst lesen kann"
+    },
+    {
+      "key": "hermes_overview.read_again",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button under the tiles: hand every open review to Hermes again now that the AI is ready. {count} is a number above one.",
+      "en": "Read {count} documents again with AI",
+      "de": "{count} Dokumente mit KI neu lesen"
+    },
+    {
+      "key": "hermes_overview.read_again_one",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button under the tiles: hand the one open review to Hermes again now that the AI is ready.",
+      "en": "Read 1 document again with AI",
+      "de": "1 Dokument mit KI neu lesen"
+    },
+    {
+      "key": "hermes_overview.section_folders",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the section that lists the folders.",
+      "en": "Folders",
+      "de": "Ordner"
+    },
+    {
+      "key": "hermes_overview.folders_change",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button of the folders section that opens the card to change the folders. The ellipsis says a card follows.",
+      "en": "Change…",
+      "de": "Ändern…"
+    },
+    {
+      "key": "hermes_overview.role_inbox",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Label of the inbox folder in the folders section.",
+      "en": "Inbox",
+      "de": "Eingang"
+    },
+    {
+      "key": "hermes_overview.role_filing_location",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Label of the filing location in the folders section.",
+      "en": "Filing location",
+      "de": "Ablageort"
+    },
+    {
+      "key": "hermes_overview.role_archive",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Label of an archive folder (read only, searched for similar documents) in the folders section.",
+      "en": "Archive",
+      "de": "Archiv"
+    },
+    {
+      "key": "hermes_overview.archive_none",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Value of the archive line in the folders section when there is no archive folder.",
+      "en": "none yet · optional",
+      "de": "noch keins · optional"
+    },
+    {
+      "key": "hermes_overview.section_filing",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the section where the user sets how documents are named and sorted.",
+      "en": "Filing",
+      "de": "Ablage"
+    },
+    {
+      "key": "hermes_overview.pattern_label",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Label of the text field with the filing pattern for new documents.",
+      "en": "Pattern for new documents",
+      "de": "Muster für neue Dokumente"
+    },
+    {
+      "key": "hermes_overview.pattern_note",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Note under the pattern field: what a pattern is and what empty does.",
+      "en": "Folders and file name with fields of the document in braces. Empty brings back the default.",
+      "de": "Ordner und Dateiname mit Feldern des Dokuments in geschweiften Klammern. Leer stellt den Standard wieder her."
+    },
+    {
+      "key": "hermes_overview.pattern_invalid",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Error under the pattern field when the pattern cannot be used. Nothing was written.",
+      "en": "This pattern cannot be used. Nothing was changed.",
+      "de": "Dieses Muster geht nicht. Es wurde nichts geändert."
+    },
+    {
+      "key": "hermes_overview.pattern_write_failed",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Error under the pattern field when the config file could not be written. {reason} is the cause.",
+      "en": "The pattern could not be saved: {reason}",
+      "de": "Das Muster konnte nicht gespeichert werden: {reason}"
+    },
+    {
+      "key": "hermes_overview.pattern_example",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Example under the pattern field, in plain words, with made-up sender and date. {path} is the full target path of the example.",
+      "en": "Would be filed as {path}",
+      "de": "Wird abgelegt als {path}"
+    },
+    {
+      "key": "hermes_overview.section_ai",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the section about the AI.",
+      "en": "AI",
+      "de": "KI"
+    },
+    {
+      "key": "hermes_overview.ai_switch",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Label of the switch that turns the AI on or off.",
+      "en": "Use AI",
+      "de": "KI verwenden"
+    },
+    {
+      "key": "hermes_overview.ai_switch_note",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Note under the AI switch.",
+      "en": "Reads what the text recognition cannot and fills in the fields. The model runs on your own machine.",
+      "de": "Liest, was die Texterkennung nicht schafft, und füllt die Felder aus. Das Modell läuft auf deinem eigenen Gerät."
+    },
+    {
+      "key": "hermes_overview.own_server",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Link in the AI section that opens the advanced settings, where an own AI server can be set. The ellipsis says the settings follow.",
+      "en": "Own server…",
+      "de": "Eigener Server…"
+    },
+    {
+      "key": "hermes_overview.section_load",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the section where the user sets how much of the machine Hermes may use.",
+      "en": "Load",
+      "de": "Last"
+    },
+    {
+      "key": "hermes_overview.section_protection",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the section about how the index is protected. {state} follows in a dimmed word: encrypted or not.",
+      "en": "Protection",
+      "de": "Schutz"
+    },
+    {
+      "key": "hermes_overview.protection_encrypted",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Dimmed word after the protection heading when the index is encrypted.",
+      "en": "encrypted",
+      "de": "verschlüsselt"
+    },
+    {
+      "key": "hermes_overview.protection_plain",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Dimmed word after the protection heading when the index is not encrypted.",
+      "en": "not encrypted",
+      "de": "unverschlüsselt"
+    },
+    {
+      "key": "hermes_overview.protection_encrypted_mac",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence in the protection section on macOS when the index is encrypted.",
+      "en": "The index is stored encrypted on this Mac, the key in the keychain. Your files themselves stay unchanged.",
+      "de": "Der Index liegt verschlüsselt auf diesem Mac, der Schlüssel im Schlüsselbund. Deine Dateien selbst bleiben unverändert."
+    },
+    {
+      "key": "hermes_overview.protection_encrypted_other",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence in the protection section on other systems than macOS when the index is encrypted.",
+      "en": "The index is stored encrypted on this computer, the key in the system's credential store. Your files themselves stay unchanged.",
+      "de": "Der Index liegt verschlüsselt auf diesem Computer, der Schlüssel im Schlüsselspeicher des Systems. Deine Dateien selbst bleiben unverändert."
+    },
+    {
+      "key": "hermes_overview.protection_plain_mac",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence in the protection section on macOS when the index is not encrypted.",
+      "en": "The index is stored unencrypted on this Mac. Your files themselves stay unchanged.",
+      "de": "Der Index liegt unverschlüsselt auf diesem Mac. Deine Dateien selbst bleiben unverändert."
+    },
+    {
+      "key": "hermes_overview.protection_plain_other",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence in the protection section on other systems than macOS when the index is not encrypted.",
+      "en": "The index is stored unencrypted on this computer. Your files themselves stay unchanged.",
+      "de": "Der Index liegt unverschlüsselt auf diesem Computer. Deine Dateien selbst bleiben unverändert."
+    },
+    {
+      "key": "hermes_overview.protection_none",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence in the protection section when Hermes has no index yet.",
+      "en": "Hermes has no index yet. It is created when you set Hermes up.",
+      "de": "Hermes hat noch keinen Index. Er entsteht, wenn du Hermes einrichtest."
+    },
+    {
+      "key": "hermes_overview.key_missing",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence in the protection section when the key of the encrypted index is not in the key store.",
+      "en": "The key to the index is missing. Without it Hermes cannot open the index.",
+      "de": "Der Schlüssel zum Index fehlt. Ohne ihn kann Hermes den Index nicht öffnen."
+    },
+    {
+      "key": "hermes_overview.enter_recovery_key",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button in the protection section that opens the card where the recovery key is typed in.",
+      "en": "Enter recovery key",
+      "de": "Wiederherstellungsschlüssel eingeben"
+    },
+    {
+      "key": "hermes_overview.off_note",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence at the top of the overview when Hermes is switched off.",
+      "en": "Hermes is off. Switch it on and it files your documents.",
+      "de": "Hermes ist aus. Schalte es ein, dann legt es deine Dokumente ab."
+    },
+    {
+      "key": "hermes_overview.switch_on",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button next to the sentence that says Hermes is off. Switches the module on.",
+      "en": "Switch Hermes on",
+      "de": "Hermes einschalten"
+    },
+    {
+      "key": "hermes_overview.dismissed_note",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence at the top of the overview when the user put the setup off.",
+      "en": "The setup of Hermes is not finished.",
+      "de": "Die Einrichtung von Hermes ist nicht abgeschlossen."
+    },
+    {
+      "key": "hermes_overview.continue_setup",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button next to the sentence that says the setup is not finished.",
+      "en": "Continue setup",
+      "de": "Einrichtung fortsetzen"
+    },
+    {
+      "key": "hermes_overview.failed_note",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence at the top of the overview when the module failed to start. {reason} is the cause.",
+      "en": "Hermes could not start: {reason}",
+      "de": "Hermes konnte nicht starten: {reason}"
+    },
+    {
+      "key": "hermes_overview.try_again",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button next to the sentence that says Hermes could not start.",
+      "en": "Try again",
+      "de": "Erneut versuchen"
+    },
+    {
+      "key": "hermes_overview.no_folders_note",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence at the top of the overview when Hermes has no folders yet.",
+      "en": "Hermes has no folders yet.",
+      "de": "Hermes hat noch keine Ordner."
+    },
+    {
+      "key": "hermes_overview.waits_note",
+      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence at the top of the overview when Hermes waits for an answer in one of its cards.",
+      "en": "Hermes waits for an answer in its own card.",
+      "de": "Hermes wartet auf eine Antwort in seiner eigenen Karte."
+    },
+    {
+      "key": "filing_setup.grant_failed",
+      "context": "Line in the filing setup card or the Hermes setup card when access to the picked folder could not be kept for the next start (macOS sandbox). {path} is the folder, {reason} the cause.",
+      "en": "Access to {path} could not be kept for the next start: {reason}",
+      "de": "Der Zugriff auf {path} konnte nicht für den nächsten Start behalten werden: {reason}"
+    },
+    {
+      "key": "settings.row_hermes_open",
+      "context": "Label of the row in the Hermes settings page that opens the Hermes overview.",
+      "en": "Open Hermes",
+      "de": "Hermes öffnen"
+    },
+    {
+      "key": "settings.row_hermes_open_note",
+      "context": "Note under the row that opens the Hermes overview: says what lives there instead of in the settings.",
+      "en": "Folders, filing pattern, AI, text recognition, load and protection are on the overview of Hermes.",
+      "de": "Ordner, Ablagemuster, KI, Texterkennung, Last und Schutz stehen in der Übersicht von Hermes."
+    },
+    {
+      "key": "settings.hermes_open_button",
+      "context": "Button next to the row that opens the Hermes overview. One word, verb.",
+      "en": "Open",
+      "de": "Öffnen"
+    },
+    {
+      "key": "settings.group_advanced",
+      "context": "Title of the folded group of technical settings on the Hermes settings page. One word.",
+      "en": "Advanced",
+      "de": "Erweitert"
     }
   ]
 }

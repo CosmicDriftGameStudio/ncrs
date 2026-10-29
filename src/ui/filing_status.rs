@@ -12,7 +12,7 @@ use ncrs_pipeline::{Load, RunnerState, Task, WorkerSnapshot};
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints, PageHint};
 use super::hermes::{self, Badges};
-use super::kit::{self, first_section, form_row, one_line, paragraph, section, Columns, Tone};
+use super::kit::{self, first_section, form_row, one_line, paragraph, section, Columns};
 use super::theme::{font_size, size, spacing};
 use crate::app::fill_template;
 use crate::filing::{AiStatus, IndexFigures};
@@ -25,8 +25,6 @@ const SIZE: DialogSize = DialogSize::Card;
 const ERROR_LIST_HEIGHT: f32 = 120.0;
 /// File and message of an error row take three of seven parts each.
 const ERROR_TEXT_SHARE: f32 = 3.0 / 7.0;
-/// The load control has three long labels.
-const LOAD_CONTROL_WIDTH: f32 = 380.0;
 /// How the width of the step table is shared: the step, then four counts.
 const STEP_PORTIONS: [u16; 5] = [2, 1, 1, 1, 1];
 /// The worker table: number, file, task, time.
@@ -36,24 +34,10 @@ const NOT_READ_YET: &str = "…";
 const SECONDS_PER_HOUR: u64 = 3600;
 
 /// The keys of the page, named in the footer where there is room.
-const PAGE_HINTS: &[PageHint] = &[
-    PageHint {
-        key: "P",
-        verb: Msg::FilingStatusHintPause,
-    },
-    PageHint {
-        key: "1 2 3",
-        verb: Msg::FilingStatusHintLoad,
-    },
-    PageHint {
-        key: "+ -",
-        verb: Msg::FilingStatusHintWorkers,
-    },
-    PageHint {
-        key: "↑ ↓",
-        verb: Msg::FilingStatusHintErrors,
-    },
-];
+const PAGE_HINTS: &[PageHint] = &[PageHint {
+    key: "↑ ↓",
+    verb: Msg::FilingStatusHintErrors,
+}];
 
 fn send(message: FilingStatusMessage) -> Message {
     Message::FilingStatus(message)
@@ -214,6 +198,8 @@ fn state_message(state: RunnerState) -> Msg {
     }
 }
 
+/// The state of the pipeline as sentences. Pausing and the load are set on the
+/// overview; here they are only read.
 fn pipeline_section<'a>(
     status: &'a FilingStatus,
     load: Option<Load>,
@@ -221,81 +207,26 @@ fn pipeline_section<'a>(
     palette: &Palette,
 ) -> Element<'a, Message> {
     let snapshot = status.snapshot();
-    let running = snapshot.state != RunnerState::Off;
-    let pause_label = if snapshot.state == RunnerState::Paused {
-        Msg::FilingStatusResume
-    } else {
-        Msg::FilingStatusPause
-    };
-    let state_row = row![
-        paragraph(lang.text(state_message(snapshot.state)), palette),
-        kit::button(
-            lang.text(pause_label),
-            running.then(|| send(FilingStatusMessage::TogglePause)),
-            Tone::Secondary,
-            palette,
-        ),
-    ]
-    .spacing(spacing::M)
-    .align_y(iced::alignment::Vertical::Center);
-
-    let loads = [
-        (Msg::FilingStatusLoadGentle, Load::Gentle),
-        (Msg::FilingStatusLoadBalanced, Load::Balanced),
-        (Msg::FilingStatusLoadFull, Load::Full),
-    ];
-    let load_options: Vec<(&str, Message)> = loads
-        .iter()
-        .map(|(label, target)| {
-            (
-                lang.text(*label),
-                send(FilingStatusMessage::SetLoad(*target)),
-            )
-        })
-        .collect();
-    let selected_load = loads
-        .iter()
-        .position(|(_, target)| load == Some(*target))
-        .unwrap_or(loads.len());
-    let load_row = kit::segmented(&load_options, selected_load, running, palette);
-
-    let step_button = |label: &str, delta: i8| {
-        kit::button(
-            label,
-            running.then(|| send(FilingStatusMessage::StepWorkers(delta))),
-            Tone::Secondary,
-            palette,
-        )
-    };
-    let workers_row = row![
-        step_button("-", -1),
-        paragraph(snapshot.worker_target.to_string(), palette),
-        step_button("+", 1),
-    ]
-    .spacing(spacing::M)
-    .align_y(iced::alignment::Vertical::Center);
-
     let mut rows = column![
         form_row(
             lang.text(Msg::FilingStatusStateLabel),
             None,
             None,
-            state_row.into(),
+            paragraph(lang.text(state_message(snapshot.state)), palette),
             palette,
         ),
-        kit::form_row_wide(
+        form_row(
             lang.text(Msg::FilingStatusLoadLabel),
             None,
             Some(lang.text(Msg::FilingStatusLoadExplain)),
-            load_row,
-            LOAD_CONTROL_WIDTH,
+            paragraph(load_text(load, lang), palette),
             palette,
         ),
         form_row(
             lang.text(Msg::FilingStatusWorkersLabel),
             None,
             Some(lang.text(Msg::FilingStatusLoadNote)),
-            workers_row.into(),
+            paragraph(snapshot.worker_target.to_string(), palette),
             palette,
         ),
     ];
@@ -309,6 +240,19 @@ fn pipeline_section<'a>(
         ));
     }
     first_section(lang.text(Msg::FilingStatusSectionPipeline), rows, palette)
+}
+
+fn load_text(load: Option<Load>, lang: Language) -> String {
+    match load {
+        Some(Load::Gentle) => lang.text(Msg::FilingStatusLoadGentle).to_owned(),
+        Some(Load::Balanced) => lang.text(Msg::FilingStatusLoadBalanced).to_owned(),
+        Some(Load::Full) => lang.text(Msg::FilingStatusLoadFull).to_owned(),
+        Some(Load::Workers(count)) => fill_template(
+            lang.text(Msg::SettingsLoadWorkers),
+            &[("{count}", &count.to_string())],
+        ),
+        None => NOTHING_YET.to_owned(),
+    }
 }
 
 /// The throughput and the time left, as figures.

@@ -58,7 +58,7 @@ pub fn model_size_label() -> String {
     format!("{} MB", (LOCAL_MODEL.size + STEP.div_euclid(2)).div_euclid(STEP) * 10)
 }
 
-fn on_this_computer(lang: Language, mac: Msg, other: Msg) -> &'static str {
+pub(super) fn on_this_computer(lang: Language, mac: Msg, other: Msg) -> &'static str {
     lang.text(if cfg!(target_os = "macos") { mac } else { other })
 }
 
@@ -131,10 +131,13 @@ fn setup_message(message: HermesSetupMessage) -> Message {
 }
 
 fn flow_boxes(lang: Language) -> FlowBoxes<'static> {
-    let plain = |title| FlowBox { title, note: None };
-    let with_note = |title, note| FlowBox {
-        title,
-        note: Some(note),
+    let plain = |title: &'static str| FlowBox {
+        title: title.into(),
+        note: None,
+    };
+    let with_note = |title: &'static str, note: &'static str| FlowBox {
+        title: title.into(),
+        note: Some(note.into()),
     };
     FlowBoxes {
         inbox: plain(lang.text(Msg::HermesSetupFlowInbox)),
@@ -400,9 +403,10 @@ fn problem_line<'a>(card: &SetupView<'a>, palette: &Palette) -> Option<Element<'
     let line = note_text(note, &setup.locations(), card);
     Some(match note {
         SetupNote::AlreadyAdded { .. } => paragraph(line, palette),
-        SetupNote::FolderUnusable { .. } | SetupNote::NoConfigPath | SetupNote::SaveFailed(_) => {
-            error_line(line, palette)
-        }
+        SetupNote::FolderUnusable { .. }
+        | SetupNote::NoConfigPath
+        | SetupNote::SaveFailed(_)
+        | SetupNote::GrantFailed { .. } => error_line(line, palette),
     })
 }
 
@@ -426,5 +430,9 @@ fn note_text(note: &SetupNote, list: &[FilingLocation], card: &SetupView<'_>) ->
         SetupNote::SaveFailed(error) => {
             super::filing_setup::write_failure_sentence(error, list, lang, card.home)
         }
+        SetupNote::GrantFailed { folder, reason } => fill_template(
+            lang.text(Msg::FilingSetupGrantFailed),
+            &[("{path}", &shown(folder)), ("{reason}", reason)],
+        ),
     }
 }

@@ -205,6 +205,8 @@ mod tests {
                 // A bare placeholder: the dialog frames the name around it, so
                 // there is nothing to translate in the string itself.
                 | Msg::ConflictName
+                // Only placeholders and a dot between them.
+                | Msg::HermesOverviewFlowFiledNote
                 | Msg::DeleteOne
                 // The module's name, the same in both languages.
                 | Msg::FilingSetupTitle

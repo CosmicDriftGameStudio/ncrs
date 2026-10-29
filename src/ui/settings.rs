@@ -10,8 +10,6 @@ use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::text::Wrapping;
 use iced::widget::{button, column, container, row, scrollable, text, Column};
 use iced::{alignment, Color, Element, Font, Length, Padding};
-use ncrs_intake::LocationMode;
-use ncrs_pipeline::Load;
 
 use super::format::ellipsize_middle;
 use super::frame::{SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
@@ -20,18 +18,16 @@ use super::layout::{
     SETTINGS_NAV_WIDTH, SETTINGS_PAGE_MAX_WIDTH, SETTINGS_WIDE_CONTROL_WIDTH, STATUSBAR_HEIGHT,
 };
 use super::theme::{self, font_size, size, spacing};
-use super::titlebar::tab_label;
 use crate::app::fill_template;
 use crate::config::{
-    check_ai_endpoint, AiEndpointProblem, AiProviderChoice, AiProviderName, AiSection, AiSetting,
+    check_ai_endpoint, AiEndpointProblem, AiProviderChoice, AiProviderName, AiSection,
     Config, ConfigError, Filing, ProgramLine, ProgramLineProblem, ServerEntry,
 };
-use crate::filing::AiStatus;
 use crate::filing_setup::shown_path;
 use crate::fs::OpenKind;
 use crate::i18n::{Language, Msg};
 use crate::messages::{
-    AiModelMessage, FilingSetupMessage, KeyBindingsMessage, Message, OcrModelsMessage,
+    FilingStatusMessage, KeyBindingsMessage, Message, OcrModelsMessage,
     RemoteMessage, SettingChange, SettingField, SettingsFeature, SettingsMessage,
     ThemeFetchMessage,
 };
@@ -56,8 +52,6 @@ const ENDPOINT_FIELD_ID: &str = "settings-ai-endpoint";
 const MODEL_FIELD_ID: &str = "settings-ai-model";
 const SWATCH_SIZE: f32 = 16.0;
 
-/// How many characters of a folder fit beside its button.
-const FOLDER_CHARS: usize = 22;
 /// How many characters of the theme file name fit beside its button.
 const THEME_FILE_CHARS: usize = 26;
 /// Room the feature list keeps around its entries.
@@ -91,6 +85,8 @@ pub struct SettingsState {
     pub provider: Option<AiProviderName>,
     /// The macOS App Store build, which may only start apps.
     pub sandboxed: bool,
+    /// The user opened the folded rows of the page.
+    pub advanced_open: bool,
 }
 
 /// Why the value of a field was not written.
@@ -126,6 +122,7 @@ impl SettingsState {
             problems: HashMap::new(),
             provider: None,
             sandboxed,
+            advanced_open: false,
         }
     }
 
@@ -427,8 +424,6 @@ pub struct SettingsView<'a> {
     pub filing: &'a Filing,
     /// The saved SFTP servers.
     pub servers: &'a [ServerEntry],
-    /// `None` while the filing module is not running.
-    pub ai_status: Option<AiStatus>,
     pub home: &'a Path,
     /// How many actions have keys other than their built-in ones.
     pub keys_changed: usize,
@@ -451,6 +446,9 @@ struct SettingRow<'a> {
 }
 
 struct Group<'a> {
+    /// Folded away behind its title until the user opens it or a search finds
+    /// a row in it.
+    advanced: bool,
     title: String,
     rows: Vec<SettingRow<'a>>,
 }
@@ -685,10 +683,12 @@ fn look_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     );
     vec![
         Group {
+            advanced: false,
             title: String::new(),
             rows: vec![preset_row, vscode_row(view), open_vsx_row],
         },
         Group {
+            advanced: false,
             title: lang.text(Msg::SettingsGroupColors).to_owned(),
             rows: ColorRole::ALL
                 .iter()
@@ -873,6 +873,7 @@ fn program_row<'a>(kind: OpenKind, view: &SettingsView<'a>) -> SettingRow<'a> {
 
 fn programs_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     vec![Group {
+        advanced: false,
         title: String::new(),
         rows: vec![
             program_row(OpenKind::View, view),
@@ -893,6 +894,7 @@ fn keys_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         )
     };
     vec![Group {
+        advanced: false,
         title: String::new(),
         rows: vec![simple_row(
             Msg::SettingsRowKeys,
@@ -927,6 +929,7 @@ fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     };
     if view.servers.is_empty() {
         return vec![Group {
+            advanced: false,
             title: String::new(),
             rows: vec![add(
                 Msg::SettingsServersEmpty,
@@ -979,6 +982,7 @@ fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         .collect();
     rows.push(add(Msg::SettingsServersAdd, Msg::SettingsServersAddButton));
     vec![Group {
+        advanced: false,
         title: String::new(),
         rows,
     }]
@@ -1000,6 +1004,7 @@ fn language_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         .position(|&language| language == lang)
         .unwrap_or_default();
     vec![Group {
+        advanced: false,
         title: String::new(),
         rows: vec![simple_row(
             Msg::SettingsRowLanguage,
@@ -1010,67 +1015,10 @@ fn language_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     }]
 }
 
-fn folder_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
+/// What stays on the page of Hermes: the switch, and the way to the
+/// overview, where everything a user needs is.
+fn hermes_main_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     let lang = view.lang;
-    let palette = view.palette;
-    let open_setup = || Message::FilingSetup(FilingSetupMessage::Toggle);
-    if view.filing.locations.is_empty() {
-        return vec![SettingRow {
-            label: lang.text(Msg::SettingsFoldersEmpty).to_owned(),
-            theme_name: None,
-            config_key: None,
-            description: None,
-            problem: None,
-            control: kit::button(
-                lang.text(Msg::SettingsChange),
-                Some(open_setup()),
-                Tone::Secondary,
-                palette,
-            ),
-            control_width: None,
-        }];
-    }
-    view.filing
-        .locations
-        .iter()
-        .map(|location| {
-            let (label, note) = match (location.mode, location.is_target) {
-                (LocationMode::Inbox, _) => (Msg::SettingsRowInbox, Msg::SettingsRowInboxNote),
-                (LocationMode::Archive, true) => (
-                    Msg::SettingsRowFilingLocation,
-                    Msg::SettingsRowFilingLocationNote,
-                ),
-                (LocationMode::Archive, false) => {
-                    (Msg::FilingSetupKindArchive, Msg::SettingsRowArchiveNote)
-                }
-            };
-            let mut description = lang.text(note).to_owned();
-            if location.images {
-                description.push(' ');
-                description.push_str(lang.text(Msg::SettingsFolderImages));
-            }
-            let path = tab_label(&location.path, view.home, false, FOLDER_CHARS);
-            SettingRow {
-                label: lang.text(label).to_owned(),
-                theme_name: None,
-                config_key: None,
-                description: Some(description),
-                problem: None,
-                control: with_button(
-                    mono(path, palette.text),
-                    lang.text(Msg::SettingsChange),
-                    open_setup(),
-                    palette,
-                ),
-                control_width: None,
-            }
-        })
-        .collect()
-}
-
-fn work_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
-    let lang = view.lang;
-    let palette = view.palette;
     let enabled_row = simple_row(
         Msg::SettingsRowHermesEnabled,
         Some(Msg::SettingsRowHermesEnabledNote),
@@ -1081,48 +1029,18 @@ fn work_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         ),
         lang,
     );
-
-    let load = view.filing.load;
-    let mut options: Vec<(String, Message)> = [
-        (Msg::FilingStatusLoadGentle, Load::Gentle),
-        (Msg::FilingStatusLoadBalanced, Load::Balanced),
-        (Msg::FilingStatusLoadFull, Load::Full),
-    ]
-    .into_iter()
-    .map(|(name, preset)| {
-        (
-            lang.text(name).to_owned(),
-            change(SettingChange::Load(preset)),
-        )
-    })
-    .collect();
-    if let Load::Workers(count) = load {
-        options.push((
-            fill_template(
-                lang.text(Msg::SettingsLoadWorkers),
-                &[("{count}", &count.to_string())],
-            ),
-            change(SettingChange::Load(load)),
-        ));
-    }
-    let chosen = match load {
-        Load::Gentle => 0,
-        Load::Balanced => 1,
-        Load::Full => 2,
-        Load::Workers(_) => options.len().saturating_sub(1),
-    };
-    let shown: Vec<(&str, Message)> = options
-        .iter()
-        .map(|(label, message)| (label.as_str(), message.clone()))
-        .collect();
-    let mut load_row = simple_row(
-        Msg::SettingsRowLoad,
-        Some(Msg::SettingsRowLoadNote),
-        kit::segmented(&shown, chosen, true, palette),
+    let open_row = simple_row(
+        Msg::SettingsRowHermesOpen,
+        Some(Msg::SettingsRowHermesOpenNote),
+        kit::button(
+            lang.text(Msg::SettingsHermesOpenButton),
+            Some(Message::FilingStatus(FilingStatusMessage::Open)),
+            Tone::Secondary,
+            view.palette,
+        ),
         lang,
     );
-    load_row.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
-    vec![enabled_row, load_row]
+    vec![enabled_row, open_row]
 }
 
 fn ocr_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
@@ -1155,35 +1073,6 @@ fn ocr_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
         ),
         lang,
     )]
-}
-
-fn ai_model_state(view: &SettingsView<'_>) -> (String, Color) {
-    let lang = view.lang;
-    let palette = view.palette;
-    match &view.ai_status {
-        None => (
-            lang.text(Msg::SettingsModelUnknown).to_owned(),
-            palette.dim_text,
-        ),
-        // The row shows only while the config has the AI on, so a module that
-        // still says off was built before that: it picks the switch up at the
-        // next start.
-        Some(AiStatus::Off) => (
-            lang.text(Msg::SettingsModelNextStart).to_owned(),
-            palette.accent,
-        ),
-        Some(AiStatus::NotDownloaded) => (
-            lang.text(Msg::FilingStatusAiNotDownloaded).to_owned(),
-            palette.accent,
-        ),
-        Some(AiStatus::NotLoadedYet) => (
-            lang.text(Msg::FilingStatusAiNotLoaded).to_owned(),
-            palette.success,
-        ),
-        Some(AiStatus::Loaded { name, .. }) => (name.clone(), palette.success),
-        Some(AiStatus::Failed(reason)) => ((*reason).to_owned(), palette.error),
-        Some(AiStatus::Http { model, .. }) => (model.clone(), palette.text),
-    }
 }
 
 /// A text row of the AI group.
@@ -1269,58 +1158,20 @@ fn provider_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     rows
 }
 
-fn ai_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
-    let lang = view.lang;
-    let palette = view.palette;
-    let on = view.filing.ai != AiSetting::Off;
-    let mut rows = vec![simple_row(
-        Msg::SettingsRowAiEnabled,
-        Some(Msg::SettingsRowAiEnabledNote),
-        switch(on, SettingChange::AiEnabled(!on), view),
-        lang,
-    )];
-    rows.extend(provider_rows(view));
-    if !on {
-        return rows;
-    }
-    let (state, color) = ai_model_state(view);
-    let shown = status_text(state, color);
-    let control = match view.filing.ai {
-        AiSetting::Local { .. } => with_button(
-            shown,
-            lang.text(Msg::SettingsModelsDownload),
-            Message::AiModel(AiModelMessage::Open),
-            palette,
-        ),
-        AiSetting::Off | AiSetting::Http { .. } => shown,
-    };
-    rows.push(simple_row(
-        Msg::SettingsRowAiModel,
-        Some(Msg::SettingsRowAiModelNote),
-        control,
-        lang,
-    ));
-    rows
-}
-
 fn hermes_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     let lang = view.lang;
+    let mut advanced_rows = ocr_rows(view);
+    advanced_rows.extend(provider_rows(view));
     vec![
         Group {
-            title: lang.text(Msg::SettingsGroupFolders).to_owned(),
-            rows: folder_rows(view),
+            advanced: false,
+            title: String::new(),
+            rows: hermes_main_rows(view),
         },
         Group {
-            title: lang.text(Msg::SettingsGroupWork).to_owned(),
-            rows: work_rows(view),
-        },
-        Group {
-            title: lang.text(Msg::SettingsGroupOcr).to_owned(),
-            rows: ocr_rows(view),
-        },
-        Group {
-            title: lang.text(Msg::SettingsGroupAi).to_owned(),
-            rows: ai_rows(view),
+            advanced: true,
+            title: lang.text(Msg::SettingsGroupAdvanced).to_owned(),
+            rows: advanced_rows,
         },
     ]
 }
@@ -1568,6 +1419,25 @@ fn page<'a>(shown: Option<SettingsFeature>, view: &SettingsView<'a>) -> Element<
                 }
             })
             .collect();
+        if group.advanced {
+            let found_by_search = !query.is_empty() && !rows.is_empty();
+            let expanded = view.state.advanced_open || found_by_search;
+            let toggle = kit::button(
+                &group.title,
+                Some(Message::Settings(SettingsMessage::ToggleAdvanced)),
+                Tone::Secondary,
+                palette,
+            );
+            body = body.push(container(toggle).padding(Padding {
+                top: spacing::M,
+                ..Padding::ZERO
+            }));
+            if expanded {
+                body = body.push(Column::with_children(rows));
+            }
+            first = false;
+            continue;
+        }
         if rows.is_empty() {
             continue;
         }
@@ -1739,7 +1609,6 @@ mod tests {
                 vscode_theme: None,
                 filing: &filing,
                 servers: &[],
-                ai_status: None,
                 home: Path::new("/home/test"),
                 keys_changed: 0,
                 lang: Language::English,
@@ -1773,7 +1642,6 @@ mod tests {
             vscode_theme: None,
             filing: &filing,
             servers: &[],
-            ai_status: None,
             home: Path::new("/home/test"),
             keys_changed: 0,
             lang: Language::English,

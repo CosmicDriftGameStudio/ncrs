@@ -1521,10 +1521,6 @@ fn filing_load_setting(load: Load) -> Setting {
     }
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the overview page that sets it comes next")
-)]
 fn default_pattern_setting(pattern: Option<&str>) -> Setting {
     Setting {
         tables: &[MODULES_TABLE, FILING_TABLE],
@@ -1573,10 +1569,6 @@ pub fn write_filing_load(path: &Path, load: Load) -> Result<Config, FilingWriteE
 /// Sets `default_pattern` in `[modules.filing]`, or drops the line for
 /// `None`; same guarantees as [`write_theme_preset`]. The loader ignores a
 /// pattern Hermes cannot render, so a caller checks it with `pattern_is_valid`.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the overview page that sets it comes next")
-)]
 pub fn write_default_pattern(
     path: &Path,
     pattern: Option<&str>,

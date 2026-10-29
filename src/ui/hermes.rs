@@ -29,23 +29,28 @@ impl Badges {
         match page {
             HermesPage::Review => self.review,
             HermesPage::RuleSuggestions => self.rule_suggestions,
-            HermesPage::Inspection | HermesPage::Reorganisation | HermesPage::SavedQueries => None,
+            HermesPage::Overview
+            | HermesPage::Inspection
+            | HermesPage::Reorganisation
+            | HermesPage::SavedQueries => None,
         }
         .filter(|count| *count > 0)
     }
 }
 
-pub const PAGES: [HermesPage; 5] = [
-    HermesPage::Inspection,
+pub const PAGES: [HermesPage; 6] = [
+    HermesPage::Overview,
     HermesPage::Review,
     HermesPage::RuleSuggestions,
     HermesPage::Reorganisation,
     HermesPage::SavedQueries,
+    HermesPage::Inspection,
 ];
 
 /// The plain name and the theme name of a page.
 fn names(page: HermesPage) -> (Msg, Msg) {
     match page {
+        HermesPage::Overview => (Msg::HermesNavOverview, Msg::HermesNavOverviewTheme),
         HermesPage::Inspection => (Msg::HermesNavInspection, Msg::HermesNavInspectionTheme),
         HermesPage::Review => (Msg::ActionReviewList, Msg::ActionReviewListTheme),
         HermesPage::RuleSuggestions => {
