@@ -20,9 +20,10 @@
 //! the obvious tool — but its only input is an `Instruction`, and
 //! `Instruction` cannot express the keys this app is about. `instruction::Key`
 //! has four variants (Enter, Escape, Tab, Backspace) and carries no modifiers.
-//! F5, F6, F7, Insert, ArrowDown and Ctrl+C are all inexpressible. That is not
-//! a detail of test setup; it is why the entire copy / move / queue surface had
-//! no end-to-end coverage, and so why four real bugs shipped.
+//! F5, F6, F7, Insert, ArrowDown and every chord are inexpressible, Ctrl+C
+//! among them, which stops a job on a Mac next to Escape. That is not a detail
+//! of test setup; it is why the entire copy / move / queue surface had no
+//! end-to-end coverage, and so why four real bugs shipped.
 //!
 //! So the runtime loop is built here from `iced_futures`' public parts — the
 //! same `Runtime`, the same `subscription::Tracker`, the same tokio executor
