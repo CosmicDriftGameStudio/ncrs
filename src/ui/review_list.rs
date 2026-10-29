@@ -46,16 +46,37 @@ fn send(message: ReviewListMessage) -> Message {
     Message::ReviewList(message)
 }
 
+/// What the app knows that explains why the fields of a document come empty.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FieldGuide {
+    /// `None` until the index has answered.
+    pub confirmed_rules: Option<u64>,
+    pub ai_is_ready: bool,
+}
+
+impl FieldGuide {
+    fn explains_empty_fields(self) -> bool {
+        self.confirmed_rules == Some(0) && !self.ai_is_ready
+    }
+}
+
 pub fn view<'a>(
     state: &'a ReviewList,
     window: Size,
     badges: Badges,
+    guide: FieldGuide,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
     let line_chars = frame::content_chars(SIZE, window, frame::SIDEBAR_ROOM);
     let mut body =
         column![paragraph(lang.text(Msg::ReviewListExplain), palette)].spacing(spacing::LINE_GAP);
+    if guide.explains_empty_fields() {
+        body = body.push(kit::warning_box(
+            lang.text(Msg::ReviewListNoRulesHint),
+            palette,
+        ));
+    }
 
     if state.rows().is_empty() {
         body = body.push(dim(

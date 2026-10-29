@@ -161,6 +161,18 @@ impl CommandPalette {
         self
     }
 
+    /// Drops the Hermes commands on a file that need configured locations,
+    /// keeping those that set a folder's role.
+    pub fn without_hermes_location_commands(mut self) -> Self {
+        self.entries.retain(|entry| {
+            !entry
+                .command()
+                .is_some_and(|action| action.acts_on_hermes_file() && !action.sets_hermes_role())
+        });
+        self.rank();
+        self
+    }
+
     /// Drops one command that cannot run for the row under the cursor.
     pub fn without_command(mut self, action: KeyAction) -> Self {
         self.entries.retain(|entry| entry.command() != Some(action));
@@ -1159,6 +1171,21 @@ mod tests {
         assert!(without
             .hits()
             .any(|hit| without.entry(hit).unwrap().command().unwrap() == KeyAction::FilingStatus));
+    }
+
+    #[test]
+    fn without_locations_only_the_role_commands_stay_among_the_hermes_file_commands() {
+        let palette =
+            palette(KeyScope::Panel, Language::English).without_hermes_location_commands();
+        let actions: Vec<KeyAction> = palette
+            .hits()
+            .map(|hit| palette.entry(hit).unwrap().command().unwrap())
+            .collect();
+        assert!(actions.contains(&KeyAction::HermesSetInbox));
+        assert!(actions.contains(&KeyAction::HermesSetFilingLocation));
+        assert!(actions.contains(&KeyAction::HermesSetArchive));
+        assert!(!actions.contains(&KeyAction::HermesProcessAgain));
+        assert!(!actions.contains(&KeyAction::HermesExclude));
     }
 
     #[test]

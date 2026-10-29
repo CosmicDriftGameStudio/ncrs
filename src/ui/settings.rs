@@ -1038,14 +1038,14 @@ fn folder_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
                     Msg::SettingsRowInboxNote,
                 ),
                 (LocationMode::Archive, true) => (
-                    Msg::SettingsRowCentral,
-                    Msg::FilingSetupKindCentral,
-                    Msg::SettingsRowCentralNote,
+                    Msg::SettingsRowFilingLocation,
+                    Msg::FilingSetupKindFilingLocation,
+                    Msg::SettingsRowFilingLocationNote,
                 ),
                 (LocationMode::Archive, false) => (
-                    Msg::SettingsRowRecords,
-                    Msg::FilingSetupKindRecords,
-                    Msg::SettingsRowRecordsNote,
+                    Msg::SettingsRowArchive,
+                    Msg::FilingSetupKindArchive,
+                    Msg::SettingsRowArchiveNote,
                 ),
             };
             let mut description = lang.text(note).to_owned();
@@ -1330,13 +1330,19 @@ fn contains_query(haystack: &str, query: &str) -> bool {
 /// Whether `feature` is in the list for `query`: its own name, or the name of
 /// any of its settings, matches.
 fn feature_matches(feature: SettingsFeature, query: &str, view: &SettingsView<'_>) -> bool {
-    if query.is_empty() || contains_query(view.lang.text(feature_label(feature)), query) {
+    if query.is_empty() || feature_name_matches(feature, query, view.lang) {
         return true;
     }
     groups_of(feature, view)
         .iter()
         .flat_map(|group| &group.rows)
         .any(|setting| row_matches(setting, query))
+}
+
+/// The page's label or its theme name contains the query (lower case).
+fn feature_name_matches(feature: SettingsFeature, query: &str, lang: Language) -> bool {
+    contains_query(lang.text(feature_label(feature)), query)
+        || feature_theme_name(feature).is_some_and(|name| contains_query(lang.text(name), query))
 }
 
 fn row_matches(setting: &SettingRow<'_>, query: &str) -> bool {
@@ -1508,8 +1514,7 @@ fn page<'a>(shown: Option<SettingsFeature>, view: &SettingsView<'a>) -> Element<
         return kit::dim(lang.text(Msg::SettingsNothingFound).to_owned(), palette);
     };
     let query = view.state.query.trim().to_lowercase();
-    let whole_feature =
-        query.is_empty() || contains_query(lang.text(feature_label(feature)), &query);
+    let whole_feature = query.is_empty() || feature_name_matches(feature, &query, lang);
     let mut body = Column::new().push(heading(feature, view));
     if let Err(broken) = &view.state.file {
         body = body.push(
@@ -1706,6 +1711,42 @@ mod tests {
     fn typed(state: &mut SettingsState, field: SettingField, text: &str) -> Option<SettingChange> {
         state.edit(field, text.to_owned());
         state.submit(field)
+    }
+
+    #[test]
+    fn searching_the_theme_name_lists_the_page_and_shows_all_its_rows() {
+        let filing = Filing::default();
+        let palette = Palette::default();
+        for typed_query in ["hermes", "HERMES"] {
+            let mut state = state_of("");
+            state.query = typed_query.to_owned();
+            let view = SettingsView {
+                state: &state,
+                preset: ThemePreset::Cosmic,
+                vscode_theme: None,
+                filing: &filing,
+                servers: &[],
+                ai_status: None,
+                home: Path::new("/home/test"),
+                keys_changed: 0,
+                lang: Language::English,
+                palette: &palette,
+            };
+
+            assert_eq!(listed_features(&view), vec![SettingsFeature::Hermes]);
+            let query = typed_query.to_lowercase();
+            assert!(feature_name_matches(
+                SettingsFeature::Hermes,
+                &query,
+                Language::English
+            ));
+            let unrelated_row = groups_of(SettingsFeature::Hermes, &view)
+                .into_iter()
+                .flat_map(|group| group.rows)
+                .find(|setting| !row_matches(setting, &query))
+                .expect("the page has rows that do not say Hermes themselves");
+            assert!(!unrelated_row.label.is_empty());
+        }
     }
 
     #[test]

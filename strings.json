@@ -2090,25 +2090,25 @@
     },
     {
       "key": "filing_setup.explain",
-      "context": "Explanation at the top of the filing setup card. Hermes is the name of the filing module; the two sections below ask for the Tubes folders and the document folders.",
+      "context": "Explanation at the top of the filing setup card. Hermes is the name of the filing module; the two sections below ask for the inbox folders and the document folders.",
       "en": "Hermes files your documents. Choose the folders it works with.",
       "de": "Hermes legt deine Dokumente ab. Wähle die Ordner, mit denen er arbeitet."
     },
     {
-      "key": "filing_setup.tubes_heading",
-      "context": "Heading of the first section of the filing setup card, which lists the inbox folders (config mode \"inbox\"). Tubes is the themed name for inboxes; the question says what they are.",
-      "en": "Tubes: where do new documents arrive?",
-      "de": "Rohrpost: Wo kommen neue Dokumente an?"
+      "key": "filing_setup.inbox_heading",
+      "context": "Heading of the first section of the filing setup card, which lists the inbox folders (config mode \"inbox\"). The question says what they are.",
+      "en": "Inbox: where do new documents arrive?",
+      "de": "Eingang: Wo kommen neue Dokumente an?"
     },
     {
-      "key": "filing_setup.tubes_explain",
-      "context": "Explanation under the heading of the Tubes section in the filing setup card: documents are picked up from these folders and filed, which empties them.",
+      "key": "filing_setup.inbox_explain",
+      "context": "Explanation under the heading of the inbox section in the filing setup card: documents are picked up from these folders and filed, which empties them.",
       "en": "Hermes picks them up there and files them. These folders are emptied.",
       "de": "Hermes holt sie dort ab und legt sie ab. Diese Ordner werden geleert."
     },
     {
-      "key": "filing_setup.tubes_example",
-      "context": "Muted line in the Tubes section of the filing setup card: says that the section is optional and gives examples of folders to add.",
+      "key": "filing_setup.inbox_example",
+      "context": "Muted line in the inbox section of the filing setup card: says that the section is optional and gives examples of folders to add.",
       "en": "Optional, e.g. Downloads or a scanner folder",
       "de": "Optional, z. B. Downloads oder ein Scanner-Ordner"
     },
@@ -2120,27 +2120,27 @@
     },
     {
       "key": "filing_setup.documents_explain",
-      "context": "Explanation under the heading of the documents section in the filing setup card. Central Filing is the themed name for the document folder that new documents are moved into (config key target).",
-      "en": "Hermes reads them and learns how you file. Documents are only moved into the Central Filing.",
-      "de": "Hermes liest sie und lernt, wie du ablegst. Dokumente werden nur in die Zentralregistratur verschoben."
+      "context": "Explanation under the heading of the documents section in the filing setup card. The filing location is the document folder that new documents are moved into (config key target).",
+      "en": "Hermes reads them and learns how you file. Documents are only moved into the filing location.",
+      "de": "Hermes liest sie und lernt, wie du ablegst. Dokumente werden nur in den Ablageort verschoben."
     },
     {
       "key": "filing_setup.documents_kinds",
-      "context": "Muted line in the documents section of the filing setup card: explains the two kinds of document folder. Central Filing and Records are the themed names; use the same words as the labels in the list.",
-      "en": "Central Filing: new documents are filed here. Records: only read, nothing is moved.",
-      "de": "Zentralregistratur: Hier werden neue Dokumente abgelegt. Aktenkeller: wird nur gelesen, nichts wird verschoben."
+      "context": "Muted line in the documents section of the filing setup card: explains the two kinds of document folder. Filing location and archive; use the same words as the labels in the list.",
+      "en": "Filing location: new documents are filed here. Archive: only read, nothing is moved.",
+      "de": "Ablageort: Hier werden neue Dokumente abgelegt. Archiv: wird nur gelesen, nichts wird verschoben."
     },
     {
-      "key": "filing_setup.kind_central",
+      "key": "filing_setup.kind_filing_location",
       "context": "Label in a row of the documents section of the filing setup card: this document folder is the one new documents are filed into (archive with target = true).",
-      "en": "Central Filing",
-      "de": "Zentralregistratur"
+      "en": "Filing location",
+      "de": "Ablageort"
     },
     {
-      "key": "filing_setup.kind_records",
+      "key": "filing_setup.kind_archive",
       "context": "Label in a row of the documents section of the filing setup card: this document folder is only read, nothing is moved into it (archive without target).",
-      "en": "Records",
-      "de": "Aktenkeller"
+      "en": "Archive",
+      "de": "Archiv"
     },
     {
       "key": "filing_setup.add_folder",
@@ -2181,20 +2181,20 @@
     {
       "key": "filing_setup.rule_no_target",
       "context": "Rule message in the filing setup card: the written list has document folders, but none is the target. Normally the card prevents this; it can come from a failed write.",
-      "en": "One folder must be the Central Filing.",
-      "de": "Ein Ordner muss die Zentralregistratur sein."
+      "en": "One folder must be the filing location.",
+      "de": "Ein Ordner muss der Ablageort sein."
     },
     {
       "key": "filing_setup.rule_second_target",
       "context": "Rule message in the filing setup card: more than one folder is the target. Normally the card prevents this; it can come from a failed write.",
-      "en": "Only one folder can be the Central Filing.",
-      "de": "Nur ein Ordner kann die Zentralregistratur sein."
+      "en": "Only one folder can be the filing location.",
+      "de": "Nur ein Ordner kann der Ablageort sein."
     },
     {
       "key": "filing_setup.rule_inbox_target",
-      "context": "Rule message in the filing setup card: a Tubes folder is marked as the target. Normally the card prevents this; it can come from a failed write.",
-      "en": "A Tubes folder cannot be the Central Filing.",
-      "de": "Ein Rohrpost-Ordner kann nicht die Zentralregistratur sein."
+      "context": "Rule message in the filing setup card: an inbox folder is marked as the target. Normally the card prevents this; it can come from a failed write.",
+      "en": "An inbox folder cannot be the filing location.",
+      "de": "Ein Eingangsordner kann nicht der Ablageort sein."
     },
     {
       "key": "filing_setup.rule_overlap",
@@ -2204,15 +2204,15 @@
     },
     {
       "key": "filing_setup.problem_no_document_folder",
-      "context": "Problem line in the filing setup card while the list has no document folder; saving waits until one is added. A Tubes folder alone is not enough.",
+      "context": "Problem line in the filing setup card while the list has no document folder; saving waits until one is added. An inbox folder alone is not enough.",
       "en": "Add at least one folder where you keep your documents.",
       "de": "Füge mindestens einen Ordner hinzu, in dem du deine Dokumente aufbewahrst."
     },
     {
-      "key": "filing_setup.problem_choose_central",
-      "context": "Problem line in the filing setup card while there are two or more document folders and none is chosen as the Central Filing; saving waits until the user picks one with the radio buttons.",
-      "en": "Choose which folder is the Central Filing.",
-      "de": "Wähle, welcher Ordner die Zentralregistratur ist."
+      "key": "filing_setup.problem_choose_filing_location",
+      "context": "Problem line in the filing setup card while there are two or more document folders and none is chosen as the filing location; saving waits until the user picks one with the radio buttons.",
+      "en": "Choose which folder is the filing location.",
+      "de": "Wähle, welcher Ordner der Ablageort ist."
     },
     {
       "key": "filing_setup.folder_unusable",
@@ -2672,7 +2672,7 @@
     },
     {
       "key": "rule_suggestions.field_pattern",
-      "context": "Label of the field in the edit form of a suggested rule: the filing pattern, a path with placeholders such as year and name, below the folder of the Central Filing.",
+      "context": "Label of the field in the edit form of a suggested rule: the filing pattern, a path with placeholders such as year and name, below the filing location.",
       "en": "Filed as (pattern)",
       "de": "Abgelegt als (Muster)"
     },
@@ -3143,6 +3143,12 @@
       "context": "Line at the top of the review list explaining what the list holds.",
       "en": "Documents that no confirmed rule could file. Nothing is filed before you confirm.",
       "de": "Dokumente, die keine bestätigte Regel ablegen konnte. Nichts wird abgelegt, bevor du bestätigst."
+    },
+    {
+      "key": "review_list.no_rules_hint",
+      "context": "Hint line at the top of the review page while Hermes has no confirmed rule yet and the AI model is not ready: why the fields are empty and the two ways to fill them.",
+      "en": "No rules yet. Fill in one document and confirm it, then Hermes suggests a rule. Or load the AI model, then it fills in the fields itself.",
+      "de": "Noch keine Regeln. Fülle ein Dokument einmal aus und bestätige es, dann schlägt Hermes eine Regel vor. Oder lade das KI-Modell, dann füllt es die Felder selbst."
     },
     {
       "key": "review_list.loading",
@@ -3919,26 +3925,26 @@
       "de": "Hier holt Hermes neue Dokumente ab."
     },
     {
-      "key": "settings.row_central",
+      "key": "settings.row_filing_location",
       "context": "Name of a folder setting on the filing page: the one folder where Hermes files new documents.",
       "en": "Filing location",
       "de": "Ablageort"
     },
     {
-      "key": "settings.row_central_note",
-      "context": "Explanation under the central filing folder.",
+      "key": "settings.row_filing_location_note",
+      "context": "Explanation under the filing location folder.",
       "en": "Hermes files new documents here.",
       "de": "Hierhin legt Hermes neue Dokumente."
     },
     {
-      "key": "settings.row_records",
-      "context": "Name of a folder setting on the filing page: a folder that Hermes only reads. Followed by its theme name.",
+      "key": "settings.row_archive",
+      "context": "Name of a folder setting on the filing page: a folder that Hermes only reads. Followed by the word archive.",
       "en": "Read only",
       "de": "Nur lesen"
     },
     {
-      "key": "settings.row_records_note",
-      "context": "Explanation under a records folder: Hermes learns from it but moves nothing.",
+      "key": "settings.row_archive_note",
+      "context": "Explanation under a read-only archive folder: Hermes learns from it but moves nothing.",
       "en": "Hermes learns from it but moves nothing.",
       "de": "Hermes lernt daraus, verschiebt dort aber nichts."
     },
@@ -4790,7 +4796,7 @@
     },
     {
       "key": "hermes_menu.set_inbox",
-      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Makes the folder an inbox (Tube) of Hermes.",
+      "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Makes the folder an inbox of Hermes.",
       "en": "Set as inbox",
       "de": "Als Eingang festlegen"
     },
@@ -4855,10 +4861,16 @@
       "de": "Vom Ordner {folder} ausgeschlossen; schließe stattdessen den Ordner wieder ein"
     },
     {
-      "key": "status.hermes_role_refused",
-      "context": "Status bar message when a folder cannot take the chosen role in the filing setup. {problem} is the reason, a sentence.",
-      "en": "Not set: {problem}",
-      "de": "Nicht festgelegt: {problem}"
+      "key": "status.hermes_role_needs_filing_location",
+      "context": "Status bar message when a folder cannot become an inbox because no filing location is set yet; the user sets the filing location first. A whole sentence.",
+      "en": "Set a filing location first.",
+      "de": "Lege zuerst einen Ablageort fest."
+    },
+    {
+      "key": "status.hermes_is_off",
+      "context": "Status bar message when the user starts a Hermes command while the filing module is switched off; the settings page with the switch opens at the same time. A whole sentence.",
+      "en": "Hermes is off. Switch it on here to sort your documents.",
+      "de": "Hermes ist aus. Schalte es hier ein, um deine Dokumente zu sortieren."
     },
     {
       "key": "status.hermes_role_failed",

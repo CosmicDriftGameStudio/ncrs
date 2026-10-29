@@ -695,8 +695,8 @@ pub enum FilingSetupMessage {
         folder: PathBuf,
         resolved: Result<PathBuf, String>,
     },
-    /// Make the document folder at this index of the chosen list the Central
-    /// Filing.
+    /// Make the document folder at this index of the chosen list the
+    /// filing location.
     SetTarget(usize),
     ToggleImages(usize),
     Remove(usize),
