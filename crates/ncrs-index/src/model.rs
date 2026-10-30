@@ -1107,8 +1107,8 @@ mod tests {
     #[test]
     fn every_condition_kind_round_trips_through_its_stored_name() {
         for kind in ConditionKind::ALL {
-            assert_eq!(ConditionKind::parse(kind.as_str()).unwrap(), kind);
+            assert_eq!(ConditionKind::parse(kind.as_str()).ok(), Some(kind));
         }
-        assert!(ConditionKind::parse("nonsense").is_err());
+        assert_eq!(ConditionKind::parse("nonsense").ok(), None);
     }
 }

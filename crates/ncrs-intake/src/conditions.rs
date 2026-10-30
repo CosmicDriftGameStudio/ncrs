@@ -8,7 +8,7 @@ use ncrs_index::{compile_bounded_regex, is_iban_separator, is_tax_id_separator};
 use regex::Regex;
 
 /// A text prepared once per planning run and searched by many rules.
-pub(crate) struct SearchText {
+pub struct SearchText {
     pub lowered: String,
     pub words: String,
 }
@@ -24,16 +24,16 @@ impl SearchText {
 
 const ADDRESSEE_SEARCH_LINES: usize = 25;
 
-pub(crate) static EMAIL_ADDRESS: LazyLock<Option<Regex>> =
+pub static EMAIL_ADDRESS: LazyLock<Option<Regex>> =
     LazyLock::new(|| compile_bounded_regex(r"[a-z0-9._%+-]+@([a-z0-9.-]+\.[a-z]{2,})").ok());
-pub(crate) static WEB_DOMAIN: LazyLock<Option<Regex>> = LazyLock::new(|| {
+pub static WEB_DOMAIN: LazyLock<Option<Regex>> = LazyLock::new(|| {
     compile_bounded_regex(r"(?:https?://|www\.)([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})").ok()
 });
 static POSTAL_CODE_LINE: LazyLock<Option<Regex>> =
     LazyLock::new(|| compile_bounded_regex(r"^(?:[A-Z]{1,3}-)?[0-9]{4,5}\s+\p{L}").ok());
 
 /// Whitespace runs become one space, and case is dropped.
-pub(crate) fn normalise_words(text: &str) -> String {
+pub fn normalise_words(text: &str) -> String {
     text.split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
@@ -41,7 +41,7 @@ pub(crate) fn normalise_words(text: &str) -> String {
 }
 
 /// `value` is already normalised.
-pub(crate) fn words_hold(normalised_text: &str, value: &str) -> bool {
+pub fn words_hold(normalised_text: &str, value: &str) -> bool {
     let Some(first) = value.chars().next() else {
         return false;
     };
@@ -65,11 +65,11 @@ pub fn word_condition_holds(text: &str, value: &str) -> bool {
     words_hold(&normalise_words(text), &normalise_words(value))
 }
 
-pub(crate) fn word_holds(text: &SearchText, value: &str) -> bool {
+pub fn word_holds(text: &SearchText, value: &str) -> bool {
     words_hold(&text.words, &normalise_words(value))
 }
 
-pub(crate) fn domains_found(pattern: &Option<Regex>, lowered_text: &str) -> Vec<String> {
+pub fn domains_found(pattern: &Option<Regex>, lowered_text: &str) -> Vec<String> {
     pattern
         .iter()
         .flat_map(|regex| regex.captures_iter(lowered_text))
@@ -78,7 +78,7 @@ pub(crate) fn domains_found(pattern: &Option<Regex>, lowered_text: &str) -> Vec<
 }
 
 /// `lowered_text` is already lowercase.
-pub(crate) fn sender_address_holds(lowered_text: &str, value: &str) -> bool {
+pub fn sender_address_holds(lowered_text: &str, value: &str) -> bool {
     let wanted = value.trim().to_lowercase();
     if wanted.trim_start_matches('@').contains('@') {
         return EMAIL_ADDRESS.iter().any(|regex| {
@@ -95,11 +95,11 @@ pub(crate) fn sender_address_holds(lowered_text: &str, value: &str) -> bool {
         .any(|found| found == domain || found.ends_with(&subdomain_suffix))
 }
 
-pub(crate) fn iban_holds(text: &str, value: &str) -> bool {
+pub fn iban_holds(text: &str, value: &str) -> bool {
     separated_number_holds(text, value, is_iban_separator)
 }
 
-pub(crate) fn tax_id_holds(text: &str, value: &str) -> bool {
+pub fn tax_id_holds(text: &str, value: &str) -> bool {
     separated_number_holds(text, value, is_tax_id_separator)
 }
 
@@ -136,7 +136,7 @@ fn separated_number_holds(text: &str, value: &str, is_separator: fn(char) -> boo
 
 /// The addressee block is the first block after the letterhead that ends in a
 /// line starting with a postal code.
-pub(crate) fn addressee_block_lines(text: &str) -> Option<Vec<&str>> {
+pub fn addressee_block_lines(text: &str) -> Option<Vec<&str>> {
     let postal_code = POSTAL_CODE_LINE.as_ref()?;
     let mut blocks: Vec<Vec<&str>> = vec![Vec::new()];
     for line in text.lines().take(ADDRESSEE_SEARCH_LINES) {
@@ -158,12 +158,12 @@ fn addressee_block(text: &str) -> Option<String> {
     addressee_block_lines(text).map(|lines| lines.join("\n"))
 }
 
-pub(crate) fn recipient_holds(text: &str, value: &str) -> bool {
+pub fn recipient_holds(text: &str, value: &str) -> bool {
     addressee_block(text).is_some_and(|block| word_condition_holds(&block, value))
 }
 
 /// `None` when the value names no folder at all.
-pub(crate) fn folder_holds(path: &Path, value: &str) -> Option<bool> {
+pub fn folder_holds(path: &Path, value: &str) -> Option<bool> {
     let wanted: Vec<String> = value
         .split(['/', '\\'])
         .filter(|part| !part.is_empty())
