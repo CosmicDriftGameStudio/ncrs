@@ -374,3 +374,197 @@ fn a_taken_name_is_reported_and_left_alone() {
         },
     );
 }
+
+/// A disk image attached for one test, detached again also when the test
+/// failed. Never panics in the drop.
+#[cfg(target_os = "macos")]
+struct AttachedImage {
+    mount: PathBuf,
+}
+
+#[cfg(target_os = "macos")]
+impl AttachedImage {
+    fn new(folder: &Path) -> Self {
+        let image = folder.join("volume.dmg");
+        let mount = folder.join("volume");
+        hdiutil(&[
+            "create".as_ref(),
+            "-size".as_ref(),
+            "16m".as_ref(),
+            "-fs".as_ref(),
+            "HFS+".as_ref(),
+            "-volname".as_ref(),
+            "ncrs trash test".as_ref(),
+            image.as_os_str(),
+        ]);
+        std::fs::create_dir(&mount).unwrap();
+        hdiutil(&[
+            "attach".as_ref(),
+            "-nobrowse".as_ref(),
+            "-noautoopen".as_ref(),
+            "-mountpoint".as_ref(),
+            mount.as_os_str(),
+            image.as_os_str(),
+        ]);
+        Self { mount }
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for AttachedImage {
+    fn drop(&mut self) {
+        let detached = std::process::Command::new("hdiutil")
+            .arg("detach")
+            .arg(&self.mount)
+            .arg("-force")
+            .output();
+        match detached {
+            Ok(output) if output.status.success() => {}
+            Ok(output) => eprintln!(
+                "cleanup: {} stays attached: {}",
+                self.mount.display(),
+                String::from_utf8_lossy(&output.stderr)
+            ),
+            Err(err) => eprintln!("cleanup: hdiutil cannot run: {err}"),
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn hdiutil(args: &[&OsStr]) {
+    let output = std::process::Command::new("hdiutil")
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "hdiutil {args:?} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// tmpfs, a file system of its own on every Linux system, so a file there
+/// goes to the trash of that volume and not to the home trash.
+#[cfg(target_os = "linux")]
+const OTHER_VOLUME: &str = "/dev/shm";
+
+/// Removes the volume trash folder after the test when the test made it and
+/// it is empty again. Never panics.
+#[cfg(target_os = "linux")]
+struct VolumeTrashFolder {
+    folder: PathBuf,
+    made_by_the_test: bool,
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for VolumeTrashFolder {
+    fn drop(&mut self) {
+        if !self.made_by_the_test {
+            return;
+        }
+        for inside in ["files", "info", "directorysizes"] {
+            let removed = std::fs::remove_file(self.folder.join(inside))
+                .or_else(|_| std::fs::remove_dir(self.folder.join(inside)));
+            match removed {
+                Err(err) if err.kind() != std::io::ErrorKind::NotFound => eprintln!(
+                    "cleanup: {inside} stays in {}: {err}",
+                    self.folder.display()
+                ),
+                _ => {}
+            }
+        }
+        if let Err(err) = std::fs::remove_dir(&self.folder) {
+            eprintln!("cleanup: {} stays: {err}", self.folder.display());
+        }
+    }
+}
+
+/// Runs `scenario` in a folder on another volume than the temp folder. The
+/// second argument is the trash folder of that volume. Windows has no second
+/// volume on the CI runner that a test could make without admin rights.
+#[cfg(not(windows))]
+fn on_another_volume(test_name: &str, scenario: impl FnOnce(&Scene, &Path)) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = test_name;
+        let image_folder = new_root();
+        let volume = AttachedImage::new(image_folder.path());
+        let root = tempfile::Builder::new()
+            .prefix("ncrs-real-trash-")
+            .tempdir_in(&volume.mount)
+            .unwrap();
+        let volume_trash = std::fs::canonicalize(&volume.mount)
+            .unwrap()
+            .join(".Trashes");
+        scenario(&Scene::new(root.path()), &volume_trash);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+
+        if std::env::var_os(ROOT_VARIABLE).is_none() {
+            run_in_private_trash(test_name);
+            return;
+        }
+        let root = tempfile::Builder::new()
+            .prefix("ncrs-real-trash-")
+            .tempdir_in(OTHER_VOLUME)
+            .unwrap();
+        let here = std::fs::metadata(root.path()).unwrap();
+        assert_ne!(
+            here.dev(),
+            std::fs::metadata(std::env::temp_dir()).unwrap().dev(),
+            "{OTHER_VOLUME} is on the same volume as the temp folder"
+        );
+        let folder = Path::new(OTHER_VOLUME).join(format!(".Trash-{}", here.uid()));
+        let _volume_trash = VolumeTrashFolder {
+            made_by_the_test: !folder.exists(),
+            folder: folder.clone(),
+        };
+        scenario(&Scene::new(root.path()), &folder);
+    }
+}
+
+#[cfg(not(windows))]
+#[test]
+fn a_file_and_a_folder_on_another_volume_come_back_from_its_trash() {
+    on_another_volume(
+        "fs::real_trash_tests::a_file_and_a_folder_on_another_volume_come_back_from_its_trash",
+        |scene, volume_trash| {
+            let alpha = scene.write("alpha.txt", "alpha");
+            let docs = scene.work.join("docs");
+            scene.write("docs/inner.txt", "inner");
+
+            scene.trash.trash(&alpha).unwrap();
+            scene.trash.trash(&docs).unwrap();
+            scene.assert_gone(&alpha);
+            scene.assert_gone(&docs);
+
+            let mut items = scene.items_of_ours("alpha.txt");
+            items.extend(scene.items_of_ours("docs"));
+            assert_eq!(items.len(), 2, "listed: {items:?}");
+            for item in &items {
+                let in_trash = std::fs::canonicalize(Path::new(&item.key)).unwrap();
+                assert!(
+                    in_trash.starts_with(std::fs::canonicalize(volume_trash).unwrap()),
+                    "{} is not in the trash of the volume {}",
+                    in_trash.display(),
+                    volume_trash.display()
+                );
+            }
+
+            for item in &items {
+                assert_eq!(scene.trash.restore(item), Ok(()));
+            }
+
+            assert_eq!(std::fs::read_to_string(&alpha).unwrap(), "alpha");
+            assert_eq!(
+                std::fs::read_to_string(docs.join("inner.txt")).unwrap(),
+                "inner"
+            );
+            assert!(scene.items_of_ours("alpha.txt").is_empty());
+            assert!(scene.items_of_ours("docs").is_empty());
+            scene.finish();
+        },
+    );
+}
