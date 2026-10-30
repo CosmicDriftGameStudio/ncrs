@@ -32,6 +32,19 @@ pub static WEB_DOMAIN: LazyLock<Option<Regex>> = LazyLock::new(|| {
 static POSTAL_CODE_LINE: LazyLock<Option<Regex>> =
     LazyLock::new(|| compile_bounded_regex(r"^(?:[A-Z]{1,3}-)?[0-9]{4,5}\s+\p{L}").ok());
 
+static LETTERHEAD_MARKER: LazyLock<Option<Regex>> = LazyLock::new(|| {
+    compile_bounded_regex(concat!(
+        r"(?i)@|\bwww\.|https?://",
+        r"|\b(?:tel|telefon|fax|iban|hrb|hra|amtsgericht|registergericht|ust)\b",
+        r"|\bsteuernummer",
+        r"|\be\.\s?v\.",
+        r"|\b(?:gmbh|mbh)\b",
+        // Short forms only in capitals: "kg" and "se" are ordinary lowercase text.
+        r"|\b(?:(?-i:AG|KG|OHG|GbR|UG|SE))\b",
+    ))
+    .ok()
+});
+
 /// Whitespace runs become one space, and case is dropped.
 pub fn normalise_words(text: &str) -> String {
     text.split_whitespace()
@@ -134,8 +147,17 @@ fn separated_number_holds(text: &str, value: &str, is_separator: fn(char) -> boo
     })
 }
 
+fn looks_like_letterhead_line(line: &str) -> bool {
+    LETTERHEAD_MARKER
+        .as_ref()
+        .is_some_and(|marker| marker.is_match(line))
+}
+
 /// The addressee block is the first block after the letterhead that ends in a
-/// line starting with a postal code.
+/// line starting with a postal code. When the letterhead is only a logo, the
+/// first text block is the addressee block: it counts when it ends in such a
+/// line and no line of it looks like a letterhead. A company addressee with a
+/// legal form in the first block is therefore still taken for the letterhead.
 pub fn addressee_block_lines(text: &str) -> Option<Vec<&str>> {
     let postal_code = POSTAL_CODE_LINE.as_ref()?;
     let mut blocks: Vec<Vec<&str>> = vec![Vec::new()];
@@ -148,10 +170,18 @@ pub fn addressee_block_lines(text: &str) -> Option<Vec<&str>> {
             block.push(line.trim());
         }
     }
+    let ends_in_postal_code =
+        |block: &Vec<&str>| block.last().is_some_and(|last| postal_code.is_match(last));
+    let first_is_addressee = blocks.first().is_some_and(|first| {
+        ends_in_postal_code(first) && !first.iter().any(|line| looks_like_letterhead_line(line))
+    });
     blocks
         .into_iter()
-        .skip(1)
-        .find(|block| block.last().is_some_and(|last| postal_code.is_match(last)))
+        .enumerate()
+        .find(|(position, block)| {
+            (*position > 0 || first_is_addressee) && ends_in_postal_code(block)
+        })
+        .map(|(_, block)| block)
 }
 
 fn addressee_block(text: &str) -> Option<String> {
@@ -286,6 +316,54 @@ mod tests {
             "Frau Erika Mustermann",
             "Erika Mustermann"
         ));
+    }
+
+    #[test]
+    fn a_first_text_block_without_letterhead_lines_is_the_addressee() {
+        let text = "Max Mustermann\nMusterweg 3\n12345 Musterstadt\n\n\
+            Rechnung 4711\n\nStadtwerke Musterstadt GmbH, Hauptstraße 1, 12345 Musterstadt";
+
+        assert_eq!(
+            addressee_block_lines(text),
+            Some(vec!["Max Mustermann", "Musterweg 3", "12345 Musterstadt"])
+        );
+        assert!(recipient_holds(text, "Max Mustermann"));
+    }
+
+    #[test]
+    fn a_first_block_with_letterhead_lines_is_skipped() {
+        for letterhead_line in [
+            "Stadtwerke Musterstadt GmbH",
+            "Muster e. V.",
+            "Tel. 0123 456",
+            "info@stadtwerke.example",
+            "www.stadtwerke.example",
+            "Fax 0123 457",
+            "IBAN DE89 3704 0044 0532 0130 00",
+            "Amtsgericht Musterstadt HRB 12",
+            "USt-IdNr. DE123456789",
+            "Steuernummer 12/345/67890",
+            "Muster & Söhne OHG",
+            "Muster AG",
+        ] {
+            let text = format!(
+                "Stadtwerke Musterstadt\n{letterhead_line}\n12345 Musterstadt\n\n\
+                 Max Mustermann\nMusterweg 3\n54321 Andernorts"
+            );
+            assert_eq!(
+                addressee_block_lines(&text),
+                Some(vec!["Max Mustermann", "Musterweg 3", "54321 Andernorts"]),
+                "{letterhead_line}"
+            );
+        }
+    }
+
+    #[test]
+    fn ordinary_words_are_not_letterhead_lines() {
+        assert!(!looks_like_letterhead_line("Max Mustermann"));
+        assert!(!looks_like_letterhead_line("Musterweg 3"));
+        assert!(!looks_like_letterhead_line("5 kg Se Telegram"));
+        assert!(!looks_like_letterhead_line("Ludwigstraße 3a"));
     }
 
     #[test]
