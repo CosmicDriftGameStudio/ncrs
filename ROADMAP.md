@@ -213,7 +213,7 @@ Die laufende Liste mit dem Stand steht am Dokumentende. Hier der Kurzstand:
 
 # Tasks – Basis-Feature
 
-**Stand 2026-10-30: T1–T18 erledigt.** Release 1.1.0,
+**Stand 2026-10-30: T1–T18 erledigt.** Release 1.1.1,
 2543 Tests (`cargo test --workspace`, davon 9 `#[ignore]`) inkl. UI-Tests mit Pixelvergleich.
 
 | Block | Inhalt | Stand |
