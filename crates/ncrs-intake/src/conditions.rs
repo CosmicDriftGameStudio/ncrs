@@ -4,7 +4,7 @@
 use std::path::{Component, Path};
 use std::sync::LazyLock;
 
-use ncrs_index::compile_bounded_regex;
+use ncrs_index::{compile_bounded_regex, is_iban_separator, is_tax_id_separator};
 use regex::Regex;
 
 /// A text prepared once per planning run and searched by many rules.
@@ -24,9 +24,9 @@ impl SearchText {
 
 const ADDRESSEE_SEARCH_LINES: usize = 25;
 
-static EMAIL_ADDRESS: LazyLock<Option<Regex>> =
+pub(crate) static EMAIL_ADDRESS: LazyLock<Option<Regex>> =
     LazyLock::new(|| compile_bounded_regex(r"[a-z0-9._%+-]+@([a-z0-9.-]+\.[a-z]{2,})").ok());
-static WEB_DOMAIN: LazyLock<Option<Regex>> = LazyLock::new(|| {
+pub(crate) static WEB_DOMAIN: LazyLock<Option<Regex>> = LazyLock::new(|| {
     compile_bounded_regex(r"(?:https?://|www\.)([a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})").ok()
 });
 static POSTAL_CODE_LINE: LazyLock<Option<Regex>> =
@@ -69,7 +69,7 @@ pub(crate) fn word_holds(text: &SearchText, value: &str) -> bool {
     words_hold(&text.words, &normalise_words(value))
 }
 
-fn domains_found(pattern: &Option<Regex>, lowered_text: &str) -> Vec<String> {
+pub(crate) fn domains_found(pattern: &Option<Regex>, lowered_text: &str) -> Vec<String> {
     pattern
         .iter()
         .flat_map(|regex| regex.captures_iter(lowered_text))
@@ -93,14 +93,6 @@ pub(crate) fn sender_address_holds(lowered_text: &str, value: &str) -> bool {
         .into_iter()
         .chain(domains_found(&WEB_DOMAIN, lowered_text))
         .any(|found| found == domain || found.ends_with(&subdomain_suffix))
-}
-
-fn is_iban_separator(ch: char) -> bool {
-    ch.is_whitespace()
-}
-
-fn is_tax_id_separator(ch: char) -> bool {
-    ch.is_whitespace() || matches!(ch, '/' | '-' | '.')
 }
 
 pub(crate) fn iban_holds(text: &str, value: &str) -> bool {
@@ -144,7 +136,7 @@ fn separated_number_holds(text: &str, value: &str, is_separator: fn(char) -> boo
 
 /// The addressee block is the first block after the letterhead that ends in a
 /// line starting with a postal code.
-fn addressee_block(text: &str) -> Option<String> {
+pub(crate) fn addressee_block_lines(text: &str) -> Option<Vec<&str>> {
     let postal_code = POSTAL_CODE_LINE.as_ref()?;
     let mut blocks: Vec<Vec<&str>> = vec![Vec::new()];
     for line in text.lines().take(ADDRESSEE_SEARCH_LINES) {
@@ -160,7 +152,10 @@ fn addressee_block(text: &str) -> Option<String> {
         .into_iter()
         .skip(1)
         .find(|block| block.last().is_some_and(|last| postal_code.is_match(last)))
-        .map(|block| block.join("\n"))
+}
+
+fn addressee_block(text: &str) -> Option<String> {
+    addressee_block_lines(text).map(|lines| lines.join("\n"))
 }
 
 pub(crate) fn recipient_holds(text: &str, value: &str) -> bool {

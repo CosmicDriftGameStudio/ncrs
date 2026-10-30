@@ -704,6 +704,10 @@ another word, two companies on one letter, and documents no rule covers. The
 run plans every document against a fixed set of rules (word conditions, a
 regex for German compounds such as "Mietvertrag", and the IBAN for the first
 one), as the rules step does for a new document, and prints hits, wrong values and missing values per field.
+Before planning, the sender is detected from the text without an AI: from an
+identifier a confirmed alias knows (IBAN, tax id, e-mail or web domain), else
+from the letterhead or the footer. The run confirms three aliases: the IBAN of
+Nordlicht Energie and the short names "Kranich" and "Pixelwerk".
 It is opt-in and not part of the normal `cargo test`:
 
 ```sh
@@ -713,13 +717,14 @@ cargo test -p ncrs-ai --features llama recognition_measured_against_the_model --
 ```
 
 **Rules only; the AI run was not measured because the model is not available
-locally.** Without an AI no sender is ever set (only the AI sets one), so the
-sender is never found. A document without the field (a letter has no amount)
+locally.** The sender comes from the detection above, so it is found for every
+document of the corpus; the short-name cases rely on those three confirmed
+aliases. A document without the field (a letter has no amount)
 counts as a hit when nothing is found for it.
 
 | Field | Hits of 26 | Hit rate |
 | --- | --- | --- |
-| sender | 0 | 0% |
+| sender | 26 | 100% |
 | kind | 23 | 88% |
 | tax context | 20 | 76% |
 | date | 22 | 84% |

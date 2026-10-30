@@ -1,7 +1,7 @@
 use std::fmt;
 use std::path::PathBuf;
 
-use crate::model::{DocumentId, ReviewEntryId, RuleId, SavedQueryId};
+use crate::model::{DocumentId, ReviewEntryId, RuleId, SavedQueryId, SenderAliasId};
 
 /// Failures of the credential store, without ever carrying the secret.
 #[derive(Debug, PartialEq, Eq)]
@@ -85,6 +85,7 @@ pub enum IndexError {
     DocumentNotFound(DocumentId),
     RuleNotFound(RuleId),
     SavedQueryNotFound(SavedQueryId),
+    SenderAliasNotFound(SenderAliasId),
     /// Another saved query already has this name.
     SavedQueryNameTaken(String),
     /// The document already has an unresolved review entry.
@@ -151,6 +152,7 @@ impl fmt::Display for IndexError {
             Self::DocumentNotFound(id) => write!(f, "there is no document {id}"),
             Self::RuleNotFound(id) => write!(f, "there is no rule {id}"),
             Self::SavedQueryNotFound(id) => write!(f, "there is no saved query {id}"),
+            Self::SenderAliasNotFound(id) => write!(f, "there is no sender alias {id}"),
             Self::SavedQueryNameTaken(name) => {
                 write!(f, "a saved query named '{name}' already exists")
             }

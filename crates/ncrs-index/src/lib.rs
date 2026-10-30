@@ -20,6 +20,7 @@ mod review;
 mod rule_suggestions;
 mod rules;
 mod saved_queries;
+mod sender_aliases;
 #[cfg(test)]
 mod test_support;
 
@@ -29,12 +30,14 @@ pub use index::Index;
 pub use journal::{BatchKind, JournalItem, JournalState, NewJournalItem};
 pub use key::RecoveryKey;
 pub use key_store::{InMemoryKeyStore, KeyStore, KeyringKeyStore};
+pub use model::{is_iban_separator, is_tax_id_separator};
 pub use model::{
     Amount, BatchId, Combinator, Condition, ConditionKind, ConflictReason, ContentHash, Currency,
     Document, DocumentFields, DocumentId, DocumentSource, DocumentStatus, Field, FieldOrigin,
     FieldOrigins, FileStamp, Finding, FindingKind, HermesCounts, IndexStatistics, NewDocument,
     NoActionReason, PlanId, PlanItem, PlanOutcome, QuerySpec, ReorganisationPlan, ReviewEntry,
     ReviewEntryId, ReviewReason, Rule, RuleConditions, RuleEvidence, RuleId, RuleSpec,
-    RuleSuggestion, SavedQuery, SavedQueryId, StatusCounts, SubtreePattern, TaxContext,
+    RuleSuggestion, SavedQuery, SavedQueryId, SenderAlias, SenderAliasId, SenderAliasKind,
+    SenderAliasState, SenderAliases, StatusCounts, SubtreePattern, TaxContext,
 };
 pub use regex_limits::compile_bounded_regex;

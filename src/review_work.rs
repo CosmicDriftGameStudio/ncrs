@@ -14,7 +14,7 @@ use chrono::NaiveDate;
 use ncrs_index::{
     Amount, BatchKind, Condition, ConditionKind, Currency, DocumentFields, DocumentId,
     DocumentStatus, FieldOrigin, IncludeOutcome, Index, IndexError, ReviewEntryId, ReviewReason,
-    RuleConditions, RuleId, RuleSpec, TaxContext,
+    RuleConditions, RuleId, RuleSpec, SenderAliases, TaxContext,
 };
 use ncrs_intake::{pattern_is_valid, plan, render_pattern, text_is_readable, PlanInput, Planning};
 
@@ -246,6 +246,7 @@ fn load_matching(
     wanted: impl Fn(&Path) -> bool,
 ) -> Result<Vec<ReviewItem>, IndexError> {
     let rules = index.rules()?;
+    let sender_aliases = index.confirmed_sender_aliases()?;
     let mut items = Vec::new();
     for entry in index.open_reviews()? {
         let Some(document) = index.document(entry.document_id)? else {
@@ -254,7 +255,13 @@ fn load_matching(
         if !wanted(&document.path) {
             continue;
         }
-        items.push(review_item(index, &rules, &entry, document)?);
+        items.push(review_item(
+            index,
+            &rules,
+            &sender_aliases,
+            &entry,
+            document,
+        )?);
     }
     Ok(items)
 }
@@ -262,6 +269,7 @@ fn load_matching(
 fn review_item(
     index: &Index,
     rules: &[ncrs_index::Rule],
+    sender_aliases: &SenderAliases,
     entry: &ncrs_index::ReviewEntry,
     document: ncrs_index::Document,
 ) -> Result<ReviewItem, IndexError> {
@@ -273,6 +281,7 @@ fn review_item(
             text: &text,
             fields: &document.fields,
             path: Some(&document.path),
+            sender_aliases,
         },
     );
     let (fields, proposed_pattern) = match planning {
@@ -307,6 +316,7 @@ fn suggestion_for(
     path: &Path,
 ) -> Result<Option<(TextState, Option<PathBuf>)>, IndexError> {
     let rules = index.rules()?;
+    let sender_aliases = index.confirmed_sender_aliases()?;
     for entry in index.open_reviews()? {
         let Some(document) = index.document(entry.document_id)? else {
             continue;
@@ -314,7 +324,7 @@ fn suggestion_for(
         if document.path != path {
             continue;
         }
-        let item = review_item(index, &rules, &entry, document)?;
+        let item = review_item(index, &rules, &sender_aliases, &entry, document)?;
         let target = item
             .proposed_pattern
             .and_then(|pattern| render_pattern(&pattern, &item.fields));

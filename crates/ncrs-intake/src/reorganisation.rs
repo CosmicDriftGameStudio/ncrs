@@ -13,7 +13,7 @@ use std::path::{Component, Path, PathBuf};
 use chrono::Datelike as _;
 use ncrs_index::{
     ConflictReason, ContentHash, DocumentFields, Finding, FindingKind, NoActionReason, PlanItem,
-    PlanOutcome, Rule, RuleEvidence, SubtreePattern,
+    PlanOutcome, Rule, RuleEvidence, SenderAliases, SubtreePattern,
 };
 
 use crate::archive_profile::{
@@ -217,6 +217,7 @@ impl Context<'_> {
             text: file.text.as_deref().unwrap_or_default(),
             fields: &file.fields,
             path: Some(&file.relative_path),
+            sender_aliases: &SenderAliases::default(),
         };
         let Planning::Plan(filing) = plan(&self.eligible, &input) else {
             return None;
