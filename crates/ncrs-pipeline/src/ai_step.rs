@@ -124,7 +124,7 @@ impl Step for AiStep {
         }
         let request = ExtractionRequest {
             text: text.to_owned(),
-            open_fields,
+            open_fields: open_fields.clone(),
             known: document.fields,
             source: item.location.path.clone(),
         };
@@ -141,6 +141,7 @@ impl Step for AiStep {
         let (confident, unsure): (Vec<&ExtractedField>, Vec<&ExtractedField>) = extraction
             .fields
             .iter()
+            .filter(|found| open_fields.contains(&found.field))
             .filter(|found| {
                 found.field != Field::Sender
                     || !sender_is_the_user(&found.value, self.own_name.as_deref())
@@ -676,6 +677,76 @@ mod tests {
 
         assert_eq!(item.review, review_before);
         assert_eq!(fixture.fields(document), DocumentFields::default());
+    }
+
+    /// Returns its fields whatever was asked, like a provider that ignores the
+    /// request.
+    #[derive(Debug)]
+    struct UnaskedFieldsProvider(Vec<ExtractedField>);
+
+    impl Provider for UnaskedFieldsProvider {
+        fn extract(&self, _request: &ExtractionRequest) -> Result<ncrs_ai::Extraction, AiError> {
+            Ok(ncrs_ai::Extraction {
+                fields: self.0.clone(),
+            })
+        }
+    }
+
+    #[test]
+    fn a_field_the_rules_decided_keeps_value_and_origin_whatever_the_provider_returns() {
+        let fixture = Fixture::new();
+        let sure = CONFIDENT + 0.1;
+        let unsure = CONFIDENT - 0.1;
+        let answer =
+            |field, value: &str, confidence| ExtractedField::new(field, value, confidence).unwrap();
+        let provider = Arc::new(UnaskedFieldsProvider(vec![
+            answer(Field::Kind, "contract", sure),
+            answer(Field::Kind, "letter", unsure),
+            answer(Field::TaxContext, "private", unsure),
+            answer(Field::Date, "2024-03-05", sure),
+        ]));
+        let steps = intake_steps(
+            Arc::new(SharedIndex(Arc::clone(&fixture.index))),
+            Arc::new(TextChain::new()),
+            Some(Arc::clone(&provider) as Arc<dyn Provider>),
+            None,
+        );
+        let rule = fixture
+            .index
+            .lock()
+            .unwrap()
+            .create_rule(&invoice_rule("{date}/{number}.pdf", true))
+            .unwrap();
+        let document = fixture.add_document(1);
+        let mut item = fixture.item(document, INVOICE_TEXT);
+        run(&steps, RULES, &mut item);
+        assert_eq!(item.review, Some(ReviewReason::MissingField(Field::Date)));
+
+        run(&steps, AI, &mut item);
+
+        let fields = fixture.fields(document);
+        assert_eq!(fields.kind.as_deref(), Some("invoice"));
+        assert_eq!(fields.tax_context, Some(TaxContext::Company));
+        assert_eq!(fields.date.unwrap().to_string(), "2024-03-05");
+        let origins = fixture
+            .index
+            .lock()
+            .unwrap()
+            .field_origins(document)
+            .unwrap();
+        assert_eq!(origins.of(Field::Kind), FieldOrigin::Rule(Some(rule)));
+        assert_eq!(origins.of(Field::TaxContext), FieldOrigin::Rule(Some(rule)));
+        assert_eq!(
+            origins.of(Field::Date),
+            FieldOrigin::Ai {
+                confidence_percent: confidence_percent(sure)
+            }
+        );
+        assert!(
+            !matches!(item.review, Some(ReviewReason::LowConfidence(_))),
+            "{:?}",
+            item.review
+        );
     }
 
     #[test]
