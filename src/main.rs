@@ -16,6 +16,9 @@ mod ai_model;
 mod app;
 mod backend;
 mod clipboard_paste;
+#[cfg(test)]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+mod clipboard_system_tests;
 mod command_line;
 mod command_palette;
 mod commands;

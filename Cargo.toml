@@ -188,6 +188,19 @@ sha2 = "0.10"
 # Writes the 7z archives the tests read; the release build only decodes.
 sevenz-rust2 = { version = "0.24.1", default-features = false, features = ["compress", "deflate"] }
 
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+# The clipboard tests read the pasteboard the way the Finder does and give the
+# developer's clipboard back afterwards; arboard can do neither. All three are
+# in the tree through arboard already.
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSPasteboard", "NSPasteboardItem"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSData", "NSString", "NSURL"] }
+
+[target.'cfg(target_os = "windows")'.dev-dependencies]
+# The clipboard tests read and write CF_HDROP the way Explorer does, beside
+# arboard. In the tree through arboard already.
+clipboard-win = "5.4"
+
 # crates/ncrs-ocr-vision/Cargo.toml and crates/ncrs-sandbox/Cargo.toml repeat
 # these tables with unsafe_code = "deny"; change all three together.
 [workspace.lints.rust]
