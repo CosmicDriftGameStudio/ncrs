@@ -51,6 +51,9 @@ pub struct SandboxAccess {
     pub home_readable: fn() -> bool,
     /// Saves a grant for a folder in a grants folder.
     pub grant: fn(&Path, &Path) -> Result<(), String>,
+    /// Whether the app may reach a folder: given the grants folder and the
+    /// folder asked about.
+    pub covers: fn(&Path, &Path) -> bool,
 }
 
 impl SandboxAccess {
@@ -61,6 +64,7 @@ impl SandboxAccess {
             grants_dir: index_path.and_then(grants_dir),
             home_readable: home_is_readable,
             grant: grant_folder,
+            covers: folder_is_covered,
         }
     }
 
@@ -72,6 +76,19 @@ impl SandboxAccess {
             grants_dir: None,
             home_readable: || true,
             grant: |_, _| Ok(()),
+            covers: |_, _| true,
+        }
+    }
+
+    /// Whether the app may reach `folder`: always outside the sandbox, inside
+    /// it only in the container or in a granted folder.
+    pub fn reaches(&self, folder: &Path) -> bool {
+        if !self.active {
+            return true;
+        }
+        match &self.grants_dir {
+            Some(dir) => (self.covers)(dir, folder),
+            None => false,
         }
     }
 
@@ -109,6 +126,20 @@ pub fn grant_start_dir_for(blocked: &Path) -> PathBuf {
         .ancestors()
         .find(|each| each.is_dir())
         .map_or_else(grant_start_dir, Path::to_path_buf)
+}
+
+#[cfg(all(feature = "sandbox", target_os = "macos"))]
+fn folder_is_covered(grants_dir: &Path, folder: &Path) -> bool {
+    let in_container = std::env::var_os("HOME").is_some_and(|home| folder.starts_with(home));
+    in_container
+        || super::grants::GrantStore::new(grants_dir.to_path_buf())
+            .covering_grant(&SystemBookmarks, folder)
+            .is_some()
+}
+
+#[cfg(not(all(feature = "sandbox", target_os = "macos")))]
+const fn folder_is_covered(_grants_dir: &Path, _folder: &Path) -> bool {
+    true
 }
 
 #[cfg(all(feature = "sandbox", target_os = "macos"))]
@@ -248,7 +279,24 @@ mod tests {
             grants_dir: None,
             home_readable: if readable { || true } else { || false },
             grant: |_, _| Ok(()),
+            covers: |_, _| true,
         }
+    }
+
+    #[test]
+    fn a_folder_is_reached_outside_the_sandbox_and_inside_by_the_grants() {
+        let folder = Path::new("a");
+        assert!(access(false, true).reaches(folder));
+
+        let mut sandboxed = access(true, true);
+        assert!(!sandboxed.reaches(folder));
+
+        sandboxed.grants_dir = Some(PathBuf::from("grants"));
+        sandboxed.covers = |_, _| false;
+        assert!(!sandboxed.reaches(folder));
+        sandboxed.covers = |dir, asked| dir == Path::new("grants") && asked == Path::new("a");
+        assert!(sandboxed.reaches(folder));
+        assert!(!sandboxed.reaches(Path::new("b")));
     }
 
     #[test]

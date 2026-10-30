@@ -873,6 +873,26 @@ struct PendingConflict {
     index: usize,
 }
 
+/// Puts one trashed entry back. A folder the sandbox cannot reach is refused
+/// first, before the entry in the way is trashed.
+fn restore_one(
+    trash: &dyn fs::Trash,
+    sandbox: &fs::SandboxAccess,
+    item: &fs::TrashedItem,
+    overwrite: bool,
+) -> Result<(), fs::RestoreError> {
+    let folder = item.original.parent().unwrap_or(&item.original);
+    if !sandbox.reaches(folder) {
+        return Err(fs::RestoreError::NotGranted);
+    }
+    if overwrite {
+        trash
+            .trash(&item.original)
+            .map_err(fs::RestoreError::Failed)?;
+    }
+    trash.restore(item)
+}
+
 /// What a click on the "access blocked" error sends. Only macOS has a privacy
 /// settings page to open, and only there does the message exist. In the
 /// sandbox the click asks for access to the blocked folder instead, since Full
@@ -1246,6 +1266,9 @@ pub struct App {
     /// Why the last job failed, in the active language. Shown in the status bar
     /// until the next thing happens.
     job_error: Option<String>,
+    /// What a press on `job_error` sends. Only read while `job_error` is set, and
+    /// every `Some` error goes through a setter that replaces it.
+    job_error_press: Option<Message>,
     /// A neutral confirmation, such as "Path copied". Goes the way of `job_error`.
     notice: Option<String>,
     /// Counts the notices shown, so a timer can tell if it is still the latest.
@@ -3225,6 +3248,7 @@ impl App {
             config_problem: None,
             palette: Palette::default(),
             job_error: None,
+            job_error_press: None,
             notice: None,
             notice_generation: 0,
             drop_hover: false,
@@ -5122,6 +5146,11 @@ impl App {
                             self.sandbox.active,
                             &self.active_panel().path,
                         ),
+                        on_failure_press: self
+                            .job_error
+                            .is_some()
+                            .then(|| self.job_error_press.clone())
+                            .flatten(),
                         blocked_by_sandbox: cfg!(target_os = "macos") && self.sandbox.active,
                         notice: self.notice.as_deref(),
                         hermes_line: self.hermes_line(),
@@ -7524,16 +7553,12 @@ impl App {
         });
         let generation = self.generation;
         let trash = Arc::clone(&self.trash);
+        let sandbox = self.sandbox.clone();
         self.jobs
             .start_next(|_| {
                 Task::perform(
                     tokio::task::spawn_blocking(move || {
-                        if overwrite {
-                            trash
-                                .trash(&item.original)
-                                .map_err(fs::RestoreError::Failed)?;
-                        }
-                        trash.restore(&item)
+                        restore_one(trash.as_ref(), &sandbox, &item, overwrite)
                     }),
                     move |outcome| {
                         Message::Trash(TrashMessage::RestoreRowDone {
@@ -7576,22 +7601,41 @@ impl App {
                     Task::batch([self.close_quick_open(), self.close_command_palette()])
                 }
             },
-            Err(fs::RestoreError::Failed(reason)) => {
-                let name = self
-                    .restoring
-                    .as_ref()
-                    .and_then(|restoring| restoring.items.get(index))
-                    .and_then(|item| item.original.file_name())
-                    .map(|name| name.to_string_lossy().into_owned())
-                    .unwrap_or_default();
+            Err(fs::RestoreError::NotGranted) => {
+                let name = self.restore_row_name(index);
                 let text = fill_template(
-                    self.lang.text(Msg::TrashRestoreFailed),
-                    &[("{name}", &name), ("{reason}", &reason)],
+                    self.lang.text(Msg::TrashRestoreNotGranted),
+                    &[("{name}", &name)],
                 );
-                self.set_status_error(&text);
+                self.set_status_error_with_press(&text, Message::Trash(TrashMessage::OpenInFinder));
+                self.end_restore()
+            }
+            Err(fs::RestoreError::Failed(reason)) => {
+                let name = self.restore_row_name(index);
+                let params = [("{name}", name.as_str()), ("{reason}", reason.as_str())];
+                if cfg!(target_os = "macos") {
+                    let text =
+                        fill_template(self.lang.text(Msg::TrashRestoreFailedFinder), &params);
+                    self.set_status_error_with_press(
+                        &text,
+                        Message::Trash(TrashMessage::OpenInFinder),
+                    );
+                } else {
+                    let text = fill_template(self.lang.text(Msg::TrashRestoreFailed), &params);
+                    self.set_status_error(&text);
+                }
                 self.end_restore()
             }
         }
+    }
+
+    fn restore_row_name(&self, index: usize) -> String {
+        self.restoring
+            .as_ref()
+            .and_then(|restoring| restoring.items.get(index))
+            .and_then(|item| item.original.file_name())
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default()
     }
 
     fn skip_restore_row(&mut self, index: usize) -> Task<Message> {
@@ -9327,7 +9371,14 @@ impl App {
     /// already wrote the wording.
     fn set_status_error(&mut self, reason: &str) {
         self.job_error = Some(reason.to_string());
+        self.job_error_press = None;
         self.notice = None;
+    }
+
+    /// An error the user can press, for instance to open the trash in the Finder.
+    fn set_status_error_with_press(&mut self, reason: &str, press: Message) {
+        self.set_status_error(reason);
+        self.job_error_press = Some(press);
     }
 
     /// Shows a validation failure in the open prompt.
@@ -15057,6 +15108,7 @@ impl App {
             config_problem: None,
             palette: ThemePreset::Cosmic.palette(),
             job_error: None,
+            job_error_press: None,
             notice: None,
             notice_generation: 0,
             drop_hover: false,
@@ -20124,6 +20176,121 @@ mod configured_keys_tests {
         assert_eq!(app.notice_for_test(), None);
     }
 
+    #[test]
+    fn a_restore_the_sandbox_cannot_reach_says_so_and_offers_the_finder() {
+        let (_folder, mut app) = app_with_a_trash_that_lists();
+        app.restoring = Some(Restoration {
+            items: vec![fs::TrashedItem {
+                original: PathBuf::from("/left/a.txt"),
+                deleted_at: 0,
+                key: "a".into(),
+            }],
+            restored: 0,
+            skipped: 0,
+            rule: None,
+        });
+        let generation = app.generation;
+        drop(app.restore_row_done(Err(fs::RestoreError::NotGranted), 0, generation));
+
+        assert_eq!(
+            app.status_error(),
+            Some(
+                "a.txt cannot be restored here: ncrs has no access to its folder. \
+                 Click to open the trash in the Finder"
+            )
+        );
+        assert_eq!(
+            app.job_error_press,
+            Some(Message::Trash(TrashMessage::OpenInFinder))
+        );
+
+        app.set_status_error("something else");
+        assert_eq!(app.job_error_press, None);
+    }
+
+    use fs::Trash as _;
+
+    struct RestoreScene {
+        root: tempfile::TempDir,
+        trash: fs::JournaledTrash<fs::FolderBackend>,
+        item: fs::TrashedItem,
+    }
+
+    fn trashed_file_scene() -> RestoreScene {
+        let root = tempfile::tempdir().unwrap();
+        let trash_folder = root.path().join("trash");
+        let origin = root.path().join("origin");
+        std::fs::create_dir_all(&trash_folder).unwrap();
+        std::fs::create_dir_all(&origin).unwrap();
+        let original = origin.join("a.txt");
+        std::fs::write(&original, "mine").unwrap();
+        let trash = fs::JournaledTrash::new(
+            root.path().join("journal.toml"),
+            fs::FolderBackend(trash_folder),
+        );
+        trash.trash(&original).unwrap();
+        let item = trash.list().unwrap().remove(0);
+        RestoreScene { root, trash, item }
+    }
+
+    fn sandbox_reaching(reached: bool) -> fs::SandboxAccess {
+        fs::SandboxAccess {
+            active: true,
+            grants_dir: Some(PathBuf::from("grants-of-this-test")),
+            home_readable: || true,
+            grant: |_, _| Ok(()),
+            covers: if reached { |_, _| true } else { |_, _| false },
+        }
+    }
+
+    #[test]
+    fn a_folder_out_of_reach_is_refused_before_anything_in_the_way_is_trashed() {
+        let scene = trashed_file_scene();
+        std::fs::write(&scene.item.original, "in the way").unwrap();
+
+        let result = restore_one(&scene.trash, &sandbox_reaching(false), &scene.item, true);
+
+        assert_eq!(result, Err(fs::RestoreError::NotGranted));
+        assert_eq!(
+            std::fs::read_to_string(&scene.item.original).unwrap(),
+            "in the way"
+        );
+        assert!(
+            Path::new(&scene.item.key).exists(),
+            "the item left the trash"
+        );
+        assert_eq!(scene.trash.list().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_folder_in_reach_gets_its_entry_back() {
+        let scene = trashed_file_scene();
+
+        let result = restore_one(&scene.trash, &sandbox_reaching(true), &scene.item, false);
+
+        assert_eq!(result, Ok(()));
+        assert_eq!(
+            std::fs::read_to_string(&scene.item.original).unwrap(),
+            "mine"
+        );
+        assert!(scene.root.path().join("origin").is_dir());
+    }
+
+    #[test]
+    fn outside_the_sandbox_every_folder_is_in_reach() {
+        let scene = trashed_file_scene();
+
+        let result = restore_one(
+            &scene.trash,
+            &fs::SandboxAccess::inactive(),
+            &scene.item,
+            false,
+        );
+
+        assert_eq!(result, Ok(()));
+        assert!(scene.item.original.exists());
+    }
+
     fn on_the_trash_view() -> PromptKeyState {
         PromptKeyState {
             trash: true,
@@ -24764,6 +24931,7 @@ mod grant_tests {
             grants_dir: Some(PathBuf::from("grants-of-this-test")),
             home_readable: if readable { || true } else { || false },
             grant,
+            covers: |_, _| true,
         };
         app
     }
@@ -27472,6 +27640,7 @@ mod hermes_overview_tests {
             grants_dir: Some(PathBuf::from("grants-of-this-test")),
             home_readable: || true,
             grant,
+            covers: |_, _| true,
         };
         app
     }

@@ -99,8 +99,8 @@ cursor row (or the tagged rows) back where they were, creating a folder that is 
 "Overwrite" moves the file in the way to the trash instead of deleting it. `Cmd`+`Z` (`Ctrl`+`Z` on Windows and Linux)
 puts back what the last `F8` moved. On macOS the view lists what ncrs moved to the trash, recorded in `journal.toml`
 next to `state.toml`; ncrs now moves files to the trash through the file manager itself, so the Finder's "Put Back"
-may not offer those items. "Open the trash in the Finder" shows the rest. The App Store build has only that command
-for now: moving items back out of the trash inside the sandbox is not verified yet.
+may not offer those items. "Open the trash in the Finder" shows the rest. The App Store build restores the same way
+into folders it may access; for any other folder the error offers to open the trash in the Finder.
 
 ![The German interface](docs/screenshots/main-de.png)
 

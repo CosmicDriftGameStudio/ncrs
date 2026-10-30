@@ -6643,6 +6643,18 @@
       "de": "{name} konnte nicht wiederhergestellt werden: {reason}"
     },
     {
+      "key": "trash.restore_not_granted",
+      "context": "Status bar error, pressable, when an entry cannot be put back because the App Store sandbox has no access to the folder it came from. Takes {name}. The press opens the trash in the Finder.",
+      "en": "{name} cannot be restored here: ncrs has no access to its folder. Click to open the trash in the Finder",
+      "de": "{name} kann hier nicht wiederhergestellt werden: ncrs hat keinen Zugriff auf den Ordner. Klicken, um den Papierkorb im Finder zu öffnen"
+    },
+    {
+      "key": "trash.restore_failed_finder",
+      "context": "Status bar error, pressable, on macOS when an entry could not be put back. Takes {name} and {reason}. The press opens the trash in the Finder.",
+      "en": "{name} could not be restored, click to open the trash in the Finder: {reason}",
+      "de": "{name} konnte nicht wiederhergestellt werden, klicken öffnet den Papierkorb im Finder: {reason}"
+    },
+    {
       "key": "trash.moved_with_key",
       "context": "Status bar notice after F8 moved entries to the trash. Takes {count} and {key}, the key that puts them back.",
       "en": "Moved {count} to the trash. {key} puts it back.",

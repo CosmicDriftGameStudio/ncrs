@@ -135,6 +135,8 @@ pub struct Activity<'a, M> {
     /// Makes the "access blocked" error a button. `None` where there is no
     /// settings page to open.
     pub on_blocked_press: Option<M>,
+    /// Makes the failure text a button. `None` leaves it plain.
+    pub on_failure_press: Option<M>,
     /// The press asks for a folder grant instead of opening the privacy
     /// settings, and the text says so.
     pub blocked_by_sandbox: bool,
@@ -168,6 +170,7 @@ pub fn view<'a, M: Clone + 'a>(
         job_press,
         filing,
         on_blocked_press,
+        on_failure_press,
         blocked_by_sandbox,
         notice,
         hermes_line,
@@ -182,11 +185,18 @@ pub fn view<'a, M: Clone + 'a>(
     let path = path_bar(panel, lang, palette, path_bar_input);
 
     let details: Element<'a, M> = if let Some(last_failure) = failure {
-        text(last_failure)
+        let line = text(last_failure)
             .size(font_size::SMALL)
             .color(palette.error)
-            .wrapping(text::Wrapping::None)
-            .into()
+            .wrapping(text::Wrapping::None);
+        match on_failure_press {
+            Some(press) => button(line)
+                .padding(0)
+                .style(theme::icon_button(palette))
+                .on_press(press)
+                .into(),
+            None => line.into(),
+        }
     } else if let Some(error) = &panel.error {
         let line = text(format_error(error, &panel.path, lang, blocked_by_sandbox))
             .size(font_size::SMALL)
