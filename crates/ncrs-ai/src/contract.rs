@@ -77,9 +77,13 @@ fn set_if_empty<T>(slot: &mut Option<T>, value: Option<T>) -> bool {
 }
 
 fn tax_context_of(value: &str) -> Option<TaxContext> {
-    [TaxContext::Company, TaxContext::Private, TaxContext::None]
-        .into_iter()
-        .find(|context| context.as_str().eq_ignore_ascii_case(value))
+    [
+        TaxContext::named("company"),
+        TaxContext::named("private"),
+        TaxContext::None,
+    ]
+    .into_iter()
+    .find(|context| context.as_str().eq_ignore_ascii_case(value))
 }
 
 /// Control characters out, ends trimmed, at most `MAX_VALUE_CHARS`
@@ -278,7 +282,7 @@ mod tests {
         let amount = fields.amount.unwrap();
         assert_eq!(amount.minor_units, 123_450);
         assert_eq!(amount.currency, Currency::new("EUR").unwrap());
-        assert_eq!(fields.tax_context, Some(TaxContext::Company));
+        assert_eq!(fields.tax_context, Some(TaxContext::named("company")));
     }
 
     #[test]

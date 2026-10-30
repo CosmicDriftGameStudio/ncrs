@@ -6,7 +6,7 @@
 
 use iced::widget::{column, container, row};
 use iced::{alignment, Element, Size};
-use ncrs_index::{QuerySpec, TaxContext};
+use ncrs_index::{QuerySpec, TaxContext, TaxContextEntry};
 
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
@@ -79,14 +79,6 @@ const SIZE: DialogSize = DialogSize::Card;
 
 /// How the width of a row is shared: name, criteria, hits.
 const PORTIONS: [u16; 3] = [4, 8, 2];
-
-/// The tax context choices, in the order of the segmented control.
-const TAX_CHOICES: [(Msg, Option<TaxContext>); 4] = [
-    (Msg::SavedQueriesTaxAny, None),
-    (Msg::ReviewListTaxCompany, Some(TaxContext::Company)),
-    (Msg::ReviewListTaxPrivate, Some(TaxContext::Private)),
-    (Msg::ReviewListTaxNone, Some(TaxContext::None)),
-];
 
 fn send(message: SavedQueriesMessage) -> Message {
     Message::SavedQueries(message)
@@ -168,18 +160,20 @@ pub fn view<'a>(
 }
 
 /// What a query asks for, short enough for a column.
-pub fn criteria_text(spec: &QuerySpec, lang: Language) -> String {
+pub fn criteria_text(spec: &QuerySpec, tax_contexts: &[TaxContextEntry], lang: Language) -> String {
     let mut parts = Vec::new();
     if let Some(year) = spec.year {
         parts.push(year.to_string());
     }
-    if let Some(tax_context) = spec.tax_context {
-        if let Some((label, _)) = TAX_CHOICES
-            .iter()
-            .find(|(_, choice)| *choice == Some(tax_context))
-        {
-            parts.push(lang.text(*label).to_owned());
-        }
+    match &spec.tax_context {
+        None => {}
+        Some(TaxContext::None) => parts.push(lang.text(Msg::ReviewListTaxNone).to_owned()),
+        Some(TaxContext::Named(short_name)) => parts.push(
+            tax_contexts
+                .iter()
+                .find(|entry| entry.short_name.eq_ignore_ascii_case(short_name))
+                .map_or_else(|| short_name.clone(), |entry| entry.name.clone()),
+        ),
     }
     if let Some(kind) = &spec.kind {
         parts.push(lang.kind_label(kind).into_owned());
@@ -234,7 +228,11 @@ fn list<'a>(
                 .unwrap_or_default();
             let content = row![
                 columns.cell(0, &query.name, color),
-                columns.cell(1, &criteria_text(&query.spec, lang), color),
+                columns.cell(
+                    1,
+                    &criteria_text(&query.spec, state.tax_contexts(), lang),
+                    color
+                ),
                 columns.cell(2, &hits, color),
             ]
             .align_y(alignment::Vertical::Center);
@@ -281,16 +279,21 @@ fn form<'a>(state: &'a SavedQueries, lang: Language, palette: &Palette) -> Eleme
             palette,
         )
     };
-    let tax_options: Vec<(&str, Message)> = TAX_CHOICES
+    let tax_choices = kit::tax_context_choices(
+        lang.text(Msg::SavedQueriesTaxAny),
+        lang.text(Msg::ReviewListTaxNone),
+        state.tax_contexts(),
+    );
+    let tax_options: Vec<(&str, Message)> = tax_choices
         .iter()
         .map(|(label, choice)| {
             (
-                lang.text(*label),
-                send(SavedQueriesMessage::TaxContextChosen(*choice)),
+                *label,
+                send(SavedQueriesMessage::TaxContextChosen(choice.clone())),
             )
         })
         .collect();
-    let selected_tax = TAX_CHOICES
+    let selected_tax = tax_choices
         .iter()
         .position(|(_, choice)| *choice == values.tax_context)
         .unwrap_or_default();

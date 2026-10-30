@@ -9,6 +9,7 @@ use crate::error::IndexError;
 use crate::index::Index;
 use crate::model::{Document, DocumentId, QuerySpec, SavedQuery, SavedQueryId, TaxContext};
 use crate::names::{name_id, NameTable};
+use crate::tax_contexts::{optional_tax_context_id, tax_context_id};
 
 /// How many documents the full-text part of a query looks at, best match
 /// first. More than any one person's archive holds, so in practice it cuts
@@ -90,13 +91,14 @@ impl Index {
         let name = clean_name(raw_name)?;
         let tx = self.conn_mut().transaction()?;
         require_free_name(&tx, name, None)?;
+        let tax_context_id = optional_tax_context_id(&tx, spec.tax_context.as_ref())?;
         tx.execute(
-            "INSERT INTO saved_query (name, year, tax_context, kind, full_text, created_at)
+            "INSERT INTO saved_query (name, year, tax_context_id, kind, full_text, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 name,
                 spec.year,
-                spec.tax_context.map(TaxContext::as_str),
+                tax_context_id,
                 blank_to_none(&spec.kind),
                 full_text_words(spec),
                 Utc::now().timestamp(),
@@ -117,15 +119,16 @@ impl Index {
         let name = clean_name(raw_name)?;
         let tx = self.conn_mut().transaction()?;
         require_free_name(&tx, name, Some(id))?;
+        let tax_context_id = optional_tax_context_id(&tx, spec.tax_context.as_ref())?;
         let changed = tx.execute(
-            "UPDATE saved_query SET name = ?2, year = ?3, tax_context = ?4, kind = ?5,
+            "UPDATE saved_query SET name = ?2, year = ?3, tax_context_id = ?4, kind = ?5,
                  full_text = ?6
              WHERE id = ?1",
             params![
                 id.get(),
                 name,
                 spec.year,
-                spec.tax_context.map(TaxContext::as_str),
+                tax_context_id,
                 blank_to_none(&spec.kind),
                 full_text_words(spec),
             ],
@@ -149,8 +152,9 @@ impl Index {
     /// Ordered by name.
     pub fn saved_queries(&self) -> Result<Vec<SavedQuery>, IndexError> {
         let mut statement = self.connection().prepare(
-            "SELECT id, name, year, tax_context, kind, full_text FROM saved_query
-             ORDER BY name COLLATE NOCASE, name",
+            "SELECT q.id, q.name, q.year, tc.short_name, q.kind, q.full_text FROM saved_query q
+             LEFT JOIN tax_context tc ON tc.id = q.tax_context_id
+             ORDER BY q.name COLLATE NOCASE, q.name",
         )?;
         let rows = statement
             .query_map([], |row| {
@@ -171,10 +175,7 @@ impl Index {
                     name,
                     spec: QuerySpec {
                         year,
-                        tax_context: tax_context
-                            .as_deref()
-                            .map(|value| TaxContext::parse("saved_query.tax_context", value))
-                            .transpose()?,
+                        tax_context: tax_context.map(TaxContext::from_short_name),
                         kind,
                         tags: self.saved_query_tags(id)?,
                         full_text,
@@ -201,9 +202,12 @@ impl Index {
             values.push(Value::Text(from.to_string()));
             values.push(Value::Text(until.to_string()));
         }
-        if let Some(tax_context) = spec.tax_context {
-            conditions.push("d.tax_context = ?");
-            values.push(Value::Text(tax_context.as_str().to_owned()));
+        if let Some(tax_context) = &spec.tax_context {
+            conditions.push("d.tax_context_id = ?");
+            values.push(Value::Integer(tax_context_id(
+                self.connection(),
+                tax_context,
+            )?));
         }
         if let Some(kind) = blank_to_none(&spec.kind) {
             conditions.push("k.name_key = ?");
@@ -286,16 +290,31 @@ mod tests {
     fn stocked() -> (tempfile::TempDir, Index, Vec<DocumentId>) {
         let (dir, mut index) = encrypted_index();
         let stock = [
-            (2024, Some(TaxContext::Company), "Invoice", &["office"][..]),
-            (2024, Some(TaxContext::Private), "Invoice", &["home"][..]),
             (
                 2024,
-                Some(TaxContext::Company),
+                Some(TaxContext::named("company")),
+                "Invoice",
+                &["office"][..],
+            ),
+            (
+                2024,
+                Some(TaxContext::named("private")),
+                "Invoice",
+                &["home"][..],
+            ),
+            (
+                2024,
+                Some(TaxContext::named("company")),
                 "Letter",
                 &["office", "tax"][..],
             ),
-            (2023, Some(TaxContext::Company), "Invoice", &["office"][..]),
-            (2025, Some(TaxContext::Company), "Invoice", &[][..]),
+            (
+                2023,
+                Some(TaxContext::named("company")),
+                "Invoice",
+                &["office"][..],
+            ),
+            (2025, Some(TaxContext::named("company")), "Invoice", &[][..]),
         ];
         let mut ids = Vec::new();
         for (seed, (year, context, kind, tag_names)) in (1..).zip(stock) {
@@ -336,7 +355,7 @@ mod tests {
 
         let spec = QuerySpec {
             year: Some(2024),
-            tax_context: Some(TaxContext::Company),
+            tax_context: Some(TaxContext::named("company")),
             ..QuerySpec::default()
         };
 
@@ -436,7 +455,7 @@ mod tests {
         let (_dir, mut index) = encrypted_index();
         let spec = QuerySpec {
             year: Some(2024),
-            tax_context: Some(TaxContext::Private),
+            tax_context: Some(TaxContext::named("private")),
             kind: Some("Invoice".to_owned()),
             tags: tags(&["home"]),
             full_text: Some("rent".to_owned()),

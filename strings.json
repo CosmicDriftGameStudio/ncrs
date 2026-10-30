@@ -3583,18 +3583,6 @@
       "de": "Offen"
     },
     {
-      "key": "review_list.tax_company",
-      "context": "Tax context choice in the review list: company.",
-      "en": "Company",
-      "de": "Firma"
-    },
-    {
-      "key": "review_list.tax_private",
-      "context": "Tax context choice in the review list: private.",
-      "en": "Private",
-      "de": "Privat"
-    },
-    {
       "key": "review_list.tax_none",
       "context": "Tax context choice in the review list: no tax relevance.",
       "en": "None",

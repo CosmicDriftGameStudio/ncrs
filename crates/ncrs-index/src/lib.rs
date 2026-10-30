@@ -21,6 +21,7 @@ mod rule_suggestions;
 mod rules;
 mod saved_queries;
 mod sender_aliases;
+mod tax_contexts;
 #[cfg(test)]
 mod test_support;
 
@@ -38,6 +39,7 @@ pub use model::{
     NoActionReason, PlanId, PlanItem, PlanOutcome, QuerySpec, ReorganisationPlan, ReviewEntry,
     ReviewEntryId, ReviewReason, Rule, RuleConditions, RuleEvidence, RuleId, RuleSpec,
     RuleSuggestion, SavedQuery, SavedQueryId, SenderAlias, SenderAliasId, SenderAliasKind,
-    SenderAliasState, SenderAliases, StatusCounts, SubtreePattern, TaxContext,
+    SenderAliasState, SenderAliases, StatusCounts, SubtreePattern, TaxContext, TaxContextEntry,
+    TaxContextId,
 };
 pub use regex_limits::compile_bounded_regex;

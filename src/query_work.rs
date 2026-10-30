@@ -15,7 +15,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono::NaiveDateTime;
-use ncrs_index::{DocumentFields, Index, IndexError, QuerySpec, SavedQuery, SavedQueryId};
+use ncrs_index::{
+    DocumentFields, Index, IndexError, QuerySpec, SavedQuery, SavedQueryId, TaxContextEntry,
+};
 
 use crate::fs::transfer::{transfer_to, Copy, Counting, OnConflict};
 use crate::review_work::amount_digits;
@@ -54,6 +56,10 @@ impl QueryAccess {
 
     pub fn load(&self) -> Result<Vec<SavedQuery>, String> {
         self.with_index(|index| index.saved_queries())
+    }
+
+    pub fn tax_contexts(&self) -> Result<Vec<TaxContextEntry>, String> {
+        self.with_index(|index| index.tax_contexts())
     }
 
     /// A new query when `id` is `None`, else a change of that one. A name that
@@ -254,6 +260,7 @@ fn csv_row(hit: &QueryHit, outcome: Copied, exported_as: &OsStr) -> Vec<String> 
         text(&fields.kind),
         fields
             .tax_context
+            .as_ref()
             .map(|context| context.as_str().to_owned())
             .unwrap_or_default(),
         fields.date.map(|date| date.to_string()).unwrap_or_default(),
@@ -353,7 +360,7 @@ mod tests {
             fields: DocumentFields {
                 sender: Some("Company A".to_owned()),
                 kind: Some("invoice".to_owned()),
-                tax_context: Some(TaxContext::Company),
+                tax_context: Some(TaxContext::named("company")),
                 date: NaiveDate::from_ymd_opt(2024, 3, 9),
                 number: Some("R-1".to_owned()),
                 amount: Some(Amount {

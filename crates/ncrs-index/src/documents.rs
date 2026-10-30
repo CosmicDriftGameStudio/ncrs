@@ -11,13 +11,15 @@ use crate::model::{
     Field, FieldOrigin, FieldOrigins, FileStamp, NewDocument, TaxContext,
 };
 use crate::names::{name_id, optional_name_id, NameTable};
+use crate::tax_contexts::optional_tax_context_id;
 
 pub const DOCUMENT_COLUMNS: &str = "SELECT d.id, d.hash, d.path, d.source, d.received_at, d.status,
-        s.name, k.name, d.tax_context, d.document_date, d.document_number,
+        s.name, k.name, tc.short_name, d.document_date, d.document_number,
         d.amount_minor, d.currency, d.file_size, d.file_mtime, d.missing_since
     FROM document d
     LEFT JOIN sender s ON s.id = d.sender_id
-    LEFT JOIN document_kind k ON k.id = d.kind_id";
+    LEFT JOIN document_kind k ON k.id = d.kind_id
+    LEFT JOIN tax_context tc ON tc.id = d.tax_context_id";
 
 /// A row as stored, before its text columns are parsed into the model types.
 pub struct DocumentRow {
@@ -83,11 +85,7 @@ impl DocumentRow {
             fields: DocumentFields {
                 sender: self.sender,
                 kind: self.kind,
-                tax_context: self
-                    .tax_context
-                    .as_deref()
-                    .map(|value| TaxContext::parse("document.tax_context", value))
-                    .transpose()?,
+                tax_context: self.tax_context.map(TaxContext::from_short_name),
                 date: self.date.as_deref().map(date_from_column).transpose()?,
                 number: self.number,
                 amount,
@@ -182,7 +180,7 @@ impl Index {
         let tx = self.conn_mut().transaction()?;
         let stored = tx
             .query_row(
-                "SELECT sender_id, kind_id, tax_context, document_date, document_number,
+                "SELECT sender_id, kind_id, tax_context_id, document_date, document_number,
                      amount_minor, currency
                  FROM document WHERE id = ?1",
                 [id.get()],
@@ -192,7 +190,7 @@ impl Index {
             .ok_or(IndexError::DocumentNotFound(id))?;
         let sender_id = optional_name_id(&tx, NameTable::Sender, fields.sender.as_deref())?;
         let kind_id = optional_name_id(&tx, NameTable::Kind, fields.kind.as_deref())?;
-        let tax_context = fields.tax_context.map(TaxContext::as_str);
+        let tax_context_id = optional_tax_context_id(&tx, fields.tax_context.as_ref())?;
         let date = fields.date.map(|date| date.to_string());
         let amount_minor = fields.amount.as_ref().map(|amount| amount.minor_units);
         let currency = fields
@@ -208,8 +206,8 @@ impl Index {
             (Field::Kind, stored.kind_id != kind_id, kind_id.is_some()),
             (
                 Field::TaxContext,
-                stored.tax_context.as_deref() != tax_context,
-                tax_context.is_some(),
+                stored.tax_context_id != tax_context_id,
+                tax_context_id.is_some(),
             ),
             (Field::Date, stored.date != date, date.is_some()),
             (
@@ -224,14 +222,14 @@ impl Index {
             ),
         ];
         tx.execute(
-            "UPDATE document SET sender_id = ?2, kind_id = ?3, tax_context = ?4,
+            "UPDATE document SET sender_id = ?2, kind_id = ?3, tax_context_id = ?4,
                  document_date = ?5, document_number = ?6, amount_minor = ?7, currency = ?8
              WHERE id = ?1",
             params![
                 id.get(),
                 sender_id,
                 kind_id,
-                tax_context,
+                tax_context_id,
                 date,
                 fields.number,
                 amount_minor,
@@ -394,7 +392,7 @@ impl Index {
 struct StoredFields {
     sender_id: Option<i64>,
     kind_id: Option<i64>,
-    tax_context: Option<String>,
+    tax_context_id: Option<i64>,
     date: Option<String>,
     number: Option<String>,
     amount_minor: Option<i64>,
@@ -406,7 +404,7 @@ impl StoredFields {
         Ok(Self {
             sender_id: row.get(0)?,
             kind_id: row.get(1)?,
-            tax_context: row.get(2)?,
+            tax_context_id: row.get(2)?,
             date: row.get(3)?,
             number: row.get(4)?,
             amount_minor: row.get(5)?,
@@ -506,7 +504,7 @@ mod tests {
         let fields = DocumentFields {
             sender: Some("Company A".to_owned()),
             kind: Some("Invoice".to_owned()),
-            tax_context: Some(TaxContext::Company),
+            tax_context: Some(TaxContext::named("company")),
             date: NaiveDate::from_ymd_opt(2026, 2, 28),
             number: Some("4711".to_owned()),
             amount: Some(Amount {
@@ -783,7 +781,7 @@ mod tests {
         DocumentFields {
             sender: Some("Company A".to_owned()),
             kind: Some("Invoice".to_owned()),
-            tax_context: Some(TaxContext::Company),
+            tax_context: Some(TaxContext::named("company")),
             date: NaiveDate::from_ymd_opt(2026, 2, 28),
             number: Some("4711".to_owned()),
             amount: Some(Amount {

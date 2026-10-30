@@ -103,30 +103,53 @@ impl DocumentStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// A tax context by its short name, the spelling `{tax_context}` renders in
+/// filing patterns. `None` is the explicit "no context", not an unset field.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TaxContext {
-    Company,
-    Private,
     None,
+    Named(String),
 }
 
 impl TaxContext {
-    pub fn as_str(self) -> &'static str {
+    pub const NONE_SHORT_NAME: &'static str = "none";
+
+    pub fn named(short_name: impl Into<String>) -> Self {
+        Self::Named(short_name.into())
+    }
+
+    pub fn as_str(&self) -> &str {
         match self {
-            Self::Company => "company",
-            Self::Private => "private",
-            Self::None => "none",
+            Self::None => Self::NONE_SHORT_NAME,
+            Self::Named(short_name) => short_name,
         }
     }
 
-    pub(crate) fn parse(column: &'static str, value: &str) -> Result<Self, IndexError> {
-        match value {
-            "company" => Ok(Self::Company),
-            "private" => Ok(Self::Private),
-            "none" => Ok(Self::None),
-            other => Err(corrupt(column, other)),
+    pub(crate) fn from_short_name(short_name: String) -> Self {
+        if short_name == Self::NONE_SHORT_NAME {
+            Self::None
+        } else {
+            Self::Named(short_name)
         }
     }
+}
+
+/// Identifies a stored tax context; callers choose by short name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TaxContextId(i64);
+
+impl TaxContextId {
+    pub(crate) fn new(raw: i64) -> Self {
+        Self(raw)
+    }
+}
+
+/// A stored tax context as listed for choosing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaxContextEntry {
+    pub id: TaxContextId,
+    pub name: String,
+    pub short_name: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

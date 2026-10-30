@@ -9,12 +9,14 @@ use crate::model::{
 };
 use crate::names::{name_id, NameTable};
 use crate::regex_limits::compile_bounded_regex;
+use crate::tax_contexts::tax_context_id;
 
 const RULE_COLUMNS: &str = "SELECT r.id, r.combinator,
-        r.extract_number, r.extract_date, r.extract_amount, k.name, r.tax_context,
+        r.extract_number, r.extract_date, r.extract_amount, k.name, tc.short_name,
         r.filing_pattern, r.confirmed, r.enabled, r.position
     FROM rule r
-    JOIN document_kind k ON k.id = r.kind_id";
+    JOIN document_kind k ON k.id = r.kind_id
+    JOIN tax_context tc ON tc.id = r.tax_context_id";
 
 struct RuleRow {
     id: i64,
@@ -60,7 +62,7 @@ impl RuleRow {
                 extract_date: self.extract_date,
                 extract_amount: self.extract_amount,
                 kind: self.kind,
-                tax_context: TaxContext::parse("rule.tax_context", &self.tax_context)?,
+                tax_context: TaxContext::from_short_name(self.tax_context),
                 tags,
                 filing_pattern: self.filing_pattern,
                 confirmed: self.confirmed,
@@ -131,9 +133,10 @@ impl Index {
         require_condition(spec)?;
         let tx = self.conn_mut().transaction()?;
         let kind_id = name_id(&tx, NameTable::Kind, &spec.kind)?;
+        let tax_context_id = tax_context_id(&tx, &spec.tax_context)?;
         tx.execute(
             "INSERT INTO rule (combinator, extract_number, extract_date, extract_amount,
-                 kind_id, tax_context, filing_pattern, confirmed, enabled, position)
+                 kind_id, tax_context_id, filing_pattern, confirmed, enabled, position)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
                  (SELECT COALESCE(MAX(position), 0) + 1 FROM rule))",
             params![
@@ -142,7 +145,7 @@ impl Index {
                 spec.extract_date,
                 spec.extract_amount,
                 kind_id,
-                spec.tax_context.as_str(),
+                tax_context_id,
                 spec.filing_pattern,
                 spec.confirmed,
                 spec.enabled,
@@ -193,9 +196,10 @@ impl Index {
         require_condition(spec)?;
         let tx = self.conn_mut().transaction()?;
         let kind_id = name_id(&tx, NameTable::Kind, &spec.kind)?;
+        let tax_context_id = tax_context_id(&tx, &spec.tax_context)?;
         let changed = tx.execute(
             "UPDATE rule SET combinator = ?2, extract_number = ?3, extract_date = ?4,
-                 extract_amount = ?5, kind_id = ?6, tax_context = ?7, filing_pattern = ?8,
+                 extract_amount = ?5, kind_id = ?6, tax_context_id = ?7, filing_pattern = ?8,
                  confirmed = ?9, enabled = ?10
              WHERE id = ?1",
             params![
@@ -205,7 +209,7 @@ impl Index {
                 spec.extract_date,
                 spec.extract_amount,
                 kind_id,
-                spec.tax_context.as_str(),
+                tax_context_id,
                 spec.filing_pattern,
                 spec.confirmed,
                 spec.enabled,
@@ -416,7 +420,7 @@ mod tests {
                 Condition::new(ConditionKind::Regex, "Invoice \\d+"),
                 Condition::new(ConditionKind::Sender, "Agency B"),
             ]),
-            tax_context: TaxContext::Private,
+            tax_context: TaxContext::named("private"),
             tags: BTreeSet::from(["other".to_owned()]),
             confirmed: true,
             ..rule_spec()

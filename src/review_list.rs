@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{DocumentFields, DocumentId, Field, ReviewEntryId, TaxContext};
+use ncrs_index::{DocumentFields, DocumentId, Field, ReviewEntryId, TaxContext, TaxContextEntry};
 use ncrs_intake::{
     choose_pattern, default_pattern_for, missing_field, render_pattern, PatternSource,
 };
@@ -51,7 +51,7 @@ impl Form {
         Self {
             sender: fields.sender.clone().unwrap_or_default(),
             kind: fields.kind.clone().unwrap_or_default(),
-            tax_context: fields.tax_context,
+            tax_context: fields.tax_context.clone(),
             date: fields.date.map(|date| date.to_string()).unwrap_or_default(),
             number: fields.number.clone().unwrap_or_default(),
             amount: fields.amount.as_ref().map(amount_text).unwrap_or_default(),
@@ -84,7 +84,7 @@ impl Form {
         Ok(DocumentFields {
             sender: non_empty(&self.sender),
             kind: non_empty(&self.kind),
-            tax_context: self.tax_context,
+            tax_context: self.tax_context.clone(),
             date: parse_date(&self.date).map_err(Problem::from)?,
             number: non_empty(&self.number),
             amount: parse_amount(&self.amount).map_err(Problem::from)?,
@@ -182,6 +182,7 @@ pub struct ReviewList {
     /// The pattern field holds what Hermes proposed, not something the user
     /// typed or a rule gave; it then follows the other fields.
     pattern_is_default: bool,
+    tax_contexts: Vec<TaxContextEntry>,
 }
 
 impl ReviewList {
@@ -201,6 +202,7 @@ impl ReviewList {
             focus_request: None,
             custom_default_pattern: None,
             pattern_is_default: false,
+            tax_contexts: Vec::new(),
         }
     }
 
@@ -288,6 +290,15 @@ impl ReviewList {
     pub fn missing_field(&self) -> Option<Field> {
         let fields = self.form.fields().ok()?;
         missing_field(self.form.pattern.trim(), &fields)
+    }
+
+    /// The stored tax contexts the form offers, as of the last load.
+    pub fn tax_contexts(&self) -> &[TaxContextEntry] {
+        &self.tax_contexts
+    }
+
+    pub fn set_tax_contexts(&mut self, tax_contexts: Vec<TaxContextEntry>) {
+        self.tax_contexts = tax_contexts;
     }
 
     /// The list the work returned. The cursor stays on the entry it was on, if
@@ -457,7 +468,7 @@ impl ReviewList {
         let request = RuleRequest {
             sender: notice.sender.clone(),
             kind: notice.kind.clone(),
-            tax_context: notice.tax_context,
+            tax_context: notice.tax_context.clone(),
             tags: notice.tags.clone(),
             pattern: notice.pattern.clone(),
         };
@@ -547,7 +558,7 @@ pub mod tests {
             fields: DocumentFields {
                 sender: (!sender.is_empty()).then(|| sender.to_owned()),
                 kind: Some("invoice".to_owned()),
-                tax_context: Some(TaxContext::Company),
+                tax_context: Some(TaxContext::named("company")),
                 date: chrono::NaiveDate::from_ymd_opt(2024, 3, 9),
                 ..DocumentFields::default()
             },
@@ -555,9 +566,16 @@ pub mod tests {
         }
     }
 
+    pub fn stored_tax_contexts() -> Vec<TaxContextEntry> {
+        let dir = tempfile::TempDir::new().unwrap();
+        let index = Index::create_plain(&dir.path().join("index.db")).unwrap();
+        index.tax_contexts().unwrap()
+    }
+
     pub fn loaded_list() -> ReviewList {
         let [one, two] = <[_; 2]>::try_from(ids()).unwrap();
         let mut list = ReviewList::new();
+        list.set_tax_contexts(stored_tax_contexts());
         list.loaded(vec![
             item(one, "scan-1.pdf", "Company A"),
             item(two, "scan-2.pdf", "Agency B"),
@@ -576,6 +594,7 @@ pub mod tests {
         undated.proposed_pattern = None;
         undated.fields.date = None;
         let mut list = ReviewList::new();
+        list.set_tax_contexts(stored_tax_contexts());
         list.loaded(vec![frost, undated]);
         list
     }
@@ -587,6 +606,7 @@ pub mod tests {
         blank.proposed_pattern = None;
         blank.fields = DocumentFields::default();
         let mut list = ReviewList::new();
+        list.set_tax_contexts(stored_tax_contexts());
         list.loaded(vec![blank]);
         list
     }
@@ -597,6 +617,7 @@ pub mod tests {
         const LONG: &str =
             "2024-03-09_Stadtwerke_Musterhausen_Jahresabrechnung_Strom_und_Gas_Kundennummer_4711.pdf";
         let mut list = ReviewList::new();
+        list.set_tax_contexts(stored_tax_contexts());
         list.loaded(
             ids_of(200)
                 .into_iter()
@@ -767,12 +788,15 @@ pub mod tests {
         let mut list = loaded_list();
         list.set_text(FormField::Sender, " Company C ".to_owned());
         list.set_text(FormField::Tags, "tax, travel".to_owned());
-        list.set_tax_context(Some(TaxContext::Private));
+        list.set_tax_context(Some(TaxContext::named("private")));
 
         let request = list.begin_confirm().unwrap();
 
         assert_eq!(request.fields.sender.as_deref(), Some("Company C"));
-        assert_eq!(request.fields.tax_context, Some(TaxContext::Private));
+        assert_eq!(
+            request.fields.tax_context,
+            Some(TaxContext::named("private"))
+        );
         assert_eq!(request.fields.tags.len(), 2);
         assert_eq!(request.pattern, "{sender}/{date}_{kind}");
         assert!(list.is_busy());
@@ -845,6 +869,7 @@ pub mod tests {
     #[test]
     fn an_empty_list_has_nothing_to_edit_or_file() {
         let mut list = ReviewList::new();
+        list.set_tax_contexts(stored_tax_contexts());
         list.loaded(Vec::new());
 
         list.start_edit();

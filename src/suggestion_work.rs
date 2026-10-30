@@ -482,7 +482,7 @@ mod tests {
                 &DocumentFields {
                     sender: Some("City Works".to_owned()),
                     kind: Some("Utility bill".to_owned()),
-                    tax_context: Some(TaxContext::Private),
+                    tax_context: Some(TaxContext::named("private")),
                     ..DocumentFields::default()
                 },
             );
@@ -495,7 +495,7 @@ mod tests {
             .find(|suggestion| condition_text(&suggestion.spec) == Some("City Works"))
             .unwrap_or_else(|| panic!("{suggestions:#?}"));
         assert_eq!(works.spec.kind, "Utility bill");
-        assert_eq!(works.spec.tax_context, TaxContext::Private);
+        assert_eq!(works.spec.tax_context, TaxContext::named("private"));
         assert_eq!(works.spec.filing_pattern, "Utilities/{date}_{name}");
     }
 

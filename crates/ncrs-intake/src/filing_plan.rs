@@ -214,7 +214,7 @@ fn filled_fields(spec: &RuleSpec, input: &PlanInput<'_>) -> DocumentFields {
     if !spec.kind.is_empty() {
         fields.kind = Some(spec.kind.clone());
     }
-    fields.tax_context = Some(spec.tax_context);
+    fields.tax_context = Some(spec.tax_context.clone());
     fields.tags.extend(spec.tags.iter().cloned());
     if let Some(number) = spec
         .extract_number
@@ -367,9 +367,7 @@ impl Placeholder {
             Self::Sender | Self::Folder => fields.sender.as_deref().and_then(sanitise_value),
             Self::Number => fields.number.as_deref().and_then(sanitise_value),
             Self::Kind | Self::Name => fields.kind.as_deref().and_then(sanitise_value),
-            Self::TaxContext => fields
-                .tax_context
-                .map(|context| context.as_str().to_owned()),
+            Self::TaxContext => sanitise_value(fields.tax_context.as_ref()?.as_str()),
         }
     }
 }
@@ -499,7 +497,7 @@ mod tests {
             extract_date: Some(r"Date:\s*(\d{2}\.\d{2}\.\d{4})".to_owned()),
             extract_amount: Some(r"Total:\s*([\d.,]+\s*€)".to_owned()),
             kind: "invoice".to_owned(),
-            tax_context: TaxContext::Company,
+            tax_context: TaxContext::named("company"),
             tags: BTreeSet::from(["office".to_owned()]),
             filing_pattern: pattern.to_owned(),
             confirmed: true,
@@ -587,7 +585,7 @@ mod tests {
             })
         );
         assert_eq!(filed.fields.kind.as_deref(), Some("invoice"));
-        assert_eq!(filed.fields.tax_context, Some(TaxContext::Company));
+        assert_eq!(filed.fields.tax_context, Some(TaxContext::named("company")));
         assert!(filed.fields.tags.contains("office"));
     }
 
@@ -1116,6 +1114,43 @@ mod tests {
         let planning = plan_for(dotty, "Company A Ltd Ref:....", &DocumentFields::default());
 
         assert_eq!(reason(&planning), ReviewReason::MissingField(Field::Number));
+    }
+
+    #[test]
+    fn the_tax_context_renders_as_its_short_name() {
+        let rendered = |context: TaxContext| {
+            let fields = DocumentFields {
+                tax_context: Some(context),
+                ..DocumentFields::default()
+            };
+            render_pattern("{tax_context}/files", &fields)
+        };
+
+        assert_eq!(
+            rendered(TaxContext::named("company")),
+            Some(PathBuf::from("company/files"))
+        );
+        assert_eq!(
+            rendered(TaxContext::named("private")),
+            Some(PathBuf::from("private/files"))
+        );
+        assert_eq!(
+            rendered(TaxContext::None),
+            Some(PathBuf::from("none/files"))
+        );
+    }
+
+    #[test]
+    fn a_short_name_with_path_characters_does_not_add_a_folder_level() {
+        let fields = DocumentFields {
+            tax_context: Some(TaxContext::named("a/b")),
+            ..DocumentFields::default()
+        };
+
+        let path = render_pattern("{tax_context}/files", &fields).unwrap();
+
+        assert_eq!(path.components().count(), 2);
+        assert!(path.ends_with("files"));
     }
 
     #[test]

@@ -10198,7 +10198,10 @@ impl App {
                     return Task::none();
                 };
                 match result {
-                    Ok(rows) => view.loaded(rows),
+                    Ok((rows, tax_contexts)) => {
+                        view.set_tax_contexts(tax_contexts);
+                        view.loaded(rows);
+                    }
                     Err(detail) => view.failed(detail),
                 }
                 view.take_focus_request().map_or_else(Task::none, |field| {
@@ -10445,7 +10448,7 @@ impl App {
             return Task::none();
         };
         Task::perform(
-            tokio::task::spawn_blocking(move || access.load()),
+            tokio::task::spawn_blocking(move || Ok((access.load()?, access.tax_contexts()?))),
             move |joined| {
                 let result = joined.unwrap_or_else(|join| Err(join.to_string()));
                 Message::ReviewList(ReviewListMessage::Loaded { generation, result })
@@ -10461,7 +10464,10 @@ impl App {
                 if generation == self.saved_queries_generation {
                     if let Some(view) = self.saved_queries.as_mut() {
                         match result {
-                            Ok(rows) => view.loaded(rows),
+                            Ok((rows, tax_contexts)) => {
+                                view.set_tax_contexts(tax_contexts);
+                                view.loaded(rows);
+                            }
                             Err(detail) => view.failed(detail),
                         }
                     }
@@ -10752,7 +10758,7 @@ impl App {
             return Task::none();
         };
         Task::perform(
-            tokio::task::spawn_blocking(move || access.load()),
+            tokio::task::spawn_blocking(move || Ok((access.load()?, access.tax_contexts()?))),
             move |joined| {
                 let result = joined.unwrap_or_else(|join| Err(join.to_string()));
                 Message::SavedQueries(SavedQueriesMessage::Loaded { generation, result })

@@ -86,6 +86,8 @@ pub enum IndexError {
     RuleNotFound(RuleId),
     SavedQueryNotFound(SavedQueryId),
     SenderAliasNotFound(SenderAliasId),
+    /// No stored tax context has this short name.
+    UnknownTaxContext(String),
     /// Another saved query already has this name.
     SavedQueryNameTaken(String),
     /// The document already has an unresolved review entry.
@@ -152,6 +154,12 @@ impl fmt::Display for IndexError {
             Self::DocumentNotFound(id) => write!(f, "there is no document {id}"),
             Self::RuleNotFound(id) => write!(f, "there is no rule {id}"),
             Self::SavedQueryNotFound(id) => write!(f, "there is no saved query {id}"),
+            Self::UnknownTaxContext(short_name) => {
+                write!(
+                    f,
+                    "there is no tax context with the short name '{short_name}'"
+                )
+            }
             Self::SenderAliasNotFound(id) => write!(f, "there is no sender alias {id}"),
             Self::SavedQueryNameTaken(name) => {
                 write!(f, "a saved query named '{name}' already exists")

@@ -92,10 +92,14 @@ fn set_expected(fields: &mut DocumentFields, field: Field, value: &str) -> Resul
         Field::Kind => fields.kind = Some(value.to_owned()),
         Field::Number => fields.number = Some(value.to_owned()),
         Field::TaxContext => {
-            let context = [TaxContext::Company, TaxContext::Private, TaxContext::None]
-                .into_iter()
-                .find(|context| context.as_str() == value)
-                .ok_or_else(|| format!("`{value}` is not a tax context"))?;
+            let context = [
+                TaxContext::named("company"),
+                TaxContext::named("private"),
+                TaxContext::None,
+            ]
+            .into_iter()
+            .find(|context| context.as_str() == value)
+            .ok_or_else(|| format!("`{value}` is not a tax context"))?;
             fields.tax_context = Some(context);
         }
         Field::Date => {
@@ -138,7 +142,12 @@ fn word_rule(phrase: &str, kind: &str, tax_context: TaxContext, filing_pattern: 
 }
 
 fn german_invoice(also: Option<Condition>, filing_pattern: &str) -> RuleSpec {
-    let mut spec = word_rule("rechnung", "Rechnung", TaxContext::Company, filing_pattern);
+    let mut spec = word_rule(
+        "rechnung",
+        "Rechnung",
+        TaxContext::named("company"),
+        filing_pattern,
+    );
     spec.conditions.list.extend(also);
     RuleSpec {
         extract_number: Some(r"Rechnungsnummer:?\s*([A-Z0-9-]+)".to_owned()),
@@ -196,7 +205,7 @@ pub fn fixed_rules() -> Vec<Rule> {
             ..word_rule(
                 "invoice",
                 "Invoice",
-                TaxContext::Company,
+                TaxContext::named("company"),
                 "{year}/Invoices/{number}",
             )
         },
@@ -208,7 +217,7 @@ pub fn fixed_rules() -> Vec<Rule> {
             ..word_rule(
                 "Steuerbescheid",
                 "Steuerbescheid",
-                TaxContext::Private,
+                TaxContext::named("private"),
                 "{year}/Steuern/{number}",
             )
         },
@@ -238,7 +247,7 @@ pub fn fixed_rules() -> Vec<Rule> {
             ..word_rule(
                 "Angebot",
                 "Angebot",
-                TaxContext::Company,
+                TaxContext::named("company"),
                 "{year}/Angebote/{number}",
             )
         },
@@ -260,7 +269,7 @@ pub fn fixed_rules() -> Vec<Rule> {
             ..word_rule(
                 "Sehr geehrte",
                 "Brief",
-                TaxContext::Private,
+                TaxContext::named("private"),
                 "{year}/Briefe/{date}",
             )
         },
@@ -269,7 +278,7 @@ pub fn fixed_rules() -> Vec<Rule> {
             ..word_rule(
                 "Dear",
                 "Letter",
-                TaxContext::Private,
+                TaxContext::named("private"),
                 "{year}/Letters/{date}",
             )
         },
@@ -327,7 +336,9 @@ pub fn score_field(field: Field, expected: &DocumentFields, actual: &DocumentFie
             trimmed_lowercase(expected.kind.as_deref()),
             trimmed_lowercase(actual.kind.as_deref()),
         ),
-        Field::TaxContext => score_values(expected.tax_context, actual.tax_context),
+        Field::TaxContext => {
+            score_values(expected.tax_context.as_ref(), actual.tax_context.as_ref())
+        }
         Field::Date => score_values(expected.date, actual.date),
         Field::Number => score_values(expected.number.as_deref(), actual.number.as_deref()),
         Field::Amount => score_values(expected.amount.as_ref(), actual.amount.as_ref()),
@@ -698,7 +709,7 @@ mod tests {
     fn a_rule_that_matches_the_wrong_kind_is_a_wrong_assignment() {
         let expected = DocumentFields {
             kind: Some("Brief".to_owned()),
-            tax_context: Some(TaxContext::Private),
+            tax_context: Some(TaxContext::named("private")),
             ..DocumentFields::default()
         };
         let result = only_result(&[document("letter", "Ihre Rechnung bitte", expected)]);

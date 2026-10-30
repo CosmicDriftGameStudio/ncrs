@@ -2245,7 +2245,7 @@ mod tests {
             extract_date: None,
             extract_amount: None,
             kind: "invoice".to_owned(),
-            tax_context: ncrs_index::TaxContext::Company,
+            tax_context: ncrs_index::TaxContext::named("company"),
             tags: std::collections::BTreeSet::new(),
             filing_pattern: filing_pattern.to_owned(),
             confirmed,

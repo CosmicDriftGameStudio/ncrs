@@ -3,7 +3,9 @@
 
 use std::path::PathBuf;
 
-use ncrs_index::{HermesCounts, IncludeOutcome, RuleId, SavedQuery, SavedQueryId, TaxContext};
+use ncrs_index::{
+    HermesCounts, IncludeOutcome, RuleId, SavedQuery, SavedQueryId, TaxContext, TaxContextEntry,
+};
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
 
@@ -925,7 +927,7 @@ pub enum SavedQueriesMessage {
     /// when the page was closed or opened again meanwhile.
     Loaded {
         generation: u64,
-        result: Result<Vec<SavedQuery>, String>,
+        result: Result<(Vec<SavedQuery>, Vec<TaxContextEntry>), String>,
     },
     /// The wheel or trackpad over the list.
     Scrolled(iced::mouse::ScrollDelta),
@@ -1029,7 +1031,7 @@ pub enum ReviewListMessage {
     /// the list was closed or opened again meanwhile.
     Loaded {
         generation: u64,
-        result: Result<Vec<ReviewItem>, String>,
+        result: Result<(Vec<ReviewItem>, Vec<TaxContextEntry>), String>,
     },
     /// The wheel or trackpad over the list.
     Scrolled(iced::mouse::ScrollDelta),
