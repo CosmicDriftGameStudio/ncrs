@@ -14,6 +14,7 @@ mod migrations;
 mod model;
 mod names;
 mod profile;
+mod regex_limits;
 mod reorganisation;
 mod review;
 mod rule_suggestions;
@@ -36,3 +37,4 @@ pub use model::{
     ReviewEntryId, ReviewReason, Rule, RuleConditions, RuleEvidence, RuleId, RuleSpec,
     RuleSuggestion, SavedQuery, SavedQueryId, StatusCounts, SubtreePattern, TaxContext,
 };
+pub use regex_limits::compile_bounded_regex;

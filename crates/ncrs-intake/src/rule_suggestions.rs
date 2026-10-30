@@ -2,8 +2,8 @@
 //! phrase that most documents of a folder contain and hardly any document
 //! elsewhere does. Pure and deterministic; nothing here stores anything.
 //!
-//! The text of a document is data. A phrase only ever becomes a literal "text
-//! contains" condition, never a pattern.
+//! The text of a document is data. A phrase only ever becomes a literal word
+//! condition, never a pattern.
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
@@ -13,6 +13,7 @@ use ncrs_index::{
 };
 
 use crate::archive_profile::{subtree_per_document, ArchiveDocument};
+use crate::conditions::{normalise_words, words_hold};
 
 /// A phrase must be in at least this share of its folder's documents.
 pub const MIN_SHARE_IN_FOLDER_PERCENT: u32 = 80;
@@ -46,7 +47,7 @@ pub struct RuleCandidate {
     pub subtree: String,
     /// The text the condition looks for, lowercase.
     pub phrase: String,
-    /// Unconfirmed, with a literal text condition.
+    /// Unconfirmed, with a literal word condition.
     pub spec: RuleSpec,
     pub evidence: RuleEvidence,
 }
@@ -54,7 +55,7 @@ pub struct RuleCandidate {
 /// Candidates for every folder (subtree) that has a pattern and enough
 /// documents, sorted by folder and phrase. The kind is the last constant
 /// folder of the subtree; a document with the condition's phrase in its text
-/// is matched the way a rule matches it (case-insensitive substring).
+/// is matched the way a rule matches it (case-insensitive, between word boundaries).
 pub fn suggest_rules(archive: &[ArchiveText], profile: &[SubtreePattern]) -> Vec<RuleCandidate> {
     let documents: Vec<ArchiveDocument> =
         archive.iter().map(|entry| entry.document.clone()).collect();
@@ -62,6 +63,10 @@ pub fn suggest_rules(archive: &[ArchiveText], profile: &[SubtreePattern]) -> Vec
     let lowered: Vec<String> = archive
         .iter()
         .map(|entry| entry.text.to_lowercase())
+        .collect();
+    let normalised: Vec<String> = archive
+        .iter()
+        .map(|entry| normalise_words(&entry.text))
         .collect();
 
     let mut members: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
@@ -94,13 +99,13 @@ pub fn suggest_rules(archive: &[ArchiveText], profile: &[SubtreePattern]) -> Vec
         let elsewhere: Vec<usize> = (0..lowered.len())
             .filter(|index| !folder.contains(index))
             .collect();
-        for found in folder_phrases(&lowered, folder, &elsewhere) {
+        for found in folder_phrases(&lowered, &normalised, folder, &elsewhere) {
             candidates.push(RuleCandidate {
                 subtree: entry.subtree.clone(),
                 phrase: found.phrase.clone(),
                 spec: RuleSpec {
                     conditions: RuleConditions::all_of(vec![Condition::new(
-                        ConditionKind::Substring,
+                        ConditionKind::Word,
                         found.phrase,
                     )]),
                     extract_number: None,
@@ -164,7 +169,12 @@ fn at_most_share(count: usize, of: usize, percent: u32) -> bool {
     count.saturating_mul(100) <= of.saturating_mul(percent as usize)
 }
 
-fn folder_phrases(lowered: &[String], folder: &[usize], elsewhere: &[usize]) -> Vec<FoundPhrase> {
+fn folder_phrases(
+    lowered: &[String],
+    normalised: &[String],
+    folder: &[usize],
+    elsewhere: &[usize],
+) -> Vec<FoundPhrase> {
     // Phrase -> the folder documents whose word sequences contain it.
     let mut seen: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     for &index in folder {
@@ -182,8 +192,11 @@ fn folder_phrases(lowered: &[String], folder: &[usize], elsewhere: &[usize]) -> 
         (phrase.as_str(), indexes.as_slice())
     });
 
-    let has =
-        |phrase: &str, index: usize| lowered.get(index).is_some_and(|text| text.contains(phrase));
+    let has = |phrase: &str, index: usize| {
+        normalised
+            .get(index)
+            .is_some_and(|text| words_hold(text, phrase))
+    };
     let mut found = Vec::new();
     for (phrase, _indexes) in shared {
         let matching_in_folder = folder.iter().filter(|&&index| has(&phrase, index)).count();

@@ -698,11 +698,12 @@ threads = 4
 against a synthetic corpus: 26 documents (invoices, contracts, letters, tax
 notices; German and English) of fictitious companies, in
 `crates/ncrs-intake/tests/fixtures/recognition`, each with the expected sender,
-kind, tax context, date, number and amount. It includes the cases that break
-the matching today: a sender in its long and its short form, a keyword inside
+kind, tax context, date, number and amount. It includes the cases that are hard
+to match: a sender in its long and its short form, a keyword inside
 another word, two companies on one letter, and documents no rule covers. The
-run plans every document against a fixed set of rules, as the rules step does
-for a new document, and prints hits, wrong values and missing values per field.
+run plans every document against a fixed set of rules (word conditions, a
+regex for German compounds such as "Mietvertrag", and the IBAN for the first
+one), as the rules step does for a new document, and prints hits, wrong values and missing values per field.
 It is opt-in and not part of the normal `cargo test`:
 
 ```sh
@@ -719,14 +720,14 @@ counts as a hit when nothing is found for it.
 | Field | Hits of 26 | Hit rate |
 | --- | --- | --- |
 | sender | 0 | 0% |
-| kind | 19 | 73% |
-| tax context | 18 | 69% |
-| date | 21 | 80% |
+| kind | 23 | 88% |
+| tax context | 20 | 76% |
+| date | 22 | 84% |
 | number | 21 | 80% |
 | amount | 22 | 84% |
 
-Planned: 15. No rule: 3. Unconfirmed rule: 1. A field missing: 7. Wrong
-assignments (a rule chosen, but kind or tax context not the expected one): 6.
+Planned: 19. No rule: 3. Unconfirmed rule: 1. A field missing: 3. Wrong
+assignments (a rule chosen, but kind or tax context not the expected one): 3.
 
 ### Remembered state
 

@@ -198,6 +198,7 @@ impl Step for RulesStep {
                 &PlanInput {
                     text,
                     fields: &document.fields,
+                    path: Some(&item.path),
                 },
             );
             let found = match &planning {

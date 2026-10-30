@@ -12,9 +12,10 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use ncrs_index::{Index, IndexError, RuleEvidence, RuleId, RuleSpec};
+use ncrs_index::{Condition, ConditionKind, Index, IndexError, RuleEvidence, RuleId, RuleSpec};
 use ncrs_intake::{
-    contains_condition_holds, learn_archive, suggest_rules, ArchiveDocument, ArchiveText,
+    contains_condition_holds, learn_archive, suggest_rules, word_condition_holds, ArchiveDocument,
+    ArchiveText,
 };
 
 type IndexSlot = Arc<Mutex<Option<Index>>>;
@@ -109,16 +110,15 @@ impl SuggestionAccess {
         self.load()
     }
 
-    /// The documents of the archive locations whose text a "contains"
+    /// The documents of the archive locations whose text a word or "contains"
     /// condition finds, below their location, sorted.
-    pub fn matching_documents(&self, condition: &str) -> Result<Vec<PathBuf>, String> {
+    pub fn matching_documents(&self, condition: &Condition) -> Result<Vec<PathBuf>, String> {
         let mut found = Vec::new();
         for root in &self.archive_roots {
             let entries = self.with_index(|index| archive_entries(index, root))?;
             found.extend(entries.into_iter().filter_map(|entry| {
                 let text = entry.text?;
-                contains_condition_holds(&text.to_lowercase(), condition)
-                    .then_some(entry.document.relative_path)
+                text_condition_holds(condition, &text).then_some(entry.document.relative_path)
             }));
         }
         found.sort();
@@ -155,6 +155,16 @@ fn archive_entries(index: &Index, root: &Path) -> Result<Vec<ArchiveEntry>, Inde
         });
     }
     Ok(entries)
+}
+
+fn text_condition_holds(condition: &Condition, text: &str) -> bool {
+    match condition.kind {
+        ConditionKind::Word => word_condition_holds(text, &condition.value),
+        ConditionKind::Substring => {
+            contains_condition_holds(&text.to_lowercase(), &condition.value)
+        }
+        _ => false,
+    }
 }
 
 /// The condition of a suggestion as text; `None` for a rule that has none or
@@ -370,19 +380,39 @@ mod tests {
     fn the_matching_documents_are_the_ones_the_condition_finds() {
         let archive = archive();
 
+        let substring = |text| Condition::new(ConditionKind::Substring, text);
+
         let found = archive
             .access()
-            .matching_documents("COMPANY A ltd")
+            .matching_documents(&substring("COMPANY A ltd"))
             .unwrap();
 
         assert_eq!(found.len(), 5);
         assert!(found.iter().all(|path| path.starts_with("Insurance")));
-        assert!(archive.access().matching_documents("").unwrap().is_empty());
         assert!(archive
             .access()
-            .matching_documents("nothing of the kind")
+            .matching_documents(&substring(""))
             .unwrap()
             .is_empty());
+        assert!(archive
+            .access()
+            .matching_documents(&substring("nothing of the kind"))
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn a_word_condition_does_not_find_part_of_a_word() {
+        let archive = archive();
+        let find = |kind| {
+            archive
+                .access()
+                .matching_documents(&Condition::new(kind, "company a lt"))
+                .unwrap()
+        };
+
+        assert_eq!(find(ConditionKind::Substring).len(), 5);
+        assert!(find(ConditionKind::Word).is_empty());
     }
 
     #[test]

@@ -160,12 +160,12 @@ impl RuleSuggestions {
 
     /// The documents to look up for the selected suggestion, once: asking
     /// again before the answer is in gives `None`.
-    pub fn matches_wanted(&mut self) -> Option<(RuleId, String)> {
+    pub fn matches_wanted(&mut self) -> Option<(RuleId, Condition)> {
         let row = self.rows.get(self.cursor)?;
         if self.matches_of == Some(row.id) {
             return None;
         }
-        let condition = condition_text(&row.spec)?.to_owned();
+        let condition = row.spec.conditions.single_text_condition()?.clone();
         let id = row.id;
         self.matches_of = Some(id);
         self.matches = Matches::Looking;
@@ -255,11 +255,13 @@ impl RuleSuggestions {
             self.problem = problem;
             return None;
         }
+        let kind_of_condition = row
+            .spec
+            .conditions
+            .single_text_condition()
+            .map_or(ConditionKind::Word, |existing| existing.kind);
         let spec = RuleSpec {
-            conditions: RuleConditions::all_of(vec![Condition::new(
-                ConditionKind::Substring,
-                condition,
-            )]),
+            conditions: RuleConditions::all_of(vec![Condition::new(kind_of_condition, condition)]),
             kind,
             filing_pattern: pattern,
             ..row.spec.clone()
@@ -397,7 +399,13 @@ pub mod tests {
         let first = view.matches_wanted();
         let again = view.matches_wanted();
 
-        assert_eq!(first, Some((one, "company a ltd".to_owned())));
+        assert_eq!(
+            first,
+            Some((
+                one,
+                Condition::new(ConditionKind::Substring, "company a ltd")
+            ))
+        );
         assert_eq!(again, None);
         assert_eq!(view.matches(), &Matches::Looking);
         view.matches_found(one, vec![PathBuf::from("Insurance/a.pdf")]);
@@ -419,7 +427,10 @@ pub mod tests {
         assert_eq!(view.matches(), &Matches::Unknown);
         assert_eq!(
             view.matches_wanted(),
-            Some((two, "agency b tax office".to_owned()))
+            Some((
+                two,
+                Condition::new(ConditionKind::Substring, "agency b tax office")
+            ))
         );
     }
 

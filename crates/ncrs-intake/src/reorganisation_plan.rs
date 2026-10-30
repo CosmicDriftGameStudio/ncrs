@@ -140,7 +140,7 @@ mod tests {
     ) -> RuleSpec {
         RuleSpec {
             conditions: RuleConditions::all_of(
-                std::iter::once(Condition::new(ConditionKind::Substring, phrase))
+                std::iter::once(Condition::new(ConditionKind::Word, phrase))
                     .chain(sender.map(|name| Condition::new(ConditionKind::Sender, name)))
                     .collect(),
             ),

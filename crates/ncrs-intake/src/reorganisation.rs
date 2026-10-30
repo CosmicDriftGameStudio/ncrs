@@ -216,6 +216,7 @@ impl Context<'_> {
         let input = PlanInput {
             text: file.text.as_deref().unwrap_or_default(),
             fields: &file.fields,
+            path: Some(&file.relative_path),
         };
         let Planning::Plan(filing) = plan(&self.eligible, &input) else {
             return None;

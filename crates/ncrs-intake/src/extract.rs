@@ -2,25 +2,15 @@
 //! a rule carries. The text is only ever searched, never acted on.
 
 use chrono::NaiveDate;
-use ncrs_index::{Amount, Currency};
-use regex::{Captures, Regex, RegexBuilder};
+use ncrs_index::{compile_bounded_regex, Amount, Currency};
+use regex::{Captures, Regex};
 
 use crate::sanitise::sanitise_value;
-
-/// Rule patterns are typed by the user and run over text from outside; the
-/// regex crate matches in linear time, and these limits stop a pattern from
-/// growing a huge program. A pattern over the limit does not compile.
-const REGEX_SIZE_LIMIT: usize = 1 << 20;
-const REGEX_DFA_SIZE_LIMIT: usize = 1 << 20;
 
 /// A pattern that is invalid or over the size limit is `None`: a rule that
 /// cannot be compiled simply does not match.
 pub fn compile(source: &str) -> Option<Regex> {
-    RegexBuilder::new(source)
-        .size_limit(REGEX_SIZE_LIMIT)
-        .dfa_size_limit(REGEX_DFA_SIZE_LIMIT)
-        .build()
-        .ok()
+    compile_bounded_regex(source).ok()
 }
 
 /// Capture group 1 if the pattern has one that took part, else the whole match.

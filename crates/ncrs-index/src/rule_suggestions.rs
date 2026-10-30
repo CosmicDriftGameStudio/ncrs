@@ -3,7 +3,7 @@ use rusqlite::{params, OptionalExtension as _};
 
 use crate::error::IndexError;
 use crate::index::Index;
-use crate::model::{ConditionKind, Rule, RuleEvidence, RuleId, RuleSpec, RuleSuggestion};
+use crate::model::{Condition, Rule, RuleEvidence, RuleId, RuleSpec, RuleSuggestion};
 
 impl Index {
     /// Stores a rule that was suggested from the archive. It is always stored
@@ -16,14 +16,14 @@ impl Index {
         spec: &RuleSpec,
         evidence: RuleEvidence,
     ) -> Result<RuleSuggestion, IndexError> {
-        let single_text = spec.conditions.single_text();
+        let single_text = spec.conditions.single_text_condition();
         let existing = match single_text {
-            Some(text) => self.same_condition_and_target(spec, text)?,
+            Some(condition) => self.same_condition_and_target(spec, condition)?,
             None => None,
         };
         let discarded = match single_text {
-            Some(text) if existing.is_none() => {
-                self.was_discarded(text, &spec.kind, &spec.filing_pattern)?
+            Some(condition) if existing.is_none() => {
+                self.was_discarded(&condition.value, &spec.kind, &spec.filing_pattern)?
             }
             _ => false,
         };
@@ -155,7 +155,7 @@ impl Index {
     fn same_condition_and_target(
         &self,
         spec: &RuleSpec,
-        text: &str,
+        text_condition: &Condition,
     ) -> Result<Option<(RuleId, bool)>, IndexError> {
         let found = self
             .connection()
@@ -168,10 +168,10 @@ impl Index {
                      AND k.name = ?2 AND r.filing_pattern = ?3
                  ORDER BY r.confirmed DESC, r.id LIMIT 1",
                 params![
-                    text,
+                    text_condition.value,
                     spec.kind,
                     spec.filing_pattern,
-                    ConditionKind::Substring.as_str()
+                    text_condition.kind.as_str()
                 ],
                 |row| Ok((RuleId::new(row.get(0)?), row.get(1)?)),
             )
@@ -205,7 +205,7 @@ impl Index {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::model::{Condition, RuleConditions};
+    use crate::model::{ConditionKind, RuleConditions};
     use crate::test_support::{encrypted_index, rule_spec};
 
     fn text_condition(text: &str) -> RuleConditions {

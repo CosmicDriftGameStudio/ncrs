@@ -8,6 +8,7 @@ use crate::model::{
     Combinator, Condition, ConditionKind, Rule, RuleConditions, RuleId, RuleSpec, TaxContext,
 };
 use crate::names::{name_id, NameTable};
+use crate::regex_limits::compile_bounded_regex;
 
 const RULE_COLUMNS: &str = "SELECT r.id, r.combinator,
         r.extract_number, r.extract_date, r.extract_amount, k.name, r.tax_context,
@@ -66,6 +67,17 @@ impl RuleRow {
 fn require_condition(spec: &RuleSpec) -> Result<(), IndexError> {
     if spec.conditions.list.is_empty() {
         return Err(IndexError::RuleWithoutCondition);
+    }
+    for (position, condition) in spec.conditions.list.iter().enumerate() {
+        if condition.kind != ConditionKind::Regex {
+            continue;
+        }
+        if let Err(err) = compile_bounded_regex(&condition.value) {
+            return Err(IndexError::InvalidRegex {
+                position,
+                reason: err.to_string(),
+            });
+        }
     }
     Ok(())
 }
@@ -388,5 +400,55 @@ mod tests {
             matches!(updated, IndexError::RuleWithoutCondition),
             "{updated}"
         );
+    }
+
+    fn regex_rule(source: &str) -> RuleSpec {
+        RuleSpec {
+            conditions: RuleConditions::all_of(vec![
+                Condition::new(ConditionKind::Word, "invoice"),
+                Condition::new(ConditionKind::Regex, source),
+            ]),
+            ..rule_spec()
+        }
+    }
+
+    fn rule_count(index: &Index) -> i64 {
+        index
+            .connection()
+            .query_row("SELECT count(*) FROM rule", [], |row| row.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn a_regex_that_does_not_compile_is_refused_and_nothing_is_written() {
+        let (_dir, mut index) = encrypted_index();
+        let id = index.create_rule(&rule_spec()).unwrap();
+        let stored = index.rule(id).unwrap();
+
+        for source in ["(unclosed", "(a{1000}){1000}{1000}"] {
+            let created = index.create_rule(&regex_rule(source)).unwrap_err();
+            let updated = index.update_rule(id, &regex_rule(source)).unwrap_err();
+
+            for err in [created, updated] {
+                assert!(
+                    matches!(&err, IndexError::InvalidRegex { position: 1, reason } if !reason.is_empty()),
+                    "{source}: {err}"
+                );
+            }
+        }
+
+        assert_eq!(rule_count(&index), 1);
+        assert_eq!(index.rule(id).unwrap(), stored);
+    }
+
+    #[test]
+    fn a_valid_regex_is_stored() {
+        let (_dir, mut index) = encrypted_index();
+        let spec = regex_rule(r"Invoice\s+\d+");
+
+        let id = index.create_rule(&spec).unwrap();
+
+        assert_eq!(index.rule(id).unwrap().unwrap().spec, spec);
+        index.update_rule(id, &regex_rule(r"No\. \d+")).unwrap();
     }
 }

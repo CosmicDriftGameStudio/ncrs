@@ -225,6 +225,7 @@ impl AiStep {
                 &PlanInput {
                     text,
                     fields: &merged,
+                    path: Some(&item.path),
                 },
             );
             if let Planning::Plan(filing) = &planning {
