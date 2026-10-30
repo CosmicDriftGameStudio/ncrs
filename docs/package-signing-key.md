@@ -38,11 +38,25 @@ the signatures cannot drift apart.
 - In GitHub only as the secret `PACKAGES_GPG_PRIVATE_KEY` (ASCII-armored, no
   passphrase) of the `release` environment of `CosmicDriftGameStudio/ncrs`.
   That environment requires the maintainer's approval, so the key is only
-  readable by the `package-repos` job of `release.yml` after that approval.
+  readable by the `package-repos` job of `package-repos.yml` after that approval.
 - An offline copy and the revocation certificate are held by the maintainer.
   Neither is in this repository or any workflow log.
 - CI on pull requests never sees the key: `scripts/check-package-repos.sh`
   generates throwaway keys for its test repositories.
+
+## Publishing the repositories by hand
+
+`release.yml` calls `package-repos.yml` after every tag release. To publish the
+repositories again, for example for a release made before they existed:
+
+```sh
+gh workflow run package-repos.yml --ref main -f tag=v1.1.1
+```
+
+The tag must be among the newest three plain releases. The run needs the
+maintainer's approval in the `release` environment and only starts from `main`
+or a `v*` tag. Nothing is rebuilt: the packages of the published releases are
+downloaded and signed.
 
 ## Extending the expiry
 

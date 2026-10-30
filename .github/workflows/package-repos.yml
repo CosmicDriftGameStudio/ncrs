@@ -1,0 +1,154 @@
+name: Package repositories
+
+# Called by release.yml after every tag release. Dispatch by hand only to
+# (re)publish the apt and dnf repositories, for example
+#   gh workflow run package-repos.yml --ref main -f tag=v1.1.1
+# Nothing is rebuilt: the packages of already published releases are
+# downloaded and signed.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The plain release tag, e.g. v1.1.1, that must be among the newest three plain releases
+        type: string
+        required: true
+
+permissions: {}
+
+jobs:
+  # The apt and dnf repositories, rebuilt from scratch out of the packages of
+  # the last three releases and signed with the packages key. Its own job and
+  # not a step of `release`: that job runs on macOS, which has no apt tooling.
+  package-repos:
+    # In a called workflow github.event_name is the caller's, so the ref is
+    # what tells a tag run or a dispatch from main from a dispatch on a feature
+    # branch, which must not reach the key (the environment refuses it too).
+    if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
+    # The signing key is a secret of this environment, so each run of this job
+    # needs the maintainer's approval of its own.
+    environment: release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      built: ${{ steps.build.outputs.built }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/package-repos.sh
+            packaging/linux/ncrs-packages.asc
+          sparse-checkout-cone-mode: false
+
+      - name: Install the tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends apt-utils createrepo-c rpm
+
+      - name: Download the last three releases
+        id: download
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Every tag is published as a normal release, so a tag like
+          # v1.2.0-rc1 is in the listing too. Only plain versions go into the
+          # repositories, and the newest three of them are kept.
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "### apt and dnf repositories skipped: $TAG is not a plain version" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::$TAG is not a plain version; the repositories stay as they are."
+            echo "plain=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          tags=""
+          count=0
+          for tag in $(gh release list --repo "$REPOSITORY" --exclude-drafts --exclude-pre-releases \
+            --limit 20 --json tagName --jq '.[].tagName'); do
+            if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              tags="$tags$tag"$'\n'
+              count=$((count + 1))
+              [ "$count" -lt 3 ] || break
+            fi
+          done
+          found=false
+          for tag in $tags; do
+            if [ "$tag" = "$TAG" ]; then
+              found=true
+            fi
+          done
+          # A listing that lags behind the publish would otherwise deploy a
+          # green repository without the version just released.
+          if [ "$found" != true ]; then
+            echo "::error::$TAG is not among the latest releases: ${tags//$'\n'/ }"
+            exit 1
+          fi
+          for tag in $tags; do
+            gh release download "$tag" --repo "$REPOSITORY" \
+              --pattern 'ncrs-*-unknown-linux-gnu.deb' --pattern 'ncrs-*-unknown-linux-gnu.rpm' \
+              --dir "packages/$tag"
+          done
+          echo "plain=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build the signed repositories
+        id: build
+        if: steps.download.outputs.plain == 'true'
+        env:
+          PACKAGES_GPG_PRIVATE_KEY: ${{ secrets.PACKAGES_GPG_PRIVATE_KEY }}
+          PACKAGES_URL: https://packages.cosmicdriftgamestudio.com
+        run: |
+          set -euo pipefail
+
+          # Checked here and not in an `if`, for the reason given at the
+          # notarization step of release.yml. A fork has no key and still
+          # releases.
+          if [ -z "${PACKAGES_GPG_PRIVATE_KEY:-}" ]; then
+            {
+              echo "### apt and dnf repositories skipped"
+              echo "No PACKAGES_GPG_PRIVATE_KEY secret configured; nothing was published on GitHub Pages."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::PACKAGES_GPG_PRIVATE_KEY not set; skipping the apt and dnf repositories."
+            echo "built=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          scripts/package-repos.sh packages packaging/linux/ncrs-packages.asc "$PACKAGES_URL" site
+          echo "built=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "### apt and dnf repositories built"
+            echo "Releases: $(find packages -mindepth 1 -maxdepth 1 -printf '%f ')"
+            echo "URL: $PACKAGES_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        if: steps.build.outputs.built == 'true'
+        with:
+          path: site
+
+  # The site holds only the last three versions and is replaced as a whole on
+  # every release, so no package ever lands in the git history. A failure here
+  # leaves the published GitHub release untouched.
+  deploy-packages:
+    needs: package-repos
+    if: ${{ needs.package-repos.outputs.built == 'true' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
