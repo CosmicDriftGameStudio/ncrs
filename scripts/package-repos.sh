@@ -163,6 +163,33 @@ repo_gpgcheck=1
 gpgkey=$base_url/ncrs.asc
 REPO
 
+# For people who open the address in a browser; apt and dnf never read it.
+# $base_url and $fpr need no HTML escaping: the URL pattern above and the hex
+# fingerprint allow no markup characters.
+cat > "$out/index.html" <<HTML
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ncrs packages</title>
+<h1>ncrs packages</h1>
+<p>Signed apt and dnf repositories for
+<a href="https://github.com/CosmicDriftGameStudio/ncrs">ncrs</a>.
+Key fingerprint: <code>$fpr</code>.</p>
+<h2>Debian, Ubuntu</h2>
+<pre>sudo curl -fsSLo /etc/apt/keyrings/ncrs.asc $base_url/ncrs.asc
+echo "deb [signed-by=/etc/apt/keyrings/ncrs.asc] $base_url/deb stable main" \\
+  | sudo tee /etc/apt/sources.list.d/ncrs.list
+sudo apt update &amp;&amp; sudo apt install ncrs</pre>
+<h2>Fedora</h2>
+<pre>sudo curl -fsSLo /etc/yum.repos.d/ncrs.repo $base_url/ncrs.repo
+sudo dnf install ncrs</pre>
+<h2>openSUSE</h2>
+<pre>sudo zypper addrepo $base_url/ncrs.repo
+sudo zypper install ncrs</pre>
+</html>
+HTML
+
 # The release path has no container test, so the signatures are verified the
 # way a client does it before anything is published.
 gpg --dearmor < "$public_key" > "$work/ncrs.gpg"
