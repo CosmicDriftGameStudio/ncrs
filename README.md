@@ -25,9 +25,37 @@ for the state, the licensing audit and the reasoning behind the order.
 | System | Command |
 | --- | --- |
 | macOS | `brew install --cask cosmicdriftgamestudio/ncrs/ncrs` |
-| Debian, Ubuntu | `sudo apt install ./ncrs-x86_64-unknown-linux-gnu.deb` |
-| Fedora | `sudo dnf install ./ncrs-x86_64-unknown-linux-gnu.rpm` |
-| openSUSE | `sudo zypper install ./ncrs-x86_64-unknown-linux-gnu.rpm` |
+| Debian, Ubuntu | `sudo apt install ncrs`, after adding the repository below |
+| Fedora | `sudo dnf install ncrs`, after adding the repository below |
+| openSUSE | `sudo zypper install ncrs`, after adding the repository below |
+
+On Debian and Ubuntu, add the key and the repository once:
+
+```bash
+sudo curl -fsSLo /etc/apt/keyrings/ncrs.asc https://packages.cosmicdriftgamestudio.com/ncrs.asc
+echo "deb [signed-by=/etc/apt/keyrings/ncrs.asc] https://packages.cosmicdriftgamestudio.com/deb stable main" \
+  | sudo tee /etc/apt/sources.list.d/ncrs.list
+sudo apt update && sudo apt install ncrs
+```
+
+On Fedora (dnf imports the key on the first install):
+
+```bash
+sudo curl -fsSLo /etc/yum.repos.d/ncrs.repo https://packages.cosmicdriftgamestudio.com/ncrs.repo
+sudo dnf install ncrs
+```
+
+On openSUSE:
+
+```bash
+sudo zypper addrepo https://packages.cosmicdriftgamestudio.com/ncrs.repo
+sudo zypper install ncrs
+```
+
+From then on `apt upgrade`, `dnf upgrade` and `zypper update` pick up new
+releases. The key's fingerprint is
+`BD1B 15A6 1BEF B249 D7C2 5F22 1365 6CD9 3EB5 808F`; its expiry and rotation are
+described in [docs/package-signing-key.md](docs/package-signing-key.md).
 
 On Windows, and without a package manager on Linux and macOS, use the install
 script:
@@ -42,9 +70,10 @@ On Windows (PowerShell):
 irm https://raw.githubusercontent.com/CosmicDriftGameStudio/ncrs/main/install.ps1 | iex
 ```
 
-The `.deb` and `.rpm` files are attached to each [release](../../releases/latest);
-download the one for your CPU (`x86_64` or `aarch64`) first. They pull in the
-libraries ncrs needs. The Linux binaries, packaged or
+The `.deb` and `.rpm` files are also attached to each [release](../../releases/latest)
+for a one-off install without the repository
+(`sudo apt install ./ncrs-x86_64-unknown-linux-gnu.deb`); pick the one for your
+CPU (`x86_64` or `aarch64`). They pull in the libraries ncrs needs. The Linux binaries, packaged or
 not, need glibc 2.39 or newer: Ubuntu 24.04, Debian 13, Fedora 40, openSUSE
 Tumbleweed, Arch Linux and later. On an older distribution, build ncrs from
 source (see [Build & run](#build--run)).
