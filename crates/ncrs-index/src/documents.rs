@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection, OptionalExtension as _};
@@ -6,9 +6,9 @@ use rusqlite::{params, Connection, OptionalExtension as _};
 use crate::error::IndexError;
 use crate::index::Index;
 use crate::model::{
-    currency_from_column, date_from_column, hash_from_column, timestamp_from_column, Amount,
-    ContentHash, Document, DocumentFields, DocumentId, DocumentSource, DocumentStatus, FileStamp,
-    NewDocument, TaxContext,
+    corrupt, currency_from_column, date_from_column, hash_from_column, timestamp_from_column,
+    Amount, ContentHash, Document, DocumentFields, DocumentId, DocumentSource, DocumentStatus,
+    Field, FieldOrigin, FieldOrigins, FileStamp, NewDocument, TaxContext,
 };
 use crate::names::{name_id, optional_name_id, NameTable};
 
@@ -170,16 +170,60 @@ impl Index {
         Ok(())
     }
 
-    /// Replaces every field and the whole tag set.
+    /// Replaces every field and the whole tag set. A field whose stored value
+    /// changes gets `origin_of(field)`, a cleared one loses its origin, an
+    /// unchanged one keeps the origin it has.
     pub fn set_document_fields(
         &mut self,
         id: DocumentId,
         fields: &DocumentFields,
+        origin_of: impl Fn(Field) -> FieldOrigin,
     ) -> Result<(), IndexError> {
         let tx = self.conn_mut().transaction()?;
+        let stored = tx
+            .query_row(
+                "SELECT sender_id, kind_id, tax_context, document_date, document_number,
+                     amount_minor, currency
+                 FROM document WHERE id = ?1",
+                [id.get()],
+                StoredFields::read,
+            )
+            .optional()?
+            .ok_or(IndexError::DocumentNotFound(id))?;
         let sender_id = optional_name_id(&tx, NameTable::Sender, fields.sender.as_deref())?;
         let kind_id = optional_name_id(&tx, NameTable::Kind, fields.kind.as_deref())?;
-        let changed = tx.execute(
+        let tax_context = fields.tax_context.map(TaxContext::as_str);
+        let date = fields.date.map(|date| date.to_string());
+        let amount_minor = fields.amount.as_ref().map(|amount| amount.minor_units);
+        let currency = fields
+            .amount
+            .as_ref()
+            .map(|amount| amount.currency.as_str());
+        let changes = [
+            (
+                Field::Sender,
+                stored.sender_id != sender_id,
+                sender_id.is_some(),
+            ),
+            (Field::Kind, stored.kind_id != kind_id, kind_id.is_some()),
+            (
+                Field::TaxContext,
+                stored.tax_context.as_deref() != tax_context,
+                tax_context.is_some(),
+            ),
+            (Field::Date, stored.date != date, date.is_some()),
+            (
+                Field::Number,
+                stored.number != fields.number,
+                fields.number.is_some(),
+            ),
+            (
+                Field::Amount,
+                stored.amount_minor != amount_minor || stored.currency.as_deref() != currency,
+                amount_minor.is_some(),
+            ),
+        ];
+        tx.execute(
             "UPDATE document SET sender_id = ?2, kind_id = ?3, tax_context = ?4,
                  document_date = ?5, document_number = ?6, amount_minor = ?7, currency = ?8
              WHERE id = ?1",
@@ -187,18 +231,17 @@ impl Index {
                 id.get(),
                 sender_id,
                 kind_id,
-                fields.tax_context.map(TaxContext::as_str),
-                fields.date.map(|date| date.to_string()),
+                tax_context,
+                date,
                 fields.number,
-                fields.amount.as_ref().map(|amount| amount.minor_units),
-                fields
-                    .amount
-                    .as_ref()
-                    .map(|amount| amount.currency.as_str()),
+                amount_minor,
+                currency,
             ],
         )?;
-        if changed == 0 {
-            return Err(IndexError::DocumentNotFound(id));
+        for (field, changed, has_value) in changes {
+            if changed {
+                store_field_origin(&tx, id, field, has_value.then(|| origin_of(field)))?;
+            }
         }
         tx.execute(
             "DELETE FROM document_tag WHERE document_id = ?1",
@@ -213,6 +256,36 @@ impl Index {
         }
         tx.commit()?;
         Ok(())
+    }
+
+    /// Fields without a stored origin read as `FieldOrigin::Unknown`.
+    pub fn field_origins(&self, id: DocumentId) -> Result<FieldOrigins, IndexError> {
+        let mut statement = self.connection().prepare(
+            "SELECT field, origin, rule_id, confidence FROM document_field_origin
+             WHERE document_id = ?1",
+        )?;
+        let rows = statement
+            .query_map([id.get()], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                    row.get::<_, Option<i64>>(3)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut stored = HashMap::new();
+        for (field_name, origin, rule_id, confidence) in rows {
+            let field = Field::ALL
+                .into_iter()
+                .find(|candidate| candidate.as_str() == field_name)
+                .ok_or_else(|| corrupt("document_field_origin.field", &field_name))?;
+            stored.insert(
+                field,
+                FieldOrigin::from_columns(&origin, rule_id, confidence)?,
+            );
+        }
+        Ok(FieldOrigins::new(stored))
     }
 
     pub fn set_document_status(
@@ -318,6 +391,57 @@ impl Index {
     }
 }
 
+struct StoredFields {
+    sender_id: Option<i64>,
+    kind_id: Option<i64>,
+    tax_context: Option<String>,
+    date: Option<String>,
+    number: Option<String>,
+    amount_minor: Option<i64>,
+    currency: Option<String>,
+}
+
+impl StoredFields {
+    fn read(row: &rusqlite::Row<'_>) -> rusqlite::Result<Self> {
+        Ok(Self {
+            sender_id: row.get(0)?,
+            kind_id: row.get(1)?,
+            tax_context: row.get(2)?,
+            date: row.get(3)?,
+            number: row.get(4)?,
+            amount_minor: row.get(5)?,
+            currency: row.get(6)?,
+        })
+    }
+}
+
+/// `None` and `Unknown` both leave the field without a row.
+fn store_field_origin(
+    conn: &Connection,
+    id: DocumentId,
+    field: Field,
+    origin: Option<FieldOrigin>,
+) -> Result<(), IndexError> {
+    let Some(kind) = origin.and_then(FieldOrigin::kind_column) else {
+        conn.execute(
+            "DELETE FROM document_field_origin WHERE document_id = ?1 AND field = ?2",
+            params![id.get(), field.as_str()],
+        )?;
+        return Ok(());
+    };
+    let rule_id = origin.and_then(FieldOrigin::rule_column);
+    let confidence = origin.and_then(FieldOrigin::confidence_column);
+    conn.execute(
+        "INSERT INTO document_field_origin (document_id, field, origin, rule_id, confidence)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT (document_id, field) DO UPDATE SET
+             origin = excluded.origin, rule_id = excluded.rule_id,
+             confidence = excluded.confidence",
+        params![id.get(), field.as_str(), kind, rule_id, confidence],
+    )?;
+    Ok(())
+}
+
 pub fn require_document(conn: &Connection, id: DocumentId) -> Result<(), IndexError> {
     let exists = conn
         .query_row("SELECT 1 FROM document WHERE id = ?1", [id.get()], |_| {
@@ -391,7 +515,9 @@ mod tests {
             }),
             tags: BTreeSet::from(["services".to_owned(), "2026".to_owned()]),
         };
-        index.set_document_fields(id, &fields).unwrap();
+        index
+            .set_document_fields(id, &fields, |_| FieldOrigin::Unknown)
+            .unwrap();
 
         let expected = Document {
             id,
@@ -457,6 +583,7 @@ mod tests {
                 sender: Some("Company A".to_owned()),
                 ..DocumentFields::default()
             },
+            |_| FieldOrigin::Unknown,
         );
 
         for result in [status, text, fields] {
@@ -480,13 +607,17 @@ mod tests {
             tags: BTreeSet::from(["a".to_owned(), "b".to_owned()]),
             ..DocumentFields::default()
         };
-        index.set_document_fields(id, &tagged).unwrap();
+        index
+            .set_document_fields(id, &tagged, |_| FieldOrigin::Unknown)
+            .unwrap();
         let only_b = DocumentFields {
             tags: BTreeSet::from(["b".to_owned()]),
             ..DocumentFields::default()
         };
 
-        index.set_document_fields(id, &only_b).unwrap();
+        index
+            .set_document_fields(id, &only_b, |_| FieldOrigin::Unknown)
+            .unwrap();
 
         assert_eq!(index.document(id).unwrap().unwrap().fields, only_b);
     }
@@ -618,6 +749,7 @@ mod tests {
                     tags: BTreeSet::from(["a".to_owned()]),
                     ..DocumentFields::default()
                 },
+                |_| FieldOrigin::Unknown,
             )
             .unwrap();
         index
@@ -647,6 +779,199 @@ mod tests {
         assert!(index.search_text("rechnung", 10).unwrap().is_empty());
     }
 
+    fn all_fields() -> DocumentFields {
+        DocumentFields {
+            sender: Some("Company A".to_owned()),
+            kind: Some("Invoice".to_owned()),
+            tax_context: Some(TaxContext::Company),
+            date: NaiveDate::from_ymd_opt(2026, 2, 28),
+            number: Some("4711".to_owned()),
+            amount: Some(Amount {
+                minor_units: 12_345,
+                currency: Currency::new("EUR").unwrap(),
+            }),
+            tags: BTreeSet::new(),
+        }
+    }
+
+    fn all_origins(index: &Index, id: DocumentId) -> Vec<FieldOrigin> {
+        let origins = index.field_origins(id).unwrap();
+        Field::ALL
+            .into_iter()
+            .map(|field| origins.of(field))
+            .collect()
+    }
+
+    #[test]
+    fn a_fresh_document_reads_every_field_origin_as_unknown() {
+        let (_dir, mut index) = encrypted_index();
+        let id = index.insert_document(&new_document(1)).unwrap();
+
+        assert_eq!(all_origins(&index, id), [FieldOrigin::Unknown; 6]);
+        index
+            .set_document_fields(id, &all_fields(), |_| FieldOrigin::Unknown)
+            .unwrap();
+        assert_eq!(all_origins(&index, id), [FieldOrigin::Unknown; 6]);
+    }
+
+    #[test]
+    fn each_kind_of_origin_round_trips() {
+        let (_dir, mut index) = encrypted_index();
+        let rule = index
+            .create_rule(&crate::test_support::rule_spec())
+            .unwrap();
+        let id = index.insert_document(&new_document(1)).unwrap();
+
+        index
+            .set_document_fields(id, &all_fields(), |field| match field {
+                Field::Sender => FieldOrigin::Rule(Some(rule)),
+                Field::Kind => FieldOrigin::Ai {
+                    confidence_percent: 87,
+                },
+                Field::TaxContext => FieldOrigin::Manual,
+                Field::Date => FieldOrigin::Ai {
+                    confidence_percent: 0,
+                },
+                Field::Number => FieldOrigin::Ai {
+                    confidence_percent: 100,
+                },
+                Field::Amount => FieldOrigin::Unknown,
+            })
+            .unwrap();
+
+        assert_eq!(
+            all_origins(&index, id),
+            [
+                FieldOrigin::Rule(Some(rule)),
+                FieldOrigin::Ai {
+                    confidence_percent: 87
+                },
+                FieldOrigin::Manual,
+                FieldOrigin::Ai {
+                    confidence_percent: 0
+                },
+                FieldOrigin::Ai {
+                    confidence_percent: 100
+                },
+                FieldOrigin::Unknown,
+            ]
+        );
+    }
+
+    #[test]
+    fn an_unchanged_field_keeps_its_origin_and_a_changed_one_takes_the_new_origin() {
+        let (_dir, mut index) = encrypted_index();
+        let id = index.insert_document(&new_document(1)).unwrap();
+        index
+            .set_document_fields(id, &all_fields(), |_| FieldOrigin::Manual)
+            .unwrap();
+
+        let mut edited = all_fields();
+        edited.number = Some("4712".to_owned());
+        edited.amount = Some(Amount {
+            minor_units: 12_345,
+            currency: Currency::new("USD").unwrap(),
+        });
+        index
+            .set_document_fields(id, &edited, |_| FieldOrigin::Ai {
+                confidence_percent: 90,
+            })
+            .unwrap();
+
+        let ai = FieldOrigin::Ai {
+            confidence_percent: 90,
+        };
+        assert_eq!(
+            all_origins(&index, id),
+            [
+                FieldOrigin::Manual,
+                FieldOrigin::Manual,
+                FieldOrigin::Manual,
+                FieldOrigin::Manual,
+                ai,
+                ai,
+            ]
+        );
+    }
+
+    #[test]
+    fn a_changed_field_set_with_an_unknown_origin_loses_its_old_origin() {
+        let (_dir, mut index) = encrypted_index();
+        let id = index.insert_document(&new_document(1)).unwrap();
+        index
+            .set_document_fields(id, &all_fields(), |_| FieldOrigin::Manual)
+            .unwrap();
+
+        let mut edited = all_fields();
+        edited.sender = Some("Company B".to_owned());
+        index
+            .set_document_fields(id, &edited, |_| FieldOrigin::Unknown)
+            .unwrap();
+
+        let origins = index.field_origins(id).unwrap();
+        assert_eq!(origins.of(Field::Sender), FieldOrigin::Unknown);
+        assert_eq!(origins.of(Field::Kind), FieldOrigin::Manual);
+    }
+
+    #[test]
+    fn clearing_a_field_makes_its_origin_unknown() {
+        let (_dir, mut index) = encrypted_index();
+        let id = index.insert_document(&new_document(1)).unwrap();
+        index
+            .set_document_fields(id, &all_fields(), |_| FieldOrigin::Manual)
+            .unwrap();
+
+        let mut cleared = all_fields();
+        cleared.date = None;
+        cleared.amount = None;
+        index
+            .set_document_fields(id, &cleared, |_| FieldOrigin::Manual)
+            .unwrap();
+
+        let origins = index.field_origins(id).unwrap();
+        assert_eq!(origins.of(Field::Date), FieldOrigin::Unknown);
+        assert_eq!(origins.of(Field::Amount), FieldOrigin::Unknown);
+        assert_eq!(origins.of(Field::Sender), FieldOrigin::Manual);
+    }
+
+    #[test]
+    fn deleting_the_rule_leaves_a_rule_origin_without_a_rule() {
+        let (_dir, mut index) = encrypted_index();
+        let rule = index
+            .create_rule(&crate::test_support::rule_spec())
+            .unwrap();
+        let id = index.insert_document(&new_document(1)).unwrap();
+        index
+            .set_document_fields(id, &all_fields(), |_| FieldOrigin::Rule(Some(rule)))
+            .unwrap();
+
+        assert!(index.delete_rule(rule).unwrap());
+
+        assert_eq!(all_origins(&index, id), [FieldOrigin::Rule(None); 6]);
+    }
+
+    #[test]
+    fn deleting_a_document_removes_its_field_origins() {
+        let (_dir, mut index) = encrypted_index();
+        let id = index.insert_document(&new_document(1)).unwrap();
+        index
+            .set_document_fields(id, &all_fields(), |_| FieldOrigin::Manual)
+            .unwrap();
+
+        index
+            .connection()
+            .execute("DELETE FROM document WHERE id = ?1", [id.get()])
+            .unwrap();
+
+        let remaining: i64 = index
+            .connection()
+            .query_row("SELECT count(*) FROM document_field_origin", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(remaining, 0);
+    }
+
     #[cfg(unix)]
     #[test]
     fn a_path_that_is_not_utf8_is_refused() {
@@ -674,7 +999,9 @@ mod tests {
                 sender: Some(name.to_owned()),
                 ..DocumentFields::default()
             };
-            index.set_document_fields(id, &fields).unwrap();
+            index
+                .set_document_fields(id, &fields, |_| FieldOrigin::Unknown)
+                .unwrap();
         }
 
         let senders: i64 = index
@@ -695,7 +1022,9 @@ mod tests {
                 tags: BTreeSet::from([name.to_owned()]),
                 ..DocumentFields::default()
             };
-            index.set_document_fields(id, &fields).unwrap();
+            index
+                .set_document_fields(id, &fields, |_| FieldOrigin::Unknown)
+                .unwrap();
         }
 
         let stored = |table: &str| -> Vec<String> {
@@ -727,6 +1056,7 @@ mod tests {
                     sender: Some("   ".to_owned()),
                     ..DocumentFields::default()
                 },
+                |_| FieldOrigin::Unknown,
             )
             .unwrap_err();
 

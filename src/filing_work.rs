@@ -10,7 +10,9 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use ncrs_index::{BatchKind, Document, DocumentStatus, Index, IndexError, ReviewReason, Rule};
+use ncrs_index::{
+    BatchKind, Document, DocumentStatus, FieldOrigin, Index, IndexError, ReviewReason, Rule,
+};
 use ncrs_intake::{plan, PlanInput, Planning};
 
 use crate::execute::{execute_with, ExecuteError, ExecutionItem, ItemOutcome, SkipReason};
@@ -89,7 +91,9 @@ fn decide(
     match planning {
         Planning::Plan(filing) => {
             if filing.fields != document.fields {
-                index.set_document_fields(document.id, &filing.fields)?;
+                index.set_document_fields(document.id, &filing.fields, |_| {
+                    FieldOrigin::Rule(Some(filing.rule))
+                })?;
             }
             Ok(Decision::Move(ExecutionItem {
                 from: document.path.clone(),

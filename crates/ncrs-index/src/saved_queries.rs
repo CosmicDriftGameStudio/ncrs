@@ -275,7 +275,7 @@ mod tests {
     use chrono::NaiveDate;
 
     use super::*;
-    use crate::model::DocumentFields;
+    use crate::model::{DocumentFields, FieldOrigin};
     use crate::test_support::{encrypted_index, new_document};
 
     fn tags(names: &[&str]) -> BTreeSet<String> {
@@ -311,6 +311,7 @@ mod tests {
                         tags: tags(tag_names),
                         ..DocumentFields::default()
                     },
+                    |_| FieldOrigin::Unknown,
                 )
                 .unwrap();
             ids.push(id);

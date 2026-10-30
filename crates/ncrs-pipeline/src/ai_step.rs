@@ -2,7 +2,9 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use ncrs_ai::{AiError, ExtractedField, ExtractionRequest, Provider};
-use ncrs_index::{Document, DocumentFields, DocumentStatus, Field, IndexError, ReviewReason};
+use ncrs_index::{
+    Document, DocumentFields, DocumentStatus, Field, FieldOrigin, IndexError, ReviewReason,
+};
 use ncrs_intake::{plan, LocationMode, PlanInput, Planning, FIELD_ORDER};
 
 use crate::step::{resolve_reviews_of, with_index_value, IndexAccess, Item, Step, StepOutcome};
@@ -174,6 +176,16 @@ impl Step for AiStep {
     }
 }
 
+/// `confidence` is 0.0 to 1.0; counting the percents below it avoids a lossy
+/// float-to-integer cast.
+fn confidence_percent(confidence: f32) -> u8 {
+    let scaled = confidence * 100.0;
+    let rounded_percent = (1..=100)
+        .filter(|percent: &u8| f32::from(*percent) - 0.5 <= scaled)
+        .count();
+    u8::try_from(rounded_percent).unwrap_or(100)
+}
+
 impl AiStep {
     /// Writes the confident fields into the empty ones, reading the document
     /// again first: the provider call ran without the index. With `plan_again`
@@ -201,7 +213,14 @@ impl AiStep {
                 changed |= found.fill(&mut merged);
             }
             if changed {
-                index.set_document_fields(id, &merged)?;
+                index.set_document_fields(id, &merged, |field| {
+                    confident.iter().find(|found| found.field == field).map_or(
+                        FieldOrigin::Unknown,
+                        |found| FieldOrigin::Ai {
+                            confidence_percent: confidence_percent(found.confidence),
+                        },
+                    )
+                })?;
             }
             if !plan_again {
                 return Ok(None);
@@ -215,7 +234,9 @@ impl AiStep {
             );
             if let Planning::Plan(filing) = &planning {
                 if filing.fields != merged {
-                    index.set_document_fields(id, &filing.fields)?;
+                    index.set_document_fields(id, &filing.fields, |_| {
+                        FieldOrigin::Rule(Some(filing.rule))
+                    })?;
                 }
                 index.set_document_status(id, DocumentStatus::Planned)?;
                 resolve_reviews_of(index, id)?;
@@ -430,7 +451,7 @@ mod tests {
         let fixture = Fixture::new();
         let provider = Arc::new(reply("0.95"));
         let steps = fixture.steps(&provider);
-        fixture
+        let rule = fixture
             .index
             .lock()
             .unwrap()
@@ -458,6 +479,70 @@ mod tests {
         let filing = item.plan.unwrap();
         assert_eq!(filing.relative_path, PathBuf::from("Agency B/4711.pdf"));
         assert_eq!(item.review, None);
+        let origins = fixture
+            .index
+            .lock()
+            .unwrap()
+            .field_origins(document)
+            .unwrap();
+        assert_eq!(
+            origins.of(Field::Sender),
+            FieldOrigin::Ai {
+                confidence_percent: 95
+            }
+        );
+        assert_eq!(
+            origins.of(Field::Date),
+            FieldOrigin::Ai {
+                confidence_percent: 90
+            }
+        );
+        assert_eq!(origins.of(Field::Number), FieldOrigin::Rule(Some(rule)));
+        assert_eq!(origins.of(Field::Amount), FieldOrigin::Unknown);
+    }
+
+    #[test]
+    fn the_rules_step_stores_the_rule_as_origin_of_the_fields_it_fills() {
+        let fixture = Fixture::new();
+        let steps = fixture.steps(&Arc::new(reply("0.95")));
+        let rule = fixture
+            .index
+            .lock()
+            .unwrap()
+            .create_rule(&invoice_rule("{sender}/{number}.pdf", true))
+            .unwrap();
+        let document = fixture.add_document(1);
+        let mut item = fixture.item(document, INVOICE_TEXT);
+
+        run(&steps, RULES, &mut item);
+
+        let origins = fixture
+            .index
+            .lock()
+            .unwrap()
+            .field_origins(document)
+            .unwrap();
+        for field in [Field::Kind, Field::TaxContext, Field::Number] {
+            assert_eq!(
+                origins.of(field),
+                FieldOrigin::Rule(Some(rule)),
+                "{field:?}"
+            );
+        }
+        assert_eq!(origins.of(Field::Sender), FieldOrigin::Unknown);
+    }
+
+    #[test]
+    fn confidence_becomes_a_rounded_percent_within_zero_and_a_hundred() {
+        assert_eq!(confidence_percent(0.0), 0);
+        assert_eq!(confidence_percent(0.004), 0);
+        assert_eq!(confidence_percent(0.005), 1);
+        assert_eq!(confidence_percent(0.874), 87);
+        assert_eq!(confidence_percent(0.875), 88);
+        assert_eq!(confidence_percent(0.95), 95);
+        assert_eq!(confidence_percent(1.0), 100);
+        assert_eq!(confidence_percent(1.7), 100);
+        assert_eq!(confidence_percent(-0.3), 0);
     }
 
     #[test]
