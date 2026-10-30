@@ -65,28 +65,7 @@ impl LocationWatcher {
             let watched = location.clone();
             let all_roots = roots.clone();
             let handler = move |received: notify::Result<Event>| {
-                let event = match received {
-                    Ok(event) => event,
-                    Err(err) => {
-                        let failed_root = err
-                            .paths
-                            .iter()
-                            .find_map(|path| all_roots.iter().find(|root| path.starts_with(root)))
-                            .unwrap_or(&watched.path)
-                            .clone();
-                        forward_events(WatchEvent::Error {
-                            location: failed_root,
-                            message: err.to_string(),
-                        });
-                        return;
-                    }
-                };
-                if !is_file_change(event.kind) {
-                    return;
-                }
-                for path in event_targets(&event) {
-                    forward_files(&watched, path, &forward_events);
-                }
+                forward_received(received, &watched, &all_roots, &forward_events);
             };
             // Not following links: a linked directory could lead out of the
             // location, and its files would be reported as if they were inside.
@@ -107,6 +86,49 @@ impl LocationWatcher {
             },
             failed,
         )
+    }
+}
+
+fn forward_received(
+    received: notify::Result<Event>,
+    watched: &Location,
+    all_roots: &[PathBuf],
+    forward: &impl Fn(WatchEvent),
+) {
+    let event = match received {
+        Ok(event) => event,
+        Err(err) => {
+            let failed_root = err
+                .paths
+                .iter()
+                .find_map(|path| all_roots.iter().find(|root| path.starts_with(root)))
+                .unwrap_or(&watched.path)
+                .clone();
+            forward(WatchEvent::Error {
+                location: failed_root,
+                message: err.to_string(),
+            });
+            return;
+        }
+    };
+    // The backend dropped events (FSEvents MustScanSubDirs/UserDropped/
+    // KernelDropped, inotify overflow): any file may have been missed.
+    if event.need_rescan() {
+        let message = match event.info() {
+            Some(info) => format!("the system dropped file events ({info})"),
+            None => "the system dropped file events".to_owned(),
+        };
+        forward(WatchEvent::Error {
+            location: watched.path.clone(),
+            message,
+        });
+        return;
+    }
+    if !is_file_change(event.kind) {
+        return;
+    }
+    for path in event_targets(&event) {
+        forward_files(watched, path, forward);
     }
 }
 
@@ -162,5 +184,59 @@ fn event_targets(event: &Event) -> &[PathBuf] {
             event.paths.get(1..).unwrap_or_default()
         }
         _ => &event.paths,
+    }
+}
+
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+mod tests {
+    use std::cell::RefCell;
+
+    use notify::event::Flag;
+    use tempfile::TempDir;
+
+    use super::*;
+    use crate::location::LocationMode;
+
+    fn forwarded(dropped: Event) -> (PathBuf, Vec<WatchEvent>) {
+        let dir = TempDir::new().unwrap();
+        let watched = Location::new(dir.path(), LocationMode::Inbox, false).unwrap();
+        let seen = RefCell::new(Vec::new());
+        forward_received(
+            Ok(dropped),
+            &watched,
+            std::slice::from_ref(&watched.path),
+            &|event| {
+                seen.borrow_mut().push(event);
+            },
+        );
+        (watched.path, seen.into_inner())
+    }
+
+    #[test]
+    fn dropped_events_are_reported_as_an_error_for_the_watched_location() {
+        let event = Event::new(EventKind::Other).set_flag(Flag::Rescan);
+
+        let (watched, seen) = forwarded(event);
+
+        assert_eq!(
+            seen,
+            vec![WatchEvent::Error {
+                location: watched,
+                message: "the system dropped file events".to_owned(),
+            }]
+        );
+    }
+
+    #[test]
+    fn an_other_event_without_the_rescan_flag_reports_nothing() {
+        let (_, seen) = forwarded(Event::new(EventKind::Other));
+
+        assert!(seen.is_empty());
     }
 }
