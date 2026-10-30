@@ -239,7 +239,7 @@ fn name_in<'a>(
 }
 
 fn company_name(line: &str, aliases: &SenderAliases) -> Option<String> {
-    if line.chars().count() > MAX_NAME_LINE_CHARS || line.ends_with(',') {
+    if line.chars().count() > MAX_NAME_LINE_CHARS || line.ends_with(',') || is_register_line(line) {
         return None;
     }
     let name = line
@@ -285,8 +285,20 @@ fn ends_with_legal_form(line: &str) -> bool {
 }
 
 fn starts_with_authority_word(name: &str) -> bool {
-    let lowered = name.to_lowercase();
-    AUTHORITY_WORDS.iter().any(|word| lowered.starts_with(word))
+    name.split_whitespace().next().is_some_and(|first| {
+        let word = first.trim_matches(|ch: char| !ch.is_alphanumeric());
+        AUTHORITY_WORDS
+            .iter()
+            .any(|authority| word.eq_ignore_ascii_case(authority))
+    })
+}
+
+/// A register line ("Amtsgericht München HRB 12345") names a court, not the sender.
+fn is_register_line(line: &str) -> bool {
+    line.split_whitespace().any(|token| {
+        let word = token.trim_matches(|ch: char| !ch.is_alphanumeric());
+        word.eq_ignore_ascii_case("HRB") || word.eq_ignore_ascii_case("HRA")
+    })
 }
 
 #[cfg(test)]
@@ -357,6 +369,40 @@ mod tests {
 
         assert_eq!(sender.name, "Lieferant Handels AG");
         assert_eq!(sender.source, SenderSource::Footer);
+    }
+
+    #[test]
+    fn an_authority_word_must_be_a_whole_word() {
+        let street = "Bäckerei Schmidt\nStadtweg 12, 12345 Ort\n";
+        assert_eq!(
+            detect_sender(street, &SenderAliases::default(), &[]).sender,
+            None
+        );
+
+        let town = "Stadt Musterstadt\nBürgeramt\n";
+        let sender = detect_sender(town, &SenderAliases::default(), &[])
+            .sender
+            .unwrap();
+        assert_eq!(sender.name, "Stadt Musterstadt");
+    }
+
+    #[test]
+    fn a_register_line_is_not_a_sender() {
+        let mut footer = String::from("Rechnung\n");
+        for number in 0..10 {
+            footer.push_str(&format!("Position {number}\n"));
+        }
+        let only_register = format!("{footer}Amtsgericht München HRB 12345\n");
+        assert_eq!(
+            detect_sender(&only_register, &SenderAliases::default(), &[]).sender,
+            None
+        );
+
+        let with_company = format!("{footer}Lieferant Handels AG\nAmtsgericht München HRB 12345\n");
+        let sender = detect_sender(&with_company, &SenderAliases::default(), &[])
+            .sender
+            .unwrap();
+        assert_eq!(sender.name, "Lieferant Handels AG");
     }
 
     #[test]
