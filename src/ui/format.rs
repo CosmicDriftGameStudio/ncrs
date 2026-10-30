@@ -53,13 +53,25 @@ pub fn size(bytes: u64) -> String {
     format!("{value:.1} {label}")
 }
 
-/// Size column text: `<UP>` / `<DIR>` for directories, size otherwise.
+/// Appended to a computed folder size that missed unreadable parts. Untranslated
+/// like the markers.
+const PARTIAL_SIZE_MARK: char = '+';
+
+/// Size column text: `<UP>` / `<DIR>` for directories (the computed size once
+/// there is one), size otherwise.
 ///
 /// The markers are a Norton Commander convention and are deliberately not
 /// translated, so this takes no `Language`.
 pub fn entry_size(entry: &FileEntry) -> String {
     if entry.is_parent {
         Msg::MarkerUp.text().into()
+    } else if let (true, Some(computed)) = (entry.is_dir, entry.folder_size) {
+        let text = size(computed.bytes);
+        if computed.partial {
+            format!("{text}{PARTIAL_SIZE_MARK}")
+        } else {
+            text
+        }
     } else if entry.is_dir {
         Msg::MarkerDir.text().into()
     } else {
@@ -295,6 +307,25 @@ mod tests {
         assert_eq!(grouped(2421), "2\u{a0}421");
         assert_eq!(grouped(12345), "12\u{a0}345");
         assert_eq!(grouped(1_234_567), "1\u{a0}234\u{a0}567");
+    }
+
+    #[test]
+    fn a_computed_folder_shows_its_size_and_marks_a_partial_one() {
+        let folder = |folder_size| FileEntry {
+            name: "d".into(),
+            path: "d".into(),
+            is_dir: true,
+            is_symlink: false,
+            is_parent: false,
+            size: 0,
+            modified: None,
+            folder_size,
+        };
+        let computed = |bytes, partial| Some(crate::fs::FolderSize { bytes, partial });
+
+        assert_eq!(entry_size(&folder(None)), Msg::MarkerDir.text());
+        assert_eq!(entry_size(&folder(computed(1536, false))), "1.5 KB");
+        assert_eq!(entry_size(&folder(computed(1536, true))), "1.5 KB+");
     }
 
     #[test]

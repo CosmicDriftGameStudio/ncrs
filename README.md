@@ -113,6 +113,11 @@ The same window in German, switched with F9.
   the single row under the cursor when nothing is tagged
 - Keyboard navigation, selection highlighting, auto-scrolling
 - Name / Size / Modified columns, directories first, case-insensitive sort
+- Folder sizes on request: "Compute folder sizes" in the command list or the
+  context menu measures the tagged folders, the folder under the cursor, or every
+  folder of the listing when the cursor is on `..`. The size column shows the
+  value for the rest of the session; a `+` marks a size that missed unreadable
+  parts
 - `..` entry to go up; the directory you came from is re-selected
 - Async directory loading (tokio blocking pool) – the UI never blocks
 - Stale-result protection (fast navigation cannot show an outdated listing)
@@ -430,7 +435,7 @@ Actions: `quit`, `open`, `go_up`, `switch_panel`, `switch_language`,
 `copy`, `move`, `pack`, `mkdir`, `new_file`, `delete`, `delete_permanently`, `abort_job`,
 `copy_path`, `copy_name`, `copy_files`, `paste`, `trash`, `restore_last_deletion`, `open_trash_in_finder`, `drive_menu_left`, `drive_menu_right`,
 `history_back`, `history_forward`, `add_favourite`, `remove_favourite`, `favourites`,
-`sort_by_name`, `sort_by_modified`, `sort_by_size`, `context_menu`, `search`, `quick_open`, `command_line`, `command_palette`, `search_case`,
+`sort_by_name`, `sort_by_modified`, `sort_by_size`, `compute_folder_sizes`, `context_menu`, `search`, `quick_open`, `command_line`, `command_palette`, `search_case`,
 `search_whole_word`, `search_regex`, `filing_status`, `filing_setup`, `key_bindings`. Their
 default keys are in [Keyboard shortcuts](#keyboard-shortcuts).
 

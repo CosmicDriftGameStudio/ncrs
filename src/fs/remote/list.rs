@@ -120,6 +120,7 @@ fn entry_of(
         modified: shown
             .mtime
             .map(|secs| UNIX_EPOCH + Duration::from_secs(u64::from(secs))),
+        folder_size: None,
     }
 }
 

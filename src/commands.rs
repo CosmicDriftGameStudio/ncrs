@@ -150,6 +150,9 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
         KeyAction::SortByName => Command::plain(action, View, Msg::ActionSortByName),
         KeyAction::SortByModified => Command::plain(action, View, Msg::ActionSortByModified),
         KeyAction::SortBySize => Command::plain(action, View, Msg::ActionSortBySize),
+        KeyAction::ComputeFolderSizes => {
+            Command::plain(action, View, Msg::ActionComputeFolderSizes)
+        }
         KeyAction::FetchTheme => Command::plain(action, View, Msg::ActionFetchTheme),
         KeyAction::SwitchLanguage => Command::plain(action, View, Msg::ActionSwitchLanguage),
         KeyAction::Settings => Command::plain(action, View, Msg::ActionSettings),

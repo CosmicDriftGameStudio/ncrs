@@ -42,8 +42,9 @@ fn fold_key(name: &OsString) -> String {
 
 /// Sorts `entries` by `key`. `..` stays first and directories stay before
 /// files in either direction; the key orders within those groups. Directories
-/// have no size and go by name under `Size`, entries without a date come last
-/// under `Modified`, and the name breaks every tie.
+/// go by their computed size under `Size`, those without one after those with
+/// one in either direction and by name; entries without a date come last under
+/// `Modified`, and the name breaks every tie.
 pub fn sort_entries(entries: &mut Vec<FileEntry>, key: SortKey) {
     // The folded name is computed once per entry, not once per comparison:
     // `to_lowercase` allocates, and a large directory compares O(n log n) times.
@@ -69,7 +70,12 @@ fn compare(a: &FileEntry, folded_a: &str, b: &FileEntry, folded_b: &str, key: So
         .then(b.is_dir.cmp(&a.is_dir))
         .then_with(|| match key.column {
             SortColumn::Name => directed(by_name()),
-            SortColumn::Size if a.is_dir => by_name(),
+            SortColumn::Size if a.is_dir => match (a.folder_size, b.folder_size) {
+                (Some(x), Some(y)) => directed(x.bytes.cmp(&y.bytes)).then_with(by_name),
+                (Some(_), None) => Ordering::Less,
+                (None, Some(_)) => Ordering::Greater,
+                (None, None) => by_name(),
+            },
             SortColumn::Size => directed(a.size.cmp(&b.size)).then_with(by_name),
             SortColumn::Modified => match (a.modified, b.modified) {
                 (Some(x), Some(y)) => directed(x.cmp(&y)).then_with(by_name),
@@ -101,7 +107,66 @@ mod tests {
             is_parent: false,
             size,
             modified: age_secs.map(|secs| SystemTime::UNIX_EPOCH + Duration::from_secs(secs)),
+            folder_size: None,
         }
+    }
+
+    fn computed_dir(name: &str, bytes: u64) -> FileEntry {
+        FileEntry {
+            folder_size: Some(crate::fs::FolderSize {
+                bytes,
+                partial: false,
+            }),
+            ..entry(name, true, 0, None)
+        }
+    }
+
+    fn dir_names_by_size(descending: bool) -> Vec<String> {
+        let mut entries = vec![
+            entry("a-unknown", true, 0, None),
+            computed_dir("big", 900),
+            entry("b-unknown", true, 0, None),
+            computed_dir("small", 5),
+            computed_dir("also-small", 5),
+            entry("file.txt", false, 1, None),
+        ];
+        sort_entries(
+            &mut entries,
+            SortKey {
+                column: SortColumn::Size,
+                descending,
+            },
+        );
+        entries
+            .iter()
+            .map(|e| e.name.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn computed_folders_sort_by_size_before_the_ones_without_a_value() {
+        assert_eq!(
+            dir_names_by_size(false),
+            [
+                "also-small",
+                "small",
+                "big",
+                "a-unknown",
+                "b-unknown",
+                "file.txt"
+            ]
+        );
+        assert_eq!(
+            dir_names_by_size(true),
+            [
+                "big",
+                "also-small",
+                "small",
+                "a-unknown",
+                "b-unknown",
+                "file.txt"
+            ]
+        );
     }
 
     fn listing() -> Vec<FileEntry> {

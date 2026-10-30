@@ -815,9 +815,23 @@ mod tests {
     #[test]
     fn a_better_tier_is_listed_before_a_worse_one() {
         // "Fetch color theme…" has a word that starts with "co" but does not
-        // start with it, so it comes after the labels that do.
+        // start with it, so it comes after the labels of its group that do.
+        // Across groups the order is by group, so only its group counts.
         let asked_co = asked(Language::English, "co");
-        let labels = labels(&asked_co);
+        let entries: Vec<_> = asked_co
+            .hits()
+            .map(|hit| asked_co.entry(hit).unwrap())
+            .collect();
+        let color_group = entries
+            .iter()
+            .find(|entry| entry.label.contains("color"))
+            .unwrap()
+            .group;
+        let labels: Vec<&str> = entries
+            .iter()
+            .filter(|entry| entry.group == color_group)
+            .map(|entry| entry.label.as_str())
+            .collect();
         let color = labels
             .iter()
             .position(|label| label.contains("color"))

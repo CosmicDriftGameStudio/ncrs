@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use super::FolderSize;
+
 /// A single row in a directory listing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileEntry {
@@ -16,6 +18,8 @@ pub struct FileEntry {
     pub is_parent: bool,
     pub size: u64,
     pub modified: Option<SystemTime>,
+    /// Computed on request; `None` for files and for folders not computed.
+    pub folder_size: Option<FolderSize>,
 }
 
 impl FileEntry {
@@ -44,6 +48,7 @@ impl FileEntry {
             is_parent: false,
             size,
             modified,
+            folder_size: None,
         }
     }
 
@@ -57,6 +62,7 @@ impl FileEntry {
             is_parent: true,
             size: 0,
             modified: None,
+            folder_size: None,
         }
     }
 }

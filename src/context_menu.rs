@@ -29,13 +29,14 @@ pub enum ContextAction {
     NewFolder,
     CopyPath,
     CopyName,
+    ComputeFolderSizes,
     Trash,
     DeletePermanently,
 }
 
 impl ContextAction {
     #[cfg(test)]
-    pub const ALL: [ContextAction; 10] = [
+    pub const ALL: [ContextAction; 11] = [
         ContextAction::Open,
         ContextAction::View,
         ContextAction::Edit,
@@ -44,6 +45,7 @@ impl ContextAction {
         ContextAction::NewFolder,
         ContextAction::CopyPath,
         ContextAction::CopyName,
+        ContextAction::ComputeFolderSizes,
         ContextAction::Trash,
         ContextAction::DeletePermanently,
     ];
@@ -60,7 +62,10 @@ impl ContextAction {
             | ContextAction::Trash
             | ContextAction::DeletePermanently
             | ContextAction::View => true,
-            ContextAction::Edit | ContextAction::Move | ContextAction::NewFolder => false,
+            ContextAction::Edit
+            | ContextAction::Move
+            | ContextAction::NewFolder
+            | ContextAction::ComputeFolderSizes => false,
         }
     }
 
@@ -77,6 +82,7 @@ impl ContextAction {
             ContextAction::Edit
             | ContextAction::Move
             | ContextAction::NewFolder
+            | ContextAction::ComputeFolderSizes
             | ContextAction::Trash
             | ContextAction::DeletePermanently => false,
         }
@@ -92,6 +98,7 @@ impl ContextAction {
             ContextAction::NewFolder => Message::CreateDirPrompt,
             ContextAction::CopyPath => Message::CopyToClipboard(ClipboardKind::Path),
             ContextAction::CopyName => Message::CopyToClipboard(ClipboardKind::Name),
+            ContextAction::ComputeFolderSizes => Message::ComputeFolderSizes,
             ContextAction::Trash => Message::Delete { permanent: false },
             ContextAction::DeletePermanently => Message::Delete { permanent: true },
         }
@@ -107,13 +114,14 @@ impl ContextAction {
             ContextAction::NewFolder => Msg::ContextMenuNewFolder,
             ContextAction::CopyPath => Msg::ContextMenuCopyPath,
             ContextAction::CopyName => Msg::ContextMenuCopyName,
+            ContextAction::ComputeFolderSizes => Msg::ContextMenuComputeFolderSizes,
             ContextAction::Trash => Msg::ContextMenuTrash,
             ContextAction::DeletePermanently => Msg::ContextMenuDeletePermanently,
         }
     }
 }
 
-const GROUPS: [&[ContextAction]; 4] = [
+const GROUPS: [&[ContextAction]; 5] = [
     &[
         ContextAction::Open,
         ContextAction::View,
@@ -125,6 +133,7 @@ const GROUPS: [&[ContextAction]; 4] = [
         ContextAction::NewFolder,
     ],
     &[ContextAction::CopyPath, ContextAction::CopyName],
+    &[ContextAction::ComputeFolderSizes],
     &[ContextAction::Trash, ContextAction::DeletePermanently],
 ];
 
@@ -888,15 +897,15 @@ mod tests {
     }
 
     #[test]
-    fn the_menu_has_the_four_groups_with_separators() {
+    fn the_menu_has_the_five_groups_with_separators() {
         let menu = menu_with(&[]);
         let separators = menu
             .entries()
             .iter()
             .filter(|entry| **entry == MenuEntry::Separator)
             .count();
-        assert_eq!(separators, 3);
-        assert_eq!(menu.entries().len(), 10 + 3);
+        assert_eq!(separators, 4);
+        assert_eq!(menu.entries().len(), 11 + 4);
         assert_eq!(selected_action(&menu), ContextAction::Open);
     }
 
@@ -923,6 +932,8 @@ mod tests {
         assert_eq!(selected_action(&menu), ContextAction::DeletePermanently);
         menu.move_by(-1);
         assert_eq!(selected_action(&menu), ContextAction::Trash);
+        menu.move_by(-1);
+        assert_eq!(selected_action(&menu), ContextAction::ComputeFolderSizes);
         menu.move_by(-1);
         assert_eq!(selected_action(&menu), ContextAction::CopyName);
         menu.select_first();
@@ -1019,7 +1030,11 @@ mod tests {
             ContextAction::DeletePermanently.message(),
             Message::Delete { permanent: true }
         );
-        for action in GROUPS.iter().flat_map(|group| group.iter()) {
+        for action in GROUPS
+            .iter()
+            .flat_map(|group| group.iter())
+            .filter(|action| **action != ContextAction::ComputeFolderSizes)
+        {
             assert!(
                 crate::keymap::Keymap::built_in()
                     .shortcut_label(&action.message())
