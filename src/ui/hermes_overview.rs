@@ -21,7 +21,7 @@ use crate::hermes_overview::{
     built_in_pattern, AiTile, ModuleState, OverviewFacts, OverviewState, PatternNote, Pill,
     ReviewTile, Tone as TileTone,
 };
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{FilingStatusMessage, HermesOverviewMessage, HermesPage, Message};
 use crate::palette::Palette;
 
@@ -120,7 +120,7 @@ pub fn view<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Messa
         lang,
         palette,
     )
-    .title_theme(lang.text(Msg::HermesNavOverviewTheme))
+    .title_theme(lang.futurama_name(FuturamaName::HermesNavOverview))
     .sidebar(hermes::nav(
         HermesPage::Overview,
         page.badges,

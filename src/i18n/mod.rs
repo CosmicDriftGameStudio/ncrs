@@ -6,8 +6,12 @@
 //! modules included below, so the context cannot drift away from the text.
 //!
 //! Adding a language means adding its text to `strings.json` and extending the
-//! two matches in this file. `build.rs` fails the build if a string has no
+//! matches in this file. `build.rs` fails the build if a string has no
 //! usable context, because a translator works from the JSON file alone.
+//!
+//! A key ending in `.theme` is a Futurama name. It is not a [`Msg`] but a
+//! [`FuturamaName`], and only the Futurama variants of a language
+//! (`en-futurama`, `de-futurama`) show it, via [`Language::futurama_name`].
 //!
 //! Adding a *new string* means adding it to `strings.json` and a variant to
 //! [`Msg`]; the compiler then points at every place that needs updating.
@@ -33,9 +37,10 @@ mod gen {
     include!(concat!(env!("OUT_DIR"), "/text.rs"));
     include!(concat!(env!("OUT_DIR"), "/lookup.rs"));
     include!(concat!(env!("OUT_DIR"), "/notes.rs"));
+    include!(concat!(env!("OUT_DIR"), "/futurama.rs"));
 }
 
-pub use gen::Msg;
+pub use gen::{FuturamaName, Msg};
 
 impl Msg {
     /// English text, also the fallback for languages that lack this key.
@@ -61,21 +66,69 @@ impl Msg {
     }
 }
 
-/// The language the UI is currently rendered in.
+impl FuturamaName {
+    /// The full key from strings.json, `.theme` included.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn key(self) -> &'static str {
+        gen::futurama_key(self)
+    }
+
+    /// Context for translators, like [`Msg::note`].
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn note(self) -> &'static str {
+        gen::futurama_note(self)
+    }
+}
+
+/// The language the UI is currently rendered in. The Futurama variants add
+/// the names from the show next to the plain texts of their base language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Language {
     #[default]
     English,
     German,
+    EnglishFuturama,
+    GermanFuturama,
 }
 
 impl Language {
+    /// The language without the Futurama names.
+    pub fn base(self) -> Self {
+        match self {
+            Language::English | Language::EnglishFuturama => Language::English,
+            Language::German | Language::GermanFuturama => Language::German,
+        }
+    }
+
     /// The text in this language, falling back to English for missing keys.
     pub fn text(self, msg: Msg) -> &'static str {
-        match self {
-            Language::English => msg.text(),
+        match self.base() {
             Language::German => gen::de_text(msg),
+            _ => msg.text(),
         }
+    }
+
+    pub fn shows_futurama_names(self) -> bool {
+        matches!(self, Language::EnglishFuturama | Language::GermanFuturama)
+    }
+
+    /// The same base language, with or without the Futurama names.
+    pub fn with_futurama(self, on: bool) -> Self {
+        match (self.base(), on) {
+            (Language::German, false) => Language::German,
+            (Language::German, true) => Language::GermanFuturama,
+            (_, false) => Language::English,
+            (_, true) => Language::EnglishFuturama,
+        }
+    }
+
+    /// The Futurama name: only the Futurama variants have one, the standard
+    /// languages never show it.
+    pub fn futurama_name(self, name: FuturamaName) -> Option<&'static str> {
+        self.shows_futurama_names().then(|| match self.base() {
+            Language::German => gen::futurama_de(name),
+            _ => gen::futurama_en(name),
+        })
     }
 
     /// A document kind as shown: the translation for the kinds the rules and
@@ -93,13 +146,30 @@ impl Language {
     }
 
     /// Every language, in the order the config error lists them.
-    pub const ALL: [Language; 2] = [Language::English, Language::German];
+    pub const ALL: [Language; 4] = [
+        Language::English,
+        Language::German,
+        Language::EnglishFuturama,
+        Language::GermanFuturama,
+    ];
 
     /// The code written in the config file and shown for the language.
     pub fn code(self) -> &'static str {
         match self {
             Language::English => "en",
             Language::German => "de",
+            Language::EnglishFuturama => "en-futurama",
+            Language::GermanFuturama => "de-futurama",
+        }
+    }
+
+    /// The language's name in that language, for the language choice.
+    pub fn name(self) -> &'static str {
+        match self {
+            Language::English => "English",
+            Language::German => "Deutsch",
+            Language::EnglishFuturama => "English (Futurama)",
+            Language::GermanFuturama => "Deutsch (Futurama)",
         }
     }
 
@@ -107,11 +177,14 @@ impl Language {
         Self::ALL.into_iter().find(|lang| lang.code() == code)
     }
 
-    /// Switches to the next language, for the temporary key binding.
+    /// Switches between English and German, keeping the Futurama variant, for
+    /// the temporary key binding.
     pub fn other(self) -> Self {
         match self {
             Language::English => Language::German,
             Language::German => Language::English,
+            Language::EnglishFuturama => Language::GermanFuturama,
+            Language::GermanFuturama => Language::EnglishFuturama,
         }
     }
 }
@@ -141,7 +214,7 @@ impl fmt::Display for Language {
 )]
 #[cfg(test)]
 mod tests {
-    use super::gen::ALL;
+    use super::gen::{ALL, ALL_FUTURAMA_NAMES};
     use super::*;
 
     #[test]
@@ -212,8 +285,6 @@ mod tests {
                 | Msg::DeleteOne
                 // The module's name, the same in both languages.
                 | Msg::FilingSetupTitle
-                | Msg::ActionFilingSetupTheme
-                | Msg::GroupHermesTheme
                 // The module's name heads its column.
                 | Msg::ColumnHermes
                 // The loanword, the same in both languages.
@@ -238,6 +309,93 @@ mod tests {
                 | Msg::RemoteHost
                 | Msg::RemotePort
         )
+    }
+
+    #[test]
+    fn every_futurama_name_is_translated_and_has_context() {
+        for name in ALL_FUTURAMA_NAMES {
+            let en = Language::EnglishFuturama.futurama_name(*name).unwrap();
+            let de = Language::GermanFuturama.futurama_name(*name).unwrap();
+            assert!(
+                !en.is_empty() && !de.is_empty(),
+                "{name:?} has an empty text"
+            );
+            assert!(
+                name.note().len() > 20,
+                "{name:?} has no usable translation context"
+            );
+            let same_word = matches!(
+                name,
+                FuturamaName::GroupHermes | FuturamaName::ActionFilingSetup
+            );
+            assert_eq!(en == de, same_word, "{name:?}: en {en:?}, de {de:?}");
+        }
+    }
+
+    #[test]
+    fn the_standard_languages_never_show_a_futurama_name() {
+        for name in ALL_FUTURAMA_NAMES {
+            assert_eq!(Language::English.futurama_name(*name), None);
+            assert_eq!(Language::German.futurama_name(*name), None);
+            assert_eq!(
+                Language::EnglishFuturama.futurama_name(*name),
+                Some(gen::futurama_en(*name))
+            );
+            assert_eq!(
+                Language::GermanFuturama.futurama_name(*name),
+                Some(gen::futurama_de(*name))
+            );
+        }
+    }
+
+    #[test]
+    fn a_futurama_variant_has_the_texts_of_its_base_language() {
+        for msg in ALL {
+            assert_eq!(
+                Language::EnglishFuturama.text(*msg),
+                Language::English.text(*msg)
+            );
+            assert_eq!(
+                Language::GermanFuturama.text(*msg),
+                Language::German.text(*msg)
+            );
+        }
+    }
+
+    #[test]
+    fn the_futurama_switch_keeps_the_base_language() {
+        for lang in Language::ALL {
+            for on in [false, true] {
+                let switched = lang.with_futurama(on);
+                assert_eq!(switched.base(), lang.base());
+                assert_eq!(switched.shows_futurama_names(), on);
+            }
+            assert_eq!(lang.with_futurama(lang.shows_futurama_names()), lang);
+        }
+    }
+
+    #[test]
+    fn a_code_names_its_language_and_an_unknown_one_none() {
+        for lang in Language::ALL {
+            assert_eq!(Language::from_code(lang.code()), Some(lang));
+        }
+        assert_eq!(Language::from_code("fr"), None);
+    }
+
+    #[test]
+    fn the_quick_switch_changes_the_base_and_keeps_the_variant() {
+        assert_eq!(Language::English.other(), Language::German);
+        assert_eq!(Language::GermanFuturama.other(), Language::EnglishFuturama);
+        for lang in Language::ALL {
+            assert_ne!(lang.other().base(), lang.base());
+            assert_eq!(lang.other().other(), lang);
+            assert_eq!(
+                lang.other()
+                    .futurama_name(FuturamaName::GroupHermes)
+                    .is_some(),
+                lang.futurama_name(FuturamaName::GroupHermes).is_some()
+            );
+        }
     }
 
     /// The marker convention is deliberately not translated.
@@ -277,7 +435,7 @@ mod tests {
 )]
 #[cfg(test)]
 mod dump {
-    use super::gen::ALL;
+    use super::gen::{ALL, ALL_FUTURAMA_NAMES};
     use super::Language;
 
     /// Not a test: prints every string with its context and all translations,
@@ -291,6 +449,16 @@ mod dump {
             println!("DE    {}", Language::German.text(*msg));
             println!("NOTE  {}", msg.note());
         }
-        println!("\n( {} strings )", ALL.len());
+        for name in ALL_FUTURAMA_NAMES {
+            println!("\n## {}", name.key());
+            println!("EN    {}", super::gen::futurama_en(*name));
+            println!("DE    {}", super::gen::futurama_de(*name));
+            println!("NOTE  {}", name.note());
+        }
+        println!(
+            "\n( {} strings, {} Futurama names )",
+            ALL.len(),
+            ALL_FUTURAMA_NAMES.len()
+        );
     }
 }

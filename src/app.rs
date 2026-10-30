@@ -24,7 +24,8 @@ use crate::command_line::{self, CommandLine, ShellOutcome, Submission};
 use crate::command_palette::{CommandPalette, Target, RECENT_LIMIT};
 use crate::config::ServerEntry;
 use crate::config::{
-    self, Config, ConfigError, ContrastWarning, Filing, FilingWriteError, KeyChange, VscodeWarning,
+    self, Config, ConfigError, ContrastWarning, Filing, FilingWriteError, KeyChange,
+    LanguageWarning, VscodeWarning,
 };
 use crate::context_menu::{ContextAction, ContextMenu, HermesAction, HermesMenu, InputState};
 use crate::dialog::{Prompt, PromptKind};
@@ -52,7 +53,7 @@ use crate::hermes_setup::{
     StartPlan,
 };
 use crate::hermes_status::HermesStatus;
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use crate::jobs::{self, JobEvent};
 use crate::key_bindings::KeyBindings;
 use crate::keymap::{self, KeyAction, KeyScope, Keymap};
@@ -1172,6 +1173,7 @@ enum ConfigProblem {
     LowContrast(ContrastWarning),
     /// The file is in use, but the VS Code theme it names was not applied in full.
     VscodeTheme(VscodeWarning),
+    UnknownLanguage(LanguageWarning),
 }
 
 pub struct App {
@@ -3081,6 +3083,7 @@ impl App {
                 self.refresh_function_keys();
                 self.palette = config.palette;
                 self.report_look_warnings(config.contrast_warning, config.vscode_warning);
+                self.report_language_warning(config.language_warning);
             }
             Err(err) => self.report(ConfigProblem::Invalid(err)),
         }
@@ -3099,6 +3102,12 @@ impl App {
         }
         if let Some(warning) = vscode {
             self.report(ConfigProblem::VscodeTheme(warning));
+        }
+    }
+
+    fn report_language_warning(&mut self, found: Option<LanguageWarning>) {
+        if let Some(warning) = found {
+            self.report(ConfigProblem::UnknownLanguage(warning));
         }
     }
 
@@ -3160,6 +3169,26 @@ impl App {
                         fill_template(self.lang.text(Msg::ErrorVscodeThemeAtLine), &with_line)
                     }
                     None => fill_template(self.lang.text(Msg::ErrorVscodeTheme), &values),
+                }
+            }
+            ConfigProblem::UnknownLanguage(warning) => {
+                let path = warning.path.display().to_string();
+                let allowed = Language::ALL
+                    .map(|language| format!("\"{}\"", language.code()))
+                    .join(", ");
+                let values = [
+                    ("{path}", path.as_str()),
+                    ("{code}", warning.code.as_str()),
+                    ("{allowed}", allowed.as_str()),
+                ];
+                match warning.line {
+                    Some(number) => {
+                        let line = number.to_string();
+                        let mut with_line = values.to_vec();
+                        with_line.push(("{line}", line.as_str()));
+                        fill_template(self.lang.text(Msg::ErrorUnknownLanguageAtLine), &with_line)
+                    }
+                    None => fill_template(self.lang.text(Msg::ErrorUnknownLanguage), &values),
                 }
             }
             ConfigProblem::LowContrast(warning) => {
@@ -11804,12 +11833,17 @@ impl App {
         self.palette = config.palette;
         if matches!(
             self.config_problem,
-            Some(ConfigProblem::LowContrast(_) | ConfigProblem::VscodeTheme(_))
+            Some(
+                ConfigProblem::LowContrast(_)
+                    | ConfigProblem::VscodeTheme(_)
+                    | ConfigProblem::UnknownLanguage(_)
+            )
         ) {
             self.config_problem = None;
             self.config_error = None;
         }
         self.report_look_warnings(config.contrast_warning, config.vscode_warning);
+        self.report_language_warning(config.language_warning);
     }
 
     fn settings_write_failure(&self, error: &FilingWriteError) -> String {
@@ -12742,7 +12776,11 @@ impl App {
                         self.lang.text(Msg::TitleBarHermesRate),
                         &[("{rate}", &rate.to_string())],
                     ),
-                    None => self.lang.text(Msg::ActionFilingSetupTheme).to_owned(),
+                    None => self
+                        .lang
+                        .futurama_name(FuturamaName::ActionFilingSetup)
+                        .unwrap_or_else(|| self.lang.text(Msg::GroupHermes))
+                        .to_owned(),
                 }
             }
         };
@@ -19811,6 +19849,24 @@ mod config_status_tests {
     }
 
     #[test]
+    fn an_unknown_language_is_reported_in_both_languages_and_english_is_used() {
+        let mut app = App::with_fixed_panels().with_config(Ok(loaded("\nlang = \"fr\"\n")));
+        assert_eq!(app.lang, Language::English);
+        let english = app.status_error().unwrap_or_default();
+        assert!(english.contains("line 2"), "{english}");
+        assert!(english.contains("unknown language \"fr\""), "{english}");
+        assert!(
+            english.contains("\"en\", \"de\", \"en-futurama\", \"de-futurama\""),
+            "{english}"
+        );
+
+        drop(app.update(Message::SwitchLanguage));
+        let german = app.status_error().unwrap_or_default();
+        assert!(german.contains("Zeile 2"), "{german}");
+        assert!(german.contains("unbekannte Sprache \"fr\""), "{german}");
+    }
+
+    #[test]
     fn a_configured_color_reaches_the_app() {
         let app =
             App::with_fixed_panels().with_config(Ok(loaded("[theme]\nerror = \"#f0a0a0\"\n")));
@@ -22168,17 +22224,17 @@ mod command_palette_tests {
     fn typing_filters_the_entries() {
         let mut app = App::with_fixed_panels();
         open_palette(&mut app);
-        type_into_palette(&mut app, "inspection");
+        type_into_palette(&mut app, "filing status");
         let palette = app.command_palette_for_test().unwrap();
         assert_eq!(palette.hits().count(), 1);
-        assert_eq!(palette.query(), "inspection");
+        assert_eq!(palette.query(), "filing status");
     }
 
     #[test]
     fn enter_on_filing_status_opens_the_page_and_closes_the_palette() {
         let mut app = App::with_fixed_panels().with_starting_hermes_for_test();
         open_palette(&mut app);
-        type_into_palette(&mut app, "inspection");
+        type_into_palette(&mut app, "filing status");
         drop(app.update(palette_message(CommandPaletteMessage::Run)));
         assert!(app.command_palette_for_test().is_none());
         assert!(app.hermes_overview.is_some());
@@ -22189,7 +22245,7 @@ mod command_palette_tests {
     fn a_click_on_an_entry_runs_it() {
         let mut app = App::with_fixed_panels().with_starting_hermes_for_test();
         open_palette(&mut app);
-        type_into_palette(&mut app, "inspection");
+        type_into_palette(&mut app, "filing status");
         drop(app.update(palette_message(CommandPaletteMessage::Select(1))));
         assert!(app.command_palette_for_test().is_none());
         assert!(app.hermes_overview.is_some());

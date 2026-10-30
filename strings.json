@@ -877,6 +877,18 @@
       "de": "Konfigurationsdatei {path}: {foreground} auf {background} hat nur ein Kontrastverhältnis von {ratio}:1 und ist womöglich schwer lesbar."
     },
     {
+      "key": "error.unknown_language_at_line",
+      "context": "Status bar at startup when the `lang` entry of the config names a language that does not exist. The config itself is valid and in use, with English. Takes the config file path, the line of the entry, the unknown code and the list of allowed codes.",
+      "en": "Config file {path}, line {line}: unknown language \"{code}\", English is used. Allowed: {allowed}.",
+      "de": "Konfigurationsdatei {path}, Zeile {line}: unbekannte Sprache \"{code}\", es gilt Englisch. Erlaubt: {allowed}."
+    },
+    {
+      "key": "error.unknown_language",
+      "context": "Same as the unknown language warning with a line, for when no line can be named. Takes the config file path, the unknown code and the list of allowed codes.",
+      "en": "Config file {path}: unknown language \"{code}\", English is used. Allowed: {allowed}.",
+      "de": "Konfigurationsdatei {path}: unbekannte Sprache \"{code}\", es gilt Englisch. Erlaubt: {allowed}."
+    },
+    {
       "key": "error.vscode_theme_at_line",
       "context": "Status bar at startup when the VS Code theme file named by `vscode` in the config's [theme] section could not be used, or not in full. The config itself is valid and in use, with the preset colors and the color keys. Takes the config file path, the line of the `vscode` entry, the path of the theme file and the reason, which is English and stays untranslated.",
       "en": "Config file {path}, line {line}: VS Code theme {theme}: {reason}. Where it gives no colors, the preset applies.",
@@ -4123,6 +4135,18 @@
       "de": "Wird in die config.toml geschrieben. Der Schnellwechsel gilt nur für diese Sitzung."
     },
     {
+      "key": "settings.row_futurama_names",
+      "context": "Label of the switch under the language setting: whether the names from the Futurama show are shown next to the plain names. Short, a row label.",
+      "en": "Futurama names",
+      "de": "Futurama-Namen"
+    },
+    {
+      "key": "settings.row_futurama_names_note",
+      "context": "Explanation under the Futurama names switch: the names from the show appear next to the plain ones. Smell-o-scope is the show's name for the search; the plain name is Search.",
+      "en": "Shows the names from the show next to the plain ones, e.g. Smell-o-scope next to Search.",
+      "de": "Zeigt die Namen aus der Serie neben den Klartext-Namen, z. B. Smell-o-scope neben Suche."
+    },
+    {
       "key": "settings.row_hermes_enabled",
       "context": "Name of the setting on the filing page that switches the filing module Hermes on or off.",
       "en": "Hermes on",
@@ -5257,7 +5281,7 @@
       "de": "Tastenkürzel"
     },
     {
-      "key": "key_bindings.title_theme",
+      "key": "key_bindings.title.theme",
       "context": "Playful theme name shown dimmed next to the title of the keyboard shortcuts dialog, in the Futurama theme of the app: the switchboard of the Planet Express ship.",
       "en": "Planet Express switchboard",
       "de": "Planet-Express-Schaltpult"
@@ -5785,7 +5809,7 @@
       "de": "Über ncrs"
     },
     {
-      "key": "about.title_theme",
+      "key": "about.title.theme",
       "context": "Playful theme name shown dimmed next to the title of the about card, in the Futurama theme of the app: the crew roster of the Planet Express ship.",
       "en": "Planet Express crew roster",
       "de": "Planet-Express-Besatzungsliste"

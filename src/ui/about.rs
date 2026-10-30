@@ -10,7 +10,7 @@ use super::kit::{self, paragraph, Tone};
 use super::theme::spacing;
 use crate::about::{third_party_licenses_url, AboutCard, REPOSITORY_URL};
 use crate::app::fill_template;
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{AboutMessage, Message};
 use crate::palette::Palette;
 
@@ -57,7 +57,7 @@ pub fn view<'a>(
         lang,
         palette,
     )
-    .title_theme(lang.text(Msg::AboutTitleTheme))
+    .title_theme(lang.futurama_name(FuturamaName::AboutTitle))
     .buttons(vec![
         kit::button(
             lang.text(Msg::AboutRepository),

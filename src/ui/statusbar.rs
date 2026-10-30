@@ -339,7 +339,7 @@ pub fn view<'a, M: Clone + 'a>(
             .style(theme::icon_button(palette)),
         );
     }
-    for dim in [Some(lang.code().to_uppercase()), theme_name]
+    for dim in [Some(lang.base().code().to_uppercase()), theme_name]
         .into_iter()
         .flatten()
     {

@@ -50,9 +50,7 @@ pub fn frame<'a>(
         .spacing(spacing::LINE_GAP);
 
     let mut frame = Frame::new(content.title, body, SIZE, window, lang, palette);
-    if let Some(name) = content.title_theme {
-        frame = frame.title_theme(name);
-    }
+    frame = frame.title_theme(content.title_theme.as_deref());
     if let Some(subtitle) = content.subtitle {
         frame = frame.subtitle(subtitle);
     }

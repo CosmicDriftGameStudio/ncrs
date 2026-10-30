@@ -14,7 +14,7 @@ use super::hermes::{self, Badges};
 use super::kit::{self, dim, error_line, paragraph, Columns, Tone};
 use super::theme::{size, spacing};
 use crate::app::fill_template;
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{HermesFocus, HermesPage, Message, ReorganisationPlanMessage};
 use crate::palette::Palette;
 use crate::reorganisation_plan::{
@@ -100,7 +100,7 @@ pub fn view<'a>(
         lang,
         palette,
     )
-    .title_theme(lang.text(Msg::ActionReorganisationPlanTheme))
+    .title_theme(lang.futurama_name(FuturamaName::ActionReorganisationPlan))
     .buttons(buttons(state, lang, palette))
     .sidebar(hermes::nav(
         HermesPage::Reorganisation,

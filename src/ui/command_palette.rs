@@ -11,7 +11,7 @@ use super::layout::ROW_HEIGHT;
 use super::picker;
 use super::theme::{font_size, spacing};
 use crate::command_palette::{CommandPalette, Entry, Header, Hit, Row, MIN_VISIBLE_ROWS};
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{CommandPaletteMessage, Message};
 use crate::palette::Palette;
 
@@ -80,7 +80,9 @@ pub fn view<'a>(
     picker::frame(
         picker::Content {
             title: lang.text(Msg::ActionCommandPalette).to_owned(),
-            title_theme: Some(lang.text(Msg::ActionCommandPaletteTheme).to_owned()),
+            title_theme: lang
+                .futurama_name(FuturamaName::ActionCommandPalette)
+                .map(str::to_owned),
             subtitle: None,
             field,
             status: status.to_owned(),

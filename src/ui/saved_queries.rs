@@ -14,7 +14,7 @@ use super::hermes::{self, Badges};
 use super::kit::{self, dim, error_line, form_row, one_line, paragraph, Columns, Tone};
 use super::theme::spacing;
 use crate::app::fill_template;
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use iced::advanced::widget::operation::{Focusable, Outcome};
 use iced::advanced::widget::{self, Operation};
 use iced::Rectangle;
@@ -141,7 +141,7 @@ pub fn view<'a>(
         lang,
         palette,
     )
-    .title_theme(lang.text(Msg::ActionSavedQueriesTheme))
+    .title_theme(lang.futurama_name(FuturamaName::ActionSavedQueries))
     .buttons(buttons(state, lang, palette))
     .sidebar(hermes::nav(HermesPage::SavedQueries, badges, lang, palette))
     .on_close(send(SavedQueriesMessage::Close))

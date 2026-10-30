@@ -2290,7 +2290,7 @@ mod command_palette {
 
     /// The panel is open with its key, and the key routing's message does it.
     fn opened_with_its_key() -> App {
-        let mut app = App::with_fixed_panels();
+        let mut app = App::with_fixed_panels().in_language(Language::EnglishFuturama);
         let routed = crate::app::route_key(
             &crate::app::PromptKeyState::default(),
             iced::keyboard::Key::Character("p".into()),
@@ -2320,7 +2320,7 @@ mod command_palette {
         open(&mut app);
         drop(
             app.update(palette_message(CommandPaletteMessage::QueryChanged(
-                "inspection".to_owned(),
+                "filing status".to_owned(),
             ))),
         );
         assert!(shows(&app, "F11"));
@@ -2328,7 +2328,7 @@ mod command_palette {
 
     #[test]
     fn typing_in_the_field_filters_the_list() {
-        let mut app = App::with_fixed_panels();
+        let mut app = App::with_fixed_panels().in_language(Language::EnglishFuturama);
         open(&mut app);
         assert!(shows(&app, "Enter"));
         let mut sim = simulator(&app);
@@ -2405,7 +2405,7 @@ mod command_palette {
 
     #[test]
     fn the_hermes_group_is_marked_beta_in_both_languages() {
-        for language in [Language::English, Language::German] {
+        for language in [Language::EnglishFuturama, Language::GermanFuturama] {
             let mut app = App::with_fixed_panels().in_language(language);
             open(&mut app);
             typed(&mut app, "hermes");
@@ -2425,6 +2425,24 @@ mod command_palette {
         let mut app = App::with_fixed_panels().in_language(Language::German);
         open(&mut app);
         snapshot_of(&app, "tests/snapshots/command_palette_empty_de.png");
+    }
+
+    #[test]
+    fn the_empty_list_matches_its_futurama_snapshots() {
+        for (language, name) in [
+            (
+                Language::EnglishFuturama,
+                "command_palette_empty_en_futurama",
+            ),
+            (
+                Language::GermanFuturama,
+                "command_palette_empty_de_futurama",
+            ),
+        ] {
+            let mut app = App::with_fixed_panels().in_language(language);
+            open(&mut app);
+            snapshot_of(&app, &format!("tests/snapshots/{name}.png"));
+        }
     }
 
     #[test]
@@ -3923,8 +3941,12 @@ mod title_bar {
         let mut snapshot = Snapshot::off();
         snapshot.state = RunnerState::Idle;
         snapshot.documents_per_minute[1] = 78;
+        let snapshot_again = snapshot.clone();
         let app = App::with_filing_snapshot(snapshot, taken_at());
-        assert_eq!(app.hermes_chip_for_test().as_deref(), Some("Hermes"));
+        assert_eq!(app.hermes_chip_for_test().as_deref(), Some("Filing"));
+        let themed = App::with_filing_snapshot(snapshot_again, taken_at())
+            .in_language(Language::EnglishFuturama);
+        assert_eq!(themed.hermes_chip_for_test().as_deref(), Some("Hermes"));
     }
 
     #[test]
@@ -4274,6 +4296,16 @@ mod about_card {
     fn the_card_matches_its_snapshots() {
         matches_snapshot(Language::English, "about_en");
         matches_snapshot(Language::German, "about_de");
+        matches_snapshot(Language::EnglishFuturama, "about_en_futurama");
+        matches_snapshot(Language::GermanFuturama, "about_de_futurama");
+    }
+
+    #[test]
+    fn only_the_futurama_variant_shows_the_theme_name_of_the_title() {
+        let plain = App::with_about_card(AboutCard::new());
+        assert!(!shows(&plain, "Planet Express crew roster"));
+        let themed = App::with_about_card(AboutCard::new()).in_language(Language::EnglishFuturama);
+        assert!(shows(&themed, "Planet Express crew roster"));
     }
 }
 

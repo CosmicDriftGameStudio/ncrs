@@ -25,7 +25,7 @@ use crate::config::{
 };
 use crate::filing_setup::shown_path;
 use crate::fs::OpenKind;
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{
     FilingStatusMessage, KeyBindingsMessage, Message, OcrModelsMessage, RemoteMessage,
     SettingChange, SettingField, SettingsFeature, SettingsMessage, ThemeFetchMessage,
@@ -527,9 +527,9 @@ fn feature_label(feature: SettingsFeature) -> Msg {
     }
 }
 
-fn feature_theme_name(feature: SettingsFeature) -> Option<Msg> {
+fn feature_theme_name(feature: SettingsFeature) -> Option<FuturamaName> {
     match feature {
-        SettingsFeature::Hermes => Some(Msg::GroupHermesTheme),
+        SettingsFeature::Hermes => Some(FuturamaName::GroupHermes),
         SettingsFeature::Look
         | SettingsFeature::Language
         | SettingsFeature::Programs
@@ -989,28 +989,43 @@ fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
 
 fn language_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     let lang = view.lang;
-    let labels: Vec<String> = Language::ALL
-        .iter()
-        .map(|language| language.code().to_uppercase())
+    let futurama = lang.shows_futurama_names();
+    let options: Vec<(&str, Message)> = [Language::English, Language::German]
+        .into_iter()
+        .map(|language| {
+            (
+                language.name(),
+                change(SettingChange::Language(language.with_futurama(futurama))),
+            )
+        })
         .collect();
-    let options: Vec<(&str, Message)> = Language::ALL
+    let chosen = [Language::English, Language::German]
         .iter()
-        .zip(&labels)
-        .map(|(&language, label)| (label.as_str(), change(SettingChange::Language(language))))
-        .collect();
-    let chosen = Language::ALL
-        .iter()
-        .position(|&language| language == lang)
+        .position(|&language| language == lang.base())
         .unwrap_or_default();
     vec![Group {
         advanced: false,
         title: String::new(),
-        rows: vec![simple_row(
-            Msg::SettingsRowLanguage,
-            Some(Msg::SettingsRowLanguageNote),
-            kit::segmented(&options, chosen, true, view.palette),
-            lang,
-        )],
+        rows: vec![
+            simple_row(
+                Msg::SettingsRowLanguage,
+                Some(Msg::SettingsRowLanguageNote),
+                kit::segmented(&options, chosen, true, view.palette),
+                lang,
+            ),
+            simple_row(
+                Msg::SettingsRowFuturamaNames,
+                Some(Msg::SettingsRowFuturamaNamesNote),
+                kit::checkbox(
+                    if futurama { Check::On } else { Check::Off },
+                    Some(change(SettingChange::Language(
+                        lang.base().with_futurama(!futurama),
+                    ))),
+                    view.palette,
+                ),
+                lang,
+            ),
+        ],
     }]
 }
 
@@ -1205,7 +1220,9 @@ fn feature_matches(feature: SettingsFeature, query: &str, view: &SettingsView<'_
 /// The page's label or its theme name contains the query (lower case).
 fn feature_name_matches(feature: SettingsFeature, query: &str, lang: Language) -> bool {
     contains_query(lang.text(feature_label(feature)), query)
-        || feature_theme_name(feature).is_some_and(|name| contains_query(lang.text(name), query))
+        || feature_theme_name(feature)
+            .and_then(|name| lang.futurama_name(name))
+            .is_some_and(|name| contains_query(name, query))
 }
 
 fn row_matches(setting: &SettingRow<'_>, query: &str) -> bool {
@@ -1241,7 +1258,9 @@ pub fn search_targets(view: &SettingsView<'_>) -> Vec<SettingsTarget> {
                 lang.text(Msg::CommandPaletteSettingsPage),
                 &[("{page}", page)],
             ),
-            theme_name: feature_theme_name(feature).map(|name| lang.text(name).to_owned()),
+            theme_name: feature_theme_name(feature)
+                .and_then(|name| lang.futurama_name(name))
+                .map(str::to_owned),
         });
         let rows = groups_of(feature, view)
             .into_iter()
@@ -1288,9 +1307,11 @@ fn nav<'a>(
             .wrapping(Wrapping::None)]
         .spacing(spacing::S)
         .align_y(alignment::Vertical::Center);
-        if let Some(theme_name) = feature_theme_name(feature) {
+        if let Some(theme_name) =
+            feature_theme_name(feature).and_then(|name| lang.futurama_name(name))
+        {
             label = label.push(
-                text(lang.text(theme_name).to_owned())
+                text(theme_name.to_owned())
                     .size(font_size::SMALL)
                     .color(palette.dim_text)
                     .wrapping(Wrapping::None),
@@ -1344,9 +1365,10 @@ fn heading<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Element<'a,
         .font(Font::DEFAULT)]
     .spacing(spacing::M)
     .align_y(alignment::Vertical::Center);
-    if let Some(theme_name) = feature_theme_name(feature) {
+    if let Some(theme_name) = feature_theme_name(feature).and_then(|name| lang.futurama_name(name))
+    {
         title = title.push(
-            text(lang.text(theme_name).to_owned())
+            text(theme_name.to_owned())
                 .size(font_size::TITLE)
                 .color(palette.dim_text),
         );
@@ -1610,13 +1632,18 @@ mod tests {
                 servers: &[],
                 home: Path::new("/home/test"),
                 keys_changed: 0,
-                lang: Language::English,
+                lang: Language::EnglishFuturama,
                 palette: &palette,
             };
 
             assert_eq!(listed_features(&view), vec![SettingsFeature::Hermes]);
             let query = typed_query.to_lowercase();
             assert!(feature_name_matches(
+                SettingsFeature::Hermes,
+                &query,
+                Language::EnglishFuturama
+            ));
+            assert!(!feature_name_matches(
                 SettingsFeature::Hermes,
                 &query,
                 Language::English

@@ -46,10 +46,16 @@ pub const SIZE_LIMIT: u64 = 1024 * 1024;
 pub struct Config {
     #[serde(default)]
     pub version: Version,
+    /// The `lang` entry as written; `load` checks it into `lang`.
+    #[serde(default, rename = "lang")]
+    pub lang_entry: Option<Spanned<String>>,
     /// The language the session starts in; F9 switches it for the session
     /// only, nothing is written back.
-    #[serde(default)]
+    #[serde(skip)]
     pub lang: Option<Language>,
+    /// Set when `lang` names no known language; English is used then.
+    #[serde(skip)]
+    pub language_warning: Option<LanguageWarning>,
     #[serde(default)]
     pub open: OpenPrograms,
     /// The `[keys]` section as written; `load` turns it into `keymap`.
@@ -313,6 +319,14 @@ pub struct VscodeWarning {
     pub reason: String,
 }
 
+/// The `lang` entry names a language that does not exist.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LanguageWarning {
+    pub path: PathBuf,
+    pub line: Option<usize>,
+    pub code: String,
+}
+
 /// One line of `[theme]`: a role (or `preset`) and the text written for it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThemeEntry {
@@ -457,19 +471,6 @@ impl<'de> Deserialize<'de> for Version {
         } else {
             Ok(Self(number))
         }
-    }
-}
-
-impl<'de> Deserialize<'de> for Language {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let code = String::deserialize(deserializer)?;
-        Language::from_code(&code).ok_or_else(|| {
-            let allowed = Language::ALL.map(|lang| format!("\"{}\"", lang.code()));
-            D::Error::custom(format!(
-                "unknown language \"{code}\", use one of {}",
-                allowed.join(", ")
-            ))
-        })
     }
 }
 
@@ -1026,6 +1027,19 @@ fn parse_config(source: &str, path: &Path, home: Option<&Path>) -> Result<Config
                 .and_then(|span| line_at(source.as_bytes(), span.start)),
             reason: err.message().trim().to_owned(),
         })?;
+    if let Some(entry) = &config.lang_entry {
+        match Language::from_code(entry.get_ref()) {
+            Some(language) => config.lang = Some(language),
+            None => {
+                config.lang = Some(Language::default());
+                config.language_warning = Some(LanguageWarning {
+                    path: path.to_path_buf(),
+                    line: line_at(source.as_bytes(), entry.span().start),
+                    code: entry.get_ref().clone(),
+                });
+            }
+        }
+    }
     // Not part of the parse: a key that clashes with another is only known
     // once all of `[keys]` is there. It fails the whole file like any other
     // error, so `[open]` is not half applied next to a rejected keymap.
@@ -2473,11 +2487,43 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_language_names_its_line_and_the_allowed_values() {
-        let (line, reason) = error_line("version = 1\nlang = \"fr\"\n");
-        assert_eq!(line, Some(2));
-        assert!(reason.contains("\"fr\""), "{reason}");
-        assert!(reason.contains("\"en\", \"de\""), "{reason}");
+    fn the_futurama_variants_are_read() {
+        assert_eq!(
+            load_text("lang = \"en-futurama\"\n").lang,
+            Some(Language::EnglishFuturama)
+        );
+        assert_eq!(
+            load_text("lang = \"de-futurama\"\n").lang,
+            Some(Language::GermanFuturama)
+        );
+        assert_eq!(load_text("lang = \"de\"\n").language_warning, None);
+    }
+
+    #[test]
+    fn a_version_one_file_of_an_earlier_release_keeps_its_language() {
+        let config = load_text("version = 1\nlang = \"en\"\n");
+        assert_eq!(config.lang, Some(Language::English));
+        assert_eq!(config.language_warning, None);
+    }
+
+    #[test]
+    fn an_unknown_language_loads_with_english_and_a_warning_at_its_line() {
+        let config = load_text("version = 1\nlang = \"fr\"\n");
+        assert_eq!(config.lang, Some(Language::English));
+        let warning = config.language_warning.unwrap();
+        assert_eq!(warning.line, Some(2));
+        assert_eq!(warning.code, "fr");
+    }
+
+    #[test]
+    fn the_futurama_language_is_written_and_read_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write(&dir, b"# mine\nlang = \"en\"\n");
+        write_language(&path, Language::GermanFuturama).unwrap();
+        assert!(std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("lang = \"de-futurama\""));
+        assert_eq!(load(&path).unwrap().lang, Some(Language::GermanFuturama));
     }
 
     #[test]
@@ -3647,11 +3693,7 @@ mod tests {
     fn a_config_that_does_not_load_is_not_overwritten() {
         let folders = setup_folders();
         let path = folders.base.path().join("config.toml");
-        for broken in [
-            "[open\nview = [\"viewer\"]\n",
-            "lang = \"xx\"\n",
-            "colour = 1\n",
-        ] {
+        for broken in ["[open\nview = [\"viewer\"]\n", "lang = 5\n", "colour = 1\n"] {
             std::fs::write(&path, broken).unwrap();
             let result = write_filing_locations_with_home(&path, &one_of_each(&folders), None);
             assert!(
