@@ -7,8 +7,8 @@ use chrono::{TimeZone as _, Utc};
 use tempfile::TempDir;
 
 use crate::{
-    ContentHash, DocumentSource, InMemoryKeyStore, Index, NewDocument, RuleSpec, TaxContext,
-    TextMatch,
+    Condition, ConditionKind, ContentHash, DocumentSource, InMemoryKeyStore, Index, NewDocument,
+    RuleConditions, RuleSpec, TaxContext,
 };
 
 /// An encrypted index in a temporary directory that lives as long as the guard.
@@ -37,8 +37,10 @@ pub fn new_document(seed: u8) -> NewDocument {
 
 pub fn rule_spec() -> RuleSpec {
     RuleSpec {
-        match_text: Some(TextMatch::Contains("Invoice".to_owned())),
-        match_sender: Some("Company A".to_owned()),
+        conditions: RuleConditions::all_of(vec![
+            Condition::new(ConditionKind::Substring, "Invoice"),
+            Condition::new(ConditionKind::Sender, "Company A"),
+        ]),
         extract_number: Some(r"No\. (\d+)".to_owned()),
         extract_date: None,
         extract_amount: None,

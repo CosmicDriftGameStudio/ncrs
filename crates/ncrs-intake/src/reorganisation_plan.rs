@@ -109,9 +109,9 @@ mod tests {
 
     use chrono::{NaiveDate, TimeZone as _, Utc};
     use ncrs_index::{
-        ConflictReason, ContentHash, DocumentFields, DocumentId, DocumentSource, FieldOrigin,
-        FileStamp, Finding, FindingKind, NewDocument, NoActionReason, PlanItem, PlanOutcome,
-        RuleEvidence, RuleSpec, TaxContext, TextMatch,
+        Condition, ConditionKind, ConflictReason, ContentHash, DocumentFields, DocumentId,
+        DocumentSource, FieldOrigin, FileStamp, Finding, FindingKind, NewDocument, NoActionReason,
+        PlanItem, PlanOutcome, RuleConditions, RuleEvidence, RuleSpec, TaxContext,
     };
     use tempfile::TempDir;
 
@@ -139,8 +139,11 @@ mod tests {
         confirmed: bool,
     ) -> RuleSpec {
         RuleSpec {
-            match_text: Some(TextMatch::Contains(phrase.to_owned())),
-            match_sender: sender.map(str::to_owned),
+            conditions: RuleConditions::all_of(
+                std::iter::once(Condition::new(ConditionKind::Substring, phrase))
+                    .chain(sender.map(|name| Condition::new(ConditionKind::Sender, name)))
+                    .collect(),
+            ),
             extract_number: None,
             extract_date: None,
             extract_amount: None,

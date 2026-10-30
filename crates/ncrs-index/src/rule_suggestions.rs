@@ -3,7 +3,7 @@ use rusqlite::{params, OptionalExtension as _};
 
 use crate::error::IndexError;
 use crate::index::Index;
-use crate::model::{Rule, RuleEvidence, RuleId, RuleSpec, RuleSuggestion, TextMatch};
+use crate::model::{ConditionKind, Rule, RuleEvidence, RuleId, RuleSpec, RuleSuggestion};
 
 impl Index {
     /// Stores a rule that was suggested from the archive. It is always stored
@@ -16,12 +16,13 @@ impl Index {
         spec: &RuleSpec,
         evidence: RuleEvidence,
     ) -> Result<RuleSuggestion, IndexError> {
-        let existing = match &spec.match_text {
-            Some(TextMatch::Contains(text)) => self.same_condition_and_target(spec, text)?,
-            Some(TextMatch::Regex(_)) | None => None,
+        let single_text = spec.conditions.single_text();
+        let existing = match single_text {
+            Some(text) => self.same_condition_and_target(spec, text)?,
+            None => None,
         };
-        let discarded = match &spec.match_text {
-            Some(TextMatch::Contains(text)) if existing.is_none() => {
+        let discarded = match single_text {
+            Some(text) if existing.is_none() => {
                 self.was_discarded(text, &spec.kind, &spec.filing_pattern)?
             }
             _ => false,
@@ -103,7 +104,7 @@ impl Index {
             ..edited.clone()
         };
         self.update_rule(id, &confirmed)?;
-        let changed = rule.spec.match_text != confirmed.match_text
+        let changed = rule.spec.conditions != confirmed.conditions
             || rule.spec.kind != confirmed.kind
             || rule.spec.filing_pattern != confirmed.filing_pattern;
         if changed {
@@ -128,7 +129,7 @@ impl Index {
 
     /// `false` when the rule has no text condition to remember.
     fn remember_discarded(&self, spec: &RuleSpec) -> Result<bool, IndexError> {
-        let Some(TextMatch::Contains(text)) = &spec.match_text else {
+        let Some(text) = spec.conditions.single_text() else {
             return Ok(false);
         };
         self.connection().execute(
@@ -161,10 +162,17 @@ impl Index {
             .query_row(
                 "SELECT r.id, r.confirmed FROM rule r
                  JOIN document_kind k ON k.id = r.kind_id
-                 WHERE lower(r.match_text) = lower(?1) AND r.match_text_is_regex = 0
-                     AND r.match_sender_id IS NULL AND k.name = ?2 AND r.filing_pattern = ?3
+                 JOIN rule_condition c ON c.rule_id = r.id
+                 WHERE (SELECT count(*) FROM rule_condition WHERE rule_id = r.id) = 1
+                     AND c.negated = 0 AND c.kind = ?4 AND lower(c.value) = lower(?1)
+                     AND k.name = ?2 AND r.filing_pattern = ?3
                  ORDER BY r.confirmed DESC, r.id LIMIT 1",
-                params![text, spec.kind, spec.filing_pattern],
+                params![
+                    text,
+                    spec.kind,
+                    spec.filing_pattern,
+                    ConditionKind::Substring.as_str()
+                ],
                 |row| Ok((RuleId::new(row.get(0)?), row.get(1)?)),
             )
             .optional()?;
@@ -197,12 +205,16 @@ impl Index {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+    use crate::model::{Condition, RuleConditions};
     use crate::test_support::{encrypted_index, rule_spec};
+
+    fn text_condition(text: &str) -> RuleConditions {
+        RuleConditions::all_of(vec![Condition::new(ConditionKind::Substring, text)])
+    }
 
     fn suggestion() -> RuleSpec {
         RuleSpec {
-            match_text: Some(TextMatch::Contains("company a ltd".to_owned())),
-            match_sender: None,
+            conditions: text_condition("company a ltd"),
             confirmed: true,
             ..rule_spec()
         }
@@ -277,7 +289,7 @@ mod tests {
         assert!(index.rules().unwrap().is_empty());
         assert_eq!(index.rule_evidence(id).unwrap(), None);
         let shouting = RuleSpec {
-            match_text: Some(TextMatch::Contains("COMPANY A LTD".to_owned())),
+            conditions: text_condition("COMPANY A LTD"),
             ..suggestion()
         };
         assert_eq!(
@@ -323,12 +335,12 @@ mod tests {
         index.create_rule(&suggestion()).unwrap();
         let by_hand = RuleSpec {
             confirmed: false,
-            match_text: Some(TextMatch::Contains("agency b".to_owned())),
+            conditions: text_condition("agency b"),
             ..suggestion()
         };
         index.create_rule(&by_hand).unwrap();
         let other = RuleSpec {
-            match_text: Some(TextMatch::Contains("company c".to_owned())),
+            conditions: text_condition("company c"),
             ..suggestion()
         };
         let RuleSuggestion::Created(id) = index.suggest_rule(&other, evidence(4, 1)).unwrap()
@@ -358,7 +370,7 @@ mod tests {
 
         let rule = index.rule(id).unwrap().unwrap();
         assert!(rule.spec.confirmed);
-        assert_eq!(rule.spec.match_text, suggestion().match_text);
+        assert_eq!(rule.spec.conditions, suggestion().conditions);
         assert!(index.suggested_rules().unwrap().is_empty());
         assert!(!index.confirm_suggested_rule(id, &suggestion()).unwrap());
     }
@@ -372,7 +384,7 @@ mod tests {
             panic!("not created");
         };
         let edited = RuleSpec {
-            match_text: Some(TextMatch::Contains("company a".to_owned())),
+            conditions: text_condition("company a"),
             kind: "Letter".to_owned(),
             filing_pattern: "{year}/Letters".to_owned(),
             ..suggestion()
@@ -383,7 +395,7 @@ mod tests {
 
         let rule = index.rule(id).unwrap().unwrap();
         assert!(rule.spec.confirmed);
-        assert_eq!(rule.spec.match_text, edited.match_text);
+        assert_eq!(rule.spec.conditions, edited.conditions);
         assert_eq!(rule.spec.kind, "Letter");
         assert_eq!(rule.spec.filing_pattern, "{year}/Letters");
         assert_eq!(again, RuleSuggestion::Discarded);

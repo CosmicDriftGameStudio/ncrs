@@ -12,7 +12,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use ncrs_index::{Index, IndexError, RuleEvidence, RuleId, RuleSpec, TextMatch};
+use ncrs_index::{Index, IndexError, RuleEvidence, RuleId, RuleSpec};
 use ncrs_intake::{
     contains_condition_holds, learn_archive, suggest_rules, ArchiveDocument, ArchiveText,
 };
@@ -160,10 +160,7 @@ fn archive_entries(index: &Index, root: &Path) -> Result<Vec<ArchiveEntry>, Inde
 /// The condition of a suggestion as text; `None` for a rule that has none or
 /// a pattern as its condition, which the suggestions never have.
 pub fn condition_text(spec: &RuleSpec) -> Option<&str> {
-    match &spec.match_text {
-        Some(TextMatch::Contains(text)) => Some(text),
-        Some(TextMatch::Regex(_)) | None => None,
-    }
+    spec.conditions.single_text()
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
@@ -177,7 +174,10 @@ pub fn condition_text(spec: &RuleSpec) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use chrono::{TimeZone as _, Utc};
-    use ncrs_index::{ContentHash, DocumentSource, NewDocument, RuleSuggestion};
+    use ncrs_index::{
+        Condition, ConditionKind, ContentHash, DocumentSource, NewDocument, RuleConditions,
+        RuleSuggestion,
+    };
     use tempfile::TempDir;
 
     use super::*;
@@ -302,7 +302,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(rule.spec.confirmed);
-        assert_eq!(rule.spec.match_text, suggestion.spec.match_text);
+        assert_eq!(rule.spec.conditions, suggestion.spec.conditions);
     }
 
     #[test]
@@ -311,7 +311,10 @@ mod tests {
         let access = archive.access();
         let suggestion = company_a(&access.analyse().unwrap()).unwrap().clone();
         let edited = RuleSpec {
-            match_text: Some(TextMatch::Contains("company a".to_owned())),
+            conditions: RuleConditions::all_of(vec![Condition::new(
+                ConditionKind::Substring,
+                "company a",
+            )]),
             kind: "Policy".to_owned(),
             filing_pattern: "Policies/{date}_{name}".to_owned(),
             ..suggestion.spec.clone()
@@ -328,7 +331,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(rule.spec.confirmed);
-        assert_eq!(rule.spec.match_text, edited.match_text);
+        assert_eq!(rule.spec.conditions, edited.conditions);
         assert_eq!(rule.spec.kind, "Policy");
         assert_eq!(rule.spec.filing_pattern, "Policies/{date}_{name}");
         assert!(

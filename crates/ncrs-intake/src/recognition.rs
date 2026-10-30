@@ -11,8 +11,8 @@ use std::fs;
 
 use chrono::NaiveDate;
 use ncrs_index::{
-    Amount, Currency, DocumentFields, Field, Index, ReviewReason, Rule, RuleId, RuleSpec,
-    TaxContext, TextMatch,
+    Amount, Condition, ConditionKind, Currency, DocumentFields, Field, Index, ReviewReason, Rule,
+    RuleConditions, RuleId, RuleSpec, TaxContext,
 };
 use tempfile::TempDir;
 
@@ -128,8 +128,7 @@ fn contains_rule(
     filing_pattern: &str,
 ) -> RuleSpec {
     RuleSpec {
-        match_text: Some(TextMatch::Contains(phrase.to_owned())),
-        match_sender: None,
+        conditions: RuleConditions::all_of(vec![Condition::new(ConditionKind::Substring, phrase)]),
         extract_number: None,
         extract_date: None,
         extract_amount: None,
@@ -142,14 +141,17 @@ fn contains_rule(
 }
 
 fn german_invoice(match_sender: Option<&str>, filing_pattern: &str) -> RuleSpec {
+    let mut spec = contains_rule("rechnung", "Rechnung", TaxContext::Company, filing_pattern);
+    spec.conditions
+        .list
+        .extend(match_sender.map(|sender| Condition::new(ConditionKind::Sender, sender)));
     RuleSpec {
-        match_sender: match_sender.map(str::to_owned),
         extract_number: Some(r"Rechnungsnummer:?\s*([A-Z0-9-]+)".to_owned()),
         extract_date: Some(r"(?:Rechnungsdatum|Datum):?\s*(\d{2}\.\d{2}\.\d{4})".to_owned()),
         extract_amount: Some(
             r"(?:Gesamtbetrag|Rechnungsbetrag):?\s*([\d.,]+)\s*(?P<currency>EUR)".to_owned(),
         ),
-        ..contains_rule("rechnung", "Rechnung", TaxContext::Company, filing_pattern)
+        ..spec
     }
 }
 

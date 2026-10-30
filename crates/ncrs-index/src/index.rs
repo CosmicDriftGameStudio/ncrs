@@ -929,6 +929,76 @@ mod tests {
     }
 
     #[test]
+    fn a_version_10_database_turns_its_rule_columns_into_conditions() {
+        use crate::model::{
+            Combinator, Condition, ConditionKind, DocumentId, FieldOrigin, RuleConditions, RuleId,
+        };
+
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let old = Index::create_plain_with_migrations(&path, &MIGRATIONS[..10]).unwrap();
+        assert_eq!(user_version(&old), 10);
+        old.conn
+            .execute_batch(
+                "INSERT INTO document_kind (id, name, name_key) VALUES (1, 'Invoice', 'invoice');
+                 INSERT INTO sender (id, name, name_key) VALUES (1, 'Company A', 'company a');
+                 INSERT INTO tag (id, name, name_key) VALUES (1, 'services', 'services');
+                 INSERT INTO rule (id, match_text, match_text_is_regex, match_sender_id,
+                     kind_id, tax_context, filing_pattern, confirmed)
+                 VALUES (3, 'Invoice', 0, NULL, 1, 'company', '{year}', 1),
+                        (5, 'Invoice \\d+', 1, NULL, 1, 'private', '{year}', 0),
+                        (8, NULL, 0, 1, 1, 'none', '{sender}', 1);
+                 INSERT INTO rule_tag (rule_id, tag_id) VALUES (8, 1);
+                 INSERT INTO rule_evidence
+                     (rule_id, matching_in_folder, folder_documents, matching_elsewhere, updated_at)
+                 VALUES (8, 4, 5, 1, 1700000000);
+                 INSERT INTO document (id, hash, path, source, received_at, status)
+                 VALUES (1, zeroblob(32), 'inbox/a.pdf', 'inbox', 1700000000, 'planned');
+                 INSERT INTO document_field_origin (document_id, field, origin, rule_id)
+                 VALUES (1, 'kind', 'rule', 8);",
+            )
+            .unwrap();
+        drop(old);
+
+        let index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
+
+        assert_eq!(user_version(&index), latest_version());
+        let rules = index.rules().unwrap();
+        let ids: Vec<_> = rules.iter().map(|rule| rule.id).collect();
+        assert_eq!(ids, [RuleId::new(3), RuleId::new(5), RuleId::new(8)]);
+        let conditions: Vec<_> = rules.iter().map(|rule| &rule.spec.conditions).collect();
+        assert_eq!(
+            conditions,
+            [
+                &RuleConditions::all_of(vec![Condition::new(ConditionKind::Substring, "Invoice")]),
+                &RuleConditions::all_of(vec![Condition::new(ConditionKind::Regex, "Invoice \\d+")]),
+                &RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, "Company A")]),
+            ]
+        );
+        assert!(rules
+            .iter()
+            .all(|rule| rule.spec.conditions.combinator == Combinator::AllOf));
+        assert!(rules[0].spec.confirmed && !rules[1].spec.confirmed);
+        let sender_rule = index.rule(RuleId::new(8)).unwrap().unwrap();
+        assert_eq!(sender_rule.spec.tags.len(), 1);
+        assert!(sender_rule.spec.tags.contains("services"));
+        assert!(index.rule_evidence(RuleId::new(8)).unwrap().is_some());
+        let origins = index.field_origins(DocumentId::new(1)).unwrap();
+        assert_eq!(
+            origins.of(crate::model::Field::Kind),
+            FieldOrigin::Rule(Some(RuleId::new(8)))
+        );
+        let violations = index
+            .conn
+            .prepare("PRAGMA foreign_key_check")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .count();
+        assert_eq!(violations, 0);
+    }
+
+    #[test]
     fn empty_a1_database_gains_the_document_schema_on_open() {
         let dir = TempDir::new().unwrap();
         let path = db_in(&dir);
@@ -1146,7 +1216,7 @@ mod tests {
         receipt: &crate::model::Document,
         notice: &crate::model::Document,
     ) {
-        use crate::model::{ReviewReason, TextMatch};
+        use crate::model::{Condition, ConditionKind, ReviewReason, RuleConditions};
 
         assert_eq!(index.search_text("hosting", 10).unwrap(), [invoice.id]);
         assert_eq!(index.search_text("chair", 10).unwrap(), [receipt.id]);
@@ -1157,10 +1227,12 @@ mod tests {
         assert_eq!(rules.len(), 1);
         let rule = &rules[0].spec;
         assert_eq!(
-            rule.match_text,
-            Some(TextMatch::Contains("Invoice".to_owned()))
+            rule.conditions,
+            RuleConditions::all_of(vec![
+                Condition::new(ConditionKind::Substring, "Invoice"),
+                Condition::new(ConditionKind::Sender, "Company A"),
+            ])
         );
-        assert_eq!(rule.match_sender.as_deref(), Some("Company A"));
         assert_eq!(rule.filing_pattern, "{year}/{sender}");
         assert!(rule.confirmed);
 

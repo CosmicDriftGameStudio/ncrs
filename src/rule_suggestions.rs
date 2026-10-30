@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{RuleId, RuleSpec, TextMatch};
+use ncrs_index::{Condition, ConditionKind, RuleConditions, RuleId, RuleSpec};
 use ncrs_intake::pattern_is_valid;
 
 use crate::list_window::ListWindow;
@@ -256,7 +256,10 @@ impl RuleSuggestions {
             return None;
         }
         let spec = RuleSpec {
-            match_text: Some(TextMatch::Contains(condition)),
+            conditions: RuleConditions::all_of(vec![Condition::new(
+                ConditionKind::Substring,
+                condition,
+            )]),
             kind,
             filing_pattern: pattern,
             ..row.spec.clone()
@@ -305,8 +308,10 @@ pub mod tests {
 
     fn spec(condition: &str, kind: &str) -> RuleSpec {
         RuleSpec {
-            match_text: Some(TextMatch::Contains(condition.to_owned())),
-            match_sender: None,
+            conditions: RuleConditions::all_of(vec![Condition::new(
+                ConditionKind::Substring,
+                condition,
+            )]),
             extract_number: None,
             extract_date: None,
             extract_amount: None,
@@ -426,10 +431,7 @@ pub mod tests {
         let (id, spec) = view.begin_confirm().unwrap();
 
         assert_eq!(id, one);
-        assert_eq!(
-            spec.match_text,
-            Some(TextMatch::Contains("company a ltd".to_owned()))
-        );
+        assert_eq!(spec.conditions.single_text(), Some("company a ltd"));
         assert_eq!(spec.kind, "Insurance");
         assert!(view.is_busy());
         assert_eq!(view.begin_confirm(), None, "one decision at a time");
@@ -445,10 +447,7 @@ pub mod tests {
 
         let (_, spec) = view.begin_confirm().unwrap();
 
-        assert_eq!(
-            spec.match_text,
-            Some(TextMatch::Contains("Company A (Ltd.)".to_owned()))
-        );
+        assert_eq!(spec.conditions.single_text(), Some("Company A (Ltd.)"));
         assert_eq!(spec.kind, "Policy");
         assert_eq!(spec.filing_pattern, "Policies/{year}/{name}");
     }

@@ -260,8 +260,8 @@ mod tests {
     use chrono::Utc;
     use ncrs_ai::FakeProvider;
     use ncrs_index::{
-        ContentHash, DocumentId, DocumentSource, Index, NewDocument, RuleSpec, TaxContext,
-        TextMatch,
+        Condition, ConditionKind, ContentHash, DocumentId, DocumentSource, Index, NewDocument,
+        RuleConditions, RuleSpec, TaxContext,
     };
     use ncrs_intake::{stays_below, Location, TextChain};
     use tempfile::TempDir;
@@ -287,8 +287,10 @@ mod tests {
 
     fn invoice_rule(filing_pattern: &str, confirmed: bool) -> RuleSpec {
         RuleSpec {
-            match_text: Some(TextMatch::Contains("company a".to_owned())),
-            match_sender: None,
+            conditions: RuleConditions::all_of(vec![Condition::new(
+                ConditionKind::Substring,
+                "company a",
+            )]),
             extract_number: Some(r"Invoice (\d+)".to_owned()),
             extract_date: None,
             extract_amount: None,

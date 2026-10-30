@@ -221,8 +221,9 @@ pub mod tests {
 
     use chrono::{NaiveDate, TimeZone as _, Utc};
     use ncrs_index::{
-        ContentHash, DocumentFields, DocumentId, DocumentSource, FieldOrigin, FileStamp,
-        NewDocument, PlanOutcome, RuleEvidence, RuleSpec, TaxContext, TextMatch,
+        Condition, ConditionKind, ContentHash, DocumentFields, DocumentId, DocumentSource,
+        FieldOrigin, FileStamp, NewDocument, PlanOutcome, RuleConditions, RuleEvidence, RuleSpec,
+        TaxContext,
     };
     use tempfile::TempDir;
 
@@ -239,8 +240,10 @@ pub mod tests {
 
     fn rule_spec(phrase: &str, kind: &str, pattern: &str, confirmed: bool) -> RuleSpec {
         RuleSpec {
-            match_text: Some(TextMatch::Contains(phrase.to_owned())),
-            match_sender: None,
+            conditions: RuleConditions::all_of(vec![Condition::new(
+                ConditionKind::Substring,
+                phrase,
+            )]),
             extract_number: None,
             extract_date: None,
             extract_amount: None,
