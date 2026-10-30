@@ -19,7 +19,7 @@ mod testing;
 
 pub use consent::{ConsentLedger, NoConsentGiven, OutgoingPreview};
 pub use contract::{
-    output_schema, parse_reply, ExtractedField, Extraction, ExtractionRequest, Provider,
+    output_schema, parse_reply, ExtractedField, Extraction, ExtractionRequest, Provider, CONFIDENT,
     MAX_VALUE_CHARS,
 };
 pub use error::{AiError, EndpointProblem};

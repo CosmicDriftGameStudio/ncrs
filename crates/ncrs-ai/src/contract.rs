@@ -11,6 +11,11 @@ use crate::json::Json;
 /// The longest value kept from a reply, in characters.
 pub const MAX_VALUE_CHARS: usize = 200;
 
+/// A field the provider is at least this sure about is written. Below it the
+/// value is not stored and a person decides: a wrong sender would file the
+/// document in the wrong folder.
+pub const CONFIDENT: f32 = 0.8;
+
 /// What the provider is asked. Only the fields the rules left open are
 /// requested.
 #[derive(Debug, Clone, PartialEq, Eq)]

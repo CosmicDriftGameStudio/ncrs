@@ -1,0 +1,14 @@
+sender: Finanzamt Musterstadt
+kind: Steuerbescheid
+tax_context: company
+date: 2026-09-02
+number: 000/111/22222
+amount: 512000 EUR
+---
+Finanzamt Musterstadt
+Amtsstrasse 1, 00000 Musterstadt
+
+Körperschaftsteuerbescheid 2025 für die Brückenwerk Stahlbau GmbH & Co. KG
+Bescheid vom 02.09.2026
+Aktenzeichen: 000/111/22222
+Nachzahlung: 5.120,00 EUR

@@ -1,0 +1,13 @@
+sender: Federkiel Bürobedarf e.K.
+kind: Lieferschein
+tax_context: company
+date: 2026-03-11
+number: LS-2201
+amount:
+---
+Federkiel Bürobedarf e.K.
+Schreibgasse 7, 00000 Musterstadt
+
+Lieferschein LS-2201
+Lieferdatum 2026-03-11
+Büromaterial, 3 Kartons

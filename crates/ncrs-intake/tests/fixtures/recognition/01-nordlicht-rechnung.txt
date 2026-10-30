@@ -1,0 +1,16 @@
+sender: Nordlicht Energie GmbH
+kind: Rechnung
+tax_context: company
+date: 2026-01-15
+number: RE-2026-0042
+amount: 11900 EUR
+---
+Nordlicht Energie GmbH
+Musterweg 1, 00000 Musterstadt
+IBAN DE00 0000 0000 0000 0000 00
+
+Rechnung
+Rechnungsnummer: RE-2026-0042
+Rechnungsdatum: 15.01.2026
+Leistung: Strom Januar 2026
+Gesamtbetrag: 119,00 EUR

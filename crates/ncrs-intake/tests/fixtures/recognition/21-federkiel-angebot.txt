@@ -1,0 +1,15 @@
+sender: Federkiel Bürobedarf e.K.
+kind: Angebot
+tax_context: company
+date: 2026-05-10
+number: AN-4410
+amount: 48000 EUR
+---
+Federkiel Bürobedarf e.K.
+Schreibgasse 7, 00000 Musterstadt
+
+Angebot
+Angebotsnummer: AN-4410
+Datum: 10.05.2026
+Büromöbel, 4 Stück
+Angebotssumme: 480,00 EUR

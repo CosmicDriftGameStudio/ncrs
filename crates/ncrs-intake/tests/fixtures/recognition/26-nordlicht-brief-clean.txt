@@ -1,0 +1,18 @@
+sender: Nordlicht Energie GmbH
+kind: Brief
+tax_context: private
+date: 2026-02-20
+number:
+amount:
+---
+Nordlicht Energie GmbH
+Musterweg 1, 00000 Musterstadt
+Datum: 20.02.2026
+
+Sehr geehrte Frau Beispiel,
+
+Ihr Abschlag ändert sich zum 1. April. Den neuen Betrag finden Sie in
+Ihrem Kundenkonto.
+
+Mit freundlichen Grüßen
+Nordlicht Energie GmbH

@@ -35,6 +35,7 @@ llama-cpp-sys-2 = { version = "=0.1.160", default-features = false, optional = t
 
 [dev-dependencies]
 tempfile = "3.27"
+ncrs-intake = { path = "../ncrs-intake", version = "0.0.0", features = ["test-support"] }
 
 [features]
 # FakeProvider, for the tests of crates that run a provider.

@@ -1,0 +1,18 @@
+sender: Apfelbaum Verlag GmbH
+kind: Letter
+tax_context: private
+date: 2026-08-03
+number:
+amount:
+---
+Apfelbaum Verlag GmbH
+Lesegasse 1, 00000 Musterstadt
+Date: 2026-08-03
+
+Dear Ms Example,
+
+thank you for your message. Your subscription now runs until the end of
+the year.
+
+Kind regards
+Apfelbaum Verlag

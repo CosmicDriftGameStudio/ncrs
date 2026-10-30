@@ -1,0 +1,17 @@
+sender: Apfelbaum Verlag GmbH
+kind: Kündigung
+tax_context: none
+date: 2026-06-15
+number:
+amount:
+---
+Apfelbaum Verlag GmbH
+Lesegasse 1, 00000 Musterstadt
+Datum: 15.06.2026
+
+Sehr geehrte Frau Beispiel,
+
+wir bestätigen die Kündigung Ihres Abonnements zum Ende des Jahres.
+
+Mit freundlichen Grüßen
+Apfelbaum Verlag

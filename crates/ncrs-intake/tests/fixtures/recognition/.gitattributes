@@ -1,0 +1,2 @@
+# The parser and the measured numbers expect the same bytes on every platform.
+*.txt text eol=lf

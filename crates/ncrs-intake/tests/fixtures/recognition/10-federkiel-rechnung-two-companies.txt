@@ -1,0 +1,16 @@
+sender: Federkiel Bürobedarf e.K.
+kind: Rechnung
+tax_context: company
+date: 2026-03-12
+number: RE-5501
+amount: 7560 EUR
+---
+Federkiel Bürobedarf e.K.
+Schreibgasse 7, 00000 Musterstadt
+
+Rechnung
+Rechnungsnummer: RE-5501
+Rechnungsdatum: 12.03.2026
+Lieferung an: Tannenhof Catering UG, Musterweg 9
+Büromaterial
+Gesamtbetrag: 75,60 EUR

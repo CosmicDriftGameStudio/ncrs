@@ -1,0 +1,15 @@
+sender: Tannenhof Catering UG
+kind: Rechnung
+tax_context: company
+date: 2026-05-08
+number: TC-310
+amount: 59500 EUR
+---
+Tannenhof Catering UG
+Waldstrasse 4, 00000 Musterstadt
+
+Rechnung
+Rechnungsnummer: TC-310
+Rechnungsdatum: 08.05.2026
+Catering für die Jahresversammlung der Morgenrot Hausverwaltung GmbH
+Gesamtbetrag: 595,00 EUR
