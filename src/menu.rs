@@ -5,7 +5,7 @@
 use iced::keyboard::{key, Key};
 
 use crate::commands::{self, Command, CommandGroup};
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use crate::keymap::{Binding, KeyAction, KeyScope, Keymap};
 use crate::messages::Message;
 
@@ -67,9 +67,9 @@ impl MenuModel {
 }
 
 /// The plain name, then the theme name in parentheses where there is one.
-fn titled(lang: Language, label: Msg, theme_name: Option<Msg>) -> String {
-    match theme_name {
-        Some(theme) => format!("{} ({})", lang.text(label), lang.text(theme)),
+fn titled(lang: Language, label: Msg, theme_name: Option<FuturamaName>) -> String {
+    match theme_name.and_then(|name| lang.futurama_name(name)) {
+        Some(theme) => format!("{} ({})", lang.text(label), theme),
         None => lang.text(label).to_owned(),
     }
 }
@@ -206,7 +206,7 @@ mod tests {
 
     #[test]
     fn about_leads_the_app_menu_and_is_a_help_command() {
-        let model = MenuModel::build(Language::English, &Keymap::default());
+        let model = MenuModel::build(Language::EnglishFuturama, &Keymap::default());
         assert_eq!(
             model.app.first().map(|item| item.action),
             Some(KeyAction::About)
@@ -237,7 +237,7 @@ mod tests {
 
     #[test]
     fn titles_are_plain_with_the_theme_name_after_them() {
-        let english = MenuModel::build(Language::English, &Keymap::default());
+        let english = MenuModel::build(Language::EnglishFuturama, &Keymap::default());
         assert_eq!(
             item(&english, KeyAction::Search).title,
             "Search in files (Smell-o-scope)"
@@ -249,12 +249,23 @@ mod tests {
             .find(|menu| menu.group == CommandGroup::Hermes)
             .unwrap();
         assert_eq!(hermes.title, "Filing (Hermes)");
-        let german = MenuModel::build(Language::German, &Keymap::default());
+        let german = MenuModel::build(Language::GermanFuturama, &Keymap::default());
         assert!(item(&german, KeyAction::Search).title.ends_with(')'));
         assert_ne!(
             item(&german, KeyAction::Copy).title,
             item(&english, KeyAction::Copy).title
         );
+    }
+
+    #[test]
+    fn the_standard_languages_have_titles_without_a_theme_name() {
+        for lang in [Language::English, Language::German] {
+            let model = MenuModel::build(lang, &Keymap::default());
+            assert!(!item(&model, KeyAction::Search).title.contains('('));
+            assert!(model.menus.iter().all(|menu| !menu.title.contains('(')));
+        }
+        let english = MenuModel::build(Language::English, &Keymap::default());
+        assert_eq!(item(&english, KeyAction::Search).title, "Search in files");
     }
 
     #[test]

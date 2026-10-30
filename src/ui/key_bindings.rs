@@ -11,7 +11,7 @@ use super::frame::{self, DialogSize, Frame, PageHint};
 use super::kit::{self, ListView, Tone};
 use super::theme::{font_size, size, spacing};
 use crate::app::fill_template;
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use crate::key_bindings::{KeyBindings, Mode, Notice, Row, VISIBLE_ROWS};
 use crate::keymap::{binding_label, Binding, KeyRefusal, MAX_KEYS_PER_ACTION};
 use crate::messages::{KeyBindingsMessage, Message};
@@ -97,7 +97,7 @@ pub fn view<'a>(
         lang,
         palette,
     )
-    .title_theme(lang.text(Msg::KeyBindingsTitleTheme))
+    .title_theme(lang.futurama_name(FuturamaName::KeyBindingsTitle))
     .on_close(to_dialog(KeyBindingsMessage::Close))
     .buttons(buttons(dialog, lang, palette));
     match dialog.mode() {

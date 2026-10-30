@@ -20,7 +20,7 @@ use super::theme::spacing;
 use crate::app::fill_template;
 use crate::filing_setup::shown_path;
 use crate::filing_work::target_of;
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{HermesFocus, HermesPage, Message, ReviewListMessage};
 use crate::palette::Palette;
 use crate::review_list::{FiledNotice, FormField, Problem, ReviewList, VISIBLE_ROWS};
@@ -126,7 +126,7 @@ pub fn view<'a>(
         lang,
         palette,
     )
-    .title_theme(lang.text(Msg::ActionReviewListTheme))
+    .title_theme(lang.futurama_name(FuturamaName::ActionReviewList))
     .buttons(buttons(state, &guide, lang, palette))
     .sidebar(hermes::nav(HermesPage::Review, badges, lang, palette))
     .on_close(send(ReviewListMessage::Close))

@@ -8,7 +8,7 @@ use iced::{alignment, Element, Length};
 use super::format;
 use super::frame::SIDEBAR_ROOM;
 use super::theme::{self, font_size, size, spacing};
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use ncrs_index::HermesCounts;
 
 use crate::messages::{HermesFocus, HermesPage, Message};
@@ -104,7 +104,12 @@ pub fn nav<'a>(
             .into()
     });
     let heading = row![
-        label(lang.text(Msg::GroupHermesTheme).to_owned(), palette.text),
+        label(
+            lang.futurama_name(FuturamaName::GroupHermes)
+                .unwrap_or_else(|| lang.text(Msg::GroupHermes))
+                .to_owned(),
+            palette.text
+        ),
         label(lang.text(Msg::HermesBeta).to_owned(), palette.dim_text),
     ]
     .spacing(spacing::S)

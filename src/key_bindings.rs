@@ -116,7 +116,7 @@ fn row_of(action: KeyAction, lang: Language, keymap: &Keymap) -> Row {
         label: action_label(action).map_or(action.name(), |label| lang.text(label)),
         theme_name: command
             .and_then(|found| found.theme_name)
-            .map(|theme_name| lang.text(theme_name)),
+            .and_then(|theme_name| lang.futurama_name(theme_name)),
         // The cursor keys move in the panel, which is where Go's commands lead.
         group: command.map_or(CommandGroup::Go, |found| found.group),
         keys: keymap.bindings_of(action).cloned().collect(),
@@ -607,6 +607,22 @@ mod tests {
         // The Finder's trash command is the other action only a Mac lists.
         let hidden = if cfg!(target_os = "macos") { 1 } else { 2 };
         assert_eq!(dialog.rows().len(), KeyAction::ALL.len() - hidden);
+    }
+
+    #[test]
+    fn only_the_futurama_variants_show_theme_names() {
+        let keymap = Keymap::built_in();
+        for lang in [Language::English, Language::German] {
+            let dialog = KeyBindings::new(lang, &keymap);
+            assert!(dialog.rows().iter().all(|row| row.theme_name.is_none()));
+        }
+        let dialog = KeyBindings::new(Language::EnglishFuturama, &keymap);
+        let search = dialog
+            .rows()
+            .iter()
+            .find(|row| row.action == KeyAction::Search)
+            .unwrap();
+        assert_eq!(search.theme_name, Some("Smell-o-scope"));
     }
 
     #[test]

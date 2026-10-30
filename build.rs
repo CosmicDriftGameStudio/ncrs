@@ -206,7 +206,7 @@ fn variant_name(key: &str) -> String {
         .join("")
 }
 
-fn generate_with(entries: &[Entry], lang: &str, value: fn(&Entry) -> &str) -> String {
+fn generate_with(entries: &[&Entry], lang: &str, value: fn(&Entry) -> &str) -> String {
     let mut out = String::new();
     // Plain comments, not doc comments: these files are pulled in with
     // `include!`, where `//!` is not allowed.
@@ -305,6 +305,61 @@ fn generate_keys(entries: &[Entry]) -> String {
     out
 }
 
+const FUTURAMA_SUFFIX: &str = ".theme";
+
+fn is_futurama(entry: &Entry) -> bool {
+    entry.key.ends_with(FUTURAMA_SUFFIX)
+}
+
+fn futurama_variant(entry: &Entry) -> String {
+    variant_name(entry.key.trim_end_matches(FUTURAMA_SUFFIX))
+}
+
+/// The Futurama names get their own enum, so `Language::text(Msg)` cannot
+/// render one: only `Language::futurama_name` hands them out.
+fn generate_futurama(entries: &[Entry]) -> String {
+    let mut out = String::new();
+    out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n");
+    out.push_str("pub enum FuturamaName {\n");
+    for entry in entries {
+        out.push_str(&format!("    {},\n", futurama_variant(entry)));
+    }
+    out.push_str("}\n\n");
+    out.push_str("/// Every Futurama name, for the tests and the translation dump.\n");
+    out.push_str("#[allow(dead_code)]\n");
+    out.push_str("pub const ALL_FUTURAMA_NAMES: &[FuturamaName] = &[\n");
+    for entry in entries {
+        out.push_str(&format!("    FuturamaName::{},\n", futurama_variant(entry)));
+    }
+    out.push_str("];\n\n");
+    let arms = |value: fn(&Entry) -> String| {
+        entries
+            .iter()
+            .map(|entry| {
+                format!(
+                    "        FuturamaName::{} => {},\n",
+                    futurama_variant(entry),
+                    value(entry)
+                )
+            })
+            .collect::<String>()
+    };
+    let function = |name: &str, body: String| {
+        format!("pub fn {name}(name: FuturamaName) -> &'static str {{\n    match name {{\n{body}    }}\n}}\n\n")
+    };
+    out.push_str(&function(
+        "futurama_en",
+        arms(|e| format!("en::{}", const_name(&e.key))),
+    ));
+    out.push_str(&function(
+        "futurama_de",
+        arms(|e| format!("de::{}", const_name(&e.key))),
+    ));
+    out.push_str(&function("futurama_key", arms(|e| rust_str(&e.key))));
+    out.push_str(&function("futurama_note", arms(|e| rust_str(&e.context))));
+    out
+}
+
 fn main() {
     let manifest = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
     let out_dir = env::var(OUT_DIR).expect(OUT_DIR);
@@ -312,19 +367,22 @@ fn main() {
 
     let json = fs::read_to_string(&input)
         .unwrap_or_else(|e| panic!("could not read {}: {e}", input.display()));
-    let entries = parse(&json);
+    let parsed = parse(&json);
 
-    if entries.is_empty() {
+    if parsed.is_empty() {
         panic!("{} contained no strings", input.display());
     }
 
-    let keys: Vec<&str> = entries.iter().map(|e| e.key.as_str()).collect();
+    let keys: Vec<&str> = parsed.iter().map(|e| e.key.as_str()).collect();
     let mut sorted = keys.clone();
     sorted.sort_unstable();
     sorted.dedup();
     if sorted.len() != keys.len() {
         panic!("{} contains duplicate keys", input.display());
     }
+
+    let (futurama, entries): (Vec<Entry>, Vec<Entry>) = parsed.into_iter().partition(is_futurama);
+    let all_entries: Vec<&Entry> = entries.iter().chain(futurama.iter()).collect();
 
     let write = |name: &str, content: String| {
         let path = Path::new(&out_dir).join(name);
@@ -334,9 +392,10 @@ fn main() {
 
     write(
         "en.rs",
-        generate_with(&entries, "English (source language)", |e| &e.en),
+        generate_with(&all_entries, "English (source language)", |e| &e.en),
     );
-    write("de.rs", generate_with(&entries, "German", |e| &e.de));
+    write("de.rs", generate_with(&all_entries, "German", |e| &e.de));
+    write("futurama.rs", generate_futurama(&futurama));
     write("lookup.rs", generate_lookup(&entries));
     write("notes.rs", generate_notes(&entries));
     write("enum.rs", generate_enum(&entries));

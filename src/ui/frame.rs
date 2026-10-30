@@ -200,8 +200,8 @@ impl<'a> Frame<'a> {
     }
 
     /// A second name for the title, dimmed after it.
-    pub fn title_theme(mut self, name: impl Into<String>) -> Self {
-        self.title_theme = Some(name.into());
+    pub fn title_theme(mut self, name: Option<&str>) -> Self {
+        self.title_theme = name.map(str::to_owned);
         self
     }
 

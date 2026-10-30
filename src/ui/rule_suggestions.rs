@@ -14,7 +14,7 @@ use super::hermes::{self, Badges};
 use super::kit::{self, dim, error_line, paragraph, section, Columns, Tone};
 use super::theme::spacing;
 use crate::app::fill_template;
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{HermesFocus, HermesPage, Message, RuleSuggestionsMessage};
 use crate::palette::Palette;
 use crate::rule_suggestions::{Edit, Matches, Problem, RuleSuggestions, VISIBLE_ROWS};
@@ -80,7 +80,7 @@ pub fn view<'a>(
         lang,
         palette,
     )
-    .title_theme(lang.text(Msg::ActionRuleSuggestionsTheme))
+    .title_theme(lang.futurama_name(FuturamaName::ActionRuleSuggestions))
     .buttons(buttons(state, lang, palette))
     .sidebar(hermes::nav(
         HermesPage::RuleSuggestions,

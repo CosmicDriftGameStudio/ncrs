@@ -7,7 +7,7 @@ use std::cmp::Ordering;
 use std::ops::Range;
 
 use crate::commands::{self, CommandGroup};
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use crate::keymap::{KeyAction, KeyScope, Keymap};
 use crate::messages::SettingsFeature;
 use crate::ui::settings::SettingsTarget;
@@ -47,7 +47,7 @@ impl PaletteGroup {
         }
     }
 
-    fn theme_name(self) -> Option<Msg> {
+    fn theme_name(self) -> Option<FuturamaName> {
         match self {
             Self::Command(group) => group.theme_name(),
             Self::Settings => None,
@@ -421,7 +421,7 @@ impl CommandPalette {
                     theme_name: candidate
                         .group
                         .theme_name()
-                        .map(|name| self.lang.text(name)),
+                        .and_then(|name| self.lang.futurama_name(name)),
                     beta_mark: candidate.group.beta_mark().map(|name| self.lang.text(name)),
                 }));
             }
@@ -646,7 +646,10 @@ fn entries(scope: KeyScope, lang: Language, keymap: &Keymap) -> Vec<Entry> {
             target: Target::Command(command.action),
             group: PaletteGroup::Command(command.group),
             label: lang.text(command.label).to_owned(),
-            theme_name: command.theme_name.map(|name| lang.text(name).to_owned()),
+            theme_name: command
+                .theme_name
+                .and_then(|name| lang.futurama_name(name))
+                .map(str::to_owned),
             shortcut: keymap.shortcut_label(&command.action.message()),
         })
         .collect()
@@ -718,13 +721,31 @@ mod tests {
 
     #[test]
     fn a_theme_name_finds_the_command() {
-        assert_eq!(found(Language::English, "smell"), [KeyAction::Search]);
-        assert!(found(Language::English, "dark matter").contains(&KeyAction::QuickOpen));
+        assert_eq!(
+            found(Language::EnglishFuturama, "smell"),
+            [KeyAction::Search]
+        );
+        assert!(found(Language::EnglishFuturama, "dark matter").contains(&KeyAction::QuickOpen));
+    }
+
+    #[test]
+    fn the_standard_language_has_no_theme_name_to_find_or_show() {
+        assert!(found(Language::English, "smell").is_empty());
+        assert!(found(Language::German, "dark matter").is_empty());
+        for lang in [Language::English, Language::German] {
+            let palette = palette(KeyScope::Panel, lang);
+            for row in palette.rows() {
+                match row {
+                    Row::Header(header) => assert_eq!(header.theme_name, None),
+                    Row::Hit(hit) => assert_eq!(palette.entry(hit).unwrap().theme_name, None),
+                }
+            }
+        }
     }
 
     #[test]
     fn the_theme_name_is_marked_where_it_matched() {
-        let palette = asked(Language::English, "smell");
+        let palette = asked(Language::EnglishFuturama, "smell");
         let hit = palette.hits().next().unwrap();
         let theme_name = palette.entry(hit).unwrap().theme_name.clone().unwrap();
         let marked: Vec<&str> = hit
@@ -758,7 +779,7 @@ mod tests {
         let actions = found(Language::English, "ize");
         assert!(actions.is_empty(), "{actions:?}");
         assert_eq!(
-            found(Language::English, "insp"),
+            found(Language::EnglishFuturama, "insp"),
             [KeyAction::FilingStatus, KeyAction::HermesInspect]
         );
     }
@@ -911,7 +932,7 @@ mod tests {
         // "in" is a word of "Search in files" (Search group) and starts the
         // theme names "Inspection" and "Inventory" (Hermes group, after Search
         // in the fixed order).
-        let palette = asked(Language::English, "in");
+        let palette = asked(Language::EnglishFuturama, "in");
         let position_of = |group| {
             palette
                 .hits()
@@ -951,7 +972,7 @@ mod tests {
 
     #[test]
     fn an_empty_query_lists_every_command_by_group_in_a_fixed_order() {
-        let palette = palette(KeyScope::Panel, Language::English);
+        let palette = palette(KeyScope::Panel, Language::EnglishFuturama);
         assert_eq!(
             headers(&palette),
             ["File", "Edit", "View", "Go", "Search", "Filing", "Help"]
@@ -975,7 +996,7 @@ mod tests {
             .filter(|row| matches!(row, Row::Header(header) if header.beta_mark.is_some()))
             .count();
         assert_eq!(marked, 1, "only the Hermes group carries the mark");
-        let mut again = super::tests::palette(KeyScope::Panel, Language::English);
+        let mut again = super::tests::palette(KeyScope::Panel, Language::EnglishFuturama);
         again.set_query(String::new());
         assert_eq!(palette.rows(), again.rows());
     }
@@ -1243,9 +1264,11 @@ mod tests {
     }
 
     fn setting_targets(lang: Language) -> Vec<SettingsTarget> {
-        let (page, viewer) = match lang {
-            Language::English => ("Settings: Programs", "Viewer (F3)"),
-            Language::German => ("Einstellungen: Programme", "Betrachter (F3)"),
+        let (page, viewer) = match lang.base() {
+            Language::English | Language::EnglishFuturama => ("Settings: Programs", "Viewer (F3)"),
+            Language::German | Language::GermanFuturama => {
+                ("Einstellungen: Programme", "Betrachter (F3)")
+            }
         };
         vec![
             SettingsTarget {

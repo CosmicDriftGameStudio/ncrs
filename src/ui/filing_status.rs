@@ -17,7 +17,7 @@ use super::theme::{font_size, size, spacing};
 use crate::app::fill_template;
 use crate::filing::{AiStatus, IndexFigures};
 use crate::filing_status::FilingStatus;
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{FilingStatusMessage, HermesFocus, HermesPage, Message};
 use crate::palette::Palette;
 
@@ -145,7 +145,7 @@ pub fn view<'a>(
         lang,
         palette,
     )
-    .title_theme(lang.text(Msg::HermesNavInspectionTheme))
+    .title_theme(lang.futurama_name(FuturamaName::HermesNavInspection))
     .sidebar(hermes::nav(HermesPage::Inspection, badges, lang, palette))
     .on_close(send(FilingStatusMessage::Close))
     // Enter opens the selected error, which the content defines.

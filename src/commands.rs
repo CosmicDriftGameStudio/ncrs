@@ -3,7 +3,7 @@
 //! plain label and, for the playful ones, a theme name. Its shortcut is read
 //! from the keymap, so a `[keys]` override shows up everywhere.
 
-use crate::i18n::Msg;
+use crate::i18n::{FuturamaName, Msg};
 use crate::keymap::KeyAction;
 
 /// The headings of the Lab and of the menu, in this order.
@@ -44,9 +44,9 @@ impl CommandGroup {
         }
     }
 
-    pub fn theme_name(self) -> Option<Msg> {
+    pub fn theme_name(self) -> Option<FuturamaName> {
         match self {
-            Self::Hermes => Some(Msg::GroupHermesTheme),
+            Self::Hermes => Some(FuturamaName::GroupHermes),
             Self::File
             | Self::Edit
             | Self::View
@@ -63,7 +63,7 @@ pub struct Command {
     pub action: KeyAction,
     pub group: CommandGroup,
     pub label: Msg,
-    pub theme_name: Option<Msg>,
+    pub theme_name: Option<FuturamaName>,
 }
 
 impl Command {
@@ -80,7 +80,7 @@ impl Command {
         action: KeyAction,
         group: CommandGroup,
         label: Msg,
-        theme_name: Msg,
+        theme_name: FuturamaName,
     ) -> Option<Self> {
         Some(Self {
             action,
@@ -112,12 +112,14 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
         KeyAction::Move => Command::plain(action, File, Msg::ActionMove),
         KeyAction::Mkdir => Command::plain(action, File, Msg::ActionMkdir),
         KeyAction::NewFile => Command::plain(action, File, Msg::ActionNewFile),
-        KeyAction::Pack => Command::themed(action, File, Msg::ActionPack, Msg::ActionPackTheme),
+        KeyAction::Pack => Command::themed(action, File, Msg::ActionPack, FuturamaName::ActionPack),
         KeyAction::Delete => {
-            Command::themed(action, File, Msg::ActionDelete, Msg::ActionDeleteTheme)
+            Command::themed(action, File, Msg::ActionDelete, FuturamaName::ActionDelete)
         }
         KeyAction::DeletePermanently => Command::plain(action, File, Msg::ActionDeletePermanently),
-        KeyAction::Trash => Command::themed(action, File, Msg::ActionTrash, Msg::ActionTrashTheme),
+        KeyAction::Trash => {
+            Command::themed(action, File, Msg::ActionTrash, FuturamaName::ActionTrash)
+        }
         KeyAction::OpenTrashInFinder => Command::plain(action, File, Msg::ActionOpenTrashInFinder),
         KeyAction::AbortJob => Command::plain(action, File, Msg::ActionAbortJob),
         KeyAction::Quit => Command::plain(action, File, Msg::ActionQuit),
@@ -125,16 +127,16 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             action,
             Edit,
             Msg::ActionToggleTag,
-            Msg::ActionToggleTagTheme,
+            FuturamaName::ActionToggleTag,
         ),
         KeyAction::TagAll => {
-            Command::themed(action, Edit, Msg::ActionTagAll, Msg::ActionTagAllTheme)
+            Command::themed(action, Edit, Msg::ActionTagAll, FuturamaName::ActionTagAll)
         }
         KeyAction::ClearTags => Command::themed(
             action,
             Edit,
             Msg::ActionClearTags,
-            Msg::ActionClearTagsTheme,
+            FuturamaName::ActionClearTags,
         ),
         KeyAction::CopyPath => Command::plain(action, Edit, Msg::ActionCopyPath),
         KeyAction::CopyName => Command::plain(action, Edit, Msg::ActionCopyName),
@@ -144,7 +146,7 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             action,
             Edit,
             Msg::ActionRestoreLastDeletion,
-            Msg::ActionRestoreLastDeletionTheme,
+            FuturamaName::ActionRestoreLastDeletion,
         ),
         KeyAction::ContextMenu => Command::plain(action, Edit, Msg::ActionContextMenu),
         KeyAction::SortByName => Command::plain(action, View, Msg::ActionSortByName),
@@ -163,13 +165,13 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             action,
             Go,
             Msg::ActionDriveMenuLeft,
-            Msg::ActionDriveMenuLeftTheme,
+            FuturamaName::ActionDriveMenuLeft,
         ),
         KeyAction::DriveMenuRight => Command::themed(
             action,
             Go,
             Msg::ActionDriveMenuRight,
-            Msg::ActionDriveMenuRightTheme,
+            FuturamaName::ActionDriveMenuRight,
         ),
         KeyAction::HistoryBack => Command::plain(action, Go, Msg::ActionHistoryBack),
         KeyAction::HistoryForward => Command::plain(action, Go, Msg::ActionHistoryForward),
@@ -177,12 +179,18 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
         KeyAction::RemoveFavourite => Command::plain(action, Go, Msg::ActionRemoveFavourite),
         KeyAction::Favourites => Command::plain(action, Go, Msg::ActionFavourites),
         KeyAction::CommandLine => Command::plain(action, Go, Msg::ActionCommandLine),
-        KeyAction::QuickOpen => {
-            Command::themed(action, Go, Msg::ActionQuickOpen, Msg::ActionQuickOpenTheme)
-        }
-        KeyAction::Search => {
-            Command::themed(action, Search, Msg::ActionSearch, Msg::ActionSearchTheme)
-        }
+        KeyAction::QuickOpen => Command::themed(
+            action,
+            Go,
+            Msg::ActionQuickOpen,
+            FuturamaName::ActionQuickOpen,
+        ),
+        KeyAction::Search => Command::themed(
+            action,
+            Search,
+            Msg::ActionSearch,
+            FuturamaName::ActionSearch,
+        ),
         KeyAction::SearchCase => Command::plain(action, Search, Msg::ActionSearchCase),
         KeyAction::SearchWholeWord => Command::plain(action, Search, Msg::ActionSearchWholeWord),
         KeyAction::SearchRegex => Command::plain(action, Search, Msg::ActionSearchRegex),
@@ -190,25 +198,25 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             action,
             Hermes,
             Msg::ActionFilingStatus,
-            Msg::ActionFilingStatusTheme,
+            FuturamaName::ActionFilingStatus,
         ),
         KeyAction::FilingSetup => Command::themed(
             action,
             Hermes,
             Msg::ActionFilingSetup,
-            Msg::ActionFilingSetupTheme,
+            FuturamaName::ActionFilingSetup,
         ),
         KeyAction::RuleSuggestions => Command::themed(
             action,
             Hermes,
             Msg::ActionRuleSuggestions,
-            Msg::ActionRuleSuggestionsTheme,
+            FuturamaName::ActionRuleSuggestions,
         ),
         KeyAction::ReviewList => Command::themed(
             action,
             Hermes,
             Msg::ActionReviewList,
-            Msg::ActionReviewListTheme,
+            FuturamaName::ActionReviewList,
         ),
         KeyAction::HermesQuickFix => Command::plain(action, Hermes, Msg::ActionHermesQuickFix),
         KeyAction::HermesHandToInbox => {
@@ -228,21 +236,23 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             action,
             Hermes,
             Msg::ActionSavedQueries,
-            Msg::ActionSavedQueriesTheme,
+            FuturamaName::ActionSavedQueries,
         ),
         KeyAction::ReorganisationPlan => Command::themed(
             action,
             Hermes,
             Msg::ActionReorganisationPlan,
-            Msg::ActionReorganisationPlanTheme,
+            FuturamaName::ActionReorganisationPlan,
         ),
         KeyAction::UndoReorganisation => Command::themed(
             action,
             Hermes,
             Msg::ActionUndoReorganisation,
-            Msg::ActionUndoReorganisationTheme,
+            FuturamaName::ActionUndoReorganisation,
         ),
-        KeyAction::About => Command::themed(action, Help, Msg::ActionAbout, Msg::ActionAboutTheme),
+        KeyAction::About => {
+            Command::themed(action, Help, Msg::ActionAbout, FuturamaName::ActionAbout)
+        }
         KeyAction::DownloadOcrModels => {
             Command::plain(action, Hermes, Msg::ActionDownloadOcrModels)
         }
@@ -250,26 +260,26 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             action,
             Hermes,
             Msg::ActionDownloadAiModel,
-            Msg::ActionDownloadAiModelTheme,
+            FuturamaName::ActionDownloadAiModel,
         ),
         KeyAction::GrantFolderAccess => Command::plain(action, File, Msg::ActionGrantFolderAccess),
         KeyAction::ConnectServer => Command::themed(
             action,
             Go,
             Msg::ActionConnectServer,
-            Msg::ActionConnectServerTheme,
+            FuturamaName::ActionConnectServer,
         ),
         KeyAction::DisconnectServer => Command::themed(
             action,
             Go,
             Msg::ActionDisconnectServer,
-            Msg::ActionDisconnectServerTheme,
+            FuturamaName::ActionDisconnectServer,
         ),
         KeyAction::CommandPalette => Command::themed(
             action,
             Help,
             Msg::ActionCommandPalette,
-            Msg::ActionCommandPaletteTheme,
+            FuturamaName::ActionCommandPalette,
         ),
     }
 }
@@ -339,8 +349,11 @@ mod tests {
             for lang in [Language::English, Language::German] {
                 assert!(!lang.text(command.label).trim().is_empty(), "{name}");
                 assert!(!lang.text(command.group.label()).trim().is_empty());
-                if let Some(theme_name) = command.theme_name {
-                    assert!(!lang.text(theme_name).trim().is_empty(), "{name}");
+            }
+            if let Some(theme_name) = command.theme_name {
+                for lang in [Language::EnglishFuturama, Language::GermanFuturama] {
+                    let shown = lang.futurama_name(theme_name).unwrap();
+                    assert!(!shown.trim().is_empty(), "{name}");
                 }
             }
         }

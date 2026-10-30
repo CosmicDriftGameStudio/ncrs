@@ -343,8 +343,10 @@ ncrs starts with the defaults.
 
 ```toml
 version = 1
-# Start language: "en" or "de". F9 switches it for the running session only;
-# the settings tab writes it to this file.
+# Start language: "en", "de", "en-futurama" or "de-futurama". The standard
+# languages show plain names only; the Futurama variants add the names from the
+# show next to them. F9 switches it for the running session only; the settings
+# tab writes it to this file.
 lang = "de"
 
 [open]
@@ -969,7 +971,9 @@ Adding a language:
 1. Add the language to `strings.json` and to `build.rs`'s language list.
 2. Add the variant to `Language` and its lookup in `src/i18n/mod.rs`, with its config
    code in `Language::code()` and an entry in `Language::ALL`; the compiler does not check
-   `ALL`, and a language missing there cannot be set with `lang`.
+   `ALL`, and a language missing there cannot be set with `lang`. A key ending in `.theme`
+   in `strings.json` is a Futurama name: it becomes a `FuturamaName`, not a `Msg`, and only
+   the `*Futurama` variants of a language return it from `Language::futurama_name`.
 3. `cargo test` — placeholder mismatches and untranslated copies fail the build, not the
    UI. `<DIR>` and `<UP>` are deliberately never translated.
 
