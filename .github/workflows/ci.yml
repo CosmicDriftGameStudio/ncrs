@@ -510,6 +510,68 @@ jobs:
               eval "$VALIDATE"
             '
 
+  # Builds the signed apt and dnf repositories with throwaway keys from the
+  # fresh packages and those of the previous release, and installs from them on
+  # clean images: an install, then an upgrade to the fresh version. A wrong key
+  # and a missing signature must each make the install fail, for that reason.
+  # This is the test of the release job's repository step, which has no
+  # container test of its own and needs no release here.
+  package-repos:
+    needs: targets
+    name: signed apt and dnf repositories
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            Cargo.toml
+            scripts
+            packaging/linux
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: ncrs-*-linux-gnu
+          merge-multiple: true
+          path: artifacts
+
+      - name: Previous release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          mkdir -p packages/current packages/previous
+          cp artifacts/*.deb artifacts/*.rpm packages/current/
+          # The newest published release that is not the version being built:
+          # a re-run on a release commit has to find an older one.
+          previous=""
+          for tag in $(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
+            --limit 10 --json tagName --jq '.[].tagName'); do
+            if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && [ "${tag#v}" != "$version" ]; then
+              previous="$tag"
+              break
+            fi
+          done
+          if [ -z "$previous" ]; then
+            echo "::error::no release other than $version to upgrade from"
+            exit 1
+          fi
+          gh release download "$previous" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'ncrs-*-unknown-linux-gnu.deb' --pattern 'ncrs-*-unknown-linux-gnu.rpm' \
+            --dir packages/previous
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "PREVIOUS_VERSION=${previous#v}" >> "$GITHUB_ENV"
+
+      - name: Install the tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends apt-utils createrepo-c rpm
+
+      - name: Build the repositories and install from them
+        run: scripts/check-package-repos.sh "$RUNNER_TEMP/package-repos" packages "$VERSION" "$PREVIOUS_VERSION"
+
   # Builds the AUR package (packaging/aur) with makepkg from the archive the
   # targets job made and installs it on a clean Arch image. Only x86_64: the
   # image has no aarch64 variant, but the aarch64 checksum is rendered too.
