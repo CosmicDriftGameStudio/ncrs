@@ -116,6 +116,7 @@ pub fn suggest_rules(archive: &[ArchiveText], profile: &[SubtreePattern]) -> Vec
                     tags: BTreeSet::new(),
                     filing_pattern: pattern.to_owned(),
                     confirmed: false,
+                    enabled: true,
                 },
                 evidence: RuleEvidence {
                     matching_in_folder: to_u32(found.matching_in_folder),

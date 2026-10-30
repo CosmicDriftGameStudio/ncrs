@@ -18,6 +18,7 @@ pub const MIGRATIONS: &[&str] = &[
     include_str!("migrations/010_field_origin.sql"),
     include_str!("migrations/011_rule_conditions.sql"),
     include_str!("migrations/012_sender_alias.sql"),
+    include_str!("migrations/013_rule_order.sql"),
 ];
 
 /// All pending steps run in one transaction together with the bump of

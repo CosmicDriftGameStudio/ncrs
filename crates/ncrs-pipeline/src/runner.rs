@@ -2249,6 +2249,7 @@ mod tests {
             tags: std::collections::BTreeSet::new(),
             filing_pattern: filing_pattern.to_owned(),
             confirmed,
+            enabled: true,
         }
     }
 
@@ -2259,11 +2260,17 @@ mod tests {
     }
 
     fn run_text_with_rule(spec: &ncrs_index::RuleSpec, text: &str) -> IndexFixture {
+        run_text_with_rules(std::slice::from_ref(spec), text)
+    }
+
+    fn run_text_with_rules(specs: &[ncrs_index::RuleSpec], text: &str) -> IndexFixture {
         let inbox_dir = TempDir::new().unwrap();
         let inbox = location(&inbox_dir, LocationMode::Inbox);
         put(&inbox, "invoice.pdf", INVOICE);
         let fixture = IndexFixture::new();
-        fixture.index.lock().unwrap().create_rule(spec).unwrap();
+        for spec in specs {
+            fixture.index.lock().unwrap().create_rule(spec).unwrap();
+        }
         let chain = TextChain::new().with_source(FixedText(Ok(Extracted::Text(text.to_owned()))));
         let runner = Runner::start(
             settings(workers(1)),
@@ -2425,6 +2432,22 @@ mod tests {
         let reviews = index.open_reviews().unwrap();
         assert_eq!(reviews.len(), 1);
         assert_eq!(reviews[0].reason, ncrs_index::ReviewReason::UnconfirmedRule);
+    }
+
+    #[test]
+    fn two_confirmed_rules_with_different_results_send_the_document_to_review() {
+        let fixture = run_text_with_rules(
+            &[
+                invoice_rule("{number}.pdf", true),
+                invoice_rule("Invoices/{number}.pdf", true),
+            ],
+            INVOICE_TEXT,
+        );
+
+        let index = fixture.index.lock().unwrap();
+        let reviews = index.open_reviews().unwrap();
+        assert_eq!(reviews.len(), 1);
+        assert_eq!(reviews[0].reason, ncrs_index::ReviewReason::RuleConflict);
     }
 
     #[test]

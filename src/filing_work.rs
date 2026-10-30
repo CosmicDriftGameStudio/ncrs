@@ -251,6 +251,7 @@ mod tests {
                     tags: BTreeSet::new(),
                     filing_pattern: "Insurance/{kind}.pdf".to_owned(),
                     confirmed: true,
+                    enabled: true,
                 })
                 .unwrap();
             Self {

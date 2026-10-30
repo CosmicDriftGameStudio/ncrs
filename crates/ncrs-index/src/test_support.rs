@@ -49,5 +49,6 @@ pub fn rule_spec() -> RuleSpec {
         tags: BTreeSet::from(["services".to_owned(), "2026".to_owned()]),
         filing_pattern: "{year}/{sender}".to_owned(),
         confirmed: false,
+        enabled: true,
     }
 }

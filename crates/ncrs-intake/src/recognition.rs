@@ -133,6 +133,7 @@ fn word_rule(phrase: &str, kind: &str, tax_context: TaxContext, filing_pattern: 
         tags: BTreeSet::new(),
         filing_pattern: filing_pattern.to_owned(),
         confirmed: true,
+        enabled: true,
     }
 }
 
@@ -158,13 +159,15 @@ fn word_ending_in(stem: &str) -> RuleConditions {
     )])
 }
 
+const NORDLICHT_IBAN: &str = "DE00 0000 0000 0000 0000 00";
+
 /// What a user would have confirmed for the corpus: the account of the energy
 /// supplier and two short names that carry no legal form.
 fn fixed_sender_aliases() -> SenderAliases {
     SenderAliases::from_confirmed([
         (
             SenderAliasKind::Iban,
-            "DE00 0000 0000 0000 0000 00",
+            NORDLICHT_IBAN,
             "Nordlicht Energie GmbH",
         ),
         (SenderAliasKind::Name, "Kranich", "Kranich Versicherung AG"),
@@ -173,17 +176,19 @@ fn fixed_sender_aliases() -> SenderAliases {
 }
 
 /// The rules the measurement plans against, with the ids 1..n in this order.
-/// The first one needs the IBAN of Nordlicht Energie on the document.
+/// The first one needs the IBAN of Nordlicht Energie on the document. Rules
+/// that would otherwise both match a document with different results exclude
+/// each other with a negated condition, as a user resolves a conflict.
 pub fn fixed_rules() -> Vec<Rule> {
     let specs = [
         german_invoice(
-            Some(Condition::new(
-                ConditionKind::Iban,
-                "DE00 0000 0000 0000 0000 00",
-            )),
+            Some(Condition::new(ConditionKind::Iban, NORDLICHT_IBAN)),
             "{year}/Energie/{number}",
         ),
-        german_invoice(None, "{year}/Rechnungen/{number}"),
+        german_invoice(
+            Some(Condition::not(ConditionKind::Iban, NORDLICHT_IBAN)),
+            "{year}/Rechnungen/{number}",
+        ),
         RuleSpec {
             extract_number: Some(r"Invoice (?:No\.?|number):?\s*([A-Z0-9-]+)".to_owned()),
             extract_date: Some(DATE_ISO.to_owned()),
@@ -211,7 +216,13 @@ pub fn fixed_rules() -> Vec<Rule> {
             extract_number: Some(r"Vertragsnummer:?\s*([A-Z0-9-]+)".to_owned()),
             extract_date: Some(r"Vertragsdatum:?\s*(\d{2}\.\d{2}\.\d{4})".to_owned()),
             extract_amount: Some(r"Monatsbeitrag:?\s*([\d.,]+)\s*(?P<currency>EUR)".to_owned()),
-            conditions: word_ending_in("vertrag"),
+            conditions: RuleConditions::all_of(
+                word_ending_in("vertrag")
+                    .list
+                    .into_iter()
+                    .chain([Condition::not(ConditionKind::Word, "rechnung")])
+                    .collect(),
+            ),
             ..word_rule(
                 "Vertrag",
                 "Vertrag",
@@ -242,6 +253,10 @@ pub fn fixed_rules() -> Vec<Rule> {
         },
         RuleSpec {
             extract_date: Some(DATE_DOTTED.to_owned()),
+            conditions: RuleConditions::all_of(vec![
+                Condition::new(ConditionKind::Word, "Sehr geehrte"),
+                Condition::not(ConditionKind::Word, "Kündigung"),
+            ]),
             ..word_rule(
                 "Sehr geehrte",
                 "Brief",
@@ -284,6 +299,7 @@ pub enum PlanningOutcome {
     Planned,
     NoRule,
     UnconfirmedRule,
+    Conflict,
     MissingField(Field),
 }
 
@@ -403,10 +419,11 @@ impl fmt::Display for RecognitionReport {
             .collect();
         writeln!(
             f,
-            "planned: {}, no rule: {}, unconfirmed rule: {}, missing field: {} ({})",
+            "planned: {}, no rule: {}, unconfirmed rule: {}, conflicts: {}, missing field: {} ({})",
             self.outcome_count(|outcome| outcome == PlanningOutcome::Planned),
             self.outcome_count(|outcome| outcome == PlanningOutcome::NoRule),
             self.outcome_count(|outcome| outcome == PlanningOutcome::UnconfirmedRule),
+            self.outcome_count(|outcome| outcome == PlanningOutcome::Conflict),
             self.outcome_count(|outcome| matches!(outcome, PlanningOutcome::MissingField(_))),
             missing_per_field.join(", ")
         )?;
@@ -426,6 +443,7 @@ fn outcome_of(planning: &Planning) -> PlanningOutcome {
         Planning::Plan(_) => PlanningOutcome::Planned,
         Planning::Review { reason, .. } => match reason {
             ReviewReason::NoMatchingRule => PlanningOutcome::NoRule,
+            ReviewReason::RuleConflict => PlanningOutcome::Conflict,
             ReviewReason::MissingField(field) => PlanningOutcome::MissingField(*field),
             // `plan` gives no other reason; the later steps set them.
             ReviewReason::UnconfirmedRule
@@ -438,6 +456,12 @@ fn outcome_of(planning: &Planning) -> PlanningOutcome {
 fn chosen_rule_and_fields(planning: &Planning) -> (Option<RuleId>, &DocumentFields) {
     match planning {
         Planning::Plan(filing) => (Some(filing.rule), &filing.fields),
+        // No rule was applied, so a conflict is not a wrong assignment.
+        Planning::Review {
+            reason: ReviewReason::RuleConflict,
+            fields,
+            ..
+        } => (None, fields),
         Planning::Review { rule, fields, .. } => (*rule, fields),
     }
 }
@@ -477,6 +501,7 @@ pub fn measure(
                 Planning::Review {
                     reason: reason @ (ReviewReason::NoMatchingRule | ReviewReason::MissingField(_)),
                     rule,
+                    matching_rules,
                     fields,
                 } => match fill_open_fields(document, &fields) {
                     Some(merged) if matches!(reason, ReviewReason::MissingField(_)) => plan(
@@ -491,11 +516,13 @@ pub fn measure(
                     Some(merged) => Planning::Review {
                         reason,
                         rule,
+                        matching_rules,
                         fields: merged,
                     },
                     None => Planning::Review {
                         reason,
                         rule,
+                        matching_rules,
                         fields,
                     },
                 },

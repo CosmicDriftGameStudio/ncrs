@@ -302,6 +302,7 @@ mod tests {
             tags: BTreeSet::new(),
             filing_pattern: filing_pattern.to_owned(),
             confirmed,
+            enabled: true,
         }
     }
 

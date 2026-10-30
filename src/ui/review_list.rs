@@ -163,6 +163,7 @@ pub fn reason_text(reason: ReviewReason, text_state: TextState, lang: Language) 
             })
             .to_owned(),
         ReviewReason::UnconfirmedRule => lang.text(Msg::ReviewListReasonUnconfirmed).to_owned(),
+        ReviewReason::RuleConflict => lang.text(Msg::ReviewListReasonRuleConflict).to_owned(),
         ReviewReason::TargetExists => lang.text(Msg::ReviewListReasonTargetExists).to_owned(),
         ReviewReason::MissingField(field) => named(Msg::ReviewListReasonMissingField, field),
         ReviewReason::LowConfidence(field) => named(Msg::ReviewListReasonLowConfidence, field),

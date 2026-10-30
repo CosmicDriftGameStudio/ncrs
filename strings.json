@@ -3475,6 +3475,12 @@
       "de": "Regel nicht bestätigt"
     },
     {
+      "key": "review_list.reason_rule_conflict",
+      "context": "Review reason in the review list: several confirmed rules match the document but come to different results.",
+      "en": "Several rules match with different results",
+      "de": "Mehrere Regeln passen mit unterschiedlichem Ergebnis"
+    },
+    {
       "key": "review_list.reason_target_exists",
       "context": "Review reason in the review list: a file with the target name already exists.",
       "en": "Target already exists",

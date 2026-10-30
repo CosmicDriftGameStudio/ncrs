@@ -223,6 +223,7 @@ impl ReviewAccess {
             tags,
             filing_pattern: pattern.to_owned(),
             confirmed: true,
+            enabled: true,
         };
         self.with_index(|index| index.create_rule(&spec))
     }

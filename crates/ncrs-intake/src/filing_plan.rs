@@ -37,7 +37,11 @@ pub struct PlanInput<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FilingPlan {
+    /// The first matching rule.
     pub rule: RuleId,
+    /// Every enabled confirmed rule that matches, in rule order; all of them
+    /// plan the same.
+    pub matching_rules: Vec<RuleId>,
     pub fields: DocumentFields,
     /// Below the root of the archive; `stays_below` holds for it.
     pub relative_path: PathBuf,
@@ -50,7 +54,10 @@ pub enum Planning {
     /// later step can fill the rest and plan again.
     Review {
         reason: ReviewReason,
+        /// The first matching rule.
         rule: Option<RuleId>,
+        /// Every enabled rule that matched; empty when none did.
+        matching_rules: Vec<RuleId>,
         fields: DocumentFields,
     },
 }
@@ -66,29 +73,79 @@ pub fn pattern_is_valid(source: &str) -> bool {
     Pattern::parse(source).is_some()
 }
 
-/// The first confirmed rule that matches wins, in the order of `rules`.
+/// Plans with the enabled rules that match, in the order of `rules`. When
+/// several confirmed rules match they must agree: the same result for the
+/// document, whichever rule it came from. Otherwise the document needs review
+/// with `ReviewReason::RuleConflict` and the contested fields stay as given.
 pub fn plan(rules: &[Rule], input: &PlanInput<'_>) -> Planning {
     let search = SearchText::new(input.text);
-    let mut unconfirmed = None;
-    for rule in rules {
-        if !matches(&rule.spec, input, &search) {
-            continue;
-        }
-        if rule.spec.confirmed {
-            return plan_with(rule, input);
-        }
-        unconfirmed.get_or_insert(rule);
-    }
-    match unconfirmed {
-        Some(rule) => Planning::Review {
-            reason: ReviewReason::UnconfirmedRule,
-            rule: Some(rule.id),
-            fields: filled_fields(&rule.spec, input),
-        },
-        None => Planning::Review {
-            reason: ReviewReason::NoMatchingRule,
-            rule: None,
+    let (confirmed, unconfirmed): (Vec<&Rule>, Vec<&Rule>) = rules
+        .iter()
+        .filter(|rule| rule.spec.enabled && matches(&rule.spec, input, &search))
+        .partition(|rule| rule.spec.confirmed);
+    let ids_of = |matching: &[&Rule]| matching.iter().map(|rule| rule.id).collect::<Vec<_>>();
+    let Some(first) = confirmed.first() else {
+        return match unconfirmed.first() {
+            Some(rule) => Planning::Review {
+                reason: ReviewReason::UnconfirmedRule,
+                rule: Some(rule.id),
+                matching_rules: ids_of(&unconfirmed),
+                fields: filled_fields(&rule.spec, input),
+            },
+            None => Planning::Review {
+                reason: ReviewReason::NoMatchingRule,
+                rule: None,
+                matching_rules: Vec::new(),
+                fields: input.fields.clone(),
+            },
+        };
+    };
+    let matching_rules = ids_of(&confirmed);
+    let planning = plan_with(first, input);
+    let agree = confirmed.iter().skip(1).all(|rule| {
+        blanked(plan_with(rule, input), first.id) == blanked(planning.clone(), first.id)
+    });
+    if !agree {
+        return Planning::Review {
+            reason: ReviewReason::RuleConflict,
+            rule: Some(first.id),
+            matching_rules,
             fields: input.fields.clone(),
+        };
+    }
+    match planning {
+        Planning::Plan(filing) => Planning::Plan(FilingPlan {
+            matching_rules,
+            ..filing
+        }),
+        Planning::Review {
+            reason,
+            rule,
+            fields,
+            ..
+        } => Planning::Review {
+            reason,
+            rule,
+            matching_rules,
+            fields,
+        },
+    }
+}
+
+/// The result with every rule id replaced by `canonical` or dropped, to tell whether two rules came to the
+/// same conclusion.
+fn blanked(planning: Planning, canonical: RuleId) -> Planning {
+    match planning {
+        Planning::Plan(filing) => Planning::Plan(FilingPlan {
+            rule: canonical,
+            matching_rules: Vec::new(),
+            ..filing
+        }),
+        Planning::Review { reason, fields, .. } => Planning::Review {
+            reason,
+            rule: None,
+            matching_rules: Vec::new(),
+            fields,
         },
     }
 }
@@ -188,6 +245,7 @@ fn plan_with(rule: &Rule, input: &PlanInput<'_>) -> Planning {
     let review = |reason, filled| Planning::Review {
         reason,
         rule: Some(rule.id),
+        matching_rules: vec![rule.id],
         fields: filled,
     };
     // A rule whose pattern cannot be rendered needs the user like an
@@ -201,6 +259,7 @@ fn plan_with(rule: &Rule, input: &PlanInput<'_>) -> Planning {
     match pattern.render(&fields) {
         Some(relative_path) if stays_below(&relative_path) => Planning::Plan(FilingPlan {
             rule: rule.id,
+            matching_rules: vec![rule.id],
             fields,
             relative_path,
         }),
@@ -444,6 +503,7 @@ mod tests {
             tags: BTreeSet::from(["office".to_owned()]),
             filing_pattern: pattern.to_owned(),
             confirmed: true,
+            enabled: true,
         }
     }
 
@@ -838,6 +898,74 @@ mod tests {
         assert_eq!(planned(planning).rule, rules[1].id);
     }
 
+    fn plan_all(rules: &[Rule]) -> Planning {
+        plan(
+            rules,
+            &PlanInput {
+                text: TEXT,
+                fields: &DocumentFields::default(),
+                path: None,
+                sender_aliases: &SenderAliases::default(),
+            },
+        )
+    }
+
+    #[test]
+    fn a_single_matching_rule_lists_itself() {
+        let rules = rules_from(&[spec("{number}")]);
+
+        let filing = planned(plan_all(&rules));
+
+        assert_eq!(filing.rule, rules[0].id);
+        assert_eq!(filing.matching_rules, [rules[0].id]);
+    }
+
+    #[test]
+    fn two_matching_rules_with_the_same_result_plan_with_both() {
+        let rules = rules_from(&[spec("{number}"), spec("{number}")]);
+
+        let filing = planned(plan_all(&rules));
+
+        assert_eq!(filing.rule, rules[0].id);
+        assert_eq!(filing.matching_rules, [rules[0].id, rules[1].id]);
+        assert_eq!(filing.relative_path, Path::new("4711"));
+    }
+
+    #[test]
+    fn two_matching_rules_with_different_results_are_a_conflict() {
+        let rules = rules_from(&[spec("{number}"), spec("{year}/{number}")]);
+
+        let planning = plan_all(&rules);
+
+        assert_eq!(
+            planning,
+            Planning::Review {
+                reason: ReviewReason::RuleConflict,
+                rule: Some(rules[0].id),
+                matching_rules: vec![rules[0].id, rules[1].id],
+                fields: DocumentFields::default(),
+            }
+        );
+    }
+
+    #[test]
+    fn a_plan_and_a_missing_field_are_different_results() {
+        let rules = rules_from(&[spec("{number}"), spec("{sender}/{number}")]);
+
+        assert_eq!(reason(&plan_all(&rules)), ReviewReason::RuleConflict);
+    }
+
+    #[test]
+    fn a_disabled_rule_is_skipped() {
+        let mut disabled = spec("{year}/{number}");
+        disabled.enabled = false;
+        let rules = rules_from(&[spec("{number}"), disabled]);
+
+        let filing = planned(plan_all(&rules));
+
+        assert_eq!(filing.matching_rules, [rules[0].id]);
+    }
+
     #[test]
     fn an_unconfirmed_matching_rule_needs_review() {
         let mut unconfirmed = spec("{number}");
@@ -849,6 +977,7 @@ mod tests {
             reason,
             rule,
             fields,
+            ..
         } = planning
         else {
             panic!("expected a review");
