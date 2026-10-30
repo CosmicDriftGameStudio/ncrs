@@ -731,8 +731,13 @@ counts as a hit when nothing is found for it.
 | number | 21 | 80% |
 | amount | 22 | 84% |
 
-Planned: 19. No rule: 3. Unconfirmed rule: 1. A field missing: 3. Wrong
-assignments (a rule chosen, but kind or tax context not the expected one): 3.
+Planned: 19. No rule: 3. Unconfirmed rule: 1. Conflicts (several confirmed
+rules match with different results, so the document goes to review): 0. A
+field missing: 3. Wrong assignments (a rule chosen, but kind or tax context
+not the expected one): 3. Without the negated conditions that keep the rules
+apart (the general invoice rule excludes the IBAN of the energy supplier, the
+contract rule excludes invoices, the letter rule excludes cancellations), 4
+documents end in a conflict.
 
 ### Remembered state
 

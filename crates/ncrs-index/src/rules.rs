@@ -12,7 +12,7 @@ use crate::regex_limits::compile_bounded_regex;
 
 const RULE_COLUMNS: &str = "SELECT r.id, r.combinator,
         r.extract_number, r.extract_date, r.extract_amount, k.name, r.tax_context,
-        r.filing_pattern, r.confirmed
+        r.filing_pattern, r.confirmed, r.enabled, r.position
     FROM rule r
     JOIN document_kind k ON k.id = r.kind_id";
 
@@ -26,6 +26,8 @@ struct RuleRow {
     tax_context: String,
     filing_pattern: String,
     confirmed: bool,
+    enabled: bool,
+    position: i64,
 }
 
 impl RuleRow {
@@ -40,12 +42,15 @@ impl RuleRow {
             tax_context: row.get(6)?,
             filing_pattern: row.get(7)?,
             confirmed: row.get(8)?,
+            enabled: row.get(9)?,
+            position: row.get(10)?,
         })
     }
 
     fn into_rule(self, list: Vec<Condition>, tags: BTreeSet<String>) -> Result<Rule, IndexError> {
         Ok(Rule {
             id: RuleId::new(self.id),
+            position: self.position,
             spec: RuleSpec {
                 conditions: RuleConditions {
                     combinator: Combinator::parse(&self.combinator)?,
@@ -59,6 +64,7 @@ impl RuleRow {
                 tags,
                 filing_pattern: self.filing_pattern,
                 confirmed: self.confirmed,
+                enabled: self.enabled,
             },
         })
     }
@@ -127,8 +133,9 @@ impl Index {
         let kind_id = name_id(&tx, NameTable::Kind, &spec.kind)?;
         tx.execute(
             "INSERT INTO rule (combinator, extract_number, extract_date, extract_amount,
-                 kind_id, tax_context, filing_pattern, confirmed)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                 kind_id, tax_context, filing_pattern, confirmed, enabled, position)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
+                 (SELECT COALESCE(MAX(position), 0) + 1 FROM rule))",
             params![
                 spec.conditions.combinator.as_str(),
                 spec.extract_number,
@@ -138,6 +145,7 @@ impl Index {
                 spec.tax_context.as_str(),
                 spec.filing_pattern,
                 spec.confirmed,
+                spec.enabled,
             ],
         )?;
         let id = RuleId::new(tx.last_insert_rowid());
@@ -164,11 +172,11 @@ impl Index {
         row.into_rule(list, tags).map(Some)
     }
 
-    /// Ordered by id.
+    /// In evaluation order: by position, then id.
     pub fn rules(&self) -> Result<Vec<Rule>, IndexError> {
         let mut statement = self
             .connection()
-            .prepare(&format!("{RULE_COLUMNS} ORDER BY r.id"))?;
+            .prepare(&format!("{RULE_COLUMNS} ORDER BY r.position, r.id"))?;
         let rows = statement
             .query_map([], RuleRow::read)?
             .collect::<Result<Vec<_>, _>>()?;
@@ -188,7 +196,7 @@ impl Index {
         let changed = tx.execute(
             "UPDATE rule SET combinator = ?2, extract_number = ?3, extract_date = ?4,
                  extract_amount = ?5, kind_id = ?6, tax_context = ?7, filing_pattern = ?8,
-                 confirmed = ?9
+                 confirmed = ?9, enabled = ?10
              WHERE id = ?1",
             params![
                 id.get(),
@@ -200,6 +208,7 @@ impl Index {
                 spec.tax_context.as_str(),
                 spec.filing_pattern,
                 spec.confirmed,
+                spec.enabled,
             ],
         )?;
         if changed == 0 {
@@ -207,6 +216,29 @@ impl Index {
         }
         replace_rule_conditions(&tx, id, &spec.conditions.list)?;
         replace_rule_tags(&tx, id, &spec.tags)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Moves a rule to `to_index` of the ordered list (clamped to the end) and
+    /// renumbers all positions from 1.
+    pub fn move_rule(&mut self, id: RuleId, to_index: usize) -> Result<(), IndexError> {
+        let tx = self.conn_mut().transaction()?;
+        let mut ids = tx
+            .prepare("SELECT id FROM rule ORDER BY position, id")?
+            .query_map([], |row| row.get::<_, i64>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        let Some(from) = ids.iter().position(|&existing| existing == id.get()) else {
+            return Err(IndexError::RuleNotFound(id));
+        };
+        ids.remove(from);
+        ids.insert(to_index.min(ids.len()), id.get());
+        for (index, rule_id) in ids.iter().enumerate() {
+            tx.execute(
+                "UPDATE rule SET position = ?2 WHERE id = ?1",
+                params![rule_id, i64::try_from(index + 1).unwrap_or(i64::MAX)],
+            )?;
+        }
         tx.commit()?;
         Ok(())
     }
@@ -288,6 +320,7 @@ mod tests {
             index.rule(first_id).unwrap(),
             Some(Rule {
                 id: first_id,
+                position: 1,
                 spec: first.clone()
             })
         );
@@ -296,14 +329,82 @@ mod tests {
             vec![
                 Rule {
                     id: first_id,
+                    position: 1,
                     spec: first
                 },
                 Rule {
                     id: second_id,
+                    position: 2,
                     spec: second
                 },
             ]
         );
+    }
+
+    fn ids_in_order(index: &Index) -> Vec<RuleId> {
+        index.rules().unwrap().iter().map(|rule| rule.id).collect()
+    }
+
+    fn three_rules(index: &mut Index) -> [RuleId; 3] {
+        [(); 3].map(|()| index.create_rule(&rule_spec()).unwrap())
+    }
+
+    #[test]
+    fn a_created_rule_is_appended_to_the_order() {
+        let (_dir, mut index) = encrypted_index();
+        let ids = three_rules(&mut index);
+
+        let positions: Vec<_> = index.rules().unwrap().iter().map(|r| r.position).collect();
+
+        assert_eq!(ids_in_order(&index), ids);
+        assert_eq!(positions, [1, 2, 3]);
+    }
+
+    #[test]
+    fn a_rule_moves_to_the_front_the_middle_and_the_end() {
+        let (_dir, mut index) = encrypted_index();
+        let [a, b, c] = three_rules(&mut index);
+
+        index.move_rule(c, 0).unwrap();
+        assert_eq!(ids_in_order(&index), [c, a, b]);
+        index.move_rule(c, 1).unwrap();
+        assert_eq!(ids_in_order(&index), [a, c, b]);
+        index.move_rule(a, 99).unwrap();
+        assert_eq!(ids_in_order(&index), [c, b, a]);
+        let positions: Vec<_> = index.rules().unwrap().iter().map(|r| r.position).collect();
+        assert_eq!(positions, [1, 2, 3]);
+    }
+
+    #[test]
+    fn moving_an_unknown_rule_is_an_error() {
+        let (_dir, mut index) = encrypted_index();
+        three_rules(&mut index);
+
+        let result = index.move_rule(RuleId::new(99), 0);
+
+        assert!(matches!(result, Err(IndexError::RuleNotFound(_))));
+    }
+
+    #[test]
+    fn the_enabled_flag_round_trips_and_an_update_keeps_the_position() {
+        let (_dir, mut index) = encrypted_index();
+        let [a, b, _c] = three_rules(&mut index);
+        index.move_rule(b, 0).unwrap();
+
+        index
+            .update_rule(
+                a,
+                &RuleSpec {
+                    enabled: false,
+                    ..rule_spec()
+                },
+            )
+            .unwrap();
+
+        let rule = index.rule(a).unwrap().unwrap();
+        assert!(!rule.spec.enabled);
+        assert_eq!(rule.position, 2);
+        assert!(index.rule(b).unwrap().unwrap().spec.enabled);
     }
 
     #[test]

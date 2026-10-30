@@ -255,6 +255,8 @@ impl FieldOrigins {
 pub enum ReviewReason {
     NoMatchingRule,
     UnconfirmedRule,
+    /// Several confirmed rules match and do not agree on the result.
+    RuleConflict,
     /// The place the rules chose is taken by another file.
     TargetExists,
     MissingField(Field),
@@ -268,6 +270,7 @@ impl ReviewReason {
         match self {
             Self::NoMatchingRule => ("no_matching_rule", None),
             Self::UnconfirmedRule => ("unconfirmed_rule", None),
+            Self::RuleConflict => ("rule_conflict", None),
             Self::TargetExists => ("target_exists", None),
             Self::MissingField(field) => ("missing_field", Some(field)),
             Self::LowConfidence(field) => ("low_confidence", Some(field)),
@@ -279,6 +282,7 @@ impl ReviewReason {
         match (reason, named) {
             ("no_matching_rule", None) => Ok(Self::NoMatchingRule),
             ("unconfirmed_rule", None) => Ok(Self::UnconfirmedRule),
+            ("rule_conflict", None) => Ok(Self::RuleConflict),
             ("target_exists", None) => Ok(Self::TargetExists),
             ("missing_field", Some(of)) => Ok(Self::MissingField(of)),
             ("low_confidence", Some(of)) => Ok(Self::LowConfidence(of)),
@@ -712,11 +716,14 @@ pub struct RuleSpec {
     pub tags: BTreeSet<String>,
     pub filing_pattern: String,
     pub confirmed: bool,
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rule {
     pub id: RuleId,
+    /// Evaluation order, 1-based; changed only by `Index::move_rule`.
+    pub position: i64,
     pub spec: RuleSpec,
 }
 

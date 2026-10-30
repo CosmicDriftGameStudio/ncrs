@@ -1047,6 +1047,56 @@ mod tests {
     }
 
     #[test]
+    fn a_version_12_database_keeps_its_rule_order_and_enables_every_rule() {
+        use crate::model::{DocumentId, Field, FieldOrigin, RuleId};
+
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let old = Index::create_plain_with_migrations(&path, &MIGRATIONS[..12]).unwrap();
+        assert_eq!(user_version(&old), 12);
+        old.conn
+            .execute_batch(
+                "INSERT INTO document_kind (id, name, name_key) VALUES (1, 'Invoice', 'invoice');
+                 INSERT INTO rule (id, kind_id, tax_context, filing_pattern, confirmed)
+                 VALUES (7, 1, 'none', '{year}', 1),
+                        (2, 1, 'none', '{year}', 1),
+                        (5, 1, 'none', '{year}', 0);
+                 INSERT INTO rule_condition (rule_id, position, kind, value)
+                 VALUES (7, 0, 'substring', 'a'), (2, 0, 'substring', 'b'),
+                        (5, 0, 'substring', 'c');
+                 INSERT INTO document (id, hash, path, source, received_at, status)
+                 VALUES (1, zeroblob(32), 'inbox/a.pdf', 'inbox', 1700000000, 'planned');
+                 INSERT INTO document_field_origin (document_id, field, origin, rule_id)
+                 VALUES (1, 'kind', 'rule', 5);",
+            )
+            .unwrap();
+        drop(old);
+
+        let index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
+
+        assert_eq!(user_version(&index), latest_version());
+        let rules = index.rules().unwrap();
+        let ids: Vec<_> = rules.iter().map(|rule| rule.id).collect();
+        assert_eq!(ids, [RuleId::new(2), RuleId::new(5), RuleId::new(7)]);
+        let positions: Vec<_> = rules.iter().map(|rule| rule.position).collect();
+        assert_eq!(positions, [2, 5, 7]);
+        assert!(rules.iter().all(|rule| rule.spec.enabled));
+        let origins = index.field_origins(DocumentId::new(1)).unwrap();
+        assert_eq!(
+            origins.of(Field::Kind),
+            FieldOrigin::Rule(Some(RuleId::new(5)))
+        );
+        let violations = index
+            .conn
+            .prepare("PRAGMA foreign_key_check")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .count();
+        assert_eq!(violations, 0);
+    }
+
+    #[test]
     fn empty_a1_database_gains_the_document_schema_on_open() {
         let dir = TempDir::new().unwrap();
         let path = db_in(&dir);

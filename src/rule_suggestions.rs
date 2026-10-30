@@ -322,6 +322,7 @@ pub mod tests {
             tags: BTreeSet::new(),
             filing_pattern: format!("{kind}/{{date}}_{{name}}"),
             confirmed: false,
+            enabled: true,
         }
     }
 

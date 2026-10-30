@@ -252,6 +252,7 @@ pub mod tests {
             tags: Default::default(),
             filing_pattern: pattern.to_owned(),
             confirmed,
+            enabled: true,
         }
     }
 
