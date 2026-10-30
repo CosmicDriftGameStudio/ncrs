@@ -428,9 +428,6 @@ impl KeyAction {
         match self {
             Self::GrantFolderAccess => crate::fs::sandbox_active(),
             Self::DownloadOcrModels => !system_reads_scans,
-            Self::Trash | Self::RestoreLastDeletion => {
-                !(cfg!(target_os = "macos") && crate::fs::sandbox_active())
-            }
             Self::OpenTrashInFinder => cfg!(target_os = "macos"),
             _ => true,
         }
@@ -1481,9 +1478,8 @@ mod tests {
     fn the_trash_actions_are_offered_only_where_they_work() {
         let on_a_mac = cfg!(target_os = "macos");
         assert_eq!(KeyAction::OpenTrashInFinder.is_offered(), on_a_mac);
-        let sandboxed_mac = on_a_mac && crate::fs::sandbox_active();
-        assert_eq!(KeyAction::Trash.is_offered(), !sandboxed_mac);
-        assert_eq!(KeyAction::RestoreLastDeletion.is_offered(), !sandboxed_mac);
+        assert!(KeyAction::Trash.is_offered());
+        assert!(KeyAction::RestoreLastDeletion.is_offered());
     }
 
     #[test]

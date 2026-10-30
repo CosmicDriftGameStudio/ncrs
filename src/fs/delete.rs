@@ -51,6 +51,8 @@ pub struct TrashedItem {
 pub enum RestoreError {
     /// Something else is at the original place now.
     Taken,
+    /// The sandbox has no access to the folder the item came from.
+    NotGranted,
     Failed(String),
 }
 
@@ -76,9 +78,6 @@ pub trait Trash: Send + Sync {
 /// The system trash for this platform. `journal` is where macOS records what
 /// ncrs trashed: the system gives no list of a trash folder to an app without
 /// Full Disk Access, so the record is the only list there is.
-///
-/// The App Store build stays Finder-only: nobody has verified yet that the
-/// sandbox may move an item back out of `~/.Trash`.
 pub fn system_trash(journal: Option<PathBuf>) -> Arc<dyn Trash> {
     system_trash_with(journal)
 }
@@ -91,10 +90,8 @@ fn system_trash_with(_journal: Option<PathBuf>) -> Arc<dyn Trash> {
 #[cfg(target_os = "macos")]
 fn system_trash_with(journal: Option<PathBuf>) -> Arc<dyn Trash> {
     match journal {
-        Some(record) if !super::sandbox_active() => {
-            Arc::new(JournaledTrash::new(record, FileManagerBackend))
-        }
-        _ => Arc::new(FinderOnlyTrash),
+        Some(record) => Arc::new(JournaledTrash::new(record, FileManagerBackend)),
+        None => Arc::new(FinderOnlyTrash),
     }
 }
 
@@ -270,16 +267,8 @@ impl TrashBackend for FileManagerBackend {
     }
 }
 
-/// The journaled trash of the plain build, also where `system_trash` would
-/// pick the Finder-only one because the process runs in the App Sandbox.
-#[cfg(test)]
-#[cfg(target_os = "macos")]
-pub(in crate::fs) fn file_manager_trash(journal: PathBuf) -> Arc<dyn Trash> {
-    Arc::new(JournaledTrash::new(journal, FileManagerBackend))
-}
-
-/// Trashes through the file manager and keeps no record: the sandbox build,
-/// and a run without a journal path.
+/// Trashes through the file manager and keeps no record: a run without a
+/// journal path.
 #[cfg(target_os = "macos")]
 struct FinderOnlyTrash;
 

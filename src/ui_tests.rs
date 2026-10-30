@@ -1240,6 +1240,7 @@ mod status_notice {
                 job_press: None,
                 filing: None,
                 on_blocked_press: None,
+                on_failure_press: None,
                 blocked_by_sandbox: false,
                 notice: app.notice_for_test(),
                 hermes_line: None,

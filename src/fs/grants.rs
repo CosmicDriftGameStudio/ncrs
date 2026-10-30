@@ -195,6 +195,27 @@ impl GrantStore {
         })
     }
 
+    /// The granted folder that holds `folder`, if any. Only names the grants
+    /// (`path_of`), so it never opens access to a folder.
+    pub fn covering_grant(&self, bookmarks: &dyn Bookmarks, folder: &Path) -> Option<PathBuf> {
+        let granted: Vec<PathBuf> = self
+            .grant_files()
+            .ok()?
+            .into_iter()
+            .filter_map(|file| fs::read(file).ok())
+            .filter_map(|bytes| bookmarks.path_of(&bytes).ok())
+            .collect();
+        if let Some(direct) = granted.iter().find(|each| folder.starts_with(each)) {
+            return Some(direct.clone());
+        }
+        let real_folder = folder
+            .ancestors()
+            .find_map(|ancestor| fs::canonicalize(ancestor).ok())?;
+        granted.into_iter().find(|each| {
+            fs::canonicalize(each).is_ok_and(|real_grant| real_folder.starts_with(real_grant))
+        })
+    }
+
     /// The `.bookmark` files, in name order. A missing folder holds none.
     fn grant_files(&self) -> io::Result<Vec<PathBuf>> {
         let entries = match fs::read_dir(&self.dir) {
@@ -580,5 +601,90 @@ mod tests {
             report.to_string(),
             "folder grants: 1 restored (1 renewed), 3 unavailable, 2 removed; x: broke"
         );
+    }
+
+    #[test]
+    fn a_folder_inside_a_grant_is_covered_by_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_in(&dir);
+        let docs = dir.path().join("Doc");
+        put(&store, "a", docs.to_string_lossy().as_bytes());
+        let fake = Fake::default();
+
+        assert_eq!(
+            store.covering_grant(&fake, &docs.join("deep").join("er")),
+            Some(docs.clone())
+        );
+        assert_eq!(store.covering_grant(&fake, &docs), Some(docs));
+    }
+
+    #[test]
+    fn a_grant_does_not_cover_a_sibling_with_the_same_name_start() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_in(&dir);
+        put(
+            &store,
+            "a",
+            dir.path().join("Doc").to_string_lossy().as_bytes(),
+        );
+
+        assert_eq!(
+            store.covering_grant(&Fake::default(), &dir.path().join("Documents-old")),
+            None
+        );
+    }
+
+    #[test]
+    fn without_grants_nothing_is_covered() {
+        let dir = tempfile::tempdir().unwrap();
+
+        assert_eq!(
+            store_in(&dir).covering_grant(&Fake::default(), dir.path()),
+            None
+        );
+    }
+
+    #[test]
+    fn a_grant_whose_path_cannot_be_named_is_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_in(&dir);
+        let docs = dir.path().join("Docs");
+        put(&store, "a-broken", b"broken");
+        put(&store, "b", docs.to_string_lossy().as_bytes());
+        let mut fake = Fake::default();
+        fake.answer(b"broken", Err(BookmarkFailure::Corrupt("no".to_owned())));
+
+        assert_eq!(store.covering_grant(&fake, &docs.join("x")), Some(docs));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_grant_spelled_through_a_link_covers_the_folder_spelled_directly() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_in(&dir);
+        let real = dir.path().join("real");
+        fs::create_dir_all(real.join("sub")).unwrap();
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        put(&store, "a", link.to_string_lossy().as_bytes());
+
+        assert_eq!(
+            store.covering_grant(&Fake::default(), &real.join("sub").join("gone")),
+            Some(link)
+        );
+    }
+
+    #[test]
+    fn finding_the_covering_grant_never_opens_access() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = store_in(&dir);
+        let docs = dir.path().join("Docs");
+        put(&store, "a", docs.to_string_lossy().as_bytes());
+        let fake = Fake::default();
+
+        store.covering_grant(&fake, &docs.join("x"));
+        store.covering_grant(&fake, &dir.path().join("elsewhere"));
+
+        assert_eq!(*fake.resolutions.borrow(), 0);
     }
 }

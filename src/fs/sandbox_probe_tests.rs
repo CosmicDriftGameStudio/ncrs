@@ -13,7 +13,7 @@
 
 use std::path::{Path, PathBuf};
 
-use super::delete::file_manager_trash;
+use super::system_trash;
 
 const TEST_NAME: &str = "fs::sandbox_probe_tests::the_store_sandbox_allows_what_ncrs_relies_on";
 const STEP_VARIABLE: &str = "NCRS_SANDBOX_PROBE_STEP";
@@ -54,14 +54,14 @@ fn sandboxed_step(step: &str, folder: &Path) {
     match step {
         "trash" => {
             std::fs::write(probe_target(), "probe").unwrap();
-            let trash = file_manager_trash(probe_journal());
+            let trash = system_trash(Some(probe_journal()));
             report("trash", outcome(trash.trash(&probe_target())));
             for item in trash.list().unwrap() {
                 report("landed", Path::new(&item.key).display());
             }
         }
         "restore" => {
-            let trash = file_manager_trash(probe_journal());
+            let trash = system_trash(Some(probe_journal()));
             let items = trash.list();
             report("listed", outcome(items.as_ref()));
             for item in items.unwrap_or_default() {
