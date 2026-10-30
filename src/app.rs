@@ -12,7 +12,7 @@ use iced::keyboard::{self, key::Named, Key, Modifiers};
 use iced::widget::{
     column, container, mouse_area, operation, row, Column, Container, Space, Stack,
 };
-use iced::{event, window, Element, Length, Point, Size, Subscription, Task, Theme};
+use iced::{event, mouse, window, Element, Length, Point, Size, Subscription, Task, Theme};
 
 use crate::about::{AboutCard, REPOSITORY_URL};
 use crate::ai_model::{
@@ -4866,10 +4866,10 @@ impl App {
         };
 
         let side_view = |side: PanelSide| {
-            let view = side_view_plain(side);
-            if self.is_drop_target(side) {
+            let plain = side_view_plain(side);
+            let view: Element<'_, Message> = if self.is_drop_target(side) {
                 Stack::with_children([
-                    view,
+                    plain,
                     container(Space::new())
                         .width(Length::Fill)
                         .height(Length::Fill)
@@ -4878,8 +4878,18 @@ impl App {
                 ])
                 .into()
             } else {
-                view
-            }
+                plain
+            };
+            // The cursor goes on a wrapper, not on the overlay: a Stack layer
+            // with its own cursor lifts the pointer off the layers below, so
+            // the panel would report the pointer as gone and end the hover.
+            // The wrapper stays in place without a drag so the panel keeps its
+            // widget state when a drag starts.
+            let wrapper = mouse_area(view);
+            Element::from(match self.drag_cursor(side) {
+                Some(interaction) => wrapper.interaction(interaction),
+                None => wrapper,
+            })
         };
 
         let panels = row![
@@ -8543,6 +8553,22 @@ impl App {
             drag.is_dragging() && drag.source().other() == side && self.hovered_panel == Some(side)
         });
         (self.drop_hover && side == self.active_panel) || drag_hovers_side
+    }
+
+    /// A cursor only where a drag from a panel is over a panel; files held over
+    /// the window from another app keep the OS cursor.
+    fn drag_cursor(&self, side: PanelSide) -> Option<mouse::Interaction> {
+        let drag = self.panel_drag.filter(|drag| drag.is_dragging())?;
+        if self.hovered_panel != Some(side) {
+            return None;
+        }
+        if drag.source() == side {
+            Some(mouse::Interaction::NoDrop)
+        } else if panel_drag::move_modifier_held(self.modifiers) {
+            Some(mouse::Interaction::Move)
+        } else {
+            Some(mouse::Interaction::Copy)
+        }
     }
 
     /// A press on the star only tags, so it never starts a drag.
@@ -16380,6 +16406,44 @@ mod mouse_tagging {
 
         assert!(app.is_drop_target(PanelSide::Right));
         assert!(!app.is_drop_target(PanelSide::Left));
+    }
+
+    #[test]
+    fn the_cursor_shows_what_dropping_the_dragged_rows_would_do() {
+        let mut app = app_with_files();
+        assert_eq!(app.drag_cursor(PanelSide::Right), None);
+        press_row_one(&mut app);
+        drop(app.update(Message::PanelEntered(PanelSide::Right)));
+        assert_eq!(app.drag_cursor(PanelSide::Right), None);
+
+        feed(&mut app, pointer_at(70.0, 50.0));
+        assert_eq!(
+            app.drag_cursor(PanelSide::Right),
+            Some(mouse::Interaction::Copy)
+        );
+        assert_eq!(app.drag_cursor(PanelSide::Left), None);
+
+        drop(app.update(Message::ModifiersChanged(move_modifier())));
+        assert_eq!(
+            app.drag_cursor(PanelSide::Right),
+            Some(mouse::Interaction::Move)
+        );
+
+        drop(app.update(Message::PanelEntered(PanelSide::Left)));
+        assert_eq!(
+            app.drag_cursor(PanelSide::Left),
+            Some(mouse::Interaction::NoDrop)
+        );
+    }
+
+    #[test]
+    fn files_from_another_app_keep_the_os_cursor() {
+        let mut app = app_with_files();
+        app.drop_hover = true;
+        drop(app.update(Message::PanelEntered(PanelSide::Left)));
+
+        assert_eq!(app.drag_cursor(PanelSide::Left), None);
+        assert_eq!(app.drag_cursor(PanelSide::Right), None);
     }
 
     #[test]
