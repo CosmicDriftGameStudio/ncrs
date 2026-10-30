@@ -12,8 +12,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono::NaiveDate;
 use ncrs_index::{
-    Amount, BatchKind, Currency, DocumentFields, DocumentId, DocumentStatus, FieldOrigin,
-    IncludeOutcome, Index, IndexError, ReviewEntryId, ReviewReason, RuleId, RuleSpec, TaxContext,
+    Amount, BatchKind, Condition, ConditionKind, Currency, DocumentFields, DocumentId,
+    DocumentStatus, FieldOrigin, IncludeOutcome, Index, IndexError, ReviewEntryId, ReviewReason,
+    RuleConditions, RuleId, RuleSpec, TaxContext,
 };
 use ncrs_intake::{pattern_is_valid, plan, render_pattern, text_is_readable, PlanInput, Planning};
 
@@ -213,8 +214,7 @@ impl ReviewAccess {
             return Err(PATTERN_DOES_NOT_FIT.to_owned());
         }
         let spec = RuleSpec {
-            match_text: None,
-            match_sender: Some(sender.to_owned()),
+            conditions: RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, sender)]),
             extract_number: None,
             extract_date: None,
             extract_amount: None,

@@ -8,7 +8,9 @@
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 
-use ncrs_index::{RuleEvidence, RuleSpec, SubtreePattern, TaxContext, TextMatch};
+use ncrs_index::{
+    Condition, ConditionKind, RuleConditions, RuleEvidence, RuleSpec, SubtreePattern, TaxContext,
+};
 
 use crate::archive_profile::{subtree_per_document, ArchiveDocument};
 
@@ -97,8 +99,10 @@ pub fn suggest_rules(archive: &[ArchiveText], profile: &[SubtreePattern]) -> Vec
                 subtree: entry.subtree.clone(),
                 phrase: found.phrase.clone(),
                 spec: RuleSpec {
-                    match_text: Some(TextMatch::Contains(found.phrase)),
-                    match_sender: None,
+                    conditions: RuleConditions::all_of(vec![Condition::new(
+                        ConditionKind::Substring,
+                        found.phrase,
+                    )]),
                     extract_number: None,
                     extract_date: None,
                     extract_amount: None,
@@ -398,10 +402,7 @@ mod tests {
 
         for candidate in suggest(&archive) {
             assert!(!candidate.spec.confirmed);
-            assert!(matches!(
-                candidate.spec.match_text,
-                Some(TextMatch::Contains(_))
-            ));
+            assert!(candidate.spec.conditions.single_text().is_some());
         }
     }
 

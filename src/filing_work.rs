@@ -192,7 +192,8 @@ mod tests {
 
     use chrono::{TimeZone as _, Utc};
     use ncrs_index::{
-        DocumentSource, JournalState, NewDocument, NewJournalItem, RuleSpec, TaxContext, TextMatch,
+        Condition, ConditionKind, DocumentSource, JournalState, NewDocument, NewJournalItem,
+        RuleConditions, RuleSpec, TaxContext,
     };
     use ncrs_intake::hash_path;
     use tempfile::TempDir;
@@ -233,8 +234,10 @@ mod tests {
             let mut index = Index::create_plain(&dir.path().join("index.db")).unwrap();
             index
                 .create_rule(&RuleSpec {
-                    match_text: Some(TextMatch::Contains("company a".to_owned())),
-                    match_sender: None,
+                    conditions: RuleConditions::all_of(vec![Condition::new(
+                        ConditionKind::Substring,
+                        "company a",
+                    )]),
                     extract_number: None,
                     extract_date: None,
                     extract_amount: None,

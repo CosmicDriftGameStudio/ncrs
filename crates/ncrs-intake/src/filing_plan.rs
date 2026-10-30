@@ -10,7 +10,10 @@
 use std::path::PathBuf;
 
 use chrono::Datelike as _;
-use ncrs_index::{DocumentFields, Field, ReviewReason, Rule, RuleId, RuleSpec, TextMatch};
+use ncrs_index::{
+    Combinator, Condition, ConditionKind, DocumentFields, Field, ReviewReason, Rule, RuleId,
+    RuleSpec,
+};
 
 use crate::extract::{compile, extract_amount, extract_date, extract_number};
 use crate::sanitise::{is_plain_literal, sanitise_value, stays_below};
@@ -81,27 +84,51 @@ pub fn plan(rules: &[Rule], input: &PlanInput<'_>) -> Planning {
     }
 }
 
-/// All conditions of the rule hold. A rule without a condition would match
-/// every document, so it matches none; an empty or invalid condition and a
-/// regex over the size limit make the rule not match.
+/// The conditions of the rule hold, all of them or any of them as the rule
+/// says. A rule without a condition would match every document, so it matches
+/// none. A condition that cannot be evaluated (empty value, invalid regex,
+/// regex over the size limit) makes the rule not match, also under `not` and
+/// under any-of, where it would otherwise decide the outcome by accident.
 fn matches(spec: &RuleSpec, input: &PlanInput<'_>, lowered_text: &str) -> bool {
-    let has_condition = spec.match_text.is_some() || spec.match_sender.is_some();
-    let text_matches = match &spec.match_text {
-        None => true,
-        Some(TextMatch::Contains(needle)) => contains_condition_holds(lowered_text, needle),
-        Some(TextMatch::Regex(source)) => {
-            compile(source).is_some_and(|regex| regex.is_match(input.text))
-        }
+    let conditions = &spec.conditions;
+    if conditions.list.is_empty() {
+        return false;
+    }
+    let Some(outcomes) = conditions
+        .list
+        .iter()
+        .map(|condition| condition_outcome(condition, input, lowered_text))
+        .collect::<Option<Vec<bool>>>()
+    else {
+        return false;
     };
-    let sender_matches = match &spec.match_sender {
-        None => true,
-        Some(wanted) => input
+    match conditions.combinator {
+        Combinator::AllOf => outcomes.iter().all(|holds| *holds),
+        Combinator::AnyOf => outcomes.iter().any(|holds| *holds),
+    }
+}
+
+/// `None` when the condition cannot be evaluated.
+fn condition_outcome(
+    condition: &Condition,
+    input: &PlanInput<'_>,
+    lowered_text: &str,
+) -> Option<bool> {
+    if condition.value.is_empty() {
+        return None;
+    }
+    let holds = match condition.kind {
+        ConditionKind::Substring => contains_condition_holds(lowered_text, &condition.value),
+        ConditionKind::Regex => {
+            compile(&condition.value).map(|regex| regex.is_match(input.text))?
+        }
+        ConditionKind::Sender => input
             .fields
             .sender
             .as_ref()
-            .is_some_and(|sender| sender.to_lowercase() == wanted.to_lowercase()),
+            .is_some_and(|sender| sender.to_lowercase() == condition.value.to_lowercase()),
     };
-    has_condition && text_matches && sender_matches
+    Some(holds != condition.negated)
 }
 
 /// The known fields, completed from the rule and from the text. Kind, tax
@@ -110,7 +137,7 @@ fn matches(spec: &RuleSpec, input: &PlanInput<'_>, lowered_text: &str) -> bool {
 fn filled_fields(spec: &RuleSpec, input: &PlanInput<'_>) -> DocumentFields {
     let mut fields = input.fields.clone();
     if fields.sender.is_none() {
-        fields.sender = spec.match_sender.clone();
+        fields.sender = spec.conditions.required_sender().map(str::to_owned);
     }
     if !spec.kind.is_empty() {
         fields.kind = Some(spec.kind.clone());
@@ -363,7 +390,7 @@ mod tests {
     use std::path::Path;
 
     use chrono::NaiveDate;
-    use ncrs_index::{Amount, Currency, TaxContext};
+    use ncrs_index::{Amount, Currency, RuleConditions, TaxContext};
 
     use super::*;
 
@@ -390,8 +417,10 @@ mod tests {
 
     fn spec(pattern: &str) -> RuleSpec {
         RuleSpec {
-            match_text: Some(TextMatch::Contains("company a ltd".to_owned())),
-            match_sender: None,
+            conditions: RuleConditions::all_of(vec![Condition::new(
+                ConditionKind::Substring,
+                "company a ltd",
+            )]),
             extract_number: Some(r"Invoice\s+(\d+)".to_owned()),
             extract_date: Some(r"Date:\s*(\d{2}\.\d{2}\.\d{4})".to_owned()),
             extract_amount: Some(r"Total:\s*([\d.,]+\s*€)".to_owned()),
@@ -468,8 +497,10 @@ mod tests {
     #[test]
     fn a_regex_rule_matches_and_sender_is_compared_without_case() {
         let mut regex_spec = spec("{year}/{number}");
-        regex_spec.match_text = Some(TextMatch::Regex(r"(?i)company\s+a\s+ltd".to_owned()));
-        regex_spec.match_sender = Some("COMPANY A".to_owned());
+        regex_spec.conditions = RuleConditions::all_of(vec![
+            Condition::new(ConditionKind::Regex, r"(?i)company\s+a\s+ltd"),
+            Condition::new(ConditionKind::Sender, "COMPANY A"),
+        ]);
         let known = DocumentFields {
             sender: Some("company a".to_owned()),
             ..DocumentFields::default()
@@ -490,7 +521,8 @@ mod tests {
         let known = DocumentFields::default();
         for source in ["(unclosed", "(a{1000}){1000}{1000}", r"\p{L}{1000}{1000}"] {
             let mut broken = spec("{number}");
-            broken.match_text = Some(TextMatch::Regex(source.to_owned()));
+            broken.conditions =
+                RuleConditions::all_of(vec![Condition::new(ConditionKind::Regex, source)]);
             assert_eq!(
                 reason(&plan_for(broken, TEXT, &known)),
                 ReviewReason::NoMatchingRule,
@@ -505,11 +537,115 @@ mod tests {
         );
     }
 
+    fn with_conditions(combinator: Combinator, list: Vec<Condition>) -> RuleSpec {
+        RuleSpec {
+            conditions: RuleConditions { combinator, list },
+            ..spec("{number}")
+        }
+    }
+
+    fn matched(spec: RuleSpec) -> bool {
+        let known = DocumentFields {
+            sender: Some("Company A".to_owned()),
+            ..DocumentFields::default()
+        };
+        matches!(plan_for(spec, TEXT, &known), Planning::Plan(_))
+    }
+
+    fn substring(text: &str) -> Condition {
+        Condition::new(ConditionKind::Substring, text)
+    }
+
+    #[test]
+    fn all_of_needs_every_condition() {
+        let both = vec![substring("invoice 4711"), substring("thank you")];
+        let one_missing = vec![substring("invoice 4711"), substring("reminder")];
+
+        assert!(matched(with_conditions(Combinator::AllOf, both)));
+        assert!(!matched(with_conditions(Combinator::AllOf, one_missing)));
+    }
+
+    #[test]
+    fn any_of_needs_one_condition() {
+        let one = vec![substring("reminder"), substring("invoice 4711")];
+        let none = vec![substring("reminder"), substring("credit note")];
+
+        assert!(matched(with_conditions(Combinator::AnyOf, one)));
+        assert!(!matched(with_conditions(Combinator::AnyOf, none)));
+    }
+
+    #[test]
+    fn a_negated_condition_excludes() {
+        let absent = vec![
+            substring("invoice"),
+            Condition::not(ConditionKind::Substring, "reminder"),
+        ];
+        let present = vec![
+            substring("invoice"),
+            Condition::not(ConditionKind::Substring, "thank you"),
+        ];
+        let wrong_sender = vec![
+            substring("invoice"),
+            Condition::not(ConditionKind::Sender, "company a"),
+        ];
+
+        assert!(matched(with_conditions(Combinator::AllOf, absent)));
+        assert!(!matched(with_conditions(Combinator::AllOf, present)));
+        assert!(!matched(with_conditions(Combinator::AllOf, wrong_sender)));
+    }
+
+    #[test]
+    fn a_condition_that_cannot_be_evaluated_blocks_the_rule_even_under_not_and_any_of() {
+        let unusable = [
+            Condition::not(ConditionKind::Regex, "(unclosed"),
+            Condition::new(ConditionKind::Regex, "(unclosed"),
+            Condition::not(ConditionKind::Substring, ""),
+            Condition::new(ConditionKind::Substring, ""),
+        ];
+        for condition in unusable {
+            let any = vec![substring("invoice"), condition.clone()];
+            let all = vec![substring("invoice"), condition.clone()];
+            assert!(
+                !matched(with_conditions(Combinator::AnyOf, any)),
+                "{condition:?}"
+            );
+            assert!(
+                !matched(with_conditions(Combinator::AllOf, all)),
+                "{condition:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_sender_is_only_filled_from_a_plain_sender_condition_under_all_of() {
+        let unconfirmed_sender = |combinator, condition| {
+            let mut spec = with_conditions(combinator, vec![substring("invoice 4711"), condition]);
+            spec.confirmed = false;
+            spec
+        };
+        let sender_of = |spec: RuleSpec| match plan_for(spec, TEXT, &DocumentFields::default()) {
+            Planning::Review { fields, .. } => fields.sender,
+            Planning::Plan(_) => panic!("expected a review"),
+        };
+
+        let sender = Condition::new(ConditionKind::Sender, "Company A");
+        let negated = Condition::not(ConditionKind::Sender, "Agency B");
+
+        assert_eq!(
+            sender_of(unconfirmed_sender(Combinator::AnyOf, sender)),
+            None
+        );
+        assert_eq!(
+            sender_of(unconfirmed_sender(Combinator::AllOf, negated)),
+            None
+        );
+    }
+
     #[test]
     fn a_rule_without_a_condition_matches_nothing() {
         // The index refuses such a rule; the planner does not rely on that.
         let mut rules = rules_from(&[spec("{number}")]);
-        rules[0].spec.match_text = None;
+        rules[0].spec.conditions = RuleConditions::default();
         let fields = DocumentFields::default();
 
         let planning = plan(

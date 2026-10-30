@@ -29,10 +29,10 @@ pub use journal::{BatchKind, JournalItem, JournalState, NewJournalItem};
 pub use key::RecoveryKey;
 pub use key_store::{InMemoryKeyStore, KeyStore, KeyringKeyStore};
 pub use model::{
-    Amount, BatchId, ConflictReason, ContentHash, Currency, Document, DocumentFields, DocumentId,
-    DocumentSource, DocumentStatus, Field, FieldOrigin, FieldOrigins, FileStamp, Finding,
-    FindingKind, HermesCounts, IndexStatistics, NewDocument, NoActionReason, PlanId, PlanItem,
-    PlanOutcome, QuerySpec, ReorganisationPlan, ReviewEntry, ReviewEntryId, ReviewReason, Rule,
-    RuleEvidence, RuleId, RuleSpec, RuleSuggestion, SavedQuery, SavedQueryId, StatusCounts,
-    SubtreePattern, TaxContext, TextMatch,
+    Amount, BatchId, Combinator, Condition, ConditionKind, ConflictReason, ContentHash, Currency,
+    Document, DocumentFields, DocumentId, DocumentSource, DocumentStatus, Field, FieldOrigin,
+    FieldOrigins, FileStamp, Finding, FindingKind, HermesCounts, IndexStatistics, NewDocument,
+    NoActionReason, PlanId, PlanItem, PlanOutcome, QuerySpec, ReorganisationPlan, ReviewEntry,
+    ReviewEntryId, ReviewReason, Rule, RuleConditions, RuleEvidence, RuleId, RuleSpec,
+    RuleSuggestion, SavedQuery, SavedQueryId, StatusCounts, SubtreePattern, TaxContext,
 };

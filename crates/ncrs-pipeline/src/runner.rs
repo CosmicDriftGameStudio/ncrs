@@ -2237,8 +2237,10 @@ mod tests {
 
     fn invoice_rule(filing_pattern: &str, confirmed: bool) -> ncrs_index::RuleSpec {
         ncrs_index::RuleSpec {
-            match_text: Some(ncrs_index::TextMatch::Contains("company a".to_owned())),
-            match_sender: None,
+            conditions: ncrs_index::RuleConditions::all_of(vec![ncrs_index::Condition::new(
+                ncrs_index::ConditionKind::Substring,
+                "company a",
+            )]),
             extract_number: Some(r"Invoice (\d+)".to_owned()),
             extract_date: None,
             extract_amount: None,

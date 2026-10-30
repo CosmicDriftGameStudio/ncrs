@@ -404,17 +404,131 @@ pub struct SavedQuery {
     pub spec: QuerySpec,
 }
 
+/// Substring: the text contains the value, without regard to case. Regex: the
+/// value is a regex source run over the text. Sender: the sender of the
+/// document equals the value, without regard to case.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ConditionKind {
+    Substring,
+    Regex,
+    Sender,
+}
+
+impl ConditionKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Substring => "substring",
+            Self::Regex => "regex",
+            Self::Sender => "sender",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Result<Self, IndexError> {
+        match value {
+            "substring" => Ok(Self::Substring),
+            "regex" => Ok(Self::Regex),
+            "sender" => Ok(Self::Sender),
+            other => Err(corrupt("rule_condition.kind", other)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TextMatch {
-    Contains(String),
-    Regex(String),
+pub struct Condition {
+    pub kind: ConditionKind,
+    pub value: String,
+    pub negated: bool,
+}
+
+impl Condition {
+    pub fn new(kind: ConditionKind, value: impl Into<String>) -> Self {
+        Self {
+            kind,
+            value: value.into(),
+            negated: false,
+        }
+    }
+
+    pub fn not(kind: ConditionKind, value: impl Into<String>) -> Self {
+        Self {
+            negated: true,
+            ..Self::new(kind, value)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum Combinator {
+    #[default]
+    AllOf,
+    AnyOf,
+}
+
+impl Combinator {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::AllOf => "all",
+            Self::AnyOf => "any",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Result<Self, IndexError> {
+        match value {
+            "all" => Ok(Self::AllOf),
+            "any" => Ok(Self::AnyOf),
+            other => Err(corrupt("rule.combinator", other)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RuleConditions {
+    pub combinator: Combinator,
+    pub list: Vec<Condition>,
+}
+
+impl RuleConditions {
+    pub fn all_of(list: Vec<Condition>) -> Self {
+        Self {
+            combinator: Combinator::AllOf,
+            list,
+        }
+    }
+
+    pub fn any_of(list: Vec<Condition>) -> Self {
+        Self {
+            combinator: Combinator::AnyOf,
+            list,
+        }
+    }
+
+    /// Only under all-of: under any-of a matching rule does not imply the sender.
+    pub fn required_sender(&self) -> Option<&str> {
+        if self.combinator != Combinator::AllOf {
+            return None;
+        }
+        self.list
+            .iter()
+            .find(|condition| condition.kind == ConditionKind::Sender && !condition.negated)
+            .map(|condition| condition.value.as_str())
+    }
+
+    pub fn single_text(&self) -> Option<&str> {
+        match self.list.as_slice() {
+            [Condition {
+                kind: ConditionKind::Substring,
+                value,
+                negated: false,
+            }] => Some(value),
+            _ => None,
+        }
+    }
 }
 
 /// The extract patterns are regex sources the index only stores.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuleSpec {
-    pub match_text: Option<TextMatch>,
-    pub match_sender: Option<String>,
+    pub conditions: RuleConditions,
     pub extract_number: Option<String>,
     pub extract_date: Option<String>,
     pub extract_amount: Option<String>,
@@ -763,4 +877,41 @@ pub struct ReorganisationPlan {
     pub created_at: DateTime<Utc>,
     /// Sorted by source.
     pub items: Vec<PlanItem>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_sender_is_required_only_by_a_plain_sender_condition_under_all_of() {
+        let list = vec![
+            Condition::not(ConditionKind::Sender, "Agency B"),
+            Condition::new(ConditionKind::Substring, "Invoice"),
+            Condition::new(ConditionKind::Sender, "Company A"),
+        ];
+
+        assert_eq!(
+            RuleConditions::all_of(list.clone()).required_sender(),
+            Some("Company A")
+        );
+        assert_eq!(RuleConditions::any_of(list).required_sender(), None);
+    }
+
+    #[test]
+    fn single_text_is_one_plain_substring_condition() {
+        let substring = Condition::new(ConditionKind::Substring, "Invoice");
+
+        assert_eq!(
+            RuleConditions::all_of(vec![substring.clone()]).single_text(),
+            Some("Invoice")
+        );
+        for list in [
+            vec![Condition::not(ConditionKind::Substring, "Invoice")],
+            vec![Condition::new(ConditionKind::Regex, "Invoice")],
+            vec![substring.clone(), substring],
+        ] {
+            assert_eq!(RuleConditions::all_of(list).single_text(), None);
+        }
+    }
 }
