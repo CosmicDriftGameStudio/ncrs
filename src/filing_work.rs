@@ -86,6 +86,7 @@ fn decide(
         &PlanInput {
             text: &text,
             fields: &document.fields,
+            path: Some(&document.path),
         },
     );
     match planning {

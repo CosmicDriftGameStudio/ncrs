@@ -7,7 +7,7 @@
 //! `{number}`, `{kind}` and `{tax_context}`. Patterns learned from an archive
 //! add `{folder}` (the sender) and `{name}` (the kind).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::Datelike as _;
 use ncrs_index::{
@@ -15,6 +15,10 @@ use ncrs_index::{
     RuleSpec,
 };
 
+use crate::conditions::{
+    folder_holds, iban_holds, recipient_holds, sender_address_holds, tax_id_holds, word_holds,
+    SearchText,
+};
 use crate::extract::{compile, extract_amount, extract_date, extract_number};
 use crate::sanitise::{is_plain_literal, sanitise_value, stays_below};
 
@@ -24,6 +28,9 @@ pub struct PlanInput<'a> {
     pub text: &'a str,
     /// For example a sender found earlier; the rules fill in the rest.
     pub fields: &'a DocumentFields,
+    /// Where the document lies now, in the inbox or the archive; `None` when
+    /// the caller has no path, which makes a folder condition unusable.
+    pub path: Option<&'a Path>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,10 +66,10 @@ pub fn pattern_is_valid(source: &str) -> bool {
 
 /// The first confirmed rule that matches wins, in the order of `rules`.
 pub fn plan(rules: &[Rule], input: &PlanInput<'_>) -> Planning {
-    let lowered_text = input.text.to_lowercase();
+    let search = SearchText::new(input.text);
     let mut unconfirmed = None;
     for rule in rules {
-        if !matches(&rule.spec, input, &lowered_text) {
+        if !matches(&rule.spec, input, &search) {
             continue;
         }
         if rule.spec.confirmed {
@@ -89,7 +96,7 @@ pub fn plan(rules: &[Rule], input: &PlanInput<'_>) -> Planning {
 /// none. A condition that cannot be evaluated (empty value, invalid regex,
 /// regex over the size limit) makes the rule not match, also under `not` and
 /// under any-of, where it would otherwise decide the outcome by accident.
-fn matches(spec: &RuleSpec, input: &PlanInput<'_>, lowered_text: &str) -> bool {
+fn matches(spec: &RuleSpec, input: &PlanInput<'_>, search: &SearchText) -> bool {
     let conditions = &spec.conditions;
     if conditions.list.is_empty() {
         return false;
@@ -97,7 +104,7 @@ fn matches(spec: &RuleSpec, input: &PlanInput<'_>, lowered_text: &str) -> bool {
     let Some(outcomes) = conditions
         .list
         .iter()
-        .map(|condition| condition_outcome(condition, input, lowered_text))
+        .map(|condition| condition_outcome(condition, input, search))
         .collect::<Option<Vec<bool>>>()
     else {
         return false;
@@ -112,13 +119,19 @@ fn matches(spec: &RuleSpec, input: &PlanInput<'_>, lowered_text: &str) -> bool {
 fn condition_outcome(
     condition: &Condition,
     input: &PlanInput<'_>,
-    lowered_text: &str,
+    search: &SearchText,
 ) -> Option<bool> {
-    if condition.value.is_empty() {
+    if condition.value.trim().is_empty() {
         return None;
     }
     let holds = match condition.kind {
-        ConditionKind::Substring => contains_condition_holds(lowered_text, &condition.value),
+        ConditionKind::Substring => contains_condition_holds(&search.lowered, &condition.value),
+        ConditionKind::Word => word_holds(search, &condition.value),
+        ConditionKind::SenderAddress => sender_address_holds(&search.lowered, &condition.value),
+        ConditionKind::Iban => iban_holds(input.text, &condition.value),
+        ConditionKind::TaxId => tax_id_holds(input.text, &condition.value),
+        ConditionKind::Recipient => recipient_holds(input.text, &condition.value),
+        ConditionKind::Folder => folder_holds(input.path?, &condition.value)?,
         ConditionKind::Regex => {
             compile(&condition.value).map(|regex| regex.is_match(input.text))?
         }
@@ -433,20 +446,41 @@ mod tests {
     }
 
     /// Rule ids are only handed out by the index.
+    /// The conditions are put in after the index has stored a placeholder, so
+    /// a test can plan with a regex the index would refuse.
     fn rules_from(specs: &[RuleSpec]) -> Vec<Rule> {
         let dir = tempfile::TempDir::new().unwrap();
         let mut index = ncrs_index::Index::create_plain(&dir.path().join("index.db")).unwrap();
         for spec in specs {
-            index.create_rule(spec).unwrap();
+            index
+                .create_rule(&RuleSpec {
+                    conditions: RuleConditions::all_of(vec![Condition::new(
+                        ConditionKind::Word,
+                        "placeholder",
+                    )]),
+                    ..spec.clone()
+                })
+                .unwrap();
         }
-        index.rules().unwrap()
+        let mut rules = index.rules().unwrap();
+        for (rule, spec) in rules.iter_mut().zip(specs) {
+            rule.spec = spec.clone();
+        }
+        rules
     }
 
     const TEXT: &str =
         "Company A Ltd\nInvoice 4711\nDate: 01.03.2026\nTotal: 1.234,56 €\nthank you";
 
     fn plan_for(spec: RuleSpec, text: &str, fields: &DocumentFields) -> Planning {
-        plan(&rules_from(&[spec]), &PlanInput { text, fields })
+        plan(
+            &rules_from(&[spec]),
+            &PlanInput {
+                text,
+                fields,
+                path: None,
+            },
+        )
     }
 
     fn planned(planning: Planning) -> FilingPlan {
@@ -616,6 +650,88 @@ mod tests {
         }
     }
 
+    /// The rule found the document; fields it cannot fill do not matter here.
+    fn matched_at(condition: Condition, text: &str, path: Option<&Path>) -> bool {
+        let rules = rules_from(&[with_conditions(Combinator::AllOf, vec![condition])]);
+        let fields = DocumentFields::default();
+        let planning = plan(
+            &rules,
+            &PlanInput {
+                text,
+                fields: &fields,
+                path,
+            },
+        );
+        !matches!(
+            planning,
+            Planning::Review {
+                reason: ReviewReason::NoMatchingRule,
+                ..
+            }
+        )
+    }
+
+    #[test]
+    fn a_word_condition_does_not_match_inside_another_word() {
+        let word = |text| Condition::new(ConditionKind::Word, text);
+
+        assert!(matched_at(word("invoice"), TEXT, None));
+        assert!(!matched_at(word("invoic"), TEXT, None));
+        assert!(!matched_at(word("bahn"), "Autobahn Bahnhof", None));
+        assert!(matched_at(word("company a ltd"), "Company A\n  Ltd", None));
+    }
+
+    #[test]
+    fn the_new_condition_kinds_are_evaluated_from_the_text() {
+        let text = "Nordlicht GmbH\n\nErika Mustermann\n20457 Hamburg\n\n\
+            rechnung@billing.nordlicht.de IBAN DE00 0000 0000 0000 0000 00 USt DE 123 456 789";
+        for (condition, expected) in [
+            (
+                Condition::new(ConditionKind::SenderAddress, "nordlicht.de"),
+                true,
+            ),
+            (
+                Condition::new(ConditionKind::SenderAddress, "other.de"),
+                false,
+            ),
+            (
+                Condition::new(ConditionKind::Iban, "DE00000000000000000000"),
+                true,
+            ),
+            (
+                Condition::new(ConditionKind::Iban, "DE00000000000000000001"),
+                false,
+            ),
+            (Condition::new(ConditionKind::TaxId, "DE123456789"), true),
+            (
+                Condition::new(ConditionKind::Recipient, "Erika Mustermann"),
+                true,
+            ),
+            (Condition::new(ConditionKind::Recipient, "Nordlicht"), false),
+        ] {
+            assert_eq!(
+                matched_at(condition.clone(), text, None),
+                expected,
+                "{condition:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_folder_condition_needs_a_path_even_when_negated() {
+        let path = Path::new("/archive/Steuer/2025/bill.pdf");
+        let folder = Condition::new(ConditionKind::Folder, "steuer/2025");
+        let not_folder = Condition::not(ConditionKind::Folder, "steuer/2025");
+        let elsewhere = Condition::not(ConditionKind::Folder, "privat");
+
+        assert!(matched_at(folder.clone(), TEXT, Some(path)));
+        assert!(!matched_at(not_folder.clone(), TEXT, Some(path)));
+        assert!(matched_at(elsewhere.clone(), TEXT, Some(path)));
+        assert!(!matched_at(folder, TEXT, None));
+        assert!(!matched_at(not_folder, TEXT, None));
+        assert!(!matched_at(elsewhere, TEXT, None));
+    }
+
     #[test]
     fn the_sender_is_only_filled_from_a_plain_sender_condition_under_all_of() {
         let unconfirmed_sender = |combinator, condition| {
@@ -653,6 +769,7 @@ mod tests {
             &PlanInput {
                 text: TEXT,
                 fields: &fields,
+                path: None,
             },
         );
 
@@ -671,6 +788,7 @@ mod tests {
             &PlanInput {
                 text: TEXT,
                 fields: &fields,
+                path: None,
             },
         );
 

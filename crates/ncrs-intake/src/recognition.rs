@@ -121,14 +121,9 @@ fn set_expected(fields: &mut DocumentFields, field: Field, value: &str) -> Resul
 const DATE_DOTTED: &str = r"Datum:?\s*(\d{2}\.\d{2}\.\d{4})";
 const DATE_ISO: &str = r"Date:?\s*(\d{4}-\d{2}-\d{2})";
 
-fn contains_rule(
-    phrase: &str,
-    kind: &str,
-    tax_context: TaxContext,
-    filing_pattern: &str,
-) -> RuleSpec {
+fn word_rule(phrase: &str, kind: &str, tax_context: TaxContext, filing_pattern: &str) -> RuleSpec {
     RuleSpec {
-        conditions: RuleConditions::all_of(vec![Condition::new(ConditionKind::Substring, phrase)]),
+        conditions: RuleConditions::all_of(vec![Condition::new(ConditionKind::Word, phrase)]),
         extract_number: None,
         extract_date: None,
         extract_amount: None,
@@ -140,11 +135,9 @@ fn contains_rule(
     }
 }
 
-fn german_invoice(match_sender: Option<&str>, filing_pattern: &str) -> RuleSpec {
-    let mut spec = contains_rule("rechnung", "Rechnung", TaxContext::Company, filing_pattern);
-    spec.conditions
-        .list
-        .extend(match_sender.map(|sender| Condition::new(ConditionKind::Sender, sender)));
+fn german_invoice(also: Option<Condition>, filing_pattern: &str) -> RuleSpec {
+    let mut spec = word_rule("rechnung", "Rechnung", TaxContext::Company, filing_pattern);
+    spec.conditions.list.extend(also);
     RuleSpec {
         extract_number: Some(r"Rechnungsnummer:?\s*([A-Z0-9-]+)".to_owned()),
         extract_date: Some(r"(?:Rechnungsdatum|Datum):?\s*(\d{2}\.\d{2}\.\d{4})".to_owned()),
@@ -155,18 +148,32 @@ fn german_invoice(match_sender: Option<&str>, filing_pattern: &str) -> RuleSpec 
     }
 }
 
+/// German compounds name the kind at the end of a word
+/// ("Einkommensteuerbescheid", "Mietvertrag"), which a word condition misses.
+fn word_ending_in(stem: &str) -> RuleConditions {
+    RuleConditions::all_of(vec![Condition::new(
+        ConditionKind::Regex,
+        format!(r"(?i)\w*{stem}\b"),
+    )])
+}
+
 /// The rules the measurement plans against, with the ids 1..n in this order.
-/// The first one needs a sender, which only the AI sets; a rule that mentions
-/// a word in the middle of another matches there too.
+/// The first one needs the IBAN of Nordlicht Energie on the document.
 pub fn fixed_rules() -> Vec<Rule> {
     let specs = [
-        german_invoice(Some("Nordlicht Energie GmbH"), "{year}/Energie/{number}"),
+        german_invoice(
+            Some(Condition::new(
+                ConditionKind::Iban,
+                "DE00 0000 0000 0000 0000 00",
+            )),
+            "{year}/Energie/{number}",
+        ),
         german_invoice(None, "{year}/Rechnungen/{number}"),
         RuleSpec {
             extract_number: Some(r"Invoice (?:No\.?|number):?\s*([A-Z0-9-]+)".to_owned()),
             extract_date: Some(DATE_ISO.to_owned()),
             extract_amount: Some(r"Total:?\s*([\d.,]+)\s*(?P<currency>[A-Z]{3})".to_owned()),
-            ..contains_rule(
+            ..word_rule(
                 "invoice",
                 "Invoice",
                 TaxContext::Company,
@@ -177,7 +184,8 @@ pub fn fixed_rules() -> Vec<Rule> {
             extract_number: Some(r"Aktenzeichen:?\s*([0-9/]+)".to_owned()),
             extract_date: Some(r"Bescheid vom (\d{2}\.\d{2}\.\d{4})".to_owned()),
             extract_amount: Some(r"Nachzahlung:?\s*([\d.,]+)\s*(?P<currency>EUR)".to_owned()),
-            ..contains_rule(
+            conditions: word_ending_in("steuerbescheid"),
+            ..word_rule(
                 "Steuerbescheid",
                 "Steuerbescheid",
                 TaxContext::Private,
@@ -188,7 +196,8 @@ pub fn fixed_rules() -> Vec<Rule> {
             extract_number: Some(r"Vertragsnummer:?\s*([A-Z0-9-]+)".to_owned()),
             extract_date: Some(r"Vertragsdatum:?\s*(\d{2}\.\d{2}\.\d{4})".to_owned()),
             extract_amount: Some(r"Monatsbeitrag:?\s*([\d.,]+)\s*(?P<currency>EUR)".to_owned()),
-            ..contains_rule(
+            conditions: word_ending_in("vertrag"),
+            ..word_rule(
                 "Vertrag",
                 "Vertrag",
                 TaxContext::None,
@@ -200,7 +209,7 @@ pub fn fixed_rules() -> Vec<Rule> {
             extract_date: Some(DATE_DOTTED.to_owned()),
             extract_amount: Some(r"Angebotssumme:?\s*([\d.,]+)\s*(?P<currency>EUR)".to_owned()),
             confirmed: false,
-            ..contains_rule(
+            ..word_rule(
                 "Angebot",
                 "Angebot",
                 TaxContext::Company,
@@ -209,7 +218,7 @@ pub fn fixed_rules() -> Vec<Rule> {
         },
         RuleSpec {
             extract_date: Some(DATE_DOTTED.to_owned()),
-            ..contains_rule(
+            ..word_rule(
                 "Kündigung",
                 "Kündigung",
                 TaxContext::None,
@@ -218,7 +227,7 @@ pub fn fixed_rules() -> Vec<Rule> {
         },
         RuleSpec {
             extract_date: Some(DATE_DOTTED.to_owned()),
-            ..contains_rule(
+            ..word_rule(
                 "Sehr geehrte",
                 "Brief",
                 TaxContext::Private,
@@ -227,7 +236,7 @@ pub fn fixed_rules() -> Vec<Rule> {
         },
         RuleSpec {
             extract_date: Some(DATE_ISO.to_owned()),
-            ..contains_rule(
+            ..word_rule(
                 "Dear",
                 "Letter",
                 TaxContext::Private,
@@ -437,6 +446,7 @@ pub fn measure(
                 &PlanInput {
                     text: &document.text,
                     fields: &DocumentFields::default(),
+                    path: None,
                 },
             );
             let planning = match rules_planning {
@@ -450,6 +460,7 @@ pub fn measure(
                         &PlanInput {
                             text: &document.text,
                             fields: &merged,
+                            path: None,
                         },
                     ),
                     Some(merged) => Planning::Review {
@@ -638,11 +649,7 @@ mod tests {
             tax_context: Some(TaxContext::Private),
             ..DocumentFields::default()
         };
-        let result = only_result(&[document(
-            "letter",
-            "Ihre Rechnungsanschrift bitte",
-            expected,
-        )]);
+        let result = only_result(&[document("letter", "Ihre Rechnung bitte", expected)]);
 
         assert!(result.rule.is_some());
         assert!(result.wrong_assignment);

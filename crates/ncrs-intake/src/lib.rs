@@ -4,6 +4,7 @@
 
 mod archive_profile;
 mod classify;
+mod conditions;
 mod default_pattern;
 mod error;
 mod extract;
@@ -30,6 +31,7 @@ pub use archive_profile::{
     DocumentPattern,
 };
 pub use classify::{classify, is_image_file, text_is_readable, Skip};
+pub use conditions::word_condition_holds;
 pub use default_pattern::{
     choose_pattern, default_pattern_for, ChosenPattern, PatternSource, DEFAULT_PATTERNS,
 };

@@ -272,6 +272,7 @@ fn review_item(
         &PlanInput {
             text: &text,
             fields: &document.fields,
+            path: Some(&document.path),
         },
     );
     let (fields, proposed_pattern) = match planning {

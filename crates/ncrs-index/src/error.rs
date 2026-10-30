@@ -74,6 +74,12 @@ pub enum IndexError {
         what: &'static str,
     },
     RuleWithoutCondition,
+    /// The regex condition at `position` of the condition list does not compile
+    /// within the size limits.
+    InvalidRegex {
+        position: usize,
+        reason: String,
+    },
     /// A document with this content hash is already indexed.
     DuplicateHash(DocumentId),
     DocumentNotFound(DocumentId),
@@ -135,6 +141,9 @@ impl fmt::Display for IndexError {
             Self::EmptyName { what } => write!(f, "a {what} name must not be empty"),
             Self::RuleWithoutCondition => {
                 write!(f, "a rule needs a text match or a sender to match")
+            }
+            Self::InvalidRegex { position, reason } => {
+                write!(f, "condition {position}: invalid regex: {reason}")
             }
             Self::DuplicateHash(id) => {
                 write!(f, "a document with this content is already indexed ({id})")

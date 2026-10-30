@@ -404,30 +404,64 @@ pub struct SavedQuery {
     pub spec: QuerySpec,
 }
 
-/// Substring: the text contains the value, without regard to case. Regex: the
-/// value is a regex source run over the text. Sender: the sender of the
-/// document equals the value, without regard to case.
+/// Substring: the text contains the value, without regard to case. Word: the
+/// text contains the word or phrase between word boundaries. Regex: the value
+/// is a regex source run over the text. Sender: the sender of the document
+/// equals the value, without regard to case. SenderAddress: an e-mail domain or
+/// address found in the text. Iban and TaxId: the number occurs in the text,
+/// whatever the spacing. Recipient: the name or address stands in the addressee
+/// block. Folder: the folder the document lies in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ConditionKind {
     Substring,
+    Word,
     Regex,
     Sender,
+    SenderAddress,
+    Iban,
+    TaxId,
+    Recipient,
+    Folder,
 }
 
 impl ConditionKind {
+    pub const ALL: [Self; 9] = [
+        Self::Substring,
+        Self::Word,
+        Self::Regex,
+        Self::Sender,
+        Self::SenderAddress,
+        Self::Iban,
+        Self::TaxId,
+        Self::Recipient,
+        Self::Folder,
+    ];
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Substring => "substring",
+            Self::Word => "word",
             Self::Regex => "regex",
             Self::Sender => "sender",
+            Self::SenderAddress => "sender_address",
+            Self::Iban => "iban",
+            Self::TaxId => "tax_id",
+            Self::Recipient => "recipient",
+            Self::Folder => "folder",
         }
     }
 
     pub(crate) fn parse(value: &str) -> Result<Self, IndexError> {
         match value {
             "substring" => Ok(Self::Substring),
+            "word" => Ok(Self::Word),
             "regex" => Ok(Self::Regex),
             "sender" => Ok(Self::Sender),
+            "sender_address" => Ok(Self::SenderAddress),
+            "iban" => Ok(Self::Iban),
+            "tax_id" => Ok(Self::TaxId),
+            "recipient" => Ok(Self::Recipient),
+            "folder" => Ok(Self::Folder),
             other => Err(corrupt("rule_condition.kind", other)),
         }
     }
@@ -513,15 +547,24 @@ impl RuleConditions {
             .map(|condition| condition.value.as_str())
     }
 
-    pub fn single_text(&self) -> Option<&str> {
+    pub fn single_text_condition(&self) -> Option<&Condition> {
         match self.list.as_slice() {
-            [Condition {
-                kind: ConditionKind::Substring,
-                value,
-                negated: false,
-            }] => Some(value),
+            [condition]
+                if !condition.negated
+                    && matches!(
+                        condition.kind,
+                        ConditionKind::Substring | ConditionKind::Word
+                    ) =>
+            {
+                Some(condition)
+            }
             _ => None,
         }
+    }
+
+    pub fn single_text(&self) -> Option<&str> {
+        self.single_text_condition()
+            .map(|condition| condition.value.as_str())
     }
 }
 
@@ -899,19 +942,34 @@ mod tests {
     }
 
     #[test]
-    fn single_text_is_one_plain_substring_condition() {
+    fn single_text_is_one_plain_substring_or_word_condition() {
         let substring = Condition::new(ConditionKind::Substring, "Invoice");
+        let word = Condition::new(ConditionKind::Word, "Invoice");
 
         assert_eq!(
             RuleConditions::all_of(vec![substring.clone()]).single_text(),
             Some("Invoice")
         );
+        assert_eq!(
+            RuleConditions::all_of(vec![word.clone()]).single_text_condition(),
+            Some(&word)
+        );
         for list in [
             vec![Condition::not(ConditionKind::Substring, "Invoice")],
+            vec![Condition::not(ConditionKind::Word, "Invoice")],
             vec![Condition::new(ConditionKind::Regex, "Invoice")],
+            vec![Condition::new(ConditionKind::Iban, "Invoice")],
             vec![substring.clone(), substring],
         ] {
             assert_eq!(RuleConditions::all_of(list).single_text(), None);
         }
+    }
+
+    #[test]
+    fn every_condition_kind_round_trips_through_its_stored_name() {
+        for kind in ConditionKind::ALL {
+            assert_eq!(ConditionKind::parse(kind.as_str()).unwrap(), kind);
+        }
+        assert!(ConditionKind::parse("nonsense").is_err());
     }
 }

@@ -23,6 +23,8 @@ rusqlite = { version = "0.40", features = ["bundled-sqlcipher-vendored-openssl"]
 # survive a reboot, and a lost key means a lost database.
 keyring = "4.2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# Rule regexes are checked when a rule is saved.
+regex = "1.13"
 # The key comes from the OS random number generator, never from a seeded one.
 getrandom = "0.4"
 

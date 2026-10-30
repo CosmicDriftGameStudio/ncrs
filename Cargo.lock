@@ -3412,6 +3412,7 @@ dependencies = [
  "chrono",
  "getrandom 0.4.3",
  "keyring",
+ "regex",
  "rusqlite",
  "tempfile",
  "tokio",
