@@ -1,0 +1,14 @@
+sender: Finanzamt Musterstadt
+kind: Steuerbescheid
+tax_context: private
+date: 2026-07-14
+number: 000/000/00000
+amount: 31240 EUR
+---
+Finanzamt Musterstadt
+Amtsstrasse 1, 00000 Musterstadt
+
+Einkommensteuerbescheid 2025
+Bescheid vom 14.07.2026
+Aktenzeichen: 000/000/00000
+Nachzahlung: 312,40 EUR

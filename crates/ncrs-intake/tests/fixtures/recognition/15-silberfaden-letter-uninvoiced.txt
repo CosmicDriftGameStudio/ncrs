@@ -1,0 +1,18 @@
+sender: Silberfaden Consulting Ltd
+kind: Letter
+tax_context: company
+date: 2026-05-05
+number:
+amount:
+---
+Silberfaden Consulting Ltd
+1 Example Street, Sampletown
+Date: 2026-05-05
+
+Dear Ms Example,
+
+as discussed, 12 uninvoiced hours from April will be billed with the
+next project phase. Please let us know if you prefer a separate bill.
+
+Kind regards
+Silberfaden Consulting

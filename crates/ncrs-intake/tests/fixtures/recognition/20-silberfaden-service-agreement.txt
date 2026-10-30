@@ -1,0 +1,13 @@
+sender: Silberfaden Consulting Ltd
+kind: Contract
+tax_context: company
+date: 2026-01-09
+number: SA-12
+amount: 1200000 EUR
+---
+Silberfaden Consulting Ltd
+1 Example Street, Sampletown
+
+Service Agreement SA-12
+Signed on 2026-01-09
+Annual fee: 12,000.00 EUR

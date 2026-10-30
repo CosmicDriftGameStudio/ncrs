@@ -11,6 +11,8 @@ mod filing_plan;
 mod location;
 mod ocr;
 mod office;
+#[cfg(any(test, feature = "test-support"))]
+pub mod recognition;
 mod reorganisation;
 mod reorganisation_plan;
 mod rule_suggestions;

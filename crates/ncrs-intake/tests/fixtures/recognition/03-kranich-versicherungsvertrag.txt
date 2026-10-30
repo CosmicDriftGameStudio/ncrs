@@ -1,0 +1,14 @@
+sender: Kranich Versicherung AG
+kind: Vertrag
+tax_context: none
+date: 2026-03-01
+number: VS-77120
+amount: 4250 EUR
+---
+Kranich Versicherung AG
+Beispielallee 2, 00000 Musterstadt
+
+Versicherungsvertrag Privathaftpflicht
+Vertragsnummer: VS-77120
+Vertragsdatum: 01.03.2026
+Monatsbeitrag: 42,50 EUR

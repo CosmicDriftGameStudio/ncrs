@@ -1,0 +1,15 @@
+sender: Wellenreiter Telekom GmbH
+kind: Rechnung
+tax_context: company
+date: 2026-02-03
+number: WT-880012
+amount: 2999 EUR
+---
+Wellenreiter Telekom GmbH
+Funkstrasse 3, 00000 Musterstadt
+
+Rechnung zu Ihrem Vertrag
+Vertragsnummer: 4400-0000
+Rechnungsnummer: WT-880012
+Rechnungsdatum: 03.02.2026
+Rechnungsbetrag: 29,99 EUR

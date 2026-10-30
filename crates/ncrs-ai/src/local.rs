@@ -353,7 +353,7 @@ mod tests {
     use ncrs_index::{DocumentFields, Field};
 
     use super::*;
-    use crate::contract::ExtractedField;
+    use crate::contract::{ExtractedField, CONFIDENT};
     use crate::model_file::LOCAL_MODEL;
 
     const MODELS_DIR_VARIABLE: &str = "NCRS_AI_MODELS_DIR";
@@ -540,5 +540,49 @@ mod tests {
 
         assert!(extraction.fields.len() <= 1);
         assert_only_open_fields_once(&extraction, &open);
+    }
+
+    fn open_fields_of(known: &DocumentFields) -> Vec<Field> {
+        ncrs_intake::FIELD_ORDER
+            .into_iter()
+            .filter(|&field| match field {
+                Field::Sender => known.sender.is_none(),
+                Field::Kind => known.kind.is_none(),
+                Field::TaxContext => known.tax_context.is_none(),
+                Field::Date => known.date.is_none(),
+                Field::Number => known.number.is_none(),
+                Field::Amount => known.amount.is_none(),
+            })
+            .collect()
+    }
+
+    #[test]
+    #[ignore = "needs the AI model: bash scripts/fetch-ai-model.sh target/ai-models"]
+    fn recognition_measured_against_the_model() {
+        use ncrs_intake::recognition::{fixed_rules, load_corpus, measure};
+
+        let report = measure(&load_corpus(), &fixed_rules(), |document, known| {
+            let open = open_fields_of(known);
+            if open.is_empty() {
+                return None;
+            }
+            let extraction = model()
+                .extract(&ExtractionRequest {
+                    known: known.clone(),
+                    ..request(&document.text, &open)
+                })
+                .unwrap();
+            let mut merged = known.clone();
+            for found in extraction
+                .fields
+                .iter()
+                .filter(|found| found.confidence >= CONFIDENT)
+            {
+                found.fill(&mut merged);
+            }
+            Some(merged)
+        });
+
+        println!("rules + AI\n{report}");
     }
 }

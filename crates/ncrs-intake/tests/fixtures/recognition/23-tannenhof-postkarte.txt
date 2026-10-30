@@ -1,0 +1,11 @@
+sender: Tannenhof Catering UG
+kind: Postkarte
+tax_context: none
+date: 2026-07-01
+number:
+amount:
+---
+Tannenhof Catering UG
+Postkarte vom 2026-07-01
+
+Liebe Grüße von der Ostsee. Das Wetter ist schön, das Team lässt grüßen.

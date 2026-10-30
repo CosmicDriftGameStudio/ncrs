@@ -1,0 +1,19 @@
+sender: Morgenrot Hausverwaltung GmbH
+kind: Brief
+tax_context: private
+date: 2026-02-02
+number:
+amount:
+---
+Morgenrot Hausverwaltung GmbH
+Hofgasse 8, 00000 Musterstadt
+Datum: 02.02.2026
+
+Sehr geehrte Frau Beispiel,
+
+die Rechnungsanschrift für die Nebenkosten ändert sich. Ab sofort
+rechnet die Kranich Versicherung AG die Gebäudeversicherung direkt mit
+Ihnen ab. Wir bitten um Kenntnisnahme.
+
+Mit freundlichen Grüßen
+Morgenrot Hausverwaltung GmbH

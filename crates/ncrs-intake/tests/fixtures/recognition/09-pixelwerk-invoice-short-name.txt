@@ -1,0 +1,16 @@
+sender: Pixelwerk Studio Ltd
+kind: Invoice
+tax_context: company
+date: 2026-06-01
+number: PW-17
+amount: 30000 GBP
+---
+Pixelwerk
+Design and illustration
+
+Invoice No. PW-17
+Date: 2026-06-01
+Logo design
+Total: 300.00 GBP
+
+Pixelwerk Studio Ltd, 2 Example Road, Sampletown

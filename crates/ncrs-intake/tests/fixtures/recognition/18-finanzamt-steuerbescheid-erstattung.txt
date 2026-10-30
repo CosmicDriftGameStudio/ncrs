@@ -1,0 +1,14 @@
+sender: Finanzamt Musterstadt
+kind: Steuerbescheid
+tax_context: private
+date: 2026-08-21
+number: 000/000/00000
+amount: 8000 EUR
+---
+Finanzamt Musterstadt
+Amtsstrasse 1, 00000 Musterstadt
+
+Einkommensteuerbescheid 2024, Änderung
+Bescheid vom 21.08.2026
+Aktenzeichen: 000/000/00000
+Erstattung: 80,00 EUR

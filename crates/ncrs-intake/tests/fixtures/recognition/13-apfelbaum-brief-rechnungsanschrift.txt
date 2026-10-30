@@ -1,0 +1,18 @@
+sender: Apfelbaum Verlag GmbH
+kind: Brief
+tax_context: private
+date: 2026-03-30
+number:
+amount:
+---
+Apfelbaum Verlag GmbH
+Lesegasse 1, 00000 Musterstadt
+Datum: 30.03.2026
+
+Sehr geehrte Frau Beispiel,
+
+bitte teilen Sie uns Ihre Rechnungsanschrift mit, damit wir Ihr
+Abonnement umstellen können.
+
+Mit freundlichen Grüßen
+Apfelbaum Verlag

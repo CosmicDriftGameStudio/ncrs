@@ -1,0 +1,15 @@
+sender: Silberfaden Consulting Ltd
+kind: Invoice
+tax_context: company
+date: 2026-04-02
+number: SF-0099
+amount: 125000 USD
+---
+Silberfaden Consulting Ltd
+1 Example Street, Sampletown
+
+INVOICE
+Invoice number: SF-0099
+Date: 2026-04-02
+Workshop, 5 days
+Total: 1250.00 USD

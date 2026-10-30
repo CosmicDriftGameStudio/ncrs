@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use ncrs_ai::{AiError, ExtractedField, ExtractionRequest, Provider};
+use ncrs_ai::{AiError, ExtractedField, ExtractionRequest, Provider, CONFIDENT};
 use ncrs_index::{
     Document, DocumentFields, DocumentStatus, Field, FieldOrigin, IndexError, ReviewReason,
 };
@@ -9,11 +9,6 @@ use ncrs_intake::{plan, LocationMode, PlanInput, Planning, FIELD_ORDER};
 
 use crate::step::{resolve_reviews_of, with_index_value, IndexAccess, Item, Step, StepOutcome};
 use crate::steps::NO_INDEX;
-
-/// A field the provider is at least this sure about is written. Below it the
-/// value is not stored and a person decides: a wrong sender would file the
-/// document in the wrong folder.
-const CONFIDENT: f32 = 0.8;
 
 /// Asks the provider for the fields the rules left open, for inbox documents
 /// the rules could not place. What comes back is only ever field values:

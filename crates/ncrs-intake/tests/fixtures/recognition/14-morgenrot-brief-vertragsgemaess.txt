@@ -1,0 +1,18 @@
+sender: Morgenrot Hausverwaltung GmbH
+kind: Brief
+tax_context: private
+date: 2026-04-10
+number:
+amount:
+---
+Morgenrot Hausverwaltung GmbH
+Hofgasse 8, 00000 Musterstadt
+Datum: 10.04.2026
+
+Sehr geehrte Frau Beispiel,
+
+die Heizkosten wurden vertragsgemäß auf die Wohnungen verteilt. Eine
+Nachzahlung wird nicht fällig.
+
+Mit freundlichen Grüßen
+Morgenrot Hausverwaltung GmbH

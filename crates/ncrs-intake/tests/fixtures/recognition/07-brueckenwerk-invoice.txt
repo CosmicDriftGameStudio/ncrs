@@ -1,0 +1,15 @@
+sender: Brückenwerk Stahlbau GmbH & Co. KG
+kind: Invoice
+tax_context: company
+date: 2026-03-12
+number: BW-2026-31
+amount: 450000 EUR
+---
+Brückenwerk Stahlbau GmbH & Co. KG
+Industrieweg 5, 00000 Musterstadt
+
+Invoice
+Invoice No. BW-2026-31
+Date: 2026-03-12
+Steel beams, delivery 2026-03
+Total: 4,500.00 EUR

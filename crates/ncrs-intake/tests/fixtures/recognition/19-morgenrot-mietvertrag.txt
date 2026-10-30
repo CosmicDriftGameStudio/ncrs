@@ -1,0 +1,15 @@
+sender: Morgenrot Hausverwaltung GmbH
+kind: Vertrag
+tax_context: private
+date: 2026-06-01
+number: MV-300
+amount: 65000 EUR
+---
+Morgenrot Hausverwaltung GmbH
+Hofgasse 8, 00000 Musterstadt
+
+Mietvertrag
+Vertragsnummer: MV-300
+Vertragsdatum: 01.06.2026
+Wohnung: Musterweg 12, 2. Stock
+Kaltmiete: 650,00 EUR

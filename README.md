@@ -665,6 +665,40 @@ threads = 4
   server, nothing is sent.
 - The Inspection shows a row "AI model" with the state while the AI is on.
 
+**Recognition baseline.** How often the filing reads a field right is measured
+against a synthetic corpus: 26 documents (invoices, contracts, letters, tax
+notices; German and English) of fictitious companies, in
+`crates/ncrs-intake/tests/fixtures/recognition`, each with the expected sender,
+kind, tax context, date, number and amount. It includes the cases that break
+the matching today: a sender in its long and its short form, a keyword inside
+another word, two companies on one letter, and documents no rule covers. The
+run plans every document against a fixed set of rules, as the rules step does
+for a new document, and prints hits, wrong values and missing values per field.
+It is opt-in and not part of the normal `cargo test`:
+
+```sh
+cargo test -p ncrs-intake --lib recognition -- --ignored --nocapture
+# needs the AI model (scripts/fetch-ai-model.sh target/ai-models):
+cargo test -p ncrs-ai --features llama recognition_measured_against_the_model -- --ignored --nocapture
+```
+
+**Rules only; the AI run was not measured because the model is not available
+locally.** Without an AI no sender is ever set (only the AI sets one), so the
+sender is never found. A document without the field (a letter has no amount)
+counts as a hit when nothing is found for it.
+
+| Field | Hits of 26 | Hit rate |
+| --- | --- | --- |
+| sender | 0 | 0% |
+| kind | 19 | 73% |
+| tax context | 18 | 69% |
+| date | 21 | 80% |
+| number | 21 | 80% |
+| amount | 22 | 84% |
+
+Planned: 15. No rule: 3. Unconfirmed rule: 1. A field missing: 7. Wrong
+assignments (a rule chosen, but kind or tax context not the expected one): 6.
+
 ### Remembered state
 
 ncrs remembers both panels' folders, sort and cursor row, the active panel and
