@@ -168,10 +168,9 @@ fn eligible_rules(rules: &[PlanRule], documents: usize) -> Vec<Rule> {
     let confirmed = rules.iter().filter(|entry| entry.rule.spec.confirmed);
     let qualified = rules.iter().filter(|entry| {
         !entry.rule.spec.confirmed
-            && entry
-                .evidence
-                .as_ref()
-                .is_some_and(|evidence| evidence_meets_thresholds(evidence, documents))
+            && entry.evidence.as_ref().is_some_and(|evidence| {
+                evidence_meets_thresholds(&entry.rule.spec.conditions, evidence, documents)
+            })
     });
     confirmed
         .map(|entry| entry.rule.clone())

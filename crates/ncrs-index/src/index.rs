@@ -1097,6 +1097,65 @@ mod tests {
     }
 
     #[test]
+    fn a_version_13_database_keeps_its_discarded_suggestions_as_word_suggestions() {
+        use crate::model::{
+            Condition, ConditionKind, RuleConditions, RuleId, RuleSpec, RuleSuggestion, TaxContext,
+        };
+
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let old = Index::create_plain_with_migrations(&path, &MIGRATIONS[..13]).unwrap();
+        assert_eq!(user_version(&old), 13);
+        old.conn
+            .execute_batch(
+                "INSERT INTO discarded_rule_suggestion
+                     (match_text, kind, filing_pattern, discarded_at)
+                 VALUES ('company a ltd', 'insurance', '{year}', 1700000000);
+                 INSERT INTO document_kind (id, name, name_key) VALUES (1, 'Insurance', 'insurance');
+                 INSERT INTO rule (id, kind_id, tax_context, filing_pattern, confirmed)
+                 VALUES (3, 1, 'none', 'Insurance/{date}', 0);
+                 INSERT INTO rule_condition (rule_id, position, kind, value)
+                 VALUES (3, 0, 'word', 'agency b');
+                 INSERT INTO rule_evidence
+                     (rule_id, matching_in_folder, folder_documents, matching_elsewhere, updated_at)
+                 VALUES (3, 5, 5, 0, 1700000000);",
+            )
+            .unwrap();
+        drop(old);
+
+        let mut index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
+
+        assert_eq!(user_version(&index), latest_version());
+        let evidence = index.rule_evidence(RuleId::new(3)).unwrap().unwrap();
+        assert_eq!(evidence.matching_in_folder, 5);
+        assert_eq!(evidence.subtree, None);
+        let suggestion = |kind| RuleSpec {
+            conditions: RuleConditions::all_of(vec![Condition::new(kind, "Company A Ltd")]),
+            extract_number: None,
+            extract_date: None,
+            extract_amount: None,
+            kind: "Insurance".to_owned(),
+            tax_context: TaxContext::None,
+            tags: Default::default(),
+            filing_pattern: "{year}".to_owned(),
+            confirmed: false,
+            enabled: true,
+        };
+        assert_eq!(
+            index
+                .suggest_rule(&suggestion(ConditionKind::Word), evidence.clone())
+                .unwrap(),
+            RuleSuggestion::Discarded
+        );
+        assert!(matches!(
+            index
+                .suggest_rule(&suggestion(ConditionKind::Sender), evidence)
+                .unwrap(),
+            RuleSuggestion::Created(_)
+        ));
+    }
+
+    #[test]
     fn empty_a1_database_gains_the_document_schema_on_open() {
         let dir = TempDir::new().unwrap();
         let path = db_in(&dir);

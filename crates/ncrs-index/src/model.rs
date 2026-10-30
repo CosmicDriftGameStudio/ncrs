@@ -683,6 +683,16 @@ impl RuleConditions {
             .map(|condition| condition.value.as_str())
     }
 
+    /// One condition of any kind that is not negated and has a value.
+    pub fn single_condition(&self) -> Option<&Condition> {
+        match self.list.as_slice() {
+            [condition] if !condition.negated && !condition.value.trim().is_empty() => {
+                Some(condition)
+            }
+            _ => None,
+        }
+    }
+
     pub fn single_text_condition(&self) -> Option<&Condition> {
         match self.list.as_slice() {
             [condition]
@@ -802,14 +812,16 @@ pub struct SubtreePattern {
     pub total: u32,
 }
 
-/// Why a suggested rule was suggested: the phrase was in `matching_in_folder`
-/// of the `folder_documents` documents of its folder and in
-/// `matching_elsewhere` documents outside it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Why a suggested rule was suggested: the condition held for
+/// `matching_in_folder` of the `folder_documents` documents of `subtree` and
+/// for `matching_elsewhere` documents outside it. `subtree` is `None` for
+/// evidence stored before it was kept.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuleEvidence {
     pub matching_in_folder: u32,
     pub folder_documents: u32,
     pub matching_elsewhere: u32,
+    pub subtree: Option<String>,
 }
 
 /// What storing a suggested rule did.
@@ -1078,6 +1090,26 @@ mod tests {
             Some("Company A")
         );
         assert_eq!(RuleConditions::any_of(list).required_sender(), None);
+    }
+
+    #[test]
+    fn a_single_condition_is_one_plain_condition_of_any_kind_with_a_value() {
+        let sender = Condition::new(ConditionKind::Sender, "Company A");
+        assert_eq!(
+            RuleConditions::all_of(vec![sender.clone()]).single_condition(),
+            Some(&sender)
+        );
+        for list in [
+            vec![Condition::not(ConditionKind::Sender, "Company A")],
+            vec![Condition::new(ConditionKind::Sender, "  ")],
+            vec![
+                sender.clone(),
+                Condition::new(ConditionKind::Word, "invoice"),
+            ],
+            Vec::new(),
+        ] {
+            assert_eq!(RuleConditions::all_of(list).single_condition(), None);
+        }
     }
 
     #[test]

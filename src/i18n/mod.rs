@@ -273,6 +273,7 @@ mod tests {
             Msg::ColumnName
                 // The same word in both languages, like ColumnName.
                 | Msg::TrashColumnName
+                | Msg::RuleSuggestionsConditionText
                 | Msg::QuickFixLoading
                 | Msg::MarkerDir
                 | Msg::MarkerUp

@@ -3,11 +3,13 @@ use rusqlite::{params, OptionalExtension as _};
 
 use crate::error::IndexError;
 use crate::index::Index;
-use crate::model::{Condition, Rule, RuleEvidence, RuleId, RuleSpec, RuleSuggestion};
+use crate::model::{
+    Condition, ConditionKind, Rule, RuleEvidence, RuleId, RuleSpec, RuleSuggestion,
+};
 
 impl Index {
     /// Stores a rule that was suggested from the archive. It is always stored
-    /// unconfirmed, whatever `spec.confirmed` says. A rule with the same text
+    /// unconfirmed, whatever `spec.confirmed` says. A rule with the same
     /// condition, kind and filing pattern is not duplicated: an unconfirmed
     /// one gets the new evidence, a confirmed one is left untouched. A
     /// condition and target the user discarded is not stored again.
@@ -16,15 +18,13 @@ impl Index {
         spec: &RuleSpec,
         evidence: RuleEvidence,
     ) -> Result<RuleSuggestion, IndexError> {
-        let single_text = spec.conditions.single_text_condition();
-        let existing = match single_text {
+        let single = spec.conditions.single_condition();
+        let existing = match single {
             Some(condition) => self.same_condition_and_target(spec, condition)?,
             None => None,
         };
-        let discarded = match single_text {
-            Some(condition) if existing.is_none() => {
-                self.was_discarded(&condition.value, &spec.kind, &spec.filing_pattern)?
-            }
+        let discarded = match single {
+            Some(condition) if existing.is_none() => self.was_discarded(condition, spec)?,
             _ => false,
         };
         if discarded {
@@ -33,7 +33,7 @@ impl Index {
         match existing {
             Some((id, true)) => Ok(RuleSuggestion::AlreadyConfirmed(id)),
             Some((id, false)) => {
-                self.store_rule_evidence(id, evidence)?;
+                self.store_rule_evidence(id, &evidence)?;
                 Ok(RuleSuggestion::Refreshed(id))
             }
             None => {
@@ -42,7 +42,7 @@ impl Index {
                     ..spec.clone()
                 };
                 let id = self.create_rule(&unconfirmed)?;
-                self.store_rule_evidence(id, evidence)?;
+                self.store_rule_evidence(id, &evidence)?;
                 Ok(RuleSuggestion::Created(id))
             }
         }
@@ -53,7 +53,7 @@ impl Index {
         let found = self
             .connection()
             .query_row(
-                "SELECT matching_in_folder, folder_documents, matching_elsewhere
+                "SELECT matching_in_folder, folder_documents, matching_elsewhere, subtree
                  FROM rule_evidence WHERE rule_id = ?1",
                 [id.get()],
                 |row| {
@@ -61,6 +61,7 @@ impl Index {
                         matching_in_folder: row.get(0)?,
                         folder_documents: row.get(1)?,
                         matching_elsewhere: row.get(2)?,
+                        subtree: row.get(3)?,
                     })
                 },
             )
@@ -115,7 +116,7 @@ impl Index {
 
     /// Removes a suggested rule and remembers its condition and target, so
     /// `suggest_rule` does not propose them again. `false` when there is no
-    /// unconfirmed rule with a text condition under this id.
+    /// unconfirmed rule with a single condition under this id.
     pub fn discard_rule_suggestion(&mut self, id: RuleId) -> Result<bool, IndexError> {
         let Some(rule) = self.rule(id)? else {
             return Ok(false);
@@ -127,25 +128,37 @@ impl Index {
         self.delete_rule(id)
     }
 
-    /// `false` when the rule has no text condition to remember.
+    /// `false` when the rule has no single condition to remember.
     fn remember_discarded(&self, spec: &RuleSpec) -> Result<bool, IndexError> {
-        let Some(text) = spec.conditions.single_text() else {
+        let Some(condition) = spec.conditions.single_condition() else {
             return Ok(false);
         };
         self.connection().execute(
             "INSERT OR IGNORE INTO discarded_rule_suggestion
-                 (match_text, kind, filing_pattern, discarded_at)
-             VALUES (lower(?1), lower(?2), ?3, ?4)",
-            params![text, spec.kind, spec.filing_pattern, Utc::now().timestamp()],
+                 (match_text, condition_kind, kind, filing_pattern, discarded_at)
+             VALUES (lower(?1), ?2, lower(?3), ?4, ?5)",
+            params![
+                condition.value,
+                discard_class(condition.kind),
+                spec.kind,
+                spec.filing_pattern,
+                Utc::now().timestamp()
+            ],
         )?;
         Ok(true)
     }
 
-    fn was_discarded(&self, text: &str, kind: &str, pattern: &str) -> Result<bool, IndexError> {
+    fn was_discarded(&self, condition: &Condition, spec: &RuleSpec) -> Result<bool, IndexError> {
         let found = self.connection().query_row(
             "SELECT EXISTS (SELECT 1 FROM discarded_rule_suggestion
-                 WHERE match_text = lower(?1) AND kind = lower(?2) AND filing_pattern = ?3)",
-            params![text, kind, pattern],
+                 WHERE match_text = lower(?1) AND condition_kind = ?2
+                     AND kind = lower(?3) AND filing_pattern = ?4)",
+            params![
+                condition.value,
+                discard_class(condition.kind),
+                spec.kind,
+                spec.filing_pattern
+            ],
             |row| row.get(0),
         )?;
         Ok(found)
@@ -179,25 +192,37 @@ impl Index {
         Ok(found)
     }
 
-    fn store_rule_evidence(&self, id: RuleId, evidence: RuleEvidence) -> Result<(), IndexError> {
+    fn store_rule_evidence(&self, id: RuleId, evidence: &RuleEvidence) -> Result<(), IndexError> {
         self.connection().execute(
             "INSERT INTO rule_evidence
-                 (rule_id, matching_in_folder, folder_documents, matching_elsewhere, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)
+                 (rule_id, matching_in_folder, folder_documents, matching_elsewhere, subtree,
+                  updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
              ON CONFLICT (rule_id) DO UPDATE SET
                  matching_in_folder = excluded.matching_in_folder,
                  folder_documents = excluded.folder_documents,
                  matching_elsewhere = excluded.matching_elsewhere,
+                 subtree = excluded.subtree,
                  updated_at = excluded.updated_at",
             params![
                 id.get(),
                 evidence.matching_in_folder,
                 evidence.folder_documents,
                 evidence.matching_elsewhere,
+                evidence.subtree,
                 Utc::now().timestamp()
             ],
         )?;
         Ok(())
+    }
+}
+
+/// Word and substring conditions are one class when discarding: the
+/// suggestions only ever made words, and an edit may turn one into the other.
+fn discard_class(kind: ConditionKind) -> &'static str {
+    match kind {
+        ConditionKind::Substring | ConditionKind::Word => ConditionKind::Word.as_str(),
+        other => other.as_str(),
     }
 }
 
@@ -225,6 +250,7 @@ mod tests {
             matching_in_folder: matching,
             folder_documents: 5,
             matching_elsewhere: elsewhere,
+            subtree: Some("Insurance".to_owned()),
         }
     }
 
@@ -415,5 +441,116 @@ mod tests {
 
         assert!(matches!(stored, RuleSuggestion::Created(_)));
         assert_eq!(index.rules().unwrap().len(), 2);
+    }
+
+    fn sender_condition(name: &str) -> RuleConditions {
+        RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, name)])
+    }
+
+    fn sender_suggestion() -> RuleSpec {
+        RuleSpec {
+            conditions: sender_condition("Company A"),
+            ..suggestion()
+        }
+    }
+
+    #[test]
+    fn a_sender_suggestion_is_not_duplicated_by_the_next_analysis() {
+        let (_dir, mut index) = encrypted_index();
+        let RuleSuggestion::Created(id) = index
+            .suggest_rule(&sender_suggestion(), evidence(5, 0))
+            .unwrap()
+        else {
+            panic!("not created");
+        };
+
+        let again = index
+            .suggest_rule(&sender_suggestion(), evidence(4, 1))
+            .unwrap();
+
+        assert_eq!(again, RuleSuggestion::Refreshed(id));
+        assert_eq!(index.rules().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_discarded_sender_suggestion_is_not_proposed_again() {
+        let (_dir, mut index) = encrypted_index();
+        let RuleSuggestion::Created(id) = index
+            .suggest_rule(&sender_suggestion(), evidence(5, 0))
+            .unwrap()
+        else {
+            panic!("not created");
+        };
+
+        assert!(index.discard_rule_suggestion(id).unwrap());
+        let shouting = RuleSpec {
+            conditions: sender_condition("COMPANY A"),
+            ..sender_suggestion()
+        };
+
+        assert_eq!(
+            index.suggest_rule(&shouting, evidence(5, 0)).unwrap(),
+            RuleSuggestion::Discarded
+        );
+    }
+
+    #[test]
+    fn discarding_a_word_does_not_block_the_sender_of_the_same_name_and_the_other_way_round() {
+        let (_dir, mut index) = encrypted_index();
+        let word = RuleSpec {
+            conditions: RuleConditions::all_of(vec![Condition::new(
+                ConditionKind::Word,
+                "company a",
+            )]),
+            ..suggestion()
+        };
+        let RuleSuggestion::Created(word_id) = index.suggest_rule(&word, evidence(5, 0)).unwrap()
+        else {
+            panic!("not created");
+        };
+        index.discard_rule_suggestion(word_id).unwrap();
+
+        let RuleSuggestion::Created(sender_id) = index
+            .suggest_rule(&sender_suggestion(), evidence(5, 0))
+            .unwrap()
+        else {
+            panic!("the sender suggestion was blocked");
+        };
+        index.discard_rule_suggestion(sender_id).unwrap();
+
+        assert_eq!(
+            index.suggest_rule(&word, evidence(5, 0)).unwrap(),
+            RuleSuggestion::Discarded
+        );
+        assert_eq!(
+            index
+                .suggest_rule(&sender_suggestion(), evidence(5, 0))
+                .unwrap(),
+            RuleSuggestion::Discarded
+        );
+    }
+
+    #[test]
+    fn editing_the_value_of_a_sender_suggestion_does_not_bring_the_original_back() {
+        let (_dir, mut index) = encrypted_index();
+        let RuleSuggestion::Created(id) = index
+            .suggest_rule(&sender_suggestion(), evidence(5, 0))
+            .unwrap()
+        else {
+            panic!("not created");
+        };
+        let edited = RuleSpec {
+            conditions: sender_condition("Company A Ltd"),
+            ..sender_suggestion()
+        };
+
+        assert!(index.confirm_suggested_rule(id, &edited).unwrap());
+
+        assert_eq!(
+            index
+                .suggest_rule(&sender_suggestion(), evidence(5, 0))
+                .unwrap(),
+            RuleSuggestion::Discarded
+        );
     }
 }

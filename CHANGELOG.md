@@ -6,8 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Rule suggestions now come per sender: when most documents of a sender lie in
+  one folder, ncrs suggests a rule for that sender with the folder's filing
+  pattern, and takes over the kind, tax context and tags that most of those
+  documents share. Each suggestion says why, for example "4 of 5 documents
+  from this sender are in Insurance". Suggestions for a phrase remain for
+  folders without a sender suggestion.
+
 ### Changed
 
+- A discarded rule suggestion is remembered per kind of condition, so
+  discarding a phrase no longer hides the suggestion for the sender of the same
+  name, and an edited sender suggestion does not come back after the next
+  analysis.
 - English and German show plain names only. The Futurama names (e.g.
   "Smell-o-scope", "Inquiries") moved into the language variants
   `en-futurama` and `de-futurama`, switched on with "Futurama names" in the

@@ -235,6 +235,7 @@ mod tests {
                         matching_in_folder: in_folder,
                         folder_documents: of,
                         matching_elsewhere: elsewhere,
+                        subtree: None,
                     },
                 )
                 .unwrap();

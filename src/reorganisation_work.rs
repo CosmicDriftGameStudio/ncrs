@@ -362,6 +362,7 @@ pub mod tests {
                     matching_in_folder: 3,
                     folder_documents: 3,
                     matching_elsewhere: 0,
+                    subtree: None,
                 },
             )
             .unwrap();
