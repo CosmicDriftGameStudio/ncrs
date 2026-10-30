@@ -5,7 +5,7 @@
 
 use iced::widget::{column, container, row};
 use iced::{alignment, Element, Size};
-use ncrs_index::HermesCounts;
+use ncrs_index::{ConditionKind, HermesCounts};
 use ncrs_intake::{MIN_FOLDER_DOCUMENTS, MIN_SHARE_IN_FOLDER_PERCENT};
 
 use super::format;
@@ -30,7 +30,7 @@ pub const SHOWN_DOCUMENTS: usize = 6;
 const SIZE: DialogSize = DialogSize::Card;
 
 /// How the width of a row is shared: condition, target, kind, evidence.
-const PORTIONS: [u16; 4] = [4, 5, 3, 7];
+const PORTIONS: [u16; 4] = [4, 4, 2, 9];
 const LABEL_WIDTH: f32 = 170.0;
 
 fn send(message: RuleSuggestionsMessage) -> Message {
@@ -125,13 +125,60 @@ fn empty_text(busy: bool, counts: Option<HermesCounts>, lang: Language) -> Strin
     text
 }
 
-fn evidence_text(suggestion: &SuggestedRule, lang: Language) -> String {
-    let evidence = suggestion.evidence;
+fn is_sender_suggestion(suggestion: &SuggestedRule) -> bool {
+    suggestion
+        .spec
+        .conditions
+        .single_condition()
+        .is_some_and(|condition| condition.kind == ConditionKind::Sender)
+}
+
+fn condition_label(suggestion: &SuggestedRule, lang: Language) -> String {
+    let message = if is_sender_suggestion(suggestion) {
+        Msg::RuleSuggestionsConditionSender
+    } else {
+        Msg::RuleSuggestionsConditionText
+    };
     fill_template(
-        lang.text(Msg::RuleSuggestionsEvidence),
+        lang.text(message),
+        &[(
+            "{value}",
+            condition_text(&suggestion.spec).unwrap_or_default(),
+        )],
+    )
+}
+
+fn evidence_text(suggestion: &SuggestedRule, lang: Language) -> String {
+    let evidence = &suggestion.evidence;
+    let Some(folder) = evidence.subtree.as_deref() else {
+        return fill_template(
+            lang.text(Msg::RuleSuggestionsEvidence),
+            &[
+                ("{matching}", &evidence.matching_in_folder.to_string()),
+                ("{folder}", &evidence.folder_documents.to_string()),
+                ("{elsewhere}", &evidence.matching_elsewhere.to_string()),
+            ],
+        );
+    };
+    if is_sender_suggestion(suggestion) {
+        let total = evidence
+            .matching_in_folder
+            .saturating_add(evidence.matching_elsewhere);
+        return fill_template(
+            lang.text(Msg::RuleSuggestionsEvidenceSender),
+            &[
+                ("{matching}", &evidence.matching_in_folder.to_string()),
+                ("{total}", &total.to_string()),
+                ("{folder}", folder),
+            ],
+        );
+    }
+    fill_template(
+        lang.text(Msg::RuleSuggestionsEvidenceText),
         &[
             ("{matching}", &evidence.matching_in_folder.to_string()),
-            ("{folder}", &evidence.folder_documents.to_string()),
+            ("{folder_count}", &evidence.folder_documents.to_string()),
+            ("{folder}", folder),
             ("{elsewhere}", &evidence.matching_elsewhere.to_string()),
         ],
     )
@@ -173,11 +220,7 @@ fn list<'a>(
                 palette.text
             };
             let content = row![
-                columns.cell(
-                    0,
-                    condition_text(&suggestion.spec).unwrap_or_default(),
-                    color
-                ),
+                columns.cell(0, &condition_label(suggestion, lang), color),
                 columns.path_cell(1, &suggestion.spec.filing_pattern, color),
                 columns.cell(2, &suggestion.spec.kind, color),
                 columns.cell(3, &evidence_text(suggestion, lang), color),
@@ -241,11 +284,12 @@ fn documents<'a>(
             }
         }
     }
-    section(
-        lang.text(Msg::RuleSuggestionsDocumentsHeading),
-        lines,
-        palette,
-    )
+    let heading = if state.selected().is_some_and(is_sender_suggestion) {
+        Msg::RuleSuggestionsDocumentsHeadingSender
+    } else {
+        Msg::RuleSuggestionsDocumentsHeading
+    };
+    section(lang.text(heading), lines, palette)
 }
 
 fn form<'a>(edit: &'a Edit, lang: Language, palette: &Palette) -> Element<'a, Message> {

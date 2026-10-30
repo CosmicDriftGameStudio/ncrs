@@ -3237,8 +3237,8 @@ mod rule_suggestions_card {
     use crate::rule_suggestions::{Problem, RuleSuggestions};
     use crate::suggestion_work::INDEX_NOT_OPEN;
 
-    const FIRST_EVIDENCE: &str = "5 of 5 in folder, 0 elsewhere";
-    const SECOND_EVIDENCE: &str = "4 of 5 in folder, 2 elsewhere";
+    const FIRST_EVIDENCE: &str = "in 5 of 5 documents in Insurance, 0 elsewhere";
+    const SECOND_EVIDENCE: &str = "4 of 6 documents from this sender are in Taxes";
 
     fn suggestions_message(message: RuleSuggestionsMessage) -> Message {
         Message::RuleSuggestions(message)
@@ -3246,7 +3246,12 @@ mod rule_suggestions_card {
 
     fn two_rows() -> RuleSuggestions {
         let [one, two, _] = rule_ids();
-        let mut second = suggestion(two, "agency b tax office", "Taxes");
+        let mut second = suggestion(two, "Agency B", "Taxes");
+        second.spec.conditions =
+            ncrs_index::RuleConditions::all_of(vec![ncrs_index::Condition::new(
+                ncrs_index::ConditionKind::Sender,
+                "Agency B",
+            )]);
         second.evidence.matching_in_folder = 4;
         second.evidence.matching_elsewhere = 2;
         let mut view = RuleSuggestions::new();
@@ -3271,7 +3276,9 @@ mod rule_suggestions_card {
     fn the_list_shows_condition_target_kind_and_evidence_of_each_suggestion() {
         for label in [
             "Rule suggestions",
-            "company a ltd",
+            "Text: company a ltd",
+            "Sender: Agency B",
+            "Condition",
             "Insurance/{date}_{name}",
             "Taxes/{date}_{name}",
             FIRST_EVIDENCE,
@@ -3292,8 +3299,10 @@ mod rule_suggestions_card {
         let mut sim = simulator(&app);
         for label in [
             "Regelvorschläge",
-            "5 von 5 im Ordner, 0 sonst",
-            "4 von 5 im Ordner, 2 sonst",
+            "in 5 von 5 Dokumenten in Insurance, 0 anderswo",
+            "4 von 6 Dokumenten dieses Absenders liegen in Taxes",
+            "Absender: Agency B",
+            "Bedingung",
             "Bestätigen",
             "Bearbeiten",
             "Verwerfen",
@@ -3316,7 +3325,7 @@ mod rule_suggestions_card {
         view.loaded(Vec::new());
         assert!(shows(
             view,
-            "No suggestions. They appear from archive documents with read text, once at least 3 documents with the same phrase lie in the same folder (80 % of the folder and hardly any elsewhere)."
+            "No suggestions. They appear from archive documents with read text, once at least 3 documents of one sender lie in the same folder (80 % of that sender's documents), or at least 3 documents with the same phrase (80 % of the folder and hardly any elsewhere)."
         ));
     }
 

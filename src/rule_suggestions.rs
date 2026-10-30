@@ -165,7 +165,7 @@ impl RuleSuggestions {
         if self.matches_of == Some(row.id) {
             return None;
         }
-        let condition = row.spec.conditions.single_text_condition()?.clone();
+        let condition = row.spec.conditions.single_condition()?.clone();
         let id = row.id;
         self.matches_of = Some(id);
         self.matches = Matches::Looking;
@@ -221,8 +221,8 @@ impl RuleSuggestions {
     }
 
     /// The suggestion to confirm and the values to confirm it with: the edited
-    /// ones while the form is up, else the suggested ones. The condition stays
-    /// a literal "contains", never a pattern. An invalid pattern or an empty
+    /// ones while the form is up, else the suggested ones. The condition keeps its
+    /// kind (a sender stays a sender, a word a word), never a pattern. An invalid pattern or an empty
     /// field is reported in the view and nothing is returned. Marks the view
     /// busy until the work answers.
     pub fn begin_confirm(&mut self) -> Option<(RuleId, RuleSpec)> {
@@ -258,7 +258,7 @@ impl RuleSuggestions {
         let kind_of_condition = row
             .spec
             .conditions
-            .single_text_condition()
+            .single_condition()
             .map_or(ConditionKind::Word, |existing| existing.kind);
         let spec = RuleSpec {
             conditions: RuleConditions::all_of(vec![Condition::new(kind_of_condition, condition)]),
@@ -334,6 +334,7 @@ pub mod tests {
                 matching_in_folder: 5,
                 folder_documents: 5,
                 matching_elsewhere: 0,
+                subtree: Some(kind.to_owned()),
             },
         }
     }
@@ -462,6 +463,26 @@ pub mod tests {
         assert_eq!(spec.conditions.single_text(), Some("Company A (Ltd.)"));
         assert_eq!(spec.kind, "Policy");
         assert_eq!(spec.filing_pattern, "Policies/{year}/{name}");
+    }
+
+    #[test]
+    fn editing_a_sender_suggestion_changes_the_name_and_keeps_it_a_sender() {
+        let [one, _, _] = rule_ids();
+        let mut view = RuleSuggestions::new();
+        let mut sender = suggestion(one, "Company A", "Insurance");
+        sender.spec.conditions =
+            RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, "Company A")]);
+        view.loaded(vec![sender]);
+        view.start_edit();
+        assert_eq!(view.edit().unwrap().condition, "Company A");
+        view.set_condition("Company A Ltd".to_owned());
+
+        let (_, spec) = view.begin_confirm().unwrap();
+
+        assert_eq!(
+            spec.conditions,
+            RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, "Company A Ltd")])
+        );
     }
 
     #[test]

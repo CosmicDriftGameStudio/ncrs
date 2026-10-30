@@ -2798,9 +2798,9 @@
     },
     {
       "key": "rule_suggestions.empty",
-      "context": "Line in the rule suggestions view when there is no suggestion: says when suggestions appear. Takes the minimum number of documents of a folder and the share of them that must contain the phrase.",
-      "en": "No suggestions. They appear from archive documents with read text, once at least {min} documents with the same phrase lie in the same folder ({share} % of the folder and hardly any elsewhere).",
-      "de": "Keine Vorschläge. Sie entstehen aus Archivdokumenten mit gelesenem Text, sobald mindestens {min} Dokumente mit gleicher Wendung im selben Ordner liegen ({share} % des Ordners, anderswo kaum)."
+      "context": "Line in the rule suggestions view when there is no suggestion: says when suggestions appear, for a sender and for a phrase. Takes the minimum number of documents of a folder and the share that must be in the same folder.",
+      "en": "No suggestions. They appear from archive documents with read text, once at least {min} documents of one sender lie in the same folder ({share} % of that sender's documents), or at least {min} documents with the same phrase ({share} % of the folder and hardly any elsewhere).",
+      "de": "Keine Vorschläge. Sie entstehen aus Archivdokumenten mit gelesenem Text, sobald mindestens {min} Dokumente eines Absenders im selben Ordner liegen ({share} % seiner Dokumente) oder mindestens {min} Dokumente mit gleicher Wendung ({share} % des Ordners, anderswo kaum)."
     },
     {
       "key": "rule_suggestions.empty_counts",
@@ -2810,9 +2810,21 @@
     },
     {
       "key": "rule_suggestions.column_condition",
-      "context": "Heading of the first column of the rule suggestions list: the text a document has to contain for the rule to apply.",
-      "en": "Text contains",
-      "de": "Text enthält"
+      "context": "Heading of the first column of the rule suggestions list: the condition a document has to meet for the rule to apply, which is a sender or a text.",
+      "en": "Condition",
+      "de": "Bedingung"
+    },
+    {
+      "key": "rule_suggestions.condition_sender",
+      "context": "Condition of a suggested rule in its list row when the document has to come from a sender. Takes the sender name.",
+      "en": "Sender: {value}",
+      "de": "Absender: {value}"
+    },
+    {
+      "key": "rule_suggestions.condition_text",
+      "context": "Condition of a suggested rule in its list row when the document has to contain a word or phrase. Takes the text.",
+      "en": "Text: {value}",
+      "de": "Text: {value}"
     },
     {
       "key": "rule_suggestions.column_pattern",
@@ -2837,6 +2849,24 @@
       "context": "Evidence of a suggested rule in its list row. Takes three numbers: how many documents of the folder contain the text, how many the folder has, and how many documents outside the folder contain it too.",
       "en": "{matching} of {folder} in folder, {elsewhere} elsewhere",
       "de": "{matching} von {folder} im Ordner, {elsewhere} sonst"
+    },
+    {
+      "key": "rule_suggestions.evidence_sender",
+      "context": "Reason for a suggested rule with a sender condition, in its list row. Takes how many documents of the sender lie in the folder, how many documents the sender has in the archive, and the folder.",
+      "en": "{matching} of {total} documents from this sender are in {folder}",
+      "de": "{matching} von {total} Dokumenten dieses Absenders liegen in {folder}"
+    },
+    {
+      "key": "rule_suggestions.evidence_text",
+      "context": "Reason for a suggested rule with a text condition, in its list row. Takes how many documents of the folder contain the text, how many documents the folder has, the folder, and how many documents outside the folder contain it too.",
+      "en": "in {matching} of {folder_count} documents in {folder}, {elsewhere} elsewhere",
+      "de": "in {matching} von {folder_count} Dokumenten in {folder}, {elsewhere} anderswo"
+    },
+    {
+      "key": "rule_suggestions.documents_heading_sender",
+      "context": "Heading above the list of documents in the rule suggestions view that the selected suggestion with a sender condition matches, so the user can check the evidence.",
+      "en": "Documents from this sender",
+      "de": "Dokumente dieses Absenders"
     },
     {
       "key": "rule_suggestions.documents_heading",

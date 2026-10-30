@@ -1,6 +1,7 @@
 //! Rule candidates read out of how the user has already filed documents: a
-//! phrase that most documents of a folder contain and hardly any document
-//! elsewhere does. Pure and deterministic; nothing here stores anything.
+//! sender whose documents are mostly in one folder, or a phrase that most
+//! documents of a folder contain and hardly any document elsewhere does. Pure
+//! and deterministic; nothing here stores anything.
 //!
 //! The text of a document is data. A phrase only ever becomes a literal word
 //! condition, never a pattern.
@@ -9,13 +10,16 @@ use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 
 use ncrs_index::{
-    Condition, ConditionKind, RuleConditions, RuleEvidence, RuleSpec, SubtreePattern, TaxContext,
+    Condition, ConditionKind, DocumentFields, RuleConditions, RuleEvidence, RuleSpec,
+    SubtreePattern, TaxContext,
 };
 
 use crate::archive_profile::{subtree_per_document, ArchiveDocument};
 use crate::conditions::{normalise_words, words_hold};
 
-/// A phrase must be in at least this share of its folder's documents.
+/// A phrase must be in at least this share of its folder's documents, a
+/// sender's documents must be in one folder with at least this share, and kind,
+/// tax context and tags are taken over when this share of the documents agree.
 pub const MIN_SHARE_IN_FOLDER_PERCENT: u32 = 80;
 /// ... and in at most this share of the documents outside the folder.
 pub const MAX_SHARE_ELSEWHERE_PERCENT: u32 = 5;
@@ -39,23 +43,32 @@ const FILLER_WORDS: [&str; 34] = [
 pub struct ArchiveText {
     pub document: ArchiveDocument,
     pub text: String,
+    /// What the index knows about the document: kind, tax context and tags
+    /// the suggestions take over.
+    pub fields: DocumentFields,
+    /// The canonical sender, stored or detected; decided by the caller.
+    pub sender: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuleCandidate {
     /// The folder the evidence is about.
     pub subtree: String,
-    /// The text the condition looks for, lowercase.
+    /// What the condition looks for: the lowercase phrase of a word
+    /// condition, the canonical name of a sender condition.
     pub phrase: String,
-    /// Unconfirmed, with a literal word condition.
+    /// Unconfirmed, with one literal word or sender condition.
     pub spec: RuleSpec,
     pub evidence: RuleEvidence,
 }
 
 /// Candidates for every folder (subtree) that has a pattern and enough
-/// documents, sorted by folder and phrase. The kind is the last constant
-/// folder of the subtree; a document with the condition's phrase in its text
-/// is matched the way a rule matches it (case-insensitive, between word boundaries).
+/// documents, sorted by folder and phrase. A sender most of whose documents
+/// are in one folder yields a sender candidate for that folder; the other
+/// folders yield phrase candidates. The kind is what most documents of the
+/// folder carry, else the last constant folder of the subtree; a document with
+/// the condition's phrase in its text is matched the way a rule matches it
+/// (case-insensitive, between word boundaries).
 pub fn suggest_rules(archive: &[ArchiveText], profile: &[SubtreePattern]) -> Vec<RuleCandidate> {
     let documents: Vec<ArchiveDocument> =
         archive.iter().map(|entry| entry.document.clone()).collect();
@@ -76,7 +89,11 @@ pub fn suggest_rules(archive: &[ArchiveText], profile: &[SubtreePattern]) -> Vec
         }
     }
 
-    let mut candidates = Vec::new();
+    let mut candidates = sender_candidates(archive, &members, profile);
+    let sender_folders: BTreeSet<String> = candidates
+        .iter()
+        .map(|candidate| candidate.subtree.clone())
+        .collect();
     for entry in profile {
         let (Some(pattern), Some(folder)) = (
             entry.pattern.as_deref(),
@@ -84,12 +101,10 @@ pub fn suggest_rules(archive: &[ArchiveText], profile: &[SubtreePattern]) -> Vec
         ) else {
             continue;
         };
-        let Some(kind) = entry
-            .subtree
-            .rsplit('/')
-            .next()
-            .filter(|kind| !kind.is_empty())
-        else {
+        if sender_folders.contains(&entry.subtree) {
+            continue;
+        }
+        let Some(kind) = last_folder_name(&entry.subtree) else {
             continue;
         };
         let in_folder = folder.len();
@@ -99,35 +114,210 @@ pub fn suggest_rules(archive: &[ArchiveText], profile: &[SubtreePattern]) -> Vec
         let elsewhere: Vec<usize> = (0..lowered.len())
             .filter(|index| !folder.contains(index))
             .collect();
+        let shared = shared_fields(archive, folder);
         for found in folder_phrases(&lowered, &normalised, folder, &elsewhere) {
             candidates.push(RuleCandidate {
                 subtree: entry.subtree.clone(),
                 phrase: found.phrase.clone(),
-                spec: RuleSpec {
-                    conditions: RuleConditions::all_of(vec![Condition::new(
-                        ConditionKind::Word,
-                        found.phrase,
-                    )]),
-                    extract_number: None,
-                    extract_date: None,
-                    extract_amount: None,
-                    kind: kind.to_owned(),
-                    tax_context: TaxContext::None,
-                    tags: BTreeSet::new(),
-                    filing_pattern: pattern.to_owned(),
-                    confirmed: false,
-                    enabled: true,
-                },
+                spec: spec_of(
+                    Condition::new(ConditionKind::Word, found.phrase),
+                    kind,
+                    pattern,
+                    &shared,
+                ),
                 evidence: RuleEvidence {
                     matching_in_folder: to_u32(found.matching_in_folder),
                     folder_documents: to_u32(in_folder),
                     matching_elsewhere: to_u32(found.matching_elsewhere),
+                    subtree: Some(entry.subtree.clone()),
                 },
             });
         }
     }
     candidates
         .sort_by(|left, right| (&left.subtree, &left.phrase).cmp(&(&right.subtree, &right.phrase)));
+    candidates
+}
+
+fn last_folder_name(subtree: &str) -> Option<&str> {
+    subtree.rsplit('/').next().filter(|name| !name.is_empty())
+}
+
+fn spec_of(
+    condition: Condition,
+    fallback_kind: &str,
+    pattern: &str,
+    shared: &SharedFields,
+) -> RuleSpec {
+    RuleSpec {
+        conditions: RuleConditions::all_of(vec![condition]),
+        extract_number: None,
+        extract_date: None,
+        extract_amount: None,
+        kind: shared
+            .kind
+            .clone()
+            .unwrap_or_else(|| fallback_kind.to_owned()),
+        tax_context: shared.tax_context,
+        tags: shared.tags.clone(),
+        filing_pattern: pattern.to_owned(),
+        confirmed: false,
+        enabled: true,
+    }
+}
+
+/// What at least `MIN_SHARE_IN_FOLDER_PERCENT` of some documents agree on.
+struct SharedFields {
+    kind: Option<String>,
+    tax_context: TaxContext,
+    tags: BTreeSet<String>,
+}
+
+fn shared_fields(archive: &[ArchiveText], members: &[usize]) -> SharedFields {
+    let total = members.len();
+    let all_fields: Vec<&DocumentFields> = members
+        .iter()
+        .filter_map(|&index| archive.get(index))
+        .map(|entry| &entry.fields)
+        .collect();
+
+    // Case-insensitive; the spelling shown is the smallest one of the winners.
+    let mut kinds: BTreeMap<String, BTreeMap<&str, usize>> = BTreeMap::new();
+    for kind in all_fields
+        .iter()
+        .filter_map(|fields| fields.kind.as_deref())
+    {
+        let spellings = kinds.entry(kind.to_lowercase()).or_default();
+        *spellings.entry(kind).or_default() += 1;
+    }
+    let kind = kinds.values().find_map(|spellings| {
+        let count: usize = spellings.values().sum();
+        at_least_share(count, total, MIN_SHARE_IN_FOLDER_PERCENT)
+            .then(|| {
+                spellings
+                    .keys()
+                    .next()
+                    .map(|spelling| (*spelling).to_owned())
+            })
+            .flatten()
+    });
+
+    let tax_context = [TaxContext::Company, TaxContext::Private]
+        .into_iter()
+        .find(|&context| {
+            let count = all_fields
+                .iter()
+                .filter(|fields| fields.tax_context == Some(context))
+                .count();
+            at_least_share(count, total, MIN_SHARE_IN_FOLDER_PERCENT)
+        })
+        .unwrap_or(TaxContext::None);
+
+    let mut tag_counts: BTreeMap<&str, usize> = BTreeMap::new();
+    for tag in all_fields.iter().flat_map(|fields| &fields.tags) {
+        *tag_counts.entry(tag.as_str()).or_default() += 1;
+    }
+    let tags = tag_counts
+        .into_iter()
+        .filter(|&(_tag, count)| at_least_share(count, total, MIN_SHARE_IN_FOLDER_PERCENT))
+        .map(|(tag, _count)| tag.to_owned())
+        .collect();
+
+    SharedFields {
+        kind,
+        tax_context,
+        tags,
+    }
+}
+
+/// One candidate per sender whose documents lie mostly in one folder with a
+/// pattern. The folder with the most of them wins, the smallest on a tie.
+fn sender_candidates(
+    archive: &[ArchiveText],
+    members: &BTreeMap<&str, Vec<usize>>,
+    profile: &[SubtreePattern],
+) -> Vec<RuleCandidate> {
+    let mut subtree_of: BTreeMap<usize, &str> = BTreeMap::new();
+    for (&subtree, indexes) in members {
+        for &index in indexes {
+            subtree_of.insert(index, subtree);
+        }
+    }
+    // Lowercase name -> the documents of that sender that lie in a subtree.
+    let mut by_sender: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    for &index in subtree_of.keys() {
+        let Some(sender) = archive
+            .get(index)
+            .and_then(|entry| entry.sender.as_deref())
+            .map(str::trim)
+            .filter(|sender| !sender.is_empty())
+        else {
+            continue;
+        };
+        by_sender
+            .entry(sender.to_lowercase())
+            .or_default()
+            .push(index);
+    }
+
+    let mut candidates = Vec::new();
+    for sender_documents in by_sender.values() {
+        let mut per_folder: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+        for &index in sender_documents {
+            if let Some(&subtree) = subtree_of.get(&index) {
+                per_folder.entry(subtree).or_default().push(index);
+            }
+        }
+        let mut best: Option<(&str, &Vec<usize>)> = None;
+        for (&subtree, indexes) in &per_folder {
+            if best.is_none_or(|(_, kept)| indexes.len() > kept.len()) {
+                best = Some((subtree, indexes));
+            }
+        }
+        let Some((subtree, in_folder)) = best else {
+            continue;
+        };
+        let total = sender_documents.len();
+        if u32::try_from(in_folder.len()).unwrap_or(u32::MAX) < MIN_FOLDER_DOCUMENTS
+            || !at_least_share(in_folder.len(), total, MIN_SHARE_IN_FOLDER_PERCENT)
+        {
+            continue;
+        }
+        let Some(pattern) = profile
+            .iter()
+            .find(|entry| entry.subtree == subtree)
+            .and_then(|entry| entry.pattern.as_deref())
+        else {
+            continue;
+        };
+        let Some(kind) = last_folder_name(subtree) else {
+            continue;
+        };
+        let Some(name) = sender_documents
+            .iter()
+            .filter_map(|&index| archive.get(index)?.sender.as_deref())
+            .map(str::trim)
+            .min()
+        else {
+            continue;
+        };
+        candidates.push(RuleCandidate {
+            subtree: subtree.to_owned(),
+            phrase: name.to_owned(),
+            spec: spec_of(
+                Condition::new(ConditionKind::Sender, name),
+                kind,
+                pattern,
+                &shared_fields(archive, in_folder),
+            ),
+            evidence: RuleEvidence {
+                matching_in_folder: to_u32(in_folder.len()),
+                folder_documents: to_u32(members.get(subtree).map_or(0, Vec::len)),
+                matching_elsewhere: to_u32(total.saturating_sub(in_folder.len())),
+                subtree: Some(subtree.to_owned()),
+            },
+        });
+    }
     candidates
 }
 
@@ -146,15 +336,28 @@ struct FoundPhrase {
 
 /// Whether the evidence a suggestion was stored with meets the thresholds it
 /// was made under. `documents` is the number of documents in the archive now,
-/// to put `matching_elsewhere` in relation to the ones outside the folder.
-pub fn evidence_meets_thresholds(evidence: &RuleEvidence, documents: usize) -> bool {
+/// to put `matching_elsewhere` in relation to the ones outside the folder; a
+/// sender condition is measured against the documents of the sender instead.
+pub fn evidence_meets_thresholds(
+    conditions: &RuleConditions,
+    evidence: &RuleEvidence,
+    documents: usize,
+) -> bool {
+    let matching = evidence.matching_in_folder as usize;
+    if conditions
+        .single_condition()
+        .is_some_and(|condition| condition.kind == ConditionKind::Sender)
+    {
+        return evidence.matching_in_folder >= MIN_FOLDER_DOCUMENTS
+            && at_least_share(
+                matching,
+                matching.saturating_add(evidence.matching_elsewhere as usize),
+                MIN_SHARE_IN_FOLDER_PERCENT,
+            );
+    }
     let folder = evidence.folder_documents as usize;
     evidence.folder_documents >= MIN_FOLDER_DOCUMENTS
-        && at_least_share(
-            evidence.matching_in_folder as usize,
-            folder,
-            MIN_SHARE_IN_FOLDER_PERCENT,
-        )
+        && at_least_share(matching, folder, MIN_SHARE_IN_FOLDER_PERCENT)
         && at_most_share(
             evidence.matching_elsewhere as usize,
             documents.saturating_sub(folder),
@@ -347,8 +550,32 @@ mod tests {
                     date: None,
                 },
                 text: text(index),
+                fields: DocumentFields::default(),
+                sender: None,
             })
             .collect()
+    }
+
+    fn from_sender(
+        mut archive: Vec<ArchiveText>,
+        sender: impl Fn(usize) -> Option<&'static str>,
+    ) -> Vec<ArchiveText> {
+        for (index, entry) in archive.iter_mut().enumerate() {
+            entry.sender = sender(index).map(str::to_owned);
+        }
+        archive
+    }
+
+    fn only_sender_candidate(candidates: &[RuleCandidate]) -> &RuleCandidate {
+        let senders: Vec<_> = candidates
+            .iter()
+            .filter(|candidate| {
+                candidate.spec.conditions.single_condition().map(|c| c.kind)
+                    == Some(ConditionKind::Sender)
+            })
+            .collect();
+        assert_eq!(senders.len(), 1, "{candidates:?}");
+        senders[0]
     }
 
     fn suggest(archive: &[ArchiveText]) -> Vec<RuleCandidate> {
@@ -401,6 +628,7 @@ mod tests {
                 matching_in_folder: 5,
                 folder_documents: 5,
                 matching_elsewhere: 0,
+                subtree: Some("Insurance".to_owned()),
             }
         );
         assert_eq!(
@@ -499,6 +727,8 @@ mod tests {
                     date: None,
                 },
                 text: "Company A Ltd".to_owned(),
+                fields: DocumentFields::default(),
+                sender: None,
             })
             .collect();
 
@@ -520,5 +750,191 @@ mod tests {
         archive.extend(folder("Taxes", 5, taxes));
 
         assert_eq!(suggest(&archive), suggest(&archive));
+    }
+
+    fn filed_by_company_a(archive: Vec<ArchiveText>) -> Vec<ArchiveText> {
+        from_sender(archive, |_| Some("Company A"))
+    }
+
+    #[test]
+    fn a_sender_whose_documents_are_in_one_folder_yields_a_sender_rule_for_that_folder() {
+        let archive = filed_by_company_a(folder("Insurance", 5, insurance));
+
+        let candidates = suggest(&archive);
+
+        let candidate = only_sender_candidate(&candidates);
+        assert_eq!(
+            candidate.spec.conditions,
+            RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, "Company A")])
+        );
+        assert_eq!(candidate.subtree, "Insurance");
+        assert_eq!(candidate.spec.kind, "Insurance");
+        assert_eq!(candidate.spec.filing_pattern, "Insurance/{date}_{name}");
+        assert!(!candidate.spec.confirmed);
+        assert!(candidate.spec.enabled);
+    }
+
+    #[test]
+    fn the_sender_is_compared_without_case() {
+        let archive = from_sender(folder("Insurance", 4, insurance), |index| {
+            Some(if index % 2 == 0 {
+                "Company A"
+            } else {
+                "COMPANY A"
+            })
+        });
+
+        let candidates = suggest(&archive);
+
+        let candidate = only_sender_candidate(&candidates);
+        assert_eq!(candidate.evidence.matching_in_folder, 4);
+    }
+
+    #[test]
+    fn a_sender_just_below_the_share_in_its_folder_yields_no_sender_rule() {
+        let with_in_folder = |in_folder: usize| {
+            let mut archive = folder("Insurance", in_folder, insurance);
+            archive.extend(folder("Taxes", 4 - in_folder, taxes));
+            let filed = filed_by_company_a(archive);
+            suggest(&filed)
+                .iter()
+                .any(|candidate| candidate.spec.conditions.required_sender().is_some())
+        };
+
+        assert!(!with_in_folder(3), "3 of 4 is 75 percent");
+        assert!(with_in_folder(4));
+    }
+
+    #[test]
+    fn a_sender_with_too_few_documents_in_the_folder_yields_no_sender_rule() {
+        let archive = filed_by_company_a(folder("Insurance", 2, insurance));
+
+        assert!(suggest(&archive).iter().all(|candidate| candidate
+            .spec
+            .conditions
+            .required_sender()
+            .is_none()));
+    }
+
+    #[test]
+    fn the_evidence_of_a_sender_rule_counts_the_sender_and_the_folder() {
+        let mut archive = folder("Insurance", 5, insurance);
+        archive.extend(folder("Taxes", 3, taxes));
+        let with_senders = from_sender(archive, |index| {
+            (index < 4 || index == 5).then_some("Company A")
+        });
+        // 4 of the sender's 5 documents lie in Insurance, one in Taxes; the
+        // fifth Insurance document has no sender.
+
+        let candidates = suggest(&with_senders);
+
+        let candidate = only_sender_candidate(&candidates);
+        assert_eq!(
+            candidate.evidence,
+            RuleEvidence {
+                matching_in_folder: 4,
+                folder_documents: 5,
+                matching_elsewhere: 1,
+                subtree: Some("Insurance".to_owned()),
+            }
+        );
+    }
+
+    #[test]
+    fn the_tax_context_is_taken_from_the_fields_when_enough_documents_agree() {
+        let with_private = |private: usize| {
+            let mut archive = filed_by_company_a(folder("Insurance", 5, insurance));
+            for entry in archive.iter_mut().take(private) {
+                entry.fields.tax_context = Some(TaxContext::Private);
+            }
+            only_sender_candidate(&suggest(&archive)).spec.tax_context
+        };
+
+        assert_eq!(with_private(4), TaxContext::Private);
+        assert_eq!(with_private(3), TaxContext::None);
+    }
+
+    #[test]
+    fn the_kind_is_taken_from_the_fields_when_enough_documents_agree() {
+        let with_kind = |named: usize| {
+            let mut archive = filed_by_company_a(folder("Insurance", 5, insurance));
+            for (index, entry) in archive.iter_mut().enumerate() {
+                entry.fields.kind = (index < named).then(|| "Policy".to_owned());
+            }
+            only_sender_candidate(&suggest(&archive)).spec.kind.clone()
+        };
+
+        assert_eq!(with_kind(4), "Policy");
+        assert_eq!(with_kind(3), "Insurance");
+    }
+
+    #[test]
+    fn only_the_tags_that_enough_documents_carry_are_taken() {
+        let mut archive = filed_by_company_a(folder("Insurance", 5, insurance));
+        for (index, entry) in archive.iter_mut().enumerate() {
+            entry.fields.tags.insert("insurance".to_owned());
+            if index < 3 {
+                entry.fields.tags.insert("car".to_owned());
+            }
+        }
+
+        let candidates = suggest(&archive);
+
+        assert_eq!(
+            only_sender_candidate(&candidates).spec.tags,
+            BTreeSet::from(["insurance".to_owned()])
+        );
+    }
+
+    #[test]
+    fn a_folder_with_a_sender_rule_yields_no_phrase_rules() {
+        let mut archive = filed_by_company_a(folder("Insurance", 5, insurance));
+        archive.extend(folder("Taxes", 5, taxes));
+
+        let candidates = suggest(&archive);
+
+        assert!(phrases(&candidates, "Insurance")
+            .iter()
+            .all(|phrase| phrase == "Company A"));
+        assert_eq!(phrases(&candidates, "Insurance").len(), 1);
+        assert!(!phrases(&candidates, "Taxes").is_empty());
+    }
+
+    #[test]
+    fn phrase_rules_take_kind_context_and_tags_from_the_fields_and_name_their_folder() {
+        let mut archive = folder("Insurance", 5, insurance);
+        for entry in &mut archive {
+            entry.fields.tax_context = Some(TaxContext::Company);
+            entry.fields.tags.insert("insurance".to_owned());
+        }
+
+        let candidates = suggest(&archive);
+
+        let candidate = candidates
+            .iter()
+            .find(|candidate| candidate.phrase == "company a ltd")
+            .expect("the phrase rule");
+        assert_eq!(candidate.spec.tax_context, TaxContext::Company);
+        assert_eq!(
+            candidate.spec.tags,
+            BTreeSet::from(["insurance".to_owned()])
+        );
+        assert_eq!(candidate.evidence.subtree.as_deref(), Some("Insurance"));
+    }
+
+    #[test]
+    fn the_thresholds_of_stored_evidence_depend_on_the_kind_of_condition() {
+        let sender = RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, "A")]);
+        let word = RuleConditions::all_of(vec![Condition::new(ConditionKind::Word, "a b")]);
+        let evidence = |matching_elsewhere| RuleEvidence {
+            matching_in_folder: 4,
+            folder_documents: 10,
+            matching_elsewhere,
+            subtree: None,
+        };
+
+        assert!(evidence_meets_thresholds(&sender, &evidence(1), 100));
+        assert!(!evidence_meets_thresholds(&sender, &evidence(2), 100));
+        assert!(!evidence_meets_thresholds(&word, &evidence(0), 100));
     }
 }
