@@ -4,6 +4,43 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-10-30
+
+### Added
+
+- Files dragged from another app onto a panel are copied into its folder.
+- Rows can be dragged from one panel to the other, copying them, or moving
+  them with Cmd (macOS) or Shift (elsewhere). The cursor shows which one
+  happens. On macOS and Windows rows can also be dragged out of the window,
+  into the Finder, Explorer or a browser upload.
+- Pasting into a panel takes files, images and text from the clipboard:
+  files are copied in, an image or text becomes a new file.
+- A trash view lists what is in the trash with its original place and
+  restores it there, creating a missing folder and asking when the name is
+  taken. It opens from the command list (F1) and the drive menu. On Windows
+  and Linux it shows the whole system trash; on macOS it shows what ncrs
+  moved there, and "Open the trash in the Finder" covers the rest. The App
+  Store build offers only "Open the trash in the Finder" for now.
+- Cmd+Z / Ctrl+Z restores the last deletion, and the notice after a delete
+  offers it.
+
+### Changed
+
+- Cmd+C / Ctrl+C copies the selected files to the clipboard. A running job
+  stops with Esc (on macOS also Ctrl+C). The path is copied with
+  Option+Cmd+C, the name with Ctrl+Cmd+C (Ctrl+Shift+C elsewhere).
+- On macOS outside the App Store build, ncrs records what it moves to the
+  trash, so the Finder's "Put Back" no longer works for those items; restore
+  them in ncrs instead.
+- The primary button is green again in the Cosmic preset.
+
+### Fixed
+
+- Archives made on macOS no longer list their `__MACOSX` folder and `._`
+  files.
+- A VS Code theme picked in the App Store build keeps the colours of the
+  file it includes after a restart.
+
 ## [1.0.0] — 2026-10-29
 
 ### Added
