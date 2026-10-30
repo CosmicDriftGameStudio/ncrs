@@ -12,6 +12,9 @@ mod reader;
 pub mod real_trash_tests;
 pub mod remote;
 mod sandbox;
+#[cfg(test)]
+#[cfg(target_os = "macos")]
+mod sandbox_probe_tests;
 pub mod search;
 mod sort;
 pub mod transfer;

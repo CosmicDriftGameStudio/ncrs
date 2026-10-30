@@ -270,6 +270,14 @@ impl TrashBackend for FileManagerBackend {
     }
 }
 
+/// The journaled trash of the plain build, also where `system_trash` would
+/// pick the Finder-only one because the process runs in the App Sandbox.
+#[cfg(test)]
+#[cfg(target_os = "macos")]
+pub(in crate::fs) fn file_manager_trash(journal: PathBuf) -> Arc<dyn Trash> {
+    Arc::new(JournaledTrash::new(journal, FileManagerBackend))
+}
+
 /// Trashes through the file manager and keeps no record: the sandbox build,
 /// and a run without a journal path.
 #[cfg(target_os = "macos")]

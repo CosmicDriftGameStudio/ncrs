@@ -125,7 +125,7 @@ fn the_snapshot_gives_the_clipboard_back_as_it_was() {
 }
 
 #[cfg(target_os = "macos")]
-mod platform {
+pub mod platform {
     use std::path::{Path, PathBuf};
 
     use objc2::rc::Retained;
@@ -206,7 +206,7 @@ mod platform {
 
     /// The Finder writes file reference URLs (`file:///.file/id=…`); other
     /// programs write path URLs. The first entry goes as a reference.
-    pub(in crate::clipboard_system_tests) fn put_files_as_the_file_manager_does(files: &[PathBuf]) {
+    pub fn put_files_as_the_file_manager_does(files: &[PathBuf]) {
         let urls: Vec<Retained<ProtocolObject<dyn NSPasteboardWriting>>> = files
             .iter()
             .enumerate()
