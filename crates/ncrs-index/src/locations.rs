@@ -234,7 +234,7 @@ mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
     use super::*;
-    use crate::model::{DocumentFields, DocumentSource, DocumentStatus};
+    use crate::model::{DocumentFields, DocumentSource, DocumentStatus, FieldOrigin};
     use crate::test_support::{encrypted_index, new_document};
 
     fn stamp(size: u64, seconds: u64) -> FileStamp {
@@ -416,7 +416,9 @@ mod tests {
             sender: Some("Company A".to_owned()),
             ..DocumentFields::default()
         };
-        index.set_document_fields(id, &fields).unwrap();
+        index
+            .set_document_fields(id, &fields, |_| FieldOrigin::Unknown)
+            .unwrap();
         let new_hash = ContentHash([8; 32]);
 
         index

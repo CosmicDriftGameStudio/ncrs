@@ -1060,6 +1060,16 @@ mod tests {
         (dir, path, InMemoryKeyStore::with_entry(key))
     }
 
+    const FIXTURE_V0_6_0_VERSION: u32 = 9;
+
+    fn latest_version() -> u32 {
+        u32::try_from(MIGRATIONS.len()).unwrap()
+    }
+
+    fn probe_version() -> u32 {
+        latest_version() + 1
+    }
+
     fn migrations_and(extra: &[&'static str]) -> Vec<&'static str> {
         MIGRATIONS.iter().chain(extra).copied().collect()
     }
@@ -1182,6 +1192,14 @@ mod tests {
             u32::try_from(MIGRATIONS.len()).unwrap()
         );
         assert_v0_6_0_content(&index);
+        let invoice = index
+            .document_by_path(Path::new("archive/2026/Company A/invoice-4711.pdf"))
+            .unwrap()
+            .unwrap();
+        let origins = index.field_origins(invoice.id).unwrap();
+        for field in crate::model::Field::ALL {
+            assert_eq!(origins.of(field), crate::model::FieldOrigin::Unknown);
+        }
     }
 
     #[test]
@@ -1191,12 +1209,12 @@ mod tests {
 
         let index = Index::open_with_migrations(&path, &store, &steps).unwrap();
 
-        assert_eq!(user_version(&index), 10);
+        assert_eq!(user_version(&index), probe_version());
         assert!(has_column(&index, "document", "probe"));
         assert_v0_6_0_content(&index);
         drop(index);
         let reopened = Index::open_with_migrations(&path, &store, &steps).unwrap();
-        assert_eq!(user_version(&reopened), 10);
+        assert_eq!(user_version(&reopened), probe_version());
     }
 
     #[test]
@@ -1210,18 +1228,15 @@ mod tests {
         assert!(
             matches!(
                 err,
-                IndexError::MigrationFailed {
-                    from: 9,
-                    step: 11,
-                    ..
-                }
+                IndexError::MigrationFailed { from, step, .. }
+                    if from == FIXTURE_V0_6_0_VERSION && step == latest_version() + 2
             ),
             "{err}"
         );
         assert!(err.to_string().contains("left unchanged"), "{err}");
         assert_eq!(fs::read(&path).unwrap(), before);
         let index = Index::open_with_migrations(&path, &store, MIGRATIONS).unwrap();
-        assert_eq!(user_version(&index), 9);
+        assert_eq!(user_version(&index), latest_version());
         assert!(!has_column(&index, "document", "probe"));
         assert_v0_6_0_content(&index);
     }

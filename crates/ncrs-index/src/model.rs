@@ -163,6 +163,92 @@ impl Field {
     }
 }
 
+impl Field {
+    pub const ALL: [Self; 6] = [
+        Self::Sender,
+        Self::Kind,
+        Self::TaxContext,
+        Self::Date,
+        Self::Number,
+        Self::Amount,
+    ];
+}
+
+/// Where the stored value of a document field came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldOrigin {
+    Unknown,
+    /// `None` when the rule has been deleted since.
+    Rule(Option<RuleId>),
+    Ai {
+        confidence_percent: u8,
+    },
+    Manual,
+}
+
+impl FieldOrigin {
+    pub(crate) fn kind_column(self) -> Option<&'static str> {
+        match self {
+            Self::Unknown => None,
+            Self::Rule(_) => Some("rule"),
+            Self::Ai { .. } => Some("ai"),
+            Self::Manual => Some("manual"),
+        }
+    }
+
+    pub(crate) fn rule_column(self) -> Option<i64> {
+        match self {
+            Self::Rule(rule) => rule.map(RuleId::get),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn confidence_column(self) -> Option<i64> {
+        match self {
+            Self::Ai { confidence_percent } => Some(i64::from(confidence_percent)),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn from_columns(
+        origin: &str,
+        rule_id: Option<i64>,
+        confidence: Option<i64>,
+    ) -> Result<Self, IndexError> {
+        match origin {
+            "rule" => Ok(Self::Rule(rule_id.map(RuleId::new))),
+            "ai" => {
+                let stored = confidence
+                    .ok_or_else(|| corrupt("document_field_origin.confidence", "NULL"))?;
+                let confidence_percent = u8::try_from(stored)
+                    .ok()
+                    .filter(|percent| *percent <= 100)
+                    .ok_or_else(|| {
+                        corrupt("document_field_origin.confidence", &stored.to_string())
+                    })?;
+                Ok(Self::Ai { confidence_percent })
+            }
+            "manual" => Ok(Self::Manual),
+            other => Err(corrupt("document_field_origin.origin", other)),
+        }
+    }
+}
+
+/// The origin of each field of one document; a field without a stored origin
+/// is `Unknown`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FieldOrigins(std::collections::HashMap<Field, FieldOrigin>);
+
+impl FieldOrigins {
+    pub(crate) fn new(stored: std::collections::HashMap<Field, FieldOrigin>) -> Self {
+        Self(stored)
+    }
+
+    pub fn of(&self, field: Field) -> FieldOrigin {
+        self.0.get(&field).copied().unwrap_or(FieldOrigin::Unknown)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ReviewReason {
     NoMatchingRule,

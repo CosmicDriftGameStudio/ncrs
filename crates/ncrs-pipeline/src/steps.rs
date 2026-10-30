@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
 use ncrs_ai::Provider;
-use ncrs_index::{DocumentStatus, IndexError, ReviewReason};
+use ncrs_index::{DocumentStatus, FieldOrigin, IndexError, ReviewReason};
 use ncrs_intake::text_is_readable;
 use ncrs_intake::{plan, PlanInput, Planning, StabilityTracker, TextChain, TextError};
 use ncrs_intake::{settle_location, take_in, IntakeError, Location, LocationMode, Outcome};
@@ -205,7 +205,13 @@ impl Step for RulesStep {
                 Planning::Review { fields, .. } => fields,
             };
             if *found != document.fields {
-                index.set_document_fields(id, found)?;
+                let origin = match &planning {
+                    Planning::Plan(filing) => FieldOrigin::Rule(Some(filing.rule)),
+                    Planning::Review { rule, .. } => rule.map_or(FieldOrigin::Unknown, |rule_id| {
+                        FieldOrigin::Rule(Some(rule_id))
+                    }),
+                };
+                index.set_document_fields(id, found, |_| origin)?;
             }
             if matches!(planning, Planning::Plan(_)) {
                 index.set_document_status(id, DocumentStatus::Planned)?;

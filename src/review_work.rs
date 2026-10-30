@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono::NaiveDate;
 use ncrs_index::{
-    Amount, BatchKind, Currency, DocumentFields, DocumentId, DocumentStatus, IncludeOutcome, Index,
-    IndexError, ReviewEntryId, ReviewReason, RuleId, RuleSpec, TaxContext,
+    Amount, BatchKind, Currency, DocumentFields, DocumentId, DocumentStatus, FieldOrigin,
+    IncludeOutcome, Index, IndexError, ReviewEntryId, ReviewReason, RuleId, RuleSpec, TaxContext,
 };
 use ncrs_intake::{pattern_is_valid, plan, render_pattern, text_is_readable, PlanInput, Planning};
 
@@ -338,7 +338,7 @@ fn confirm<S: Source>(
         .map_err(failed)?
         .ok_or_else(|| "the document is no longer in the index".to_owned())?;
     index
-        .set_document_fields(document_id, fields)
+        .set_document_fields(document_id, fields, |_| FieldOrigin::Manual)
         .map_err(failed)?;
     let target = target_of(root, &relative, &document.path);
     let item = crate::execute::ExecutionItem {
@@ -645,6 +645,15 @@ mod tests {
             assert_eq!(document.status, DocumentStatus::Filed);
             assert_eq!(document.fields.sender.as_deref(), Some("Company A"));
             assert!(index.open_reviews().unwrap().is_empty());
+            let origins = index.field_origins(item.document_id).unwrap();
+            for field in [
+                ncrs_index::Field::Sender,
+                ncrs_index::Field::Kind,
+                ncrs_index::Field::TaxContext,
+            ] {
+                assert_eq!(origins.of(field), FieldOrigin::Manual, "{field:?}");
+            }
+            assert_eq!(origins.of(ncrs_index::Field::Date), FieldOrigin::Unknown);
         });
     }
 
@@ -664,7 +673,7 @@ mod tests {
         let next = setup.document("next.pdf", DocumentStatus::Planned);
         setup.with_index(|index| {
             index
-                .set_document_fields(next, &Setup::fields("Company A"))
+                .set_document_fields(next, &Setup::fields("Company A"), |_| FieldOrigin::Unknown)
                 .unwrap();
         });
 

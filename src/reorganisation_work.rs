@@ -221,8 +221,8 @@ pub mod tests {
 
     use chrono::{NaiveDate, TimeZone as _, Utc};
     use ncrs_index::{
-        ContentHash, DocumentFields, DocumentId, DocumentSource, FileStamp, NewDocument,
-        PlanOutcome, RuleEvidence, RuleSpec, TaxContext, TextMatch,
+        ContentHash, DocumentFields, DocumentId, DocumentSource, FieldOrigin, FileStamp,
+        NewDocument, PlanOutcome, RuleEvidence, RuleSpec, TaxContext, TextMatch,
     };
     use tempfile::TempDir;
 
@@ -279,6 +279,7 @@ pub mod tests {
                         date,
                         ..DocumentFields::default()
                     },
+                    |_| FieldOrigin::Unknown,
                 )
                 .unwrap();
             index.set_document_text(id, text).unwrap();

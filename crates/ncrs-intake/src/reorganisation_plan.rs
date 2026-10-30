@@ -109,9 +109,9 @@ mod tests {
 
     use chrono::{NaiveDate, TimeZone as _, Utc};
     use ncrs_index::{
-        ConflictReason, ContentHash, DocumentFields, DocumentId, DocumentSource, FileStamp,
-        Finding, FindingKind, NewDocument, NoActionReason, PlanItem, PlanOutcome, RuleEvidence,
-        RuleSpec, TaxContext, TextMatch,
+        ConflictReason, ContentHash, DocumentFields, DocumentId, DocumentSource, FieldOrigin,
+        FileStamp, Finding, FindingKind, NewDocument, NoActionReason, PlanItem, PlanOutcome,
+        RuleEvidence, RuleSpec, TaxContext, TextMatch,
     };
     use tempfile::TempDir;
 
@@ -204,6 +204,7 @@ mod tests {
                         date,
                         ..DocumentFields::default()
                     },
+                    |_| FieldOrigin::Unknown,
                 )
                 .unwrap();
             self.index.set_document_text(id, text).unwrap();
@@ -627,6 +628,7 @@ mod tests {
                     date: day(2024, 7, 1),
                     ..DocumentFields::default()
                 },
+                |_| FieldOrigin::Unknown,
             )
             .unwrap();
 

@@ -176,14 +176,7 @@ pub fn render_pattern(source: &str, fields: &DocumentFields) -> Option<PathBuf> 
 }
 
 /// The order fields are asked for and reported in.
-pub const FIELD_ORDER: [Field; 6] = [
-    Field::Sender,
-    Field::Kind,
-    Field::TaxContext,
-    Field::Date,
-    Field::Number,
-    Field::Amount,
-];
+pub const FIELD_ORDER: [Field; 6] = Field::ALL;
 
 /// A field is needed when the pattern uses it or the rule says how to read it
 /// from the text; a value that is empty after sanitising is missing.
