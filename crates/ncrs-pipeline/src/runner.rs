@@ -1766,7 +1766,35 @@ mod tests {
     }
 
     #[test]
-    fn a_new_file_reaches_the_review_list_through_the_watcher() {
+    fn a_file_the_watcher_reports_reaches_the_review_list() {
+        let inbox_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        put(&inbox, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let runner = Runner::start(
+            settings(workers(2)),
+            fixture.steps(),
+            vec![inbox.clone()],
+            stepping_clock(),
+        );
+        runner.wait_for("the backlog reviewed", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[3].done == 1
+        });
+
+        let reminder = put(&inbox, "reminder.pdf", REMINDER);
+        // The OS delivers events with no upper bound on the delay under load;
+        // the watcher tests in ncrs-intake cover the backend itself.
+        runner.shared.on_watch_event(WatchEvent::File(reminder));
+
+        runner.wait_for("the new file reviewed", |snapshot| {
+            snapshot.steps[3].done == 2
+        });
+        let index = fixture.index.lock().unwrap();
+        assert_eq!(index.open_reviews().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn a_watcher_error_rescans_the_location_for_missed_files() {
         let inbox_dir = TempDir::new().unwrap();
         let inbox = location(&inbox_dir, LocationMode::Inbox);
         put(&inbox, "invoice.pdf", INVOICE);
@@ -1782,8 +1810,12 @@ mod tests {
         });
 
         put(&inbox, "reminder.pdf", REMINDER);
+        runner.shared.on_watch_event(WatchEvent::Error {
+            location: inbox.path.clone(),
+            message: "the system dropped file events".to_owned(),
+        });
 
-        runner.wait_for("the new file reviewed", |snapshot| {
+        runner.wait_for("the missed file reviewed", |snapshot| {
             snapshot.steps[3].done == 2
         });
         let index = fixture.index.lock().unwrap();
