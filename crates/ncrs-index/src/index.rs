@@ -999,6 +999,54 @@ mod tests {
     }
 
     #[test]
+    fn a_version_11_database_gains_sender_aliases() {
+        use crate::model::{
+            Condition, ConditionKind, DocumentId, RuleConditions, RuleId, SenderAliasKind,
+        };
+
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let old = Index::create_plain_with_migrations(&path, &MIGRATIONS[..11]).unwrap();
+        assert_eq!(user_version(&old), 11);
+        old.conn
+            .execute_batch(
+                "INSERT INTO sender (id, name, name_key) VALUES (1, 'Company A', 'company a');
+                 INSERT INTO document (id, hash, path, source, received_at, status, sender_id)
+                 VALUES (1, zeroblob(32), 'inbox/a.pdf', 'inbox', 1700000000, 'planned', 1);
+                 INSERT INTO document_kind (id, name, name_key) VALUES (1, 'Invoice', 'invoice');
+                 INSERT INTO rule (id, kind_id, tax_context, filing_pattern, confirmed)
+                 VALUES (4, 1, 'none', '{year}', 1);
+                 INSERT INTO rule_condition (rule_id, position, kind, value)
+                 VALUES (4, 0, 'sender', 'Company A');",
+            )
+            .unwrap();
+        drop(old);
+
+        let index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
+
+        assert_eq!(user_version(&index), latest_version());
+        let document = index.document(DocumentId::new(1)).unwrap().unwrap();
+        assert_eq!(document.fields.sender.as_deref(), Some("Company A"));
+        let rule = index.rule(RuleId::new(4)).unwrap().unwrap();
+        assert_eq!(
+            rule.spec.conditions,
+            RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, "Company A")])
+        );
+        assert!(index.sender_aliases().unwrap().is_empty());
+        assert!(index
+            .offer_sender_alias("Company A", SenderAliasKind::Domain, "company-a.example")
+            .unwrap());
+        let violations = index
+            .conn
+            .prepare("PRAGMA foreign_key_check")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .count();
+        assert_eq!(violations, 0);
+    }
+
+    #[test]
     fn empty_a1_database_gains_the_document_schema_on_open() {
         let dir = TempDir::new().unwrap();
         let path = db_in(&dir);

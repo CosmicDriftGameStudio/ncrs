@@ -12,11 +12,12 @@ use std::fs;
 use chrono::NaiveDate;
 use ncrs_index::{
     Amount, Condition, ConditionKind, Currency, DocumentFields, Field, Index, ReviewReason, Rule,
-    RuleConditions, RuleId, RuleSpec, TaxContext,
+    RuleConditions, RuleId, RuleSpec, SenderAliasKind, SenderAliases, TaxContext,
 };
 use tempfile::TempDir;
 
 use crate::filing_plan::{plan, PlanInput, Planning, FIELD_ORDER};
+use crate::sender_detection::detect_sender;
 
 const CORPUS_FOLDER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/recognition");
 const HEADER_END: &str = "\n---\n";
@@ -155,6 +156,20 @@ fn word_ending_in(stem: &str) -> RuleConditions {
         ConditionKind::Regex,
         format!(r"(?i)\w*{stem}\b"),
     )])
+}
+
+/// What a user would have confirmed for the corpus: the account of the energy
+/// supplier and two short names that carry no legal form.
+fn fixed_sender_aliases() -> SenderAliases {
+    SenderAliases::from_confirmed([
+        (
+            SenderAliasKind::Iban,
+            "DE00 0000 0000 0000 0000 00",
+            "Nordlicht Energie GmbH",
+        ),
+        (SenderAliasKind::Name, "Kranich", "Kranich Versicherung AG"),
+        (SenderAliasKind::Name, "Pixelwerk", "Pixelwerk Studio Ltd"),
+    ])
 }
 
 /// The rules the measurement plans against, with the ids 1..n in this order.
@@ -427,26 +442,35 @@ fn chosen_rule_and_fields(planning: &Planning) -> (Option<RuleId>, &DocumentFiel
     }
 }
 
-/// Plans every document the way the rules step does, with no fields known.
-/// Where the pipeline would ask the AI (no rule, or a field missing),
-/// `fill_open_fields` gets the document and the fields known so far and
-/// returns them completed, or `None` for no change. After a missing field the
-/// document is planned again with them, like the AI step does. The rules-only
-/// run passes `|_, _| None`.
+/// Plans every document the way the rules step does: the sender is detected
+/// from the text first (`fixed_sender_aliases` stand for the aliases a user
+/// confirmed). Where the pipeline would ask the AI (no rule, or a field
+/// missing), `fill_open_fields` gets the document and the fields known so far
+/// and returns them completed, or `None` for no change. After a missing field
+/// the document is planned again with them, like the AI step does. The
+/// rules-only run passes `|_, _| None`.
 pub fn measure(
     corpus: &[CorpusDocument],
     rules: &[Rule],
     mut fill_open_fields: impl FnMut(&CorpusDocument, &DocumentFields) -> Option<DocumentFields>,
 ) -> RecognitionReport {
+    let sender_aliases = fixed_sender_aliases();
     let results = corpus
         .iter()
         .map(|document| {
+            let detected = DocumentFields {
+                sender: detect_sender(&document.text, &sender_aliases, &[])
+                    .sender
+                    .map(|found| found.name),
+                ..DocumentFields::default()
+            };
             let rules_planning = plan(
                 rules,
                 &PlanInput {
                     text: &document.text,
-                    fields: &DocumentFields::default(),
+                    fields: &detected,
                     path: None,
+                    sender_aliases: &sender_aliases,
                 },
             );
             let planning = match rules_planning {
@@ -461,6 +485,7 @@ pub fn measure(
                             text: &document.text,
                             fields: &merged,
                             path: None,
+                            sender_aliases: &sender_aliases,
                         },
                     ),
                     Some(merged) => Planning::Review {

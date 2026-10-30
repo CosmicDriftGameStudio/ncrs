@@ -36,6 +36,7 @@ id_newtype!(ReviewEntryId);
 id_newtype!(PlanId);
 id_newtype!(BatchId);
 id_newtype!(SavedQueryId);
+id_newtype!(SenderAliasId);
 
 /// SHA-256 of the file content. The index stores it; hashing is not its job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -178,7 +179,8 @@ impl Field {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FieldOrigin {
     Unknown,
-    /// `None` when the rule has been deleted since.
+    /// `None` when the rule has been deleted since, or the rules step found the
+    /// value without a rule.
     Rule(Option<RuleId>),
     Ai {
         confidence_percent: u8,
@@ -402,6 +404,136 @@ pub struct SavedQuery {
     pub id: SavedQueryId,
     pub name: String,
     pub spec: QuerySpec,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SenderAliasKind {
+    Name,
+    Domain,
+    Iban,
+    TaxId,
+}
+
+impl SenderAliasKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Name => "name",
+            Self::Domain => "domain",
+            Self::Iban => "iban",
+            Self::TaxId => "tax_id",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Result<Self, IndexError> {
+        match value {
+            "name" => Ok(Self::Name),
+            "domain" => Ok(Self::Domain),
+            "iban" => Ok(Self::Iban),
+            "tax_id" => Ok(Self::TaxId),
+            other => Err(corrupt("sender_alias.kind", other)),
+        }
+    }
+
+    /// The form in which values of this kind are stored and compared.
+    pub fn normalise(self, value: &str) -> String {
+        match self {
+            Self::Name => value
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .to_lowercase(),
+            Self::Domain => {
+                let lowered = value.trim().to_lowercase();
+                lowered.strip_prefix("www.").unwrap_or(&lowered).to_owned()
+            }
+            Self::Iban => value
+                .chars()
+                .filter(|ch| !is_iban_separator(*ch))
+                .flat_map(char::to_uppercase)
+                .collect(),
+            Self::TaxId => value
+                .chars()
+                .filter(|ch| !is_tax_id_separator(*ch))
+                .flat_map(char::to_uppercase)
+                .collect(),
+        }
+    }
+}
+
+pub fn is_iban_separator(ch: char) -> bool {
+    ch.is_whitespace()
+}
+
+pub fn is_tax_id_separator(ch: char) -> bool {
+    ch.is_whitespace() || matches!(ch, '/' | '-' | '.')
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SenderAliasState {
+    Offered,
+    Confirmed,
+    Discarded,
+}
+
+impl SenderAliasState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Offered => "offered",
+            Self::Confirmed => "confirmed",
+            Self::Discarded => "discarded",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Result<Self, IndexError> {
+        match value {
+            "offered" => Ok(Self::Offered),
+            "confirmed" => Ok(Self::Confirmed),
+            "discarded" => Ok(Self::Discarded),
+            other => Err(corrupt("sender_alias.state", other)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SenderAlias {
+    pub id: SenderAliasId,
+    pub sender: String,
+    pub kind: SenderAliasKind,
+    /// Normalised.
+    pub value: String,
+    pub state: SenderAliasState,
+}
+
+/// The confirmed aliases, which is what planning and detection need.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SenderAliases {
+    senders: std::collections::HashMap<(SenderAliasKind, String), String>,
+}
+
+impl SenderAliases {
+    /// Entries are (kind, value, sender); values are normalised here.
+    pub fn from_confirmed<'a>(
+        entries: impl IntoIterator<Item = (SenderAliasKind, &'a str, &'a str)>,
+    ) -> Self {
+        Self {
+            senders: entries
+                .into_iter()
+                .map(|(kind, value, sender)| ((kind, kind.normalise(value)), sender.to_owned()))
+                .collect(),
+        }
+    }
+
+    /// The sender a confirmed alias of this kind and value stands for.
+    pub fn sender_for(&self, kind: SenderAliasKind, raw_value: &str) -> Option<&str> {
+        self.senders
+            .get(&(kind, kind.normalise(raw_value)))
+            .map(String::as_str)
+    }
+
+    /// The sender a confirmed name alias maps `name` to, else `name` itself.
+    pub fn canonical_sender<'a>(&'a self, name: &'a str) -> &'a str {
+        self.sender_for(SenderAliasKind::Name, name).unwrap_or(name)
+    }
 }
 
 /// Substring: the text contains the value, without regard to case. Word: the

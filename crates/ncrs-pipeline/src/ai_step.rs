@@ -220,12 +220,14 @@ impl AiStep {
             if !plan_again {
                 return Ok(None);
             }
+            let sender_aliases = index.confirmed_sender_aliases()?;
             let planning = plan(
                 &index.rules()?,
                 &PlanInput {
                     text,
                     fields: &merged,
                     path: Some(&item.path),
+                    sender_aliases: &sender_aliases,
                 },
             );
             if let Planning::Plan(filing) = &planning {

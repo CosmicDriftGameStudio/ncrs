@@ -2252,15 +2252,19 @@ mod tests {
         }
     }
 
+    const INVOICE_TEXT: &str = "Invoice 4711 Company A";
+
     fn run_with_rule(spec: &ncrs_index::RuleSpec) -> IndexFixture {
+        run_text_with_rule(spec, INVOICE_TEXT)
+    }
+
+    fn run_text_with_rule(spec: &ncrs_index::RuleSpec, text: &str) -> IndexFixture {
         let inbox_dir = TempDir::new().unwrap();
         let inbox = location(&inbox_dir, LocationMode::Inbox);
         put(&inbox, "invoice.pdf", INVOICE);
         let fixture = IndexFixture::new();
         fixture.index.lock().unwrap().create_rule(spec).unwrap();
-        let chain = TextChain::new().with_source(FixedText(Ok(Extracted::Text(
-            "Invoice 4711 Company A".to_owned(),
-        ))));
+        let chain = TextChain::new().with_source(FixedText(Ok(Extracted::Text(text.to_owned()))));
         let runner = Runner::start(
             settings(workers(1)),
             fixture.steps_reading(chain),
@@ -2285,6 +2289,72 @@ mod tests {
         assert_eq!(document.fields.number.as_deref(), Some("4711"));
         assert_eq!(document.fields.kind.as_deref(), Some("invoice"));
         assert_eq!(document.status, DocumentStatus::Planned);
+    }
+
+    #[test]
+    fn a_new_document_gets_the_sender_of_its_letterhead_and_offers_its_iban() {
+        let text = "Nordlicht Energie GmbH\nMusterweg 1\nIBAN DE89 3704 0044 0532 0130 00\nInvoice 4711 Company A";
+        let fixture = run_text_with_rule(&invoice_rule("{sender}/{number}.pdf", false), text);
+
+        let index = fixture.index.lock().unwrap();
+        let documents = index.search_text("4711", 10).unwrap();
+        let document = index.document(documents[0]).unwrap().unwrap();
+        assert_eq!(
+            document.fields.sender.as_deref(),
+            Some("Nordlicht Energie GmbH")
+        );
+        assert_eq!(
+            index
+                .field_origins(document.id)
+                .unwrap()
+                .of(ncrs_index::Field::Sender),
+            ncrs_index::FieldOrigin::Rule(None)
+        );
+        let offers = index.sender_aliases().unwrap();
+        assert_eq!(offers.len(), 1);
+        assert_eq!(offers[0].sender, "Nordlicht Energie GmbH");
+        assert_eq!(offers[0].kind, ncrs_index::SenderAliasKind::Iban);
+        assert_eq!(offers[0].value, "DE89370400440532013000");
+        assert_eq!(offers[0].state, ncrs_index::SenderAliasState::Offered);
+    }
+
+    #[test]
+    fn a_sender_that_is_already_set_is_not_replaced_by_the_detection() {
+        let text = "Nordlicht Energie GmbH\nInvoice 4711 Company A";
+        let inbox_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        let path = put(&inbox, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let chain = TextChain::new().with_source(FixedText(Ok(Extracted::Text(text.to_owned()))));
+        let runner = Runner::start(
+            settings(workers(1)),
+            fixture.steps_reading(chain),
+            vec![inbox],
+            stepping_clock(),
+        );
+        runner.wait_for("the file handled", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[2].done == 1
+        });
+        let id = {
+            let mut index = fixture.index.lock().unwrap();
+            let id = index.search_text("4711", 10).unwrap()[0];
+            let mut fields = index.document(id).unwrap().unwrap().fields;
+            fields.sender = Some("Own Choice".to_owned());
+            index
+                .set_document_fields(id, &fields, |_| ncrs_index::FieldOrigin::Manual)
+                .unwrap();
+            index.set_document_status(id, DocumentStatus::New).unwrap();
+            id
+        };
+
+        assert!(runner.process_again(&path));
+        runner.wait_for("the file handled again", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[2].done == 2
+        });
+
+        let index = fixture.index.lock().unwrap();
+        let document = index.document(id).unwrap().unwrap();
+        assert_eq!(document.fields.sender.as_deref(), Some("Own Choice"));
     }
 
     #[test]

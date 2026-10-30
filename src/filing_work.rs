@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use ncrs_index::{
     BatchKind, Document, DocumentStatus, FieldOrigin, Index, IndexError, ReviewReason, Rule,
+    SenderAliases,
 };
 use ncrs_intake::{plan, PlanInput, Planning};
 
@@ -77,6 +78,7 @@ enum Decision {
 fn decide(
     index: &mut Index,
     rules: &[Rule],
+    sender_aliases: &SenderAliases,
     root: &Path,
     document: &Document,
 ) -> Result<Decision, IndexError> {
@@ -87,6 +89,7 @@ fn decide(
             text: &text,
             fields: &document.fields,
             path: Some(&document.path),
+            sender_aliases,
         },
     );
     match planning {
@@ -135,6 +138,7 @@ pub fn file_planned<P: Progress, S: Source>(
     effect: &S,
 ) -> Result<FilingSummary, ExecuteError> {
     let rules = index.rules()?;
+    let sender_aliases = index.confirmed_sender_aliases()?;
     let mut summary = FilingSummary::default();
     let mut items = Vec::new();
     for id in index.documents_with_status(DocumentStatus::Planned)? {
@@ -146,7 +150,7 @@ pub fn file_planned<P: Progress, S: Source>(
             summary.left += 1;
             continue;
         }
-        match decide(index, &rules, root, &document)? {
+        match decide(index, &rules, &sender_aliases, root, &document)? {
             Decision::Move(item) => items.push(item),
             Decision::Reviewed => summary.reviewed += 1,
         }

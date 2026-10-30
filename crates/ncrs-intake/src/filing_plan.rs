@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use chrono::Datelike as _;
 use ncrs_index::{
     Combinator, Condition, ConditionKind, DocumentFields, Field, ReviewReason, Rule, RuleId,
-    RuleSpec,
+    RuleSpec, SenderAliases,
 };
 
 use crate::conditions::{
@@ -31,6 +31,8 @@ pub struct PlanInput<'a> {
     /// Where the document lies now, in the inbox or the archive; `None` when
     /// the caller has no path, which makes a folder condition unusable.
     pub path: Option<&'a Path>,
+    /// Names the sender condition treats as one sender.
+    pub sender_aliases: &'a SenderAliases,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -135,11 +137,11 @@ fn condition_outcome(
         ConditionKind::Regex => {
             compile(&condition.value).map(|regex| regex.is_match(input.text))?
         }
-        ConditionKind::Sender => input
-            .fields
-            .sender
-            .as_ref()
-            .is_some_and(|sender| sender.to_lowercase() == condition.value.to_lowercase()),
+        ConditionKind::Sender => input.fields.sender.as_deref().is_some_and(|sender| {
+            let aliases = input.sender_aliases;
+            aliases.canonical_sender(sender).to_lowercase()
+                == aliases.canonical_sender(&condition.value).to_lowercase()
+        }),
     };
     Some(holds != condition.negated)
 }
@@ -479,6 +481,7 @@ mod tests {
                 text,
                 fields,
                 path: None,
+                sender_aliases: &SenderAliases::default(),
             },
         )
     }
@@ -650,6 +653,43 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_sender_condition_follows_a_confirmed_name_alias_only() {
+        let rules = rules_from(&[with_conditions(
+            Combinator::AllOf,
+            vec![Condition::new(ConditionKind::Sender, "Telekom")],
+        )]);
+        let fields = DocumentFields {
+            sender: Some("Telekom Deutschland GmbH".to_owned()),
+            ..DocumentFields::default()
+        };
+        let planned_with = |aliases: &SenderAliases| {
+            !matches!(
+                plan(
+                    &rules,
+                    &PlanInput {
+                        text: "",
+                        fields: &fields,
+                        path: None,
+                        sender_aliases: aliases,
+                    },
+                ),
+                Planning::Review {
+                    reason: ReviewReason::NoMatchingRule,
+                    ..
+                }
+            )
+        };
+        let confirmed = SenderAliases::from_confirmed([(
+            ncrs_index::SenderAliasKind::Name,
+            "Telekom Deutschland GmbH",
+            "Telekom",
+        )]);
+
+        assert!(planned_with(&confirmed));
+        assert!(!planned_with(&SenderAliases::default()));
+    }
+
     /// The rule found the document; fields it cannot fill do not matter here.
     fn matched_at(condition: Condition, text: &str, path: Option<&Path>) -> bool {
         let rules = rules_from(&[with_conditions(Combinator::AllOf, vec![condition])]);
@@ -660,6 +700,7 @@ mod tests {
                 text,
                 fields: &fields,
                 path,
+                sender_aliases: &SenderAliases::default(),
             },
         );
         !matches!(
@@ -770,6 +811,7 @@ mod tests {
                 text: TEXT,
                 fields: &fields,
                 path: None,
+                sender_aliases: &SenderAliases::default(),
             },
         );
 
@@ -789,6 +831,7 @@ mod tests {
                 text: TEXT,
                 fields: &fields,
                 path: None,
+                sender_aliases: &SenderAliases::default(),
             },
         );
 

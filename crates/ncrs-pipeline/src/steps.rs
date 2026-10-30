@@ -3,9 +3,11 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
 use ncrs_ai::Provider;
-use ncrs_index::{DocumentStatus, FieldOrigin, IndexError, ReviewReason};
+use ncrs_index::{DocumentStatus, Field, FieldOrigin, IndexError, ReviewReason};
 use ncrs_intake::text_is_readable;
-use ncrs_intake::{plan, PlanInput, Planning, StabilityTracker, TextChain, TextError};
+use ncrs_intake::{
+    detect_sender, plan, PlanInput, Planning, StabilityTracker, TextChain, TextError,
+};
 use ncrs_intake::{settle_location, take_in, IntakeError, Location, LocationMode, Outcome};
 
 use crate::ai_step::AiStep;
@@ -193,12 +195,32 @@ impl Step for RulesStep {
                 return Ok(None);
             }
             let rules = index.rules()?;
+            let aliases = index.confirmed_sender_aliases()?;
+            let detection = if document.fields.sender.is_none() {
+                Some(detect_sender(text, &aliases, &index.sender_names()?))
+            } else {
+                None
+            };
+            let detected_name = detection
+                .as_ref()
+                .and_then(|found| found.sender.as_ref())
+                .map(|sender| sender.name.clone());
+            let mut known = document.fields.clone();
+            if detected_name.is_some() {
+                known.sender.clone_from(&detected_name);
+            }
+            // Offered even when the plan ends in review: the user confirms
+            // them from the alias list, not from this document.
+            for offer in detection.iter().flat_map(|found| &found.offers) {
+                index.offer_sender_alias(&offer.sender, offer.kind, &offer.value)?;
+            }
             let planning = plan(
                 &rules,
                 &PlanInput {
                     text,
-                    fields: &document.fields,
+                    fields: &known,
                     path: Some(&item.path),
+                    sender_aliases: &aliases,
                 },
             );
             let found = match &planning {
@@ -212,7 +234,14 @@ impl Step for RulesStep {
                         FieldOrigin::Rule(Some(rule_id))
                     }),
                 };
-                index.set_document_fields(id, found, |_| origin)?;
+                let sender_was_detected = detected_name.is_some();
+                index.set_document_fields(id, found, |field| {
+                    if field == Field::Sender && sender_was_detected {
+                        FieldOrigin::Rule(None)
+                    } else {
+                        origin
+                    }
+                })?;
             }
             if matches!(planning, Planning::Plan(_)) {
                 index.set_document_status(id, DocumentStatus::Planned)?;
