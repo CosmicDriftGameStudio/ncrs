@@ -299,7 +299,7 @@ mod tests {
             extract_date: None,
             extract_amount: None,
             kind: "invoice".to_owned(),
-            tax_context: TaxContext::Company,
+            tax_context: TaxContext::named("company"),
             tags: BTreeSet::new(),
             filing_pattern: filing_pattern.to_owned(),
             confirmed,
@@ -726,7 +726,7 @@ mod tests {
 
         let fields = fixture.fields(document);
         assert_eq!(fields.kind.as_deref(), Some("invoice"));
-        assert_eq!(fields.tax_context, Some(TaxContext::Company));
+        assert_eq!(fields.tax_context, Some(TaxContext::named("company")));
         assert_eq!(fields.date.unwrap().to_string(), "2024-03-05");
         let origins = fixture
             .index

@@ -1203,6 +1203,153 @@ mod tests {
     }
 
     #[test]
+    fn a_version_15_database_keeps_its_tax_contexts_on_documents_rules_and_saved_queries() {
+        use crate::model::{DocumentId, QuerySpec, RuleId, SavedQueryId, TaxContext};
+
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let old = Index::create_plain_with_migrations(&path, &MIGRATIONS[..15]).unwrap();
+        assert_eq!(user_version(&old), 15);
+        old.conn
+            .execute_batch(
+                "INSERT INTO document_kind (id, name, name_key) VALUES (1, 'Invoice', 'invoice');
+                 INSERT INTO document (id, hash, path, source, received_at, status, tax_context)
+                 VALUES (1, zeroblob(32), 'a.pdf', 'inbox', 1700000000, 'planned', 'company'),
+                        (2, randomblob(32), 'b.pdf', 'inbox', 1700000000, 'planned', 'private'),
+                        (3, randomblob(32), 'c.pdf', 'inbox', 1700000000, 'planned', 'none'),
+                        (4, randomblob(32), 'd.pdf', 'inbox', 1700000000, 'planned', NULL),
+                        (5, randomblob(32), 'e.pdf', 'inbox', 1700000000, 'planned', 'company');
+                 INSERT INTO rule (id, kind_id, tax_context, filing_pattern, confirmed)
+                 VALUES (6, 1, 'private', '{tax_context}/{year}', 1);
+                 INSERT INTO rule_condition (rule_id, position, kind, value)
+                 VALUES (6, 0, 'word', 'rent');
+                 INSERT INTO saved_query (id, name, tax_context, created_at)
+                 VALUES (7, 'Company only', 'company', 1700000000),
+                        (8, 'Everything', NULL, 1700000000),
+                        (9, 'Without context', 'none', 1700000000);",
+            )
+            .unwrap();
+        let ids_where = |condition: &str| -> Vec<i64> {
+            old.conn
+                .prepare(&format!(
+                    "SELECT id FROM document WHERE {condition} ORDER BY id"
+                ))
+                .unwrap()
+                .query_map([], |row| row.get(0))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap()
+        };
+        let company_before = ids_where("tax_context = 'company'");
+        let without_context_before = ids_where("tax_context = 'none'");
+        let everything_before = ids_where("1 = 1");
+        drop(old);
+
+        let index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
+
+        assert_eq!(user_version(&index), latest_version());
+        let context_of = |id: i64| {
+            index
+                .document(DocumentId::new(id))
+                .unwrap()
+                .unwrap()
+                .fields
+                .tax_context
+        };
+        assert_eq!(context_of(1), Some(TaxContext::named("company")));
+        assert_eq!(context_of(2), Some(TaxContext::named("private")));
+        assert_eq!(context_of(3), Some(TaxContext::None));
+        assert_eq!(context_of(4), None);
+        let rule = index.rule(RuleId::new(6)).unwrap().unwrap();
+        assert_eq!(rule.spec.tax_context, TaxContext::named("private"));
+        assert_eq!(rule.spec.filing_pattern, "{tax_context}/{year}");
+
+        let queries = index.saved_queries().unwrap();
+        let spec_of = |id: i64| -> QuerySpec {
+            queries
+                .iter()
+                .find(|query| query.id == SavedQueryId::new(id))
+                .unwrap()
+                .spec
+                .clone()
+        };
+        assert_eq!(spec_of(7).tax_context, Some(TaxContext::named("company")));
+        assert_eq!(spec_of(8).tax_context, None);
+        assert_eq!(spec_of(9).tax_context, Some(TaxContext::None));
+        let run = |id: i64| -> Vec<i64> {
+            let mut found: Vec<i64> = index
+                .run_query(&spec_of(id))
+                .unwrap()
+                .iter()
+                .map(|document| document.id.get())
+                .collect();
+            found.sort_unstable();
+            found
+        };
+        assert_eq!(run(7), company_before);
+        assert_eq!(run(9), without_context_before);
+        assert_eq!(run(8), everything_before);
+
+        let listed: Vec<_> = index
+            .tax_contexts()
+            .unwrap()
+            .into_iter()
+            .map(|entry| (entry.name, entry.short_name))
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                ("Firma".to_owned(), "company".to_owned()),
+                ("Privat".to_owned(), "private".to_owned())
+            ]
+        );
+    }
+
+    #[test]
+    fn a_document_cannot_be_given_a_tax_context_that_is_not_stored() {
+        use crate::model::{DocumentFields, FieldOrigin, TaxContext};
+        use crate::test_support::{encrypted_index, new_document};
+
+        let (_dir, mut index) = encrypted_index();
+        let id = index.insert_document(&new_document(1)).unwrap();
+        let fields = DocumentFields {
+            tax_context: Some(TaxContext::named("charity")),
+            ..DocumentFields::default()
+        };
+
+        let err = index
+            .set_document_fields(id, &fields, |_| FieldOrigin::Manual)
+            .unwrap_err();
+
+        assert!(matches!(err, IndexError::UnknownTaxContext(name) if name == "charity"));
+        let stored = index.document(id).unwrap().unwrap();
+        assert_eq!(stored.fields.tax_context, None);
+    }
+
+    #[test]
+    fn a_short_name_is_matched_without_regard_to_case() {
+        use crate::model::{DocumentFields, FieldOrigin, TaxContext};
+        use crate::test_support::{encrypted_index, new_document};
+
+        let (_dir, mut index) = encrypted_index();
+        let id = index.insert_document(&new_document(1)).unwrap();
+        let fields = DocumentFields {
+            tax_context: Some(TaxContext::named("COMPANY")),
+            ..DocumentFields::default()
+        };
+
+        index
+            .set_document_fields(id, &fields, |_| FieldOrigin::Manual)
+            .unwrap();
+
+        let stored = index.document(id).unwrap().unwrap();
+        assert_eq!(
+            stored.fields.tax_context,
+            Some(TaxContext::named("company"))
+        );
+    }
+
+    #[test]
     fn empty_a1_database_gains_the_document_schema_on_open() {
         let dir = TempDir::new().unwrap();
         let path = db_in(&dir);
@@ -1373,7 +1520,10 @@ mod tests {
         assert_eq!(invoice.status, DocumentStatus::Filed);
         assert_eq!(invoice.fields.sender.as_deref(), Some("Company A"));
         assert_eq!(invoice.fields.kind.as_deref(), Some("Invoice"));
-        assert_eq!(invoice.fields.tax_context, Some(TaxContext::Company));
+        assert_eq!(
+            invoice.fields.tax_context,
+            Some(TaxContext::named("company"))
+        );
         assert_eq!(invoice.fields.number.as_deref(), Some("4711"));
         assert_eq!(
             invoice.fields.date.map(|date| date.to_string()).as_deref(),

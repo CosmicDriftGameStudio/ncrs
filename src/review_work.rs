@@ -14,7 +14,7 @@ use chrono::NaiveDate;
 use ncrs_index::{
     Amount, BatchKind, Condition, ConditionKind, Currency, DocumentFields, DocumentId,
     DocumentStatus, FieldOrigin, IncludeOutcome, Index, IndexError, ReviewEntryId, ReviewReason,
-    RuleConditions, RuleId, RuleSpec, SenderAliases, TaxContext,
+    RuleConditions, RuleId, RuleSpec, SenderAliases, TaxContext, TaxContextEntry,
 };
 use ncrs_intake::{pattern_is_valid, plan, render_pattern, text_is_readable, PlanInput, Planning};
 
@@ -132,6 +132,10 @@ impl ReviewAccess {
 
     pub fn load(&self) -> Result<Vec<ReviewItem>, String> {
         self.with_index(|index| load(index))
+    }
+
+    pub fn tax_contexts(&self) -> Result<Vec<TaxContextEntry>, String> {
+        self.with_index(|index| index.tax_contexts())
     }
 
     /// The open reviews of these files, in the order the index lists them.
@@ -566,7 +570,7 @@ mod tests {
             DocumentFields {
                 sender: Some(sender.to_owned()),
                 kind: Some("invoice".to_owned()),
-                tax_context: Some(TaxContext::Company),
+                tax_context: Some(TaxContext::named("company")),
                 ..DocumentFields::default()
             }
         }
@@ -677,7 +681,7 @@ mod tests {
             .create_rule_for_sender(
                 "Company A",
                 "invoice",
-                Some(TaxContext::Company),
+                Some(TaxContext::named("company")),
                 BTreeSet::new(),
                 "{sender}/{kind}",
             )

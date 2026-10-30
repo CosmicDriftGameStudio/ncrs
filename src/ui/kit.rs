@@ -14,6 +14,7 @@ use iced::widget::{
 use iced::{
     alignment, Background, Color, Element, Font, Length, Padding, Pixels, Radians, Rotation, Theme,
 };
+use ncrs_index::{TaxContext, TaxContextEntry};
 use std::sync::LazyLock;
 
 use super::format;
@@ -21,6 +22,24 @@ use super::frame::{AVERAGE_GLYPH_WIDTH, SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
 use super::theme::{self, font_size, size, spacing, DISABLED_OPACITY};
 use crate::messages::Message;
 use crate::palette::Palette;
+
+/// The picker choices for a tax context: the unset entry, each stored context
+/// by its name, then "no context".
+pub fn tax_context_choices<'a>(
+    unset_label: &'a str,
+    none_label: &'a str,
+    stored: &'a [TaxContextEntry],
+) -> Vec<(&'a str, Option<TaxContext>)> {
+    std::iter::once((unset_label, None))
+        .chain(stored.iter().map(|entry| {
+            (
+                entry.name.as_str(),
+                Some(TaxContext::named(&entry.short_name)),
+            )
+        }))
+        .chain(std::iter::once((none_label, Some(TaxContext::None))))
+        .collect()
+}
 
 /// Horizontal room inside a button, either side of the label.
 const BUTTON_PADDING_X: f32 = 10.0;

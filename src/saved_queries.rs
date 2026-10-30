@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{QuerySpec, SavedQuery, SavedQueryId, TaxContext};
+use ncrs_index::{QuerySpec, SavedQuery, SavedQueryId, TaxContext, TaxContextEntry};
 
 use crate::list_window::ListWindow;
 use crate::query_work::{copies_of, ExportSummary, QueryHit};
@@ -42,7 +42,7 @@ impl Form {
         Self {
             name: query.name.clone(),
             year: spec.year.map(|year| year.to_string()).unwrap_or_default(),
-            tax_context: spec.tax_context,
+            tax_context: spec.tax_context.clone(),
             kind: spec.kind.clone().unwrap_or_default(),
             tags: spec.tags.iter().cloned().collect::<Vec<_>>().join(", "),
             full_text: spec.full_text.clone().unwrap_or_default(),
@@ -87,7 +87,7 @@ impl Form {
         };
         Ok(QuerySpec {
             year,
-            tax_context: self.tax_context,
+            tax_context: self.tax_context.clone(),
             kind: non_empty(&self.kind),
             tags: parse_tags(&self.tags),
             full_text: non_empty(&self.full_text),
@@ -157,6 +157,7 @@ pub struct SavedQueries {
     exported: Option<ExportSummary>,
     /// The query to put the cursor on when the list is loaded next.
     select_after_load: Option<SavedQueryId>,
+    tax_contexts: Vec<TaxContextEntry>,
 }
 
 impl SavedQueries {
@@ -175,6 +176,7 @@ impl SavedQueries {
             export: None,
             exported: None,
             select_after_load: None,
+            tax_contexts: Vec::new(),
         }
     }
 
@@ -247,6 +249,15 @@ impl SavedQueries {
         self.confirming_delete = false;
         self.export = None;
         was_open
+    }
+
+    /// The stored tax contexts the form offers, as of the last load.
+    pub fn tax_contexts(&self) -> &[TaxContextEntry] {
+        &self.tax_contexts
+    }
+
+    pub fn set_tax_contexts(&mut self, tax_contexts: Vec<TaxContextEntry>) {
+        self.tax_contexts = tax_contexts;
     }
 
     /// The list the work returned. The cursor goes to the query that was just
@@ -498,7 +509,7 @@ pub mod tests {
         for (name, year) in [("Company A 2024", 2024), ("Taxes 2023", 2023)] {
             let spec = QuerySpec {
                 year: Some(year),
-                tax_context: Some(TaxContext::Company),
+                tax_context: Some(TaxContext::named("company")),
                 ..QuerySpec::default()
             };
             index.save_query(name, &spec).unwrap();
@@ -516,6 +527,7 @@ pub mod tests {
 
     pub fn loaded_list() -> SavedQueries {
         let mut list = SavedQueries::new();
+        list.set_tax_contexts(crate::review_list::tests::stored_tax_contexts());
         list.loaded(stored_queries());
         list
     }
@@ -549,7 +561,7 @@ pub mod tests {
 
         assert_eq!(list.form().name, "Taxes 2023");
         assert_eq!(list.form().year, "2023");
-        assert_eq!(list.form().tax_context, Some(TaxContext::Company));
+        assert_eq!(list.form().tax_context, Some(TaxContext::named("company")));
         assert!(list.results().is_none());
     }
 

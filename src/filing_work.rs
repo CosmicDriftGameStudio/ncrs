@@ -247,7 +247,7 @@ mod tests {
                     extract_date: None,
                     extract_amount: None,
                     kind: "invoice".to_owned(),
-                    tax_context: TaxContext::Company,
+                    tax_context: TaxContext::named("company"),
                     tags: BTreeSet::new(),
                     filing_pattern: "Insurance/{kind}.pdf".to_owned(),
                     confirmed: true,

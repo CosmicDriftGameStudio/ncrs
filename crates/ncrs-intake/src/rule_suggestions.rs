@@ -158,7 +158,7 @@ fn spec_of(
             .kind
             .clone()
             .unwrap_or_else(|| fallback_kind.to_owned()),
-        tax_context: shared.tax_context,
+        tax_context: shared.tax_context.clone(),
         tags: shared.tags.clone(),
         filing_pattern: pattern.to_owned(),
         confirmed: false,
@@ -202,12 +202,12 @@ fn shared_fields(archive: &[ArchiveText], members: &[usize]) -> SharedFields {
             .flatten()
     });
 
-    let tax_context = [TaxContext::Company, TaxContext::Private]
+    let tax_context = [TaxContext::named("company"), TaxContext::named("private")]
         .into_iter()
-        .find(|&context| {
+        .find(|context| {
             let count = all_fields
                 .iter()
-                .filter(|fields| fields.tax_context == Some(context))
+                .filter(|fields| fields.tax_context.as_ref() == Some(context))
                 .count();
             at_least_share(count, total, MIN_SHARE_IN_FOLDER_PERCENT)
         })
@@ -845,12 +845,15 @@ mod tests {
         let with_private = |private: usize| {
             let mut archive = filed_by_company_a(folder("Insurance", 5, insurance));
             for entry in archive.iter_mut().take(private) {
-                entry.fields.tax_context = Some(TaxContext::Private);
+                entry.fields.tax_context = Some(TaxContext::named("private"));
             }
-            only_sender_candidate(&suggest(&archive)).spec.tax_context
+            only_sender_candidate(&suggest(&archive))
+                .spec
+                .tax_context
+                .clone()
         };
 
-        assert_eq!(with_private(4), TaxContext::Private);
+        assert_eq!(with_private(4), TaxContext::named("private"));
         assert_eq!(with_private(3), TaxContext::None);
     }
 
@@ -904,7 +907,7 @@ mod tests {
     fn phrase_rules_take_kind_context_and_tags_from_the_fields_and_name_their_folder() {
         let mut archive = folder("Insurance", 5, insurance);
         for entry in &mut archive {
-            entry.fields.tax_context = Some(TaxContext::Company);
+            entry.fields.tax_context = Some(TaxContext::named("company"));
             entry.fields.tags.insert("insurance".to_owned());
         }
 
@@ -914,7 +917,7 @@ mod tests {
             .iter()
             .find(|candidate| candidate.phrase == "company a ltd")
             .expect("the phrase rule");
-        assert_eq!(candidate.spec.tax_context, TaxContext::Company);
+        assert_eq!(candidate.spec.tax_context, TaxContext::named("company"));
         assert_eq!(
             candidate.spec.tags,
             BTreeSet::from(["insurance".to_owned()])

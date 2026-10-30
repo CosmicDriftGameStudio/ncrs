@@ -9,7 +9,7 @@ use std::path::Path;
 
 use iced::widget::{column, row};
 use iced::{alignment, Element, Size};
-use ncrs_index::{DocumentFields, Field, ReviewReason, TaxContext};
+use ncrs_index::{DocumentFields, Field, ReviewReason};
 use ncrs_intake::PatternSource;
 
 use super::format;
@@ -38,14 +38,6 @@ const SIZE: DialogSize = DialogSize::Card;
 
 /// How the width of a row is shared: file, reason, sender, kind, date.
 const PORTIONS: [u16; 5] = [5, 6, 4, 3, 3];
-
-/// The tax context choices, in the order of the segmented control.
-const TAX_CHOICES: [(Msg, Option<TaxContext>); 4] = [
-    (Msg::ReviewListTaxOpen, None),
-    (Msg::ReviewListTaxCompany, Some(TaxContext::Company)),
-    (Msg::ReviewListTaxPrivate, Some(TaxContext::Private)),
-    (Msg::ReviewListTaxNone, Some(TaxContext::None)),
-];
 
 fn send(message: ReviewListMessage) -> Message {
     Message::ReviewList(message)
@@ -316,16 +308,21 @@ fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element
             palette,
         )
     };
-    let tax_options: Vec<(&str, Message)> = TAX_CHOICES
+    let tax_choices = kit::tax_context_choices(
+        lang.text(Msg::ReviewListTaxOpen),
+        lang.text(Msg::ReviewListTaxNone),
+        state.tax_contexts(),
+    );
+    let tax_options: Vec<(&str, Message)> = tax_choices
         .iter()
         .map(|(label, choice)| {
             (
-                lang.text(*label),
-                send(ReviewListMessage::TaxContextChosen(*choice)),
+                *label,
+                send(ReviewListMessage::TaxContextChosen(choice.clone())),
             )
         })
         .collect();
-    let selected_tax = TAX_CHOICES
+    let selected_tax = tax_choices
         .iter()
         .position(|(_, choice)| *choice == values.tax_context)
         .unwrap_or_default();

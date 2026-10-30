@@ -287,7 +287,7 @@ mod tests {
     fn a_confirmed_rule_stays_confirmed_and_keeps_its_values() {
         let (_dir, mut index) = encrypted_index();
         let mut confirmed = suggestion();
-        confirmed.tax_context = crate::TaxContext::Private;
+        confirmed.tax_context = crate::TaxContext::named("private");
         let id = index.create_rule(&confirmed).unwrap();
         let before = index.rule(id).unwrap();
 
