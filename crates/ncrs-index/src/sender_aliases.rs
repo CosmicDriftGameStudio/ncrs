@@ -7,8 +7,10 @@ use crate::names::{name_id, NameTable};
 
 impl Index {
     /// Offers `value` as another name of `sender`. Returns whether a new offer
-    /// was stored: not when the value is empty, is the sender's own name, or is
-    /// known already, in any state, so a discarded variant is not offered again.
+    /// was stored: not when the value is empty, is the sender's own name, was
+    /// offered to this sender before (in any state, so a discarded variant is not
+    /// offered to the same sender again), or is offered or confirmed for another
+    /// sender. A value another sender discarded may still be offered here.
     pub fn offer_sender_alias(
         &self,
         sender: &str,
@@ -25,7 +27,7 @@ impl Index {
         let sender_id = name_id(self.connection(), NameTable::Sender, sender)?;
         let inserted = self.connection().execute(
             "INSERT INTO sender_alias (sender_id, kind, value, state) VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT (kind, value) DO NOTHING",
+             ON CONFLICT DO NOTHING",
             params![
                 sender_id,
                 kind.as_str(),
@@ -193,6 +195,50 @@ mod tests {
 
         assert!(!second);
         assert_eq!(only_alias(&index).sender, "A GmbH");
+    }
+
+    #[test]
+    fn a_discarded_offer_blocks_only_the_pair_of_sender_and_value() {
+        let (_dir, index) = encrypted_index();
+        let offer = |sender: &str| {
+            index
+                .offer_sender_alias(sender, SenderAliasKind::Domain, "example.com")
+                .unwrap()
+        };
+        let discard_of = |sender: &str| {
+            index
+                .sender_aliases()
+                .unwrap()
+                .into_iter()
+                .find(|alias| alias.sender == sender)
+                .unwrap()
+                .id
+        };
+        assert!(offer("A GmbH"));
+        index.discard_sender_alias(discard_of("A GmbH")).unwrap();
+
+        assert!(offer("B GmbH"));
+        index.discard_sender_alias(discard_of("B GmbH")).unwrap();
+
+        assert!(!offer("A GmbH"));
+        assert!(!offer("B GmbH"));
+        assert!(offer("C GmbH"));
+        let aliases = index.sender_aliases().unwrap();
+        assert_eq!(aliases.len(), 3);
+        assert_eq!(
+            aliases.iter().map(|alias| alias.state).collect::<Vec<_>>(),
+            [
+                SenderAliasState::Discarded,
+                SenderAliasState::Discarded,
+                SenderAliasState::Offered
+            ]
+        );
+        assert!(index
+            .confirmed_sender_aliases()
+            .unwrap()
+            .sender_for(SenderAliasKind::Domain, "example.com")
+            .is_none());
+        assert_eq!(index.sender_names().unwrap().len(), 3);
     }
 
     #[test]

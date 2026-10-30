@@ -1156,6 +1156,53 @@ mod tests {
     }
 
     #[test]
+    fn a_version_14_database_keeps_its_sender_aliases_and_offers_a_discarded_value_to_another_sender(
+    ) {
+        use crate::model::{SenderAliasKind, SenderAliasState};
+
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let old = Index::create_plain_with_migrations(&path, &MIGRATIONS[..14]).unwrap();
+        assert_eq!(user_version(&old), 14);
+        old.conn
+            .execute_batch(
+                "INSERT INTO sender (id, name, name_key) VALUES (1, 'A GmbH', 'a gmbh');
+                 INSERT INTO sender (id, name, name_key) VALUES (2, 'B GmbH', 'b gmbh');
+                 INSERT INTO sender_alias (id, sender_id, kind, value, state)
+                 VALUES (7, 1, 'domain', 'a.example', 'offered');
+                 INSERT INTO sender_alias (id, sender_id, kind, value, state)
+                 VALUES (9, 1, 'domain', 'shared.example', 'discarded');",
+            )
+            .unwrap();
+        drop(old);
+
+        let index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
+
+        assert_eq!(user_version(&index), latest_version());
+        let aliases = index.sender_aliases().unwrap();
+        let kept: Vec<_> = aliases
+            .iter()
+            .map(|alias| (alias.id.get(), alias.sender.as_str(), alias.state))
+            .collect();
+        assert_eq!(
+            kept,
+            [
+                (7, "A GmbH", SenderAliasState::Offered),
+                (9, "A GmbH", SenderAliasState::Discarded)
+            ]
+        );
+        assert!(!index
+            .offer_sender_alias("A GmbH", SenderAliasKind::Domain, "shared.example")
+            .unwrap());
+        assert!(index
+            .offer_sender_alias("B GmbH", SenderAliasKind::Domain, "shared.example")
+            .unwrap());
+        assert!(!index
+            .offer_sender_alias("B GmbH", SenderAliasKind::Domain, "a.example")
+            .unwrap());
+    }
+
+    #[test]
     fn empty_a1_database_gains_the_document_schema_on_open() {
         let dir = TempDir::new().unwrap();
         let path = db_in(&dir);
