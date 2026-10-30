@@ -1,9 +1,11 @@
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
+use std::time::Duration;
 
-use notify::event::{ModifyKind, RenameMode};
-use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher as _};
+use notify::event::{MetadataKind, ModifyKind, RenameMode};
+use notify::{Config, Event, EventKind, PollWatcher, RecommendedWatcher, RecursiveMode, Watcher};
 use walkdir::WalkDir;
 
 use crate::classify::classify;
@@ -26,7 +28,13 @@ pub enum WatchEvent {
 /// the watching.
 #[derive(Debug)]
 pub struct LocationWatcher {
-    _watchers: Vec<RecommendedWatcher>,
+    _backend: Backend,
+}
+
+#[derive(Debug)]
+enum Backend {
+    Native { _watchers: Vec<RecommendedWatcher> },
+    Polling { _watchers: Vec<PollWatcher> },
 }
 
 impl LocationWatcher {
@@ -54,39 +62,102 @@ impl LocationWatcher {
         locations: &[Location],
         forward: impl Fn(WatchEvent) + Clone + Send + 'static,
     ) -> (Self, Vec<(PathBuf, IntakeError)>) {
-        let roots: Vec<PathBuf> = locations
-            .iter()
-            .map(|location| location.path.clone())
-            .collect();
-        let mut watchers = Vec::new();
-        let mut failed = Vec::new();
-        for location in locations {
-            let forward_events = forward.clone();
-            let watched = location.clone();
-            let all_roots = roots.clone();
-            let handler = move |received: notify::Result<Event>| {
-                forward_received(received, &watched, &all_roots, &forward_events);
-            };
-            // Not following links: a linked directory could lead out of the
-            // location, and its files would be reported as if they were inside.
-            let config = Config::default().with_follow_symlinks(false);
-            let started = RecommendedWatcher::new(handler, config).and_then(|mut watcher| {
-                watcher
-                    .watch(&location.path, RecursiveMode::Recursive)
-                    .map(|()| watcher)
-            });
-            match started {
-                Ok(watcher) => watchers.push(watcher),
-                Err(err) => failed.push((location.path.clone(), IntakeError::Watch(err))),
-            }
-        }
+        let (watchers, failed) = watch_locations::<RecommendedWatcher>(
+            locations,
+            Config::default().with_follow_symlinks(false),
+            &forward,
+        );
         (
             Self {
-                _watchers: watchers,
+                _backend: Backend::Native {
+                    _watchers: watchers,
+                },
             },
             failed,
         )
     }
+
+    /// Like `start`, but compares the folders every `interval` instead of
+    /// relying on change notifications of the file system. For file systems
+    /// that send none, such as network shares. A rewrite is seen by its
+    /// modification time, which has a resolution of one second.
+    pub fn start_polling(
+        locations: &[Location],
+        interval: Duration,
+    ) -> (Self, Receiver<WatchEvent>, Vec<(PathBuf, IntakeError)>) {
+        let (sender, receiver) = mpsc::channel();
+        let (watcher, failed) = Self::start_polling_forwarding(locations, interval, move |event| {
+            // The receiver is gone when the app shuts down.
+            let _ = sender.send(event);
+        });
+        (watcher, receiver, failed)
+    }
+
+    /// Like `start_polling`, but every event is handed to `forward`, which is
+    /// called on the polling threads and must not block for long.
+    pub fn start_polling_forwarding(
+        locations: &[Location],
+        interval: Duration,
+        forward: impl Fn(WatchEvent) + Clone + Send + 'static,
+    ) -> (Self, Vec<(PathBuf, IntakeError)>) {
+        let (watchers, failed) = watch_locations::<PollWatcher>(
+            locations,
+            Config::default()
+                .with_follow_symlinks(false)
+                .with_poll_interval(interval),
+            &forward,
+        );
+        (
+            Self {
+                _backend: Backend::Polling {
+                    _watchers: watchers,
+                },
+            },
+            failed,
+        )
+    }
+}
+
+/// `PollWatcher::watch` accepts a path that does not exist and reports it as
+/// an event instead, so the path is checked here for every backend.
+fn watch_locations<W: Watcher>(
+    locations: &[Location],
+    config: Config,
+    forward: &(impl Fn(WatchEvent) + Clone + Send + 'static),
+) -> (Vec<W>, Vec<(PathBuf, IntakeError)>) {
+    let roots: Vec<PathBuf> = locations
+        .iter()
+        .map(|location| location.path.clone())
+        .collect();
+    let mut watchers = Vec::new();
+    let mut failed = Vec::new();
+    for location in locations {
+        let forward_events = forward.clone();
+        let watched = location.clone();
+        let all_roots = roots.clone();
+        let handler = move |received: notify::Result<Event>| {
+            forward_received(received, &watched, &all_roots, &forward_events);
+        };
+        let started = fs::metadata(&location.path)
+            .map_err(|err| match err.kind() {
+                io::ErrorKind::NotFound => notify::Error::path_not_found(),
+                _ => notify::Error::io(err),
+            })
+            .and_then(|_| W::new(handler, config))
+            .and_then(|mut watcher| {
+                watcher
+                    .watch(&location.path, RecursiveMode::Recursive)
+                    .map(|()| watcher)
+            });
+        match started {
+            Ok(watcher) => watchers.push(watcher),
+            Err(err) => failed.push((
+                location.path.clone(),
+                IntakeError::Watch(err.add_path(location.path.clone())),
+            )),
+        }
+    }
+    (watchers, failed)
 }
 
 fn forward_received(
@@ -127,8 +198,9 @@ fn forward_received(
     if !is_file_change(event.kind) {
         return;
     }
+    let expands_folders = !matches!(event.kind, EventKind::Modify(ModifyKind::Metadata(_)));
     for path in event_targets(&event) {
-        forward_files(watched, path, forward);
+        forward_files(watched, path, expands_folders, forward);
     }
 }
 
@@ -137,8 +209,18 @@ fn forward_received(
 /// on a new folder starts after files may already have been written into it.
 /// notify adds that watch only after this handler returns, so a file written
 /// between the walk and the watch is left to the next scan.
-fn forward_files(location: &Location, path: &Path, forward: &impl Fn(WatchEvent)) {
+/// A changed modification time of a folder only says that something in it was
+/// added or removed, which has its own event; it does not expand.
+fn forward_files(
+    location: &Location,
+    path: &Path,
+    expands_folders: bool,
+    forward: &impl Fn(WatchEvent),
+) {
     let is_folder = fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir());
+    if is_folder && !expands_folders {
+        return;
+    }
     let files: Vec<PathBuf> = if is_folder {
         let mut found = Vec::new();
         for step in WalkDir::new(path).follow_links(false) {
@@ -164,6 +246,9 @@ fn forward_files(location: &Location, path: &Path, forward: &impl Fn(WatchEvent)
     }
 }
 
+/// A new modification time is the only change a polling backend reports for a
+/// rewritten file; other metadata changes (permissions, attributes) are not a
+/// new version of the file.
 fn is_file_change(kind: EventKind) -> bool {
     matches!(
         kind,
@@ -171,6 +256,7 @@ fn is_file_change(kind: EventKind) -> bool {
             | EventKind::Modify(
                 ModifyKind::Any
                     | ModifyKind::Data(_)
+                    | ModifyKind::Metadata(MetadataKind::WriteTime)
                     | ModifyKind::Name(RenameMode::To | RenameMode::Both | RenameMode::Any)
             )
     )
@@ -230,6 +316,82 @@ mod tests {
                 location: watched,
                 message: "the system dropped file events".to_owned(),
             }]
+        );
+    }
+
+    fn forwarded_for_file(kind: EventKind, name: &str) -> Vec<WatchEvent> {
+        let dir = TempDir::new().unwrap();
+        let watched = Location::new(dir.path(), LocationMode::Inbox, false).unwrap();
+        let file = watched.path.join(name);
+        fs::write(&file, b"content").unwrap();
+        let seen = RefCell::new(Vec::new());
+        forward_received(
+            Ok(Event::new(kind).add_path(file)),
+            &watched,
+            std::slice::from_ref(&watched.path),
+            &|event| {
+                seen.borrow_mut().push(event);
+            },
+        );
+        seen.into_inner()
+            .into_iter()
+            .map(|event| match event {
+                WatchEvent::File(path) => {
+                    WatchEvent::File(path.strip_prefix(&watched.path).unwrap().to_path_buf())
+                }
+                other => other,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_events_of_a_polling_backend_are_file_changes_like_native_ones() {
+        use notify::event::{CreateKind, DataChange, RemoveKind};
+
+        let expected = vec![WatchEvent::File(PathBuf::from("a.pdf"))];
+        for kind in [
+            EventKind::Create(CreateKind::Any),
+            EventKind::Modify(ModifyKind::Metadata(MetadataKind::WriteTime)),
+            EventKind::Modify(ModifyKind::Data(DataChange::Any)),
+        ] {
+            assert_eq!(forwarded_for_file(kind, "a.pdf"), expected, "{kind:?}");
+        }
+        for kind in [
+            EventKind::Remove(RemoveKind::Any),
+            EventKind::Modify(ModifyKind::Metadata(MetadataKind::Permissions)),
+            EventKind::Modify(ModifyKind::Metadata(MetadataKind::Any)),
+        ] {
+            assert!(forwarded_for_file(kind, "a.pdf").is_empty(), "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn a_new_modification_time_of_a_folder_does_not_report_its_files() {
+        use notify::event::CreateKind;
+
+        let dir = TempDir::new().unwrap();
+        let watched = Location::new(dir.path(), LocationMode::Inbox, false).unwrap();
+        fs::write(watched.path.join("a.pdf"), b"content").unwrap();
+        let forward_for = |kind: EventKind| {
+            let seen = RefCell::new(Vec::new());
+            forward_received(
+                Ok(Event::new(kind).add_path(watched.path.clone())),
+                &watched,
+                std::slice::from_ref(&watched.path),
+                &|event| {
+                    seen.borrow_mut().push(event);
+                },
+            );
+            seen.into_inner()
+        };
+
+        assert!(forward_for(EventKind::Modify(ModifyKind::Metadata(
+            MetadataKind::WriteTime
+        )))
+        .is_empty());
+        assert_eq!(
+            forward_for(EventKind::Create(CreateKind::Folder)),
+            vec![WatchEvent::File(watched.path.join("a.pdf"))]
         );
     }
 

@@ -770,6 +770,10 @@ mod tests {
         assert_eq!(report.error_paths, vec![locked]);
     }
 
+    /// Real file writes seen by the polling backend; FSEvents delivery is not
+    /// reliable under load.
+    const POLL_INTERVAL: Duration = Duration::from_millis(50);
+
     fn receive_until(receiver: &Receiver<WatchEvent>, wanted: &Path) -> Vec<PathBuf> {
         let mut seen = Vec::new();
         loop {
@@ -791,7 +795,8 @@ mod tests {
     fn the_watcher_forwards_new_files_and_not_hidden_ones() {
         let dir = TempDir::new().unwrap();
         let inbox = location(&dir, LocationMode::Inbox, false);
-        let (_watcher, receiver, failed) = LocationWatcher::start(std::slice::from_ref(&inbox));
+        let (_watcher, receiver, failed) =
+            LocationWatcher::start_polling(std::slice::from_ref(&inbox), POLL_INTERVAL);
         assert!(failed.is_empty());
 
         let first = put(&inbox, "first.pdf", INVOICE);
@@ -813,7 +818,8 @@ mod tests {
         fs::write(folder.join("nested/b.pdf"), REMINDER).unwrap();
         let dir = TempDir::new().unwrap();
         let inbox = location(&dir, LocationMode::Inbox, false);
-        let (_watcher, receiver, failed) = LocationWatcher::start(std::slice::from_ref(&inbox));
+        let (_watcher, receiver, failed) =
+            LocationWatcher::start_polling(std::slice::from_ref(&inbox), POLL_INTERVAL);
         assert!(failed.is_empty());
 
         fs::rename(&folder, inbox.path.join("batch")).unwrap();
@@ -836,7 +842,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let inbox = location(&dir, LocationMode::Inbox, false);
 
-        let (_watcher, receiver, failed) = LocationWatcher::start(&[gone, inbox.clone()]);
+        let (_watcher, receiver, failed) =
+            LocationWatcher::start_polling(&[gone, inbox.clone()], POLL_INTERVAL);
 
         assert_eq!(failed.len(), 1);
         assert_eq!(failed[0].0, gone_path);
