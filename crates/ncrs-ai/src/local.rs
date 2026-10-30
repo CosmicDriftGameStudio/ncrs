@@ -556,33 +556,139 @@ mod tests {
             .collect()
     }
 
+    /// What the model said about one corpus document, asked once.
+    struct Asked {
+        known: DocumentFields,
+        extraction: Extraction,
+    }
+
+    /// The AI step at `threshold`, played back from the model's answers.
+    struct ThresholdOutcome {
+        right_values: usize,
+        wrong_values: usize,
+        still_missing: usize,
+        report: ncrs_intake::recognition::RecognitionReport,
+        review_documents: usize,
+    }
+
+    fn at_threshold(
+        corpus: &[ncrs_intake::recognition::CorpusDocument],
+        answers: &std::collections::HashMap<String, Asked>,
+        threshold: f32,
+    ) -> ThresholdOutcome {
+        use ncrs_intake::recognition::{fixed_rules, measure, score_field, FieldScore};
+
+        let (mut right_values, mut wrong_values, mut still_missing) = (0, 0, 0);
+        let mut unsure_documents = std::collections::HashSet::new();
+        let report = measure(corpus, &fixed_rules(), |document, _known| {
+            let asked = answers.get(&document.name)?;
+            let mut merged = asked.known.clone();
+            for found in &asked.extraction.fields {
+                if found.confidence < threshold {
+                    unsure_documents.insert(document.name.clone());
+                } else if found.fill(&mut merged) {
+                    match score_field(found.field, &document.expected, &merged) {
+                        FieldScore::Hit => right_values += 1,
+                        _ => wrong_values += 1,
+                    }
+                }
+            }
+            still_missing += open_fields_of(&merged).len();
+            Some(merged)
+        });
+        let review_documents = report
+            .results
+            .iter()
+            .filter(|result| {
+                answers.contains_key(&result.name)
+                    && (unsure_documents.contains(&result.name)
+                        || result.outcome != ncrs_intake::recognition::PlanningOutcome::Planned)
+            })
+            .count();
+        ThresholdOutcome {
+            right_values,
+            wrong_values,
+            still_missing,
+            report,
+            review_documents,
+        }
+    }
+
     #[test]
     #[ignore = "needs the AI model: bash scripts/fetch-ai-model.sh target/ai-models"]
     fn recognition_measured_against_the_model() {
-        use ncrs_intake::recognition::{fixed_rules, load_corpus, measure};
+        use std::collections::HashMap;
 
-        let report = measure(&load_corpus(), &fixed_rules(), |document, known| {
+        use ncrs_intake::recognition::{
+            fixed_rules, load_corpus, measure, score_field, FieldScore,
+        };
+
+        const THRESHOLDS: [f32; 8] = [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95];
+        let corpus = load_corpus();
+        let local = model();
+
+        let mut answers: HashMap<String, Asked> = HashMap::new();
+        measure(&corpus, &fixed_rules(), |document, known| {
             let open = open_fields_of(known);
             if open.is_empty() {
                 return None;
             }
-            let extraction = model()
+            let extraction = local
                 .extract(&ExtractionRequest {
                     known: known.clone(),
                     ..request(&document.text, &open)
                 })
                 .unwrap();
-            let mut merged = known.clone();
-            for found in extraction
-                .fields
-                .iter()
-                .filter(|found| found.confidence >= CONFIDENT)
-            {
-                found.fill(&mut merged);
-            }
-            Some(merged)
+            answers.insert(
+                document.name.clone(),
+                Asked {
+                    known: known.clone(),
+                    extraction,
+                },
+            );
+            None
         });
 
-        println!("rules + AI\n{report}");
+        println!("documents asked: {} of {}", answers.len(), corpus.len());
+        println!("threshold  ai right  ai wrong  still missing  review docs  wrong assignments");
+        for threshold in THRESHOLDS {
+            let outcome = at_threshold(&corpus, &answers, threshold);
+            println!(
+                "{threshold:>9}  {:>8}  {:>8}  {:>13}  {:>11}  {:>17}",
+                outcome.right_values,
+                outcome.wrong_values,
+                outcome.still_missing,
+                outcome.review_documents,
+                outcome.report.wrong_assignments().count()
+            );
+        }
+
+        let mut by_confidence: std::collections::BTreeMap<u32, (usize, usize)> =
+            std::collections::BTreeMap::new();
+        for document in &corpus {
+            let Some(asked) = answers.get(&document.name) else {
+                continue;
+            };
+            for found in &asked.extraction.fields {
+                let mut alone = asked.known.clone();
+                found.fill(&mut alone);
+                let correct =
+                    score_field(found.field, &document.expected, &alone) == FieldScore::Hit;
+                let permille = (found.confidence * 1000.0).round() as u32;
+                let entry = by_confidence.entry(permille).or_default();
+                entry.0 += 1;
+                entry.1 += usize::from(correct);
+            }
+        }
+        println!("confidence  answers  correct");
+        for (permille, (answered, correct)) in &by_confidence {
+            println!(
+                "{:>10.3}  {answered:>7}  {correct:>7}",
+                f64::from(*permille) / 1000.0
+            );
+        }
+
+        let chosen = at_threshold(&corpus, &answers, CONFIDENT);
+        println!("rules + AI at {CONFIDENT}\n{}", chosen.report);
     }
 }

@@ -739,6 +739,26 @@ apart (the general invoice rule excludes the IBAN of the energy supplier, the
 contract rule excludes invoices, the letter rule excludes cancellations), 4
 documents end in a conflict.
 
+**The AI only fills what the rules leave open.** It is asked for empty fields
+only, and a value it returns for a field the rules already filled is ignored,
+value and origin both. An answer below the threshold (`CONFIDENT`, 0.8) is not
+stored and the document goes to review. The same measurement run with the model
+(Qwen3 0.6B) asked the AI about 6 of the 26 documents and played its answers
+back at several thresholds:
+
+| Threshold | AI values right | AI values wrong | Review documents |
+| --- | --- | --- | --- |
+| 0.5 to 0.95 (all the same) | 6 | 7 | 6 |
+
+The threshold could not be tuned on this corpus: the model reported a
+confidence of 1.0 for all 13 answers, 7 of them wrong, so every threshold up to
+1.0 lets the same values through. 0.8 stays as a starting point, but it does not
+separate right from wrong answers for this model. Until a model reports a
+confidence that tracks its errors, the wrong values it adds are caught only by
+the review step, not by the threshold. This is 26 synthetic documents and a
+0.6B model; the numbers show the method, not what a larger model or real
+documents would give.
+
 ### Remembered state
 
 ncrs remembers both panels' folders, sort and cursor row, the active panel and
