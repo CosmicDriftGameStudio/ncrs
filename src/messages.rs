@@ -348,6 +348,16 @@ pub enum Message {
     /// Ctrl+F3, Ctrl+F5 or Ctrl+F6: sort the active panel.
     SortActive(SortColumn),
 
+    /// Measure the tagged folders, or the one under the cursor.
+    ComputeFolderSizes,
+    /// One folder of a run is measured; `size` is `None` when the walk was
+    /// stopped.
+    FolderSizeMeasured {
+        run: u64,
+        folder: PathBuf,
+        size: Option<crate::fs::FolderSize>,
+    },
+
     // --- Search (Alt+F7, Cmd/Ctrl+Shift+F) ---
     /// Show the search in the active panel, or move on to its next field when
     /// it is already there.

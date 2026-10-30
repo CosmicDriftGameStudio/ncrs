@@ -1,10 +1,10 @@
 //! Root application: state, `update` (the only place state changes) and
 //! `view` (pure composition of UI components).
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::num::NonZeroUsize;
 use std::path::{Component, Path, PathBuf};
 
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use iced::futures;
@@ -166,6 +166,7 @@ fn archive_refusal(panel: &PanelState, message: &Message) -> Option<Msg> {
         | Message::OpenExternal(fs::OpenKind::Edit)
         | Message::CreateDirPrompt
         | Message::CreateFilePrompt
+        | Message::ComputeFolderSizes
         | Message::OpenSearch
         | Message::AddFavourite
         | Message::RemoveFavourite
@@ -205,6 +206,7 @@ fn remote_refusal(panel: &PanelState, message: &Message) -> Option<Msg> {
         | Message::Delete { .. }
         | Message::CreateDirPrompt
         | Message::CreateFilePrompt
+        | Message::ComputeFolderSizes
         | Message::OpenSearch
         | Message::AddFavourite
         | Message::RemoveFavourite
@@ -555,6 +557,44 @@ fn update_title_bar(message: TitleBarMessage) -> Task<Message> {
 /// again once the editing is over.
 fn release_focus() -> Task<Message> {
     iced::advanced::widget::operate(iced::advanced::widget::operation::focusable::unfocus())
+}
+
+/// The folders of one directory still to be measured, one walk at a time.
+struct FolderSizeRun {
+    id: u64,
+    side: PanelSide,
+    directory: PathBuf,
+    waiting: VecDeque<PathBuf>,
+    stop: Arc<AtomicBool>,
+}
+
+/// The folders "Compute folder sizes" acts on: the tagged ones, else the one
+/// under the cursor, else every folder of the listing when the cursor is on
+/// `..`. Links are not entered, so they are not measured.
+fn folder_size_targets(panel: &PanelState) -> Vec<PathBuf> {
+    if panel.is_virtual() || panel.loading {
+        return Vec::new();
+    }
+    let measurable = |entry: &fs::FileEntry| entry.is_dir && !entry.is_parent && !entry.is_symlink;
+    if panel.selection.any_tagged() {
+        return panel
+            .selection
+            .ordered(&panel.entries)
+            .into_iter()
+            .filter(|entry| measurable(entry))
+            .map(|entry| entry.path.clone())
+            .collect();
+    }
+    match panel.selected_entry() {
+        Some(entry) if entry.is_parent => panel
+            .entries
+            .iter()
+            .filter(|listed| measurable(listed))
+            .map(|listed| listed.path.clone())
+            .collect(),
+        Some(entry) if measurable(entry) => vec![entry.path.clone()],
+        _ => Vec::new(),
+    }
 }
 
 /// Counts what the selection of `dialog` holds, off the UI thread. The dialog's
@@ -1156,6 +1196,11 @@ pub struct App {
     trash_side: PanelSide,
     /// Counts the listings of the trash, so a late one is dropped.
     trash_generation: u64,
+    /// Folder sizes computed this session, by directory and then entry name.
+    /// Kept in memory only, so coming back to a folder shows them again.
+    folder_sizes: HashMap<PathBuf, HashMap<std::ffi::OsString, fs::FolderSize>>,
+    folder_size_run: Option<FolderSizeRun>,
+    folder_size_runs_started: u64,
     /// The copy or move confirmation, while it is up.
     transfer_dialog: Option<TransferDialog>,
     /// Counts the confirmations opened, so a result of the background scan can
@@ -3158,6 +3203,9 @@ impl App {
             trash_view: None,
             trash_side: PanelSide::Left,
             trash_generation: 0,
+            folder_sizes: HashMap::new(),
+            folder_size_run: None,
+            folder_size_runs_started: 0,
             transfer_dialog: None,
             transfer_dialogs_opened: 0,
             transfer_mask_visible: false,
@@ -3857,12 +3905,19 @@ impl App {
                 side,
                 request_id,
                 path,
-                entries,
+                mut entries,
                 error,
                 sorted_by,
                 select,
                 archive,
             } => {
+                let sorted_by_claim = self.fill_cached_folder_sizes(
+                    side,
+                    &path,
+                    archive.is_none(),
+                    &mut entries,
+                    sorted_by,
+                );
                 let panel = self.panel_mut(side);
                 let mut left_archive = None;
                 let mut left_server = None;
@@ -3880,7 +3935,7 @@ impl App {
                         error,
                         select.as_deref(),
                         rows,
-                        Some(sorted_by),
+                        sorted_by_claim,
                     );
                     panel.record_arrival(previous, request_id);
                     left_server = before.filter(|server| panel.remote().as_ref() != Some(server));
@@ -3892,6 +3947,7 @@ impl App {
                 if let Some(server) = left_server {
                     self.drop_view_copies_of(&server.root_path());
                 }
+                self.stop_folder_size_run_if_left(side);
                 Task::none()
             }
 
@@ -3960,6 +4016,10 @@ impl App {
             }
             Message::TitleBar(title_bar) => update_title_bar(title_bar),
             Message::SortBy { .. } | Message::SortActive(_) => self.update_sort(message),
+            Message::ComputeFolderSizes => self.compute_folder_sizes(),
+            Message::FolderSizeMeasured { run, folder, size } => {
+                self.folder_size_measured(run, folder, size)
+            }
             Message::SwitchLanguage => {
                 self.switch_language();
                 Task::none()
@@ -4100,6 +4160,128 @@ impl App {
         } else {
             Availability::Open(KeyScope::Panel)
         }
+    }
+
+    /// Puts the values of this session into a fresh local listing. The returned
+    /// sort claim is dropped when a value moved a folder in a size-sorted
+    /// panel, so that the listing is sorted again.
+    fn fill_cached_folder_sizes(
+        &self,
+        side: PanelSide,
+        path: &Path,
+        outside_an_archive: bool,
+        entries: &mut [fs::FileEntry],
+        sorted_by: fs::SortKey,
+    ) -> Option<fs::SortKey> {
+        let cached = self.folder_sizes.get(path);
+        let Some(known) =
+            cached.filter(|_| outside_an_archive && RemotePath::parse(path).is_none())
+        else {
+            return Some(sorted_by);
+        };
+        let mut filled = false;
+        for entry in entries.iter_mut().filter(|entry| entry.is_dir) {
+            if let Some(size) = known.get(&entry.name) {
+                entry.folder_size = Some(*size);
+                filled = true;
+            }
+        }
+        let resort = filled && self.panel(side).sort.column == fs::SortColumn::Size;
+        (!resort).then_some(sorted_by)
+    }
+
+    /// A reload of the same folder keeps the run; another folder ends it.
+    fn stop_folder_size_run_if_left(&mut self, side: PanelSide) {
+        let left = self
+            .folder_size_run
+            .as_ref()
+            .is_some_and(|run| run.side == side && self.panel(side).path != run.directory);
+        if left {
+            self.stop_folder_size_run();
+        }
+    }
+
+    fn stop_folder_size_run(&mut self) {
+        if let Some(run) = self.folder_size_run.take() {
+            run.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
+    fn compute_folder_sizes(&mut self) -> Task<Message> {
+        let targets = folder_size_targets(self.active_panel());
+        if targets.is_empty() {
+            return Task::none();
+        }
+        self.stop_folder_size_run();
+        self.folder_size_runs_started += 1;
+        self.folder_size_run = Some(FolderSizeRun {
+            id: self.folder_size_runs_started,
+            side: self.active_panel,
+            directory: self.active_panel().path.clone(),
+            waiting: targets.into(),
+            stop: Arc::new(AtomicBool::new(false)),
+        });
+        self.next_folder_size_walk()
+    }
+
+    /// Starts the walk of the next waiting folder; the run is over when none is
+    /// left.
+    fn next_folder_size_walk(&mut self) -> Task<Message> {
+        let Some(run) = self.folder_size_run.as_mut() else {
+            return Task::none();
+        };
+        let Some(folder) = run.waiting.pop_front() else {
+            self.folder_size_run = None;
+            return Task::none();
+        };
+        let (id, stop) = (run.id, Arc::clone(&run.stop));
+        let walked = folder.clone();
+        Task::perform(
+            tokio::task::spawn_blocking(move || fs::measure_folder(&walked, &stop)),
+            move |done| Message::FolderSizeMeasured {
+                run: id,
+                folder: folder.clone(),
+                size: done.ok().flatten(),
+            },
+        )
+    }
+
+    fn folder_size_measured(
+        &mut self,
+        run: u64,
+        folder: PathBuf,
+        measured: Option<fs::FolderSize>,
+    ) -> Task<Message> {
+        if self.folder_size_run.as_ref().map(|current| current.id) != Some(run) {
+            return Task::none();
+        }
+        if let (Some(size), Some(parent), Some(name)) =
+            (measured, folder.parent(), folder.file_name())
+        {
+            self.folder_sizes
+                .entry(parent.to_path_buf())
+                .or_default()
+                .insert(name.to_owned(), size);
+            let rows = self.visible_rows;
+            for side in [PanelSide::Left, PanelSide::Right] {
+                let panel = self.panel_mut(side);
+                if panel.path != parent || panel.is_virtual() {
+                    continue;
+                }
+                let Some(entry) = panel
+                    .entries
+                    .iter_mut()
+                    .find(|entry| entry.is_dir && entry.name == name)
+                else {
+                    continue;
+                };
+                entry.folder_size = Some(size);
+                if panel.sort.column == fs::SortColumn::Size {
+                    panel.resort(rows);
+                }
+            }
+        }
+        self.next_folder_size_walk()
     }
 
     fn update_sort(&mut self, message: Message) -> Task<Message> {
@@ -6292,6 +6474,7 @@ impl App {
             ContextAction::NewFolder => true,
             ContextAction::CopyPath => clipboard_text(panel, ClipboardKind::Path).is_some(),
             ContextAction::CopyName => clipboard_text(panel, ClipboardKind::Name).is_some(),
+            ContextAction::ComputeFolderSizes => !folder_size_targets(panel).is_empty(),
         }
     }
 
@@ -13785,6 +13968,7 @@ mod render_timing {
                 is_parent: i == 0,
                 size: 1024 * (i as u64 % 900),
                 modified: None,
+                folder_size: None,
             })
             .collect()
     }
@@ -14851,6 +15035,9 @@ impl App {
             trash_view: None,
             trash_side: PanelSide::Left,
             trash_generation: 0,
+            folder_sizes: HashMap::new(),
+            folder_size_run: None,
+            folder_size_runs_started: 0,
             transfer_dialog: None,
             transfer_dialogs_opened: 0,
             transfer_mask_visible: false,
@@ -15001,6 +15188,7 @@ impl App {
                     is_parent: i == 0,
                     size: if i == 0 { 0 } else { 1024 * (i as u64 * 4096) },
                     modified: None,
+                    folder_size: None,
                 })
                 .collect();
         }
@@ -15137,6 +15325,7 @@ impl App {
             is_parent,
             size: if is_dir { 0 } else { 183_000 },
             modified: None,
+            folder_size: None,
         };
         app.left_panel.entries = [".."]
             .into_iter()
@@ -15988,6 +16177,7 @@ impl App {
             is_parent,
             size,
             modified: None,
+            folder_size: None,
         };
         let mut panel = PanelState::new(folder.clone());
         panel.archive = Some(PathBuf::from("/home/test/fotos.zip"));
@@ -16063,6 +16253,7 @@ mod transfer_tests {
             is_parent: false,
             size: 1,
             modified: None,
+            folder_size: None,
         }
     }
 
@@ -16301,6 +16492,7 @@ mod mouse_tagging {
                 is_parent: false,
                 size: 1,
                 modified: None,
+                folder_size: None,
             })
             .collect();
         app
@@ -16635,6 +16827,7 @@ mod reload_keeps_place {
                 is_parent: false,
                 size: 1,
                 modified: None,
+                folder_size: None,
             })
             .collect();
         p
@@ -16817,6 +17010,7 @@ mod abort_tests {
                 is_parent: false,
                 size: 1,
                 modified: None,
+                folder_size: None,
             })
             .collect();
         app.left_panel.selected = 0;
@@ -16932,6 +17126,7 @@ mod conflict_tests {
                 is_parent: false,
                 size: 3,
                 modified: None,
+                folder_size: None,
             })
             .collect();
         app.left_panel.selected = 0;
@@ -17177,6 +17372,7 @@ mod progress_bar {
             is_parent: false,
             size: 1,
             modified: None,
+            folder_size: None,
         }];
         app.left_panel.selected = 0;
         app
@@ -17267,6 +17463,7 @@ mod conflict_keys {
             is_parent: false,
             size: 3,
             modified: None,
+            folder_size: None,
         }];
         app.left_panel.selected = 0;
         (app, scratch)
@@ -17677,6 +17874,7 @@ mod delete_tests {
                 is_parent: *name == "..",
                 size: 1,
                 modified: None,
+                folder_size: None,
             })
             .collect();
         app
@@ -17930,6 +18128,7 @@ mod scroll_tests {
                 is_parent: false,
                 size: 1,
                 modified: None,
+                folder_size: None,
             })
             .collect();
         app
@@ -18080,6 +18279,7 @@ mod copy_to_clipboard_tests {
             is_parent,
             size: 0,
             modified: None,
+            folder_size: None,
         }
     }
 
@@ -18407,7 +18607,8 @@ mod context_menu_tests {
                 ContextAction::Open,
                 ContextAction::NewFolder,
                 ContextAction::CopyPath,
-                ContextAction::CopyName
+                ContextAction::CopyName,
+                ContextAction::ComputeFolderSizes
             ]
         );
     }
@@ -18506,7 +18707,7 @@ mod context_menu_tests {
         drop(app.update(Message::ContextMenuLast));
         assert_eq!(
             app.context_menu_selected_action(),
-            Some(ContextAction::CopyName)
+            Some(ContextAction::ComputeFolderSizes)
         );
         drop(app.update(Message::ContextMenuFirst));
         assert_eq!(
@@ -18709,6 +18910,7 @@ mod type_ahead_tests {
                 is_parent: index == 0,
                 size: 0,
                 modified: None,
+                folder_size: None,
             })
             .collect();
         (app, now)
@@ -21686,6 +21888,7 @@ mod command_palette_tests {
                 is_parent: false,
                 size: 1,
                 modified: None,
+                folder_size: None,
             })
             .collect();
         app.left_panel.selected = 0;
@@ -23771,6 +23974,7 @@ mod archive_panel_tests {
             is_parent: false,
             size: 1,
             modified: None,
+            folder_size: None,
         }
     }
 
@@ -24202,6 +24406,7 @@ mod archive_view_tests {
             is_parent: false,
             size: 6,
             modified: None,
+            folder_size: None,
         }];
         panel.selected = 0;
         (app, launcher)
@@ -28353,6 +28558,7 @@ mod clipboard_tests {
             is_parent: false,
             size: 1,
             modified: None,
+            folder_size: None,
         }
     }
 
@@ -28446,5 +28652,350 @@ mod clipboard_tests {
             .app
             .status_error()
             .is_some_and(|text| text.contains("no display")));
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod folder_size_tests {
+    use super::*;
+    use crate::fs::FileEntry;
+    use crate::ui::format;
+    use std::ffi::OsString;
+    use std::sync::atomic::Ordering;
+
+    const SIDE: PanelSide = PanelSide::Left;
+
+    fn directory() -> PathBuf {
+        PathBuf::from("/home/test/links")
+    }
+
+    fn row(name: &str, is_dir: bool) -> FileEntry {
+        FileEntry {
+            name: OsString::from(name),
+            path: directory().join(name),
+            is_dir,
+            is_symlink: false,
+            is_parent: false,
+            size: 1,
+            modified: None,
+            folder_size: None,
+        }
+    }
+
+    fn listing() -> Vec<FileEntry> {
+        let mut entries = vec![
+            FileEntry::parent(Path::new("/home/test")),
+            row("alpha", true),
+            row("beta", true),
+            row("gamma", true),
+            row("note.txt", false),
+        ];
+        fs::sort_entries(&mut entries, fs::SortKey::default());
+        entries
+    }
+
+    fn size(bytes: u64) -> fs::FolderSize {
+        fs::FolderSize {
+            bytes,
+            partial: false,
+        }
+    }
+
+    fn load(app: &mut App, path: PathBuf, entries: Vec<FileEntry>, sorted_by: fs::SortKey) {
+        let request_id = app.panel_mut(SIDE).begin_load();
+        drop(app.update(Message::DirectoryLoaded {
+            side: SIDE,
+            request_id,
+            path,
+            entries,
+            error: None,
+            sorted_by,
+            select: None,
+            archive: None,
+        }));
+    }
+
+    fn app_in_links() -> App {
+        let mut app = App::with_fixed_panels();
+        load(&mut app, directory(), listing(), fs::SortKey::default());
+        app
+    }
+
+    fn put_cursor_on(app: &mut App, name: &str) {
+        let rows = app.visible_rows;
+        let index = app
+            .panel(SIDE)
+            .entries
+            .iter()
+            .position(|entry| entry.name == name)
+            .unwrap();
+        app.panel_mut(SIDE).select(index, rows);
+    }
+
+    fn shown(app: &App, name: &str) -> String {
+        let entry = app
+            .panel(SIDE)
+            .entries
+            .iter()
+            .find(|entry| entry.name == name)
+            .unwrap();
+        format::entry_size(entry)
+    }
+
+    fn run_id(app: &App) -> u64 {
+        app.folder_size_run.as_ref().unwrap().id
+    }
+
+    fn measured(app: &mut App, run: u64, name: &str, bytes: u64) {
+        drop(app.update(Message::FolderSizeMeasured {
+            run,
+            folder: directory().join(name),
+            size: Some(size(bytes)),
+        }));
+    }
+
+    fn names(app: &App) -> Vec<String> {
+        app.panel(SIDE)
+            .entries
+            .iter()
+            .map(|entry| entry.name.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn the_folder_under_the_cursor_is_measured_and_shows_its_value() {
+        let mut app = app_in_links();
+        put_cursor_on(&mut app, "beta");
+
+        drop(app.update(Message::ComputeFolderSizes));
+
+        let run = app.folder_size_run.as_ref().unwrap();
+        assert!(run.waiting.is_empty(), "one folder, already walking");
+        assert_eq!(shown(&app, "beta"), "<DIR>", "until the value arrives");
+        let id = run.id;
+        measured(&mut app, id, "beta", 2048);
+        assert_eq!(shown(&app, "beta"), "2.0 KB");
+        assert_eq!(shown(&app, "alpha"), "<DIR>");
+        assert!(app.folder_size_run.is_none(), "the run is over");
+    }
+
+    #[tokio::test]
+    async fn tagged_folders_are_measured_one_after_another_and_the_cursor_is_ignored() {
+        let mut app = app_in_links();
+        for name in ["alpha", "gamma", "note.txt"] {
+            app.panel_mut(SIDE).selection.toggle(&OsString::from(name));
+        }
+        put_cursor_on(&mut app, "beta");
+
+        drop(app.update(Message::ComputeFolderSizes));
+
+        let id = run_id(&app);
+        assert_eq!(
+            app.folder_size_run.as_ref().unwrap().waiting,
+            [directory().join("gamma")],
+            "alpha is already walking, the file is not a target"
+        );
+        measured(&mut app, id, "alpha", 10);
+        measured(&mut app, id, "gamma", 3_000_000);
+        assert_eq!(shown(&app, "alpha"), "10 B");
+        assert_eq!(shown(&app, "gamma"), "2.9 MB");
+        assert_eq!(shown(&app, "beta"), "<DIR>");
+    }
+
+    #[tokio::test]
+    async fn on_the_parent_row_every_folder_of_the_listing_is_a_target() {
+        let mut app = app_in_links();
+        put_cursor_on(&mut app, "..");
+
+        drop(app.update(Message::ComputeFolderSizes));
+
+        let run = app.folder_size_run.as_ref().unwrap();
+        assert_eq!(
+            run.waiting,
+            [directory().join("beta"), directory().join("gamma")],
+            "alpha is already walking; the file and `..` are not folders to measure"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_a_file_without_tags_nothing_starts() {
+        let mut app = app_in_links();
+        put_cursor_on(&mut app, "note.txt");
+
+        drop(app.update(Message::ComputeFolderSizes));
+
+        assert!(app.folder_size_run.is_none());
+        assert!(!app.context_action_enabled(ContextAction::ComputeFolderSizes));
+        put_cursor_on(&mut app, "alpha");
+        assert!(app.context_action_enabled(ContextAction::ComputeFolderSizes));
+    }
+
+    #[tokio::test]
+    async fn a_partial_value_is_marked() {
+        let mut app = app_in_links();
+        put_cursor_on(&mut app, "alpha");
+        drop(app.update(Message::ComputeFolderSizes));
+
+        let id = run_id(&app);
+        drop(app.update(Message::FolderSizeMeasured {
+            run: id,
+            folder: directory().join("alpha"),
+            size: Some(fs::FolderSize {
+                bytes: 1024,
+                partial: true,
+            }),
+        }));
+
+        assert_eq!(shown(&app, "alpha"), "1.0 KB+");
+    }
+
+    #[tokio::test]
+    async fn a_stopped_walk_leaves_no_value_behind() {
+        let mut app = app_in_links();
+        put_cursor_on(&mut app, "alpha");
+        drop(app.update(Message::ComputeFolderSizes));
+
+        let id = run_id(&app);
+        drop(app.update(Message::FolderSizeMeasured {
+            run: id,
+            folder: directory().join("alpha"),
+            size: None,
+        }));
+
+        assert_eq!(shown(&app, "alpha"), "<DIR>");
+        assert!(app.folder_sizes.is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_values_come_back_when_the_folder_is_visited_again() {
+        let mut app = app_in_links();
+        put_cursor_on(&mut app, "gamma");
+        drop(app.update(Message::ComputeFolderSizes));
+        let id = run_id(&app);
+        measured(&mut app, id, "gamma", 4096);
+
+        load(
+            &mut app,
+            PathBuf::from("/home/test"),
+            vec![FileEntry::parent(Path::new("/home"))],
+            fs::SortKey::default(),
+        );
+        load(&mut app, directory(), listing(), fs::SortKey::default());
+
+        assert_eq!(shown(&app, "gamma"), "4.0 KB");
+        assert_eq!(shown(&app, "alpha"), "<DIR>");
+    }
+
+    #[tokio::test]
+    async fn running_the_command_again_replaces_the_cached_value() {
+        let mut app = app_in_links();
+        put_cursor_on(&mut app, "gamma");
+        drop(app.update(Message::ComputeFolderSizes));
+        let first = run_id(&app);
+        measured(&mut app, first, "gamma", 100);
+
+        drop(app.update(Message::ComputeFolderSizes));
+        let second = run_id(&app);
+        assert_ne!(first, second);
+        measured(&mut app, second, "gamma", 200);
+
+        assert_eq!(shown(&app, "gamma"), "200 B");
+        load(&mut app, directory(), listing(), fs::SortKey::default());
+        assert_eq!(shown(&app, "gamma"), "200 B");
+    }
+
+    #[tokio::test]
+    async fn leaving_the_folder_stops_the_walk_and_a_late_result_changes_nothing() {
+        let mut app = app_in_links();
+        put_cursor_on(&mut app, "gamma");
+        drop(app.update(Message::ComputeFolderSizes));
+        let id = run_id(&app);
+        let stop = Arc::clone(&app.folder_size_run.as_ref().unwrap().stop);
+
+        load(
+            &mut app,
+            PathBuf::from("/home/test"),
+            vec![FileEntry::parent(Path::new("/home"))],
+            fs::SortKey::default(),
+        );
+
+        assert!(stop.load(Ordering::Relaxed));
+        assert!(app.folder_size_run.is_none());
+        measured(&mut app, id, "gamma", 777);
+        assert!(app.folder_sizes.is_empty());
+        load(&mut app, directory(), listing(), fs::SortKey::default());
+        assert_eq!(shown(&app, "gamma"), "<DIR>");
+    }
+
+    #[tokio::test]
+    async fn a_reload_of_the_same_folder_keeps_the_walk() {
+        let mut app = app_in_links();
+        put_cursor_on(&mut app, "gamma");
+        drop(app.update(Message::ComputeFolderSizes));
+        let id = run_id(&app);
+        let stop = Arc::clone(&app.folder_size_run.as_ref().unwrap().stop);
+
+        load(&mut app, directory(), listing(), fs::SortKey::default());
+
+        assert!(!stop.load(Ordering::Relaxed));
+        assert_eq!(run_id(&app), id);
+        measured(&mut app, id, "gamma", 5);
+        assert_eq!(shown(&app, "gamma"), "5 B");
+    }
+
+    #[tokio::test]
+    async fn sorted_by_size_the_cursor_stays_and_valued_folders_come_first() {
+        let mut app = app_in_links();
+        app.panel_mut(SIDE).request_sort(fs::SortColumn::Size, 12);
+        assert_eq!(names(&app), ["..", "alpha", "beta", "gamma", "note.txt"]);
+        app.panel_mut(SIDE)
+            .selection
+            .toggle(&OsString::from("gamma"));
+        put_cursor_on(&mut app, "beta");
+        drop(app.update(Message::ComputeFolderSizes));
+        let id = run_id(&app);
+
+        measured(&mut app, id, "gamma", 50);
+
+        assert_eq!(names(&app), ["..", "gamma", "alpha", "beta", "note.txt"]);
+        assert_eq!(
+            app.panel(SIDE).selected_entry().unwrap().name,
+            "beta",
+            "the cursor follows its entry"
+        );
+    }
+
+    #[tokio::test]
+    async fn cached_values_are_in_size_order_when_the_folder_loads_again() {
+        let mut app = app_in_links();
+        put_cursor_on(&mut app, "gamma");
+        drop(app.update(Message::ComputeFolderSizes));
+        let id = run_id(&app);
+        measured(&mut app, id, "gamma", 50);
+        app.panel_mut(SIDE).request_sort(fs::SortColumn::Size, 12);
+
+        let by_name = fs::SortKey::default();
+        let claimed = app.panel(SIDE).sort;
+        assert_ne!(by_name, claimed);
+        load(&mut app, directory(), listing(), claimed);
+
+        assert_eq!(names(&app), ["..", "gamma", "alpha", "beta", "note.txt"]);
+    }
+
+    #[tokio::test]
+    async fn a_panel_inside_an_archive_does_not_start_a_run() {
+        let mut app = app_in_links();
+        put_cursor_on(&mut app, "alpha");
+        app.panel_mut(SIDE).archive = Some(directory().join("fotos.zip"));
+
+        drop(app.update(Message::ComputeFolderSizes));
+
+        assert!(app.folder_size_run.is_none());
     }
 }

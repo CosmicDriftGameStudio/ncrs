@@ -534,6 +534,7 @@ mod tagging {
             is_parent: false,
             size: 100,
             modified: None,
+            folder_size: None,
         }
     }
 

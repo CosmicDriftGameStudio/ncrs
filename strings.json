@@ -583,6 +583,12 @@
       "de": "Name kopieren"
     },
     {
+      "key": "context_menu.compute_folder_sizes",
+      "context": "Entry of the context menu: measures the tagged folders, or the folder under the cursor, and shows the sizes in the size column. Verb, imperative.",
+      "en": "Compute folder sizes",
+      "de": "Ordnergrößen berechnen"
+    },
+    {
       "key": "context_menu.trash",
       "context": "Entry of the context menu: moves the tagged rows, or the cursor row, to the trash after a confirmation (key F8). The German text is a prepositional phrase because the entry reads as an action on the selection.",
       "en": "Move to trash",
@@ -1397,6 +1403,12 @@
       "context": "Entry of the command palette that runs the key action sort_by_size. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
       "en": "Sort by size",
       "de": "Nach Größe sortieren"
+    },
+    {
+      "key": "action.compute_folder_sizes",
+      "context": "Entry of the command palette that runs the key action compute_folder_sizes. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Compute folder sizes",
+      "de": "Ordnergrößen berechnen"
     },
     {
       "key": "action.context_menu",

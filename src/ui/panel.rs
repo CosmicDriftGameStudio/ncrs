@@ -87,6 +87,11 @@ impl PanelState {
     /// sorted by it. The cursor stays on the same entry and in view.
     pub fn request_sort(&mut self, column: SortColumn, visible_rows: usize) {
         self.sort = self.sort.requested(column);
+        self.resort(visible_rows);
+    }
+
+    /// Sorts the rows by the current key; the cursor stays on its entry.
+    pub fn resort(&mut self, visible_rows: usize) {
         let cursor_name = self.selected_entry().map(|entry| entry.name.clone());
         sort_entries(&mut self.entries, self.sort);
         let index = cursor_name
@@ -757,6 +762,7 @@ mod tests {
                 is_parent: false,
                 size: 0,
                 modified: None,
+                folder_size: None,
             })
             .collect();
         p
@@ -807,6 +813,7 @@ mod tagging_tests {
             is_parent,
             size: 0,
             modified: None,
+            folder_size: None,
         }
     }
 
@@ -934,6 +941,7 @@ mod sort_tests {
             is_parent: false,
             size,
             modified: Some(SystemTime::UNIX_EPOCH),
+            folder_size: None,
         }
     }
 

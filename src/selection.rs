@@ -171,6 +171,7 @@ mod tests {
             is_parent,
             size: 0,
             modified: None,
+            folder_size: None,
         }
     }
 

@@ -3,6 +3,7 @@
 pub mod archive;
 mod delete;
 mod entry;
+mod folder_size;
 #[cfg(any(all(feature = "sandbox", target_os = "macos"), test))]
 mod grants;
 mod open;
@@ -27,6 +28,7 @@ pub use delete::{
     is_same_place, remove_permanently, system_trash, RestoreError, Trash, TrashReach, TrashedItem,
 };
 pub use entry::FileEntry;
+pub use folder_size::{measure_folder, FolderSize};
 #[cfg(test)]
 pub use open::OpenCommand;
 pub use open::{

@@ -130,6 +130,7 @@ pub fn list(location: &ArchiveLocation) -> io::Result<ArchiveListing> {
             is_parent: false,
             size: if node.is_dir { 0 } else { node.size },
             modified: node.modified,
+            folder_size: None,
         })
         .collect();
     Ok(ArchiveListing {

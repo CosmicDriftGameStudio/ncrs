@@ -113,6 +113,7 @@ key_actions! {
     SortByName => "sort_by_name",
     SortByModified => "sort_by_modified",
     SortBySize => "sort_by_size",
+    ComputeFolderSizes => "compute_folder_sizes",
     ContextMenu => "context_menu",
     CursorUp => "cursor_up",
     CursorDown => "cursor_down",
@@ -262,6 +263,7 @@ impl KeyAction {
             | Self::SortByName
             | Self::SortByModified
             | Self::SortBySize
+            | Self::ComputeFolderSizes
             | Self::ContextMenu
             | Self::CursorUp
             | Self::CursorDown
@@ -364,6 +366,7 @@ impl KeyAction {
             Self::SortByName => Message::SortActive(SortColumn::Name),
             Self::SortByModified => Message::SortActive(SortColumn::Modified),
             Self::SortBySize => Message::SortActive(SortColumn::Size),
+            Self::ComputeFolderSizes => Message::ComputeFolderSizes,
             Self::ContextMenu => Message::ContextMenuKey,
             Self::CursorUp => Message::MoveSelection(-1),
             Self::CursorDown => Message::MoveSelection(1),
@@ -504,6 +507,7 @@ impl KeyAction {
             | Self::Mkdir
             | Self::NewFile
             | Self::Pack
+            | Self::ComputeFolderSizes
             | Self::AddFavourite
             | Self::RemoveFavourite
             | Self::Search
@@ -589,6 +593,7 @@ impl KeyAction {
             | Self::Mkdir
             | Self::NewFile
             | Self::Pack
+            | Self::ComputeFolderSizes
             | Self::AddFavourite
             | Self::RemoveFavourite
             | Self::Search
@@ -2034,6 +2039,7 @@ mod tests {
             KeyAction::DisconnectServer,
             KeyAction::Trash,
             KeyAction::OpenTrashInFinder,
+            KeyAction::ComputeFolderSizes,
             KeyAction::HermesHandToInbox,
             KeyAction::HermesSetInbox,
             KeyAction::HermesSetFilingLocation,

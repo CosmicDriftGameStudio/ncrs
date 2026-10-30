@@ -112,6 +112,7 @@ fn entries_of(directory: &str, rows: &[Row]) -> Vec<FileEntry> {
         is_parent: true,
         size: 0,
         modified: None,
+        folder_size: None,
     };
     let listed = rows.iter().map(|row| FileEntry {
         name: OsString::from(row.name),
@@ -121,6 +122,7 @@ fn entries_of(directory: &str, rows: &[Row]) -> Vec<FileEntry> {
         is_parent: false,
         size: row.size,
         modified: Some(local_time(row.modified)),
+        folder_size: None,
     });
     std::iter::once(parent).chain(listed).collect()
 }
