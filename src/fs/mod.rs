@@ -20,7 +20,9 @@ mod trash_journal;
 mod typed_path;
 mod volumes;
 
-pub use delete::{remove_permanently, system_trash, RestoreError, Trash, TrashReach, TrashedItem};
+pub use delete::{
+    is_same_place, remove_permanently, system_trash, RestoreError, Trash, TrashReach, TrashedItem,
+};
 pub use entry::FileEntry;
 #[cfg(test)]
 pub use open::OpenCommand;

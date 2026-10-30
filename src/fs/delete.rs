@@ -296,6 +296,25 @@ impl Trash for FinderOnlyTrash {
     }
 }
 
+/// Whether `listed`, an original as the trash lists it, is the place
+/// `trashed` was moved from. The system may spell it differently from the
+/// panel ncrs deleted in: links resolved on Linux, the long name without the
+/// `\\?\` prefix on Windows. So the folders are compared resolved, which
+/// needs both to exist; the names must match as they are.
+pub fn is_same_place(listed: &Path, trashed: &Path) -> bool {
+    if listed == trashed {
+        return true;
+    }
+    let (Some(listed_folder), Some(trashed_folder)) = (listed.parent(), trashed.parent()) else {
+        return false;
+    };
+    listed.file_name() == trashed.file_name()
+        && matches!(
+            (std::fs::canonicalize(listed_folder), std::fs::canonicalize(trashed_folder)),
+            (Ok(listed_real), Ok(trashed_real)) if listed_real == trashed_real
+        )
+}
+
 /// Deletes `path` for good. A symlink is removed itself and never followed: a
 /// link to a directory elsewhere must not take that directory along.
 pub fn remove_permanently(path: &Path) -> io::Result<()> {
@@ -431,6 +450,31 @@ mod tests {
     fn a_recycle_record_without_a_path_is_refused() {
         assert_eq!(recycle_info_original(&info_bytes(2, Some(3), "", 3)), None);
         assert_eq!(recycle_info_original(&info_bytes(1, None, "", 260)), None);
+    }
+
+    #[test]
+    fn the_same_spelling_is_the_same_place_even_when_gone() {
+        let gone = Path::new("/nowhere/at/all/alpha.txt");
+        assert!(is_same_place(gone, gone));
+        assert!(!is_same_place(gone, Path::new("/nowhere/at/all/beta.txt")));
+    }
+
+    /// The Linux trash records the resolved path; the panel may show the
+    /// folder through a link.
+    #[cfg(unix)]
+    #[test]
+    fn a_folder_reached_through_a_link_is_the_same_place() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        std::fs::create_dir(&real).unwrap();
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let other = dir.path().join("other");
+        std::fs::create_dir(&other).unwrap();
+
+        assert!(is_same_place(&real.join("a.txt"), &link.join("a.txt")));
+        assert!(!is_same_place(&real.join("a.txt"), &link.join("b.txt")));
+        assert!(!is_same_place(&other.join("a.txt"), &link.join("a.txt")));
     }
 
     #[test]

@@ -703,6 +703,7 @@ pub enum TrashMessage {
     },
     /// Put back what the latest F8 moved to the trash.
     RestoreLast,
+    /// The entries of the trash that the latest deletion put there.
     LastListed {
         generation: u64,
         result: Result<Vec<TrashedItem>, String>,

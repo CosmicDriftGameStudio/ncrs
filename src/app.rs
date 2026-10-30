@@ -224,6 +224,20 @@ fn remote_refusal(panel: &PanelState, message: &Message) -> Option<Msg> {
 
 type ClipboardFileWriter = Box<dyn FnMut(&[PathBuf]) -> Result<(), String>>;
 
+/// Of each path the session trashed, the newest entry of the trash from that
+/// place. Blocking: comparing places resolves folders on the disk.
+fn newest_entries_from(listed: &[fs::TrashedItem], trashed: &[PathBuf]) -> Vec<fs::TrashedItem> {
+    trashed
+        .iter()
+        .filter_map(|path| {
+            listed
+                .iter()
+                .find(|item| fs::is_same_place(&item.original, path))
+                .cloned()
+        })
+        .collect()
+}
+
 /// The system clipboard is read on a blocking thread: on X11 it can wait for
 /// the program that owns the content.
 fn read_clipboard_off_the_ui_thread() -> Task<Option<PastedContent>> {
@@ -7459,8 +7473,13 @@ impl App {
         self.generation = self.generation.wrapping_add(1);
         let generation = self.generation;
         let trash = Arc::clone(&self.trash);
+        let trashed = self.last_deletion.clone();
         Task::perform(
-            tokio::task::spawn_blocking(move || trash.list()),
+            tokio::task::spawn_blocking(move || {
+                trash
+                    .list()
+                    .map(|listed| newest_entries_from(&listed, &trashed))
+            }),
             move |outcome| {
                 Message::Trash(TrashMessage::LastListed {
                     generation,
@@ -7470,8 +7489,7 @@ impl App {
         )
     }
 
-    /// Of each path the session trashed, the newest entry of the trash with
-    /// exactly that original goes back. Only the paths held in memory count.
+    /// Puts back the entries the trash still holds of the latest deletion.
     fn restore_listed_deletion(
         &mut self,
         generation: u64,
@@ -7480,8 +7498,8 @@ impl App {
         if generation != self.generation {
             return Task::none();
         }
-        let listed = match result {
-            Ok(listed) => listed,
+        let found = match result {
+            Ok(found) => found,
             Err(reason) => {
                 let text = fill_template(self.lang.text(Msg::TrashError), &[("{reason}", &reason)]);
                 self.set_status_error(&text);
@@ -7493,11 +7511,7 @@ impl App {
         if self.restore_is_blocked() {
             return Task::none();
         }
-        let paths = std::mem::take(&mut self.last_deletion);
-        let found: Vec<fs::TrashedItem> = paths
-            .iter()
-            .filter_map(|path| listed.iter().find(|item| item.original == *path).cloned())
-            .collect();
+        self.last_deletion.clear();
         if found.is_empty() {
             return self.show_notice(self.lang.text(Msg::TrashNothingToRestore).to_owned());
         }
