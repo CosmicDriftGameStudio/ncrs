@@ -146,7 +146,7 @@ pub fn detect_sender(
         })
         .or_else(|| {
             let from = lines.len().saturating_sub(FOOTER_LINES);
-            name_in(lines[from..].iter(), aliases).map(|name| (name, SenderSource::Footer))
+            name_in(lines.iter().skip(from), aliases).map(|name| (name, SenderSource::Footer))
         });
     let Some((name, source)) = detected else {
         return SenderDetection {
@@ -154,10 +154,13 @@ pub fn detect_sender(
             offers: Vec::new(),
         };
     };
-    let name = aliases.canonical_sender(&name).to_owned();
-    let offers = offers_for(&name, &identifiers, aliases, known_senders);
+    let canonical = aliases.canonical_sender(&name).to_owned();
+    let offers = offers_for(&canonical, &identifiers, aliases, known_senders);
     SenderDetection {
-        sender: Some(DetectedSender { name, source }),
+        sender: Some(DetectedSender {
+            name: canonical,
+            source,
+        }),
         offers,
     }
 }
@@ -263,10 +266,10 @@ fn company_name(line: &str, aliases: &SenderAliases) -> Option<String> {
 }
 
 fn is_legal_form(token: &str) -> bool {
-    let token = token.trim_matches(|ch: char| matches!(ch, '(' | ')' | ';' | ':' | '&'));
+    let trimmed = token.trim_matches(|ch: char| matches!(ch, '(' | ')' | ';' | ':' | '&'));
     let spelled = |form: &str| {
         let bare = |text: &str| text.trim_end_matches('.').to_owned();
-        bare(token) == bare(form) || bare(token) == bare(form).to_uppercase()
+        bare(trimmed) == bare(form) || bare(trimmed) == bare(form).to_uppercase()
     };
     LEGAL_FORMS
         .iter()
@@ -302,6 +305,7 @@ fn is_register_line(line: &str) -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 
