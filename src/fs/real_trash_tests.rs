@@ -112,7 +112,7 @@ impl Drop for TrashCleanup {
     }
 }
 
-struct Scene {
+pub struct Scene {
     work: PathBuf,
     marker: std::ffi::OsString,
     trash: Arc<dyn Trash>,
@@ -140,14 +140,23 @@ impl Scene {
         }
     }
 
-    fn write(&self, relative: &str, content: &str) -> PathBuf {
+    /// The folder the scenario works in.
+    pub fn work(&self) -> &Path {
+        &self.work
+    }
+
+    pub fn trash(&self) -> Arc<dyn Trash> {
+        Arc::clone(&self.trash)
+    }
+
+    pub fn write(&self, relative: &str, content: &str) -> PathBuf {
         let path = self.work.join(relative);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, content).unwrap();
         path
     }
 
-    fn assert_gone(&self, path: &Path) {
+    pub fn assert_gone(&self, path: &Path) {
         let found = std::fs::symlink_metadata(path);
         assert!(
             matches!(&found, Err(err) if err.kind() == std::io::ErrorKind::NotFound),
@@ -156,7 +165,7 @@ impl Scene {
         );
     }
 
-    fn items_of_ours(&self, relative: &str) -> Vec<TrashedItem> {
+    pub fn items_of_ours(&self, relative: &str) -> Vec<TrashedItem> {
         self.trash
             .list()
             .unwrap()
@@ -207,7 +216,7 @@ impl Scene {
 
     /// Ends a scenario: removes what is left in the trash and checks that
     /// nothing of ours remains.
-    fn finish(&self) {
+    pub fn finish(&self) {
         self.cleanup.purge();
         let left: Vec<_> = self
             .trash
@@ -221,7 +230,7 @@ impl Scene {
 }
 
 /// `test_name` is the full path of the calling test, for the Linux re-run.
-fn on_the_real_trash(test_name: &str, scenario: impl FnOnce(&Scene)) {
+pub fn on_the_real_trash(test_name: &str, scenario: impl FnOnce(&Scene)) {
     #[cfg(target_os = "linux")]
     {
         match std::env::var_os(ROOT_VARIABLE) {

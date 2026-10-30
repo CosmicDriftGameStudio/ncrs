@@ -1491,6 +1491,112 @@ mod tests {
         assert!(!dir.path().join("older.txt").exists());
     }
 
+    /// The restore key against the system trash: it must find the entries
+    /// under the spelling the system recorded, which is not always the path
+    /// the panel deleted.
+    #[test]
+    fn the_restore_key_puts_back_the_latest_deletion_from_the_real_trash() {
+        crate::fs::real_trash_tests::on_the_real_trash(
+            "e2e_tests::tests::the_restore_key_puts_back_the_latest_deletion_from_the_real_trash",
+            |scene| {
+                std::fs::create_dir_all(scene.work().join("home")).expect("the right panel");
+                let older = scene.write("older.txt", "older");
+                let alpha = scene.write("alpha.txt", "alpha");
+                let docs = scene.write("docs/inner.txt", "inner");
+                let mut session = session_with_trash(scene.work(), scene.trash());
+                trash_rows(&mut session, &["older.txt"]);
+                trash_rows(&mut session, &["docs", "alpha.txt"]);
+                scene.assert_gone(&alpha);
+                scene.assert_gone(&docs);
+
+                session.press_with(Key::Character("z".into()), Modifiers::COMMAND);
+
+                assert_eq!(
+                    std::fs::read_to_string(&alpha).expect("alpha is back"),
+                    "alpha"
+                );
+                assert_eq!(
+                    std::fs::read_to_string(&docs).expect("docs is back"),
+                    "inner"
+                );
+                scene.assert_gone(&older);
+                assert!(scene.items_of_ours("alpha.txt").is_empty());
+                assert!(scene.items_of_ours("docs").is_empty());
+                assert_eq!(
+                    scene.items_of_ours("older.txt").len(),
+                    1,
+                    "the earlier deletion left the trash"
+                );
+                scene.finish();
+            },
+        );
+    }
+
+    /// Restores `alpha.txt` with the key while another file holds its name, and
+    /// answers the question with `answer`.
+    fn restore_onto_a_taken_name(
+        test_name: &str,
+        answer: Named,
+        check: impl FnOnce(&crate::fs::real_trash_tests::Scene),
+    ) {
+        crate::fs::real_trash_tests::on_the_real_trash(test_name, |scene| {
+            std::fs::create_dir_all(scene.work().join("home")).expect("the right panel");
+            let alpha = scene.write("alpha.txt", "original");
+            let mut session = session_with_trash(scene.work(), scene.trash());
+            trash_rows(&mut session, &["alpha.txt"]);
+            scene.assert_gone(&alpha);
+            scene.write("alpha.txt", "occupant");
+
+            session.press_with(Key::Character("z".into()), Modifiers::COMMAND);
+            assert!(session.app.conflict_is_pending(), "the restore did not ask");
+            session.press(Key::Named(answer));
+
+            assert!(!session.app.conflict_is_pending());
+            assert!(session.app.restore_is_idle());
+            check(scene);
+            scene.finish();
+        });
+    }
+
+    #[test]
+    fn keeping_the_file_in_the_way_leaves_the_deletion_in_the_real_trash() {
+        restore_onto_a_taken_name(
+            "e2e_tests::tests::keeping_the_file_in_the_way_leaves_the_deletion_in_the_real_trash",
+            Named::Escape,
+            |scene| {
+                assert_eq!(
+                    std::fs::read_to_string(scene.work().join("alpha.txt")).expect("the occupant"),
+                    "occupant",
+                    "keeping touched the file in the way"
+                );
+                assert_eq!(
+                    scene.items_of_ours("alpha.txt").len(),
+                    1,
+                    "the deletion left the trash"
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn overwriting_sends_the_file_in_the_way_to_the_real_trash() {
+        restore_onto_a_taken_name(
+            "e2e_tests::tests::overwriting_sends_the_file_in_the_way_to_the_real_trash",
+            Named::Enter,
+            |scene| {
+                assert_eq!(
+                    std::fs::read_to_string(scene.work().join("alpha.txt")).expect("the original"),
+                    "original"
+                );
+                assert_eq!(
+                    scene.items_of_ours("alpha.txt").len(),
+                    1,
+                    "the occupant is not the one entry in the trash"
+                );
+            },
+        );
+    }
+
     #[test]
     fn an_entry_taken_out_of_the_trash_behind_the_apps_back_is_not_listed() {
         let dir = scratch("trash-behind");
