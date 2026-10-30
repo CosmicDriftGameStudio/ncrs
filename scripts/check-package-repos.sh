@@ -85,6 +85,11 @@ echo "::endgroup::"
 echo "::group::build the repositories"
 PACKAGES_GPG_PRIVATE_KEY=$(cat "$work/keys/a.sec.asc") \
   "$here/package-repos.sh" "$packages" "$work/keys/a.pub.asc" "$base" "$work/serve/signed"
+if ! grep -q "<code>$fingerprint_a</code>" "$work/serve/signed/index.html" \
+  || ! grep -qF "$base/ncrs.repo" "$work/serve/signed/index.html"; then
+  echo "::error::index.html lacks the fingerprint or the repository URL"
+  exit 1
+fi
 cp -a "$work/serve/signed" "$work/serve/unsigned"
 rm "$work/serve/unsigned/deb/dists/stable/InRelease" \
   "$work/serve/unsigned/deb/dists/stable/Release.gpg" \
