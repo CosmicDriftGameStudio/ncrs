@@ -1,5 +1,8 @@
 [workspace]
 members = ["crates/*"]
+# vendor/winit is a patched dependency, not a workspace crate: no workspace lints,
+# no clippy or fmt run over it.
+exclude = ["vendor"]
 resolver = "2"
 
 [package]
@@ -147,6 +150,10 @@ ncrs-ocr-vision = { path = "crates/ncrs-ocr-vision", version = "0.0.0" }
 # Starts the system drag of files out of the window, into the Finder, Explorer
 # or a browser upload. Not on Linux, where it needs GTK.
 drag = { version = "=2.1.1", default-features = false }
+
+# winit 0.30 references the private CGS API (see vendor/winit/NCRS-PATCH.md).
+[patch.crates-io]
+winit = { path = "vendor/winit" }
 
 [profile.release]
 opt-level = 3

@@ -280,6 +280,14 @@ package_store_app() {
   local source_dir="$1" store_binary="$2" version="$3" profile="$4" out_dir="$5"
   shift 5
   [ -f "$profile" ] || { echo "error: no provisioning profile at $profile" >&2; exit 1; }
+  # App Review rejects private API (guideline 2.5.1). _CGShieldingWindowLevel is
+  # public and does not match: the private ones have an upper-case letter after CGS.
+  local undefined_symbols private_symbols
+  undefined_symbols="$(nm -u "$store_binary")" \
+    || { echo "error: nm failed on $store_binary" >&2; exit 1; }
+  private_symbols="$(printf '%s\n' "$undefined_symbols" | grep -E '^_(CGS|SLS)[A-Z]' || true)"
+  [ -z "$private_symbols" ] \
+    || { echo "error: $store_binary references private API:" >&2; echo "$private_symbols" >&2; exit 1; }
   package_app_with_binary "$STORE_BUNDLE_ID" "$source_dir" "$store_binary" "$version" "$STORE_MIN_MACOS" "$out_dir" "$@"
   out_dir="$(absolute "$out_dir")"
   # Before any signing, so the seal covers it.
