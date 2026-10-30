@@ -376,6 +376,34 @@ mod tests {
     }
 
     #[test]
+    fn a_logo_only_letter_does_not_take_its_recipient_for_the_sender() {
+        let text = "Max Mustermann\nMusterweg 3\n12345 Musterstadt\n\n\
+            Rechnung 4711\nPosition 1\nPosition 2\nPosition 3\nPosition 4\nPosition 5\n\n\
+            Stadtwerke Musterstadt GmbH, Hauptstraße 1, 12345 Musterstadt\n";
+
+        let sender = detect_sender(text, &SenderAliases::default(), &[])
+            .sender
+            .unwrap();
+
+        assert_eq!(sender.name, "Stadtwerke Musterstadt GmbH");
+        assert_eq!(sender.source, SenderSource::Footer);
+    }
+
+    #[test]
+    fn a_letterhead_block_with_a_phone_line_is_still_the_sender_not_the_recipient() {
+        let text =
+            "Stadtwerke Musterstadt GmbH\nHauptstraße 1\n12345 Musterstadt\nTel. 0123 456\n\n\
+            Max Mustermann GmbH\nMusterweg 3\n54321 Andernorts\n\nRechnung 4711\n";
+
+        let sender = detect_sender(text, &SenderAliases::default(), &[])
+            .sender
+            .unwrap();
+
+        assert_eq!(sender.name, "Stadtwerke Musterstadt GmbH");
+        assert_eq!(sender.source, SenderSource::Letterhead);
+    }
+
+    #[test]
     fn an_authority_word_must_be_a_whole_word() {
         let street = "Bäckerei Schmidt\nStadtweg 12, 12345 Ort\n";
         assert_eq!(
