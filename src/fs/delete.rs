@@ -3,6 +3,8 @@
 //! Nothing here is async; the caller runs it on the blocking pool, one entry
 //! at a time, so the job can be stopped between two entries.
 
+#[cfg(not(target_os = "macos"))]
+use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -114,7 +116,7 @@ impl Trash for OsTrash {
             .map_err(|err| err.to_string())?
             .into_iter()
             .map(|item| TrashedItem {
-                original: item.original_path(),
+                original: recycle_bin_original(&item.id).unwrap_or_else(|| item.original_path()),
                 deleted_at: item.time_deleted,
                 key: item.id,
             })
@@ -147,6 +149,60 @@ impl Trash for OsTrash {
             Err(err) => Err(RestoreError::Failed(err.to_string())),
         }
     }
+}
+
+/// The Windows listing takes the name from the shell's relative display name,
+/// which loses the extension while Explorer hides extensions: `a.txt` would be
+/// restored as `a`. The `$I` file next to the trashed `$R` file holds the true
+/// original path.
+#[cfg(windows)]
+fn recycle_bin_original(id: &OsStr) -> Option<PathBuf> {
+    use std::os::windows::ffi::OsStringExt as _;
+
+    let trashed = Path::new(id);
+    let name = trashed.file_name()?.to_str()?;
+    let rest = name.strip_prefix("$R")?;
+    let bytes = std::fs::read(trashed.with_file_name(format!("$I{rest}"))).ok()?;
+    let units = recycle_info_original(&bytes)?;
+    Some(PathBuf::from(OsString::from_wide(&units)))
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+fn recycle_bin_original(_id: &OsStr) -> Option<PathBuf> {
+    None
+}
+
+/// The original path, as UTF-16 units, from the bytes of a `$I` file of the
+/// Windows Recycle Bin. Little-endian: version (u64, 1 or 2), size, deletion
+/// time, then the path. Version 1 has a fixed 260 units; version 2 gives the
+/// number of units, null included, in a u32.
+// reason: the `$I` file is little-endian by definition, whatever the CPU
+#[allow(clippy::little_endian_bytes)]
+#[cfg(any(windows, test))]
+fn recycle_info_original(bytes: &[u8]) -> Option<Vec<u16>> {
+    const PATH_UNITS_V1: usize = 260;
+    let version = u64::from_le_bytes(bytes.get(0..8)?.try_into().ok()?);
+    let (start, unit_count) = match version {
+        1 => (24, PATH_UNITS_V1),
+        2 => {
+            let count = u32::from_le_bytes(bytes.get(24..28)?.try_into().ok()?);
+            (28, usize::try_from(count).ok()?)
+        }
+        _ => return None,
+    };
+    let raw = bytes.get(start..)?.get(..unit_count.checked_mul(2)?)?;
+    let units: Vec<u16> = raw
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| u16::from_le_bytes(*pair))
+        .take_while(|unit| *unit != 0)
+        .collect();
+    // Without a terminating null inside the stated length the record is cut off.
+    if units.is_empty() || units.len() == unit_count {
+        return None;
+    }
+    Some(units)
 }
 
 /// The three calls the journal needs, through `NSFileManager` directly. The
@@ -315,6 +371,66 @@ mod tests {
         FileManagerBackend.move_back(&from, &free).unwrap();
         assert_eq!(std::fs::read_to_string(&free).unwrap(), "moving");
         assert!(!from.exists());
+    }
+
+    // reason: the `$I` file is little-endian by definition, whatever the CPU
+    #[allow(clippy::little_endian_bytes)]
+    fn info_bytes(version: u64, count_field: Option<u32>, path: &str, units: usize) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend(version.to_le_bytes());
+        let size_and_time: [u64; 2] = [0, 0];
+        bytes.extend(size_and_time.iter().flat_map(|field| field.to_le_bytes()));
+        if let Some(count) = count_field {
+            bytes.extend(count.to_le_bytes());
+        }
+        let mut written: Vec<u16> = path.encode_utf16().collect();
+        written.resize(units, 0);
+        bytes.extend(written.iter().flat_map(|unit| unit.to_le_bytes()));
+        bytes
+    }
+
+    #[test]
+    fn a_version_2_recycle_record_gives_the_path() {
+        let path = r"C:\Users\a\work\alpha.txt";
+        let units = path.encode_utf16().count() + 1;
+        let bytes = info_bytes(2, Some(units as u32), path, units);
+        assert_eq!(
+            recycle_info_original(&bytes),
+            Some(path.encode_utf16().collect())
+        );
+    }
+
+    #[test]
+    fn a_version_1_recycle_record_gives_the_path() {
+        let path = r"C:\work\b.txt";
+        let bytes = info_bytes(1, None, path, 260);
+        assert_eq!(
+            recycle_info_original(&bytes),
+            Some(path.encode_utf16().collect())
+        );
+    }
+
+    #[test]
+    fn a_recycle_record_shorter_than_it_says_is_refused() {
+        let path = r"C:\work\c.txt";
+        let units = path.encode_utf16().count() + 1;
+        let mut bytes = info_bytes(2, Some(units as u32 + 5), path, units);
+        assert_eq!(recycle_info_original(&bytes), None);
+        bytes.truncate(26);
+        assert_eq!(recycle_info_original(&bytes), None);
+        assert_eq!(recycle_info_original(&info_bytes(1, None, path, 100)), None);
+    }
+
+    #[test]
+    fn a_recycle_record_of_an_unknown_version_is_refused() {
+        let bytes = info_bytes(3, Some(4), "abc", 4);
+        assert_eq!(recycle_info_original(&bytes), None);
+    }
+
+    #[test]
+    fn a_recycle_record_without_a_path_is_refused() {
+        assert_eq!(recycle_info_original(&info_bytes(2, Some(3), "", 3)), None);
+        assert_eq!(recycle_info_original(&info_bytes(1, None, "", 260)), None);
     }
 
     #[test]
