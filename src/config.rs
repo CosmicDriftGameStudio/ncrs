@@ -2619,7 +2619,7 @@ mod tests {
             .file_list_tags
             .groups
             .is_empty());
-        assert!(from_text("[file_list_tags]\nmore = 1\n").is_err());
+        from_text("[file_list_tags]\nmore = 1\n").unwrap_err();
     }
 
     #[test]
