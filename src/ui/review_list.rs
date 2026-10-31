@@ -5,19 +5,22 @@
 //! The text of a document never shows up here as anything but a value in a
 //! field the user can read and change.
 
+use std::ops::Range;
 use std::path::Path;
 
-use iced::widget::{column, row, Space};
+use iced::widget::text::Wrapping;
+use iced::widget::{column, container, rich_text, row, text, Space};
 use iced::{alignment, Element, Length, Size};
-use ncrs_index::{DocumentFields, Field, ReviewReason};
-use ncrs_intake::PatternSource;
+use ncrs_index::{DocumentFields, Field, FieldOrigin, ReviewReason};
+use ncrs_intake::{PatternPart, PatternSource};
 
 use super::document_preview;
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::hermes::{self, Badges};
-use super::kit::{self, dim, error_line, form_row, paragraph, Columns, Tone};
-use super::theme::spacing;
+use super::kit::{self, dim, error_line, paragraph, Columns, Tone};
+use super::picker::highlight_spans;
+use super::theme::{font_size, size, spacing};
 use crate::app::fill_template;
 use crate::filing_setup::shown_path;
 use crate::filing_work::target_of;
@@ -419,11 +422,65 @@ fn list<'a>(
     )
 }
 
+/// How the form shows the origin of a field: where the value came from, or
+/// that the user changed it since. Nothing for a value of unknown origin.
+pub fn origin_text(origin: &FieldOrigin, edited: bool, lang: Language) -> Option<String> {
+    if edited {
+        return Some(lang.text(Msg::ReviewListOriginChanged).to_owned());
+    }
+    match origin {
+        FieldOrigin::Unknown => None,
+        FieldOrigin::Rule(_) => Some(lang.text(Msg::ReviewListOriginRule).to_owned()),
+        FieldOrigin::Ai { confidence_percent } => Some(fill_template(
+            lang.text(Msg::ReviewListOriginAi),
+            &[("{percent}", &confidence_percent.to_string())],
+        )),
+        FieldOrigin::Manual => Some(lang.text(Msg::ReviewListOriginManual).to_owned()),
+        FieldOrigin::Condition { kind, value } => Some(fill_template(
+            lang.text(Msg::ReviewListTaxContextFromCondition),
+            &[
+                ("{kind}", lang.text(kit::condition_kind_name(*kind))),
+                ("{value}", value),
+            ],
+        )),
+    }
+}
+
+fn group_heading<'a>(heading: Msg, lang: Language, palette: &Palette) -> Element<'a, Message> {
+    text(lang.text(heading))
+        .size(font_size::SMALL)
+        .color(palette.dim_text)
+        .into()
+}
+
+/// A label with the origin of its value below, and the control on the right.
+fn field_row<'a>(
+    label: &str,
+    origin_line: Option<String>,
+    control: Element<'a, Message>,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let mut names = column![paragraph(label.to_owned(), palette)].spacing(spacing::XS / 2.0);
+    if let Some(line) = origin_line {
+        names = names.push(dim(line, palette));
+    }
+    row![
+        container(names).width(Length::Fill),
+        container(control)
+            .width(size::CONTROL_WIDTH)
+            .align_x(alignment::Horizontal::Right),
+    ]
+    .spacing(spacing::XL)
+    .align_y(alignment::Vertical::Center)
+    .into()
+}
+
+/// The fields in groups: who, what, when, where.
 fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element<'a, Message> {
     let values = state.form();
-    let text_field = |field: FormField, id: &'static str, value: &'a str| {
+    let text_field = |field: FormField, id: &'static str, hint: Option<Msg>, value: &'a str| {
         kit::text_field(
-            "",
+            hint.map_or("", |message| lang.text(message)),
             value,
             id,
             Some(move |typed| send(ReviewListMessage::FieldChanged(field, typed))),
@@ -431,14 +488,9 @@ fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element
             palette,
         )
     };
-    let row_of = |label: Msg, hint: Option<Msg>, control: Element<'a, Message>| {
-        form_row(
-            lang.text(label),
-            None,
-            hint.map(|message| lang.text(message)),
-            control,
-            palette,
-        )
+    let origin_of = |field: Field| {
+        let item = state.selected()?;
+        origin_text(&item.origins.of(field), state.is_edited(field), lang)
     };
     let tax_choices = kit::tax_context_choices(
         lang.text(Msg::ReviewListTaxOpen),
@@ -458,100 +510,156 @@ fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element
         .iter()
         .position(|(_, choice)| *choice == values.tax_context)
         .unwrap_or_default();
-    let assigned_by = state
-        .selected()
-        .and_then(|item| item.tax_context_assigned_by.as_ref())
-        .map(|assigned_by| {
-            fill_template(
-                lang.text(Msg::ReviewListTaxContextFromCondition),
-                &[
-                    (
-                        "{kind}",
-                        lang.text(kit::condition_kind_name(assigned_by.kind)),
-                    ),
-                    ("{value}", &assigned_by.value),
-                ],
-            )
-        });
     column![
-        row_of(
-            Msg::ReviewListFieldSender,
-            None,
-            text_field(FormField::Sender, SENDER_ID, &values.sender),
+        group_heading(Msg::ReviewListGroupWho, lang, palette),
+        field_row(
+            lang.text(Msg::ReviewListFieldSender),
+            origin_of(Field::Sender),
+            text_field(FormField::Sender, SENDER_ID, None, &values.sender),
+            palette,
         ),
-        row_of(
-            Msg::ReviewListFieldKind,
-            None,
-            text_field(FormField::Kind, KIND_ID, &values.kind),
+        group_heading(Msg::ReviewListGroupWhat, lang, palette),
+        field_row(
+            lang.text(Msg::ReviewListFieldKind),
+            origin_of(Field::Kind),
+            text_field(FormField::Kind, KIND_ID, None, &values.kind),
+            palette,
         ),
-        form_row(
+        field_row(
+            lang.text(Msg::ReviewListFieldNumber),
+            origin_of(Field::Number),
+            text_field(FormField::Number, NUMBER_ID, None, &values.number),
+            palette,
+        ),
+        field_row(
+            lang.text(Msg::ReviewListFieldAmount),
+            origin_of(Field::Amount),
+            text_field(
+                FormField::Amount,
+                AMOUNT_ID,
+                Some(Msg::ReviewListHintAmount),
+                &values.amount,
+            ),
+            palette,
+        ),
+        field_row(
+            lang.text(Msg::ReviewListFieldTags),
+            None,
+            text_field(
+                FormField::Tags,
+                TAGS_ID,
+                Some(Msg::ReviewListHintTags),
+                &values.tags,
+            ),
+            palette,
+        ),
+        group_heading(Msg::ReviewListGroupWhen, lang, palette),
+        field_row(
+            lang.text(Msg::ReviewListFieldDate),
+            origin_of(Field::Date),
+            text_field(
+                FormField::Date,
+                DATE_ID,
+                Some(Msg::ReviewListHintDate),
+                &values.date,
+            ),
+            palette,
+        ),
+        group_heading(Msg::ReviewListGroupWhere, lang, palette),
+        field_row(
             lang.text(Msg::ReviewListFieldTaxContext),
-            None,
-            assigned_by.as_deref(),
+            origin_of(Field::TaxContext),
             kit::dropdown(&tax_options, selected_tax, true, palette),
             palette,
         ),
-        row_of(
-            Msg::ReviewListFieldDate,
-            Some(Msg::ReviewListHintDate),
-            text_field(FormField::Date, DATE_ID, &values.date),
-        ),
-        row_of(
-            Msg::ReviewListFieldNumber,
+        field_row(
+            lang.text(Msg::ReviewListFieldPattern),
             None,
-            text_field(FormField::Number, NUMBER_ID, &values.number),
-        ),
-        row_of(
-            Msg::ReviewListFieldAmount,
-            Some(Msg::ReviewListHintAmount),
-            text_field(FormField::Amount, AMOUNT_ID, &values.amount),
-        ),
-        row_of(
-            Msg::ReviewListFieldTags,
-            Some(Msg::ReviewListHintTags),
-            text_field(FormField::Tags, TAGS_ID, &values.tags),
-        ),
-        row_of(
-            Msg::ReviewListFieldPattern,
-            Some(Msg::ReviewListHintPattern),
-            text_field(FormField::Pattern, PATTERN_ID, &values.pattern),
+            text_field(FormField::Pattern, PATTERN_ID, None, &values.pattern),
+            palette,
         ),
     ]
+    .spacing(spacing::XS)
     .into()
 }
 
+/// "Will be filed as" with the path; the parts of it that are values of a
+/// field in the accent color. Below it the placeholders a pattern may use.
 fn target_line<'a>(
     state: &ReviewList,
     root: PreviewRoot<'_>,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    if let Some(relative) = state.preview() {
-        let source = state
-            .selected()
-            .map(|item| item.path.as_path())
-            .unwrap_or_else(|| Path::new(""));
-        let shown = match root.archive {
-            Some(archive) => shown_path(&target_of(archive, &relative, source), root.home),
-            None => target_of(Path::new(""), &relative, source)
-                .display()
-                .to_string(),
-        };
-        return paragraph(
-            fill_template(lang.text(Msg::ReviewListPreview), &[("{path}", &shown)]),
-            palette,
-        );
-    }
-    match state.missing_field() {
-        Some(field) => dim(
-            fill_template(
-                lang.text(Msg::ReviewListPreviewMissingField),
-                &[("{field}", lang.text(field_name(field)))],
+    let hint = dim(lang.text(Msg::ReviewListHintPattern), palette);
+    let line = match shown_target(state, root) {
+        Some((shown, marked)) => {
+            let template = lang.text(Msg::ReviewListPreview);
+            let (before, after) = template.split_once("{path}").unwrap_or((template, ""));
+            let path = rich_text(highlight_spans(
+                &shown,
+                &marked,
+                false,
+                palette.text,
+                palette,
+            ))
+            .size(font_size::BODY)
+            .wrapping(Wrapping::WordOrGlyph)
+            .width(Length::Fill);
+            let mut line =
+                row![paragraph(before.trim_end().to_owned(), palette), path].spacing(spacing::XS);
+            if !after.trim().is_empty() {
+                line = line.push(paragraph(after.trim_start().to_owned(), palette));
+            }
+            line.into()
+        }
+        None => match state.missing_field() {
+            Some(field) => dim(
+                fill_template(
+                    lang.text(Msg::ReviewListPreviewMissingField),
+                    &[("{field}", lang.text(field_name(field)))],
+                ),
+                palette,
             ),
-            palette,
-        ),
-        None => dim(lang.text(Msg::ReviewListPreviewNone), palette),
+            None => dim(lang.text(Msg::ReviewListPreviewNone), palette),
+        },
+    };
+    column![line, hint].spacing(spacing::XS).into()
+}
+
+/// The path the document would be filed under as shown, and the places in it
+/// that are values of a field.
+fn shown_target(state: &ReviewList, root: PreviewRoot<'_>) -> Option<(String, Vec<Range<usize>>)> {
+    let relative = state.preview()?;
+    let parts = state.preview_parts()?;
+    let source = state
+        .selected()
+        .map(|item| item.path.as_path())
+        .unwrap_or_else(|| Path::new(""));
+    let tail = target_of(Path::new(""), &relative, source)
+        .display()
+        .to_string();
+    let shown = match root.archive {
+        Some(archive) => shown_path(&target_of(archive, &relative, source), root.home),
+        None => tail.clone(),
+    };
+    let marked = path_ranges(&parts, shown.len().saturating_sub(tail.len()));
+    Some((shown, marked))
+}
+
+/// The places in the shown path that are values of a field; `offset` is where
+/// the first part starts in it.
+fn path_ranges(parts: &[PatternPart], offset: usize) -> Vec<Range<usize>> {
+    let mut at = offset;
+    let mut ranges = Vec::new();
+    for part in parts {
+        let end = at + part.text.len();
+        if part.field.is_some() {
+            ranges.push(at..end);
+        }
+        at = end;
     }
+    ranges
 }
 
 fn buttons<'a>(
@@ -784,3 +892,109 @@ pub fn field_id(field: FormField) -> &'static str {
 
 /// The id of the field that takes the focus when the form opens.
 pub const FIRST_FIELD_ID: &str = SENDER_ID;
+
+// reason: a failing assertion is the signal in a test
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod tests {
+    use ncrs_index::ConditionKind;
+
+    use super::*;
+
+    #[test]
+    fn every_origin_has_its_words_in_both_languages() {
+        let rule = FieldOrigin::Rule(None);
+        let ai = FieldOrigin::Ai {
+            confidence_percent: 82,
+        };
+        let condition = FieldOrigin::Condition {
+            kind: ConditionKind::Recipient,
+            value: "Firma A GmbH".to_owned(),
+        };
+        let texts = |lang: Language| {
+            [
+                &FieldOrigin::Unknown,
+                &rule,
+                &ai,
+                &FieldOrigin::Manual,
+                &condition,
+            ]
+            .map(|origin| origin_text(origin, false, lang))
+        };
+        assert_eq!(
+            texts(Language::English),
+            [
+                None,
+                Some("From a rule".to_owned()),
+                Some("AI, 82 % sure".to_owned()),
+                Some("By hand".to_owned()),
+                Some("Tax context from condition (Recipient: Firma A GmbH)".to_owned()),
+            ]
+        );
+        assert_eq!(
+            texts(Language::German)[1..3],
+            [
+                Some("Aus einer Regel".to_owned()),
+                Some("KI, 82 % sicher".to_owned())
+            ]
+        );
+    }
+
+    #[test]
+    fn a_value_the_user_changed_says_so_whatever_its_origin() {
+        for origin in [
+            FieldOrigin::Unknown,
+            FieldOrigin::Rule(None),
+            FieldOrigin::Manual,
+        ] {
+            assert_eq!(
+                origin_text(&origin, true, Language::English).as_deref(),
+                Some("Changed by hand")
+            );
+        }
+    }
+
+    #[test]
+    fn the_filed_as_path_marks_the_values_of_the_fields_in_it() {
+        let list = crate::review_list::tests::loaded_list();
+        let root = PreviewRoot {
+            archive: Some(Path::new("/home/me/Archive")),
+            home: Path::new("/home/me"),
+        };
+        let (shown, marked) = shown_target(&list, root).unwrap();
+        assert_eq!(
+            shown,
+            ["~", "Archive", "Company A", "2024-03-09_invoice.pdf"]
+                .join(std::path::MAIN_SEPARATOR_STR)
+        );
+        let texts: Vec<&str> = marked.into_iter().map(|range| &shown[range]).collect();
+        assert_eq!(texts, ["Company A", "2024-03-09", "invoice"]);
+    }
+
+    #[test]
+    fn the_marked_places_of_a_path_are_the_values_of_fields() {
+        let part = |text: &str, field: Option<Field>| PatternPart {
+            text: text.to_owned(),
+            field,
+        };
+        let parts = [
+            part("Company A", Some(Field::Sender)),
+            part("/", None),
+            part("2024-03-09", Some(Field::Date)),
+            part("_", None),
+            part("invoice", Some(Field::Kind)),
+        ];
+        let shown = "~/Archive/Company A/2024-03-09_invoice.pdf";
+        let offset = shown.find("Company A").unwrap();
+        let marked: Vec<&str> = path_ranges(&parts, offset)
+            .into_iter()
+            .map(|range| &shown[range])
+            .collect();
+        assert_eq!(marked, ["Company A", "2024-03-09", "invoice"]);
+    }
+}

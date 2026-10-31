@@ -3,9 +3,12 @@
 //! no messages, so any page can show it.
 
 use iced::widget::text::Wrapping;
-use iced::widget::{column, container, image, text, Column};
+use std::ops::Range;
+
+use iced::widget::{column, container, image, rich_text, text, Column};
 use iced::{ContentFit, Element, Length};
 
+use super::picker::highlight_spans;
 use super::theme::{self, font_size, spacing};
 use crate::app::fill_template;
 use crate::document_preview::{DocumentPreview, PreviewContent, PreviewImage};
@@ -36,8 +39,12 @@ pub fn view<'a, M: 'a>(
                 ],
             )),
         ),
-        Some(PreviewContent::Text { excerpt, truncated }) => (
-            excerpt_lines(excerpt, palette),
+        Some(PreviewContent::Text {
+            excerpt,
+            truncated,
+            highlights,
+        }) => (
+            excerpt_lines(excerpt, highlights, palette),
             Some(
                 lang.text(if *truncated {
                     Msg::DocumentPreviewCaptionTextShortened
@@ -112,13 +119,42 @@ fn note<'a, M: 'a>(content: impl text::IntoFragment<'a>, palette: &Palette) -> E
     .into()
 }
 
-fn excerpt_lines<'a, M: 'a>(excerpt: &'a str, palette: &Palette) -> Element<'a, M> {
-    let lines = excerpt.lines().map(|line| {
-        text(if line.is_empty() { " " } else { line })
+/// The lines of the excerpt, the highlighted places drawn in the accent color.
+fn excerpt_lines<'a, M: 'a>(
+    excerpt: &'a str,
+    highlights: &[Range<usize>],
+    palette: &Palette,
+) -> Element<'a, M> {
+    let mut line_start = 0;
+    let mut lines = Vec::new();
+    for line in excerpt.split('\n') {
+        let line_end = line_start + line.len();
+        let in_line: Vec<Range<usize>> = highlights
+            .iter()
+            .filter(|range| range.start < line_end && range.end > line_start)
+            .map(|range| {
+                range.start.max(line_start) - line_start..range.end.min(line_end) - line_start
+            })
+            .collect();
+        lines.push(if line.is_empty() {
+            text(" ")
+                .size(font_size::BODY)
+                .color(palette.text)
+                .wrapping(Wrapping::Word)
+                .into()
+        } else {
+            rich_text(highlight_spans(
+                line,
+                &in_line,
+                false,
+                palette.text,
+                palette,
+            ))
             .size(font_size::BODY)
-            .color(palette.text)
             .wrapping(Wrapping::Word)
             .into()
-    });
+        });
+        line_start = line_end + 1;
+    }
     Column::with_children(lines).into()
 }

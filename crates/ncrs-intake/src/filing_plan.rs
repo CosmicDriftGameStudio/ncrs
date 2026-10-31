@@ -528,6 +528,47 @@ pub fn render_pattern(source: &str, fields: &DocumentFields) -> Option<PathBuf> 
         .filter(|path| stays_below(path))
 }
 
+/// A piece of a rendered filing path: the folder separators and the literal
+/// text of the pattern have no field, a value filled in has the field it is
+/// from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PatternPart {
+    pub text: String,
+    pub field: Option<Field>,
+}
+
+/// [`render_pattern`], in the pieces the path is made of; their texts joined
+/// are the path.
+pub fn render_pattern_parts(source: &str, fields: &DocumentFields) -> Option<Vec<PatternPart>> {
+    let components = Pattern::parse(source)?.render_components(fields)?;
+    if !stays_below(&path_of(&components)) {
+        return None;
+    }
+    let mut parts = Vec::new();
+    for (position, component) in components.into_iter().enumerate() {
+        if position > 0 {
+            parts.push(PatternPart {
+                text: std::path::MAIN_SEPARATOR_STR.to_owned(),
+                field: None,
+            });
+        }
+        parts.extend(component);
+    }
+    Some(parts)
+}
+
+fn path_of(components: &[Vec<PatternPart>]) -> PathBuf {
+    components
+        .iter()
+        .map(|component| {
+            component
+                .iter()
+                .map(|part| part.text.as_str())
+                .collect::<String>()
+        })
+        .collect()
+}
+
 /// The order fields are asked for and reported in.
 pub const FIELD_ORDER: [Field; 6] = Field::ALL;
 
@@ -687,18 +728,29 @@ impl Pattern {
 
     /// `None` when a value is missing.
     fn render(&self, fields: &DocumentFields) -> Option<PathBuf> {
-        let mut path = PathBuf::new();
-        for component in &self.components {
-            let mut name = String::new();
-            for token in component {
-                match token {
-                    Token::Literal(literal) => name.push_str(literal),
-                    Token::Placeholder(placeholder) => name.push_str(&placeholder.value(fields)?),
-                }
-            }
-            path.push(name);
-        }
-        Some(path)
+        self.render_components(fields)
+            .map(|components| path_of(&components))
+    }
+
+    fn render_components(&self, fields: &DocumentFields) -> Option<Vec<Vec<PatternPart>>> {
+        self.components
+            .iter()
+            .map(|component| {
+                component
+                    .iter()
+                    .map(|token| match token {
+                        Token::Literal(literal) => Some(PatternPart {
+                            text: literal.clone(),
+                            field: None,
+                        }),
+                        Token::Placeholder(placeholder) => Some(PatternPart {
+                            text: placeholder.value(fields)?,
+                            field: Some(placeholder.field()),
+                        }),
+                    })
+                    .collect()
+            })
+            .collect()
     }
 }
 
@@ -1863,6 +1915,49 @@ mod tests {
                 .and_then(|assigned| assigned.reason)
                 .map(|reason| (reason.kind, reason.value)),
             Some((ConditionKind::Recipient, "Firma A GmbH".to_owned()))
+        );
+    }
+
+    #[test]
+    fn the_parts_of_a_path_mark_the_fields_it_is_made_of() {
+        let fields = DocumentFields {
+            sender: Some("Company A".to_owned()),
+            kind: Some("invoice".to_owned()),
+            date: NaiveDate::from_ymd_opt(2024, 3, 5),
+            ..DocumentFields::default()
+        };
+        let parts = render_pattern_parts("{sender}/{date}_{kind}", &fields).unwrap();
+        let separator = std::path::MAIN_SEPARATOR_STR;
+        let shown: Vec<(&str, Option<Field>)> = parts
+            .iter()
+            .map(|part| (part.text.as_str(), part.field))
+            .collect();
+        assert_eq!(
+            shown,
+            [
+                ("Company A", Some(Field::Sender)),
+                (separator, None),
+                ("2024-03-05", Some(Field::Date)),
+                ("_", None),
+                ("invoice", Some(Field::Kind)),
+            ]
+        );
+        let joined: String = parts.iter().map(|part| part.text.as_str()).collect();
+        assert_eq!(
+            Some(PathBuf::from(joined)),
+            render_pattern("{sender}/{date}_{kind}", &fields)
+        );
+    }
+
+    #[test]
+    fn parts_are_refused_where_the_path_is() {
+        assert_eq!(
+            render_pattern_parts("{sender}", &DocumentFields::default()),
+            None
+        );
+        assert_eq!(
+            render_pattern_parts("{nonsense}", &DocumentFields::default()),
+            None
         );
     }
 }

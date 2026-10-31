@@ -10,7 +10,8 @@ use iced::mouse::ScrollDelta;
 
 use ncrs_index::{DocumentFields, DocumentId, Field, ReviewEntryId, TaxContext, TaxContextEntry};
 use ncrs_intake::{
-    choose_pattern, default_pattern_for, missing_field, render_pattern, PatternSource,
+    choose_pattern, default_pattern_for, missing_field, render_pattern, render_pattern_parts,
+    PatternPart, PatternSource,
 };
 
 use crate::document_preview::{DocumentPreview, PreviewContent, PreviewRequest};
@@ -315,7 +316,7 @@ impl ReviewList {
     /// is not the one the preview shows or waits for.
     pub fn preview_request(&mut self) -> Option<PreviewRequest> {
         match self.rows.get(self.cursor) {
-            Some(item) => self.document_preview.request(&item.path),
+            Some(item) => self.document_preview.request(&item.path, &item.passages),
             None => {
                 self.document_preview.clear();
                 None
@@ -342,6 +343,30 @@ impl ReviewList {
     pub fn preview(&self) -> Option<PathBuf> {
         let fields = self.form.fields().ok()?;
         render_pattern(self.form.pattern.trim(), &fields)
+    }
+
+    /// [`Self::preview`] in the pieces the path is made of, to show which come
+    /// from which field.
+    pub fn preview_parts(&self) -> Option<Vec<PatternPart>> {
+        let fields = self.form.fields().ok()?;
+        render_pattern_parts(self.form.pattern.trim(), &fields)
+    }
+
+    /// The user changed what the form holds for `field` since the document
+    /// was loaded. Tags and the pattern have no origin to be changed from.
+    pub fn is_edited(&self, field: Field) -> bool {
+        let Some(item) = self.selected() else {
+            return false;
+        };
+        let loaded = Form::of(item, self.custom_default_pattern.as_deref());
+        match field {
+            Field::Sender => self.form.sender != loaded.sender,
+            Field::Kind => self.form.kind != loaded.kind,
+            Field::TaxContext => self.form.tax_context != loaded.tax_context,
+            Field::Date => self.form.date != loaded.date,
+            Field::Number => self.form.number != loaded.number,
+            Field::Amount => self.form.amount != loaded.amount,
+        }
     }
 
     /// The field the pattern needs and the form leaves empty, if the pattern
@@ -668,6 +693,8 @@ pub mod tests {
             },
             proposed_pattern: Some("{sender}/{date}_{kind}".to_owned()),
             tax_context_assigned_by: None,
+            origins: ncrs_index::FieldOrigins::default(),
+            passages: Vec::new(),
         }
     }
 
@@ -728,6 +755,13 @@ pub mod tests {
             kind: ConditionKind::Recipient,
             value: "Firma A GmbH".to_owned(),
         });
+        assigned.origins = ncrs_index::FieldOrigins::default().with(
+            Field::TaxContext,
+            ncrs_index::FieldOrigin::Condition {
+                kind: ConditionKind::Recipient,
+                value: "Firma A GmbH".to_owned(),
+            },
+        );
         let mut none_fit = item(second, "scan-2.pdf", "Agency B");
         none_fit.reason = ReviewReason::NoTaxContextMatches;
         none_fit.fields.tax_context = None;
@@ -737,6 +771,38 @@ pub mod tests {
         let mut list = ReviewList::new();
         list.set_tax_contexts(stored_tax_contexts());
         list.loaded(vec![assigned, none_fit, several_fit]);
+        list
+    }
+
+    /// One document whose fields come from a rule, the AI, the user and the
+    /// condition of a tax context, with the passages of its text that led there.
+    pub fn origins_list() -> ReviewList {
+        use ncrs_index::{ConditionKind, FieldOrigin, FieldOrigins};
+
+        let [one, _] = <[_; 2]>::try_from(ids()).unwrap();
+        let mut origin_item = item(one, "scan-1.pdf", "Company A");
+        origin_item.fields.number = Some("4711".to_owned());
+        origin_item.origins = FieldOrigins::default()
+            .with(Field::Sender, FieldOrigin::Rule(None))
+            .with(
+                Field::Kind,
+                FieldOrigin::Ai {
+                    confidence_percent: 82,
+                },
+            )
+            .with(Field::Number, FieldOrigin::Manual)
+            .with(Field::Date, FieldOrigin::Rule(None))
+            .with(
+                Field::TaxContext,
+                FieldOrigin::Condition {
+                    kind: ConditionKind::Recipient,
+                    value: "Firma A GmbH".to_owned(),
+                },
+            );
+        origin_item.passages = vec!["Company A".to_owned(), "4711".to_owned()];
+        let mut list = ReviewList::new();
+        list.set_tax_contexts(stored_tax_contexts());
+        list.loaded(vec![origin_item]);
         list
     }
 
@@ -870,6 +936,18 @@ pub mod tests {
         list.set_text(FormField::Pattern, "{kind}".to_owned());
         list.set_text(FormField::Number, "1".to_owned());
         assert_eq!(list.form().pattern, "{kind}");
+    }
+
+    #[test]
+    fn a_field_counts_as_edited_once_the_form_differs_from_what_was_loaded() {
+        let mut list = loaded_list();
+        assert!(!list.is_edited(Field::Sender));
+        list.start_edit();
+        list.set_text(FormField::Sender, "Company AX".to_owned());
+        assert!(list.is_edited(Field::Sender));
+        assert!(!list.is_edited(Field::Kind));
+        list.set_text(FormField::Sender, "Company A".to_owned());
+        assert!(!list.is_edited(Field::Sender));
     }
 
     #[test]

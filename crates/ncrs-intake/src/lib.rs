@@ -32,7 +32,7 @@ pub use archive_profile::{
     DocumentPattern,
 };
 pub use classify::{classify, is_image_file, text_is_readable, Skip};
-pub use conditions::word_condition_holds;
+pub use conditions::{condition_match_ranges, word_condition_holds, MAX_MATCH_RANGES};
 pub use default_pattern::{
     choose_pattern, default_pattern_for, ChosenPattern, PatternSource, DEFAULT_PATTERNS,
 };
@@ -42,15 +42,15 @@ pub use extract::{
 };
 pub use filing_plan::{
     contains_condition_holds, missing_field, pattern_is_valid, plan, planned_field_origin,
-    render_pattern, unknown_placeholder, AssigningCondition, FilingPlan, PlanInput, Planning,
-    TaxContextAssignment, FIELD_ORDER, FILING_PLACEHOLDERS,
+    render_pattern, render_pattern_parts, unknown_placeholder, AssigningCondition, FilingPlan,
+    PatternPart, PlanInput, Planning, TaxContextAssignment, FIELD_ORDER, FILING_PLACEHOLDERS,
 };
 pub use location::{Location, LocationMode};
 pub use ocr::{
     install_model, verify_model_bytes, LazyOcrText, OcrModelError, OcrModelFile, OcrText,
     OCR_MODELS_FOLDER, OCR_MODELS_HOST, OCR_MODELS_PROJECT, OCR_MODEL_FILES,
 };
-pub use office::{OfficeText, PlainText};
+pub use office::{extract_text_from_bytes, OfficeText, PlainText};
 pub use reorganisation::{
     plan_reorganisation, PlanFile, PlanRule, ReorganisationInput, DUPLICATES_FOLDER,
     FINDING_PRIORITY,
@@ -69,7 +69,9 @@ pub use sender_detection::{
     detect_sender, AliasOffer, DetectedSender, OwnIdentifiers, SenderDetection, SenderSource,
 };
 pub use stability::{StabilityTracker, STABLE_AFTER};
-pub use take_in::{has_symlink_ancestor_under, hash_path, take_in, Outcome};
+pub use take_in::{
+    has_symlink_ancestor_under, hash_path, open_without_following, take_in, Outcome,
+};
 pub use text::{
     pdfium_library_candidates, pdfium_library_dir, Extracted, ImageTextSource,
     ImageTextWithFallback, PageImage, PdfText, PdfUnavailable, PreviewPage, TextChain, TextError,

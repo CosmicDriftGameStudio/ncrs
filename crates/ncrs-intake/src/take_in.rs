@@ -197,6 +197,11 @@ pub fn has_symlink_ancestor_under(root: &Path, path: &Path) -> Result<bool, Inta
 /// Opens without following a link and without blocking on a FIFO, since the
 /// path may have been swapped since it was looked at.
 fn open_regular(path: &Path) -> Result<File, IntakeError> {
+    open_without_following(path).map_err(IntakeError::io(path))
+}
+
+/// [`open_regular`] with the plain I/O error, for a caller that maps it itself.
+pub fn open_without_following(path: &Path) -> io::Result<File> {
     let mut options = OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
@@ -204,7 +209,7 @@ fn open_regular(path: &Path) -> Result<File, IntakeError> {
         &mut options,
         libc::O_NOFOLLOW | libc::O_NONBLOCK,
     );
-    options.open(path).map_err(IntakeError::io(path))
+    options.open(path)
 }
 
 fn hash_open(file: &mut File, path: &Path) -> Result<ContentHash, IntakeError> {

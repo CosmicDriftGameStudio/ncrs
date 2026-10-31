@@ -320,6 +320,12 @@ impl FieldOrigins {
         self.0.get(&field).cloned().unwrap_or(FieldOrigin::Unknown)
     }
 
+    /// These origins, with `field` coming from `origin`.
+    pub fn with(mut self, field: Field, origin: FieldOrigin) -> Self {
+        self.0.insert(field, origin);
+        self
+    }
+
     /// The fields the user set by hand, in the order of `Field::ALL`.
     pub fn manual_fields(&self) -> Vec<Field> {
         Field::ALL

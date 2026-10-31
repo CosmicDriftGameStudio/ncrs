@@ -3709,6 +3709,54 @@
       "de": "Platzhalter: {year} {month} {day} {date} {sender} {number} {kind} {tax_context}"
     },
     {
+      "key": "review_list.group_who",
+      "context": "Small heading in the review list form above the field about who sent the document.",
+      "en": "Who",
+      "de": "Wer"
+    },
+    {
+      "key": "review_list.group_what",
+      "context": "Small heading in the review list form above the fields about what the document is: kind, number, amount, tags.",
+      "en": "What",
+      "de": "Was"
+    },
+    {
+      "key": "review_list.group_when",
+      "context": "Small heading in the review list form above the field about when the document is dated.",
+      "en": "When",
+      "de": "Wann"
+    },
+    {
+      "key": "review_list.group_where",
+      "context": "Small heading in the review list form above the fields about where the document is filed: tax context and filing pattern.",
+      "en": "Where",
+      "de": "Wo"
+    },
+    {
+      "key": "review_list.origin_rule",
+      "context": "Line under a field in the review list form: the value comes from a rule.",
+      "en": "From a rule",
+      "de": "Aus einer Regel"
+    },
+    {
+      "key": "review_list.origin_ai",
+      "context": "Line under a field in the review list form: the value was read by the AI. Takes the confidence in percent as a number.",
+      "en": "AI, {percent} % sure",
+      "de": "KI, {percent} % sicher"
+    },
+    {
+      "key": "review_list.origin_manual",
+      "context": "Line under a field in the review list form: the user set the value earlier.",
+      "en": "By hand",
+      "de": "Von Hand"
+    },
+    {
+      "key": "review_list.origin_changed",
+      "context": "Line under a field in the review list form: the user changed the value in the form since it was loaded.",
+      "en": "Changed by hand",
+      "de": "Von Hand geändert"
+    },
+    {
       "key": "review_list.preview",
       "context": "Live preview in the review list. Takes the path the document would be filed under.",
       "en": "Will be filed as {path}",

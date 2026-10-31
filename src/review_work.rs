@@ -12,12 +12,14 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono::NaiveDate;
 use ncrs_index::{
-    Amount, BatchKind, Currency, DocumentFields, DocumentId, DocumentStatus, Field, FieldOrigin,
-    IncludeOutcome, Index, IndexError, ReviewEntryId, ReviewReason, SenderAliases,
-    TaxContextConditions, TaxContextEntry,
+    Amount, BatchKind, Condition, ConditionKind, Currency, DocumentFields, DocumentId,
+    DocumentStatus, Field, FieldOrigin, FieldOrigins, IncludeOutcome, Index, IndexError,
+    ReviewEntryId, ReviewReason, Rule, RuleId, SenderAliases, TaxContextConditions,
+    TaxContextEntry,
 };
 use ncrs_intake::{
-    plan, render_pattern, text_is_readable, AssigningCondition, PlanInput, Planning,
+    condition_match_ranges, plan, planned_field_origin, render_pattern, text_is_readable,
+    AssigningCondition, PlanInput, Planning,
 };
 
 use crate::execute::{execute_with, ItemOutcome, SkipReason};
@@ -30,6 +32,10 @@ type IndexSlot = Arc<Mutex<Option<Index>>>;
 pub const PATTERN_DOES_NOT_FIT: &str = "the pattern does not fit the fields";
 const MINOR_UNITS_PER_UNIT: i64 = 100;
 const MINOR_DIGITS: usize = 2;
+/// The passages of a document that led to a field or a rule: how many, and how
+/// long each may be.
+const MAX_PASSAGES: usize = 16;
+const MAX_PASSAGE_CHARS: usize = 200;
 
 /// What is known about the text of a document, derived when the list loads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,6 +71,12 @@ pub struct ReviewItem {
     pub proposed_pattern: Option<String>,
     /// The condition of a tax context that put the document into it.
     pub tax_context_assigned_by: Option<AssigningCondition>,
+    /// Where each field of `fields` comes from: the stored origins, and the
+    /// rule that came closest for what only it filled in.
+    pub origins: FieldOrigins,
+    /// The pieces of the text that led to a field or to the rules concerned,
+    /// to mark them in the preview.
+    pub passages: Vec<String>,
 }
 
 impl ReviewItem {
@@ -267,10 +279,11 @@ fn review_item(
             manual_fields: &manual_fields,
         },
     );
-    let (fields, proposed_pattern) = match planning {
+    let (fields, proposed_pattern, nearest_rule, assignment) = match planning {
         Planning::Review {
             rule: Some(id),
             fields,
+            tax_context_assigned_by,
             ..
         } => (
             fields,
@@ -278,8 +291,12 @@ fn review_item(
                 .iter()
                 .find(|rule| rule.id == id)
                 .map(|rule| rule.spec.filing_pattern.clone()),
+            Some(id),
+            tax_context_assigned_by,
         ),
-        Planning::Review { rule: None, .. } | Planning::Plan(_) => (document.fields, None),
+        Planning::Review { rule: None, .. } | Planning::Plan(_) => {
+            (document.fields.clone(), None, None, None)
+        }
     };
     let tax_context_assigned_by = match origins.of(Field::TaxContext) {
         FieldOrigin::Condition { kind, value } => Some(AssigningCondition { kind, value }),
@@ -288,6 +305,13 @@ fn review_item(
         | FieldOrigin::Ai { .. }
         | FieldOrigin::Manual => None,
     };
+    let effective_origins = match nearest_rule {
+        Some(id) => {
+            with_planned_origins(origins, &document.fields, &fields, id, assignment.as_ref())
+        }
+        None => origins,
+    };
+    let passages = passages_of(rules, &effective_origins, nearest_rule, &fields, &text);
     Ok(ReviewItem {
         entry: entry.id,
         document_id: document.id,
@@ -297,7 +321,92 @@ fn review_item(
         fields,
         proposed_pattern,
         tax_context_assigned_by,
+        origins: effective_origins,
+        passages,
     })
+}
+
+/// The stored origins, but a field only the closest rule filled in (its
+/// planned value is not the stored one) is that rule's.
+fn with_planned_origins(
+    stored: FieldOrigins,
+    stored_fields: &DocumentFields,
+    planned_fields: &DocumentFields,
+    rule: RuleId,
+    assignment: Option<&ncrs_intake::TaxContextAssignment>,
+) -> FieldOrigins {
+    Field::ALL
+        .into_iter()
+        .filter(|field| !same_value(stored_fields, planned_fields, *field))
+        .fold(stored, |origins, field| {
+            let origin = planned_field_origin(field, &FieldOrigin::Rule(Some(rule)), assignment);
+            origins.with(field, origin)
+        })
+}
+
+fn same_value(left: &DocumentFields, right: &DocumentFields, field: Field) -> bool {
+    match field {
+        Field::Sender => left.sender == right.sender,
+        Field::Kind => left.kind == right.kind,
+        Field::TaxContext => left.tax_context == right.tax_context,
+        Field::Date => left.date == right.date,
+        Field::Number => left.number == right.number,
+        Field::Amount => left.amount == right.amount,
+    }
+}
+
+/// What in `text` led to the fields and to the rules concerned: the matches
+/// of the conditions of the closest rule and of the rules that gave a field,
+/// and the sender and number where a rule or the AI read them.
+fn passages_of(
+    rules: &[Rule],
+    origins: &FieldOrigins,
+    nearest_rule: Option<RuleId>,
+    fields: &DocumentFields,
+    text: &str,
+) -> Vec<String> {
+    let mut rule_ids: Vec<RuleId> = nearest_rule.into_iter().collect();
+    for field in Field::ALL {
+        if let FieldOrigin::Rule(Some(id)) = origins.of(field) {
+            if !rule_ids.contains(&id) {
+                rule_ids.push(id);
+            }
+        }
+    }
+    let rule_conditions = rule_ids
+        .iter()
+        .filter_map(|id| rules.iter().find(|rule| rule.id == *id))
+        .flat_map(|rule| rule.spec.conditions.list.iter().cloned());
+    let read_values = [
+        (Field::Sender, &fields.sender),
+        (Field::Number, &fields.number),
+    ]
+    .into_iter()
+    .filter(|(field, _)| {
+        matches!(
+            origins.of(*field),
+            FieldOrigin::Rule(_) | FieldOrigin::Ai { .. }
+        )
+    })
+    .filter_map(|(_, value)| value.as_deref())
+    .map(|value| Condition::new(ConditionKind::Word, value));
+
+    let mut passages: Vec<String> = Vec::new();
+    for condition in rule_conditions.chain(read_values) {
+        for range in condition_match_ranges(&condition, text) {
+            let Some(found) = text.get(range) else {
+                continue;
+            };
+            let passage: String = found.trim().chars().take(MAX_PASSAGE_CHARS).collect();
+            if !passage.is_empty() && !passages.contains(&passage) {
+                passages.push(passage);
+            }
+            if passages.len() >= MAX_PASSAGES {
+                return passages;
+            }
+        }
+    }
+    passages
 }
 
 /// The review of one file, for the status bar: how its text stands and where
@@ -818,6 +927,70 @@ mod tests {
             })
         );
         assert_eq!(assigned_by(manual), None);
+    }
+
+    #[test]
+    fn a_rule_that_matches_the_text_gives_its_passages_and_the_fields_it_filled() {
+        let setup = Setup::new();
+        let document = setup.in_review("rule.pdf");
+        let rule = setup.with_index(|index| {
+            index
+                .set_document_text(document, "Invoice 4711\nfrom COMPANY A Ltd")
+                .unwrap();
+            let spec = RuleSpec {
+                conditions: RuleConditions::all_of(vec![
+                    Condition::new(ConditionKind::Substring, "company a"),
+                    Condition::not(ConditionKind::Substring, "agency"),
+                ]),
+                extract_number: None,
+                extract_date: None,
+                extract_amount: None,
+                kind: "invoice".to_owned(),
+                tax_context: None,
+                tags: BTreeSet::new(),
+                filing_pattern: "{kind}".to_owned(),
+                confirmed: false,
+                enabled: true,
+            };
+            index
+                .create_rule_from(&spec, ncrs_index::RuleOrigin::Filing)
+                .unwrap()
+        });
+
+        let item = first(&setup.access());
+
+        assert_eq!(item.passages, ["COMPANY A"]);
+        assert_eq!(item.origins.of(Field::Kind), FieldOrigin::Rule(Some(rule)));
+        assert_eq!(item.origins.of(Field::Sender), FieldOrigin::Unknown);
+    }
+
+    #[test]
+    fn the_sender_the_ai_read_is_a_passage_where_it_stands_in_the_text() {
+        let setup = Setup::new();
+        let document = setup.in_review("ai.pdf");
+        setup.with_index(|index| {
+            index
+                .set_document_text(document, "Invoice 4711\nCompany A Ltd")
+                .unwrap();
+            index
+                .set_document_fields(document, &Setup::fields("Company A"), |field| match field {
+                    Field::Sender => FieldOrigin::Ai {
+                        confidence_percent: 82,
+                    },
+                    _ => FieldOrigin::Manual,
+                })
+                .unwrap();
+        });
+
+        let item = first(&setup.access());
+
+        assert_eq!(item.passages, ["Company A"]);
+        assert_eq!(
+            item.origins.of(Field::Sender),
+            FieldOrigin::Ai {
+                confidence_percent: 82
+            }
+        );
     }
 
     #[test]

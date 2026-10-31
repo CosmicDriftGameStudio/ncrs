@@ -2687,7 +2687,8 @@ mod review_list_card {
     use crate::document_preview::{PreviewContent, PreviewImage};
     use crate::messages::{HermesFocus, HermesPage, ReviewListMessage};
     use crate::review_list::tests::{
-        default_pattern_list, loaded_list, long_list, nothing_recognised_list, tax_context_list,
+        default_pattern_list, loaded_list, long_list, nothing_recognised_list, origins_list,
+        tax_context_list,
     };
     use crate::review_list::{FormField, ReviewList};
     use crate::review_work::ConfirmOutcome;
@@ -2723,7 +2724,7 @@ mod review_list_card {
             "Sender",
             "Tax context",
             "Filing pattern",
-            "Will be filed as Company A/2024-03-09_invoice.pdf",
+            "Will be filed as",
             "Confirm",
             "Close",
         ] {
@@ -3030,12 +3031,42 @@ mod review_list_card {
     }
 
     fn invoice_text() -> PreviewContent {
+        let excerpt = "Company A GmbH\nSample Street 1, 12345 Sampletown\n\nInvoice 4711\n\
+                       Date: 9 March 2024\n\nPosition 1  Consulting      600.00 EUR\n\
+                       Position 2  Travel costs    120.00 EUR\n\nTotal 720.00 EUR";
+        let highlights = ["Company A", "4711"]
+            .into_iter()
+            .filter_map(|passage| {
+                excerpt
+                    .find(passage)
+                    .map(|start| start..start + passage.len())
+            })
+            .collect();
         PreviewContent::Text {
-            excerpt: "Company A GmbH\nSample Street 1, 12345 Sampletown\n\nInvoice 4711\n\
-                      Date: 9 March 2024\n\nPosition 1  Consulting      600.00 EUR\n\
-                      Position 2  Travel costs    120.00 EUR\n\nTotal 720.00 EUR"
-                .to_owned(),
+            excerpt: excerpt.to_owned(),
             truncated: true,
+            highlights,
+        }
+    }
+
+    #[test]
+    fn the_origins_match_their_snapshots() {
+        for name in ["review_origins_en", "review_origins_de"] {
+            let mut list = origins_list();
+            list.show_preview_for_test(invoice_text());
+            matches_snapshot(list, name);
+        }
+    }
+
+    #[test]
+    fn each_field_names_where_its_value_comes_from() {
+        for label in [
+            "From a rule",
+            "AI, 82 % sure",
+            "By hand",
+            "Tax context from condition (Recipient: Firma A GmbH)",
+        ] {
+            assert!(shows(origins_list(), label), "{label}");
         }
     }
 
@@ -3151,7 +3182,7 @@ mod review_list_card {
             "Default pattern",
             "Default pattern, please check",
             "No rule",
-            "Will be filed as 2024/20240309_Frost_3318.pdf",
+            "Will be filed as",
         ] {
             assert!(shows(default_pattern_list(), label), "{label}");
         }

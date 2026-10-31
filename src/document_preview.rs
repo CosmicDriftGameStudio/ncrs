@@ -4,14 +4,14 @@
 //!
 //! What a document contains is only ever shown, never acted on.
 
-use std::fs::{self, File};
-use std::io::Read as _;
+use std::io::{Cursor, Read as _};
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use iced::widget::image::Handle;
 use image::{DynamicImage, ImageError, ImageReader, Limits};
-use ncrs_intake::{Extracted, OfficeText, PdfText, PlainText, TextError, TextSource};
+use ncrs_intake::{extract_text_from_bytes, open_without_following, Extracted, PdfText, TextError};
 
 /// The longer side of a rendered or scaled preview, in pixels.
 const PREVIEW_SIDE_PIXELS: u16 = 1200;
@@ -61,6 +61,8 @@ pub enum PreviewContent {
         excerpt: String,
         /// The document has more text than the excerpt.
         truncated: bool,
+        /// Where the excerpt holds a passage, sorted and apart from each other.
+        highlights: Vec<Range<usize>>,
     },
     /// Not a regular file, or a type without a preview.
     Unsupported,
@@ -78,12 +80,15 @@ pub enum PreviewContent {
 pub struct PreviewRequest {
     pub path: PathBuf,
     pub serial: u64,
+    /// The pieces of the text to mark.
+    pub passages: Vec<String>,
 }
 
 /// What the preview shows for the document under the cursor.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DocumentPreview {
     path: Option<PathBuf>,
+    passages: Vec<String>,
     serial: u64,
     /// `None` while the work runs.
     content: Option<PreviewContent>,
@@ -94,18 +99,20 @@ impl DocumentPreview {
         self.content.as_ref()
     }
 
-    /// The request for `path`, or `None` when it is the document the preview
-    /// already shows or waits for.
-    pub fn request(&mut self, path: &Path) -> Option<PreviewRequest> {
-        if self.path.as_deref() == Some(path) {
+    /// The request for `path` with `passages` marked, or `None` when the
+    /// preview already shows or waits for exactly that.
+    pub fn request(&mut self, path: &Path, passages: &[String]) -> Option<PreviewRequest> {
+        if self.path.as_deref() == Some(path) && self.passages == passages {
             return None;
         }
         self.path = Some(path.to_path_buf());
+        self.passages = passages.to_vec();
         self.serial = self.serial.wrapping_add(1);
         self.content = None;
         Some(PreviewRequest {
             path: path.to_path_buf(),
             serial: self.serial,
+            passages: passages.to_vec(),
         })
     }
 
@@ -128,6 +135,7 @@ impl DocumentPreview {
     pub fn showing(content: PreviewContent) -> Self {
         Self {
             path: Some(PathBuf::from("shown")),
+            passages: Vec::new(),
             serial: 1,
             content: Some(content),
         }
@@ -146,8 +154,8 @@ const LIMITS: PreviewLimits = PreviewLimits {
 
 /// [`load`] on a blocking thread, given up on after [`PREVIEW_TIMEOUT`]. The
 /// thread itself cannot be stopped; its answer is dropped.
-pub async fn load_off_thread(path: PathBuf) -> PreviewContent {
-    let work = tokio::task::spawn_blocking(move || load(&path));
+pub async fn load_off_thread(path: PathBuf, passages: Vec<String>) -> PreviewContent {
+    let work = tokio::task::spawn_blocking(move || load(&path, &passages));
     match tokio::time::timeout(PREVIEW_TIMEOUT, work).await {
         Ok(Ok(content)) => content,
         Ok(Err(join)) => PreviewContent::Failed(join.to_string()),
@@ -156,27 +164,58 @@ pub async fn load_off_thread(path: PathBuf) -> PreviewContent {
 }
 
 /// Reads `path` and makes its preview. Blocks for as long as pdfium or the
-/// decoder takes.
-pub fn load(path: &Path) -> PreviewContent {
-    load_within(path, LIMITS)
+/// decoder takes. The `passages` are marked in a page and in a text; a
+/// picture shows none.
+pub fn load(path: &Path, passages: &[String]) -> PreviewContent {
+    load_within(path, passages, LIMITS)
 }
 
-fn load_within(path: &Path, limits: PreviewLimits) -> PreviewContent {
-    let Ok(metadata) = fs::symlink_metadata(path) else {
-        return PreviewContent::Failed("the file cannot be read".to_owned());
+fn load_within(path: &Path, passages: &[String], limits: PreviewLimits) -> PreviewContent {
+    let bytes = match read_regular_file(path, limits) {
+        Ok(bytes) => bytes,
+        Err(refused) => return refused,
     };
-    if !metadata.is_file() {
-        return PreviewContent::Unsupported;
-    }
-    if metadata.len() > limits.file_bytes {
-        return PreviewContent::TooLarge;
-    }
-    match kind_of(path) {
-        Some(Kind::Pdf) => load_pdf_page(path),
-        Some(Kind::Image) => load_image(path),
-        Some(Kind::Text) => load_text(path),
+    match kind_of(path, &bytes) {
+        Some(Kind::Pdf) => load_pdf_page(path, &bytes, passages),
+        Some(Kind::Image) => load_image(&bytes),
+        Some(Kind::Text) => load_text(path, &bytes, passages),
         None => PreviewContent::Unsupported,
     }
+}
+
+/// The content of the regular file at `path`, from one open that neither
+/// follows a link nor blocks on a FIFO. Everything after works on these bytes,
+/// so a path swapped in the meantime changes nothing.
+fn read_regular_file(path: &Path, limits: PreviewLimits) -> Result<Vec<u8>, PreviewContent> {
+    let unreadable = || PreviewContent::Failed("the file cannot be read".to_owned());
+    // Without O_NOFOLLOW the open below follows a link, so a link is refused
+    // up front; Windows has no FIFO to block on in between.
+    #[cfg(not(unix))]
+    if std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_symlink()) {
+        return Err(PreviewContent::Unsupported);
+    }
+    // The open fails for a link (ELOOP under O_NOFOLLOW) and, on Windows, for
+    // a folder; the lookup only names the refusal and opens nothing.
+    let file =
+        open_without_following(path).map_err(|_error| match std::fs::symlink_metadata(path) {
+            Ok(metadata) if !metadata.is_file() => PreviewContent::Unsupported,
+            _ => unreadable(),
+        })?;
+    let metadata = file.metadata().map_err(|_error| unreadable())?;
+    if !metadata.is_file() {
+        return Err(PreviewContent::Unsupported);
+    }
+    if metadata.len() > limits.file_bytes {
+        return Err(PreviewContent::TooLarge);
+    }
+    let mut bytes = Vec::new();
+    file.take(limits.file_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|_error| unreadable())?;
+    if bytes.len() as u64 > limits.file_bytes {
+        return Err(PreviewContent::TooLarge);
+    }
+    Ok(bytes)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -186,8 +225,8 @@ enum Kind {
     Text,
 }
 
-fn kind_of(path: &Path) -> Option<Kind> {
-    if has_pdf_header(path) {
+fn kind_of(path: &Path, bytes: &[u8]) -> Option<Kind> {
+    if bytes.starts_with(PDF_HEADER) {
         return Some(Kind::Pdf);
     }
     let extension = path.extension()?.to_string_lossy().to_lowercase();
@@ -200,21 +239,13 @@ fn kind_of(path: &Path) -> Option<Kind> {
     }
 }
 
-fn has_pdf_header(path: &Path) -> bool {
-    let mut header = Vec::with_capacity(PDF_HEADER.len());
-    File::open(path)
-        .and_then(|file| file.take(PDF_HEADER.len() as u64).read_to_end(&mut header))
-        .is_ok()
-        && header == PDF_HEADER
-}
-
-fn load_pdf_page(path: &Path) -> PreviewContent {
+fn load_pdf_page(path: &Path, bytes: &[u8], passages: &[String]) -> PreviewContent {
     let pdf = match PdfText::load_shipped() {
         Ok(pdf) => pdf,
         Err(TextError::LibraryMissing { .. }) => return PreviewContent::LibraryMissing,
         Err(other) => return failed_from(&other),
     };
-    match pdf.render_preview_page(path, PREVIEW_SIDE_PIXELS) {
+    match pdf.render_preview_page(path, bytes, PREVIEW_SIDE_PIXELS, passages) {
         Ok(page) => PreviewContent::Page {
             image: PreviewImage::from_rgba(page.width, page.height, page.rgba),
             page_count: page.page_count,
@@ -231,20 +262,20 @@ fn failed_from(error: &TextError) -> PreviewContent {
     }
 }
 
-fn load_image(path: &Path) -> PreviewContent {
-    match decode_scaled(path) {
+fn load_image(bytes: &[u8]) -> PreviewContent {
+    match decode_scaled(bytes) {
         Ok(image) => PreviewContent::Image(image),
         Err(ImageError::Limits(_)) => PreviewContent::TooLarge,
         Err(error) => PreviewContent::Failed(error.to_string()),
     }
 }
 
-fn decode_scaled(path: &Path) -> Result<PreviewImage, ImageError> {
+fn decode_scaled(bytes: &[u8]) -> Result<PreviewImage, ImageError> {
     let mut limits = Limits::no_limits();
     limits.max_image_width = Some(MAX_IMAGE_SIDE_PIXELS);
     limits.max_image_height = Some(MAX_IMAGE_SIDE_PIXELS);
     limits.max_alloc = Some(MAX_IMAGE_ALLOC_BYTES);
-    let mut reader = ImageReader::open(path)?.with_guessed_format()?;
+    let mut reader = ImageReader::new(Cursor::new(bytes)).with_guessed_format()?;
     reader.limits(limits);
     let decoded = reader.decode()?;
     let side = u32::from(PREVIEW_SIDE_PIXELS);
@@ -262,20 +293,16 @@ fn rgba_image(image: DynamicImage) -> PreviewImage {
     PreviewImage::from_rgba(width, height, rgba.into_raw())
 }
 
-fn load_text(path: &Path) -> PreviewContent {
-    let sources: [&dyn TextSource; 2] = [&PlainText, &OfficeText];
-    for source in sources {
-        match source.extract(path) {
-            Ok(Extracted::Text(text)) => return excerpt_of(&text),
-            Ok(Extracted::NotApplicable | Extracted::PageImages(_)) => {}
-            Err(error) => return failed_from(&error),
-        }
+fn load_text(path: &Path, bytes: &[u8], passages: &[String]) -> PreviewContent {
+    match extract_text_from_bytes(path, bytes) {
+        Ok(Extracted::Text(text)) => excerpt_of(&text, passages),
+        Ok(Extracted::NotApplicable | Extracted::PageImages(_)) => PreviewContent::Unsupported,
+        Err(error) => failed_from(&error),
     }
-    PreviewContent::Unsupported
 }
 
 /// The first lines of `text`, up to the character limit.
-fn excerpt_of(text: &str) -> PreviewContent {
+fn excerpt_of(text: &str, passages: &[String]) -> PreviewContent {
     let mut excerpt = String::new();
     let mut chars = 0;
     let mut lines = text.lines();
@@ -284,19 +311,69 @@ fn excerpt_of(text: &str) -> PreviewContent {
         let line_chars = line.chars().count();
         if line_chars >= room {
             excerpt.extend(line.chars().take(room));
-            return PreviewContent::Text {
-                excerpt,
-                truncated: true,
-            };
+            return text_content(excerpt, true, passages);
         }
         excerpt.push_str(line);
         excerpt.push('\n');
         chars += line_chars + 1;
     }
+    text_content(
+        excerpt.trim_end().to_owned(),
+        lines.next().is_some(),
+        passages,
+    )
+}
+
+fn text_content(excerpt: String, truncated: bool, passages: &[String]) -> PreviewContent {
+    let highlights = highlight_ranges(&excerpt, passages);
     PreviewContent::Text {
-        excerpt: excerpt.trim_end().to_owned(),
-        truncated: lines.next().is_some(),
+        excerpt,
+        truncated,
+        highlights,
     }
+}
+
+/// Where `text` holds one of the passages, ignoring case: sorted by start,
+/// overlapping and touching places joined, all on character boundaries.
+fn highlight_ranges(text: &str, passages: &[String]) -> Vec<Range<usize>> {
+    let mut found: Vec<Range<usize>> = passages
+        .iter()
+        .filter(|passage| !passage.is_empty())
+        .flat_map(|passage| occurrences_ignoring_case(text, passage))
+        .collect();
+    found.sort_by_key(|range| (range.start, range.end));
+    let mut joined: Vec<Range<usize>> = Vec::new();
+    for range in found {
+        match joined.last_mut() {
+            Some(last) if range.start <= last.end => last.end = last.end.max(range.end),
+            _ => joined.push(range),
+        }
+    }
+    joined
+}
+
+fn occurrences_ignoring_case(text: &str, needle: &str) -> Vec<Range<usize>> {
+    let same_char = |a: char, b: char| a.to_lowercase().eq(b.to_lowercase());
+    let mut found = Vec::new();
+    let mut from = 0;
+    while let Some(rest) = text.get(from..).filter(|rest| !rest.is_empty()) {
+        let mut candidate = rest.char_indices();
+        let mut end = 0;
+        let matches = needle.chars().all(|wanted| match candidate.next() {
+            Some((at, ch)) if same_char(ch, wanted) => {
+                end = at + ch.len_utf8();
+                true
+            }
+            _ => false,
+        });
+        if matches {
+            found.push(from..from + end);
+            from += end;
+        } else {
+            from += rest.chars().next().map_or(1, char::len_utf8);
+        }
+    }
+    found
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
@@ -323,10 +400,11 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = write(&dir, "note.txt", b"Invoice 4711\nCompany A\n");
         assert_eq!(
-            load(&path),
+            load(&path, &[]),
             PreviewContent::Text {
                 excerpt: "Invoice 4711\nCompany A".to_owned(),
                 truncated: false,
+                highlights: Vec::new(),
             }
         );
     }
@@ -336,7 +414,10 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let body: String = (0..100).map(|line| format!("line {line}\n")).collect();
         let path = write(&dir, "long.md", body.as_bytes());
-        let PreviewContent::Text { excerpt, truncated } = load(&path) else {
+        let PreviewContent::Text {
+            excerpt, truncated, ..
+        } = load(&path, &[])
+        else {
             panic!("expected a text");
         };
         assert!(truncated);
@@ -348,7 +429,10 @@ mod tests {
     fn one_very_long_line_is_cut_by_characters_and_marked() {
         let dir = TempDir::new().unwrap();
         let path = write(&dir, "wide.txt", "ä".repeat(10_000).as_bytes());
-        let PreviewContent::Text { excerpt, truncated } = load(&path) else {
+        let PreviewContent::Text {
+            excerpt, truncated, ..
+        } = load(&path, &[])
+        else {
             panic!("expected a text");
         };
         assert!(truncated);
@@ -362,7 +446,7 @@ mod tests {
         image::RgbaImage::from_pixel(2400, 1200, image::Rgba([10, 120, 200, 255]))
             .save(&path)
             .unwrap();
-        let PreviewContent::Image(image) = load(&path) else {
+        let PreviewContent::Image(image) = load(&path, &[]) else {
             panic!("expected an image");
         };
         assert_eq!((image.width, image.height), (1200, 600));
@@ -375,7 +459,7 @@ mod tests {
         image::RgbaImage::from_pixel(40, 30, image::Rgba([1, 2, 3, 255]))
             .save(&path)
             .unwrap();
-        let PreviewContent::Image(image) = load(&path) else {
+        let PreviewContent::Image(image) = load(&path, &[]) else {
             panic!("expected an image");
         };
         assert_eq!((image.width, image.height), (40, 30));
@@ -385,7 +469,10 @@ mod tests {
     fn a_file_over_the_limit_is_too_large() {
         let dir = TempDir::new().unwrap();
         let path = write(&dir, "big.txt", &[b'a'; 101]);
-        assert_eq!(load_within(&path, tiny_limit()), PreviewContent::TooLarge);
+        assert_eq!(
+            load_within(&path, &[], tiny_limit()),
+            PreviewContent::TooLarge
+        );
     }
 
     #[cfg(unix)]
@@ -395,13 +482,26 @@ mod tests {
         let target = write(&dir, "real.txt", b"secret");
         let link = dir.path().join("link.txt");
         std::os::unix::fs::symlink(&target, &link).unwrap();
-        assert_eq!(load(&link), PreviewContent::Unsupported);
+        assert_eq!(load(&link, &[]), PreviewContent::Unsupported);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_fifo_returns_at_once_instead_of_blocking() {
+        let dir = TempDir::new().unwrap();
+        let fifo = dir.path().join("pipe.txt");
+        let made = std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap();
+        assert!(made.success());
+        assert_eq!(load(&fifo, &[]), PreviewContent::Unsupported);
     }
 
     #[test]
     fn a_folder_has_no_preview() {
         let dir = TempDir::new().unwrap();
-        assert_eq!(load(dir.path()), PreviewContent::Unsupported);
+        assert_eq!(load(dir.path(), &[]), PreviewContent::Unsupported);
     }
 
     #[test]
@@ -409,7 +509,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         for name in ["photo.heic", "data.xyz"] {
             let path = write(&dir, name, b"not decoded");
-            assert_eq!(load(&path), PreviewContent::Unsupported, "{name}");
+            assert_eq!(load(&path, &[]), PreviewContent::Unsupported, "{name}");
         }
     }
 
@@ -417,7 +517,7 @@ mod tests {
     fn a_file_that_is_not_a_picture_but_named_like_one_fails() {
         let dir = TempDir::new().unwrap();
         let path = write(&dir, "broken.png", b"not a png");
-        assert!(matches!(load(&path), PreviewContent::Failed(_)));
+        assert!(matches!(load(&path, &[]), PreviewContent::Failed(_)));
     }
 
     #[test]
@@ -428,7 +528,7 @@ mod tests {
             "filled.pdf",
             &pdf_bytes("0 0 1 rg 20 20 100 100 re f", "", &[]),
         );
-        let PreviewContent::Page { image, page_count } = load(&path) else {
+        let PreviewContent::Page { image, page_count } = load(&path, &[]) else {
             panic!("expected a page");
         };
         assert_eq!(page_count, 1);
@@ -438,8 +538,8 @@ mod tests {
     #[test]
     fn an_answer_for_an_older_request_is_dropped() {
         let mut preview = DocumentPreview::default();
-        let first = preview.request(Path::new("a.txt")).unwrap();
-        let second = preview.request(Path::new("b.txt")).unwrap();
+        let first = preview.request(Path::new("a.txt"), &[]).unwrap();
+        let second = preview.request(Path::new("b.txt"), &[]).unwrap();
         preview.loaded(first.serial, PreviewContent::Unsupported);
         assert_eq!(preview.content(), None);
         preview.loaded(second.serial, PreviewContent::TooLarge);
@@ -449,19 +549,56 @@ mod tests {
     #[test]
     fn the_same_path_makes_no_new_request() {
         let mut preview = DocumentPreview::default();
-        assert!(preview.request(Path::new("a.txt")).is_some());
-        assert!(preview.request(Path::new("a.txt")).is_none());
-        assert!(preview.request(Path::new("b.txt")).is_some());
+        assert!(preview.request(Path::new("a.txt"), &[]).is_some());
+        assert!(preview.request(Path::new("a.txt"), &[]).is_none());
+        assert!(preview.request(Path::new("b.txt"), &[]).is_some());
+    }
+
+    #[test]
+    fn other_passages_for_the_same_path_make_a_new_request() {
+        let mut preview = DocumentPreview::default();
+        let company = vec!["Company A".to_owned()];
+        assert!(preview.request(Path::new("a.txt"), &company).is_some());
+        assert!(preview.request(Path::new("a.txt"), &company).is_none());
+        let request = preview.request(Path::new("a.txt"), &[]).unwrap();
+        assert!(request.passages.is_empty());
+    }
+
+    #[test]
+    fn a_text_marks_the_passages_ignoring_case_and_joins_what_touches() {
+        let dir = TempDir::new().unwrap();
+        let path = write(
+            &dir,
+            "note.txt",
+            "Rechnung 4711\nFirma Müller und müller".as_bytes(),
+        );
+        let passages = ["MÜLLER".to_owned(), "4711".to_owned(), "nothing".to_owned()];
+        let PreviewContent::Text {
+            excerpt,
+            highlights,
+            ..
+        } = load(&path, &passages)
+        else {
+            panic!("expected a text");
+        };
+        let marked: Vec<&str> = highlights
+            .iter()
+            .map(|range| &excerpt[range.clone()])
+            .collect();
+        assert_eq!(marked, ["4711", "Müller", "müller"]);
+        let overlapping = highlight_ranges("aaaa", &["aa".to_owned(), "aaa".to_owned()]);
+        assert_eq!(overlapping.len(), 1);
+        assert_eq!(overlapping.first(), Some(&(0..4)));
     }
 
     #[test]
     fn clearing_drops_the_answer_on_its_way() {
         let mut preview = DocumentPreview::default();
-        let request = preview.request(Path::new("a.txt")).unwrap();
+        let request = preview.request(Path::new("a.txt"), &[]).unwrap();
         preview.clear();
         preview.loaded(request.serial, PreviewContent::TooLarge);
         assert_eq!(preview.content(), None);
-        assert!(preview.request(Path::new("a.txt")).is_some());
+        assert!(preview.request(Path::new("a.txt"), &[]).is_some());
     }
 
     #[tokio::test]
@@ -469,10 +606,11 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = write(&dir, "note.txt", b"hello");
         assert_eq!(
-            load_off_thread(path).await,
+            load_off_thread(path, Vec::new()).await,
             PreviewContent::Text {
                 excerpt: "hello".to_owned(),
                 truncated: false,
+                highlights: Vec::new(),
             }
         );
     }

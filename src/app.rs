@@ -10744,7 +10744,7 @@ impl App {
         };
         let serial = request.serial;
         Task::perform(
-            document_preview::load_off_thread(request.path),
+            document_preview::load_off_thread(request.path, request.passages),
             move |content| {
                 Message::ReviewList(ReviewListMessage::PreviewLoaded {
                     generation,
