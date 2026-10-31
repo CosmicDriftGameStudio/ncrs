@@ -296,8 +296,15 @@ fn form_view<'a>(
     palette: &Palette,
 ) -> Element<'a, Message> {
     let title = lang.text(match form.target {
-        RuleFormTarget::New => Msg::RulesFormTitleNew,
+        RuleFormTarget::New | RuleFormTarget::FromDocument => Msg::RulesFormTitleNew,
         RuleFormTarget::Edit(_) => Msg::RulesFormTitleEdit,
+        RuleFormTarget::FromSuggestion(_) => Msg::RulesFormTitleConfirm,
+    });
+    let save_label = lang.text(match form.target {
+        RuleFormTarget::FromSuggestion(_) => Msg::RuleSuggestionsConfirm,
+        RuleFormTarget::New | RuleFormTarget::FromDocument | RuleFormTarget::Edit(_) => {
+            Msg::RulesFormSave
+        }
     });
     let mut body = Column::new()
         .push(paragraph(lang.text(Msg::RulesFormPurpose), palette))
@@ -322,7 +329,7 @@ fn form_view<'a>(
                 palette,
             ),
             kit::button(
-                lang.text(Msg::RulesFormSave),
+                save_label,
                 (!saving).then(|| send_form(RuleFormMessage::Save)),
                 Tone::Primary,
                 palette,

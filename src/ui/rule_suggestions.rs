@@ -1,9 +1,8 @@
 //! The rule suggestions view: one row per suggested rule with its condition,
-//! target, kind and evidence, the documents the selected one matches, and the
-//! form to edit it. Modal, like the Inspection. Pure view over
-//! [`RuleSuggestions`].
+//! target, kind and evidence, and the documents the selected one matches.
+//! Modal, like the Inspection. Pure view over [`RuleSuggestions`].
 
-use iced::widget::{column, container, row};
+use iced::widget::{column, row};
 use iced::{alignment, Element, Size};
 use ncrs_index::{ConditionKind, HermesCounts};
 use ncrs_intake::{MIN_FOLDER_DOCUMENTS, MIN_SHARE_IN_FOLDER_PERCENT};
@@ -17,12 +16,8 @@ use crate::app::fill_template;
 use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{HermesFocus, HermesPage, Message, RuleSuggestionsMessage};
 use crate::palette::Palette;
-use crate::rule_suggestions::{Edit, Matches, Problem, RuleSuggestions, VISIBLE_ROWS};
+use crate::rule_suggestions::{Matches, Problem, RuleSuggestions, VISIBLE_ROWS};
 use crate::suggestion_work::{condition_text, SuggestedRule};
-
-pub const CONDITION_ID: &str = "rule-suggestions-condition";
-pub const KIND_ID: &str = "rule-suggestions-kind";
-pub const PATTERN_ID: &str = "rule-suggestions-pattern";
 
 /// Most matching documents listed; the rest is counted.
 pub const SHOWN_DOCUMENTS: usize = 6;
@@ -31,7 +26,6 @@ const SIZE: DialogSize = DialogSize::Card;
 
 /// How the width of a row is shared: condition, target, kind, evidence.
 const PORTIONS: [u16; 4] = [4, 4, 2, 9];
-const LABEL_WIDTH: f32 = 170.0;
 
 fn send(message: RuleSuggestionsMessage) -> Message {
     Message::RuleSuggestions(message)
@@ -60,18 +54,13 @@ pub fn view<'a>(
         }
     }
 
-    match state.edit() {
-        Some(edit) => body = body.push(form(edit, lang, palette)),
-        None if state.selected().is_some() => {
-            body = body.push(documents(state, line_chars, lang, palette));
-        }
-        None => {}
+    if state.selected().is_some() {
+        body = body.push(documents(state, line_chars, lang, palette));
     }
     if let Some(problem) = state.problem() {
         body = body.push(error_line(problem_text(problem, lang), palette));
     }
 
-    let editing = state.edit().is_some();
     Frame::new(
         lang.text(Msg::ActionRuleSuggestions),
         body,
@@ -91,7 +80,7 @@ pub fn view<'a>(
     .on_close(send(RuleSuggestionsMessage::Close))
     .hints(KeyHints {
         enter: true,
-        tab: editing,
+        tab: false,
     })
     .into_element()
 }
@@ -292,58 +281,6 @@ fn documents<'a>(
     section(lang.text(heading), lines, palette)
 }
 
-fn form<'a>(edit: &'a Edit, lang: Language, palette: &Palette) -> Element<'a, Message> {
-    column![
-        field(
-            lang.text(Msg::RuleSuggestionsFieldCondition),
-            &edit.condition,
-            CONDITION_ID,
-            RuleSuggestionsMessage::ConditionChanged,
-            palette,
-        ),
-        field(
-            lang.text(Msg::RuleSuggestionsFieldKind),
-            &edit.kind,
-            KIND_ID,
-            RuleSuggestionsMessage::KindChanged,
-            palette,
-        ),
-        field(
-            lang.text(Msg::RuleSuggestionsFieldPattern),
-            &edit.pattern,
-            PATTERN_ID,
-            RuleSuggestionsMessage::PatternChanged,
-            palette,
-        ),
-        dim(lang.text(Msg::RuleSuggestionsFormHint), palette),
-    ]
-    .spacing(spacing::LINE_GAP)
-    .into()
-}
-
-fn field<'a>(
-    label: &'a str,
-    value: &'a str,
-    id: &'static str,
-    on_input: fn(String) -> RuleSuggestionsMessage,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    row![
-        container(paragraph(label, palette)).width(LABEL_WIDTH),
-        kit::text_field(
-            "",
-            value,
-            id,
-            Some(move |typed| send(on_input(typed))),
-            send(RuleSuggestionsMessage::Confirm),
-            palette,
-        ),
-    ]
-    .spacing(spacing::CELL_PADDING_X)
-    .align_y(alignment::Vertical::Center)
-    .into()
-}
-
 fn buttons<'a>(
     state: &RuleSuggestions,
     lang: Language,
@@ -367,16 +304,6 @@ fn buttons<'a>(
         decidable.then_some(RuleSuggestionsMessage::Confirm),
         true,
     );
-    if state.edit().is_some() {
-        return vec![
-            action(
-                Msg::RuleSuggestionsCancelEdit,
-                Some(RuleSuggestionsMessage::CancelEdit),
-                false,
-            ),
-            confirm,
-        ];
-    }
     vec![
         action(
             Msg::RuleSuggestionsClose,
@@ -404,11 +331,6 @@ fn buttons<'a>(
 
 fn problem_text(problem: &Problem, lang: Language) -> String {
     match problem {
-        Problem::NoCondition => lang.text(Msg::RuleSuggestionsProblemNoCondition).to_owned(),
-        Problem::NoKind => lang.text(Msg::RuleSuggestionsProblemNoKind).to_owned(),
-        Problem::InvalidPattern => lang
-            .text(Msg::RuleSuggestionsProblemInvalidPattern)
-            .to_owned(),
         Problem::Failed(detail) => fill_template(
             lang.text(Msg::RuleSuggestionsProblemFailed),
             &[("{detail}", detail)],

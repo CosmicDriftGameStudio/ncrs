@@ -18,6 +18,7 @@ use crate::review_work::{
     amount_text, parse_amount, parse_date, parse_tags, tags_text, ConfirmOutcome, FieldError,
     ReviewItem,
 };
+use crate::rule_form::RulePrefill;
 
 /// A text field of the form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,13 +128,35 @@ pub struct FiledNotice {
     pub tax_context: Option<TaxContext>,
     pub tags: BTreeSet<String>,
     pub pattern: String,
-    pub rule_created: bool,
 }
 
 impl FiledNotice {
     /// A rule needs something to recognise the sender by.
     pub fn offers_rule(&self) -> bool {
-        !self.rule_created && !self.sender.is_empty() && !self.kind.is_empty()
+        !self.sender.is_empty() && !self.kind.is_empty()
+    }
+
+    fn rule_prefill(&self) -> RulePrefill {
+        RulePrefill {
+            sender: self.sender.clone(),
+            kind: self.kind.clone(),
+            tax_context: self.tax_context.clone(),
+            tags: self.tags.clone(),
+            pattern: self.pattern.clone(),
+        }
+    }
+}
+
+/// What a rule form for `item` starts with: its fields, and the pattern the
+/// review form would show for it.
+pub fn rule_prefill_of(item: &ReviewItem, custom_default: Option<&str>) -> RulePrefill {
+    let fields = &item.fields;
+    RulePrefill {
+        sender: fields.sender.clone().unwrap_or_default(),
+        kind: fields.kind.clone().unwrap_or_default(),
+        tax_context: fields.tax_context.clone(),
+        tags: fields.tags.clone(),
+        pattern: Form::of(item, custom_default).pattern,
     }
 }
 
@@ -143,16 +166,6 @@ pub struct ConfirmRequest {
     pub entry: ReviewEntryId,
     pub document_id: DocumentId,
     pub fields: DocumentFields,
-    pub pattern: String,
-}
-
-/// What the work needs to make the rule that is offered.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RuleRequest {
-    pub sender: String,
-    pub kind: String,
-    pub tax_context: Option<TaxContext>,
-    pub tags: BTreeSet<String>,
     pub pattern: String,
 }
 
@@ -434,7 +447,6 @@ impl ReviewList {
             tax_context: fields.tax_context,
             tags: fields.tags,
             pattern,
-            rule_created: false,
         });
         self.busy = true;
         self.problem = None;
@@ -458,30 +470,15 @@ impl ReviewList {
         }
     }
 
-    /// The rule the offer after filing stands for. Marks the view busy until
-    /// the work answers.
-    pub fn begin_rule(&mut self) -> Option<RuleRequest> {
+    /// What the rule form starts with, for the offer after filing.
+    pub fn rule_offer(&self) -> Option<RulePrefill> {
         if self.busy {
             return None;
         }
-        let notice = self.filed.as_ref().filter(|notice| notice.offers_rule())?;
-        let request = RuleRequest {
-            sender: notice.sender.clone(),
-            kind: notice.kind.clone(),
-            tax_context: notice.tax_context.clone(),
-            tags: notice.tags.clone(),
-            pattern: notice.pattern.clone(),
-        };
-        self.busy = true;
-        self.problem = None;
-        Some(request)
-    }
-
-    pub fn rule_created(&mut self) {
-        self.busy = false;
-        if let Some(notice) = self.filed.as_mut() {
-            notice.rule_created = true;
-        }
+        self.filed
+            .as_ref()
+            .filter(|notice| notice.offers_rule())
+            .map(FiledNotice::rule_prefill)
     }
 
     /// Takes the form from the entry under the cursor. What went wrong with
@@ -829,8 +826,10 @@ pub mod tests {
     }
 
     #[test]
-    fn a_filed_document_offers_a_rule_for_its_sender_once() {
+    fn a_filed_document_offers_a_rule_for_its_sender() {
         let mut list = loaded_list();
+        list.set_text(FormField::Tags, "tax, travel".to_owned());
+        list.set_tax_context(Some(TaxContext::named("private")));
         list.begin_confirm().unwrap();
         list.confirmed(ConfirmOutcome::Filed {
             relative_path: PathBuf::from("Company A/2024-03-09_invoice.pdf"),
@@ -843,12 +842,15 @@ pub mod tests {
             PathBuf::from("Company A/2024-03-09_invoice.pdf")
         );
         assert!(filed.offers_rule());
-        let rule = list.begin_rule().unwrap();
-        assert_eq!(rule.sender, "Company A");
-        assert_eq!(rule.pattern, "{sender}/{date}_{kind}");
-        list.rule_created();
-        assert!(!list.filed().unwrap().offers_rule());
-        assert_eq!(list.begin_rule(), None);
+        let offer = list.rule_offer().unwrap();
+        assert_eq!(offer.sender, "Company A");
+        assert_eq!(offer.kind, "invoice");
+        assert_eq!(offer.tax_context, Some(TaxContext::named("private")));
+        assert_eq!(
+            offer.tags,
+            BTreeSet::from(["tax".to_owned(), "travel".to_owned()])
+        );
+        assert_eq!(offer.pattern, "{sender}/{date}_{kind}");
     }
 
     #[test]

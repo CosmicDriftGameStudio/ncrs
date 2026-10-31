@@ -2814,6 +2814,87 @@ mod review_list_card {
         );
     }
 
+    fn rules_form_of(app: &App) -> &crate::rule_form::RuleForm {
+        app.rules_for_test().unwrap().form().unwrap()
+    }
+
+    #[test]
+    fn the_offer_after_filing_opens_the_rule_form_filled_from_the_notice() {
+        let mut app = App::with_review_list(after_filing());
+
+        let _ = app.update(review_message(ReviewListMessage::CreateRule));
+
+        assert!(app.review_list_for_test().is_none());
+        let form = rules_form_of(&app);
+        assert_eq!(form.target, crate::rule_form::RuleFormTarget::FromDocument);
+        assert_eq!(form.conditions.rows.len(), 1);
+        assert_eq!(
+            form.conditions.rows[0].kind,
+            ncrs_index::ConditionKind::Sender
+        );
+        assert_eq!(form.conditions.rows[0].value, "Company A");
+        assert_eq!(form.kind, "invoice");
+        assert_eq!(
+            form.tax_context,
+            Some(ncrs_index::TaxContext::named("company"))
+        );
+        assert_eq!(form.tags, "");
+        assert_eq!(form.pattern, "{sender}/{date}_{kind}");
+    }
+
+    #[test]
+    fn cancelling_or_saving_the_form_of_the_offer_goes_back_to_the_review() {
+        use crate::messages::{RuleFormMessage, RulesMessage};
+        let opened = || {
+            let mut app = App::with_review_list(after_filing());
+            let _ = app.update(review_message(ReviewListMessage::CreateRule));
+            app
+        };
+
+        let mut cancelled = opened();
+        let _ = cancelled.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Cancel)));
+        assert!(cancelled.rules_for_test().is_none());
+        assert!(cancelled.review_list_for_test().is_some());
+
+        let mut saved = opened();
+        let _ = saved.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Saved {
+            generation: 1,
+            result: Ok(()),
+        })));
+        assert!(saved.rules_for_test().is_none());
+        assert!(saved.review_list_for_test().is_some());
+    }
+
+    #[test]
+    fn create_rule_in_the_quick_fix_opens_the_rule_form_with_the_review_pattern() {
+        use crate::messages::QuickFixMessage;
+        let mut item = loaded_list().rows().to_vec().swap_remove(0);
+        item.fields.tags = std::collections::BTreeSet::from(["tax".to_owned()]);
+        let mut app = App::with_quick_fix_menu(item);
+        // Accept, set fields, create rule.
+        let _ = app.update(Message::QuickFix(QuickFixMessage::Hover(2)));
+
+        let _ = app.update(Message::QuickFix(QuickFixMessage::Activate));
+
+        assert!(app.review_list_for_test().is_none());
+        let form = rules_form_of(&app);
+        assert_eq!(form.target, crate::rule_form::RuleFormTarget::FromDocument);
+        assert_eq!(form.conditions.rows[0].value, "Company A");
+        assert_eq!(form.kind, "invoice");
+        assert_eq!(
+            form.tax_context,
+            Some(ncrs_index::TaxContext::named("company"))
+        );
+        assert_eq!(form.tags, "tax");
+        assert_eq!(form.pattern, "{sender}/{date}_{kind}");
+        // Opened from a panel: there is no page to go back to.
+        let _ = app.update(Message::Rules(crate::messages::RulesMessage::Form(
+            crate::messages::RuleFormMessage::Cancel,
+        )));
+        assert!(app.rules_for_test().is_some());
+        assert!(app.rules_for_test().unwrap().form().is_none());
+    }
+
     #[test]
     fn the_view_is_worded_in_german_too() {
         let app = App::with_review_list(after_filing()).in_language(Language::German);
@@ -3589,7 +3670,8 @@ mod rule_suggestions_card {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::messages::RuleSuggestionsMessage;
+    use crate::messages::{RuleFormMessage, RuleSuggestionsMessage, RulesMessage};
+    use crate::rule_form::RuleFormTarget;
     use crate::rule_suggestions::tests::{loaded_view, rule_ids, suggestion};
     use crate::rule_suggestions::{Problem, RuleSuggestions};
     use crate::suggestion_work::INDEX_NOT_OPEN;
@@ -3779,44 +3861,84 @@ mod rule_suggestions_card {
         assert!(shows(view, "… and 3 more"));
     }
 
-    #[test]
-    fn the_form_offers_the_three_fields_and_cancel() {
-        let mut view = two_rows();
-        view.start_edit();
-
-        for label in ["Filed as (pattern)", "Kind", "Cancel", "Confirm"] {
-            assert!(shows(view.clone(), label), "{label}");
-        }
-        assert!(
-            !shows(view.clone(), "Discard"),
-            "no decision besides confirm"
-        );
-        assert_eq!(
-            messages_after_click(view, "Cancel"),
-            [suggestions_message(RuleSuggestionsMessage::CancelEdit)]
-        );
+    fn rules_form_of(app: &App) -> &crate::rule_form::RuleForm {
+        app.rules_for_test().unwrap().form().unwrap()
     }
 
     #[test]
-    fn an_invalid_pattern_shows_the_complaint_and_the_form_stays() {
+    fn editing_a_suggestion_opens_the_rules_page_with_its_form() {
         let mut app = App::with_rule_suggestions(two_rows());
-        for message in [
-            RuleSuggestionsMessage::Edit,
-            RuleSuggestionsMessage::PatternChanged("{year}/{nonsense}".to_owned()),
-            RuleSuggestionsMessage::Confirm,
-        ] {
-            let _ = app.update(suggestions_message(message));
-        }
 
-        let view = app.rule_suggestions_for_test().unwrap();
-        assert_eq!(view.problem(), Some(&Problem::InvalidPattern));
-        assert!(view.edit().is_some());
-        assert!(!view.is_busy());
-        simulator(&app)
-            .find(
-                "This pattern cannot be used. Placeholders are written in braces, such as {year}.",
-            )
-            .expect("the complaint");
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Edit));
+
+        assert!(app.rule_suggestions_for_test().is_none());
+        let form = rules_form_of(&app);
+        let [one, _, _] = rule_ids();
+        assert!(matches!(&form.target, RuleFormTarget::FromSuggestion(rule) if rule.id == one));
+        assert_eq!(form.conditions.rows.len(), 1);
+        assert_eq!(
+            form.conditions.rows[0].kind,
+            ncrs_index::ConditionKind::Substring
+        );
+        assert_eq!(form.conditions.rows[0].value, "company a ltd");
+        assert_eq!(form.kind, "Insurance");
+        assert_eq!(form.pattern, "Insurance/{date}_{name}");
+        let _ = simulator(&app)
+            .find("Confirm suggested rule")
+            .expect("the form says it confirms a suggestion");
+    }
+
+    #[test]
+    fn cancelling_the_form_of_a_suggestion_goes_back_to_the_suggestions() {
+        let mut app = App::with_rule_suggestions(two_rows());
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Edit));
+
+        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Cancel)));
+
+        assert!(app.rules_for_test().is_none());
+        assert!(app.rule_suggestions_for_test().is_some());
+    }
+
+    #[test]
+    fn escape_in_the_form_of_a_suggestion_goes_back_to_the_suggestions() {
+        let mut app = App::with_rule_suggestions(two_rows());
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Edit));
+
+        let _ = app.update(Message::Rules(RulesMessage::Close));
+
+        assert!(app.rules_for_test().is_none());
+        assert!(app.rule_suggestions_for_test().is_some());
+    }
+
+    #[test]
+    fn saving_the_form_of_a_suggestion_goes_back_to_the_suggestions() {
+        let mut app = App::with_rule_suggestions(two_rows());
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Edit));
+
+        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Saved {
+            generation: 1,
+            result: Ok(()),
+        })));
+
+        assert!(app.rules_for_test().is_none());
+        assert!(app.rule_suggestions_for_test().is_some());
+    }
+
+    #[test]
+    fn a_failed_save_keeps_the_form_of_a_suggestion_open() {
+        let mut app = App::with_rule_suggestions(two_rows());
+        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Edit));
+
+        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Saved {
+            generation: 1,
+            result: Err("the suggested rule is not there any more".to_owned()),
+        })));
+
+        assert_eq!(
+            rules_form_of(&app).failure.as_deref(),
+            Some("the suggested rule is not there any more")
+        );
+        assert!(app.rule_suggestions_for_test().is_none());
     }
 
     #[test]
@@ -3846,18 +3968,6 @@ mod rule_suggestions_card {
         }));
 
         assert!(app.rule_suggestions_for_test().unwrap().rows().is_empty());
-    }
-
-    #[test]
-    fn escape_leaves_the_form_before_the_view() {
-        let mut app = App::with_rule_suggestions(two_rows());
-        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Edit));
-
-        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Close));
-        assert!(app.rule_suggestions_for_test().unwrap().edit().is_none());
-
-        let _ = app.update(suggestions_message(RuleSuggestionsMessage::Close));
-        assert!(app.rule_suggestions_for_test().is_none());
     }
 
     fn matches_snapshot(view: RuleSuggestions, name: &str) {
@@ -3896,6 +4006,30 @@ mod rule_suggestions_card {
     fn the_view_matches_its_snapshots() {
         matches_snapshot(with_documents(), "rule_suggestions_en");
         matches_snapshot(with_documents(), "rule_suggestions_de");
+    }
+
+    #[test]
+    fn the_form_of_a_suggestion_matches_its_snapshots() {
+        for language in ["en", "de"] {
+            let mut suggestions_app = App::with_rule_suggestions(two_rows());
+            let _ = suggestions_app.update(suggestions_message(RuleSuggestionsMessage::Edit));
+            let page = suggestions_app.rules_for_test().unwrap().clone();
+            let name = format!("rule_form_from_suggestion_{language}");
+            let app = App::with_rules(page).in_language(if language == "de" {
+                Language::German
+            } else {
+                Language::English
+            });
+            let matches = simulator(&app)
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(
+                matches,
+                "the view does not match tests/snapshots/{name}.png"
+            );
+        }
     }
 }
 

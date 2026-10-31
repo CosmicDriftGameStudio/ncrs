@@ -1,32 +1,19 @@
 //! State of the rule suggestions view: the suggested rules, the cursor in
-//! them, the form while one is edited, and the documents the selected one
-//! matches. No widgets and no tasks; `App` owns it and changes it from
+//! them, and the documents the selected one matches. No widgets and no tasks; `App` owns it and changes it from
 //! `update`, the view is `ui::rule_suggestions`.
 
 use std::path::PathBuf;
 
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{Condition, ConditionKind, RuleConditions, RuleId, RuleSpec};
-use ncrs_intake::pattern_is_valid;
+use ncrs_index::{Condition, Rule, RuleId, RuleOrigin, RuleSpec};
 
 use crate::list_window::ListWindow;
-use crate::suggestion_work::{condition_text, SuggestedRule};
+use crate::suggestion_work::SuggestedRule;
 
-/// The fields of the form while a suggestion is edited.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Edit {
-    pub condition: String,
-    pub kind: String,
-    pub pattern: String,
-}
-
-/// Why a suggestion was not confirmed.
+/// Why a suggestion was not decided.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Problem {
-    NoCondition,
-    NoKind,
-    InvalidPattern,
     /// The work on the index failed; the technical detail stays English.
     Failed(String),
 }
@@ -50,7 +37,6 @@ pub struct RuleSuggestions {
     window: ListWindow,
     /// The analysis or a decision is running; the view takes no new one.
     busy: bool,
-    edit: Option<Edit>,
     problem: Option<Problem>,
     matches: Matches,
     /// The suggestion `matches` belongs to.
@@ -65,7 +51,6 @@ impl RuleSuggestions {
             cursor: 0,
             window: ListWindow::default(),
             busy: true,
-            edit: None,
             problem: None,
             matches: Matches::Unknown,
             matches_of: None,
@@ -93,10 +78,6 @@ impl RuleSuggestions {
         self.busy
     }
 
-    pub fn edit(&self) -> Option<&Edit> {
-        self.edit.as_ref()
-    }
-
     pub fn problem(&self) -> Option<&Problem> {
         self.problem.as_ref()
     }
@@ -109,7 +90,6 @@ impl RuleSuggestions {
     pub fn begin_analysis(&mut self) {
         self.busy = true;
         self.problem = None;
-        self.edit = None;
     }
 
     /// The list the work returned. The cursor stays on the suggestion it was
@@ -123,7 +103,6 @@ impl RuleSuggestions {
         self.window
             .ensure_visible(self.cursor, self.rows.len(), VISIBLE_ROWS);
         self.busy = false;
-        self.edit = None;
         self.problem = None;
         self.forget_matches_of_others();
     }
@@ -153,7 +132,6 @@ impl RuleSuggestions {
         self.cursor = index;
         self.window
             .ensure_visible(index, self.rows.len(), VISIBLE_ROWS);
-        self.edit = None;
         self.problem = None;
         self.forget_matches_of_others();
     }
@@ -179,97 +157,32 @@ impl RuleSuggestions {
         }
     }
 
-    pub fn start_edit(&mut self) {
+    /// The selected suggestion as the rule the form starts from. The place
+    /// and origin are not written when the suggestion is confirmed.
+    pub fn rule_to_edit(&self) -> Option<Rule> {
         if self.busy {
-            return;
+            return None;
         }
-        let Some(row) = self.rows.get(self.cursor) else {
-            return;
-        };
-        self.edit = Some(Edit {
-            condition: condition_text(&row.spec).unwrap_or_default().to_owned(),
-            kind: row.spec.kind.clone(),
-            pattern: row.spec.filing_pattern.clone(),
-        });
-        self.problem = None;
+        let row = self.rows.get(self.cursor)?;
+        Some(Rule {
+            id: row.id,
+            position: 0,
+            origin: RuleOrigin::Suggestion,
+            spec: row.spec.clone(),
+        })
     }
 
-    pub fn cancel_edit(&mut self) {
-        self.edit = None;
-        self.problem = None;
-    }
-
-    pub fn set_condition(&mut self, text: String) {
-        if let Some(edit) = self.edit.as_mut() {
-            edit.condition = text;
-            self.problem = None;
-        }
-    }
-
-    pub fn set_kind(&mut self, text: String) {
-        if let Some(edit) = self.edit.as_mut() {
-            edit.kind = text;
-            self.problem = None;
-        }
-    }
-
-    pub fn set_pattern(&mut self, text: String) {
-        if let Some(edit) = self.edit.as_mut() {
-            edit.pattern = text;
-            self.problem = None;
-        }
-    }
-
-    /// The suggestion to confirm and the values to confirm it with: the edited
-    /// ones while the form is up, else the suggested ones. The condition keeps its
-    /// kind (a sender stays a sender, a word a word), never a pattern. An invalid pattern or an empty
-    /// field is reported in the view and nothing is returned. Marks the view
-    /// busy until the work answers.
+    /// The suggestion to confirm as it was suggested. Marks the view busy
+    /// until the work answers.
     pub fn begin_confirm(&mut self) -> Option<(RuleId, RuleSpec)> {
         if self.busy {
             return None;
         }
         let row = self.rows.get(self.cursor)?;
-        let (condition, kind, pattern) = match &self.edit {
-            Some(edit) => (
-                edit.condition.trim().to_owned(),
-                edit.kind.trim().to_owned(),
-                edit.pattern.trim().to_owned(),
-            ),
-            None => (
-                condition_text(&row.spec).unwrap_or_default().to_owned(),
-                row.spec.kind.clone(),
-                row.spec.filing_pattern.clone(),
-            ),
-        };
-        let problem = if condition.is_empty() {
-            Some(Problem::NoCondition)
-        } else if kind.is_empty() {
-            Some(Problem::NoKind)
-        } else if !pattern_is_valid(&pattern) {
-            Some(Problem::InvalidPattern)
-        } else {
-            None
-        };
-        if problem.is_some() {
-            self.problem = problem;
-            return None;
-        }
-        let kind_of_condition = row
-            .spec
-            .conditions
-            .single_condition()
-            .map_or(ConditionKind::Word, |existing| existing.kind);
-        let spec = RuleSpec {
-            conditions: RuleConditions::all_of(vec![Condition::new(kind_of_condition, condition)]),
-            kind,
-            filing_pattern: pattern,
-            ..row.spec.clone()
-        };
-        let id = row.id;
+        let confirmed = (row.id, row.spec.clone());
         self.busy = true;
         self.problem = None;
-        Some((id, spec))
+        Some(confirmed)
     }
 
     /// The suggestion to discard; marks the view busy until the work answers.
@@ -304,7 +217,7 @@ impl RuleSuggestions {
 pub mod tests {
     use std::collections::BTreeSet;
 
-    use ncrs_index::{RuleEvidence, TaxContext};
+    use ncrs_index::{ConditionKind, RuleConditions, RuleEvidence, TaxContext};
 
     use super::*;
 
@@ -451,76 +364,17 @@ pub mod tests {
     }
 
     #[test]
-    fn an_edit_is_confirmed_with_the_edited_values_and_stays_a_literal_condition() {
+    fn the_selected_suggestion_is_handed_to_the_form_as_a_rule() {
+        let [_, two, _] = rule_ids();
         let mut view = loaded_view();
-        view.start_edit();
-        view.set_condition("  Company A (Ltd.)  ".to_owned());
-        view.set_kind("Policy".to_owned());
-        view.set_pattern("Policies/{year}/{name}".to_owned());
+        view.select(1);
 
-        let (_, spec) = view.begin_confirm().unwrap();
+        let rule = view.rule_to_edit().unwrap();
 
-        assert_eq!(spec.conditions.single_text(), Some("Company A (Ltd.)"));
-        assert_eq!(spec.kind, "Policy");
-        assert_eq!(spec.filing_pattern, "Policies/{year}/{name}");
-    }
-
-    #[test]
-    fn editing_a_sender_suggestion_changes_the_name_and_keeps_it_a_sender() {
-        let [one, _, _] = rule_ids();
-        let mut view = RuleSuggestions::new();
-        let mut sender = suggestion(one, "Company A", "Insurance");
-        sender.spec.conditions =
-            RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, "Company A")]);
-        view.loaded(vec![sender]);
-        view.start_edit();
-        assert_eq!(view.edit().unwrap().condition, "Company A");
-        view.set_condition("Company A Ltd".to_owned());
-
-        let (_, spec) = view.begin_confirm().unwrap();
-
-        assert_eq!(
-            spec.conditions,
-            RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, "Company A Ltd")])
-        );
-    }
-
-    #[test]
-    fn an_invalid_pattern_or_an_empty_field_is_reported_and_nothing_is_confirmed() {
-        for (field, expected) in [
-            ("pattern", Problem::InvalidPattern),
-            ("kind", Problem::NoKind),
-            ("condition", Problem::NoCondition),
-        ] {
-            let mut view = loaded_view();
-            view.start_edit();
-            match field {
-                "pattern" => view.set_pattern("{year}/{nonsense}".to_owned()),
-                "kind" => view.set_kind("   ".to_owned()),
-                _ => view.set_condition(String::new()),
-            }
-
-            assert_eq!(view.begin_confirm(), None, "{field}");
-
-            assert_eq!(view.problem(), Some(&expected));
-            assert!(!view.is_busy(), "the form stays usable: {field}");
-            assert!(view.edit().is_some());
-        }
-    }
-
-    #[test]
-    fn typing_ends_the_complaint_and_moving_ends_the_edit() {
-        let mut view = loaded_view();
-        view.start_edit();
-        view.set_pattern("{nonsense}".to_owned());
-        view.begin_confirm();
-        assert!(view.problem().is_some());
-
-        view.set_pattern("{year}".to_owned());
-        assert!(view.problem().is_none());
-
-        view.move_cursor(1);
-        assert!(view.edit().is_none());
+        assert_eq!(rule.id, two);
+        assert_eq!(rule.origin, RuleOrigin::Suggestion);
+        assert_eq!(rule.spec, view.selected().unwrap().spec);
+        assert!(!rule.spec.confirmed);
     }
 
     #[test]
@@ -529,8 +383,7 @@ pub mod tests {
 
         assert_eq!(view.begin_confirm(), None);
         assert_eq!(view.begin_discard(), None);
-        view.start_edit();
-        assert!(view.edit().is_none());
+        assert_eq!(view.rule_to_edit(), None);
     }
 
     #[test]

@@ -2893,44 +2893,14 @@
       "de": "… und {count} weitere"
     },
     {
-      "key": "rule_suggestions.field_condition",
-      "context": "Label of the field in the edit form of a suggested rule: the text a document has to contain.",
-      "en": "Text contains",
-      "de": "Text enthält"
-    },
-    {
-      "key": "rule_suggestions.field_kind",
-      "context": "Label of the field in the edit form of a suggested rule: the kind of document the rule sets, such as Invoice.",
-      "en": "Kind",
-      "de": "Art"
-    },
-    {
-      "key": "rule_suggestions.field_pattern",
-      "context": "Label of the field in the edit form of a suggested rule: the filing pattern, a path with placeholders such as year and name, below the filing location.",
-      "en": "Filed as (pattern)",
-      "de": "Abgelegt als (Muster)"
-    },
-    {
-      "key": "rule_suggestions.form_hint",
-      "context": "Hint under the edit form of a suggested rule. The text is searched for as it is, ignoring case; it is never a pattern with special characters.",
-      "en": "The text is looked for as typed, anywhere in a document, ignoring case.",
-      "de": "Der Text wird so gesucht, wie er dasteht, an beliebiger Stelle eines Dokuments und ohne Beachtung der Groß- und Kleinschreibung."
-    },
-    {
-      "key": "rule_suggestions.problem_no_condition",
-      "context": "Error line in the edit form of a suggested rule when the text field is empty, so the rule would match every document.",
-      "en": "Enter the text a document has to contain.",
-      "de": "Gib den Text ein, den ein Dokument enthalten muss."
-    },
-    {
       "key": "rule_suggestions.problem_no_kind",
-      "context": "Error line in the edit form of a suggested rule when the kind field is empty.",
+      "context": "Error line in the rule form when the kind field is empty.",
       "en": "Enter the kind of document.",
       "de": "Gib die Art des Dokuments ein."
     },
     {
       "key": "rule_suggestions.problem_invalid_pattern",
-      "context": "Error line in the edit form of a suggested rule when the filing pattern cannot be used: an unknown placeholder, a stray brace, or a path that leaves the folder. Nothing is saved.",
+      "context": "Error line in the rule form when the filing pattern cannot be used: an unknown placeholder, a stray brace, or a path that leaves the folder. Nothing is saved.",
       "en": "This pattern cannot be used. Placeholders are written in braces, such as {year}.",
       "de": "Dieses Muster ist nicht verwendbar. Platzhalter stehen in geschweiften Klammern, etwa {year}."
     },
@@ -2960,19 +2930,13 @@
     },
     {
       "key": "rule_suggestions.edit",
-      "context": "Button in the rule suggestions view: opens the form to change the text, kind or pattern of the selected suggestion before confirming it.",
+      "context": "Button in the rule suggestions view: opens the rule form for the selected suggestion, to change it before confirming it.",
       "en": "Edit",
       "de": "Bearbeiten"
     },
     {
-      "key": "rule_suggestions.cancel_edit",
-      "context": "Button in the edit form of a suggested rule: closes the form without confirming and drops the changes.",
-      "en": "Cancel",
-      "de": "Abbrechen"
-    },
-    {
       "key": "rule_suggestions.confirm",
-      "context": "Button in the rule suggestions view: turns the selected suggestion, as edited if the form is up, into a confirmed rule that Hermes uses from then on.",
+      "context": "Button in the rule suggestions view: turns the selected suggestion, as suggested, into a confirmed rule that Hermes uses from then on. Also the button of the rule form that confirms a suggestion.",
       "en": "Confirm",
       "de": "Bestätigen"
     },
@@ -3701,12 +3665,6 @@
       "context": "Footer note in the review list after filing. Takes the path.",
       "en": "Filed as {path}",
       "de": "Abgelegt als {path}"
-    },
-    {
-      "key": "review_list.rule_created",
-      "context": "Note in the review list after a rule was created. Takes the sender.",
-      "en": "Rule created for ‘{sender}’",
-      "de": "Regel angelegt für ‚{sender}‘"
     },
     {
       "key": "action.saved_queries",
@@ -7523,6 +7481,12 @@
       "context": "Title of the rules page while the form to change a rule is open.",
       "en": "Edit rule",
       "de": "Regel bearbeiten"
+    },
+    {
+      "key": "rules.form_title_confirm",
+      "context": "Title of the rules page while the form of a suggested rule is open, before it is confirmed.",
+      "en": "Confirm suggested rule",
+      "de": "Vorgeschlagene Regel bestätigen"
     },
     {
       "key": "rules.form_purpose",

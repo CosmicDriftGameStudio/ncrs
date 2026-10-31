@@ -81,9 +81,9 @@ use crate::quick_open::{DocumentRequest, QuickOpen, MAX_DOCUMENT_HITS, QUICK_OPE
 use crate::remote_dialog::{self, ConnectDialog, Missing, Then};
 use crate::reorganisation_plan::ReorganisationView;
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
-use crate::review_list::{FormField, ReviewList};
+use crate::review_list::{rule_prefill_of, ReviewList};
 use crate::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
-use crate::rule_form::RuleSave;
+use crate::rule_form::{RuleForm, RuleSave};
 use crate::rule_suggestions::RuleSuggestions;
 use crate::rules_page::RulesPage;
 use crate::rules_work::{RuleChange, RulesAccess};
@@ -1589,8 +1589,6 @@ pub struct PromptKeyState {
     pub theme_fetch: bool,
     /// The rule suggestions view is up, so Enter, the arrows and its letters are its.
     pub rule_suggestions: bool,
-    /// Its form is up, so the text fields take the letters.
-    pub rule_suggestions_editing: bool,
     /// The rules page is up, so Enter, the arrows, Space and Delete are its.
     pub rules: bool,
     /// Its form is up, so the text fields take the keys.
@@ -1665,7 +1663,6 @@ impl Default for PromptKeyState {
             filing_card: false,
             theme_fetch: false,
             rule_suggestions: false,
-            rule_suggestions_editing: false,
             rules: false,
             rules_form: false,
             rules_confirming_delete: false,
@@ -1823,9 +1820,8 @@ fn saved_queries_key(
     }
 }
 
-/// The view is a card: Enter confirms, the arrows move in the list, and while
-/// no form is up the letters decide (`e`dit, `d`iscard, `r`e-analyse). With the
-/// form up the fields take the typing; Escape is `InputState`'s then.
+/// The view is a card: Enter confirms, the arrows move in the list and the
+/// letters decide (`e`dit, `d`iscard, `r`e-analyse).
 fn rule_suggestions_key(
     prompt: &PromptKeyState,
     key: &Key,
@@ -1834,34 +1830,17 @@ fn rule_suggestions_key(
 ) -> Option<Message> {
     let suggestions = |message| Some(Message::RuleSuggestions(message));
     let plain = key_modifiers.is_empty();
-    if let Some(focus) =
-        hermes_focus_key(prompt, key, key_modifiers, prompt.rule_suggestions_editing)
-    {
+    if let Some(focus) = hermes_focus_key(prompt, key, key_modifiers, false) {
         return Some(focus);
     }
     match key.as_ref() {
         Key::Named(Named::Escape) => suggestions(RuleSuggestionsMessage::Close),
         Key::Named(Named::Enter) => suggestions(RuleSuggestionsMessage::Confirm),
-        Key::Named(Named::Tab) if prompt.rule_suggestions_editing => {
-            suggestions(RuleSuggestionsMessage::FocusField {
-                backwards: key_modifiers.shift(),
-            })
-        }
-        Key::Named(Named::ArrowUp) if plain && !prompt.rule_suggestions_editing => {
-            suggestions(RuleSuggestionsMessage::Move(-1))
-        }
-        Key::Named(Named::ArrowDown) if plain && !prompt.rule_suggestions_editing => {
-            suggestions(RuleSuggestionsMessage::Move(1))
-        }
-        Key::Character("e") if plain && !prompt.rule_suggestions_editing => {
-            suggestions(RuleSuggestionsMessage::Edit)
-        }
-        Key::Character("d") if plain && !prompt.rule_suggestions_editing => {
-            suggestions(RuleSuggestionsMessage::Discard)
-        }
-        Key::Character("r") if plain && !prompt.rule_suggestions_editing => {
-            suggestions(RuleSuggestionsMessage::Reanalyse)
-        }
+        Key::Named(Named::ArrowUp) if plain => suggestions(RuleSuggestionsMessage::Move(-1)),
+        Key::Named(Named::ArrowDown) if plain => suggestions(RuleSuggestionsMessage::Move(1)),
+        Key::Character("e") if plain => suggestions(RuleSuggestionsMessage::Edit),
+        Key::Character("d") if plain => suggestions(RuleSuggestionsMessage::Discard),
+        Key::Character("r") if plain => suggestions(RuleSuggestionsMessage::Reanalyse),
         _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
             .filter(|message| *message == Message::Quit)
             .filter(|_| is_not_typed_by_text_field(key, key_modifiers)),
@@ -4542,8 +4521,8 @@ impl App {
                 menu.back();
                 Task::none()
             }
-            QuickFixAction::SetFields => self.open_review_from_quick_fix(false),
-            QuickFixAction::CreateRule => self.open_review_from_quick_fix(true),
+            QuickFixAction::SetFields => self.open_review_from_quick_fix(),
+            QuickFixAction::CreateRule => self.open_rule_form_from_quick_fix(),
             QuickFixAction::Later => {
                 self.quick_fix = None;
                 Task::none()
@@ -4604,27 +4583,35 @@ impl App {
         Task::batch(tasks.into_iter().chain([notice]))
     }
 
-    /// Opens the review page on the document of the menu with its form open:
-    /// to fill in the missing field, or to file it by hand and make a rule from
-    /// it afterwards, which the page offers only after filing.
-    fn open_review_from_quick_fix(&mut self, for_rule: bool) -> Task<Message> {
+    /// Opens the review page on the document of the menu with its form open,
+    /// to fill in the missing field.
+    fn open_review_from_quick_fix(&mut self) -> Task<Message> {
         let Some(menu) = self.quick_fix.take() else {
             return Task::none();
         };
         let Some(item) = menu.item_to_fix() else {
             return Task::none();
         };
-        let field = if for_rule {
-            FormField::Sender
-        } else {
-            field_to_fix(item)
-        };
+        let field = field_to_fix(item);
         let path = item.path.clone();
         let opened = self.open_review_list();
         if let Some(view) = self.review_list.as_mut() {
             view.edit_on_load(path, field);
         }
         opened
+    }
+
+    /// Opens the rule form with what the review would file the document of the
+    /// menu with.
+    fn open_rule_form_from_quick_fix(&mut self) -> Task<Message> {
+        let Some(menu) = self.quick_fix.take() else {
+            return Task::none();
+        };
+        let Some(item) = menu.item_to_fix() else {
+            return Task::none();
+        };
+        let prefill = rule_prefill_of(item, self.filing_config.default_pattern.as_deref());
+        self.open_rule_form(RuleForm::from_document(prefill), None)
     }
 
     fn update_context_menu(&mut self, message: Message) -> Task<Message> {
@@ -5710,10 +5697,6 @@ impl App {
             .rules
             .as_ref()
             .is_some_and(RulesPage::is_confirming_delete);
-        let rule_suggestions_editing = self
-            .rule_suggestions
-            .as_ref()
-            .is_some_and(|view| view.edit().is_some());
         let review_list = self.review_list.is_some();
         let review_list_editing = self
             .review_list
@@ -5764,7 +5747,6 @@ impl App {
                 filing_card,
                 theme_fetch,
                 rule_suggestions,
-                rule_suggestions_editing,
                 rules,
                 rules_form,
                 rules_confirming_delete,
@@ -5814,7 +5796,6 @@ impl App {
                 filing_card,
                 theme_fetch,
                 rule_suggestions,
-                rule_suggestions_editing,
                 rules,
                 rules_form,
                 rules_confirming_delete,
@@ -10140,46 +10121,16 @@ impl App {
                 self.look_up_suggestion_matches()
             }
             RuleSuggestionsMessage::Edit => {
-                let Some(view) = self.rule_suggestions.as_mut() else {
+                let Some(view) = self.rule_suggestions.as_ref() else {
                     return Task::none();
                 };
-                view.start_edit();
-                if view.edit().is_some() {
-                    operation::focus(rule_suggestions_ui::CONDITION_ID)
-                } else {
-                    Task::none()
-                }
-            }
-            RuleSuggestionsMessage::CancelEdit => {
-                if let Some(view) = self.rule_suggestions.as_mut() {
-                    view.cancel_edit();
-                }
-                release_focus()
-            }
-            RuleSuggestionsMessage::ConditionChanged(text) => {
-                if let Some(view) = self.rule_suggestions.as_mut() {
-                    view.set_condition(text);
-                }
-                Task::none()
-            }
-            RuleSuggestionsMessage::KindChanged(text) => {
-                if let Some(view) = self.rule_suggestions.as_mut() {
-                    view.set_kind(text);
-                }
-                Task::none()
-            }
-            RuleSuggestionsMessage::PatternChanged(text) => {
-                if let Some(view) = self.rule_suggestions.as_mut() {
-                    view.set_pattern(text);
-                }
-                Task::none()
-            }
-            RuleSuggestionsMessage::FocusField { backwards } => {
-                if backwards {
-                    operation::focus_previous()
-                } else {
-                    operation::focus_next()
-                }
+                let Some(rule) = view.rule_to_edit() else {
+                    return Task::none();
+                };
+                self.open_rule_form(
+                    RuleForm::from_suggestion(&rule),
+                    Some(HermesPage::RuleSuggestions),
+                )
             }
             RuleSuggestionsMessage::Confirm => {
                 let Some((id, spec)) = self
@@ -10320,6 +10271,34 @@ impl App {
         }
     }
 
+    /// Closes the form without saving, if there is one, and goes back to the
+    /// page it was opened from.
+    fn cancel_rule_form(&mut self) -> Option<Task<Message>> {
+        let view = self.rules.as_mut()?;
+        if !view.cancel_form() {
+            return None;
+        }
+        Some(match view.take_return_to() {
+            Some(page) => self.go_to_hermes_page(page),
+            None => Task::none(),
+        })
+    }
+
+    /// Shows the Rules page with `form` open. From another Hermes page, or
+    /// from the panels, the page loads as the sidebar would load it.
+    fn open_rule_form(&mut self, form: RuleForm, return_to: Option<HermesPage>) -> Task<Message> {
+        let opened = if self.open_hermes_page().is_some() {
+            self.go_to_hermes_page(HermesPage::Rules)
+        } else {
+            self.open_rules()
+        };
+        let Some(view) = self.rules.as_mut() else {
+            return opened;
+        };
+        view.open_form(form, return_to);
+        Task::batch([opened, self.focus_rule_form()])
+    }
+
     fn update_rule_form(&mut self, message: RuleFormMessage) -> Task<Message> {
         let Some(view) = self.rules.as_mut() else {
             return Task::none();
@@ -10329,19 +10308,16 @@ impl App {
                 let save = view.begin_save();
                 self.run_rule_save(save)
             }
-            RuleFormMessage::Cancel => {
-                view.cancel_form();
-                Task::none()
-            }
+            RuleFormMessage::Cancel => self.cancel_rule_form().unwrap_or_else(Task::none),
             RuleFormMessage::Saved { generation, result } => {
                 if generation != self.rules_generation {
                     return Task::none();
                 }
                 match result {
-                    Ok(()) => {
-                        view.saved();
-                        self.run_rules_load()
-                    }
+                    Ok(()) => match view.saved() {
+                        Some(page) => self.go_to_hermes_page(page),
+                        None => self.run_rules_load(),
+                    },
                     Err(detail) => {
                         view.save_failed(detail);
                         Task::none()
@@ -10367,14 +10343,17 @@ impl App {
         self.run_rules_load()
     }
 
-    /// Escape closes the form first, then backs out of the delete question,
-    /// then leaves the page.
+    /// Escape backs out of the delete question or closes the form first, then
+    /// leaves the page.
     fn close_rules(&mut self) -> Task<Message> {
         let Some(view) = self.rules.as_mut() else {
             return Task::none();
         };
-        if view.cancel_form() || view.cancel_delete() {
+        if view.cancel_delete() {
             return Task::none();
+        }
+        if let Some(back) = self.cancel_rule_form() {
+            return back;
         }
         self.rules = None;
         release_focus()
@@ -10454,19 +10433,11 @@ impl App {
         self.run_suggestion_work(SuggestionAccess::analyse)
     }
 
-    /// Escape leaves the form first, the view second.
     fn close_rule_suggestions(&mut self) -> Task<Message> {
-        match self.rule_suggestions.as_mut() {
-            Some(view) if view.edit().is_some() => {
-                view.cancel_edit();
-                release_focus()
-            }
-            Some(_) => {
-                self.rule_suggestions = None;
-                release_focus()
-            }
-            None => Task::none(),
+        if self.rule_suggestions.take().is_none() {
+            return Task::none();
         }
+        release_focus()
     }
 
     /// Runs `work` on a blocking thread: the index is shared with the intake,
@@ -10635,42 +10606,11 @@ impl App {
                 self.run_review_load()
             }
             ReviewListMessage::CreateRule => {
-                let Some(request) = self.review_list.as_mut().and_then(ReviewList::begin_rule)
+                let Some(prefill) = self.review_list.as_ref().and_then(ReviewList::rule_offer)
                 else {
                     return Task::none();
                 };
-                let generation = self.review_list_generation;
-                let Some(access) = self.review_access() else {
-                    return Task::none();
-                };
-                Task::perform(
-                    tokio::task::spawn_blocking(move || {
-                        access.create_rule_for_sender(
-                            &request.sender,
-                            &request.kind,
-                            request.tax_context,
-                            request.tags,
-                            &request.pattern,
-                        )
-                    }),
-                    move |joined| {
-                        let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                        Message::ReviewList(ReviewListMessage::RuleCreated { generation, result })
-                    },
-                )
-            }
-            ReviewListMessage::RuleCreated { generation, result } => {
-                if generation != self.review_list_generation {
-                    return Task::none();
-                }
-                let Some(view) = self.review_list.as_mut() else {
-                    return Task::none();
-                };
-                match result {
-                    Ok(_) => view.rule_created(),
-                    Err(detail) => view.failed(detail),
-                }
-                Task::none()
+                self.open_rule_form(RuleForm::from_document(prefill), Some(HermesPage::Review))
             }
         }
     }
@@ -16036,6 +15976,15 @@ impl App {
             app.window_size,
         );
         let mut menu = QuickFix::new(anchor, app.window_size);
+        menu.loaded(vec![item]);
+        app.quick_fix = Some(menu);
+        app
+    }
+
+    /// Fixed panels with the quick-fix menu open on `item` alone.
+    pub fn with_quick_fix_menu(item: ReviewItem) -> Self {
+        let mut app = Self::with_fixed_panels();
+        let mut menu = QuickFix::new(iced::Point::ORIGIN, app.window_size);
         menu.loaded(vec![item]);
         app.quick_fix = Some(menu);
         app
