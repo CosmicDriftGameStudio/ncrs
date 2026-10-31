@@ -2478,6 +2478,37 @@ mod tests {
     }
 
     #[test]
+    fn the_rules_step_does_not_offer_an_iban_of_a_tax_context_as_a_sender_alias() {
+        let own_iban = ncrs_index::Condition::new(
+            ncrs_index::ConditionKind::Iban,
+            "DE02 1203 0000 0000 2020 51",
+        );
+        let fixture = run_text_with_rules_and_contexts(
+            &[],
+            &[(
+                "company",
+                ncrs_index::RuleConditions::any_of(vec![own_iban]),
+            )],
+            "Stadtwerke Musterstadt GmbH\nIBAN DE89 3704 0044 0532 0130 00\nLastschrift von DE02 1203 0000 0000 2020 51\n",
+        );
+
+        let index = fixture.index.lock().unwrap();
+        let offered: Vec<_> = index
+            .sender_aliases()
+            .unwrap()
+            .into_iter()
+            .map(|alias| (alias.sender, alias.value))
+            .collect();
+        assert_eq!(
+            offered,
+            [(
+                "Stadtwerke Musterstadt GmbH".to_owned(),
+                "DE89370400440532013000".to_owned()
+            )]
+        );
+    }
+
+    #[test]
     fn a_document_no_context_claims_lands_in_review_with_the_unclear_reason() {
         let fixture = run_text_with_rules_and_contexts(
             &[open_context_rule()],

@@ -18,7 +18,7 @@ use ncrs_index::{
 use tempfile::TempDir;
 
 use crate::filing_plan::{plan, PlanInput, Planning, FIELD_ORDER};
-use crate::sender_detection::detect_sender;
+use crate::sender_detection::{detect_sender, OwnIdentifiers};
 
 const CORPUS_FOLDER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/recognition");
 const HEADER_END: &str = "\n---\n";
@@ -516,11 +516,17 @@ pub fn measure(
     mut fill_open_fields: impl FnMut(&CorpusDocument, &DocumentFields) -> Option<DocumentFields>,
 ) -> RecognitionReport {
     let sender_aliases = fixed_sender_aliases();
+    let own = OwnIdentifiers::from_conditions(
+        tax_contexts
+            .iter()
+            .flat_map(|context| &context.conditions.list),
+        None,
+    );
     let results = corpus
         .iter()
         .map(|document| {
             let detected = DocumentFields {
-                sender: detect_sender(&document.text, &sender_aliases, &[])
+                sender: detect_sender(&document.text, &sender_aliases, &[], &own)
                     .sender
                     .map(|found| found.name),
                 ..DocumentFields::default()

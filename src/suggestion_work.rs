@@ -18,7 +18,7 @@ use ncrs_index::{
 };
 use ncrs_intake::{
     contains_condition_holds, detect_sender, learn_archive, suggest_rules, word_condition_holds,
-    ArchiveDocument, ArchiveText,
+    ArchiveDocument, ArchiveText, OwnIdentifiers,
 };
 
 type IndexSlot = Arc<Mutex<Option<Index>>>;
@@ -47,17 +47,19 @@ struct ArchiveSnapshot {
     entries: Vec<ArchiveEntry>,
     aliases: SenderAliases,
     sender_names: Vec<String>,
+    own: OwnIdentifiers,
 }
 
 impl ArchiveEntry {
     /// The stored sender, else the one found in the text without the AI;
     /// either way the canonical name.
-    fn sender(&self, aliases: &SenderAliases, sender_names: &[String]) -> Option<String> {
+    fn sender(&self, snapshot: &ArchiveSnapshot) -> Option<String> {
+        let aliases = &snapshot.aliases;
         if let Some(stored) = self.fields.sender.as_deref() {
             return Some(aliases.canonical_sender(stored).to_owned());
         }
         let text = self.text.as_deref()?;
-        detect_sender(text, aliases, sender_names)
+        detect_sender(text, aliases, &snapshot.sender_names, &snapshot.own)
             .sender
             .map(|found| aliases.canonical_sender(&found.name).to_owned())
     }
@@ -99,7 +101,7 @@ impl SuggestionAccess {
                         document: entry.document.clone(),
                         text: entry.text.clone()?,
                         fields: entry.fields.clone(),
-                        sender: entry.sender(&snapshot.aliases, &snapshot.sender_names),
+                        sender: entry.sender(&snapshot),
                     })
                 })
                 .collect();
@@ -154,7 +156,7 @@ impl SuggestionAccess {
             found.extend(snapshot.entries.iter().filter_map(|entry| {
                 let holds = match condition.kind {
                     ConditionKind::Sender => entry
-                        .sender(&snapshot.aliases, &snapshot.sender_names)
+                        .sender(&snapshot)
                         .is_some_and(|sender| sender.to_lowercase() == wanted.to_lowercase()),
                     _ => entry
                         .text
@@ -203,6 +205,13 @@ fn archive_snapshot(index: &Index, root: &Path) -> Result<ArchiveSnapshot, Index
         entries,
         aliases: index.confirmed_sender_aliases()?,
         sender_names: index.sender_names()?,
+        own: OwnIdentifiers::from_conditions(
+            index
+                .assignable_tax_contexts()?
+                .iter()
+                .flat_map(|context| &context.conditions.list),
+            None,
+        ),
     })
 }
 

@@ -6,8 +6,8 @@ use ncrs_ai::Provider;
 use ncrs_index::{DocumentStatus, Field, FieldOrigin, IndexError, ReviewReason};
 use ncrs_intake::text_is_readable;
 use ncrs_intake::{
-    detect_sender, plan, planned_field_origin, PlanInput, Planning, StabilityTracker, TextChain,
-    TextError,
+    detect_sender, plan, planned_field_origin, OwnIdentifiers, PlanInput, Planning,
+    StabilityTracker, TextChain, TextError,
 };
 use ncrs_intake::{settle_location, take_in, IntakeError, Location, LocationMode, Outcome};
 
@@ -37,6 +37,7 @@ pub fn intake_steps(
         }),
         Box::new(RulesStep {
             index: Arc::clone(&index),
+            own_name: own_name.clone(),
         }),
     ];
     if let Some(provider) = ai {
@@ -171,6 +172,7 @@ impl Step for TextStep {
 #[derive(Debug)]
 struct RulesStep {
     index: Arc<dyn IndexAccess>,
+    own_name: Option<String>,
 }
 
 impl Step for RulesStep {
@@ -197,8 +199,15 @@ impl Step for RulesStep {
             }
             let rules = index.rules()?;
             let aliases = index.confirmed_sender_aliases()?;
+            let tax_contexts = index.assignable_tax_contexts()?;
             let detection = if document.fields.sender.is_none() {
-                Some(detect_sender(text, &aliases, &index.sender_names()?))
+                let own = OwnIdentifiers::from_conditions(
+                    tax_contexts
+                        .iter()
+                        .flat_map(|context| &context.conditions.list),
+                    self.own_name.as_deref(),
+                );
+                Some(detect_sender(text, &aliases, &index.sender_names()?, &own))
             } else {
                 None
             };
@@ -215,7 +224,6 @@ impl Step for RulesStep {
             for offer in detection.iter().flat_map(|found| &found.offers) {
                 index.offer_sender_alias(&offer.sender, offer.kind, &offer.value)?;
             }
-            let tax_contexts = index.assignable_tax_contexts()?;
             let planning = plan(
                 &rules,
                 &PlanInput {
