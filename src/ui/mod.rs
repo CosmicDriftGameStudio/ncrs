@@ -35,6 +35,7 @@ pub mod remote;
 pub mod reorganisation_plan;
 pub mod review_list;
 pub mod rule_suggestions;
+pub mod rules;
 pub mod saved_queries;
 pub mod search;
 pub mod settings;

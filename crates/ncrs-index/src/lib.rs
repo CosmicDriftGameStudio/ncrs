@@ -38,7 +38,7 @@ pub use model::{
     Document, DocumentFields, DocumentId, DocumentSource, DocumentStatus, Field, FieldOrigin,
     FieldOrigins, FileStamp, Finding, FindingKind, HermesCounts, IndexStatistics, NewDocument,
     NoActionReason, PlanId, PlanItem, PlanOutcome, QuerySpec, ReorganisationPlan, ReviewEntry,
-    ReviewEntryId, ReviewReason, Rule, RuleConditions, RuleEvidence, RuleId, RuleSpec,
+    ReviewEntryId, ReviewReason, Rule, RuleConditions, RuleEvidence, RuleId, RuleOrigin, RuleSpec,
     RuleSuggestion, SavedQuery, SavedQueryId, SenderAlias, SenderAliasId, SenderAliasKind,
     SenderAliasState, SenderAliases, StatusCounts, SubtreePattern, TaxContext,
     TaxContextConditions, TaxContextEntry, TaxContextId, TaxContextUsage,

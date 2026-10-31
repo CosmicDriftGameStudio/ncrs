@@ -3245,6 +3245,220 @@ mod saved_queries_card {
     clippy::indexing_slicing
 )]
 #[cfg(test)]
+mod rules_card {
+    use std::collections::BTreeSet;
+
+    use ncrs_index::{
+        Condition, ConditionKind, Rule, RuleConditions, RuleOrigin, RuleSpec, TaxContext,
+    };
+
+    use super::*;
+    use crate::messages::RulesMessage;
+    use crate::rules_page::tests::rule_id;
+    use crate::rules_page::RulesPage;
+    use crate::rules_work::{ListedRule, RulesLoad};
+
+    fn app_shows(app: &App, label: &str) -> bool {
+        simulator(app).find(label).is_ok()
+    }
+
+    fn listed(
+        id: i64,
+        origin: RuleOrigin,
+        conditions: RuleConditions,
+        spec: (&str, Option<TaxContext>, &[&str]),
+        enabled: bool,
+        hits: u64,
+    ) -> ListedRule {
+        let (kind, tax_context, tags) = spec;
+        ListedRule {
+            rule: Rule {
+                id: rule_id(usize::try_from(id).unwrap()),
+                position: id,
+                origin,
+                spec: RuleSpec {
+                    conditions,
+                    extract_number: None,
+                    extract_date: None,
+                    extract_amount: None,
+                    kind: kind.to_owned(),
+                    tax_context,
+                    tags: tags
+                        .iter()
+                        .map(|tag| (*tag).to_owned())
+                        .collect::<BTreeSet<_>>(),
+                    filing_pattern: "{year}/{sender}".to_owned(),
+                    confirmed: true,
+                    enabled,
+                },
+            },
+            global_index: usize::try_from(id).unwrap() - 1,
+            hits,
+        }
+    }
+
+    fn three_rules() -> RulesPage {
+        let mut page = RulesPage::new();
+        page.loaded(RulesLoad {
+            rules: vec![
+                listed(
+                    1,
+                    RuleOrigin::Hand,
+                    RuleConditions::all_of(vec![
+                        Condition::new(ConditionKind::Sender, "Company A"),
+                        Condition::new(ConditionKind::Word, "invoice"),
+                    ]),
+                    ("Invoice", Some(TaxContext::named("company")), &["tax"]),
+                    true,
+                    12,
+                ),
+                listed(
+                    2,
+                    RuleOrigin::Suggestion,
+                    RuleConditions::any_of(vec![
+                        Condition::new(ConditionKind::Substring, "electricity"),
+                        Condition::new(ConditionKind::Iban, "DE89 3704 0044 0532 0130 00"),
+                    ]),
+                    ("Contract", Some(TaxContext::None), &[]),
+                    true,
+                    1,
+                ),
+                listed(
+                    3,
+                    RuleOrigin::Filing,
+                    RuleConditions::all_of(vec![
+                        Condition::not(ConditionKind::Word, "reminder"),
+                        Condition::new(ConditionKind::Folder, "Inbox/Post"),
+                    ]),
+                    ("Receipt", None, &[]),
+                    false,
+                    0,
+                ),
+            ],
+            tax_contexts: crate::review_list::tests::stored_tax_contexts(),
+        });
+        page
+    }
+
+    fn empty() -> RulesPage {
+        let mut page = RulesPage::new();
+        page.loaded(RulesLoad::default());
+        page
+    }
+
+    fn shows(page: RulesPage, label: &str) -> bool {
+        simulator(&App::with_rules(page)).find(label).is_ok()
+    }
+
+    #[test]
+    fn the_page_shows_the_purpose_the_example_and_the_buttons() {
+        for label in [
+            "Rules",
+            "Hermes files a document with the first rule that matches; rules higher up come first.",
+            "Close",
+            "Delete",
+            "Move up",
+            "Move down",
+        ] {
+            assert!(shows(three_rules(), label), "{label}");
+        }
+    }
+
+    #[test]
+    fn an_empty_page_says_where_rules_come_from() {
+        assert!(shows(
+            empty(),
+            "No rules yet. Rules come from suggestions and from filing in the review list."
+        ));
+    }
+
+    #[test]
+    fn the_buttons_send_what_they_say() {
+        for (label, message) in [
+            ("Close", RulesMessage::Close),
+            ("Move down", RulesMessage::Reorder(1)),
+        ] {
+            let app = App::with_rules(three_rules());
+            let mut sim = simulator(&app);
+            sim.click(label).expect(label);
+
+            assert_eq!(
+                sim.into_messages().filter(is_action).collect::<Vec<_>>(),
+                [Message::Rules(message)],
+                "{label}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_delete_button_asks_first() {
+        let mut app = App::with_rules(three_rules());
+        let _ = app.update(Message::Rules(RulesMessage::AskDelete));
+
+        assert!(app.rules_for_test().unwrap().is_confirming_delete());
+    }
+
+    #[test]
+    fn the_first_rule_cannot_move_up() {
+        let app = App::with_rules(three_rules());
+        let mut sim = simulator(&app);
+        let _ = sim.click("Move up");
+
+        assert!(sim.into_messages().find(is_action).is_none());
+    }
+
+    #[test]
+    fn the_delete_question_names_the_rule_and_cancel_keeps_it() {
+        let mut app = App::with_rules(three_rules());
+        let _ = app.update(Message::Rules(RulesMessage::AskDelete));
+
+        assert!(app_shows(&app, "Delete rule"));
+        assert!(app_shows(&app, "Cancel"));
+        let _ = app.update(Message::Rules(RulesMessage::Close));
+        let page = app.rules_for_test().unwrap();
+        assert!(!page.is_confirming_delete());
+        assert_eq!(page.rows().len(), 3);
+    }
+
+    fn matches_snapshot(page: RulesPage, name: &str) {
+        let language = if name.ends_with("_de") {
+            Language::German
+        } else {
+            Language::English
+        };
+        let app = App::with_rules(page).in_language(language);
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image(format!("tests/snapshots/{name}.png"))
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the view does not match tests/snapshots/{name}.png"
+        );
+    }
+
+    #[test]
+    fn the_view_matches_its_snapshots() {
+        matches_snapshot(three_rules(), "rules_en");
+        matches_snapshot(three_rules(), "rules_de");
+        matches_snapshot(empty(), "rules_empty_en");
+        matches_snapshot(empty(), "rules_empty_de");
+        let mut asking = three_rules();
+        asking.ask_delete();
+        matches_snapshot(asking, "rules_delete_en");
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
 mod rule_suggestions_card {
     use std::path::PathBuf;
 

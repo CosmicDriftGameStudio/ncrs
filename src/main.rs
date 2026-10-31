@@ -61,6 +61,8 @@ mod reorganisation_work;
 mod review_list;
 mod review_work;
 mod rule_suggestions;
+mod rules_page;
+mod rules_work;
 mod saved_queries;
 mod search_view;
 mod selection;

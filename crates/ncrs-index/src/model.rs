@@ -816,11 +816,40 @@ pub struct TaxContextConditions {
     pub conditions: RuleConditions,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum RuleOrigin {
+    #[default]
+    Hand,
+    Suggestion,
+    Filing,
+}
+
+impl RuleOrigin {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Hand => "hand",
+            Self::Suggestion => "suggestion",
+            Self::Filing => "filing",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Result<Self, IndexError> {
+        match value {
+            "hand" => Ok(Self::Hand),
+            "suggestion" => Ok(Self::Suggestion),
+            "filing" => Ok(Self::Filing),
+            other => Err(corrupt("rule.origin", other)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rule {
     pub id: RuleId,
     /// Evaluation order, 1-based; changed only by `Index::move_rule`.
     pub position: i64,
+    /// Fixed when the rule is created; `Index::update_rule` keeps it.
+    pub origin: RuleOrigin,
     pub spec: RuleSpec,
 }
 

@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use rusqlite::{params, Connection, OptionalExtension as _};
 
@@ -7,13 +7,15 @@ use crate::condition_store::{
 };
 use crate::error::IndexError;
 use crate::index::Index;
-use crate::model::{Combinator, Condition, Rule, RuleConditions, RuleId, RuleSpec, TaxContext};
+use crate::model::{
+    Combinator, Condition, Rule, RuleConditions, RuleId, RuleOrigin, RuleSpec, TaxContext,
+};
 use crate::names::{name_id, NameTable};
 use crate::tax_contexts::optional_tax_context_id;
 
 const RULE_COLUMNS: &str = "SELECT r.id, r.combinator,
         r.extract_number, r.extract_date, r.extract_amount, k.name, tc.short_name,
-        r.filing_pattern, r.confirmed, r.enabled, r.position
+        r.filing_pattern, r.confirmed, r.enabled, r.position, r.origin
     FROM rule r
     JOIN document_kind k ON k.id = r.kind_id
     LEFT JOIN tax_context tc ON tc.id = r.tax_context_id";
@@ -30,6 +32,7 @@ struct RuleRow {
     confirmed: bool,
     enabled: bool,
     position: i64,
+    origin: String,
 }
 
 impl RuleRow {
@@ -46,6 +49,7 @@ impl RuleRow {
             confirmed: row.get(8)?,
             enabled: row.get(9)?,
             position: row.get(10)?,
+            origin: row.get(11)?,
         })
     }
 
@@ -53,6 +57,7 @@ impl RuleRow {
         Ok(Rule {
             id: RuleId::new(self.id),
             position: self.position,
+            origin: RuleOrigin::parse(&self.origin)?,
             spec: RuleSpec {
                 conditions: RuleConditions {
                     combinator: Combinator::parse(&self.combinator)?,
@@ -98,14 +103,22 @@ fn replace_rule_tags(
 
 impl Index {
     pub fn create_rule(&mut self, spec: &RuleSpec) -> Result<RuleId, IndexError> {
+        self.create_rule_from(spec, RuleOrigin::Hand)
+    }
+
+    pub fn create_rule_from(
+        &mut self,
+        spec: &RuleSpec,
+        origin: RuleOrigin,
+    ) -> Result<RuleId, IndexError> {
         require_condition(spec)?;
         let tx = self.conn_mut().transaction()?;
         let kind_id = name_id(&tx, NameTable::Kind, &spec.kind)?;
         let tax_context_id = optional_tax_context_id(&tx, spec.tax_context.as_ref())?;
         tx.execute(
             "INSERT INTO rule (combinator, extract_number, extract_date, extract_amount,
-                 kind_id, tax_context_id, filing_pattern, confirmed, enabled, position)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
+                 kind_id, tax_context_id, filing_pattern, confirmed, enabled, origin, position)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
                  (SELECT COALESCE(MAX(position), 0) + 1 FROM rule))",
             params![
                 spec.conditions.combinator.as_str(),
@@ -117,6 +130,7 @@ impl Index {
                 spec.filing_pattern,
                 spec.confirmed,
                 spec.enabled,
+                origin.as_str(),
             ],
         )?;
         let id = RuleId::new(tx.last_insert_rowid());
@@ -215,6 +229,32 @@ impl Index {
         Ok(())
     }
 
+    /// Whether a rule was there to switch.
+    pub fn set_rule_enabled(&self, id: RuleId, enabled: bool) -> Result<bool, IndexError> {
+        let changed = self.connection().execute(
+            "UPDATE rule SET enabled = ?2 WHERE id = ?1",
+            params![id.get(), enabled],
+        )?;
+        Ok(changed > 0)
+    }
+
+    /// Documents whose fields a rule has set, per rule; rules without hits are absent.
+    pub fn rule_hits(&self) -> Result<HashMap<RuleId, u64>, IndexError> {
+        let mut statement = self.connection().prepare(
+            "SELECT rule_id, COUNT(DISTINCT document_id) FROM document_field_origin
+             WHERE origin = 'rule' AND rule_id IS NOT NULL GROUP BY rule_id",
+        )?;
+        let hits = statement
+            .query_map([], |row| {
+                Ok((
+                    RuleId::new(row.get::<_, i64>(0)?),
+                    u64::try_from(row.get::<_, i64>(1)?).unwrap_or(u64::MAX),
+                ))
+            })?
+            .collect::<Result<HashMap<_, _>, _>>()?;
+        Ok(hits)
+    }
+
     /// Whether a rule was there to delete.
     pub fn delete_rule(&self, id: RuleId) -> Result<bool, IndexError> {
         let changed = self
@@ -273,6 +313,7 @@ mod tests {
             Some(Rule {
                 id: first_id,
                 position: 1,
+                origin: RuleOrigin::Hand,
                 spec: first.clone()
             })
         );
@@ -282,11 +323,13 @@ mod tests {
                 Rule {
                     id: first_id,
                     position: 1,
+                    origin: RuleOrigin::Hand,
                     spec: first
                 },
                 Rule {
                     id: second_id,
                     position: 2,
+                    origin: RuleOrigin::Hand,
                     spec: second
                 },
             ]
@@ -503,5 +546,122 @@ mod tests {
 
         assert_eq!(index.rule(id).unwrap().unwrap().spec, spec);
         index.update_rule(id, &regex_rule(r"No\. \d+")).unwrap();
+    }
+
+    #[test]
+    fn each_way_to_create_a_rule_records_its_origin_and_an_update_keeps_it() {
+        let (_dir, mut index) = encrypted_index();
+        let by_hand = index.create_rule(&rule_spec()).unwrap();
+        let from_filing = index
+            .create_rule_from(&rule_spec(), RuleOrigin::Filing)
+            .unwrap();
+        let outcome = index
+            .suggest_rule(
+                &RuleSpec {
+                    conditions: RuleConditions::all_of(vec![Condition::new(
+                        ConditionKind::Word,
+                        "rent",
+                    )]),
+                    ..rule_spec()
+                },
+                crate::model::RuleEvidence {
+                    matching_in_folder: 3,
+                    folder_documents: 3,
+                    matching_elsewhere: 0,
+                    subtree: None,
+                },
+            )
+            .unwrap();
+        let crate::model::RuleSuggestion::Created(suggested) = outcome else {
+            panic!("not created");
+        };
+
+        index
+            .update_rule(
+                from_filing,
+                &RuleSpec {
+                    confirmed: true,
+                    ..rule_spec()
+                },
+            )
+            .unwrap();
+        index
+            .confirm_suggested_rule(
+                suggested,
+                &RuleSpec {
+                    confirmed: true,
+                    ..rule_spec()
+                },
+            )
+            .unwrap();
+
+        let origin_of = |id| index.rule(id).unwrap().unwrap().origin;
+        assert_eq!(origin_of(by_hand), RuleOrigin::Hand);
+        assert_eq!(origin_of(from_filing), RuleOrigin::Filing);
+        assert_eq!(origin_of(suggested), RuleOrigin::Suggestion);
+    }
+
+    #[test]
+    fn a_rule_is_switched_on_and_off_without_touching_anything_else() {
+        let (_dir, mut index) = encrypted_index();
+        let [a, b, _c] = three_rules(&mut index);
+
+        assert!(index.set_rule_enabled(a, false).unwrap());
+        assert!(!index.rule(a).unwrap().unwrap().spec.enabled);
+        assert!(index.rule(b).unwrap().unwrap().spec.enabled);
+        assert!(index.set_rule_enabled(a, true).unwrap());
+        assert_eq!(index.rule(a).unwrap().unwrap().spec, rule_spec());
+        assert!(!index.set_rule_enabled(RuleId::new(99), false).unwrap());
+    }
+
+    #[test]
+    fn hits_count_the_documents_a_rule_set_a_field_on() {
+        use crate::model::{DocumentFields, Field, FieldOrigin};
+        use crate::test_support::new_document;
+
+        let (_dir, mut index) = encrypted_index();
+        let [a, b, _c] = three_rules(&mut index);
+        let first = index.insert_document(&new_document(1)).unwrap();
+        let second = index.insert_document(&new_document(2)).unwrap();
+        let third = index.insert_document(&new_document(3)).unwrap();
+        let fields = DocumentFields {
+            sender: Some("Company A".to_owned()),
+            kind: Some("Invoice".to_owned()),
+            ..DocumentFields::default()
+        };
+        for (document, origin) in [
+            (first, FieldOrigin::Rule(Some(a))),
+            (second, FieldOrigin::Rule(Some(a))),
+            (third, FieldOrigin::Rule(Some(b))),
+        ] {
+            index
+                .set_document_fields(document, &fields, |_: Field| origin.clone())
+                .unwrap();
+        }
+        let manual = DocumentFields {
+            sender: Some("Company B".to_owned()),
+            ..DocumentFields::default()
+        };
+        let fourth = index.insert_document(&new_document(4)).unwrap();
+        index
+            .set_document_fields(fourth, &manual, |_| FieldOrigin::Manual)
+            .unwrap();
+
+        let hits = index.rule_hits().unwrap();
+
+        assert_eq!(hits.get(&a), Some(&2));
+        assert_eq!(hits.get(&b), Some(&1));
+        assert_eq!(hits.len(), 2);
+    }
+
+    #[test]
+    fn deleting_a_rule_removes_it_and_reports_an_unknown_one() {
+        let (_dir, mut index) = encrypted_index();
+        let [a, b, c] = three_rules(&mut index);
+
+        assert!(index.delete_rule(b).unwrap());
+        assert!(!index.delete_rule(b).unwrap());
+
+        assert_eq!(ids_in_order(&index), [a, c]);
     }
 }

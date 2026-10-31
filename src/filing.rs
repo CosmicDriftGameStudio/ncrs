@@ -39,6 +39,7 @@ use crate::hermes_column::{read_column, ColumnReading, ColumnRequest};
 use crate::query_work::QueryAccess;
 use crate::reorganisation_work::PlanAccess;
 use crate::review_work::ReviewAccess;
+use crate::rules_work::RulesAccess;
 use crate::suggestion_work::SuggestionAccess;
 use crate::tax_context_work::TaxContextAccess;
 
@@ -1171,6 +1172,12 @@ impl FilingModule {
     /// module being `Ready` is enough.
     pub fn query_access(&self) -> Option<QueryAccess> {
         matches!(self.phase, Phase::Ready).then(|| QueryAccess::new(Arc::clone(&self.index)))
+    }
+
+    /// The rules page reads and changes the index only, so the module being
+    /// `Ready` is enough.
+    pub fn rules_access(&self) -> Option<RulesAccess> {
+        matches!(self.phase, Phase::Ready).then(|| RulesAccess::new(Arc::clone(&self.index)))
     }
 
     /// The tax contexts live in the index like the saved queries do, so the

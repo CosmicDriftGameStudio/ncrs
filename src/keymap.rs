@@ -19,8 +19,9 @@ use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
     FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesFileMessage, KeyBindingsMessage,
     OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage,
-    ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage,
-    SearchMessage, SettingsMessage, ThemeFetchMessage, TransferKind, TrashMessage,
+    ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, RulesMessage,
+    SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage, TransferKind,
+    TrashMessage,
 };
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
@@ -127,6 +128,7 @@ key_actions! {
     CommandPalette => "command_palette",
     FilingStatus => "filing_status",
     FilingSetup => "filing_setup",
+    Rules => "rules",
     RuleSuggestions => "rule_suggestions",
     ReviewList => "review_list",
     HermesQuickFix => "hermes_quick_fix",
@@ -231,6 +233,7 @@ impl KeyAction {
             | Self::CommandLine
             | Self::FilingStatus
             | Self::FilingSetup
+            | Self::Rules
             | Self::RuleSuggestions
             | Self::ReviewList
             | Self::HermesQuickFix
@@ -380,6 +383,7 @@ impl KeyAction {
             Self::CommandPalette => Message::CommandPalette(CommandPaletteMessage::Toggle),
             Self::FilingStatus => Message::FilingStatus(FilingStatusMessage::Toggle),
             Self::FilingSetup => Message::FilingSetup(FilingSetupMessage::Toggle),
+            Self::Rules => Message::Rules(RulesMessage::Open),
             Self::RuleSuggestions => Message::RuleSuggestions(RuleSuggestionsMessage::Open),
             Self::ReviewList => Message::ReviewList(ReviewListMessage::Open),
             Self::HermesQuickFix => Message::QuickFix(QuickFixMessage::Open),
@@ -479,6 +483,7 @@ impl KeyAction {
             | Self::CommandPalette
             | Self::FilingStatus
             | Self::FilingSetup
+            | Self::Rules
             | Self::RuleSuggestions
             | Self::ReviewList
             | Self::SavedQueries
@@ -564,6 +569,7 @@ impl KeyAction {
             | Self::CommandPalette
             | Self::FilingStatus
             | Self::FilingSetup
+            | Self::Rules
             | Self::RuleSuggestions
             | Self::ReviewList
             | Self::SavedQueries
@@ -819,6 +825,11 @@ fn default_bindings() -> Vec<(KeyAction, Binding)> {
         (
             A::FilingSetup,
             Binding::with_modifiers(Character("l".into()), Modifiers::COMMAND | Modifiers::SHIFT),
+        ),
+        // The rules, B for bureaucratic regulations; Cmd+Shift+B, Ctrl+Shift+B elsewhere.
+        (
+            A::Rules,
+            Binding::with_modifiers(Character("b".into()), Modifiers::COMMAND | Modifiers::SHIFT),
         ),
         // The rule suggestions, R for requisitions; Cmd+Shift+R, Ctrl+Shift+R elsewhere.
         (

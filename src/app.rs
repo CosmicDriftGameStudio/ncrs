@@ -65,8 +65,9 @@ use crate::messages::{
     HermesColumnMessage, HermesFileMessage, HermesFocus, HermesOverviewMessage, HermesPage,
     HermesSetupMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide, QuickFixMessage,
     QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage,
-    RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage,
-    TaxContextsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
+    RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingChange,
+    SettingsMessage, TaxContextsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind,
+    TrashMessage,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -83,6 +84,8 @@ use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
 use crate::review_list::{FormField, ReviewList};
 use crate::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
 use crate::rule_suggestions::RuleSuggestions;
+use crate::rules_page::RulesPage;
+use crate::rules_work::{RuleChange, RulesAccess};
 use crate::saved_queries::SavedQueries;
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
 use crate::session_state::{self, PanelRecord, SessionState, WindowSize, WriteOrder};
@@ -114,6 +117,7 @@ use crate::ui::remote as remote_ui;
 use crate::ui::reorganisation_plan as reorganisation_plan_ui;
 use crate::ui::review_list as review_list_ui;
 use crate::ui::rule_suggestions as rule_suggestions_ui;
+use crate::ui::rules as rules_ui;
 use crate::ui::saved_queries as saved_queries_ui;
 use crate::ui::search as search_ui;
 use crate::ui::settings as settings_ui;
@@ -488,6 +492,7 @@ fn asks_for_hermes(message: &Message) -> bool {
                 | HermesFileMessage::ShowInInspection
         ) | Message::QuickFix(QuickFixMessage::Open)
             | Message::RuleSuggestions(RuleSuggestionsMessage::Open)
+            | Message::Rules(RulesMessage::Open)
             | Message::ReviewList(ReviewListMessage::Open)
             | Message::SavedQueries(SavedQueriesMessage::Open)
             | Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
@@ -509,6 +514,7 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::KeyBindings(KeyBindingsMessage::Open)
             | Message::ThemeFetch(ThemeFetchMessage::Open)
             | Message::RuleSuggestions(RuleSuggestionsMessage::Open)
+            | Message::Rules(RulesMessage::Open)
             | Message::ReviewList(ReviewListMessage::Open)
             | Message::SavedQueries(SavedQueriesMessage::Open)
             | Message::HermesPage(_)
@@ -1447,6 +1453,9 @@ pub struct App {
     rule_suggestions: Option<RuleSuggestions>,
     /// Tells the answer of the work that is current from a stale one.
     rule_suggestions_generation: u64,
+    rules: Option<RulesPage>,
+    /// Tells the answer of the work that is current from a stale one.
+    rules_generation: u64,
     review_list: Option<ReviewList>,
     /// The overview, the first page of the Hermes card.
     hermes_overview: Option<OverviewState>,
@@ -1581,6 +1590,8 @@ pub struct PromptKeyState {
     pub rule_suggestions: bool,
     /// Its form is up, so the text fields take the letters.
     pub rule_suggestions_editing: bool,
+    /// The rules page is up, so Enter, the arrows, Space and Delete are its.
+    pub rules: bool,
     /// The review list is up, so Enter, the arrows and its letters are its.
     pub review_list: bool,
     /// Its form is up, so the text fields take the letters.
@@ -1650,6 +1661,7 @@ impl Default for PromptKeyState {
             theme_fetch: false,
             rule_suggestions: false,
             rule_suggestions_editing: false,
+            rules: false,
             review_list: false,
             review_list_editing: false,
             saved_queries: false,
@@ -1842,6 +1854,39 @@ fn rule_suggestions_key(
         }
         Key::Character("r") if plain && !prompt.rule_suggestions_editing => {
             suggestions(RuleSuggestionsMessage::Reanalyse)
+        }
+        _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
+            .filter(|message| *message == Message::Quit)
+            .filter(|_| is_not_typed_by_text_field(key, key_modifiers)),
+    }
+}
+
+/// The rules page is a card: the arrows move in the list, Alt with the arrows
+/// moves the rule, Space switches it, Delete asks to delete it and Enter
+/// answers that question.
+fn rules_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    let rules = |message| Some(Message::Rules(message));
+    let plain = key_modifiers.is_empty();
+    if let Some(focus) = hermes_focus_key(prompt, key, key_modifiers, false) {
+        return Some(focus);
+    }
+    match key.as_ref() {
+        Key::Named(Named::Escape) => rules(RulesMessage::Close),
+        Key::Named(Named::Enter) if plain => rules(RulesMessage::ConfirmDelete),
+        Key::Named(Named::Space) if plain => rules(RulesMessage::Toggle),
+        Key::Named(Named::Delete) if plain => rules(RulesMessage::AskDelete),
+        Key::Named(Named::ArrowUp) if plain => rules(RulesMessage::Move(-1)),
+        Key::Named(Named::ArrowDown) if plain => rules(RulesMessage::Move(1)),
+        Key::Named(Named::ArrowUp) if key_modifiers == Modifiers::ALT => {
+            rules(RulesMessage::Reorder(-1))
+        }
+        Key::Named(Named::ArrowDown) if key_modifiers == Modifiers::ALT => {
+            rules(RulesMessage::Reorder(1))
         }
         _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
             .filter(|message| *message == Message::Quit)
@@ -2098,6 +2143,10 @@ fn keys_without_prompt(
 
     if prompt.reorganisation_plan {
         return reorganisation_plan_key(prompt, &key, key_modifiers, scope);
+    }
+
+    if prompt.rules {
+        return rules_key(prompt, &key, key_modifiers, scope);
     }
 
     if prompt.rule_suggestions {
@@ -2764,6 +2813,7 @@ fn repeats(message: &Message) -> bool {
             | Message::KeyBindings(KeyBindingsMessage::Move(_) | KeyBindingsMessage::MoveKey(_))
             | Message::ThemeFetch(ThemeFetchMessage::Move(_))
             | Message::RuleSuggestions(RuleSuggestionsMessage::Move(_))
+            | Message::Rules(RulesMessage::Move(_))
             | Message::ReviewList(ReviewListMessage::Move(_))
             | Message::SavedQueries(SavedQueriesMessage::Move(_))
             | Message::ReorganisationPlan(ReorganisationPlanMessage::Move(_))
@@ -3359,6 +3409,8 @@ impl App {
             theme_fetch_generation: 0,
             rule_suggestions: None,
             rule_suggestions_generation: 0,
+            rules: None,
+            rules_generation: 0,
             review_list: None,
             hermes_overview: None,
             review_list_generation: 0,
@@ -4147,6 +4199,7 @@ impl App {
             Message::KeyBindings(shortcuts) => self.update_key_bindings(shortcuts),
             Message::ThemeFetch(fetch_message) => self.update_theme_fetch(fetch_message),
             Message::RuleSuggestions(suggestions) => self.update_rule_suggestions(suggestions),
+            Message::Rules(rules) => self.update_rules(rules),
             Message::ReviewList(review) => self.update_review_list(review),
             Message::SavedQueries(queries) => self.update_saved_queries(queries),
             Message::HermesPage(page) => self.show_hermes_page(page),
@@ -5026,6 +5079,7 @@ impl App {
             .is_some_and(|shortcuts| !shortcuts.is_recording());
         input.theme_fetch = self.theme_fetch.is_some();
         input.rule_suggestions = self.rule_suggestions.is_some();
+        input.rules = self.rules.is_some();
         input.review_list = self.review_list.is_some();
         input.saved_queries = self.saved_queries.is_some();
         input.hermes_sidebar = state.hermes_sidebar;
@@ -5449,6 +5503,17 @@ impl App {
             return Stack::with_children([root, dialog::scrim(card_element)]).into();
         }
 
+        if let Some(view) = self.rules.as_ref() {
+            let card_element = rules_ui::view(
+                view,
+                self.window_size,
+                self.hermes_badges(),
+                self.lang,
+                &self.palette,
+            );
+            return Stack::with_children([root, dialog::scrim(card_element)]).into();
+        }
+
         if let Some(view) = self.rule_suggestions.as_ref() {
             let card_element = rule_suggestions_ui::view(
                 view,
@@ -5616,6 +5681,7 @@ impl App {
             .is_some_and(FilingModule::card_can_be_dismissed);
         let theme_fetch = self.theme_fetch.is_some();
         let rule_suggestions = self.rule_suggestions.is_some();
+        let rules = self.rules.is_some();
         let rule_suggestions_editing = self
             .rule_suggestions
             .as_ref()
@@ -5671,6 +5737,7 @@ impl App {
                 theme_fetch,
                 rule_suggestions,
                 rule_suggestions_editing,
+                rules,
                 review_list,
                 review_list_editing,
                 saved_queries,
@@ -5718,6 +5785,7 @@ impl App {
                 theme_fetch,
                 rule_suggestions,
                 rule_suggestions_editing,
+                rules,
                 review_list,
                 review_list_editing,
                 saved_queries,
@@ -6504,6 +6572,7 @@ impl App {
             || self.key_bindings.is_some()
             || self.theme_fetch.is_some()
             || self.rule_suggestions.is_some()
+            || self.rules.is_some()
             || self.review_list.is_some()
             || self.saved_queries.is_some()
             || self.reorganisation.is_some()
@@ -10110,6 +10179,153 @@ impl App {
     }
 
     /// The analysis starts with the view; the list appears when it is done.
+    fn update_rules(&mut self, message: RulesMessage) -> Task<Message> {
+        match message {
+            RulesMessage::Open => self.open_rules(),
+            RulesMessage::Close => self.close_rules(),
+            RulesMessage::Loaded { generation, result } => {
+                if generation == self.rules_generation {
+                    if let Some(view) = self.rules.as_mut() {
+                        match result {
+                            Ok(load) => view.loaded(load),
+                            Err(detail) => view.failed(detail),
+                        }
+                    }
+                }
+                Task::none()
+            }
+            RulesMessage::Move(delta) => {
+                if let Some(view) = self.rules.as_mut() {
+                    view.move_cursor(delta);
+                }
+                Task::none()
+            }
+            RulesMessage::Scrolled(delta) => {
+                if let Some(view) = self.rules.as_mut() {
+                    view.scroll(delta);
+                }
+                Task::none()
+            }
+            RulesMessage::Select(index) => {
+                if let Some(view) = self.rules.as_mut() {
+                    view.select(index);
+                }
+                Task::none()
+            }
+            RulesMessage::Toggle => {
+                let change = self
+                    .rules
+                    .as_mut()
+                    .and_then(|view| view.begin_toggle(view.cursor()));
+                self.run_rule_change(change)
+            }
+            RulesMessage::ToggleAt(index) => {
+                let change = self
+                    .rules
+                    .as_mut()
+                    .and_then(|view| view.begin_toggle(index));
+                self.run_rule_change(change)
+            }
+            RulesMessage::Reorder(delta) => {
+                let change = self.rules.as_mut().and_then(|view| view.begin_move(delta));
+                self.run_rule_change(change)
+            }
+            RulesMessage::AskDelete => {
+                if let Some(view) = self.rules.as_mut() {
+                    view.ask_delete();
+                }
+                Task::none()
+            }
+            RulesMessage::CancelDelete => {
+                if let Some(view) = self.rules.as_mut() {
+                    view.cancel_delete();
+                }
+                Task::none()
+            }
+            RulesMessage::ConfirmDelete => {
+                let change = self.rules.as_mut().and_then(RulesPage::begin_delete);
+                self.run_rule_change(change)
+            }
+            RulesMessage::Changed { generation, result } => {
+                if generation != self.rules_generation {
+                    return Task::none();
+                }
+                match result {
+                    Ok(()) => self.run_rules_load(),
+                    Err(detail) => {
+                        if let Some(view) = self.rules.as_mut() {
+                            view.failed(detail);
+                        }
+                        Task::none()
+                    }
+                }
+            }
+        }
+    }
+
+    fn open_rules(&mut self) -> Task<Message> {
+        if self.rules.is_some() || self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        self.context_menu = None;
+        self.rules_generation = self.rules_generation.wrapping_add(1);
+        self.rules = Some(RulesPage::new());
+        self.run_rules_load()
+    }
+
+    /// Escape backs out of the delete question first, then leaves the page.
+    fn close_rules(&mut self) -> Task<Message> {
+        let Some(view) = self.rules.as_mut() else {
+            return Task::none();
+        };
+        if view.cancel_delete() {
+            return Task::none();
+        }
+        self.rules = None;
+        release_focus()
+    }
+
+    fn rules_access(&mut self) -> Option<RulesAccess> {
+        let access = self.filing.as_ref().and_then(FilingModule::rules_access);
+        if access.is_none() {
+            if let Some(view) = self.rules.as_mut() {
+                view.failed(INDEX_NOT_OPEN.to_owned());
+            }
+        }
+        access
+    }
+
+    fn run_rules_load(&mut self) -> Task<Message> {
+        let generation = self.rules_generation;
+        let Some(access) = self.rules_access() else {
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.load()),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                Message::Rules(RulesMessage::Loaded { generation, result })
+            },
+        )
+    }
+
+    fn run_rule_change(&mut self, requested: Option<RuleChange>) -> Task<Message> {
+        let Some(change) = requested else {
+            return Task::none();
+        };
+        let generation = self.rules_generation;
+        let Some(access) = self.rules_access() else {
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.apply(change)),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                Message::Rules(RulesMessage::Changed { generation, result })
+            },
+        )
+    }
+
     fn open_rule_suggestions(&mut self) -> Task<Message> {
         if self.rule_suggestions.is_some() || self.blocking_overlay_is_open() {
             return Task::none();
@@ -11109,6 +11325,8 @@ impl App {
             Some(HermesPage::Review)
         } else if self.saved_queries.is_some() {
             Some(HermesPage::SavedQueries)
+        } else if self.rules.is_some() {
+            Some(HermesPage::Rules)
         } else if self.rule_suggestions.is_some() {
             Some(HermesPage::RuleSuggestions)
         } else if self.reorganisation.is_some() {
@@ -11130,6 +11348,7 @@ impl App {
         let pattern_write = self.leave_hermes_overview_state();
         self.filing_status.close_page();
         self.rule_suggestions = None;
+        self.rules = None;
         self.review_list = None;
         self.saved_queries = None;
         self.reorganisation = None;
@@ -11138,6 +11357,7 @@ impl App {
             HermesPage::Inspection => self.open_filing_status(),
             HermesPage::Review => self.open_review_list(),
             HermesPage::SavedQueries => self.open_saved_queries(),
+            HermesPage::Rules => self.open_rules(),
             HermesPage::RuleSuggestions => self.open_rule_suggestions(),
             HermesPage::Reorganisation => self.open_reorganisation(),
         };
@@ -15386,6 +15606,8 @@ impl App {
             theme_fetch_generation: 0,
             rule_suggestions: None,
             rule_suggestions_generation: 0,
+            rules: None,
+            rules_generation: 0,
             review_list: None,
             hermes_overview: None,
             review_list_generation: 0,
@@ -16021,6 +16243,17 @@ impl App {
     pub fn with_theme_fetch_card(card: ThemeFetch) -> Self {
         let mut app = Self::with_fixed_panels();
         app.theme_fetch = Some(card);
+        app
+    }
+
+    pub fn rules_for_test(&self) -> Option<&RulesPage> {
+        self.rules.as_ref()
+    }
+
+    /// Fixed panels with the rules page up, in the state of `view`.
+    pub fn with_rules(view: RulesPage) -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.rules = Some(view);
         app
     }
 

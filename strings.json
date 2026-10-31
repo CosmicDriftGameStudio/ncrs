@@ -7175,6 +7175,300 @@
       "context": "Line in the review list form: the tax context was assigned by a condition of the context. Takes the kind of the condition and its value.",
       "en": "Tax context from condition ({kind}: {value})",
       "de": "Steuerkontext aus Bedingung ({kind}: {value})"
+    },
+    {
+      "key": "action.rules",
+      "context": "Entry of the command list and the menu that runs the key action rules, which opens the page that lists all filing rules as readable sentences. Also the title of that Hermes page and its sidebar entry. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
+      "en": "Rules",
+      "de": "Regeln"
+    },
+    {
+      "key": "action.rules.theme",
+      "context": "Theme name of the key action rules, shown dimmed after its plain name action.rules in the command list, and matched when typing. A playful name (Hermes is a bureaucrat, and rules are his regulations); the plain name beside it says what the action does.",
+      "en": "Bureaucratic Regulations",
+      "de": "Bürokratische Vorschriften"
+    },
+    {
+      "key": "rules.explain",
+      "context": "Paragraph at the top of the rules page: what rules are and in which order they apply.",
+      "en": "Hermes files a document with the first rule that matches; rules higher up come first.",
+      "de": "Hermes legt ein Dokument mit der ersten Regel ab, die passt; weiter oben stehende Regeln kommen zuerst."
+    },
+    {
+      "key": "rules.example",
+      "context": "Line under the explanation on the rules page showing how a rule reads. Takes an example rule sentence.",
+      "en": "Example: {rule}",
+      "de": "Beispiel: {rule}"
+    },
+    {
+      "key": "rules.example_rule",
+      "context": "Example rule sentence on the rules page, written the way the page shows every rule: conditions, then an arrow, then kind, tax context, tags and filing pattern. The curly brackets in the pattern are placeholders of the filing pattern and stay as they are.",
+      "en": "If the sender is “Company A” → Invoice · Company · #tax · {year}/{sender}",
+      "de": "Wenn der Absender „Company A“ ist → Rechnung · Firma · #steuer · {year}/{sender}"
+    },
+    {
+      "key": "rules.loading",
+      "context": "Shown on the rules page while the rules are being loaded.",
+      "en": "Loading the rules…",
+      "de": "Die Regeln werden geladen…"
+    },
+    {
+      "key": "rules.empty",
+      "context": "Shown on the rules page when there is no confirmed rule yet.",
+      "en": "No rules yet. Rules come from suggestions and from filing in the review list.",
+      "de": "Noch keine Regeln. Regeln entstehen aus Vorschlägen und beim Ablegen in der Prüfliste."
+    },
+    {
+      "key": "rules.column_rule",
+      "context": "Title of the column with the rule sentences in the list on the rules page.",
+      "en": "Rule",
+      "de": "Regel"
+    },
+    {
+      "key": "rules.column_origin",
+      "context": "Title of the column on the rules page that says how a rule came to be.",
+      "en": "Origin",
+      "de": "Herkunft"
+    },
+    {
+      "key": "rules.column_hits",
+      "context": "Title of the column on the rules page with the number of documents a rule has filed.",
+      "en": "Hits",
+      "de": "Treffer"
+    },
+    {
+      "key": "rules.rule_if",
+      "context": "Start of a rule sentence on the rules page. Takes the conditions of the rule, joined, and what the rule does with a matching document after the arrow.",
+      "en": "If {conditions} → {target}",
+      "de": "Wenn {conditions} → {target}"
+    },
+    {
+      "key": "rules.joiner_all",
+      "context": "Word between two conditions of a rule sentence when the rule needs all of them. Shown with a space on either side.",
+      "en": "and",
+      "de": "und"
+    },
+    {
+      "key": "rules.joiner_any",
+      "context": "Word between two conditions of a rule sentence when the rule needs only one of them. Shown with a space on either side.",
+      "en": "or",
+      "de": "oder"
+    },
+    {
+      "key": "rules.tax_none",
+      "context": "Part of a rule sentence: the rule sets that the document has no tax context.",
+      "en": "no tax context",
+      "de": "kein Steuerkontext"
+    },
+    {
+      "key": "rules.tax_open",
+      "context": "Part of a rule sentence: the rule leaves the tax context open, so the conditions of the tax contexts decide.",
+      "en": "tax context by its conditions",
+      "de": "Steuerkontext nach seinen Bedingungen"
+    },
+    {
+      "key": "rules.sentence_substring",
+      "context": "Condition in a rule sentence on the rules page: the rule asks for a piece of text. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the text contains “{value}”",
+      "de": "der Text „{value}“ enthält"
+    },
+    {
+      "key": "rules.sentence_substring_not",
+      "context": "Condition in a rule sentence on the rules page: the rule asks that a piece of text is not there. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the text does not contain “{value}”",
+      "de": "der Text „{value}“ nicht enthält"
+    },
+    {
+      "key": "rules.sentence_word",
+      "context": "Condition in a rule sentence on the rules page: the rule asks for a whole word. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the text contains the word “{value}”",
+      "de": "der Text das Wort „{value}“ enthält"
+    },
+    {
+      "key": "rules.sentence_word_not",
+      "context": "Condition in a rule sentence on the rules page: the rule asks that a whole word is not there. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the text does not contain the word “{value}”",
+      "de": "der Text das Wort „{value}“ nicht enthält"
+    },
+    {
+      "key": "rules.sentence_regex",
+      "context": "Condition in a rule sentence on the rules page: the rule asks for a regular expression, written between slashes. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the text matches /{value}/",
+      "de": "der Text auf /{value}/ passt"
+    },
+    {
+      "key": "rules.sentence_regex_not",
+      "context": "Condition in a rule sentence on the rules page: the rule asks that a regular expression, written between slashes is not there. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the text does not match /{value}/",
+      "de": "der Text nicht auf /{value}/ passt"
+    },
+    {
+      "key": "rules.sentence_sender",
+      "context": "Condition in a rule sentence on the rules page: the rule asks for the sender name. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the sender is “{value}”",
+      "de": "der Absender „{value}“ ist"
+    },
+    {
+      "key": "rules.sentence_sender_not",
+      "context": "Condition in a rule sentence on the rules page: the rule asks that the sender name is not there. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the sender is not “{value}”",
+      "de": "der Absender nicht „{value}“ ist"
+    },
+    {
+      "key": "rules.sentence_sender_address",
+      "context": "Condition in a rule sentence on the rules page: the rule asks for the address of the sender. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the sender address is “{value}”",
+      "de": "die Absenderadresse „{value}“ ist"
+    },
+    {
+      "key": "rules.sentence_sender_address_not",
+      "context": "Condition in a rule sentence on the rules page: the rule asks that the address of the sender is not there. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the sender address is not “{value}”",
+      "de": "die Absenderadresse nicht „{value}“ ist"
+    },
+    {
+      "key": "rules.sentence_iban",
+      "context": "Condition in a rule sentence on the rules page: the rule asks for a bank account number. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the text contains the IBAN “{value}”",
+      "de": "der Text die IBAN „{value}“ enthält"
+    },
+    {
+      "key": "rules.sentence_iban_not",
+      "context": "Condition in a rule sentence on the rules page: the rule asks that a bank account number is not there. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the text does not contain the IBAN “{value}”",
+      "de": "der Text die IBAN „{value}“ nicht enthält"
+    },
+    {
+      "key": "rules.sentence_tax_id",
+      "context": "Condition in a rule sentence on the rules page: the rule asks for a tax identification number. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the text contains the tax ID “{value}”",
+      "de": "der Text die Steuer-ID „{value}“ enthält"
+    },
+    {
+      "key": "rules.sentence_tax_id_not",
+      "context": "Condition in a rule sentence on the rules page: the rule asks that a tax identification number is not there. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the text does not contain the tax ID “{value}”",
+      "de": "der Text die Steuer-ID „{value}“ nicht enthält"
+    },
+    {
+      "key": "rules.sentence_recipient",
+      "context": "Condition in a rule sentence on the rules page: the rule asks for the recipient name. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the recipient is “{value}”",
+      "de": "der Empfänger „{value}“ ist"
+    },
+    {
+      "key": "rules.sentence_recipient_not",
+      "context": "Condition in a rule sentence on the rules page: the rule asks that the recipient name is not there. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the recipient is not “{value}”",
+      "de": "der Empfänger nicht „{value}“ ist"
+    },
+    {
+      "key": "rules.sentence_folder",
+      "context": "Condition in a rule sentence on the rules page: the rule asks for the folder the document lies in. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the document lies in “{value}”",
+      "de": "das Dokument in „{value}“ liegt"
+    },
+    {
+      "key": "rules.sentence_folder_not",
+      "context": "Condition in a rule sentence on the rules page: the rule asks that the folder the document lies in is not there. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the document does not lie in “{value}”",
+      "de": "das Dokument nicht in „{value}“ liegt"
+    },
+    {
+      "key": "rules.origin_hand",
+      "context": "Origin of a rule on the rules page: the user wrote it.",
+      "en": "created by hand",
+      "de": "von Hand angelegt"
+    },
+    {
+      "key": "rules.origin_suggestion",
+      "context": "Origin of a rule on the rules page: it was suggested from the archive and the user confirmed it.",
+      "en": "from a suggestion",
+      "de": "aus einem Vorschlag"
+    },
+    {
+      "key": "rules.origin_filing",
+      "context": "Origin of a rule on the rules page: it was made while filing a document in the review list.",
+      "en": "from filing",
+      "de": "beim Ablegen angelegt"
+    },
+    {
+      "key": "rules.hits_one",
+      "context": "Hits of a rule on the rules page when exactly one document was filed by it; the number is 1.",
+      "en": "1 document",
+      "de": "1 Dokument"
+    },
+    {
+      "key": "rules.hits_other",
+      "context": "Hits of a rule on the rules page when none or several documents were filed by it. Takes the number.",
+      "en": "{count} documents",
+      "de": "{count} Dokumente"
+    },
+    {
+      "key": "rules.hint_toggle",
+      "context": "Verb next to the Space key in the footer of the rules page: switches the rule on or off.",
+      "en": "on/off",
+      "de": "an/aus"
+    },
+    {
+      "key": "rules.hint_order",
+      "context": "Verb next to the Alt and arrow keys in the footer of the rules page: moves the rule up or down in the order.",
+      "en": "order",
+      "de": "Reihenfolge"
+    },
+    {
+      "key": "rules.hint_delete",
+      "context": "Verb next to the Delete key in the footer of the rules page: deletes the rule.",
+      "en": "delete",
+      "de": "löschen"
+    },
+    {
+      "key": "rules.close",
+      "context": "Button of the rules page: leaves the page.",
+      "en": "Close",
+      "de": "Schließen"
+    },
+    {
+      "key": "rules.move_up",
+      "context": "Button of the rules page: moves the selected rule one place up, so it applies earlier.",
+      "en": "Move up",
+      "de": "Nach oben"
+    },
+    {
+      "key": "rules.move_down",
+      "context": "Button of the rules page: moves the selected rule one place down, so it applies later.",
+      "en": "Move down",
+      "de": "Nach unten"
+    },
+    {
+      "key": "rules.delete",
+      "context": "Button of the rules page: asks whether to delete the selected rule.",
+      "en": "Delete",
+      "de": "Löschen"
+    },
+    {
+      "key": "rules.cancel",
+      "context": "Button in the delete question of the rules page: keeps the rule.",
+      "en": "Cancel",
+      "de": "Abbrechen"
+    },
+    {
+      "key": "rules.delete_confirm",
+      "context": "Button in the delete question of the rules page: deletes the rule.",
+      "en": "Delete rule",
+      "de": "Regel löschen"
+    },
+    {
+      "key": "rules.delete_question",
+      "context": "Question on the rules page before a rule is deleted. Takes the rule sentence.",
+      "en": "Delete this rule? {rule} Documents stay as they are.",
+      "de": "Diese Regel löschen? {rule} Dokumente bleiben unverändert."
+    },
+    {
+      "key": "rules.problem_failed",
+      "context": "Error line on the rules page when the index could not be read or changed. Takes the technical detail, which stays in English.",
+      "en": "The rules could not be read or changed: {detail}",
+      "de": "Die Regeln konnten nicht gelesen oder geändert werden: {detail}"
     }
   ]
 }

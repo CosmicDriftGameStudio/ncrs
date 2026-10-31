@@ -10,8 +10,8 @@ use crate::i18n::Msg;
 use crate::messages::{
     ClipboardKind, CommandLineMessage, CommandPaletteMessage, HermesFileMessage,
     KeyBindingsMessage, Message, QuickFixMessage, QuickOpenMessage, ReorganisationPlanMessage,
-    ReviewListMessage, RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingsMessage,
-    ThemeFetchMessage, TransferKind,
+    ReviewListMessage, RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage,
+    SettingsMessage, ThemeFetchMessage, TransferKind,
 };
 use crate::transfer_dialog::TransferDialogMessage;
 use crate::ui::layout::{
@@ -715,6 +715,8 @@ pub struct InputState {
     pub theme_fetch: bool,
     /// The rule suggestions view is up: same as Quick Open.
     pub rule_suggestions: bool,
+    /// The rules page is up: same as Quick Open.
+    pub rules: bool,
     pub review_list: bool,
     pub saved_queries: bool,
     /// The sidebar of the Hermes card has the arrows, not the page.
@@ -740,6 +742,57 @@ impl InputState {
             && !self.hermes_sidebar
             && modifiers.is_empty()
             && matches!(key, Key::Named(Named::ArrowLeft))
+    }
+
+    /// The overlay Escape closes, first match wins: the order is the stacking
+    /// order, so an overlay on top closes before the one below it.
+    fn closes_overlay(&self, key: &Key) -> Option<Message> {
+        if !matches!(key, Key::Named(Named::Escape)) {
+            return None;
+        }
+        [
+            (
+                self.command_line,
+                Message::CommandLine(CommandLineMessage::Leave),
+            ),
+            (self.quick_open, Message::QuickOpen(QuickOpenMessage::Close)),
+            (
+                self.command_palette,
+                Message::CommandPalette(CommandPaletteMessage::Close),
+            ),
+            (
+                self.key_bindings,
+                Message::KeyBindings(KeyBindingsMessage::Close),
+            ),
+            (
+                self.theme_fetch,
+                Message::ThemeFetch(ThemeFetchMessage::Close),
+            ),
+            (
+                self.rule_suggestions,
+                Message::RuleSuggestions(RuleSuggestionsMessage::Close),
+            ),
+            (self.rules, Message::Rules(RulesMessage::Close)),
+            (
+                self.review_list,
+                Message::ReviewList(ReviewListMessage::Close),
+            ),
+            (
+                self.transfer_dialog,
+                Message::TransferDialog(TransferDialogMessage::Cancel),
+            ),
+            (
+                self.saved_queries,
+                Message::SavedQueries(SavedQueriesMessage::Close),
+            ),
+            (
+                self.reorganisation_plan,
+                Message::ReorganisationPlan(ReorganisationPlanMessage::Close),
+            ),
+            (self.settings, Message::Settings(SettingsMessage::Close)),
+        ]
+        .into_iter()
+        .find_map(|(open, close)| open.then_some(close))
     }
 
     pub fn handle(&mut self, event: &event::Event, status: event::Status) -> Option<Message> {
@@ -769,40 +822,8 @@ impl InputState {
                 if self.path_editing && leaves_field {
                     return Some(Message::PathFieldCancel);
                 }
-                if self.command_line && matches!(key, Key::Named(Named::Escape)) {
-                    return Some(Message::CommandLine(CommandLineMessage::Leave));
-                }
-                if self.quick_open && matches!(key, Key::Named(Named::Escape)) {
-                    return Some(Message::QuickOpen(QuickOpenMessage::Close));
-                }
-                if self.command_palette && matches!(key, Key::Named(Named::Escape)) {
-                    return Some(Message::CommandPalette(CommandPaletteMessage::Close));
-                }
-                if self.key_bindings && matches!(key, Key::Named(Named::Escape)) {
-                    return Some(Message::KeyBindings(KeyBindingsMessage::Close));
-                }
-                if self.theme_fetch && matches!(key, Key::Named(Named::Escape)) {
-                    return Some(Message::ThemeFetch(ThemeFetchMessage::Close));
-                }
-                if self.rule_suggestions && matches!(key, Key::Named(Named::Escape)) {
-                    return Some(Message::RuleSuggestions(RuleSuggestionsMessage::Close));
-                }
-                if self.review_list && matches!(key, Key::Named(Named::Escape)) {
-                    return Some(Message::ReviewList(ReviewListMessage::Close));
-                }
-                if self.transfer_dialog && matches!(key, Key::Named(Named::Escape)) {
-                    return Some(Message::TransferDialog(TransferDialogMessage::Cancel));
-                }
-                if self.saved_queries && matches!(key, Key::Named(Named::Escape)) {
-                    return Some(Message::SavedQueries(SavedQueriesMessage::Close));
-                }
-                if self.reorganisation_plan && matches!(key, Key::Named(Named::Escape)) {
-                    return Some(Message::ReorganisationPlan(
-                        ReorganisationPlanMessage::Close,
-                    ));
-                }
-                if self.settings && matches!(key, Key::Named(Named::Escape)) {
-                    return Some(Message::Settings(SettingsMessage::Close));
+                if let Some(close) = self.closes_overlay(key) {
+                    return Some(close);
                 }
                 // The search's text fields capture Escape, so the routing
                 // never sees it there.
@@ -832,6 +853,7 @@ impl InputState {
                     && !self.key_bindings
                     && !self.theme_fetch
                     && !self.rule_suggestions
+                    && !self.rules
                     && !self.review_list
                     && !self.saved_queries
                     && !self.transfer_dialog

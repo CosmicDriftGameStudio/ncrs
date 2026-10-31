@@ -4,7 +4,7 @@ use rusqlite::{params, OptionalExtension as _};
 use crate::error::IndexError;
 use crate::index::Index;
 use crate::model::{
-    Condition, ConditionKind, Rule, RuleEvidence, RuleId, RuleSpec, RuleSuggestion,
+    Condition, ConditionKind, Rule, RuleEvidence, RuleId, RuleOrigin, RuleSpec, RuleSuggestion,
 };
 
 impl Index {
@@ -41,7 +41,7 @@ impl Index {
                     confirmed: false,
                     ..spec.clone()
                 };
-                let id = self.create_rule(&unconfirmed)?;
+                let id = self.create_rule_from(&unconfirmed, RuleOrigin::Suggestion)?;
                 self.store_rule_evidence(id, &evidence)?;
                 Ok(RuleSuggestion::Created(id))
             }

@@ -44,6 +44,7 @@ use crate::query_work::{ExportSummary, QueryHit};
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
 use crate::review_list::FormField;
 use crate::review_work::{AcceptSummary, ConfirmOutcome, ReviewItem};
+use crate::rules_work::RulesLoad;
 use crate::saved_queries::QueryField;
 use crate::suggestion_work::SuggestedRule;
 use crate::tax_context_work::{ContextsResult, TaxContextFailure};
@@ -390,6 +391,7 @@ pub enum Message {
 
     // --- Rule suggestions: rules read out of how the archive is filed ---
     RuleSuggestions(RuleSuggestionsMessage),
+    Rules(RulesMessage),
     ReorganisationPlan(ReorganisationPlanMessage),
     ReviewList(ReviewListMessage),
     QuickFix(QuickFixMessage),
@@ -948,6 +950,7 @@ pub enum HermesFocus {
 pub enum HermesPage {
     Overview,
     Review,
+    Rules,
     RuleSuggestions,
     Reorganisation,
     SavedQueries,
@@ -1095,6 +1098,38 @@ pub enum ReviewListMessage {
     RuleCreated {
         generation: u64,
         result: Result<RuleId, String>,
+    },
+}
+
+/// Everything the rules page sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RulesMessage {
+    Open,
+    /// Escape backs out of the delete question first, then leaves the page.
+    Close,
+    /// The work of the generation is done, with the rules. Dropped when the
+    /// page was closed or opened again meanwhile.
+    Loaded {
+        generation: u64,
+        result: Result<RulesLoad, String>,
+    },
+    Move(isize),
+    /// The wheel or trackpad over the list.
+    Scrolled(iced::mouse::ScrollDelta),
+    /// A click on the rule at this position.
+    Select(usize),
+    /// Space: switches the rule under the cursor on or off.
+    Toggle,
+    /// A click on the switch of the rule at this position.
+    ToggleAt(usize),
+    /// Moves the rule under the cursor up (`-1`) or down (`1`) in the order.
+    Reorder(isize),
+    AskDelete,
+    CancelDelete,
+    ConfirmDelete,
+    Changed {
+        generation: u64,
+        result: Result<(), String>,
     },
 }
 
