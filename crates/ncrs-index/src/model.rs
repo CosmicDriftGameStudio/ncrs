@@ -106,6 +106,7 @@ impl DocumentStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Field {
     Sender,
+    Recipient,
     Kind,
     Date,
     Number,
@@ -116,6 +117,7 @@ impl Field {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Sender => "sender",
+            Self::Recipient => "recipient",
             Self::Kind => "kind",
             Self::Date => "date",
             Self::Number => "number",
@@ -126,6 +128,7 @@ impl Field {
     pub(crate) fn parse(value: &str) -> Result<Self, IndexError> {
         match value {
             "sender" => Ok(Self::Sender),
+            "recipient" => Ok(Self::Recipient),
             "kind" => Ok(Self::Kind),
             "date" => Ok(Self::Date),
             "number" => Ok(Self::Number),
@@ -136,8 +139,9 @@ impl Field {
 }
 
 impl Field {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Sender,
+        Self::Recipient,
         Self::Kind,
         Self::Date,
         Self::Number,
@@ -156,6 +160,10 @@ pub enum FieldOrigin {
         confidence_percent: u8,
     },
     Manual,
+    /// The recipient was read from the address block of the letter.
+    AddressBlock,
+    /// The kind was read from the heading of the letter.
+    Heading,
 }
 
 impl FieldOrigin {
@@ -165,6 +173,8 @@ impl FieldOrigin {
             Self::Rule(_) => Some("rule"),
             Self::Ai { .. } => Some("ai"),
             Self::Manual => Some("manual"),
+            Self::AddressBlock => Some("address"),
+            Self::Heading => Some("heading"),
         }
     }
 
@@ -201,6 +211,8 @@ impl FieldOrigin {
                 Ok(Self::Ai { confidence_percent })
             }
             "manual" => Ok(Self::Manual),
+            "address" => Ok(Self::AddressBlock),
+            "heading" => Ok(Self::Heading),
             other => Err(corrupt("document_field_origin.origin", other)),
         }
     }
@@ -347,14 +359,77 @@ pub struct NewDocument {
     pub stamp: Option<FileStamp>,
 }
 
+/// The spelling of a tag: lowercase words joined by single hyphens.
+pub fn tag_name(text: &str) -> String {
+    let mut name = String::new();
+    let mut pending_hyphen = false;
+    for character in text.trim().chars() {
+        if character.is_alphanumeric() {
+            if pending_hyphen && !name.is_empty() {
+                name.push('-');
+            }
+            pending_hyphen = false;
+            name.extend(character.to_lowercase());
+        } else {
+            pending_hyphen = true;
+        }
+    }
+    name
+}
+
+/// Whether `tag` is `wanted` or a more specific tag below it (`firma-a-gmbh`
+/// matches `firma-a`, `firma-ab` does not).
+pub fn tag_matches(tag: &str, wanted: &str) -> bool {
+    let wanted_name = tag_name(wanted);
+    if wanted_name.is_empty() {
+        return false;
+    }
+    let tag_key = tag_name(tag);
+    tag_key == wanted_name || tag_key.starts_with(&format!("{wanted_name}-"))
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DocumentFields {
     pub sender: Option<String>,
+    pub recipient: Option<String>,
     pub kind: Option<String>,
     pub date: Option<NaiveDate>,
     pub number: Option<String>,
     pub amount: Option<Amount>,
     pub tags: BTreeSet<String>,
+}
+
+impl DocumentFields {
+    /// The tags the fields imply: kind, sender, recipient and year.
+    pub fn automatic_tags(&self) -> BTreeSet<String> {
+        let year = self.date.map(|date| date.format("%Y").to_string());
+        [
+            self.kind.as_deref(),
+            self.sender.as_deref(),
+            self.recipient.as_deref(),
+            year.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .map(tag_name)
+        .filter(|name| !name.is_empty())
+        .collect()
+    }
+
+    /// The tags the user set, normalised.
+    pub fn own_tags(&self) -> BTreeSet<String> {
+        self.tags
+            .iter()
+            .map(|tag| tag_name(tag))
+            .filter(|name| !name.is_empty())
+            .collect()
+    }
+
+    pub fn all_tags(&self) -> BTreeSet<String> {
+        let mut all = self.own_tags();
+        all.extend(self.automatic_tags());
+        all
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1211,5 +1286,46 @@ mod tests {
             assert_eq!(ConditionKind::parse(kind.as_str()).ok(), Some(kind));
         }
         assert_eq!(ConditionKind::parse("nonsense").ok(), None);
+    }
+}
+
+#[cfg(test)]
+mod tag_tests {
+    use super::*;
+
+    #[test]
+    fn a_tag_name_is_lowercase_words_with_hyphens() {
+        assert_eq!(tag_name("Firma A GmbH"), "firma-a-gmbh");
+        assert_eq!(tag_name("Deutsche Telekom AG"), "deutsche-telekom-ag");
+        assert_eq!(tag_name("Müller & Söhne"), "müller-söhne");
+        assert_eq!(tag_name("  2026 "), "2026");
+        assert_eq!(tag_name("--"), "");
+    }
+
+    #[test]
+    fn a_tag_matches_itself_and_tags_below_it() {
+        assert!(tag_matches("firma-a-gmbh", "firma-a"));
+        assert!(!tag_matches("firma-ab", "firma-a"));
+        assert!(tag_matches("firma-a", "Firma A"));
+        assert!(!tag_matches("firma-a", ""));
+    }
+
+    #[test]
+    fn automatic_tags_come_from_kind_sender_recipient_and_year() {
+        let fields = DocumentFields {
+            sender: Some("Firma A GmbH".into()),
+            recipient: Some("Erika Beispiel".into()),
+            kind: Some("Rechnung".into()),
+            date: NaiveDate::from_ymd_opt(2026, 3, 4),
+            tags: BTreeSet::from(["Steuer".to_string()]),
+            ..DocumentFields::default()
+        };
+        assert_eq!(
+            fields.automatic_tags(),
+            BTreeSet::from(
+                ["firma-a-gmbh", "erika-beispiel", "rechnung", "2026"].map(String::from)
+            )
+        );
+        assert!(fields.all_tags().contains("steuer"));
     }
 }

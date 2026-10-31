@@ -31,7 +31,7 @@ use ncrs_intake::{
     ImageTextSource, LazyOcrText, Location, LocationMode, OfficeText, PdfText, PdfUnavailable,
     PlainText, TextChain, TextError, OCR_MODELS_FOLDER,
 };
-use ncrs_pipeline::{intake_steps, IndexAccess, Load, Runner, Settings, SystemClock};
+use ncrs_pipeline::{intake_steps, IndexAccess, Load, OwnDetails, Runner, Settings, SystemClock};
 
 use crate::config::{AiSetting, Filing, FilingLocation};
 use crate::filing_work::FilingAccess;
@@ -328,7 +328,7 @@ pub struct FilingModule {
     /// and the pipeline see the same model.
     ai: AiWiring,
     /// Given to the pipeline so it calls no platform API.
-    own_name: Option<String>,
+    own: OwnDetails,
     /// False once the start found the credential store unreachable, so an
     /// index that is not encrypted cannot be encrypted here.
     key_store_reachable: bool,
@@ -350,6 +350,18 @@ fn own_full_name() -> Option<String> {
 #[cfg(not(target_os = "macos"))]
 fn own_full_name() -> Option<String> {
     None
+}
+
+/// What is the user's own: the system's full name and what the config lists.
+fn own_details(filing: &Filing) -> OwnDetails {
+    OwnDetails {
+        names: own_full_name()
+            .into_iter()
+            .chain(filing.own_names.iter().cloned())
+            .collect(),
+        ibans: filing.own_ibans.clone(),
+        tax_ids: filing.own_tax_ids.clone(),
+    }
 }
 
 /// How much text of a document the local model takes in; longer ones are cut.
@@ -1062,7 +1074,7 @@ impl FilingModule {
             .map_or(AiWiring::Off, |path| wire_ai(&filing.ai, path));
         let mut module = Self {
             ai,
-            own_name: own_full_name(),
+            own: own_details(filing),
             db_path: db_path.clone().unwrap_or_default(),
             store,
             index: Arc::default(),
@@ -1261,7 +1273,7 @@ impl FilingModule {
                 Arc::new(handle),
                 Arc::new(chain),
                 self.ai_provider(),
-                self.own_name.clone(),
+                self.own.clone(),
             ),
             locations,
             Arc::new(SystemClock),
@@ -1825,7 +1837,7 @@ impl FilingModule {
             protection_note: None,
             dismissed_key_problem: None,
             ai: AiWiring::Off,
-            own_name: None,
+            own: OwnDetails::default(),
         }
     }
 
@@ -1954,6 +1966,9 @@ mod tests {
             load: Load::default(),
             ai: crate::config::AiSetting::Off,
             default_pattern: None,
+            own_names: Vec::new(),
+            own_ibans: Vec::new(),
+            own_tax_ids: Vec::new(),
         }
     }
 
@@ -2398,6 +2413,9 @@ mod tests {
             load: Load::default(),
             ai: crate::config::AiSetting::Off,
             default_pattern: None,
+            own_names: Vec::new(),
+            own_ibans: Vec::new(),
+            own_tax_ids: Vec::new(),
         };
 
         assert!(FilingModule::start(&off, Some(db.clone()), shared(&store)).is_none());

@@ -3,7 +3,7 @@
 //! Every token the model can choose is then part of such a reply.
 
 use ncrs_index::Field;
-use ncrs_intake::FIELD_ORDER;
+use ncrs_intake::AI_FIELD_ORDER;
 
 use crate::contract::MAX_VALUE_CHARS;
 
@@ -13,11 +13,11 @@ num ::= "0" ("." [0-9]{1,4})? | "1" ("." "0"{1,4})?
 char ::= [^"\\\x7F\x00-\x1F] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4})
 "#;
 
-/// Fields come in the order of `FIELD_ORDER`, each at most once and in any
+/// Fields come in the order of `AI_FIELD_ORDER`, each at most once and in any
 /// subset, so the object may also be empty. Rule names are numbers because a
 /// field name is not necessarily a legal rule name.
 pub fn reply_grammar(open_fields: &[Field]) -> String {
-    let fields: Vec<Field> = FIELD_ORDER
+    let fields: Vec<Field> = AI_FIELD_ORDER
         .into_iter()
         .filter(|field| open_fields.contains(field))
         .collect();
@@ -64,7 +64,7 @@ mod tests {
 
         assert!(grammar.contains("\\\"number\\\""));
         assert!(grammar.contains("\\\"date\\\""));
-        for other in [Field::Sender, Field::Kind, Field::Amount] {
+        for other in [Field::Sender, Field::Recipient, Field::Kind, Field::Amount] {
             assert!(
                 !grammar.contains(&format!("\\\"{}\\\"", other.as_str())),
                 "{}",
@@ -83,6 +83,16 @@ mod tests {
     }
 
     #[test]
+    fn the_recipient_has_its_own_slot_after_the_sender() {
+        let grammar = reply_grammar(&[Field::Recipient, Field::Sender]);
+
+        let sender = grammar.find("\\\"sender\\\"").unwrap();
+        let recipient = grammar.find("\\\"recipient\\\"").unwrap();
+        assert!(sender < recipient);
+        assert!(grammar.contains("first2 ::= \"\""));
+    }
+
+    #[test]
     fn an_object_without_fields_is_allowed() {
         assert!(reply_grammar(&[Field::Sender]).contains("first1 ::= \"\""));
         assert!(reply_grammar(&[]).starts_with("root ::= \"{\" ws \"}\"\n"));
@@ -90,9 +100,9 @@ mod tests {
 
     #[test]
     fn every_rule_that_is_used_is_defined() {
-        let grammar = reply_grammar(&FIELD_ORDER);
+        let grammar = reply_grammar(&AI_FIELD_ORDER);
 
-        for rule in ["first5", "rest5", "kv4", "string", "num", "char", "ws"] {
+        for rule in ["first6", "rest6", "kv5", "string", "num", "char", "ws"] {
             assert!(grammar.contains(&format!("{rule} ::=")), "{rule}");
         }
         assert!(grammar.contains(&format!("char{{0,{MAX_VALUE_CHARS}}}")));

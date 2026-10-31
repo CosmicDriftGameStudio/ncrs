@@ -274,6 +274,7 @@ fn filled_fields(spec: &RuleSpec, input: &PlanInput<'_>) -> DocumentFields {
 fn restore_manual(fields: &mut DocumentFields, kept: &DocumentFields, field: Field) {
     match field {
         Field::Sender => fields.sender.clone_from(&kept.sender),
+        Field::Recipient => fields.recipient.clone_from(&kept.recipient),
         Field::Kind => fields.kind.clone_from(&kept.kind),
         Field::Date => fields.date = kept.date,
         Field::Number => fields.number.clone_from(&kept.number),
@@ -359,7 +360,17 @@ fn path_of(components: &[Vec<PatternPart>]) -> PathBuf {
 }
 
 /// The order fields are asked for and reported in.
-pub const FIELD_ORDER: [Field; 5] = Field::ALL;
+pub const FIELD_ORDER: [Field; 5] = [
+    Field::Sender,
+    Field::Kind,
+    Field::Date,
+    Field::Number,
+    Field::Amount,
+];
+
+/// The order fields are asked of an AI: the recipient is asked too, though no
+/// pattern uses it.
+pub const AI_FIELD_ORDER: [Field; 6] = Field::ALL;
 
 /// A field is needed when the pattern uses it or the rule says how to read it
 /// from the text; a value that is empty after sanitising is missing.
@@ -370,7 +381,7 @@ fn first_missing(fields: &DocumentFields, spec: &RuleSpec, pattern: &Pattern) ->
                 Field::Date => spec.extract_date.is_some(),
                 Field::Number => spec.extract_number.is_some(),
                 Field::Amount => spec.extract_amount.is_some(),
-                Field::Sender | Field::Kind => false,
+                Field::Sender | Field::Recipient | Field::Kind => false,
             }
     };
     FIELD_ORDER
@@ -381,6 +392,11 @@ fn first_missing(fields: &DocumentFields, spec: &RuleSpec, pattern: &Pattern) ->
 fn field_is_present(fields: &DocumentFields, field: Field) -> bool {
     match field {
         Field::Sender => fields.sender.as_deref().and_then(sanitise_value).is_some(),
+        Field::Recipient => fields
+            .recipient
+            .as_deref()
+            .and_then(sanitise_value)
+            .is_some(),
         Field::Kind => fields.kind.as_deref().and_then(sanitise_value).is_some(),
         Field::Date => fields.date.is_some(),
         Field::Number => fields.number.as_deref().and_then(sanitise_value).is_some(),

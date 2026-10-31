@@ -18,4 +18,4 @@ pub use runner::{
     StepSnapshot, Task, WorkerSnapshot, MAX_CHANGED_PATHS, MAX_ERRORS, RATE_MINUTES,
 };
 pub use step::{with_index_value, IndexAccess, Item, Step, StepOutcome};
-pub use steps::intake_steps;
+pub use steps::{intake_steps, OwnDetails};

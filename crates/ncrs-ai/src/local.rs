@@ -548,6 +548,7 @@ mod tests {
             .into_iter()
             .filter(|&field| match field {
                 Field::Sender => known.sender.is_none(),
+                Field::Recipient => known.recipient.is_none(),
                 Field::Kind => known.kind.is_none(),
                 Field::Date => known.date.is_none(),
                 Field::Number => known.number.is_none(),

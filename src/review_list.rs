@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{DocumentFields, DocumentId, Field, ReviewEntryId};
+use ncrs_index::{tag_name, DocumentFields, DocumentId, Field, ReviewEntryId};
 use ncrs_intake::{
     choose_pattern, default_pattern_for, missing_field, render_pattern, render_pattern_parts,
     PatternPart, PatternSource,
@@ -18,8 +18,7 @@ use crate::document_preview::{DocumentPreview, PreviewContent, PreviewRequest};
 use crate::list_window::ListWindow;
 use crate::replan_work::{ReplanItem, ReplanScope};
 use crate::review_work::{
-    amount_text, parse_amount, parse_date, parse_tags, tags_text, ConfirmOutcome, FieldError,
-    ReviewItem,
+    amount_text, parse_amount, parse_date, ConfirmOutcome, FieldError, ReviewItem,
 };
 use crate::rule_form::RulePrefill;
 
@@ -27,11 +26,13 @@ use crate::rule_form::RulePrefill;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FormField {
     Sender,
+    Recipient,
     Kind,
     Date,
     Number,
     Amount,
-    Tags,
+    /// Where a new tag is typed; it joins the tags with Enter.
+    TagInput,
     Pattern,
 }
 
@@ -39,11 +40,14 @@ pub enum FormField {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Form {
     pub sender: String,
+    pub recipient: String,
     pub kind: String,
     pub date: String,
     pub number: String,
     pub amount: String,
-    pub tags: String,
+    /// The user's own tags.
+    pub tags: BTreeSet<String>,
+    pub tag_input: String,
     pub pattern: String,
 }
 
@@ -52,11 +56,13 @@ impl Form {
         let fields = &item.fields;
         Self {
             sender: fields.sender.clone().unwrap_or_default(),
+            recipient: fields.recipient.clone().unwrap_or_default(),
             kind: fields.kind.clone().unwrap_or_default(),
             date: fields.date.map(|date| date.to_string()).unwrap_or_default(),
             number: fields.number.clone().unwrap_or_default(),
             amount: fields.amount.as_ref().map(amount_text).unwrap_or_default(),
-            tags: tags_text(&fields.tags),
+            tags: fields.tags.clone(),
+            tag_input: String::new(),
             pattern: choose_pattern(item.proposed_pattern.as_deref(), custom_default, fields)
                 .map(|chosen| chosen.pattern)
                 .unwrap_or_default(),
@@ -66,11 +72,12 @@ impl Form {
     fn text_mut(&mut self, field: FormField) -> &mut String {
         match field {
             FormField::Sender => &mut self.sender,
+            FormField::Recipient => &mut self.recipient,
             FormField::Kind => &mut self.kind,
             FormField::Date => &mut self.date,
             FormField::Number => &mut self.number,
             FormField::Amount => &mut self.amount,
-            FormField::Tags => &mut self.tags,
+            FormField::TagInput => &mut self.tag_input,
             FormField::Pattern => &mut self.pattern,
         }
     }
@@ -84,12 +91,30 @@ impl Form {
         };
         Ok(DocumentFields {
             sender: non_empty(&self.sender),
+            recipient: non_empty(&self.recipient),
             kind: non_empty(&self.kind),
             date: parse_date(&self.date).map_err(Problem::from)?,
             number: non_empty(&self.number),
             amount: parse_amount(&self.amount).map_err(Problem::from)?,
-            tags: parse_tags(&self.tags),
+            tags: self.tags.clone(),
         })
+    }
+
+    /// The tags the fields as typed give; a date that does not read only
+    /// leaves out the year.
+    pub fn automatic_tags(&self) -> BTreeSet<String> {
+        let non_empty = |typed: &str| {
+            let text = typed.trim();
+            (!text.is_empty()).then(|| text.to_owned())
+        };
+        DocumentFields {
+            sender: non_empty(&self.sender),
+            recipient: non_empty(&self.recipient),
+            kind: non_empty(&self.kind),
+            date: parse_date(&self.date).ok().flatten(),
+            ..DocumentFields::default()
+        }
+        .automatic_tags()
     }
 }
 
@@ -352,6 +377,7 @@ impl ReviewList {
         let loaded = Form::of(item, self.custom_default_pattern.as_deref());
         match field {
             Field::Sender => self.form.sender != loaded.sender,
+            Field::Recipient => self.form.recipient != loaded.recipient,
             Field::Kind => self.form.kind != loaded.kind,
             Field::Date => self.form.date != loaded.date,
             Field::Number => self.form.number != loaded.number,
@@ -509,6 +535,20 @@ impl ReviewList {
                 self.follow_fields_with_default_pattern();
             }
         }
+    }
+
+    /// Adds the typed tag to the user's own and clears the field; nothing
+    /// typed, or a tag that is there already, changes nothing but the field.
+    pub fn add_tag(&mut self) {
+        let tag = tag_name(&self.form.tag_input);
+        self.form.tag_input.clear();
+        if !tag.is_empty() {
+            self.form.tags.insert(tag);
+        }
+    }
+
+    pub fn remove_tag(&mut self, tag: &str) {
+        self.form.tags.remove(tag);
     }
 
     fn follow_fields_with_default_pattern(&mut self) {
@@ -965,7 +1005,10 @@ pub mod tests {
     fn confirming_hands_over_the_edited_fields_and_marks_the_list_busy() {
         let mut list = loaded_list();
         list.set_text(FormField::Sender, " Company C ".to_owned());
-        list.set_text(FormField::Tags, "tax, travel".to_owned());
+        list.set_text(FormField::TagInput, "Tax".to_owned());
+        list.add_tag();
+        list.set_text(FormField::TagInput, "Travel".to_owned());
+        list.add_tag();
 
         let request = list.begin_confirm().unwrap();
 
@@ -977,9 +1020,55 @@ pub mod tests {
     }
 
     #[test]
+    fn a_tag_joins_the_own_tags_normalised_and_an_empty_or_known_one_does_not() {
+        let mut list = loaded_list();
+
+        list.set_text(FormField::TagInput, " Home Office ".to_owned());
+        list.add_tag();
+        list.set_text(FormField::TagInput, "home-office".to_owned());
+        list.add_tag();
+        list.set_text(FormField::TagInput, "  ".to_owned());
+        list.add_tag();
+
+        assert_eq!(list.form().tag_input, "");
+        assert_eq!(
+            list.form()
+                .tags
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["home-office"]
+        );
+        list.remove_tag("home-office");
+        assert!(list.form().tags.is_empty());
+    }
+
+    #[test]
+    fn the_automatic_tags_follow_the_typed_fields_and_the_recipient_is_filed() {
+        let mut list = loaded_list();
+        list.set_text(FormField::Sender, "Company C".to_owned());
+        list.set_text(FormField::Recipient, " Erika Beispiel ".to_owned());
+        list.set_text(FormField::Date, "not a date".to_owned());
+
+        let automatic = list.form().automatic_tags();
+        assert!(automatic.contains("company-c"));
+        assert!(automatic.contains("erika-beispiel"));
+        assert!(!list.form().tags.contains("company-c"));
+
+        list.set_text(FormField::Date, "2024-03-09".to_owned());
+        assert!(list.form().automatic_tags().contains("2024"));
+        let request = list.begin_confirm().unwrap();
+        assert_eq!(request.fields.recipient.as_deref(), Some("Erika Beispiel"));
+        assert!(request.fields.tags.is_empty());
+    }
+
+    #[test]
     fn a_filed_document_offers_a_rule_for_its_sender() {
         let mut list = loaded_list();
-        list.set_text(FormField::Tags, "tax, travel".to_owned());
+        for tag in ["tax", "travel"] {
+            list.set_text(FormField::TagInput, tag.to_owned());
+            list.add_tag();
+        }
         list.begin_confirm().unwrap();
         list.confirmed(ConfirmOutcome::Filed {
             relative_path: PathBuf::from("Company A/2024-03-09_invoice.pdf"),

@@ -377,6 +377,7 @@ mod tests {
                 sender: Some("Company A".to_owned()),
                 kind: Some("invoice".to_owned()),
                 date: NaiveDate::from_ymd_opt(2024, 3, 9),
+                recipient: None,
                 number: Some("R-1".to_owned()),
                 amount: Some(Amount {
                     minor_units: 1234,

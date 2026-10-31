@@ -12,6 +12,7 @@ mod filing_plan;
 mod location;
 mod ocr;
 mod office;
+mod recipient_detection;
 #[cfg(any(test, feature = "test-support"))]
 pub mod recognition;
 mod reorganisation;
@@ -44,7 +45,7 @@ pub use extract::{
 pub use filing_plan::{
     contains_condition_holds, missing_field, pattern_is_valid, plan, render_pattern,
     render_pattern_parts, unknown_placeholder, FilingPlan, PatternPart, PlanInput, Planning,
-    FIELD_ORDER, FILING_PLACEHOLDERS,
+    AI_FIELD_ORDER, FIELD_ORDER, FILING_PLACEHOLDERS,
 };
 pub use location::{Location, LocationMode};
 pub use ocr::{
@@ -52,6 +53,7 @@ pub use ocr::{
     OCR_MODELS_FOLDER, OCR_MODELS_HOST, OCR_MODELS_PROJECT, OCR_MODEL_FILES,
 };
 pub use office::{extract_text_from_bytes, OfficeText, PlainText};
+pub use recipient_detection::{detect_recipient, kind_from_heading};
 pub use reorganisation::{
     plan_reorganisation, PlanFile, PlanRule, ReorganisationInput, DUPLICATES_FOLDER,
     FINDING_PRIORITY,

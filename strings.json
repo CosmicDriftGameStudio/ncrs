@@ -3715,6 +3715,12 @@
       "de": "Absender"
     },
     {
+      "key": "review_list.field_recipient",
+      "context": "Form label in the review list: recipient, the person or company the document is addressed to. Also names the field in a review reason.",
+      "en": "Recipient",
+      "de": "Empfänger"
+    },
+    {
       "key": "review_list.field_kind",
       "context": "Form label in the review list: kind of document. Also names the field in a review reason.",
       "en": "Kind",
@@ -3743,6 +3749,36 @@
       "context": "Form label in the review list: tags.",
       "en": "Tags",
       "de": "Schlagworte"
+    },
+    {
+      "key": "review_list.tags_automatic",
+      "context": "Label of the row of automatic tags in the tags block of the review list form; the tags come from the fields and cannot be removed here.",
+      "en": "automatic",
+      "de": "automatisch"
+    },
+    {
+      "key": "review_list.tags_own",
+      "context": "Label of the row of the tags the user added in the tags block of the review list form.",
+      "en": "added by you",
+      "de": "von dir"
+    },
+    {
+      "key": "review_list.tags_none",
+      "context": "Dimmed text in a row of the tags block of the review list form when the row has no tags.",
+      "en": "none",
+      "de": "keine"
+    },
+    {
+      "key": "review_list.tags_add",
+      "context": "Placeholder of the field in the review list form where a new tag is typed; Enter adds it.",
+      "en": "Add tag",
+      "de": "Schlagwort hinzufügen"
+    },
+    {
+      "key": "review_list.tags_note",
+      "context": "Dimmed note under the tags block of the review list form.",
+      "en": "Automatic tags come from kind, sender, recipient and year. If one is wrong, correct the field above.",
+      "de": "Automatische Schlagworte kommen aus Art, Absender, Empfänger und Jahr. Stimmt eins nicht, korrigiere das Feld oben."
     },
     {
       "key": "review_list.field_pattern",
@@ -3815,6 +3851,18 @@
       "context": "Line under a field in the review list form: the user set the value earlier.",
       "en": "By hand",
       "de": "Von Hand"
+    },
+    {
+      "key": "review_list.origin_address",
+      "context": "Line under a field in the review list form: the value was read from the address block of the letter.",
+      "en": "From the address block",
+      "de": "Aus dem Adressfeld"
+    },
+    {
+      "key": "review_list.origin_heading",
+      "context": "Line under a field in the review list form: the value was read from the heading of the document.",
+      "en": "From the heading",
+      "de": "Aus der Überschrift"
     },
     {
       "key": "review_list.origin_changed",
@@ -4739,6 +4787,60 @@
       "context": "Shown under a color setting whose text color is hard to read on its background. Takes the name of the background color setting and the contrast ratio, such as 2.1.",
       "en": "Hard to read on {background}: contrast {ratio}:1.",
       "de": "Schwer lesbar auf {background}: Kontrast {ratio}:1."
+    },
+    {
+      "key": "settings.group_own_details",
+      "context": "Title of the group in the Hermes settings page for the names, accounts and tax numbers of the user.",
+      "en": "Your own details",
+      "de": "Eigene Angaben"
+    },
+    {
+      "key": "settings.group_own_details_intro",
+      "context": "Sentence under the title of the group of own details in the Hermes settings page.",
+      "en": "So that ncrs does not take you or your company for the sender.",
+      "de": "Damit ncrs dich und deine Firma nicht für den Absender hält."
+    },
+    {
+      "key": "settings.row_own_names",
+      "context": "Label of the setting listing the own names and companies of the user; they are never taken for a sender.",
+      "en": "Own names and companies",
+      "de": "Eigene Namen und Firmen"
+    },
+    {
+      "key": "settings.row_own_ibans",
+      "context": "Label of the setting listing the bank accounts (IBAN) of the user; they are never taken for the account of a sender.",
+      "en": "Own accounts (IBAN)",
+      "de": "Eigene Konten (IBAN)"
+    },
+    {
+      "key": "settings.row_own_tax_ids",
+      "context": "Label of the setting listing the tax numbers of the user; they are never taken for the tax number of a sender.",
+      "en": "Own tax numbers",
+      "de": "Eigene Steuernummern"
+    },
+    {
+      "key": "settings.own_names_placeholder",
+      "context": "Placeholder of the field where an own name or company is typed; Enter adds it.",
+      "en": "Add name or company",
+      "de": "Name oder Firma hinzufügen"
+    },
+    {
+      "key": "settings.own_ibans_placeholder",
+      "context": "Placeholder of the field where an own IBAN is typed; Enter adds it.",
+      "en": "Add IBAN",
+      "de": "IBAN hinzufügen"
+    },
+    {
+      "key": "settings.own_tax_ids_placeholder",
+      "context": "Placeholder of the field where an own tax number is typed; Enter adds it.",
+      "en": "Add tax number",
+      "de": "Steuernummer hinzufügen"
+    },
+    {
+      "key": "settings.problem_iban",
+      "context": "Shown under the field for an own IBAN when the typed value is not a valid IBAN.",
+      "en": "That is not a valid IBAN.",
+      "de": "Das ist keine gültige IBAN."
     },
     {
       "key": "settings.problem_color",

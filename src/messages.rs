@@ -16,7 +16,8 @@ use crate::clipboard_paste::PastedContent;
 use crate::command_line::ShellOutcome;
 use crate::condition_editor::ConditionEdit;
 use crate::config::{
-    AiProviderChoice, AiProviderName, Config, Filing, FilingWriteError, ProgramLine, ServerEntry,
+    AiProviderChoice, AiProviderName, Config, Filing, FilingWriteError, OwnDetail, ProgramLine,
+    ServerEntry,
 };
 use crate::dialog::PromptKind;
 use crate::document_preview::PreviewContent;
@@ -513,6 +514,11 @@ pub enum SettingChange {
     AiProvider(AiProviderChoice),
     /// The whole list of saved SFTP servers, as it is to be written.
     Servers(Vec<ServerEntry>),
+    /// One whole list of the user's own names, accounts or tax numbers.
+    OwnDetails {
+        detail: OwnDetail,
+        entries: Vec<String>,
+    },
 }
 
 /// A text field of the settings tab. What is typed stays a draft until
@@ -524,6 +530,8 @@ pub enum SettingField {
     AiThreads,
     AiEndpoint,
     AiModel,
+    /// Where an entry for one of the own details is typed.
+    Own(OwnDetail),
 }
 
 /// Everything the settings tab sends.
@@ -1096,6 +1104,9 @@ pub enum ReviewListMessage {
     Select(usize),
     Edit,
     FieldChanged(FormField, String),
+    /// Enter in the tag field: the typed tag joins the user's own.
+    AddTag,
+    RemoveTag(String),
     /// Tab (`false`) or Shift+Tab (`true`) in the form.
     FocusField {
         backwards: bool,

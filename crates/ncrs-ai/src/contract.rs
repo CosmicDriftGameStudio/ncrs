@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use jsonc_parser::{parse_to_value, JsonObject, JsonValue, ParseOptions};
 use ncrs_index::{DocumentFields, Field};
-use ncrs_intake::{parse_amount, parse_date, FIELD_ORDER};
+use ncrs_intake::{parse_amount, parse_date, AI_FIELD_ORDER};
 
 use crate::error::AiError;
 use crate::json::Json;
@@ -59,6 +59,7 @@ impl ExtractedField {
     pub fn fill(&self, fields: &mut DocumentFields) -> bool {
         match self.field {
             Field::Sender => set_if_empty(&mut fields.sender, Some(self.value.clone())),
+            Field::Recipient => set_if_empty(&mut fields.recipient, Some(self.value.clone())),
             Field::Kind => set_if_empty(&mut fields.kind, Some(self.value.clone())),
             Field::Number => set_if_empty(&mut fields.number, Some(self.value.clone())),
             Field::Date => set_if_empty(&mut fields.date, parse_date(&self.value)),
@@ -90,7 +91,7 @@ pub fn clean_value(value: &str) -> Option<String> {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Extraction {
-    /// In the order of `FIELD_ORDER`, each field at most once.
+    /// In the order of `AI_FIELD_ORDER`, each field at most once.
     pub fields: Vec<ExtractedField>,
 }
 
@@ -105,7 +106,7 @@ pub trait Provider: Send + Sync + fmt::Debug {
 /// else. A provider that enforces schemas then cannot answer with more; one
 /// that does not is handled by `parse_reply`, which drops what is not asked.
 pub fn output_schema(open_fields: &[Field]) -> Json {
-    let properties = FIELD_ORDER
+    let properties = AI_FIELD_ORDER
         .into_iter()
         .filter(|field| open_fields.contains(field))
         .map(|field| (field.as_str().to_owned(), field_schema(field)))
@@ -120,6 +121,7 @@ pub fn output_schema(open_fields: &[Field]) -> Json {
 fn field_schema(field: Field) -> Json {
     let hint = match field {
         Field::Sender => "who issued the document: the letterhead, company or sender line; never the addressee or recipient, never the name after Mr/Mrs/Herr/Frau in the address block",
+        Field::Recipient => "to whom the document is addressed: the person or company in the address block, never the sender",
         Field::Kind => "what kind of document it is, for example invoice",
         Field::Date => "the document date as YYYY-MM-DD",
         Field::Number => "the document or invoice number",
@@ -159,7 +161,7 @@ pub fn parse_reply(raw: &str, open_fields: &[Field]) -> Result<Extraction, AiErr
     let Some(JsonValue::Object(reply)) = parsed else {
         return Err(AiError::BadReply("not a JSON object"));
     };
-    let fields = FIELD_ORDER
+    let fields = AI_FIELD_ORDER
         .into_iter()
         .filter(|field| open_fields.contains(field))
         .filter_map(|field| field_of(&reply, field))
@@ -186,7 +188,7 @@ mod tests {
 
     use super::*;
 
-    const ALL: [Field; 5] = FIELD_ORDER;
+    const ALL: [Field; 6] = AI_FIELD_ORDER;
 
     fn parse(raw: &str, open: &[Field]) -> Extraction {
         parse_reply(raw, open).unwrap()
@@ -292,6 +294,18 @@ mod tests {
             parse_reply("sure, here you go", &ALL),
             Err(AiError::BadReply(_))
         ));
+    }
+
+    #[test]
+    fn the_recipient_is_asked_and_filled_only_while_empty() {
+        let schema = output_schema(&[Field::Recipient]).pretty();
+        let found = ExtractedField::new(Field::Recipient, "Erika Beispiel", 0.9).unwrap();
+        let mut fields = DocumentFields::default();
+
+        assert!(schema.contains("\"recipient\""));
+        assert!(found.fill(&mut fields));
+        assert_eq!(fields.recipient.as_deref(), Some("Erika Beispiel"));
+        assert!(!found.fill(&mut fields));
     }
 
     #[test]

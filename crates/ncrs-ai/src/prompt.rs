@@ -43,6 +43,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_prefix_names_the_recipient_like_any_other_field() {
+        assert_eq!(
+            user_message_prefix(&[Field::Sender, Field::Recipient]),
+            "Requested fields: sender, recipient\n<<<DOCUMENT TEXT>>>\n"
+        );
+    }
+
+    #[test]
     fn the_prefix_names_the_requested_fields() {
         let prefix = user_message_prefix(&[Field::Sender, Field::Date]);
 

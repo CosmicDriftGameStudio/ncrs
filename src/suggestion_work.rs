@@ -205,7 +205,7 @@ fn archive_snapshot(index: &Index, root: &Path) -> Result<ArchiveSnapshot, Index
         entries,
         aliases: index.confirmed_sender_aliases()?,
         sender_names: index.sender_names()?,
-        own: OwnIdentifiers::from_names([]),
+        own: OwnIdentifiers::new([], [], []),
     })
 }
 
