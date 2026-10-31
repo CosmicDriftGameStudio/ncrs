@@ -299,6 +299,16 @@ pub fn enter_button<'a>(
     sized_button(content.into(), on_press, tone, palette)
 }
 
+/// A flat button in the accent color for a jump to another page, sized like
+/// a line of text.
+pub fn link<'a>(label: &str, on_press: Message, palette: &Palette) -> Element<'a, Message> {
+    widget_button(label_text(label))
+        .padding([0.0, spacing::S])
+        .on_press(on_press)
+        .style(theme::link_button(palette))
+        .into()
+}
+
 /// The label of the Enter key, on its cap and in the hints.
 pub const ENTER_KEY: &str = "↵";
 

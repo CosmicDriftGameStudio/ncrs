@@ -130,7 +130,7 @@ use crate::ui::transfer as transfer_ui;
 use crate::ui::trash as trash_ui;
 use crate::ui::volumes::{self as volumes_view, FavouriteRow, ServerRow};
 use crate::ui::{conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelProps, PanelState};
-use ncrs_index::{IncludeOutcome, KeyStore, KeyringKeyStore};
+use ncrs_index::{IncludeOutcome, KeyStore, KeyringKeyStore, RuleId};
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::{Load, RunnerState};
 use tokio::sync::mpsc;
@@ -11782,6 +11782,7 @@ impl App {
                 }
                 Task::none()
             }
+            ReorganisationPlanMessage::OpenRule(id) => self.open_rule_of_plan(id),
             ReorganisationPlanMessage::Execute => match self.reorganisation.as_ref() {
                 Some(view) if view.has_selection() && !view.is_busy() => {
                     Task::done(Message::ExecuteReorganisation(view.selection()))
@@ -11789,6 +11790,37 @@ impl App {
                 _ => Task::none(),
             },
         }
+    }
+
+    /// Leaves the plan for the page of the rule behind an entry: the Rules
+    /// page for a confirmed rule, the suggestions for one that is not.
+    fn open_rule_of_plan(&mut self, id: RuleId) -> Task<Message> {
+        let Some(confirmed) = self
+            .reorganisation
+            .as_ref()
+            .and_then(|view| {
+                view.rows()
+                    .iter()
+                    .filter_map(|planned| planned.rule.as_ref())
+                    .find(|rule| rule.id == id)
+            })
+            .map(|rule| rule.confirmed)
+        else {
+            return Task::none();
+        };
+        let page = if confirmed {
+            HermesPage::Rules
+        } else {
+            HermesPage::RuleSuggestions
+        };
+        let open = self.go_to_hermes_page(page);
+        if let Some(rules) = self.rules.as_mut() {
+            rules.select_on_load(id);
+        }
+        if let Some(suggestions) = self.rule_suggestions.as_mut() {
+            suggestions.select_on_load(id);
+        }
+        open
     }
 
     /// The plan is made as the view opens; the entries appear when it is done.

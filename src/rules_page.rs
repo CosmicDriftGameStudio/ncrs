@@ -6,7 +6,7 @@
 use iced::mouse::ScrollDelta;
 
 use ncrs_index::{
-    Combinator, Condition, ConditionKind, RuleOrigin, RuleSpec, TaxContext, TaxContextEntry,
+    Combinator, Condition, ConditionKind, RuleId, RuleOrigin, RuleSpec, TaxContext, TaxContextEntry,
 };
 
 use crate::app::fill_template;
@@ -35,6 +35,8 @@ pub struct RulesPage {
     /// The page the form was opened from; the card goes back to it when the
     /// form is saved or cancelled.
     return_to: Option<HermesPage>,
+    /// The rule the first load puts the cursor on.
+    select_on_load: Option<RuleId>,
 }
 
 impl RulesPage {
@@ -50,7 +52,13 @@ impl RulesPage {
             problem: None,
             form: None,
             return_to: None,
+            select_on_load: None,
         }
+    }
+
+    /// The next load puts the cursor on this rule, if it is listed.
+    pub fn select_on_load(&mut self, id: RuleId) {
+        self.select_on_load = Some(id);
     }
 
     pub fn rows(&self) -> &[ListedRule] {
@@ -165,7 +173,10 @@ impl RulesPage {
     /// The list the work returned. The cursor stays on the rule it was on, if
     /// that is still there.
     pub fn loaded(&mut self, load: RulesLoad) {
-        let selected = self.selected().map(|row| row.rule.id);
+        let selected = self
+            .select_on_load
+            .take()
+            .or_else(|| self.selected().map(|row| row.rule.id));
         self.cursor = selected
             .and_then(|id| load.rules.iter().position(|row| row.rule.id == id))
             .unwrap_or_else(|| self.cursor.min(load.rules.len().saturating_sub(1)));
@@ -417,7 +428,7 @@ pub mod tests {
         crate::review_list::tests::stored_tax_contexts()
     }
 
-    fn listed(id: i64, global_index: usize) -> ListedRule {
+    pub fn listed(id: i64, global_index: usize) -> ListedRule {
         ListedRule {
             rule: Rule {
                 id: rule_id(usize::try_from(id).unwrap()),
@@ -442,6 +453,38 @@ pub mod tests {
             tax_contexts: entries(),
         });
         page
+    }
+
+    #[test]
+    fn the_rule_to_select_on_load_gets_the_cursor_once() {
+        let mut page = RulesPage::new();
+        page.select_on_load(rule_id(3));
+
+        page.loaded(RulesLoad {
+            rules: vec![listed(1, 0), listed(2, 2), listed(3, 3)],
+            tax_contexts: entries(),
+        });
+        assert_eq!(page.selected().map(|row| row.rule.id), Some(rule_id(3)));
+
+        page.select(0);
+        page.loaded(RulesLoad {
+            rules: vec![listed(1, 0), listed(2, 2), listed(3, 3)],
+            tax_contexts: entries(),
+        });
+        assert_eq!(page.selected().map(|row| row.rule.id), Some(rule_id(1)));
+    }
+
+    #[test]
+    fn a_rule_to_select_that_is_not_listed_keeps_the_cursor() {
+        let mut page = RulesPage::new();
+        page.select_on_load(rule_id(9));
+
+        page.loaded(RulesLoad {
+            rules: vec![listed(1, 0), listed(2, 2)],
+            tax_contexts: entries(),
+        });
+
+        assert_eq!(page.selected().map(|row| row.rule.id), Some(rule_id(1)));
     }
 
     #[test]

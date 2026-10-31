@@ -2990,9 +2990,9 @@
     },
     {
       "key": "reorganisation_plan.explain",
-      "context": "Paragraph at the top of the reorganisation plan view. Says that the view only proposes changes to the document folders and that nothing is moved before the user runs the selected steps.",
-      "en": "A plan for tidying your document folders. Nothing is moved until you run the selected steps.",
-      "de": "Ein Plan zum Aufräumen deiner Dokumentenordner. Nichts wird verschoben, bevor du die ausgewählten Schritte ausführst."
+      "context": "Paragraph at the top of the reorganisation plan view. Says in one sentence what the view is for, gives an example of what it finds, and says that nothing is moved before the user runs the selected steps.",
+      "en": "Reorganize checks the folders you already filed into and proposes moves and renames, for example an invoice dated 2025 that sits in the 2026 folder. Nothing is moved until you run the selected steps.",
+      "de": "Umräumen prüft die Ordner, in die du schon abgelegt hast, und schlägt Verschiebungen und Umbenennungen vor, etwa eine Rechnung von 2025, die im Ordner 2026 liegt. Nichts wird verschoben, bevor du die ausgewählten Schritte ausführst."
     },
     {
       "key": "reorganisation_plan.planning",
@@ -3113,6 +3113,84 @@
       "context": "Reason why a plan entry has no proposal: the fields the naming pattern of the folder needs, such as the date, are not known for the document.",
       "en": "Not enough is known to name it",
       "de": "Zu wenig bekannt für einen Namen"
+    },
+    {
+      "key": "reorganisation_plan.finding_misplaced",
+      "context": "Sentence under the plan list explaining an entry that a confirmed rule files in another folder. Takes the short name of the rule and the path the file would get.",
+      "en": "Rule ‘{rule}’ files documents like this one under {target}.",
+      "de": "Die Regel ‘{rule}’ legt solche Dokumente unter {target} ab."
+    },
+    {
+      "key": "reorganisation_plan.finding_misplaced_unconfirmed",
+      "context": "Sentence under the plan list explaining an entry that a suggested rule, not yet confirmed by the user, files in another folder. Takes the short name of the rule and the path the file would get.",
+      "en": "The suggested rule ‘{rule}’ would file this under {target}; it is not confirmed yet.",
+      "de": "Die vorgeschlagene Regel ‘{rule}’ würde dies unter {target} ablegen; sie ist noch nicht bestätigt."
+    },
+    {
+      "key": "reorganisation_plan.finding_misplaced_unknown",
+      "context": "Sentence under the plan list explaining an entry that a rule files in another folder, when that rule can no longer be found. Takes the path the file would get.",
+      "en": "A rule that is no longer there would file this under {target}.",
+      "de": "Eine Regel, die es nicht mehr gibt, würde dies unter {target} ablegen."
+    },
+    {
+      "key": "reorganisation_plan.finding_year_dated",
+      "context": "Sentence under the plan list explaining an entry that lies in the folder of the wrong year, when the date of the document is known. Takes the date (YYYY-MM-DD) and the year of the folder.",
+      "en": "Dated {date}, but it lies in the folder {folder_year}.",
+      "de": "Datiert auf {date}, liegt aber im Ordner {folder_year}."
+    },
+    {
+      "key": "reorganisation_plan.finding_year_undated",
+      "context": "Sentence under the plan list explaining an entry that lies in the folder of the wrong year, when only the year of the document is known. Takes the year of the document and the year of the folder.",
+      "en": "Dated in {date_year}, but it lies in the folder {folder_year}.",
+      "de": "Datiert auf {date_year}, liegt aber im Ordner {folder_year}."
+    },
+    {
+      "key": "reorganisation_plan.finding_duplicate",
+      "context": "Sentence under the plan list explaining an entry that is a copy. The copy is moved aside, never deleted. Takes the path of the file that stays and the path the copy would get.",
+      "en": "Same content as {keeper}, which stays; this copy moves to {target}.",
+      "de": "Gleicher Inhalt wie {keeper}, das bleibt; diese Kopie wandert nach {target}."
+    },
+    {
+      "key": "reorganisation_plan.finding_name",
+      "context": "Sentence under the plan list explaining an entry whose name differs from the others in its folder. Takes the naming pattern of the folder and the path the file would get.",
+      "en": "The name does not follow the pattern {pattern} of its folder; it becomes {target}.",
+      "de": "Der Name folgt nicht dem Muster {pattern} seines Ordners; er wird zu {target}."
+    },
+    {
+      "key": "reorganisation_plan.finding_target_exists",
+      "context": "Sentence under the plan list explaining why an entry cannot be carried out: a file already exists at the path it would get. Takes that path.",
+      "en": "{target} exists already, so this entry cannot be run.",
+      "de": "{target} gibt es schon, deshalb lässt sich dieser Eintrag nicht ausführen."
+    },
+    {
+      "key": "reorganisation_plan.finding_target_taken",
+      "context": "Sentence under the plan list explaining why an entry cannot be carried out: another entry of the same plan wants the same path. Takes that path.",
+      "en": "Another entry of this plan wants {target} as well, so this one cannot be run.",
+      "de": "Ein anderer Eintrag dieses Plans will ebenfalls {target}, deshalb lässt sich dieser nicht ausführen."
+    },
+    {
+      "key": "reorganisation_plan.finding_target_leaves",
+      "context": "Sentence under the plan list explaining why an entry cannot be carried out: the path it would get is not inside the document folder.",
+      "en": "The proposed path would lie outside the document folder, so this entry cannot be run.",
+      "de": "Der vorgeschlagene Pfad läge außerhalb des Dokumentenordners, deshalb lässt sich dieser Eintrag nicht ausführen."
+    },
+    {
+      "key": "reorganisation_plan.finding_missing_fields",
+      "context": "Sentence under the plan list explaining why an entry has no proposal: the naming pattern of the folder needs fields, such as the date, that are not known for the document.",
+      "en": "The naming pattern of the folder needs details that are unknown for this file, such as its date, so no name can be proposed.",
+      "de": "Das Namensmuster des Ordners braucht Angaben, die für diese Datei unbekannt sind, etwa das Datum, deshalb lässt sich kein Name vorschlagen."
+    },
+    {
+      "key": "reorganisation_plan.show_rule",
+      "context": "Link under the plan list that opens the Rules page on the rule behind the entry under the cursor.",
+      "en": "Show rule",
+      "de": "Regel anzeigen"
+    },
+    {
+      "key": "reorganisation_plan.show_suggestion",
+      "context": "Link under the plan list that opens the Rule suggestions page, for an entry that rests on a suggested rule the user has not confirmed yet.",
+      "en": "Show suggestion",
+      "de": "Vorschlag anzeigen"
     },
     {
       "key": "reorganisation_plan.before",
