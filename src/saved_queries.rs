@@ -107,16 +107,23 @@ pub struct Form {
 }
 
 impl Form {
-    fn of(query: &SavedQuery) -> Self {
-        let spec = &query.spec;
+    /// A form that asks what `spec` asks, without a name.
+    pub fn of_spec(spec: &QuerySpec) -> Self {
         Self {
-            name: query.name.clone(),
+            name: String::new(),
             year: spec.year.map(|year| year.to_string()).unwrap_or_default(),
             tax_context: spec.tax_context.clone(),
             sender: spec.sender.clone().unwrap_or_default(),
             kind: spec.kind.clone().unwrap_or_default(),
             tags: spec.tags.iter().cloned().collect::<Vec<_>>().join(", "),
             full_text: spec.full_text.clone().unwrap_or_default(),
+        }
+    }
+
+    fn of(query: &SavedQuery) -> Self {
+        Self {
+            name: query.name.clone(),
+            ..Self::of_spec(&query.spec)
         }
     }
 
@@ -249,6 +256,8 @@ pub struct SavedQueries {
     exported: Option<ExportSummary>,
     /// The query to put the cursor on when the list is loaded next.
     select_after_load: Option<SavedQueryId>,
+    /// A new report to start from once the list is there.
+    prefilled: Option<Form>,
     tax_contexts: Vec<TaxContextEntry>,
     /// The year the templates count back from.
     this_year: i32,
@@ -270,6 +279,7 @@ impl SavedQueries {
             export: None,
             exported: None,
             select_after_load: None,
+            prefilled: None,
             tax_contexts: Vec::new(),
             this_year,
         }
@@ -372,6 +382,26 @@ impl SavedQueries {
     /// The list the work returned. The cursor goes to the query that was just
     /// saved, else stays on the one it was on if it is still there.
     pub fn loaded(&mut self, rows: Vec<SavedQuery>) {
+        self.load_rows(rows);
+        if let Some(form) = self.prefilled.take() {
+            self.cursor = None;
+            self.form = form;
+            self.leave_query();
+        }
+    }
+
+    /// Opens a new report with `form` as soon as the list has loaded, so the
+    /// list does not replace it.
+    pub fn prefill(&mut self, form: Form) {
+        self.prefilled = Some(form);
+    }
+
+    /// The new report the list is waiting to open.
+    pub fn is_prefilled(&self) -> bool {
+        self.prefilled.is_some()
+    }
+
+    fn load_rows(&mut self, rows: Vec<SavedQuery>) {
         let wanted = self
             .select_after_load
             .take()

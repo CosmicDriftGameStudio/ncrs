@@ -90,7 +90,7 @@ use crate::rule_form::{RuleForm, RuleSave, TRY_DEBOUNCE};
 use crate::rule_suggestions::RuleSuggestions;
 use crate::rules_page::RulesPage;
 use crate::rules_work::{RuleChange, RulesAccess};
-use crate::saved_queries::SavedQueries;
+use crate::saved_queries::{Form, SavedQueries};
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
 use crate::session_state::{self, PanelRecord, SessionState, WindowSize, WriteOrder};
 use crate::suggestion_work::{SuggestedRule, SuggestionAccess, INDEX_NOT_OPEN};
@@ -4263,7 +4263,10 @@ impl App {
                 Task::batch([update, self.request_review_preview()])
             }
             Message::SavedQueries(queries) => self.update_saved_queries(queries),
-            Message::DocumentSearch(search) => self.update_document_search(search),
+            Message::DocumentSearch(search) => {
+                let update = self.update_document_search(search);
+                Task::batch([update, self.request_search_preview()])
+            }
             Message::HermesPage(page) => self.show_hermes_page(page),
             Message::HermesFocus(focus) => self.focus_hermes(focus),
             Message::HermesStep(step) => self.step_hermes_page(step),
@@ -11082,7 +11085,11 @@ impl App {
                         match result {
                             Ok((rows, tax_contexts)) => {
                                 view.set_tax_contexts(tax_contexts);
+                                let prefilled = view.is_prefilled();
                                 view.loaded(rows);
+                                if prefilled {
+                                    return operation::focus(saved_queries_ui::NAME_ID);
+                                }
                             }
                             Err(detail) => view.failed(detail),
                         }
@@ -11378,8 +11385,45 @@ impl App {
                             Err(detail) => view.failed(detail),
                         }
                     }
+                    return self.request_snippets();
                 }
                 Task::none()
+            }
+            DocumentSearchMessage::SnippetsLoaded { generation, result } => {
+                if generation == self.document_search_generation {
+                    if let (Some(view), Ok(found)) = (self.document_search.as_mut(), result) {
+                        view.set_snippets(found);
+                    }
+                }
+                Task::none()
+            }
+            DocumentSearchMessage::PreviewLoaded {
+                generation,
+                serial,
+                content,
+            } => {
+                if generation == self.document_search_generation {
+                    if let Some(view) = self.document_search.as_mut() {
+                        view.preview_loaded(serial, content);
+                    }
+                }
+                Task::none()
+            }
+            DocumentSearchMessage::SaveAsReport => {
+                let Some(form) = self
+                    .document_search
+                    .as_ref()
+                    .filter(|view| view.can_save_as_report())
+                    .map(|view| Form::of_spec(&view.spec()))
+                else {
+                    return Task::none();
+                };
+                self.document_search = None;
+                let opened = self.open_saved_queries();
+                if let Some(view) = self.saved_queries.as_mut() {
+                    view.prefill(form);
+                }
+                opened
             }
             DocumentSearchMessage::TaxContextsLoaded { generation, result } => {
                 if generation == self.document_search_generation {
@@ -11484,6 +11528,55 @@ impl App {
             move |joined| {
                 let result = joined.unwrap_or_else(|join| Err(join.to_string()));
                 Message::DocumentSearch(DocumentSearchMessage::Ran { generation, result })
+            },
+        )
+    }
+
+    /// Asks for the snippets of the hits the words found.
+    fn request_snippets(&self) -> Task<Message> {
+        let generation = self.document_search_generation;
+        let Some((paths, words)) = self
+            .document_search
+            .as_ref()
+            .and_then(DocumentSearch::snippet_request)
+        else {
+            return Task::none();
+        };
+        let Some(access) = self.filing.as_ref().and_then(FilingModule::query_access) else {
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.snippets(&paths, &words)),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                Message::DocumentSearch(DocumentSearchMessage::SnippetsLoaded {
+                    generation,
+                    result,
+                })
+            },
+        )
+    }
+
+    /// Makes the preview of the selected document on a blocking thread, when
+    /// the cursor has moved to another one.
+    fn request_search_preview(&mut self) -> Task<Message> {
+        let generation = self.document_search_generation;
+        let Some(request) = self
+            .document_search
+            .as_mut()
+            .and_then(DocumentSearch::preview_request)
+        else {
+            return Task::none();
+        };
+        let serial = request.serial;
+        Task::perform(
+            document_preview::load_off_thread(request.path, request.passages),
+            move |content| {
+                Message::DocumentSearch(DocumentSearchMessage::PreviewLoaded {
+                    generation,
+                    serial,
+                    content,
+                })
             },
         )
     }
@@ -16907,6 +17000,10 @@ impl App {
     pub fn with_hermes_focus(mut self, focus: HermesFocus) -> Self {
         self.hermes_focus = focus;
         self
+    }
+
+    pub fn saved_queries_generation_for_test(&self) -> u64 {
+        self.saved_queries_generation
     }
 
     pub fn document_search_for_test(&self) -> Option<&DocumentSearch> {

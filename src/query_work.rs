@@ -96,6 +96,34 @@ impl QueryAccess {
         })
     }
 
+    /// The pieces of text around `words` of the documents at `paths`, marked
+    /// as [`Index::text_snippets`] does. A path the index does not know or the
+    /// words do not match has none.
+    pub fn snippets(
+        &self,
+        paths: &[PathBuf],
+        words: &str,
+    ) -> Result<Vec<(PathBuf, String)>, String> {
+        self.with_index(|index| {
+            let mut ids = Vec::new();
+            let mut paths_of = Vec::new();
+            for path in paths {
+                if let Some(document) = index.document_by_path(path)? {
+                    ids.push(document.id);
+                    paths_of.push((document.id, path.clone()));
+                }
+            }
+            Ok(index
+                .text_snippets(&ids, words)?
+                .into_iter()
+                .filter_map(|(id, snippet)| {
+                    let (_, path) = paths_of.iter().find(|(known, _)| *known == id)?;
+                    Some((path.clone(), snippet))
+                })
+                .collect())
+        })
+    }
+
     fn with_index<T>(
         &self,
         work: impl FnOnce(&mut Index) -> Result<T, IndexError>,

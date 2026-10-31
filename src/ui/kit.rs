@@ -615,11 +615,23 @@ pub fn list_row<'a>(
     focused: bool,
     palette: &Palette,
 ) -> Element<'a, Message> {
+    list_row_of_height(content, on_press, selected, focused, size::ROW, palette)
+}
+
+/// [`list_row`] for rows of more than one line.
+pub fn list_row_of_height<'a>(
+    content: Element<'a, Message>,
+    on_press: Message,
+    selected: bool,
+    focused: bool,
+    row_height: f32,
+    palette: &Palette,
+) -> Element<'a, Message> {
     widget_button(content)
         .on_press(on_press)
         .width(Length::Fill)
         .padding([0.0, spacing::CELL_PADDING_X])
-        .height(size::ROW)
+        .height(row_height)
         .style(theme::row(palette, false, selected, focused))
         .into()
 }
@@ -815,8 +827,21 @@ pub fn scroll_list<'a>(
     on_scroll: impl Fn(ScrollDelta) -> Message + 'a,
     palette: &Palette,
 ) -> Element<'a, Message> {
+    scroll_list_of_height(header, rows, window, size::ROW, on_scroll, palette)
+}
+
+/// [`scroll_list`] for rows of `row_height` pixels, as made by
+/// [`list_row_of_height`].
+pub fn scroll_list_of_height<'a>(
+    header: Element<'a, Message>,
+    rows: Vec<Element<'a, Message>>,
+    window: ListView,
+    row_height: f32,
+    on_scroll: impl Fn(ScrollDelta) -> Message + 'a,
+    palette: &Palette,
+) -> Element<'a, Message> {
     let shown = rows.len();
-    let track = size::ROW * shown as f32;
+    let track = row_height * shown as f32;
     let list = mouse_area(
         container(Column::with_children(rows))
             .width(Length::Fill)

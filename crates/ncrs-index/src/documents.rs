@@ -356,6 +356,45 @@ impl Index {
         Ok(ids)
     }
 
+    /// A short piece of the text of each document around where `words` match,
+    /// the matched words between [`SNIPPET_MARK_START`] and
+    /// [`SNIPPET_MARK_END`]. The match is the one of [`Self::search_text_prefix`],
+    /// so the marks follow the tokenizer. A document the words do not match has
+    /// no entry.
+    pub fn text_snippets(
+        &self,
+        ids: &[DocumentId],
+        words: &str,
+    ) -> Result<Vec<(DocumentId, String)>, IndexError> {
+        let query = match_query(words, true);
+        if query.is_empty() || ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut statement = self.connection().prepare(
+            "SELECT snippet(document_text, 0, ?3, ?4, '…', ?5) FROM document_text
+             WHERE document_text MATCH ?1 AND rowid = ?2",
+        )?;
+        let mut found = Vec::new();
+        for id in ids {
+            let marked: Option<String> = statement
+                .query_row(
+                    params![
+                        query,
+                        id.get(),
+                        SNIPPET_MARK_START,
+                        SNIPPET_MARK_END,
+                        SNIPPET_WORDS
+                    ],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if let Some(snippet) = marked {
+                found.push((*id, snippet));
+            }
+        }
+        Ok(found)
+    }
+
     /// The full text `set_document_text` stored; `None` when there is none.
     pub fn document_text(&self, id: DocumentId) -> Result<Option<String>, IndexError> {
         let found = self
@@ -476,6 +515,14 @@ pub fn require_document(conn: &Connection, id: DocumentId) -> Result<(), IndexEr
     }
 }
 
+/// Control characters as marks: extracted text practically never holds them,
+/// and a stray one only shifts a highlight.
+pub const SNIPPET_MARK_START: &str = "\u{2}";
+pub const SNIPPET_MARK_END: &str = "\u{3}";
+
+/// Words around the match in a snippet.
+const SNIPPET_WORDS: i64 = 12;
+
 /// The words as an FTS5 query, each one quoted; with `prefix_last` the last one
 /// carries the prefix star. Empty when there is no word.
 fn match_query(words: &str, prefix_last: bool) -> String {
@@ -516,6 +563,36 @@ mod tests {
         let id = index.insert_document(&new_document(seed)).unwrap();
         index.set_document_text(id, text).unwrap();
         id
+    }
+
+    #[test]
+    fn a_snippet_marks_the_match_through_the_folded_diacritics() {
+        let (_dir, mut index) = encrypted_index();
+        let id = indexed_with_text(&mut index, 1, "Invoice for Herr Müller of Berlin");
+
+        let snippets = index.text_snippets(&[id], "Muller").unwrap();
+
+        assert_eq!(
+            snippets,
+            [(
+                id,
+                format!("Invoice for Herr {SNIPPET_MARK_START}Müller{SNIPPET_MARK_END} of Berlin")
+            )]
+        );
+    }
+
+    #[test]
+    fn a_document_the_words_do_not_match_gets_no_snippet() {
+        let (_dir, mut index) = encrypted_index();
+        let matching = indexed_with_text(&mut index, 1, "rent for the office");
+        let other = indexed_with_text(&mut index, 2, "insurance policy");
+
+        let snippets = index.text_snippets(&[matching, other], "rent").unwrap();
+
+        assert_eq!(snippets.len(), 1);
+        assert_eq!(snippets[0].0, matching);
+        assert!(index.text_snippets(&[matching], "  ").unwrap().is_empty());
+        assert!(index.text_snippets(&[], "rent").unwrap().is_empty());
     }
 
     #[test]

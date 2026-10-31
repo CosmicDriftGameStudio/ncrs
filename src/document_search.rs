@@ -8,18 +8,97 @@
 //! Names are compared like the index compares them, trimmed and without regard
 //! to case.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::ops::Range;
+use std::path::PathBuf;
 
 use chrono::Datelike as _;
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{QuerySpec, TaxContext, TaxContextEntry};
+use ncrs_index::{QuerySpec, TaxContext, TaxContextEntry, SNIPPET_MARK_END, SNIPPET_MARK_START};
 
+use crate::document_preview::{DocumentPreview, PreviewContent, PreviewRequest};
 use crate::list_window::ListWindow;
 use crate::query_work::QueryHit;
 
 /// Most documents of the list shown at once; the list follows the cursor.
 pub const VISIBLE_ROWS: usize = 5;
+
+/// Most documents a snippet is asked for; the first of the list, which is what
+/// is looked at.
+pub const SNIPPET_LIMIT: usize = 500;
+
+/// A piece of a document's text around the words, with where they stand.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Snippet {
+    pub text: String,
+    /// Byte ranges of `text`.
+    pub marks: Vec<Range<usize>>,
+}
+
+impl Snippet {
+    /// The part of the text that fits `max_chars`, cut so the first match is
+    /// in it; the marks follow.
+    pub fn fitted(&self, max_chars: usize) -> Snippet {
+        let total = self.text.chars().count();
+        if total <= max_chars {
+            return self.clone();
+        }
+        let first_mark = self.marks.first().map_or(0, |mark| {
+            self.text
+                .char_indices()
+                .take_while(|(byte, _)| *byte < mark.start)
+                .count()
+        });
+        let from = first_mark
+            .saturating_sub(max_chars.checked_div(4).unwrap_or_default())
+            .min(total - max_chars);
+        let byte_of = |chars: usize| {
+            self.text
+                .char_indices()
+                .nth(chars)
+                .map_or(self.text.len(), |(byte, _)| byte)
+        };
+        let (start, end) = (byte_of(from), byte_of(from + max_chars));
+        let marks = self
+            .marks
+            .iter()
+            .map(|mark| mark.start.max(start)..mark.end.min(end))
+            .filter(|mark| mark.start < mark.end)
+            .map(|mark| mark.start - start..mark.end - start)
+            .collect();
+        Snippet {
+            text: self.text.get(start..end).unwrap_or_default().to_owned(),
+            marks,
+        }
+    }
+}
+
+/// Turns what the index marked into the text on one line and the marked
+/// ranges. A mark that is never closed runs to the end, one that is never
+/// opened or empty is dropped.
+pub fn parse_snippet(marked: &str) -> Snippet {
+    let mut text = String::new();
+    let mut marks = Vec::new();
+    let mut open: Option<usize> = None;
+    for character in marked.chars() {
+        if character.to_string() == SNIPPET_MARK_START {
+            open.get_or_insert(text.len());
+        } else if character.to_string() == SNIPPET_MARK_END {
+            if let Some(start) = open.take().filter(|start| *start < text.len()) {
+                marks.push(start..text.len());
+            }
+        } else if character.is_whitespace() {
+            text.push(' ');
+        } else {
+            text.push(character);
+        }
+    }
+    if let Some(start) = open.filter(|start| *start < text.len()) {
+        marks.push(start..text.len());
+    }
+    Snippet { text, marks }
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FacetSelection {
@@ -292,6 +371,9 @@ pub struct DocumentSearch {
     busy: bool,
     problem: Option<String>,
     tax_contexts: Vec<TaxContextEntry>,
+    /// By the path of the document; only while words are typed.
+    snippets: HashMap<PathBuf, Snippet>,
+    preview: DocumentPreview,
 }
 
 impl DocumentSearch {
@@ -308,6 +390,8 @@ impl DocumentSearch {
             busy: true,
             problem: None,
             tax_contexts: Vec::new(),
+            snippets: HashMap::new(),
+            preview: DocumentPreview::default(),
         }
     }
 
@@ -368,7 +452,6 @@ impl DocumentSearch {
 
     /// The words and the facets as one question to the index: what a report
     /// saved from this page would ask.
-    #[cfg(test)]
     pub fn spec(&self) -> QuerySpec {
         let selection = &self.selection;
         let text = self.text.trim();
@@ -397,12 +480,76 @@ impl DocumentSearch {
     /// The words changed; the question to ask for them.
     pub fn set_text(&mut self, text: String) -> QuerySpec {
         self.text = text;
+        self.preview.clear();
         self.begin_search()
+    }
+
+    /// There is something to save as a report: words or a chosen value.
+    pub fn can_save_as_report(&self) -> bool {
+        !self.text.trim().is_empty() || !self.selection.is_empty()
+    }
+
+    /// The paths to ask snippets for and the words to find in them; nothing
+    /// without words.
+    pub fn snippet_request(&self) -> Option<(Vec<PathBuf>, String)> {
+        let words = self.text.trim();
+        if words.is_empty() {
+            return None;
+        }
+        let paths: Vec<PathBuf> = self
+            .hits
+            .iter()
+            .filter(|hit| !hit.missing)
+            .take(SNIPPET_LIMIT)
+            .map(|hit| hit.path.clone())
+            .collect();
+        (!paths.is_empty()).then(|| (paths, words.to_owned()))
+    }
+
+    pub fn set_snippets(&mut self, found: Vec<(PathBuf, String)>) {
+        self.snippets = found
+            .into_iter()
+            .map(|(path, marked)| (path, parse_snippet(&marked)))
+            .collect();
+    }
+
+    pub fn snippet_of(&self, hit: &QueryHit) -> Option<&Snippet> {
+        self.snippets.get(&hit.path)
+    }
+
+    pub fn has_snippets(&self) -> bool {
+        !self.snippets.is_empty()
+    }
+
+    pub fn preview(&self) -> &DocumentPreview {
+        &self.preview
+    }
+
+    /// The request for the preview of the selected document, when it is not
+    /// the one shown. A missing document or none has no preview.
+    pub fn preview_request(&mut self) -> Option<PreviewRequest> {
+        let Some(hit) = self.selected().filter(|hit| !hit.missing) else {
+            self.preview.clear();
+            return None;
+        };
+        let path = hit.path.clone();
+        let passages: Vec<String> = self.text.split_whitespace().map(str::to_owned).collect();
+        self.preview.request(&path, &passages)
+    }
+
+    pub fn preview_loaded(&mut self, serial: u64, content: PreviewContent) {
+        self.preview.loaded(serial, content);
+    }
+
+    #[cfg(test)]
+    pub fn show_preview_for_test(&mut self, content: PreviewContent) {
+        self.preview = DocumentPreview::showing(content);
     }
 
     pub fn ran(&mut self, mut hits: Vec<QueryHit>) {
         hits.sort_by(display_order);
         self.hits = hits;
+        self.snippets.clear();
         self.busy = false;
         self.problem = None;
         self.refilter();
@@ -719,5 +866,250 @@ pub mod tests {
         search.set_text("rent".to_owned());
         assert!(search.is_busy());
         assert_eq!(search.problem(), None);
+    }
+
+    fn marked(snippet: &Snippet) -> Vec<&str> {
+        snippet
+            .marks
+            .iter()
+            .map(|mark| &snippet.text[mark.clone()])
+            .collect()
+    }
+
+    #[test]
+    fn a_snippet_loses_its_marks_and_keeps_where_they_stood() {
+        let snippet = parse_snippet("…for Herr \u{2}Müller\u{3} and \u{2}Berlin\u{3}\nlines");
+
+        assert_eq!(snippet.text, "…for Herr Müller and Berlin lines");
+        assert_eq!(marked(&snippet), ["Müller", "Berlin"]);
+    }
+
+    #[test]
+    fn stray_marks_in_a_snippet_do_not_panic_or_leave_a_mark_behind() {
+        let closing_first = parse_snippet("a\u{3}b \u{2}c\u{3}");
+        assert_eq!(closing_first.text, "ab c");
+        assert_eq!(marked(&closing_first), ["c"]);
+
+        let never_closed = parse_snippet("one \u{2}two three");
+        assert_eq!(never_closed.text, "one two three");
+        assert_eq!(marked(&never_closed), ["two three"]);
+
+        let opened_twice = parse_snippet("\u{2}a \u{2}b\u{3} c");
+        assert_eq!(opened_twice.text, "a b c");
+        assert_eq!(marked(&opened_twice), ["a b"]);
+
+        let empty = parse_snippet("x\u{2}\u{3}y\u{2}");
+        assert_eq!(empty.text, "xy");
+        assert!(empty.marks.is_empty());
+
+        assert_eq!(
+            parse_snippet(""),
+            Snippet {
+                text: String::new(),
+                marks: Vec::new()
+            }
+        );
+    }
+
+    #[test]
+    fn a_long_snippet_is_cut_around_its_first_match() {
+        let snippet = parse_snippet(&format!(
+            "{}\u{2}Müller\u{3}{}",
+            "long ".repeat(20),
+            " tail".repeat(20)
+        ));
+
+        let fitted = snippet.fitted(30);
+
+        assert_eq!(fitted.text.chars().count(), 30);
+        assert_eq!(marked(&fitted), ["Müller"]);
+        assert_eq!(snippet.fitted(10_000), snippet);
+    }
+
+    #[test]
+    fn snippets_belong_to_the_hits_found_and_go_with_a_new_search() {
+        let mut search = DocumentSearch::new("rent".to_owned());
+        search.ran(six_hits());
+        let (paths, words) = search.snippet_request().unwrap();
+        assert_eq!(paths.len(), 6);
+        assert_eq!(words, "rent");
+
+        search.set_snippets(vec![(
+            PathBuf::from("archive/a.pdf"),
+            "the \u{2}rent\u{3}".to_owned(),
+        )]);
+        let hit = search
+            .found()
+            .iter()
+            .find(|hit| hit.path.ends_with("a.pdf"))
+            .unwrap();
+        assert_eq!(marked(search.snippet_of(hit).unwrap()), ["rent"]);
+
+        search.ran(six_hits());
+        assert!(!search.has_snippets());
+        assert!(DocumentSearch::new("  ".to_owned())
+            .snippet_request()
+            .is_none());
+    }
+
+    #[test]
+    fn the_preview_follows_the_selection_and_a_missing_document_has_none() {
+        let mut search = loaded_search();
+        let first = search.preview_request().unwrap();
+        assert_eq!(first.path, PathBuf::from("archive/b.pdf"));
+        assert!(search.preview_request().is_none());
+
+        search.move_cursor(1);
+        let second = search.preview_request().unwrap();
+        assert_eq!(second.path, PathBuf::from("archive/a.pdf"));
+        assert_ne!(second.serial, first.serial);
+
+        let mut gone = found_hit("g.pdf", Some((2030, 1, 1)), None, None, &[]);
+        gone.missing = true;
+        let mut hits = six_hits();
+        hits.push(gone);
+        search.ran(hits);
+        search.select(0);
+        assert!(search.preview_request().is_none());
+    }
+
+    #[test]
+    fn only_words_or_a_chosen_value_can_be_saved_as_a_report() {
+        let mut search = loaded_search();
+        assert!(!search.can_save_as_report());
+        search.toggle(FacetValue::Year(2024));
+        assert!(search.can_save_as_report());
+        search.clear_facets();
+        search.set_text("rent".to_owned());
+        assert!(search.can_save_as_report());
+    }
+
+    /// Saving what the page shows as a report finds the same documents.
+    #[test]
+    fn a_saved_search_finds_the_documents_the_page_showed() {
+        use std::sync::{Arc, Mutex};
+
+        use chrono::{TimeZone as _, Utc};
+        use ncrs_index::{ContentHash, DocumentSource, Index, NewDocument};
+
+        use crate::query_work::QueryAccess;
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut index = Index::create_plain(&dir.path().join("index.db")).unwrap();
+        type Stock<'a> = (&'a str, i32, &'a str, &'a str, &'a [&'a str], &'a str);
+        let stock: [Stock; 7] = [
+            (
+                "a",
+                2025,
+                "Firma A",
+                "invoice",
+                &["office", "paid"],
+                "rent for the office",
+            ),
+            (
+                "b",
+                2025,
+                "firma a ",
+                "Invoice",
+                &["Office", "paid"],
+                "office rent march",
+            ),
+            (
+                "c",
+                2025,
+                "Firma A",
+                "invoice",
+                &["office"],
+                "rent without the other tag",
+            ),
+            (
+                "d",
+                2024,
+                "Firma A",
+                "invoice",
+                &["office", "paid"],
+                "rent of another year",
+            ),
+            (
+                "e",
+                2025,
+                "Agency B",
+                "invoice",
+                &["office", "paid"],
+                "rent of another sender",
+            ),
+            (
+                "f",
+                2025,
+                "Firma A",
+                "letter",
+                &["office", "paid"],
+                "rent of another kind",
+            ),
+            (
+                "g",
+                2025,
+                "Firma A",
+                "invoice",
+                &["office", "paid"],
+                "insurance, no such word",
+            ),
+        ];
+        for (seed, (name, year, sender, kind, tags, text)) in (1..).zip(stock) {
+            let id = index
+                .insert_document(&NewDocument {
+                    hash: ContentHash([seed; 32]),
+                    path: PathBuf::from(format!("archive/{name}.pdf")),
+                    source: DocumentSource::Archive,
+                    received_at: Utc.with_ymd_and_hms(2026, 3, 14, 9, 30, 0).unwrap(),
+                    stamp: None,
+                })
+                .unwrap();
+            index
+                .set_document_fields(
+                    id,
+                    &DocumentFields {
+                        sender: Some(sender.to_owned()),
+                        kind: Some(kind.to_owned()),
+                        date: NaiveDate::from_ymd_opt(year, 5, 1),
+                        tags: tags.iter().map(|tag| (*tag).to_owned()).collect(),
+                        ..DocumentFields::default()
+                    },
+                    |_| ncrs_index::FieldOrigin::Unknown,
+                )
+                .unwrap();
+            index.set_document_text(id, text).unwrap();
+        }
+        let access = QueryAccess::new(Arc::new(Mutex::new(Some(index))));
+
+        // The last word is a prefix while it is typed.
+        let mut search = DocumentSearch::new("office ren".to_owned());
+        let asked = search.begin_search();
+        search.ran(access.run(&asked).unwrap());
+        search.toggle(FacetValue::Year(2025));
+        search.toggle(FacetValue::Sender("Firma A".to_owned()));
+        search.toggle(FacetValue::Kind("invoice".to_owned()));
+        search.toggle(FacetValue::Tag("office".to_owned()));
+        search.toggle(FacetValue::Tag("paid".to_owned()));
+        let shown: BTreeSet<PathBuf> = search.shown().map(|hit| hit.path.clone()).collect();
+        assert_eq!(
+            shown,
+            BTreeSet::from([
+                PathBuf::from("archive/a.pdf"),
+                PathBuf::from("archive/b.pdf")
+            ])
+        );
+
+        let id = access.save(None, "Office rent", &search.spec()).unwrap();
+        let saved = access.load().unwrap();
+        let query = saved.iter().find(|query| query.id == id).unwrap();
+        let rerun: BTreeSet<PathBuf> = access
+            .run(&query.spec)
+            .unwrap()
+            .into_iter()
+            .map(|hit| hit.path)
+            .collect();
+
+        assert_eq!(rerun, shown);
     }
 }

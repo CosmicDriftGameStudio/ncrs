@@ -2,14 +2,16 @@
 //! that narrow the hits and the list of what is left. Pure view over
 //! [`DocumentSearch`].
 
-use iced::widget::{column, row, text};
+use iced::widget::{column, container, row, text};
 use iced::{alignment, Element, Length, Size};
 use ncrs_index::{DocumentFields, TaxContext};
 
+use super::document_preview;
 use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::hermes::{self, Badges};
 use super::kit::{self, dim, error_line, Columns, Tone};
-use super::theme::{font_size, spacing};
+use super::picker;
+use super::theme::{font_size, size, spacing};
 use crate::app::fill_template;
 use crate::document_search::{DocumentSearch, FacetValue, VISIBLE_ROWS};
 use crate::i18n::{FuturamaName, Language, Msg};
@@ -25,7 +27,17 @@ const SIZE: DialogSize = DialogSize::Card;
 const MAX_CHIPS: usize = 6;
 
 /// How the width of a row is shared: name, date, sender, amount.
-const PORTIONS: [u16; 4] = [6, 3, 4, 3];
+const PORTIONS: [u16; 4] = [4, 3, 3, 3];
+
+/// How the room below the facets is shared: the list, then the preview.
+const LIST_PORTION: u16 = 3;
+const PREVIEW_PORTION: u16 = 2;
+
+/// The height of the list and the preview beside it.
+const SPLIT_HEIGHT: f32 = 290.0;
+
+/// A row that shows a snippet below the name.
+const SNIPPET_ROW_HEIGHT: f32 = size::ROW + 20.0;
 
 /// The width of the label of a facet row.
 const LABEL_WIDTH: f32 = 110.0;
@@ -68,7 +80,7 @@ pub fn view<'a>(
         if state.shown_len() == 0 {
             body = body.push(dim(lang.text(Msg::DocumentSearchEmptyNoMatch), palette));
         } else {
-            body = body.push(list(state, line_chars, badges.focus, lang, palette));
+            body = body.push(split(state, line_chars, badges.focus, lang, palette));
         }
     }
 
@@ -236,6 +248,38 @@ fn summary<'a>(state: &DocumentSearch, lang: Language, palette: &Palette) -> Ele
     )
 }
 
+fn split<'a>(
+    state: &'a DocumentSearch,
+    line_chars: usize,
+    focus: HermesFocus,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let portions = LIST_PORTION + PREVIEW_PORTION;
+    let list_chars = (line_chars * usize::from(LIST_PORTION))
+        .checked_div(usize::from(portions))
+        .unwrap_or_default()
+        .saturating_sub(frame::chars_that_fit(spacing::L));
+    let preview: Element<'a, Message> = if state.selected().is_some_and(|hit| hit.missing) {
+        container(dim(lang.text(Msg::DocumentSearchMissing), palette))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    } else {
+        document_preview::view(state.preview(), lang, palette)
+    };
+    row![
+        container(list(state, list_chars, focus, lang, palette))
+            .width(Length::FillPortion(LIST_PORTION)),
+        container(preview)
+            .width(Length::FillPortion(PREVIEW_PORTION))
+            .height(Length::Fill),
+    ]
+    .spacing(spacing::L)
+    .height(SPLIT_HEIGHT)
+    .into()
+}
+
 fn list<'a>(
     state: &DocumentSearch,
     line_chars: usize,
@@ -258,6 +302,11 @@ fn list<'a>(
     );
     let first = state.first_visible();
     let missing_mark = lang.text(Msg::DocumentSearchMissing);
+    let row_height = if state.has_snippets() {
+        SNIPPET_ROW_HEIGHT
+    } else {
+        size::ROW
+    };
     let rows = state
         .shown()
         .enumerate()
@@ -286,7 +335,7 @@ fn list<'a>(
                 ..
             } = &hit.fields;
             let date_text = date.map(|day| day.format("%Y-%m-%d").to_string());
-            let content = row![
+            let fields = row![
                 columns.cell(0, &name, color),
                 columns.cell(1, date_text.as_deref().unwrap_or_default(), color),
                 columns.cell(2, sender.as_deref().unwrap_or_default(), color),
@@ -296,17 +345,35 @@ fn list<'a>(
                     color
                 ),
             ]
-            .align_y(alignment::Vertical::Center);
-            kit::list_row(
-                content.into(),
+            .align_y(alignment::Vertical::Center)
+            .height(size::ROW);
+            let mut lines = column![fields];
+            if let Some(snippet) = state.snippet_of(hit) {
+                // The snippet is set in the larger row font, which the width of a
+                // cell is not measured for.
+                let fitted = snippet.fitted((line_chars * 2).checked_div(3).unwrap_or_default());
+                lines = lines.push(
+                    row![picker::highlighted_dim(
+                        &fitted.text,
+                        &fitted.marks,
+                        selected && focus == HermesFocus::Content,
+                        usize::MAX,
+                        palette,
+                    )]
+                    .padding([0.0, spacing::CELL_PADDING_X]),
+                );
+            }
+            kit::list_row_of_height(
+                lines.into(),
                 send(DocumentSearchMessage::Select(index)),
                 selected,
                 focus == HermesFocus::Content,
+                row_height,
                 palette,
             )
         })
         .collect();
-    kit::scroll_list(
+    kit::scroll_list_of_height(
         header,
         rows,
         kit::ListView {
@@ -314,6 +381,7 @@ fn list<'a>(
             visible: VISIBLE_ROWS,
             offset: first,
         },
+        row_height,
         |delta| send(DocumentSearchMessage::Scrolled(delta)),
         palette,
     )
@@ -333,6 +401,14 @@ fn buttons<'a>(
             palette,
         ));
     }
+    buttons.push(kit::button(
+        lang.text(Msg::DocumentSearchSaveAsReport),
+        state
+            .can_save_as_report()
+            .then(|| send(DocumentSearchMessage::SaveAsReport)),
+        Tone::Secondary,
+        palette,
+    ));
     buttons.push(kit::button(
         lang.text(Msg::DocumentSearchClose),
         Some(send(DocumentSearchMessage::Close)),

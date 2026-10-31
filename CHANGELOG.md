@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- The document search page shows, under each hit, the piece of its text around
+  the words, with the words marked, and previews the selected document beside
+  the list. "Save as report" opens the Reports page with a new report that asks
+  what the page asks (words, year, tax context, sender, kind, tags); it is
+  saved there like any other report.
 - A Filing page "Search documents" searches the text of every document ncrs
   has read. Click a year, tax context, sender, kind or tag to narrow the hits;
   the numbers show how many documents each value leaves. Quick Open ends its
