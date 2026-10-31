@@ -150,7 +150,7 @@ fn fit(text: &str, highlight: &[Range<usize>], max_chars: usize) -> (String, Vec
     (shown, moved)
 }
 
-fn highlight_spans<'a>(
+pub(in crate::ui) fn highlight_spans<'a>(
     text: &str,
     highlight: &[Range<usize>],
     selected: bool,

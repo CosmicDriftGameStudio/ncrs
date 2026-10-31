@@ -1,10 +1,13 @@
 //! The matchers behind the condition kinds that read the text or the place of
 //! a document. Each takes a value that is not empty.
 
+use std::ops::Range;
 use std::path::{Component, Path};
 use std::sync::LazyLock;
 
-use ncrs_index::{compile_bounded_regex, is_iban_separator, is_tax_id_separator};
+use ncrs_index::{
+    compile_bounded_regex, is_iban_separator, is_tax_id_separator, Condition, ConditionKind,
+};
 use regex::Regex;
 
 /// A text prepared once per planning run and searched by many rules.
@@ -116,35 +119,131 @@ pub fn tax_id_holds(text: &str, value: &str) -> bool {
     separated_number_holds(text, value, is_tax_id_separator)
 }
 
-/// The value occurs in the text between characters that are not alphanumeric,
-/// ignoring case and the separators in either of them.
 fn separated_number_holds(text: &str, value: &str, is_separator: fn(char) -> bool) -> bool {
+    separated_number_ranges(text, value, is_separator)
+        .next()
+        .is_some()
+}
+
+/// Where the value occurs in the text between characters that are not
+/// alphanumeric, ignoring case and the separators in either of them.
+fn separated_number_ranges<'text>(
+    text: &'text str,
+    value: &str,
+    is_separator: fn(char) -> bool,
+) -> impl Iterator<Item = Range<usize>> + 'text {
     let wanted: Vec<char> = value.chars().filter(|ch| !is_separator(*ch)).collect();
-    let Some((first_wanted, remaining)) = wanted.split_first() else {
-        return false;
-    };
     let same_char = |a: char, b: char| a.to_uppercase().eq(b.to_uppercase());
-    text.char_indices().any(|(start, first)| {
+    text.char_indices().filter_map(move |(start, first)| {
+        let (first_wanted, remaining) = wanted.split_first()?;
         if !same_char(first, *first_wanted) {
-            return false;
+            return None;
         }
         if text[..start]
             .chars()
             .next_back()
             .is_some_and(char::is_alphanumeric)
         {
-            return false;
+            return None;
         }
-        let mut rest = text[start + first.len_utf8()..].chars().peekable();
+        let mut end = start + first.len_utf8();
+        let mut rest = text[end..].chars().peekable();
         for expected in remaining {
-            while rest.next_if(|ch| is_separator(*ch)).is_some() {}
+            while let Some(separator) = rest.next_if(|ch| is_separator(*ch)) {
+                end += separator.len_utf8();
+            }
             match rest.next() {
-                Some(ch) if same_char(ch, *expected) => {}
-                _ => return false,
+                Some(ch) if same_char(ch, *expected) => end += ch.len_utf8(),
+                _ => return None,
             }
         }
-        !rest.next().is_some_and(char::is_alphanumeric)
+        (!rest.next().is_some_and(char::is_alphanumeric)).then_some(start..end)
     })
+}
+
+/// Most passages one condition marks in a text.
+pub const MAX_MATCH_RANGES: usize = 24;
+
+/// The byte ranges of `text` the condition holds because of, for marking them
+/// in a preview. Negated conditions and the kinds that read no passage of the
+/// text (sender, recipient, folder) mark nothing, and neither does a condition
+/// that does not hold.
+pub fn condition_match_ranges(condition: &Condition, text: &str) -> Vec<Range<usize>> {
+    let value = condition.value.trim();
+    if condition.negated || value.is_empty() {
+        return Vec::new();
+    }
+    let mut ranges = match condition.kind {
+        ConditionKind::Substring => literal_ranges(text, &condition.value),
+        ConditionKind::Word => word_ranges(text, value),
+        ConditionKind::Regex => regex_ranges(text, &condition.value),
+        ConditionKind::SenderAddress => {
+            if sender_address_holds(&text.to_lowercase(), value) {
+                literal_ranges(text, value.trim_start_matches('@'))
+            } else {
+                Vec::new()
+            }
+        }
+        ConditionKind::Iban => separated_number_ranges(text, value, is_iban_separator).collect(),
+        ConditionKind::TaxId => separated_number_ranges(text, value, is_tax_id_separator).collect(),
+        ConditionKind::Sender | ConditionKind::Recipient | ConditionKind::Folder => Vec::new(),
+    };
+    ranges.truncate(MAX_MATCH_RANGES);
+    ranges
+}
+
+fn literal_ranges(text: &str, value: &str) -> Vec<Range<usize>> {
+    let Ok(regex) = compile_bounded_regex(&format!("(?i){}", regex::escape(value))) else {
+        return Vec::new();
+    };
+    regex
+        .find_iter(text)
+        .take(MAX_MATCH_RANGES)
+        .map(|found| found.range())
+        .collect()
+}
+
+fn regex_ranges(text: &str, source: &str) -> Vec<Range<usize>> {
+    let Ok(regex) = compile_bounded_regex(source) else {
+        return Vec::new();
+    };
+    regex
+        .find_iter(text)
+        .filter(|found| !found.is_empty())
+        .take(MAX_MATCH_RANGES)
+        .map(|found| found.range())
+        .collect()
+}
+
+/// Like [`words_hold`] on the original text: the words of `value` with any
+/// whitespace between them, between characters that are not alphanumeric.
+fn word_ranges(text: &str, value: &str) -> Vec<Range<usize>> {
+    let words: Vec<String> = value.split_whitespace().map(regex::escape).collect();
+    let Ok(regex) = compile_bounded_regex(&format!("(?i){}", words.join(r"\s+"))) else {
+        return Vec::new();
+    };
+    let mut ranges = Vec::new();
+    let mut from = 0;
+    while let Some(found) = regex.find_at(text, from) {
+        let before = text[..found.start()].chars().next_back();
+        let after = text[found.end()..].chars().next();
+        if !before.is_some_and(char::is_alphanumeric) && !after.is_some_and(char::is_alphanumeric) {
+            ranges.push(found.range());
+            if ranges.len() == MAX_MATCH_RANGES {
+                break;
+            }
+            from = found.end();
+        } else {
+            let Some(first) = text[found.start()..].chars().next() else {
+                break;
+            };
+            from = found.start() + first.len_utf8();
+        }
+        if found.is_empty() {
+            break;
+        }
+    }
+    ranges
 }
 
 fn looks_like_letterhead_line(line: &str) -> bool {
@@ -376,5 +475,118 @@ mod tests {
         assert_eq!(folder_holds(path, "Steuer/Rechnungen"), Some(false));
         assert_eq!(folder_holds(path, "bill.pdf"), Some(false));
         assert_eq!(folder_holds(path, "/"), None);
+    }
+
+    fn text_of<'a>(condition: &Condition, text: &'a str) -> Vec<&'a str> {
+        condition_match_ranges(condition, text)
+            .into_iter()
+            .map(|range| &text[range])
+            .collect()
+    }
+
+    fn condition(kind: ConditionKind, value: &str) -> Condition {
+        Condition::new(kind, value)
+    }
+
+    #[test]
+    fn a_substring_is_marked_wherever_it_stands_regardless_of_case() {
+        let text = "Rechnung der Company A Ltd. company a wieder";
+        assert_eq!(
+            text_of(&condition(ConditionKind::Substring, "COMPANY A"), text),
+            ["Company A", "company a"]
+        );
+        assert!(text_of(&condition(ConditionKind::Substring, "agency"), text).is_empty());
+    }
+
+    #[test]
+    fn a_word_is_marked_only_between_word_boundaries_and_across_whitespace() {
+        let text = "Autobahn und Deutsche\n  Bahn AG, Bahnhof";
+        assert_eq!(
+            text_of(&condition(ConditionKind::Word, "deutsche bahn"), text),
+            ["Deutsche\n  Bahn"]
+        );
+        assert_eq!(
+            text_of(&condition(ConditionKind::Word, "bahn"), text),
+            ["Bahn"]
+        );
+    }
+
+    #[test]
+    fn a_word_after_an_occurrence_inside_another_word_is_found() {
+        let text = "Autobahn und Bahn";
+        let ranges = condition_match_ranges(&condition(ConditionKind::Word, "bahn"), text);
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges.first(), Some(&(13..17)));
+    }
+
+    #[test]
+    fn a_regex_marks_its_matches_as_it_is_written() {
+        let text = "Invoice 4711 and invoice 42";
+        assert_eq!(
+            text_of(&condition(ConditionKind::Regex, r"[Ii]nvoice \d+"), text),
+            ["Invoice 4711", "invoice 42"]
+        );
+        assert!(text_of(&condition(ConditionKind::Regex, "INVOICE"), text).is_empty());
+        assert!(text_of(&condition(ConditionKind::Regex, "("), text).is_empty());
+    }
+
+    #[test]
+    fn a_sender_address_marks_the_domain_where_the_address_holds() {
+        let text = "Mail: Rechnung@Billing.Nordlicht.de";
+        assert_eq!(
+            text_of(
+                &condition(ConditionKind::SenderAddress, "nordlicht.de"),
+                text
+            ),
+            ["Nordlicht.de"]
+        );
+        assert!(text_of(&condition(ConditionKind::SenderAddress, "other.org"), text).is_empty());
+    }
+
+    #[test]
+    fn an_iban_and_a_tax_id_are_marked_with_their_separators() {
+        let text = "IBAN DE89 3704 0044 0532 0130 00 und St-Nr. 12/345/67890.";
+        assert_eq!(
+            text_of(
+                &condition(ConditionKind::Iban, "DE89370400440532013000"),
+                text
+            ),
+            ["DE89 3704 0044 0532 0130 00"]
+        );
+        assert_eq!(
+            text_of(&condition(ConditionKind::TaxId, "1234567890"), text),
+            ["12/345/67890"]
+        );
+        assert!(text_of(&condition(ConditionKind::Iban, "DE89370400440532013"), text).is_empty());
+    }
+
+    #[test]
+    fn kinds_without_a_passage_and_negated_conditions_mark_nothing() {
+        let text = "Company A, Berlin";
+        for kind in [
+            ConditionKind::Sender,
+            ConditionKind::Recipient,
+            ConditionKind::Folder,
+        ] {
+            assert!(text_of(&condition(kind, "Company A"), text).is_empty());
+        }
+        let negated = Condition::not(ConditionKind::Substring, "Company");
+        assert!(text_of(&negated, text).is_empty());
+    }
+
+    #[test]
+    fn the_marks_of_one_condition_are_limited() {
+        let text = "a ".repeat(MAX_MATCH_RANGES * 2);
+        let ranges = condition_match_ranges(&condition(ConditionKind::Word, "a"), &text);
+        assert_eq!(ranges.len(), MAX_MATCH_RANGES);
+    }
+
+    #[test]
+    fn ranges_stay_on_characters_where_lowercasing_changes_the_length() {
+        let text = "İstanbul Company A";
+        assert_eq!(
+            text_of(&condition(ConditionKind::Substring, "company a"), text),
+            ["Company A"]
+        );
     }
 }

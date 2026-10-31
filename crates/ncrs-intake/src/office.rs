@@ -5,7 +5,7 @@
 //! Text found here is data. Nothing in it triggers anything; it is only stored.
 
 use std::fs::File;
-use std::io::Read as _;
+use std::io::{Cursor, Read, Seek};
 use std::path::Path;
 
 use quick_xml::events::{BytesRef, BytesStart, Event};
@@ -56,9 +56,11 @@ impl PlainText {
         File::open(path)
             .and_then(|file| file.take(limits.text_bytes as u64).read_to_end(&mut bytes))
             .map_err(|err| unreadable(path, err))?;
-        Ok(Extracted::Text(
-            String::from_utf8_lossy(&bytes).trim().to_owned(),
-        ))
+        Ok(Self::decode(&bytes))
+    }
+
+    fn decode(bytes: &[u8]) -> Extracted {
+        Extracted::Text(String::from_utf8_lossy(bytes).trim().to_owned())
     }
 }
 
@@ -108,9 +110,18 @@ impl OfficeText {
         package: Package,
         limits: Limits,
     ) -> Result<Extracted, TextError> {
+        let file = File::open(path).map_err(|err| unreadable(path, err))?;
+        Self::extract_from_reader(path, file, package, limits)
+    }
+
+    fn extract_from_reader(
+        path: &Path,
+        reader: impl Read + Seek,
+        package: Package,
+        limits: Limits,
+    ) -> Result<Extracted, TextError> {
         let fail = |reason: String| unreadable(path, reason);
-        let file = File::open(path).map_err(|err| fail(err.to_string()))?;
-        let mut archive = ZipArchive::new(file)
+        let mut archive = ZipArchive::new(reader)
             .map_err(|err| fail(format!("cannot open the document: {err}")))?;
         let entry_name = package.content_entry();
         let entry = archive
@@ -139,6 +150,20 @@ impl TextSource for OfficeText {
             Some(package) => Self::extract_within(path, package, LIMITS),
             None => Ok(Extracted::NotApplicable),
         }
+    }
+}
+
+/// The text of a document already in memory, for a caller that holds the file
+/// open and must not open the path again. The kind comes from the extension of
+/// `path`, the limits are those of [`PlainText`] and [`OfficeText`].
+pub fn extract_text_from_bytes(path: &Path, bytes: &[u8]) -> Result<Extracted, TextError> {
+    if has_extension(path, &["txt", "md"]) {
+        let head = bytes.get(..LIMITS.text_bytes).unwrap_or(bytes);
+        Ok(PlainText::decode(head))
+    } else if let Some(package) = Package::of(path) {
+        OfficeText::extract_from_reader(path, Cursor::new(bytes), package, LIMITS)
+    } else {
+        Ok(Extracted::NotApplicable)
     }
 }
 

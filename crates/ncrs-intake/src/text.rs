@@ -10,7 +10,9 @@ use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use pdfium_render::prelude::{PdfBitmapFormat, PdfRenderConfig, Pdfium};
+use pdfium_render::prelude::{
+    PdfBitmapFormat, PdfPage, PdfRenderConfig, PdfSearchDirection, PdfSearchOptions, Pdfium,
+};
 
 const PDF_HEADER: &[u8] = b"%PDF-";
 
@@ -243,11 +245,14 @@ impl PdfText {
     }
 
     /// The first page of the PDF in colour, at most `max_side_pixels` on its
-    /// longer side, for a preview.
+    /// longer side, for a preview. Where the page holds one of `passages`
+    /// (ignoring case), the page is tinted.
     pub fn render_preview_page(
         &self,
         path: &Path,
+        pdf_bytes: &[u8],
         max_side_pixels: u16,
+        passages: &[String],
     ) -> Result<PreviewPage, TextError> {
         let unreadable = |reason: String| TextError::Unreadable {
             path: path.to_path_buf(),
@@ -255,7 +260,7 @@ impl PdfText {
         };
         let document = self
             .pdfium
-            .load_pdf_from_file(path, None)
+            .load_pdf_from_byte_slice(pdf_bytes, None)
             .map_err(|err| unreadable(format!("cannot open the PDF: {err:?}")))?;
         let pages = document.pages();
         let page = pages
@@ -268,12 +273,101 @@ impl PdfText {
             f32::from(max_side_pixels),
             rgba_of_rendered,
         )?;
+        let mut rgba: Vec<u8> = pixels.into_iter().flatten().collect();
+        let marked = passage_rects(&page, passages);
+        tint_rects(
+            &mut rgba,
+            (width, height),
+            (page.width().value, page.height().value),
+            &marked,
+        );
         Ok(PreviewPage {
             width,
             height,
-            rgba: pixels.into_iter().flatten().collect(),
+            rgba,
             page_count: usize::try_from(pages.len()).unwrap_or(1),
         })
+    }
+}
+
+/// Most places on a page that are tinted.
+const MAX_MARKED_RECTS: usize = 64;
+
+/// What is left of the green and the blue channel under a tint: white turns
+/// yellow, black stays black. Out of 256.
+const HIGHLIGHT_GREEN: u16 = 240;
+const HIGHLIGHT_BLUE: u16 = 60;
+const CHANNEL_SHIFT: u32 = 8;
+
+fn scaled_channel(value: u8, keep: u16) -> u8 {
+    u8::try_from((u16::from(value) * keep) >> CHANNEL_SHIFT).unwrap_or(u8::MAX)
+}
+
+/// A place on a page in PDF points: the origin is the bottom left corner.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PointRect {
+    left: f32,
+    bottom: f32,
+    right: f32,
+    top: f32,
+}
+
+fn passage_rects(page: &PdfPage<'_>, passages: &[String]) -> Vec<PointRect> {
+    let Ok(text) = page.text() else {
+        return Vec::new();
+    };
+    let options = PdfSearchOptions::new();
+    let mut rects = Vec::new();
+    for passage in passages {
+        let Ok(search) = text.search(passage, &options) else {
+            continue;
+        };
+        for found in search.iter(PdfSearchDirection::SearchForward) {
+            for segment in found.iter() {
+                let bounds = segment.bounds();
+                rects.push(PointRect {
+                    left: bounds.left().value,
+                    bottom: bounds.bottom().value,
+                    right: bounds.right().value,
+                    top: bounds.top().value,
+                });
+            }
+            if rects.len() >= MAX_MARKED_RECTS {
+                return rects;
+            }
+        }
+    }
+    rects
+}
+
+/// Tints the places in the RGBA pixels like a highlighter: white becomes
+/// yellow, dark text stays readable.
+fn tint_rects(
+    rgba: &mut [u8],
+    (width, height): (u32, u32),
+    (page_width, page_height): (f32, f32),
+    rects: &[PointRect],
+) {
+    if page_width <= 0.0 || page_height <= 0.0 {
+        return;
+    }
+    let scale_x = width as f32 / page_width;
+    let scale_y = height as f32 / page_height;
+    let clamp = |value: f32, limit: u32| (value.max(0.0) as u32).min(limit);
+    for rect in rects {
+        let first_column = clamp((rect.left * scale_x).floor(), width);
+        let last_column = clamp((rect.right * scale_x).ceil(), width);
+        let first_row = clamp(((page_height - rect.top) * scale_y).floor(), height);
+        let last_row = clamp(((page_height - rect.bottom) * scale_y).ceil(), height);
+        for row in first_row..last_row {
+            for column in first_column..last_column {
+                let at = (row as usize * width as usize + column as usize) * 4;
+                if let Some([_red, green, blue, _alpha]) = rgba.get_mut(at..at + 4) {
+                    *green = scaled_channel(*green, HIGHLIGHT_GREEN);
+                    *blue = scaled_channel(*blue, HIGHLIGHT_BLUE);
+                }
+            }
+        }
     }
 }
 
@@ -524,13 +618,62 @@ mod tests {
             "filled.pdf",
             &pdf_bytes("1 0 0 rg 20 20 100 100 re f", "", &[]),
         );
-        let page = pdf_text().render_preview_page(&path, 300).unwrap();
+        let page = pdf_text()
+            .render_preview_page(&path, &std::fs::read(&path).unwrap(), 300, &[])
+            .unwrap();
         assert_eq!(page.page_count, 1);
         assert!(page.width <= 300 && page.height <= 300);
         assert_eq!(page.rgba.len(), (page.width * page.height * 4) as usize);
         let red = page.rgba.as_chunks::<4>().0.contains(&[255, 0, 0, 255]);
         let white = page.rgba.as_chunks::<4>().0.contains(&[255, 255, 255, 255]);
         assert!(red && white, "red {red}, white {white}");
+    }
+
+    #[test]
+    fn a_passage_on_the_page_is_tinted_and_one_that_is_not_there_changes_nothing() {
+        let dir = TempDir::new().unwrap();
+        let path = write(&dir, "invoice.pdf", &text_pdf("Invoice 4711 Company A"));
+        let plain = pdf_text()
+            .render_preview_page(&path, &std::fs::read(&path).unwrap(), 400, &[])
+            .unwrap();
+        let missing = pdf_text()
+            .render_preview_page(
+                &path,
+                &std::fs::read(&path).unwrap(),
+                400,
+                &["Agency B".to_owned()],
+            )
+            .unwrap();
+        let marked = pdf_text()
+            .render_preview_page(
+                &path,
+                &std::fs::read(&path).unwrap(),
+                400,
+                &["company a".to_owned()],
+            )
+            .unwrap();
+        assert_eq!(missing.rgba, plain.rgba);
+        assert_eq!((marked.width, marked.height), (plain.width, plain.height));
+        let changed: Vec<usize> = plain
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(marked.rgba.as_chunks::<4>().0)
+            .enumerate()
+            .filter(|(_, (before, after))| before != after)
+            .map(|(pixel, _)| pixel)
+            .collect();
+        assert!(!changed.is_empty(), "nothing was tinted");
+        // A 200 point page at two pixels per point. The text stands 100 points
+        // up and "Company A" is its right part: the tint stays in that part of
+        // the middle band.
+        assert_eq!((plain.width, plain.height), (400, 400));
+        for pixel in changed {
+            let (row, column) = (pixel.div_euclid(400), pixel.rem_euclid(400));
+            assert!((160..360).contains(&column), "column {column}");
+            assert!((160..240).contains(&row), "row {row}");
+        }
     }
 
     #[test]
