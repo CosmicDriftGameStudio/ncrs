@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use ncrs_index::{
     HermesCounts, IncludeOutcome, RuleId, SavedQuery, SavedQueryId, TaxContext, TaxContextEntry,
+    TaxContextId, TaxContextUsage,
 };
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
@@ -45,6 +46,7 @@ use crate::review_list::FormField;
 use crate::review_work::{AcceptSummary, ConfirmOutcome, ReviewItem};
 use crate::saved_queries::QueryField;
 use crate::suggestion_work::SuggestedRule;
+use crate::tax_context_work::{ContextsResult, TaxContextFailure};
 use crate::theme_fetch::{Fetched, Installed};
 use crate::transfer_dialog::TransferDialogMessage;
 
@@ -544,11 +546,33 @@ pub enum SettingsMessage {
     PickThemeFile,
     ThemeFilePicked(Option<PathBuf>),
     ChooseProvider(AiProviderName),
+    TaxContexts(TaxContextsMessage),
     /// The config as read back after the write of `change`.
     Written {
         change: SettingChange,
         result: Result<Box<Config>, FilingWriteError>,
     },
+}
+
+/// Everything the tax contexts section of the Hermes settings sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TaxContextsMessage {
+    Loaded(ContextsResult),
+    Add,
+    Rename(TaxContextId),
+    NameChanged(String),
+    ShortNameChanged(String),
+    Save,
+    Saved(ContextsResult),
+    Delete(TaxContextId),
+    UsageLoaded {
+        id: TaxContextId,
+        result: Result<TaxContextUsage, TaxContextFailure>,
+    },
+    MoveTo(TaxContext),
+    ConfirmDelete,
+    Deleted(ContextsResult),
+    Cancel,
 }
 
 /// Everything the keyboard shortcuts dialog sends.

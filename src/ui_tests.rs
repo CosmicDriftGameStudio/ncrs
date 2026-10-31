@@ -4572,6 +4572,7 @@ mod settings_tab {
     use crate::fs::OpenKind;
     use crate::messages::{SettingChange, SettingField, SettingsFeature, SettingsMessage};
     use crate::palette::ThemePreset;
+    use crate::tax_contexts::TaxContextsState;
 
     fn hermes_config() -> Filing {
         Filing {
@@ -4627,11 +4628,86 @@ mod settings_tab {
         }
     }
 
+    fn ready_contexts() -> TaxContextsState {
+        let mut state = TaxContextsState::default();
+        state.loaded(Ok(crate::review_list::tests::stored_tax_contexts()));
+        state
+    }
+
+    fn tax_contexts_app(state: TaxContextsState) -> App {
+        App::with_settings_tax_contexts(hermes_config(), state)
+    }
+
+    fn short_name_id(state: &TaxContextsState, short_name: &str) -> ncrs_index::TaxContextId {
+        state
+            .entries()
+            .iter()
+            .find(|entry| entry.short_name == short_name)
+            .unwrap()
+            .id
+    }
+
     #[test]
     fn the_filing_page_matches_its_snapshots() {
-        let app = || App::with_settings_open(SettingsFeature::Hermes, hermes_config());
-        matches_snapshot(&app().in_language(Language::German), "settings_hermes_de");
-        matches_snapshot(&app().in_language(Language::English), "settings_hermes_en");
+        both_languages(|| tax_contexts_app(ready_contexts()), "settings_hermes");
+    }
+
+    #[test]
+    fn the_tax_contexts_without_any_match_their_snapshots() {
+        let mut empty = TaxContextsState::default();
+        empty.loaded(Ok(Vec::new()));
+        both_languages(
+            || tax_contexts_app(empty.clone()),
+            "settings_tax_contexts_empty",
+        );
+    }
+
+    #[test]
+    fn the_delete_question_of_a_used_context_matches_its_snapshots() {
+        let mut state = ready_contexts();
+        let company = short_name_id(&state, "company");
+        state.begin_delete(company);
+        state.usage_loaded(
+            company,
+            Ok(ncrs_index::TaxContextUsage {
+                documents: 12,
+                rules: 2,
+                saved_queries: 1,
+            }),
+        );
+        state.choose_move_to(ncrs_index::TaxContext::named("private"));
+        both_languages(
+            || tax_contexts_app(state.clone()),
+            "settings_tax_context_delete",
+        );
+    }
+
+    #[test]
+    fn the_form_with_a_refused_short_name_matches_its_snapshots() {
+        let mut state = ready_contexts();
+        state.begin_add();
+        state.edit_name("Firma B".to_owned());
+        state.edit_short_name("company/b".to_owned());
+        state.save_request();
+        state.saved(Err(crate::tax_context_work::TaxContextFailure::Refused(
+            ncrs_index::TaxContextProblem::ShortNameForbiddenCharacter('/'),
+        )));
+        both_languages(
+            || tax_contexts_app(state.clone()),
+            "settings_tax_context_edit",
+        );
+    }
+
+    #[test]
+    fn the_delete_question_of_an_unused_context_names_that_nothing_uses_it() {
+        let mut state = ready_contexts();
+        let private = short_name_id(&state, "private");
+        state.begin_delete(private);
+        state.usage_loaded(private, Ok(ncrs_index::TaxContextUsage::default()));
+        let app = tax_contexts_app(state).in_language(Language::English);
+
+        simulator(&app).find("Delete Privat?").unwrap();
+        simulator(&app).find("Nothing uses it.").unwrap();
     }
 
     fn both_languages(app: impl Fn() -> App, name: &str) {

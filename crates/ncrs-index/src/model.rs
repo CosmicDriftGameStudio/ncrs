@@ -142,6 +142,24 @@ impl TaxContextId {
     pub(crate) fn new(raw: i64) -> Self {
         Self(raw)
     }
+
+    pub(crate) fn get(self) -> i64 {
+        self.0
+    }
+}
+
+/// How many records point at a tax context.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TaxContextUsage {
+    pub documents: usize,
+    pub rules: usize,
+    pub saved_queries: usize,
+}
+
+impl TaxContextUsage {
+    pub fn is_unused(self) -> bool {
+        self.documents == 0 && self.rules == 0 && self.saved_queries == 0
+    }
 }
 
 /// A stored tax context as listed for choosing.

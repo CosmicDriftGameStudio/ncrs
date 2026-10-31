@@ -40,6 +40,7 @@ use crate::query_work::QueryAccess;
 use crate::reorganisation_work::PlanAccess;
 use crate::review_work::ReviewAccess;
 use crate::suggestion_work::SuggestionAccess;
+use crate::tax_context_work::TaxContextAccess;
 
 /// A recovery key is 13 groups of four characters.
 const GROUP_COUNT: usize = 13;
@@ -1172,6 +1173,12 @@ impl FilingModule {
         matches!(self.phase, Phase::Ready).then(|| QueryAccess::new(Arc::clone(&self.index)))
     }
 
+    /// The tax contexts live in the index like the saved queries do, so the
+    /// module being `Ready` is enough to change them.
+    pub fn tax_context_access(&self) -> Option<TaxContextAccess> {
+        matches!(self.phase, Phase::Ready).then(|| TaxContextAccess::new(Arc::clone(&self.index)))
+    }
+
     fn target_root(&self) -> Option<PathBuf> {
         if !matches!(self.phase, Phase::Ready) {
             return None;
@@ -1796,6 +1803,14 @@ impl FilingModule {
             dismissed_key_problem: None,
             ai: AiWiring::Off,
             own_name: None,
+        }
+    }
+
+    /// Like `in_phase`, with `index` open behind it.
+    pub fn in_phase_over_index(phase: Phase, index: Index) -> Self {
+        Self {
+            index: Arc::new(Mutex::new(Some(index))),
+            ..Self::in_phase(phase)
         }
     }
 
