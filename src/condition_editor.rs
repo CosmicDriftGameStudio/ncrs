@@ -2,7 +2,9 @@
 //! contexts of the Hermes settings share it. No widgets; the view is
 //! `ui::condition_editor`.
 
-use ncrs_index::{compile_bounded_regex, Combinator, Condition, ConditionKind, RuleConditions};
+use ncrs_index::{
+    compile_bounded_regex, iban_is_valid, Combinator, Condition, ConditionKind, RuleConditions,
+};
 
 /// The value fields need fixed ids, so the list has a cap.
 pub const MAX_CONDITION_ROWS: usize = 12;
@@ -48,6 +50,8 @@ pub enum ConditionProblem {
     Empty,
     /// The reason the regular expression does not compile, on one line.
     InvalidRegex(String),
+    /// The checksum of the IBAN does not match.
+    InvalidIban,
 }
 
 impl ConditionEditor {
@@ -160,12 +164,13 @@ fn row_problem(row: &Condition, report_empty: bool) -> Option<ConditionProblem> 
     if value.is_empty() {
         return report_empty.then_some(ConditionProblem::Empty);
     }
-    if row.kind != ConditionKind::Regex {
-        return None;
+    match row.kind {
+        ConditionKind::Regex => compile_bounded_regex(value)
+            .err()
+            .map(|err| ConditionProblem::InvalidRegex(reason_of(&err.to_string()))),
+        ConditionKind::Iban => (!iban_is_valid(value)).then_some(ConditionProblem::InvalidIban),
+        _ => None,
     }
-    compile_bounded_regex(value)
-        .err()
-        .map(|err| ConditionProblem::InvalidRegex(reason_of(&err.to_string())))
 }
 
 /// The multi-line message of the regex crate names the reason on its last
@@ -271,6 +276,21 @@ mod tests {
         };
         assert!(!reason.contains('\n') && !reason.is_empty(), "{reason}");
         assert_eq!(problems[1..], [None, None]);
+    }
+
+    #[test]
+    fn a_wrong_iban_is_a_problem_and_blocks_validity() {
+        let editor = editor_of(vec![
+            Condition::new(ConditionKind::Iban, "DE89 3704 0044 0532 0130 01"),
+            Condition::new(ConditionKind::Iban, "DE89 3704 0044 0532 0130 00"),
+            Condition::new(ConditionKind::Word, "DE89"),
+        ]);
+
+        assert_eq!(
+            editor.problems(),
+            vec![Some(ConditionProblem::InvalidIban), None, None]
+        );
+        assert!(!editor.is_valid(false));
     }
 
     #[test]
