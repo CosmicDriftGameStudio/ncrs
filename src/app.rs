@@ -30554,7 +30554,7 @@ mod replan_flow {
         assert!(fixture
             .archive
             .join("Insurance")
-            .join("invoice.pdf")
+            .join("Invoice.pdf")
             .exists());
         assert!(!fixture.app.jobs.is_busy(), "the job is finished");
         assert!(step(&fixture.app).is_none());
