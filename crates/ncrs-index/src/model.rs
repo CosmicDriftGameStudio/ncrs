@@ -319,6 +319,14 @@ impl FieldOrigins {
     pub fn of(&self, field: Field) -> FieldOrigin {
         self.0.get(&field).cloned().unwrap_or(FieldOrigin::Unknown)
     }
+
+    /// The fields the user set by hand, in the order of `Field::ALL`.
+    pub fn manual_fields(&self) -> Vec<Field> {
+        Field::ALL
+            .into_iter()
+            .filter(|field| self.0.get(field) == Some(&FieldOrigin::Manual))
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -879,6 +887,20 @@ pub struct Rule {
     /// Fixed when the rule is created; `Index::update_rule` keeps it.
     pub origin: RuleOrigin,
     pub spec: RuleSpec,
+}
+
+impl RuleId {
+    /// An id none of `rules` has, for a rule that is only tried and never
+    /// stored.
+    pub fn unused_in(rules: &[Rule]) -> Self {
+        Self(
+            rules
+                .iter()
+                .map(|rule| rule.id.0)
+                .max()
+                .map_or(1, |highest| highest.saturating_add(1)),
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

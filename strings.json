@@ -7513,6 +7513,72 @@
       "de": "Beispiel: {path}"
     },
     {
+      "key": "rules.try_heading",
+      "context": "Heading of the section below the rule form that lists the documents the rule would match, as a live try. One or two words.",
+      "en": "Try",
+      "de": "Probelauf"
+    },
+    {
+      "key": "rules.try_explain",
+      "context": "One sentence under the heading of the try section in the rule form: what the list shows and that the try changes nothing.",
+      "en": "Documents this rule would match. Nothing is filed or moved.",
+      "de": "Dokumente, auf die diese Regel zutreffen würde. Es wird nichts abgelegt oder verschoben."
+    },
+    {
+      "key": "rules.try_looking",
+      "context": "Line in the try section of the rule form while the documents are being looked through.",
+      "en": "Looking …",
+      "de": "Ich suche …"
+    },
+    {
+      "key": "rules.try_empty",
+      "context": "Line in the try section of the rule form when no document matches the rule.",
+      "en": "No document matches.",
+      "de": "Kein Dokument passt."
+    },
+    {
+      "key": "rules.try_failed",
+      "context": "Error line in the try section of the rule form when the try could not run. Takes the technical detail, which stays English.",
+      "en": "The try failed: {detail}",
+      "de": "Der Probelauf ist fehlgeschlagen: {detail}"
+    },
+    {
+      "key": "rules.try_more",
+      "context": "Last line of the try section when more documents match than are listed. Takes the number of the others.",
+      "en": "+{count} more",
+      "de": "+{count} weitere"
+    },
+    {
+      "key": "rules.try_section_inbox",
+      "context": "Label in front of a document in the try section of the rule form: it is in the inbox and has no open review. One word.",
+      "en": "Inbox",
+      "de": "Eingang"
+    },
+    {
+      "key": "rules.try_section_review",
+      "context": "Label in front of a document in the try section of the rule form: it waits in the review list. One word.",
+      "en": "Review",
+      "de": "Prüfung"
+    },
+    {
+      "key": "rules.try_section_archive",
+      "context": "Label in front of a document in the try section of the rule form: it lies in an archive folder. One word.",
+      "en": "Archive",
+      "de": "Archiv"
+    },
+    {
+      "key": "rules.try_lies_at",
+      "context": "Shows what a document in the archive stays at, in the try section of the rule form: it is not moved. Takes the path, relative to the archive folder. Reads before the arrow.",
+      "en": "lies at {path}",
+      "de": "liegt unter {path}"
+    },
+    {
+      "key": "rules.try_also",
+      "context": "Shows in the try section of the rule form that other rules match the document too. Takes the places of those rules on the rules page, such as “3, 5”.",
+      "en": "also rule {rules}",
+      "de": "auch Regel {rules}"
+    },
+    {
       "key": "rules.form_problem_no_condition",
       "context": "Error line in the rule form when the user tried to save a rule without any condition, which would match every document.",
       "en": "Add at least one condition, or the rule would match every document.",

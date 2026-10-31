@@ -218,6 +218,7 @@ impl Context<'_> {
             path: Some(&file.relative_path),
             sender_aliases: &SenderAliases::default(),
             tax_contexts: &[],
+            manual_fields: &[],
         };
         let Planning::Plan(filing) = plan(&self.eligible, &input) else {
             return None;

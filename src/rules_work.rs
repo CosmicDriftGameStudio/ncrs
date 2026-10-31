@@ -2,9 +2,14 @@
 //! switching, moving and deleting one. It blocks, so `App` runs it on a
 //! blocking thread, never in `update`.
 
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use ncrs_index::{Index, IndexError, Rule, RuleId, TaxContextEntry};
+use ncrs_index::{
+    Index, IndexError, ReviewReason, Rule, RuleId, RuleOrigin, RuleSpec, TaxContextEntry,
+};
+use ncrs_intake::{plan, Location, LocationMode, PlanInput, Planning};
 
 use crate::rule_form::RuleSave;
 use crate::suggestion_work::INDEX_NOT_OPEN;
@@ -47,14 +52,146 @@ pub enum RuleChange {
     },
 }
 
+/// The rule the form describes, to try against the documents.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RuleTry {
+    /// The stored rule the candidate takes the place of; `None` for a rule
+    /// that is appended.
+    pub replaces: Option<RuleId>,
+    pub spec: RuleSpec,
+}
+
+/// Where a document is now. The order is the order of the list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TrySection {
+    Inbox,
+    Review,
+    Archive,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TryOutcome {
+    /// Would be filed here, relative to the archive.
+    Filed(PathBuf),
+    Review(ReviewReason),
+    /// An archive document stays where it is, relative to its archive.
+    Lies(PathBuf),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TriedDocument {
+    pub section: TrySection,
+    /// Relative to its location.
+    pub path: PathBuf,
+    pub now: TryOutcome,
+    pub after: TryOutcome,
+    /// The other rules that match the document as well.
+    pub conflicts: Vec<RuleId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct TryResult {
+    pub documents: Vec<TriedDocument>,
+    /// Matches beyond [`MAX_TRIED_DOCUMENTS`].
+    pub more: usize,
+    /// The 1-based place of each conflicting rule on the rules page.
+    pub conflict_names: HashMap<RuleId, usize>,
+}
+
+pub const MAX_TRIED_DOCUMENTS: usize = 50;
+
 #[derive(Clone)]
 pub struct RulesAccess {
     slot: IndexSlot,
+    locations: Vec<Location>,
 }
 
 impl RulesAccess {
-    pub fn new(slot: IndexSlot) -> Self {
-        Self { slot }
+    pub fn new(slot: IndexSlot, locations: Vec<Location>) -> Self {
+        Self { slot, locations }
+    }
+
+    /// Reads only: nothing is written to the index or the disk. The documents
+    /// the rule would match, as they stand and as they would stand with it.
+    pub fn try_rule(&self, candidate: &RuleTry) -> Result<TryResult, String> {
+        self.with_index(|index| {
+            let rules_now = index.rules()?;
+            let spec = RuleSpec {
+                confirmed: true,
+                enabled: true,
+                ..candidate.spec.clone()
+            };
+            let (rules_after, candidate_id) = with_candidate(&rules_now, candidate.replaces, spec);
+            let aliases = index.confirmed_sender_aliases()?;
+            let tax_contexts = index.assignable_tax_contexts()?;
+            let in_review: HashSet<_> = index
+                .open_reviews()?
+                .into_iter()
+                .map(|entry| entry.document_id)
+                .collect();
+            let mut tried = Vec::new();
+            for location in &self.locations {
+                for (id, absolute) in index.documents_under(&location.path)? {
+                    let Some(text) = index.document_text(id)? else {
+                        continue;
+                    };
+                    let Some(document) = index.document(id)? else {
+                        continue;
+                    };
+                    let manual_fields = index.field_origins(id)?.manual_fields();
+                    let input = PlanInput {
+                        text: &text,
+                        fields: &document.fields,
+                        path: Some(&absolute),
+                        sender_aliases: &aliases,
+                        tax_contexts: &tax_contexts,
+                        manual_fields: &manual_fields,
+                    };
+                    let after = plan(&rules_after, &input);
+                    let matching = matching_rules(&after);
+                    if !matching.contains(&candidate_id) {
+                        continue;
+                    }
+                    let path = absolute
+                        .strip_prefix(&location.path)
+                        .map_or_else(|_| absolute.clone(), std::path::Path::to_path_buf);
+                    let archived = location.mode == LocationMode::Archive;
+                    let now = if archived {
+                        TryOutcome::Lies(path.clone())
+                    } else {
+                        outcome(&plan(&rules_now, &input))
+                    };
+                    let section = if archived {
+                        TrySection::Archive
+                    } else if in_review.contains(&id) {
+                        TrySection::Review
+                    } else {
+                        TrySection::Inbox
+                    };
+                    tried.push(TriedDocument {
+                        section,
+                        path,
+                        now,
+                        after: outcome(&after),
+                        conflicts: matching
+                            .iter()
+                            .copied()
+                            .filter(|other| *other != candidate_id)
+                            .collect(),
+                    });
+                }
+            }
+            tried.sort_by(|left, right| {
+                (left.section, &left.path).cmp(&(right.section, &right.path))
+            });
+            let more = tried.len().saturating_sub(MAX_TRIED_DOCUMENTS);
+            tried.truncate(MAX_TRIED_DOCUMENTS);
+            Ok(TryResult {
+                conflict_names: conflict_places(&rules_after, &tried),
+                documents: tried,
+                more,
+            })
+        })
     }
 
     pub fn load(&self) -> Result<RulesLoad, String> {
@@ -115,6 +252,78 @@ impl RulesAccess {
     }
 }
 
+/// The stored rules with the candidate in the place of `replaces`, or appended
+/// when there is nothing to replace; and the id the candidate has there.
+fn with_candidate(
+    stored: &[Rule],
+    replaces: Option<RuleId>,
+    spec: RuleSpec,
+) -> (Vec<Rule>, RuleId) {
+    let replaced = replaces.filter(|id| stored.iter().any(|rule| rule.id == *id));
+    if let Some(id) = replaced {
+        let rules = stored
+            .iter()
+            .map(|rule| {
+                if rule.id == id {
+                    Rule {
+                        spec: spec.clone(),
+                        ..rule.clone()
+                    }
+                } else {
+                    rule.clone()
+                }
+            })
+            .collect();
+        return (rules, id);
+    }
+    let id = RuleId::unused_in(stored);
+    let position = stored
+        .iter()
+        .map(|rule| rule.position)
+        .max()
+        .map_or(1, |last| last.saturating_add(1));
+    let mut rules = stored.to_vec();
+    rules.push(Rule {
+        id,
+        position,
+        origin: RuleOrigin::Hand,
+        spec,
+    });
+    (rules, id)
+}
+
+fn matching_rules(planning: &Planning) -> &[RuleId] {
+    match planning {
+        Planning::Plan(filing) => &filing.matching_rules,
+        Planning::Review { matching_rules, .. } => matching_rules,
+    }
+}
+
+fn outcome(planning: &Planning) -> TryOutcome {
+    match planning {
+        Planning::Plan(filing) => TryOutcome::Filed(filing.relative_path.clone()),
+        Planning::Review { reason, .. } => TryOutcome::Review(*reason),
+    }
+}
+
+/// Where the rules page lists each conflicting rule: it lists the confirmed
+/// ones in the order of the index.
+fn conflict_places(rules: &[Rule], tried: &[TriedDocument]) -> HashMap<RuleId, usize> {
+    let listed: Vec<RuleId> = rules
+        .iter()
+        .filter(|rule| rule.spec.confirmed)
+        .map(|rule| rule.id)
+        .collect();
+    tried
+        .iter()
+        .flat_map(|document| &document.conflicts)
+        .filter_map(|id| {
+            let place = listed.iter().position(|listed_id| listed_id == id)?;
+            Some((*id, place.saturating_add(1)))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 #[allow(
     clippy::unwrap_used,
@@ -125,9 +334,11 @@ impl RulesAccess {
 mod tests {
     use std::collections::BTreeSet;
 
+    use chrono::{TimeZone as _, Utc};
     use ncrs_index::{
-        Condition, ConditionKind, RuleConditions, RuleEvidence, RuleOrigin, RuleSpec,
-        RuleSuggestion, TaxContext,
+        Condition, ConditionKind, ContentHash, DocumentFields, DocumentId, DocumentSource,
+        DocumentStatus, FieldOrigin, NewDocument, RuleConditions, RuleEvidence, RuleOrigin,
+        RuleSpec, RuleSuggestion, TaxContext,
     };
     use tempfile::TempDir;
 
@@ -152,16 +363,27 @@ mod tests {
         _dir: TempDir,
         access: RulesAccess,
         slot: IndexSlot,
+        inbox: Location,
+        archive: Location,
     }
 
     fn fixture() -> Fixture {
         let dir = TempDir::new().unwrap();
         let index = Index::create_plain(&dir.path().join("index.db")).unwrap();
         let slot: IndexSlot = Arc::new(Mutex::new(Some(index)));
+        let place = |name: &str, mode| {
+            let path = dir.path().join(name);
+            std::fs::create_dir_all(&path).unwrap();
+            Location::new(&path, mode, false).unwrap()
+        };
+        let inbox = place("inbox", LocationMode::Inbox);
+        let archive = place("archive", LocationMode::Archive);
         Fixture {
+            access: RulesAccess::new(Arc::clone(&slot), vec![inbox.clone(), archive.clone()]),
             _dir: dir,
-            access: RulesAccess::new(Arc::clone(&slot)),
             slot,
+            inbox,
+            archive,
         }
     }
 
@@ -430,8 +652,267 @@ mod tests {
 
     #[test]
     fn without_an_index_the_work_fails_with_a_plain_message() {
-        let access = RulesAccess::new(Arc::new(Mutex::new(None)));
+        let access = RulesAccess::new(Arc::new(Mutex::new(None)), Vec::new());
 
         assert_eq!(access.load().unwrap_err(), INDEX_NOT_OPEN);
+    }
+
+    fn filing_spec(word: &str, pattern: &str) -> RuleSpec {
+        RuleSpec {
+            filing_pattern: pattern.to_owned(),
+            ..spec(word)
+        }
+    }
+
+    fn candidate(replaces: Option<RuleId>, word: &str, pattern: &str) -> RuleTry {
+        RuleTry {
+            replaces,
+            spec: filing_spec(word, pattern),
+        }
+    }
+
+    impl Fixture {
+        fn document(&self, location: &Location, name: &str, text: &str) -> DocumentId {
+            let seed = u8::try_from(name.len()).unwrap();
+            let mut hash = [seed; 32];
+            hash[1..name.len().min(32)].copy_from_slice(&name.as_bytes()[1..name.len().min(32)]);
+            self.with_index(|index| {
+                let id = index
+                    .insert_document(&NewDocument {
+                        hash: ContentHash(hash),
+                        path: location.path.join(name),
+                        source: if location.mode == LocationMode::Archive {
+                            DocumentSource::Archive
+                        } else {
+                            DocumentSource::Inbox
+                        },
+                        received_at: Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
+                        stamp: None,
+                    })
+                    .unwrap();
+                index.set_document_text(id, text).unwrap();
+                id
+            })
+        }
+
+        fn snapshot(&self) -> (Vec<Rule>, Vec<ncrs_index::Document>, Vec<String>) {
+            self.with_index(|index| {
+                let mut documents = Vec::new();
+                let mut origins = Vec::new();
+                for location in [&self.inbox, &self.archive] {
+                    for (id, _) in index.documents_under(&location.path).unwrap() {
+                        documents.push(index.document(id).unwrap().unwrap());
+                        origins.push(format!("{:?}", index.field_origins(id).unwrap()));
+                    }
+                }
+                (index.rules().unwrap(), documents, origins)
+            })
+        }
+    }
+
+    #[test]
+    fn a_new_rule_lists_the_documents_it_would_file_with_now_and_after() {
+        let fixture = fixture();
+        fixture.document(&fixture.inbox, "rent.pdf", "rent for march");
+        fixture.document(&fixture.inbox, "other.pdf", "something else");
+        let reviewed = fixture.document(&fixture.inbox, "rent-late.pdf", "rent again");
+        fixture
+            .with_index(|index| index.add_review(reviewed, ReviewReason::NoMatchingRule))
+            .unwrap();
+        fixture.document(&fixture.archive, "old/rent.pdf", "rent 2020");
+
+        let result = fixture
+            .access
+            .try_rule(&candidate(None, "rent", "{kind}"))
+            .unwrap();
+
+        let listed: Vec<_> = result
+            .documents
+            .iter()
+            .map(|tried| {
+                (
+                    tried.section,
+                    tried.path.to_str().unwrap(),
+                    &tried.now,
+                    &tried.after,
+                )
+            })
+            .collect();
+        let filed = TryOutcome::Filed(PathBuf::from("Invoice"));
+        let unplaced = TryOutcome::Review(ReviewReason::NoMatchingRule);
+        let old_rent = PathBuf::from("old").join("rent.pdf");
+        assert_eq!(
+            listed,
+            vec![
+                (TrySection::Inbox, "rent.pdf", &unplaced, &filed),
+                (TrySection::Review, "rent-late.pdf", &unplaced, &filed),
+                (
+                    TrySection::Archive,
+                    old_rent.to_str().unwrap(),
+                    &TryOutcome::Lies(old_rent.clone()),
+                    &filed
+                ),
+            ]
+        );
+        assert_eq!(result.more, 0);
+    }
+
+    #[test]
+    fn a_second_confirmed_rule_that_matches_is_a_conflict_with_its_place() {
+        let fixture = fixture();
+        fixture
+            .with_index(|index| index.create_rule(&filing_spec("power", "{kind}")))
+            .unwrap();
+        let other = fixture
+            .with_index(|index| index.create_rule(&filing_spec("rent", "{kind}/other")))
+            .unwrap();
+        fixture.document(&fixture.inbox, "rent.pdf", "rent");
+
+        let result = fixture
+            .access
+            .try_rule(&candidate(None, "rent", "{kind}"))
+            .unwrap();
+
+        let tried = result.documents.first().unwrap();
+        assert_eq!(tried.conflicts, vec![other]);
+        assert_eq!(
+            tried.now,
+            TryOutcome::Filed(PathBuf::from("Invoice").join("other"))
+        );
+        assert_eq!(tried.after, TryOutcome::Review(ReviewReason::RuleConflict));
+        assert_eq!(result.conflict_names, HashMap::from([(other, 2)]));
+    }
+
+    #[test]
+    fn editing_a_rule_tries_the_edited_conditions_not_the_stored_ones() {
+        let fixture = fixture();
+        let stored = fixture
+            .with_index(|index| index.create_rule(&filing_spec("rent", "{kind}")))
+            .unwrap();
+        fixture.document(&fixture.inbox, "rent.pdf", "rent for march");
+        fixture.document(&fixture.inbox, "power.pdf", "power bill");
+
+        let result = fixture
+            .access
+            .try_rule(&candidate(Some(stored), "power", "{kind}/edited"))
+            .unwrap();
+
+        assert_eq!(result.documents.len(), 1);
+        let tried = result.documents.first().unwrap();
+        assert_eq!(tried.path, PathBuf::from("power.pdf"));
+        assert_eq!(tried.now, TryOutcome::Review(ReviewReason::NoMatchingRule));
+        assert_eq!(
+            tried.after,
+            TryOutcome::Filed(PathBuf::from("Invoice").join("edited"))
+        );
+        assert!(tried.conflicts.is_empty());
+    }
+
+    #[test]
+    fn a_kind_set_by_hand_survives_in_the_path_after() {
+        let fixture = fixture();
+        let id = fixture.document(&fixture.inbox, "rent.pdf", "rent for march");
+        fixture.with_index(|index| {
+            let by_hand = DocumentFields {
+                kind: Some("offer".to_owned()),
+                ..DocumentFields::default()
+            };
+            index
+                .set_document_fields(id, &by_hand, |_| FieldOrigin::Manual)
+                .unwrap();
+        });
+
+        let result = fixture
+            .access
+            .try_rule(&candidate(None, "rent", "{kind}"))
+            .unwrap();
+
+        let tried = result.documents.first().unwrap();
+        assert_eq!(tried.after, TryOutcome::Filed(PathBuf::from("offer")));
+    }
+
+    #[test]
+    fn trying_a_rule_changes_nothing_in_the_index() {
+        let fixture = fixture();
+        let stored = fixture
+            .with_index(|index| index.create_rule(&filing_spec("power", "{kind}")))
+            .unwrap();
+        let reviewed = fixture.document(&fixture.inbox, "rent.pdf", "rent for march");
+        fixture
+            .with_index(|index| index.add_review(reviewed, ReviewReason::NoMatchingRule))
+            .unwrap();
+        let planned = fixture.document(&fixture.inbox, "power.pdf", "power bill");
+        fixture
+            .with_index(|index| index.set_document_status(planned, DocumentStatus::Planned))
+            .unwrap();
+        fixture.document(&fixture.archive, "rent-2020.pdf", "rent");
+        let before = fixture.snapshot();
+        let reviews_before = fixture.with_index(|index| index.open_reviews().unwrap());
+
+        fixture
+            .access
+            .try_rule(&candidate(None, "rent", "{kind}"))
+            .unwrap();
+        fixture
+            .access
+            .try_rule(&candidate(Some(stored), "rent", "{kind}"))
+            .unwrap();
+
+        assert_eq!(fixture.snapshot(), before);
+        assert_eq!(
+            fixture.with_index(|index| index.open_reviews().unwrap()),
+            reviews_before
+        );
+    }
+
+    #[test]
+    fn documents_beyond_the_cap_are_counted_and_the_list_stays_in_order() {
+        let fixture = fixture();
+        for number in 0..=MAX_TRIED_DOCUMENTS {
+            fixture.document(&fixture.inbox, &format!("rent-{number:03}.pdf"), "rent");
+        }
+
+        let result = fixture
+            .access
+            .try_rule(&candidate(None, "rent", "{kind}"))
+            .unwrap();
+
+        assert_eq!(result.documents.len(), MAX_TRIED_DOCUMENTS);
+        assert_eq!(result.more, 1);
+        let paths: Vec<_> = result
+            .documents
+            .iter()
+            .map(|tried| tried.path.clone())
+            .collect();
+        let mut sorted = paths.clone();
+        sorted.sort();
+        assert_eq!(paths, sorted);
+    }
+
+    #[test]
+    fn a_document_without_text_is_not_listed() {
+        let fixture = fixture();
+        fixture.document(&fixture.inbox, "scan.pdf", "rent");
+        let blank = fixture.with_index(|index| {
+            index
+                .insert_document(&NewDocument {
+                    hash: ContentHash([200; 32]),
+                    path: fixture.inbox.path.join("blank.pdf"),
+                    source: DocumentSource::Inbox,
+                    received_at: Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
+                    stamp: None,
+                })
+                .unwrap()
+        });
+        assert!(fixture
+            .with_index(|index| index.document_text(blank).unwrap())
+            .is_none());
+
+        let result = fixture
+            .access
+            .try_rule(&candidate(None, "rent", "{kind}"))
+            .unwrap();
+
+        assert_eq!(result.documents.len(), 1);
     }
 }

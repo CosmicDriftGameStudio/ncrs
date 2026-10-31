@@ -1175,9 +1175,15 @@ impl FilingModule {
     }
 
     /// The rules page reads and changes the index only, so the module being
-    /// `Ready` is enough.
+    /// `Ready` is enough; the try reads the documents of the locations that
+    /// can be reached.
     pub fn rules_access(&self) -> Option<RulesAccess> {
-        matches!(self.phase, Phase::Ready).then(|| RulesAccess::new(Arc::clone(&self.index)))
+        matches!(self.phase, Phase::Ready).then(|| {
+            RulesAccess::new(
+                Arc::clone(&self.index),
+                self.reachable_locations().cloned().collect(),
+            )
+        })
     }
 
     /// The tax contexts live in the index like the saved queries do, so the
