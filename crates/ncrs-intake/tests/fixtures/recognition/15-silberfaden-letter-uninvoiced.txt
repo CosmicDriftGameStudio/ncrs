@@ -1,6 +1,5 @@
 sender: Silberfaden Consulting Ltd
 kind: Letter
-tax_context: company
 date: 2026-05-05
 number:
 amount:

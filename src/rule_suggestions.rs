@@ -228,7 +228,7 @@ impl RuleSuggestions {
 pub mod tests {
     use std::collections::BTreeSet;
 
-    use ncrs_index::{ConditionKind, RuleConditions, RuleEvidence, TaxContext};
+    use ncrs_index::{ConditionKind, RuleConditions, RuleEvidence};
 
     use super::*;
 
@@ -242,7 +242,6 @@ pub mod tests {
             extract_date: None,
             extract_amount: None,
             kind: kind.to_owned(),
-            tax_context: Some(TaxContext::None),
             tags: BTreeSet::new(),
             filing_pattern: format!("{kind}/{{date}}_{{name}}"),
             confirmed: false,

@@ -722,13 +722,12 @@ threads = 4
 against a synthetic corpus: 26 documents (invoices, contracts, letters, tax
 notices; German and English) of fictitious companies, in
 `crates/ncrs-intake/tests/fixtures/recognition`, each with the expected sender,
-kind, tax context, date, number and amount. It includes the cases that are hard
+kind, date, number and amount. It includes the cases that are hard
 to match: a sender in its long and its short form, a keyword inside
 another word, two companies on one letter, and documents no rule covers. The
 run plans every document against a fixed set of rules (word conditions, a
 regex for German compounds such as "Mietvertrag", and the IBAN for the first
 one), as the rules step does for a new document, and prints hits, wrong values and missing values per field.
-The tax context comes from conditions of the contexts (see below), not from the rules.
 Before planning, the sender is detected from the text without an AI: from an
 identifier a confirmed alias knows (IBAN, tax id, e-mail or web domain), else
 from the letterhead or the footer. The run confirms three aliases: the IBAN of
@@ -751,32 +750,17 @@ counts as a hit when nothing is found for it.
 | --- | --- | --- |
 | sender | 26 | 100% |
 | kind | 23 | 88% |
-| tax context | 16 | 61% |
 | date | 22 | 84% |
 | number | 21 | 80% |
 | amount | 22 | 84% |
 
-Planned: 15. No rule: 3. Unconfirmed rule: 1. Conflicts (several confirmed
-rules match with different results, so the document goes to review): 0. Tax
-context unclear (no context or several fit, so the document goes to review): 4.
-A field missing: 3. Wrong assignments (a rule chosen, but kind or tax context
-not the expected one): 1. Without the negated conditions that keep the rules
+Planned: 19. No rule: 3. Unconfirmed rule: 1. Conflicts (several confirmed
+rules match with different results, so the document goes to review): 0.
+A field missing: 3. Wrong assignments (a rule chosen, but the kind not the
+expected one): 0. Without the negated conditions that keep the rules
 apart (the general invoice rule excludes the IBAN of the energy supplier, the
 contract rule excludes invoices, the letter rule excludes cancellations), 4
 documents end in a conflict.
-
-**Tax context by conditions.** A tax context can have conditions of its own
-(recipient, sender, word, IBAN and so on, any or all of them). A rule that sets
-a context comes first, a context already set stays; otherwise exactly one
-fitting context is assigned, and none or several send the document to review.
-The measurement used to give every rule a fixed context. Rules that leave the
-context open and one "private" context whose conditions are the salutations
-"Frau Beispiel" and "Ms Example" now replace that. The conditions were written
-for this corpus: it has no address block that names a recipient, so only the
-salutation can tell the private mail apart. That is why the tax context hit
-rate fell from 76% to 61% (4 documents now go to review, 1 is assigned wrongly):
-the number says how much the corpus can tell without a recipient, not how well
-the conditions work on real mail.
 
 **The AI only fills what the rules leave open.** It is asked for empty fields
 only, and a value it returns for a field the rules already filled is ignored,

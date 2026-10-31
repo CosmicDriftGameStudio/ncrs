@@ -1,6 +1,5 @@
 sender: Brückenwerk Stahlbau GmbH & Co. KG
 kind: Invoice
-tax_context: company
 date: 2026-03-12
 number: BW-2026-31
 amount: 450000 EUR

@@ -1,6 +1,5 @@
 sender: Finanzamt Musterstadt
 kind: Steuerbescheid
-tax_context: private
 date: 2026-08-21
 number: 000/000/00000
 amount: 8000 EUR

@@ -18,7 +18,7 @@ use std::ops::Range;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use ncrs_intake::{pattern_is_valid, LocationMode};
+use ncrs_intake::{pattern_is_valid, pattern_without_tax_context, LocationMode};
 use ncrs_pipeline::Load;
 use serde::de::{Deserializer, Error as _, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
@@ -1206,6 +1206,16 @@ struct FilingError {
     reason: String,
 }
 
+/// A config written before tax contexts went away may still name them; the
+/// file itself stays as the user wrote it.
+fn without_retired_placeholders(pattern: &str) -> String {
+    if pattern.contains("{tax_context}") {
+        pattern_without_tax_context(pattern)
+    } else {
+        pattern.to_owned()
+    }
+}
+
 /// Text rules only, no file system access: a dead mount must not block the
 /// start or cost the user the rest of the config.
 fn resolve_filing(section: &FilingSection, home: Option<&Path>) -> Result<Filing, FilingError> {
@@ -1218,8 +1228,8 @@ fn resolve_filing(section: &FilingSection, home: Option<&Path>) -> Result<Filing
             .default_pattern
             .as_deref()
             .map(str::trim)
-            .filter(|pattern| pattern_is_valid(pattern))
-            .map(str::to_owned),
+            .map(without_retired_placeholders)
+            .filter(|pattern| pattern_is_valid(pattern)),
     };
     let Some(listed) = &section.locations else {
         return Ok(filing);
@@ -2417,6 +2427,16 @@ mod tests {
             let text = format!("[modules.filing]\ndefault_pattern = '{invalid}'\n");
             assert_eq!(default_pattern_of(&text), None, "{invalid}");
         }
+    }
+
+    #[test]
+    fn a_default_pattern_with_a_retired_tax_context_loses_it_without_touching_the_file() {
+        let text = "[modules.filing]\ndefault_pattern = \"{tax_context}/{year}/{sender}\"\n";
+        assert_eq!(default_pattern_of(text), Some("{year}/{sender}".to_owned()));
+        assert_eq!(
+            default_pattern_of("[modules.filing]\ndefault_pattern = \"{tax_context}\"\n"),
+            Some(ncrs_intake::DEFAULT_PATTERNS[0].to_owned())
+        );
     }
 
     #[test]

@@ -1,6 +1,5 @@
 sender: Tannenhof Catering UG
 kind: Rechnung
-tax_context: company
 date: 2026-05-08
 number: TC-310
 amount: 59500 EUR

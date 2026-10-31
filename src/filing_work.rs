@@ -12,9 +12,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use ncrs_index::{
     BatchKind, Document, DocumentStatus, FieldOrigin, Index, IndexError, ReviewReason, Rule,
-    SenderAliases, TaxContextConditions,
+    SenderAliases,
 };
-use ncrs_intake::{plan, planned_field_origin, PlanInput, Planning};
+use ncrs_intake::{plan, PlanInput, Planning};
 
 use crate::execute::{execute_with, ExecuteError, ExecutionItem, ItemOutcome, SkipReason};
 use crate::fs::transfer::{Move, Progress, Source};
@@ -79,7 +79,6 @@ fn decide(
     index: &mut Index,
     rules: &[Rule],
     sender_aliases: &SenderAliases,
-    tax_contexts: &[TaxContextConditions],
     root: &Path,
     document: &Document,
 ) -> Result<Decision, IndexError> {
@@ -92,20 +91,14 @@ fn decide(
             fields: &document.fields,
             path: Some(&document.path),
             sender_aliases,
-            tax_contexts,
             manual_fields: &manual_fields,
         },
     );
     match planning {
         Planning::Plan(filing) => {
             if filing.fields != document.fields {
-                let rule_origin = FieldOrigin::Rule(Some(filing.rule));
-                index.set_document_fields(document.id, &filing.fields, |field| {
-                    planned_field_origin(
-                        field,
-                        &rule_origin,
-                        filing.tax_context_assigned_by.as_ref(),
-                    )
+                index.set_document_fields(document.id, &filing.fields, |_| {
+                    FieldOrigin::Rule(Some(filing.rule))
                 })?;
             }
             Ok(Decision::Move(ExecutionItem {
@@ -148,7 +141,6 @@ pub fn file_planned<P: Progress, S: Source>(
 ) -> Result<FilingSummary, ExecuteError> {
     let rules = index.rules()?;
     let sender_aliases = index.confirmed_sender_aliases()?;
-    let tax_contexts = index.assignable_tax_contexts()?;
     let mut summary = FilingSummary::default();
     let mut items = Vec::new();
     for id in index.documents_with_status(DocumentStatus::Planned)? {
@@ -160,14 +152,7 @@ pub fn file_planned<P: Progress, S: Source>(
             summary.left += 1;
             continue;
         }
-        match decide(
-            index,
-            &rules,
-            &sender_aliases,
-            &tax_contexts,
-            root,
-            &document,
-        )? {
+        match decide(index, &rules, &sender_aliases, root, &document)? {
             Decision::Move(item) => items.push(item),
             Decision::Reviewed => summary.reviewed += 1,
         }
@@ -215,7 +200,7 @@ mod tests {
     use chrono::{TimeZone as _, Utc};
     use ncrs_index::{
         Condition, ConditionKind, DocumentSource, JournalState, NewDocument, NewJournalItem,
-        RuleConditions, RuleSpec, TaxContext,
+        RuleConditions, RuleSpec,
     };
     use ncrs_intake::hash_path;
     use tempfile::TempDir;
@@ -264,7 +249,6 @@ mod tests {
                     extract_date: None,
                     extract_amount: None,
                     kind: "invoice".to_owned(),
-                    tax_context: Some(TaxContext::named("company")),
                     tags: BTreeSet::new(),
                     filing_pattern: "Insurance/{kind}.pdf".to_owned(),
                     confirmed: true,

@@ -1,6 +1,5 @@
 sender: Silberfaden Consulting Ltd
 kind: Invoice
-tax_context: company
 date: 2026-04-02
 number: SF-0099
 amount: 125000 USD

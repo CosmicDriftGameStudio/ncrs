@@ -111,7 +111,7 @@ mod tests {
     use ncrs_index::{
         Condition, ConditionKind, ConflictReason, ContentHash, DocumentFields, DocumentId,
         DocumentSource, FieldOrigin, FileStamp, Finding, FindingKind, NewDocument, NoActionReason,
-        PlanItem, PlanOutcome, RuleConditions, RuleEvidence, RuleSpec, TaxContext,
+        PlanItem, PlanOutcome, RuleConditions, RuleEvidence, RuleSpec,
     };
     use tempfile::TempDir;
 
@@ -148,7 +148,6 @@ mod tests {
             extract_date: None,
             extract_amount: None,
             kind: kind.to_owned(),
-            tax_context: Some(TaxContext::None),
             tags: Default::default(),
             filing_pattern: pattern.to_owned(),
             confirmed,

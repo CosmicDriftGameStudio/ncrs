@@ -196,8 +196,6 @@ enum Cause {
     NothingRecognised,
     Unconfirmed,
     RuleConflict,
-    NoTaxContext,
-    SeveralTaxContexts,
     TargetExists,
     MissingField(Field),
     LowConfidence(Field),
@@ -213,8 +211,6 @@ impl Cause {
             },
             ReviewReason::UnconfirmedRule => Self::Unconfirmed,
             ReviewReason::RuleConflict => Self::RuleConflict,
-            ReviewReason::NoTaxContextMatches => Self::NoTaxContext,
-            ReviewReason::SeveralTaxContextsMatch => Self::SeveralTaxContexts,
             ReviewReason::TargetExists => Self::TargetExists,
             ReviewReason::MissingField(field) => Self::MissingField(field),
             ReviewReason::LowConfidence(field) => Self::LowConfidence(field),
@@ -245,8 +241,6 @@ impl Cause {
             Self::NothingRecognised => Msg::ReviewListReasonNothingRecognised,
             Self::Unconfirmed => Msg::ReviewListReasonUnconfirmed,
             Self::RuleConflict => Msg::ReviewListReasonRuleConflict,
-            Self::NoTaxContext => Msg::ReviewListReasonNoTaxContext,
-            Self::SeveralTaxContexts => Msg::ReviewListReasonSeveralTaxContexts,
             Self::TargetExists => Msg::ReviewListReasonTargetExists,
             Self::MissingField(field) => {
                 return named(Msg::ReviewListReasonMissingField, field, lang)
@@ -268,8 +262,6 @@ impl Cause {
             Self::NothingRecognised => Msg::ReviewListChipNothingRecognised,
             Self::Unconfirmed => Msg::ReviewListChipUnconfirmed,
             Self::RuleConflict => Msg::ReviewListChipRuleConflict,
-            Self::NoTaxContext => Msg::ReviewListChipNoTaxContext,
-            Self::SeveralTaxContexts => Msg::ReviewListChipSeveralTaxContexts,
             Self::TargetExists => Msg::ReviewListChipTargetExists,
             Self::MissingField(field) => {
                 return named(Msg::ReviewListChipMissingField, field, lang)
@@ -302,7 +294,6 @@ fn field_name(field: Field) -> Msg {
     match field {
         Field::Sender => Msg::ReviewListFieldSender,
         Field::Kind => Msg::ReviewListFieldKind,
-        Field::TaxContext => Msg::ReviewListFieldTaxContext,
         Field::Date => Msg::ReviewListFieldDate,
         Field::Number => Msg::ReviewListFieldNumber,
         Field::Amount => Msg::ReviewListFieldAmount,
@@ -436,13 +427,6 @@ pub fn origin_text(origin: &FieldOrigin, edited: bool, lang: Language) -> Option
             &[("{percent}", &confidence_percent.to_string())],
         )),
         FieldOrigin::Manual => Some(lang.text(Msg::ReviewListOriginManual).to_owned()),
-        FieldOrigin::Condition { kind, value } => Some(fill_template(
-            lang.text(Msg::ReviewListTaxContextFromCondition),
-            &[
-                ("{kind}", lang.text(kit::condition_kind_name(*kind))),
-                ("{value}", value),
-            ],
-        )),
     }
 }
 
@@ -492,24 +476,6 @@ fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element
         let item = state.selected()?;
         origin_text(&item.origins.of(field), state.is_edited(field), lang)
     };
-    let tax_choices = kit::tax_context_choices(
-        lang.text(Msg::ReviewListTaxOpen),
-        lang.text(Msg::ReviewListTaxNone),
-        state.tax_contexts(),
-    );
-    let tax_options: Vec<(&str, Message)> = tax_choices
-        .iter()
-        .map(|(label, choice)| {
-            (
-                *label,
-                send(ReviewListMessage::TaxContextChosen(choice.clone())),
-            )
-        })
-        .collect();
-    let selected_tax = tax_choices
-        .iter()
-        .position(|(_, choice)| *choice == values.tax_context)
-        .unwrap_or_default();
     column![
         group_heading(Msg::ReviewListGroupWho, lang, palette),
         field_row(
@@ -566,12 +532,6 @@ fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element
             palette,
         ),
         group_heading(Msg::ReviewListGroupWhere, lang, palette),
-        field_row(
-            lang.text(Msg::ReviewListFieldTaxContext),
-            origin_of(Field::TaxContext),
-            kit::dropdown(&tax_options, selected_tax, true, palette),
-            palette,
-        ),
         field_row(
             lang.text(Msg::ReviewListFieldPattern),
             None,
@@ -902,8 +862,6 @@ pub const FIRST_FIELD_ID: &str = SENDER_ID;
 )]
 #[cfg(test)]
 mod tests {
-    use ncrs_index::ConditionKind;
-
     use super::*;
 
     #[test]
@@ -912,19 +870,9 @@ mod tests {
         let ai = FieldOrigin::Ai {
             confidence_percent: 82,
         };
-        let condition = FieldOrigin::Condition {
-            kind: ConditionKind::Recipient,
-            value: "Firma A GmbH".to_owned(),
-        };
         let texts = |lang: Language| {
-            [
-                &FieldOrigin::Unknown,
-                &rule,
-                &ai,
-                &FieldOrigin::Manual,
-                &condition,
-            ]
-            .map(|origin| origin_text(origin, false, lang))
+            [&FieldOrigin::Unknown, &rule, &ai, &FieldOrigin::Manual]
+                .map(|origin| origin_text(origin, false, lang))
         };
         assert_eq!(
             texts(Language::English),
@@ -933,7 +881,6 @@ mod tests {
                 Some("From a rule".to_owned()),
                 Some("AI, 82 % sure".to_owned()),
                 Some("By hand".to_owned()),
-                Some("Tax context from condition (Recipient: Firma A GmbH)".to_owned()),
             ]
         );
         assert_eq!(

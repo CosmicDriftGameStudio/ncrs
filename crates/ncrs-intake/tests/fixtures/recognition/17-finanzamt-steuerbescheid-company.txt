@@ -1,6 +1,5 @@
 sender: Finanzamt Musterstadt
 kind: Steuerbescheid
-tax_context: company
 date: 2026-09-02
 number: 000/111/22222
 amount: 512000 EUR

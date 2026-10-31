@@ -4,15 +4,15 @@
 //!
 //! A filing pattern is a relative path with these placeholders:
 //! `{year}`, `{month}`, `{day}`, `{date}` (`YYYY-MM-DD`), `{sender}`,
-//! `{number}`, `{kind}` and `{tax_context}`. Patterns learned from an archive
+//! `{number}` and `{kind}`. Patterns learned from an archive
 //! add `{folder}` (the sender) and `{name}` (the kind).
 
 use std::path::{Path, PathBuf};
 
 use chrono::Datelike as _;
 use ncrs_index::{
-    Combinator, Condition, ConditionKind, DocumentFields, Field, FieldOrigin, ReviewReason, Rule,
-    RuleConditions, RuleId, RuleSpec, SenderAliases, TaxContext, TaxContextConditions,
+    Combinator, Condition, ConditionKind, DocumentFields, Field, ReviewReason, Rule,
+    RuleConditions, RuleId, RuleSpec, SenderAliases,
 };
 
 use crate::conditions::{
@@ -33,51 +33,9 @@ pub struct PlanInput<'a> {
     pub path: Option<&'a Path>,
     /// Names the sender condition treats as one sender.
     pub sender_aliases: &'a SenderAliases,
-    /// The contexts the conditions may assign a document to; one without a
-    /// condition does not take part.
-    pub tax_contexts: &'a [TaxContextConditions],
-    /// Fields the user set by hand: neither a rule nor a tax context
-    /// overwrites them, they keep the value of `fields`.
+    /// Fields the user set by hand: a rule does not overwrite them, they keep
+    /// the value of `fields`.
     pub manual_fields: &'a [Field],
-}
-
-/// The condition of a tax context that put the document into it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AssigningCondition {
-    pub kind: ConditionKind,
-    pub value: String,
-}
-
-/// The tax context of a document was chosen by the conditions of the contexts.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TaxContextAssignment {
-    /// `None` when only a negated condition held: there is no condition to name.
-    pub reason: Option<AssigningCondition>,
-}
-
-impl TaxContextAssignment {
-    fn field_origin(&self) -> FieldOrigin {
-        self.reason
-            .as_ref()
-            .map_or(FieldOrigin::Unknown, |reason| FieldOrigin::Condition {
-                kind: reason.kind,
-                value: reason.value.clone(),
-            })
-    }
-}
-
-/// The origin to store for a field a planning filled: the tax context chosen by
-/// the conditions of the contexts carries the condition, every other field
-/// belongs to `rule_origin`.
-pub fn planned_field_origin(
-    field: Field,
-    rule_origin: &FieldOrigin,
-    assignment: Option<&TaxContextAssignment>,
-) -> FieldOrigin {
-    match (field, assignment) {
-        (Field::TaxContext, Some(assigned)) => assigned.field_origin(),
-        _ => rule_origin.clone(),
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,9 +46,6 @@ pub struct FilingPlan {
     /// plan the same.
     pub matching_rules: Vec<RuleId>,
     pub fields: DocumentFields,
-    /// Set when the conditions of the tax contexts, not a rule, chose the
-    /// tax context in `fields`.
-    pub tax_context_assigned_by: Option<TaxContextAssignment>,
     /// Below the root of the archive; `stays_below` holds for it.
     pub relative_path: PathBuf,
 }
@@ -107,7 +62,6 @@ pub enum Planning {
         /// Every enabled rule that matched; empty when none did.
         matching_rules: Vec<RuleId>,
         fields: DocumentFields,
-        tax_context_assigned_by: Option<TaxContextAssignment>,
     },
 }
 
@@ -124,16 +78,8 @@ pub fn pattern_is_valid(source: &str) -> bool {
 
 /// The blocks a pattern editor offers; `folder` and `name` stay valid but are
 /// not offered.
-pub const FILING_PLACEHOLDERS: [&str; 8] = [
-    "year",
-    "month",
-    "day",
-    "date",
-    "sender",
-    "number",
-    "kind",
-    "tax_context",
-];
+pub const FILING_PLACEHOLDERS: [&str; 7] =
+    ["year", "month", "day", "date", "sender", "number", "kind"];
 
 /// The name of the first `{name}` of `source` that is not a block a pattern
 /// knows; an unclosed brace is no block.
@@ -155,7 +101,6 @@ pub fn unknown_placeholder(source: &str) -> Option<String> {
 /// with `ReviewReason::RuleConflict` and the contested fields stay as given.
 pub fn plan(rules: &[Rule], input: &PlanInput<'_>) -> Planning {
     let search = SearchText::new(input.text);
-    let assignment = assign_tax_context(input, &search);
     let (confirmed, unconfirmed): (Vec<&Rule>, Vec<&Rule>) = rules
         .iter()
         .filter(|rule| rule.spec.enabled && matches(&rule.spec, input, &search))
@@ -163,35 +108,24 @@ pub fn plan(rules: &[Rule], input: &PlanInput<'_>) -> Planning {
     let ids_of = |matching: &[&Rule]| matching.iter().map(|rule| rule.id).collect::<Vec<_>>();
     let Some(first) = confirmed.first() else {
         return match unconfirmed.first() {
-            Some(rule) => {
-                let (fields, tax_context_assigned_by) =
-                    filled_fields(&rule.spec, input, &assignment);
-                Planning::Review {
-                    reason: ReviewReason::UnconfirmedRule,
-                    rule: Some(rule.id),
-                    matching_rules: ids_of(&unconfirmed),
-                    fields,
-                    tax_context_assigned_by,
-                }
-            }
-            None => {
-                let (fields, tax_context_assigned_by) =
-                    with_assigned_context(input.fields.clone(), &assignment, input);
-                Planning::Review {
-                    reason: ReviewReason::NoMatchingRule,
-                    rule: None,
-                    matching_rules: Vec::new(),
-                    fields,
-                    tax_context_assigned_by,
-                }
-            }
+            Some(rule) => Planning::Review {
+                reason: ReviewReason::UnconfirmedRule,
+                rule: Some(rule.id),
+                matching_rules: ids_of(&unconfirmed),
+                fields: filled_fields(&rule.spec, input),
+            },
+            None => Planning::Review {
+                reason: ReviewReason::NoMatchingRule,
+                rule: None,
+                matching_rules: Vec::new(),
+                fields: input.fields.clone(),
+            },
         };
     };
     let matching_rules = ids_of(&confirmed);
-    let planning = plan_with(first, input, &assignment);
+    let planning = plan_with(first, input);
     let agree = confirmed.iter().skip(1).all(|rule| {
-        blanked(plan_with(rule, input, &assignment), first.id)
-            == blanked(planning.clone(), first.id)
+        blanked(plan_with(rule, input), first.id) == blanked(planning.clone(), first.id)
     });
     if !agree {
         return Planning::Review {
@@ -199,10 +133,9 @@ pub fn plan(rules: &[Rule], input: &PlanInput<'_>) -> Planning {
             rule: Some(first.id),
             matching_rules,
             fields: input.fields.clone(),
-            tax_context_assigned_by: None,
         };
     }
-    let decided = match planning {
+    match planning {
         Planning::Plan(filing) => Planning::Plan(FilingPlan {
             matching_rules,
             ..filing
@@ -211,53 +144,13 @@ pub fn plan(rules: &[Rule], input: &PlanInput<'_>) -> Planning {
             reason,
             rule,
             fields,
-            tax_context_assigned_by,
             ..
         } => Planning::Review {
             reason,
             rule,
             matching_rules,
             fields,
-            tax_context_assigned_by,
         },
-    };
-    if first.spec.tax_context.is_none() {
-        unclear_tax_context_to_review(decided, &assignment)
-    } else {
-        decided
-    }
-}
-
-/// An open rule leaves the tax context to the conditions of the contexts. When
-/// they name none or several, the document goes to review, unless a more
-/// fundamental reason is already there; a missing tax context is that same
-/// problem seen from the pattern, so it gives way.
-fn unclear_tax_context_to_review(planning: Planning, assignment: &ContextAssignment) -> Planning {
-    let Some(unclear) = assignment.unclear_reason() else {
-        return planning;
-    };
-    match planning {
-        Planning::Plan(filing) => Planning::Review {
-            reason: unclear,
-            rule: Some(filing.rule),
-            matching_rules: filing.matching_rules,
-            fields: filing.fields,
-            tax_context_assigned_by: None,
-        },
-        Planning::Review {
-            reason: ReviewReason::MissingField(Field::TaxContext),
-            rule,
-            matching_rules,
-            fields,
-            tax_context_assigned_by,
-        } => Planning::Review {
-            reason: unclear,
-            rule,
-            matching_rules,
-            fields,
-            tax_context_assigned_by,
-        },
-        review @ Planning::Review { .. } => review,
     }
 }
 
@@ -268,7 +161,6 @@ fn blanked(planning: Planning, canonical: RuleId) -> Planning {
         Planning::Plan(filing) => Planning::Plan(FilingPlan {
             rule: canonical,
             matching_rules: Vec::new(),
-            tax_context_assigned_by: None,
             ..filing
         }),
         Planning::Review { reason, fields, .. } => Planning::Review {
@@ -276,7 +168,6 @@ fn blanked(planning: Planning, canonical: RuleId) -> Planning {
             rule: None,
             matching_rules: Vec::new(),
             fields,
-            tax_context_assigned_by: None,
         },
     }
 }
@@ -312,71 +203,6 @@ fn conditions_hold(
     }
 }
 
-/// What the conditions of the tax contexts say about a document.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum ContextAssignment {
-    /// No context has a condition, or the document has its context already.
-    NotApplicable,
-    One {
-        context: TaxContext,
-        /// `None` when only a negated condition held.
-        reason: Option<AssigningCondition>,
-    },
-    NoneMatches,
-    SeveralMatch,
-}
-
-impl ContextAssignment {
-    fn unclear_reason(&self) -> Option<ReviewReason> {
-        match self {
-            Self::NoneMatches => Some(ReviewReason::NoTaxContextMatches),
-            Self::SeveralMatch => Some(ReviewReason::SeveralTaxContextsMatch),
-            Self::NotApplicable | Self::One { .. } => None,
-        }
-    }
-}
-
-fn assign_tax_context(input: &PlanInput<'_>, search: &SearchText) -> ContextAssignment {
-    if input.fields.tax_context.is_some() {
-        return ContextAssignment::NotApplicable;
-    }
-    let mut taking_part = input
-        .tax_contexts
-        .iter()
-        .filter(|context| !context.conditions.list.is_empty())
-        .peekable();
-    if taking_part.peek().is_none() {
-        return ContextAssignment::NotApplicable;
-    }
-    let mut matching =
-        taking_part.filter(|context| conditions_hold(&context.conditions, input, search));
-    match (matching.next(), matching.next()) {
-        (None, _) => ContextAssignment::NoneMatches,
-        (Some(context), None) => ContextAssignment::One {
-            context: TaxContext::named(context.short_name.as_str()),
-            reason: holding_positive_condition(&context.conditions, input, search),
-        },
-        (Some(_), Some(_)) => ContextAssignment::SeveralMatch,
-    }
-}
-
-fn holding_positive_condition(
-    conditions: &RuleConditions,
-    input: &PlanInput<'_>,
-    search: &SearchText,
-) -> Option<AssigningCondition> {
-    conditions
-        .list
-        .iter()
-        .find(|condition| {
-            !condition.negated && condition_outcome(condition, input, search) == Some(true)
-        })
-        .map(|condition| AssigningCondition {
-            kind: condition.kind,
-            value: condition.value.clone(),
-        })
-}
-
 /// `None` when the condition cannot be evaluated.
 fn condition_outcome(
     condition: &Condition,
@@ -406,22 +232,11 @@ fn condition_outcome(
     Some(holds != condition.negated)
 }
 
-/// The known fields, completed from the rule and from the text. Kind, tax
-/// context and tags are the rule's; number, date and amount are read from the
-/// text where the rule says how.
-fn filled_fields(
-    spec: &RuleSpec,
-    input: &PlanInput<'_>,
-    assignment: &ContextAssignment,
-) -> (DocumentFields, Option<TaxContextAssignment>) {
+/// The known fields, completed from the rule and from the text. Kind and tags
+/// are the rule's; number, date and amount are read from the text where the
+/// rule says how.
+fn filled_fields(spec: &RuleSpec, input: &PlanInput<'_>) -> DocumentFields {
     let mut fields = input.fields.clone();
-    let mut tax_context_assigned_by = None;
-    match &spec.tax_context {
-        Some(context) => fields.tax_context = Some(context.clone()),
-        None => {
-            (fields, tax_context_assigned_by) = with_assigned_context(fields, assignment, input);
-        }
-    }
     if fields.sender.is_none() {
         fields.sender = spec.conditions.required_sender().map(str::to_owned);
     }
@@ -453,51 +268,26 @@ fn filled_fields(
     for field in input.manual_fields {
         restore_manual(&mut fields, input.fields, *field);
     }
-    if input.manual_fields.contains(&Field::TaxContext) {
-        tax_context_assigned_by = None;
-    }
-    (fields, tax_context_assigned_by)
+    fields
 }
 
 fn restore_manual(fields: &mut DocumentFields, kept: &DocumentFields, field: Field) {
     match field {
         Field::Sender => fields.sender.clone_from(&kept.sender),
         Field::Kind => fields.kind.clone_from(&kept.kind),
-        Field::TaxContext => fields.tax_context.clone_from(&kept.tax_context),
         Field::Date => fields.date = kept.date,
         Field::Number => fields.number.clone_from(&kept.number),
         Field::Amount => fields.amount.clone_from(&kept.amount),
     }
 }
 
-fn with_assigned_context(
-    mut fields: DocumentFields,
-    assignment: &ContextAssignment,
-    input: &PlanInput<'_>,
-) -> (DocumentFields, Option<TaxContextAssignment>) {
-    let ContextAssignment::One { context, reason } = assignment else {
-        return (fields, None);
-    };
-    if input.manual_fields.contains(&Field::TaxContext) {
-        return (fields, None);
-    }
-    fields.tax_context = Some(context.clone());
-    (
-        fields,
-        Some(TaxContextAssignment {
-            reason: reason.clone(),
-        }),
-    )
-}
-
-fn plan_with(rule: &Rule, input: &PlanInput<'_>, assignment: &ContextAssignment) -> Planning {
-    let (fields, tax_context_assigned_by) = filled_fields(&rule.spec, input, assignment);
+fn plan_with(rule: &Rule, input: &PlanInput<'_>) -> Planning {
+    let fields = filled_fields(&rule.spec, input);
     let review = |reason, filled| Planning::Review {
         reason,
         rule: Some(rule.id),
         matching_rules: vec![rule.id],
         fields: filled,
-        tax_context_assigned_by: tax_context_assigned_by.clone(),
     };
     // A rule whose pattern cannot be rendered needs the user like an
     // unconfirmed one: there is nothing the text could add.
@@ -512,7 +302,6 @@ fn plan_with(rule: &Rule, input: &PlanInput<'_>, assignment: &ContextAssignment)
             rule: rule.id,
             matching_rules: vec![rule.id],
             fields,
-            tax_context_assigned_by,
             relative_path,
         }),
         _ => review(ReviewReason::UnconfirmedRule, fields),
@@ -570,7 +359,7 @@ fn path_of(components: &[Vec<PatternPart>]) -> PathBuf {
 }
 
 /// The order fields are asked for and reported in.
-pub const FIELD_ORDER: [Field; 6] = Field::ALL;
+pub const FIELD_ORDER: [Field; 5] = Field::ALL;
 
 /// A field is needed when the pattern uses it or the rule says how to read it
 /// from the text; a value that is empty after sanitising is missing.
@@ -581,7 +370,7 @@ fn first_missing(fields: &DocumentFields, spec: &RuleSpec, pattern: &Pattern) ->
                 Field::Date => spec.extract_date.is_some(),
                 Field::Number => spec.extract_number.is_some(),
                 Field::Amount => spec.extract_amount.is_some(),
-                Field::Sender | Field::Kind | Field::TaxContext => false,
+                Field::Sender | Field::Kind => false,
             }
     };
     FIELD_ORDER
@@ -593,7 +382,6 @@ fn field_is_present(fields: &DocumentFields, field: Field) -> bool {
     match field {
         Field::Sender => fields.sender.as_deref().and_then(sanitise_value).is_some(),
         Field::Kind => fields.kind.as_deref().and_then(sanitise_value).is_some(),
-        Field::TaxContext => fields.tax_context.is_some(),
         Field::Date => fields.date.is_some(),
         Field::Number => fields.number.as_deref().and_then(sanitise_value).is_some(),
         Field::Amount => fields.amount.is_some(),
@@ -618,7 +406,6 @@ enum Placeholder {
     Sender,
     Number,
     Kind,
-    TaxContext,
     Folder,
     Name,
 }
@@ -633,7 +420,6 @@ impl Placeholder {
             "sender" => Self::Sender,
             "number" => Self::Number,
             "kind" => Self::Kind,
-            "tax_context" => Self::TaxContext,
             "folder" => Self::Folder,
             "name" => Self::Name,
             _ => return None,
@@ -646,7 +432,6 @@ impl Placeholder {
             Self::Sender | Self::Folder => Field::Sender,
             Self::Number => Field::Number,
             Self::Kind | Self::Name => Field::Kind,
-            Self::TaxContext => Field::TaxContext,
         }
     }
 
@@ -660,7 +445,6 @@ impl Placeholder {
             Self::Sender | Self::Folder => fields.sender.as_deref().and_then(sanitise_value),
             Self::Number => fields.number.as_deref().and_then(sanitise_value),
             Self::Kind | Self::Name => fields.kind.as_deref().and_then(sanitise_value),
-            Self::TaxContext => sanitise_value(fields.tax_context.as_ref()?.as_str()),
         }
     }
 }
@@ -783,7 +567,7 @@ mod tests {
     use std::path::Path;
 
     use chrono::NaiveDate;
-    use ncrs_index::{Amount, Currency, RuleConditions, TaxContext};
+    use ncrs_index::{Amount, Currency, RuleConditions};
 
     use super::*;
 
@@ -818,7 +602,6 @@ mod tests {
             extract_date: Some(r"Date:\s*(\d{2}\.\d{2}\.\d{4})".to_owned()),
             extract_amount: Some(r"Total:\s*([\d.,]+\s*€)".to_owned()),
             kind: "invoice".to_owned(),
-            tax_context: Some(TaxContext::named("company")),
             tags: BTreeSet::from(["office".to_owned()]),
             filing_pattern: pattern.to_owned(),
             confirmed: true,
@@ -861,7 +644,6 @@ mod tests {
                 fields,
                 path: None,
                 sender_aliases: &SenderAliases::default(),
-                tax_contexts: &[],
                 manual_fields: &[],
             },
         )
@@ -883,39 +665,33 @@ mod tests {
 
     fn plan_keeping(fields: &DocumentFields, manual_fields: &[Field]) -> FilingPlan {
         planned(plan(
-            &rules_from(&[spec("{tax_context}/{kind}/{date}")]),
+            &rules_from(&[spec("{kind}/{date}")]),
             &PlanInput {
                 text: TEXT,
                 fields,
                 path: None,
                 sender_aliases: &SenderAliases::default(),
-                tax_contexts: &[],
                 manual_fields,
             },
         ))
     }
 
     #[test]
-    fn a_manual_kind_date_and_tax_context_survive_a_matching_rule() {
+    fn a_manual_kind_and_date_survive_a_matching_rule() {
         let by_hand = DocumentFields {
             kind: Some("offer".to_owned()),
             date: NaiveDate::from_ymd_opt(2020, 5, 6),
-            tax_context: Some(TaxContext::named("private")),
             ..DocumentFields::default()
         };
 
-        let kept = plan_keeping(&by_hand, &[Field::Kind, Field::Date, Field::TaxContext]);
-        assert_eq!(
-            kept.relative_path,
-            Path::new("private").join("offer").join("2020-05-06")
-        );
+        let kept = plan_keeping(&by_hand, &[Field::Kind, Field::Date]);
+        assert_eq!(kept.relative_path, Path::new("offer").join("2020-05-06"));
         assert_eq!(kept.fields.kind.as_deref(), Some("offer"));
-        assert!(kept.tax_context_assigned_by.is_none());
 
         let overwritten = plan_keeping(&by_hand, &[]);
         assert_eq!(
             overwritten.relative_path,
-            Path::new("company").join("invoice").join("2026-03-01")
+            Path::new("invoice").join("2026-03-01")
         );
     }
 
@@ -929,58 +705,7 @@ mod tests {
 
         let kept = plan_keeping(&by_hand, &[Field::Kind]);
 
-        assert_eq!(
-            kept.relative_path,
-            Path::new("company").join("offer").join("2026-03-01")
-        );
-    }
-
-    #[test]
-    fn a_renamed_tax_context_is_the_new_short_name_in_the_planned_path() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let mut index = ncrs_index::Index::create_plain(&dir.path().join("index.db")).unwrap();
-        index.create_rule(&spec("{tax_context}/{sender}")).unwrap();
-        let company = index
-            .tax_contexts()
-            .unwrap()
-            .into_iter()
-            .find(|entry| entry.short_name == "company")
-            .unwrap();
-        let known = DocumentFields {
-            sender: Some("Company A".to_owned()),
-            ..DocumentFields::default()
-        };
-        let plan_stored_rules = |stored: &ncrs_index::Index| {
-            planned(plan(
-                &stored.rules().unwrap(),
-                &PlanInput {
-                    text: TEXT,
-                    fields: &known,
-                    path: None,
-                    sender_aliases: &SenderAliases::default(),
-                    tax_contexts: &[],
-                    manual_fields: &[],
-                },
-            ))
-        };
-        assert_eq!(
-            plan_stored_rules(&index).relative_path,
-            Path::new("company").join("Company A")
-        );
-
-        index
-            .rename_tax_context(company.id, "Firma A", "company-a")
-            .unwrap();
-
-        let filed = plan_stored_rules(&index);
-        assert_eq!(
-            filed.relative_path,
-            Path::new("company-a").join("Company A")
-        );
-        assert_eq!(
-            filed.fields.tax_context,
-            Some(TaxContext::named("company-a"))
-        );
+        assert_eq!(kept.relative_path, Path::new("offer").join("2026-03-01"));
     }
 
     #[test]
@@ -1010,7 +735,6 @@ mod tests {
             })
         );
         assert_eq!(filed.fields.kind.as_deref(), Some("invoice"));
-        assert_eq!(filed.fields.tax_context, Some(TaxContext::named("company")));
         assert!(filed.fields.tags.contains("office"));
     }
 
@@ -1155,7 +879,6 @@ mod tests {
                         fields: &fields,
                         path: None,
                         sender_aliases: aliases,
-                        tax_contexts: &[],
                         manual_fields: &[],
                     },
                 ),
@@ -1186,7 +909,6 @@ mod tests {
                 fields: &fields,
                 path,
                 sender_aliases: &SenderAliases::default(),
-                tax_contexts: &[],
                 manual_fields: &[],
             },
         );
@@ -1299,7 +1021,6 @@ mod tests {
                 fields: &fields,
                 path: None,
                 sender_aliases: &SenderAliases::default(),
-                tax_contexts: &[],
                 manual_fields: &[],
             },
         );
@@ -1321,7 +1042,6 @@ mod tests {
                 fields: &fields,
                 path: None,
                 sender_aliases: &SenderAliases::default(),
-                tax_contexts: &[],
                 manual_fields: &[],
             },
         );
@@ -1337,7 +1057,6 @@ mod tests {
                 fields: &DocumentFields::default(),
                 path: None,
                 sender_aliases: &SenderAliases::default(),
-                tax_contexts: &[],
                 manual_fields: &[],
             },
         )
@@ -1377,7 +1096,6 @@ mod tests {
                 rule: Some(rules[0].id),
                 matching_rules: vec![rules[0].id, rules[1].id],
                 fields: DocumentFields::default(),
-                tax_context_assigned_by: None,
             }
         );
     }
@@ -1553,43 +1271,6 @@ mod tests {
     }
 
     #[test]
-    fn the_tax_context_renders_as_its_short_name() {
-        let rendered = |context: TaxContext| {
-            let fields = DocumentFields {
-                tax_context: Some(context),
-                ..DocumentFields::default()
-            };
-            render_pattern("{tax_context}/files", &fields)
-        };
-
-        assert_eq!(
-            rendered(TaxContext::named("company")),
-            Some(PathBuf::from("company/files"))
-        );
-        assert_eq!(
-            rendered(TaxContext::named("private")),
-            Some(PathBuf::from("private/files"))
-        );
-        assert_eq!(
-            rendered(TaxContext::None),
-            Some(PathBuf::from("none/files"))
-        );
-    }
-
-    #[test]
-    fn a_short_name_with_path_characters_does_not_add_a_folder_level() {
-        let fields = DocumentFields {
-            tax_context: Some(TaxContext::named("a/b")),
-            ..DocumentFields::default()
-        };
-
-        let path = render_pattern("{tax_context}/files", &fields).unwrap();
-
-        assert_eq!(path.components().count(), 2);
-        assert!(path.ends_with("files"));
-    }
-
-    #[test]
     fn stays_below_checks_components() {
         assert!(stays_below(Path::new("a/b..c/d.pdf")));
         assert!(!stays_below(Path::new("")));
@@ -1597,325 +1278,6 @@ mod tests {
         assert!(!stays_below(Path::new("a/../../b")));
         assert!(!stays_below(Path::new("/a")));
         assert!(!stays_below(Path::new("./a")));
-    }
-
-    fn context(
-        short_name: &str,
-        combinator: Combinator,
-        list: Vec<Condition>,
-    ) -> TaxContextConditions {
-        TaxContextConditions {
-            short_name: short_name.to_owned(),
-            conditions: RuleConditions { combinator, list },
-        }
-    }
-
-    fn any_context(short_name: &str, list: Vec<Condition>) -> TaxContextConditions {
-        context(short_name, Combinator::AnyOf, list)
-    }
-
-    fn open_rule(pattern: &str) -> RuleSpec {
-        RuleSpec {
-            tax_context: None,
-            ..spec(pattern)
-        }
-    }
-
-    fn plan_in_contexts(
-        spec: RuleSpec,
-        text: &str,
-        fields: &DocumentFields,
-        contexts: &[TaxContextConditions],
-    ) -> Planning {
-        plan(
-            &rules_from(&[spec]),
-            &PlanInput {
-                text,
-                fields,
-                path: None,
-                sender_aliases: &SenderAliases::default(),
-                tax_contexts: contexts,
-                manual_fields: &[],
-            },
-        )
-    }
-
-    fn company_a_context() -> TaxContextConditions {
-        any_context("company", vec![substring("company a ltd")])
-    }
-
-    fn private_context() -> TaxContextConditions {
-        any_context("private", vec![substring("erika")])
-    }
-
-    #[test]
-    fn exactly_one_matching_context_is_assigned_with_the_condition_as_reason() {
-        let contexts = [company_a_context(), private_context()];
-        let open = RuleSpec {
-            tax_context: None,
-            ..spec("{tax_context}/{number}")
-        };
-
-        let filed = planned(plan_in_contexts(
-            open,
-            TEXT,
-            &DocumentFields::default(),
-            &contexts,
-        ));
-
-        assert_eq!(filed.fields.tax_context, Some(TaxContext::named("company")));
-        assert_eq!(filed.relative_path, Path::new("company").join("4711"));
-        assert_eq!(
-            filed.tax_context_assigned_by,
-            Some(TaxContextAssignment {
-                reason: Some(AssigningCondition {
-                    kind: ConditionKind::Substring,
-                    value: "company a ltd".to_owned()
-                })
-            })
-        );
-    }
-
-    #[test]
-    fn no_matching_context_sends_the_document_to_review_instead_of_guessing() {
-        let contexts = [
-            any_context("company", vec![substring("agency b")]),
-            private_context(),
-        ];
-
-        let planning = plan_in_contexts(
-            open_rule("{number}"),
-            TEXT,
-            &DocumentFields::default(),
-            &contexts,
-        );
-
-        let Planning::Review {
-            reason,
-            rule,
-            fields,
-            tax_context_assigned_by,
-            ..
-        } = planning
-        else {
-            panic!("expected a review");
-        };
-        assert_eq!(reason, ReviewReason::NoTaxContextMatches);
-        assert!(rule.is_some());
-        assert_eq!(fields.tax_context, None);
-        assert_eq!(fields.number.as_deref(), Some("4711"));
-        assert_eq!(tax_context_assigned_by, None);
-    }
-
-    #[test]
-    fn several_matching_contexts_send_the_document_to_review() {
-        let contexts = [
-            company_a_context(),
-            any_context("private", vec![substring("invoice")]),
-        ];
-
-        let planning = plan_in_contexts(
-            open_rule("{number}"),
-            TEXT,
-            &DocumentFields::default(),
-            &contexts,
-        );
-
-        assert_eq!(reason(&planning), ReviewReason::SeveralTaxContextsMatch);
-    }
-
-    #[test]
-    fn a_rule_that_sets_a_context_wins_over_matching_conditions() {
-        let contexts = [company_a_context()];
-        let private_rule = RuleSpec {
-            tax_context: Some(TaxContext::named("private")),
-            ..spec("{tax_context}/{number}")
-        };
-        let rule_without_context = RuleSpec {
-            tax_context: Some(TaxContext::None),
-            ..spec("{tax_context}/{number}")
-        };
-
-        for (rule, wanted) in [
-            (private_rule, TaxContext::named("private")),
-            (rule_without_context, TaxContext::None),
-        ] {
-            let filed = planned(plan_in_contexts(
-                rule,
-                TEXT,
-                &DocumentFields::default(),
-                &contexts,
-            ));
-            assert_eq!(filed.fields.tax_context, Some(wanted));
-            assert_eq!(filed.tax_context_assigned_by, None);
-        }
-    }
-
-    #[test]
-    fn a_rule_that_sets_a_context_is_not_sent_to_review_when_no_condition_matches() {
-        let contexts = [any_context("private", vec![substring("erika")])];
-
-        let filed = planned(plan_in_contexts(
-            spec("{tax_context}/{number}"),
-            TEXT,
-            &DocumentFields::default(),
-            &contexts,
-        ));
-
-        assert_eq!(filed.fields.tax_context, Some(TaxContext::named("company")));
-    }
-
-    #[test]
-    fn contexts_without_conditions_leave_an_open_context_open() {
-        let contexts = [any_context("company", Vec::new())];
-
-        let planning = plan_in_contexts(
-            open_rule("{tax_context}/{number}"),
-            TEXT,
-            &DocumentFields::default(),
-            &contexts,
-        );
-
-        assert_eq!(
-            reason(&planning),
-            ReviewReason::MissingField(Field::TaxContext)
-        );
-        let without_the_field = planned(plan_in_contexts(
-            open_rule("{number}"),
-            TEXT,
-            &DocumentFields::default(),
-            &contexts,
-        ));
-        assert_eq!(without_the_field.fields.tax_context, None);
-    }
-
-    #[test]
-    fn a_negated_condition_is_never_the_reason() {
-        let both = any_context(
-            "company",
-            vec![
-                Condition::not(ConditionKind::Substring, "agency b"),
-                substring("company a ltd"),
-            ],
-        );
-        let only_negated = any_context(
-            "company",
-            vec![Condition::not(ConditionKind::Substring, "agency b")],
-        );
-
-        let with_positive = planned(plan_in_contexts(
-            open_rule("{number}"),
-            TEXT,
-            &DocumentFields::default(),
-            &[both],
-        ));
-        let with_negated_only = planned(plan_in_contexts(
-            open_rule("{number}"),
-            TEXT,
-            &DocumentFields::default(),
-            &[only_negated],
-        ));
-
-        assert_eq!(
-            with_positive
-                .tax_context_assigned_by
-                .and_then(|assigned| assigned.reason),
-            Some(AssigningCondition {
-                kind: ConditionKind::Substring,
-                value: "company a ltd".to_owned()
-            })
-        );
-        assert_eq!(
-            with_negated_only.fields.tax_context,
-            Some(TaxContext::named("company"))
-        );
-        assert_eq!(
-            with_negated_only
-                .tax_context_assigned_by
-                .map(|assigned| assigned.reason),
-            Some(None)
-        );
-    }
-
-    #[test]
-    fn a_tax_context_the_document_already_has_stays_and_is_not_questioned() {
-        let known = DocumentFields {
-            tax_context: Some(TaxContext::named("private")),
-            ..DocumentFields::default()
-        };
-
-        let filed = planned(plan_in_contexts(
-            open_rule("{tax_context}/{number}"),
-            TEXT,
-            &known,
-            &[company_a_context(), private_context()],
-        ));
-
-        assert_eq!(filed.fields.tax_context, Some(TaxContext::named("private")));
-        assert_eq!(filed.tax_context_assigned_by, None);
-    }
-
-    #[test]
-    fn a_document_no_rule_matches_still_gets_a_clear_tax_context() {
-        let planning = plan_in_contexts(
-            spec("{number}"),
-            "Letter to Erika",
-            &DocumentFields::default(),
-            &[company_a_context(), private_context()],
-        );
-
-        let Planning::Review {
-            reason,
-            fields,
-            tax_context_assigned_by,
-            ..
-        } = planning
-        else {
-            panic!("expected a review");
-        };
-        assert_eq!(reason, ReviewReason::NoMatchingRule);
-        assert_eq!(fields.tax_context, Some(TaxContext::named("private")));
-        assert!(tax_context_assigned_by.is_some());
-    }
-
-    #[test]
-    fn a_more_fundamental_reason_keeps_precedence_over_an_unclear_tax_context() {
-        let unconfirmed = RuleSpec {
-            confirmed: false,
-            ..open_rule("{number}")
-        };
-        let contexts = [any_context("company", vec![substring("agency b")])];
-
-        let planning = plan_in_contexts(unconfirmed, TEXT, &DocumentFields::default(), &contexts);
-
-        assert_eq!(reason(&planning), ReviewReason::UnconfirmedRule);
-    }
-
-    #[test]
-    fn the_recipient_of_a_letter_assigns_the_tax_context() {
-        let letter = "Stadtwerke Musterstadt\nIBAN DE89 3704 0044 0532 0130 00\n12345 Musterstadt\n\n\
-            Firma A GmbH\nMusterweg 3\n54321 Andernorts\n\nInvoice 4711\nDate: 01.03.2026\nTotal: 1,00 €";
-        let firm = any_context(
-            "company",
-            vec![Condition::new(ConditionKind::Recipient, "Firma A GmbH")],
-        );
-        let known = DocumentFields::default();
-        let rule = RuleSpec {
-            conditions: RuleConditions::all_of(vec![substring("invoice")]),
-            tax_context: None,
-            ..spec("{tax_context}/{number}")
-        };
-
-        let filed = planned(plan_in_contexts(rule, letter, &known, &[firm]));
-
-        assert_eq!(filed.fields.tax_context, Some(TaxContext::named("company")));
-        assert_eq!(
-            filed
-                .tax_context_assigned_by
-                .and_then(|assigned| assigned.reason)
-                .map(|reason| (reason.kind, reason.value)),
-            Some((ConditionKind::Recipient, "Firma A GmbH".to_owned()))
-        );
     }
 
     #[test]

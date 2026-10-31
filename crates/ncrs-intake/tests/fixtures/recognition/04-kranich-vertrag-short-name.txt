@@ -1,6 +1,5 @@
 sender: Kranich Versicherung AG
 kind: Vertrag
-tax_context: none
 date: 2026-04-15
 number: HR-5521
 amount: 990 EUR

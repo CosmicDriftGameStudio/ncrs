@@ -1,6 +1,5 @@
 sender: Federkiel Bürobedarf e.K.
 kind: Angebot
-tax_context: company
 date: 2026-05-10
 number: AN-4410
 amount: 48000 EUR

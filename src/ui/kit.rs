@@ -14,7 +14,7 @@ use iced::widget::{
 use iced::{
     alignment, Background, Color, Element, Font, Length, Padding, Pixels, Radians, Rotation, Theme,
 };
-use ncrs_index::{ConditionKind, TaxContext, TaxContextEntry};
+use ncrs_index::ConditionKind;
 use std::sync::LazyLock;
 
 use super::format;
@@ -36,24 +36,6 @@ pub fn condition_kind_name(kind: ConditionKind) -> Msg {
         ConditionKind::Recipient => Msg::ConditionKindRecipient,
         ConditionKind::Folder => Msg::ConditionKindFolder,
     }
-}
-
-/// The picker choices for a tax context: the unset entry, each stored context
-/// by its name, then "no context".
-pub fn tax_context_choices<'a>(
-    unset_label: &'a str,
-    none_label: &'a str,
-    stored: &'a [TaxContextEntry],
-) -> Vec<(&'a str, Option<TaxContext>)> {
-    std::iter::once((unset_label, None))
-        .chain(stored.iter().map(|entry| {
-            (
-                entry.name.as_str(),
-                Some(TaxContext::named(&entry.short_name)),
-            )
-        }))
-        .chain(std::iter::once((none_label, Some(TaxContext::None))))
-        .collect()
 }
 
 /// Horizontal room inside a button, either side of the label.

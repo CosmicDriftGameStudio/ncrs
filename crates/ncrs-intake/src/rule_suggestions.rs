@@ -11,15 +11,15 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ncrs_index::{
     Condition, ConditionKind, DocumentFields, RuleConditions, RuleEvidence, RuleSpec,
-    SubtreePattern, TaxContext,
+    SubtreePattern,
 };
 
 use crate::archive_profile::{subtree_per_document, ArchiveDocument};
 use crate::conditions::{normalise_words, words_hold};
 
 /// A phrase must be in at least this share of its folder's documents, a
-/// sender's documents must be in one folder with at least this share, and kind,
-/// tax context and tags are taken over when this share of the documents agree.
+/// sender's documents must be in one folder with at least this share, and kind
+/// and tags are taken over when this share of the documents agree.
 pub const MIN_SHARE_IN_FOLDER_PERCENT: u32 = 80;
 /// ... and in at most this share of the documents outside the folder.
 pub const MAX_SHARE_ELSEWHERE_PERCENT: u32 = 5;
@@ -43,8 +43,8 @@ const FILLER_WORDS: [&str; 34] = [
 pub struct ArchiveText {
     pub document: ArchiveDocument,
     pub text: String,
-    /// What the index knows about the document: kind, tax context and tags
-    /// the suggestions take over.
+    /// What the index knows about the document: kind and tags the
+    /// suggestions take over.
     pub fields: DocumentFields,
     /// The canonical sender, stored or detected; decided by the caller.
     pub sender: Option<String>,
@@ -158,7 +158,6 @@ fn spec_of(
             .kind
             .clone()
             .unwrap_or_else(|| fallback_kind.to_owned()),
-        tax_context: shared.tax_context.clone(),
         tags: shared.tags.clone(),
         filing_pattern: pattern.to_owned(),
         confirmed: false,
@@ -169,9 +168,6 @@ fn spec_of(
 /// What at least `MIN_SHARE_IN_FOLDER_PERCENT` of some documents agree on.
 struct SharedFields {
     kind: Option<String>,
-    /// `None` when no context reaches the share: the suggested rule then
-    /// leaves it to the conditions of the contexts.
-    tax_context: Option<TaxContext>,
     tags: BTreeSet<String>,
 }
 
@@ -204,21 +200,6 @@ fn shared_fields(archive: &[ArchiveText], members: &[usize]) -> SharedFields {
             .flatten()
     });
 
-    let mut context_counts: BTreeMap<&str, usize> = BTreeMap::new();
-    for context in all_fields
-        .iter()
-        .filter_map(|fields| match fields.tax_context.as_ref()? {
-            TaxContext::Named(short_name) => Some(short_name.as_str()),
-            TaxContext::None => None,
-        })
-    {
-        *context_counts.entry(context).or_default() += 1;
-    }
-    let tax_context = context_counts
-        .into_iter()
-        .find(|&(_context, count)| at_least_share(count, total, MIN_SHARE_IN_FOLDER_PERCENT))
-        .map(|(context, _count)| TaxContext::named(context));
-
     let mut tag_counts: BTreeMap<&str, usize> = BTreeMap::new();
     for tag in all_fields.iter().flat_map(|fields| &fields.tags) {
         *tag_counts.entry(tag.as_str()).or_default() += 1;
@@ -229,11 +210,7 @@ fn shared_fields(archive: &[ArchiveText], members: &[usize]) -> SharedFields {
         .map(|(tag, _count)| tag.to_owned())
         .collect();
 
-    SharedFields {
-        kind,
-        tax_context,
-        tags,
-    }
+    SharedFields { kind, tags }
 }
 
 /// One candidate per sender whose documents lie mostly in one folder with a
@@ -847,38 +824,6 @@ mod tests {
     }
 
     #[test]
-    fn the_tax_context_is_taken_from_the_fields_when_enough_documents_agree() {
-        let with_private = |private: usize| {
-            let mut archive = filed_by_company_a(folder("Insurance", 5, insurance));
-            for entry in archive.iter_mut().take(private) {
-                entry.fields.tax_context = Some(TaxContext::named("private"));
-            }
-            only_sender_candidate(&suggest(&archive))
-                .spec
-                .tax_context
-                .clone()
-        };
-
-        assert_eq!(with_private(4), Some(TaxContext::named("private")));
-        assert_eq!(with_private(3), None);
-    }
-
-    #[test]
-    fn any_context_the_documents_share_is_suggested_not_only_the_two_standard_ones() {
-        let mut archive = filed_by_company_a(folder("Insurance", 5, insurance));
-        for entry in archive.iter_mut().take(4) {
-            entry.fields.tax_context = Some(TaxContext::named("company-b"));
-        }
-
-        let candidates = suggest(&archive);
-
-        assert_eq!(
-            only_sender_candidate(&candidates).spec.tax_context,
-            Some(TaxContext::named("company-b"))
-        );
-    }
-
-    #[test]
     fn the_kind_is_taken_from_the_fields_when_enough_documents_agree() {
         let with_kind = |named: usize| {
             let mut archive = filed_by_company_a(folder("Insurance", 5, insurance));
@@ -925,10 +870,9 @@ mod tests {
     }
 
     #[test]
-    fn phrase_rules_take_kind_context_and_tags_from_the_fields_and_name_their_folder() {
+    fn phrase_rules_take_kind_and_tags_from_the_fields_and_name_their_folder() {
         let mut archive = folder("Insurance", 5, insurance);
         for entry in &mut archive {
-            entry.fields.tax_context = Some(TaxContext::named("company"));
             entry.fields.tags.insert("insurance".to_owned());
         }
 
@@ -938,10 +882,6 @@ mod tests {
             .iter()
             .find(|candidate| candidate.phrase == "company a ltd")
             .expect("the phrase rule");
-        assert_eq!(
-            candidate.spec.tax_context,
-            Some(TaxContext::named("company"))
-        );
         assert_eq!(
             candidate.spec.tags,
             BTreeSet::from(["insurance".to_owned()])

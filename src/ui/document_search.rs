@@ -4,7 +4,7 @@
 
 use iced::widget::{column, container, row, text};
 use iced::{alignment, Element, Length, Size};
-use ncrs_index::{DocumentFields, TaxContext};
+use ncrs_index::DocumentFields;
 
 use super::document_preview;
 use super::frame::{self, DialogSize, Frame, KeyHints};
@@ -123,11 +123,6 @@ fn facet_rows<'a>(
         count: *count,
         value: FacetValue::Year(*year),
     });
-    let tax_contexts = counts.tax_contexts.iter().map(|(context, count)| Chip {
-        label: tax_context_name(state, context, lang),
-        count: *count,
-        value: FacetValue::TaxContext(context.clone()),
-    });
     let senders = counts.senders.iter().map(|(name, count)| Chip {
         label: name.clone(),
         count: *count,
@@ -146,10 +141,6 @@ fn facet_rows<'a>(
     let mut rows = Vec::new();
     for (label, chips) in [
         (Msg::DocumentSearchFacetYear, years.collect::<Vec<_>>()),
-        (
-            Msg::DocumentSearchFacetTaxContext,
-            tax_contexts.collect::<Vec<_>>(),
-        ),
         (Msg::DocumentSearchFacetSender, senders.collect::<Vec<_>>()),
         (Msg::DocumentSearchFacetKind, kinds.collect::<Vec<_>>()),
         (Msg::DocumentSearchFacetTags, tags.collect::<Vec<_>>()),
@@ -159,17 +150,6 @@ fn facet_rows<'a>(
         }
     }
     rows
-}
-
-fn tax_context_name(state: &DocumentSearch, context: &TaxContext, lang: Language) -> String {
-    match context {
-        TaxContext::None => lang.text(Msg::ReviewListTaxNone).to_owned(),
-        TaxContext::Named(short_name) => state
-            .tax_contexts()
-            .iter()
-            .find(|entry| entry.short_name.eq_ignore_ascii_case(short_name))
-            .map_or_else(|| short_name.clone(), |entry| entry.name.clone()),
-    }
 }
 
 fn facet_row<'a>(

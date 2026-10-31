@@ -3,8 +3,8 @@
 //! narrowed list. No widgets and no tasks; `App` owns it and changes it from
 //! `update`, the view is `ui::document_search`.
 //!
-//! The facets mirror what a report can save: at most one value of year, tax
-//! context, sender and kind, and any number of tags that must all be there.
+//! The facets mirror what a report can save: at most one value of year,
+//! sender and kind, and any number of tags that must all be there.
 //! Names are compared like the index compares them, trimmed and without regard
 //! to case.
 
@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use chrono::Datelike as _;
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{QuerySpec, TaxContext, TaxContextEntry, SNIPPET_MARK_END, SNIPPET_MARK_START};
+use ncrs_index::{QuerySpec, SNIPPET_MARK_END, SNIPPET_MARK_START};
 
 use crate::document_preview::{DocumentPreview, PreviewContent, PreviewRequest};
 use crate::list_window::ListWindow;
@@ -103,7 +103,6 @@ pub fn parse_snippet(marked: &str) -> Snippet {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FacetSelection {
     pub year: Option<i32>,
-    pub tax_context: Option<TaxContext>,
     pub sender: Option<String>,
     pub kind: Option<String>,
     pub tags: BTreeSet<String>,
@@ -112,7 +111,6 @@ pub struct FacetSelection {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FacetValue {
     Year(i32),
-    TaxContext(TaxContext),
     Sender(String),
     Kind(String),
     Tag(String),
@@ -122,7 +120,6 @@ pub enum FacetValue {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Facet {
     Year,
-    TaxContext,
     Sender,
     Kind,
     Tags,
@@ -131,10 +128,6 @@ enum Facet {
 /// How the index compares names: trimmed, without regard to case.
 fn name_key(name: &str) -> String {
     name.trim().to_lowercase()
-}
-
-fn tax_context_key(tax_context: &TaxContext) -> String {
-    name_key(tax_context.as_str())
 }
 
 impl FacetSelection {
@@ -151,10 +144,6 @@ impl FacetSelection {
         };
         match value {
             FacetValue::Year(year) => self.year == Some(*year),
-            FacetValue::TaxContext(other) => self
-                .tax_context
-                .as_ref()
-                .is_some_and(|held| tax_context_key(held) == tax_context_key(other)),
             FacetValue::Sender(other) => same(&self.sender, other),
             FacetValue::Kind(other) => same(&self.kind, other),
             FacetValue::Tag(other) => self
@@ -170,13 +159,6 @@ impl FacetSelection {
         match value {
             FacetValue::Year(year) => {
                 self.year = (self.year != Some(year)).then_some(year);
-            }
-            FacetValue::TaxContext(chosen) => {
-                let chosen_already = self
-                    .tax_context
-                    .as_ref()
-                    .is_some_and(|held| tax_context_key(held) == tax_context_key(&chosen));
-                self.tax_context = (!chosen_already).then_some(chosen);
             }
             FacetValue::Sender(chosen) => {
                 let chosen_already = self
@@ -212,19 +194,6 @@ impl FacetSelection {
                 return false;
             }
         }
-        if let Some(wanted) = self
-            .tax_context
-            .as_ref()
-            .filter(|_| counts(Facet::TaxContext))
-        {
-            let same = fields
-                .tax_context
-                .as_ref()
-                .is_some_and(|held| tax_context_key(held) == tax_context_key(wanted));
-            if !same {
-                return false;
-            }
-        }
         let same_name = |wanted: &Option<String>, held: &Option<String>| {
             wanted.as_ref().is_none_or(|wanted_name| {
                 held.as_ref()
@@ -256,7 +225,6 @@ impl FacetSelection {
 pub struct FacetCounts {
     /// Newest year first.
     pub years: Vec<(i32, usize)>,
-    pub tax_contexts: Vec<(TaxContext, usize)>,
     pub senders: Vec<(String, usize)>,
     pub kinds: Vec<(String, usize)>,
     pub tags: Vec<(String, usize)>,
@@ -305,15 +273,6 @@ pub fn facet_counts(hits: &[QueryHit], selection: &FacetSelection) -> FacetCount
     );
     years.sort_by(|(first, _), (second, _)| second.cmp(first));
 
-    let tax_contexts = tally(
-        among(Some(Facet::TaxContext))
-            .filter_map(|hit| hit.fields.tax_context.clone())
-            .map(|tax_context| (tax_context_key(&tax_context), tax_context)),
-        selection
-            .tax_context
-            .iter()
-            .map(|tax_context| (tax_context_key(tax_context), tax_context.clone())),
-    );
     let senders = tally(
         among(Some(Facet::Sender))
             .filter_map(|hit| hit.fields.sender.as_deref())
@@ -338,7 +297,6 @@ pub fn facet_counts(hits: &[QueryHit], selection: &FacetSelection) -> FacetCount
 
     FacetCounts {
         years,
-        tax_contexts,
         senders,
         kinds,
         tags,
@@ -370,7 +328,6 @@ pub struct DocumentSearch {
     /// The index is being asked; the view takes no new task.
     busy: bool,
     problem: Option<String>,
-    tax_contexts: Vec<TaxContextEntry>,
     /// By the path of the document; only while words are typed.
     snippets: HashMap<PathBuf, Snippet>,
     preview: DocumentPreview,
@@ -389,7 +346,6 @@ impl DocumentSearch {
             window: ListWindow::default(),
             busy: true,
             problem: None,
-            tax_contexts: Vec::new(),
             snippets: HashMap::new(),
             preview: DocumentPreview::default(),
         }
@@ -413,14 +369,6 @@ impl DocumentSearch {
 
     pub fn counts(&self) -> &FacetCounts {
         &self.counts
-    }
-
-    pub fn tax_contexts(&self) -> &[TaxContextEntry] {
-        &self.tax_contexts
-    }
-
-    pub fn set_tax_contexts(&mut self, tax_contexts: Vec<TaxContextEntry>) {
-        self.tax_contexts = tax_contexts;
     }
 
     /// The documents the words found, before the facets narrow them.
@@ -457,7 +405,6 @@ impl DocumentSearch {
         let text = self.text.trim();
         QuerySpec {
             year: selection.year,
-            tax_context: selection.tax_context.clone(),
             sender: selection.sender.clone(),
             kind: selection.kind.clone(),
             tags: selection.tags.clone(),
@@ -639,7 +586,6 @@ pub mod tests {
             fields: DocumentFields {
                 sender: sender.map(str::to_owned),
                 kind: kind.map(str::to_owned),
-                tax_context: Some(TaxContext::named("company")),
                 date: date.and_then(|(year, month, day)| NaiveDate::from_ymd_opt(year, month, day)),
                 tags: tags.iter().map(|tag| (*tag).to_owned()).collect(),
                 amount: Some(Amount {
@@ -782,10 +728,6 @@ pub mod tests {
                 ("contract".to_owned(), 1),
                 ("letter".to_owned(), 1)
             ]
-        );
-        assert_eq!(
-            search.counts().tax_contexts,
-            [(TaxContext::named("company"), 6)]
         );
     }
 

@@ -2681,7 +2681,6 @@ mod review_list_card {
     use crate::messages::{HermesFocus, HermesPage, ReviewListMessage};
     use crate::review_list::tests::{
         default_pattern_list, loaded_list, long_list, nothing_recognised_list, origins_list,
-        tax_context_list,
     };
     use crate::review_list::{FormField, ReviewList};
     use crate::review_work::ConfirmOutcome;
@@ -2715,7 +2714,6 @@ mod review_list_card {
             "scan-2.pdf",
             "No rule matches",
             "Sender",
-            "Tax context",
             "Filing pattern",
             "Will be filed as",
             "Confirm",
@@ -2829,10 +2827,6 @@ mod review_list_card {
         );
         assert_eq!(form.conditions.rows[0].value, "Company A");
         assert_eq!(form.kind, "invoice");
-        assert_eq!(
-            form.tax_context,
-            Some(ncrs_index::TaxContext::named("company"))
-        );
         assert_eq!(form.tags, "");
         assert_eq!(form.pattern, "{sender}/{date}_{kind}");
     }
@@ -2876,10 +2870,6 @@ mod review_list_card {
         assert_eq!(form.target, crate::rule_form::RuleFormTarget::FromDocument);
         assert_eq!(form.conditions.rows[0].value, "Company A");
         assert_eq!(form.kind, "invoice");
-        assert_eq!(
-            form.tax_context,
-            Some(ncrs_index::TaxContext::named("company"))
-        );
         assert_eq!(form.tags, "tax");
         assert_eq!(form.pattern, "{sender}/{date}_{kind}");
         // Opened from a panel: there is no page to go back to.
@@ -3053,12 +3043,7 @@ mod review_list_card {
 
     #[test]
     fn each_field_names_where_its_value_comes_from() {
-        for label in [
-            "From a rule",
-            "AI, 82 % sure",
-            "By hand",
-            "Tax context from condition (Recipient: Firma A GmbH)",
-        ] {
+        for label in ["From a rule", "AI, 82 % sure", "By hand"] {
             assert!(shows(origins_list(), label), "{label}");
         }
     }
@@ -3193,23 +3178,6 @@ mod review_list_card {
     fn the_default_pattern_matches_its_snapshots() {
         matches_snapshot(default_pattern_list(), "review_list_default_pattern_en");
         matches_snapshot(default_pattern_list(), "review_list_default_pattern_de");
-    }
-
-    #[test]
-    fn the_tax_context_reasons_are_named_and_the_assigning_condition_is_shown() {
-        for label in [
-            "No tax context",
-            "Several tax contexts",
-            "Tax context from condition (Recipient: Firma A GmbH)",
-        ] {
-            assert!(shows(tax_context_list(), label), "{label}");
-        }
-    }
-
-    #[test]
-    fn the_tax_context_reasons_match_their_snapshots() {
-        matches_snapshot(tax_context_list(), "review_list_tax_context_en");
-        matches_snapshot(tax_context_list(), "review_list_tax_context_de");
     }
 
     fn without_rules(list: ReviewList, language: Language) -> App {
@@ -3399,7 +3367,7 @@ pub mod document_search_card {
         drop(
             app.update(Message::SavedQueries(SavedQueriesMessage::Loaded {
                 generation,
-                result: Ok((Vec::new(), Vec::new())),
+                result: Ok(Vec::new()),
             })),
         );
         let form = app.saved_queries_for_test().unwrap().form();
@@ -3544,7 +3512,6 @@ mod saved_queries_card {
             "Company A 2024",
             "Taxes 2023",
             "Year",
-            "Tax context",
             "Full text",
             "New",
             "Save",
@@ -3566,7 +3533,6 @@ mod saved_queries_card {
 
     fn empty_list() -> SavedQueries {
         let mut list = SavedQueries::new(THIS_YEAR);
-        list.set_tax_contexts(crate::review_list::tests::stored_tax_contexts());
         list.loaded(Vec::new());
         list
     }
@@ -3740,9 +3706,7 @@ mod saved_queries_card {
 mod rules_card {
     use std::collections::BTreeSet;
 
-    use ncrs_index::{
-        Condition, ConditionKind, Rule, RuleConditions, RuleOrigin, RuleSpec, TaxContext,
-    };
+    use ncrs_index::{Condition, ConditionKind, Rule, RuleConditions, RuleOrigin, RuleSpec};
 
     use super::*;
     use crate::condition_editor::ConditionEdit;
@@ -3759,11 +3723,11 @@ mod rules_card {
         id: i64,
         origin: RuleOrigin,
         conditions: RuleConditions,
-        spec: (&str, Option<TaxContext>, &[&str]),
+        spec: (&str, &[&str]),
         enabled: bool,
         hits: u64,
     ) -> ListedRule {
-        let (kind, tax_context, tags) = spec;
+        let (kind, tags) = spec;
         ListedRule {
             rule: Rule {
                 id: rule_id(usize::try_from(id).unwrap()),
@@ -3775,7 +3739,6 @@ mod rules_card {
                     extract_date: None,
                     extract_amount: None,
                     kind: kind.to_owned(),
-                    tax_context,
                     tags: tags
                         .iter()
                         .map(|tag| (*tag).to_owned())
@@ -3801,7 +3764,7 @@ mod rules_card {
                         Condition::new(ConditionKind::Sender, "Company A"),
                         Condition::new(ConditionKind::Word, "invoice"),
                     ]),
-                    ("Invoice", Some(TaxContext::named("company")), &["tax"]),
+                    ("Invoice", &["tax"]),
                     true,
                     12,
                 ),
@@ -3812,7 +3775,7 @@ mod rules_card {
                         Condition::new(ConditionKind::Substring, "electricity"),
                         Condition::new(ConditionKind::Iban, "DE89 3704 0044 0532 0130 00"),
                     ]),
-                    ("Contract", Some(TaxContext::None), &[]),
+                    ("Contract", &[]),
                     true,
                     1,
                 ),
@@ -3823,12 +3786,11 @@ mod rules_card {
                         Condition::not(ConditionKind::Word, "reminder"),
                         Condition::new(ConditionKind::Folder, "Inbox/Post"),
                     ]),
-                    ("Receipt", None, &[]),
+                    ("Receipt", &[]),
                     false,
                     0,
                 ),
             ],
-            tax_contexts: crate::review_list::tests::stored_tax_contexts(),
         });
         page
     }
@@ -4777,7 +4739,6 @@ mod reorganisation_plan_card {
             generation: 1,
             result: Ok(RulesLoad {
                 rules: vec![listed(3, 0), listed(2, 1), listed(1, 2)],
-                tax_contexts: Vec::new(),
             }),
         }));
 
@@ -5630,8 +5591,6 @@ mod ai_status_row {
 mod settings_tab {
     use std::path::PathBuf;
 
-    use crate::condition_editor::ConditionEdit;
-
     use ncrs_intake::LocationMode;
 
     use super::*;
@@ -5639,7 +5598,6 @@ mod settings_tab {
     use crate::fs::OpenKind;
     use crate::messages::{SettingChange, SettingField, SettingsFeature, SettingsMessage};
     use crate::palette::ThemePreset;
-    use crate::tax_contexts::TaxContextsState;
 
     fn hermes_config() -> Filing {
         Filing {
@@ -5695,126 +5653,12 @@ mod settings_tab {
         }
     }
 
-    fn ready_contexts() -> TaxContextsState {
-        let mut state = TaxContextsState::default();
-        state.loaded(Ok(crate::review_list::tests::stored_tax_contexts()));
-        state
-    }
-
-    fn tax_contexts_app(state: TaxContextsState) -> App {
-        App::with_settings_tax_contexts(hermes_config(), state)
-    }
-
-    fn short_name_id(state: &TaxContextsState, short_name: &str) -> ncrs_index::TaxContextId {
-        state
-            .entries()
-            .iter()
-            .find(|entry| entry.short_name == short_name)
-            .unwrap()
-            .id
-    }
-
     #[test]
     fn the_filing_page_matches_its_snapshots() {
-        both_languages(|| tax_contexts_app(ready_contexts()), "settings_hermes");
-    }
-
-    #[test]
-    fn the_tax_contexts_without_any_match_their_snapshots() {
-        let mut empty = TaxContextsState::default();
-        empty.loaded(Ok(Vec::new()));
         both_languages(
-            || tax_contexts_app(empty.clone()),
-            "settings_tax_contexts_empty",
+            || App::with_settings_open(SettingsFeature::Hermes, hermes_config()),
+            "settings_hermes",
         );
-    }
-
-    #[test]
-    fn the_delete_question_of_a_used_context_matches_its_snapshots() {
-        let mut state = ready_contexts();
-        let company = short_name_id(&state, "company");
-        state.begin_delete(company);
-        state.usage_loaded(
-            company,
-            Ok(ncrs_index::TaxContextUsage {
-                documents: 12,
-                rules: 2,
-                saved_queries: 1,
-            }),
-        );
-        state.choose_move_to(ncrs_index::TaxContext::named("private"));
-        both_languages(
-            || tax_contexts_app(state.clone()),
-            "settings_tax_context_delete",
-        );
-    }
-
-    #[test]
-    fn the_form_with_a_refused_short_name_matches_its_snapshots() {
-        let mut state = ready_contexts();
-        state.begin_add();
-        state.edit_name("Firma B".to_owned());
-        state.edit_short_name("company/b".to_owned());
-        state.save_request();
-        state.saved(Err(crate::tax_context_work::TaxContextFailure::Refused(
-            ncrs_index::TaxContextProblem::ShortNameForbiddenCharacter('/'),
-        )));
-        both_languages(
-            || tax_contexts_app(state.clone()),
-            "settings_tax_context_edit",
-        );
-    }
-
-    fn contexts_with_conditions() -> (TaxContextsState, ncrs_index::TaxContextId) {
-        let mut state = ready_contexts();
-        let company = short_name_id(&state, "company");
-        state.begin_conditions(company);
-        state.conditions_loaded(
-            company,
-            Ok(ncrs_index::RuleConditions::any_of(vec![
-                ncrs_index::Condition::new(ncrs_index::ConditionKind::Recipient, "Firma A GmbH"),
-                ncrs_index::Condition::new(ncrs_index::ConditionKind::Word, "Firma A"),
-            ])),
-        );
-        for edit in [
-            ConditionEdit::Add,
-            ConditionEdit::Kind(2, ncrs_index::ConditionKind::Iban),
-            ConditionEdit::Value(2, "DE02 1203 0000 0000 2020 51".to_owned()),
-        ] {
-            state.edit_condition(edit);
-        }
-        (state, company)
-    }
-
-    #[test]
-    fn the_condition_editor_matches_its_snapshots() {
-        let (state, _) = contexts_with_conditions();
-        both_languages(
-            || tax_contexts_app(state.clone()),
-            "settings_tax_context_conditions",
-        );
-    }
-
-    #[test]
-    fn the_condition_editor_names_the_order_and_the_choice_of_any_or_all() {
-        let (state, _) = contexts_with_conditions();
-        let app = tax_contexts_app(state).in_language(Language::English);
-
-        simulator(&app).find("Conditions of Firma").unwrap();
-        simulator(&app).find("one condition holds").unwrap();
-        simulator(&app).find("Firma A GmbH").unwrap();
-    }
-
-    #[test]
-    fn the_delete_question_of_an_unused_context_names_that_nothing_uses_it() {
-        let mut state = ready_contexts();
-        let private = short_name_id(&state, "private");
-        state.begin_delete(private);
-        state.usage_loaded(private, Ok(ncrs_index::TaxContextUsage::default()));
-        let app = tax_contexts_app(state).in_language(Language::English);
-
-        simulator(&app).find("Delete Privat?").unwrap();
-        simulator(&app).find("Nothing uses it.").unwrap();
     }
 
     fn both_languages(app: impl Fn() -> App, name: &str) {

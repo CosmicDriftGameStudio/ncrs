@@ -8,18 +8,16 @@ use crate::index::Index;
 use crate::model::{
     corrupt, currency_from_column, date_from_column, hash_from_column, timestamp_from_column,
     Amount, ContentHash, Document, DocumentFields, DocumentId, DocumentSource, DocumentStatus,
-    Field, FieldOrigin, FieldOrigins, FileStamp, NewDocument, TaxContext,
+    Field, FieldOrigin, FieldOrigins, FileStamp, NewDocument,
 };
 use crate::names::{name_id, optional_name_id, NameTable};
-use crate::tax_contexts::optional_tax_context_id;
 
 pub const DOCUMENT_COLUMNS: &str = "SELECT d.id, d.hash, d.path, d.source, d.received_at, d.status,
-        s.name, k.name, tc.short_name, d.document_date, d.document_number,
+        s.name, k.name, d.document_date, d.document_number,
         d.amount_minor, d.currency, d.file_size, d.file_mtime, d.missing_since
     FROM document d
     LEFT JOIN sender s ON s.id = d.sender_id
-    LEFT JOIN document_kind k ON k.id = d.kind_id
-    LEFT JOIN tax_context tc ON tc.id = d.tax_context_id";
+    LEFT JOIN document_kind k ON k.id = d.kind_id";
 
 /// A row as stored, before its text columns are parsed into the model types.
 pub struct DocumentRow {
@@ -31,7 +29,6 @@ pub struct DocumentRow {
     status: String,
     sender: Option<String>,
     kind: Option<String>,
-    tax_context: Option<String>,
     date: Option<String>,
     number: Option<String>,
     amount_minor: Option<i64>,
@@ -56,14 +53,13 @@ impl DocumentRow {
             status: row.get(5)?,
             sender: row.get(6)?,
             kind: row.get(7)?,
-            tax_context: row.get(8)?,
-            date: row.get(9)?,
-            number: row.get(10)?,
-            amount_minor: row.get(11)?,
-            currency: row.get(12)?,
-            file_size: row.get(13)?,
-            file_mtime: row.get(14)?,
-            missing_since: row.get(15)?,
+            date: row.get(8)?,
+            number: row.get(9)?,
+            amount_minor: row.get(10)?,
+            currency: row.get(11)?,
+            file_size: row.get(12)?,
+            file_mtime: row.get(13)?,
+            missing_since: row.get(14)?,
         })
     }
 
@@ -85,7 +81,6 @@ impl DocumentRow {
             fields: DocumentFields {
                 sender: self.sender,
                 kind: self.kind,
-                tax_context: self.tax_context.map(TaxContext::from_short_name),
                 date: self.date.as_deref().map(date_from_column).transpose()?,
                 number: self.number,
                 amount,
@@ -180,7 +175,7 @@ impl Index {
         let tx = self.conn_mut().transaction()?;
         let stored = tx
             .query_row(
-                "SELECT sender_id, kind_id, tax_context_id, document_date, document_number,
+                "SELECT sender_id, kind_id, document_date, document_number,
                      amount_minor, currency
                  FROM document WHERE id = ?1",
                 [id.get()],
@@ -190,7 +185,6 @@ impl Index {
             .ok_or(IndexError::DocumentNotFound(id))?;
         let sender_id = optional_name_id(&tx, NameTable::Sender, fields.sender.as_deref())?;
         let kind_id = optional_name_id(&tx, NameTable::Kind, fields.kind.as_deref())?;
-        let tax_context_id = optional_tax_context_id(&tx, fields.tax_context.as_ref())?;
         let date = fields.date.map(|date| date.to_string());
         let amount_minor = fields.amount.as_ref().map(|amount| amount.minor_units);
         let currency = fields
@@ -204,11 +198,6 @@ impl Index {
                 sender_id.is_some(),
             ),
             (Field::Kind, stored.kind_id != kind_id, kind_id.is_some()),
-            (
-                Field::TaxContext,
-                stored.tax_context_id != tax_context_id,
-                tax_context_id.is_some(),
-            ),
             (Field::Date, stored.date != date, date.is_some()),
             (
                 Field::Number,
@@ -222,14 +211,13 @@ impl Index {
             ),
         ];
         tx.execute(
-            "UPDATE document SET sender_id = ?2, kind_id = ?3, tax_context_id = ?4,
-                 document_date = ?5, document_number = ?6, amount_minor = ?7, currency = ?8
+            "UPDATE document SET sender_id = ?2, kind_id = ?3,
+                 document_date = ?4, document_number = ?5, amount_minor = ?6, currency = ?7
              WHERE id = ?1",
             params![
                 id.get(),
                 sender_id,
                 kind_id,
-                tax_context_id,
                 date,
                 fields.number,
                 amount_minor,
@@ -259,7 +247,7 @@ impl Index {
     /// Fields without a stored origin read as `FieldOrigin::Unknown`.
     pub fn field_origins(&self, id: DocumentId) -> Result<FieldOrigins, IndexError> {
         let mut statement = self.connection().prepare(
-            "SELECT field, origin, rule_id, confidence, condition_kind, condition_value
+            "SELECT field, origin, rule_id, confidence
              FROM document_field_origin
              WHERE document_id = ?1",
         )?;
@@ -270,25 +258,18 @@ impl Index {
                     row.get::<_, String>(1)?,
                     row.get::<_, Option<i64>>(2)?,
                     row.get::<_, Option<i64>>(3)?,
-                    row.get::<_, Option<String>>(4)?,
-                    row.get::<_, Option<String>>(5)?,
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
         let mut stored = HashMap::new();
-        for (field_name, origin, rule_id, confidence, condition_kind, condition_value) in rows {
+        for (field_name, origin, rule_id, confidence) in rows {
             let field = Field::ALL
                 .into_iter()
                 .find(|candidate| candidate.as_str() == field_name)
                 .ok_or_else(|| corrupt("document_field_origin.field", &field_name))?;
             stored.insert(
                 field,
-                FieldOrigin::from_columns(
-                    &origin,
-                    rule_id,
-                    confidence,
-                    condition_kind.zip(condition_value),
-                )?,
+                FieldOrigin::from_columns(&origin, rule_id, confidence)?,
             );
         }
         Ok(FieldOrigins::new(stored))
@@ -439,7 +420,6 @@ impl Index {
 struct StoredFields {
     sender_id: Option<i64>,
     kind_id: Option<i64>,
-    tax_context_id: Option<i64>,
     date: Option<String>,
     number: Option<String>,
     amount_minor: Option<i64>,
@@ -451,11 +431,10 @@ impl StoredFields {
         Ok(Self {
             sender_id: row.get(0)?,
             kind_id: row.get(1)?,
-            tax_context_id: row.get(2)?,
-            date: row.get(3)?,
-            number: row.get(4)?,
-            amount_minor: row.get(5)?,
-            currency: row.get(6)?,
+            date: row.get(2)?,
+            number: row.get(3)?,
+            amount_minor: row.get(4)?,
+            currency: row.get(5)?,
         })
     }
 }
@@ -476,27 +455,14 @@ fn store_field_origin(
     };
     let rule_id = origin.as_ref().and_then(FieldOrigin::rule_column);
     let confidence = origin.as_ref().and_then(FieldOrigin::confidence_column);
-    let condition_kind = origin.as_ref().and_then(FieldOrigin::condition_kind_column);
-    let condition_value = origin
-        .as_ref()
-        .and_then(FieldOrigin::condition_value_column);
     conn.execute(
         "INSERT INTO document_field_origin
-             (document_id, field, origin, rule_id, confidence, condition_kind, condition_value)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             (document_id, field, origin, rule_id, confidence)
+         VALUES (?1, ?2, ?3, ?4, ?5)
          ON CONFLICT (document_id, field) DO UPDATE SET
              origin = excluded.origin, rule_id = excluded.rule_id,
-             confidence = excluded.confidence, condition_kind = excluded.condition_kind,
-             condition_value = excluded.condition_value",
-        params![
-            id.get(),
-            field.as_str(),
-            kind,
-            rule_id,
-            confidence,
-            condition_kind,
-            condition_value
-        ],
+             confidence = excluded.confidence",
+        params![id.get(), field.as_str(), kind, rule_id, confidence],
     )?;
     Ok(())
 }
@@ -603,7 +569,6 @@ mod tests {
         let fields = DocumentFields {
             sender: Some("Company A".to_owned()),
             kind: Some("Invoice".to_owned()),
-            tax_context: Some(TaxContext::named("company")),
             date: NaiveDate::from_ymd_opt(2026, 2, 28),
             number: Some("4711".to_owned()),
             amount: Some(Amount {
@@ -880,7 +845,6 @@ mod tests {
         DocumentFields {
             sender: Some("Company A".to_owned()),
             kind: Some("Invoice".to_owned()),
-            tax_context: Some(TaxContext::named("company")),
             date: NaiveDate::from_ymd_opt(2026, 2, 28),
             number: Some("4711".to_owned()),
             amount: Some(Amount {
@@ -904,11 +868,11 @@ mod tests {
         let (_dir, mut index) = encrypted_index();
         let id = index.insert_document(&new_document(1)).unwrap();
 
-        assert_eq!(all_origins(&index, id), [const { FieldOrigin::Unknown }; 6]);
+        assert_eq!(all_origins(&index, id), [const { FieldOrigin::Unknown }; 5]);
         index
             .set_document_fields(id, &all_fields(), |_| FieldOrigin::Unknown)
             .unwrap();
-        assert_eq!(all_origins(&index, id), [const { FieldOrigin::Unknown }; 6]);
+        assert_eq!(all_origins(&index, id), [const { FieldOrigin::Unknown }; 5]);
     }
 
     #[test]
@@ -942,15 +906,12 @@ mod tests {
             .set_document_fields(id, &all_fields(), |field| match field {
                 Field::Sender => FieldOrigin::Rule(Some(rule)),
                 Field::Kind => FieldOrigin::Ai {
-                    confidence_percent: 87,
-                },
-                Field::TaxContext => FieldOrigin::Manual,
-                Field::Date => FieldOrigin::Ai {
                     confidence_percent: 0,
                 },
-                Field::Number => FieldOrigin::Ai {
+                Field::Date => FieldOrigin::Ai {
                     confidence_percent: 100,
                 },
+                Field::Number => FieldOrigin::Manual,
                 Field::Amount => FieldOrigin::Unknown,
             })
             .unwrap();
@@ -960,15 +921,12 @@ mod tests {
             [
                 FieldOrigin::Rule(Some(rule)),
                 FieldOrigin::Ai {
-                    confidence_percent: 87
-                },
-                FieldOrigin::Manual,
-                FieldOrigin::Ai {
                     confidence_percent: 0
                 },
                 FieldOrigin::Ai {
                     confidence_percent: 100
                 },
+                FieldOrigin::Manual,
                 FieldOrigin::Unknown,
             ]
         );
@@ -1000,7 +958,6 @@ mod tests {
         assert_eq!(
             all_origins(&index, id),
             [
-                FieldOrigin::Manual,
                 FieldOrigin::Manual,
                 FieldOrigin::Manual,
                 FieldOrigin::Manual,
@@ -1065,7 +1022,7 @@ mod tests {
 
         assert_eq!(
             all_origins(&index, id),
-            [const { FieldOrigin::Rule(None) }; 6]
+            [const { FieldOrigin::Rule(None) }; 5]
         );
     }
 

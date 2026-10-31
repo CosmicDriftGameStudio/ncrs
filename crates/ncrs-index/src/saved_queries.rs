@@ -7,9 +7,8 @@ use rusqlite::{params, params_from_iter, Connection, OptionalExtension as _};
 use crate::documents::{DocumentRow, DOCUMENT_COLUMNS};
 use crate::error::IndexError;
 use crate::index::Index;
-use crate::model::{Document, DocumentId, QuerySpec, SavedQuery, SavedQueryId, TaxContext};
+use crate::model::{Document, DocumentId, QuerySpec, SavedQuery, SavedQueryId};
 use crate::names::{name_id, NameTable};
-use crate::tax_contexts::{optional_tax_context_id, tax_context_id};
 
 /// How many documents the full-text part of a query looks at, best match
 /// first. More than any one person's archive holds, so in practice it cuts
@@ -91,14 +90,12 @@ impl Index {
         let name = clean_name(raw_name)?;
         let tx = self.conn_mut().transaction()?;
         require_free_name(&tx, name, None)?;
-        let tax_context_id = optional_tax_context_id(&tx, spec.tax_context.as_ref())?;
         tx.execute(
-            "INSERT INTO saved_query (name, year, tax_context_id, kind, full_text, created_at, sender)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO saved_query (name, year, kind, full_text, created_at, sender)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 name,
                 spec.year,
-                tax_context_id,
                 blank_to_none(&spec.kind),
                 full_text_words(spec),
                 Utc::now().timestamp(),
@@ -120,16 +117,14 @@ impl Index {
         let name = clean_name(raw_name)?;
         let tx = self.conn_mut().transaction()?;
         require_free_name(&tx, name, Some(id))?;
-        let tax_context_id = optional_tax_context_id(&tx, spec.tax_context.as_ref())?;
         let changed = tx.execute(
-            "UPDATE saved_query SET name = ?2, year = ?3, tax_context_id = ?4, kind = ?5,
-                 full_text = ?6, sender = ?7
+            "UPDATE saved_query SET name = ?2, year = ?3, kind = ?4,
+                 full_text = ?5, sender = ?6
              WHERE id = ?1",
             params![
                 id.get(),
                 name,
                 spec.year,
-                tax_context_id,
                 blank_to_none(&spec.kind),
                 full_text_words(spec),
                 blank_to_none(&spec.sender),
@@ -154,8 +149,7 @@ impl Index {
     /// Ordered by name.
     pub fn saved_queries(&self) -> Result<Vec<SavedQuery>, IndexError> {
         let mut statement = self.connection().prepare(
-            "SELECT q.id, q.name, q.year, tc.short_name, q.kind, q.full_text, q.sender FROM saved_query q
-             LEFT JOIN tax_context tc ON tc.id = q.tax_context_id
+            "SELECT q.id, q.name, q.year, q.kind, q.full_text, q.sender FROM saved_query q
              ORDER BY q.name COLLATE NOCASE, q.name",
         )?;
         let rows = statement
@@ -167,18 +161,16 @@ impl Index {
                     row.get::<_, Option<String>>(3)?,
                     row.get::<_, Option<String>>(4)?,
                     row.get::<_, Option<String>>(5)?,
-                    row.get::<_, Option<String>>(6)?,
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
         rows.into_iter()
-            .map(|(id, name, year, tax_context, kind, full_text, sender)| {
+            .map(|(id, name, year, kind, full_text, sender)| {
                 Ok(SavedQuery {
                     id: SavedQueryId::new(id),
                     name,
                     spec: QuerySpec {
                         year,
-                        tax_context: tax_context.map(TaxContext::from_short_name),
                         sender,
                         kind,
                         tags: self.saved_query_tags(id)?,
@@ -205,13 +197,6 @@ impl Index {
             conditions.push("d.document_date >= ? AND d.document_date < ?");
             values.push(Value::Text(from.to_string()));
             values.push(Value::Text(until.to_string()));
-        }
-        if let Some(tax_context) = &spec.tax_context {
-            conditions.push("d.tax_context_id = ?");
-            values.push(Value::Integer(tax_context_id(
-                self.connection(),
-                tax_context,
-            )?));
         }
         if let Some(sender) = blank_to_none(&spec.sender) {
             conditions.push("s.name_key = ?");
@@ -294,35 +279,15 @@ mod tests {
         names.iter().map(|name| (*name).to_owned()).collect()
     }
 
-    /// Six documents of different years, contexts, kinds and tags.
+    /// Six documents of different years, kinds and tags.
     fn stocked() -> (tempfile::TempDir, Index, Vec<DocumentId>) {
         let (dir, mut index) = encrypted_index();
         let stock = [
-            (
-                2024,
-                Some(TaxContext::named("company")),
-                "Invoice",
-                &["office"][..],
-            ),
-            (
-                2024,
-                Some(TaxContext::named("private")),
-                "Invoice",
-                &["home"][..],
-            ),
-            (
-                2024,
-                Some(TaxContext::named("company")),
-                "Letter",
-                &["office", "tax"][..],
-            ),
-            (
-                2023,
-                Some(TaxContext::named("company")),
-                "Invoice",
-                &["office"][..],
-            ),
-            (2025, Some(TaxContext::named("company")), "Invoice", &[][..]),
+            (2024, "Invoice", &["office"][..]),
+            (2024, "Invoice", &["home"][..]),
+            (2024, "Letter", &["office", "tax"][..]),
+            (2023, "Invoice", &["office"][..]),
+            (2025, "Invoice", &[][..]),
         ];
         let mut ids = Vec::new();
         let senders = [
@@ -332,9 +297,7 @@ mod tests {
             "Company A",
             "Other Ltd",
         ];
-        for (seed, ((year, context, kind, tag_names), sender)) in
-            (1..).zip(stock.into_iter().zip(senders))
-        {
+        for (seed, ((year, kind, tag_names), sender)) in (1..).zip(stock.into_iter().zip(senders)) {
             let id = index.insert_document(&new_document(seed)).unwrap();
             index
                 .set_document_fields(
@@ -342,7 +305,6 @@ mod tests {
                     &DocumentFields {
                         sender: Some(sender.to_owned()),
                         kind: Some(kind.to_owned()),
-                        tax_context: context,
                         date: NaiveDate::from_ymd_opt(year, 5, 1),
                         tags: tags(tag_names),
                         ..DocumentFields::default()
@@ -364,19 +326,6 @@ mod tests {
             .into_iter()
             .map(|document| document.id)
             .collect()
-    }
-
-    #[test]
-    fn a_year_and_a_tax_context_find_exactly_the_documents_of_both() {
-        let (_dir, index, ids) = stocked();
-
-        let spec = QuerySpec {
-            year: Some(2024),
-            tax_context: Some(TaxContext::named("company")),
-            ..QuerySpec::default()
-        };
-
-        assert_eq!(found(&index, &spec), vec![ids[0], ids[2]]);
     }
 
     #[test]
@@ -509,7 +458,6 @@ mod tests {
         let (_dir, mut index) = encrypted_index();
         let spec = QuerySpec {
             year: Some(2024),
-            tax_context: Some(TaxContext::named("private")),
             sender: Some("Company A".to_owned()),
             kind: Some("Invoice".to_owned()),
             tags: tags(&["home"]),

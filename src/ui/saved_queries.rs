@@ -1,4 +1,4 @@
-//! The reports (saved queries): searches over the index by year, tax context,
+//! The reports (saved queries): searches over the index by year,
 //! sender, kind, tags and text, each kept under a name, with the export of what a run found. A
 //! page of the Hermes card. Pure view over [`SavedQueries`].
 //!
@@ -6,7 +6,7 @@
 
 use iced::widget::{column, container, row};
 use iced::{alignment, Element, Size};
-use ncrs_index::{QuerySpec, TaxContext, TaxContextEntry};
+use ncrs_index::QuerySpec;
 
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
@@ -196,20 +196,10 @@ fn templates<'a>(state: &SavedQueries, lang: Language, palette: &Palette) -> Ele
 }
 
 /// What a query asks for, short enough for a column.
-pub fn criteria_text(spec: &QuerySpec, tax_contexts: &[TaxContextEntry], lang: Language) -> String {
+pub fn criteria_text(spec: &QuerySpec, lang: Language) -> String {
     let mut parts = Vec::new();
     if let Some(year) = spec.year {
         parts.push(year.to_string());
-    }
-    match &spec.tax_context {
-        None => {}
-        Some(TaxContext::None) => parts.push(lang.text(Msg::ReviewListTaxNone).to_owned()),
-        Some(TaxContext::Named(short_name)) => parts.push(
-            tax_contexts
-                .iter()
-                .find(|entry| entry.short_name.eq_ignore_ascii_case(short_name))
-                .map_or_else(|| short_name.clone(), |entry| entry.name.clone()),
-        ),
     }
     if let Some(sender) = &spec.sender {
         parts.push(sender.clone());
@@ -267,11 +257,7 @@ fn list<'a>(
                 .unwrap_or_default();
             let content = row![
                 columns.cell(0, &query.name, color),
-                columns.cell(
-                    1,
-                    &criteria_text(&query.spec, state.tax_contexts(), lang),
-                    color
-                ),
+                columns.cell(1, &criteria_text(&query.spec, lang), color),
                 columns.cell(2, &hits, color),
             ]
             .align_y(alignment::Vertical::Center);
@@ -318,24 +304,6 @@ fn form<'a>(state: &'a SavedQueries, lang: Language, palette: &Palette) -> Eleme
             palette,
         )
     };
-    let tax_choices = kit::tax_context_choices(
-        lang.text(Msg::SavedQueriesTaxAny),
-        lang.text(Msg::ReviewListTaxNone),
-        state.tax_contexts(),
-    );
-    let tax_options: Vec<(&str, Message)> = tax_choices
-        .iter()
-        .map(|(label, choice)| {
-            (
-                *label,
-                send(SavedQueriesMessage::TaxContextChosen(choice.clone())),
-            )
-        })
-        .collect();
-    let selected_tax = tax_choices
-        .iter()
-        .position(|(_, choice)| *choice == values.tax_context)
-        .unwrap_or_default();
     column![
         row_of(
             Msg::ColumnName,
@@ -346,11 +314,6 @@ fn form<'a>(state: &'a SavedQueries, lang: Language, palette: &Palette) -> Eleme
             Msg::SavedQueriesFieldYear,
             Some(Msg::SavedQueriesHintYear),
             text_field(QueryField::Year, YEAR_ID, &values.year),
-        ),
-        row_of(
-            Msg::SavedQueriesFieldTaxContext,
-            None,
-            kit::dropdown(&tax_options, selected_tax, true, palette),
         ),
         row_of(
             Msg::SavedQueriesFieldSender,

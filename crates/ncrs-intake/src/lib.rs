@@ -34,16 +34,17 @@ pub use archive_profile::{
 pub use classify::{classify, is_image_file, text_is_readable, Skip};
 pub use conditions::{condition_match_ranges, word_condition_holds, MAX_MATCH_RANGES};
 pub use default_pattern::{
-    choose_pattern, default_pattern_for, ChosenPattern, PatternSource, DEFAULT_PATTERNS,
+    choose_pattern, default_pattern_for, pattern_without_tax_context, ChosenPattern, PatternSource,
+    DEFAULT_PATTERNS,
 };
 pub use error::IntakeError;
 pub use extract::{
     extract_amount, extract_date, extract_number, parse_amount, parse_currency, parse_date,
 };
 pub use filing_plan::{
-    contains_condition_holds, missing_field, pattern_is_valid, plan, planned_field_origin,
-    render_pattern, render_pattern_parts, unknown_placeholder, AssigningCondition, FilingPlan,
-    PatternPart, PlanInput, Planning, TaxContextAssignment, FIELD_ORDER, FILING_PLACEHOLDERS,
+    contains_condition_holds, missing_field, pattern_is_valid, plan, render_pattern,
+    render_pattern_parts, unknown_placeholder, FilingPlan, PatternPart, PlanInput, Planning,
+    FIELD_ORDER, FILING_PLACEHOLDERS,
 };
 pub use location::{Location, LocationMode};
 pub use ocr::{

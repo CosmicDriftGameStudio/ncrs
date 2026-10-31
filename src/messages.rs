@@ -3,10 +3,7 @@
 
 use std::path::PathBuf;
 
-use ncrs_index::{
-    HermesCounts, IncludeOutcome, RuleConditions, RuleId, SavedQuery, SavedQueryId, TaxContext,
-    TaxContextEntry, TaxContextId, TaxContextUsage,
-};
+use ncrs_index::{HermesCounts, IncludeOutcome, RuleId, SavedQuery, SavedQueryId};
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
 
@@ -51,7 +48,6 @@ use crate::review_work::{AcceptSummary, ConfirmOutcome, ReviewItem};
 use crate::rules_work::{RulesLoad, TryResult};
 use crate::saved_queries::{Form, QueryField};
 use crate::suggestion_work::SuggestedRule;
-use crate::tax_context_work::{ContextsResult, TaxContextFailure};
 use crate::theme_fetch::{Fetched, Installed};
 use crate::transfer_dialog::TransferDialogMessage;
 
@@ -555,42 +551,11 @@ pub enum SettingsMessage {
     PickThemeFile,
     ThemeFilePicked(Option<PathBuf>),
     ChooseProvider(AiProviderName),
-    TaxContexts(TaxContextsMessage),
     /// The config as read back after the write of `change`.
     Written {
         change: SettingChange,
         result: Result<Box<Config>, FilingWriteError>,
     },
-}
-
-/// Everything the tax contexts section of the Hermes settings sends.
-#[derive(Debug, Clone, PartialEq)]
-pub enum TaxContextsMessage {
-    Loaded(ContextsResult),
-    Add,
-    Rename(TaxContextId),
-    NameChanged(String),
-    ShortNameChanged(String),
-    Save,
-    Saved(ContextsResult),
-    Delete(TaxContextId),
-    UsageLoaded {
-        id: TaxContextId,
-        result: Result<TaxContextUsage, TaxContextFailure>,
-    },
-    MoveTo(TaxContext),
-    ConfirmDelete,
-    Deleted(ContextsResult),
-    Cancel,
-    /// The conditions of a context are looked up, then edited.
-    EditConditions(TaxContextId),
-    ConditionsLoaded {
-        id: TaxContextId,
-        result: Result<RuleConditions, TaxContextFailure>,
-    },
-    Condition(ConditionEdit),
-    SaveConditions,
-    ConditionsSaved(ContextsResult),
 }
 
 /// Everything the keyboard shortcuts dialog sends.
@@ -979,11 +944,6 @@ pub enum DocumentSearchMessage {
         generation: u64,
         result: Result<Vec<QueryHit>, String>,
     },
-    /// The tax contexts, for their names. Dropped like `Ran`.
-    TaxContextsLoaded {
-        generation: u64,
-        result: Result<Vec<TaxContextEntry>, String>,
-    },
     /// The pieces of text around the words, by path. Dropped like `Ran`.
     SnippetsLoaded {
         generation: u64,
@@ -1020,7 +980,7 @@ pub enum SavedQueriesMessage {
     /// when the page was closed or opened again meanwhile.
     Loaded {
         generation: u64,
-        result: Result<(Vec<SavedQuery>, Vec<TaxContextEntry>), String>,
+        result: Result<Vec<SavedQuery>, String>,
     },
     /// The wheel or trackpad over the list.
     Scrolled(iced::mouse::ScrollDelta),
@@ -1031,7 +991,6 @@ pub enum SavedQueriesMessage {
     /// A template button: the form it fills, built where the text is known.
     UseTemplate(Form),
     FieldChanged(QueryField, String),
-    TaxContextChosen(Option<TaxContext>),
     /// Tab (`false`) or Shift+Tab (`true`) in the form.
     FocusField {
         backwards: bool,
@@ -1128,7 +1087,7 @@ pub enum ReviewListMessage {
     /// the list was closed or opened again meanwhile.
     Loaded {
         generation: u64,
-        result: Result<(Vec<ReviewItem>, Vec<TaxContextEntry>), String>,
+        result: Result<Vec<ReviewItem>, String>,
     },
     /// The wheel or trackpad over the list.
     Scrolled(iced::mouse::ScrollDelta),
@@ -1137,7 +1096,6 @@ pub enum ReviewListMessage {
     Select(usize),
     Edit,
     FieldChanged(FormField, String),
-    TaxContextChosen(Option<TaxContext>),
     /// Tab (`false`) or Shift+Tab (`true`) in the form.
     FocusField {
         backwards: bool,
@@ -1225,7 +1183,6 @@ pub enum RulesMessage {
 pub enum RuleFormMessage {
     Condition(ConditionEdit),
     Kind(String),
-    TaxContext(Option<TaxContext>),
     Tags(String),
     Pattern(String),
     /// Appends `{name}` to the filing pattern.

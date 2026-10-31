@@ -1,5 +1,5 @@
 //! Measures how well the rules (and, where the caller adds it, the AI) read
-//! sender, kind, tax context, date, number and amount of a synthetic corpus of
+//! sender, kind, date, number and amount of a synthetic corpus of
 //! fictitious documents. The corpus lives in `tests/fixtures/recognition`: a
 //! header with the expected values, a `---` line, then the document text.
 
@@ -12,8 +12,7 @@ use std::fs;
 use chrono::NaiveDate;
 use ncrs_index::{
     Amount, Condition, ConditionKind, Currency, DocumentFields, Field, Index, ReviewReason, Rule,
-    RuleConditions, RuleId, RuleSpec, SenderAliasKind, SenderAliases, TaxContext,
-    TaxContextConditions,
+    RuleConditions, RuleId, RuleSpec, SenderAliasKind, SenderAliases,
 };
 use tempfile::TempDir;
 
@@ -92,17 +91,6 @@ fn set_expected(fields: &mut DocumentFields, field: Field, value: &str) -> Resul
         Field::Sender => fields.sender = Some(value.to_owned()),
         Field::Kind => fields.kind = Some(value.to_owned()),
         Field::Number => fields.number = Some(value.to_owned()),
-        Field::TaxContext => {
-            let context = [
-                TaxContext::named("company"),
-                TaxContext::named("private"),
-                TaxContext::None,
-            ]
-            .into_iter()
-            .find(|context| context.as_str() == value)
-            .ok_or_else(|| format!("`{value}` is not a tax context"))?;
-            fields.tax_context = Some(context);
-        }
         Field::Date => {
             let date = NaiveDate::parse_from_str(value, "%Y-%m-%d")
                 .map_err(|err| format!("`{value}`: {err}"))?;
@@ -127,14 +115,13 @@ fn set_expected(fields: &mut DocumentFields, field: Field, value: &str) -> Resul
 const DATE_DOTTED: &str = r"Datum:?\s*(\d{2}\.\d{2}\.\d{4})";
 const DATE_ISO: &str = r"Date:?\s*(\d{4}-\d{2}-\d{2})";
 
-fn word_rule(phrase: &str, kind: &str, tax_context: TaxContext, filing_pattern: &str) -> RuleSpec {
+fn word_rule(phrase: &str, kind: &str, filing_pattern: &str) -> RuleSpec {
     RuleSpec {
         conditions: RuleConditions::all_of(vec![Condition::new(ConditionKind::Word, phrase)]),
         extract_number: None,
         extract_date: None,
         extract_amount: None,
         kind: kind.to_owned(),
-        tax_context: Some(tax_context),
         tags: BTreeSet::new(),
         filing_pattern: filing_pattern.to_owned(),
         confirmed: true,
@@ -143,12 +130,7 @@ fn word_rule(phrase: &str, kind: &str, tax_context: TaxContext, filing_pattern: 
 }
 
 fn german_invoice(also: Option<Condition>, filing_pattern: &str) -> RuleSpec {
-    let mut spec = word_rule(
-        "rechnung",
-        "Rechnung",
-        TaxContext::named("company"),
-        filing_pattern,
-    );
+    let mut spec = word_rule("rechnung", "Rechnung", filing_pattern);
     spec.conditions.list.extend(also);
     RuleSpec {
         extract_number: Some(r"Rechnungsnummer:?\s*([A-Z0-9-]+)".to_owned()),
@@ -185,20 +167,6 @@ fn fixed_sender_aliases() -> SenderAliases {
     ])
 }
 
-/// What a user would have entered for the corpus. The corpus letters carry no
-/// addressee block, and nothing in them names a company of the user, so only
-/// the private context has conditions: the salutation of the letters to the
-/// user. A document no context claims goes to review.
-pub fn fixed_tax_contexts() -> Vec<TaxContextConditions> {
-    vec![TaxContextConditions {
-        short_name: "private".to_owned(),
-        conditions: RuleConditions::any_of(vec![
-            Condition::new(ConditionKind::Word, "Frau Beispiel"),
-            Condition::new(ConditionKind::Word, "Ms Example"),
-        ]),
-    }]
-}
-
 /// The rules the measurement plans against, with the ids 1..n in this order.
 /// The first one needs the IBAN of Nordlicht Energie on the document. Rules
 /// that would otherwise both match a document with different results exclude
@@ -217,23 +185,16 @@ pub fn fixed_rules() -> Vec<Rule> {
             extract_number: Some(r"Invoice (?:No\.?|number):?\s*([A-Z0-9-]+)".to_owned()),
             extract_date: Some(DATE_ISO.to_owned()),
             extract_amount: Some(r"Total:?\s*([\d.,]+)\s*(?P<currency>[A-Z]{3})".to_owned()),
-            ..word_rule(
-                "invoice",
-                "Invoice",
-                TaxContext::named("company"),
-                "{year}/Invoices/{number}",
-            )
+            ..word_rule("invoice", "Invoice", "{year}/Invoices/{number}")
         },
         RuleSpec {
             extract_number: Some(r"Aktenzeichen:?\s*([0-9/]+)".to_owned()),
             extract_date: Some(r"Bescheid vom (\d{2}\.\d{2}\.\d{4})".to_owned()),
             extract_amount: Some(r"Nachzahlung:?\s*([\d.,]+)\s*(?P<currency>EUR)".to_owned()),
             conditions: word_ending_in("steuerbescheid"),
-            tax_context: None,
             ..word_rule(
                 "Steuerbescheid",
                 "Steuerbescheid",
-                TaxContext::named("private"),
                 "{year}/Steuern/{number}",
             )
         },
@@ -248,34 +209,18 @@ pub fn fixed_rules() -> Vec<Rule> {
                     .chain([Condition::not(ConditionKind::Word, "rechnung")])
                     .collect(),
             ),
-            tax_context: None,
-            ..word_rule(
-                "Vertrag",
-                "Vertrag",
-                TaxContext::None,
-                "{year}/Verträge/{number}",
-            )
+            ..word_rule("Vertrag", "Vertrag", "{year}/Verträge/{number}")
         },
         RuleSpec {
             extract_number: Some(r"Angebotsnummer:?\s*([A-Z0-9-]+)".to_owned()),
             extract_date: Some(DATE_DOTTED.to_owned()),
             extract_amount: Some(r"Angebotssumme:?\s*([\d.,]+)\s*(?P<currency>EUR)".to_owned()),
             confirmed: false,
-            ..word_rule(
-                "Angebot",
-                "Angebot",
-                TaxContext::named("company"),
-                "{year}/Angebote/{number}",
-            )
+            ..word_rule("Angebot", "Angebot", "{year}/Angebote/{number}")
         },
         RuleSpec {
             extract_date: Some(DATE_DOTTED.to_owned()),
-            ..word_rule(
-                "Kündigung",
-                "Kündigung",
-                TaxContext::None,
-                "{year}/Kündigungen/{date}",
-            )
+            ..word_rule("Kündigung", "Kündigung", "{year}/Kündigungen/{date}")
         },
         RuleSpec {
             extract_date: Some(DATE_DOTTED.to_owned()),
@@ -283,23 +228,11 @@ pub fn fixed_rules() -> Vec<Rule> {
                 Condition::new(ConditionKind::Word, "Sehr geehrte"),
                 Condition::not(ConditionKind::Word, "Kündigung"),
             ]),
-            tax_context: None,
-            ..word_rule(
-                "Sehr geehrte",
-                "Brief",
-                TaxContext::named("private"),
-                "{year}/Briefe/{date}",
-            )
+            ..word_rule("Sehr geehrte", "Brief", "{year}/Briefe/{date}")
         },
         RuleSpec {
             extract_date: Some(DATE_ISO.to_owned()),
-            tax_context: None,
-            ..word_rule(
-                "Dear",
-                "Letter",
-                TaxContext::named("private"),
-                "{year}/Letters/{date}",
-            )
+            ..word_rule("Dear", "Letter", "{year}/Letters/{date}")
         },
     ];
     // Rule ids are only handed out by the index; the folder is declared before the
@@ -329,8 +262,6 @@ pub enum PlanningOutcome {
     UnconfirmedRule,
     Conflict,
     MissingField(Field),
-    /// The conditions of the tax contexts named none or several.
-    TaxContextUnclear,
 }
 
 fn score_values<T: PartialEq>(expected: Option<T>, actual: Option<T>) -> FieldScore {
@@ -357,9 +288,6 @@ pub fn score_field(field: Field, expected: &DocumentFields, actual: &DocumentFie
             trimmed_lowercase(expected.kind.as_deref()),
             trimmed_lowercase(actual.kind.as_deref()),
         ),
-        Field::TaxContext => {
-            score_values(expected.tax_context.as_ref(), actual.tax_context.as_ref())
-        }
         Field::Date => score_values(expected.date, actual.date),
         Field::Number => score_values(expected.number.as_deref(), actual.number.as_deref()),
         Field::Amount => score_values(expected.amount.as_ref(), actual.amount.as_ref()),
@@ -373,7 +301,7 @@ pub struct DocumentResult {
     /// The rule that was chosen, planned or sent to review.
     pub rule: Option<RuleId>,
     pub scores: Vec<(Field, FieldScore)>,
-    /// A rule was chosen, but kind or tax context is not the expected one.
+    /// A rule was chosen, but the kind is not the expected one.
     pub wrong_assignment: bool,
 }
 
@@ -451,12 +379,11 @@ impl fmt::Display for RecognitionReport {
             .collect();
         writeln!(
             f,
-            "planned: {}, no rule: {}, unconfirmed rule: {}, conflicts: {}, tax context unclear: {}, missing field: {} ({})",
+            "planned: {}, no rule: {}, unconfirmed rule: {}, conflicts: {}, missing field: {} ({})",
             self.outcome_count(|outcome| outcome == PlanningOutcome::Planned),
             self.outcome_count(|outcome| outcome == PlanningOutcome::NoRule),
             self.outcome_count(|outcome| outcome == PlanningOutcome::UnconfirmedRule),
             self.outcome_count(|outcome| outcome == PlanningOutcome::Conflict),
-            self.outcome_count(|outcome| outcome == PlanningOutcome::TaxContextUnclear),
             self.outcome_count(|outcome| matches!(outcome, PlanningOutcome::MissingField(_))),
             missing_per_field.join(", ")
         )?;
@@ -478,9 +405,6 @@ fn outcome_of(planning: &Planning) -> PlanningOutcome {
             ReviewReason::NoMatchingRule => PlanningOutcome::NoRule,
             ReviewReason::RuleConflict => PlanningOutcome::Conflict,
             ReviewReason::MissingField(field) => PlanningOutcome::MissingField(*field),
-            ReviewReason::NoTaxContextMatches | ReviewReason::SeveralTaxContextsMatch => {
-                PlanningOutcome::TaxContextUnclear
-            }
             // `plan` gives no other reason; the later steps set them.
             ReviewReason::UnconfirmedRule
             | ReviewReason::TargetExists
@@ -512,16 +436,10 @@ fn chosen_rule_and_fields(planning: &Planning) -> (Option<RuleId>, &DocumentFiel
 pub fn measure(
     corpus: &[CorpusDocument],
     rules: &[Rule],
-    tax_contexts: &[TaxContextConditions],
     mut fill_open_fields: impl FnMut(&CorpusDocument, &DocumentFields) -> Option<DocumentFields>,
 ) -> RecognitionReport {
     let sender_aliases = fixed_sender_aliases();
-    let own = OwnIdentifiers::from_conditions(
-        tax_contexts
-            .iter()
-            .flat_map(|context| &context.conditions.list),
-        None,
-    );
+    let own = OwnIdentifiers::from_names(["Frau Beispiel", "Ms Example"]);
     let results = corpus
         .iter()
         .map(|document| {
@@ -538,7 +456,6 @@ pub fn measure(
                     fields: &detected,
                     path: None,
                     sender_aliases: &sender_aliases,
-                    tax_contexts,
                     manual_fields: &[],
                 },
             );
@@ -548,7 +465,6 @@ pub fn measure(
                     rule,
                     matching_rules,
                     fields,
-                    tax_context_assigned_by,
                 } => match fill_open_fields(document, &fields) {
                     Some(merged) if matches!(reason, ReviewReason::MissingField(_)) => plan(
                         rules,
@@ -557,7 +473,6 @@ pub fn measure(
                             fields: &merged,
                             path: None,
                             sender_aliases: &sender_aliases,
-                            tax_contexts,
                             manual_fields: &[],
                         },
                     ),
@@ -566,14 +481,12 @@ pub fn measure(
                         rule,
                         matching_rules,
                         fields: merged,
-                        tax_context_assigned_by,
                     },
                     None => Planning::Review {
                         reason,
                         rule,
                         matching_rules,
                         fields,
-                        tax_context_assigned_by,
                     },
                 },
                 other => other,
@@ -590,9 +503,8 @@ fn result_of(document: &CorpusDocument, planning: &Planning) -> DocumentResult {
         .into_iter()
         .map(|field| (field, score_field(field, &document.expected, actual)))
         .collect();
-    let assigned_wrongly = [Field::Kind, Field::TaxContext]
-        .into_iter()
-        .any(|field| score_field(field, &document.expected, actual) == FieldScore::Wrong);
+    let assigned_wrongly =
+        score_field(Field::Kind, &document.expected, actual) == FieldScore::Wrong;
     DocumentResult {
         name: document.name.clone(),
         outcome: outcome_of(planning),
@@ -604,12 +516,7 @@ fn result_of(document: &CorpusDocument, planning: &Planning) -> DocumentResult {
 
 /// The corpus against the fixed rules, nothing filled in by an AI.
 pub fn measure_rules_only() -> RecognitionReport {
-    measure(
-        &load_corpus(),
-        &fixed_rules(),
-        &fixed_tax_contexts(),
-        |_, _| None,
-    )
+    measure(&load_corpus(), &fixed_rules(), |_, _| None)
 }
 
 #[cfg(test)]
@@ -633,7 +540,7 @@ mod tests {
     }
 
     fn only_result(corpus: &[CorpusDocument]) -> DocumentResult {
-        measure(corpus, &fixed_rules(), &fixed_tax_contexts(), |_, _| None)
+        measure(corpus, &fixed_rules(), |_, _| None)
             .results
             .remove(0)
     }
@@ -654,12 +561,11 @@ mod tests {
 
     #[test]
     fn a_header_that_does_not_parse_is_an_error() {
-        let complete = "sender: A\nkind: B\ntax_context: none\ndate: 2026-01-01\nnumber:\namount:\n---\ntext\n";
+        let complete = "sender: A\nkind: B\ndate: 2026-01-01\nnumber:\namount:\n---\ntext\n";
         parse_document("ok", complete).unwrap();
         for broken in [
             complete.replace("\n---\n", "\n"),
             complete.replace("number:", "colour:"),
-            complete.replace("none", "business"),
             complete.replace("2026-01-01", "01.01.2026"),
             complete.replace("amount:", "amount: 119 euro"),
             complete.replace("number:\n", ""),
@@ -753,7 +659,6 @@ mod tests {
     fn a_rule_that_matches_the_wrong_kind_is_a_wrong_assignment() {
         let expected = DocumentFields {
             kind: Some("Brief".to_owned()),
-            tax_context: Some(TaxContext::named("private")),
             ..DocumentFields::default()
         };
         let result = only_result(&[document("letter", "Ihre Rechnung bitte", expected)]);

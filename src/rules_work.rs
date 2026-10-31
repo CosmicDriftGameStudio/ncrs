@@ -6,9 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use ncrs_index::{
-    Index, IndexError, ReviewReason, Rule, RuleId, RuleOrigin, RuleSpec, TaxContextEntry,
-};
+use ncrs_index::{Index, IndexError, ReviewReason, Rule, RuleId, RuleOrigin, RuleSpec};
 use ncrs_intake::{plan, Location, LocationMode, PlanInput, Planning};
 
 use crate::rule_form::RuleSave;
@@ -32,7 +30,6 @@ pub struct ListedRule {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RulesLoad {
     pub rules: Vec<ListedRule>,
-    pub tax_contexts: Vec<TaxContextEntry>,
 }
 
 /// What the user asked to change about one rule.
@@ -123,7 +120,6 @@ impl RulesAccess {
             };
             let (rules_after, candidate_id) = with_candidate(&rules_now, candidate.replaces, spec);
             let aliases = index.confirmed_sender_aliases()?;
-            let tax_contexts = index.assignable_tax_contexts()?;
             let in_review: HashSet<_> = index
                 .open_reviews()?
                 .into_iter()
@@ -144,7 +140,6 @@ impl RulesAccess {
                         fields: &document.fields,
                         path: Some(&absolute),
                         sender_aliases: &aliases,
-                        tax_contexts: &tax_contexts,
                         manual_fields: &manual_fields,
                     };
                     let after = plan(&rules_after, &input);
@@ -208,10 +203,7 @@ impl RulesAccess {
                     rule,
                 })
                 .collect();
-            Ok(RulesLoad {
-                rules,
-                tax_contexts: index.tax_contexts()?,
-            })
+            Ok(RulesLoad { rules })
         })
     }
 
@@ -338,7 +330,7 @@ mod tests {
     use ncrs_index::{
         Condition, ConditionKind, ContentHash, DocumentFields, DocumentId, DocumentSource,
         DocumentStatus, FieldOrigin, NewDocument, RuleConditions, RuleEvidence, RuleOrigin,
-        RuleSpec, RuleSuggestion, TaxContext,
+        RuleSpec, RuleSuggestion,
     };
     use tempfile::TempDir;
 
@@ -351,7 +343,6 @@ mod tests {
             extract_date: None,
             extract_amount: None,
             kind: "Invoice".to_owned(),
-            tax_context: Some(TaxContext::None),
             tags: BTreeSet::new(),
             filing_pattern: "{year}".to_owned(),
             confirmed: true,

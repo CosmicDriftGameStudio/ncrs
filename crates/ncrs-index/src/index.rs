@@ -1099,7 +1099,7 @@ mod tests {
     #[test]
     fn a_version_13_database_keeps_its_discarded_suggestions_as_word_suggestions() {
         use crate::model::{
-            Condition, ConditionKind, RuleConditions, RuleId, RuleSpec, RuleSuggestion, TaxContext,
+            Condition, ConditionKind, RuleConditions, RuleId, RuleSpec, RuleSuggestion,
         };
 
         let dir = TempDir::new().unwrap();
@@ -1135,7 +1135,6 @@ mod tests {
             extract_date: None,
             extract_amount: None,
             kind: "Insurance".to_owned(),
-            tax_context: Some(TaxContext::None),
             tags: Default::default(),
             filing_pattern: "{year}".to_owned(),
             confirmed: false,
@@ -1203,197 +1202,6 @@ mod tests {
     }
 
     #[test]
-    fn a_version_15_database_keeps_its_tax_contexts_on_documents_rules_and_saved_queries() {
-        use crate::model::{DocumentId, QuerySpec, RuleId, SavedQueryId, TaxContext};
-
-        let dir = TempDir::new().unwrap();
-        let path = db_in(&dir);
-        let old = Index::create_plain_with_migrations(&path, &MIGRATIONS[..15]).unwrap();
-        assert_eq!(user_version(&old), 15);
-        old.conn
-            .execute_batch(
-                "INSERT INTO document_kind (id, name, name_key) VALUES (1, 'Invoice', 'invoice');
-                 INSERT INTO document (id, hash, path, source, received_at, status, tax_context)
-                 VALUES (1, zeroblob(32), 'a.pdf', 'inbox', 1700000000, 'planned', 'company'),
-                        (2, randomblob(32), 'b.pdf', 'inbox', 1700000000, 'planned', 'private'),
-                        (3, randomblob(32), 'c.pdf', 'inbox', 1700000000, 'planned', 'none'),
-                        (4, randomblob(32), 'd.pdf', 'inbox', 1700000000, 'planned', NULL),
-                        (5, randomblob(32), 'e.pdf', 'inbox', 1700000000, 'planned', 'company');
-                 INSERT INTO rule (id, kind_id, tax_context, filing_pattern, confirmed)
-                 VALUES (6, 1, 'private', '{tax_context}/{year}', 1);
-                 INSERT INTO rule_condition (rule_id, position, kind, value)
-                 VALUES (6, 0, 'word', 'rent');
-                 INSERT INTO saved_query (id, name, tax_context, created_at)
-                 VALUES (7, 'Company only', 'company', 1700000000),
-                        (8, 'Everything', NULL, 1700000000),
-                        (9, 'Without context', 'none', 1700000000);",
-            )
-            .unwrap();
-        let ids_where = |condition: &str| -> Vec<i64> {
-            old.conn
-                .prepare(&format!(
-                    "SELECT id FROM document WHERE {condition} ORDER BY id"
-                ))
-                .unwrap()
-                .query_map([], |row| row.get(0))
-                .unwrap()
-                .collect::<Result<_, _>>()
-                .unwrap()
-        };
-        let company_before = ids_where("tax_context = 'company'");
-        let without_context_before = ids_where("tax_context = 'none'");
-        let everything_before = ids_where("1 = 1");
-        drop(old);
-
-        let index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
-
-        assert_eq!(user_version(&index), latest_version());
-        let context_of = |id: i64| {
-            index
-                .document(DocumentId::new(id))
-                .unwrap()
-                .unwrap()
-                .fields
-                .tax_context
-        };
-        assert_eq!(context_of(1), Some(TaxContext::named("company")));
-        assert_eq!(context_of(2), Some(TaxContext::named("private")));
-        assert_eq!(context_of(3), Some(TaxContext::None));
-        assert_eq!(context_of(4), None);
-        let rule = index.rule(RuleId::new(6)).unwrap().unwrap();
-        assert_eq!(rule.spec.tax_context, Some(TaxContext::named("private")));
-        assert_eq!(rule.spec.filing_pattern, "{tax_context}/{year}");
-
-        let queries = index.saved_queries().unwrap();
-        let spec_of = |id: i64| -> QuerySpec {
-            queries
-                .iter()
-                .find(|query| query.id == SavedQueryId::new(id))
-                .unwrap()
-                .spec
-                .clone()
-        };
-        assert_eq!(spec_of(7).tax_context, Some(TaxContext::named("company")));
-        assert_eq!(spec_of(8).tax_context, None);
-        assert_eq!(spec_of(9).tax_context, Some(TaxContext::None));
-        let run = |id: i64| -> Vec<i64> {
-            let mut found: Vec<i64> = index
-                .run_query(&spec_of(id))
-                .unwrap()
-                .iter()
-                .map(|document| document.id.get())
-                .collect();
-            found.sort_unstable();
-            found
-        };
-        assert_eq!(run(7), company_before);
-        assert_eq!(run(9), without_context_before);
-        assert_eq!(run(8), everything_before);
-
-        let listed: Vec<_> = index
-            .tax_contexts()
-            .unwrap()
-            .into_iter()
-            .map(|entry| (entry.name, entry.short_name))
-            .collect();
-        assert_eq!(
-            listed,
-            [
-                ("Firma".to_owned(), "company".to_owned()),
-                ("Privat".to_owned(), "private".to_owned())
-            ]
-        );
-    }
-
-    #[test]
-    fn a_version_16_database_keeps_origins_and_rule_contexts_and_gains_conditions() {
-        use crate::model::{
-            Combinator, ConditionKind, DocumentId, Field, FieldOrigin, RuleConditions, RuleId,
-            TaxContext, TaxContextId,
-        };
-
-        let dir = TempDir::new().unwrap();
-        let path = db_in(&dir);
-        let old = Index::create_plain_with_migrations(&path, &MIGRATIONS[..16]).unwrap();
-        assert_eq!(user_version(&old), 16);
-        old.conn
-            .execute_batch(
-                "INSERT INTO document_kind (id, name, name_key) VALUES (1, 'Invoice', 'invoice');
-                 INSERT INTO rule (id, kind_id, tax_context_id, filing_pattern, confirmed)
-                 VALUES (6, 1, 1, '{tax_context}/{year}', 1),
-                        (7, 1, 0, '{year}', 1);
-                 INSERT INTO rule_condition (rule_id, position, kind, value)
-                 VALUES (6, 0, 'word', 'rent'), (7, 0, 'word', 'tax');
-                 INSERT INTO document (id, hash, path, source, received_at, status, tax_context_id)
-                 VALUES (1, zeroblob(32), 'a.pdf', 'inbox', 1700000000, 'planned', 1),
-                        (2, randomblob(32), 'b.pdf', 'inbox', 1700000000, 'planned', 2);
-                 INSERT INTO document_field_origin (document_id, field, origin, rule_id, confidence)
-                 VALUES (1, 'kind', 'rule', 6, NULL),
-                        (1, 'tax_context', 'rule', 6, NULL),
-                        (2, 'kind', 'ai', NULL, 83),
-                        (2, 'tax_context', 'manual', NULL, NULL);",
-            )
-            .unwrap();
-        drop(old);
-
-        let mut index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
-
-        assert_eq!(user_version(&index), latest_version());
-        let first = index.field_origins(DocumentId::new(1)).unwrap();
-        assert_eq!(
-            first.of(Field::Kind),
-            FieldOrigin::Rule(Some(RuleId::new(6)))
-        );
-        assert_eq!(
-            first.of(Field::TaxContext),
-            FieldOrigin::Rule(Some(RuleId::new(6)))
-        );
-        let second = index.field_origins(DocumentId::new(2)).unwrap();
-        assert_eq!(
-            second.of(Field::Kind),
-            FieldOrigin::Ai {
-                confidence_percent: 83
-            }
-        );
-        assert_eq!(second.of(Field::TaxContext), FieldOrigin::Manual);
-        let context_of_rule = |id: i64| {
-            index
-                .rule(RuleId::new(id))
-                .unwrap()
-                .unwrap()
-                .spec
-                .tax_context
-        };
-        assert_eq!(context_of_rule(6), Some(TaxContext::named("company")));
-        assert_eq!(context_of_rule(7), Some(TaxContext::None));
-        assert_eq!(
-            index.tax_context_conditions(TaxContextId::new(1)).unwrap(),
-            RuleConditions {
-                combinator: Combinator::AnyOf,
-                list: Vec::new()
-            }
-        );
-        assert!(index.assignable_tax_contexts().unwrap().is_empty());
-
-        let mut fields = index.document(DocumentId::new(2)).unwrap().unwrap().fields;
-        fields.tax_context = Some(TaxContext::named("company"));
-        let origin = FieldOrigin::Condition {
-            kind: ConditionKind::Recipient,
-            value: "Firma A GmbH".to_owned(),
-        };
-        index
-            .set_document_fields(DocumentId::new(2), &fields, |_| origin.clone())
-            .unwrap();
-        assert_eq!(
-            index
-                .field_origins(DocumentId::new(2))
-                .unwrap()
-                .of(Field::TaxContext),
-            origin
-        );
-    }
-
-    #[test]
     fn a_version_17_database_gains_the_origin_of_its_rules() {
         use crate::model::{RuleId, RuleOrigin};
 
@@ -1423,48 +1231,237 @@ mod tests {
         assert_eq!(origin_of(2), RuleOrigin::Filing);
     }
 
-    #[test]
-    fn a_document_cannot_be_given_a_tax_context_that_is_not_stored() {
-        use crate::model::{DocumentFields, FieldOrigin, TaxContext};
-        use crate::test_support::{encrypted_index, new_document};
+    /// A version 19 database with the data a tax context touched, opened so
+    /// that migration 020 runs.
+    fn migrated_from_19() -> (TempDir, Index) {
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let old = Index::create_plain_with_migrations(&path, &MIGRATIONS[..19]).unwrap();
+        assert_eq!(user_version(&old), 19);
+        old.conn
+            .execute_batch(
+                "INSERT INTO tax_context (id, name, short_name, combinator)
+                     VALUES (3, 'Firma A', 'firma-a', 'any'), (4, 'Firma B', 'firma-b', 'any');
+                 INSERT INTO tax_context_condition (tax_context_id, position, kind, value)
+                     VALUES (3, 0, 'recipient', 'Firma A GmbH'), (4, 0, 'recipient', 'Firma B');
+                 INSERT INTO sender (id, name, name_key) VALUES (1, 'Company A', 'company a');
+                 INSERT INTO document_kind (id, name, name_key) VALUES (1, 'Invoice', 'invoice');
+                 INSERT INTO tag (id, name, name_key) VALUES (1, 'services', 'services');
+                 INSERT INTO document (id, hash, path, source, received_at, status, sender_id,
+                         kind_id, tax_context_id, document_date, document_number, amount_minor,
+                         currency, file_size, file_mtime)
+                     VALUES (1, zeroblob(32), 'a.pdf', 'inbox', 1700000000, 'in_review', 1, 1, 3,
+                         '2026-02-28', '4711', 11900, 'EUR', 10, 20),
+                         (2, randomblob(32), 'b.pdf', 'inbox', 1700000000, 'in_review', NULL, NULL,
+                         NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+                         (3, randomblob(32), 'c.pdf', 'inbox', 1700000000, 'planned', NULL, NULL,
+                         4, NULL, NULL, NULL, NULL, NULL, NULL);
+                 INSERT INTO document_text (rowid, body) VALUES (1, 'Rechnung fuer die Miete');
+                 INSERT INTO document_tag (document_id, tag_id) VALUES (1, 1);
+                 INSERT INTO rule (id, kind_id, tax_context_id, filing_pattern, confirmed)
+                     VALUES (3, 1, 3, '{tax_context}/{year}/{sender}', 1),
+                            (4, 1, 4, '{tax_context}', 0);
+                 INSERT INTO rule_condition (rule_id, position, kind, value)
+                     VALUES (3, 0, 'word', 'rent'), (4, 0, 'word', 'tax');
+                 INSERT INTO document_field_origin
+                         (document_id, field, origin, rule_id, confidence, condition_kind,
+                          condition_value)
+                     VALUES (1, 'sender', 'rule', 3, NULL, NULL, NULL),
+                            (1, 'tax_context', 'condition', NULL, NULL, 'recipient', 'Firma A GmbH');
+                 INSERT INTO review_entry (id, document_id, reason, field, created_at, resolved_at)
+                     VALUES (1, 1, 'missing_field', 'tax_context', 1700000000, NULL),
+                            (2, 2, 'no_tax_context_matches', NULL, 1700000000, NULL),
+                            (3, 3, 'several_tax_contexts_match', NULL, 1700000000, 1700000100);
+                 INSERT INTO discarded_rule_suggestion
+                         (match_text, condition_kind, kind, filing_pattern, discarded_at)
+                     VALUES ('company a ltd', 'word', 'insurance', '{tax_context}/{year}', 1),
+                            ('company a ltd', 'word', 'insurance', '{year}', 2);
+                 INSERT INTO location_profile (location, learned_at) VALUES ('archive', 1);
+                 INSERT INTO location_subtree (location, subtree, pattern, documents, total)
+                     VALUES ('archive', 'a', '{year}/{tax_context}', 3, 3),
+                            ('archive', 'b', NULL, 1, 1);
+                 INSERT INTO saved_query (id, name, year, tax_context_id, kind, created_at, sender)
+                     VALUES (7, 'Firma A only', 2026, 3, 'Invoice', 1700000000, 'Company A');",
+            )
+            .unwrap();
+        drop(old);
 
-        let (_dir, mut index) = encrypted_index();
-        let id = index.insert_document(&new_document(1)).unwrap();
-        let fields = DocumentFields {
-            tax_context: Some(TaxContext::named("charity")),
-            ..DocumentFields::default()
-        };
-
-        let err = index
-            .set_document_fields(id, &fields, |_| FieldOrigin::Manual)
-            .unwrap_err();
-
-        assert!(matches!(err, IndexError::UnknownTaxContext(name) if name == "charity"));
-        let stored = index.document(id).unwrap().unwrap();
-        assert_eq!(stored.fields.tax_context, None);
+        let index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
+        (dir, index)
     }
 
     #[test]
-    fn a_short_name_is_matched_without_regard_to_case() {
-        use crate::model::{DocumentFields, FieldOrigin, TaxContext};
-        use crate::test_support::{encrypted_index, new_document};
+    fn a_version_19_database_loses_its_tax_context_tables_and_columns() {
+        use crate::model::RuleId;
 
-        let (_dir, mut index) = encrypted_index();
-        let id = index.insert_document(&new_document(1)).unwrap();
-        let fields = DocumentFields {
-            tax_context: Some(TaxContext::named("COMPANY")),
-            ..DocumentFields::default()
-        };
+        let (_dir, index) = migrated_from_19();
 
-        index
-            .set_document_fields(id, &fields, |_| FieldOrigin::Manual)
-            .unwrap();
+        assert_eq!(user_version(&index), latest_version());
+        assert_eq!(user_version(&index), 20);
+        let violations = index
+            .conn
+            .prepare("PRAGMA foreign_key_check")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .count();
+        assert_eq!(violations, 0);
+        assert!(!table_exists(&index, "tax_context"));
+        assert!(!table_exists(&index, "tax_context_condition"));
+        for (table, column) in [
+            ("document", "tax_context_id"),
+            ("rule", "tax_context_id"),
+            ("saved_query", "tax_context_id"),
+            ("document_field_origin", "condition_kind"),
+        ] {
+            assert!(!has_column(&index, table, column), "{table}.{column}");
+        }
+        assert!(has_column(&index, "document", "recipient"));
+        assert!(has_column(&index, "rule", "name"));
 
-        let stored = index.document(id).unwrap().unwrap();
+        let rules = index.rules().unwrap();
         assert_eq!(
-            stored.fields.tax_context,
-            Some(TaxContext::named("company"))
+            rules.iter().map(|rule| rule.id).collect::<Vec<_>>(),
+            [RuleId::new(3), RuleId::new(4)]
         );
+        assert_eq!(rules[0].spec.filing_pattern, "{year}/{sender}");
+        assert_eq!(
+            rules[1].spec.filing_pattern,
+            "{year}/{year}{month}{day}_{sender}_{number}"
+        );
+        assert_eq!(rules[0].spec.conditions.list.len(), 1);
+        index
+            .conn
+            .execute("UPDATE rule SET kind_id = NULL WHERE id = 3", [])
+            .unwrap();
+        let open_kind: Option<i64> = index
+            .conn
+            .query_row("SELECT kind_id FROM rule WHERE id = 3", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(open_kind, None);
+    }
+
+    #[test]
+    fn a_version_19_database_keeps_its_discarded_suggestions_and_turns_reviews_into_no_rule() {
+        use crate::model::{DocumentId, Field, FieldOrigin, ReviewReason, RuleId};
+
+        let (_dir, index) = migrated_from_19();
+
+        let kept: i64 = index
+            .conn
+            .query_row(
+                "SELECT count(*) FROM discarded_rule_suggestion",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(kept, 1);
+        let subtree_patterns: Vec<Option<String>> = index
+            .conn
+            .prepare("SELECT pattern FROM location_subtree ORDER BY subtree")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(subtree_patterns, [Some("{year}".to_owned()), None]);
+
+        let reasons: Vec<ReviewReason> = index
+            .conn
+            .prepare("SELECT reason, field FROM review_entry ORDER BY id")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+            })
+            .unwrap()
+            .map(|row| {
+                let (reason, field) = row.unwrap();
+                ReviewReason::parse(&reason, field.as_deref()).unwrap()
+            })
+            .collect();
+        assert_eq!(reasons, [ReviewReason::NoMatchingRule; 3]);
+        let open: Vec<_> = index
+            .open_reviews()
+            .unwrap()
+            .into_iter()
+            .map(|entry| (entry.document_id, entry.reason))
+            .collect();
+        assert_eq!(
+            open,
+            [
+                (DocumentId::new(1), ReviewReason::NoMatchingRule),
+                (DocumentId::new(2), ReviewReason::NoMatchingRule)
+            ]
+        );
+
+        let origins = index.field_origins(DocumentId::new(1)).unwrap();
+        assert_eq!(
+            origins.of(Field::Sender),
+            FieldOrigin::Rule(Some(RuleId::new(3)))
+        );
+        assert_eq!(origins.of(Field::Kind), FieldOrigin::Unknown);
+        let origin_rows: i64 = index
+            .conn
+            .query_row("SELECT count(*) FROM document_field_origin", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(origin_rows, 1);
+    }
+
+    #[test]
+    fn a_version_19_database_keeps_the_fields_tags_and_reports_of_its_documents() {
+        use crate::model::DocumentId;
+
+        let (_dir, index) = migrated_from_19();
+
+        let document = index.document(DocumentId::new(1)).unwrap().unwrap();
+        assert_eq!(document.fields.sender.as_deref(), Some("Company A"));
+        assert_eq!(document.fields.number.as_deref(), Some("4711"));
+        assert!(document.fields.tags.contains("services"));
+        let automatic: i64 = index
+            .conn
+            .query_row("SELECT sum(automatic) FROM document_tag", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(automatic, 0);
+        let queries = index.saved_queries().unwrap();
+        assert_eq!(queries.len(), 1);
+        assert_eq!(queries[0].spec.year, Some(2026));
+        assert_eq!(queries[0].spec.sender.as_deref(), Some("Company A"));
+    }
+
+    #[test]
+    fn a_version_19_database_keeps_the_text_search_and_the_cascade_of_its_documents() {
+        use crate::model::DocumentId;
+
+        let (_dir, index) = migrated_from_19();
+
+        assert_eq!(
+            index.search_text("miete", 10).unwrap(),
+            [DocumentId::new(1)]
+        );
+        let by_path: i64 = index
+            .conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE name = 'document_by_path'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(by_path, 1);
+        index
+            .conn
+            .execute("DELETE FROM document WHERE id = 1", [])
+            .unwrap();
+        let text_left: i64 = index
+            .conn
+            .query_row("SELECT count(*) FROM document_text", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(text_left, 0);
     }
 
     #[test]
@@ -1626,7 +1623,7 @@ mod tests {
     }
 
     fn assert_v0_6_0_content(index: &Index) {
-        use crate::model::{DocumentSource, DocumentStatus, TaxContext};
+        use crate::model::{DocumentSource, DocumentStatus};
 
         assert!(index.is_encrypted());
         let invoice = index
@@ -1638,10 +1635,6 @@ mod tests {
         assert_eq!(invoice.status, DocumentStatus::Filed);
         assert_eq!(invoice.fields.sender.as_deref(), Some("Company A"));
         assert_eq!(invoice.fields.kind.as_deref(), Some("Invoice"));
-        assert_eq!(
-            invoice.fields.tax_context,
-            Some(TaxContext::named("company"))
-        );
         assert_eq!(invoice.fields.number.as_deref(), Some("4711"));
         assert_eq!(
             invoice.fields.date.map(|date| date.to_string()).as_deref(),

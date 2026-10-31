@@ -1,25 +1,24 @@
 //! The form of a rule: a new one, or an existing one being changed. Nothing is
-//! stored before Save; the conditions are edited with the editor the tax
-//! contexts use too. No widgets, the view is `ui::rules`.
+//! stored before Save. No widgets, the view is `ui::rules`.
 
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use chrono::NaiveDate;
 use ncrs_index::{
     Condition, ConditionKind, DocumentFields, Rule, RuleConditions, RuleId, RuleOrigin, RuleSpec,
-    TaxContext,
 };
 
 use crate::condition_editor::{ConditionEditor, ConditionProblem, ALL_CONDITION_KINDS};
 use crate::messages::RuleFormMessage;
 use crate::review_work::{parse_tags, tags_text};
 use crate::rules_work::{RuleTry, TryResult};
-use crate::tax_contexts::{rendered_example, sample_fields};
 
 const NEW_RULE_PATTERN: &str = "{year}/{sender}";
 const EXAMPLE_KIND: &str = "invoice";
-const EXAMPLE_TAX_CONTEXT: &str = "company";
+const EXAMPLE_SENDER: &str = "Telekom";
+const EXAMPLE_NUMBER: &str = "4711";
 
 /// How long the form rests after an edit before the try runs.
 pub const TRY_DEBOUNCE: Duration = Duration::from_millis(300);
@@ -58,7 +57,6 @@ pub enum RuleFormTarget {
 pub struct RulePrefill {
     pub sender: String,
     pub kind: String,
-    pub tax_context: Option<TaxContext>,
     pub tags: BTreeSet<String>,
     pub pattern: String,
 }
@@ -68,8 +66,6 @@ pub struct RuleForm {
     pub target: RuleFormTarget,
     pub conditions: ConditionEditor,
     pub kind: String,
-    /// `None`: the conditions of the tax contexts decide.
-    pub tax_context: Option<TaxContext>,
     /// Comma separated, like the review list.
     pub tags: String,
     pub pattern: String,
@@ -120,7 +116,6 @@ impl RuleForm {
                 true,
             ),
             kind: String::new(),
-            tax_context: None,
             tags: String::new(),
             pattern: NEW_RULE_PATTERN.to_owned(),
             saving: false,
@@ -154,7 +149,6 @@ impl RuleForm {
                 true,
             ),
             kind: prefill.kind,
-            tax_context: prefill.tax_context,
             tags: tags_text(&prefill.tags),
             pattern,
             saving: false,
@@ -172,7 +166,6 @@ impl RuleForm {
             target,
             conditions: ConditionEditor::new(spec.conditions.clone(), &ALL_CONDITION_KINDS, true),
             kind: spec.kind.clone(),
-            tax_context: spec.tax_context.clone(),
             tags: tags_text(&spec.tags),
             pattern: spec.filing_pattern.clone(),
             saving: false,
@@ -189,7 +182,6 @@ impl RuleForm {
         match message {
             RuleFormMessage::Condition(edit) => self.conditions.apply(edit),
             RuleFormMessage::Kind(kind) => self.kind = kind,
-            RuleFormMessage::TaxContext(tax_context) => self.tax_context = tax_context,
             RuleFormMessage::Tags(tags) => self.tags = tags,
             RuleFormMessage::Pattern(pattern) => self.pattern = pattern,
             RuleFormMessage::InsertBlock(name) => {
@@ -265,7 +257,6 @@ impl RuleForm {
             extract_date: kept.and_then(|spec| spec.extract_date.clone()),
             extract_amount: kept.and_then(|spec| spec.extract_amount.clone()),
             kind: self.kind.trim().to_owned(),
-            tax_context: self.tax_context.clone(),
             tags: parse_tags(&self.tags),
             filing_pattern: self.pattern.trim().to_owned(),
             confirmed: kept.is_none_or(|spec| spec.confirmed),
@@ -303,20 +294,24 @@ impl RuleForm {
             && self.pattern_problem(true).is_none()
     }
 
-    /// The path the pattern gives for a sample document, in the kind and tax
-    /// context of the form.
+    /// The path the pattern gives for a sample document, in the kind of the
+    /// form, folders joined with `/`.
     pub fn example_path(&self) -> Option<String> {
         let kind = self.kind.trim();
         let fields = DocumentFields {
+            sender: Some(EXAMPLE_SENDER.to_owned()),
             kind: Some(if kind.is_empty() { EXAMPLE_KIND } else { kind }.to_owned()),
-            tax_context: Some(
-                self.tax_context
-                    .clone()
-                    .unwrap_or_else(|| TaxContext::named(EXAMPLE_TAX_CONTEXT)),
-            ),
-            ..sample_fields()
+            number: Some(EXAMPLE_NUMBER.to_owned()),
+            date: NaiveDate::from_ymd_opt(2024, 3, 15),
+            ..DocumentFields::default()
         };
-        rendered_example(self.pattern.trim(), &fields)
+        let path = ncrs_intake::render_pattern(self.pattern.trim(), &fields)?;
+        Some(
+            path.components()
+                .map(|part| part.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/"),
+        )
     }
 
     /// The write to make, once; the answer comes to the page's `saved`.
@@ -375,7 +370,6 @@ mod tests {
                 extract_date: Some(r"\d{4}-\d{2}-\d{2}".to_owned()),
                 extract_amount: None,
                 kind: "Invoice".to_owned(),
-                tax_context: Some(TaxContext::None),
                 tags: BTreeSet::from(["tax".to_owned(), "office".to_owned()]),
                 filing_pattern: "{year}/{sender}".to_owned(),
                 confirmed: true,
@@ -402,7 +396,6 @@ mod tests {
         assert_eq!(form.conditions.rows[0].kind, ConditionKind::Sender);
         assert_eq!(form.conditions.rows[0].value, "");
         assert_eq!(form.pattern, "{year}/{sender}");
-        assert_eq!(form.tax_context, None);
         assert!(!form.is_valid());
     }
 
@@ -412,7 +405,6 @@ mod tests {
 
         assert_eq!(form.kind, "Invoice");
         assert_eq!(form.tags, "office, tax");
-        assert_eq!(form.tax_context, Some(TaxContext::None));
         assert_eq!(form.conditions.rows.len(), 2);
         assert!(form.is_valid());
     }
@@ -464,25 +456,16 @@ mod tests {
     }
 
     #[test]
-    fn the_example_uses_the_sample_document_and_the_form_kind_and_context() {
+    fn the_example_uses_the_sample_document_and_the_form_kind() {
         let mut form = RuleForm::new();
         assert_eq!(form.example_path().as_deref(), Some("2024/Telekom"));
 
         form.update(RuleFormMessage::Pattern(
-            "{tax_context}/{kind}/{year}/{number}".to_owned(),
+            "{kind}/{year}/{number}".to_owned(),
         ));
-        assert_eq!(
-            form.example_path().as_deref(),
-            Some("company/invoice/2024/4711")
-        );
+        assert_eq!(form.example_path().as_deref(), Some("invoice/2024/4711"));
         form.update(RuleFormMessage::Kind("Receipt".to_owned()));
-        form.update(RuleFormMessage::TaxContext(Some(TaxContext::named(
-            "private",
-        ))));
-        assert_eq!(
-            form.example_path().as_deref(),
-            Some("private/Receipt/2024/4711")
-        );
+        assert_eq!(form.example_path().as_deref(), Some("Receipt/2024/4711"));
         form.update(RuleFormMessage::Pattern("{foo}".to_owned()));
         assert_eq!(form.example_path(), None);
     }
@@ -504,7 +487,6 @@ mod tests {
             RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, "Telekom")])
         );
         assert_eq!(spec.kind, "Invoice");
-        assert_eq!(spec.tax_context, None);
         assert_eq!(spec.filing_pattern, "{year}/{sender}");
         assert!(spec.confirmed && spec.enabled);
         assert!(spec.extract_date.is_none() && spec.extract_number.is_none());
@@ -548,7 +530,6 @@ mod tests {
         RulePrefill {
             sender: "Telekom".to_owned(),
             kind: "invoice".to_owned(),
-            tax_context: Some(TaxContext::named("company")),
             tags: BTreeSet::from(["tax".to_owned()]),
             pattern: "{sender}/{date}".to_owned(),
         }
@@ -564,7 +545,6 @@ mod tests {
             RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, "Telekom")])
         );
         assert_eq!(form.kind, "invoice");
-        assert_eq!(form.tax_context, Some(TaxContext::named("company")));
         assert_eq!(form.tags, "tax");
         assert_eq!(form.pattern, "{sender}/{date}");
         assert!(form.is_valid());
