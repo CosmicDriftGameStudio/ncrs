@@ -984,8 +984,21 @@ pub enum DocumentSearchMessage {
         generation: u64,
         result: Result<Vec<TaxContextEntry>, String>,
     },
+    /// The pieces of text around the words, by path. Dropped like `Ran`.
+    SnippetsLoaded {
+        generation: u64,
+        result: Result<Vec<(PathBuf, String)>, String>,
+    },
+    /// The preview of the selected document. Dropped like `Ran`.
+    PreviewLoaded {
+        generation: u64,
+        serial: u64,
+        content: PreviewContent,
+    },
     ToggleFacet(FacetValue),
     ClearFacets,
+    /// Opens the Reports page with a new report asking what the page asks.
+    SaveAsReport,
     Move(isize),
     Select(usize),
     /// The wheel or trackpad over the list.

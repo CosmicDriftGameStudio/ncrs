@@ -26,6 +26,7 @@ mod tax_contexts;
 #[cfg(test)]
 mod test_support;
 
+pub use documents::{SNIPPET_MARK_END, SNIPPET_MARK_START};
 pub use error::{IndexError, KeyStoreError, RecoveryKeyError, TaxContextProblem};
 pub use hermes_column::{FolderCounts, IncludeOutcome, PathState};
 pub use index::Index;

@@ -71,7 +71,7 @@ fn field_of(id: &widget::Id) -> Option<QueryField> {
     .map(|(_, field)| field)
 }
 
-const NAME_ID: &str = "saved-query-name";
+pub const NAME_ID: &str = "saved-query-name";
 const YEAR_ID: &str = "saved-query-year";
 const SENDER_ID: &str = "saved-query-sender";
 const KIND_ID: &str = "saved-query-kind";

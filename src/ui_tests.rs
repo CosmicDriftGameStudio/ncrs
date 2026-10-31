@@ -3382,6 +3382,84 @@ mod document_search_card {
         );
     }
 
+    #[test]
+    fn save_as_report_opens_the_reports_page_with_a_new_report_of_the_search() {
+        use crate::messages::SavedQueriesMessage;
+
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let _inside = runtime.enter();
+        let mut search = loaded_search();
+        search.set_text("rent".to_owned());
+        search.ran(crate::document_search::tests::six_hits());
+        search.toggle(FacetValue::Year(2025));
+        search.toggle(FacetValue::Sender("Firma A".to_owned()));
+        search.toggle(FacetValue::Tag("paid".to_owned()));
+        let mut app = App::with_document_search(search).with_ready_hermes_for_test();
+
+        drop(app.update(Message::DocumentSearch(DocumentSearchMessage::SaveAsReport)));
+
+        assert!(app.document_search_for_test().is_none());
+        let generation = app.saved_queries_generation_for_test();
+        drop(
+            app.update(Message::SavedQueries(SavedQueriesMessage::Loaded {
+                generation,
+                result: Ok((Vec::new(), Vec::new())),
+            })),
+        );
+        let form = app.saved_queries_for_test().unwrap().form();
+        assert_eq!(form.full_text, "rent");
+        assert_eq!(form.year, "2025");
+        assert_eq!(form.sender, "Firma A");
+        assert_eq!(form.tags, "paid");
+        assert_eq!(form.name, "");
+    }
+
+    #[test]
+    fn nothing_is_saved_as_a_report_without_words_or_a_chosen_value() {
+        let mut app = App::with_document_search(loaded_search()).with_ready_hermes_for_test();
+
+        drop(app.update(Message::DocumentSearch(DocumentSearchMessage::SaveAsReport)));
+
+        assert!(app.document_search_for_test().is_some());
+        assert!(app.saved_queries_for_test().is_none());
+    }
+
+    /// The words "rent" typed, snippets under the hits, and the text of the
+    /// selected one beside the list.
+    fn with_snippets() -> DocumentSearch {
+        use crate::document_preview::PreviewContent;
+
+        let mut search = DocumentSearch::new("rent".to_owned());
+        search.ran(crate::document_search::tests::six_hits());
+        search.set_snippets(vec![
+            (
+                std::path::PathBuf::from("archive/b.pdf"),
+                "…the monthly \u{2}rent\u{3} for the office in March, due on the first".to_owned(),
+            ),
+            (
+                std::path::PathBuf::from("archive/a.pdf"),
+                "Invoice: \u{2}rent\u{3} and service charges".to_owned(),
+            ),
+            (
+                std::path::PathBuf::from("archive/c.pdf"),
+                "Notice about the \u{2}rent\u{3} increase".to_owned(),
+            ),
+        ]);
+        let excerpt = "Invoice March\n\nThe monthly rent for the office is due on the first.\nPlease pay within 14 days.";
+        let start = excerpt.find("rent").unwrap();
+        search.show_preview_for_test(PreviewContent::Text {
+            excerpt: excerpt.to_owned(),
+            truncated: false,
+            highlights: std::iter::once(start..start + 4).collect(),
+        });
+        search
+    }
+
+    #[test]
+    fn the_page_with_snippets_offers_to_save_the_search() {
+        assert!(shows(with_snippets(), "Save as report"));
+    }
+
     fn matches_snapshot(search: DocumentSearch, name: &str) {
         let language = if name.contains("_de") {
             Language::German
@@ -3404,6 +3482,8 @@ mod document_search_card {
     fn the_view_matches_its_snapshots() {
         matches_snapshot(year_chosen(), "document_search_en");
         matches_snapshot(year_chosen(), "document_search_de");
+        matches_snapshot(with_snippets(), "document_search_snippets_en");
+        matches_snapshot(with_snippets(), "document_search_snippets_de");
     }
 }
 

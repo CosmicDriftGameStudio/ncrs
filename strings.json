@@ -8165,6 +8165,12 @@
       "context": "Last row of the Quick Open list when documents are searched too: opens the document search page with the text typed in Quick Open.",
       "en": "All hits in Search documents …",
       "de": "Alle Treffer in Dokumente durchsuchen …"
+    },
+    {
+      "key": "document_search.save_as_report",
+      "context": "Button of the document search page that opens the Reports page with a new report asking what the page asks now: the words and the chosen values. Nothing is saved until the user saves it there.",
+      "en": "Save as report",
+      "de": "Als Auswertung speichern"
     }
   ]
 }
