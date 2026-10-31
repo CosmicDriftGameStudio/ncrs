@@ -7,7 +7,7 @@ use rusqlite::{params, params_from_iter, Connection, OptionalExtension as _};
 use crate::documents::{DocumentRow, DOCUMENT_COLUMNS};
 use crate::error::IndexError;
 use crate::index::Index;
-use crate::model::{Document, DocumentId, QuerySpec, SavedQuery, SavedQueryId};
+use crate::model::{tag_name, Document, DocumentId, QuerySpec, SavedQuery, SavedQueryId};
 use crate::names::{name_id, NameTable};
 
 /// How many documents the full-text part of a query looks at, best match
@@ -71,6 +71,18 @@ fn require_free_name(
         }
         _ => Ok(()),
     }
+}
+
+/// The text as a LIKE pattern that takes `\`, `%` and `_` literally.
+fn escape_like(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for character in text.chars() {
+        if matches!(character, '\\' | '%' | '_') {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    escaped
 }
 
 fn blank_to_none(text: &Option<String>) -> Option<&str> {
@@ -209,14 +221,16 @@ impl Index {
         for tag in spec
             .tags
             .iter()
-            .map(|tag| tag.trim())
+            .map(|tag| tag_name(tag))
             .filter(|tag| !tag.is_empty())
         {
             conditions.push(
                 "EXISTS (SELECT 1 FROM document_tag dt JOIN tag t ON t.id = dt.tag_id
-                         WHERE dt.document_id = d.id AND t.name_key = ?)",
+                         WHERE dt.document_id = d.id
+                           AND (t.name_key = ? OR t.name_key LIKE ? ESCAPE '\\'))",
             );
-            values.push(Value::Text(tag.to_lowercase()));
+            values.push(Value::Text(tag.clone()));
+            values.push(Value::Text(format!("{}-%", escape_like(&tag))));
         }
         let text_hits: Option<HashSet<DocumentId>> = full_text_words(spec)
             .map(|words| {
@@ -354,6 +368,58 @@ mod tests {
 
         assert_eq!(found(&index, &by_kind), vec![ids[0], ids[1]]);
         assert_eq!(found(&index, &by_tags), vec![ids[2]]);
+    }
+
+    fn stocked_with_tags(own: &[&[&str]]) -> (tempfile::TempDir, Index, Vec<DocumentId>) {
+        let (dir, mut index) = encrypted_index();
+        let mut ids = Vec::new();
+        for (seed, names) in (1..).zip(own) {
+            let id = index.insert_document(&new_document(seed)).unwrap();
+            index
+                .set_document_fields(
+                    id,
+                    &DocumentFields {
+                        kind: Some("Invoice".to_owned()),
+                        date: NaiveDate::from_ymd_opt(2026, 2, 3),
+                        tags: tags(names),
+                        ..DocumentFields::default()
+                    },
+                    |_| FieldOrigin::Unknown,
+                )
+                .unwrap();
+            ids.push(id);
+        }
+        (dir, index, ids)
+    }
+
+    #[test]
+    fn a_tag_finds_the_more_specific_ones_below_it_but_not_a_longer_name() {
+        let (_dir, index, ids) =
+            stocked_with_tags(&[&["firma-a-gmbh"], &["firma-a"], &["firma-ab"], &[]]);
+
+        let spec = QuerySpec {
+            tags: tags(&["Firma A"]),
+            ..QuerySpec::default()
+        };
+
+        assert_eq!(found(&index, &spec), vec![ids[0], ids[1]]);
+    }
+
+    #[test]
+    fn like_characters_are_escaped_for_the_prefix_match() {
+        assert_eq!(escape_like(r"a_b%c\d"), r"a\_b\%c\\d");
+    }
+
+    #[test]
+    fn the_automatic_tags_of_kind_and_year_are_found() {
+        let (_dir, index, ids) = stocked_with_tags(&[&[], &["steuer"]]);
+
+        let spec = QuerySpec {
+            tags: tags(&["invoice", "2026"]),
+            ..QuerySpec::default()
+        };
+
+        assert_eq!(found(&index, &spec), vec![ids[0], ids[1]]);
     }
 
     #[test]

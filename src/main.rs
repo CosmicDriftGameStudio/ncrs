@@ -31,6 +31,7 @@ mod document_search;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod drag_out;
 mod execute;
+mod file_list_tags;
 mod filing;
 mod filing_pieces;
 mod filing_setup;

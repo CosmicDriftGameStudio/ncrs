@@ -18,13 +18,14 @@ use std::ops::Range;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use ncrs_index::iban_is_valid;
+use ncrs_index::{iban_is_valid, tag_name};
 use ncrs_intake::{pattern_is_valid, LocationMode};
 use ncrs_pipeline::Load;
 use serde::de::{Deserializer, Error as _, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use serde_spanned::Spanned;
 
+use crate::file_list_tags::{FileListTags, TagGroup};
 use crate::fs::OpenKind;
 use crate::i18n::Language;
 use crate::keymap::{KeyAction, Keymap};
@@ -93,6 +94,28 @@ pub struct Config {
     /// The saved SFTP servers, in the order of the file.
     #[serde(skip)]
     pub servers: Vec<ServerEntry>,
+    /// The `[file_list_tags]` section as written; `load` checks it into
+    /// `file_list_tags`.
+    #[serde(default, rename = "file_list_tags")]
+    pub file_list_tags_section: FileListTagsSection,
+    /// The tags the file panels show after a name.
+    #[serde(skip)]
+    pub file_list_tags: FileListTags,
+}
+
+/// The `[file_list_tags]` section, unchecked.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FileListTagsSection {
+    #[serde(default)]
+    pub show: Option<bool>,
+    /// Checked by `resolve_file_list_tags`: a name that is no group is dropped.
+    #[serde(default)]
+    pub groups: Option<Vec<String>>,
+    /// Checked by `resolve_file_list_tags`: spelled like a tag, empty ones
+    /// dropped.
+    #[serde(default)]
+    pub only: Vec<String>,
 }
 
 /// One `[[servers]]` entry, unchecked. The password is not part of it: it is
@@ -1103,6 +1126,7 @@ fn parse_config(source: &str, path: &Path, home: Option<&Path>) -> Result<Config
             line: line_at(source.as_bytes(), err.span.start),
             reason: err.reason,
         })?;
+    config.file_list_tags = resolve_file_list_tags(&config.file_list_tags_section);
     config.servers =
         resolve_servers(&config.server_sections).map_err(|err| ConfigError::Invalid {
             path: path.to_path_buf(),
@@ -1110,6 +1134,27 @@ fn parse_config(source: &str, path: &Path, home: Option<&Path>) -> Result<Config
             reason: err.reason,
         })?;
     Ok(config)
+}
+
+fn resolve_file_list_tags(section: &FileListTagsSection) -> FileListTags {
+    let defaults = FileListTags::default();
+    let groups = section.groups.as_ref().map_or(defaults.groups, |names| {
+        TagGroup::ALL
+            .into_iter()
+            .filter(|group| names.iter().any(|name| name.trim() == group.name()))
+            .collect()
+    });
+    let mut only: Vec<String> = Vec::new();
+    for entry in section.only.iter().map(|entry| tag_name(entry)) {
+        if !entry.is_empty() && !only.contains(&entry) {
+            only.push(entry);
+        }
+    }
+    FileListTags {
+        show: section.show.unwrap_or(defaults.show),
+        groups,
+        only,
+    }
 }
 
 /// Checks the `[[servers]]` entries as text; nothing is looked up or opened.
@@ -1538,6 +1583,7 @@ const MODULES_TABLE: &str = "modules";
 const FILING_TABLE: &str = "filing";
 const AI_TABLE: &str = "ai";
 const OPEN_TABLE: &str = "open";
+const FILE_LIST_TAGS_TABLE: &str = "file_list_tags";
 const AI_TABLES: &[&str] = &[MODULES_TABLE, FILING_TABLE, AI_TABLE];
 
 fn theme_preset_setting(preset: ThemePreset) -> Setting {
@@ -1631,6 +1677,27 @@ fn own_detail_setting(detail: OwnDetail, entries: &[String]) -> Setting {
     }
 }
 
+fn file_list_tags_settings(tags: &FileListTags) -> [Setting; 3] {
+    let list = |entries: Vec<&str>| toml_edit::Value::Array(entries.into_iter().collect());
+    [
+        Setting {
+            tables: &[FILE_LIST_TAGS_TABLE],
+            key: "show",
+            value: Some(tags.show.into()),
+        },
+        Setting {
+            tables: &[FILE_LIST_TAGS_TABLE],
+            key: "groups",
+            value: Some(list(tags.groups.iter().map(|group| group.name()).collect())),
+        },
+        Setting {
+            tables: &[FILE_LIST_TAGS_TABLE],
+            key: "only",
+            value: Some(list(tags.only.iter().map(String::as_str).collect())),
+        },
+    ]
+}
+
 fn ai_enabled_setting(enabled: bool) -> Setting {
     Setting {
         tables: AI_TABLES,
@@ -1693,6 +1760,16 @@ pub fn write_own_details(
     write_setting(
         path,
         own_detail_setting(detail, entries),
+        home_from_env().as_deref(),
+    )
+}
+
+/// Writes the whole `[file_list_tags]` section; same guarantees as
+/// [`write_theme_preset`].
+pub fn write_file_list_tags(path: &Path, tags: &FileListTags) -> Result<Config, FilingWriteError> {
+    write_settings(
+        path,
+        &file_list_tags_settings(tags),
         home_from_env().as_deref(),
     )
 }
@@ -2523,6 +2600,45 @@ mod tests {
             default_pattern_of("[modules.filing]\ndefault_pattern = \"{year}/{sender}\"\n"),
             Some("{year}/{sender}/".to_owned())
         );
+    }
+
+    #[test]
+    fn the_tags_of_the_file_list_default_to_kind_and_own_and_drop_what_is_unknown() {
+        let default = from_text("version = 1\n").unwrap().file_list_tags;
+        assert!(default.show);
+        assert_eq!(default.groups, [TagGroup::Kind, TagGroup::Own]);
+        assert!(default.only.is_empty());
+
+        let text = "[file_list_tags]\nshow = false\ngroups = [\"year\", \"nope\", \"sender\"]\nonly = [\" Firma A \", \"\", \"firma-a\"]\n";
+        let read = from_text(text).unwrap().file_list_tags;
+        assert!(!read.show);
+        assert_eq!(read.groups, [TagGroup::Sender, TagGroup::Year]);
+        assert_eq!(read.only, ["firma-a"]);
+        assert!(from_text("[file_list_tags]\ngroups = []\n")
+            .unwrap()
+            .file_list_tags
+            .groups
+            .is_empty());
+        assert!(from_text("[file_list_tags]\nmore = 1\n").is_err());
+    }
+
+    #[test]
+    fn the_tags_of_the_file_list_are_written_keeping_the_rest() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "version = 1\n# my note\nlang = \"en\"\n").unwrap();
+        let setting = FileListTags {
+            show: false,
+            groups: vec![TagGroup::Recipient, TagGroup::Own],
+            only: vec!["steuer".to_owned()],
+        };
+
+        let written = write_file_list_tags(&path, &setting).unwrap();
+
+        assert_eq!(written.file_list_tags, setting);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("# my note"));
+        assert!(text.contains("[file_list_tags]"));
     }
 
     const VALID_IBAN: &str = "DE89 3704 0044 0532 0130 00";

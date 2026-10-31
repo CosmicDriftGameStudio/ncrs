@@ -9,12 +9,13 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use ncrs_index::{DocumentStatus, Index, IndexError, PathState, StatusCounts};
+use ncrs_index::{DocumentStatus, FileTags, Index, IndexError, PathState, StatusCounts};
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::{Snapshot, Task};
 
 use crate::app::fill_template;
 use crate::config::FilingLocation;
+use crate::file_list_tags::{shown_tags, FileListTags, ShownTags};
 use crate::i18n::{Language, Msg};
 use crate::review_work::TextState;
 use crate::ui::format;
@@ -456,6 +457,12 @@ impl HermesColumn {
         })
     }
 
+    /// The tags of the document at the path; none for a file without an
+    /// index entry.
+    pub fn tags_of(&self, path: &Path) -> Option<&FileTags> {
+        self.stored_state(path).map(|stored| &stored.tags)
+    }
+
     fn stored_state(&self, path: &Path) -> Option<&PathState> {
         self.directories.get(path.parent()?)?.states.files.get(path)
     }
@@ -556,6 +563,10 @@ pub struct ColumnView<'a> {
     locations: &'a [FilingLocation],
     /// How far the spinner of a file being read has turned, in radians.
     angle: f32,
+    /// Which tags follow a file name.
+    tags: &'a FileListTags,
+    /// The width of one panel, to see how much of a name is left.
+    panel_width: f32,
 }
 
 impl<'a> ColumnView<'a> {
@@ -563,12 +574,28 @@ impl<'a> ColumnView<'a> {
         column: &'a HermesColumn,
         locations: &'a [FilingLocation],
         angle: f32,
+        tags: &'a FileListTags,
+        panel_width: f32,
     ) -> Self {
         Self {
             column,
             locations,
             angle,
+            tags,
+            panel_width,
         }
+    }
+
+    pub const fn panel_width(&self) -> f32 {
+        self.panel_width
+    }
+
+    /// The chips after the name of the file; none for a folder or a file the
+    /// index does not know.
+    pub fn tags_after(&self, path: &Path) -> ShownTags {
+        self.column
+            .tags_of(path)
+            .map_or_else(ShownTags::default, |tags| shown_tags(tags, self.tags))
     }
 
     pub const fn angle(&self) -> f32 {
@@ -659,6 +686,7 @@ mod tests {
                             path,
                             status: *status,
                             review: None,
+                            tags: FileTags::default(),
                         },
                     )
                 })
@@ -803,6 +831,7 @@ mod tests {
                     path: path.clone(),
                     status: DocumentStatus::InReview,
                     review: Some(ReviewReason::NoMatchingRule),
+                    tags: FileTags::default(),
                 }],
                 Vec::new(),
             )),

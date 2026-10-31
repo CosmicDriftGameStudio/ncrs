@@ -32,6 +32,7 @@ use crate::dialog::{Prompt, PromptKind};
 use crate::document_preview;
 use crate::document_search::DocumentSearch;
 use crate::execute;
+use crate::file_list_tags::FileListTags;
 use crate::filing::{
     DocumentFinder, FilingMessage, FilingModule, LocationStatus, Phase, Work, WorkOutcome,
 };
@@ -1070,6 +1071,7 @@ fn write_setting_change(
         SettingChange::OwnDetails { detail, entries } => {
             config::write_own_details(path, detail, &entries)
         }
+        SettingChange::FileListTags(tags) => config::write_file_list_tags(path, &tags),
     };
     written.map(Box::new)
 }
@@ -1418,6 +1420,8 @@ pub struct App {
     config_path: Option<PathBuf>,
     /// The filing settings of the config file, as last loaded or written.
     filing_config: Filing,
+    /// Which tags the file panels show after a file name.
+    file_list_tags: FileListTags,
     /// The settings tab, while it is open.
     settings: Option<settings_ui::SettingsState>,
     /// A write of the settings tab that failed; it stays until the next write.
@@ -3190,6 +3194,7 @@ impl App {
                 self.vscode_theme = config.vscode_theme_path().map(str::to_owned);
                 self.open_programs = config.open;
                 self.saved_servers = config.servers;
+                self.file_list_tags = config.file_list_tags;
                 self.keymap = config.keymap;
                 self.refresh_function_keys();
                 self.palette = config.palette;
@@ -3445,6 +3450,7 @@ impl App {
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
             config_path: None,
             filing_config: Filing::default(),
+            file_list_tags: FileListTags::default(),
             filing_index_path: None,
             filing_key_store: None,
             filing_setup: None,
@@ -5199,6 +5205,8 @@ impl App {
                             &self.hermes_column,
                             &self.filing_config.locations,
                             self.hermes_spinner_angle,
+                            &self.file_list_tags,
+                            self.window_size.width / 2.0,
                         )
                     }),
                 },
@@ -11157,6 +11165,18 @@ impl App {
                 }
                 Task::none()
             }
+            SavedQueriesMessage::AddTag => {
+                if let Some(view) = self.saved_queries.as_mut() {
+                    view.add_tags();
+                }
+                Task::none()
+            }
+            SavedQueriesMessage::RemoveTag(tag) => {
+                if let Some(view) = self.saved_queries.as_mut() {
+                    view.remove_tag(&tag);
+                }
+                Task::none()
+            }
             SavedQueriesMessage::LeftInForm => {
                 iced::advanced::widget::operate(saved_queries_ui::focused_field())
                     .map(|field| Message::SavedQueries(SavedQueriesMessage::LeftChecked(field)))
@@ -12395,6 +12415,23 @@ impl App {
                 self.leave_settings_page(Self::close_settings)
             }
             SettingsMessage::Toggle => self.open_settings(),
+            SettingsMessage::ToggleFileListTags => {
+                let switched = FileListTags {
+                    show: !self.file_list_tags.show,
+                    ..self.file_list_tags.clone()
+                };
+                self.write_setting(SettingChange::FileListTags(switched))
+            }
+            SettingsMessage::ChooseFileListTags => {
+                let row = self.lang.text(Msg::SettingsRowFileTagsShow).to_owned();
+                let shown = self.show_setting(crate::messages::SettingsFeature::Look, Some(row));
+                // The row is marked, but the page stays whole: the choice has
+                // more rows than the one that is found by its label.
+                if let Some(state) = self.settings.as_mut() {
+                    state.query.clear();
+                }
+                shown
+            }
             SettingsMessage::Close => self.leave_settings_page(Self::close_settings),
             SettingsMessage::Select(feature)
                 if self
@@ -12664,6 +12701,10 @@ impl App {
                 Task::none()
             }
             SettingChange::Servers(_) => self.take_over_servers(config.servers),
+            SettingChange::FileListTags(_) => {
+                self.file_list_tags = config.file_list_tags;
+                Task::none()
+            }
             SettingChange::AiEnabled(_) | SettingChange::AiProvider(_) => {
                 let (applies, task) = self.apply_ai_change(config.filing);
                 let outcome = if matches!(applies, SavedFilingApplies::Now) {
@@ -16121,6 +16162,7 @@ impl App {
             wall_clock: Arc::new(ncrs_pipeline::SystemClock),
             config_path: None,
             filing_config: Filing::default(),
+            file_list_tags: FileListTags::default(),
             filing_index_path: None,
             filing_key_store: None,
             filing_setup: None,
@@ -16307,6 +16349,12 @@ impl App {
     /// Fixed panels with the Hermes column up and filled by hand: folders in
     /// every role on the left, files in every state on the right with the
     /// cursor on an inquiry.
+    /// The sample column with tags after the names, as the setting says.
+    pub fn with_file_list_tags_for_test(mut self, setting: FileListTags) -> Self {
+        self.file_list_tags = setting;
+        self
+    }
+
     pub fn with_hermes_column_sample() -> Self {
         use crate::hermes_column::{ColumnReading, DirectoryStates, FolderReading};
         use ncrs_index::{DocumentStatus, PathState, ReviewReason, StatusCounts};
@@ -16377,9 +16425,24 @@ impl App {
         let states = DirectoryStates::sample(
             files
                 .iter()
-                .map(|(name, status)| PathState {
+                .enumerate()
+                .map(|(position, (name, status))| PathState {
                     path: files_dir.join(name),
                     status: *status,
+                    tags: ncrs_index::FileTags {
+                        kind: Some(
+                            ["rechnung", "brief", "versicherung", "beleg"][position % 4].to_owned(),
+                        ),
+                        recipient: Some("firma-a-gmbh".to_owned()),
+                        sender: Some("telekom".to_owned()),
+                        year: Some("2025".to_owned()),
+                        own: [
+                            vec!["steuer".to_owned()],
+                            Vec::new(),
+                            vec!["steuer".to_owned(), "buero".to_owned(), "privat".to_owned()],
+                        ][position % 3]
+                            .clone(),
+                    },
                     review: (*status == DocumentStatus::InReview)
                         .then_some(ReviewReason::NoMatchingRule),
                 })

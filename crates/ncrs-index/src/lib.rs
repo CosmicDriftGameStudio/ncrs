@@ -27,7 +27,7 @@ mod test_support;
 
 pub use documents::{SNIPPET_MARK_END, SNIPPET_MARK_START};
 pub use error::{IndexError, KeyStoreError, RecoveryKeyError};
-pub use hermes_column::{FolderCounts, IncludeOutcome, PathState};
+pub use hermes_column::{FileTags, FolderCounts, IncludeOutcome, PathState};
 pub use index::Index;
 pub use journal::{BatchKind, JournalItem, JournalState, NewJournalItem};
 pub use key::RecoveryKey;

@@ -15,7 +15,7 @@ use ncrs_index::{DocumentFields, Field, FieldOrigin, ReviewReason};
 use ncrs_intake::{PatternPart, PatternSource};
 
 use super::document_preview;
-use super::filing_pieces::{target_view, TargetHost};
+use super::filing_pieces::{folder_chips_read_only, target_view, TargetHost};
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::hermes::{self, Badges};
@@ -634,8 +634,10 @@ fn where_block<'a>(
             },
         ),
         None => row![
-            paragraph(
-                FilingTarget::parse(&state.form().pattern).in_words(lang),
+            folder_chips_read_only(
+                &FilingTarget::parse(&state.form().pattern),
+                false,
+                lang,
                 palette,
             ),
             kit::button(

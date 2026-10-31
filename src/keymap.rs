@@ -156,6 +156,8 @@ key_actions! {
     SearchCase => "search_case",
     SearchWholeWord => "search_whole_word",
     SearchRegex => "search_regex",
+    FileListTagsToggle => "file_list_tags_toggle",
+    FileListTagsChoose => "file_list_tags_choose",
 }
 
 /// An area of the window with its own keys: the panels, or the search view
@@ -249,6 +251,8 @@ impl KeyAction {
             | Self::HermesInspect
             | Self::SavedQueries
             | Self::SearchDocuments
+            | Self::FileListTagsToggle
+            | Self::FileListTagsChoose
             | Self::ReorganisationPlan
             | Self::UndoReorganisation
             | Self::FetchTheme
@@ -426,6 +430,8 @@ impl KeyAction {
             Self::SearchCase => Message::Search(SearchMessage::ToggleCase),
             Self::SearchWholeWord => Message::Search(SearchMessage::ToggleWholeWord),
             Self::SearchRegex => Message::Search(SearchMessage::ToggleRegex),
+            Self::FileListTagsToggle => Message::Settings(SettingsMessage::ToggleFileListTags),
+            Self::FileListTagsChoose => Message::Settings(SettingsMessage::ChooseFileListTags),
         }
     }
 
@@ -497,6 +503,8 @@ impl KeyAction {
             | Self::ReviewList
             | Self::SavedQueries
             | Self::SearchDocuments
+            | Self::FileListTagsToggle
+            | Self::FileListTagsChoose
             | Self::ReorganisationPlan
             | Self::UndoReorganisation
             | Self::FetchTheme
@@ -585,6 +593,8 @@ impl KeyAction {
             | Self::ReviewList
             | Self::SavedQueries
             | Self::SearchDocuments
+            | Self::FileListTagsToggle
+            | Self::FileListTagsChoose
             | Self::ReorganisationPlan
             | Self::UndoReorganisation
             | Self::FetchTheme
@@ -2068,6 +2078,8 @@ mod tests {
             KeyAction::HermesExclude,
             KeyAction::HermesInspect,
             KeyAction::SearchDocuments,
+            KeyAction::FileListTagsToggle,
+            KeyAction::FileListTagsChoose,
         ];
         // Ctrl+C is copy_files there; Escape and the cancel button stop a job.
         if !cfg!(target_os = "macos") {

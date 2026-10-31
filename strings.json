@@ -1471,6 +1471,18 @@
       "de": "Suche: ganze Wörter"
     },
     {
+      "key": "action.file_list_tags_toggle",
+      "context": "Entry of the command palette that runs the key action file_list_tags_toggle. Switches the small tags after the file names in the file lists on or off.",
+      "en": "Tags in the file list on/off",
+      "de": "Schlagworte in der Dateiliste ein/aus"
+    },
+    {
+      "key": "action.file_list_tags_choose",
+      "context": "Entry of the command palette that runs the key action file_list_tags_choose. Opens the settings where the user chooses which tags the file lists show.",
+      "en": "Choose tags in the file list …",
+      "de": "Schlagworte in der Dateiliste wählen …"
+    },
+    {
       "key": "action.search_regex",
       "context": "Entry of the command palette that runs the key action search_regex. The name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
       "en": "Search: regular expression",
@@ -4047,8 +4059,8 @@
     {
       "key": "saved_queries.hint_tags",
       "context": "Description under the tags field of the saved queries page.",
-      "en": "All of them must be on the document, separated by commas",
-      "de": "Alle müssen am Dokument sein, mit Komma getrennt"
+      "en": "All of them must be on the document. Enter adds a tag; a tag also finds the more specific ones, firma-a finds firma-a-gmbh.",
+      "de": "Alle müssen am Dokument sein. Enter fügt hinzu; ein Schlagwort findet auch die genaueren, firma-a findet firma-a-gmbh."
     },
     {
       "key": "saved_queries.hint_full_text",
@@ -7171,6 +7183,12 @@
       "de": "Wenn {conditions} → {target}"
     },
     {
+      "key": "rules.card_if",
+      "context": "First word of the conditions of a rule in the rules list, before the condition chips.",
+      "en": "If",
+      "de": "Wenn"
+    },
+    {
       "key": "rules.joiner_all",
       "context": "Word between two conditions of a rule sentence when the rule needs all of them. Shown with a space on either side.",
       "en": "and",
@@ -7311,14 +7329,14 @@
     {
       "key": "rules.hits_one",
       "context": "Hits of a rule on the rules page when exactly one document was filed by it; the number is 1.",
-      "en": "1 document",
-      "de": "1 Dokument"
+      "en": "1 hit",
+      "de": "1 Treffer"
     },
     {
       "key": "rules.hits_other",
       "context": "Hits of a rule on the rules page when none or several documents were filed by it. Takes the number.",
-      "en": "{count} documents",
-      "de": "{count} Dokumente"
+      "en": "{count} hits",
+      "de": "{count} Treffer"
     },
     {
       "key": "rules.hint_toggle",
@@ -8021,6 +8039,96 @@
       "context": "Dim line under the preview in the review list: the target comes from a rule.",
       "en": "From a rule. Changing it here only affects this document.",
       "de": "Aus einer Regel. Eine Änderung hier gilt nur für dieses Dokument."
+    },
+    {
+      "key": "document_search.facet_recipient",
+      "context": "Label of the row of recipients that can be chosen to narrow the hits on the document search page.",
+      "en": "Recipient",
+      "de": "Empfänger"
+    },
+    {
+      "key": "document_search.sum",
+      "context": "Total of the amounts of the documents found, after the number of documents on the document search page. {amount} is the sum with its currency.",
+      "en": "Sum {amount}",
+      "de": "Summe {amount}"
+    },
+    {
+      "key": "document_search.filters_together",
+      "context": "Dim note on the document search page while values are chosen: they all apply at once. {values} lists the chosen values joined by the word for and.",
+      "en": "Filters apply together ({values}).",
+      "de": "Filter gelten zusammen ({values})."
+    },
+    {
+      "key": "document_search.filters_and",
+      "context": "The word between the chosen values in the note that filters apply together on the document search page.",
+      "en": "and",
+      "de": "und"
+    },
+    {
+      "key": "settings.group_file_tags",
+      "context": "Title of the group on the appearance page of the settings tab that sets which tags follow a file name in the file lists.",
+      "en": "Tags in the file list",
+      "de": "Schlagworte in der Dateiliste"
+    },
+    {
+      "key": "settings.group_file_tags_intro",
+      "context": "Sentence under the title of the group that sets the tags shown in the file lists.",
+      "en": "Shows the tags of read documents after the file name.",
+      "de": "Zeigt hinter dem Dateinamen die Schlagworte gelesener Dokumente."
+    },
+    {
+      "key": "settings.row_file_tags_show",
+      "context": "Label of the on/off switch for the tags in the file lists on the settings tab.",
+      "en": "Show tags",
+      "de": "Schlagworte anzeigen"
+    },
+    {
+      "key": "settings.row_file_tags_which",
+      "context": "Label of the row with one checkbox per kind of tag shown in the file lists on the settings tab.",
+      "en": "Which tags?",
+      "de": "Welche Schlagworte?"
+    },
+    {
+      "key": "settings.file_tags_kind",
+      "context": "Checkbox for the kind of document as a tag shown in the file lists, with examples.",
+      "en": "Kind (invoice, contract, notice …)",
+      "de": "Art (rechnung, vertrag, bescheid …)"
+    },
+    {
+      "key": "settings.file_tags_recipient",
+      "context": "Checkbox for the recipient as a tag shown in the file lists, with an example.",
+      "en": "Recipient (firma-a-gmbh …)",
+      "de": "Empfänger (firma-a-gmbh …)"
+    },
+    {
+      "key": "settings.file_tags_sender",
+      "context": "Checkbox for the sender as a tag shown in the file lists, with an example.",
+      "en": "Sender (telekom …)",
+      "de": "Absender (telekom …)"
+    },
+    {
+      "key": "settings.file_tags_year",
+      "context": "Checkbox for the year as a tag shown in the file lists, with an example.",
+      "en": "Year (2026 …)",
+      "de": "Jahr (2026 …)"
+    },
+    {
+      "key": "settings.file_tags_own",
+      "context": "Checkbox for the tags the user set themselves, shown in the file lists.",
+      "en": "Own tags",
+      "de": "Eigene Schlagworte"
+    },
+    {
+      "key": "settings.row_file_tags_only",
+      "context": "Label of the field on the settings tab where tags are typed that alone are shown in the file lists.",
+      "en": "Only show these",
+      "de": "Nur diese zeigen"
+    },
+    {
+      "key": "settings.row_file_tags_only_note",
+      "context": "Note under the field of the tags that alone are shown in the file lists.",
+      "en": "At most 3 per file, then “+1”. Saved at once. Applies to both file lists.",
+      "de": "Höchstens 3 pro Datei, dann „+1“. Wird sofort gespeichert. Gilt für beide Dateilisten."
     }
   ]
 }

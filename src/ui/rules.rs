@@ -3,33 +3,36 @@
 //! the order Hermes tries the rules in. A page of the Hermes card. Pure view
 //! over [`RulesPage`].
 
-use iced::widget::{column, container, row, Column, Row, Space};
-use iced::{alignment, Element, Length, Size};
+use iced::widget::{column, container, row, text, Column, Row, Space};
+use iced::{alignment, Element, Font, Length, Size};
+use ncrs_index::Combinator;
 
 use super::condition_editor::{combinator_choice, condition_editor_rows, ConditionHost};
-use super::filing_pieces::{target_view, TargetHost};
+use super::filing_pieces::{folder_chips_read_only, target_view, TargetHost};
 use super::frame::{self, DialogSize, Frame, KeyHints, PageHint};
 use super::hermes::{self, Badges};
 use super::kit::{self, dim, error_line, paragraph, Check, Columns, Tone};
 use super::review_list::reason_text;
-use super::theme::spacing;
+use super::theme::{font_size, spacing};
 use crate::app::fill_template;
+use crate::filing_pieces::FilingTarget;
 use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{HermesFocus, HermesPage, Message, RuleFormMessage, RulesMessage};
 use crate::palette::Palette;
 use crate::review_work::TextState;
 use crate::rule_form::{RuleForm, RuleFormTarget, TryStatus};
-use crate::rules_page::{hits_text, origin_text, rule_sentence, RulesPage, VISIBLE_ROWS};
+use crate::rules_page::{
+    hits_text, origin_text, rule_sentence, sentence_part, RulesPage, VISIBLE_ROWS,
+};
 use crate::rules_work::{ListedRule, TriedDocument, TryOutcome, TryResult, TrySection};
 
 const SIZE: DialogSize = DialogSize::Card;
 
-/// How the width of a row is shared: rule, origin, hits.
-const PORTIONS: [u16; 3] = [12, 4, 3];
+/// The height of a rule in the list: three lines of chips and text.
+const CARD_HEIGHT: f32 = 74.0;
 
-/// The room of the switch left of a row, in pixels and in characters.
+/// The room of the switch left of a row.
 const SWITCH_WIDTH: f32 = 28.0;
-const SWITCH_CHARS: usize = 4;
 
 /// How the width of a row of the try is shared: place, document, change,
 /// conflicts.
@@ -83,12 +86,8 @@ pub fn view<'a>(
     if let Some(form) = state.form() {
         return form_view(form, window, badges, lang, palette);
     }
-    let line_chars = frame::content_chars(SIZE, window, frame::SIDEBAR_ROOM);
-    let mut body = column![
-        paragraph(lang.text(Msg::RulesExplain), palette),
-        dim(lang.text(Msg::RulesHintTwoRules), palette),
-    ]
-    .spacing(spacing::LINE_GAP);
+    let mut body =
+        column![paragraph(lang.text(Msg::RulesExplain), palette),].spacing(spacing::LINE_GAP);
 
     if state.rows().is_empty() {
         body = body.push(dim(
@@ -100,7 +99,8 @@ pub fn view<'a>(
             palette,
         ));
     } else {
-        body = body.push(list(state, line_chars, badges.focus, lang, palette));
+        body = body.push(list(state, badges.focus, lang, palette));
+        body = body.push(dim(lang.text(Msg::RulesHintTwoRules), palette));
         if let Some(selected) = state.selected().filter(|_| !state.is_confirming_delete()) {
             body = body.push(paragraph(sentence_of(selected, lang), palette));
         }
@@ -141,27 +141,10 @@ fn sentence_of(listed: &ListedRule, lang: Language) -> String {
 
 fn list<'a>(
     state: &'a RulesPage,
-    line_chars: usize,
     focus: HermesFocus,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let columns = Columns {
-        portions: &PORTIONS,
-        line_chars: line_chars.saturating_sub(SWITCH_CHARS),
-    };
-    let header = row![
-        Space::new().width(SWITCH_WIDTH),
-        columns.header(
-            &[
-                lang.text(Msg::RulesColumnRule),
-                lang.text(Msg::RulesColumnOrigin),
-                lang.text(Msg::RulesColumnHits),
-            ],
-            palette,
-        ),
-    ];
-
     let first = state.first_visible();
     let rows = state
         .rows()
@@ -171,14 +154,8 @@ fn list<'a>(
         .take(VISIBLE_ROWS)
         .map(|(index, listed)| {
             let selected = index == state.cursor();
+            let on_fill = selected && focus == HermesFocus::Content;
             let enabled = listed.rule.spec.enabled;
-            let color = if selected && focus == HermesFocus::Content {
-                palette.cursor_text
-            } else if enabled {
-                palette.text
-            } else {
-                palette.dim_text
-            };
             let switch = kit::checkbox(
                 if enabled { Check::On } else { Check::Off },
                 Some(send(RulesMessage::ToggleAt(index))),
@@ -186,31 +163,107 @@ fn list<'a>(
             );
             let content = row![
                 container(switch).width(SWITCH_WIDTH),
-                columns.cell(0, &sentence_of(listed, lang), color),
-                columns.cell(1, origin_text(listed.rule.origin, lang), color),
-                columns.cell(2, &hits_text(listed.hits, lang), color),
+                rule_card(listed, on_fill, lang, palette),
             ]
             .align_y(alignment::Vertical::Center);
-            kit::list_row(
+            kit::list_row_of_height(
                 content.into(),
                 send(RulesMessage::Select(index)),
                 selected,
                 focus == HermesFocus::Content,
+                CARD_HEIGHT,
                 palette,
             )
         })
         .collect();
-    kit::scroll_list(
-        header.into(),
+    kit::scroll_list_of_height(
+        Space::new().into(),
         rows,
         kit::ListView {
             len: state.rows().len(),
             visible: VISIBLE_ROWS,
             offset: first,
         },
+        CARD_HEIGHT,
         |delta| send(RulesMessage::Scrolled(delta)),
         palette,
     )
+}
+
+/// One rule as three lines: "If" and the conditions as chips, the arrow and
+/// the folders of the target as chips, and the origin with the hits. A name
+/// the user gave it stands first, in bold.
+fn rule_card<'a>(
+    listed: &ListedRule,
+    on_fill: bool,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let spec = &listed.rule.spec;
+    let quiet_color = if on_fill {
+        palette.cursor_text
+    } else {
+        palette.dim_text
+    };
+    let quiet = |content: String| {
+        text(content)
+            .size(font_size::SMALL)
+            .color(quiet_color)
+            .wrapping(text::Wrapping::None)
+    };
+    let mut conditions = Row::new()
+        .spacing(spacing::XS)
+        .align_y(alignment::Vertical::Center);
+    if let Some(name) = spec.name.as_deref().filter(|name| !name.is_empty()) {
+        conditions = conditions.push(
+            text(name.to_owned())
+                .size(font_size::SMALL)
+                .font(Font {
+                    weight: iced::font::Weight::Bold,
+                    ..Font::DEFAULT
+                })
+                .wrapping(text::Wrapping::None),
+        );
+    }
+    conditions = conditions.push(quiet(lang.text(Msg::RulesCardIf).to_owned()));
+    let combinator = spec.conditions.combinator;
+    for (position, condition) in spec.conditions.list.iter().enumerate() {
+        let (negated_joiner, label) = sentence_part(condition, position == 0, lang);
+        if position > 0 {
+            conditions = conditions.push(quiet(
+                lang.text(match (combinator, negated_joiner) {
+                    (Combinator::AllOf, false) => Msg::RulesJoinerAll,
+                    (Combinator::AnyOf, false) => Msg::RulesJoinerAny,
+                    (Combinator::AllOf, true) => Msg::RulesJoinerAllNot,
+                    (Combinator::AnyOf, true) => Msg::RulesJoinerAnyNot,
+                })
+                .to_owned(),
+            ));
+        }
+        conditions = conditions.push(kit::chip(&label, on_fill, palette));
+    }
+    let target = row![
+        quiet("→".to_owned()),
+        folder_chips_read_only(
+            &FilingTarget::parse(&spec.filing_pattern),
+            on_fill,
+            lang,
+            palette
+        ),
+    ]
+    .spacing(spacing::XS)
+    .align_y(alignment::Vertical::Center);
+    column![
+        conditions,
+        target,
+        quiet(format!(
+            "{} · {}",
+            origin_text(listed.rule.origin, lang),
+            hits_text(listed.hits, lang)
+        )),
+    ]
+    .spacing(spacing::XS)
+    .into()
 }
 
 fn delete_question<'a>(

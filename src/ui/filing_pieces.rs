@@ -6,7 +6,7 @@ use iced::widget::{column, row, Row};
 use iced::{alignment, Element};
 
 use super::kit::{self, dim, error_line, Tone};
-use super::theme::spacing;
+use super::theme::{self, spacing};
 use crate::app::fill_template;
 use crate::filing_pieces::{FilingTarget, FolderField, FolderPiece, TargetEdit, TargetEditor};
 use crate::i18n::{Language, Msg};
@@ -78,6 +78,30 @@ fn folder_label(piece: &FolderPiece, lang: Language) -> String {
         file_name: crate::filing_pieces::FileName::Automatic,
     }
     .in_words(lang)
+}
+
+/// The folders of a target as chips without a cross, a dimmed slash between
+/// them: for the places that show a target and do not edit it.
+pub fn folder_chips_read_only<'a, M: 'a>(
+    target: &FilingTarget,
+    on_fill: bool,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, M> {
+    let mut chips = Row::new()
+        .spacing(spacing::XS)
+        .align_y(alignment::Vertical::Center);
+    for (position, piece) in target.folders.iter().enumerate() {
+        if position > 0 {
+            chips = chips.push(
+                iced::widget::text("/")
+                    .size(theme::font_size::SMALL)
+                    .color(palette.dim_text),
+            );
+        }
+        chips = chips.push(kit::chip(&folder_label(piece, lang), on_fill, palette));
+    }
+    chips.into()
 }
 
 /// The folders as chips with a cross, a dimmed slash between them.
