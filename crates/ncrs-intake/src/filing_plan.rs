@@ -119,6 +119,33 @@ pub fn pattern_is_valid(source: &str) -> bool {
     Pattern::parse(source).is_some()
 }
 
+/// The blocks a pattern editor offers; `folder` and `name` stay valid but are
+/// not offered.
+pub const FILING_PLACEHOLDERS: [&str; 8] = [
+    "year",
+    "month",
+    "day",
+    "date",
+    "sender",
+    "number",
+    "kind",
+    "tax_context",
+];
+
+/// The name of the first `{name}` of `source` that is not a block a pattern
+/// knows; an unclosed brace is no block.
+pub fn unknown_placeholder(source: &str) -> Option<String> {
+    let mut rest = source;
+    while let Some((_, from)) = rest.split_once('{') {
+        let (name, after) = from.split_once('}')?;
+        if Placeholder::parse(name).is_none() {
+            return Some(name.to_owned());
+        }
+        rest = after;
+    }
+    None
+}
+
 /// Plans with the enabled rules that match, in the order of `rules`. When
 /// several confirmed rules match they must agree: the same result for the
 /// document, whichever rule it came from. Otherwise the document needs review
@@ -659,6 +686,23 @@ impl Pattern {
     clippy::indexing_slicing
 )]
 mod tests {
+    #[test]
+    fn every_offered_block_is_a_placeholder() {
+        for name in FILING_PLACEHOLDERS {
+            assert!(Placeholder::parse(name).is_some(), "{name}");
+        }
+    }
+
+    #[test]
+    fn the_first_unknown_block_is_named() {
+        assert_eq!(
+            unknown_placeholder("{year}/{foo}/{bar}").as_deref(),
+            Some("foo")
+        );
+        assert_eq!(unknown_placeholder("{year}/{sender}"), None);
+        assert_eq!(unknown_placeholder("{year"), None);
+    }
+
     use std::collections::BTreeSet;
     use std::path::Path;
 

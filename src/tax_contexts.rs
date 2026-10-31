@@ -4,25 +4,40 @@
 
 use chrono::NaiveDate;
 use ncrs_index::{
-    Combinator, Condition, ConditionKind, DocumentFields, RuleConditions, TaxContext,
-    TaxContextEntry, TaxContextId, TaxContextUsage,
+    ConditionKind, DocumentFields, RuleConditions, TaxContext, TaxContextEntry, TaxContextId,
+    TaxContextUsage,
 };
 
+use crate::condition_editor::{ConditionEdit, ConditionEditor};
 use crate::tax_context_work::{ContextsResult, TaxContextFailure};
 
 /// The pattern the example path is made with, so the user sees how the short
 /// name is sanitised and where it lands.
 const SAMPLE_PATTERN: &str = "{tax_context}/{year}/{sender}";
 const SAMPLE_SENDER: &str = "Telekom";
+const SAMPLE_NUMBER: &str = "4711";
+
+/// The document the example paths are made for; the caller sets the rest.
+pub fn sample_fields() -> DocumentFields {
+    DocumentFields {
+        sender: Some(SAMPLE_SENDER.to_owned()),
+        number: Some(SAMPLE_NUMBER.to_owned()),
+        date: NaiveDate::from_ymd_opt(2024, 3, 15),
+        ..DocumentFields::default()
+    }
+}
 
 pub fn example_path(short_name: &str) -> Option<String> {
     let fields = DocumentFields {
         tax_context: Some(TaxContext::named(short_name.trim())),
-        sender: Some(SAMPLE_SENDER.to_owned()),
-        date: NaiveDate::from_ymd_opt(2024, 3, 15),
-        ..DocumentFields::default()
+        ..sample_fields()
     };
-    let path = ncrs_intake::render_pattern(SAMPLE_PATTERN, &fields)?;
+    rendered_example(SAMPLE_PATTERN, &fields)
+}
+
+/// The path `pattern` gives for `fields`, folders joined with `/`.
+pub fn rendered_example(pattern: &str, fields: &DocumentFields) -> Option<String> {
+    let path = ncrs_intake::render_pattern(pattern, fields)?;
     Some(
         path.components()
             .map(|part| part.as_os_str().to_string_lossy())
@@ -68,9 +83,8 @@ pub struct DeleteQuestion {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConditionForm {
     pub entry: TaxContextEntry,
-    pub conditions: Option<RuleConditions>,
-    pub new_kind: ConditionKind,
-    pub new_value: String,
+    /// `None` until the stored conditions are read.
+    pub editor: Option<ConditionEditor>,
     pub failure: Option<TaxContextFailure>,
     pub saving: bool,
 }
@@ -318,9 +332,7 @@ impl TaxContextsState {
         };
         self.step = Step::Conditions(ConditionForm {
             entry,
-            conditions: None,
-            new_kind: ConditionKind::Recipient,
-            new_value: String::new(),
+            editor: None,
             failure: None,
             saving: false,
         });
@@ -338,85 +350,54 @@ impl TaxContextsState {
             return;
         }
         match result {
-            Ok(conditions) => form.conditions = Some(conditions),
+            Ok(conditions) => {
+                form.editor = Some(ConditionEditor::new(
+                    conditions,
+                    &NEW_CONDITION_KINDS,
+                    false,
+                ));
+            }
             Err(failure) => form.failure = Some(failure),
         }
     }
 
-    /// The form of the conditions, once they are read.
-    fn loaded_conditions_form(&mut self) -> Option<&mut ConditionForm> {
-        match &mut self.step {
-            Step::Conditions(form) if form.conditions.is_some() => Some(form),
-            _ => None,
-        }
-    }
-
-    pub fn choose_combinator(&mut self, combinator: Combinator) {
-        if let Some(conditions) = self
-            .loaded_conditions_form()
-            .and_then(|form| form.conditions.as_mut())
-        {
-            conditions.combinator = combinator;
-        }
-    }
-
-    pub fn choose_new_condition_kind(&mut self, kind: ConditionKind) {
-        if let Step::Conditions(form) = &mut self.step {
-            form.new_kind = kind;
-        }
-    }
-
-    pub fn edit_new_condition_value(&mut self, value: String) {
-        if let Step::Conditions(form) = &mut self.step {
-            form.new_value = value;
-        }
-    }
-
-    /// Adds the typed value as a condition of the chosen kind; a blank value
-    /// adds nothing.
-    pub fn add_condition(&mut self) {
-        let Some(ConditionForm {
-            conditions: Some(conditions),
-            new_kind,
-            new_value,
+    /// Changes the conditions once they are read; before that there is
+    /// nothing to change.
+    pub fn edit_condition(&mut self, edit: ConditionEdit) {
+        if let Step::Conditions(ConditionForm {
+            editor: Some(editor),
             failure,
             ..
-        }) = self.loaded_conditions_form()
-        else {
-            return;
-        };
-        let value = new_value.trim();
-        if value.is_empty() {
-            return;
-        }
-        conditions.list.push(Condition::new(*new_kind, value));
-        new_value.clear();
-        *failure = None;
-    }
-
-    pub fn remove_condition(&mut self, position: usize) {
-        if let Some(conditions) = self
-            .loaded_conditions_form()
-            .and_then(|form| form.conditions.as_mut())
+        }) = &mut self.step
         {
-            if position < conditions.list.len() {
-                conditions.list.remove(position);
-            }
+            editor.apply(edit);
+            *failure = None;
         }
     }
 
-    /// The request to store the conditions, once; the answer comes to
-    /// [`Self::conditions_saved`].
+    /// The request to store the conditions, once and only when they are
+    /// read and valid; the answer comes to [`Self::conditions_saved`].
     pub fn conditions_request(&mut self) -> Option<ConditionsRequest> {
-        let form = self.loaded_conditions_form()?;
-        if form.saving {
+        let Step::Conditions(ConditionForm {
+            entry,
+            editor: Some(editor),
+            saving,
+            ..
+        }) = &mut self.step
+        else {
+            return None;
+        };
+        if *saving {
             return None;
         }
-        let conditions = form.conditions.clone()?;
-        form.saving = true;
+        editor.mark_save_attempt();
+        if !editor.is_valid(true) {
+            return None;
+        }
+        *saving = true;
         Some(ConditionsRequest {
-            id: form.entry.id,
-            conditions,
+            id: entry.id,
+            conditions: editor.conditions(),
         })
     }
 
@@ -441,7 +422,7 @@ impl TaxContextsState {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #[cfg(test)]
 mod tests {
-    use ncrs_index::{Index, TaxContextProblem};
+    use ncrs_index::{Combinator, Condition, Index, TaxContextProblem};
 
     use super::*;
 
@@ -616,29 +597,36 @@ mod tests {
         form
     }
 
+    fn add_row(state: &mut TaxContextsState, kind: ConditionKind, value: &str) {
+        state.edit_condition(ConditionEdit::Add);
+        let last = condition_form(state)
+            .editor
+            .as_ref()
+            .map_or(0, |editor| editor.rows.len().saturating_sub(1));
+        state.edit_condition(ConditionEdit::Kind(last, kind));
+        state.edit_condition(ConditionEdit::Value(last, value.to_owned()));
+    }
+
     #[test]
-    fn conditions_are_added_removed_and_saved_only_once_they_are_read() {
+    fn conditions_are_edited_and_saved_only_once_they_are_read() {
         let (_dir, index) = stored();
         let mut state = loaded_state(&index);
         let company = id_of(&state, "company");
         state.begin_conditions(company);
 
-        state.edit_new_condition_value("Firma A GmbH".to_owned());
-        state.add_condition();
+        state.edit_condition(ConditionEdit::Add);
         assert_eq!(state.conditions_request(), None);
+        assert_eq!(condition_form(&state).editor, None);
 
         state.conditions_loaded(company, Ok(index.tax_context_conditions(company).unwrap()));
-        state.edit_new_condition_value("  Firma A GmbH ".to_owned());
-        state.add_condition();
-        state.choose_new_condition_kind(ConditionKind::Iban);
-        state.edit_new_condition_value("DE02 1203 0000 0000 2020 51".to_owned());
-        state.add_condition();
-        state.edit_new_condition_value("   ".to_owned());
-        state.add_condition();
-        state.choose_combinator(Combinator::AllOf);
+        add_row(&mut state, ConditionKind::Recipient, "  Firma A GmbH ");
+        add_row(
+            &mut state,
+            ConditionKind::Iban,
+            "DE02 1203 0000 0000 2020 51",
+        );
+        state.edit_condition(ConditionEdit::Combinator(Combinator::AllOf));
 
-        let form = condition_form(&state);
-        assert_eq!(form.new_value, "   ");
         let request = state.conditions_request().unwrap();
         assert_eq!(request.id, company);
         assert_eq!(request.conditions.combinator, Combinator::AllOf);
@@ -650,6 +638,38 @@ mod tests {
             ]
         );
         assert_eq!(state.conditions_request(), None);
+    }
+
+    #[test]
+    fn a_blank_row_blocks_the_request_and_shows_its_problem() {
+        let (_dir, index) = stored();
+        let mut state = loaded_state(&index);
+        let company = id_of(&state, "company");
+        state.begin_conditions(company);
+        state.conditions_loaded(company, Ok(index.tax_context_conditions(company).unwrap()));
+        add_row(&mut state, ConditionKind::Word, "   ");
+
+        assert_eq!(state.conditions_request(), None);
+
+        let editor = condition_form(&state).editor.as_ref().unwrap();
+        assert!(editor.show_empty_problems);
+        assert!(!condition_form(&state).saving);
+    }
+
+    #[test]
+    fn a_context_may_end_up_without_conditions() {
+        let (_dir, index) = stored();
+        let mut state = loaded_state(&index);
+        let company = id_of(&state, "company");
+        state.begin_conditions(company);
+        state.conditions_loaded(company, Ok(RuleConditions::default()));
+
+        assert!(state
+            .conditions_request()
+            .unwrap()
+            .conditions
+            .list
+            .is_empty());
     }
 
     #[test]
@@ -669,8 +689,8 @@ mod tests {
         state.begin_conditions(company);
         state.conditions_loaded(company, Ok(index.tax_context_conditions(company).unwrap()));
 
-        state.remove_condition(0);
-        state.remove_condition(7);
+        state.edit_condition(ConditionEdit::Remove(0));
+        state.edit_condition(ConditionEdit::Remove(7));
 
         let request = state.conditions_request().unwrap();
         assert_eq!(
@@ -686,8 +706,7 @@ mod tests {
         let company = id_of(&state, "company");
         state.begin_conditions(company);
         state.conditions_loaded(company, Ok(index.tax_context_conditions(company).unwrap()));
-        state.edit_new_condition_value("Firma A GmbH".to_owned());
-        state.add_condition();
+        add_row(&mut state, ConditionKind::Recipient, "Firma A GmbH");
         let request = state.conditions_request().unwrap();
 
         state.conditions_saved(Err(TaxContextFailure::IndexNotOpen));

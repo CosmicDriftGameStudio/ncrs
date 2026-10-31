@@ -64,7 +64,7 @@ use crate::messages::{
     ConflictChoice, ConnectField, FilingSetupMessage, FilingStatusMessage, GrantMessage,
     HermesColumnMessage, HermesFileMessage, HermesFocus, HermesOverviewMessage, HermesPage,
     HermesSetupMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide, QuickFixMessage,
-    QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage,
+    QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage, RuleFormMessage,
     RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingChange,
     SettingsMessage, TaxContextsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind,
     TrashMessage,
@@ -83,6 +83,7 @@ use crate::reorganisation_plan::ReorganisationView;
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
 use crate::review_list::{FormField, ReviewList};
 use crate::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
+use crate::rule_form::RuleSave;
 use crate::rule_suggestions::RuleSuggestions;
 use crate::rules_page::RulesPage;
 use crate::rules_work::{RuleChange, RulesAccess};
@@ -1592,6 +1593,10 @@ pub struct PromptKeyState {
     pub rule_suggestions_editing: bool,
     /// The rules page is up, so Enter, the arrows, Space and Delete are its.
     pub rules: bool,
+    /// Its form is up, so the text fields take the keys.
+    pub rules_form: bool,
+    /// Its delete question is up, so Enter answers it.
+    pub rules_confirming_delete: bool,
     /// The review list is up, so Enter, the arrows and its letters are its.
     pub review_list: bool,
     /// Its form is up, so the text fields take the letters.
@@ -1662,6 +1667,8 @@ impl Default for PromptKeyState {
             rule_suggestions: false,
             rule_suggestions_editing: false,
             rules: false,
+            rules_form: false,
+            rules_confirming_delete: false,
             review_list: false,
             review_list_editing: false,
             saved_queries: false,
@@ -1862,8 +1869,9 @@ fn rule_suggestions_key(
 }
 
 /// The rules page is a card: the arrows move in the list, Alt with the arrows
-/// moves the rule, Space switches it, Delete asks to delete it and Enter
-/// answers that question.
+/// moves the rule, Space switches it, Delete asks to delete it, Enter answers
+/// that question or else edits the rule and `n` starts a new one. With the
+/// form up the fields take the keys and only Escape is the page's.
 fn rules_key(
     prompt: &PromptKeyState,
     key: &Key,
@@ -1872,12 +1880,24 @@ fn rules_key(
 ) -> Option<Message> {
     let rules = |message| Some(Message::Rules(message));
     let plain = key_modifiers.is_empty();
-    if let Some(focus) = hermes_focus_key(prompt, key, key_modifiers, false) {
+    if let Some(focus) = hermes_focus_key(prompt, key, key_modifiers, prompt.rules_form) {
         return Some(focus);
+    }
+    if prompt.rules_form {
+        return match key.as_ref() {
+            Key::Named(Named::Escape) => rules(RulesMessage::Close),
+            _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
+                .filter(|message| *message == Message::Quit)
+                .filter(|_| is_not_typed_by_text_field(key, key_modifiers)),
+        };
     }
     match key.as_ref() {
         Key::Named(Named::Escape) => rules(RulesMessage::Close),
-        Key::Named(Named::Enter) if plain => rules(RulesMessage::ConfirmDelete),
+        Key::Named(Named::Enter) if plain && prompt.rules_confirming_delete => {
+            rules(RulesMessage::ConfirmDelete)
+        }
+        Key::Named(Named::Enter) if plain => rules(RulesMessage::Edit),
+        Key::Character("n") if plain => rules(RulesMessage::New),
         Key::Named(Named::Space) if plain => rules(RulesMessage::Toggle),
         Key::Named(Named::Delete) if plain => rules(RulesMessage::AskDelete),
         Key::Named(Named::ArrowUp) if plain => rules(RulesMessage::Move(-1)),
@@ -5682,6 +5702,14 @@ impl App {
         let theme_fetch = self.theme_fetch.is_some();
         let rule_suggestions = self.rule_suggestions.is_some();
         let rules = self.rules.is_some();
+        let rules_form = self
+            .rules
+            .as_ref()
+            .is_some_and(|view| view.form().is_some());
+        let rules_confirming_delete = self
+            .rules
+            .as_ref()
+            .is_some_and(RulesPage::is_confirming_delete);
         let rule_suggestions_editing = self
             .rule_suggestions
             .as_ref()
@@ -5738,6 +5766,8 @@ impl App {
                 rule_suggestions,
                 rule_suggestions_editing,
                 rules,
+                rules_form,
+                rules_confirming_delete,
                 review_list,
                 review_list_editing,
                 saved_queries,
@@ -5786,6 +5816,8 @@ impl App {
                 rule_suggestions,
                 rule_suggestions_editing,
                 rules,
+                rules_form,
+                rules_confirming_delete,
                 review_list,
                 review_list_editing,
                 saved_queries,
@@ -10260,6 +10292,68 @@ impl App {
                     }
                 }
             }
+            RulesMessage::New => {
+                if let Some(view) = self.rules.as_mut() {
+                    view.begin_new();
+                }
+                self.focus_rule_form()
+            }
+            RulesMessage::Edit => {
+                if let Some(view) = self.rules.as_mut() {
+                    view.begin_edit();
+                }
+                self.focus_rule_form()
+            }
+            RulesMessage::Form(form_message) => self.update_rule_form(form_message),
+        }
+    }
+
+    fn focus_rule_form(&self) -> Task<Message> {
+        if self
+            .rules
+            .as_ref()
+            .is_some_and(|view| view.form().is_some())
+        {
+            operation::focus(crate::ui::condition_editor::FIRST_CONDITION_FIELD_ID)
+        } else {
+            Task::none()
+        }
+    }
+
+    fn update_rule_form(&mut self, message: RuleFormMessage) -> Task<Message> {
+        let Some(view) = self.rules.as_mut() else {
+            return Task::none();
+        };
+        match message {
+            RuleFormMessage::Save => {
+                let save = view.begin_save();
+                self.run_rule_save(save)
+            }
+            RuleFormMessage::Cancel => {
+                view.cancel_form();
+                Task::none()
+            }
+            RuleFormMessage::Saved { generation, result } => {
+                if generation != self.rules_generation {
+                    return Task::none();
+                }
+                match result {
+                    Ok(()) => {
+                        view.saved();
+                        self.run_rules_load()
+                    }
+                    Err(detail) => {
+                        view.save_failed(detail);
+                        Task::none()
+                    }
+                }
+            }
+            field_change => {
+                if let Some(form) = view.form_mut() {
+                    form.update(field_change);
+                }
+                Task::none()
+            }
         }
     }
 
@@ -10273,12 +10367,13 @@ impl App {
         self.run_rules_load()
     }
 
-    /// Escape backs out of the delete question first, then leaves the page.
+    /// Escape closes the form first, then backs out of the delete question,
+    /// then leaves the page.
     fn close_rules(&mut self) -> Task<Message> {
         let Some(view) = self.rules.as_mut() else {
             return Task::none();
         };
-        if view.cancel_delete() {
+        if view.cancel_form() || view.cancel_delete() {
             return Task::none();
         }
         self.rules = None;
@@ -10305,6 +10400,29 @@ impl App {
             move |joined| {
                 let result = joined.unwrap_or_else(|join| Err(join.to_string()));
                 Message::Rules(RulesMessage::Loaded { generation, result })
+            },
+        )
+    }
+
+    fn run_rule_save(&mut self, requested: Option<RuleSave>) -> Task<Message> {
+        let Some(save) = requested else {
+            return Task::none();
+        };
+        let generation = self.rules_generation;
+        let Some(access) = self.rules_access() else {
+            if let Some(form) = self.rules.as_mut().and_then(RulesPage::form_mut) {
+                form.saving = false;
+            }
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.save(save)),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                Message::Rules(RulesMessage::Form(RuleFormMessage::Saved {
+                    generation,
+                    result,
+                }))
             },
         )
     }
@@ -11906,24 +12024,8 @@ impl App {
                 state.conditions_loaded(id, result);
                 Task::none()
             }
-            TaxContextsMessage::CombinatorChosen(combinator) => {
-                state.choose_combinator(combinator);
-                Task::none()
-            }
-            TaxContextsMessage::NewConditionKindChosen(kind) => {
-                state.choose_new_condition_kind(kind);
-                Task::none()
-            }
-            TaxContextsMessage::NewConditionValueChanged(value) => {
-                state.edit_new_condition_value(value);
-                Task::none()
-            }
-            TaxContextsMessage::AddCondition => {
-                state.add_condition();
-                Task::none()
-            }
-            TaxContextsMessage::RemoveCondition(position) => {
-                state.remove_condition(position);
+            TaxContextsMessage::Condition(edit) => {
+                state.edit_condition(edit);
                 Task::none()
             }
             TaxContextsMessage::SaveConditions => match state.conditions_request() {

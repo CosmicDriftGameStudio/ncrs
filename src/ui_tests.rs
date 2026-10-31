@@ -3253,7 +3253,8 @@ mod rules_card {
     };
 
     use super::*;
-    use crate::messages::RulesMessage;
+    use crate::condition_editor::ConditionEdit;
+    use crate::messages::{RuleFormMessage, RulesMessage};
     use crate::rules_page::tests::rule_id;
     use crate::rules_page::RulesPage;
     use crate::rules_work::{ListedRule, RulesLoad};
@@ -3359,6 +3360,8 @@ mod rules_card {
             "Delete",
             "Move up",
             "Move down",
+            "New rule",
+            "Edit",
         ] {
             assert!(shows(three_rules(), label), "{label}");
         }
@@ -3368,7 +3371,7 @@ mod rules_card {
     fn an_empty_page_says_where_rules_come_from() {
         assert!(shows(
             empty(),
-            "No rules yet. Rules come from suggestions and from filing in the review list."
+            "No rules yet. Create one with “New rule”, or let rules come from suggestions and from filing in the review list."
         ));
     }
 
@@ -3447,6 +3450,129 @@ mod rules_card {
         let mut asking = three_rules();
         asking.ask_delete();
         matches_snapshot(asking, "rules_delete_en");
+    }
+
+    fn with_new_form() -> RulesPage {
+        let mut page = three_rules();
+        page.begin_new();
+        page
+    }
+
+    fn with_edit_form() -> RulesPage {
+        let mut page = three_rules();
+        page.begin_edit();
+        page
+    }
+
+    fn with_invalid_form() -> RulesPage {
+        let mut page = with_new_form();
+        let Some(form) = page.form_mut() else {
+            panic!("no form");
+        };
+        form.update(RuleFormMessage::Condition(ConditionEdit::Add));
+        form.update(RuleFormMessage::Condition(ConditionEdit::Kind(
+            1,
+            ConditionKind::Regex,
+        )));
+        form.update(RuleFormMessage::Condition(ConditionEdit::Value(
+            1,
+            "(".to_owned(),
+        )));
+        form.update(RuleFormMessage::Pattern("{year}/{foo}".to_owned()));
+        assert_eq!(page.begin_save(), None);
+        page
+    }
+
+    #[test]
+    fn the_rule_form_matches_its_snapshots() {
+        for language in ["en", "de"] {
+            matches_snapshot(with_new_form(), &format!("rule_form_new_{language}"));
+            matches_snapshot(with_edit_form(), &format!("rule_form_edit_{language}"));
+            matches_snapshot(
+                with_invalid_form(),
+                &format!("rule_form_invalid_{language}"),
+            );
+        }
+    }
+
+    #[test]
+    fn the_new_rule_button_opens_the_form_and_the_edit_button_fills_it() {
+        let mut app = App::with_rules(three_rules());
+        let _ = app.update(Message::Rules(RulesMessage::New));
+        let new_form = app.rules_for_test().unwrap().form().unwrap();
+        assert_eq!(new_form.kind, "");
+
+        let _ = app.update(Message::Rules(RulesMessage::Close));
+        let _ = app.update(Message::Rules(RulesMessage::Edit));
+        let edit_form = app.rules_for_test().unwrap().form().unwrap();
+        assert_eq!(edit_form.kind, "Invoice");
+        assert!(app_shows(&app, "Edit rule"));
+    }
+
+    #[test]
+    fn escape_closes_the_form_first_and_saves_nothing() {
+        let mut app = App::with_rules(with_edit_form());
+        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Kind(
+            "Contract".to_owned(),
+        ))));
+
+        let _ = app.update(Message::Rules(RulesMessage::Close));
+
+        let page = app.rules_for_test().unwrap();
+        assert!(page.form().is_none());
+        assert_eq!(page.rows().first().unwrap().rule.spec.kind, "Invoice");
+        let _ = app.update(Message::Rules(RulesMessage::Close));
+        assert!(app.rules_for_test().is_none());
+    }
+
+    #[test]
+    fn the_list_does_nothing_while_the_form_is_open() {
+        let mut app = App::with_rules(with_new_form());
+        for message in [
+            RulesMessage::Move(1),
+            RulesMessage::Select(2),
+            RulesMessage::Toggle,
+            RulesMessage::Reorder(1),
+            RulesMessage::AskDelete,
+            RulesMessage::ConfirmDelete,
+        ] {
+            let _ = app.update(Message::Rules(message));
+        }
+
+        let page = app.rules_for_test().unwrap();
+        assert_eq!(page.cursor(), 0);
+        assert!(!page.is_busy());
+        assert!(!page.is_confirming_delete());
+        assert!(page.form().is_some());
+    }
+
+    #[test]
+    fn an_invalid_form_sends_nothing_and_shows_what_is_wrong() {
+        let mut app = App::with_rules(with_invalid_form()).in_language(Language::English);
+        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Save)));
+
+        let page = app.rules_for_test().unwrap();
+        assert!(!page.form().unwrap().saving);
+        for text in [
+            "Enter a value.",
+            "“foo” is not a block. Use the buttons below.",
+        ] {
+            assert!(simulator(&app).find(text).is_ok(), "{text}");
+        }
+    }
+
+    #[test]
+    fn the_block_buttons_append_their_block() {
+        let app = App::with_rules(with_new_form());
+        let mut sim = simulator(&app);
+        sim.click("{number}").expect("block button");
+
+        assert_eq!(
+            sim.into_messages().filter(is_action).collect::<Vec<_>>(),
+            [Message::Rules(RulesMessage::Form(
+                RuleFormMessage::InsertBlock("number")
+            ))]
+        );
     }
 }
 
@@ -4796,6 +4922,8 @@ mod ai_status_row {
 mod settings_tab {
     use std::path::PathBuf;
 
+    use crate::condition_editor::ConditionEdit;
+
     use ncrs_intake::LocationMode;
 
     use super::*;
@@ -4940,7 +5068,13 @@ mod settings_tab {
                 ncrs_index::Condition::new(ncrs_index::ConditionKind::Word, "Firma A"),
             ])),
         );
-        state.edit_new_condition_value("DE02 1203 0000 0000 2020 51".to_owned());
+        for edit in [
+            ConditionEdit::Add,
+            ConditionEdit::Kind(2, ncrs_index::ConditionKind::Iban),
+            ConditionEdit::Value(2, "DE02 1203 0000 0000 2020 51".to_owned()),
+        ] {
+            state.edit_condition(edit);
+        }
         (state, company)
     }
 

@@ -42,8 +42,8 @@ pub use extract::{
 };
 pub use filing_plan::{
     contains_condition_holds, missing_field, pattern_is_valid, plan, planned_field_origin,
-    render_pattern, AssigningCondition, FilingPlan, PlanInput, Planning, TaxContextAssignment,
-    FIELD_ORDER,
+    render_pattern, unknown_placeholder, AssigningCondition, FilingPlan, PlanInput, Planning,
+    TaxContextAssignment, FIELD_ORDER, FILING_PLACEHOLDERS,
 };
 pub use location::{Location, LocationMode};
 pub use ocr::{
