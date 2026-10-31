@@ -16436,7 +16436,11 @@ impl App {
                     status: *status,
                     tags: ncrs_index::FileTags {
                         kind: Some(
-                            ["rechnung", "brief", "versicherung", "beleg"][position % 4].to_owned(),
+                            ["rechnung", "brief", "versicherung", "beleg"]
+                                .get(position % 4)
+                                .copied()
+                                .unwrap_or_default()
+                                .to_owned(),
                         ),
                         recipient: Some("firma-a-gmbh".to_owned()),
                         sender: Some("telekom".to_owned()),
@@ -16445,8 +16449,11 @@ impl App {
                             vec!["steuer".to_owned()],
                             Vec::new(),
                             vec!["steuer".to_owned(), "buero".to_owned(), "privat".to_owned()],
-                        ][position % 3]
-                            .clone(),
+                        ]
+                        .get(position % 3)
+                        .cloned()
+                        .unwrap_or_default()
+                        .clone(),
                     },
                     review: (*status == DocumentStatus::InReview)
                         .then_some(ReviewReason::NoMatchingRule),
