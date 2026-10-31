@@ -13,7 +13,7 @@ workspace = true
 
 [dependencies]
 ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
-sha2 = "0.10"
+sha2 = "0.11"
 walkdir = "2.5"
 same-file = "1.0"
 # One recursive watcher per location; the backends (FSEvents, inotify,

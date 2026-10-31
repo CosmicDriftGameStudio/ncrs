@@ -199,7 +199,7 @@ iced_selector = "0.14"
 # A one-page PDF for the tests of the document preview.
 ncrs-intake = { path = "crates/ncrs-intake", version = "0.0.0", features = ["test-support"] }
 # The checksum of the bytes a test server hands out for the AI model download.
-sha2 = "0.10"
+sha2 = "0.11"
 # Writes the 7z archives the tests read; the release build only decodes.
 sevenz-rust2 = { version = "0.24.1", default-features = false, features = ["compress", "deflate"] }
 
