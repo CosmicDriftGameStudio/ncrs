@@ -356,9 +356,27 @@ impl QuickOpen {
         self.clamp_cursor();
     }
 
-    /// Name hits and document hits, one cursor over both.
+    /// Name hits, document hits and the row that opens them all in the search
+    /// page, one cursor over the lot.
     fn row_count(&self) -> usize {
-        self.hits.len() + self.documents.len()
+        self.hits.len() + self.documents.len() + usize::from(self.has_all_hits_row())
+    }
+
+    /// The row below the documents that hands the text to the search page. It
+    /// is there while documents are listed, so it has a text to take over.
+    pub fn has_all_hits_row(&self) -> bool {
+        self.documents_enabled && !self.documents.is_empty()
+    }
+
+    /// The position of the row that opens the search page, when it is there.
+    pub fn all_hits_row(&self) -> Option<usize> {
+        self.has_all_hits_row()
+            .then(|| self.hits.len() + self.documents.len())
+    }
+
+    /// The cursor stands on the row that opens the search page.
+    pub fn all_hits_selected(&self) -> bool {
+        self.all_hits_row() == Some(self.cursor)
     }
 
     fn clamp_cursor(&mut self) {
@@ -953,13 +971,51 @@ mod tests {
             quick_open.selected_path(),
             Some(PathBuf::from("/d/one.pdf"))
         );
-        quick_open.move_cursor(5);
+        quick_open.move_cursor(1);
         assert_eq!(
             quick_open.selected_path(),
             Some(PathBuf::from("/d/two.pdf"))
         );
-        quick_open.move_cursor(-2);
+        // Below the documents stands the row that opens the search page.
+        quick_open.move_cursor(5);
+        assert!(quick_open.all_hits_selected());
+        quick_open.move_cursor(-3);
         assert_eq!(quick_open.cursor(), 1);
+    }
+
+    #[test]
+    fn the_last_row_opens_all_hits_and_the_cursor_reaches_it() {
+        let mut quick_open = with_documents_on(&["a1.txt", "a2.txt"], "a");
+        assert_eq!(quick_open.all_hits_row(), None);
+        let request = quick_open.request_documents().unwrap();
+        quick_open.apply_documents(
+            request.walk_generation,
+            request.generation,
+            Ok(vec![document("/d/one.pdf")]),
+        );
+
+        assert_eq!(quick_open.all_hits_row(), Some(3));
+        quick_open.move_cursor(10);
+        assert_eq!(quick_open.cursor(), 3);
+        assert!(quick_open.all_hits_selected());
+        assert_eq!(quick_open.selected_path(), None);
+        quick_open.move_cursor(-1);
+        assert!(!quick_open.all_hits_selected());
+        quick_open.select(3);
+        assert!(quick_open.all_hits_selected());
+    }
+
+    #[test]
+    fn there_is_no_last_row_without_documents_or_with_the_section_off() {
+        let mut off = QuickOpen::new(PathBuf::from("/r"), 1);
+        off.apply_events(file_events("/r", &["a.txt"]));
+        type_and_rank(&mut off, "a");
+        assert_eq!(off.all_hits_row(), None);
+
+        let mut empty = with_documents_on(&["a.txt"], "a");
+        let request = empty.request_documents().unwrap();
+        empty.apply_documents(request.walk_generation, request.generation, Ok(Vec::new()));
+        assert_eq!(empty.all_hits_row(), None);
     }
 
     #[test]

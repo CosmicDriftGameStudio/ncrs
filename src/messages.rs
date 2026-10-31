@@ -23,6 +23,7 @@ use crate::config::{
 };
 use crate::dialog::PromptKind;
 use crate::document_preview::PreviewContent;
+use crate::document_search::FacetValue;
 use crate::execute::UndoReport;
 use crate::filing::{FilingMessage, IndexFigures};
 use crate::filing_work::FilingSummary;
@@ -400,6 +401,7 @@ pub enum Message {
     QuickFix(QuickFixMessage),
     HermesFile(HermesFileMessage),
     SavedQueries(SavedQueriesMessage),
+    DocumentSearch(DocumentSearchMessage),
     /// The sidebar of the Hermes card: closes the card that is up and opens
     /// this page.
     HermesPage(HermesPage),
@@ -957,8 +959,42 @@ pub enum HermesPage {
     Rules,
     RuleSuggestions,
     Reorganisation,
+    Search,
     SavedQueries,
     Inspection,
+}
+
+/// Everything the document search page sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DocumentSearchMessage {
+    /// Opens the page with the words already typed, for instance in Quick Open.
+    Open {
+        text: String,
+    },
+    Close,
+    TextChanged(String),
+    /// The index answered the search of `generation`. Dropped when the words
+    /// changed or the page was closed or opened again meanwhile.
+    Ran {
+        generation: u64,
+        result: Result<Vec<QueryHit>, String>,
+    },
+    /// The tax contexts, for their names. Dropped like `Ran`.
+    TaxContextsLoaded {
+        generation: u64,
+        result: Result<Vec<TaxContextEntry>, String>,
+    },
+    ToggleFacet(FacetValue),
+    ClearFacets,
+    Move(isize),
+    Select(usize),
+    /// The wheel or trackpad over the list.
+    Scrolled(iced::mouse::ScrollDelta),
+    /// Shows the document under the cursor in the active panel.
+    Activate,
+    /// Left in the text field: asks the page to hand the keys to the sidebar
+    /// when the field is empty (iced does not tell where its caret is).
+    LeftInField,
 }
 
 /// Everything the saved queries page sends.

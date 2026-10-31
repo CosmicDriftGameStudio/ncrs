@@ -3301,6 +3301,121 @@ mod review_list_card {
     clippy::indexing_slicing
 )]
 #[cfg(test)]
+mod document_search_card {
+    use super::*;
+    use crate::document_search::tests::loaded_search;
+    use crate::document_search::{DocumentSearch, FacetValue};
+    use crate::keymap::KeyAction;
+    use crate::messages::{DocumentSearchMessage, QuickOpenMessage};
+
+    fn shows(search: DocumentSearch, label: &str) -> bool {
+        simulator(&App::with_document_search(search))
+            .find(label)
+            .is_ok()
+    }
+
+    /// Six documents read, the year 2025 chosen.
+    fn year_chosen() -> DocumentSearch {
+        let mut search = loaded_search();
+        search.toggle(FacetValue::Year(2025));
+        search
+    }
+
+    #[test]
+    fn the_page_shows_its_facets_the_count_and_the_hits() {
+        assert!(shows(year_chosen(), "2 documents"));
+        assert!(shows(year_chosen(), "2024 (2)"));
+        assert!(shows(year_chosen(), "Clear filters"));
+        assert!(shows(loaded_search(), "6 documents"));
+        assert!(!shows(loaded_search(), "Clear filters"));
+    }
+
+    #[test]
+    fn a_page_without_documents_says_so() {
+        let mut search = DocumentSearch::new(String::new());
+        search.ran(Vec::new());
+        assert!(shows(search, "No documents read yet. Documents appear here once Hermes has read them from the inbox."));
+    }
+
+    #[test]
+    fn a_page_where_nothing_matches_says_so() {
+        let mut search = loaded_search();
+        search.toggle(FacetValue::Year(2023));
+        search.toggle(FacetValue::Sender("Firma A".to_owned()));
+        assert!(shows(
+            search,
+            "No document matches. Remove a filter or change the words."
+        ));
+    }
+
+    #[test]
+    fn the_command_list_action_opens_the_page_and_escape_closes_it() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let _inside = runtime.enter();
+        let mut app = App::with_fixed_panels().with_ready_hermes_for_test();
+        drop(app.update(KeyAction::SearchDocuments.message()));
+        assert!(app.document_search_for_test().is_some());
+        drop(app.update(Message::DocumentSearch(DocumentSearchMessage::Close)));
+        assert!(app.document_search_for_test().is_none());
+    }
+
+    #[test]
+    fn the_last_row_of_quick_open_opens_the_page_with_the_text() {
+        use crate::filing::{FoundDocument, TextSource};
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let _inside = runtime.enter();
+        let mut app = App::with_fixed_panels().with_ready_hermes_for_test();
+        app.open_quick_open_for_test(&["src/config.rs"], "");
+        app.type_into_quick_open_for_test("config");
+        app.deliver_documents_for_test(Ok(vec![FoundDocument {
+            path: std::path::PathBuf::from("/d/config-notes.txt"),
+            read_by: TextSource::Text,
+        }]));
+
+        // One name hit, one document, then the row.
+        drop(app.update(Message::QuickOpen(QuickOpenMessage::RowActivated(2))));
+
+        assert!(!app.quick_open_for_test().is_some());
+        assert_eq!(
+            app.document_search_for_test().map(DocumentSearch::text),
+            Some("config")
+        );
+    }
+
+    fn matches_snapshot(search: DocumentSearch, name: &str) {
+        let language = if name.contains("_de") {
+            Language::German
+        } else {
+            Language::English
+        };
+        let app = App::with_document_search(search).in_language(language);
+        let matches = simulator(&app)
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image(format!("tests/snapshots/{name}.png"))
+            .expect("snapshot comparison");
+        assert!(
+            matches,
+            "the view does not match tests/snapshots/{name}.png"
+        );
+    }
+
+    #[test]
+    fn the_view_matches_its_snapshots() {
+        matches_snapshot(year_chosen(), "document_search_en");
+        matches_snapshot(year_chosen(), "document_search_de");
+    }
+}
+
+// A failing assertion in a test is the signal, so `unwrap` belongs here; the
+// lint is meant for the production paths.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
 mod saved_queries_card {
     use std::path::PathBuf;
 

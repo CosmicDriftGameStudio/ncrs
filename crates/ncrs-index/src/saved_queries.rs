@@ -235,7 +235,7 @@ impl Index {
         }
         let text_hits: Option<HashSet<DocumentId>> = full_text_words(spec)
             .map(|words| {
-                self.search_text(words, FULL_TEXT_HIT_LIMIT)
+                self.search_text_prefix(words, FULL_TEXT_HIT_LIMIT)
                     .map(|ids| ids.into_iter().collect())
             })
             .transpose()?;
@@ -448,6 +448,26 @@ mod tests {
 
         assert_eq!(found(&index, &spec), vec![ids[3], ids[0], ids[1], ids[2]]);
         assert_eq!(found(&index, &other), vec![ids[4]]);
+    }
+
+    #[test]
+    fn the_last_word_of_the_full_text_may_begin_a_longer_word() {
+        let (_dir, mut index, ids) = stocked();
+        index
+            .set_document_text(ids[0], "Rent for the office in May")
+            .unwrap();
+
+        let by_start = QuerySpec {
+            full_text: Some("office ren".to_owned()),
+            ..QuerySpec::default()
+        };
+        let by_start_of_first = QuerySpec {
+            full_text: Some("off rent".to_owned()),
+            ..QuerySpec::default()
+        };
+
+        assert_eq!(found(&index, &by_start), vec![ids[0]]);
+        assert!(found(&index, &by_start_of_first).is_empty());
     }
 
     #[test]

@@ -30,6 +30,7 @@ use crate::config::{
 use crate::context_menu::{ContextAction, ContextMenu, HermesAction, HermesMenu, InputState};
 use crate::dialog::{Prompt, PromptKind};
 use crate::document_preview;
+use crate::document_search::DocumentSearch;
 use crate::execute;
 use crate::filing::{
     DocumentFinder, FilingMessage, FilingModule, LocationStatus, Phase, Work, WorkOutcome,
@@ -62,13 +63,13 @@ use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 use crate::menu::Availability;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
-    ConflictChoice, ConnectField, FilingSetupMessage, FilingStatusMessage, GrantMessage,
-    HermesColumnMessage, HermesFileMessage, HermesFocus, HermesOverviewMessage, HermesPage,
-    HermesSetupMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide, QuickFixMessage,
-    QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage, RuleFormMessage,
-    RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingChange,
-    SettingsMessage, TaxContextsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind,
-    TrashMessage,
+    ConflictChoice, ConnectField, DocumentSearchMessage, FilingSetupMessage, FilingStatusMessage,
+    GrantMessage, HermesColumnMessage, HermesFileMessage, HermesFocus, HermesOverviewMessage,
+    HermesPage, HermesSetupMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide,
+    QuickFixMessage, QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage,
+    RuleFormMessage, RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage,
+    SettingChange, SettingsMessage, TaxContextsMessage, ThemeFetchMessage, TitleBarMessage,
+    TransferKind, TrashMessage,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -104,6 +105,7 @@ use crate::ui::command_palette as command_palette_ui;
 use crate::ui::context_menu as context_menu_view;
 use crate::ui::delete as delete_dialog_view;
 use crate::ui::dialog::FIELD_ID;
+use crate::ui::document_search as document_search_ui;
 use crate::ui::filing as filing_ui;
 use crate::ui::filing_setup as filing_setup_ui;
 use crate::ui::filing_status as filing_status_ui;
@@ -501,6 +503,7 @@ fn asks_for_hermes(message: &Message) -> bool {
             | Message::Rules(RulesMessage::Open)
             | Message::ReviewList(ReviewListMessage::Open)
             | Message::SavedQueries(SavedQueriesMessage::Open)
+            | Message::DocumentSearch(DocumentSearchMessage::Open { .. })
             | Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
             | Message::UndoReorganisation
     )
@@ -523,6 +526,7 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::Rules(RulesMessage::Open)
             | Message::ReviewList(ReviewListMessage::Open)
             | Message::SavedQueries(SavedQueriesMessage::Open)
+            | Message::DocumentSearch(DocumentSearchMessage::Open { .. })
             | Message::HermesPage(_)
             | Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
             | Message::OcrModels(OcrModelsMessage::Open)
@@ -1470,6 +1474,9 @@ pub struct App {
     saved_queries: Option<SavedQueries>,
     /// Tells the answer of the work that is current from a stale one.
     saved_queries_generation: u64,
+    document_search: Option<DocumentSearch>,
+    /// Tells the answer of the search that is current from a stale one.
+    document_search_generation: u64,
     reorganisation: Option<ReorganisationView>,
     /// Whether the arrow keys act on the sidebar or the page of the Hermes card.
     hermes_focus: HermesFocus,
@@ -1610,6 +1617,8 @@ pub struct PromptKeyState {
     pub review_list_replanning: bool,
     /// The saved queries page is up, so Enter, the arrows and Tab are its.
     pub saved_queries: bool,
+    /// The document search page is up, so Enter and the arrows are its.
+    pub document_search: bool,
     /// The overview's pattern field has the focus, so the letters are the field's.
     pub hermes_overview_editing: bool,
     /// A Hermes page is up and the arrow keys act on its sidebar.
@@ -1679,6 +1688,7 @@ impl Default for PromptKeyState {
             review_list_editing: false,
             review_list_replanning: false,
             saved_queries: false,
+            document_search: false,
             hermes_overview_editing: false,
             hermes_sidebar: false,
             reorganisation_plan: false,
@@ -1830,6 +1840,31 @@ fn saved_queries_key(
         }),
         Key::Named(Named::ArrowUp) if plain => queries(SavedQueriesMessage::Move(-1)),
         Key::Named(Named::ArrowDown) if plain => queries(SavedQueriesMessage::Move(1)),
+        _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
+            .filter(|message| *message == Message::Quit)
+            .filter(|_| is_not_typed_by_text_field(key, key_modifiers)),
+    }
+}
+
+/// The document search page: the text field takes the letters; Enter shows the
+/// document under the cursor and the arrows move in the list.
+fn document_search_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    let search = |message| Some(Message::DocumentSearch(message));
+    let plain = key_modifiers.is_empty();
+    // The text field keeps Left and Right.
+    if let Some(focus) = hermes_focus_key(prompt, key, key_modifiers, !prompt.hermes_sidebar) {
+        return Some(focus);
+    }
+    match key.as_ref() {
+        Key::Named(Named::Escape) => search(DocumentSearchMessage::Close),
+        Key::Named(Named::Enter) => search(DocumentSearchMessage::Activate),
+        Key::Named(Named::ArrowUp) if plain => search(DocumentSearchMessage::Move(-1)),
+        Key::Named(Named::ArrowDown) if plain => search(DocumentSearchMessage::Move(1)),
         _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
             .filter(|message| *message == Message::Quit)
             .filter(|_| is_not_typed_by_text_field(key, key_modifiers)),
@@ -2174,6 +2209,10 @@ fn keys_without_prompt(
 
     if prompt.saved_queries {
         return saved_queries_key(prompt, &key, key_modifiers, scope);
+    }
+
+    if prompt.document_search {
+        return document_search_key(prompt, &key, key_modifiers, scope);
     }
 
     // Like the command palette: the field takes the typing, the card the
@@ -2831,6 +2870,7 @@ fn repeats(message: &Message) -> bool {
             | Message::Rules(RulesMessage::Move(_))
             | Message::ReviewList(ReviewListMessage::Move(_))
             | Message::SavedQueries(SavedQueriesMessage::Move(_))
+            | Message::DocumentSearch(DocumentSearchMessage::Move(_))
             | Message::ReorganisationPlan(ReorganisationPlanMessage::Move(_))
             | Message::HermesStep(_)
             | Message::FilingStatus(FilingStatusMessage::MoveError(_))
@@ -3431,6 +3471,8 @@ impl App {
             review_list_generation: 0,
             saved_queries: None,
             saved_queries_generation: 0,
+            document_search: None,
+            document_search_generation: 0,
             reorganisation: None,
             hermes_focus: HermesFocus::default(),
             return_to_hermes_overview: false,
@@ -4221,6 +4263,7 @@ impl App {
                 Task::batch([update, self.request_review_preview()])
             }
             Message::SavedQueries(queries) => self.update_saved_queries(queries),
+            Message::DocumentSearch(search) => self.update_document_search(search),
             Message::HermesPage(page) => self.show_hermes_page(page),
             Message::HermesFocus(focus) => self.focus_hermes(focus),
             Message::HermesStep(step) => self.step_hermes_page(step),
@@ -5110,6 +5153,7 @@ impl App {
         input.rules = self.rules.is_some();
         input.review_list = self.review_list.is_some();
         input.saved_queries = self.saved_queries.is_some();
+        input.document_search = self.document_search.is_some();
         input.hermes_sidebar = state.hermes_sidebar;
         input.transfer_dialog = self.transfer_dialog.is_some();
         input.reorganisation_plan = self.reorganisation.is_some();
@@ -5585,6 +5629,17 @@ impl App {
             return Stack::with_children([root, dialog::scrim(card_element)]).into();
         }
 
+        if let Some(view) = self.document_search.as_ref() {
+            let card_element = document_search_ui::view(
+                view,
+                self.window_size,
+                self.hermes_badges(),
+                self.lang,
+                &self.palette,
+            );
+            return Stack::with_children([root, dialog::scrim(card_element)]).into();
+        }
+
         if let Some(view) = self.reorganisation.as_ref() {
             let card_element = reorganisation_plan_ui::view(
                 view,
@@ -5728,6 +5783,7 @@ impl App {
             .as_ref()
             .is_some_and(|view| view.replan().is_some());
         let saved_queries = self.saved_queries.is_some();
+        let document_search = self.document_search.is_some();
         let hermes_sidebar =
             self.hermes_focus == HermesFocus::Sidebar && self.open_hermes_page().is_some();
         let reorganisation_plan = self.reorganisation.is_some();
@@ -5779,6 +5835,7 @@ impl App {
                 review_list_editing,
                 review_list_replanning,
                 saved_queries,
+                document_search,
                 hermes_sidebar,
                 reorganisation_plan,
                 about,
@@ -5829,6 +5886,7 @@ impl App {
                 review_list_editing,
                 review_list_replanning,
                 saved_queries,
+                document_search,
                 hermes_sidebar,
                 reorganisation_plan,
                 about,
@@ -6615,6 +6673,7 @@ impl App {
             || self.rules.is_some()
             || self.review_list.is_some()
             || self.saved_queries.is_some()
+            || self.document_search.is_some()
             || self.reorganisation.is_some()
             || self.about.is_some()
             || self.ocr_models.is_some()
@@ -11293,6 +11352,159 @@ impl App {
         access
     }
 
+    fn update_document_search(&mut self, message: DocumentSearchMessage) -> Task<Message> {
+        match message {
+            DocumentSearchMessage::Open { text } => self.open_document_search(text),
+            DocumentSearchMessage::Close => {
+                if self.document_search.take().is_some() {
+                    release_focus()
+                } else {
+                    Task::none()
+                }
+            }
+            DocumentSearchMessage::TextChanged(text) => {
+                let Some(view) = self.document_search.as_mut() else {
+                    return Task::none();
+                };
+                self.document_search_generation = self.document_search_generation.wrapping_add(1);
+                let spec = view.set_text(text);
+                self.run_document_search(spec)
+            }
+            DocumentSearchMessage::Ran { generation, result } => {
+                if generation == self.document_search_generation {
+                    if let Some(view) = self.document_search.as_mut() {
+                        match result {
+                            Ok(hits) => view.ran(hits),
+                            Err(detail) => view.failed(detail),
+                        }
+                    }
+                }
+                Task::none()
+            }
+            DocumentSearchMessage::TaxContextsLoaded { generation, result } => {
+                if generation == self.document_search_generation {
+                    if let (Some(view), Ok(tax_contexts)) = (self.document_search.as_mut(), result)
+                    {
+                        view.set_tax_contexts(tax_contexts);
+                    }
+                }
+                Task::none()
+            }
+            DocumentSearchMessage::ToggleFacet(value) => {
+                if let Some(view) = self.document_search.as_mut() {
+                    view.toggle(value);
+                }
+                Task::none()
+            }
+            DocumentSearchMessage::ClearFacets => {
+                if let Some(view) = self.document_search.as_mut() {
+                    view.clear_facets();
+                }
+                Task::none()
+            }
+            DocumentSearchMessage::Move(delta) => {
+                if let Some(view) = self.document_search.as_mut() {
+                    view.move_cursor(delta);
+                }
+                Task::none()
+            }
+            DocumentSearchMessage::Select(index) => {
+                if let Some(view) = self.document_search.as_mut() {
+                    view.select(index);
+                }
+                Task::none()
+            }
+            DocumentSearchMessage::Scrolled(delta) => {
+                if let Some(view) = self.document_search.as_mut() {
+                    view.scroll(delta);
+                }
+                Task::none()
+            }
+            DocumentSearchMessage::LeftInField => {
+                let empty = self
+                    .document_search
+                    .as_ref()
+                    .is_some_and(|view| view.text().is_empty());
+                if empty && self.hermes_focus == HermesFocus::Content {
+                    self.hermes_focus = HermesFocus::Sidebar;
+                    return release_focus();
+                }
+                Task::none()
+            }
+            DocumentSearchMessage::Activate => {
+                let Some(hit) = self
+                    .document_search
+                    .as_ref()
+                    .and_then(DocumentSearch::selected)
+                    .filter(|hit| !hit.missing)
+                else {
+                    return Task::none();
+                };
+                let path = hit.path.clone();
+                self.document_search = None;
+                Task::batch([release_focus(), self.reveal_file(&path)])
+            }
+        }
+    }
+
+    /// Opens the page with the words typed so far, for the box that asked.
+    fn open_document_search(&mut self, text: String) -> Task<Message> {
+        if self.document_search.is_some() || self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        self.context_menu = None;
+        self.document_search_generation = self.document_search_generation.wrapping_add(1);
+        let mut view = DocumentSearch::new(text);
+        let spec = view.begin_search();
+        self.document_search = Some(view);
+        // With the sidebar holding the arrows the field must not take the keys.
+        let focus = if self.hermes_focus == HermesFocus::Sidebar {
+            Task::none()
+        } else {
+            operation::focus(document_search_ui::SEARCH_ID)
+        };
+        Task::batch([
+            focus,
+            self.run_document_search(spec),
+            self.load_document_search_contexts(),
+        ])
+    }
+
+    /// Asks the index for the documents of the words, on a blocking thread.
+    fn run_document_search(&mut self, spec: ncrs_index::QuerySpec) -> Task<Message> {
+        let generation = self.document_search_generation;
+        let Some(access) = self.filing.as_ref().and_then(FilingModule::query_access) else {
+            if let Some(view) = self.document_search.as_mut() {
+                view.failed(INDEX_NOT_OPEN.to_owned());
+            }
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.run(&spec)),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                Message::DocumentSearch(DocumentSearchMessage::Ran { generation, result })
+            },
+        )
+    }
+
+    fn load_document_search_contexts(&self) -> Task<Message> {
+        let generation = self.document_search_generation;
+        let Some(access) = self.filing.as_ref().and_then(FilingModule::query_access) else {
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.tax_contexts()),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                Message::DocumentSearch(DocumentSearchMessage::TaxContextsLoaded {
+                    generation,
+                    result,
+                })
+            },
+        )
+    }
+
     fn open_saved_queries(&mut self) -> Task<Message> {
         if self.saved_queries.is_some() || self.blocking_overlay_is_open() {
             return Task::none();
@@ -11671,6 +11883,8 @@ impl App {
             Some(HermesPage::Inspection)
         } else if self.review_list.is_some() {
             Some(HermesPage::Review)
+        } else if self.document_search.is_some() {
+            Some(HermesPage::Search)
         } else if self.saved_queries.is_some() {
             Some(HermesPage::SavedQueries)
         } else if self.rules.is_some() {
@@ -11699,12 +11913,14 @@ impl App {
         self.rules = None;
         self.review_list = None;
         self.saved_queries = None;
+        self.document_search = None;
         self.reorganisation = None;
         let open = match page {
             HermesPage::Overview => self.open_hermes_overview(),
             HermesPage::Inspection => self.open_filing_status(),
             HermesPage::Review => self.open_review_list(),
             HermesPage::SavedQueries => self.open_saved_queries(),
+            HermesPage::Search => self.open_document_search(String::new()),
             HermesPage::Rules => self.open_rules(),
             HermesPage::RuleSuggestions => self.open_rule_suggestions(),
             HermesPage::Reorganisation => self.open_reorganisation(),
@@ -13436,6 +13652,15 @@ impl App {
         // Typed fast, Enter before the background ranking is back.
         if let Some(quick_open) = self.quick_open.as_mut() {
             quick_open.rank_now();
+        }
+        if let Some(quick_open) = self
+            .quick_open
+            .as_ref()
+            .filter(|quick_open| quick_open.all_hits_selected())
+        {
+            let text = quick_open.query().to_owned();
+            let closed = self.close_quick_open();
+            return Task::batch([closed, self.open_document_search(text)]);
         }
         let Some(path) = self.quick_open.as_ref().and_then(QuickOpen::selected_path) else {
             return Task::none();
@@ -15984,6 +16209,8 @@ impl App {
             review_list_generation: 0,
             saved_queries: None,
             saved_queries_generation: 0,
+            document_search: None,
+            document_search_generation: 0,
             reorganisation: None,
             hermes_focus: HermesFocus::default(),
             return_to_hermes_overview: false,
@@ -16680,6 +16907,16 @@ impl App {
     pub fn with_hermes_focus(mut self, focus: HermesFocus) -> Self {
         self.hermes_focus = focus;
         self
+    }
+
+    pub fn document_search_for_test(&self) -> Option<&DocumentSearch> {
+        self.document_search.as_ref()
+    }
+
+    pub fn with_document_search(view: DocumentSearch) -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.document_search = Some(view);
+        app
     }
 
     pub fn saved_queries_for_test(&self) -> Option<&SavedQueries> {

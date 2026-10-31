@@ -71,6 +71,14 @@ pub fn view<'a>(
                 }),
         );
     }
+    if let Some(index) = quick_open.all_hits_row() {
+        rows.push(all_hits_row(
+            index,
+            quick_open.cursor(),
+            lang.text(Msg::QuickOpenAllHits),
+            palette,
+        ));
+    }
 
     picker::frame(
         picker::Content {
@@ -119,6 +127,31 @@ fn hit_row<'a>(
             picker::row_chars(window, 0.0),
             palette,
         ),
+        to_quick_open(QuickOpenMessage::RowActivated(index)),
+        selected,
+        true,
+        palette,
+    )
+}
+
+/// The last row: the documents in the search page, with the typed text.
+fn all_hits_row<'a>(
+    index: usize,
+    cursor: usize,
+    label: &str,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let selected = index == cursor;
+    kit::list_row(
+        text(label.to_owned())
+            .size(font_size::BODY)
+            .color(if selected {
+                palette.cursor_text
+            } else {
+                palette.dim_text
+            })
+            .wrapping(Wrapping::None)
+            .into(),
         to_quick_open(QuickOpenMessage::RowActivated(index)),
         selected,
         true,
