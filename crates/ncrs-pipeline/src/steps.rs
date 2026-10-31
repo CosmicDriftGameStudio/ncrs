@@ -224,6 +224,7 @@ impl Step for RulesStep {
             for offer in detection.iter().flat_map(|found| &found.offers) {
                 index.offer_sender_alias(&offer.sender, offer.kind, &offer.value)?;
             }
+            let manual_fields = index.field_origins(id)?.manual_fields();
             let planning = plan(
                 &rules,
                 &PlanInput {
@@ -232,6 +233,7 @@ impl Step for RulesStep {
                     path: Some(&item.path),
                     sender_aliases: &aliases,
                     tax_contexts: &tax_contexts,
+                    manual_fields: &manual_fields,
                 },
             );
             let (found, rule_origin, assignment) = match &planning {

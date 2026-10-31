@@ -45,7 +45,7 @@ use crate::query_work::{ExportSummary, QueryHit};
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
 use crate::review_list::FormField;
 use crate::review_work::{AcceptSummary, ConfirmOutcome, ReviewItem};
-use crate::rules_work::RulesLoad;
+use crate::rules_work::{RulesLoad, TryResult};
 use crate::saved_queries::QueryField;
 use crate::suggestion_work::SuggestedRule;
 use crate::tax_context_work::{ContextsResult, TaxContextFailure};
@@ -1129,6 +1129,15 @@ pub enum RulesMessage {
     /// Opens the form for the rule under the cursor.
     Edit,
     Form(RuleFormMessage),
+    /// The form has rested for the debounce time since the edit of this
+    /// try generation.
+    TryElapsed(u64),
+    /// The try of the generation is done. Dropped when the form was edited
+    /// meanwhile.
+    Tried {
+        generation: u64,
+        result: Result<TryResult, String>,
+    },
 }
 
 /// Everything the form of a rule sends.

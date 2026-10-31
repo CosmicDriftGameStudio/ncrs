@@ -3,6 +3,8 @@
 //! contexts use too. No widgets, the view is `ui::rules`.
 
 use std::collections::BTreeSet;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use ncrs_index::{
     Condition, ConditionKind, DocumentFields, Rule, RuleConditions, RuleId, RuleOrigin, RuleSpec,
@@ -12,11 +14,34 @@ use ncrs_index::{
 use crate::condition_editor::{ConditionEditor, ConditionProblem, ALL_CONDITION_KINDS};
 use crate::messages::RuleFormMessage;
 use crate::review_work::{parse_tags, tags_text};
+use crate::rules_work::{RuleTry, TryResult};
 use crate::tax_contexts::{rendered_example, sample_fields};
 
 const NEW_RULE_PATTERN: &str = "{year}/{sender}";
 const EXAMPLE_KIND: &str = "invoice";
 const EXAMPLE_TAX_CONTEXT: &str = "company";
+
+/// How long the form rests after an edit before the try runs.
+pub const TRY_DEBOUNCE: Duration = Duration::from_millis(300);
+
+/// Taken from one counter for all forms, so that the late answer of a form
+/// that was closed never fits the generation of the next one.
+static LAST_TRY_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TryStatus {
+    Idle,
+    Waiting,
+    Running,
+    Ready(TryResult),
+    Failed(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TryState {
+    pub generation: u64,
+    pub status: TryStatus,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RuleFormTarget {
@@ -51,6 +76,8 @@ pub struct RuleForm {
     pub saving: bool,
     /// The index refused the rule; the technical detail stays English.
     pub failure: Option<String>,
+    /// The documents the rule as it stands in the form would match.
+    pub live_try: TryState,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,6 +125,10 @@ impl RuleForm {
             pattern: NEW_RULE_PATTERN.to_owned(),
             saving: false,
             failure: None,
+            live_try: TryState {
+                generation: 0,
+                status: TryStatus::Idle,
+            },
         }
     }
 
@@ -128,6 +159,10 @@ impl RuleForm {
             pattern,
             saving: false,
             failure: None,
+            live_try: TryState {
+                generation: 0,
+                status: TryStatus::Idle,
+            },
         }
     }
 
@@ -142,6 +177,10 @@ impl RuleForm {
             pattern: spec.filing_pattern.clone(),
             saving: false,
             failure: None,
+            live_try: TryState {
+                generation: 0,
+                status: TryStatus::Idle,
+            },
         }
     }
 
@@ -163,6 +202,75 @@ impl RuleForm {
             }
         }
         self.failure = None;
+    }
+
+    /// An edit makes the answer to come stale: waits for the form to rest.
+    /// The generation to hand to `try_request` once it did.
+    pub fn restart_try(&mut self) -> u64 {
+        let generation = LAST_TRY_GENERATION
+            .fetch_add(1, Ordering::Relaxed)
+            .wrapping_add(1);
+        self.live_try = TryState {
+            generation,
+            status: TryStatus::Waiting,
+        };
+        generation
+    }
+
+    /// The rest is over: the try to run, unless the form was edited since or
+    /// its conditions cannot be tried. Never marks a save attempt.
+    pub fn try_request(&mut self, generation: u64) -> Option<RuleTry> {
+        if generation != self.live_try.generation {
+            return None;
+        }
+        if !self.conditions.is_valid(false) {
+            self.live_try.status = TryStatus::Idle;
+            return None;
+        }
+        self.live_try.status = TryStatus::Running;
+        Some(RuleTry {
+            replaces: self.replaced_rule(),
+            spec: self.form_spec(),
+        })
+    }
+
+    /// The answer of the try; one of an older generation is dropped.
+    pub fn try_answered(&mut self, generation: u64, result: Result<TryResult, String>) {
+        if generation != self.live_try.generation {
+            return;
+        }
+        self.live_try.status = match result {
+            Ok(found) => TryStatus::Ready(found),
+            Err(detail) => TryStatus::Failed(detail),
+        };
+    }
+
+    fn replaced_rule(&self) -> Option<RuleId> {
+        match &self.target {
+            RuleFormTarget::Edit(rule) | RuleFormTarget::FromSuggestion(rule) => Some(rule.id),
+            RuleFormTarget::New | RuleFormTarget::FromDocument => None,
+        }
+    }
+
+    /// What the form describes; an existing rule keeps what the form does not
+    /// show.
+    fn form_spec(&self) -> RuleSpec {
+        let kept = match &self.target {
+            RuleFormTarget::Edit(rule) | RuleFormTarget::FromSuggestion(rule) => Some(&rule.spec),
+            RuleFormTarget::New | RuleFormTarget::FromDocument => None,
+        };
+        RuleSpec {
+            conditions: self.conditions.conditions(),
+            extract_number: kept.and_then(|spec| spec.extract_number.clone()),
+            extract_date: kept.and_then(|spec| spec.extract_date.clone()),
+            extract_amount: kept.and_then(|spec| spec.extract_amount.clone()),
+            kind: self.kind.trim().to_owned(),
+            tax_context: self.tax_context.clone(),
+            tags: parse_tags(&self.tags),
+            filing_pattern: self.pattern.trim().to_owned(),
+            confirmed: kept.is_none_or(|spec| spec.confirmed),
+            enabled: kept.is_none_or(|spec| spec.enabled),
+        }
     }
 
     fn save_was_tried(&self) -> bool {
@@ -219,44 +327,18 @@ impl RuleForm {
         }
         self.saving = true;
         self.failure = None;
-        let conditions = self.conditions.conditions();
-        let kind = self.kind.trim().to_owned();
-        let tax_context = self.tax_context.clone();
-        let tags = parse_tags(&self.tags);
-        let filing_pattern = self.pattern.trim().to_owned();
-        let new_rule = || RuleSpec {
-            conditions: conditions.clone(),
-            extract_number: None,
-            extract_date: None,
-            extract_amount: None,
-            kind: kind.clone(),
-            tax_context: tax_context.clone(),
-            tags: tags.clone(),
-            filing_pattern: filing_pattern.clone(),
-            confirmed: true,
-            enabled: true,
-        };
-        let changed = |rule: &Rule| RuleSpec {
-            conditions: conditions.clone(),
-            kind: kind.clone(),
-            tax_context: tax_context.clone(),
-            tags: tags.clone(),
-            filing_pattern: filing_pattern.clone(),
-            ..rule.spec.clone()
-        };
+        let spec = self.form_spec();
         Some(match &self.target {
             RuleFormTarget::New => RuleSave::Create {
-                spec: new_rule(),
+                spec,
                 origin: RuleOrigin::Hand,
             },
             RuleFormTarget::FromDocument => RuleSave::Create {
-                spec: new_rule(),
+                spec,
                 origin: RuleOrigin::Filing,
             },
-            RuleFormTarget::Edit(rule) => RuleSave::Update(rule.id, changed(rule)),
-            RuleFormTarget::FromSuggestion(rule) => {
-                RuleSave::ConfirmSuggestion(rule.id, changed(rule))
-            }
+            RuleFormTarget::Edit(rule) => RuleSave::Update(rule.id, spec),
+            RuleFormTarget::FromSuggestion(rule) => RuleSave::ConfirmSuggestion(rule.id, spec),
         })
     }
 
@@ -530,5 +612,83 @@ mod tests {
         assert_eq!(spec.filing_pattern, "{year}");
         assert_eq!(spec.extract_date, rule.spec.extract_date);
         assert_eq!(spec.conditions, rule.spec.conditions);
+    }
+
+    #[test]
+    fn an_edit_waits_and_only_the_latest_generation_sends_a_request() {
+        let mut form = filled_new();
+        let first = form.restart_try();
+        assert_eq!(form.live_try.status, TryStatus::Waiting);
+        form.update(RuleFormMessage::Pattern("{year}".to_owned()));
+        let second = form.restart_try();
+
+        assert_ne!(first, second);
+        assert_eq!(form.try_request(first), None);
+        assert_eq!(form.live_try.status, TryStatus::Waiting);
+        let request = form.try_request(second).unwrap();
+        assert_eq!(form.live_try.status, TryStatus::Running);
+        assert_eq!(request.replaces, None);
+        assert_eq!(request.spec.filing_pattern, "{year}");
+        assert!(request.spec.confirmed && request.spec.enabled);
+        assert!(!form.conditions.show_empty_problems);
+    }
+
+    #[test]
+    fn an_answer_of_an_older_generation_is_dropped() {
+        let mut form = filled_new();
+        let first = form.restart_try();
+        form.try_request(first).unwrap();
+        let second = form.restart_try();
+
+        form.try_answered(first, Ok(TryResult::default()));
+        assert_eq!(form.live_try.status, TryStatus::Waiting);
+        form.try_request(second).unwrap();
+        form.try_answered(second, Ok(TryResult::default()));
+
+        assert_eq!(form.live_try.status, TryStatus::Ready(TryResult::default()));
+        form.try_answered(first, Err("late".to_owned()));
+        assert_eq!(form.live_try.status, TryStatus::Ready(TryResult::default()));
+    }
+
+    #[test]
+    fn conditions_that_cannot_be_tried_send_nothing() {
+        let mut empty_row = RuleForm::new();
+        let generation = empty_row.restart_try();
+        assert_eq!(empty_row.try_request(generation), None);
+        assert_eq!(empty_row.live_try.status, TryStatus::Idle);
+
+        let mut broken_regex = filled_new();
+        broken_regex.update(RuleFormMessage::Condition(ConditionEdit::Kind(
+            0,
+            ConditionKind::Regex,
+        )));
+        broken_regex.update(RuleFormMessage::Condition(ConditionEdit::Value(
+            0,
+            "(".to_owned(),
+        )));
+        let broken_generation = broken_regex.restart_try();
+        assert_eq!(broken_regex.try_request(broken_generation), None);
+        assert_eq!(broken_regex.live_try.status, TryStatus::Idle);
+    }
+
+    #[test]
+    fn an_invalid_pattern_is_still_tried() {
+        let mut form = filled_new();
+        form.update(RuleFormMessage::Pattern("{foo}".to_owned()));
+        let generation = form.restart_try();
+
+        assert!(form.try_request(generation).is_some());
+    }
+
+    #[test]
+    fn the_try_of_an_edit_replaces_the_stored_rule() {
+        let rule = stored_rule();
+        let mut form = RuleForm::edit(&rule);
+        let generation = form.restart_try();
+
+        let request = form.try_request(generation).unwrap();
+
+        assert_eq!(request.replaces, Some(rule.id));
+        assert_eq!(request.spec.extract_date, rule.spec.extract_date);
     }
 }

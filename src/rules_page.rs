@@ -649,7 +649,7 @@ pub mod tests {
 
         let dir = tempfile::TempDir::new().unwrap();
         let index = Index::create_plain(&dir.path().join("index.db")).unwrap();
-        let access = RulesAccess::new(Arc::new(Mutex::new(Some(index))));
+        let access = RulesAccess::new(Arc::new(Mutex::new(Some(index))), Vec::new());
         let mut page = RulesPage::new();
         page.loaded(access.load().unwrap());
 

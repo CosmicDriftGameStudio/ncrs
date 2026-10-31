@@ -36,6 +36,9 @@ pub struct PlanInput<'a> {
     /// The contexts the conditions may assign a document to; one without a
     /// condition does not take part.
     pub tax_contexts: &'a [TaxContextConditions],
+    /// Fields the user set by hand: neither a rule nor a tax context
+    /// overwrites them, they keep the value of `fields`.
+    pub manual_fields: &'a [Field],
 }
 
 /// The condition of a tax context that put the document into it.
@@ -173,7 +176,7 @@ pub fn plan(rules: &[Rule], input: &PlanInput<'_>) -> Planning {
             }
             None => {
                 let (fields, tax_context_assigned_by) =
-                    with_assigned_context(input.fields.clone(), &assignment);
+                    with_assigned_context(input.fields.clone(), &assignment, input);
                 Planning::Review {
                     reason: ReviewReason::NoMatchingRule,
                     rule: None,
@@ -416,7 +419,7 @@ fn filled_fields(
     match &spec.tax_context {
         Some(context) => fields.tax_context = Some(context.clone()),
         None => {
-            (fields, tax_context_assigned_by) = with_assigned_context(fields, assignment);
+            (fields, tax_context_assigned_by) = with_assigned_context(fields, assignment, input);
         }
     }
     if fields.sender.is_none() {
@@ -447,16 +450,37 @@ fn filled_fields(
     {
         fields.amount = Some(amount);
     }
+    for field in input.manual_fields {
+        restore_manual(&mut fields, input.fields, *field);
+    }
+    if input.manual_fields.contains(&Field::TaxContext) {
+        tax_context_assigned_by = None;
+    }
     (fields, tax_context_assigned_by)
+}
+
+fn restore_manual(fields: &mut DocumentFields, kept: &DocumentFields, field: Field) {
+    match field {
+        Field::Sender => fields.sender.clone_from(&kept.sender),
+        Field::Kind => fields.kind.clone_from(&kept.kind),
+        Field::TaxContext => fields.tax_context.clone_from(&kept.tax_context),
+        Field::Date => fields.date = kept.date,
+        Field::Number => fields.number.clone_from(&kept.number),
+        Field::Amount => fields.amount.clone_from(&kept.amount),
+    }
 }
 
 fn with_assigned_context(
     mut fields: DocumentFields,
     assignment: &ContextAssignment,
+    input: &PlanInput<'_>,
 ) -> (DocumentFields, Option<TaxContextAssignment>) {
     let ContextAssignment::One { context, reason } = assignment else {
         return (fields, None);
     };
+    if input.manual_fields.contains(&Field::TaxContext) {
+        return (fields, None);
+    }
     fields.tax_context = Some(context.clone());
     (
         fields,
@@ -786,6 +810,7 @@ mod tests {
                 path: None,
                 sender_aliases: &SenderAliases::default(),
                 tax_contexts: &[],
+                manual_fields: &[],
             },
         )
     }
@@ -802,6 +827,60 @@ mod tests {
             Planning::Review { reason, .. } => *reason,
             Planning::Plan(_) => panic!("expected a review"),
         }
+    }
+
+    fn plan_keeping(fields: &DocumentFields, manual_fields: &[Field]) -> FilingPlan {
+        planned(plan(
+            &rules_from(&[spec("{tax_context}/{kind}/{date}")]),
+            &PlanInput {
+                text: TEXT,
+                fields,
+                path: None,
+                sender_aliases: &SenderAliases::default(),
+                tax_contexts: &[],
+                manual_fields,
+            },
+        ))
+    }
+
+    #[test]
+    fn a_manual_kind_date_and_tax_context_survive_a_matching_rule() {
+        let by_hand = DocumentFields {
+            kind: Some("offer".to_owned()),
+            date: NaiveDate::from_ymd_opt(2020, 5, 6),
+            tax_context: Some(TaxContext::named("private")),
+            ..DocumentFields::default()
+        };
+
+        let kept = plan_keeping(&by_hand, &[Field::Kind, Field::Date, Field::TaxContext]);
+        assert_eq!(
+            kept.relative_path,
+            Path::new("private").join("offer").join("2020-05-06")
+        );
+        assert_eq!(kept.fields.kind.as_deref(), Some("offer"));
+        assert!(kept.tax_context_assigned_by.is_none());
+
+        let overwritten = plan_keeping(&by_hand, &[]);
+        assert_eq!(
+            overwritten.relative_path,
+            Path::new("company").join("invoice").join("2026-03-01")
+        );
+    }
+
+    #[test]
+    fn only_the_listed_fields_are_kept() {
+        let by_hand = DocumentFields {
+            kind: Some("offer".to_owned()),
+            date: NaiveDate::from_ymd_opt(2020, 5, 6),
+            ..DocumentFields::default()
+        };
+
+        let kept = plan_keeping(&by_hand, &[Field::Kind]);
+
+        assert_eq!(
+            kept.relative_path,
+            Path::new("company").join("offer").join("2026-03-01")
+        );
     }
 
     #[test]
@@ -828,6 +907,7 @@ mod tests {
                     path: None,
                     sender_aliases: &SenderAliases::default(),
                     tax_contexts: &[],
+                    manual_fields: &[],
                 },
             ))
         };
@@ -1024,6 +1104,7 @@ mod tests {
                         path: None,
                         sender_aliases: aliases,
                         tax_contexts: &[],
+                        manual_fields: &[],
                     },
                 ),
                 Planning::Review {
@@ -1054,6 +1135,7 @@ mod tests {
                 path,
                 sender_aliases: &SenderAliases::default(),
                 tax_contexts: &[],
+                manual_fields: &[],
             },
         );
         !matches!(
@@ -1166,6 +1248,7 @@ mod tests {
                 path: None,
                 sender_aliases: &SenderAliases::default(),
                 tax_contexts: &[],
+                manual_fields: &[],
             },
         );
 
@@ -1187,6 +1270,7 @@ mod tests {
                 path: None,
                 sender_aliases: &SenderAliases::default(),
                 tax_contexts: &[],
+                manual_fields: &[],
             },
         );
 
@@ -1202,6 +1286,7 @@ mod tests {
                 path: None,
                 sender_aliases: &SenderAliases::default(),
                 tax_contexts: &[],
+                manual_fields: &[],
             },
         )
     }
@@ -1498,6 +1583,7 @@ mod tests {
                 path: None,
                 sender_aliases: &SenderAliases::default(),
                 tax_contexts: contexts,
+                manual_fields: &[],
             },
         )
     }

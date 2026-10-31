@@ -12,14 +12,16 @@ use super::frame::{self, DialogSize, Frame, KeyHints, PageHint};
 use super::hermes::{self, Badges};
 use super::kit::{self, dim, error_line, paragraph, Check, Columns, Tone};
 use super::layout::SETTINGS_WIDE_CONTROL_WIDTH;
+use super::review_list::reason_text;
 use super::theme::spacing;
 use crate::app::fill_template;
 use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{HermesFocus, HermesPage, Message, RuleFormMessage, RulesMessage};
 use crate::palette::Palette;
-use crate::rule_form::{PatternProblem, RuleForm, RuleFormProblems, RuleFormTarget};
+use crate::review_work::TextState;
+use crate::rule_form::{PatternProblem, RuleForm, RuleFormProblems, RuleFormTarget, TryStatus};
 use crate::rules_page::{hits_text, origin_text, rule_sentence, RulesPage, VISIBLE_ROWS};
-use crate::rules_work::ListedRule;
+use crate::rules_work::{ListedRule, TriedDocument, TryOutcome, TryResult, TrySection};
 
 const SIZE: DialogSize = DialogSize::Card;
 
@@ -29,6 +31,13 @@ const PORTIONS: [u16; 3] = [12, 4, 3];
 /// The room of the switch left of a row, in pixels and in characters.
 const SWITCH_WIDTH: f32 = 28.0;
 const SWITCH_CHARS: usize = 4;
+
+/// How the width of a row of the try is shared: place, document, change,
+/// conflicts.
+const TRY_PORTIONS: [u16; 4] = [3, 7, 13, 4];
+
+/// Documents of the try listed at once; the form has to fit with them.
+const TRY_VISIBLE_ROWS: usize = 6;
 
 /// Blocks of the filing pattern offered side by side in one row.
 const BLOCKS_PER_ROW: usize = 4;
@@ -318,6 +327,8 @@ fn form_view<'a>(
     for control in form_rows(state, form, lang, palette) {
         body = body.push(control);
     }
+    let line_chars = frame::content_chars(SIZE, window, frame::SIDEBAR_ROOM);
+    body = body.push(try_section(form, line_chars, lang, palette));
 
     let saving = form.saving;
     Frame::new(title, body, SIZE, window, lang, palette)
@@ -505,4 +516,120 @@ fn pattern_problem_text(problems: &RuleFormProblems, lang: Language) -> Option<S
             .text(Msg::RuleSuggestionsProblemInvalidPattern)
             .to_owned(),
     })
+}
+
+fn try_section<'a>(
+    form: &RuleForm,
+    line_chars: usize,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let mut content = Column::new()
+        .push(dim(lang.text(Msg::RulesTryExplain), palette))
+        .spacing(spacing::XS);
+    match &form.live_try.status {
+        TryStatus::Idle => {}
+        TryStatus::Waiting | TryStatus::Running => {
+            content = content.push(dim(lang.text(Msg::RulesTryLooking), palette));
+        }
+        TryStatus::Failed(detail) => {
+            content = content.push(error_line(
+                fill_template(lang.text(Msg::RulesTryFailed), &[("{detail}", detail)]),
+                palette,
+            ));
+        }
+        TryStatus::Ready(result) if result.documents.is_empty() => {
+            content = content.push(dim(lang.text(Msg::RulesTryEmpty), palette));
+        }
+        TryStatus::Ready(result) => {
+            content = try_rows(content, result, line_chars, lang, palette);
+        }
+    }
+    kit::section(lang.text(Msg::RulesTryHeading), content, palette)
+}
+
+fn try_rows<'a>(
+    intro: Column<'a, Message>,
+    result: &TryResult,
+    line_chars: usize,
+    lang: Language,
+    palette: &Palette,
+) -> Column<'a, Message> {
+    let columns = Columns {
+        portions: &TRY_PORTIONS,
+        line_chars,
+    };
+    let mut content = result
+        .documents
+        .iter()
+        .take(TRY_VISIBLE_ROWS)
+        .fold(intro, |lines, tried| {
+            lines.push(try_row(&columns, tried, result, lang, palette))
+        });
+    let hidden = result
+        .documents
+        .len()
+        .saturating_sub(TRY_VISIBLE_ROWS)
+        .saturating_add(result.more);
+    if hidden > 0 {
+        content = content.push(dim(
+            fill_template(
+                lang.text(Msg::RulesTryMore),
+                &[("{count}", &hidden.to_string())],
+            ),
+            palette,
+        ));
+    }
+    content
+}
+
+fn try_row<'a>(
+    columns: &Columns<'_>,
+    tried: &TriedDocument,
+    result: &TryResult,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let section = lang.text(match tried.section {
+        TrySection::Inbox => Msg::RulesTrySectionInbox,
+        TrySection::Review => Msg::RulesTrySectionReview,
+        TrySection::Archive => Msg::RulesTrySectionArchive,
+    });
+    let change = format!(
+        "{} → {}",
+        outcome_text(&tried.now, lang),
+        outcome_text(&tried.after, lang)
+    );
+    let places: Vec<String> = tried
+        .conflicts
+        .iter()
+        .filter_map(|id| result.conflict_names.get(id))
+        .map(ToString::to_string)
+        .collect();
+    let conflicts = if places.is_empty() {
+        String::new()
+    } else {
+        fill_template(
+            lang.text(Msg::RulesTryAlso),
+            &[("{rules}", &places.join(", "))],
+        )
+    };
+    row![
+        columns.cell(0, section, palette.dim_text),
+        columns.cell(1, &tried.path.display().to_string(), palette.text),
+        columns.cell(2, &change, palette.text),
+        columns.cell(3, &conflicts, palette.error),
+    ]
+    .into()
+}
+
+fn outcome_text(outcome: &TryOutcome, lang: Language) -> String {
+    match outcome {
+        TryOutcome::Filed(path) => path.display().to_string(),
+        TryOutcome::Review(reason) => reason_text(*reason, TextState::Read, lang),
+        TryOutcome::Lies(path) => fill_template(
+            lang.text(Msg::RulesTryLiesAt),
+            &[("{path}", &path.display().to_string())],
+        ),
+    }
 }

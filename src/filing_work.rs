@@ -92,6 +92,7 @@ fn decide(
             path: Some(&document.path),
             sender_aliases,
             tax_contexts,
+            manual_fields: &[],
         },
     );
     match planning {

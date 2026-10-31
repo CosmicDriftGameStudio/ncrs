@@ -83,7 +83,7 @@ use crate::reorganisation_plan::ReorganisationView;
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
 use crate::review_list::{rule_prefill_of, ReviewList};
 use crate::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
-use crate::rule_form::{RuleForm, RuleSave};
+use crate::rule_form::{RuleForm, RuleSave, TRY_DEBOUNCE};
 use crate::rule_suggestions::RuleSuggestions;
 use crate::rules_page::RulesPage;
 use crate::rules_work::{RuleChange, RulesAccess};
@@ -10247,15 +10247,22 @@ impl App {
                 if let Some(view) = self.rules.as_mut() {
                     view.begin_new();
                 }
-                self.focus_rule_form()
+                Task::batch([self.focus_rule_form(), self.schedule_rule_try()])
             }
             RulesMessage::Edit => {
                 if let Some(view) = self.rules.as_mut() {
                     view.begin_edit();
                 }
-                self.focus_rule_form()
+                Task::batch([self.focus_rule_form(), self.schedule_rule_try()])
             }
             RulesMessage::Form(form_message) => self.update_rule_form(form_message),
+            RulesMessage::TryElapsed(generation) => self.run_rule_try(generation),
+            RulesMessage::Tried { generation, result } => {
+                if let Some(form) = self.rules.as_mut().and_then(RulesPage::form_mut) {
+                    form.try_answered(generation, result);
+                }
+                Task::none()
+            }
         }
     }
 
@@ -10296,7 +10303,43 @@ impl App {
             return opened;
         };
         view.open_form(form, return_to);
-        Task::batch([opened, self.focus_rule_form()])
+        Task::batch([opened, self.focus_rule_form(), self.schedule_rule_try()])
+    }
+
+    /// The form changed: its try waits for the form to rest.
+    fn schedule_rule_try(&mut self) -> Task<Message> {
+        let Some(form) = self.rules.as_mut().and_then(RulesPage::form_mut) else {
+            return Task::none();
+        };
+        let generation = form.restart_try();
+        Task::perform(
+            async { tokio::time::sleep(TRY_DEBOUNCE).await },
+            move |()| Message::Rules(RulesMessage::TryElapsed(generation)),
+        )
+    }
+
+    fn run_rule_try(&mut self, generation: u64) -> Task<Message> {
+        let Some(request) = self
+            .rules
+            .as_mut()
+            .and_then(RulesPage::form_mut)
+            .and_then(|form| form.try_request(generation))
+        else {
+            return Task::none();
+        };
+        let Some(access) = self.filing.as_ref().and_then(FilingModule::rules_access) else {
+            if let Some(form) = self.rules.as_mut().and_then(RulesPage::form_mut) {
+                form.try_answered(generation, Err(INDEX_NOT_OPEN.to_owned()));
+            }
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || access.try_rule(&request)),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                Message::Rules(RulesMessage::Tried { generation, result })
+            },
+        )
     }
 
     fn update_rule_form(&mut self, message: RuleFormMessage) -> Task<Message> {
@@ -10328,7 +10371,7 @@ impl App {
                 if let Some(form) = view.form_mut() {
                     form.update(field_change);
                 }
-                Task::none()
+                self.schedule_rule_try()
             }
         }
     }

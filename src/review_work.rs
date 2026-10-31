@@ -254,6 +254,8 @@ fn review_item(
 ) -> Result<ReviewItem, IndexError> {
     let stored_text = index.document_text(document.id)?;
     let text = stored_text.clone().unwrap_or_default();
+    let origins = index.field_origins(document.id)?;
+    let manual_fields = origins.manual_fields();
     let planning = plan(
         rules,
         &PlanInput {
@@ -262,6 +264,7 @@ fn review_item(
             path: Some(&document.path),
             sender_aliases,
             tax_contexts,
+            manual_fields: &manual_fields,
         },
     );
     let (fields, proposed_pattern) = match planning {
@@ -278,7 +281,7 @@ fn review_item(
         ),
         Planning::Review { rule: None, .. } | Planning::Plan(_) => (document.fields, None),
     };
-    let tax_context_assigned_by = match index.field_origins(document.id)?.of(Field::TaxContext) {
+    let tax_context_assigned_by = match origins.of(Field::TaxContext) {
         FieldOrigin::Condition { kind, value } => Some(AssigningCondition { kind, value }),
         FieldOrigin::Unknown
         | FieldOrigin::Rule(_)

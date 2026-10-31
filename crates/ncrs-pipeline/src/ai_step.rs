@@ -237,6 +237,7 @@ impl AiStep {
                     path: Some(&item.path),
                     sender_aliases: &sender_aliases,
                     tax_contexts: &tax_contexts,
+                    manual_fields: &[],
                 },
             );
             if let Planning::Plan(filing) = &planning {

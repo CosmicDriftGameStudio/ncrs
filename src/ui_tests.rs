@@ -3576,6 +3576,86 @@ mod rules_card {
         }
     }
 
+    fn with_tried_form() -> RulesPage {
+        use crate::rules_work::{TriedDocument, TryOutcome, TryResult, TrySection};
+        use ncrs_index::ReviewReason;
+        use std::path::PathBuf;
+
+        let mut page = with_edit_form();
+        let Some(form) = page.form_mut() else {
+            panic!("no form");
+        };
+        let filed = |path: &str| TryOutcome::Filed(PathBuf::from(path));
+        form.live_try.status = crate::rule_form::TryStatus::Ready(TryResult {
+            documents: vec![
+                TriedDocument {
+                    section: TrySection::Inbox,
+                    path: PathBuf::from("rent-march.pdf"),
+                    now: TryOutcome::Review(ReviewReason::NoMatchingRule),
+                    after: filed("Invoice/2024/Telekom"),
+                    conflicts: Vec::new(),
+                },
+                TriedDocument {
+                    section: TrySection::Review,
+                    path: PathBuf::from("scan-0412.pdf"),
+                    now: TryOutcome::Review(ReviewReason::MissingField(ncrs_index::Field::Date)),
+                    after: filed("Invoice/2024/Telekom"),
+                    conflicts: Vec::new(),
+                },
+                TriedDocument {
+                    section: TrySection::Archive,
+                    path: PathBuf::from("2021/telekom-may.pdf"),
+                    now: TryOutcome::Lies(PathBuf::from("2021/telekom-may.pdf")),
+                    after: TryOutcome::Review(ReviewReason::RuleConflict),
+                    conflicts: vec![rule_id(2), rule_id(3)],
+                },
+            ],
+            more: 0,
+            conflict_names: [(rule_id(2), 2), (rule_id(3), 3)].into_iter().collect(),
+        });
+        page
+    }
+
+    #[test]
+    fn the_try_of_the_rule_form_matches_its_snapshots() {
+        for language in ["en", "de"] {
+            matches_snapshot(with_tried_form(), &format!("rule_form_try_{language}"));
+        }
+    }
+
+    #[test]
+    fn an_edit_of_the_form_starts_a_try_and_a_stale_timer_does_nothing() {
+        use crate::rule_form::TryStatus;
+
+        let mut app = App::with_rules(three_rules());
+        let _ = app.update(Message::Rules(RulesMessage::Edit));
+        let waiting = |shown: &App| {
+            shown
+                .rules_for_test()
+                .unwrap()
+                .form()
+                .unwrap()
+                .live_try
+                .clone()
+        };
+        let opened = waiting(&app);
+        assert_eq!(opened.status, TryStatus::Waiting);
+
+        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Kind(
+            "Contract".to_owned(),
+        ))));
+        let edited = waiting(&app);
+        assert_ne!(edited.generation, opened.generation);
+
+        let _ = app.update(Message::Rules(RulesMessage::TryElapsed(opened.generation)));
+        assert_eq!(waiting(&app), edited);
+        let _ = app.update(Message::Rules(RulesMessage::Tried {
+            generation: opened.generation,
+            result: Ok(crate::rules_work::TryResult::default()),
+        }));
+        assert_eq!(waiting(&app), edited);
+    }
+
     #[test]
     fn the_new_rule_button_opens_the_form_and_the_edit_button_fills_it() {
         let mut app = App::with_rules(three_rules());

@@ -835,6 +835,25 @@ mod tests {
     }
 
     #[test]
+    fn the_manual_field_origins_are_listed_in_field_order() {
+        let (_dir, mut index) = encrypted_index();
+        let id = index.insert_document(&new_document(1)).unwrap();
+        assert!(index.field_origins(id).unwrap().manual_fields().is_empty());
+
+        index
+            .set_document_fields(id, &all_fields(), |field| match field {
+                Field::Date | Field::Kind => FieldOrigin::Manual,
+                _ => FieldOrigin::Rule(None),
+            })
+            .unwrap();
+
+        assert_eq!(
+            index.field_origins(id).unwrap().manual_fields(),
+            vec![Field::Kind, Field::Date]
+        );
+    }
+
+    #[test]
     fn each_kind_of_origin_round_trips() {
         let (_dir, mut index) = encrypted_index();
         let rule = index

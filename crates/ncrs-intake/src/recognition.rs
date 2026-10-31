@@ -539,6 +539,7 @@ pub fn measure(
                     path: None,
                     sender_aliases: &sender_aliases,
                     tax_contexts,
+                    manual_fields: &[],
                 },
             );
             let planning = match rules_planning {
@@ -557,6 +558,7 @@ pub fn measure(
                             path: None,
                             sender_aliases: &sender_aliases,
                             tax_contexts,
+                            manual_fields: &[],
                         },
                     ),
                     Some(merged) => Planning::Review {
