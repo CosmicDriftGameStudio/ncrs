@@ -234,6 +234,7 @@ pub mod tests {
 
     fn spec(condition: &str, kind: &str) -> RuleSpec {
         RuleSpec {
+            name: None,
             conditions: RuleConditions::all_of(vec![Condition::new(
                 ConditionKind::Substring,
                 condition,
@@ -241,7 +242,7 @@ pub mod tests {
             extract_number: None,
             extract_date: None,
             extract_amount: None,
-            kind: kind.to_owned(),
+            kind: Some(kind.to_owned()),
             tags: BTreeSet::new(),
             filing_pattern: format!("{kind}/{{date}}_{{name}}"),
             confirmed: false,
@@ -368,7 +369,7 @@ pub mod tests {
 
         assert_eq!(id, one);
         assert_eq!(spec.conditions.single_text(), Some("company a ltd"));
-        assert_eq!(spec.kind, "Insurance");
+        assert_eq!(spec.kind.as_deref(), Some("Insurance"));
         assert!(view.is_busy());
         assert_eq!(view.begin_confirm(), None, "one decision at a time");
     }

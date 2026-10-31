@@ -66,13 +66,18 @@ fn rule_label(spec: &RuleSpec) -> String {
         .filter(|condition| !condition.negated)
         .map(|condition| condition.value.trim())
         .find(|value| !value.is_empty());
-    match phrase {
+    let name = spec
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty());
+    match name.or(phrase) {
         Some(value) if value.chars().count() > RULE_LABEL_CHARS => {
             let cut: String = value.chars().take(RULE_LABEL_CHARS).collect();
             format!("{cut}…")
         }
         Some(value) => value.to_owned(),
-        None => spec.kind.clone(),
+        None => spec.kind.clone().unwrap_or_default(),
     }
 }
 
@@ -302,6 +307,7 @@ pub mod tests {
 
     fn rule_spec(phrase: &str, kind: &str, pattern: &str, confirmed: bool) -> RuleSpec {
         RuleSpec {
+            name: None,
             conditions: RuleConditions::all_of(vec![Condition::new(
                 ConditionKind::Substring,
                 phrase,
@@ -309,7 +315,7 @@ pub mod tests {
             extract_number: None,
             extract_date: None,
             extract_amount: None,
-            kind: kind.to_owned(),
+            kind: Some(kind.to_owned()),
             tags: Default::default(),
             filing_pattern: pattern.to_owned(),
             confirmed,

@@ -299,6 +299,7 @@ mod tests {
 
     fn invoice_rule(filing_pattern: &str, confirmed: bool) -> RuleSpec {
         RuleSpec {
+            name: None,
             conditions: RuleConditions::all_of(vec![Condition::new(
                 ConditionKind::Substring,
                 "company a",
@@ -306,7 +307,7 @@ mod tests {
             extract_number: Some(r"Invoice (\d+)".to_owned()),
             extract_date: None,
             extract_amount: None,
-            kind: "invoice".to_owned(),
+            kind: Some("invoice".to_owned()),
             tags: BTreeSet::new(),
             filing_pattern: filing_pattern.to_owned(),
             confirmed,

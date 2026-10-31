@@ -2237,6 +2237,7 @@ mod tests {
 
     fn invoice_rule(filing_pattern: &str, confirmed: bool) -> ncrs_index::RuleSpec {
         ncrs_index::RuleSpec {
+            name: None,
             conditions: ncrs_index::RuleConditions::all_of(vec![ncrs_index::Condition::new(
                 ncrs_index::ConditionKind::Substring,
                 "company a",
@@ -2244,7 +2245,7 @@ mod tests {
             extract_number: Some(r"Invoice (\d+)".to_owned()),
             extract_date: None,
             extract_amount: None,
-            kind: "invoice".to_owned(),
+            kind: Some("invoice".to_owned()),
             tags: std::collections::BTreeSet::new(),
             filing_pattern: filing_pattern.to_owned(),
             confirmed,
@@ -2498,7 +2499,7 @@ mod tests {
     }
 
     #[test]
-    fn two_confirmed_rules_with_different_results_send_the_document_to_review() {
+    fn two_confirmed_rules_with_different_results_file_by_the_first() {
         let fixture = run_text_with_rules(
             &[
                 invoice_rule("{number}.pdf", true),
@@ -2508,9 +2509,49 @@ mod tests {
         );
 
         let index = fixture.index.lock().unwrap();
+        assert!(index.open_reviews().unwrap().is_empty());
+        let documents = index.search_text("4711", 10).unwrap();
+        let document = index.document(documents[0]).unwrap().unwrap();
+        assert_eq!(document.status, DocumentStatus::Planned);
+    }
+
+    const LETTER_TEXT: &str = "Firma A GmbH\nMusterweg 3\n12345 Musterstadt\n\nRechnung 4711";
+
+    fn tag_rule(tags: &[&str]) -> ncrs_index::RuleSpec {
+        ncrs_index::RuleSpec {
+            conditions: ncrs_index::RuleConditions::all_of(
+                tags.iter()
+                    .map(|tag| ncrs_index::Condition::new(ncrs_index::ConditionKind::Tag, *tag))
+                    .collect(),
+            ),
+            extract_number: None,
+            ..invoice_rule("Tags/{kind}", true)
+        }
+    }
+
+    #[test]
+    fn a_rule_on_the_tags_of_the_document_files_it() {
+        let fixture = run_text_with_rules(&[tag_rule(&["rechnung", "firma-a"])], LETTER_TEXT);
+
+        let index = fixture.index.lock().unwrap();
+        assert!(
+            index.open_reviews().unwrap().is_empty(),
+            "{:?}",
+            index.open_reviews().unwrap()
+        );
+        let documents = index.search_text("4711", 10).unwrap();
+        let document = index.document(documents[0]).unwrap().unwrap();
+        assert_eq!(document.status, DocumentStatus::Planned);
+    }
+
+    #[test]
+    fn a_rule_on_a_tag_the_document_lacks_leaves_it_to_review() {
+        let fixture = run_text_with_rules(&[tag_rule(&["rechnung", "stadtwerke"])], LETTER_TEXT);
+
+        let index = fixture.index.lock().unwrap();
         let reviews = index.open_reviews().unwrap();
         assert_eq!(reviews.len(), 1);
-        assert_eq!(reviews[0].reason, ncrs_index::ReviewReason::RuleConflict);
+        assert_eq!(reviews[0].reason, ncrs_index::ReviewReason::NoMatchingRule);
     }
 
     #[test]

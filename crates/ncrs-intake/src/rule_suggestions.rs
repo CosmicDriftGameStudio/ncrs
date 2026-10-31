@@ -150,14 +150,17 @@ fn spec_of(
     shared: &SharedFields,
 ) -> RuleSpec {
     RuleSpec {
+        name: None,
         conditions: RuleConditions::all_of(vec![condition]),
         extract_number: None,
         extract_date: None,
         extract_amount: None,
-        kind: shared
-            .kind
-            .clone()
-            .unwrap_or_else(|| fallback_kind.to_owned()),
+        kind: Some(
+            shared
+                .kind
+                .clone()
+                .unwrap_or_else(|| fallback_kind.to_owned()),
+        ),
         tags: shared.tags.clone(),
         filing_pattern: pattern.to_owned(),
         confirmed: false,
@@ -603,7 +606,7 @@ mod tests {
         assert_eq!(company.len(), 1);
         let candidate = company[0];
         assert_eq!(candidate.subtree, "Insurance");
-        assert_eq!(candidate.spec.kind, "Insurance");
+        assert_eq!(candidate.spec.kind.as_deref(), Some("Insurance"));
         assert_eq!(candidate.spec.filing_pattern, "Insurance/{date}_{name}");
         assert_eq!(
             candidate.evidence,
@@ -751,7 +754,7 @@ mod tests {
             RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, "Company A")])
         );
         assert_eq!(candidate.subtree, "Insurance");
-        assert_eq!(candidate.spec.kind, "Insurance");
+        assert_eq!(candidate.spec.kind.as_deref(), Some("Insurance"));
         assert_eq!(candidate.spec.filing_pattern, "Insurance/{date}_{name}");
         assert!(!candidate.spec.confirmed);
         assert!(candidate.spec.enabled);
@@ -830,7 +833,11 @@ mod tests {
             for (index, entry) in archive.iter_mut().enumerate() {
                 entry.fields.kind = (index < named).then(|| "Policy".to_owned());
             }
-            only_sender_candidate(&suggest(&archive)).spec.kind.clone()
+            only_sender_candidate(&suggest(&archive))
+                .spec
+                .kind
+                .clone()
+                .unwrap_or_default()
         };
 
         assert_eq!(with_kind(4), "Policy");

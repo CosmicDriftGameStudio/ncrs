@@ -334,7 +334,7 @@ mod tests {
 
         let suggestion = company_a(&suggestions).expect("the Company A rule");
         assert!(!suggestion.spec.confirmed);
-        assert_eq!(suggestion.spec.kind, "Insurance");
+        assert_eq!(suggestion.spec.kind.as_deref(), Some("Insurance"));
         assert_eq!(
             suggestion.evidence,
             RuleEvidence {
@@ -395,7 +395,7 @@ mod tests {
                 ConditionKind::Substring,
                 "company a",
             )]),
-            kind: "Policy".to_owned(),
+            kind: Some("Policy".to_owned()),
             filing_pattern: "Policies/{date}_{name}".to_owned(),
             ..suggestion.spec.clone()
         };
@@ -412,7 +412,7 @@ mod tests {
             .unwrap();
         assert!(rule.spec.confirmed);
         assert_eq!(rule.spec.conditions, edited.conditions);
-        assert_eq!(rule.spec.kind, "Policy");
+        assert_eq!(rule.spec.kind.as_deref(), Some("Policy"));
         assert_eq!(rule.spec.filing_pattern, "Policies/{date}_{name}");
         assert!(
             company_a(&after_rerun).is_none(),
@@ -496,7 +496,7 @@ mod tests {
             .iter()
             .find(|suggestion| condition_text(&suggestion.spec) == Some("City Works"))
             .unwrap_or_else(|| panic!("{suggestions:#?}"));
-        assert_eq!(works.spec.kind, "Utility bill");
+        assert_eq!(works.spec.kind.as_deref(), Some("Utility bill"));
         assert_eq!(works.spec.filing_pattern, "Utilities/{date}_{name}");
     }
 

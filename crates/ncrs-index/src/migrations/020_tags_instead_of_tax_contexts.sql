@@ -102,9 +102,11 @@ DROP TABLE document_field_origin;
 ALTER TABLE document_field_origin_new RENAME TO document_field_origin;
 
 -- Reviews are read back whatever their state, so none may keep a reason or
--- field that no longer exists.
+-- field that no longer exists. The first matching rule files now, so there is
+-- no conflict between rules either.
 UPDATE review_entry SET reason = 'no_matching_rule', field = NULL
-WHERE reason IN ('no_tax_context_matches', 'several_tax_contexts_match') OR field = 'tax_context';
+WHERE reason IN ('no_tax_context_matches', 'several_tax_contexts_match', 'rule_conflict')
+    OR field = 'tax_context';
 
 -- Tags a person set themselves; the automatic ones are written from the fields.
 ALTER TABLE document_tag ADD COLUMN automatic INTEGER NOT NULL DEFAULT 0
@@ -118,7 +120,7 @@ UPDATE rule SET filing_pattern = replace(filing_pattern, '_{tax_context}', '') W
 UPDATE rule SET filing_pattern = replace(filing_pattern, '{tax_context}-', '') WHERE instr(filing_pattern, '{tax_context}-') > 0;
 UPDATE rule SET filing_pattern = replace(filing_pattern, '-{tax_context}', '') WHERE instr(filing_pattern, '-{tax_context}') > 0;
 UPDATE rule SET filing_pattern = replace(filing_pattern, '{tax_context}', '') WHERE instr(filing_pattern, '{tax_context}') > 0;
-UPDATE rule SET filing_pattern = '{year}/{year}{month}{day}_{sender}_{number}' WHERE filing_pattern IN ('', '/');
+UPDATE rule SET filing_pattern = '{year}/' WHERE filing_pattern IN ('', '/');
 UPDATE OR REPLACE discarded_rule_suggestion SET filing_pattern = replace(filing_pattern, '{tax_context}/', '') WHERE instr(filing_pattern, '{tax_context}/') > 0;
 UPDATE OR REPLACE discarded_rule_suggestion SET filing_pattern = replace(filing_pattern, '/{tax_context}', '') WHERE instr(filing_pattern, '/{tax_context}') > 0;
 UPDATE OR REPLACE discarded_rule_suggestion SET filing_pattern = replace(filing_pattern, '{tax_context}_', '') WHERE instr(filing_pattern, '{tax_context}_') > 0;
@@ -126,7 +128,7 @@ UPDATE OR REPLACE discarded_rule_suggestion SET filing_pattern = replace(filing_
 UPDATE OR REPLACE discarded_rule_suggestion SET filing_pattern = replace(filing_pattern, '{tax_context}-', '') WHERE instr(filing_pattern, '{tax_context}-') > 0;
 UPDATE OR REPLACE discarded_rule_suggestion SET filing_pattern = replace(filing_pattern, '-{tax_context}', '') WHERE instr(filing_pattern, '-{tax_context}') > 0;
 UPDATE OR REPLACE discarded_rule_suggestion SET filing_pattern = replace(filing_pattern, '{tax_context}', '') WHERE instr(filing_pattern, '{tax_context}') > 0;
-UPDATE OR REPLACE discarded_rule_suggestion SET filing_pattern = '{year}/{year}{month}{day}_{sender}_{number}' WHERE filing_pattern IN ('', '/');
+UPDATE OR REPLACE discarded_rule_suggestion SET filing_pattern = '{year}/' WHERE filing_pattern IN ('', '/');
 UPDATE location_subtree SET pattern = replace(pattern, '{tax_context}/', '') WHERE instr(pattern, '{tax_context}/') > 0;
 UPDATE location_subtree SET pattern = replace(pattern, '/{tax_context}', '') WHERE instr(pattern, '/{tax_context}') > 0;
 UPDATE location_subtree SET pattern = replace(pattern, '{tax_context}_', '') WHERE instr(pattern, '{tax_context}_') > 0;
@@ -134,4 +136,17 @@ UPDATE location_subtree SET pattern = replace(pattern, '_{tax_context}', '') WHE
 UPDATE location_subtree SET pattern = replace(pattern, '{tax_context}-', '') WHERE instr(pattern, '{tax_context}-') > 0;
 UPDATE location_subtree SET pattern = replace(pattern, '-{tax_context}', '') WHERE instr(pattern, '-{tax_context}') > 0;
 UPDATE location_subtree SET pattern = replace(pattern, '{tax_context}', '') WHERE instr(pattern, '{tax_context}') > 0;
-UPDATE location_subtree SET pattern = '{year}/{year}{month}{day}_{sender}_{number}' WHERE pattern IN ('', '/');
+UPDATE location_subtree SET pattern = '{year}/' WHERE pattern IN ('', '/');
+
+-- A pattern whose last part is no file name of its own ends in "/": the file
+-- name is made automatically. The last part is what follows the last "/".
+UPDATE rule SET filing_pattern = filing_pattern || '/'
+WHERE substr(filing_pattern, -1) <> '/'
+    AND instr(substr(filing_pattern, length(rtrim(filing_pattern, replace(filing_pattern, '/', ''))) + 1), '{day}') = 0
+    AND instr(substr(filing_pattern, length(rtrim(filing_pattern, replace(filing_pattern, '/', ''))) + 1), '{date}') = 0
+    AND instr(substr(filing_pattern, length(rtrim(filing_pattern, replace(filing_pattern, '/', ''))) + 1), '{number}') = 0;
+UPDATE OR REPLACE discarded_rule_suggestion SET filing_pattern = filing_pattern || '/'
+WHERE substr(filing_pattern, -1) <> '/'
+    AND instr(substr(filing_pattern, length(rtrim(filing_pattern, replace(filing_pattern, '/', ''))) + 1), '{day}') = 0
+    AND instr(substr(filing_pattern, length(rtrim(filing_pattern, replace(filing_pattern, '/', ''))) + 1), '{date}') = 0
+    AND instr(substr(filing_pattern, length(rtrim(filing_pattern, replace(filing_pattern, '/', ''))) + 1), '{number}') = 0;

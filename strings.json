@@ -2911,18 +2911,6 @@
       "de": "… und {count} weitere"
     },
     {
-      "key": "rule_suggestions.problem_no_kind",
-      "context": "Error line in the rule form when the kind field is empty.",
-      "en": "Enter the kind of document.",
-      "de": "Gib die Art des Dokuments ein."
-    },
-    {
-      "key": "rule_suggestions.problem_invalid_pattern",
-      "context": "Error line in the rule form when the filing pattern cannot be used: an unknown placeholder, a stray brace, or a path that leaves the folder. Nothing is saved.",
-      "en": "This pattern cannot be used. Placeholders are written in braces, such as {year}.",
-      "de": "Dieses Muster ist nicht verwendbar. Platzhalter stehen in geschweiften Klammern, etwa {year}."
-    },
-    {
       "key": "rule_suggestions.problem_failed",
       "context": "Error line in the rule suggestions view when reading or writing the rules failed. Takes the technical detail, which stays untranslated.",
       "en": "That did not work ({detail}).",
@@ -3483,8 +3471,8 @@
     {
       "key": "review_list.no_rules_hint",
       "context": "Hint line at the top of the review page while Hermes has no confirmed rule yet and the AI model is not ready: why the fields are empty and the two ways to fill them.",
-      "en": "No rules yet. ncrs suggests a default pattern for each document: check the fields and confirm. Load the AI model and it fills in the fields itself.",
-      "de": "Noch keine Regeln. ncrs schlägt für jedes Dokument ein Standardmuster vor: Felder prüfen und bestätigen. Mit dem KI-Modell füllt es die Felder selbst aus."
+      "en": "No rules yet. ncrs suggests the default target for each document: check the fields and confirm. Load the AI model and it fills in the fields itself.",
+      "de": "Noch keine Regeln. ncrs schlägt für jedes Dokument das Standardziel vor: Felder prüfen und bestätigen. Mit dem KI-Modell füllt es die Felder selbst aus."
     },
     {
       "key": "review_list.loading",
@@ -3537,8 +3525,8 @@
     {
       "key": "review_list.reason_default_pattern",
       "context": "Review reason in the review list: the pattern in the form is the default pattern, not one from a rule.",
-      "en": "Default pattern, please check",
-      "de": "Standardmuster, bitte prüfen"
+      "en": "Default target, please check",
+      "de": "Standardziel, bitte prüfen"
     },
     {
       "key": "review_list.reason_nothing_recognised",
@@ -3563,12 +3551,6 @@
       "context": "Review reason in the review list: a rule matched but is not confirmed yet.",
       "en": "Rule not confirmed",
       "de": "Regel nicht bestätigt"
-    },
-    {
-      "key": "review_list.reason_rule_conflict",
-      "context": "Review reason in the review list: several confirmed rules match the document but come to different results.",
-      "en": "Several rules match with different results",
-      "de": "Mehrere Regeln passen mit unterschiedlichem Ergebnis"
     },
     {
       "key": "review_list.reason_target_exists",
@@ -3609,8 +3591,8 @@
     {
       "key": "review_list.chip_default_pattern",
       "context": "Short label (chip) of the review reason: the pattern is the default one, not one from a rule.",
-      "en": "Default pattern",
-      "de": "Standardmuster"
+      "en": "Default target",
+      "de": "Standardziel"
     },
     {
       "key": "review_list.chip_nothing_recognised",
@@ -3623,12 +3605,6 @@
       "context": "Short label (chip) of the review reason: a rule matched but is not confirmed yet.",
       "en": "Unconfirmed rule",
       "de": "Regel unbestätigt"
-    },
-    {
-      "key": "review_list.chip_rule_conflict",
-      "context": "Short label (chip) of the review reason: several confirmed rules match with different results.",
-      "en": "Rule conflict",
-      "de": "Regelkonflikt"
     },
     {
       "key": "review_list.chip_target_exists",
@@ -3781,12 +3757,6 @@
       "de": "Automatische Schlagworte kommen aus Art, Absender, Empfänger und Jahr. Stimmt eins nicht, korrigiere das Feld oben."
     },
     {
-      "key": "review_list.field_pattern",
-      "context": "Form label in the review list: filing pattern.",
-      "en": "Filing pattern",
-      "de": "Ablagemuster"
-    },
-    {
       "key": "review_list.hint_date",
       "context": "Description under the date field of the review list.",
       "en": "Format YYYY-MM-DD",
@@ -3797,18 +3767,6 @@
       "context": "Description under the amount field of the review list.",
       "en": "For example 12.34 EUR",
       "de": "Zum Beispiel 12,34 EUR"
-    },
-    {
-      "key": "review_list.hint_tags",
-      "context": "Description under the tags field of the review list.",
-      "en": "Separated by commas",
-      "de": "Mit Komma getrennt"
-    },
-    {
-      "key": "review_list.hint_pattern",
-      "context": "Description under the filing pattern field of the review list: the placeholders a pattern may use. The placeholders in braces are literal and must not be translated.",
-      "en": "Placeholders: {year} {month} {day} {date} {sender} {number} {kind}",
-      "de": "Platzhalter: {year} {month} {day} {date} {sender} {number} {kind}"
     },
     {
       "key": "review_list.group_who",
@@ -3879,14 +3837,14 @@
     {
       "key": "review_list.preview_none",
       "context": "Shown in the review list instead of the preview when the pattern does not fit the fields.",
-      "en": "The pattern does not fit the fields yet",
-      "de": "Das Muster passt noch nicht zu den Feldern"
+      "en": "The target does not fit the fields yet",
+      "de": "Das Ziel passt noch nicht zu den Feldern"
     },
     {
       "key": "review_list.preview_missing_field",
       "context": "Shown in the review list instead of the preview when the pattern needs a field that is empty. Takes the name of that field.",
-      "en": "The pattern needs the field {field}",
-      "de": "Das Muster braucht noch das Feld {field}"
+      "en": "The target needs the field {field}",
+      "de": "Das Ziel braucht noch das Feld {field}"
     },
     {
       "key": "review_list.problem_date",
@@ -3903,8 +3861,8 @@
     {
       "key": "review_list.problem_pattern",
       "context": "Problem in the review list: the pattern cannot be rendered with the fields.",
-      "en": "The pattern does not fit the fields.",
-      "de": "Das Muster passt nicht zu den Feldern."
+      "en": "The target does not fit the fields.",
+      "de": "Das Ziel passt nicht zu den Feldern."
     },
     {
       "key": "review_list.problem_target_exists",
@@ -6241,12 +6199,6 @@
       "de": "Lieferdienst"
     },
     {
-      "key": "hermes_overview.hint_pattern",
-      "context": "Word next to the E key cap in the footer of the Hermes overview: the key puts the cursor into the filing pattern field. Only the word, the key cap is drawn separately.",
-      "en": "pattern",
-      "de": "Muster"
-    },
-    {
       "key": "hermes_overview.hint_pause",
       "context": "Verb next to the P key cap in the footer of the Hermes overview: the key pauses or resumes the pipeline. Only the verb, the key cap is drawn separately.",
       "en": "pause",
@@ -6359,12 +6311,6 @@
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the filing box of the flow picture: the filing location and how the documents are sorted into it. {path} is a folder, {pattern} the way the documents are sorted.",
       "en": "{path} · {pattern}",
       "de": "{path} · {pattern}"
-    },
-    {
-      "key": "hermes_overview.flow_filed_default",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Short description of the built-in default pattern, in the filing box of the flow picture.",
-      "en": "by year and sender",
-      "de": "nach Jahr und Absender"
     },
     {
       "key": "hermes_overview.tile_folders_title",
@@ -6561,32 +6507,20 @@
     {
       "key": "hermes_overview.pattern_label",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Label of the text field with the filing pattern for new documents.",
-      "en": "Pattern for new documents",
-      "de": "Muster für neue Dokumente"
+      "en": "Default target",
+      "de": "Standardziel"
     },
     {
       "key": "hermes_overview.pattern_note",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Note under the pattern field: what a pattern is and what empty does.",
-      "en": "Folders and file name with fields of the document in braces. Empty brings back the default.",
-      "de": "Ordner und Dateiname mit Feldern des Dokuments in geschweiften Klammern. Leer stellt den Standard wieder her."
-    },
-    {
-      "key": "hermes_overview.pattern_invalid",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Error under the pattern field when the pattern cannot be used. Nothing was written.",
-      "en": "This pattern cannot be used. Nothing was changed.",
-      "de": "Dieses Muster geht nicht. Es wurde nichts geändert."
+      "en": "Where a document goes for which no rule exists. Only a suggestion in the review list.",
+      "de": "Wohin ein Dokument soll, für das es keine Regel gibt. Nur ein Vorschlag in den Rückfragen."
     },
     {
       "key": "hermes_overview.pattern_write_failed",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Error under the pattern field when the config file could not be written. {reason} is the cause.",
-      "en": "The pattern could not be saved: {reason}",
-      "de": "Das Muster konnte nicht gespeichert werden: {reason}"
-    },
-    {
-      "key": "hermes_overview.pattern_example",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Example under the pattern field, in plain words, with made-up sender and date. {path} is the full target path of the example.",
-      "en": "Would be filed as {path}",
-      "de": "Wird abgelegt als {path}"
+      "en": "The default target could not be saved: {reason}",
+      "de": "Das Standardziel konnte nicht gespeichert werden: {reason}"
     },
     {
       "key": "hermes_overview.section_ai",
@@ -6825,8 +6759,8 @@
     {
       "key": "settings.row_hermes_open_note",
       "context": "Note under the row that opens the Hermes overview: says what lives there instead of in the settings.",
-      "en": "Folders, filing pattern, AI, text recognition, load and protection are on the overview of filing.",
-      "de": "Ordner, Ablagemuster, KI, Texterkennung, Last und Schutz stehen in der Übersicht der Ablage."
+      "en": "Folders, default target, AI, text recognition, load and protection are on the overview of filing.",
+      "de": "Ordner, Standardziel, KI, Texterkennung, Last und Schutz stehen in der Übersicht der Ablage."
     },
     {
       "key": "settings.hermes_open_button",
@@ -7089,8 +7023,8 @@
     {
       "key": "condition_kind.word",
       "context": "Kind of a condition: the document text contains the value as a whole word.",
-      "en": "Word",
-      "de": "Wort"
+      "en": "Word in the text",
+      "de": "Wort im Text"
     },
     {
       "key": "condition_kind.regex",
@@ -7113,7 +7047,7 @@
     {
       "key": "condition_kind.iban",
       "context": "Kind of a condition: the document names this IBAN.",
-      "en": "Bank account (IBAN)",
+      "en": "Account (IBAN)",
       "de": "Konto (IBAN)"
     },
     {
@@ -7135,34 +7069,22 @@
       "de": "Ordner"
     },
     {
-      "key": "condition_editor.row_label",
-      "context": "Label of one condition in the condition editor, which the rule form uses. Takes the position of the condition in the list, starting at 1.",
-      "en": "Condition {number}",
-      "de": "Bedingung {number}"
-    },
-    {
       "key": "condition_editor.empty",
       "context": "Line of the condition editor when the list has no condition yet.",
       "en": "No conditions yet.",
       "de": "Noch keine Bedingungen."
     },
     {
-      "key": "condition_editor.combinator_label",
-      "context": "Label of the choice between any and all conditions in the condition editor. Shown when there are two or more conditions.",
-      "en": "Matches when",
-      "de": "Trifft zu, wenn"
-    },
-    {
       "key": "condition_editor.combinator_any",
       "context": "Choice in the condition editor: one condition is enough. Continues the label Matches when.",
-      "en": "one condition holds",
-      "de": "eine Bedingung zutrifft"
+      "en": "one of them holds",
+      "de": "eine davon erfüllt"
     },
     {
       "key": "condition_editor.combinator_all",
       "context": "Choice in the condition editor: every condition must hold. Continues the label Matches when.",
-      "en": "all conditions hold",
-      "de": "alle Bedingungen zutreffen"
+      "en": "all of these conditions hold",
+      "de": "alle diese Bedingungen erfüllt"
     },
     {
       "key": "condition_editor.add",
@@ -7175,12 +7097,6 @@
       "context": "Button at the end of a condition in the condition editor: removes that condition.",
       "en": "Remove",
       "de": "Entfernen"
-    },
-    {
-      "key": "condition_editor.not",
-      "context": "Label of the checkbox at a condition in the condition editor: the condition holds when the text does not match. One word, lowercase.",
-      "en": "not",
-      "de": "nicht"
     },
     {
       "key": "condition_editor.problem_empty",
@@ -7215,20 +7131,8 @@
     {
       "key": "rules.explain",
       "context": "Paragraph at the top of the rules page: what rules are and in which order they apply.",
-      "en": "ncrs files a document with the first rule that matches; rules higher up come first. Example: a rule for one sender above a general invoice rule wins for that sender's invoices.",
-      "de": "ncrs legt ein Dokument mit der ersten Regel ab, die passt; weiter oben stehende Regeln kommen zuerst. Beispiel: Eine Regel für einen bestimmten Absender über einer allgemeinen Rechnungsregel gilt für die Rechnungen dieses Absenders."
-    },
-    {
-      "key": "rules.example",
-      "context": "Line under the explanation on the rules page showing how a rule reads. Takes an example rule sentence.",
-      "en": "Example: {rule}",
-      "de": "Beispiel: {rule}"
-    },
-    {
-      "key": "rules.example_rule",
-      "context": "Example rule sentence on the rules page, written the way the page shows every rule: conditions, then an arrow, then kind, tags and filing pattern. The curly brackets in the pattern are placeholders of the filing pattern and stay as they are.",
-      "en": "If the sender is “Company A” → Invoice · #tax · {year}/{sender}",
-      "de": "Wenn der Absender „Company A“ ist → Rechnung · #steuer · {year}/{sender}"
+      "en": "Rules, checked from top to bottom. The first that matches files the document.",
+      "de": "Regeln, von oben nach unten geprüft. Die erste passende legt ab."
     },
     {
       "key": "rules.loading",
@@ -7543,12 +7447,6 @@
       "de": "Abbrechen"
     },
     {
-      "key": "rules.form_example",
-      "context": "Line in the rule form under the filing pattern: the folder and file name the pattern gives for a sample document. Takes the path.",
-      "en": "Example: {path}",
-      "de": "Beispiel: {path}"
-    },
-    {
       "key": "rules.try_heading",
       "context": "Heading of the section below the rule form that lists the documents the rule would match, as a live try. One or two words.",
       "en": "Try",
@@ -7619,18 +7517,6 @@
       "context": "Error line in the rule form when the user tried to save a rule without any condition, which would match every document.",
       "en": "Add at least one condition, or the rule would match every document.",
       "de": "Füge mindestens eine Bedingung hinzu, sonst würde die Regel auf jedes Dokument passen."
-    },
-    {
-      "key": "rules.form_problem_pattern_blank",
-      "context": "Error line in the rule form when the filing pattern is empty and the user tried to save.",
-      "en": "Enter a filing pattern.",
-      "de": "Gib ein Ablagemuster ein."
-    },
-    {
-      "key": "rules.form_problem_unknown_block",
-      "context": "Error line in the rule form when the filing pattern contains a block in braces that does not exist. Takes the name between the braces.",
-      "en": "“{block}” is not a block. Use the buttons below.",
-      "de": "„{block}“ ist kein Baustein. Nimm die Schaltflächen darunter."
     },
     {
       "key": "review_list.replan_button",
@@ -7883,6 +7769,258 @@
       "context": "Button of the document search page that opens the Reports page with a new report asking what the page asks now: the words and the chosen values. Nothing is saved until the user saves it there.",
       "en": "Save as report",
       "de": "Als Auswertung speichern"
+    },
+    {
+      "key": "filing_pieces.field_year",
+      "context": "Name of the year in the filing target.",
+      "en": "Year",
+      "de": "Jahr"
+    },
+    {
+      "key": "filing_pieces.field_month",
+      "context": "Name of the month in the filing target.",
+      "en": "Month",
+      "de": "Monat"
+    },
+    {
+      "key": "filing_pieces.field_day",
+      "context": "Name of the day of the month; only shown for patterns an older version stored.",
+      "en": "Day",
+      "de": "Tag"
+    },
+    {
+      "key": "filing_pieces.field_date",
+      "context": "Name of the date in a file name.",
+      "en": "Date",
+      "de": "Datum"
+    },
+    {
+      "key": "filing_pieces.field_sender",
+      "context": "Name of the sender in the filing target.",
+      "en": "Sender",
+      "de": "Absender"
+    },
+    {
+      "key": "filing_pieces.field_recipient",
+      "context": "Name of the recipient in the filing target.",
+      "en": "Recipient",
+      "de": "Empfänger"
+    },
+    {
+      "key": "filing_pieces.field_number",
+      "context": "Name of the document number in a file name.",
+      "en": "Number",
+      "de": "Nummer"
+    },
+    {
+      "key": "filing_pieces.field_kind",
+      "context": "Name of the document kind in the filing target.",
+      "en": "Kind",
+      "de": "Art"
+    },
+    {
+      "key": "filing_pieces.file_name_prefix",
+      "context": "Before the file name of its own, after the folders: \"Firma A / Year · File name: Date_Sender\".",
+      "en": "File name: ",
+      "de": "Dateiname: "
+    },
+    {
+      "key": "filing_pieces.example_recipient",
+      "context": "Recipient of the example document the filing target is shown with.",
+      "en": "Company A Ltd",
+      "de": "Firma A GmbH"
+    },
+    {
+      "key": "filing_pieces.example_kind",
+      "context": "Kind of the example document the filing target is shown with.",
+      "en": "Invoice",
+      "de": "Rechnung"
+    },
+    {
+      "key": "filing_pieces.name_empty",
+      "context": "Problem: the name typed for a new folder is empty.",
+      "en": "Give the folder a name.",
+      "de": "Gib dem Ordner einen Namen."
+    },
+    {
+      "key": "filing_pieces.name_dots",
+      "context": "Problem: the name typed for a new folder is . or ..",
+      "en": "\".\" and \"..\" are no folder names.",
+      "de": "„.“ und „..“ sind keine Ordnernamen."
+    },
+    {
+      "key": "filing_pieces.name_character",
+      "context": "Problem: the name typed for a new folder holds a slash, a brace or a control character.",
+      "en": "A folder name must not contain slashes, backslashes, braces or control characters.",
+      "de": "Ein Ordnername darf keine Schrägstriche, geschweiften Klammern oder Steuerzeichen enthalten."
+    },
+    {
+      "key": "condition_kind.tag",
+      "context": "Kind of a condition: the document has a tag that starts with the value.",
+      "en": "Tag",
+      "de": "Schlagwort"
+    },
+    {
+      "key": "rules.sentence_tag",
+      "context": "Condition in a rule sentence on the rules page: the document has a tag. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the document has the tag “{value}”",
+      "de": "das Dokument das Schlagwort „{value}“ hat"
+    },
+    {
+      "key": "rules.sentence_tag_not",
+      "context": "Condition in a rule sentence on the rules page: the document has no tag with this value. Takes the value. Reads after “If” or after “and” / “or”.",
+      "en": "the document does not have the tag “{value}”",
+      "de": "das Dokument das Schlagwort „{value}“ nicht hat"
+    },
+    {
+      "key": "filing_pieces.add_folder",
+      "context": "Label before the buttons that add a folder to the filing target.",
+      "en": "Add folder:",
+      "de": "Ordner hinzufügen:"
+    },
+    {
+      "key": "filing_pieces.add_own",
+      "context": "Button: add a folder with a name the user types.",
+      "en": "Own name …",
+      "de": "Eigener Name …"
+    },
+    {
+      "key": "filing_pieces.own_placeholder",
+      "context": "Placeholder of the field for the name of a new folder.",
+      "en": "Folder name",
+      "de": "Ordnername"
+    },
+    {
+      "key": "filing_pieces.add_own_confirm",
+      "context": "Button that adds the typed folder name.",
+      "en": "Add",
+      "de": "Hinzufügen"
+    },
+    {
+      "key": "filing_pieces.example",
+      "context": "Shows the path the filing target gives for an example document. Takes the path.",
+      "en": "Example: {path}",
+      "de": "Beispiel: {path}"
+    },
+    {
+      "key": "filing_pieces.example_none",
+      "context": "Shown instead of the example when the filing target gives no path.",
+      "en": "No example: the target is incomplete.",
+      "de": "Kein Beispiel: das Ziel ist unvollständig."
+    },
+    {
+      "key": "filing_pieces.problem_empty",
+      "context": "Problem: the filing target has no folder and no file name.",
+      "en": "Add at least one folder.",
+      "de": "Füge mindestens einen Ordner hinzu."
+    },
+    {
+      "key": "condition_editor.heading",
+      "context": "Heading above the conditions in the rule form.",
+      "en": "If the document",
+      "de": "Wenn das Dokument"
+    },
+    {
+      "key": "condition_editor.has",
+      "context": "Choice at a tag condition in the rule form: the document has it.",
+      "en": "has",
+      "de": "hat"
+    },
+    {
+      "key": "condition_editor.has_not",
+      "context": "Choice at a condition in the rule form: the document does not have it, which excludes.",
+      "en": "has not",
+      "de": "hat nicht"
+    },
+    {
+      "key": "condition_editor.help",
+      "context": "Help text under the conditions of the rule form. Names the kinds of the first dropdown as the user sees them.",
+      "en": "“firma-a” also matches firma-a-gmbh. The first field offers: Tag, Word in the text, Sender address, Account (IBAN), Tax number, Folder. “has not” excludes.",
+      "de": "„firma-a“ passt auch auf firma-a-gmbh. Auswahl im ersten Feld: Schlagwort, Wort im Text, Absenderadresse, Konto (IBAN), Steuernummer, Ordner. „hat nicht“ schließt aus."
+    },
+    {
+      "key": "rules.joiner_all_not",
+      "context": "Joins two conditions of a rule sentence when the second is a tag the document must not have: a and not b.",
+      "en": "and not",
+      "de": "und nicht"
+    },
+    {
+      "key": "rules.joiner_any_not",
+      "context": "Joins two conditions of a rule sentence when the second is a tag the document must not have: a or not b.",
+      "en": "or not",
+      "de": "oder nicht"
+    },
+    {
+      "key": "rules.hint_two_rules",
+      "context": "Line under the rules list: how to express a or-group with a shared target.",
+      "en": "For “a and b, or c”: create two rules with the same target.",
+      "de": "Für „a und b, oder c“: zwei Regeln mit demselben Ziel anlegen."
+    },
+    {
+      "key": "rules.form_name",
+      "context": "Label of the optional name field of the rule form.",
+      "en": "Name",
+      "de": "Name"
+    },
+    {
+      "key": "rules.form_then",
+      "context": "Heading of the part of the rule form that says what happens to matching documents.",
+      "en": "Then",
+      "de": "Dann"
+    },
+    {
+      "key": "rules.form_move_to",
+      "context": "Label of the filing target in the rule form.",
+      "en": "Move to",
+      "de": "Verschieben nach"
+    },
+    {
+      "key": "rules.form_tags",
+      "context": "Label of the tags a rule sets on matching documents.",
+      "en": "Set tags",
+      "de": "Schlagworte setzen"
+    },
+    {
+      "key": "rules.form_tags_optional",
+      "context": "Dim note next to the label Set tags: the field may stay empty.",
+      "en": "optional",
+      "de": "optional"
+    },
+    {
+      "key": "rules.form_tags_add",
+      "context": "Placeholder of the field that adds a tag in the rule form.",
+      "en": "add …",
+      "de": "hinzufügen …"
+    },
+    {
+      "key": "review_list.move_to",
+      "context": "Label of the filing target in the Where group of the review list form.",
+      "en": "Move to",
+      "de": "Verschieben nach"
+    },
+    {
+      "key": "review_list.change_target",
+      "context": "Button beside the filing target in the review list form: turns it into the widget that edits it.",
+      "en": "Change …",
+      "de": "Ändern …"
+    },
+    {
+      "key": "review_list.origin_default_target",
+      "context": "Dim note beside Move to in the review list: the target comes from the default target.",
+      "en": "Default target",
+      "de": "Standardziel"
+    },
+    {
+      "key": "review_list.source_default",
+      "context": "Dim line under the preview in the review list. Takes the target in words.",
+      "en": "From the default target “{target}”. Change it under “Move to”.",
+      "de": "Aus dem Standardziel „{target}“. Ändern unter „Verschieben nach“."
+    },
+    {
+      "key": "review_list.source_rule",
+      "context": "Dim line under the preview in the review list: the target comes from a rule.",
+      "en": "From a rule. Changing it here only affects this document.",
+      "de": "Aus einer Regel. Eine Änderung hier gilt nur für dieses Dokument."
     }
   ]
 }

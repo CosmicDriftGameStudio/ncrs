@@ -545,13 +545,6 @@ pub fn parse_tags(text: &str) -> BTreeSet<String> {
         .collect()
 }
 
-pub fn tags_text(tags: &BTreeSet<String>) -> String {
-    tags.iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
 #[allow(
@@ -744,6 +737,7 @@ mod tests {
         let setup = Setup::new();
         setup.with_index(|index| {
             let spec = RuleSpec {
+                name: None,
                 conditions: RuleConditions::all_of(vec![Condition::new(
                     ConditionKind::Sender,
                     "Company A",
@@ -751,7 +745,7 @@ mod tests {
                 extract_number: None,
                 extract_date: None,
                 extract_amount: None,
-                kind: "invoice".to_owned(),
+                kind: Some("invoice".to_owned()),
                 tags: BTreeSet::new(),
                 filing_pattern: "{sender}/{kind}".to_owned(),
                 confirmed: true,
@@ -857,6 +851,7 @@ mod tests {
                 .set_document_text(document, "Invoice 4711\nfrom COMPANY A Ltd")
                 .unwrap();
             let spec = RuleSpec {
+                name: None,
                 conditions: RuleConditions::all_of(vec![
                     Condition::new(ConditionKind::Substring, "company a"),
                     Condition::not(ConditionKind::Substring, "agency"),
@@ -864,7 +859,7 @@ mod tests {
                 extract_number: None,
                 extract_date: None,
                 extract_amount: None,
-                kind: "invoice".to_owned(),
+                kind: Some("invoice".to_owned()),
                 tags: BTreeSet::new(),
                 filing_pattern: "{kind}".to_owned(),
                 confirmed: false,
@@ -967,7 +962,10 @@ mod tests {
     fn tags_are_trimmed_and_empty_ones_fall_away() {
         let tags = parse_tags(" tax , , travel,tax ");
 
-        assert_eq!(tags_text(&tags), "tax, travel");
+        assert_eq!(
+            tags,
+            BTreeSet::from(["tax".to_owned(), "travel".to_owned()])
+        );
         assert!(parse_tags("").is_empty());
     }
 }

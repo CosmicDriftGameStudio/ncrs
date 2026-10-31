@@ -35,8 +35,8 @@ pub use archive_profile::{
 pub use classify::{classify, is_image_file, text_is_readable, Skip};
 pub use conditions::{condition_match_ranges, word_condition_holds, MAX_MATCH_RANGES};
 pub use default_pattern::{
-    choose_pattern, default_pattern_for, pattern_without_tax_context, ChosenPattern, PatternSource,
-    DEFAULT_PATTERNS,
+    choose_pattern, default_pattern_for, pattern_without_tax_context, upgraded_pattern,
+    ChosenPattern, PatternSource, DEFAULT_PATTERNS, FALLBACK_PATTERN,
 };
 pub use error::IntakeError;
 pub use extract::{

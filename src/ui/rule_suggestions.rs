@@ -13,6 +13,7 @@ use super::hermes::{self, Badges};
 use super::kit::{self, dim, error_line, paragraph, section, Columns, Tone};
 use super::theme::spacing;
 use crate::app::fill_template;
+use crate::filing_pieces::FilingTarget;
 use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{HermesFocus, HermesPage, Message, RuleSuggestionsMessage};
 use crate::palette::Palette;
@@ -25,7 +26,7 @@ pub const SHOWN_DOCUMENTS: usize = 6;
 const SIZE: DialogSize = DialogSize::Card;
 
 /// How the width of a row is shared: condition, target, kind, evidence.
-const PORTIONS: [u16; 4] = [4, 4, 2, 9];
+const PORTIONS: [u16; 4] = [4, 6, 1, 9];
 
 fn send(message: RuleSuggestionsMessage) -> Message {
     Message::RuleSuggestions(message)
@@ -210,8 +211,16 @@ fn list<'a>(
             };
             let content = row![
                 columns.cell(0, &condition_label(suggestion, lang), color),
-                columns.path_cell(1, &suggestion.spec.filing_pattern, color),
-                columns.cell(2, &suggestion.spec.kind, color),
+                columns.cell(
+                    1,
+                    &FilingTarget::parse(&suggestion.spec.filing_pattern).in_words(lang),
+                    color,
+                ),
+                columns.cell(
+                    2,
+                    suggestion.spec.kind.as_deref().unwrap_or_default(),
+                    color
+                ),
                 columns.cell(3, &evidence_text(suggestion, lang), color),
             ]
             .align_y(alignment::Vertical::Center);

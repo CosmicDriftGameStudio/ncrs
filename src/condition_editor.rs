@@ -9,14 +9,13 @@ use ncrs_index::{
 /// The value fields need fixed ids, so the list has a cap.
 pub const MAX_CONDITION_ROWS: usize = 12;
 
-/// Every kind a rule offers.
-pub const ALL_CONDITION_KINDS: [ConditionKind; 9] = [
-    ConditionKind::Sender,
-    ConditionKind::SenderAddress,
-    ConditionKind::Recipient,
+/// The kinds a new row of the rule form offers. A stored kind the list does
+/// not hold (sender, recipient, text part, regular expression) stays in the
+/// dropdown of its row.
+pub const NEW_CONDITION_KINDS: [ConditionKind; 6] = [
+    ConditionKind::Tag,
     ConditionKind::Word,
-    ConditionKind::Substring,
-    ConditionKind::Regex,
+    ConditionKind::SenderAddress,
     ConditionKind::Iban,
     ConditionKind::TaxId,
     ConditionKind::Folder,

@@ -6,13 +6,13 @@ use crate::condition_store::{read_conditions, replace_conditions, require_compil
 use crate::error::IndexError;
 use crate::index::Index;
 use crate::model::{Combinator, Condition, Rule, RuleConditions, RuleId, RuleOrigin, RuleSpec};
-use crate::names::{name_id, NameTable};
+use crate::names::{name_id, optional_name_id, NameTable};
 
 const RULE_COLUMNS: &str = "SELECT r.id, r.combinator,
         r.extract_number, r.extract_date, r.extract_amount, k.name,
-        r.filing_pattern, r.confirmed, r.enabled, r.position, r.origin
+        r.filing_pattern, r.confirmed, r.enabled, r.position, r.origin, r.name
     FROM rule r
-    JOIN document_kind k ON k.id = r.kind_id";
+    LEFT JOIN document_kind k ON k.id = r.kind_id";
 
 struct RuleRow {
     id: i64,
@@ -20,12 +20,13 @@ struct RuleRow {
     extract_number: Option<String>,
     extract_date: Option<String>,
     extract_amount: Option<String>,
-    kind: String,
+    kind: Option<String>,
     filing_pattern: String,
     confirmed: bool,
     enabled: bool,
     position: i64,
     origin: String,
+    name: Option<String>,
 }
 
 impl RuleRow {
@@ -42,6 +43,7 @@ impl RuleRow {
             enabled: row.get(8)?,
             position: row.get(9)?,
             origin: row.get(10)?,
+            name: row.get(11)?,
         })
     }
 
@@ -51,6 +53,7 @@ impl RuleRow {
             position: self.position,
             origin: RuleOrigin::parse(&self.origin)?,
             spec: RuleSpec {
+                name: self.name,
                 conditions: RuleConditions {
                     combinator: Combinator::parse(&self.combinator)?,
                     list,
@@ -104,11 +107,11 @@ impl Index {
     ) -> Result<RuleId, IndexError> {
         require_condition(spec)?;
         let tx = self.conn_mut().transaction()?;
-        let kind_id = name_id(&tx, NameTable::Kind, &spec.kind)?;
+        let kind_id = optional_name_id(&tx, NameTable::Kind, spec.kind.as_deref())?;
         tx.execute(
             "INSERT INTO rule (combinator, extract_number, extract_date, extract_amount,
-                 kind_id, filing_pattern, confirmed, enabled, origin, position)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
+                 kind_id, filing_pattern, confirmed, enabled, origin, name, position)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
                  (SELECT COALESCE(MAX(position), 0) + 1 FROM rule))",
             params![
                 spec.conditions.combinator.as_str(),
@@ -120,6 +123,10 @@ impl Index {
                 spec.confirmed,
                 spec.enabled,
                 origin.as_str(),
+                spec.name
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty()),
             ],
         )?;
         let id = RuleId::new(tx.last_insert_rowid());
@@ -166,11 +173,11 @@ impl Index {
     pub fn update_rule(&mut self, id: RuleId, spec: &RuleSpec) -> Result<(), IndexError> {
         require_condition(spec)?;
         let tx = self.conn_mut().transaction()?;
-        let kind_id = name_id(&tx, NameTable::Kind, &spec.kind)?;
+        let kind_id = optional_name_id(&tx, NameTable::Kind, spec.kind.as_deref())?;
         let changed = tx.execute(
             "UPDATE rule SET combinator = ?2, extract_number = ?3, extract_date = ?4,
                  extract_amount = ?5, kind_id = ?6, filing_pattern = ?7,
-                 confirmed = ?8, enabled = ?9
+                 confirmed = ?8, enabled = ?9, name = ?10
              WHERE id = ?1",
             params![
                 id.get(),
@@ -182,6 +189,10 @@ impl Index {
                 spec.filing_pattern,
                 spec.confirmed,
                 spec.enabled,
+                spec.name
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty()),
             ],
         )?;
         if changed == 0 {
@@ -277,6 +288,37 @@ mod tests {
     use super::*;
     use crate::model::ConditionKind;
     use crate::test_support::{encrypted_index, rule_spec};
+
+    #[test]
+    fn a_rule_may_have_a_name_a_tag_condition_and_no_kind() {
+        let (_dir, mut index) = encrypted_index();
+        let spec = RuleSpec {
+            name: Some("  Bills of Firma A ".to_owned()),
+            conditions: RuleConditions::all_of(vec![Condition::not(ConditionKind::Tag, "firma-a")]),
+            kind: None,
+            ..rule_spec()
+        };
+
+        let id = index.create_rule(&spec).unwrap();
+
+        let stored = index.rule(id).unwrap().unwrap().spec;
+        assert_eq!(stored.name.as_deref(), Some("Bills of Firma A"));
+        assert_eq!(stored.kind, None);
+        assert_eq!(stored.conditions, spec.conditions);
+        index
+            .update_rule(
+                id,
+                &RuleSpec {
+                    name: Some(" ".to_owned()),
+                    kind: Some("Invoice".to_owned()),
+                    ..spec
+                },
+            )
+            .unwrap();
+        let updated = index.rule(id).unwrap().unwrap().spec;
+        assert_eq!(updated.name, None);
+        assert_eq!(updated.kind.as_deref(), Some("Invoice"));
+    }
 
     #[test]
     fn rule_round_trips_and_is_listed_by_id() {

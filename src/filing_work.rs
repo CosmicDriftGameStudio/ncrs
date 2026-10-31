@@ -241,6 +241,7 @@ mod tests {
             let mut index = Index::create_plain(&dir.path().join("index.db")).unwrap();
             index
                 .create_rule(&RuleSpec {
+                    name: None,
                     conditions: RuleConditions::all_of(vec![Condition::new(
                         ConditionKind::Substring,
                         "company a",
@@ -248,7 +249,7 @@ mod tests {
                     extract_number: None,
                     extract_date: None,
                     extract_amount: None,
-                    kind: "invoice".to_owned(),
+                    kind: Some("invoice".to_owned()),
                     tags: BTreeSet::new(),
                     filing_pattern: "Insurance/{kind}.pdf".to_owned(),
                     confirmed: true,

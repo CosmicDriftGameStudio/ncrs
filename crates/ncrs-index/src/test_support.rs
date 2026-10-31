@@ -37,6 +37,7 @@ pub fn new_document(seed: u8) -> NewDocument {
 
 pub fn rule_spec() -> RuleSpec {
     RuleSpec {
+        name: None,
         conditions: RuleConditions::all_of(vec![
             Condition::new(ConditionKind::Substring, "Invoice"),
             Condition::new(ConditionKind::Sender, "Company A"),
@@ -44,7 +45,7 @@ pub fn rule_spec() -> RuleSpec {
         extract_number: Some(r"No\. (\d+)".to_owned()),
         extract_date: None,
         extract_amount: None,
-        kind: "Invoice".to_owned(),
+        kind: Some("Invoice".to_owned()),
         tags: BTreeSet::from(["services".to_owned(), "2026".to_owned()]),
         filing_pattern: "{year}/{sender}".to_owned(),
         confirmed: false,

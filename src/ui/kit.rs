@@ -35,6 +35,7 @@ pub fn condition_kind_name(kind: ConditionKind) -> Msg {
         ConditionKind::TaxId => Msg::ConditionKindTaxId,
         ConditionKind::Recipient => Msg::ConditionKindRecipient,
         ConditionKind::Folder => Msg::ConditionKindFolder,
+        ConditionKind::Tag => Msg::ConditionKindTag,
     }
 }
 

@@ -5,20 +5,16 @@ use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use chrono::NaiveDate;
 use ncrs_index::{
-    Condition, ConditionKind, DocumentFields, Rule, RuleConditions, RuleId, RuleOrigin, RuleSpec,
+    tag_name, Condition, ConditionKind, Rule, RuleConditions, RuleId, RuleOrigin, RuleSpec,
 };
 
-use crate::condition_editor::{ConditionEditor, ConditionProblem, ALL_CONDITION_KINDS};
+use crate::condition_editor::{ConditionEditor, ConditionProblem, NEW_CONDITION_KINDS};
+use crate::filing_pieces::TargetEditor;
 use crate::messages::RuleFormMessage;
-use crate::review_work::{parse_tags, tags_text};
 use crate::rules_work::{RuleTry, TryResult};
 
-const NEW_RULE_PATTERN: &str = "{year}/{sender}";
-const EXAMPLE_KIND: &str = "invoice";
-const EXAMPLE_SENDER: &str = "Telekom";
-const EXAMPLE_NUMBER: &str = "4711";
+const NEW_RULE_PATTERN: &str = "{year}/{sender}/";
 
 /// How long the form rests after an edit before the try runs.
 pub const TRY_DEBOUNCE: Duration = Duration::from_millis(300);
@@ -64,11 +60,15 @@ pub struct RulePrefill {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuleForm {
     pub target: RuleFormTarget,
+    pub name: String,
     pub conditions: ConditionEditor,
-    pub kind: String,
-    /// Comma separated, like the review list.
-    pub tags: String,
-    pub pattern: String,
+    /// The kind the rule sets; the form does not show it, so a stored one
+    /// stays.
+    pub kept_kind: Option<String>,
+    /// The tags the rule sets.
+    pub tags: BTreeSet<String>,
+    pub tag_input: String,
+    pub filing: TargetEditor,
     pub saving: bool,
     /// The index refused the rule; the technical detail stays English.
     pub failure: Option<String>,
@@ -77,21 +77,13 @@ pub struct RuleForm {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PatternProblem {
-    Blank,
-    /// The name of a `{block}` the pattern does not know.
-    UnknownBlock(String),
-    Invalid,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuleFormProblems {
     /// One entry per condition row.
     pub conditions: Vec<Option<ConditionProblem>>,
     /// A rule without a condition would match every document.
     pub no_condition: bool,
-    pub kind_blank: bool,
-    pub pattern: Option<PatternProblem>,
+    /// The target has no folder and no file name.
+    pub no_target: bool,
 }
 
 /// What to write to the index.
@@ -108,23 +100,11 @@ pub enum RuleSave {
 
 impl RuleForm {
     pub fn new() -> Self {
-        Self {
-            target: RuleFormTarget::New,
-            conditions: ConditionEditor::new(
-                RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, "")]),
-                &ALL_CONDITION_KINDS,
-                true,
-            ),
-            kind: String::new(),
-            tags: String::new(),
-            pattern: NEW_RULE_PATTERN.to_owned(),
-            saving: false,
-            failure: None,
-            live_try: TryState {
-                generation: 0,
-                status: TryStatus::Idle,
-            },
-        }
+        Self::of(
+            RuleFormTarget::New,
+            RuleConditions::all_of(vec![Condition::new(ConditionKind::Tag, "")]),
+            NEW_RULE_PATTERN,
+        )
     }
 
     pub fn edit(rule: &Rule) -> Self {
@@ -135,22 +115,44 @@ impl RuleForm {
         Self::of_rule(rule, RuleFormTarget::FromSuggestion(rule.clone()))
     }
 
+    /// The conditions are the tags the kind and the sender of the document
+    /// give; the target is the pattern of the review.
     pub fn from_document(prefill: RulePrefill) -> Self {
-        let pattern = if prefill.pattern.trim().is_empty() {
-            NEW_RULE_PATTERN.to_owned()
+        let tag_conditions: Vec<Condition> = [&prefill.kind, &prefill.sender]
+            .into_iter()
+            .map(|value| tag_name(value))
+            .filter(|tag| !tag.is_empty())
+            .map(|tag| Condition::new(ConditionKind::Tag, tag))
+            .collect();
+        let conditions = if tag_conditions.is_empty() {
+            vec![Condition::new(ConditionKind::Tag, "")]
         } else {
-            prefill.pattern
+            tag_conditions
         };
-        Self {
-            target: RuleFormTarget::FromDocument,
-            conditions: ConditionEditor::new(
-                RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, prefill.sender)]),
-                &ALL_CONDITION_KINDS,
-                true,
-            ),
-            kind: prefill.kind,
-            tags: tags_text(&prefill.tags),
+        let pattern = if prefill.pattern.trim().is_empty() {
+            NEW_RULE_PATTERN
+        } else {
+            prefill.pattern.trim()
+        };
+        let mut form = Self::of(
+            RuleFormTarget::FromDocument,
+            RuleConditions::all_of(conditions),
             pattern,
+        );
+        form.kept_kind = Some(prefill.kind.trim().to_owned()).filter(|kind| !kind.is_empty());
+        form.tags = prefill.tags;
+        form
+    }
+
+    fn of(target: RuleFormTarget, conditions: RuleConditions, pattern: &str) -> Self {
+        Self {
+            target,
+            name: String::new(),
+            conditions: ConditionEditor::new(conditions, &NEW_CONDITION_KINDS, true),
+            kept_kind: None,
+            tags: BTreeSet::new(),
+            tag_input: String::new(),
+            filing: TargetEditor::new(pattern),
             saving: false,
             failure: None,
             live_try: TryState {
@@ -162,32 +164,31 @@ impl RuleForm {
 
     fn of_rule(rule: &Rule, target: RuleFormTarget) -> Self {
         let spec = &rule.spec;
-        Self {
-            target,
-            conditions: ConditionEditor::new(spec.conditions.clone(), &ALL_CONDITION_KINDS, true),
-            kind: spec.kind.clone(),
-            tags: tags_text(&spec.tags),
-            pattern: spec.filing_pattern.clone(),
-            saving: false,
-            failure: None,
-            live_try: TryState {
-                generation: 0,
-                status: TryStatus::Idle,
-            },
-        }
+        let mut form = Self::of(target, spec.conditions.clone(), &spec.filing_pattern);
+        form.name = spec.name.clone().unwrap_or_default();
+        form.kept_kind = spec.kind.clone();
+        form.tags = spec.tags.clone();
+        form
     }
 
     /// Applies the messages that change a field; the others are the page's.
     pub fn update(&mut self, message: RuleFormMessage) {
         match message {
+            RuleFormMessage::Name(name) => self.name = name,
             RuleFormMessage::Condition(edit) => self.conditions.apply(edit),
-            RuleFormMessage::Kind(kind) => self.kind = kind,
-            RuleFormMessage::Tags(tags) => self.tags = tags,
-            RuleFormMessage::Pattern(pattern) => self.pattern = pattern,
-            RuleFormMessage::InsertBlock(name) => {
-                self.pattern.push('{');
-                self.pattern.push_str(name);
-                self.pattern.push('}');
+            RuleFormMessage::Target(edit) => {
+                self.filing.apply(edit);
+            }
+            RuleFormMessage::TagInput(typed) => self.tag_input = typed,
+            RuleFormMessage::AddTag => {
+                let tag = tag_name(&self.tag_input);
+                self.tag_input.clear();
+                if !tag.is_empty() {
+                    self.tags.insert(tag);
+                }
+            }
+            RuleFormMessage::RemoveTag(tag) => {
+                self.tags.remove(&tag);
             }
             RuleFormMessage::Save | RuleFormMessage::Cancel | RuleFormMessage::Saved { .. } => {
                 return;
@@ -252,13 +253,14 @@ impl RuleForm {
             RuleFormTarget::New | RuleFormTarget::FromDocument => None,
         };
         RuleSpec {
+            name: Some(self.name.trim().to_owned()).filter(|name| !name.is_empty()),
             conditions: self.conditions.conditions(),
             extract_number: kept.and_then(|spec| spec.extract_number.clone()),
             extract_date: kept.and_then(|spec| spec.extract_date.clone()),
             extract_amount: kept.and_then(|spec| spec.extract_amount.clone()),
-            kind: self.kind.trim().to_owned(),
-            tags: parse_tags(&self.tags),
-            filing_pattern: self.pattern.trim().to_owned(),
+            kind: self.kept_kind.clone(),
+            tags: self.tags.clone(),
+            filing_pattern: self.filing.pattern(),
             confirmed: kept.is_none_or(|spec| spec.confirmed),
             enabled: kept.is_none_or(|spec| spec.enabled),
         }
@@ -272,46 +274,12 @@ impl RuleForm {
         RuleFormProblems {
             conditions: self.conditions.problems(),
             no_condition: self.save_was_tried() && self.conditions.rows.is_empty(),
-            kind_blank: self.save_was_tried() && self.kind.trim().is_empty(),
-            pattern: self.pattern_problem(self.save_was_tried()),
+            no_target: self.save_was_tried() && !self.filing.is_usable(),
         }
-    }
-
-    fn pattern_problem(&self, report_blank: bool) -> Option<PatternProblem> {
-        let pattern = self.pattern.trim();
-        if pattern.is_empty() {
-            return report_blank.then_some(PatternProblem::Blank);
-        }
-        if let Some(name) = ncrs_intake::unknown_placeholder(pattern) {
-            return Some(PatternProblem::UnknownBlock(name));
-        }
-        (!ncrs_intake::pattern_is_valid(pattern)).then_some(PatternProblem::Invalid)
     }
 
     pub fn is_valid(&self) -> bool {
-        self.conditions.is_valid(false)
-            && !self.kind.trim().is_empty()
-            && self.pattern_problem(true).is_none()
-    }
-
-    /// The path the pattern gives for a sample document, in the kind of the
-    /// form, folders joined with `/`.
-    pub fn example_path(&self) -> Option<String> {
-        let kind = self.kind.trim();
-        let fields = DocumentFields {
-            sender: Some(EXAMPLE_SENDER.to_owned()),
-            kind: Some(if kind.is_empty() { EXAMPLE_KIND } else { kind }.to_owned()),
-            number: Some(EXAMPLE_NUMBER.to_owned()),
-            date: NaiveDate::from_ymd_opt(2024, 3, 15),
-            ..DocumentFields::default()
-        };
-        let path = ncrs_intake::render_pattern(self.pattern.trim(), &fields)?;
-        Some(
-            path.components()
-                .map(|part| part.as_os_str().to_string_lossy())
-                .collect::<Vec<_>>()
-                .join("/"),
-        )
+        self.conditions.is_valid(false) && self.filing.is_usable()
     }
 
     /// The write to make, once; the answer comes to the page's `saved`.
@@ -354,6 +322,7 @@ impl RuleForm {
 mod tests {
     use super::*;
     use crate::condition_editor::ConditionEdit;
+    use crate::filing_pieces::{FolderField, TargetEdit};
     use crate::rules_page::tests::rule_id;
 
     fn stored_rule() -> Rule {
@@ -362,6 +331,7 @@ mod tests {
             position: 1,
             origin: RuleOrigin::Suggestion,
             spec: RuleSpec {
+                name: Some("Rent".to_owned()),
                 conditions: RuleConditions::any_of(vec![
                     Condition::new(ConditionKind::Word, "rent"),
                     Condition::not(ConditionKind::Sender, "Agency B"),
@@ -369,9 +339,9 @@ mod tests {
                 extract_number: None,
                 extract_date: Some(r"\d{4}-\d{2}-\d{2}".to_owned()),
                 extract_amount: None,
-                kind: "Invoice".to_owned(),
+                kind: Some("Invoice".to_owned()),
                 tags: BTreeSet::from(["tax".to_owned(), "office".to_owned()]),
-                filing_pattern: "{year}/{sender}".to_owned(),
+                filing_pattern: "{year}/{sender}/".to_owned(),
                 confirmed: true,
                 enabled: false,
             },
@@ -384,18 +354,23 @@ mod tests {
             0,
             "  Telekom ".to_owned(),
         )));
-        form.update(RuleFormMessage::Kind(" Invoice ".to_owned()));
         form
     }
 
+    fn clear_target(form: &mut RuleForm) {
+        while !form.filing.target.folders.is_empty() {
+            form.update(RuleFormMessage::Target(TargetEdit::Remove(0)));
+        }
+    }
+
     #[test]
-    fn a_new_form_starts_with_one_empty_sender_row_and_the_usual_pattern() {
+    fn a_new_form_starts_with_one_empty_tag_row_and_the_usual_target() {
         let form = RuleForm::new();
 
         assert_eq!(form.conditions.rows.len(), 1);
-        assert_eq!(form.conditions.rows[0].kind, ConditionKind::Sender);
+        assert_eq!(form.conditions.rows[0].kind, ConditionKind::Tag);
         assert_eq!(form.conditions.rows[0].value, "");
-        assert_eq!(form.pattern, "{year}/{sender}");
+        assert_eq!(form.filing.pattern(), "{year}/{sender}/");
         assert!(!form.is_valid());
     }
 
@@ -403,47 +378,26 @@ mod tests {
     fn an_edit_form_starts_from_the_rule() {
         let form = RuleForm::edit(&stored_rule());
 
-        assert_eq!(form.kind, "Invoice");
-        assert_eq!(form.tags, "office, tax");
+        assert_eq!(form.name, "Rent");
+        assert_eq!(
+            form.tags,
+            BTreeSet::from(["office".to_owned(), "tax".to_owned()])
+        );
         assert_eq!(form.conditions.rows.len(), 2);
         assert!(form.is_valid());
     }
 
     #[test]
-    fn inserting_a_block_appends_it_without_a_slash() {
+    fn nothing_is_reported_before_the_first_save_attempt() {
         let mut form = RuleForm::new();
-
-        form.update(RuleFormMessage::InsertBlock("number"));
-
-        assert_eq!(form.pattern, "{year}/{sender}{number}");
-    }
-
-    #[test]
-    fn nothing_is_reported_blank_before_the_first_save_attempt() {
-        let mut form = RuleForm::new();
-        form.update(RuleFormMessage::Pattern(String::new()));
-        assert_eq!(form.problems().pattern, None);
-        assert!(!form.problems().kind_blank);
+        clear_target(&mut form);
+        assert!(!form.problems().no_target);
 
         assert_eq!(form.save_request(), None);
 
         let problems = form.problems();
-        assert_eq!(problems.pattern, Some(PatternProblem::Blank));
-        assert!(problems.kind_blank);
+        assert!(problems.no_target);
         assert_eq!(problems.conditions, vec![Some(ConditionProblem::Empty)]);
-    }
-
-    #[test]
-    fn an_unknown_block_and_a_broken_pattern_are_reported_at_once() {
-        let mut form = RuleForm::new();
-
-        form.update(RuleFormMessage::Pattern("{year}/{foo}".to_owned()));
-        assert_eq!(
-            form.problems().pattern,
-            Some(PatternProblem::UnknownBlock("foo".to_owned()))
-        );
-        form.update(RuleFormMessage::Pattern("{year}//{sender}".to_owned()));
-        assert_eq!(form.problems().pattern, Some(PatternProblem::Invalid));
     }
 
     #[test]
@@ -456,23 +410,38 @@ mod tests {
     }
 
     #[test]
-    fn the_example_uses_the_sample_document_and_the_form_kind() {
-        let mut form = RuleForm::new();
-        assert_eq!(form.example_path().as_deref(), Some("2024/Telekom"));
+    fn a_rule_without_a_target_cannot_be_saved() {
+        let mut form = filled_new();
+        clear_target(&mut form);
 
-        form.update(RuleFormMessage::Pattern(
-            "{kind}/{year}/{number}".to_owned(),
-        ));
-        assert_eq!(form.example_path().as_deref(), Some("invoice/2024/4711"));
-        form.update(RuleFormMessage::Kind("Receipt".to_owned()));
-        assert_eq!(form.example_path().as_deref(), Some("Receipt/2024/4711"));
-        form.update(RuleFormMessage::Pattern("{foo}".to_owned()));
-        assert_eq!(form.example_path(), None);
+        assert_eq!(form.save_request(), None);
+        assert!(form.problems().no_target);
+    }
+
+    #[test]
+    fn tags_are_added_normalised_and_removed() {
+        let mut form = RuleForm::new();
+
+        form.update(RuleFormMessage::TagInput("  Steuer ".to_owned()));
+        form.update(RuleFormMessage::AddTag);
+        form.update(RuleFormMessage::TagInput("steuer".to_owned()));
+        form.update(RuleFormMessage::AddTag);
+        form.update(RuleFormMessage::TagInput("  ".to_owned()));
+        form.update(RuleFormMessage::AddTag);
+        form.update(RuleFormMessage::TagInput("Büro".to_owned()));
+        form.update(RuleFormMessage::AddTag);
+
+        assert_eq!(form.tags.len(), 2);
+        assert_eq!(form.tag_input, "");
+        let first = form.tags.iter().next().cloned().unwrap();
+        form.update(RuleFormMessage::RemoveTag(first));
+        assert_eq!(form.tags.len(), 1);
     }
 
     #[test]
     fn a_new_form_saves_a_confirmed_enabled_rule_once() {
         let mut form = filled_new();
+        form.update(RuleFormMessage::Name("  Telekom bills ".to_owned()));
 
         let first = form.save_request().unwrap();
         let second = form.save_request();
@@ -484,31 +453,45 @@ mod tests {
         assert_eq!(origin, RuleOrigin::Hand);
         assert_eq!(
             spec.conditions,
-            RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, "Telekom")])
+            RuleConditions::all_of(vec![Condition::new(ConditionKind::Tag, "Telekom")])
         );
-        assert_eq!(spec.kind, "Invoice");
-        assert_eq!(spec.filing_pattern, "{year}/{sender}");
+        assert_eq!(spec.name.as_deref(), Some("Telekom bills"));
+        assert_eq!(spec.kind, None);
+        assert_eq!(spec.filing_pattern, "{year}/{sender}/");
         assert!(spec.confirmed && spec.enabled);
         assert!(spec.extract_date.is_none() && spec.extract_number.is_none());
+    }
+
+    #[test]
+    fn a_blank_name_is_no_name() {
+        let mut form = filled_new();
+        form.update(RuleFormMessage::Name("   ".to_owned()));
+
+        let RuleSave::Create { spec, .. } = form.save_request().unwrap() else {
+            panic!("not a create");
+        };
+
+        assert_eq!(spec.name, None);
     }
 
     #[test]
     fn an_edit_form_keeps_what_it_does_not_show() {
         let rule = stored_rule();
         let mut form = RuleForm::edit(&rule);
-        form.update(RuleFormMessage::Pattern("{year}".to_owned()));
-        form.update(RuleFormMessage::Tags("tax, , home ".to_owned()));
+        form.update(RuleFormMessage::Target(TargetEdit::AddField(
+            FolderField::Month,
+        )));
+        form.update(RuleFormMessage::TagInput("home".to_owned()));
+        form.update(RuleFormMessage::AddTag);
 
         let RuleSave::Update(id, spec) = form.save_request().unwrap() else {
             panic!("not an update");
         };
 
         assert_eq!(id, rule.id);
-        assert_eq!(spec.filing_pattern, "{year}");
-        assert_eq!(
-            spec.tags,
-            BTreeSet::from(["home".to_owned(), "tax".to_owned()])
-        );
+        assert_eq!(spec.filing_pattern, "{year}/{sender}/{month}/");
+        assert_eq!(spec.kind.as_deref(), Some("Invoice"));
+        assert_eq!(spec.tags.len(), 3);
         assert_eq!(spec.extract_date, rule.spec.extract_date);
         assert_eq!(spec.conditions, rule.spec.conditions);
         assert!(!spec.enabled && spec.confirmed);
@@ -528,25 +511,27 @@ mod tests {
 
     fn prefill() -> RulePrefill {
         RulePrefill {
-            sender: "Telekom".to_owned(),
-            kind: "invoice".to_owned(),
+            sender: "Company A".to_owned(),
+            kind: "Invoice".to_owned(),
             tags: BTreeSet::from(["tax".to_owned()]),
-            pattern: "{sender}/{date}".to_owned(),
+            pattern: "Firma A/{year}/{sender}/".to_owned(),
         }
     }
 
     #[test]
-    fn a_form_from_a_document_starts_with_its_sender_and_fields() {
+    fn a_form_from_a_document_asks_for_the_tags_of_its_kind_and_sender() {
         let form = RuleForm::from_document(prefill());
 
         assert_eq!(form.target, RuleFormTarget::FromDocument);
         assert_eq!(
             form.conditions.conditions(),
-            RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, "Telekom")])
+            RuleConditions::all_of(vec![
+                Condition::new(ConditionKind::Tag, "invoice"),
+                Condition::new(ConditionKind::Tag, "company-a"),
+            ])
         );
-        assert_eq!(form.kind, "invoice");
-        assert_eq!(form.tags, "tax");
-        assert_eq!(form.pattern, "{sender}/{date}");
+        assert_eq!(form.tags, BTreeSet::from(["tax".to_owned()]));
+        assert_eq!(form.filing.pattern(), "Firma A/{year}/{sender}/");
         assert!(form.is_valid());
     }
 
@@ -555,17 +540,18 @@ mod tests {
         let form = RuleForm::from_document(RulePrefill {
             pattern: "  ".to_owned(),
             sender: String::new(),
+            kind: String::new(),
             ..prefill()
         });
 
-        assert_eq!(form.pattern, "{year}/{sender}");
+        assert_eq!(form.filing.pattern(), "{year}/{sender}/");
         assert_eq!(form.conditions.rows.len(), 1);
         assert_eq!(form.conditions.rows[0].value, "");
         assert!(!form.is_valid());
     }
 
     #[test]
-    fn a_form_from_a_document_saves_a_rule_with_the_origin_filing() {
+    fn a_form_from_a_document_saves_a_rule_with_the_origin_filing_and_its_kind() {
         let mut form = RuleForm::from_document(prefill());
 
         let RuleSave::Create { spec, origin } = form.save_request().unwrap() else {
@@ -574,6 +560,7 @@ mod tests {
 
         assert_eq!(origin, RuleOrigin::Filing);
         assert!(spec.confirmed && spec.enabled);
+        assert_eq!(spec.kind.as_deref(), Some("Invoice"));
         assert_eq!(spec.tags, BTreeSet::from(["tax".to_owned()]));
     }
 
@@ -582,14 +569,14 @@ mod tests {
         let rule = stored_rule();
         let mut form = RuleForm::from_suggestion(&rule);
         assert_eq!(form.target, RuleFormTarget::FromSuggestion(rule.clone()));
-        form.update(RuleFormMessage::Pattern("{year}".to_owned()));
+        form.update(RuleFormMessage::Target(TargetEdit::Remove(1)));
 
         let RuleSave::ConfirmSuggestion(id, spec) = form.save_request().unwrap() else {
             panic!("not a confirmation");
         };
 
         assert_eq!(id, rule.id);
-        assert_eq!(spec.filing_pattern, "{year}");
+        assert_eq!(spec.filing_pattern, "{year}/");
         assert_eq!(spec.extract_date, rule.spec.extract_date);
         assert_eq!(spec.conditions, rule.spec.conditions);
     }
@@ -599,7 +586,7 @@ mod tests {
         let mut form = filled_new();
         let first = form.restart_try();
         assert_eq!(form.live_try.status, TryStatus::Waiting);
-        form.update(RuleFormMessage::Pattern("{year}".to_owned()));
+        form.update(RuleFormMessage::Target(TargetEdit::Remove(1)));
         let second = form.restart_try();
 
         assert_ne!(first, second);
@@ -608,7 +595,7 @@ mod tests {
         let request = form.try_request(second).unwrap();
         assert_eq!(form.live_try.status, TryStatus::Running);
         assert_eq!(request.replaces, None);
-        assert_eq!(request.spec.filing_pattern, "{year}");
+        assert_eq!(request.spec.filing_pattern, "{year}/");
         assert!(request.spec.confirmed && request.spec.enabled);
         assert!(!form.conditions.show_empty_problems);
     }
@@ -649,15 +636,6 @@ mod tests {
         let broken_generation = broken_regex.restart_try();
         assert_eq!(broken_regex.try_request(broken_generation), None);
         assert_eq!(broken_regex.live_try.status, TryStatus::Idle);
-    }
-
-    #[test]
-    fn an_invalid_pattern_is_still_tried() {
-        let mut form = filled_new();
-        form.update(RuleFormMessage::Pattern("{foo}".to_owned()));
-        let generation = form.restart_try();
-
-        assert!(form.try_request(generation).is_some());
     }
 
     #[test]

@@ -2714,7 +2714,7 @@ mod review_list_card {
             "scan-2.pdf",
             "No rule matches",
             "Sender",
-            "Filing pattern",
+            "Move to",
             "Will be filed as",
             "Confirm",
             "Close",
@@ -2820,15 +2820,16 @@ mod review_list_card {
         assert!(app.review_list_for_test().is_none());
         let form = rules_form_of(&app);
         assert_eq!(form.target, crate::rule_form::RuleFormTarget::FromDocument);
-        assert_eq!(form.conditions.rows.len(), 1);
-        assert_eq!(
-            form.conditions.rows[0].kind,
-            ncrs_index::ConditionKind::Sender
-        );
-        assert_eq!(form.conditions.rows[0].value, "Company A");
-        assert_eq!(form.kind, "invoice");
-        assert_eq!(form.tags, "");
-        assert_eq!(form.pattern, "{sender}/{date}_{kind}");
+        assert_eq!(form.conditions.rows.len(), 2);
+        assert!(form
+            .conditions
+            .rows
+            .iter()
+            .all(|row| row.kind == ncrs_index::ConditionKind::Tag));
+        assert_eq!(form.conditions.rows[0].value, "invoice");
+        assert_eq!(form.conditions.rows[1].value, "company-a");
+        assert!(form.tags.is_empty());
+        assert_eq!(form.filing.pattern(), "{sender}/{date}_{kind}");
     }
 
     #[test]
@@ -2868,10 +2869,12 @@ mod review_list_card {
         assert!(app.review_list_for_test().is_none());
         let form = rules_form_of(&app);
         assert_eq!(form.target, crate::rule_form::RuleFormTarget::FromDocument);
-        assert_eq!(form.conditions.rows[0].value, "Company A");
-        assert_eq!(form.kind, "invoice");
-        assert_eq!(form.tags, "tax");
-        assert_eq!(form.pattern, "{sender}/{date}_{kind}");
+        assert_eq!(form.conditions.rows[1].value, "company-a");
+        assert_eq!(
+            form.tags,
+            std::collections::BTreeSet::from(["tax".to_owned()])
+        );
+        assert_eq!(form.filing.pattern(), "{sender}/{date}_{kind}");
         // Opened from a panel: there is no page to go back to.
         let _ = app.update(Message::Rules(crate::messages::RulesMessage::Form(
             crate::messages::RuleFormMessage::Cancel,
@@ -2889,7 +2892,7 @@ mod review_list_card {
             "Bestätigen",
             "Schließen",
             "Regel für Absender ‚Company A‘ anlegen",
-            "Ablagemuster",
+            "Verschieben nach",
         ] {
             assert!(sim.find(label).is_ok(), "{label}");
         }
@@ -3157,8 +3160,8 @@ mod review_list_card {
     #[test]
     fn the_default_pattern_is_named_in_the_reason_and_previewed() {
         for label in [
-            "Default pattern",
-            "Default pattern, please check",
+            "Default target",
+            "Default target, please check",
             "No rule",
             "Will be filed as",
         ] {
@@ -3188,7 +3191,7 @@ mod review_list_card {
 
     #[test]
     fn the_page_explains_empty_fields_while_there_are_no_rules_and_no_ai() {
-        let hint = "No rules yet. ncrs suggests a default pattern for each document: check the fields and confirm. Load the AI model and it fills in the fields itself.";
+        let hint = "No rules yet. ncrs suggests the default target for each document: check the fields and confirm. Load the AI model and it fills in the fields itself.";
         let counts_unknown = App::with_review_list(loaded_list());
         simulator(&counts_unknown).find(hint).unwrap_err();
         let with_rules =
@@ -3734,11 +3737,12 @@ mod rules_card {
                 position: id,
                 origin,
                 spec: RuleSpec {
+                    name: None,
                     conditions,
                     extract_number: None,
                     extract_date: None,
                     extract_amount: None,
-                    kind: kind.to_owned(),
+                    kind: Some(kind.to_owned()),
                     tags: tags
                         .iter()
                         .map(|tag| (*tag).to_owned())
@@ -3809,8 +3813,7 @@ mod rules_card {
     fn the_page_shows_the_purpose_the_example_and_the_buttons() {
         for label in [
             "Rules",
-            "ncrs files a document with the first rule that matches; rules higher up come first. \
-             Example: a rule for one sender above a general invoice rule wins for that sender's invoices.",
+            "Rules, checked from top to bottom. The first that matches files the document.",
             "Close",
             "Delete",
             "Move up",
@@ -3933,7 +3936,12 @@ mod rules_card {
             1,
             "(".to_owned(),
         )));
-        form.update(RuleFormMessage::Pattern("{year}/{foo}".to_owned()));
+        form.update(RuleFormMessage::Target(
+            crate::filing_pieces::TargetEdit::Remove(0),
+        ));
+        form.update(RuleFormMessage::Target(
+            crate::filing_pieces::TargetEdit::Remove(0),
+        ));
         assert_eq!(page.begin_save(), None);
         page
     }
@@ -3980,7 +3988,7 @@ mod rules_card {
                     section: TrySection::Archive,
                     path: PathBuf::from("2021/telekom-may.pdf"),
                     now: TryOutcome::Lies(PathBuf::from("2021/telekom-may.pdf")),
-                    after: TryOutcome::Review(ReviewReason::RuleConflict),
+                    after: filed("Invoice/2021/Telekom"),
                     conflicts: vec![rule_id(2), rule_id(3)],
                 },
             ],
@@ -4015,7 +4023,7 @@ mod rules_card {
         let opened = waiting(&app);
         assert_eq!(opened.status, TryStatus::Waiting);
 
-        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Kind(
+        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Name(
             "Contract".to_owned(),
         ))));
         let edited = waiting(&app);
@@ -4035,19 +4043,20 @@ mod rules_card {
         let mut app = App::with_rules(three_rules());
         let _ = app.update(Message::Rules(RulesMessage::New));
         let new_form = app.rules_for_test().unwrap().form().unwrap();
-        assert_eq!(new_form.kind, "");
+        assert_eq!(new_form.name, "");
+        assert_eq!(new_form.filing.pattern(), "{year}/{sender}/");
 
         let _ = app.update(Message::Rules(RulesMessage::Close));
         let _ = app.update(Message::Rules(RulesMessage::Edit));
         let edit_form = app.rules_for_test().unwrap().form().unwrap();
-        assert_eq!(edit_form.kind, "Invoice");
+        assert_eq!(edit_form.filing.pattern(), "{year}/{sender}");
         assert!(app_shows(&app, "Edit rule"));
     }
 
     #[test]
     fn escape_closes_the_form_first_and_saves_nothing() {
         let mut app = App::with_rules(with_edit_form());
-        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Kind(
+        let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Name(
             "Contract".to_owned(),
         ))));
 
@@ -4055,7 +4064,10 @@ mod rules_card {
 
         let page = app.rules_for_test().unwrap();
         assert!(page.form().is_none());
-        assert_eq!(page.rows().first().unwrap().rule.spec.kind, "Invoice");
+        assert_eq!(
+            page.rows().first().unwrap().rule.spec.kind.as_deref(),
+            Some("Invoice")
+        );
         let _ = app.update(Message::Rules(RulesMessage::Close));
         assert!(app.rules_for_test().is_none());
     }
@@ -4088,25 +4100,24 @@ mod rules_card {
 
         let page = app.rules_for_test().unwrap();
         assert!(!page.form().unwrap().saving);
-        for text in [
-            "Enter a value.",
-            "“foo” is not a block. Use the buttons below.",
-        ] {
+        for text in ["Enter a value.", "Add at least one folder."] {
             assert!(simulator(&app).find(text).is_ok(), "{text}");
         }
     }
 
     #[test]
-    fn the_block_buttons_append_their_block() {
+    fn the_folder_buttons_append_their_field() {
         let app = App::with_rules(with_new_form());
         let mut sim = simulator(&app);
-        sim.click("{number}").expect("block button");
+        sim.click("Month").expect("folder button");
 
         assert_eq!(
             sim.into_messages().filter(is_action).collect::<Vec<_>>(),
-            [Message::Rules(RulesMessage::Form(
-                RuleFormMessage::InsertBlock("number")
-            ))]
+            [Message::Rules(RulesMessage::Form(RuleFormMessage::Target(
+                crate::filing_pieces::TargetEdit::AddField(
+                    crate::filing_pieces::FolderField::Month
+                )
+            )))]
         );
     }
 }
@@ -4172,8 +4183,8 @@ mod rule_suggestions_card {
             "Text: company a ltd",
             "Sender: Agency B",
             "Condition",
-            "Insurance/{date}_{name}",
-            "Taxes/{date}_{name}",
+            "Insurance · File name: Date_Kind",
+            "Taxes · File name: Date_Kind",
             FIRST_EVIDENCE,
             SECOND_EVIDENCE,
             "Confirm",
@@ -4335,8 +4346,7 @@ mod rule_suggestions_card {
             ncrs_index::ConditionKind::Substring
         );
         assert_eq!(form.conditions.rows[0].value, "company a ltd");
-        assert_eq!(form.kind, "Insurance");
-        assert_eq!(form.pattern, "Insurance/{date}_{name}");
+        assert_eq!(form.filing.pattern(), "Insurance/{date}_{name}");
         let _ = simulator(&app)
             .find("Confirm suggested rule")
             .expect("the form says it confirms a suggestion");
@@ -6504,19 +6514,24 @@ mod hermes_overview_page {
     }
 
     #[test]
-    fn a_click_on_the_pattern_opens_the_field_for_editing() {
+    fn a_click_on_own_name_opens_the_field_for_the_folder_name() {
         let mut app = running();
-        let pattern = crate::hermes_overview::built_in_pattern();
         assert_eq!(
-            clicks(&app, pattern),
-            [overview_message(HermesOverviewMessage::FocusPattern)]
+            scrolled_clicks(&app, "Own name …"),
+            [overview_message(HermesOverviewMessage::TargetEdited(
+                crate::filing_pieces::TargetEdit::StartOwnName
+            ))]
         );
-        drop(app.update(overview_message(HermesOverviewMessage::FocusPattern)));
+        drop(
+            app.update(overview_message(HermesOverviewMessage::TargetEdited(
+                crate::filing_pieces::TargetEdit::StartOwnName,
+            ))),
+        );
         simulator(&app)
             .find(iced_selector::id(
-                crate::ui::hermes_overview::PATTERN_FIELD_ID,
+                crate::ui::hermes_overview::FOLDER_NAME_FIELD_ID,
             ))
-            .expect("the pattern field is shown while editing");
+            .expect("the folder name field is shown while editing");
     }
 
     #[test]

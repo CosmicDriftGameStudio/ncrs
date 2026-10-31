@@ -119,11 +119,12 @@ const DATE_ISO: &str = r"Date:?\s*(\d{4}-\d{2}-\d{2})";
 
 fn word_rule(phrase: &str, kind: &str, filing_pattern: &str) -> RuleSpec {
     RuleSpec {
+        name: None,
         conditions: RuleConditions::all_of(vec![Condition::new(ConditionKind::Word, phrase)]),
         extract_number: None,
         extract_date: None,
         extract_amount: None,
-        kind: kind.to_owned(),
+        kind: Some(kind.to_owned()),
         tags: BTreeSet::new(),
         filing_pattern: filing_pattern.to_owned(),
         confirmed: true,
@@ -262,7 +263,6 @@ pub enum PlanningOutcome {
     Planned,
     NoRule,
     UnconfirmedRule,
-    Conflict,
     MissingField(Field),
 }
 
@@ -385,11 +385,10 @@ impl fmt::Display for RecognitionReport {
             .collect();
         writeln!(
             f,
-            "planned: {}, no rule: {}, unconfirmed rule: {}, conflicts: {}, missing field: {} ({})",
+            "planned: {}, no rule: {}, unconfirmed rule: {}, missing field: {} ({})",
             self.outcome_count(|outcome| outcome == PlanningOutcome::Planned),
             self.outcome_count(|outcome| outcome == PlanningOutcome::NoRule),
             self.outcome_count(|outcome| outcome == PlanningOutcome::UnconfirmedRule),
-            self.outcome_count(|outcome| outcome == PlanningOutcome::Conflict),
             self.outcome_count(|outcome| matches!(outcome, PlanningOutcome::MissingField(_))),
             missing_per_field.join(", ")
         )?;
@@ -409,7 +408,6 @@ fn outcome_of(planning: &Planning) -> PlanningOutcome {
         Planning::Plan(_) => PlanningOutcome::Planned,
         Planning::Review { reason, .. } => match reason {
             ReviewReason::NoMatchingRule => PlanningOutcome::NoRule,
-            ReviewReason::RuleConflict => PlanningOutcome::Conflict,
             ReviewReason::MissingField(field) => PlanningOutcome::MissingField(*field),
             // `plan` gives no other reason; the later steps set them.
             ReviewReason::UnconfirmedRule
@@ -422,12 +420,6 @@ fn outcome_of(planning: &Planning) -> PlanningOutcome {
 fn chosen_rule_and_fields(planning: &Planning) -> (Option<RuleId>, &DocumentFields) {
     match planning {
         Planning::Plan(filing) => (Some(filing.rule), &filing.fields),
-        // No rule was applied, so a conflict is not a wrong assignment.
-        Planning::Review {
-            reason: ReviewReason::RuleConflict,
-            fields,
-            ..
-        } => (None, fields),
         Planning::Review { rule, fields, .. } => (*rule, fields),
     }
 }

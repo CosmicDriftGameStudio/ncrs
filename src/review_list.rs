@@ -15,6 +15,7 @@ use ncrs_intake::{
 };
 
 use crate::document_preview::{DocumentPreview, PreviewContent, PreviewRequest};
+use crate::filing_pieces::{TargetEdit, TargetEditor};
 use crate::list_window::ListWindow;
 use crate::replan_work::{ReplanItem, ReplanScope};
 use crate::review_work::{
@@ -33,7 +34,6 @@ pub enum FormField {
     Amount,
     /// Where a new tag is typed; it joins the tags with Enter.
     TagInput,
-    Pattern,
 }
 
 /// The fields as the user sees and edits them.
@@ -78,7 +78,6 @@ impl Form {
             FormField::Number => &mut self.number,
             FormField::Amount => &mut self.amount,
             FormField::TagInput => &mut self.tag_input,
-            FormField::Pattern => &mut self.pattern,
         }
     }
 
@@ -228,6 +227,9 @@ pub struct ReviewList {
     /// The pattern field holds what Hermes proposed, not something the user
     /// typed or a rule gave; it then follows the other fields.
     pattern_is_default: bool,
+    /// The widget that changes where this document goes; open only after
+    /// "Change".
+    target_editor: Option<TargetEditor>,
     replan: Option<ReplanStep>,
     /// Tells the answer of the preview that is current from a stale one.
     replan_serial: u64,
@@ -251,6 +253,7 @@ impl ReviewList {
             focus_request: None,
             custom_default_pattern: None,
             pattern_is_default: false,
+            target_editor: None,
             replan: None,
             replan_serial: 0,
             document_preview: DocumentPreview::default(),
@@ -529,11 +532,42 @@ impl ReviewList {
         if self.selected().is_some() {
             *self.form.text_mut(field) = text;
             self.problem = None;
-            if field == FormField::Pattern {
-                self.pattern_is_default = false;
-            } else if self.pattern_is_default {
+            if self.pattern_is_default {
                 self.follow_fields_with_default_pattern();
             }
+        }
+    }
+
+    pub fn target_editor(&self) -> Option<&TargetEditor> {
+        self.target_editor.as_ref()
+    }
+
+    /// Opens the widget on the pattern the form holds.
+    pub fn change_target(&mut self) {
+        if self.selected().is_some() && self.replan.is_none() {
+            self.target_editor = Some(TargetEditor::new(&self.form.pattern));
+            self.pattern_is_default = false;
+            self.editing = true;
+        }
+    }
+
+    pub fn edit_target(&mut self, edit: TargetEdit) {
+        let Some(editor) = self.target_editor.as_mut() else {
+            return;
+        };
+        if editor.apply(edit) {
+            let pattern = editor.pattern();
+            self.set_pattern(pattern);
+        }
+    }
+
+    /// The user's pattern replaces the proposed one and stops following the
+    /// fields.
+    pub fn set_pattern(&mut self, pattern: String) {
+        if self.selected().is_some() {
+            self.form.pattern = pattern;
+            self.problem = None;
+            self.pattern_is_default = false;
         }
     }
 
@@ -637,6 +671,7 @@ impl ReviewList {
         self.pattern_is_default = self
             .selected()
             .is_some_and(|item| item.proposed_pattern.is_none());
+        self.target_editor = None;
         self.problem = None;
     }
 }
@@ -846,17 +881,14 @@ pub mod tests {
     fn without_a_rule_the_form_starts_with_the_default_pattern_and_files_nothing() {
         let mut list = default_pattern_list();
 
-        assert_eq!(
-            list.form().pattern,
-            "{year}/{year}{month}{day}_{sender}_{number}"
-        );
+        assert_eq!(list.form().pattern, "{year}/{sender}/");
         assert_eq!(
             list.pattern_source(&list.rows()[0]),
             Some(PatternSource::Default)
         );
         assert_eq!(
             list.preview(),
-            Some(PathBuf::from("2024/20240309_Frost_3318"))
+            Some(PathBuf::from("2024/Frost/2024-03-09_Frost_3318"))
         );
         assert!(list.filed().is_none());
 
@@ -893,9 +925,9 @@ pub mod tests {
         list.select(1);
 
         list.set_text(FormField::Date, "2024-03-09".to_owned());
-        assert_eq!(list.form().pattern, "{year}/{year}{month}{day}_{sender}");
+        assert_eq!(list.form().pattern, "{year}/{sender}/");
 
-        list.set_text(FormField::Pattern, "{kind}".to_owned());
+        list.set_pattern("{kind}".to_owned());
         list.set_text(FormField::Number, "1".to_owned());
         assert_eq!(list.form().pattern, "{kind}");
     }
@@ -996,7 +1028,7 @@ pub mod tests {
         assert_eq!(list.problem(), Some(&Problem::PatternDoesNotFit));
 
         list.set_text(FormField::Sender, "Company A".to_owned());
-        list.set_text(FormField::Pattern, "{nonsense}".to_owned());
+        list.set_pattern("{nonsense}".to_owned());
         assert_eq!(list.begin_confirm(), None);
         assert_eq!(list.preview(), None);
     }
@@ -1095,7 +1127,7 @@ pub mod tests {
     fn no_rule_is_offered_for_a_document_without_a_sender() {
         let mut list = loaded_list();
         list.set_text(FormField::Sender, String::new());
-        list.set_text(FormField::Pattern, "{kind}/{date}".to_owned());
+        list.set_pattern("{kind}/{date}".to_owned());
 
         list.begin_confirm().unwrap();
         list.confirmed(ConfirmOutcome::Filed {

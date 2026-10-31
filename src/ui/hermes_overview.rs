@@ -9,6 +9,7 @@ use iced::widget::{column, container, row, text, Row, Space};
 use iced::{alignment, Color, Element, Length, Size};
 use ncrs_pipeline::{Load, RunnerState};
 
+use super::filing_pieces::{target_view, TargetHost};
 use super::frame::{DialogSize, Frame, KeyHints, PageHint};
 use super::hermes::{self, Badges};
 use super::hermes_flow::{self, FlowBox, FlowBoxes};
@@ -18,8 +19,8 @@ use super::theme::{self, font_size, spacing};
 use crate::app::fill_template;
 use crate::filing_setup::shown_path;
 use crate::hermes_overview::{
-    built_in_pattern, AiTile, ModuleState, OverviewFacts, OverviewState, PatternNote, Pill,
-    ReviewTile, Tone as TileTone,
+    AiTile, ModuleState, OverviewFacts, OverviewState, PatternNote, Pill, ReviewTile,
+    Tone as TileTone,
 };
 use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{FilingStatusMessage, HermesOverviewMessage, HermesPage, Message};
@@ -30,14 +31,10 @@ const HEADLINE_SIZE: f32 = 24.0;
 const INTRO_WIDTH: f32 = 720.0;
 const TILE_PADDING: f32 = 16.0;
 const TILE_GAP: f32 = 16.0;
-pub const PATTERN_FIELD_ID: &str = "hermes-overview-pattern";
+pub const FOLDER_NAME_FIELD_ID: &str = "hermes-overview-folder-name";
 
 /// The keys of the page, named in the footer where there is room.
 const PAGE_HINTS: &[PageHint] = &[
-    PageHint {
-        key: "E",
-        verb: Msg::HermesOverviewHintPattern,
-    },
     PageHint {
         key: "P",
         verb: Msg::HermesOverviewHintPause,
@@ -51,7 +48,6 @@ const PAGE_HINTS: &[PageHint] = &[
         verb: Msg::HermesOverviewHintWorkers,
     },
 ];
-const PATTERN_CONTROL_WIDTH: f32 = 420.0;
 const LOAD_CONTROL_WIDTH: f32 = 380.0;
 const ROLE_WIDTH: f32 = 140.0;
 
@@ -288,12 +284,7 @@ fn flow_boxes<'a>(page: &OverviewView<'a>) -> FlowBoxes<'a> {
             lang,
         )
     };
-    let pattern = page.state.pattern_draft();
-    let pattern_text = if pattern == built_in_pattern() {
-        lang.text(Msg::HermesOverviewFlowFiledDefault)
-    } else {
-        pattern
-    };
+    let pattern_text = page.state.target().target.in_words(lang);
     let filed_note = fill_template(
         lang.text(Msg::HermesOverviewFlowFiledNote),
         &[
@@ -305,7 +296,7 @@ fn flow_boxes<'a>(page: &OverviewView<'a>) -> FlowBoxes<'a> {
                     .map(|path| shown_path(path, page.home))
                     .unwrap_or_default(),
             ),
-            ("{pattern}", pattern_text),
+            ("{pattern}", &pattern_text),
         ],
     );
     let titled = |title: Msg, note: String| FlowBox {
@@ -585,55 +576,26 @@ fn folders_section<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a
 fn filing_section<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Message> {
     let lang = page.lang;
     let state = page.state;
-    // The field exists only while it is being edited: a click into a text
-    // field cannot be told to the page, and the page's letters must stay off
-    // while the field has the focus.
-    let field = if state.is_editing() {
-        kit::mono_text_field(
-            built_in_pattern(),
-            state.pattern_draft(),
-            PATTERN_FIELD_ID,
-            Some(|typed| send(HermesOverviewMessage::PatternEdited(typed))),
-            send(HermesOverviewMessage::PatternSubmit),
-            palette,
-        )
-    } else {
-        kit::button(
-            state.pattern_draft(),
-            Some(send(HermesOverviewMessage::FocusPattern)),
-            Tone::Secondary,
-            palette,
-        )
-    };
     let problem = state.pattern_note().map(|note| match note {
-        PatternNote::Invalid => lang.text(Msg::HermesOverviewPatternInvalid).to_owned(),
         PatternNote::WriteFailed(reason) => fill_template(
             lang.text(Msg::HermesOverviewPatternWriteFailed),
             &[("{reason}", reason)],
         ),
     });
-    let mut content = column![kit::form_row_with_problem(
-        lang.text(Msg::HermesOverviewPatternLabel),
-        None,
-        Some(lang.text(Msg::HermesOverviewPatternNote)),
-        problem.as_deref(),
-        field,
-        PATTERN_CONTROL_WIDTH,
+    let host = TargetHost {
+        wrap: |edit| send(HermesOverviewMessage::TargetEdited(edit)),
+        name_field_id: FOLDER_NAME_FIELD_ID,
+        lang,
         palette,
-    )]
+    };
+    let mut content = column![
+        paragraph(lang.text(Msg::HermesOverviewPatternLabel), palette),
+        dim(lang.text(Msg::HermesOverviewPatternNote), palette),
+        target_view(state.target(), &host),
+    ]
     .spacing(spacing::S);
-    let example = page
-        .folders
-        .filing_location
-        .and_then(|location| state.example_target(location));
-    if let Some(target) = example {
-        content = content.push(dim(
-            fill_template(
-                lang.text(Msg::HermesOverviewPatternExample),
-                &[("{path}", &shown_path(&target, page.home))],
-            ),
-            palette,
-        ));
+    if let Some(wrong) = problem {
+        content = content.push(error_line(wrong, palette));
     }
     kit::section(
         lang.text(Msg::HermesOverviewSectionFiling),

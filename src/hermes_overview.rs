@@ -5,13 +5,11 @@
 //! The state only. Nothing here touches the disk or the module; the app
 //! gathers the facts and the page draws them.
 
-use std::path::{Path, PathBuf};
-
-use chrono::NaiveDate;
-use ncrs_index::{DocumentFields, HermesCounts};
-use ncrs_intake::{pattern_is_valid, render_pattern, DEFAULT_PATTERNS};
+use ncrs_index::HermesCounts;
+use ncrs_intake::DEFAULT_PATTERNS;
 
 use crate::filing::{AiStatus, KeyProblem, Phase, ProtectionNote};
+use crate::filing_pieces::{TargetEdit, TargetEditor};
 
 /// Where the module stands, as far as the overview tells.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -282,55 +280,49 @@ impl OverviewFacts {
     }
 }
 
-/// The pattern the field starts with when the config has none: the first of
-/// the built-in ones, which Hermes tries before the poorer ones.
+/// The pattern the default target starts with when the config has none: the
+/// first of the built-in ones, which Hermes tries before the poorer ones.
 pub fn built_in_pattern() -> &'static str {
     DEFAULT_PATTERNS[0]
 }
 
-/// Why a typed pattern was not written, or that the write failed.
+/// That the write of the default target failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PatternNote {
-    Invalid,
     WriteFailed(String),
 }
 
-/// What Enter in the pattern field asks the app to do.
+/// What an edit of the default target asks the app to do.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PatternCommit {
     Unchanged,
-    /// The text is no pattern Hermes can render; nothing is written.
-    Rejected,
     /// `None` drops the line, which brings back the built-in patterns.
     Write(Option<String>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OverviewState {
-    pattern_draft: String,
+    target: TargetEditor,
     /// The pattern the config has now.
     configured_pattern: Option<String>,
     pattern_note: Option<PatternNote>,
     pattern_writing: bool,
-    /// The pattern field has the focus, so the letters are its and not the page's.
-    editing: bool,
     ocr_models_present: bool,
 }
 
 impl OverviewState {
     pub fn new(configured_pattern: Option<&str>, ocr_models_present: bool) -> Self {
         Self {
-            pattern_draft: configured_pattern.unwrap_or(built_in_pattern()).to_owned(),
+            target: TargetEditor::new(configured_pattern.unwrap_or(built_in_pattern())),
             configured_pattern: configured_pattern.map(str::to_owned),
             pattern_note: None,
             pattern_writing: false,
-            editing: false,
             ocr_models_present,
         }
     }
 
-    pub fn pattern_draft(&self) -> &str {
-        &self.pattern_draft
+    pub fn target(&self) -> &TargetEditor {
+        &self.target
     }
 
     pub fn pattern_note(&self) -> Option<&PatternNote> {
@@ -345,38 +337,27 @@ impl OverviewState {
         self.ocr_models_present = present;
     }
 
+    /// The field for the name of a folder has the focus, so the letters are
+    /// its and not the page's.
     pub fn is_editing(&self) -> bool {
-        self.editing
+        self.target.own_name.is_some()
     }
 
-    pub fn set_editing(&mut self, editing: bool) {
-        self.editing = editing;
-    }
-
-    pub fn edit_pattern(&mut self, text: String) {
-        self.editing = true;
-        self.pattern_draft = text;
+    pub fn edit_target(&mut self, edit: TargetEdit) {
+        self.target.apply(edit);
         self.pattern_note = None;
     }
 
-    /// What to do with the text in the field. Valid patterns and the empty
-    /// text go to the config; the first built-in pattern means "no pattern of
-    /// my own".
+    /// What to do with the target as it stands. A target that cannot file
+    /// anything is not written; the first built-in pattern means "no pattern
+    /// of my own".
     pub fn commit_pattern(&mut self) -> PatternCommit {
-        if self.pattern_writing {
+        if self.pattern_writing || !self.target.is_usable() {
             return PatternCommit::Unchanged;
         }
-        let typed = self.pattern_draft.trim();
-        let wanted = if typed.is_empty() || typed == built_in_pattern() {
-            None
-        } else if pattern_is_valid(typed) {
-            Some(typed.to_owned())
-        } else {
-            self.pattern_note = Some(PatternNote::Invalid);
-            return PatternCommit::Rejected;
-        };
+        let pattern = self.target.pattern();
+        let wanted = (pattern != built_in_pattern()).then_some(pattern);
         if wanted == self.configured_pattern {
-            self.pattern_draft = wanted.as_deref().unwrap_or(built_in_pattern()).to_owned();
             return PatternCommit::Unchanged;
         }
         self.pattern_writing = true;
@@ -387,42 +368,12 @@ impl OverviewState {
     pub fn pattern_written(&mut self, configured: Option<&str>) {
         self.pattern_writing = false;
         self.configured_pattern = configured.map(str::to_owned);
-        self.pattern_draft = configured.unwrap_or(built_in_pattern()).to_owned();
         self.pattern_note = None;
     }
 
     pub fn pattern_write_failed(&mut self, reason: String) {
         self.pattern_writing = false;
         self.pattern_note = Some(PatternNote::WriteFailed(reason));
-    }
-
-    /// The pattern the example is drawn with: the typed one while it works,
-    /// else the one Hermes uses.
-    fn example_pattern(&self) -> &str {
-        let typed = self.pattern_draft.trim();
-        if pattern_is_valid(typed) {
-            typed
-        } else {
-            self.configured_pattern
-                .as_deref()
-                .unwrap_or(built_in_pattern())
-        }
-    }
-
-    /// Where a made-up invoice of a made-up sender would be filed, under the
-    /// filing location.
-    pub fn example_target(&self, filing_location: &Path) -> Option<PathBuf> {
-        let fields = DocumentFields {
-            sender: Some("Frost".to_owned()),
-            kind: Some("Rechnung".to_owned()),
-            number: Some("3318".to_owned()),
-            date: NaiveDate::from_ymd_opt(2021, 5, 18),
-            ..DocumentFields::default()
-        };
-        let relative = render_pattern(self.example_pattern(), &fields)?;
-        let mut name = filing_location.join(relative).into_os_string();
-        name.push(".pdf");
-        Some(PathBuf::from(name))
     }
 }
 
@@ -432,6 +383,7 @@ mod tests {
     use ncrs_index::StatusCounts;
 
     use super::*;
+    use crate::filing_pieces::FolderField;
 
     fn facts(module: ModuleState) -> OverviewFacts {
         OverviewFacts {
@@ -600,59 +552,54 @@ mod tests {
     }
 
     #[test]
-    fn the_pattern_field_starts_with_the_first_built_in_pattern() {
+    fn the_default_target_starts_with_the_first_built_in_pattern() {
         let state = OverviewState::new(None, true);
-        assert_eq!(state.pattern_draft(), built_in_pattern());
-        let own = OverviewState::new(Some("{year}/{sender}"), true);
-        assert_eq!(own.pattern_draft(), "{year}/{sender}");
+        assert_eq!(state.target().pattern(), built_in_pattern());
+        let own = OverviewState::new(Some("{year}/{sender}/"), true);
+        assert_eq!(own.target().pattern(), "{year}/{sender}/");
     }
 
     #[test]
-    fn a_valid_pattern_is_written_once() {
+    fn a_changed_target_is_written_once() {
         let mut state = OverviewState::new(None, true);
-        state.edit_pattern("  {year}/{sender}  ".to_owned());
+        state.edit_target(TargetEdit::Remove(0));
         assert_eq!(
             state.commit_pattern(),
-            PatternCommit::Write(Some("{year}/{sender}".to_owned()))
+            PatternCommit::Write(Some("{year}/{sender}/".to_owned()))
         );
         assert_eq!(state.commit_pattern(), PatternCommit::Unchanged);
-        state.pattern_written(Some("{year}/{sender}"));
+        state.pattern_written(Some("{year}/{sender}/"));
         assert_eq!(state.commit_pattern(), PatternCommit::Unchanged);
-        assert_eq!(state.pattern_draft(), "{year}/{sender}");
+        assert_eq!(state.target().pattern(), "{year}/{sender}/");
     }
 
     #[test]
-    fn an_invalid_pattern_is_refused_and_nothing_is_written() {
-        let mut state = OverviewState::new(None, true);
-        state.edit_pattern("{nothing}/x".to_owned());
-        assert_eq!(state.commit_pattern(), PatternCommit::Rejected);
-        assert_eq!(state.pattern_note(), Some(&PatternNote::Invalid));
-        state.edit_pattern("{year}".to_owned());
-        assert_eq!(state.pattern_note(), None);
+    fn a_target_without_a_folder_is_not_written() {
+        let mut state = OverviewState::new(Some("{year}/"), true);
+        state.edit_target(TargetEdit::Remove(0));
+
+        assert_eq!(state.commit_pattern(), PatternCommit::Unchanged);
+        assert!(!state.target().is_usable());
     }
 
     #[test]
-    fn an_empty_field_or_the_first_built_in_pattern_drops_the_own_pattern() {
-        let mut state = OverviewState::new(Some("{year}/{sender}"), true);
-        state.edit_pattern("   ".to_owned());
+    fn the_first_built_in_pattern_drops_the_own_pattern() {
+        let mut state = OverviewState::new(Some("{year}/{sender}/"), true);
+        state.edit_target(TargetEdit::Remove(0));
+        state.edit_target(TargetEdit::Remove(0));
+        state.edit_target(TargetEdit::AddField(FolderField::Recipient));
+        state.edit_target(TargetEdit::AddField(FolderField::Year));
+        state.edit_target(TargetEdit::AddField(FolderField::Sender));
+
         assert_eq!(state.commit_pattern(), PatternCommit::Write(None));
         state.pattern_written(None);
-        assert_eq!(state.pattern_draft(), built_in_pattern());
-
-        let mut own = OverviewState::new(Some("{year}/{sender}"), true);
-        own.edit_pattern(built_in_pattern().to_owned());
-        assert_eq!(own.commit_pattern(), PatternCommit::Write(None));
-
-        let mut none = OverviewState::new(None, true);
-        none.edit_pattern(String::new());
-        assert_eq!(none.commit_pattern(), PatternCommit::Unchanged);
-        assert_eq!(none.pattern_draft(), built_in_pattern());
+        assert_eq!(state.target().pattern(), built_in_pattern());
     }
 
     #[test]
     fn a_failed_write_says_why_and_lets_the_user_try_again() {
         let mut state = OverviewState::new(None, true);
-        state.edit_pattern("{year}/{sender}".to_owned());
+        state.edit_target(TargetEdit::Remove(0));
         assert!(matches!(state.commit_pattern(), PatternCommit::Write(_)));
         state.pattern_write_failed("disk full".to_owned());
         assert_eq!(
@@ -663,24 +610,17 @@ mod tests {
     }
 
     #[test]
-    fn the_example_shows_where_a_made_up_invoice_would_go() {
-        let state = OverviewState::new(None, true);
-        let location = PathBuf::from("/home/user/tmp");
+    fn the_name_field_for_a_folder_has_the_keys_of_the_page_while_it_is_open() {
+        let mut state = OverviewState::new(None, true);
+        assert!(!state.is_editing());
+        state.edit_target(TargetEdit::StartOwnName);
+        assert!(state.is_editing());
+        state.edit_target(TargetEdit::OwnNameTyped("Privat".to_owned()));
+        state.edit_target(TargetEdit::OwnNameSubmit);
+        assert!(!state.is_editing());
         assert_eq!(
-            state.example_target(&location),
-            Some(location.join("2021").join("20210518_Frost_3318.pdf"))
-        );
-        let mut typed = OverviewState::new(None, true);
-        typed.edit_pattern("{kind}/{sender}".to_owned());
-        assert_eq!(
-            typed.example_target(&location),
-            Some(location.join("Rechnung").join("Frost.pdf"))
-        );
-        typed.edit_pattern("{broken".to_owned());
-        assert_eq!(
-            typed.example_target(&location),
-            Some(location.join("2021").join("20210518_Frost_3318.pdf")),
-            "a pattern that does not work leaves the example as it was"
+            state.target().pattern(),
+            "{recipient}/{year}/{sender}/Privat/"
         );
     }
 }

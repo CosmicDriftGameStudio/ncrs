@@ -32,6 +32,7 @@ mod document_search;
 mod drag_out;
 mod execute;
 mod filing;
+mod filing_pieces;
 mod filing_setup;
 mod filing_status;
 mod filing_work;
