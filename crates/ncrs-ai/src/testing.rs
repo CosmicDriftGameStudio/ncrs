@@ -43,7 +43,7 @@ impl Provider for FakeProvider {
             .unwrap_or_else(PoisonError::into_inner)
             .push(request.clone());
         match &self.outcome {
-            Ok(raw) => parse_reply(raw, &request.open_fields),
+            Ok(raw) => parse_reply(raw, &request.open_fields, &request.tax_contexts),
             Err(error) => Err(error.clone()),
         }
     }

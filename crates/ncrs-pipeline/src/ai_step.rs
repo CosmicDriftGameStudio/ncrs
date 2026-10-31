@@ -122,10 +122,16 @@ impl Step for AiStep {
         if open_fields.is_empty() {
             return Ok(StepOutcome::Continue);
         }
+        // Read for every document, so a context added or renamed since the
+        // last one is offered without a restart.
+        let tax_contexts = with_index_value(self.index.as_ref(), |index| index.tax_contexts())
+            .ok_or_else(|| NO_INDEX.to_owned())?
+            .map_err(|err| err.to_string())?;
         let request = ExtractionRequest {
             text: text.to_owned(),
             open_fields: open_fields.clone(),
             known: document.fields,
+            tax_contexts,
             source: item.location.path.clone(),
         };
         let extraction = match self.provider.extract(&request) {
@@ -697,8 +703,10 @@ mod tests {
         let fixture = Fixture::new();
         let sure = CONFIDENT + 0.1;
         let unsure = CONFIDENT - 0.1;
-        let answer =
-            |field, value: &str, confidence| ExtractedField::new(field, value, confidence).unwrap();
+        let tax_contexts = fixture.index.lock().unwrap().tax_contexts().unwrap();
+        let answer = |field, value: &str, confidence| {
+            ExtractedField::new(field, value, confidence, &tax_contexts).unwrap()
+        };
         let provider = Arc::new(UnaskedFieldsProvider(vec![
             answer(Field::Kind, "contract", sure),
             answer(Field::Kind, "letter", unsure),
@@ -776,5 +784,42 @@ mod tests {
 
         assert_eq!(unconfirmed.review, Some(ReviewReason::UnconfirmedRule));
         assert!(provider.requests().is_empty());
+    }
+
+    #[test]
+    fn a_context_created_after_the_step_was_built_is_offered_in_the_next_request() {
+        let fixture = Fixture::new();
+        let provider = Arc::new(FakeProvider::replying("{}"));
+        let steps = fixture.steps(&provider);
+        let ask = |marker| {
+            let document = fixture.add_document(marker);
+            let mut item = fixture.item(document, INVOICE_TEXT);
+            item.review = Some(ReviewReason::NoMatchingRule);
+            run(&steps, AI, &mut item);
+        };
+        let short_names = |request: &ExtractionRequest| -> Vec<String> {
+            request
+                .tax_contexts
+                .iter()
+                .map(|context| context.short_name.clone())
+                .collect()
+        };
+
+        ask(1);
+        fixture
+            .index
+            .lock()
+            .unwrap()
+            .connection()
+            .execute(
+                "INSERT INTO tax_context (name, short_name) VALUES ('Firma A', 'firma-a')",
+                [],
+            )
+            .unwrap();
+        ask(2);
+
+        let requests = provider.requests();
+        assert_eq!(short_names(&requests[0]), ["company", "private"]);
+        assert_eq!(short_names(&requests[1]), ["company", "firma-a", "private"]);
     }
 }

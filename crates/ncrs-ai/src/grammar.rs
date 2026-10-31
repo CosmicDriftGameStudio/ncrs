@@ -2,10 +2,11 @@
 //! one JSON object with the open fields only, each as `{"value", "confidence"}`.
 //! Every token the model can choose is then part of such a reply.
 
-use ncrs_index::Field;
+use ncrs_index::{Field, TaxContextEntry};
 use ncrs_intake::FIELD_ORDER;
 
-use crate::contract::MAX_VALUE_CHARS;
+use crate::contract::{tax_context_answers, MAX_VALUE_CHARS};
+use crate::json::Json;
 
 /// Whitespace is allowed but bounded, so the model cannot spin on it.
 const SHARED_RULES: &str = r#"ws ::= [ \t\n]{0,2}
@@ -15,24 +16,30 @@ char ::= [^"\\\x7F\x00-\x1F] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4})
 
 /// Fields come in the order of `FIELD_ORDER`, each at most once and in any
 /// subset, so the object may also be empty. Rule names are numbers because a
-/// field name (`tax_context`) is not a legal rule name.
-pub fn reply_grammar(open_fields: &[Field]) -> String {
-    let names: Vec<&str> = FIELD_ORDER
+/// field name (`tax_context`) is not a legal rule name. The tax context is
+/// not a free string but one of the stored short names, or none.
+pub fn reply_grammar(open_fields: &[Field], tax_contexts: &[TaxContextEntry]) -> String {
+    let fields: Vec<Field> = FIELD_ORDER
         .into_iter()
         .filter(|field| open_fields.contains(field))
-        .map(|field| field.as_str())
         .collect();
-    let count = names.len();
+    let count = fields.len();
     let mut grammar = String::from("root ::= \"{\" ws ");
     if count > 0 {
         grammar.push_str("first0 ");
     }
     grammar.push_str("\"}\"\n");
-    for (index, name) in names.iter().enumerate() {
+    for (index, field) in fields.iter().enumerate() {
+        let name = field.as_str();
+        let value_rule = if *field == Field::TaxContext {
+            "tax-context"
+        } else {
+            "string"
+        };
         let next = index + 1;
         grammar.push_str(&format!(
             "kv{index} ::= \"\\\"{name}\\\"\" ws \":\" ws \"{{\" ws \
-             \"\\\"value\\\"\" ws \":\" ws string ws \",\" ws \
+             \"\\\"value\\\"\" ws \":\" ws {value_rule} ws \",\" ws \
              \"\\\"confidence\\\"\" ws \":\" ws num ws \"}}\" ws\n\
              first{index} ::= kv{index} rest{next} | first{next}\n\
              rest{index} ::= \",\" ws kv{index} rest{next} | rest{next}\n"
@@ -41,11 +48,42 @@ pub fn reply_grammar(open_fields: &[Field]) -> String {
     if count > 0 {
         grammar.push_str(&format!("first{count} ::= \"\"\nrest{count} ::= \"\"\n"));
     }
+    if fields.contains(&Field::TaxContext) {
+        grammar.push_str(&format!(
+            "tax-context ::= {}\n",
+            tax_context_answers(tax_contexts)
+                .into_iter()
+                .map(|answer| gbnf_literal(&Json::text(answer).pretty()))
+                .collect::<Vec<_>>()
+                .join(" | ")
+        ));
+    }
     grammar.push_str(&format!(
         "string ::= \"\\\"\" char{{0,{MAX_VALUE_CHARS}}} \"\\\"\"\n"
     ));
     grammar.push_str(SHARED_RULES);
     grammar
+}
+
+/// A GBNF double-quoted literal that matches `text` exactly. Only the quote,
+/// the backslash and control characters have a meaning inside it.
+fn gbnf_literal(text: &str) -> String {
+    let mut literal = String::from("\"");
+    for character in text.chars() {
+        match character {
+            '"' => literal.push_str("\\\""),
+            '\\' => literal.push_str("\\\\"),
+            '\n' => literal.push_str("\\n"),
+            '\r' => literal.push_str("\\r"),
+            '\t' => literal.push_str("\\t"),
+            other if other.is_control() => {
+                literal.push_str(&format!("\\x{:02X}", u32::from(other)))
+            }
+            other => literal.push(other),
+        }
+    }
+    literal.push('"');
+    literal
 }
 
 #[cfg(test)]
@@ -57,10 +95,11 @@ pub fn reply_grammar(open_fields: &[Field]) -> String {
 )]
 mod tests {
     use super::*;
+    use crate::test_contexts::only_contexts;
 
     #[test]
     fn the_grammar_names_the_open_fields_and_no_other() {
-        let grammar = reply_grammar(&[Field::Number, Field::Date]);
+        let grammar = reply_grammar(&[Field::Number, Field::Date], &[]);
 
         assert!(grammar.contains("\\\"number\\\""));
         assert!(grammar.contains("\\\"date\\\""));
@@ -75,7 +114,7 @@ mod tests {
 
     #[test]
     fn the_fields_come_in_field_order_whatever_the_order_asked() {
-        let grammar = reply_grammar(&[Field::Amount, Field::Sender]);
+        let grammar = reply_grammar(&[Field::Amount, Field::Sender], &[]);
 
         let sender = grammar.find("\\\"sender\\\"").unwrap();
         let amount = grammar.find("\\\"amount\\\"").unwrap();
@@ -84,17 +123,86 @@ mod tests {
 
     #[test]
     fn an_object_without_fields_is_allowed() {
-        assert!(reply_grammar(&[Field::Sender]).contains("first1 ::= \"\""));
-        assert!(reply_grammar(&[]).starts_with("root ::= \"{\" ws \"}\"\n"));
+        assert!(reply_grammar(&[Field::Sender], &[]).contains("first1 ::= \"\""));
+        assert!(reply_grammar(&[], &[]).starts_with("root ::= \"{\" ws \"}\"\n"));
     }
 
     #[test]
     fn every_rule_that_is_used_is_defined() {
-        let grammar = reply_grammar(&FIELD_ORDER);
+        let grammar = reply_grammar(&FIELD_ORDER, &[]);
 
-        for rule in ["first6", "rest6", "kv5", "string", "num", "char", "ws"] {
+        for rule in [
+            "first6",
+            "rest6",
+            "kv5",
+            "tax-context",
+            "string",
+            "num",
+            "char",
+            "ws",
+        ] {
             assert!(grammar.contains(&format!("{rule} ::=")), "{rule}");
         }
         assert!(grammar.contains(&format!("char{{0,{MAX_VALUE_CHARS}}}")));
+    }
+
+    fn tax_context_rule(grammar: &str) -> &str {
+        grammar
+            .lines()
+            .find_map(|line| line.strip_prefix("tax-context ::= "))
+            .unwrap()
+    }
+
+    #[test]
+    fn the_tax_context_is_one_of_the_stored_short_names_or_none() {
+        let contexts = only_contexts(&["firma-a", "private"]);
+
+        let grammar = reply_grammar(&[Field::TaxContext], &contexts);
+
+        assert_eq!(
+            tax_context_rule(&grammar),
+            r#""\"firma-a\"" | "\"private\"" | "\"none\"""#
+        );
+        assert!(!grammar.contains("company"));
+        assert!(grammar.contains("ws tax-context ws"));
+    }
+
+    #[test]
+    fn without_stored_contexts_the_tax_context_can_only_be_none() {
+        let grammar = reply_grammar(&[Field::TaxContext], &[]);
+
+        assert_eq!(tax_context_rule(&grammar), r#""\"none\"""#);
+    }
+
+    #[test]
+    fn no_tax_context_rule_without_the_field() {
+        let grammar = reply_grammar(&[Field::Sender], &only_contexts(&["firma-a"]));
+
+        assert!(!grammar.contains("tax-context"));
+        assert!(!grammar.contains("firma-a"));
+    }
+
+    #[test]
+    fn a_short_name_cannot_change_the_structure_of_the_grammar() {
+        let hostile = "a\" | [^x]* \"";
+        let contexts = only_contexts(&[hostile, "b\\\n\"c"]);
+
+        let grammar = reply_grammar(&[Field::TaxContext], &contexts);
+
+        assert_eq!(
+            tax_context_rule(&grammar),
+            r#""\"a\\\" | [^x]* \\\"\"" | "\"b\\\\\\n\\\"c\"" | "\"none\"""#
+        );
+        assert_eq!(
+            grammar
+                .lines()
+                .filter(|line| line.starts_with("tax-context ::="))
+                .count(),
+            1
+        );
+        assert_eq!(
+            grammar.lines().count(),
+            reply_grammar(&[Field::TaxContext], &[]).lines().count()
+        );
     }
 }
