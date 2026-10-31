@@ -11055,6 +11055,12 @@ impl App {
                 }
                 Task::none()
             }
+            SavedQueriesMessage::UseTemplate(form) => {
+                if let Some(view) = self.saved_queries.as_mut() {
+                    view.use_template(form);
+                }
+                Task::none()
+            }
             SavedQueriesMessage::FieldChanged(field, text) => {
                 if let Some(view) = self.saved_queries.as_mut() {
                     view.set_text(field, text);
@@ -11293,7 +11299,9 @@ impl App {
         }
         self.context_menu = None;
         self.saved_queries_generation = self.saved_queries_generation.wrapping_add(1);
-        self.saved_queries = Some(SavedQueries::new());
+        self.saved_queries = Some(SavedQueries::new(chrono::Datelike::year(
+            &chrono::Local::now(),
+        )));
         self.run_query_load()
     }
 

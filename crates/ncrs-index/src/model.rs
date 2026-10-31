@@ -488,6 +488,8 @@ pub struct QuerySpec {
     pub year: Option<i32>,
     pub tax_context: Option<TaxContext>,
     /// Compared without regard to case.
+    pub sender: Option<String>,
+    /// Compared without regard to case.
     pub kind: Option<String>,
     /// A document must carry all of them.
     pub tags: BTreeSet<String>,

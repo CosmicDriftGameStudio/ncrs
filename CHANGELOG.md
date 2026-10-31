@@ -28,6 +28,13 @@ All notable changes to this project are documented here. The format follows
   and now shows plain text. The beta mark of Hermes stands after the plain name.
   An unknown `lang` falls back to English with a warning instead of rejecting
   the config.
+- Saved queries are now called Reports (German: Auswertungen) and say what they
+  are for: a saved search for recurring questions, such as all invoices of a
+  year from one company for the tax return. A report can also ask for a sender,
+  and its result shows the sum of the amounts per currency. Templates start a
+  report for the tax year before this one (for each tax context), for contracts
+  and for open invoices (invoices tagged "open"). The export step explains what
+  the lines of the CSV file hold.
 
 ## [1.1.1] — 2026-10-30
 

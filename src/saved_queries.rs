@@ -8,8 +8,10 @@ use std::path::{Path, PathBuf};
 
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{QuerySpec, SavedQuery, SavedQueryId, TaxContext, TaxContextEntry};
+use ncrs_index::{Amount, QuerySpec, SavedQuery, SavedQueryId, TaxContext, TaxContextEntry};
 
+use crate::app::fill_template;
+use crate::i18n::{Language, Msg};
 use crate::list_window::ListWindow;
 use crate::query_work::{copies_of, ExportSummary, QueryHit};
 use crate::review_work::parse_tags;
@@ -19,9 +21,76 @@ use crate::review_work::parse_tags;
 pub enum QueryField {
     Name,
     Year,
+    Sender,
     Kind,
     Tags,
     FullText,
+}
+
+/// A ready-made report the user starts from; the form it fills is theirs to
+/// change before saving.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReportTemplate {
+    TaxYear {
+        year: i32,
+        tax_context: TaxContextEntry,
+    },
+    Contracts,
+    /// Invoices that carry the tag for open.
+    OpenInvoices,
+}
+
+/// The templates on offer: the tax year before `this_year` for each tax
+/// context, then contracts and open invoices.
+pub fn templates(tax_contexts: &[TaxContextEntry], this_year: i32) -> Vec<ReportTemplate> {
+    tax_contexts
+        .iter()
+        .map(|tax_context| ReportTemplate::TaxYear {
+            year: this_year.saturating_sub(1),
+            tax_context: tax_context.clone(),
+        })
+        .chain([ReportTemplate::Contracts, ReportTemplate::OpenInvoices])
+        .collect()
+}
+
+impl ReportTemplate {
+    /// The name of the template, as button and as name of the report.
+    pub fn name(&self, lang: Language) -> String {
+        match self {
+            Self::TaxYear { year, tax_context } => fill_template(
+                lang.text(Msg::SavedQueriesTemplateTaxYear),
+                &[
+                    ("{year}", &year.to_string()),
+                    ("{context}", &tax_context.name),
+                ],
+            ),
+            Self::Contracts => lang.text(Msg::SavedQueriesTemplateContracts).to_owned(),
+            Self::OpenInvoices => lang.text(Msg::SavedQueriesTemplateOpenInvoices).to_owned(),
+        }
+    }
+
+    pub fn form(&self, lang: Language) -> Form {
+        let named = Form {
+            name: self.name(lang),
+            ..Form::default()
+        };
+        match self {
+            Self::TaxYear { year, tax_context } => Form {
+                year: year.to_string(),
+                tax_context: Some(TaxContext::named(&tax_context.short_name)),
+                ..named
+            },
+            Self::Contracts => Form {
+                kind: "contract".to_owned(),
+                ..named
+            },
+            Self::OpenInvoices => Form {
+                kind: "invoice".to_owned(),
+                tags: lang.text(Msg::SavedQueriesTagOpen).to_owned(),
+                ..named
+            },
+        }
+    }
 }
 
 /// The criteria as the user sees and edits them.
@@ -31,6 +100,7 @@ pub struct Form {
     pub year: String,
     /// `None` is any context.
     pub tax_context: Option<TaxContext>,
+    pub sender: String,
     pub kind: String,
     pub tags: String,
     pub full_text: String,
@@ -43,6 +113,7 @@ impl Form {
             name: query.name.clone(),
             year: spec.year.map(|year| year.to_string()).unwrap_or_default(),
             tax_context: spec.tax_context.clone(),
+            sender: spec.sender.clone().unwrap_or_default(),
             kind: spec.kind.clone().unwrap_or_default(),
             tags: spec.tags.iter().cloned().collect::<Vec<_>>().join(", "),
             full_text: spec.full_text.clone().unwrap_or_default(),
@@ -53,6 +124,7 @@ impl Form {
         match field {
             QueryField::Name => &self.name,
             QueryField::Year => &self.year,
+            QueryField::Sender => &self.sender,
             QueryField::Kind => &self.kind,
             QueryField::Tags => &self.tags,
             QueryField::FullText => &self.full_text,
@@ -63,6 +135,7 @@ impl Form {
         match field {
             QueryField::Name => &mut self.name,
             QueryField::Year => &mut self.year,
+            QueryField::Sender => &mut self.sender,
             QueryField::Kind => &mut self.kind,
             QueryField::Tags => &mut self.tags,
             QueryField::FullText => &mut self.full_text,
@@ -88,6 +161,7 @@ impl Form {
         Ok(QuerySpec {
             year,
             tax_context: self.tax_context.clone(),
+            sender: non_empty(&self.sender),
             kind: non_empty(&self.kind),
             tags: parse_tags(&self.tags),
             full_text: non_empty(&self.full_text),
@@ -112,6 +186,24 @@ pub struct Results {
 }
 
 impl Results {
+    /// One sum per currency over every hit with an amount, missing files
+    /// included, by currency code. Currencies are never added together.
+    pub fn totals(&self) -> Vec<Amount> {
+        let mut sums: Vec<Amount> = Vec::new();
+        for amount in self
+            .hits
+            .iter()
+            .filter_map(|hit| hit.fields.amount.as_ref())
+        {
+            match sums.iter_mut().find(|sum| sum.currency == amount.currency) {
+                Some(sum) => sum.minor_units = sum.minor_units.saturating_add(amount.minor_units),
+                None => sums.push(amount.clone()),
+            }
+        }
+        sums.sort_by(|left, right| left.currency.as_str().cmp(right.currency.as_str()));
+        sums
+    }
+
     pub fn missing(&self) -> usize {
         self.hits.iter().filter(|hit| hit.missing).count()
     }
@@ -158,11 +250,13 @@ pub struct SavedQueries {
     /// The query to put the cursor on when the list is loaded next.
     select_after_load: Option<SavedQueryId>,
     tax_contexts: Vec<TaxContextEntry>,
+    /// The year the templates count back from.
+    this_year: i32,
 }
 
 impl SavedQueries {
     /// Opens busy: the list loads with the view.
-    pub fn new() -> Self {
+    pub fn new(this_year: i32) -> Self {
         Self {
             rows: Vec::new(),
             cursor: None,
@@ -177,7 +271,22 @@ impl SavedQueries {
             exported: None,
             select_after_load: None,
             tax_contexts: Vec::new(),
+            this_year,
         }
+    }
+
+    pub fn templates(&self) -> Vec<ReportTemplate> {
+        templates(&self.tax_contexts, self.this_year)
+    }
+
+    /// Starts a new report from a template's form.
+    pub fn use_template(&mut self, form: Form) {
+        if self.busy {
+            return;
+        }
+        self.cursor = None;
+        self.form = form;
+        self.leave_query();
     }
 
     pub fn rows(&self) -> &[SavedQuery] {
@@ -502,6 +611,8 @@ pub mod tests {
 
     use super::*;
 
+    pub const THIS_YEAR: i32 = 2026;
+
     /// Ids come from a real index: only the index hands them out.
     pub fn stored_queries() -> Vec<SavedQuery> {
         let dir = tempfile::TempDir::new().unwrap();
@@ -526,7 +637,7 @@ pub mod tests {
     }
 
     pub fn loaded_list() -> SavedQueries {
-        let mut list = SavedQueries::new();
+        let mut list = SavedQueries::new(THIS_YEAR);
         list.set_tax_contexts(crate::review_list::tests::stored_tax_contexts());
         list.loaded(stored_queries());
         list
@@ -544,9 +655,162 @@ pub mod tests {
         list
     }
 
+    fn two_contexts() -> Vec<TaxContextEntry> {
+        let contexts = crate::review_list::tests::stored_tax_contexts();
+        assert!(contexts.len() >= 2);
+        contexts.into_iter().take(2).collect()
+    }
+
+    fn amount(minor_units: i64, currency: &str) -> Amount {
+        Amount {
+            minor_units,
+            currency: ncrs_index::Currency::new(currency).unwrap(),
+        }
+    }
+
+    fn hit_with(amount: Option<Amount>, missing: bool) -> QueryHit {
+        QueryHit {
+            fields: DocumentFields {
+                amount,
+                ..DocumentFields::default()
+            },
+            ..hit("x.pdf", missing)
+        }
+    }
+
+    #[test]
+    fn templates_are_the_previous_year_per_tax_context_then_contracts_and_open_invoices() {
+        let contexts = two_contexts();
+
+        let offered = templates(&contexts, 2026);
+
+        assert_eq!(
+            offered,
+            vec![
+                ReportTemplate::TaxYear {
+                    year: 2025,
+                    tax_context: contexts[0].clone()
+                },
+                ReportTemplate::TaxYear {
+                    year: 2025,
+                    tax_context: contexts[1].clone()
+                },
+                ReportTemplate::Contracts,
+                ReportTemplate::OpenInvoices,
+            ]
+        );
+        assert_eq!(templates(&[], 2026).len(), 2);
+    }
+
+    #[test]
+    fn a_template_fills_the_form_with_exactly_its_criteria() {
+        let contexts = two_contexts();
+        let tax_year = ReportTemplate::TaxYear {
+            year: 2025,
+            tax_context: contexts[1].clone(),
+        };
+        for lang in [Language::English, Language::German] {
+            let spec = tax_year.form(lang).spec().unwrap();
+            assert_eq!(
+                spec,
+                QuerySpec {
+                    year: Some(2025),
+                    tax_context: Some(TaxContext::named(&contexts[1].short_name)),
+                    ..QuerySpec::default()
+                }
+            );
+            assert!(tax_year.form(lang).name.contains("2025"));
+            assert!(tax_year.form(lang).name.contains(&contexts[1].name));
+        }
+
+        let open = ReportTemplate::OpenInvoices
+            .form(Language::German)
+            .spec()
+            .unwrap();
+        assert_eq!(
+            open,
+            QuerySpec {
+                kind: Some("invoice".to_owned()),
+                tags: ["offen".to_owned()].into(),
+                ..QuerySpec::default()
+            }
+        );
+        assert_eq!(
+            ReportTemplate::OpenInvoices.form(Language::English).name,
+            "Open invoices"
+        );
+        assert_eq!(
+            ReportTemplate::Contracts
+                .form(Language::English)
+                .spec()
+                .unwrap()
+                .kind,
+            Some("contract".to_owned())
+        );
+    }
+
+    #[test]
+    fn using_a_template_starts_a_new_report_without_results() {
+        let mut list = ran_list();
+        assert!(list.cursor().is_some() && list.results().is_some());
+        let form = ReportTemplate::Contracts.form(Language::English);
+
+        list.use_template(form.clone());
+
+        assert_eq!(list.cursor(), None);
+        assert_eq!(list.form(), &form);
+        assert!(list.results().is_none());
+    }
+
+    #[test]
+    fn a_busy_page_ignores_a_template() {
+        let mut list = SavedQueries::new(THIS_YEAR);
+
+        list.use_template(ReportTemplate::Contracts.form(Language::English));
+
+        assert_eq!(list.form(), &Form::default());
+    }
+
+    #[test]
+    fn totals_add_up_per_currency_by_code_and_skip_hits_without_amount() {
+        let results = Results {
+            hits: vec![
+                hit_with(Some(amount(1_000, "USD")), false),
+                hit_with(Some(amount(250, "EUR")), false),
+                hit_with(None, false),
+                hit_with(Some(amount(-50, "EUR")), true),
+                hit_with(Some(amount(1, "USD")), false),
+            ],
+            expanded: false,
+        };
+
+        assert_eq!(
+            results.totals(),
+            vec![amount(200, "EUR"), amount(1_001, "USD")]
+        );
+        let none = Results {
+            hits: vec![hit_with(None, false)],
+            expanded: false,
+        };
+        assert!(none.totals().is_empty());
+    }
+
+    #[test]
+    fn totals_saturate_instead_of_wrapping() {
+        let results = Results {
+            hits: vec![
+                hit_with(Some(amount(i64::MAX, "EUR")), false),
+                hit_with(Some(amount(5, "EUR")), false),
+            ],
+            expanded: false,
+        };
+
+        assert_eq!(results.totals(), vec![amount(i64::MAX, "EUR")]);
+    }
+
     #[test]
     fn the_page_opens_busy_with_a_new_query() {
-        let list = SavedQueries::new();
+        let list = SavedQueries::new(THIS_YEAR);
 
         assert!(list.is_busy());
         assert!(list.rows().is_empty());

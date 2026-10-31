@@ -3926,9 +3926,9 @@
     },
     {
       "key": "action.saved_queries",
-      "context": "Entry of the command list and the menu that runs the key action saved_queries, which opens the page with the saved queries: searches over the index by year, tax context, kind, tags and text, with an export of what they find. Also the title of that Hermes page and its sidebar entry.",
-      "en": "Saved queries",
-      "de": "Abfragen"
+      "context": "Entry of the command list and the menu that runs the key action saved_queries, which opens the page of reports: saved searches for recurring questions over the index by year, tax context, sender, kind, tags and text, with an export of what they find. Also the title of that Hermes page and its sidebar entry.",
+      "en": "Reports",
+      "de": "Auswertungen"
     },
     {
       "key": "action.saved_queries.theme",
@@ -3939,8 +3939,8 @@
     {
       "key": "saved_queries.explain",
       "context": "Line at the top of the saved queries page explaining what it is for.",
-      "en": "Searches over your documents. Running one only looks; exporting copies the files it found into a folder you choose and never changes the originals.",
-      "de": "Suchen über deine Dokumente. Ausführen schaut nur nach; Exportieren kopiert die gefundenen Dateien in einen Ordner deiner Wahl und ändert die Originale nie."
+      "en": "A saved search for recurring questions, for example ‘all 2026 invoices from Firma A’ for the tax return. Running one only looks; exporting copies the files it found into a folder you choose and never changes the originals.",
+      "de": "Eine gespeicherte Suche für wiederkehrende Fragen, zum Beispiel ‚alle Rechnungen 2026 von Firma A‘ für die Steuererklärung. Ausführen schaut nur nach; Exportieren kopiert die gefundenen Dateien in einen Ordner deiner Wahl und ändert die Originale nie."
     },
     {
       "key": "saved_queries.loading",
@@ -3950,9 +3950,9 @@
     },
     {
       "key": "saved_queries.empty",
-      "context": "Shown on the saved queries page when no query is saved yet.",
-      "en": "No saved queries yet. Fill in the form and save one.",
-      "de": "Noch keine Abfragen gespeichert. Fülle das Formular aus und speichere eine."
+      "context": "Shown on the reports page when no report is saved yet.",
+      "en": "No reports yet. Start from a template or fill in the form and save.",
+      "de": "Noch keine Auswertungen. Beginne mit einer Vorlage oder fülle das Formular aus und speichere."
     },
     {
       "key": "saved_queries.column_criteria",
@@ -4015,6 +4015,12 @@
       "de": "Steuerkontext"
     },
     {
+      "key": "saved_queries.field_sender",
+      "context": "Form label on the reports page: the sender of the document.",
+      "en": "Sender",
+      "de": "Absender"
+    },
+    {
       "key": "saved_queries.field_kind",
       "context": "Form label on the saved queries page: kind of document.",
       "en": "Kind",
@@ -4045,6 +4051,12 @@
       "de": "Jahr des Belegdatums, zum Beispiel 2024"
     },
     {
+      "key": "saved_queries.hint_sender",
+      "context": "Description under the sender field of the reports page.",
+      "en": "Upper and lower case do not matter",
+      "de": "Groß- und Kleinschreibung ist egal"
+    },
+    {
       "key": "saved_queries.hint_kind",
       "context": "Description under the kind field of the saved queries page.",
       "en": "Upper and lower case do not matter",
@@ -4063,6 +4075,42 @@
       "de": "Alle Wörter müssen im Text vorkommen"
     },
     {
+      "key": "saved_queries.template_label",
+      "context": "Label above the template buttons on the reports page, which fill the form with a ready-made report.",
+      "en": "Start from a template:",
+      "de": "Mit einer Vorlage beginnen:"
+    },
+    {
+      "key": "saved_queries.template_tax_year",
+      "context": "Button and report name of the template for a tax year. Takes the {year} and the {context}, the name of a tax context.",
+      "en": "Tax year {year} · {context}",
+      "de": "Steuerjahr {year} · {context}"
+    },
+    {
+      "key": "saved_queries.template_contracts",
+      "context": "Button and report name of the template that finds the contracts.",
+      "en": "Contracts",
+      "de": "Verträge"
+    },
+    {
+      "key": "saved_queries.template_open_invoices",
+      "context": "Button and report name of the template that finds the invoices that are not paid yet.",
+      "en": "Open invoices",
+      "de": "Offene Rechnungen"
+    },
+    {
+      "key": "saved_queries.tag_open",
+      "context": "The tag that marks an invoice as not paid yet; the template for open invoices asks for it and the note names it. A single lowercase word.",
+      "en": "open",
+      "de": "offen"
+    },
+    {
+      "key": "saved_queries.open_invoices_note",
+      "context": "Note under the template buttons: what the open invoices template means. Takes the {tag} that marks an open invoice.",
+      "en": "Open invoices are invoices with the tag ‘{tag}’. Remove the tag once one is paid.",
+      "de": "Offene Rechnungen sind Rechnungen mit dem Schlagwort ‚{tag}‘. Entferne es, sobald eine bezahlt ist."
+    },
+    {
       "key": "saved_queries.problem_year",
       "context": "Problem on the saved queries page: the year text is not a year.",
       "en": "The year must be a number like 2024.",
@@ -4070,9 +4118,9 @@
     },
     {
       "key": "saved_queries.problem_name",
-      "context": "Problem on the saved queries page: a query cannot be saved without a name.",
-      "en": "A saved query needs a name.",
-      "de": "Eine gespeicherte Abfrage braucht einen Namen."
+      "context": "Problem on the reports page: a report cannot be saved without a name.",
+      "en": "A report needs a name.",
+      "de": "Eine Auswertung braucht einen Namen."
     },
     {
       "key": "saved_queries.problem_failed",
@@ -4124,21 +4172,27 @@
     },
     {
       "key": "saved_queries.delete_question",
-      "context": "Question in the saved queries page before a query is deleted. Takes the name of the query.",
-      "en": "Delete the query ‘{name}’? Documents stay as they are.",
-      "de": "Abfrage ‚{name}‘ löschen? Dokumente bleiben unverändert."
+      "context": "Question on the reports page before a report is deleted. Takes the name of the report.",
+      "en": "Delete the report ‘{name}’? Documents stay as they are.",
+      "de": "Auswertung ‚{name}‘ löschen? Dokumente bleiben unverändert."
     },
     {
       "key": "saved_queries.delete_confirm",
-      "context": "Button in the delete question of the saved queries page: deletes the query.",
-      "en": "Delete query",
-      "de": "Abfrage löschen"
+      "context": "Button in the delete question of the reports page: deletes the report.",
+      "en": "Delete report",
+      "de": "Auswertung löschen"
     },
     {
       "key": "saved_queries.summary_hits",
       "context": "Label of a figure under a run of a saved query: how many documents were found.",
       "en": "Hits",
       "de": "Treffer"
+    },
+    {
+      "key": "saved_queries.summary_sum",
+      "context": "Label of a figure under a run of a report: the sum of the amounts of the found documents, one per currency.",
+      "en": "Sum",
+      "de": "Summe"
     },
     {
       "key": "saved_queries.show_list",
@@ -4193,6 +4247,12 @@
       "context": "The pattern of the CSV file name shown in the export step; date and time of the export fill the placeholders.",
       "en": "ncrs-export-<date>-<time>.csv",
       "de": "ncrs-export-<Datum>-<Zeit>.csv"
+    },
+    {
+      "key": "saved_queries.export_csv_explain",
+      "context": "Sentence in the export step: what the lines of the CSV file hold, in the order of its columns.",
+      "en": "One line per document: file name, name of the copy, original path, sender, kind, tax context, date, number, amount, currency, tags and whether it was copied.",
+      "de": "Eine Zeile je Dokument: Dateiname, Name der Kopie, Originalpfad, Absender, Art, Steuerkontext, Datum, Nummer, Betrag, Währung, Schlagworte und ob kopiert wurde."
     },
     {
       "key": "saved_queries.export_promise",
@@ -6609,8 +6669,8 @@
     {
       "key": "hermes_overview.start_over_loss",
       "context": "Body of the question in the Hermes overview whether to remove the index: names what is lost.",
-      "en": "This removes the index of Hermes with its rules, rule suggestions, saved searches and the undo history. It also removes what it knows about your documents and the entries waiting for review.",
-      "de": "Damit wird der Index von Hermes entfernt, mit seinen Regeln, Regelvorschlägen, gespeicherten Suchen und dem Rückgängig-Verlauf. Auch sein Wissen über deine Dokumente und die Einträge, die auf Prüfung warten, gehen verloren."
+      "en": "This removes the index of Hermes with its rules, rule suggestions, reports and the undo history. It also removes what it knows about your documents and the entries waiting for review.",
+      "de": "Damit wird der Index von Hermes entfernt, mit seinen Regeln, Regelvorschlägen, Auswertungen und dem Rückgängig-Verlauf. Auch sein Wissen über deine Dokumente und die Einträge, die auf Prüfung warten, gehen verloren."
     },
     {
       "key": "hermes_overview.start_over_files",
@@ -7154,13 +7214,13 @@
     },
     {
       "key": "settings.tax_contexts_delete_unused",
-      "context": "Description in the delete question on the Hermes settings page when no document, rule or saved query uses the tax context.",
+      "context": "Description in the delete question on the Hermes settings page when no document, rule or report uses the tax context.",
       "en": "Nothing uses it.",
       "de": "Nichts verwendet ihn."
     },
     {
       "key": "settings.tax_contexts_delete_used",
-      "context": "Description in the delete question on the Hermes settings page when the tax context is in use. Takes the {name} and {uses}, a list such as 12 documents, 2 rules and 1 saved query.",
+      "context": "Description in the delete question on the Hermes settings page when the tax context is in use. Takes the {name} and {uses}, a list such as 12 documents, 2 rules and 1 report.",
       "en": "{name} is used by {uses}.",
       "de": "{name} wird von {uses} verwendet."
     },
@@ -7196,15 +7256,15 @@
     },
     {
       "key": "settings.tax_contexts_uses_queries_one",
-      "context": "Part of the list of uses in the delete question on the Hermes settings page: exactly one saved query. Takes {count}. German in the dative after von.",
-      "en": "{count} saved query",
-      "de": "{count} gespeicherten Abfrage"
+      "context": "Part of the list of uses in the delete question on the Hermes settings page: exactly one report. Takes {count}. German in the dative after von.",
+      "en": "{count} report",
+      "de": "{count} Auswertung"
     },
     {
       "key": "settings.tax_contexts_uses_queries_other",
-      "context": "Part of the list of uses in the delete question on the Hermes settings page: several saved queries. Takes {count}. German in the dative after von.",
-      "en": "{count} saved queries",
-      "de": "{count} gespeicherten Abfragen"
+      "context": "Part of the list of uses in the delete question on the Hermes settings page: several reports. Takes {count}. German in the dative after von.",
+      "en": "{count} reports",
+      "de": "{count} Auswertungen"
     },
     {
       "key": "settings.tax_contexts_uses_two",
@@ -7220,15 +7280,15 @@
     },
     {
       "key": "settings.tax_contexts_move_label",
-      "context": "Label of the row on the Hermes settings page where the user picks which tax context the documents, rules and saved queries move to.",
+      "context": "Label of the row on the Hermes settings page where the user picks which tax context the documents, rules and reports move to.",
       "en": "Move them to",
       "de": "Verschieben nach"
     },
     {
       "key": "settings.tax_contexts_move_note",
       "context": "Description of the row on the Hermes settings page that picks where the uses of a deleted tax context move to.",
-      "en": "Documents, rules and saved queries get this tax context instead.",
-      "de": "Dokumente, Regeln und gespeicherte Abfragen bekommen stattdessen diesen Steuerkontext."
+      "en": "Documents, rules and reports get this tax context instead.",
+      "de": "Dokumente, Regeln und Auswertungen bekommen stattdessen diesen Steuerkontext."
     },
     {
       "key": "settings.tax_contexts_move_none",
