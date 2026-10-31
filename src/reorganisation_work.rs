@@ -164,7 +164,8 @@ impl<P: Progress> Progress for Overall<'_, P> {
 }
 
 /// The entries of the plan that move something, with the document the index
-/// knows the file as.
+/// knows the file as. The plan holds paths below the location; the index and
+/// the executor work with whole paths.
 fn execution_items(
     index: &Index,
     entries: &[&PlannedItem],
@@ -175,7 +176,7 @@ fn execution_items(
         else {
             continue;
         };
-        let from = entry.item.source.clone();
+        let from = entry.location.join(&entry.item.source);
         let (document_id, duplicate) = match index.document_by_path(&from)? {
             Some(document) => (Some(document.id), false),
             None => match index.document_by_duplicate_path(&from)? {
@@ -185,7 +186,7 @@ fn execution_items(
         };
         items.push(ExecutionItem {
             from,
-            to: target.clone(),
+            to: entry.location.join(target),
             expected_hash: entry.item.hash,
             document_id,
             duplicate,
@@ -283,9 +284,8 @@ pub mod tests {
 
     use chrono::{NaiveDate, TimeZone as _, Utc};
     use ncrs_index::{
-        Condition, ConditionKind, ContentHash, DocumentFields, DocumentId, DocumentSource,
-        FieldOrigin, FileStamp, NewDocument, PlanOutcome, RuleConditions, RuleEvidence, RuleSpec,
-        TaxContext,
+        Condition, ConditionKind, DocumentFields, DocumentId, DocumentSource, FieldOrigin,
+        FileStamp, NewDocument, PlanOutcome, RuleConditions, RuleEvidence, RuleSpec, TaxContext,
     };
     use tempfile::TempDir;
 
@@ -331,7 +331,7 @@ pub mod tests {
             let index = guard.as_mut().unwrap();
             let id = index
                 .insert_document(&NewDocument {
-                    hash: ContentHash([seed; 32]),
+                    hash: ncrs_intake::hash_path(&self.root.join(relative)).unwrap(),
                     path: self.root.join(relative),
                     source: DocumentSource::Archive,
                     received_at: Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
@@ -596,6 +596,75 @@ pub mod tests {
         let items = archive.access().plan().unwrap();
 
         assert!(!items.is_empty());
+        assert_eq!(archive.snapshot(), before);
+    }
+
+    fn moved_target(entry: &PlannedItem) -> &Path {
+        match &entry.item.outcome {
+            PlanOutcome::Move { target } | PlanOutcome::Rename { target } => target,
+            other => panic!("expected a move, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn executing_a_plan_entry_moves_the_file_and_repoints_the_index() {
+        let archive = archive();
+        let access = archive.access();
+        let items = access.plan().unwrap();
+        let entry = item(&items, "Insurance/2023/2024-05-01_invoice.pdf");
+        let source = archive.root.join(&entry.item.source);
+        let target = archive.root.join(moved_target(entry));
+        let content = fs::read(&source).unwrap();
+        let id_before = archive
+            .slot
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .document_by_path(&source)
+            .unwrap()
+            .unwrap()
+            .id;
+
+        let summary = access
+            .execute(
+                std::slice::from_ref(entry),
+                &mut crate::fs::transfer::Counting,
+            )
+            .unwrap();
+
+        assert_eq!(summary.moved, 1);
+        assert_eq!(fs::read(&target).unwrap(), content);
+        assert!(!source.exists());
+        let guard = archive.slot.lock().unwrap();
+        let index = guard.as_ref().unwrap();
+        assert_eq!(
+            index.document_by_path(&target).unwrap().map(|d| d.id),
+            Some(id_before)
+        );
+        assert!(index.document_by_path(&source).unwrap().is_none());
+    }
+
+    #[test]
+    fn undoing_an_executed_plan_entry_puts_the_file_back() {
+        let archive = archive();
+        let access = archive.access();
+        let items = access.plan().unwrap();
+        let entries = [
+            item(&items, "Insurance/2023/2024-05-01_invoice.pdf").clone(),
+            item(&items, "Misc/2024-04-01_invoice.pdf").clone(),
+        ];
+        let before = archive.snapshot();
+
+        let summary = access
+            .execute(&entries, &mut crate::fs::transfer::Counting)
+            .unwrap();
+        assert_eq!(summary.moved, 2);
+        assert_ne!(archive.snapshot(), before);
+
+        let report = access.undo_last().unwrap().unwrap();
+
+        assert_eq!(report.undone, 2);
         assert_eq!(archive.snapshot(), before);
     }
 
