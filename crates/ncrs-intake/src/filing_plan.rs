@@ -465,7 +465,7 @@ impl Placeholder {
             Self::Kind | Self::Name => {
                 let kind = fields.kind.as_deref()?;
                 match kinds {
-                    Some(kinds) => sanitise_value(&kinds.kind_word(kind)),
+                    Some(language_kinds) => sanitise_value(&language_kinds.kind_word(kind)),
                     None => sanitise_value(kind),
                 }
             }
