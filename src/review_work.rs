@@ -235,7 +235,7 @@ impl ReviewAccess {
             confirmed: true,
             enabled: true,
         };
-        self.with_index(|index| index.create_rule(&spec))
+        self.with_index(|index| index.create_rule_from(&spec, ncrs_index::RuleOrigin::Filing))
     }
 
     fn with_index<T>(

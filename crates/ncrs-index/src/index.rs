@@ -1394,6 +1394,36 @@ mod tests {
     }
 
     #[test]
+    fn a_version_17_database_gains_the_origin_of_its_rules() {
+        use crate::model::{RuleId, RuleOrigin};
+
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let old = Index::create_plain_with_migrations(&path, &MIGRATIONS[..17]).unwrap();
+        assert_eq!(user_version(&old), 17);
+        old.conn
+            .execute_batch(
+                "INSERT INTO document_kind (id, name, name_key) VALUES (1, 'Invoice', 'invoice');
+                 INSERT INTO rule (id, kind_id, tax_context_id, filing_pattern, confirmed)
+                 VALUES (1, 1, 0, '{year}', 0), (2, 1, 0, '{year}', 1);
+                 INSERT INTO rule_condition (rule_id, position, kind, value)
+                 VALUES (1, 0, 'word', 'rent'), (2, 0, 'word', 'tax');
+                 INSERT INTO rule_evidence
+                     (rule_id, matching_in_folder, folder_documents, matching_elsewhere, updated_at)
+                 VALUES (1, 3, 3, 0, 1700000000);",
+            )
+            .unwrap();
+        drop(old);
+
+        let index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
+
+        assert_eq!(user_version(&index), latest_version());
+        let origin_of = |id: i64| index.rule(RuleId::new(id)).unwrap().unwrap().origin;
+        assert_eq!(origin_of(1), RuleOrigin::Suggestion);
+        assert_eq!(origin_of(2), RuleOrigin::Filing);
+    }
+
+    #[test]
     fn a_document_cannot_be_given_a_tax_context_that_is_not_stored() {
         use crate::model::{DocumentFields, FieldOrigin, TaxContext};
         use crate::test_support::{encrypted_index, new_document};

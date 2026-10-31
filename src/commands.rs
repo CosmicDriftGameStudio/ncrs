@@ -206,6 +206,9 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             Msg::ActionFilingSetup,
             FuturamaName::ActionFilingSetup,
         ),
+        KeyAction::Rules => {
+            Command::themed(action, Hermes, Msg::ActionRules, FuturamaName::ActionRules)
+        }
         KeyAction::RuleSuggestions => Command::themed(
             action,
             Hermes,
