@@ -84,6 +84,7 @@ fn decide(
     document: &Document,
 ) -> Result<Decision, IndexError> {
     let text = index.document_text(document.id)?.unwrap_or_default();
+    let manual_fields = index.field_origins(document.id)?.manual_fields();
     let planning = plan(
         rules,
         &PlanInput {
@@ -92,7 +93,7 @@ fn decide(
             path: Some(&document.path),
             sender_aliases,
             tax_contexts,
-            manual_fields: &[],
+            manual_fields: &manual_fields,
         },
     );
     match planning {
@@ -124,7 +125,7 @@ fn decide(
 
 /// A review entry that is already open is kept; the status is what the
 /// filing job depends on.
-fn send_to_review(
+pub fn send_to_review(
     index: &mut Index,
     document: &Document,
     reason: ReviewReason,

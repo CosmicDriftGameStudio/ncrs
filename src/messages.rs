@@ -43,6 +43,7 @@ use crate::open_vsx::FetchError;
 use crate::palette::{ColorRole, ThemePreset};
 use crate::query_work::{ExportSummary, QueryHit};
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
+use crate::replan_work::{ReplanItem, ReplanSummary};
 use crate::review_list::FormField;
 use crate::review_work::{AcceptSummary, ConfirmOutcome, ReviewItem};
 use crate::rules_work::{RulesLoad, TryResult};
@@ -413,6 +414,8 @@ pub enum Message {
     UndoReorganisation,
     /// The filing job on its blocking thread is done.
     DocumentsFiled(Result<FilingSummary, String>),
+    /// The job that files the previewed documents is done.
+    DocumentsRefiled(Result<ReplanSummary, String>),
     /// `None`: there was no carried out reorganisation left to undo.
     ReorganisationUndone(Result<Option<UndoReport>, String>),
 
@@ -1024,6 +1027,8 @@ pub enum SavedQueriesMessage {
 pub enum HermesFileMessage {
     HandToInbox,
     ProcessAgain,
+    /// Plans the documents of the folder again and shows the preview.
+    ReprocessFolder,
     SetRole(FolderRole),
     /// Excludes the file, or includes it again when it is excluded.
     ToggleExclusion,
@@ -1092,6 +1097,19 @@ pub enum ReviewListMessage {
     ReadAgainWithAi,
     /// The offer after filing: opens the rule form for this sender.
     CreateRule,
+    /// The button or its key: plans the open cases again, as a preview.
+    ReplanOpenCases,
+    /// The work of the generation planned the documents again, without
+    /// changing anything. Dropped when the list was closed or opened again.
+    Previewed {
+        generation: u64,
+        serial: u64,
+        result: Result<Vec<ReplanItem>, String>,
+    },
+    /// Files the previewed documents.
+    ReplanConfirm,
+    /// Leaves the preview; nothing was filed.
+    ReplanCancel,
 }
 
 /// Everything the rules page sends.

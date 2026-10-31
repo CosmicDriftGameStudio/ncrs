@@ -14,6 +14,7 @@ use ncrs_intake::{
 };
 
 use crate::list_window::ListWindow;
+use crate::replan_work::{ReplanItem, ReplanScope};
 use crate::review_work::{
     amount_text, parse_amount, parse_date, parse_tags, tags_text, ConfirmOutcome, FieldError,
     ReviewItem,
@@ -169,6 +170,18 @@ pub struct ConfirmRequest {
     pub pattern: String,
 }
 
+/// The step before documents are filed again with the current rules.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ReplanStep {
+    /// The documents are being planned again; nothing is shown yet.
+    Looking(ReplanScope),
+    /// What the rules would do now. Nothing has moved.
+    Preview {
+        scope: ReplanScope,
+        items: Vec<ReplanItem>,
+    },
+}
+
 /// Most entries of the list shown at once; the list follows the cursor.
 pub const VISIBLE_ROWS: usize = 5;
 
@@ -196,6 +209,9 @@ pub struct ReviewList {
     /// typed or a rule gave; it then follows the other fields.
     pattern_is_default: bool,
     tax_contexts: Vec<TaxContextEntry>,
+    replan: Option<ReplanStep>,
+    /// Tells the answer of the preview that is current from a stale one.
+    replan_serial: u64,
 }
 
 impl ReviewList {
@@ -216,6 +232,8 @@ impl ReviewList {
             custom_default_pattern: None,
             pattern_is_default: false,
             tax_contexts: Vec::new(),
+            replan: None,
+            replan_serial: 0,
         }
     }
 
@@ -345,7 +363,68 @@ impl ReviewList {
         self.focus_request = Some(field);
     }
 
+    pub fn replan(&self) -> Option<&ReplanStep> {
+        self.replan.as_ref()
+    }
+
+    /// Starts the preview step for `scope`; the number tells its answer from
+    /// an older one. `None` while a step is up.
+    pub fn begin_replan(&mut self, scope: ReplanScope) -> Option<u64> {
+        if self.replan.is_some() {
+            return None;
+        }
+        self.editing = false;
+        self.problem = None;
+        self.replan_serial = self.replan_serial.wrapping_add(1);
+        self.replan = Some(ReplanStep::Looking(scope));
+        Some(self.replan_serial)
+    }
+
+    /// The documents planned again. An answer for a step that was left, or
+    /// for an older one, is dropped.
+    pub fn previewed(&mut self, serial: u64, items: Vec<ReplanItem>) {
+        if serial != self.replan_serial {
+            return;
+        }
+        if let Some(ReplanStep::Looking(scope)) = self.replan.take() {
+            self.replan = Some(ReplanStep::Preview { scope, items });
+        }
+    }
+
+    /// Leaves the step; true when there was one.
+    pub fn cancel_replan(&mut self) -> bool {
+        self.replan.take().is_some()
+    }
+
+    /// How many of the previewed documents would be filed.
+    pub fn replan_fileable(&self) -> usize {
+        match &self.replan {
+            Some(ReplanStep::Preview { items, .. }) => {
+                items.iter().filter(|item| item.would_be_filed()).count()
+            }
+            Some(ReplanStep::Looking(_)) | None => 0,
+        }
+    }
+
+    /// Ends the step with the user's confirm: the previewed documents and
+    /// the scope they came from. `None` when nothing would be filed.
+    pub fn confirm_replan(&mut self) -> Option<(ReplanScope, Vec<ReplanItem>)> {
+        if self.replan_fileable() == 0 {
+            return None;
+        }
+        match self.replan.take() {
+            Some(ReplanStep::Preview { scope, items }) => Some((scope, items)),
+            other => {
+                self.replan = other;
+                None
+            }
+        }
+    }
+
     pub fn failed(&mut self, detail: String) {
+        if matches!(self.replan, Some(ReplanStep::Looking(_))) {
+            self.replan = None;
+        }
         self.busy = false;
         self.pending_notice = None;
         self.problem = Some(Problem::Failed(detail));
@@ -377,7 +456,7 @@ impl ReviewList {
     }
 
     pub fn start_edit(&mut self) {
-        if !self.busy && self.selected().is_some() {
+        if !self.busy && self.replan.is_none() && self.selected().is_some() {
             self.editing = true;
         }
     }
@@ -418,7 +497,7 @@ impl ReviewList {
     /// reported in the view and nothing is returned. Marks the view busy until
     /// the work answers.
     pub fn begin_confirm(&mut self) -> Option<ConfirmRequest> {
-        if self.busy {
+        if self.busy || self.replan.is_some() {
             return None;
         }
         let row = self.rows.get(self.cursor)?;
@@ -656,6 +735,55 @@ pub mod tests {
                 .collect(),
         );
         list
+    }
+
+    fn replan_item(row: &ReviewItem, after: crate::replan_work::ReplanAfter) -> ReplanItem {
+        ReplanItem {
+            document_id: row.document_id,
+            review: Some(row.entry),
+            path: row.path.clone(),
+            now: Some(row.reason),
+            after,
+        }
+    }
+
+    #[test]
+    fn replan_the_step_files_nothing_by_hand_and_an_old_answer_is_dropped() {
+        use crate::replan_work::ReplanAfter;
+
+        let mut list = loaded_list();
+        let first = list.rows()[0].clone();
+        let serial = list.begin_replan(ReplanScope::OpenCases).unwrap();
+        assert!(list.begin_replan(ReplanScope::OpenCases).is_none());
+        assert!(list.begin_confirm().is_none(), "Enter does not file a row");
+        assert!(list.confirm_replan().is_none(), "nothing is previewed yet");
+
+        list.previewed(serial.wrapping_add(1), Vec::new());
+        assert!(matches!(list.replan(), Some(ReplanStep::Looking(_))));
+
+        let path = PathBuf::from("Company A/invoice.pdf");
+        list.previewed(serial, vec![replan_item(&first, ReplanAfter::Filed(path))]);
+        assert_eq!(list.replan_fileable(), 1);
+        let (scope, items) = list.confirm_replan().unwrap();
+        assert_eq!(scope, ReplanScope::OpenCases);
+        assert_eq!(items.len(), 1);
+        assert!(list.replan().is_none());
+    }
+
+    #[test]
+    fn replan_a_preview_without_a_document_to_file_cannot_be_confirmed() {
+        use crate::replan_work::ReplanAfter;
+
+        let mut list = loaded_list();
+        let first = list.rows()[0].clone();
+        let serial = list.begin_replan(ReplanScope::OpenCases).unwrap();
+        list.previewed(serial, vec![replan_item(&first, ReplanAfter::Unread)]);
+
+        assert_eq!(list.replan_fileable(), 0);
+        assert!(list.confirm_replan().is_none());
+        assert!(list.replan().is_some(), "the step stays until it is left");
+        assert!(list.cancel_replan());
+        assert!(!list.cancel_replan());
     }
 
     #[test]

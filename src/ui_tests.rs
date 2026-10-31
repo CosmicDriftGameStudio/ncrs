@@ -2985,6 +2985,69 @@ mod review_list_card {
         matches_snapshot(after_filing(), "review_list_filed_en");
     }
 
+    /// One document that would be filed, one that stays in review, one the
+    /// rules cannot judge yet.
+    fn replan_preview() -> ReviewList {
+        use crate::replan_work::{ReplanAfter, ReplanItem, ReplanScope};
+        use ncrs_index::{Field, ReviewReason};
+
+        let rows = long_list().rows().to_vec();
+        let item = |position: usize, name: &str, after: ReplanAfter| ReplanItem {
+            document_id: rows[position].document_id,
+            review: Some(rows[position].entry),
+            path: PathBuf::from(format!("inbox/{name}")),
+            now: Some(ReviewReason::NoMatchingRule),
+            after,
+        };
+        let mut list = ReviewList::new();
+        let serial = list.begin_replan(ReplanScope::OpenCases).expect("a step");
+        list.previewed(
+            serial,
+            vec![
+                item(
+                    2,
+                    "scan-1.pdf",
+                    ReplanAfter::Filed(PathBuf::from("Company A/2024-03-09_invoice.pdf")),
+                ),
+                item(
+                    3,
+                    "scan-2.pdf",
+                    ReplanAfter::Review(ReviewReason::MissingField(Field::Date)),
+                ),
+                item(4, "scan-3.pdf", ReplanAfter::Unread),
+            ],
+        );
+        list
+    }
+
+    #[test]
+    fn replan_the_preview_names_now_and_after_for_each_row() {
+        for label in [
+            "With the current rules these documents would be filed. Nothing moves before you confirm.",
+            "scan-1.pdf",
+            "Company A/2024-03-09_invoice.pdf",
+            "Stays in review: Date missing",
+            "Not read yet",
+            "1 of 3 documents would be filed.",
+            "File 1 document",
+            "Cancel",
+        ] {
+            assert!(shows(replan_preview(), label), "{label}");
+        }
+    }
+
+    #[test]
+    fn replan_the_page_offers_the_button_for_the_open_cases() {
+        assert!(shows(loaded_list(), "Apply to open cases"));
+        assert!(!shows(replan_preview(), "Apply to open cases"));
+    }
+
+    #[test]
+    fn replan_the_preview_matches_its_snapshots() {
+        matches_snapshot(replan_preview(), "review_replan_en");
+        matches_snapshot(replan_preview(), "review_replan_de");
+    }
+
     #[test]
     fn the_default_pattern_is_named_in_the_reason_and_previewed() {
         for label in [

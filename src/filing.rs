@@ -38,6 +38,7 @@ use crate::filing_work::FilingAccess;
 use crate::hermes_column::{read_column, ColumnReading, ColumnRequest};
 use crate::query_work::QueryAccess;
 use crate::reorganisation_work::PlanAccess;
+use crate::replan_work::ReplanAccess;
 use crate::review_work::ReviewAccess;
 use crate::rules_work::RulesAccess;
 use crate::suggestion_work::SuggestionAccess;
@@ -1168,6 +1169,22 @@ impl FilingModule {
         Some(ReviewAccess::new(Arc::clone(&self.index), root))
     }
 
+    /// The handle of re-planning and refiling: the inbox locations that can be
+    /// reached bound what it may touch, the archive is the filing target.
+    pub fn replan_access(&self) -> Option<ReplanAccess> {
+        let root = self.target_root()?;
+        let inbox_roots = self
+            .reachable_locations()
+            .filter(|location| location.mode == LocationMode::Inbox)
+            .map(|location| location.path.clone())
+            .collect();
+        Some(ReplanAccess::new(
+            Arc::clone(&self.index),
+            inbox_roots,
+            root,
+        ))
+    }
+
     /// The handle of the saved queries: they only read the index, so the
     /// module being `Ready` is enough.
     pub fn query_access(&self) -> Option<QueryAccess> {
@@ -1824,6 +1841,15 @@ impl FilingModule {
         Self {
             index: Arc::new(Mutex::new(Some(index))),
             ..Self::in_phase(phase)
+        }
+    }
+
+    /// A ready module over `index` whose locations are `configured`, looked up
+    /// on disk like the start work does.
+    pub fn ready_over_index_with_locations(index: Index, configured: &[FilingLocation]) -> Self {
+        Self {
+            locations: resolve_locations(configured),
+            ..Self::in_phase_over_index(Phase::Ready, index)
         }
     }
 

@@ -23,7 +23,8 @@ use crate::filing_work::target_of;
 use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{HermesFocus, HermesPage, Message, ReviewListMessage};
 use crate::palette::Palette;
-use crate::review_list::{FiledNotice, FormField, Problem, ReviewList, VISIBLE_ROWS};
+use crate::replan_work::{ReplanAfter, ReplanItem};
+use crate::review_list::{FiledNotice, FormField, Problem, ReplanStep, ReviewList, VISIBLE_ROWS};
 use crate::review_work::{ReviewItem, TextState};
 
 pub const SENDER_ID: &str = "review-sender";
@@ -74,8 +75,15 @@ pub fn view<'a>(
     palette: &Palette,
 ) -> Element<'a, Message> {
     let line_chars = frame::content_chars(SIZE, window, frame::SIDEBAR_ROOM);
-    let mut body =
-        column![paragraph(lang.text(Msg::ReviewListExplain), palette)].spacing(spacing::LINE_GAP);
+    let mut body = column![].spacing(spacing::LINE_GAP);
+    if let Some(step) = state.replan() {
+        body = body.push(replan_section(step, line_chars, lang, palette));
+        if let Some(problem) = state.problem() {
+            body = body.push(error_line(problem_text(problem, lang), palette));
+        }
+        return finish(state, body, window, badges, guide, lang, palette);
+    }
+    body = body.push(paragraph(lang.text(Msg::ReviewListExplain), palette));
     if guide.explains_empty_fields() {
         body = body.push(kit::warning_box(
             lang.text(Msg::ReviewListNoRulesHint),
@@ -100,7 +108,19 @@ pub fn view<'a>(
     if let Some(problem) = state.problem() {
         body = body.push(error_line(problem_text(problem, lang), palette));
     }
+    finish(state, body, window, badges, guide, lang, palette)
+}
 
+fn finish<'a>(
+    state: &'a ReviewList,
+    body: iced::widget::Column<'a, Message>,
+    window: Size,
+    badges: Badges,
+    guide: FieldGuide,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let line_chars = frame::content_chars(SIZE, window, frame::SIDEBAR_ROOM);
     let mut frame = Frame::new(
         lang.text(Msg::ActionReviewList),
         body,
@@ -114,7 +134,7 @@ pub fn view<'a>(
     .sidebar(hermes::nav(HermesPage::Review, badges, lang, palette))
     .on_close(send(ReviewListMessage::Close))
     .hints(KeyHints {
-        enter: true,
+        enter: state.replan().is_none() || state.replan_fileable() > 0,
         tab: state.is_editing(),
     });
     if let Some(filed) = state.filed() {
@@ -425,12 +445,37 @@ fn buttons<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Vec<Element<'a, Message>> {
+    if state.replan().is_some() {
+        let fileable = state.replan_fileable();
+        return vec![
+            kit::button(
+                lang.text(Msg::ReviewListReplanCancel),
+                Some(send(ReviewListMessage::ReplanCancel)),
+                Tone::Secondary,
+                palette,
+            ),
+            kit::enter_button(
+                &replan_file_label(fileable, lang),
+                (fileable > 0).then(|| send(ReviewListMessage::ReplanConfirm)),
+                Tone::Primary,
+                palette,
+            ),
+        ];
+    }
     let mut items = vec![kit::button(
         lang.text(Msg::ReviewListClose),
         Some(send(ReviewListMessage::Close)),
         Tone::Secondary,
         palette,
     )];
+    if !state.rows().is_empty() {
+        items.push(kit::button(
+            lang.text(Msg::ReviewListReplanButton),
+            (!state.is_busy()).then(|| send(ReviewListMessage::ReplanOpenCases)),
+            Tone::Secondary,
+            palette,
+        ));
+    }
     if guide.ai_is_ready && !state.rows().is_empty() {
         items.push(kit::button(
             &read_again_label(state.rows().len(), lang),
@@ -455,6 +500,120 @@ fn buttons<'a>(
         palette,
     ));
     items
+}
+
+fn replan_file_label(count: usize, lang: Language) -> String {
+    if count == 1 {
+        lang.text(Msg::ReviewListReplanFileOne).to_owned()
+    } else {
+        fill_template(
+            lang.text(Msg::ReviewListReplanFile),
+            &[("{count}", &count.to_string())],
+        )
+    }
+}
+
+/// How the width of a row of the preview is shared: file, now, after.
+const REPLAN_PORTIONS: [u16; 3] = [4, 5, 6];
+
+/// Most rows of the preview shown; the count line covers all of them.
+const REPLAN_VISIBLE_ROWS: usize = 6;
+
+fn replan_section<'a>(
+    step: &'a ReplanStep,
+    line_chars: usize,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let items = match step {
+        ReplanStep::Looking(_) => {
+            return dim(lang.text(Msg::ReviewListReplanLooking), palette);
+        }
+        ReplanStep::Preview { items, .. } => items,
+    };
+    let mut section = column![paragraph(lang.text(Msg::ReviewListReplanExplain), palette)]
+        .spacing(spacing::LINE_GAP);
+    if items.is_empty() {
+        return section
+            .push(dim(lang.text(Msg::ReviewListReplanEmpty), palette))
+            .into();
+    }
+    let columns = Columns {
+        portions: &REPLAN_PORTIONS,
+        line_chars,
+    };
+    section = section.push(columns.header(
+        &[
+            lang.text(Msg::ReviewListColumnFile),
+            lang.text(Msg::ReviewListReplanColumnNow),
+            lang.text(Msg::ReviewListReplanColumnAfter),
+        ],
+        palette,
+    ));
+    for item in items.iter().take(REPLAN_VISIBLE_ROWS) {
+        let (now, after) = replan_texts(item, lang);
+        section = section.push(
+            row![
+                columns.path_cell(0, &replan_file_name(item), palette.text),
+                columns.cell(1, &now, palette.text),
+                columns.cell(2, &after, palette.text),
+            ]
+            .align_y(alignment::Vertical::Center),
+        );
+    }
+    let hidden = items.len().saturating_sub(REPLAN_VISIBLE_ROWS);
+    if hidden > 0 {
+        section = section.push(dim(
+            fill_template(
+                lang.text(Msg::ReviewListReplanMore),
+                &[("{count}", &hidden.to_string())],
+            ),
+            palette,
+        ));
+    }
+    let fileable = items.iter().filter(|item| item.would_be_filed()).count();
+    section
+        .push(paragraph(
+            fill_template(
+                lang.text(Msg::ReviewListReplanCount),
+                &[
+                    ("{filed}", &fileable.to_string()),
+                    ("{total}", &items.len().to_string()),
+                ],
+            ),
+            palette,
+        ))
+        .into()
+}
+
+fn replan_file_name(item: &ReplanItem) -> String {
+    item.path.file_name().map_or_else(
+        || item.path.display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    )
+}
+
+/// The `now` and `after` cells of a previewed document. A document the rules
+/// could not read is not judged by its reason as if its text were empty.
+fn replan_texts(item: &ReplanItem, lang: Language) -> (String, String) {
+    let text_state = if item.after == ReplanAfter::Unread {
+        TextState::NoneFound
+    } else {
+        TextState::Read
+    };
+    let now = item.now.map_or_else(
+        || lang.text(Msg::ReviewListReplanNowNone).to_owned(),
+        |reason| reason_text(reason, text_state, lang),
+    );
+    let after = match &item.after {
+        ReplanAfter::Filed(path) => path.display().to_string(),
+        ReplanAfter::Review(reason) => fill_template(
+            lang.text(Msg::ReviewListReplanAfterReview),
+            &[("{reason}", &reason_text(*reason, TextState::Read, lang))],
+        ),
+        ReplanAfter::Unread => lang.text(Msg::ReviewListReplanAfterUnread).to_owned(),
+    };
+    (now, after)
 }
 
 fn read_again_label(count: usize, lang: Language) -> String {

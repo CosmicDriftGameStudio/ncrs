@@ -7595,6 +7595,120 @@
       "context": "Error line in the rule form when the filing pattern contains a block in braces that does not exist. Takes the name between the braces.",
       "en": "“{block}” is not a block. Use the buttons below.",
       "de": "„{block}“ ist kein Baustein. Nimm die Schaltflächen darunter."
+    },
+    {
+      "key": "review_list.replan_button",
+      "context": "Button in the review list: plans the open cases again with the current rules and shows what would change, before anything is filed.",
+      "en": "Apply to open cases",
+      "de": "Auf offene Fälle anwenden"
+    },
+    {
+      "key": "review_list.replan_looking",
+      "context": "Line in the review list while the documents are being planned again with the current rules.",
+      "en": "Looking …",
+      "de": "Ich suche …"
+    },
+    {
+      "key": "review_list.replan_explain",
+      "context": "Sentence at the top of the preview step of the review list, which lists documents with where they stand now and where the current rules would put them.",
+      "en": "With the current rules these documents would be filed. Nothing moves before you confirm.",
+      "de": "Mit den aktuellen Regeln würden diese Dokumente abgelegt. Es wird nichts verschoben, bevor du bestätigst."
+    },
+    {
+      "key": "review_list.replan_column_now",
+      "context": "Column header in the preview step of the review list: why the document is in review now, or that it is not.",
+      "en": "Now",
+      "de": "Jetzt"
+    },
+    {
+      "key": "review_list.replan_column_after",
+      "context": "Column header in the preview step of the review list: where the current rules would put the document.",
+      "en": "After",
+      "de": "Danach"
+    },
+    {
+      "key": "review_list.replan_now_none",
+      "context": "Cell in the preview step of the review list: the document is not in review at the moment.",
+      "en": "Not in review",
+      "de": "Nicht in der Rückfrage"
+    },
+    {
+      "key": "review_list.replan_after_review",
+      "context": "Cell in the preview step of the review list: the document would stay in review. Takes the reason, for example “No rule matches”.",
+      "en": "Stays in review: {reason}",
+      "de": "Bleibt in der Rückfrage: {reason}"
+    },
+    {
+      "key": "review_list.replan_after_unread",
+      "context": "Cell in the preview step of the review list: no text of the document is stored yet, so the rules cannot judge it.",
+      "en": "Not read yet",
+      "de": "Noch nicht gelesen"
+    },
+    {
+      "key": "review_list.replan_count",
+      "context": "Line under the list of the preview step of the review list. Takes the number of documents that would be filed and the number of all listed documents.",
+      "en": "{filed} of {total} documents would be filed.",
+      "de": "Abgelegt würden: {filed} von {total} Dokumenten."
+    },
+    {
+      "key": "review_list.replan_empty",
+      "context": "Line in the preview step of the review list when there is no document to plan again.",
+      "en": "No document to plan again.",
+      "de": "Kein Dokument, das neu geplant werden könnte."
+    },
+    {
+      "key": "review_list.replan_more",
+      "context": "Last line of the list in the preview step of the review list when more documents exist than are shown. Takes the number of the others.",
+      "en": "+{count} more",
+      "de": "+{count} weitere"
+    },
+    {
+      "key": "review_list.replan_cancel",
+      "context": "Button in the preview step of the review list: leaves the step, nothing is filed.",
+      "en": "Cancel",
+      "de": "Abbrechen"
+    },
+    {
+      "key": "review_list.replan_file",
+      "context": "Button in the preview step of the review list: files the previewed documents. Takes their number (not one).",
+      "en": "File {count} documents",
+      "de": "{count} Dokumente ablegen"
+    },
+    {
+      "key": "review_list.replan_file_one",
+      "context": "Button in the preview step of the review list: files the one previewed document.",
+      "en": "File 1 document",
+      "de": "1 Dokument ablegen"
+    },
+    {
+      "key": "action.hermes_reprocess_folder",
+      "context": "Entry of the command list and the menu that runs the key action hermes_reprocess_folder: plans the documents of the folder under the cursor again with the current rules and shows a preview in the review list; nothing is filed before the user confirms.",
+      "en": "Reprocess folder",
+      "de": "Ordner erneut verarbeiten"
+    },
+    {
+      "key": "hermes_menu.reprocess_folder",
+      "context": "Entry of the Hermes submenu of the context menu; acts on the folder under the cursor. Plans its documents again with the current rules and shows a preview first.",
+      "en": "Reprocess folder",
+      "de": "Ordner erneut verarbeiten"
+    },
+    {
+      "key": "status.reprocess_outside_inbox",
+      "context": "Status bar message when Reprocess folder is used on a folder that does not lie in an inbox location; nothing is done.",
+      "en": "Only folders in an inbox location can be reprocessed.",
+      "de": "Nur Ordner in einem Eingangsordner können erneut verarbeitet werden."
+    },
+    {
+      "key": "status.refile_waiting",
+      "context": "Status bar message after the user confirmed filing the previewed documents while another job is running: the filing starts when that job is done.",
+      "en": "The documents are filed when the running job is done.",
+      "de": "Die Dokumente werden abgelegt, sobald der laufende Auftrag fertig ist."
+    },
+    {
+      "key": "status.refile_done",
+      "context": "Status bar message after the previewed documents were filed. Takes the numbers filed, left in review, changed since the preview (not moved) and read again.",
+      "en": "{filed} filed, {reviewed} stayed in review, {changed} changed since the preview, {requeued} read again",
+      "de": "{filed} abgelegt, {reviewed} in der Rückfrage geblieben, {changed} seit der Vorschau geändert, {requeued} neu gelesen"
     }
   ]
 }
