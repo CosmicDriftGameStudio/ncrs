@@ -30,7 +30,9 @@ workspace = true
 # "advanced" is what re-exports iced's `Program` trait. It is the trait the
 # end-to-end tests drive the app through, so without it `tests/` could not use
 # the real `main` wiring and would have to duplicate it.
-iced = { version = "0.14", default-features = false, features = ["tokio", "fira-sans", "x11", "wayland", "advanced", "svg"] }
+# "image-without-codecs" is the image widget and handle of the document preview;
+# the preview decodes the files itself (see `image` below).
+iced = { version = "0.14", default-features = false, features = ["tokio", "fira-sans", "x11", "wayland", "advanced", "svg", "image-without-codecs"] }
 # Only what the code uses: spawn_blocking, #[tokio::test], the multi-thread
 # runtime iced's executor needs and, for the SFTP connection, TCP ("net", which
 # russh switches on as well). "full" also pulls signal-hook-registry and wasi,
@@ -123,6 +125,10 @@ arboard = { version = "3.6", default-features = false, features = ["image-data"]
 # Encodes a pasted picture as PNG. Already in the tree through arboard's image
 # dependency and iced.
 png = "0.18"
+# The document preview decodes pictures itself, with limits on size and memory,
+# and scales them down before iced sees them. Only the formats the file types
+# of the intake name (HEIC stays unsupported).
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff"] }
 
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
 # Without the data-control protocol the clipboard cannot be read or written on
@@ -190,6 +196,8 @@ gpu-with-fallback = ["iced/wgpu", "iced/tiny-skia"]
 # snapshot images, and Ice scripts.
 iced_test = "0.14"
 iced_selector = "0.14"
+# A one-page PDF for the tests of the document preview.
+ncrs-intake = { path = "crates/ncrs-intake", version = "0.0.0", features = ["test-support"] }
 # The checksum of the bytes a test server hands out for the AI model download.
 sha2 = "0.10"
 # Writes the 7z archives the tests read; the release build only decodes.

@@ -66,6 +66,7 @@ pub mod radius {
     pub const FRAME: f32 = 6.0;
     pub const CONTROL: f32 = 4.0;
     pub const KEY_CAP: f32 = 3.0;
+    pub const CHIP: f32 = 8.0;
 }
 
 /// How much of a button's look stays while it is disabled.
@@ -479,6 +480,31 @@ pub fn key_cap(palette: &Palette, on_fill: bool) -> impl Fn(&Theme) -> container
         ..container::Style::default()
     }
 }
+
+/// A chip: a short label on a tinted ground without an outline. On a filled
+/// (highlighted) row it takes the colors of the highlight.
+pub fn chip(palette: &Palette, on_fill: bool) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
+    move |_theme| {
+        let (ink, tint) = if on_fill {
+            (colors.cursor_text, colors.cursor_text)
+        } else {
+            (colors.text, colors.dim_text)
+        };
+        container::Style {
+            text_color: Some(ink),
+            background: Some(tint.scale_alpha(CHIP_TINT_ALPHA).into()),
+            border: Border {
+                radius: radius::CHIP.into(),
+                ..Border::default()
+            },
+            ..container::Style::default()
+        }
+    }
+}
+
+/// How strongly the tint of a chip shows against its ground.
+const CHIP_TINT_ALPHA: f32 = 0.25;
 
 /// One option of a segmented control: flat, the chosen one outlined in the
 /// cursor color.

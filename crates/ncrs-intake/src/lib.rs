@@ -72,6 +72,7 @@ pub use stability::{StabilityTracker, STABLE_AFTER};
 pub use take_in::{has_symlink_ancestor_under, hash_path, take_in, Outcome};
 pub use text::{
     pdfium_library_candidates, pdfium_library_dir, Extracted, ImageTextSource,
-    ImageTextWithFallback, PageImage, PdfText, PdfUnavailable, TextChain, TextError, TextSource,
+    ImageTextWithFallback, PageImage, PdfText, PdfUnavailable, PreviewPage, TextChain, TextError,
+    TextSource,
 };
 pub use watcher::{LocationWatcher, WatchEvent};

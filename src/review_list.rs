@@ -13,6 +13,7 @@ use ncrs_intake::{
     choose_pattern, default_pattern_for, missing_field, render_pattern, PatternSource,
 };
 
+use crate::document_preview::{DocumentPreview, PreviewContent, PreviewRequest};
 use crate::list_window::ListWindow;
 use crate::replan_work::{ReplanItem, ReplanScope};
 use crate::review_work::{
@@ -183,7 +184,7 @@ pub enum ReplanStep {
 }
 
 /// Most entries of the list shown at once; the list follows the cursor.
-pub const VISIBLE_ROWS: usize = 5;
+pub const VISIBLE_ROWS: usize = 14;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReviewList {
@@ -212,6 +213,7 @@ pub struct ReviewList {
     replan: Option<ReplanStep>,
     /// Tells the answer of the preview that is current from a stale one.
     replan_serial: u64,
+    document_preview: DocumentPreview,
 }
 
 impl ReviewList {
@@ -234,6 +236,7 @@ impl ReviewList {
             tax_contexts: Vec::new(),
             replan: None,
             replan_serial: 0,
+            document_preview: DocumentPreview::default(),
         }
     }
 
@@ -302,6 +305,31 @@ impl ReviewList {
 
     pub fn filed(&self) -> Option<&FiledNotice> {
         self.filed.as_ref()
+    }
+
+    pub fn document_preview(&self) -> &DocumentPreview {
+        &self.document_preview
+    }
+
+    /// The request for the preview of the document under the cursor, if it
+    /// is not the one the preview shows or waits for.
+    pub fn preview_request(&mut self) -> Option<PreviewRequest> {
+        match self.rows.get(self.cursor) {
+            Some(item) => self.document_preview.request(&item.path),
+            None => {
+                self.document_preview.clear();
+                None
+            }
+        }
+    }
+
+    pub fn preview_loaded(&mut self, serial: u64, content: PreviewContent) {
+        self.document_preview.loaded(serial, content);
+    }
+
+    #[cfg(test)]
+    pub fn show_preview_for_test(&mut self, content: PreviewContent) {
+        self.document_preview = DocumentPreview::showing(content);
     }
 
     /// Open entries, for the badge of the sidebar; known once loaded.

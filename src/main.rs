@@ -26,6 +26,7 @@ mod condition_editor;
 mod config;
 mod context_menu;
 mod dialog;
+mod document_preview;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod drag_out;
 mod execute;

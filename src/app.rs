@@ -29,6 +29,7 @@ use crate::config::{
 };
 use crate::context_menu::{ContextAction, ContextMenu, HermesAction, HermesMenu, InputState};
 use crate::dialog::{Prompt, PromptKind};
+use crate::document_preview;
 use crate::execute;
 use crate::filing::{
     DocumentFinder, FilingMessage, FilingModule, LocationStatus, Phase, Work, WorkOutcome,
@@ -4215,7 +4216,10 @@ impl App {
             Message::ThemeFetch(fetch_message) => self.update_theme_fetch(fetch_message),
             Message::RuleSuggestions(suggestions) => self.update_rule_suggestions(suggestions),
             Message::Rules(rules) => self.update_rules(rules),
-            Message::ReviewList(review) => self.update_review_list(review),
+            Message::ReviewList(review) => {
+                let update = self.update_review_list(review);
+                Task::batch([update, self.request_review_preview()])
+            }
             Message::SavedQueries(queries) => self.update_saved_queries(queries),
             Message::HermesPage(page) => self.show_hermes_page(page),
             Message::HermesFocus(focus) => self.focus_hermes(focus),
@@ -10712,7 +10716,43 @@ impl App {
                 }
                 Task::none()
             }
+            ReviewListMessage::PreviewLoaded {
+                generation,
+                serial,
+                content,
+            } => {
+                if generation == self.review_list_generation {
+                    if let Some(view) = self.review_list.as_mut() {
+                        view.preview_loaded(serial, content);
+                    }
+                }
+                Task::none()
+            }
         }
+    }
+
+    /// Makes the preview of the document under the cursor, on a blocking
+    /// thread, when the cursor has moved to another one.
+    fn request_review_preview(&mut self) -> Task<Message> {
+        let generation = self.review_list_generation;
+        let Some(request) = self
+            .review_list
+            .as_mut()
+            .and_then(ReviewList::preview_request)
+        else {
+            return Task::none();
+        };
+        let serial = request.serial;
+        Task::perform(
+            document_preview::load_off_thread(request.path),
+            move |content| {
+                Message::ReviewList(ReviewListMessage::PreviewLoaded {
+                    generation,
+                    serial,
+                    content,
+                })
+            },
+        )
     }
 
     /// Opens the review page if it is not up and plans the documents of
@@ -16571,6 +16611,10 @@ impl App {
 
     pub fn review_list_for_test(&self) -> Option<&ReviewList> {
         self.review_list.as_ref()
+    }
+
+    pub fn review_list_generation_for_test(&self) -> u64 {
+        self.review_list_generation
     }
 
     /// Fixed panels with the review list up, in the state of `view`.
