@@ -93,8 +93,8 @@ impl Index {
         require_free_name(&tx, name, None)?;
         let tax_context_id = optional_tax_context_id(&tx, spec.tax_context.as_ref())?;
         tx.execute(
-            "INSERT INTO saved_query (name, year, tax_context_id, kind, full_text, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO saved_query (name, year, tax_context_id, kind, full_text, created_at, sender)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 name,
                 spec.year,
@@ -102,6 +102,7 @@ impl Index {
                 blank_to_none(&spec.kind),
                 full_text_words(spec),
                 Utc::now().timestamp(),
+                blank_to_none(&spec.sender),
             ],
         )?;
         let id = SavedQueryId::new(tx.last_insert_rowid());
@@ -122,7 +123,7 @@ impl Index {
         let tax_context_id = optional_tax_context_id(&tx, spec.tax_context.as_ref())?;
         let changed = tx.execute(
             "UPDATE saved_query SET name = ?2, year = ?3, tax_context_id = ?4, kind = ?5,
-                 full_text = ?6
+                 full_text = ?6, sender = ?7
              WHERE id = ?1",
             params![
                 id.get(),
@@ -131,6 +132,7 @@ impl Index {
                 tax_context_id,
                 blank_to_none(&spec.kind),
                 full_text_words(spec),
+                blank_to_none(&spec.sender),
             ],
         )?;
         if changed == 0 {
@@ -152,7 +154,7 @@ impl Index {
     /// Ordered by name.
     pub fn saved_queries(&self) -> Result<Vec<SavedQuery>, IndexError> {
         let mut statement = self.connection().prepare(
-            "SELECT q.id, q.name, q.year, tc.short_name, q.kind, q.full_text FROM saved_query q
+            "SELECT q.id, q.name, q.year, tc.short_name, q.kind, q.full_text, q.sender FROM saved_query q
              LEFT JOIN tax_context tc ON tc.id = q.tax_context_id
              ORDER BY q.name COLLATE NOCASE, q.name",
         )?;
@@ -165,17 +167,19 @@ impl Index {
                     row.get::<_, Option<String>>(3)?,
                     row.get::<_, Option<String>>(4)?,
                     row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
         rows.into_iter()
-            .map(|(id, name, year, tax_context, kind, full_text)| {
+            .map(|(id, name, year, tax_context, kind, full_text, sender)| {
                 Ok(SavedQuery {
                     id: SavedQueryId::new(id),
                     name,
                     spec: QuerySpec {
                         year,
                         tax_context: tax_context.map(TaxContext::from_short_name),
+                        sender,
                         kind,
                         tags: self.saved_query_tags(id)?,
                         full_text,
@@ -208,6 +212,10 @@ impl Index {
                 self.connection(),
                 tax_context,
             )?));
+        }
+        if let Some(sender) = blank_to_none(&spec.sender) {
+            conditions.push("s.name_key = ?");
+            values.push(Value::Text(sender.to_lowercase()));
         }
         if let Some(kind) = blank_to_none(&spec.kind) {
             conditions.push("k.name_key = ?");
@@ -317,13 +325,22 @@ mod tests {
             (2025, Some(TaxContext::named("company")), "Invoice", &[][..]),
         ];
         let mut ids = Vec::new();
-        for (seed, (year, context, kind, tag_names)) in (1..).zip(stock) {
+        let senders = [
+            "Company A",
+            "Company A",
+            "Company A",
+            "Company A",
+            "Other Ltd",
+        ];
+        for (seed, ((year, context, kind, tag_names), sender)) in
+            (1..).zip(stock.into_iter().zip(senders))
+        {
             let id = index.insert_document(&new_document(seed)).unwrap();
             index
                 .set_document_fields(
                     id,
                     &DocumentFields {
-                        sender: Some("Company A".to_owned()),
+                        sender: Some(sender.to_owned()),
                         kind: Some(kind.to_owned()),
                         tax_context: context,
                         date: NaiveDate::from_ymd_opt(year, 5, 1),
@@ -417,6 +434,23 @@ mod tests {
     }
 
     #[test]
+    fn the_sender_ignores_case_and_finds_exactly_its_documents() {
+        let (_dir, index, ids) = stocked();
+
+        let spec = QuerySpec {
+            sender: Some("  company a ".to_owned()),
+            ..QuerySpec::default()
+        };
+        let other = QuerySpec {
+            sender: Some("OTHER LTD".to_owned()),
+            ..QuerySpec::default()
+        };
+
+        assert_eq!(found(&index, &spec), vec![ids[3], ids[0], ids[1], ids[2]]);
+        assert_eq!(found(&index, &other), vec![ids[4]]);
+    }
+
+    #[test]
     fn user_input_is_a_value_never_sql() {
         let (_dir, index, _ids) = stocked();
 
@@ -456,6 +490,7 @@ mod tests {
         let spec = QuerySpec {
             year: Some(2024),
             tax_context: Some(TaxContext::named("private")),
+            sender: Some("Company A".to_owned()),
             kind: Some("Invoice".to_owned()),
             tags: tags(&["home"]),
             full_text: Some("rent".to_owned()),

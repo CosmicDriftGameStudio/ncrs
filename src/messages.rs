@@ -48,7 +48,7 @@ use crate::replan_work::{ReplanItem, ReplanSummary};
 use crate::review_list::FormField;
 use crate::review_work::{AcceptSummary, ConfirmOutcome, ReviewItem};
 use crate::rules_work::{RulesLoad, TryResult};
-use crate::saved_queries::QueryField;
+use crate::saved_queries::{Form, QueryField};
 use crate::suggestion_work::SuggestedRule;
 use crate::tax_context_work::{ContextsResult, TaxContextFailure};
 use crate::theme_fetch::{Fetched, Installed};
@@ -979,6 +979,8 @@ pub enum SavedQueriesMessage {
     /// A click on the query at this position.
     Select(usize),
     New,
+    /// A template button: the form it fills, built where the text is known.
+    UseTemplate(Form),
     FieldChanged(QueryField, String),
     TaxContextChosen(Option<TaxContext>),
     /// Tab (`false`) or Shift+Tab (`true`) in the form.

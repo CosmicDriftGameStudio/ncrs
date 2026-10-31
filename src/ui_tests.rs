@@ -3306,7 +3306,7 @@ mod saved_queries_card {
 
     use super::*;
     use crate::messages::{HermesPage, SavedQueriesMessage};
-    use crate::saved_queries::tests::{hit, loaded_list};
+    use crate::saved_queries::tests::{hit, loaded_list, THIS_YEAR};
     use crate::saved_queries::SavedQueries;
 
     fn queries_message(message: SavedQueriesMessage) -> Message {
@@ -3324,10 +3324,18 @@ mod saved_queries_card {
         let mut list = loaded_list();
         list.select(0);
         list.begin_run().expect("a spec");
+        let priced = |name: &str, missing: bool, minor_units: i64| {
+            let mut found = hit(name, missing);
+            found.fields.amount = Some(ncrs_index::Amount {
+                minor_units,
+                currency: ncrs_index::Currency::new("EUR").expect("a currency"),
+            });
+            found
+        };
         list.ran(vec![
-            hit("invoice-1.pdf", false),
+            priced("invoice-1.pdf", false, 123_450),
             hit("invoice-2.pdf", false),
-            hit("invoice-3.pdf", true),
+            priced("invoice-3.pdf", true, 5_000),
         ]);
         list
     }
@@ -3341,7 +3349,7 @@ mod saved_queries_card {
     #[test]
     fn the_page_shows_the_queries_the_form_and_the_buttons() {
         for label in [
-            "Saved queries",
+            "Reports",
             "Company A 2024",
             "Taxes 2023",
             "Year",
@@ -3359,13 +3367,31 @@ mod saved_queries_card {
 
     #[test]
     fn an_empty_list_says_so() {
-        let mut list = SavedQueries::new();
-        list.loaded(Vec::new());
-
         assert!(shows(
-            list,
-            "No saved queries yet. Fill in the form and save one."
+            empty_list(),
+            "No reports yet. Start from a template or fill in the form and save."
         ));
+    }
+
+    fn empty_list() -> SavedQueries {
+        let mut list = SavedQueries::new(THIS_YEAR);
+        list.set_tax_contexts(crate::review_list::tests::stored_tax_contexts());
+        list.loaded(Vec::new());
+        list
+    }
+
+    #[test]
+    fn the_templates_are_offered_until_a_report_is_selected() {
+        for label in ["Start from a template:", "Contracts", "Open invoices"] {
+            assert!(shows(empty_list(), label), "{label}");
+        }
+        assert!(!shows(loaded_list_selected(), "Start from a template:"));
+    }
+
+    fn loaded_list_selected() -> SavedQueries {
+        let mut list = loaded_list();
+        list.select(0);
+        list
     }
 
     #[test]
@@ -3436,12 +3462,12 @@ mod saved_queries_card {
         list.ask_delete();
         assert!(shows(
             list.clone(),
-            "Delete the query ‘Company A 2024’? Documents stay as they are."
+            "Delete the report ‘Company A 2024’? Documents stay as they are."
         ));
 
         let app = App::with_saved_queries(list);
         let mut sim = simulator(&app);
-        sim.click("Delete query").expect("the button");
+        sim.click("Delete report").expect("the button");
         assert_eq!(
             sim.into_messages().collect::<Vec<_>>(),
             [queries_message(SavedQueriesMessage::ConfirmDelete)]
@@ -3453,7 +3479,7 @@ mod saved_queries_card {
         let app = App::with_saved_queries(at_export()).in_language(Language::German);
         let mut sim = simulator(&app);
         for label in [
-            "Abfragen",
+            "Auswertungen",
             "Abbrechen",
             "Ordner wählen …",
             "Kopiert nur, verschiebt und löscht nichts. Vorhandene Dateien bleiben unangetastet.",
@@ -3506,6 +3532,8 @@ mod saved_queries_card {
         matches_snapshot(after_run(), "saved_queries_en");
         matches_snapshot(after_run(), "saved_queries_de");
         matches_snapshot(at_export(), "saved_queries_export_en");
+        matches_snapshot(empty_list(), "saved_queries_empty_en");
+        matches_snapshot(empty_list(), "saved_queries_empty_de");
     }
 }
 

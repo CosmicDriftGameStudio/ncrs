@@ -1,5 +1,5 @@
-//! The saved queries: searches over the index by year, tax context, kind, tags
-//! and text, each kept under a name, with the export of what a run found. A
+//! The reports (saved queries): searches over the index by year, tax context,
+//! sender, kind, tags and text, each kept under a name, with the export of what a run found. A
 //! page of the Hermes card. Pure view over [`SavedQueries`].
 //!
 //! Nothing is copied before the export step has shown where to and how many.
@@ -21,7 +21,8 @@ use iced::Rectangle;
 
 use crate::messages::{HermesFocus, HermesPage, Message, SavedQueriesMessage};
 use crate::palette::Palette;
-use crate::saved_queries::{Problem, QueryField, SavedQueries, VISIBLE_ROWS};
+use crate::review_work::amount_text;
+use crate::saved_queries::{Problem, QueryField, ReportTemplate, SavedQueries, VISIBLE_ROWS};
 
 /// Most hits listed when the result is expanded; the rest is counted.
 pub const VISIBLE_HITS: usize = 6;
@@ -60,6 +61,7 @@ fn field_of(id: &widget::Id) -> Option<QueryField> {
     [
         (NAME_ID, QueryField::Name),
         (YEAR_ID, QueryField::Year),
+        (SENDER_ID, QueryField::Sender),
         (KIND_ID, QueryField::Kind),
         (TAGS_ID, QueryField::Tags),
         (FULL_TEXT_ID, QueryField::FullText),
@@ -71,6 +73,7 @@ fn field_of(id: &widget::Id) -> Option<QueryField> {
 
 const NAME_ID: &str = "saved-query-name";
 const YEAR_ID: &str = "saved-query-year";
+const SENDER_ID: &str = "saved-query-sender";
 const KIND_ID: &str = "saved-query-kind";
 const TAGS_ID: &str = "saved-query-tags";
 const FULL_TEXT_ID: &str = "saved-query-full-text";
@@ -98,6 +101,9 @@ pub fn view<'a>(
     // The export step takes the room of the list and the form: the page
     // would not fit them all, and the step is what the user decides on.
     if state.export_step().is_none() {
+        if state.cursor().is_none() {
+            body = body.push(templates(state, lang, palette));
+        }
         if state.rows().is_empty() {
             body = body.push(dim(
                 lang.text(if state.is_busy() {
@@ -159,6 +165,36 @@ pub fn view<'a>(
     frame.into_element()
 }
 
+/// The buttons that start a report from a template, and what open means.
+fn templates<'a>(state: &SavedQueries, lang: Language, palette: &Palette) -> Element<'a, Message> {
+    let buttons: Vec<Element<'a, Message>> = state
+        .templates()
+        .iter()
+        .map(|template: &ReportTemplate| {
+            kit::button(
+                &template.name(lang),
+                (!state.is_busy())
+                    .then(|| send(SavedQueriesMessage::UseTemplate(template.form(lang)))),
+                Tone::Secondary,
+                palette,
+            )
+        })
+        .collect();
+    column![
+        dim(lang.text(Msg::SavedQueriesTemplateLabel), palette),
+        row(buttons).spacing(spacing::S).wrap(),
+        dim(
+            fill_template(
+                lang.text(Msg::SavedQueriesOpenInvoicesNote),
+                &[("{tag}", lang.text(Msg::SavedQueriesTagOpen))],
+            ),
+            palette,
+        ),
+    ]
+    .spacing(spacing::XS)
+    .into()
+}
+
 /// What a query asks for, short enough for a column.
 pub fn criteria_text(spec: &QuerySpec, tax_contexts: &[TaxContextEntry], lang: Language) -> String {
     let mut parts = Vec::new();
@@ -174,6 +210,9 @@ pub fn criteria_text(spec: &QuerySpec, tax_contexts: &[TaxContextEntry], lang: L
                 .find(|entry| entry.short_name.eq_ignore_ascii_case(short_name))
                 .map_or_else(|| short_name.clone(), |entry| entry.name.clone()),
         ),
+    }
+    if let Some(sender) = &spec.sender {
+        parts.push(sender.clone());
     }
     if let Some(kind) = &spec.kind {
         parts.push(lang.kind_label(kind).into_owned());
@@ -314,6 +353,11 @@ fn form<'a>(state: &'a SavedQueries, lang: Language, palette: &Palette) -> Eleme
             kit::dropdown(&tax_options, selected_tax, true, palette),
         ),
         row_of(
+            Msg::SavedQueriesFieldSender,
+            Some(Msg::SavedQueriesHintSender),
+            text_field(QueryField::Sender, SENDER_ID, &values.sender),
+        ),
+        row_of(
             Msg::SavedQueriesFieldKind,
             Some(Msg::SavedQueriesHintKind),
             text_field(QueryField::Kind, KIND_ID, &values.kind),
@@ -372,7 +416,7 @@ fn result<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let figures = [
+    let mut figures = vec![
         (
             lang.text(Msg::SavedQueriesSummaryHits),
             results.hits.len().to_string(),
@@ -386,6 +430,17 @@ fn result<'a>(
             results.missing().to_string(),
         ),
     ];
+    let totals = results.totals();
+    if !totals.is_empty() {
+        figures.push((
+            lang.text(Msg::SavedQueriesSummarySum),
+            totals
+                .iter()
+                .map(amount_text)
+                .collect::<Vec<_>>()
+                .join(" · "),
+        ));
+    }
     let mut content = column![kit::count_summary(
         &figures,
         None,
@@ -472,6 +527,7 @@ fn export_step<'a>(
                     ),
                     palette,
                 ),
+                paragraph(lang.text(Msg::SavedQueriesExportCsvExplain), palette),
                 dim(lang.text(Msg::SavedQueriesExportPromise), palette),
             ]
             .spacing(spacing::XS),
