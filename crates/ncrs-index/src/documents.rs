@@ -583,7 +583,7 @@ mod tests {
         let id = index.insert_document(&new).unwrap();
         let fields = DocumentFields {
             sender: Some("Company A".to_owned()),
-            kind: Some("Invoice".to_owned()),
+            kind: Some("invoice".to_owned()),
             date: NaiveDate::from_ymd_opt(2026, 2, 28),
             number: Some("4711".to_owned()),
             amount: Some(Amount {
@@ -737,7 +737,7 @@ mod tests {
             vec![
                 ("2026".to_owned(), 1),
                 ("firma-a".to_owned(), 1),
-                ("rechnung".to_owned(), 1)
+                ("invoice".to_owned(), 1)
             ]
         );
 
@@ -746,7 +746,7 @@ mod tests {
             .unwrap();
 
         let names: Vec<String> = tag_rows(&index, id).into_iter().map(|row| row.0).collect();
-        assert_eq!(names, ["2026", "firma-b", "rechnung"]);
+        assert_eq!(names, ["2026", "firma-b", "invoice"]);
     }
 
     #[test]
@@ -772,15 +772,15 @@ mod tests {
         let (_dir, mut index) = encrypted_index();
         let id = index.insert_document(&new_document(1)).unwrap();
         index
-            .set_document_fields(id, &invoice_of("Firma A", &["Rechnung"]), |_| {
+            .set_document_fields(id, &invoice_of("Firma A", &["invoice"]), |_| {
                 FieldOrigin::Unknown
             })
             .unwrap();
 
-        assert!(tag_rows(&index, id).contains(&("rechnung".to_owned(), 0)));
+        assert!(tag_rows(&index, id).contains(&("invoice".to_owned(), 0)));
         assert_eq!(
             index.document(id).unwrap().unwrap().fields.tags,
-            BTreeSet::from(["rechnung".to_owned()])
+            BTreeSet::from(["invoice".to_owned()])
         );
     }
 
@@ -962,7 +962,7 @@ mod tests {
         DocumentFields {
             sender: Some("Company A".to_owned()),
             recipient: Some("Erika Beispiel".to_owned()),
-            kind: Some("Invoice".to_owned()),
+            kind: Some("invoice".to_owned()),
             date: NaiveDate::from_ymd_opt(2026, 2, 28),
             number: Some("4711".to_owned()),
             amount: Some(Amount {

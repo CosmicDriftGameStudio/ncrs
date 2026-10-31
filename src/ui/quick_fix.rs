@@ -95,7 +95,7 @@ pub fn header_lines(menu: &QuickFix, lang: Language) -> (String, String) {
         items => {
             let without = items
                 .iter()
-                .filter(|item| item.suggested_target().is_none())
+                .filter(|item| item.suggested_target(lang.kind_language()).is_none())
                 .count();
             (
                 fill_template(

@@ -2,6 +2,8 @@
 //! first name line of the addressee block) and what kind of letter it is (a
 //! heading near the top).
 
+use ncrs_index::Kind;
+
 use crate::conditions::addressee_block_lines;
 
 /// Words that address a name or deliver a letter but are no part of it.
@@ -24,18 +26,18 @@ const COMPANY_LINE: &str = "firma";
 const HEADING_SEARCH_LINES: usize = 15;
 
 /// Single first words of a heading and the kind they name.
-const HEADING_KINDS: [(&str, &str); 11] = [
-    ("rechnung", "Rechnung"),
-    ("gutschrift", "Gutschrift"),
-    ("mahnung", "Mahnung"),
-    ("vertrag", "Vertrag"),
-    ("kündigung", "Kündigung"),
-    ("angebot", "Angebot"),
-    ("lieferschein", "Lieferschein"),
-    ("invoice", "Invoice"),
-    ("reminder", "Reminder"),
-    ("contract", "Contract"),
-    ("quote", "Quote"),
+const HEADING_KINDS: [(&str, Kind); 11] = [
+    ("rechnung", Kind::Invoice),
+    ("gutschrift", Kind::CreditNote),
+    ("mahnung", Kind::Reminder),
+    ("vertrag", Kind::Contract),
+    ("kündigung", Kind::Termination),
+    ("angebot", Kind::Quote),
+    ("lieferschein", Kind::DeliveryNote),
+    ("invoice", Kind::Invoice),
+    ("reminder", Kind::Reminder),
+    ("contract", Kind::Contract),
+    ("quote", Kind::Quote),
 ];
 
 const BESCHEID_SUFFIX: &str = "bescheid";
@@ -94,17 +96,18 @@ fn first_word(line: &str) -> String {
 fn kind_of_heading(line: &str) -> Option<String> {
     let word = first_word(line);
     if let Some((_, kind)) = HEADING_KINDS.iter().find(|(heading, _)| *heading == word) {
-        return Some((*kind).to_owned());
+        return Some(kind.id().to_owned());
     }
     if word.ends_with(BESCHEID_SUFFIX) {
-        return Some("Bescheid".to_owned());
+        return Some(Kind::Notice.id().to_owned());
     }
     let second = line.split_whitespace().nth(1).map(|second| {
         second
             .trim_matches(|c: char| !c.is_alphanumeric())
             .to_lowercase()
     });
-    (word == "credit" && second.as_deref() == Some("note")).then(|| "Credit note".to_owned())
+    (word == "credit" && second.as_deref() == Some("note"))
+        .then(|| Kind::CreditNote.id().to_owned())
 }
 
 /// The kind a heading names: one of the first lines that starts with a
@@ -166,13 +169,13 @@ mod tests {
     #[test]
     fn a_heading_names_the_kind() {
         for (text, kind) in [
-            ("Stadtwerke\nRechnung Nr. 4711\n", "Rechnung"),
-            ("Firma X\n\nMAHNUNG\n", "Mahnung"),
-            ("Bescheid über die Grundsteuer", "Bescheid"),
-            ("Finanzamt\nEinkommensteuerbescheid 2025", "Bescheid"),
-            ("Shop\nInvoice: 12\n", "Invoice"),
-            ("Shop\nCredit note 12\n", "Credit note"),
-            ("Kündigung des Vertrags", "Kündigung"),
+            ("Stadtwerke\nRechnung Nr. 4711\n", "invoice"),
+            ("Firma X\n\nMAHNUNG\n", "reminder"),
+            ("Bescheid über die Grundsteuer", "notice"),
+            ("Finanzamt\nEinkommensteuerbescheid 2025", "notice"),
+            ("Shop\nInvoice: 12\n", "invoice"),
+            ("Shop\nCredit note 12\n", "credit_note"),
+            ("Kündigung des Vertrags", "termination"),
         ] {
             assert_eq!(kind_from_heading(text).as_deref(), Some(kind), "{text}");
         }

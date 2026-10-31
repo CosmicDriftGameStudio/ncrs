@@ -334,7 +334,7 @@ mod tests {
 
         let suggestion = company_a(&suggestions).expect("the Company A rule");
         assert!(!suggestion.spec.confirmed);
-        assert_eq!(suggestion.spec.kind.as_deref(), Some("Insurance"));
+        assert_eq!(suggestion.spec.kind.as_deref(), Some("insurance"));
         assert_eq!(
             suggestion.evidence,
             RuleEvidence {

@@ -11,12 +11,12 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono::NaiveDate;
 use ncrs_index::{
-    Amount, BatchKind, Condition, ConditionKind, Currency, DocumentFields, DocumentId,
+    kind_key, Amount, BatchKind, Condition, ConditionKind, Currency, DocumentFields, DocumentId,
     DocumentStatus, Field, FieldOrigin, FieldOrigins, IncludeOutcome, Index, IndexError,
-    ReviewEntryId, ReviewReason, Rule, RuleId, SenderAliases,
+    KindLanguage, ReviewEntryId, ReviewReason, Rule, RuleId, SenderAliases,
 };
 use ncrs_intake::{
-    condition_match_ranges, plan, render_pattern, text_is_readable, PlanInput, Planning,
+    condition_match_ranges, plan, render_pattern_in, text_is_readable, PlanInput, Planning,
 };
 
 use crate::execute::{execute_with, ItemOutcome, SkipReason};
@@ -77,9 +77,9 @@ pub struct ReviewItem {
 impl ReviewItem {
     /// Where the closest rule would file it, below the archive; `None` when
     /// no rule came close or the fields do not fit its pattern.
-    pub fn suggested_target(&self) -> Option<PathBuf> {
+    pub fn suggested_target(&self, kind_language: KindLanguage) -> Option<PathBuf> {
         let pattern = self.proposed_pattern.as_deref()?;
-        render_pattern(pattern, &self.fields)
+        render_pattern_in(pattern, &self.fields, kind_language)
     }
 }
 
@@ -134,21 +134,37 @@ pub enum ConfirmOutcome {
 pub struct ReviewAccess {
     slot: IndexSlot,
     target_root: PathBuf,
+    kind_language: KindLanguage,
 }
 
 impl ReviewAccess {
     pub fn new(slot: IndexSlot, target_root: PathBuf) -> Self {
-        Self { slot, target_root }
+        Self {
+            slot,
+            target_root,
+            kind_language: KindLanguage::default(),
+        }
+    }
+
+    pub fn with_kind_language(self, kind_language: KindLanguage) -> Self {
+        Self {
+            kind_language,
+            ..self
+        }
     }
 
     pub fn load(&self) -> Result<Vec<ReviewItem>, String> {
-        self.with_index(|index| load(index))
+        self.with_index(|index| load(index, self.kind_language))
     }
 
     /// The open reviews of these files, in the order the index lists them.
     pub fn items_for(&self, paths: &[PathBuf]) -> Result<Vec<ReviewItem>, String> {
         self.with_index(|index| {
-            load_matching(index, |path| paths.iter().any(|wanted| wanted == path))
+            load_matching(
+                index,
+                |path| paths.iter().any(|wanted| wanted == path),
+                self.kind_language,
+            )
         })
     }
 
@@ -182,7 +198,7 @@ impl ReviewAccess {
         &self,
         path: &Path,
     ) -> Result<Option<(TextState, Option<PathBuf>)>, String> {
-        self.with_index(|index| suggestion_for(index, path))
+        self.with_index(|index| suggestion_for(index, path, self.kind_language))
     }
 
     /// Files the document under `pattern` with `fields`, and settles its
@@ -203,6 +219,7 @@ impl ReviewAccess {
             fields,
             pattern,
             &Move,
+            self.kind_language,
         )
     }
 
@@ -216,13 +233,14 @@ impl ReviewAccess {
     }
 }
 
-fn load(index: &Index) -> Result<Vec<ReviewItem>, IndexError> {
-    load_matching(index, |_path| true)
+fn load(index: &Index, kind_language: KindLanguage) -> Result<Vec<ReviewItem>, IndexError> {
+    load_matching(index, |_path| true, kind_language)
 }
 
 fn load_matching(
     index: &Index,
     wanted: impl Fn(&Path) -> bool,
+    kind_language: KindLanguage,
 ) -> Result<Vec<ReviewItem>, IndexError> {
     let rules = index.rules()?;
     let sender_aliases = index.confirmed_sender_aliases()?;
@@ -240,6 +258,7 @@ fn load_matching(
             &sender_aliases,
             &entry,
             document,
+            kind_language,
         )?);
     }
     Ok(items)
@@ -251,6 +270,7 @@ fn review_item(
     sender_aliases: &SenderAliases,
     entry: &ncrs_index::ReviewEntry,
     document: ncrs_index::Document,
+    kind_language: KindLanguage,
 ) -> Result<ReviewItem, IndexError> {
     let stored_text = index.document_text(document.id)?;
     let text = stored_text.clone().unwrap_or_default();
@@ -264,6 +284,7 @@ fn review_item(
             path: Some(&document.path),
             sender_aliases,
             manual_fields: &manual_fields,
+            kind_language,
         },
     );
     let (fields, proposed_pattern, nearest_rule) = match planning {
@@ -321,7 +342,7 @@ fn same_value(left: &DocumentFields, right: &DocumentFields, field: Field) -> bo
     match field {
         Field::Sender => left.sender == right.sender,
         Field::Recipient => left.recipient == right.recipient,
-        Field::Kind => left.kind == right.kind,
+        Field::Kind => left.kind.as_deref().map(kind_key) == right.kind.as_deref().map(kind_key),
         Field::Date => left.date == right.date,
         Field::Number => left.number == right.number,
         Field::Amount => left.amount == right.amount,
@@ -387,6 +408,7 @@ fn passages_of(
 fn suggestion_for(
     index: &Index,
     path: &Path,
+    kind_language: KindLanguage,
 ) -> Result<Option<(TextState, Option<PathBuf>)>, IndexError> {
     let rules = index.rules()?;
     let sender_aliases = index.confirmed_sender_aliases()?;
@@ -397,10 +419,17 @@ fn suggestion_for(
         if document.path != path {
             continue;
         }
-        let item = review_item(index, &rules, &sender_aliases, &entry, document)?;
+        let item = review_item(
+            index,
+            &rules,
+            &sender_aliases,
+            &entry,
+            document,
+            kind_language,
+        )?;
         let target = item
             .proposed_pattern
-            .and_then(|pattern| render_pattern(&pattern, &item.fields));
+            .and_then(|pattern| render_pattern_in(&pattern, &item.fields, kind_language));
         return Ok(Some((item.text_state, target)));
     }
     Ok(None)
@@ -413,10 +442,11 @@ fn confirm<S: Source>(
     fields: &DocumentFields,
     pattern: &str,
     effect: &S,
+    kind_language: KindLanguage,
 ) -> Result<ConfirmOutcome, String> {
     let failed = |err: IndexError| err.to_string();
-    let relative =
-        render_pattern(pattern, fields).ok_or_else(|| PATTERN_DOES_NOT_FIT.to_owned())?;
+    let relative = render_pattern_in(pattern, fields, kind_language)
+        .ok_or_else(|| PATTERN_DOES_NOT_FIT.to_owned())?;
     let document = index
         .document(document_id)
         .map_err(failed)?
@@ -704,10 +734,10 @@ mod tests {
         assert_eq!(
             outcome,
             ConfirmOutcome::Filed {
-                relative_path: PathBuf::from("Company A/invoice.pdf")
+                relative_path: PathBuf::from("Company A/Invoice.pdf")
             }
         );
-        let target = setup.archive.join("Company A").join("invoice.pdf");
+        let target = setup.archive.join("Company A").join("Invoice.pdf");
         assert_eq!(fs::read_to_string(target).unwrap(), "content of scan.pdf");
         assert!(!setup.inbox.join("scan.pdf").exists());
         setup.with_index(|index| {
@@ -753,12 +783,20 @@ mod tests {
                 .unwrap();
         });
 
-        let summary = setup
-            .with_index(|index| file_planned(index, &setup.archive, &mut Counting, &Move).unwrap());
+        let summary = setup.with_index(|index| {
+            file_planned(
+                index,
+                &setup.archive,
+                &mut Counting,
+                &Move,
+                KindLanguage::English,
+            )
+            .unwrap()
+        });
 
         assert_eq!(summary.filed, 1);
         assert_eq!(summary.reviewed, 0);
-        assert!(setup.archive.join("Company A").join("invoice.pdf").exists());
+        assert!(setup.archive.join("Company A").join("Invoice.pdf").exists());
         setup.with_index(|index| assert!(index.open_reviews().unwrap().is_empty()));
     }
 
@@ -766,7 +804,7 @@ mod tests {
     fn a_taken_place_keeps_the_entry_open_and_the_target_unchanged() {
         let setup = Setup::new();
         setup.in_review("scan.pdf");
-        let taken = setup.archive.join("Company A").join("invoice.pdf");
+        let taken = setup.archive.join("Company A").join("Invoice.pdf");
         fs::create_dir_all(taken.parent().unwrap()).unwrap();
         fs::write(&taken, "the other file").unwrap();
         let access = setup.access();

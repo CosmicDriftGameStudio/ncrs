@@ -494,7 +494,7 @@ fn tags_block<'a>(values: &'a Form, lang: Language, palette: &Palette) -> Elemen
         .automatic_tags()
         .into_iter()
         .filter(|tag| !values.tags.contains(tag))
-        .map(|tag| kit::chip(&tag, false, palette))
+        .map(|tag| kit::chip(&lang.tag_label(&tag), false, palette))
         .collect();
     let own = values
         .tags
@@ -1043,11 +1043,11 @@ mod tests {
         let (shown, marked) = shown_target(&list, root).unwrap();
         assert_eq!(
             shown,
-            ["~", "Archive", "Company A", "2024-03-09_invoice.pdf"]
+            ["~", "Archive", "Company A", "2024-03-09_Invoice.pdf"]
                 .join(std::path::MAIN_SEPARATOR_STR)
         );
         let texts: Vec<&str> = marked.into_iter().map(|range| &shown[range]).collect();
-        assert_eq!(texts, ["Company A", "2024-03-09", "invoice"]);
+        assert_eq!(texts, ["Company A", "2024-03-09", "Invoice"]);
     }
 
     #[test]

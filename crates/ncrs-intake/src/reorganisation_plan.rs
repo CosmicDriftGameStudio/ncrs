@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use ncrs_index::{Index, ReorganisationPlan};
+use ncrs_index::{Index, KindLanguage, ReorganisationPlan};
 use walkdir::WalkDir;
 
 use crate::archive_profile::{learn_archive, ArchiveDocument};
@@ -16,7 +16,11 @@ use crate::reorganisation::{plan_reorganisation, PlanFile, PlanRule, Reorganisat
 /// stores it, replacing the location's earlier unexecuted plan. The profile is
 /// learned from the documents as they are now, not read from the stored one,
 /// so the plan cannot disagree with the files it is about.
-pub fn plan_location(index: &mut Index, root: &Path) -> Result<ReorganisationPlan, IntakeError> {
+pub fn plan_location(
+    index: &mut Index,
+    root: &Path,
+    kind_language: KindLanguage,
+) -> Result<ReorganisationPlan, IntakeError> {
     let files = plan_files(index, root)?;
     let documents: Vec<ArchiveDocument> = files
         .iter()
@@ -33,6 +37,7 @@ pub fn plan_location(index: &mut Index, root: &Path) -> Result<ReorganisationPla
         profile: &profile,
         rules: &rules,
         existing: &existing,
+        kind_language,
     });
     index.replace_reorganisation_plan(root, &items)?;
     index
@@ -243,7 +248,7 @@ mod tests {
 
         /// Keyed the way the tests write paths, whatever the platform's separator.
         fn plan(&mut self) -> BTreeMap<String, PlanItem> {
-            plan_location(&mut self.index, &self.root)
+            plan_location(&mut self.index, &self.root, KindLanguage::English)
                 .unwrap()
                 .items
                 .into_iter()
@@ -664,6 +669,7 @@ mod tests {
             profile: &[],
             rules: &[],
             existing: &BTreeSet::new(),
+            kind_language: KindLanguage::English,
         });
 
         assert_eq!(items.len(), 1);
@@ -738,8 +744,10 @@ mod tests {
         );
         let hash = archive.index.document(id).unwrap().unwrap().hash;
 
-        let first = plan_location(&mut archive.index, &archive.root).unwrap();
-        let second = plan_location(&mut archive.index, &archive.root).unwrap();
+        let first =
+            plan_location(&mut archive.index, &archive.root, KindLanguage::English).unwrap();
+        let second =
+            plan_location(&mut archive.index, &archive.root, KindLanguage::English).unwrap();
 
         assert_eq!(first.items[0].hash, hash);
         assert_eq!(

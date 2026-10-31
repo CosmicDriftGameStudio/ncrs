@@ -16,7 +16,10 @@ use std::path::PathBuf;
 use chrono::Datelike as _;
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{tag_matches, tag_name, Amount, QuerySpec, SNIPPET_MARK_END, SNIPPET_MARK_START};
+use ncrs_index::{
+    kind_key, stored_kind, tag_matches, tag_name, Amount, QuerySpec, SNIPPET_MARK_END,
+    SNIPPET_MARK_START,
+};
 
 use crate::document_preview::{DocumentPreview, PreviewContent, PreviewRequest};
 use crate::list_window::ListWindow;
@@ -150,7 +153,10 @@ impl FacetSelection {
             FacetValue::Year(year) => self.year == Some(*year),
             FacetValue::Sender(other) => same(&self.sender, other),
             FacetValue::Recipient(other) => same(&self.recipient, other),
-            FacetValue::Kind(other) => same(&self.kind, other),
+            FacetValue::Kind(other) => self
+                .kind
+                .as_deref()
+                .is_some_and(|chosen| kind_key(chosen) == kind_key(other)),
             FacetValue::Tag(other) => self
                 .tags
                 .iter()
@@ -183,8 +189,8 @@ impl FacetSelection {
                 let chosen_already = self
                     .kind
                     .as_ref()
-                    .is_some_and(|held| name_key(held) == name_key(&chosen));
-                self.kind = (!chosen_already).then_some(chosen);
+                    .is_some_and(|held| kind_key(held) == kind_key(&chosen));
+                self.kind = (!chosen_already).then(|| stored_kind(&chosen));
             }
             FacetValue::Tag(chosen) => {
                 let before = self.tags.len();
@@ -218,8 +224,16 @@ impl FacetSelection {
         if counts(Facet::Recipient) && !same_name(&self.recipient, &fields.recipient) {
             return false;
         }
-        if counts(Facet::Kind) && !same_name(&self.kind, &fields.kind) {
-            return false;
+        if counts(Facet::Kind) {
+            let same_kind = self.kind.as_ref().is_none_or(|wanted| {
+                fields
+                    .kind
+                    .as_ref()
+                    .is_some_and(|held| kind_key(held) == kind_key(wanted))
+            });
+            if !same_kind {
+                return false;
+            }
         }
         if counts(Facet::Tags) {
             let held = fields.all_tags();
@@ -272,6 +286,11 @@ fn named(name: &str) -> (String, String) {
     (name_key(name), name.trim().to_owned())
 }
 
+/// A known kind counts under its ID whatever it was written as.
+fn named_kind(kind: &str) -> (String, String) {
+    (kind_key(kind), stored_kind(kind))
+}
+
 /// The values of every facet. A facet that takes one value counts over the
 /// hits that fit all the other choices, so the user can switch from one value
 /// to another; the tags count over the hits that fit everything chosen.
@@ -308,8 +327,8 @@ pub fn facet_counts(hits: &[QueryHit], selection: &FacetSelection) -> FacetCount
         among(Some(Facet::Kind))
             .filter_map(|hit| hit.fields.kind.as_deref())
             .filter(|kind| !kind.trim().is_empty())
-            .map(named),
-        selection.kind.iter().map(|kind| named(kind)),
+            .map(named_kind),
+        selection.kind.iter().map(|kind| named_kind(kind)),
     );
     let tags = tally(
         among(None)
@@ -774,11 +793,37 @@ pub mod tests {
         assert_eq!(
             search.counts().kinds,
             [
-                ("Invoice".to_owned(), 3),
+                ("invoice".to_owned(), 3),
                 ("contract".to_owned(), 1),
                 ("letter".to_owned(), 1)
             ]
         );
+    }
+
+    #[test]
+    fn spellings_of_a_known_kind_are_one_facet_entry_and_one_choice() {
+        let hits = vec![
+            found_hit("a.pdf", None, None, Some("invoice"), &[]),
+            found_hit("b.pdf", None, None, Some("Rechnung"), &[]),
+            found_hit("c.pdf", None, None, Some("Steuerbescheid"), &[]),
+        ];
+        let mut selection = FacetSelection::default();
+
+        assert_eq!(
+            facet_counts(&hits, &selection).kinds,
+            [("invoice".to_owned(), 2), ("Steuerbescheid".to_owned(), 1)]
+        );
+        selection.toggle(FacetValue::Kind("Rechnung".to_owned()));
+        let found: Vec<&str> = hits
+            .iter()
+            .filter(|hit| selection.admits_hit(hit))
+            .filter_map(|hit| hit.path.file_name()?.to_str())
+            .collect();
+
+        assert_eq!(found, ["a.pdf", "b.pdf"]);
+        assert!(selection.holds(&FacetValue::Kind("Invoice".to_owned())));
+        selection.toggle(FacetValue::Kind("invoice".to_owned()));
+        assert!(selection.is_empty());
     }
 
     #[test]

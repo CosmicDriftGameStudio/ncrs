@@ -24,7 +24,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, TryLockError};
 use std::thread;
 
-use ncrs_index::{HermesCounts, Index, IndexError, IndexStatistics, KeyStore, RecoveryKey};
+use ncrs_index::{
+    HermesCounts, Index, IndexError, IndexStatistics, KeyStore, KindLanguage, RecoveryKey,
+};
 #[cfg(target_os = "macos")]
 use ncrs_intake::ImageTextWithFallback;
 use ncrs_intake::{
@@ -361,6 +363,7 @@ fn own_details(filing: &Filing) -> OwnDetails {
             .collect(),
         ibans: filing.own_ibans.clone(),
         tax_ids: filing.own_tax_ids.clone(),
+        kind_language: KindLanguage::default(),
     }
 }
 
@@ -1164,20 +1167,33 @@ impl FilingModule {
     /// The handle of the reorganisation plan view, on the same terms.
     pub fn plan_access(&self) -> Option<PlanAccess> {
         self.archive_handle(PlanAccess::new)
+            .map(|access| access.with_kind_language(self.own.kind_language))
+    }
+
+    /// The language `{kind}` folders are worded in. The running pipeline
+    /// keeps the one it started with.
+    pub fn set_kind_language(&mut self, kind_language: KindLanguage) {
+        self.own.kind_language = kind_language;
     }
 
     /// The handle of the filing job: only when the module is `Ready` and the
     /// archive marked as the target can be reached.
     pub fn filing_access(&self) -> Option<FilingAccess> {
         let root = self.target_root()?;
-        Some(FilingAccess::new(Arc::clone(&self.index), root))
+        Some(
+            FilingAccess::new(Arc::clone(&self.index), root)
+                .with_kind_language(self.own.kind_language),
+        )
     }
 
     /// The handle of the review list, on the same terms as the filing job: it
     /// files into the same target.
     pub fn review_access(&self) -> Option<ReviewAccess> {
         let root = self.target_root()?;
-        Some(ReviewAccess::new(Arc::clone(&self.index), root))
+        Some(
+            ReviewAccess::new(Arc::clone(&self.index), root)
+                .with_kind_language(self.own.kind_language),
+        )
     }
 
     /// The handle of re-planning and refiling: the inbox locations that can be
@@ -1189,11 +1205,10 @@ impl FilingModule {
             .filter(|location| location.mode == LocationMode::Inbox)
             .map(|location| location.path.clone())
             .collect();
-        Some(ReplanAccess::new(
-            Arc::clone(&self.index),
-            inbox_roots,
-            root,
-        ))
+        Some(
+            ReplanAccess::new(Arc::clone(&self.index), inbox_roots, root)
+                .with_kind_language(self.own.kind_language),
+        )
     }
 
     /// The handle of the saved queries: they only read the index, so the
@@ -1211,6 +1226,7 @@ impl FilingModule {
                 Arc::clone(&self.index),
                 self.reachable_locations().cloned().collect(),
             )
+            .with_kind_language(self.own.kind_language)
         })
     }
 

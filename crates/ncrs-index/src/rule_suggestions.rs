@@ -3,6 +3,7 @@ use rusqlite::{params, OptionalExtension as _};
 
 use crate::error::IndexError;
 use crate::index::Index;
+use crate::kinds::{kind_key, Kind};
 use crate::model::{
     Condition, ConditionKind, Rule, RuleEvidence, RuleId, RuleOrigin, RuleSpec, RuleSuggestion,
 };
@@ -106,7 +107,7 @@ impl Index {
         };
         self.update_rule(id, &confirmed)?;
         let changed = rule.spec.conditions != confirmed.conditions
-            || rule.spec.kind != confirmed.kind
+            || rule.spec.kind.as_deref().map(kind_key) != confirmed.kind.as_deref().map(kind_key)
             || rule.spec.filing_pattern != confirmed.filing_pattern;
         if changed {
             self.remember_discarded(&rule.spec)?;
@@ -140,7 +141,7 @@ impl Index {
             params![
                 condition.value,
                 discard_class(condition.kind),
-                spec.kind,
+                spec.kind.as_deref().map(kind_key),
                 spec.filing_pattern,
                 Utc::now().timestamp()
             ],
@@ -156,7 +157,7 @@ impl Index {
             params![
                 condition.value,
                 discard_class(condition.kind),
-                spec.kind,
+                spec.kind.as_deref().map(kind_key),
                 spec.filing_pattern
             ],
             |row| row.get(0),
@@ -170,22 +171,31 @@ impl Index {
         spec: &RuleSpec,
         text_condition: &Condition,
     ) -> Result<Option<(RuleId, bool)>, IndexError> {
+        let Some(kind) = spec.kind.as_deref() else {
+            return Ok(None);
+        };
+        let spellings =
+            Kind::resolve(kind).map_or_else(|| vec![kind.trim().to_lowercase()], Kind::name_keys);
+        let marks = vec!["?"; spellings.len()].join(", ");
+        let sql = format!(
+            "SELECT r.id, r.confirmed FROM rule r
+             JOIN document_kind k ON k.id = r.kind_id
+             JOIN rule_condition c ON c.rule_id = r.id
+             WHERE (SELECT count(*) FROM rule_condition WHERE rule_id = r.id) = 1
+                 AND c.negated = 0 AND c.kind = ? AND lower(c.value) = lower(?)
+                 AND r.filing_pattern = ? AND k.name_key IN ({marks})
+             ORDER BY r.confirmed DESC, r.id LIMIT 1"
+        );
+        let fixed = [
+            text_condition.kind.as_str().to_owned(),
+            text_condition.value.clone(),
+            spec.filing_pattern.clone(),
+        ];
         let found = self
             .connection()
             .query_row(
-                "SELECT r.id, r.confirmed FROM rule r
-                 JOIN document_kind k ON k.id = r.kind_id
-                 JOIN rule_condition c ON c.rule_id = r.id
-                 WHERE (SELECT count(*) FROM rule_condition WHERE rule_id = r.id) = 1
-                     AND c.negated = 0 AND c.kind = ?4 AND lower(c.value) = lower(?1)
-                     AND k.name = ?2 AND r.filing_pattern = ?3
-                 ORDER BY r.confirmed DESC, r.id LIMIT 1",
-                params![
-                    text_condition.value,
-                    spec.kind,
-                    spec.filing_pattern,
-                    text_condition.kind.as_str()
-                ],
+                &sql,
+                rusqlite::params_from_iter(fixed.iter().chain(spellings.iter())),
                 |row| Ok((RuleId::new(row.get(0)?), row.get(1)?)),
             )
             .optional()?;
@@ -410,7 +420,7 @@ mod tests {
         };
         let edited = RuleSpec {
             conditions: text_condition("company a"),
-            kind: Some("Letter".to_owned()),
+            kind: Some("letter".to_owned()),
             filing_pattern: "{year}/Letters".to_owned(),
             ..suggestion()
         };
@@ -421,7 +431,7 @@ mod tests {
         let rule = index.rule(id).unwrap().unwrap();
         assert!(rule.spec.confirmed);
         assert_eq!(rule.spec.conditions, edited.conditions);
-        assert_eq!(rule.spec.kind.as_deref(), Some("Letter"));
+        assert_eq!(rule.spec.kind.as_deref(), Some("letter"));
         assert_eq!(rule.spec.filing_pattern, "{year}/Letters");
         assert_eq!(again, RuleSuggestion::Discarded);
         assert_eq!(index.rules().unwrap().len(), 1);

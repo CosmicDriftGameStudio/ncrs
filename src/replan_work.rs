@@ -12,8 +12,8 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use ncrs_index::{
-    BatchKind, Document, DocumentId, DocumentStatus, FieldOrigin, Index, IndexError, ReviewEntry,
-    ReviewEntryId, ReviewReason, Rule, SenderAliases,
+    BatchKind, Document, DocumentId, DocumentStatus, FieldOrigin, Index, IndexError, KindLanguage,
+    ReviewEntry, ReviewEntryId, ReviewReason, Rule, SenderAliases,
 };
 use ncrs_intake::{plan, PlanInput, Planning};
 
@@ -98,6 +98,7 @@ pub struct ReplanAccess {
     slot: IndexSlot,
     inbox_roots: Vec<PathBuf>,
     archive_root: PathBuf,
+    kind_language: KindLanguage,
 }
 
 impl ReplanAccess {
@@ -106,13 +107,21 @@ impl ReplanAccess {
             slot,
             inbox_roots,
             archive_root,
+            kind_language: KindLanguage::default(),
+        }
+    }
+
+    pub fn with_kind_language(self, kind_language: KindLanguage) -> Self {
+        Self {
+            kind_language,
+            ..self
         }
     }
 
     pub fn preview(&self, scope: &ReplanScope) -> Result<Vec<ReplanItem>, String> {
         let mut guard = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
         let index = guard.as_mut().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
-        preview(index, scope, &self.inbox_roots).map_err(|err| err.to_string())
+        preview(index, scope, &self.inbox_roots, self.kind_language).map_err(|err| err.to_string())
     }
 
     pub fn file_previewed<P: Progress>(
@@ -122,8 +131,15 @@ impl ReplanAccess {
     ) -> Result<ReplanSummary, String> {
         let mut guard = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
         let index = guard.as_mut().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
-        file_previewed(index, &self.archive_root, items, progress, &Move)
-            .map_err(|err| err.to_string())
+        file_previewed(
+            index,
+            &self.archive_root,
+            items,
+            progress,
+            &Move,
+            self.kind_language,
+        )
+        .map_err(|err| err.to_string())
     }
 }
 
@@ -132,13 +148,15 @@ impl ReplanAccess {
 struct Rulebook {
     rules: Vec<Rule>,
     sender_aliases: SenderAliases,
+    kind_language: KindLanguage,
 }
 
 impl Rulebook {
-    fn load(index: &Index) -> Result<Self, IndexError> {
+    fn load(index: &Index, kind_language: KindLanguage) -> Result<Self, IndexError> {
         Ok(Self {
             rules: index.rules()?,
             sender_aliases: index.confirmed_sender_aliases()?,
+            kind_language,
         })
     }
 
@@ -158,6 +176,7 @@ impl Rulebook {
                 path: Some(&document.path),
                 sender_aliases: &self.sender_aliases,
                 manual_fields: &manual_fields,
+                kind_language: self.kind_language,
             },
         )))
     }
@@ -219,8 +238,9 @@ pub fn preview(
     index: &Index,
     scope: &ReplanScope,
     inbox_roots: &[PathBuf],
+    kind_language: KindLanguage,
 ) -> Result<Vec<ReplanItem>, IndexError> {
-    let rulebook = Rulebook::load(index)?;
+    let rulebook = Rulebook::load(index, kind_language)?;
     let mut items = Vec::new();
     for (document, entry) in candidates(index, scope, inbox_roots)? {
         // Excluded: Hermes leaves it where it is.
@@ -247,8 +267,9 @@ pub fn file_previewed<P: Progress, S: Source>(
     items: &[ReplanItem],
     progress: &mut P,
     effect: &S,
+    kind_language: KindLanguage,
 ) -> Result<ReplanSummary, ExecuteError> {
-    let rulebook = Rulebook::load(index)?;
+    let rulebook = Rulebook::load(index, kind_language)?;
     let mut summary = ReplanSummary::default();
     let mut moves = Vec::new();
     let mut moved_ids = Vec::new();
@@ -447,15 +468,29 @@ pub mod tests {
         }
 
         fn preview(&self, scope: &ReplanScope) -> Vec<ReplanItem> {
-            preview(&self.index, scope, std::slice::from_ref(&self.inbox)).unwrap()
+            preview(
+                &self.index,
+                scope,
+                std::slice::from_ref(&self.inbox),
+                KindLanguage::English,
+            )
+            .unwrap()
         }
 
         fn file(&mut self, items: &[ReplanItem]) -> ReplanSummary {
-            file_previewed(&mut self.index, &self.archive, items, &mut Counting, &Move).unwrap()
+            file_previewed(
+                &mut self.index,
+                &self.archive,
+                items,
+                &mut Counting,
+                &Move,
+                KindLanguage::English,
+            )
+            .unwrap()
         }
 
         fn target(&self) -> PathBuf {
-            self.archive.join("Insurance").join("invoice.pdf")
+            self.archive.join("Insurance").join("Invoice.pdf")
         }
     }
 
@@ -514,7 +549,7 @@ pub mod tests {
         setup.tag(&tagged);
         setup.tag(&in_folder);
         setup.add_tag_rule();
-        let filed = ReplanAfter::Filed(PathBuf::from("Insurance").join("invoice.pdf"));
+        let filed = ReplanAfter::Filed(PathBuf::from("Insurance").join("Invoice.pdf"));
 
         let open_cases = setup.preview(&ReplanScope::OpenCases);
         let after_of = |items: &[ReplanItem], document: &Document| {
@@ -555,7 +590,7 @@ pub mod tests {
         assert!(item.review.is_some());
         assert_eq!(
             item.after,
-            ReplanAfter::Filed(PathBuf::from("Insurance").join("invoice.pdf"))
+            ReplanAfter::Filed(PathBuf::from("Insurance").join("Invoice.pdf"))
         );
     }
 
@@ -703,7 +738,7 @@ pub mod tests {
         let items = setup.preview(&ReplanScope::OpenCases);
         assert_eq!(
             items[0].after,
-            ReplanAfter::Filed(PathBuf::from("Insurance").join("contract.pdf"))
+            ReplanAfter::Filed(PathBuf::from("Insurance").join("Contract.pdf"))
         );
 
         let summary = setup.file(&items);
@@ -712,7 +747,7 @@ pub mod tests {
         let after = setup.index.document(document.id).unwrap().unwrap();
         assert_eq!(
             after.path,
-            setup.archive.join("Insurance").join("contract.pdf")
+            setup.archive.join("Insurance").join("Contract.pdf")
         );
         assert_eq!(after.fields.kind.as_deref(), Some("contract"));
         assert_eq!(

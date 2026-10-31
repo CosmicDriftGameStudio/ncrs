@@ -6,7 +6,9 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use ncrs_index::{Index, IndexError, ReviewReason, Rule, RuleId, RuleOrigin, RuleSpec};
+use ncrs_index::{
+    Index, IndexError, KindLanguage, ReviewReason, Rule, RuleId, RuleOrigin, RuleSpec,
+};
 use ncrs_intake::{plan, Location, LocationMode, PlanInput, Planning};
 
 use crate::rule_form::RuleSave;
@@ -101,11 +103,23 @@ pub const MAX_TRIED_DOCUMENTS: usize = 50;
 pub struct RulesAccess {
     slot: IndexSlot,
     locations: Vec<Location>,
+    kind_language: KindLanguage,
 }
 
 impl RulesAccess {
     pub fn new(slot: IndexSlot, locations: Vec<Location>) -> Self {
-        Self { slot, locations }
+        Self {
+            slot,
+            locations,
+            kind_language: KindLanguage::default(),
+        }
+    }
+
+    pub fn with_kind_language(self, kind_language: KindLanguage) -> Self {
+        Self {
+            kind_language,
+            ..self
+        }
     }
 
     /// Reads only: nothing is written to the index or the disk. The documents
@@ -141,6 +155,7 @@ impl RulesAccess {
                         path: Some(&absolute),
                         sender_aliases: &aliases,
                         manual_fields: &manual_fields,
+                        kind_language: self.kind_language,
                     };
                     let after = plan(&rules_after, &input);
                     let matching = matching_rules(&after);
@@ -343,7 +358,7 @@ mod tests {
             extract_number: None,
             extract_date: None,
             extract_amount: None,
-            kind: Some("Invoice".to_owned()),
+            kind: Some("invoice".to_owned()),
             tags: BTreeSet::new(),
             filing_pattern: "{year}".to_owned(),
             confirmed: true,

@@ -8,9 +8,12 @@ use std::path::PathBuf;
 
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{tag_name, DocumentFields, DocumentId, Field, ReviewEntryId};
+use ncrs_index::{
+    kind_key, kind_word, stored_kind, tag_name, DocumentFields, DocumentId, Field, KindLanguage,
+    ReviewEntryId,
+};
 use ncrs_intake::{
-    choose_pattern, default_pattern_for, missing_field, render_pattern, render_pattern_parts,
+    choose_pattern, default_pattern_for, missing_field, render_pattern_in, render_pattern_parts,
     PatternPart, PatternSource,
 };
 
@@ -52,12 +55,16 @@ pub struct Form {
 }
 
 impl Form {
-    fn of(item: &ReviewItem, custom_default: Option<&str>) -> Self {
+    fn of(item: &ReviewItem, custom_default: Option<&str>, kind_language: KindLanguage) -> Self {
         let fields = &item.fields;
         Self {
             sender: fields.sender.clone().unwrap_or_default(),
             recipient: fields.recipient.clone().unwrap_or_default(),
-            kind: fields.kind.clone().unwrap_or_default(),
+            kind: fields
+                .kind
+                .as_deref()
+                .map(|kind| kind_word(kind, kind_language).into_owned())
+                .unwrap_or_default(),
             date: fields.date.map(|date| date.to_string()).unwrap_or_default(),
             number: fields.number.clone().unwrap_or_default(),
             amount: fields.amount.as_ref().map(amount_text).unwrap_or_default(),
@@ -91,7 +98,7 @@ impl Form {
         Ok(DocumentFields {
             sender: non_empty(&self.sender),
             recipient: non_empty(&self.recipient),
-            kind: non_empty(&self.kind),
+            kind: non_empty(&self.kind).map(|kind| stored_kind(&kind)),
             date: parse_date(&self.date).map_err(Problem::from)?,
             number: non_empty(&self.number),
             amount: parse_amount(&self.amount).map_err(Problem::from)?,
@@ -109,7 +116,7 @@ impl Form {
         DocumentFields {
             sender: non_empty(&self.sender),
             recipient: non_empty(&self.recipient),
-            kind: non_empty(&self.kind),
+            kind: non_empty(&self.kind).map(|kind| stored_kind(&kind)),
             date: parse_date(&self.date).ok().flatten(),
             ..DocumentFields::default()
         }
@@ -170,13 +177,17 @@ impl FiledNotice {
 
 /// What a rule form for `item` starts with: its fields, and the pattern the
 /// review form would show for it.
-pub fn rule_prefill_of(item: &ReviewItem, custom_default: Option<&str>) -> RulePrefill {
+pub fn rule_prefill_of(
+    item: &ReviewItem,
+    custom_default: Option<&str>,
+    kind_language: KindLanguage,
+) -> RulePrefill {
     let fields = &item.fields;
     RulePrefill {
         sender: fields.sender.clone().unwrap_or_default(),
-        kind: fields.kind.clone().unwrap_or_default(),
+        kind: fields.kind.as_deref().map(stored_kind).unwrap_or_default(),
         tags: fields.tags.clone(),
-        pattern: Form::of(item, custom_default).pattern,
+        pattern: Form::of(item, custom_default, kind_language).pattern,
     }
 }
 
@@ -234,6 +245,7 @@ pub struct ReviewList {
     /// Tells the answer of the preview that is current from a stale one.
     replan_serial: u64,
     document_preview: DocumentPreview,
+    kind_language: KindLanguage,
 }
 
 impl ReviewList {
@@ -257,7 +269,20 @@ impl ReviewList {
             replan: None,
             replan_serial: 0,
             document_preview: DocumentPreview::default(),
+            kind_language: KindLanguage::default(),
         }
+    }
+
+    pub fn with_kind_language(self, kind_language: KindLanguage) -> Self {
+        Self {
+            kind_language,
+            ..self
+        }
+    }
+
+    pub fn set_kind_language(&mut self, kind_language: KindLanguage) {
+        self.kind_language = kind_language;
+        self.form.kind = kind_word(&self.form.kind, kind_language).into_owned();
     }
 
     /// The pattern proposed for documents without a rule or learned pattern,
@@ -361,14 +386,14 @@ impl ReviewList {
     /// `None` while they do not fit.
     pub fn preview(&self) -> Option<PathBuf> {
         let fields = self.form.fields().ok()?;
-        render_pattern(self.form.pattern.trim(), &fields)
+        render_pattern_in(self.form.pattern.trim(), &fields, self.kind_language)
     }
 
     /// [`Self::preview`] in the pieces the path is made of, to show which come
     /// from which field.
     pub fn preview_parts(&self) -> Option<Vec<PatternPart>> {
         let fields = self.form.fields().ok()?;
-        render_pattern_parts(self.form.pattern.trim(), &fields)
+        render_pattern_parts(self.form.pattern.trim(), &fields, self.kind_language)
     }
 
     /// The user changed what the form holds for `field` since the document
@@ -377,11 +402,15 @@ impl ReviewList {
         let Some(item) = self.selected() else {
             return false;
         };
-        let loaded = Form::of(item, self.custom_default_pattern.as_deref());
+        let loaded = Form::of(
+            item,
+            self.custom_default_pattern.as_deref(),
+            self.kind_language,
+        );
         match field {
             Field::Sender => self.form.sender != loaded.sender,
             Field::Recipient => self.form.recipient != loaded.recipient,
-            Field::Kind => self.form.kind != loaded.kind,
+            Field::Kind => kind_key(&self.form.kind) != kind_key(&loaded.kind),
             Field::Date => self.form.date != loaded.date,
             Field::Number => self.form.number != loaded.number,
             Field::Amount => self.form.amount != loaded.amount,
@@ -610,7 +639,7 @@ impl ReviewList {
             }
         };
         let pattern = self.form.pattern.trim().to_owned();
-        if render_pattern(&pattern, &fields).is_none() {
+        if render_pattern_in(&pattern, &fields, self.kind_language).is_none() {
             self.problem = Some(Problem::PatternDoesNotFit);
             return None;
         }
@@ -664,9 +693,10 @@ impl ReviewList {
     /// the last try belongs to the document it was tried on.
     fn fill_form(&mut self) {
         let custom_default = self.custom_default_pattern.clone();
+        let kind_language = self.kind_language;
         self.form = self
             .selected()
-            .map(|item| Form::of(item, custom_default.as_deref()))
+            .map(|item| Form::of(item, custom_default.as_deref(), kind_language))
             .unwrap_or_default();
         self.pattern_is_default = self
             .selected()
@@ -762,7 +792,7 @@ pub mod tests {
         tagged.proposed_pattern = None;
         tagged.reason = ReviewReason::NoMatchingRule;
         tagged.fields.recipient = Some("Firma A GmbH".to_owned());
-        tagged.fields.tags = ["steuer", "buero"].map(str::to_owned).into();
+        tagged.fields.tags = ["steuer", "büro"].map(str::to_owned).into();
         let mut list = ReviewList::new();
         list.loaded(vec![tagged]);
         list
@@ -1002,7 +1032,7 @@ pub mod tests {
         assert_eq!(list.form().pattern, "{sender}/{date}_{kind}");
         assert_eq!(
             list.preview(),
-            Some(PathBuf::from("Company A/2024-03-09_invoice"))
+            Some(PathBuf::from("Company A/2024-03-09_Invoice"))
         );
     }
 
@@ -1090,6 +1120,50 @@ pub mod tests {
         );
         list.remove_tag("home-office");
         assert!(list.form().tags.is_empty());
+    }
+
+    fn list_in(kind_language: KindLanguage) -> ReviewList {
+        let [one, _] = <[_; 2]>::try_from(ids()).unwrap();
+        let mut list = ReviewList::new().with_kind_language(kind_language);
+        list.loaded(vec![item(one, "scan-1.pdf", "Company A")]);
+        list
+    }
+
+    #[test]
+    fn the_kind_field_shows_the_word_of_the_language_and_saving_stores_the_id() {
+        let german = list_in(KindLanguage::German);
+        let english = list_in(KindLanguage::English);
+
+        assert_eq!(german.form().kind, "Rechnung");
+        assert_eq!(english.form().kind, "Invoice");
+        assert!(!german.is_edited(Field::Kind));
+
+        let mut edited = list_in(KindLanguage::German);
+        edited.set_text(FormField::Kind, "Gutschrift".to_owned());
+        assert_eq!(
+            edited.form().fields().unwrap().kind.as_deref(),
+            Some("credit_note")
+        );
+        edited.set_text(FormField::Kind, "Steuerbescheid 2024".to_owned());
+        assert_eq!(
+            edited.form().fields().unwrap().kind.as_deref(),
+            Some("Steuerbescheid 2024")
+        );
+    }
+
+    #[test]
+    fn the_path_preview_words_the_kind_in_the_language() {
+        let german = list_in(KindLanguage::German);
+        let english = list_in(KindLanguage::English);
+
+        assert_eq!(
+            german.preview(),
+            Some(PathBuf::from("Company A").join("2024-03-09_Rechnung"))
+        );
+        assert_eq!(
+            english.preview(),
+            Some(PathBuf::from("Company A").join("2024-03-09_Invoice"))
+        );
     }
 
     #[test]

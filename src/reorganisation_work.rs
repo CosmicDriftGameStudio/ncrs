@@ -10,7 +10,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono::NaiveDate;
-use ncrs_index::{BatchKind, Finding, Index, IndexError, PlanItem, PlanOutcome, RuleId, RuleSpec};
+use ncrs_index::{
+    BatchKind, Finding, Index, IndexError, KindLanguage, PlanItem, PlanOutcome, RuleId, RuleSpec,
+};
 use ncrs_intake::{plan_location, FINDING_PRIORITY};
 
 use crate::execute::{self, ExecutionItem, UndoReport};
@@ -93,6 +95,7 @@ pub fn deciding_finding(item: &PlanItem) -> Option<&Finding> {
 pub struct PlanAccess {
     slot: IndexSlot,
     archive_roots: Vec<PathBuf>,
+    kind_language: KindLanguage,
 }
 
 impl PlanAccess {
@@ -100,6 +103,14 @@ impl PlanAccess {
         Self {
             slot,
             archive_roots,
+            kind_language: KindLanguage::default(),
+        }
+    }
+
+    pub fn with_kind_language(self, kind_language: KindLanguage) -> Self {
+        Self {
+            kind_language,
+            ..self
         }
     }
 
@@ -110,7 +121,8 @@ impl PlanAccess {
         for root in &self.archive_roots {
             let mut guard = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
             let index = guard.as_mut().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
-            let plan = plan_location(index, root).map_err(|err| err.to_string())?;
+            let plan =
+                plan_location(index, root, self.kind_language).map_err(|err| err.to_string())?;
             let rules: HashMap<RuleId, PlannedRule> = index
                 .rules()
                 .map_err(|err| err.to_string())?

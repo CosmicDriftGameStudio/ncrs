@@ -7,6 +7,7 @@ use rusqlite::{params, params_from_iter, Connection, OptionalExtension as _};
 use crate::documents::{DocumentRow, DOCUMENT_COLUMNS};
 use crate::error::IndexError;
 use crate::index::Index;
+use crate::kinds::{stored_kind, Kind};
 use crate::model::{tag_name, Document, DocumentId, QuerySpec, SavedQuery, SavedQueryId};
 use crate::names::{name_id, NameTable};
 
@@ -91,6 +92,15 @@ fn blank_to_none(text: &Option<String>) -> Option<&str> {
         .filter(|trimmed| !trimmed.is_empty())
 }
 
+/// `?, ?, ?` for `count` bound values; `NULL` for none, so `IN (NULL)`
+/// is valid and matches nothing.
+fn placeholders(count: usize) -> String {
+    if count == 0 {
+        return "NULL".to_owned();
+    }
+    vec!["?"; count].join(", ")
+}
+
 impl Index {
     /// A name that is already taken is an error, not an update: two queries
     /// of one name could not be told apart in the list.
@@ -108,7 +118,7 @@ impl Index {
             params![
                 name,
                 spec.year,
-                blank_to_none(&spec.kind),
+                blank_to_none(&spec.kind).map(stored_kind),
                 full_text_words(spec),
                 Utc::now().timestamp(),
                 blank_to_none(&spec.sender),
@@ -137,7 +147,7 @@ impl Index {
                 id.get(),
                 name,
                 spec.year,
-                blank_to_none(&spec.kind),
+                blank_to_none(&spec.kind).map(stored_kind),
                 full_text_words(spec),
                 blank_to_none(&spec.sender),
             ],
@@ -197,7 +207,7 @@ impl Index {
     /// without one last) and path. Missing documents are included; the caller
     /// sees them by `missing_since`.
     pub fn run_query(&self, spec: &QuerySpec) -> Result<Vec<Document>, IndexError> {
-        let mut conditions: Vec<&str> = Vec::new();
+        let mut conditions: Vec<String> = Vec::new();
         let mut values: Vec<Value> = Vec::new();
         if let Some(year) = spec.year {
             let (Some(from), Some(until)) = (
@@ -206,17 +216,19 @@ impl Index {
             ) else {
                 return Ok(Vec::new());
             };
-            conditions.push("d.document_date >= ? AND d.document_date < ?");
+            conditions.push("d.document_date >= ? AND d.document_date < ?".to_owned());
             values.push(Value::Text(from.to_string()));
             values.push(Value::Text(until.to_string()));
         }
         if let Some(sender) = blank_to_none(&spec.sender) {
-            conditions.push("s.name_key = ?");
+            conditions.push("s.name_key = ?".to_owned());
             values.push(Value::Text(sender.to_lowercase()));
         }
         if let Some(kind) = blank_to_none(&spec.kind) {
-            conditions.push("k.name_key = ?");
-            values.push(Value::Text(kind.to_lowercase()));
+            let keys =
+                Kind::resolve(kind).map_or_else(|| vec![kind.to_lowercase()], Kind::name_keys);
+            conditions.push(format!("k.name_key IN ({})", placeholders(keys.len())));
+            values.extend(keys.into_iter().map(Value::Text));
         }
         for tag in spec
             .tags
@@ -224,13 +236,17 @@ impl Index {
             .map(|tag| tag_name(tag))
             .filter(|tag| !tag.is_empty())
         {
-            conditions.push(
+            let other_spellings = Kind::resolve(&tag).map_or_else(Vec::new, Kind::tag_names);
+            conditions.push(format!(
                 "EXISTS (SELECT 1 FROM document_tag dt JOIN tag t ON t.id = dt.tag_id
                          WHERE dt.document_id = d.id
-                           AND (t.name_key = ? OR t.name_key LIKE ? ESCAPE '\\'))",
-            );
+                           AND (t.name_key = ? OR t.name_key LIKE ? ESCAPE '\\'
+                                OR t.name_key IN ({})))",
+                placeholders(other_spellings.len())
+            ));
             values.push(Value::Text(tag.clone()));
             values.push(Value::Text(format!("{}-%", escape_like(&tag))));
+            values.extend(other_spellings.into_iter().map(Value::Text));
         }
         let text_hits: Option<HashSet<DocumentId>> = full_text_words(spec)
             .map(|words| {
@@ -423,6 +439,53 @@ mod tests {
     }
 
     #[test]
+    fn a_known_kind_is_found_by_every_spelling_it_is_stored_under() {
+        let (_dir, mut index) = encrypted_index();
+        let mut ids = Vec::new();
+        for (seed, kind) in [(1, "invoice"), (2, "Placeholder")] {
+            let id = index.insert_document(&new_document(seed)).unwrap();
+            let fields = DocumentFields {
+                kind: Some(kind.to_owned()),
+                ..DocumentFields::default()
+            };
+            index
+                .set_document_fields(id, &fields, |_| FieldOrigin::Unknown)
+                .unwrap();
+            ids.push(id);
+        }
+        index
+            .connection()
+            .execute_batch(
+                "UPDATE document_kind SET name = 'Rechnung', name_key = 'rechnung'
+                     WHERE name_key = 'placeholder';
+                 UPDATE tag SET name = 'rechnung', name_key = 'rechnung'
+                     WHERE name_key = 'placeholder';",
+            )
+            .unwrap();
+
+        for spec in [
+            QuerySpec {
+                kind: Some("invoice".to_owned()),
+                ..QuerySpec::default()
+            },
+            QuerySpec {
+                kind: Some("Rechnung".to_owned()),
+                ..QuerySpec::default()
+            },
+            QuerySpec {
+                tags: tags(&["rechnung"]),
+                ..QuerySpec::default()
+            },
+            QuerySpec {
+                tags: tags(&["Invoice"]),
+                ..QuerySpec::default()
+            },
+        ] {
+            assert_eq!(found(&index, &spec), ids, "{spec:?}");
+        }
+    }
+
+    #[test]
     fn the_full_text_narrows_the_other_criteria() {
         let (_dir, mut index, ids) = stocked();
         index
@@ -525,7 +588,7 @@ mod tests {
         let spec = QuerySpec {
             year: Some(2024),
             sender: Some("Company A".to_owned()),
-            kind: Some("Invoice".to_owned()),
+            kind: Some("invoice".to_owned()),
             tags: tags(&["home"]),
             full_text: Some("rent".to_owned()),
         };

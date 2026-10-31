@@ -3172,11 +3172,12 @@ impl App {
         let Some(store) = self.filing_key_store.clone() else {
             return Task::none();
         };
-        let Some((module, work)) =
+        let Some((mut module, work)) =
             FilingModule::start(filing, self.filing_index_path.clone(), store)
         else {
             return Task::none();
         };
+        module.set_kind_language(self.lang.kind_language());
         self.filing = Some(module);
         work.map_or_else(Task::none, run_filing_work)
     }
@@ -3234,6 +3235,15 @@ impl App {
 
     fn set_language(&mut self, lang: Language) {
         self.lang = lang;
+        if let Some(module) = &mut self.filing {
+            module.set_kind_language(lang.kind_language());
+        }
+        if let Some(list) = &mut self.review_list {
+            list.set_kind_language(lang.kind_language());
+        }
+        if let Some(view) = &mut self.saved_queries {
+            view.set_kind_language(lang.kind_language());
+        }
         self.refresh_function_keys();
         if let Some(problem) = &self.config_problem {
             self.config_error = Some(self.config_error_text(problem));
@@ -4545,7 +4555,9 @@ impl App {
         self.notice = None;
         self.quick_fix_generation = self.quick_fix_generation.wrapping_add(1);
         let generation = self.quick_fix_generation;
-        self.quick_fix = Some(QuickFix::new(anchor, self.window_size));
+        self.quick_fix = Some(
+            QuickFix::new(anchor, self.window_size).with_kind_language(self.lang.kind_language()),
+        );
         Task::perform(
             tokio::task::spawn_blocking(move || access.items_for(&paths)),
             move |joined| {
@@ -4688,8 +4700,15 @@ impl App {
         let Some(item) = menu.item_to_fix() else {
             return Task::none();
         };
-        let prefill = rule_prefill_of(item, self.filing_config.default_pattern.as_deref());
-        self.open_rule_form(RuleForm::from_document(prefill), None)
+        let prefill = rule_prefill_of(
+            item,
+            self.filing_config.default_pattern.as_deref(),
+            self.lang.kind_language(),
+        );
+        self.open_rule_form(
+            RuleForm::from_document(prefill, self.lang.kind_language()),
+            None,
+        )
     }
 
     fn update_context_menu(&mut self, message: Message) -> Task<Message> {
@@ -5207,6 +5226,7 @@ impl App {
                             self.hermes_spinner_angle,
                             &self.file_list_tags,
                             self.window_size.width / 2.0,
+                            self.lang.kind_language(),
                         )
                     }),
                 },
@@ -10785,7 +10805,10 @@ impl App {
                 else {
                     return Task::none();
                 };
-                self.open_rule_form(RuleForm::from_document(prefill), Some(HermesPage::Review))
+                self.open_rule_form(
+                    RuleForm::from_document(prefill, self.lang.kind_language()),
+                    Some(HermesPage::Review),
+                )
             }
             ReviewListMessage::ReplanOpenCases => self.start_replan(ReplanScope::OpenCases),
             ReviewListMessage::Previewed {
@@ -11005,7 +11028,9 @@ impl App {
         self.context_menu = None;
         self.review_list_generation = self.review_list_generation.wrapping_add(1);
         self.review_list = Some(
-            ReviewList::new().with_default_pattern(self.filing_config.default_pattern.clone()),
+            ReviewList::new()
+                .with_default_pattern(self.filing_config.default_pattern.clone())
+                .with_kind_language(self.lang.kind_language()),
         );
         let counts = if self.filing_status.hermes_counts().is_none() {
             self.request_hermes_counts()
@@ -11452,7 +11477,7 @@ impl App {
                     .document_search
                     .as_ref()
                     .filter(|view| view.can_save_as_report())
-                    .map(|view| Form::of_spec(&view.spec()))
+                    .map(|view| Form::of_spec(&view.spec(), self.lang.kind_language()))
                 else {
                     return Task::none();
                 };
@@ -11612,9 +11637,10 @@ impl App {
         }
         self.context_menu = None;
         self.saved_queries_generation = self.saved_queries_generation.wrapping_add(1);
-        self.saved_queries = Some(SavedQueries::new(chrono::Datelike::year(
-            &chrono::Local::now(),
-        )));
+        self.saved_queries = Some(
+            SavedQueries::new(chrono::Datelike::year(&chrono::Local::now()))
+                .with_kind_language(self.lang.kind_language()),
+        );
         self.run_query_load()
     }
 
@@ -16330,8 +16356,7 @@ impl App {
 
     /// The same app, worded in `lang`.
     pub fn in_language(mut self, lang: Language) -> Self {
-        self.lang = lang;
-        self.refresh_function_keys();
+        self.set_language(lang);
         self
     }
 
@@ -16448,7 +16473,7 @@ impl App {
                         own: [
                             vec!["steuer".to_owned()],
                             Vec::new(),
-                            vec!["steuer".to_owned(), "buero".to_owned(), "privat".to_owned()],
+                            vec!["steuer".to_owned(), "büro".to_owned(), "privat".to_owned()],
                         ]
                         .get(position % 3)
                         .cloned()

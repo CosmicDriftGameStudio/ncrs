@@ -2373,7 +2373,7 @@ mod tests {
         let id = index.search_text("4711", 10).unwrap()[0];
         let document = index.document(id).unwrap().unwrap();
         assert_eq!(document.fields.recipient.as_deref(), Some("Erika Beispiel"));
-        assert_eq!(document.fields.kind.as_deref(), Some("Rechnung"));
+        assert_eq!(document.fields.kind.as_deref(), Some("invoice"));
         let origins = index.field_origins(id).unwrap();
         assert_eq!(
             origins.of(ncrs_index::Field::Recipient),
@@ -2542,6 +2542,18 @@ mod tests {
         let documents = index.search_text("4711", 10).unwrap();
         let document = index.document(documents[0]).unwrap().unwrap();
         assert_eq!(document.status, DocumentStatus::Planned);
+    }
+
+    #[test]
+    fn a_rule_on_the_english_kind_files_a_document_whose_heading_is_german() {
+        let fixture = run_text_with_rules(&[tag_rule(&["invoice", "firma-a"])], LETTER_TEXT);
+
+        let index = fixture.index.lock().unwrap();
+        assert!(index.open_reviews().unwrap().is_empty());
+        let documents = index.search_text("4711", 10).unwrap();
+        let document = index.document(documents[0]).unwrap().unwrap();
+        assert_eq!(document.status, DocumentStatus::Planned);
+        assert_eq!(document.fields.kind.as_deref(), Some("invoice"));
     }
 
     #[test]

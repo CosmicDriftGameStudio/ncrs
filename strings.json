@@ -3973,36 +3973,6 @@
       "de": "Treffer"
     },
     {
-      "key": "kind.invoice",
-      "context": "Display name of the document kind 'invoice' as the rules or the AI write it; other kinds are shown as written.",
-      "en": "invoice",
-      "de": "Rechnung"
-    },
-    {
-      "key": "kind.receipt",
-      "context": "Display name of the document kind 'receipt' as the rules or the AI write it; other kinds are shown as written.",
-      "en": "receipt",
-      "de": "Beleg"
-    },
-    {
-      "key": "kind.contract",
-      "context": "Display name of the document kind 'contract' as the rules or the AI write it; other kinds are shown as written.",
-      "en": "contract",
-      "de": "Vertrag"
-    },
-    {
-      "key": "kind.letter",
-      "context": "Display name of the document kind 'letter' as the rules or the AI write it; other kinds are shown as written.",
-      "en": "letter",
-      "de": "Brief"
-    },
-    {
-      "key": "kind.quote",
-      "context": "Display name of the document kind 'quote' as the rules or the AI write it; other kinds are shown as written.",
-      "en": "quote",
-      "de": "Angebot"
-    },
-    {
       "key": "saved_queries.criteria_all",
       "context": "Short form of a query without any criterion in the saved queries list: it finds every document.",
       "en": "All documents",
@@ -7181,6 +7151,12 @@
       "context": "Start of a rule sentence on the rules page. Takes the conditions of the rule, joined, and what the rule does with a matching document after the arrow.",
       "en": "If {conditions} → {target}",
       "de": "Wenn {conditions} → {target}"
+    },
+    {
+      "key": "rules.sentence_set_tag",
+      "context": "One tag a rule sets, inside the rule sentence on the rules page (also in the question before a rule is deleted). {tag} is the tag as the user wrote it; the quotes are the quotation marks of the language.",
+      "en": "“{tag}”",
+      "de": "„{tag}“"
     },
     {
       "key": "rules.card_if",
