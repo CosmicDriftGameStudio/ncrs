@@ -1,6 +1,5 @@
 sender: Tannenhof Catering UG
 kind: Postkarte
-tax_context: none
 date: 2026-07-01
 number:
 amount:

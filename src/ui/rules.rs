@@ -85,7 +85,7 @@ pub fn view<'a>(
     palette: &Palette,
 ) -> Element<'a, Message> {
     if let Some(form) = state.form() {
-        return form_view(state, form, window, badges, lang, palette);
+        return form_view(form, window, badges, lang, palette);
     }
     let line_chars = frame::content_chars(SIZE, window, frame::SIDEBAR_ROOM);
     let mut body = column![
@@ -112,7 +112,7 @@ pub fn view<'a>(
     } else {
         body = body.push(list(state, line_chars, badges.focus, lang, palette));
         if let Some(selected) = state.selected().filter(|_| !state.is_confirming_delete()) {
-            body = body.push(paragraph(sentence_of(state, selected, lang), palette));
+            body = body.push(paragraph(sentence_of(selected, lang), palette));
         }
     }
     if state.is_confirming_delete() {
@@ -145,8 +145,8 @@ pub fn view<'a>(
     .into_element()
 }
 
-fn sentence_of(state: &RulesPage, listed: &ListedRule, lang: Language) -> String {
-    rule_sentence(&listed.rule.spec, state.tax_contexts(), lang)
+fn sentence_of(listed: &ListedRule, lang: Language) -> String {
+    rule_sentence(&listed.rule.spec, lang)
 }
 
 fn list<'a>(
@@ -196,7 +196,7 @@ fn list<'a>(
             );
             let content = row![
                 container(switch).width(SWITCH_WIDTH),
-                columns.cell(0, &sentence_of(state, listed, lang), color),
+                columns.cell(0, &sentence_of(listed, lang), color),
                 columns.cell(1, origin_text(listed.rule.origin, lang), color),
                 columns.cell(2, &hits_text(listed.hits, lang), color),
             ]
@@ -230,7 +230,7 @@ fn delete_question<'a>(
 ) -> Element<'a, Message> {
     let rule = state
         .selected()
-        .map(|listed| sentence_of(state, listed, lang))
+        .map(|listed| sentence_of(listed, lang))
         .unwrap_or_default();
     container(paragraph(
         fill_template(lang.text(Msg::RulesDeleteQuestion), &[("{rule}", &rule)]),
@@ -297,7 +297,6 @@ fn buttons<'a>(state: &RulesPage, lang: Language, palette: &Palette) -> Vec<Elem
 }
 
 fn form_view<'a>(
-    state: &RulesPage,
     form: &RuleForm,
     window: Size,
     badges: Badges,
@@ -324,7 +323,7 @@ fn form_view<'a>(
             palette,
         ));
     }
-    for control in form_rows(state, form, lang, palette) {
+    for control in form_rows(form, lang, palette) {
         body = body.push(control);
     }
     let line_chars = frame::content_chars(SIZE, window, frame::SIDEBAR_ROOM);
@@ -373,12 +372,7 @@ fn field_row<'a>(
     )
 }
 
-fn form_rows<'a>(
-    state: &RulesPage,
-    form: &RuleForm,
-    lang: Language,
-    palette: &Palette,
-) -> Vec<Element<'a, Message>> {
+fn form_rows<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Vec<Element<'a, Message>> {
     let problems = form.problems();
     let save = send_form(RuleFormMessage::Save);
     let host = ConditionHost {
@@ -427,13 +421,6 @@ fn form_rows<'a>(
         palette,
     ));
     rows.push(field_row(
-        lang.text(Msg::ReviewListFieldTaxContext),
-        None,
-        None,
-        tax_context_choice(state, form, lang, palette),
-        palette,
-    ));
-    rows.push(field_row(
         lang.text(Msg::ReviewListFieldTags),
         Some(lang.text(Msg::ReviewListHintTags)),
         None,
@@ -457,33 +444,6 @@ fn form_rows<'a>(
         palette,
     ));
     rows
-}
-
-fn tax_context_choice<'a>(
-    state: &RulesPage,
-    form: &RuleForm,
-    lang: Language,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let choices = kit::tax_context_choices(
-        lang.text(Msg::ReviewListTaxOpen),
-        lang.text(Msg::ReviewListTaxNone),
-        state.tax_contexts(),
-    );
-    let options: Vec<(&str, Message)> = choices
-        .iter()
-        .map(|(label, choice)| {
-            (
-                *label,
-                send_form(RuleFormMessage::TaxContext(choice.clone())),
-            )
-        })
-        .collect();
-    let selected = choices
-        .iter()
-        .position(|(_, choice)| *choice == form.tax_context)
-        .unwrap_or_default();
-    kit::dropdown(&options, selected, true, palette)
 }
 
 fn block_buttons<'a>(palette: &Palette) -> Element<'a, Message> {

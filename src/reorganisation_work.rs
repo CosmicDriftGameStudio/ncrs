@@ -285,7 +285,7 @@ pub mod tests {
     use chrono::{NaiveDate, TimeZone as _, Utc};
     use ncrs_index::{
         Condition, ConditionKind, DocumentFields, DocumentId, DocumentSource, FieldOrigin,
-        FileStamp, NewDocument, PlanOutcome, RuleConditions, RuleEvidence, RuleSpec, TaxContext,
+        FileStamp, NewDocument, PlanOutcome, RuleConditions, RuleEvidence, RuleSpec,
     };
     use tempfile::TempDir;
 
@@ -310,7 +310,6 @@ pub mod tests {
             extract_date: None,
             extract_amount: None,
             kind: kind.to_owned(),
-            tax_context: Some(TaxContext::None),
             tags: Default::default(),
             filing_pattern: pattern.to_owned(),
             confirmed,

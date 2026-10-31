@@ -131,12 +131,9 @@ impl LocalModel {
 
         // Grammar first, greedy second: the grammar rules out every token that
         // would leave the reply shape, so greedy only ever sees legal ones.
-        let grammar = LlamaSampler::grammar(
-            &self.model,
-            &reply_grammar(&request.open_fields, &request.tax_contexts),
-            "root",
-        )
-        .map_err(|_refused| AiError::Model("llama.cpp refused the reply grammar"))?;
+        let grammar =
+            LlamaSampler::grammar(&self.model, &reply_grammar(&request.open_fields), "root")
+                .map_err(|_refused| AiError::Model("llama.cpp refused the reply grammar"))?;
         let mut sampler = LlamaSampler::chain_simple([grammar, LlamaSampler::greedy()]);
 
         let mut reply = Vec::new();
@@ -164,11 +161,7 @@ impl Provider for LocalModel {
             .one_at_a_time
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        parse_reply(
-            &self.generate(request)?,
-            &request.open_fields,
-            &request.tax_contexts,
-        )
+        parse_reply(&self.generate(request)?, &request.open_fields)
     }
 }
 
@@ -331,7 +324,7 @@ pub fn prompt_tokens(
 ) -> Result<Vec<LlamaToken>, AiError> {
     let head = format!(
         "<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n<|im_start|>user\n{}",
-        user_message_prefix(&request.open_fields, &request.tax_contexts)
+        user_message_prefix(&request.open_fields)
     );
     let tail = format!(
         "{}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
@@ -400,7 +393,6 @@ mod tests {
             text: text.to_owned(),
             open_fields: open_fields.to_vec(),
             known: DocumentFields::default(),
-            tax_contexts: crate::test_contexts::stored_contexts(&[]),
             source: PathBuf::from("inbox-one"),
         }
     }
@@ -506,13 +498,7 @@ mod tests {
         assert_only_open_fields_once(&extraction, &open);
         for found in &extraction.fields {
             assert_eq!(
-                ExtractedField::new(
-                    found.field,
-                    &found.value,
-                    found.confidence,
-                    &asked.tax_contexts
-                )
-                .as_ref(),
+                ExtractedField::new(found.field, &found.value, found.confidence).as_ref(),
                 Some(found)
             );
         }
@@ -563,7 +549,6 @@ mod tests {
             .filter(|&field| match field {
                 Field::Sender => known.sender.is_none(),
                 Field::Kind => known.kind.is_none(),
-                Field::TaxContext => known.tax_context.is_none(),
                 Field::Date => known.date.is_none(),
                 Field::Number => known.number.is_none(),
                 Field::Amount => known.amount.is_none(),
@@ -591,33 +576,26 @@ mod tests {
         answers: &std::collections::HashMap<String, Asked>,
         threshold: f32,
     ) -> ThresholdOutcome {
-        use ncrs_intake::recognition::{
-            fixed_rules, fixed_tax_contexts, measure, score_field, FieldScore,
-        };
+        use ncrs_intake::recognition::{fixed_rules, measure, score_field, FieldScore};
 
         let (mut right_values, mut wrong_values, mut still_missing) = (0, 0, 0);
         let mut unsure_documents = std::collections::HashSet::new();
-        let report = measure(
-            corpus,
-            &fixed_rules(),
-            &fixed_tax_contexts(),
-            |document, _known| {
-                let asked = answers.get(&document.name)?;
-                let mut merged = asked.known.clone();
-                for found in &asked.extraction.fields {
-                    if found.confidence < threshold {
-                        unsure_documents.insert(document.name.clone());
-                    } else if found.fill(&mut merged) {
-                        match score_field(found.field, &document.expected, &merged) {
-                            FieldScore::Hit => right_values += 1,
-                            _ => wrong_values += 1,
-                        }
+        let report = measure(corpus, &fixed_rules(), |document, _known| {
+            let asked = answers.get(&document.name)?;
+            let mut merged = asked.known.clone();
+            for found in &asked.extraction.fields {
+                if found.confidence < threshold {
+                    unsure_documents.insert(document.name.clone());
+                } else if found.fill(&mut merged) {
+                    match score_field(found.field, &document.expected, &merged) {
+                        FieldScore::Hit => right_values += 1,
+                        _ => wrong_values += 1,
                     }
                 }
-                still_missing += open_fields_of(&merged).len();
-                Some(merged)
-            },
-        );
+            }
+            still_missing += open_fields_of(&merged).len();
+            Some(merged)
+        });
         let review_documents = report
             .results
             .iter()
@@ -642,7 +620,7 @@ mod tests {
         use std::collections::HashMap;
 
         use ncrs_intake::recognition::{
-            fixed_rules, fixed_tax_contexts, load_corpus, measure, score_field, FieldScore,
+            fixed_rules, load_corpus, measure, score_field, FieldScore,
         };
 
         const THRESHOLDS: [f32; 8] = [0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95];
@@ -650,31 +628,26 @@ mod tests {
         let local = model();
 
         let mut answers: HashMap<String, Asked> = HashMap::new();
-        measure(
-            &corpus,
-            &fixed_rules(),
-            &fixed_tax_contexts(),
-            |document, known| {
-                let open = open_fields_of(known);
-                if open.is_empty() {
-                    return None;
-                }
-                let extraction = local
-                    .extract(&ExtractionRequest {
-                        known: known.clone(),
-                        ..request(&document.text, &open)
-                    })
-                    .unwrap();
-                answers.insert(
-                    document.name.clone(),
-                    Asked {
-                        known: known.clone(),
-                        extraction,
-                    },
-                );
-                None
-            },
-        );
+        measure(&corpus, &fixed_rules(), |document, known| {
+            let open = open_fields_of(known);
+            if open.is_empty() {
+                return None;
+            }
+            let extraction = local
+                .extract(&ExtractionRequest {
+                    known: known.clone(),
+                    ..request(&document.text, &open)
+                })
+                .unwrap();
+            answers.insert(
+                document.name.clone(),
+                Asked {
+                    known: known.clone(),
+                    extraction,
+                },
+            );
+            None
+        });
 
         println!("documents asked: {} of {}", answers.len(), corpus.len());
         println!("threshold  ai right  ai wrong  still missing  review docs  wrong assignments");

@@ -2245,7 +2245,6 @@ mod tests {
             extract_date: None,
             extract_amount: None,
             kind: "invoice".to_owned(),
-            tax_context: Some(ncrs_index::TaxContext::named("company")),
             tags: std::collections::BTreeSet::new(),
             filing_pattern: filing_pattern.to_owned(),
             confirmed,
@@ -2264,33 +2263,12 @@ mod tests {
     }
 
     fn run_text_with_rules(specs: &[ncrs_index::RuleSpec], text: &str) -> IndexFixture {
-        run_text_with_rules_and_contexts(specs, &[], text)
-    }
-
-    /// `contexts` are short names with the conditions that assign to them.
-    fn run_text_with_rules_and_contexts(
-        specs: &[ncrs_index::RuleSpec],
-        contexts: &[(&str, ncrs_index::RuleConditions)],
-        text: &str,
-    ) -> IndexFixture {
         let inbox_dir = TempDir::new().unwrap();
         let inbox = location(&inbox_dir, LocationMode::Inbox);
         put(&inbox, "invoice.pdf", INVOICE);
         let fixture = IndexFixture::new();
         for spec in specs {
             fixture.index.lock().unwrap().create_rule(spec).unwrap();
-        }
-        for (short_name, conditions) in contexts {
-            let mut index = fixture.index.lock().unwrap();
-            let entry = index
-                .tax_contexts()
-                .unwrap()
-                .into_iter()
-                .find(|entry| entry.short_name == *short_name)
-                .unwrap();
-            index
-                .set_tax_context_conditions(entry.id, conditions)
-                .unwrap();
         }
         let chain = TextChain::new().with_source(FixedText(Ok(Extracted::Text(text.to_owned()))));
         let runner = Runner::start(
@@ -2429,137 +2407,6 @@ mod tests {
         assert_eq!(
             first_document_status(&fixture, &inbox),
             DocumentStatus::Planned
-        );
-    }
-
-    fn open_context_rule() -> ncrs_index::RuleSpec {
-        ncrs_index::RuleSpec {
-            tax_context: None,
-            ..invoice_rule("{tax_context}/{number}.pdf", true)
-        }
-    }
-
-    fn substring_conditions(texts: &[&str]) -> ncrs_index::RuleConditions {
-        ncrs_index::RuleConditions::any_of(
-            texts
-                .iter()
-                .map(|text| ncrs_index::Condition::new(ncrs_index::ConditionKind::Substring, *text))
-                .collect(),
-        )
-    }
-
-    #[test]
-    fn the_rules_step_stores_the_condition_that_assigned_the_tax_context_as_its_origin() {
-        let fixture = run_text_with_rules_and_contexts(
-            &[open_context_rule()],
-            &[("company", substring_conditions(&["company a"]))],
-            INVOICE_TEXT,
-        );
-
-        let index = fixture.index.lock().unwrap();
-        assert!(index.open_reviews().unwrap().is_empty());
-        let documents = index.search_text("4711", 10).unwrap();
-        let document = index.document(documents[0]).unwrap().unwrap();
-        assert_eq!(document.status, DocumentStatus::Planned);
-        assert_eq!(
-            document.fields.tax_context,
-            Some(ncrs_index::TaxContext::named("company"))
-        );
-        assert_eq!(
-            index
-                .field_origins(documents[0])
-                .unwrap()
-                .of(ncrs_index::Field::TaxContext),
-            ncrs_index::FieldOrigin::Condition {
-                kind: ncrs_index::ConditionKind::Substring,
-                value: "company a".to_owned()
-            }
-        );
-    }
-
-    #[test]
-    fn the_rules_step_does_not_offer_an_iban_of_a_tax_context_as_a_sender_alias() {
-        let own_iban = ncrs_index::Condition::new(
-            ncrs_index::ConditionKind::Iban,
-            "DE02 1203 0000 0000 2020 51",
-        );
-        let fixture = run_text_with_rules_and_contexts(
-            &[],
-            &[(
-                "company",
-                ncrs_index::RuleConditions::any_of(vec![own_iban]),
-            )],
-            "Stadtwerke Musterstadt GmbH\nIBAN DE89 3704 0044 0532 0130 00\nLastschrift von DE02 1203 0000 0000 2020 51\n",
-        );
-
-        let index = fixture.index.lock().unwrap();
-        let offered: Vec<_> = index
-            .sender_aliases()
-            .unwrap()
-            .into_iter()
-            .map(|alias| (alias.sender, alias.value))
-            .collect();
-        assert_eq!(
-            offered,
-            [(
-                "Stadtwerke Musterstadt GmbH".to_owned(),
-                "DE89370400440532013000".to_owned()
-            )]
-        );
-    }
-
-    #[test]
-    fn a_document_no_context_claims_lands_in_review_with_the_unclear_reason() {
-        let fixture = run_text_with_rules_and_contexts(
-            &[open_context_rule()],
-            &[("company", substring_conditions(&["agency b"]))],
-            INVOICE_TEXT,
-        );
-
-        let index = fixture.index.lock().unwrap();
-        let reviews = index.open_reviews().unwrap();
-        assert_eq!(reviews.len(), 1);
-        assert_eq!(
-            reviews[0].reason,
-            ncrs_index::ReviewReason::NoTaxContextMatches
-        );
-    }
-
-    #[test]
-    fn a_document_several_contexts_claim_lands_in_review_with_that_reason() {
-        let fixture = run_text_with_rules_and_contexts(
-            &[open_context_rule()],
-            &[
-                ("company", substring_conditions(&["company a"])),
-                ("private", substring_conditions(&["invoice"])),
-            ],
-            INVOICE_TEXT,
-        );
-
-        let index = fixture.index.lock().unwrap();
-        let reviews = index.open_reviews().unwrap();
-        assert_eq!(reviews.len(), 1);
-        assert_eq!(
-            reviews[0].reason,
-            ncrs_index::ReviewReason::SeveralTaxContextsMatch
-        );
-    }
-
-    #[test]
-    fn a_rule_with_a_context_keeps_the_document_out_of_review_whatever_the_conditions_say() {
-        let fixture = run_text_with_rules_and_contexts(
-            &[invoice_rule("{tax_context}/{number}.pdf", true)],
-            &[("private", substring_conditions(&["agency b"]))],
-            INVOICE_TEXT,
-        );
-
-        let index = fixture.index.lock().unwrap();
-        assert!(index.open_reviews().unwrap().is_empty());
-        let documents = index.search_text("4711", 10).unwrap();
-        let document = index.document(documents[0]).unwrap().unwrap();
-        assert_eq!(
-            document.fields.tax_context,
-            Some(ncrs_index::TaxContext::named("company"))
         );
     }
 

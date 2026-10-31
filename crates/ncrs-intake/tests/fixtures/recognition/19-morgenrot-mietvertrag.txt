@@ -1,6 +1,5 @@
 sender: Morgenrot Hausverwaltung GmbH
 kind: Vertrag
-tax_context: private
 date: 2026-06-01
 number: MV-300
 amount: 65000 EUR

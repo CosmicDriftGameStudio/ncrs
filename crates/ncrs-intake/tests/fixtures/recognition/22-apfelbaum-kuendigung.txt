@@ -1,6 +1,5 @@
 sender: Apfelbaum Verlag GmbH
 kind: Kündigung
-tax_context: none
 date: 2026-06-15
 number:
 amount:

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{DocumentFields, DocumentId, Field, ReviewEntryId, TaxContext, TaxContextEntry};
+use ncrs_index::{DocumentFields, DocumentId, Field, ReviewEntryId};
 use ncrs_intake::{
     choose_pattern, default_pattern_for, missing_field, render_pattern, render_pattern_parts,
     PatternPart, PatternSource,
@@ -40,8 +40,6 @@ pub enum FormField {
 pub struct Form {
     pub sender: String,
     pub kind: String,
-    /// `None` is a context nobody has chosen yet.
-    pub tax_context: Option<TaxContext>,
     pub date: String,
     pub number: String,
     pub amount: String,
@@ -55,7 +53,6 @@ impl Form {
         Self {
             sender: fields.sender.clone().unwrap_or_default(),
             kind: fields.kind.clone().unwrap_or_default(),
-            tax_context: fields.tax_context.clone(),
             date: fields.date.map(|date| date.to_string()).unwrap_or_default(),
             number: fields.number.clone().unwrap_or_default(),
             amount: fields.amount.as_ref().map(amount_text).unwrap_or_default(),
@@ -88,7 +85,6 @@ impl Form {
         Ok(DocumentFields {
             sender: non_empty(&self.sender),
             kind: non_empty(&self.kind),
-            tax_context: self.tax_context.clone(),
             date: parse_date(&self.date).map_err(Problem::from)?,
             number: non_empty(&self.number),
             amount: parse_amount(&self.amount).map_err(Problem::from)?,
@@ -128,7 +124,6 @@ pub struct FiledNotice {
     pub path: PathBuf,
     pub sender: String,
     pub kind: String,
-    pub tax_context: Option<TaxContext>,
     pub tags: BTreeSet<String>,
     pub pattern: String,
 }
@@ -143,7 +138,6 @@ impl FiledNotice {
         RulePrefill {
             sender: self.sender.clone(),
             kind: self.kind.clone(),
-            tax_context: self.tax_context.clone(),
             tags: self.tags.clone(),
             pattern: self.pattern.clone(),
         }
@@ -157,7 +151,6 @@ pub fn rule_prefill_of(item: &ReviewItem, custom_default: Option<&str>) -> RuleP
     RulePrefill {
         sender: fields.sender.clone().unwrap_or_default(),
         kind: fields.kind.clone().unwrap_or_default(),
-        tax_context: fields.tax_context.clone(),
         tags: fields.tags.clone(),
         pattern: Form::of(item, custom_default).pattern,
     }
@@ -210,7 +203,6 @@ pub struct ReviewList {
     /// The pattern field holds what Hermes proposed, not something the user
     /// typed or a rule gave; it then follows the other fields.
     pattern_is_default: bool,
-    tax_contexts: Vec<TaxContextEntry>,
     replan: Option<ReplanStep>,
     /// Tells the answer of the preview that is current from a stale one.
     replan_serial: u64,
@@ -234,7 +226,6 @@ impl ReviewList {
             focus_request: None,
             custom_default_pattern: None,
             pattern_is_default: false,
-            tax_contexts: Vec::new(),
             replan: None,
             replan_serial: 0,
             document_preview: DocumentPreview::default(),
@@ -362,7 +353,6 @@ impl ReviewList {
         match field {
             Field::Sender => self.form.sender != loaded.sender,
             Field::Kind => self.form.kind != loaded.kind,
-            Field::TaxContext => self.form.tax_context != loaded.tax_context,
             Field::Date => self.form.date != loaded.date,
             Field::Number => self.form.number != loaded.number,
             Field::Amount => self.form.amount != loaded.amount,
@@ -374,15 +364,6 @@ impl ReviewList {
     pub fn missing_field(&self) -> Option<Field> {
         let fields = self.form.fields().ok()?;
         missing_field(self.form.pattern.trim(), &fields)
-    }
-
-    /// The stored tax contexts the form offers, as of the last load.
-    pub fn tax_contexts(&self) -> &[TaxContextEntry] {
-        &self.tax_contexts
-    }
-
-    pub fn set_tax_contexts(&mut self, tax_contexts: Vec<TaxContextEntry>) {
-        self.tax_contexts = tax_contexts;
     }
 
     /// The list the work returned. The cursor stays on the entry it was on, if
@@ -538,13 +519,6 @@ impl ReviewList {
         }
     }
 
-    pub fn set_tax_context(&mut self, tax_context: Option<TaxContext>) {
-        if self.selected().is_some() {
-            self.form.tax_context = tax_context;
-            self.problem = None;
-        }
-    }
-
     /// The document to file and how: the fields and the pattern as shown. A
     /// typed value no field can hold, or a pattern that does not fit, is
     /// reported in the view and nothing is returned. Marks the view busy until
@@ -576,7 +550,6 @@ impl ReviewList {
             path: PathBuf::new(),
             sender: fields.sender.unwrap_or_default(),
             kind: fields.kind.unwrap_or_default(),
-            tax_context: fields.tax_context,
             tags: fields.tags,
             pattern,
         });
@@ -687,27 +660,18 @@ pub mod tests {
             fields: DocumentFields {
                 sender: (!sender.is_empty()).then(|| sender.to_owned()),
                 kind: Some("invoice".to_owned()),
-                tax_context: Some(TaxContext::named("company")),
                 date: chrono::NaiveDate::from_ymd_opt(2024, 3, 9),
                 ..DocumentFields::default()
             },
             proposed_pattern: Some("{sender}/{date}_{kind}".to_owned()),
-            tax_context_assigned_by: None,
             origins: ncrs_index::FieldOrigins::default(),
             passages: Vec::new(),
         }
     }
 
-    pub fn stored_tax_contexts() -> Vec<TaxContextEntry> {
-        let dir = tempfile::TempDir::new().unwrap();
-        let index = Index::create_plain(&dir.path().join("index.db")).unwrap();
-        index.tax_contexts().unwrap()
-    }
-
     pub fn loaded_list() -> ReviewList {
         let [one, two] = <[_; 2]>::try_from(ids()).unwrap();
         let mut list = ReviewList::new();
-        list.set_tax_contexts(stored_tax_contexts());
         list.loaded(vec![
             item(one, "scan-1.pdf", "Company A"),
             item(two, "scan-2.pdf", "Agency B"),
@@ -726,7 +690,6 @@ pub mod tests {
         undated.proposed_pattern = None;
         undated.fields.date = None;
         let mut list = ReviewList::new();
-        list.set_tax_contexts(stored_tax_contexts());
         list.loaded(vec![frost, undated]);
         list
     }
@@ -738,46 +701,14 @@ pub mod tests {
         blank.proposed_pattern = None;
         blank.fields = DocumentFields::default();
         let mut list = ReviewList::new();
-        list.set_tax_contexts(stored_tax_contexts());
         list.loaded(vec![blank]);
         list
     }
 
-    /// A document a condition assigned a context to, one no condition fits and
-    /// one that several conditions fit.
-    pub fn tax_context_list() -> ReviewList {
-        use ncrs_index::ConditionKind;
-        use ncrs_intake::AssigningCondition;
-
-        let [first, second, third] = <[_; 3]>::try_from(ids_of(3)).unwrap();
-        let mut assigned = item(first, "scan-1.pdf", "Telekom");
-        assigned.tax_context_assigned_by = Some(AssigningCondition {
-            kind: ConditionKind::Recipient,
-            value: "Firma A GmbH".to_owned(),
-        });
-        assigned.origins = ncrs_index::FieldOrigins::default().with(
-            Field::TaxContext,
-            ncrs_index::FieldOrigin::Condition {
-                kind: ConditionKind::Recipient,
-                value: "Firma A GmbH".to_owned(),
-            },
-        );
-        let mut none_fit = item(second, "scan-2.pdf", "Agency B");
-        none_fit.reason = ReviewReason::NoTaxContextMatches;
-        none_fit.fields.tax_context = None;
-        let mut several_fit = item(third, "scan-3.pdf", "Frost");
-        several_fit.reason = ReviewReason::SeveralTaxContextsMatch;
-        several_fit.fields.tax_context = None;
-        let mut list = ReviewList::new();
-        list.set_tax_contexts(stored_tax_contexts());
-        list.loaded(vec![assigned, none_fit, several_fit]);
-        list
-    }
-
-    /// One document whose fields come from a rule, the AI, the user and the
-    /// condition of a tax context, with the passages of its text that led there.
+    /// One document whose fields come from a rule, the AI and the user, with
+    /// the passages of its text that led there.
     pub fn origins_list() -> ReviewList {
-        use ncrs_index::{ConditionKind, FieldOrigin, FieldOrigins};
+        use ncrs_index::{FieldOrigin, FieldOrigins};
 
         let [one, _] = <[_; 2]>::try_from(ids()).unwrap();
         let mut origin_item = item(one, "scan-1.pdf", "Company A");
@@ -791,17 +722,9 @@ pub mod tests {
                 },
             )
             .with(Field::Number, FieldOrigin::Manual)
-            .with(Field::Date, FieldOrigin::Rule(None))
-            .with(
-                Field::TaxContext,
-                FieldOrigin::Condition {
-                    kind: ConditionKind::Recipient,
-                    value: "Firma A GmbH".to_owned(),
-                },
-            );
+            .with(Field::Date, FieldOrigin::Rule(None));
         origin_item.passages = vec!["Company A".to_owned(), "4711".to_owned()];
         let mut list = ReviewList::new();
-        list.set_tax_contexts(stored_tax_contexts());
         list.loaded(vec![origin_item]);
         list
     }
@@ -812,7 +735,6 @@ pub mod tests {
         const LONG: &str =
             "2024-03-09_Stadtwerke_Musterhausen_Jahresabrechnung_Strom_und_Gas_Kundennummer_4711.pdf";
         let mut list = ReviewList::new();
-        list.set_tax_contexts(stored_tax_contexts());
         list.loaded(
             ids_of(200)
                 .into_iter()
@@ -1044,15 +966,10 @@ pub mod tests {
         let mut list = loaded_list();
         list.set_text(FormField::Sender, " Company C ".to_owned());
         list.set_text(FormField::Tags, "tax, travel".to_owned());
-        list.set_tax_context(Some(TaxContext::named("private")));
 
         let request = list.begin_confirm().unwrap();
 
         assert_eq!(request.fields.sender.as_deref(), Some("Company C"));
-        assert_eq!(
-            request.fields.tax_context,
-            Some(TaxContext::named("private"))
-        );
         assert_eq!(request.fields.tags.len(), 2);
         assert_eq!(request.pattern, "{sender}/{date}_{kind}");
         assert!(list.is_busy());
@@ -1063,7 +980,6 @@ pub mod tests {
     fn a_filed_document_offers_a_rule_for_its_sender() {
         let mut list = loaded_list();
         list.set_text(FormField::Tags, "tax, travel".to_owned());
-        list.set_tax_context(Some(TaxContext::named("private")));
         list.begin_confirm().unwrap();
         list.confirmed(ConfirmOutcome::Filed {
             relative_path: PathBuf::from("Company A/2024-03-09_invoice.pdf"),
@@ -1079,7 +995,6 @@ pub mod tests {
         let offer = list.rule_offer().unwrap();
         assert_eq!(offer.sender, "Company A");
         assert_eq!(offer.kind, "invoice");
-        assert_eq!(offer.tax_context, Some(TaxContext::named("private")));
         assert_eq!(
             offer.tags,
             BTreeSet::from(["tax".to_owned(), "travel".to_owned()])
@@ -1130,7 +1045,6 @@ pub mod tests {
     #[test]
     fn an_empty_list_has_nothing_to_edit_or_file() {
         let mut list = ReviewList::new();
-        list.set_tax_contexts(stored_tax_contexts());
         list.loaded(Vec::new());
 
         list.start_edit();

@@ -22,12 +22,11 @@ mod rule_suggestions;
 mod rules;
 mod saved_queries;
 mod sender_aliases;
-mod tax_contexts;
 #[cfg(test)]
 mod test_support;
 
 pub use documents::{SNIPPET_MARK_END, SNIPPET_MARK_START};
-pub use error::{IndexError, KeyStoreError, RecoveryKeyError, TaxContextProblem};
+pub use error::{IndexError, KeyStoreError, RecoveryKeyError};
 pub use hermes_column::{FolderCounts, IncludeOutcome, PathState};
 pub use index::Index;
 pub use journal::{BatchKind, JournalItem, JournalState, NewJournalItem};
@@ -41,8 +40,6 @@ pub use model::{
     NoActionReason, PlanId, PlanItem, PlanOutcome, QuerySpec, ReorganisationPlan, ReviewEntry,
     ReviewEntryId, ReviewReason, Rule, RuleConditions, RuleEvidence, RuleId, RuleOrigin, RuleSpec,
     RuleSuggestion, SavedQuery, SavedQueryId, SenderAlias, SenderAliasId, SenderAliasKind,
-    SenderAliasState, SenderAliases, StatusCounts, SubtreePattern, TaxContext,
-    TaxContextConditions, TaxContextEntry, TaxContextId, TaxContextUsage,
+    SenderAliasState, SenderAliases, StatusCounts, SubtreePattern,
 };
 pub use regex_limits::compile_bounded_regex;
-pub use tax_contexts::{MAX_NAME_CHARS, MAX_SHORT_NAME_CHARS};

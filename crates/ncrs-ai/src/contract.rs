@@ -2,7 +2,7 @@ use std::fmt;
 use std::path::PathBuf;
 
 use jsonc_parser::{parse_to_value, JsonObject, JsonValue, ParseOptions};
-use ncrs_index::{DocumentFields, Field, TaxContext, TaxContextEntry};
+use ncrs_index::{DocumentFields, Field};
 use ncrs_intake::{parse_amount, parse_date, FIELD_ORDER};
 
 use crate::error::AiError;
@@ -23,9 +23,6 @@ pub struct ExtractionRequest {
     pub text: String,
     pub open_fields: Vec<Field>,
     pub known: DocumentFields,
-    /// The tax contexts the document may be put in, as stored when it is asked
-    /// about: the only values `TaxContext` can be answered with, besides none.
-    pub tax_contexts: Vec<TaxContextEntry>,
     /// The inbox location the document came from, which consent is given for.
     pub source: PathBuf,
 }
@@ -42,24 +39,14 @@ pub struct ExtractedField {
 impl ExtractedField {
     /// `None` when the value is empty after cleaning, the confidence is
     /// outside 0.0..=1.0, or the value does not read as the type of the field.
-    /// A tax context must be one of `tax_contexts` or none, and is kept as
-    /// stored.
-    pub fn new(
-        field: Field,
-        value: &str,
-        confidence: f32,
-        tax_contexts: &[TaxContextEntry],
-    ) -> Option<Self> {
+    pub fn new(field: Field, value: &str, confidence: f32) -> Option<Self> {
         if !(0.0..=1.0).contains(&confidence) {
             return None;
         }
         let cleaned = clean_value(value)?;
         let candidate = Self {
             field,
-            value: match field {
-                Field::TaxContext => listed_tax_context(&cleaned, tax_contexts)?,
-                _ => cleaned,
-            },
+            value: cleaned,
             confidence,
         };
         candidate
@@ -74,9 +61,6 @@ impl ExtractedField {
             Field::Sender => set_if_empty(&mut fields.sender, Some(self.value.clone())),
             Field::Kind => set_if_empty(&mut fields.kind, Some(self.value.clone())),
             Field::Number => set_if_empty(&mut fields.number, Some(self.value.clone())),
-            Field::TaxContext => {
-                set_if_empty(&mut fields.tax_context, Some(tax_context_of(&self.value)))
-            }
             Field::Date => set_if_empty(&mut fields.date, parse_date(&self.value)),
             Field::Amount => set_if_empty(&mut fields.amount, parse_amount(&self.value, None)),
         }
@@ -90,35 +74,6 @@ fn set_if_empty<T>(slot: &mut Option<T>, value: Option<T>) -> bool {
     let found = value.is_some();
     *slot = value;
     found
-}
-
-/// A value of a tax context field was checked against the list in `new`.
-fn tax_context_of(value: &str) -> TaxContext {
-    if value == TaxContext::NONE_SHORT_NAME {
-        TaxContext::None
-    } else {
-        TaxContext::named(value)
-    }
-}
-
-/// The short name as stored (or none) that `answer` names, ignoring case.
-fn listed_tax_context(answer: &str, tax_contexts: &[TaxContextEntry]) -> Option<String> {
-    if answer.eq_ignore_ascii_case(TaxContext::NONE_SHORT_NAME) {
-        return Some(TaxContext::NONE_SHORT_NAME.to_owned());
-    }
-    tax_contexts
-        .iter()
-        .find(|context| context.short_name.eq_ignore_ascii_case(answer))
-        .map(|context| context.short_name.clone())
-}
-
-/// What a tax context can be answered with: the stored short names, then none.
-pub fn tax_context_answers(tax_contexts: &[TaxContextEntry]) -> Vec<&str> {
-    tax_contexts
-        .iter()
-        .map(|context| context.short_name.as_str())
-        .chain([TaxContext::NONE_SHORT_NAME])
-        .collect()
 }
 
 /// Control characters out, ends trimmed, at most `MAX_VALUE_CHARS`
@@ -149,11 +104,11 @@ pub trait Provider: Send + Sync + fmt::Debug {
 /// open field, each `{ "value": string, "confidence": number }`, and nothing
 /// else. A provider that enforces schemas then cannot answer with more; one
 /// that does not is handled by `parse_reply`, which drops what is not asked.
-pub fn output_schema(open_fields: &[Field], tax_contexts: &[TaxContextEntry]) -> Json {
+pub fn output_schema(open_fields: &[Field]) -> Json {
     let properties = FIELD_ORDER
         .into_iter()
         .filter(|field| open_fields.contains(field))
-        .map(|field| (field.as_str().to_owned(), field_schema(field, tax_contexts)))
+        .map(|field| (field.as_str().to_owned(), field_schema(field)))
         .collect();
     Json::object([
         ("type", Json::text("object")),
@@ -162,29 +117,13 @@ pub fn output_schema(open_fields: &[Field], tax_contexts: &[TaxContextEntry]) ->
     ])
 }
 
-fn field_schema(field: Field, tax_contexts: &[TaxContextEntry]) -> Json {
+fn field_schema(field: Field) -> Json {
     let hint = match field {
         Field::Sender => "who issued the document: the letterhead, company or sender line; never the addressee or recipient, never the name after Mr/Mrs/Herr/Frau in the address block",
         Field::Kind => "what kind of document it is, for example invoice",
-        Field::TaxContext => "one of the listed tax contexts, or none",
         Field::Date => "the document date as YYYY-MM-DD",
         Field::Number => "the document or invoice number",
         Field::Amount => "the total with its currency code, for example 12.50 EUR",
-    };
-    let value_schema = match field {
-        Field::TaxContext => Json::object([
-            ("type", Json::text("string")),
-            (
-                "enum",
-                Json::List(
-                    tax_context_answers(tax_contexts)
-                        .into_iter()
-                        .map(Json::text)
-                        .collect(),
-                ),
-            ),
-        ]),
-        _ => Json::object([("type", Json::text("string"))]),
     };
     Json::object([
         ("type", Json::text("object")),
@@ -192,7 +131,7 @@ fn field_schema(field: Field, tax_contexts: &[TaxContextEntry]) -> Json {
         (
             "properties",
             Json::object([
-                ("value", value_schema),
+                ("value", Json::object([("type", Json::text("string"))])),
                 (
                     "confidence",
                     Json::object([
@@ -214,11 +153,7 @@ fn field_schema(field: Field, tax_contexts: &[TaxContextEntry]) -> Json {
 /// Lenient in shape, strict in effect: unknown keys, fields that were not
 /// asked for and fields with a bad value or confidence are dropped, not an
 /// error. Only a reply that is not a JSON object is.
-pub fn parse_reply(
-    raw: &str,
-    open_fields: &[Field],
-    tax_contexts: &[TaxContextEntry],
-) -> Result<Extraction, AiError> {
+pub fn parse_reply(raw: &str, open_fields: &[Field]) -> Result<Extraction, AiError> {
     let parsed = parse_to_value(raw, &ParseOptions::default())
         .map_err(|_syntax| AiError::BadReply("not valid JSON"))?;
     let Some(JsonValue::Object(reply)) = parsed else {
@@ -227,20 +162,16 @@ pub fn parse_reply(
     let fields = FIELD_ORDER
         .into_iter()
         .filter(|field| open_fields.contains(field))
-        .filter_map(|field| field_of(&reply, field, tax_contexts))
+        .filter_map(|field| field_of(&reply, field))
         .collect();
     Ok(Extraction { fields })
 }
 
-fn field_of(
-    reply: &JsonObject<'_>,
-    field: Field,
-    tax_contexts: &[TaxContextEntry],
-) -> Option<ExtractedField> {
+fn field_of(reply: &JsonObject<'_>, field: Field) -> Option<ExtractedField> {
     let entry = reply.get_object(field.as_str())?;
     let value = entry.get_string("value")?;
     let confidence = entry.get_number("confidence")?.parse::<f32>().ok()?;
-    ExtractedField::new(field, value, confidence, tax_contexts)
+    ExtractedField::new(field, value, confidence)
 }
 
 #[cfg(test)]
@@ -254,12 +185,11 @@ mod tests {
     use ncrs_index::Currency;
 
     use super::*;
-    use crate::test_contexts::{only_contexts, stored_contexts};
 
-    const ALL: [Field; 6] = FIELD_ORDER;
+    const ALL: [Field; 5] = FIELD_ORDER;
 
     fn parse(raw: &str, open: &[Field]) -> Extraction {
-        parse_reply(raw, open, &stored_contexts(&[])).unwrap()
+        parse_reply(raw, open).unwrap()
     }
 
     #[test]
@@ -289,7 +219,6 @@ mod tests {
             "sender": {"value": "Agency B", "confidence": 1.5},
             "kind": {"value": "invoice", "confidence": "high"},
             "number": {"value": "4711"},
-            "tax_context": "company",
             "date": {"value": 20240101, "confidence": 0.9},
             "amount": {"value": "12.50 EUR", "confidence": -0.1}
         }"#;
@@ -317,8 +246,7 @@ mod tests {
     fn dates_and_amounts_that_do_not_read_are_dropped() {
         let raw = r#"{
             "date": {"value": "next Tuesday", "confidence": 0.9},
-            "amount": {"value": "about twelve", "confidence": 0.9},
-            "tax_context": {"value": "everything", "confidence": 0.9}
+            "amount": {"value": "about twelve", "confidence": 0.9}
         }"#;
 
         assert!(parse(raw, &ALL).fields.is_empty());
@@ -328,8 +256,7 @@ mod tests {
     fn typed_fields_are_read_by_the_rules_parsers() {
         let raw = r#"{
             "date": {"value": "05.03.2024", "confidence": 0.9},
-            "amount": {"value": "1.234,50 EUR", "confidence": 0.9},
-            "tax_context": {"value": "Company", "confidence": 0.9}
+            "amount": {"value": "1.234,50 EUR", "confidence": 0.9}
         }"#;
         let mut fields = DocumentFields::default();
 
@@ -341,12 +268,11 @@ mod tests {
         let amount = fields.amount.unwrap();
         assert_eq!(amount.minor_units, 123_450);
         assert_eq!(amount.currency, Currency::new("EUR").unwrap());
-        assert_eq!(fields.tax_context, Some(TaxContext::named("company")));
     }
 
     #[test]
     fn a_filled_field_is_not_overwritten() {
-        let found = ExtractedField::new(Field::Sender, "Agency B", 0.9, &[]).unwrap();
+        let found = ExtractedField::new(Field::Sender, "Agency B", 0.9).unwrap();
         let mut fields = DocumentFields {
             sender: Some("Company A".to_owned()),
             ..DocumentFields::default()
@@ -359,67 +285,22 @@ mod tests {
     #[test]
     fn a_reply_that_is_not_an_object_is_an_error() {
         assert!(matches!(
-            parse_reply("[1, 2]", &ALL, &[]),
+            parse_reply("[1, 2]", &ALL),
             Err(AiError::BadReply(_))
         ));
         assert!(matches!(
-            parse_reply("sure, here you go", &ALL, &[]),
+            parse_reply("sure, here you go", &ALL),
             Err(AiError::BadReply(_))
         ));
     }
 
     #[test]
     fn the_schema_asks_for_the_open_fields_only() {
-        let schema = output_schema(&[Field::Date, Field::Sender], &[]).pretty();
+        let schema = output_schema(&[Field::Date, Field::Sender]).pretty();
 
         assert!(schema.contains("\"sender\""));
         assert!(schema.contains("\"date\""));
         assert!(!schema.contains("\"amount\""));
         assert!(schema.contains("\"additionalProperties\": false"));
-    }
-
-    #[test]
-    fn a_tax_context_is_accepted_only_if_it_is_listed_or_none_and_kept_as_stored() {
-        let listed = only_contexts(&["firma-a"]);
-        let answer = |value: &str| {
-            let raw = format!(r#"{{"tax_context": {{"value": "{value}", "confidence": 0.9}}}}"#);
-            let extraction = parse_reply(&raw, &[Field::TaxContext], &listed)
-                .unwrap()
-                .fields;
-            extraction.first().map(|found| {
-                let mut fields = DocumentFields::default();
-                assert!(found.fill(&mut fields));
-                fields.tax_context.unwrap()
-            })
-        };
-
-        assert_eq!(answer("Firma-A"), Some(TaxContext::named("firma-a")));
-        assert_eq!(answer("NONE"), Some(TaxContext::None));
-        assert_eq!(answer("company"), None);
-        assert_eq!(answer("private"), None);
-    }
-
-    #[test]
-    fn the_schema_limits_the_tax_context_to_the_listed_names_and_none() {
-        let schema = output_schema(
-            &[Field::TaxContext],
-            &only_contexts(&["firma-a", "private"]),
-        );
-
-        let text = schema.pretty();
-        let expected = Json::List(vec![
-            Json::text("firma-a"),
-            Json::text("private"),
-            Json::text("none"),
-        ])
-        .pretty();
-        assert!(
-            text.contains(&format!(
-                "\"enum\": {}",
-                expected.replace('\n', "\n          ")
-            )),
-            "{text}"
-        );
-        assert!(!text.contains("company"));
     }
 }

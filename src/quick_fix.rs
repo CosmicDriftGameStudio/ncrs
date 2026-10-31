@@ -87,7 +87,6 @@ pub fn field_to_fix(item: &ReviewItem) -> FormField {
             Field::Date => return FormField::Date,
             Field::Number => return FormField::Number,
             Field::Amount => return FormField::Amount,
-            Field::TaxContext => {}
         }
     }
     let fields = &item.fields;

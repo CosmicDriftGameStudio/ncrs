@@ -28,6 +28,28 @@ pub struct ChosenPattern {
     pub source: PatternSource,
 }
 
+/// `pattern` without the retired `{tax_context}` block and the separator beside
+/// it; a pattern that is empty afterwards becomes the richest built-in one. The
+/// index migration to schema 20 applies the same replacements in SQL.
+pub fn pattern_without_tax_context(pattern: &str) -> String {
+    let stripped = [
+        "{tax_context}/",
+        "/{tax_context}",
+        "{tax_context}_",
+        "_{tax_context}",
+        "{tax_context}-",
+        "-{tax_context}",
+        "{tax_context}",
+    ]
+    .iter()
+    .fold(pattern.to_owned(), |text, block| text.replace(block, ""));
+    if matches!(stripped.as_str(), "" | "/") {
+        DEFAULT_PATTERNS[0].to_owned()
+    } else {
+        stripped
+    }
+}
+
 /// The default pattern for these fields: the `custom` one when it is valid
 /// (and then the only one), else the first built-in one the fields can fill.
 /// `None` when none fits, for example without a date.
@@ -83,6 +105,19 @@ mod tests {
     fn filed_as(fields: &DocumentFields, custom: Option<&str>) -> Option<PathBuf> {
         let chosen = choose_pattern(None, custom, fields)?;
         render_pattern(&chosen.pattern, fields)
+    }
+
+    #[test]
+    fn the_retired_tax_context_block_leaves_with_its_separator() {
+        for (before, after) in [
+            ("{tax_context}/{year}", "{year}"),
+            ("{year}/{tax_context}/{sender}", "{year}/{sender}"),
+            ("{tax_context}_{year}", "{year}"),
+            ("{tax_context}", DEFAULT_PATTERNS[0]),
+            ("{year}/{sender}", "{year}/{sender}"),
+        ] {
+            assert_eq!(pattern_without_tax_context(before), after, "{before}");
+        }
     }
 
     #[test]

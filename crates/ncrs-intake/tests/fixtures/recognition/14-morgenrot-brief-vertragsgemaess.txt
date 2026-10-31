@@ -1,6 +1,5 @@
 sender: Morgenrot Hausverwaltung GmbH
 kind: Brief
-tax_context: private
 date: 2026-04-10
 number:
 amount:

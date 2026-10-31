@@ -1,6 +1,5 @@
 sender: Nordlicht Energie GmbH
 kind: Rechnung
-tax_context: company
 date: 2026-01-15
 number: RE-2026-0042
 amount: 11900 EUR

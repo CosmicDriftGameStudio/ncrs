@@ -1,6 +1,5 @@
 sender: Wellenreiter Telekom GmbH
 kind: Rechnung
-tax_context: company
 date: 2026-05-20
 number: WT-880190
 amount: 123456 EUR

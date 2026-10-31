@@ -13,9 +13,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use ncrs_index::{
     BatchKind, Document, DocumentId, DocumentStatus, FieldOrigin, Index, IndexError, ReviewEntry,
-    ReviewEntryId, ReviewReason, Rule, SenderAliases, TaxContextConditions,
+    ReviewEntryId, ReviewReason, Rule, SenderAliases,
 };
-use ncrs_intake::{plan, planned_field_origin, PlanInput, Planning};
+use ncrs_intake::{plan, PlanInput, Planning};
 
 use crate::execute::{execute_with, ExecuteError, ExecutionItem, ItemOutcome, SkipReason};
 use crate::filing_work::{send_to_review, target_of};
@@ -127,12 +127,11 @@ impl ReplanAccess {
     }
 }
 
-/// The rules, the confirmed sender aliases and the tax contexts a planning
-/// needs, read once for a run.
+/// The rules and the confirmed sender aliases a planning needs, read once for
+/// a run.
 struct Rulebook {
     rules: Vec<Rule>,
     sender_aliases: SenderAliases,
-    tax_contexts: Vec<TaxContextConditions>,
 }
 
 impl Rulebook {
@@ -140,7 +139,6 @@ impl Rulebook {
         Ok(Self {
             rules: index.rules()?,
             sender_aliases: index.confirmed_sender_aliases()?,
-            tax_contexts: index.assignable_tax_contexts()?,
         })
     }
 
@@ -159,7 +157,6 @@ impl Rulebook {
                 fields: &document.fields,
                 path: Some(&document.path),
                 sender_aliases: &self.sender_aliases,
-                tax_contexts: &self.tax_contexts,
                 manual_fields: &manual_fields,
             },
         )))
@@ -284,16 +281,11 @@ pub fn file_previewed<P: Progress, S: Source>(
         }
         if filing.fields != document.fields {
             let manual_fields = index.field_origins(document.id)?.manual_fields();
-            let rule_origin = FieldOrigin::Rule(Some(filing.rule));
             index.set_document_fields(document.id, &filing.fields, |field| {
                 if manual_fields.contains(&field) {
                     FieldOrigin::Manual
                 } else {
-                    planned_field_origin(
-                        field,
-                        &rule_origin,
-                        filing.tax_context_assigned_by.as_ref(),
-                    )
+                    FieldOrigin::Rule(Some(filing.rule))
                 }
             })?;
         }
@@ -365,7 +357,7 @@ pub mod tests {
     use chrono::{TimeZone as _, Utc};
     use ncrs_index::{
         Condition, ConditionKind, DocumentFields, DocumentSource, Field, NewDocument,
-        RuleConditions, RuleSpec, TaxContext,
+        RuleConditions, RuleSpec,
     };
     use ncrs_intake::hash_path;
     use tempfile::TempDir;
@@ -409,7 +401,6 @@ pub mod tests {
                     extract_date: None,
                     extract_amount: None,
                     kind: "invoice".to_owned(),
-                    tax_context: Some(TaxContext::named("company")),
                     tags: BTreeSet::new(),
                     filing_pattern: "Insurance/{kind}.pdf".to_owned(),
                     confirmed: true,

@@ -4,30 +4,6 @@ use crate::error::IndexError;
 use crate::model::{Condition, ConditionKind};
 use crate::regex_limits::compile_bounded_regex;
 
-/// What a stored condition list belongs to. Rules and tax contexts keep their
-/// conditions in tables of the same shape.
-#[derive(Debug, Clone, Copy)]
-pub enum ConditionOwner {
-    Rule,
-    TaxContext,
-}
-
-impl ConditionOwner {
-    fn table(self) -> &'static str {
-        match self {
-            Self::Rule => "rule_condition",
-            Self::TaxContext => "tax_context_condition",
-        }
-    }
-
-    fn key_column(self) -> &'static str {
-        match self {
-            Self::Rule => "rule_id",
-            Self::TaxContext => "tax_context_id",
-        }
-    }
-}
-
 pub fn require_compilable_regexes(list: &[Condition]) -> Result<(), IndexError> {
     for (position, condition) in list.iter().enumerate() {
         if condition.kind != ConditionKind::Regex {
@@ -45,18 +21,14 @@ pub fn require_compilable_regexes(list: &[Condition]) -> Result<(), IndexError> 
 
 pub fn replace_conditions(
     conn: &Connection,
-    owner: ConditionOwner,
     id: i64,
     list: &[Condition],
 ) -> Result<(), IndexError> {
-    let (table, key) = (owner.table(), owner.key_column());
-    conn.execute(&format!("DELETE FROM {table} WHERE {key} = ?1"), [id])?;
+    conn.execute("DELETE FROM rule_condition WHERE rule_id = ?1", [id])?;
     for (position, condition) in list.iter().enumerate() {
         conn.execute(
-            &format!(
-                "INSERT INTO {table} ({key}, position, kind, value, negated)
-                 VALUES (?1, ?2, ?3, ?4, ?5)"
-            ),
+            "INSERT INTO rule_condition (rule_id, position, kind, value, negated)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
             params![
                 id,
                 i64::try_from(position).unwrap_or(i64::MAX),
@@ -69,15 +41,10 @@ pub fn replace_conditions(
     Ok(())
 }
 
-pub fn read_conditions(
-    conn: &Connection,
-    owner: ConditionOwner,
-    id: i64,
-) -> Result<Vec<Condition>, IndexError> {
-    let (table, key) = (owner.table(), owner.key_column());
-    let mut statement = conn.prepare(&format!(
-        "SELECT kind, value, negated FROM {table} WHERE {key} = ?1 ORDER BY position"
-    ))?;
+pub fn read_conditions(conn: &Connection, id: i64) -> Result<Vec<Condition>, IndexError> {
+    let mut statement = conn.prepare(
+        "SELECT kind, value, negated FROM rule_condition WHERE rule_id = ?1 ORDER BY position",
+    )?;
     let rows = statement
         .query_map([id], |row| {
             Ok((

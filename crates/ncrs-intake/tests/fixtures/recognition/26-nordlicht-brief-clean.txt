@@ -1,6 +1,5 @@
 sender: Nordlicht Energie GmbH
 kind: Brief
-tax_context: private
 date: 2026-02-20
 number:
 amount:

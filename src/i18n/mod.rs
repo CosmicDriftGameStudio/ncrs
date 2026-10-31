@@ -281,7 +281,6 @@ mod tests {
             Msg::ColumnName
                 // The same word in both languages, like ColumnName.
                 | Msg::TrashColumnName
-                | Msg::SettingsTaxContextsFieldName
                 | Msg::RuleSuggestionsConditionText
                 | Msg::QuickFixLoading
                 // Only a placeholder behind a plus sign.

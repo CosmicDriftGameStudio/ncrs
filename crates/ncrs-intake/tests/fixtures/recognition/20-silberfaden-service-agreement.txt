@@ -1,6 +1,5 @@
 sender: Silberfaden Consulting Ltd
 kind: Contract
-tax_context: company
 date: 2026-01-09
 number: SA-12
 amount: 1200000 EUR

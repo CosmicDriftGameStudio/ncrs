@@ -1,6 +1,5 @@
 sender: Apfelbaum Verlag GmbH
 kind: Letter
-tax_context: private
 date: 2026-08-03
 number:
 amount:

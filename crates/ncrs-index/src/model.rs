@@ -103,78 +103,10 @@ impl DocumentStatus {
     }
 }
 
-/// A tax context by its short name, the spelling `{tax_context}` renders in
-/// filing patterns. `None` is the explicit "no context", not an unset field.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TaxContext {
-    None,
-    Named(String),
-}
-
-impl TaxContext {
-    pub const NONE_SHORT_NAME: &'static str = "none";
-
-    pub fn named(short_name: impl Into<String>) -> Self {
-        Self::Named(short_name.into())
-    }
-
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::None => Self::NONE_SHORT_NAME,
-            Self::Named(short_name) => short_name,
-        }
-    }
-
-    pub(crate) fn from_short_name(short_name: String) -> Self {
-        if short_name == Self::NONE_SHORT_NAME {
-            Self::None
-        } else {
-            Self::Named(short_name)
-        }
-    }
-}
-
-/// Identifies a stored tax context; callers choose by short name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TaxContextId(i64);
-
-impl TaxContextId {
-    pub(crate) fn new(raw: i64) -> Self {
-        Self(raw)
-    }
-
-    pub(crate) fn get(self) -> i64 {
-        self.0
-    }
-}
-
-/// How many records point at a tax context.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct TaxContextUsage {
-    pub documents: usize,
-    pub rules: usize,
-    pub saved_queries: usize,
-}
-
-impl TaxContextUsage {
-    pub fn is_unused(self) -> bool {
-        self.documents == 0 && self.rules == 0 && self.saved_queries == 0
-    }
-}
-
-/// A stored tax context as listed for choosing.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TaxContextEntry {
-    pub id: TaxContextId,
-    pub name: String,
-    pub short_name: String,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Field {
     Sender,
     Kind,
-    TaxContext,
     Date,
     Number,
     Amount,
@@ -185,7 +117,6 @@ impl Field {
         match self {
             Self::Sender => "sender",
             Self::Kind => "kind",
-            Self::TaxContext => "tax_context",
             Self::Date => "date",
             Self::Number => "number",
             Self::Amount => "amount",
@@ -196,7 +127,6 @@ impl Field {
         match value {
             "sender" => Ok(Self::Sender),
             "kind" => Ok(Self::Kind),
-            "tax_context" => Ok(Self::TaxContext),
             "date" => Ok(Self::Date),
             "number" => Ok(Self::Number),
             "amount" => Ok(Self::Amount),
@@ -206,10 +136,9 @@ impl Field {
 }
 
 impl Field {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 5] = [
         Self::Sender,
         Self::Kind,
-        Self::TaxContext,
         Self::Date,
         Self::Number,
         Self::Amount,
@@ -227,11 +156,6 @@ pub enum FieldOrigin {
         confidence_percent: u8,
     },
     Manual,
-    /// The tax context was assigned by this condition of the context.
-    Condition {
-        kind: ConditionKind,
-        value: String,
-    },
 }
 
 impl FieldOrigin {
@@ -241,7 +165,6 @@ impl FieldOrigin {
             Self::Rule(_) => Some("rule"),
             Self::Ai { .. } => Some("ai"),
             Self::Manual => Some("manual"),
-            Self::Condition { .. } => Some("condition"),
         }
     }
 
@@ -259,25 +182,10 @@ impl FieldOrigin {
         }
     }
 
-    pub(crate) fn condition_kind_column(&self) -> Option<&'static str> {
-        match self {
-            Self::Condition { kind, .. } => Some(kind.as_str()),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn condition_value_column(&self) -> Option<&str> {
-        match self {
-            Self::Condition { value, .. } => Some(value),
-            _ => None,
-        }
-    }
-
     pub(crate) fn from_columns(
         origin: &str,
         rule_id: Option<i64>,
         confidence: Option<i64>,
-        condition: Option<(String, String)>,
     ) -> Result<Self, IndexError> {
         match origin {
             "rule" => Ok(Self::Rule(rule_id.map(RuleId::new))),
@@ -293,14 +201,6 @@ impl FieldOrigin {
                 Ok(Self::Ai { confidence_percent })
             }
             "manual" => Ok(Self::Manual),
-            "condition" => {
-                let (kind, value) = condition
-                    .ok_or_else(|| corrupt("document_field_origin.condition_kind", "NULL"))?;
-                Ok(Self::Condition {
-                    kind: ConditionKind::parse(&kind)?,
-                    value,
-                })
-            }
             other => Err(corrupt("document_field_origin.origin", other)),
         }
     }
@@ -339,10 +239,6 @@ impl FieldOrigins {
 pub enum ReviewReason {
     NoMatchingRule,
     UnconfirmedRule,
-    /// Tax contexts have conditions, but none of them matches the document.
-    NoTaxContextMatches,
-    /// Tax contexts have conditions, and more than one matches the document.
-    SeveralTaxContextsMatch,
     /// Several confirmed rules match and do not agree on the result.
     RuleConflict,
     /// The place the rules chose is taken by another file.
@@ -358,8 +254,6 @@ impl ReviewReason {
         match self {
             Self::NoMatchingRule => ("no_matching_rule", None),
             Self::UnconfirmedRule => ("unconfirmed_rule", None),
-            Self::NoTaxContextMatches => ("no_tax_context_matches", None),
-            Self::SeveralTaxContextsMatch => ("several_tax_contexts_match", None),
             Self::RuleConflict => ("rule_conflict", None),
             Self::TargetExists => ("target_exists", None),
             Self::MissingField(field) => ("missing_field", Some(field)),
@@ -372,8 +266,6 @@ impl ReviewReason {
         match (reason, named) {
             ("no_matching_rule", None) => Ok(Self::NoMatchingRule),
             ("unconfirmed_rule", None) => Ok(Self::UnconfirmedRule),
-            ("no_tax_context_matches", None) => Ok(Self::NoTaxContextMatches),
-            ("several_tax_contexts_match", None) => Ok(Self::SeveralTaxContextsMatch),
             ("rule_conflict", None) => Ok(Self::RuleConflict),
             ("target_exists", None) => Ok(Self::TargetExists),
             ("missing_field", Some(of)) => Ok(Self::MissingField(of)),
@@ -459,7 +351,6 @@ pub struct NewDocument {
 pub struct DocumentFields {
     pub sender: Option<String>,
     pub kind: Option<String>,
-    pub tax_context: Option<TaxContext>,
     pub date: Option<NaiveDate>,
     pub number: Option<String>,
     pub amount: Option<Amount>,
@@ -486,7 +377,6 @@ pub struct Document {
 pub struct QuerySpec {
     /// The year of the document date.
     pub year: Option<i32>,
-    pub tax_context: Option<TaxContext>,
     /// Compared without regard to case.
     pub sender: Option<String>,
     /// Compared without regard to case.
@@ -844,20 +734,10 @@ pub struct RuleSpec {
     pub extract_date: Option<String>,
     pub extract_amount: Option<String>,
     pub kind: String,
-    /// `None`: open, the conditions of the tax contexts decide. `Some`: the
-    /// rule sets the context, `Some(TaxContext::None)` being "no context".
-    pub tax_context: Option<TaxContext>,
     pub tags: BTreeSet<String>,
     pub filing_pattern: String,
     pub confirmed: bool,
     pub enabled: bool,
-}
-
-/// The conditions that assign a document to one tax context.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TaxContextConditions {
-    pub short_name: String,
-    pub conditions: RuleConditions,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]

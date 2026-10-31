@@ -1,6 +1,5 @@
 sender: Pixelwerk Studio Ltd
 kind: Invoice
-tax_context: company
 date: 2026-06-01
 number: PW-17
 amount: 30000 GBP

@@ -1,6 +1,5 @@
 sender: Federkiel Bürobedarf e.K.
 kind: Lieferschein
-tax_context: company
 date: 2026-03-11
 number: LS-2201
 amount:

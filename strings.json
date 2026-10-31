@@ -3631,18 +3631,6 @@
       "de": "Regelkonflikt"
     },
     {
-      "key": "review_list.chip_no_tax_context",
-      "context": "Short label (chip) of the review reason: no tax context fits the document.",
-      "en": "No tax context",
-      "de": "Kein Steuerkontext"
-    },
-    {
-      "key": "review_list.chip_several_tax_contexts",
-      "context": "Short label (chip) of the review reason: several tax contexts fit the document.",
-      "en": "Several tax contexts",
-      "de": "Mehrere Steuerkontexte"
-    },
-    {
       "key": "review_list.chip_target_exists",
       "context": "Short label (chip) of the review reason: a file with the target name already exists.",
       "en": "Target exists",
@@ -3733,12 +3721,6 @@
       "de": "Art"
     },
     {
-      "key": "review_list.field_tax_context",
-      "context": "Form label in the review list: tax context. Also names the field in a review reason.",
-      "en": "Tax context",
-      "de": "Steuerkontext"
-    },
-    {
       "key": "review_list.field_date",
       "context": "Form label in the review list: document date. Also names the field in a review reason.",
       "en": "Date",
@@ -3769,18 +3751,6 @@
       "de": "Ablagemuster"
     },
     {
-      "key": "review_list.tax_open",
-      "context": "Tax context choice in the review list: not decided yet.",
-      "en": "Open",
-      "de": "Offen"
-    },
-    {
-      "key": "review_list.tax_none",
-      "context": "Tax context choice in the review list: no tax relevance.",
-      "en": "None",
-      "de": "Keiner"
-    },
-    {
       "key": "review_list.hint_date",
       "context": "Description under the date field of the review list.",
       "en": "Format YYYY-MM-DD",
@@ -3801,8 +3771,8 @@
     {
       "key": "review_list.hint_pattern",
       "context": "Description under the filing pattern field of the review list: the placeholders a pattern may use. The placeholders in braces are literal and must not be translated.",
-      "en": "Placeholders: {year} {month} {day} {date} {sender} {number} {kind} {tax_context}",
-      "de": "Platzhalter: {year} {month} {day} {date} {sender} {number} {kind} {tax_context}"
+      "en": "Placeholders: {year} {month} {day} {date} {sender} {number} {kind}",
+      "de": "Platzhalter: {year} {month} {day} {date} {sender} {number} {kind}"
     },
     {
       "key": "review_list.group_who",
@@ -3824,7 +3794,7 @@
     },
     {
       "key": "review_list.group_where",
-      "context": "Small heading in the review list form above the fields about where the document is filed: tax context and filing pattern.",
+      "context": "Small heading in the review list form above the fields about where the document is filed: the filing pattern.",
       "en": "Where",
       "de": "Wo"
     },
@@ -3944,7 +3914,7 @@
     },
     {
       "key": "action.saved_queries",
-      "context": "Entry of the command list and the menu that runs the key action saved_queries, which opens the page of reports: saved searches for recurring questions over the index by year, tax context, sender, kind, tags and text, with an export of what they find. Also the title of that Hermes page and its sidebar entry.",
+      "context": "Entry of the command list and the menu that runs the key action saved_queries, which opens the page of reports: saved searches for recurring questions over the index by year, sender, kind, tags and text, with an export of what they find. Also the title of that Hermes page and its sidebar entry.",
       "en": "Reports",
       "de": "Auswertungen"
     },
@@ -4027,12 +3997,6 @@
       "de": "Jahr"
     },
     {
-      "key": "saved_queries.field_tax_context",
-      "context": "Form label on the saved queries page: tax context.",
-      "en": "Tax context",
-      "de": "Steuerkontext"
-    },
-    {
       "key": "saved_queries.field_sender",
       "context": "Form label on the reports page: the sender of the document.",
       "en": "Sender",
@@ -4055,12 +4019,6 @@
       "context": "Form label on the saved queries page: words that occur in the text of the document.",
       "en": "Full text",
       "de": "Volltext"
-    },
-    {
-      "key": "saved_queries.tax_any",
-      "context": "Tax context choice on the saved queries page: any context, the query does not ask for one.",
-      "en": "Any",
-      "de": "Beliebig"
     },
     {
       "key": "saved_queries.hint_year",
@@ -4099,10 +4057,10 @@
       "de": "Mit einer Vorlage beginnen:"
     },
     {
-      "key": "saved_queries.template_tax_year",
-      "context": "Button and report name of the template for a tax year. Takes the {year} and the {context}, the name of a tax context.",
-      "en": "Tax year {year} · {context}",
-      "de": "Steuerjahr {year} · {context}"
+      "key": "saved_queries.template_invoices_of_year",
+      "context": "Button and report name of the template that finds the invoices of the current year.",
+      "en": "Invoices of a year",
+      "de": "Rechnungen eines Jahres"
     },
     {
       "key": "saved_queries.template_contracts",
@@ -4269,8 +4227,8 @@
     {
       "key": "saved_queries.export_csv_explain",
       "context": "Sentence in the export step: what the lines of the CSV file hold, in the order of its columns.",
-      "en": "One line per document: file name, name of the copy, original path, sender, kind, tax context, date, number, amount, currency, tags and whether it was copied.",
-      "de": "Eine Zeile je Dokument: Dateiname, Name der Kopie, Originalpfad, Absender, Art, Steuerkontext, Datum, Nummer, Betrag, Währung, Schlagworte und ob kopiert wurde."
+      "en": "One line per document: file name, name of the copy, original path, sender, kind, date, number, amount, currency, tags and whether it was copied.",
+      "de": "Eine Zeile je Dokument: Dateiname, Name der Kopie, Originalpfad, Absender, Art, Datum, Nummer, Betrag, Währung, Schlagworte und ob kopiert wurde."
     },
     {
       "key": "saved_queries.export_promise",
@@ -7021,336 +6979,6 @@
       "de": "Der Finder konnte nicht geöffnet werden: {reason}"
     },
     {
-      "key": "settings.tax_contexts_title",
-      "context": "Title of the group that lists the tax contexts on the Hermes settings page. Two words, noun phrase.",
-      "en": "Tax contexts",
-      "de": "Steuerkontexte"
-    },
-    {
-      "key": "settings.tax_contexts_purpose",
-      "context": "Explanation under the title of the tax contexts group on the Hermes settings page. {tax_context} is the literal filing pattern placeholder and must stay as it is.",
-      "en": "Which tax context a document belongs to, for example Private or Company A. The short name is what {tax_context} puts into filing paths.",
-      "de": "Zu welchem Steuerkontext ein Dokument gehört, zum Beispiel Privat oder Firma A. Der Kurzname ist das, was {tax_context} in Ablagepfade schreibt."
-    },
-    {
-      "key": "settings.tax_contexts_row_detail",
-      "context": "Description of one tax context row on the Hermes settings page: its short name and an example filing path made with it. Takes {short_name} and {example}.",
-      "en": "Short name: {short_name} · Example: {example}",
-      "de": "Kurzname: {short_name} · Beispiel: {example}"
-    },
-    {
-      "key": "settings.tax_contexts_rename",
-      "context": "Button in a tax context row on the Hermes settings page: opens the fields to change its name and short name. The ellipsis says more input follows.",
-      "en": "Rename…",
-      "de": "Umbenennen …"
-    },
-    {
-      "key": "settings.tax_contexts_delete",
-      "context": "Button in a tax context row on the Hermes settings page: opens the question what happens to its documents before it is deleted. The ellipsis says a question follows.",
-      "en": "Delete…",
-      "de": "Löschen …"
-    },
-    {
-      "key": "settings.tax_contexts_add_label",
-      "context": "Label of the last row of the tax contexts group on the Hermes settings page: adds a tax context.",
-      "en": "Add tax context",
-      "de": "Steuerkontext hinzufügen"
-    },
-    {
-      "key": "settings.tax_contexts_add_button",
-      "context": "Button in the row that adds a tax context on the Hermes settings page: opens the fields for it. Short, like the other buttons of the page.",
-      "en": "Add…",
-      "de": "Hinzufügen …"
-    },
-    {
-      "key": "settings.tax_contexts_empty_label",
-      "context": "Label of the row on the Hermes settings page shown while no tax context exists. Followed by the hint what to do.",
-      "en": "No tax contexts yet",
-      "de": "Noch keine Steuerkontexte"
-    },
-    {
-      "key": "settings.tax_contexts_empty_hint",
-      "context": "Description of the row on the Hermes settings page shown while no tax context exists: tells the user what to do next.",
-      "en": "Add one, for example Private, so documents can be told apart.",
-      "de": "Lege einen an, zum Beispiel Privat, damit sich Dokumente unterscheiden lassen."
-    },
-    {
-      "key": "settings.tax_contexts_loading",
-      "context": "Row of the tax contexts group on the Hermes settings page while the list is read from the index.",
-      "en": "Loading tax contexts…",
-      "de": "Steuerkontexte werden geladen …"
-    },
-    {
-      "key": "settings.tax_contexts_unavailable",
-      "context": "Row of the tax contexts group on the Hermes settings page when the Hermes index is not open, so the contexts cannot be read or changed.",
-      "en": "Tax contexts are kept in the filing index, which is not open.",
-      "de": "Steuerkontexte liegen im Index der Ablage, der nicht geöffnet ist."
-    },
-    {
-      "key": "settings.tax_contexts_read_failed",
-      "context": "Label of the row on the Hermes settings page when reading the tax contexts from the index failed. The reason follows below it.",
-      "en": "Tax contexts could not be read",
-      "de": "Steuerkontexte konnten nicht gelesen werden"
-    },
-    {
-      "key": "settings.tax_contexts_form_adding",
-      "context": "Label of the row with the Save and Cancel buttons on the Hermes settings page while a new tax context is entered.",
-      "en": "New tax context",
-      "de": "Neuer Steuerkontext"
-    },
-    {
-      "key": "settings.tax_contexts_form_renaming",
-      "context": "Label of the row with the Save and Cancel buttons on the Hermes settings page while a tax context is renamed. Takes the current {name}.",
-      "en": "Rename {name}",
-      "de": "{name} umbenennen"
-    },
-    {
-      "key": "settings.tax_contexts_form_note",
-      "context": "Description of the row with the Save and Cancel buttons on the Hermes settings page: nothing is stored before Save.",
-      "en": "Nothing is saved before you press Save.",
-      "de": "Nichts wird gespeichert, bevor du auf Speichern drückst."
-    },
-    {
-      "key": "settings.tax_contexts_field_name",
-      "context": "Label of the name field of a tax context on the Hermes settings page.",
-      "en": "Name",
-      "de": "Name"
-    },
-    {
-      "key": "settings.tax_contexts_field_name_note",
-      "context": "Description under the name field of a tax context on the Hermes settings page: where the name is shown.",
-      "en": "Shown in lists and pickers.",
-      "de": "Wird in Listen und Auswahlen angezeigt."
-    },
-    {
-      "key": "settings.tax_contexts_field_short_name",
-      "context": "Label of the short name field of a tax context on the Hermes settings page.",
-      "en": "Short name",
-      "de": "Kurzname"
-    },
-    {
-      "key": "settings.tax_contexts_field_short_name_note",
-      "context": "Description under the short name field on the Hermes settings page. {tax_context} is the literal filing pattern placeholder and must stay as it is.",
-      "en": "Goes into filing paths for {tax_context}. Letters, digits, space, - _ and . only.",
-      "de": "Kommt für {tax_context} in die Ablagepfade. Nur Buchstaben, Ziffern, Leerzeichen, - _ und ."
-    },
-    {
-      "key": "settings.tax_contexts_field_example",
-      "context": "Label of the line on the Hermes settings page that shows an example filing path made with the short name typed so far.",
-      "en": "Example path",
-      "de": "Beispielpfad"
-    },
-    {
-      "key": "settings.tax_contexts_save",
-      "context": "Button on the Hermes settings page that stores the added or renamed tax context.",
-      "en": "Save",
-      "de": "Speichern"
-    },
-    {
-      "key": "settings.tax_contexts_cancel",
-      "context": "Button on the Hermes settings page that drops the entered tax context or the delete question without changing anything.",
-      "en": "Cancel",
-      "de": "Abbrechen"
-    },
-    {
-      "key": "settings.tax_contexts_name_empty",
-      "context": "Error under the name field on the Hermes settings page: nothing was entered.",
-      "en": "Enter a name.",
-      "de": "Gib einen Namen ein."
-    },
-    {
-      "key": "settings.tax_contexts_name_too_long",
-      "context": "Error under the name field on the Hermes settings page: the name is too long. Takes {max}, the most characters allowed.",
-      "en": "The name has more than {max} characters.",
-      "de": "Der Name hat mehr als {max} Zeichen."
-    },
-    {
-      "key": "settings.tax_contexts_name_control",
-      "context": "Error under the name field on the Hermes settings page: the name has an invisible control character, for example from pasting.",
-      "en": "The name must not contain control characters.",
-      "de": "Der Name darf keine Steuerzeichen enthalten."
-    },
-    {
-      "key": "settings.tax_contexts_name_taken",
-      "context": "Error under the name field on the Hermes settings page: another tax context has this name already.",
-      "en": "Another tax context already has this name.",
-      "de": "Ein anderer Steuerkontext hat diesen Namen schon."
-    },
-    {
-      "key": "settings.tax_contexts_short_name_empty",
-      "context": "Error under the short name field on the Hermes settings page: nothing was entered.",
-      "en": "Enter a short name.",
-      "de": "Gib einen Kurznamen ein."
-    },
-    {
-      "key": "settings.tax_contexts_short_name_too_long",
-      "context": "Error under the short name field on the Hermes settings page: too long. Takes {max}, the most characters allowed.",
-      "en": "The short name has more than {max} characters.",
-      "de": "Der Kurzname hat mehr als {max} Zeichen."
-    },
-    {
-      "key": "settings.tax_contexts_short_name_forbidden",
-      "context": "Error under the short name field on the Hermes settings page: a character that cannot be part of a path name, such as a slash. Takes {character}.",
-      "en": "‘{character}’ is not allowed in a short name. Use letters, digits, space, - _ and . only.",
-      "de": "‘{character}’ ist in einem Kurznamen nicht erlaubt. Nur Buchstaben, Ziffern, Leerzeichen, - _ und . sind möglich."
-    },
-    {
-      "key": "settings.tax_contexts_short_name_leading_dot",
-      "context": "Error under the short name field on the Hermes settings page: it starts with a dot, which would make a hidden folder.",
-      "en": "The short name must not start with a dot.",
-      "de": "Der Kurzname darf nicht mit einem Punkt beginnen."
-    },
-    {
-      "key": "settings.tax_contexts_short_name_double_dot",
-      "context": "Error under the short name field on the Hermes settings page: it contains two dots in a row, which a path could use to leave its folder.",
-      "en": "The short name must not contain two dots in a row.",
-      "de": "Der Kurzname darf nicht zwei Punkte hintereinander enthalten."
-    },
-    {
-      "key": "settings.tax_contexts_short_name_reserved",
-      "context": "Error under the short name field on the Hermes settings page: the word none is kept for documents without a tax context. Keep the quoted none as it is.",
-      "en": "‘none’ is kept for documents without a tax context.",
-      "de": "‘none’ ist für Dokumente ohne Steuerkontext reserviert."
-    },
-    {
-      "key": "settings.tax_contexts_short_name_taken",
-      "context": "Error under the short name field on the Hermes settings page: another tax context has this short name already.",
-      "en": "Another tax context already has this short name.",
-      "de": "Ein anderer Steuerkontext hat diesen Kurznamen schon."
-    },
-    {
-      "key": "settings.tax_contexts_change_failed",
-      "context": "Error on the Hermes settings page when saving or deleting a tax context failed for another reason. Takes {reason}.",
-      "en": "The change was not made: {reason}",
-      "de": "Die Änderung wurde nicht vorgenommen: {reason}"
-    },
-    {
-      "key": "settings.tax_contexts_delete_question",
-      "context": "Label of the first row of the delete question on the Hermes settings page. Takes the {name} of the tax context.",
-      "en": "Delete {name}?",
-      "de": "{name} löschen?"
-    },
-    {
-      "key": "settings.tax_contexts_delete_unused",
-      "context": "Description in the delete question on the Hermes settings page when no document, rule or report uses the tax context.",
-      "en": "Nothing uses it.",
-      "de": "Nichts verwendet ihn."
-    },
-    {
-      "key": "settings.tax_contexts_delete_used",
-      "context": "Description in the delete question on the Hermes settings page when the tax context is in use. Takes the {name} and {uses}, a list such as 12 documents, 2 rules and 1 report.",
-      "en": "{name} is used by {uses}.",
-      "de": "{name} wird von {uses} verwendet."
-    },
-    {
-      "key": "settings.tax_contexts_delete_checking",
-      "context": "Description in the delete question on the Hermes settings page while it is looked up what uses the tax context.",
-      "en": "Checking what uses it…",
-      "de": "Es wird geprüft, was ihn verwendet …"
-    },
-    {
-      "key": "settings.tax_contexts_uses_documents_one",
-      "context": "Part of the list of uses in the delete question on the Hermes settings page: exactly one document. Takes {count}. German in the dative after von.",
-      "en": "{count} document",
-      "de": "{count} Dokument"
-    },
-    {
-      "key": "settings.tax_contexts_uses_documents_other",
-      "context": "Part of the list of uses in the delete question on the Hermes settings page: several documents. Takes {count}. German in the dative after von.",
-      "en": "{count} documents",
-      "de": "{count} Dokumenten"
-    },
-    {
-      "key": "settings.tax_contexts_uses_rules_one",
-      "context": "Part of the list of uses in the delete question on the Hermes settings page: exactly one rule. Takes {count}. German in the dative after von.",
-      "en": "{count} rule",
-      "de": "{count} Regel"
-    },
-    {
-      "key": "settings.tax_contexts_uses_rules_other",
-      "context": "Part of the list of uses in the delete question on the Hermes settings page: several rules. Takes {count}. German in the dative after von.",
-      "en": "{count} rules",
-      "de": "{count} Regeln"
-    },
-    {
-      "key": "settings.tax_contexts_uses_queries_one",
-      "context": "Part of the list of uses in the delete question on the Hermes settings page: exactly one report. Takes {count}. German in the dative after von.",
-      "en": "{count} report",
-      "de": "{count} Auswertung"
-    },
-    {
-      "key": "settings.tax_contexts_uses_queries_other",
-      "context": "Part of the list of uses in the delete question on the Hermes settings page: several reports. Takes {count}. German in the dative after von.",
-      "en": "{count} reports",
-      "de": "{count} Auswertungen"
-    },
-    {
-      "key": "settings.tax_contexts_uses_two",
-      "context": "Joins two parts of the list of uses in the delete question on the Hermes settings page. Takes {first} and {second}.",
-      "en": "{first} and {second}",
-      "de": "{first} und {second}"
-    },
-    {
-      "key": "settings.tax_contexts_uses_three",
-      "context": "Joins three parts of the list of uses in the delete question on the Hermes settings page. Takes {first}, {second} and {third}.",
-      "en": "{first}, {second} and {third}",
-      "de": "{first}, {second} und {third}"
-    },
-    {
-      "key": "settings.tax_contexts_move_label",
-      "context": "Label of the row on the Hermes settings page where the user picks which tax context the documents, rules and reports move to.",
-      "en": "Move them to",
-      "de": "Verschieben nach"
-    },
-    {
-      "key": "settings.tax_contexts_move_note",
-      "context": "Description of the row on the Hermes settings page that picks where the uses of a deleted tax context move to.",
-      "en": "Documents, rules and reports get this tax context instead.",
-      "de": "Dokumente, Regeln und Auswertungen bekommen stattdessen diesen Steuerkontext."
-    },
-    {
-      "key": "settings.tax_contexts_move_none",
-      "context": "Choice on the Hermes settings page in the delete question: the uses get no tax context at all.",
-      "en": "No tax context",
-      "de": "Kein Steuerkontext"
-    },
-    {
-      "key": "settings.tax_contexts_delete_confirm_label",
-      "context": "Label of the last row of the delete question on the Hermes settings page, beside the Cancel and Delete buttons.",
-      "en": "Nothing changes until you confirm.",
-      "de": "Nichts ändert sich, bevor du bestätigst."
-    },
-    {
-      "key": "settings.tax_contexts_delete_confirm",
-      "context": "Button of the delete question on the Hermes settings page: deletes the tax context and moves its uses.",
-      "en": "Delete",
-      "de": "Löschen"
-    },
-    {
-      "key": "settings.tax_contexts_conditions",
-      "context": "Button in a tax context row on the Hermes settings page: opens the conditions that assign documents to this context.",
-      "en": "Conditions",
-      "de": "Bedingungen"
-    },
-    {
-      "key": "settings.tax_contexts_conditions_heading",
-      "context": "Label of the condition editor of a tax context on the Hermes settings page. Takes the context name.",
-      "en": "Conditions of {name}",
-      "de": "Bedingungen von {name}"
-    },
-    {
-      "key": "settings.tax_contexts_conditions_note",
-      "context": "Note of the condition editor of a tax context: the order in which a document gets its tax context.",
-      "en": "A rule that sets a context comes first, a context already set stays. Otherwise the conditions of all contexts decide: if exactly one context fits, the document gets it. If none or several fit, the document goes to the review.",
-      "de": "Zuerst zählt eine Regel, die einen Kontext setzt, ein schon gesetzter Kontext bleibt. Sonst entscheiden die Bedingungen aller Kontexte: Passt genau ein Kontext, bekommt das Dokument ihn. Passt keiner oder passen mehrere, kommt das Dokument in die Prüfung."
-    },
-    {
-      "key": "settings.tax_contexts_conditions_loading",
-      "context": "Row of the condition editor of a tax context while the stored conditions are read.",
-      "en": "Reading the conditions …",
-      "de": "Bedingungen werden gelesen …"
-    },
-    {
       "key": "condition_kind.substring",
       "context": "Kind of a condition: the document text contains the value.",
       "en": "Contains",
@@ -7406,7 +7034,7 @@
     },
     {
       "key": "condition_editor.row_label",
-      "context": "Label of one condition in the condition editor, which the rule form and the tax contexts of the Hermes settings share. Takes the position of the condition in the list, starting at 1.",
+      "context": "Label of one condition in the condition editor, which the rule form uses. Takes the position of the condition in the list, starting at 1.",
       "en": "Condition {number}",
       "de": "Bedingung {number}"
     },
@@ -7471,24 +7099,6 @@
       "de": "Keine gültige IBAN: die Prüfziffern stimmen nicht."
     },
     {
-      "key": "review_list.reason_no_tax_context",
-      "context": "Review reason in the review list: the conditions of no tax context fit the document.",
-      "en": "No tax context fits",
-      "de": "Kein Steuerkontext passt"
-    },
-    {
-      "key": "review_list.reason_several_tax_contexts",
-      "context": "Review reason in the review list: the conditions of several tax contexts fit the document, so none was chosen.",
-      "en": "Several tax contexts fit",
-      "de": "Mehrere Steuerkontexte passen"
-    },
-    {
-      "key": "review_list.tax_context_from_condition",
-      "context": "Line in the review list form: the tax context was assigned by a condition of the context. Takes the kind of the condition and its value.",
-      "en": "Tax context from condition ({kind}: {value})",
-      "de": "Steuerkontext aus Bedingung ({kind}: {value})"
-    },
-    {
       "key": "action.rules",
       "context": "Entry of the command list and the menu that runs the key action rules, which opens the page that lists all filing rules as readable sentences. Also the title of that Hermes page and its sidebar entry. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
       "en": "Rules",
@@ -7514,9 +7124,9 @@
     },
     {
       "key": "rules.example_rule",
-      "context": "Example rule sentence on the rules page, written the way the page shows every rule: conditions, then an arrow, then kind, tax context, tags and filing pattern. The curly brackets in the pattern are placeholders of the filing pattern and stay as they are.",
-      "en": "If the sender is “Company A” → Invoice · Company · #tax · {year}/{sender}",
-      "de": "Wenn der Absender „Company A“ ist → Rechnung · Firma · #steuer · {year}/{sender}"
+      "context": "Example rule sentence on the rules page, written the way the page shows every rule: conditions, then an arrow, then kind, tags and filing pattern. The curly brackets in the pattern are placeholders of the filing pattern and stay as they are.",
+      "en": "If the sender is “Company A” → Invoice · #tax · {year}/{sender}",
+      "de": "Wenn der Absender „Company A“ ist → Rechnung · #steuer · {year}/{sender}"
     },
     {
       "key": "rules.loading",
@@ -7565,18 +7175,6 @@
       "context": "Word between two conditions of a rule sentence when the rule needs only one of them. Shown with a space on either side.",
       "en": "or",
       "de": "oder"
-    },
-    {
-      "key": "rules.tax_none",
-      "context": "Part of a rule sentence: the rule sets that the document has no tax context.",
-      "en": "no tax context",
-      "de": "kein Steuerkontext"
-    },
-    {
-      "key": "rules.tax_open",
-      "context": "Part of a rule sentence: the rule leaves the tax context open, so the conditions of the tax contexts decide.",
-      "en": "tax context by its conditions",
-      "de": "Steuerkontext nach seinen Bedingungen"
     },
     {
       "key": "rules.sentence_substring",
@@ -8075,12 +7673,6 @@
       "context": "Label of the row of years whose documents can be chosen to narrow the hits on the document search page.",
       "en": "Year",
       "de": "Jahr"
-    },
-    {
-      "key": "document_search.facet_tax_context",
-      "context": "Label of the row of tax contexts that can be chosen to narrow the hits on the document search page.",
-      "en": "Tax context",
-      "de": "Steuerkontext"
     },
     {
       "key": "document_search.facet_sender",

@@ -159,7 +159,7 @@ mod tests {
             .add_review(first, ReviewReason::MissingField(Field::Amount))
             .unwrap();
         index
-            .add_review(second, ReviewReason::LowConfidence(Field::TaxContext))
+            .add_review(second, ReviewReason::LowConfidence(Field::Date))
             .unwrap();
 
         let reasons: Vec<_> = index
@@ -173,7 +173,7 @@ mod tests {
             reasons,
             vec![
                 ReviewReason::MissingField(Field::Amount),
-                ReviewReason::LowConfidence(Field::TaxContext),
+                ReviewReason::LowConfidence(Field::Date),
             ]
         );
     }

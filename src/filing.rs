@@ -42,7 +42,6 @@ use crate::replan_work::ReplanAccess;
 use crate::review_work::ReviewAccess;
 use crate::rules_work::RulesAccess;
 use crate::suggestion_work::SuggestionAccess;
-use crate::tax_context_work::TaxContextAccess;
 
 /// A recovery key is 13 groups of four characters.
 const GROUP_COUNT: usize = 13;
@@ -1201,12 +1200,6 @@ impl FilingModule {
                 self.reachable_locations().cloned().collect(),
             )
         })
-    }
-
-    /// The tax contexts live in the index like the saved queries do, so the
-    /// module being `Ready` is enough to change them.
-    pub fn tax_context_access(&self) -> Option<TaxContextAccess> {
-        matches!(self.phase, Phase::Ready).then(|| TaxContextAccess::new(Arc::clone(&self.index)))
     }
 
     fn target_root(&self) -> Option<PathBuf> {

@@ -1,6 +1,5 @@
 sender: Federkiel Bürobedarf e.K.
 kind: Rechnung
-tax_context: company
 date: 2026-03-12
 number: RE-5501
 amount: 7560 EUR

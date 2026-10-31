@@ -5,9 +5,7 @@
 
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{
-    Combinator, Condition, ConditionKind, RuleId, RuleOrigin, RuleSpec, TaxContext, TaxContextEntry,
-};
+use ncrs_index::{Combinator, Condition, ConditionKind, RuleId, RuleOrigin, RuleSpec};
 
 use crate::app::fill_template;
 use crate::i18n::{Language, Msg};
@@ -22,7 +20,6 @@ pub const VISIBLE_ROWS: usize = 6;
 #[derive(Debug, Clone, PartialEq)]
 pub struct RulesPage {
     rows: Vec<ListedRule>,
-    tax_contexts: Vec<TaxContextEntry>,
     cursor: usize,
     window: ListWindow,
     /// The list is loading or a change is running; the page takes no new one.
@@ -44,7 +41,6 @@ impl RulesPage {
     pub fn new() -> Self {
         Self {
             rows: Vec::new(),
-            tax_contexts: Vec::new(),
             cursor: 0,
             window: ListWindow::default(),
             busy: true,
@@ -63,10 +59,6 @@ impl RulesPage {
 
     pub fn rows(&self) -> &[ListedRule] {
         &self.rows
-    }
-
-    pub fn tax_contexts(&self) -> &[TaxContextEntry] {
-        &self.tax_contexts
     }
 
     pub fn cursor(&self) -> usize {
@@ -181,7 +173,6 @@ impl RulesPage {
             .and_then(|id| load.rules.iter().position(|row| row.rule.id == id))
             .unwrap_or_else(|| self.cursor.min(load.rules.len().saturating_sub(1)));
         self.rows = load.rules;
-        self.tax_contexts = load.tax_contexts;
         self.window
             .ensure_visible(self.cursor, self.rows.len(), VISIBLE_ROWS);
         self.busy = false;
@@ -306,24 +297,9 @@ fn condition_sentence(condition: &Condition, lang: Language) -> String {
     )
 }
 
-fn tax_context_text(
-    tax_context: Option<&TaxContext>,
-    tax_contexts: &[TaxContextEntry],
-    lang: Language,
-) -> String {
-    match tax_context {
-        None => lang.text(Msg::RulesTaxOpen).to_owned(),
-        Some(TaxContext::None) => lang.text(Msg::RulesTaxNone).to_owned(),
-        Some(TaxContext::Named(short_name)) => tax_contexts
-            .iter()
-            .find(|entry| entry.short_name.eq_ignore_ascii_case(short_name))
-            .map_or_else(|| short_name.clone(), |entry| entry.name.clone()),
-    }
-}
-
 /// The rule as one sentence: the conditions, then after the arrow the kind,
-/// the tax context, the tags and the filing pattern.
-pub fn rule_sentence(spec: &RuleSpec, tax_contexts: &[TaxContextEntry], lang: Language) -> String {
+/// the tags and the filing pattern.
+pub fn rule_sentence(spec: &RuleSpec, lang: Language) -> String {
     let joiner = format!(
         " {} ",
         lang.text(match spec.conditions.combinator {
@@ -338,10 +314,7 @@ pub fn rule_sentence(spec: &RuleSpec, tax_contexts: &[TaxContextEntry], lang: La
         .map(|condition| condition_sentence(condition, lang))
         .collect::<Vec<_>>()
         .join(&joiner);
-    let mut target = vec![
-        lang.kind_label(&spec.kind).into_owned(),
-        tax_context_text(spec.tax_context.as_ref(), tax_contexts, lang),
-    ];
+    let mut target = vec![lang.kind_label(&spec.kind).into_owned()];
     if !spec.tags.is_empty() {
         target.push(
             spec.tags
@@ -416,16 +389,11 @@ pub mod tests {
             extract_date: None,
             extract_amount: None,
             kind: "Invoice".to_owned(),
-            tax_context: Some(TaxContext::named("company")),
             tags: BTreeSet::from(["tax".to_owned(), "office".to_owned()]),
             filing_pattern: "{year}/{sender}".to_owned(),
             confirmed: true,
             enabled: true,
         }
-    }
-
-    fn entries() -> Vec<TaxContextEntry> {
-        crate::review_list::tests::stored_tax_contexts()
     }
 
     pub fn listed(id: i64, global_index: usize) -> ListedRule {
@@ -450,7 +418,6 @@ pub mod tests {
         let mut page = RulesPage::new();
         page.loaded(RulesLoad {
             rules: vec![listed(1, 0), listed(2, 2), listed(3, 3)],
-            tax_contexts: entries(),
         });
         page
     }
@@ -462,14 +429,12 @@ pub mod tests {
 
         page.loaded(RulesLoad {
             rules: vec![listed(1, 0), listed(2, 2), listed(3, 3)],
-            tax_contexts: entries(),
         });
         assert_eq!(page.selected().map(|row| row.rule.id), Some(rule_id(3)));
 
         page.select(0);
         page.loaded(RulesLoad {
             rules: vec![listed(1, 0), listed(2, 2), listed(3, 3)],
-            tax_contexts: entries(),
         });
         assert_eq!(page.selected().map(|row| row.rule.id), Some(rule_id(1)));
     }
@@ -481,7 +446,6 @@ pub mod tests {
 
         page.loaded(RulesLoad {
             rules: vec![listed(1, 0), listed(2, 2)],
-            tax_contexts: entries(),
         });
 
         assert_eq!(page.selected().map(|row| row.rule.id), Some(rule_id(1)));
@@ -552,7 +516,6 @@ pub mod tests {
 
         page.loaded(RulesLoad {
             rules: vec![listed(3, 0), listed(1, 1), listed(2, 2)],
-            tax_contexts: Vec::new(),
         });
 
         assert_eq!(page.selected().unwrap().rule.id, rule_id(3));
@@ -565,7 +528,6 @@ pub mod tests {
 
         page.loaded(RulesLoad {
             rules: vec![listed(1, 0), listed(2, 2)],
-            tax_contexts: Vec::new(),
         });
 
         assert_eq!(page.cursor(), 1);
@@ -709,10 +671,10 @@ pub mod tests {
         page.loaded(access.load().unwrap());
 
         assert!(page.form().is_none());
-        let sentence = rule_sentence(&page.selected().unwrap().rule.spec, &[], Language::English);
+        let sentence = rule_sentence(&page.selected().unwrap().rule.spec, Language::English);
         assert_eq!(
             sentence,
-            "If the sender is “Telekom” → invoice · tax context by its conditions · {year}/{sender}"
+            "If the sender is “Telekom” → invoice · {year}/{sender}"
         );
 
         page.begin_edit();
@@ -761,16 +723,15 @@ pub mod tests {
         ]));
 
         assert_eq!(
-            rule_sentence(&spec, &entries(), Language::English),
+            rule_sentence(&spec, Language::English),
             "If the text contains the word “rent” and the sender is “Company A” → \
-             invoice · Firma · #office #tax · {year}/{sender}"
+             invoice · #office #tax · {year}/{sender}"
         );
     }
 
     #[test]
     fn a_sentence_joins_any_of_with_or_and_words_a_negation() {
         let spec = RuleSpec {
-            tax_context: Some(TaxContext::None),
             tags: BTreeSet::new(),
             ..spec(RuleConditions::any_of(vec![
                 Condition::not(ConditionKind::Sender, "Agency B"),
@@ -779,16 +740,15 @@ pub mod tests {
         };
 
         assert_eq!(
-            rule_sentence(&spec, &entries(), Language::English),
+            rule_sentence(&spec, Language::English),
             "If the sender is not “Agency B” or the text matches /No\\. \\d+/ → \
-             invoice · no tax context · {year}/{sender}"
+             invoice · {year}/{sender}"
         );
     }
 
     #[test]
     fn a_german_sentence_uses_german_quotes_and_joiners() {
         let spec = RuleSpec {
-            tax_context: None,
             tags: BTreeSet::new(),
             ..spec(RuleConditions::any_of(vec![
                 Condition::not(ConditionKind::Word, "Mahnung"),
@@ -797,9 +757,9 @@ pub mod tests {
         };
 
         assert_eq!(
-            rule_sentence(&spec, &entries(), Language::German),
+            rule_sentence(&spec, Language::German),
             "Wenn der Text das Wort „Mahnung“ nicht enthält oder das Dokument in \
-             „Post/2024“ liegt → Rechnung · Steuerkontext nach seinen Bedingungen · {year}/{sender}"
+             „Post/2024“ liegt → Rechnung · {year}/{sender}"
         );
     }
 
@@ -819,18 +779,6 @@ pub mod tests {
                 }
             }
         }
-    }
-
-    #[test]
-    fn a_named_context_that_is_not_stored_shows_its_short_name() {
-        assert_eq!(
-            tax_context_text(
-                Some(&TaxContext::named("charity")),
-                &entries(),
-                Language::English
-            ),
-            "charity"
-        );
     }
 
     #[test]

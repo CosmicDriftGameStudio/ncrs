@@ -1,7 +1,6 @@
 //! The rows of a [`ConditionEditor`]: kind, value, "not", remove, and under
-//! them the combinator and the button that adds a condition. The hosts (the
-//! rule form, the tax contexts of the settings) lay the rows out in their own
-//! row type.
+//! them the combinator and the button that adds a condition. The host (the
+//! rule form) lays the rows out in its own row type.
 
 use iced::widget::{container, row};
 use iced::{alignment, Element};
