@@ -4,7 +4,8 @@
 //! `update`, the view is `ui::document_search`.
 //!
 //! The facets mirror what a report can save: at most one value of year,
-//! sender and kind, and any number of tags that must all be there.
+//! sender and kind, and any number of tags that must all be there. A recipient
+//! is saved as the tag it makes.
 //! Names are compared like the index compares them, trimmed and without regard
 //! to case.
 
@@ -15,7 +16,7 @@ use std::path::PathBuf;
 use chrono::Datelike as _;
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{QuerySpec, SNIPPET_MARK_END, SNIPPET_MARK_START};
+use ncrs_index::{tag_matches, tag_name, Amount, QuerySpec, SNIPPET_MARK_END, SNIPPET_MARK_START};
 
 use crate::document_preview::{DocumentPreview, PreviewContent, PreviewRequest};
 use crate::list_window::ListWindow;
@@ -104,6 +105,7 @@ pub fn parse_snippet(marked: &str) -> Snippet {
 pub struct FacetSelection {
     pub year: Option<i32>,
     pub sender: Option<String>,
+    pub recipient: Option<String>,
     pub kind: Option<String>,
     pub tags: BTreeSet<String>,
 }
@@ -112,6 +114,7 @@ pub struct FacetSelection {
 pub enum FacetValue {
     Year(i32),
     Sender(String),
+    Recipient(String),
     Kind(String),
     Tag(String),
 }
@@ -121,6 +124,7 @@ pub enum FacetValue {
 enum Facet {
     Year,
     Sender,
+    Recipient,
     Kind,
     Tags,
 }
@@ -145,6 +149,7 @@ impl FacetSelection {
         match value {
             FacetValue::Year(year) => self.year == Some(*year),
             FacetValue::Sender(other) => same(&self.sender, other),
+            FacetValue::Recipient(other) => same(&self.recipient, other),
             FacetValue::Kind(other) => same(&self.kind, other),
             FacetValue::Tag(other) => self
                 .tags
@@ -166,6 +171,13 @@ impl FacetSelection {
                     .as_ref()
                     .is_some_and(|held| name_key(held) == name_key(&chosen));
                 self.sender = (!chosen_already).then_some(chosen);
+            }
+            FacetValue::Recipient(chosen) => {
+                let chosen_already = self
+                    .recipient
+                    .as_ref()
+                    .is_some_and(|held| name_key(held) == name_key(&chosen));
+                self.recipient = (!chosen_already).then_some(chosen);
             }
             FacetValue::Kind(chosen) => {
                 let chosen_already = self
@@ -203,12 +215,16 @@ impl FacetSelection {
         if counts(Facet::Sender) && !same_name(&self.sender, &fields.sender) {
             return false;
         }
+        if counts(Facet::Recipient) && !same_name(&self.recipient, &fields.recipient) {
+            return false;
+        }
         if counts(Facet::Kind) && !same_name(&self.kind, &fields.kind) {
             return false;
         }
         if counts(Facet::Tags) {
-            let held: BTreeSet<String> = fields.tags.iter().map(|tag| name_key(tag)).collect();
-            if !self.tags.iter().all(|tag| held.contains(&name_key(tag))) {
+            let held = fields.all_tags();
+            let has = |wanted: &String| held.iter().any(|tag| tag_matches(tag, wanted));
+            if !self.tags.iter().all(has) {
                 return false;
             }
         }
@@ -225,6 +241,7 @@ impl FacetSelection {
 pub struct FacetCounts {
     /// Newest year first.
     pub years: Vec<(i32, usize)>,
+    pub recipients: Vec<(String, usize)>,
     pub senders: Vec<(String, usize)>,
     pub kinds: Vec<(String, usize)>,
     pub tags: Vec<(String, usize)>,
@@ -280,6 +297,13 @@ pub fn facet_counts(hits: &[QueryHit], selection: &FacetSelection) -> FacetCount
             .map(named),
         selection.sender.iter().map(|sender| named(sender)),
     );
+    let recipients = tally(
+        among(Some(Facet::Recipient))
+            .filter_map(|hit| hit.fields.recipient.as_deref())
+            .filter(|recipient| !recipient.trim().is_empty())
+            .map(named),
+        selection.recipient.iter().map(|recipient| named(recipient)),
+    );
     let kinds = tally(
         among(Some(Facet::Kind))
             .filter_map(|hit| hit.fields.kind.as_deref())
@@ -297,6 +321,7 @@ pub fn facet_counts(hits: &[QueryHit], selection: &FacetSelection) -> FacetCount
 
     FacetCounts {
         years,
+        recipients,
         senders,
         kinds,
         tags,
@@ -385,6 +410,23 @@ impl DocumentSearch {
         self.shown.len()
     }
 
+    /// The amounts of the documents shown added up; none when no document
+    /// has one or the currencies differ.
+    pub fn total_amount(&self) -> Option<Amount> {
+        let mut total: Option<Amount> = None;
+        for amount in self.shown().filter_map(|hit| hit.fields.amount.as_ref()) {
+            total = Some(match total {
+                None => amount.clone(),
+                Some(sum) if sum.currency == amount.currency => Amount {
+                    minor_units: sum.minor_units.checked_add(amount.minor_units)?,
+                    currency: sum.currency,
+                },
+                Some(_) => return None,
+            });
+        }
+        total
+    }
+
     pub fn cursor(&self) -> usize {
         self.cursor
     }
@@ -403,11 +445,19 @@ impl DocumentSearch {
     pub fn spec(&self) -> QuerySpec {
         let selection = &self.selection;
         let text = self.text.trim();
+        let mut tags = selection.tags.clone();
+        tags.extend(
+            selection
+                .recipient
+                .iter()
+                .map(|recipient| tag_name(recipient))
+                .filter(|name| !name.is_empty()),
+        );
         QuerySpec {
             year: selection.year,
             sender: selection.sender.clone(),
             kind: selection.kind.clone(),
-            tags: selection.tags.clone(),
+            tags,
             full_text: (!text.is_empty()).then(|| text.to_owned()),
         }
     }
@@ -1053,5 +1103,76 @@ pub mod tests {
             .collect();
 
         assert_eq!(rerun, shown);
+    }
+
+    fn hit_for(
+        name: &str,
+        recipient: &str,
+        kind: &str,
+        own: &[&str],
+        cents: i64,
+        currency: &str,
+    ) -> QueryHit {
+        let mut hit = found_hit(name, Some((2026, 3, 9)), Some("Telekom"), Some(kind), own);
+        hit.fields.recipient = Some(recipient.to_owned());
+        hit.fields.amount = Some(Amount {
+            minor_units: cents,
+            currency: ncrs_index::Currency::new(currency).unwrap(),
+        });
+        hit
+    }
+
+    #[test]
+    fn the_recipient_narrows_counts_and_is_saved_as_the_tag_it_makes() {
+        let mut search = DocumentSearch::new(String::new());
+        search.ran(vec![
+            hit_for("a.pdf", "Firma A GmbH", "Rechnung", &["steuer"], 100, "EUR"),
+            hit_for("b.pdf", "Marc privat", "Rechnung", &[], 250, "EUR"),
+        ]);
+        assert_eq!(
+            search.counts().recipients,
+            [
+                ("Firma A GmbH".to_owned(), 1),
+                ("Marc privat".to_owned(), 1)
+            ]
+        );
+
+        search.toggle(FacetValue::Recipient("Firma A GmbH".to_owned()));
+
+        assert_eq!(names(&search), ["a.pdf"]);
+        assert!(search.spec().tags.contains("firma-a-gmbh"));
+        assert_eq!(search.spec().year, None);
+    }
+
+    #[test]
+    fn a_chosen_tag_also_matches_the_automatic_and_the_more_specific_tags() {
+        let mut search = DocumentSearch::new(String::new());
+        search.ran(vec![
+            hit_for("a.pdf", "Firma A GmbH", "Rechnung", &[], 100, "EUR"),
+            hit_for("b.pdf", "Firma AB", "Rechnung", &["steuer"], 100, "EUR"),
+        ]);
+        assert_eq!(search.counts().tags, [("steuer".to_owned(), 1)]);
+
+        search.toggle(FacetValue::Tag("firma-a".to_owned()));
+        assert_eq!(names(&search), ["a.pdf"]);
+        search.toggle(FacetValue::Tag("firma-a".to_owned()));
+        search.toggle(FacetValue::Tag("rechnung".to_owned()));
+        assert_eq!(search.shown_len(), 2);
+    }
+
+    #[test]
+    fn the_total_is_only_given_for_one_currency() {
+        let mut search = DocumentSearch::new(String::new());
+        search.ran(vec![
+            hit_for("a.pdf", "X", "Rechnung", &[], 100, "EUR"),
+            hit_for("b.pdf", "X", "Rechnung", &[], 250, "EUR"),
+        ]);
+        assert_eq!(search.total_amount().map(|sum| sum.minor_units), Some(350));
+
+        search.ran(vec![
+            hit_for("a.pdf", "X", "Rechnung", &[], 100, "EUR"),
+            hit_for("b.pdf", "X", "Rechnung", &[], 250, "USD"),
+        ]);
+        assert_eq!(search.total_amount(), None);
     }
 }

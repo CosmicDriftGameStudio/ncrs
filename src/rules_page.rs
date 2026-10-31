@@ -301,7 +301,7 @@ fn condition_sentence(condition: &Condition, lang: Language) -> String {
 }
 
 /// One condition in the sentence; a tag reads as the bare tag.
-fn sentence_part(condition: &Condition, first: bool, lang: Language) -> (bool, String) {
+pub fn sentence_part(condition: &Condition, first: bool, lang: Language) -> (bool, String) {
     let bare_tag = condition.kind == ConditionKind::Tag && (!condition.negated || !first);
     if bare_tag {
         (condition.negated, condition.value.clone())
@@ -806,8 +806,8 @@ pub mod tests {
 
     #[test]
     fn hits_are_counted_in_singular_and_plural() {
-        assert_eq!(hits_text(1, Language::English), "1 document");
-        assert_eq!(hits_text(0, Language::English), "0 documents");
-        assert_eq!(hits_text(12, Language::German), "12 Dokumente");
+        assert_eq!(hits_text(1, Language::English), "1 hit");
+        assert_eq!(hits_text(0, Language::English), "0 hits");
+        assert_eq!(hits_text(12, Language::German), "12 Treffer");
     }
 }

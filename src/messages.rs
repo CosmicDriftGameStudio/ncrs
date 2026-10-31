@@ -23,6 +23,7 @@ use crate::dialog::PromptKind;
 use crate::document_preview::PreviewContent;
 use crate::document_search::FacetValue;
 use crate::execute::UndoReport;
+use crate::file_list_tags::FileListTags;
 use crate::filing::{FilingMessage, IndexFigures};
 use crate::filing_pieces::TargetEdit;
 use crate::filing_work::FilingSummary;
@@ -520,6 +521,8 @@ pub enum SettingChange {
         detail: OwnDetail,
         entries: Vec<String>,
     },
+    /// Which tags follow a file name in the file lists.
+    FileListTags(FileListTags),
 }
 
 /// A text field of the settings tab. What is typed stays a draft until
@@ -533,6 +536,8 @@ pub enum SettingField {
     AiModel,
     /// Where an entry for one of the own details is typed.
     Own(OwnDetail),
+    /// Where a tag is typed that the file lists show alone.
+    FileListOnly,
 }
 
 /// Everything the settings tab sends.
@@ -540,6 +545,10 @@ pub enum SettingField {
 pub enum SettingsMessage {
     /// The key and the command list: opens the tab, or closes it when it is up.
     Toggle,
+    /// Switches the tags after the names in the file lists on or off.
+    ToggleFileListTags,
+    /// Opens the settings at the choice of those tags.
+    ChooseFileListTags,
     Close,
     /// Folds the technical rows of a page open or shut.
     ToggleAdvanced,
@@ -995,6 +1004,9 @@ pub enum SavedQueriesMessage {
     /// A template button: the form it fills, built where the text is known.
     UseTemplate(Form),
     FieldChanged(QueryField, String),
+    /// Enter in the tag field: the typed words become chips.
+    AddTag,
+    RemoveTag(String),
     /// Tab (`false`) or Shift+Tab (`true`) in the form.
     FocusField {
         backwards: bool,

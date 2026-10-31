@@ -15,6 +15,7 @@ use super::layout::{
 };
 use super::panel_history::PanelHistory;
 use super::theme::{self, font_size, size, spacing};
+use crate::file_list_tags::ShownTags;
 use crate::fs::remote::{RemotePath, ServerId};
 use crate::fs::{sort_entries, FileEntry, ReadError, SortColumn, SortKey};
 use crate::hermes_column::{
@@ -499,8 +500,26 @@ fn file_row<'a, M: Clone + 'a>(
             .wrapping(text::Wrapping::None)
     };
 
-    let name_cell = row![cell(name)]
+    // The chips keep their room; the name gives way first.
+    let fitted = hermes.as_ref().map(|cell_of| {
+        HermesCell::<M>::fit_tags(cell_of.tags(), cell_of.panel_width(), name.chars().count())
+    });
+    let shown_name = match (&fitted, hermes.as_ref()) {
+        (Some(tags), Some(cell_of)) if !tags.chips.is_empty() => {
+            let room = HermesCell::<M>::name_room(tags, cell_of.panel_width());
+            format::ellipsize_middle(&name, room)
+        }
+        _ => name,
+    };
+    let name_cell = row![cell(shown_name)]
         .extend(hermes.as_ref().and_then(HermesCell::role_tag))
+        .extend(
+            hermes
+                .as_ref()
+                .zip(fitted.as_ref())
+                .into_iter()
+                .flat_map(|(cell_of, tags)| cell_of.tag_chips(tags, highlighted)),
+        )
         .spacing(spacing::XS)
         .align_y(alignment::Vertical::Center);
     let mut content = row![
@@ -538,6 +557,14 @@ const DIGIT_WIDTH_PER_SIZE: f32 = 0.6;
 const SUMMARY_GAP: f32 = 6.0;
 const ICON_COUNT_GAP: f32 = 2.0;
 const ROLE_TAG_FONT: f32 = 10.0;
+/// Room kept free beside the cells of a row, for borders and rounding.
+const NAME_SAFETY_MARGIN: f32 = 12.0;
+/// A name is never cut shorter than this, whatever the chips need.
+const MIN_NAME_CHARS: f32 = 8.0;
+/// A name keeps at least this many characters before a chip may take room.
+const NAME_CHARS_KEPT: usize = 12;
+/// A chip's label is proportional, narrower than the monospaced names.
+const CHIP_CHAR_WIDTH: f32 = 0.62;
 const NOT_COUNTED: &str = "…";
 
 /// What the Hermes column shows for one row. Built from lookups only, so
@@ -548,6 +575,8 @@ struct HermesCell<'a, M> {
     lang: Language,
     palette: Palette,
     angle: f32,
+    tags: ShownTags,
+    panel_width: f32,
     _message: std::marker::PhantomData<&'a M>,
 }
 
@@ -575,8 +604,104 @@ impl<'a, M: 'a> HermesCell<'a, M> {
             lang,
             palette: *palette,
             angle: column.angle(),
+            tags: if is_folder || entry.is_dir {
+                ShownTags::default()
+            } else {
+                column.tags_after(&entry.path)
+            },
+            panel_width: column.panel_width(),
             _message: std::marker::PhantomData,
         }
+    }
+
+    fn tags(&self) -> &ShownTags {
+        &self.tags
+    }
+
+    const fn panel_width(&self) -> f32 {
+        self.panel_width
+    }
+
+    /// How many characters of the name fit beside the chips, in the width the
+    /// panel has. The font of the name is monospaced, so this is exact enough;
+    /// the row clips whatever is left over.
+    fn name_room(tags: &ShownTags, panel_width: f32) -> usize {
+        let left = Self::room_beside_name(panel_width) - Self::chips_width(tags);
+        (left / (font_size::FILE * DIGIT_WIDTH_PER_SIZE)).max(MIN_NAME_CHARS) as usize
+    }
+
+    fn room_beside_name(panel_width: f32) -> f32 {
+        let fixed = TAG_COLUMN_WIDTH
+            + SIZE_COLUMN_WIDTH
+            + DATE_COLUMN_WIDTH
+            + HERMES_COLUMN_WIDTH
+            + 2.0 * spacing::CELL_PADDING_X
+            + NAME_SAFETY_MARGIN;
+        panel_width - fixed
+    }
+
+    fn chips_width(tags: &ShownTags) -> f32 {
+        let chip_width = |label: &str| {
+            label.chars().count() as f32 * ROLE_TAG_FONT * CHIP_CHAR_WIDTH
+                + 2.0 * (spacing::XS + spacing::BORDER_WIDTH)
+                + spacing::XS
+        };
+        let chips: f32 = tags.chips.iter().map(|chip| chip_width(&chip.tag)).sum();
+        let more = if tags.more > 0 {
+            chip_width(&format!("+{}", tags.more))
+        } else {
+            0.0
+        };
+        chips + more
+    }
+
+    /// The chips that fit beside a name of `name_chars` characters, which
+    /// keeps at most [`NAME_CHARS_KEPT`] of them; those left out are counted
+    /// in `more`.
+    fn fit_tags(tags: &ShownTags, panel_width: f32, name_chars: usize) -> ShownTags {
+        let wanted =
+            name_chars.min(NAME_CHARS_KEPT) as f32 * font_size::FILE * DIGIT_WIDTH_PER_SIZE;
+        let mut fitted = tags.clone();
+        while !fitted.chips.is_empty()
+            && Self::room_beside_name(panel_width) - Self::chips_width(&fitted) < wanted
+        {
+            fitted.chips.pop();
+            fitted.more += 1;
+        }
+        if fitted.chips.is_empty() {
+            fitted.more = 0;
+        }
+        fitted
+    }
+
+    /// The tags of the file after its name, small, the ones the user set with
+    /// an outline in the accent color.
+    fn tag_chips(&self, tags: &ShownTags, on_fill: bool) -> Vec<Element<'a, M>> {
+        let mut chips: Vec<Element<'a, M>> = tags
+            .chips
+            .iter()
+            .map(|chip| {
+                let label = text(chip.tag.clone())
+                    .size(ROLE_TAG_FONT)
+                    .wrapping(text::Wrapping::None);
+                let boxed = container(label).padding([0.0, spacing::XS]);
+                if chip.own {
+                    boxed.style(theme::own_chip(&self.palette)).into()
+                } else {
+                    boxed.style(theme::chip(&self.palette, on_fill)).into()
+                }
+            })
+            .collect();
+        if tags.more > 0 {
+            chips.push(
+                text(format!("+{}", tags.more))
+                    .size(ROLE_TAG_FONT)
+                    .color(self.palette.dim_text)
+                    .wrapping(text::Wrapping::None)
+                    .into(),
+            );
+        }
+        chips
     }
 
     /// A small outlined label after a folder's name.

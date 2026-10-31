@@ -6,7 +6,6 @@
 //! filing pattern is checked and rendered by the same code the rules use, and
 //! the move is the journaled executor that nothing overwrites a file with.
 
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -536,15 +535,6 @@ pub fn amount_digits(amount: &Amount) -> String {
     )
 }
 
-/// Comma separated; spaces around a tag and empty tags fall away.
-pub fn parse_tags(text: &str) -> BTreeSet<String> {
-    text.split(',')
-        .map(str::trim)
-        .filter(|tag| !tag.is_empty())
-        .map(str::to_owned)
-        .collect()
-}
-
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
 // lint is meant for the production paths.
 #[allow(
@@ -555,6 +545,7 @@ pub fn parse_tags(text: &str) -> BTreeSet<String> {
 )]
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
     use std::fs;
 
     use chrono::{TimeZone as _, Utc};
@@ -956,16 +947,5 @@ mod tests {
 
         assert_eq!(amount_text(&amount), "-7.05 EUR");
         assert_eq!(parse_amount(&amount_text(&amount)), Ok(Some(amount)));
-    }
-
-    #[test]
-    fn tags_are_trimmed_and_empty_ones_fall_away() {
-        let tags = parse_tags(" tax , , travel,tax ");
-
-        assert_eq!(
-            tags,
-            BTreeSet::from(["tax".to_owned(), "travel".to_owned()])
-        );
-        assert!(parse_tags("").is_empty());
     }
 }

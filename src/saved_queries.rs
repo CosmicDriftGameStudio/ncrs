@@ -3,17 +3,16 @@
 //! deleting and exporting. No widgets and no tasks; `App` owns it and changes
 //! it from `update`, the view is `ui::saved_queries`.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{Amount, QuerySpec, SavedQuery, SavedQueryId};
+use ncrs_index::{tag_name, Amount, QuerySpec, SavedQuery, SavedQueryId};
 
 use crate::i18n::{Language, Msg};
 use crate::list_window::ListWindow;
 use crate::query_work::{copies_of, ExportSummary, QueryHit};
-use crate::review_work::parse_tags;
 
 /// A text field of the form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,6 +21,7 @@ pub enum QueryField {
     Year,
     Sender,
     Kind,
+    /// The field a tag is typed in; the tags themselves are chips.
     Tags,
     FullText,
 }
@@ -77,7 +77,7 @@ impl ReportTemplate {
             },
             Self::OpenInvoices => Form {
                 kind: "invoice".to_owned(),
-                tags: lang.text(Msg::SavedQueriesTagOpen).to_owned(),
+                tags: BTreeSet::from([tag_name(lang.text(Msg::SavedQueriesTagOpen))]),
                 ..named
             },
         }
@@ -91,7 +91,9 @@ pub struct Form {
     pub year: String,
     pub sender: String,
     pub kind: String,
-    pub tags: String,
+    pub tags: BTreeSet<String>,
+    /// What is typed for the next tag.
+    pub tag_input: String,
     pub full_text: String,
 }
 
@@ -103,7 +105,8 @@ impl Form {
             year: spec.year.map(|year| year.to_string()).unwrap_or_default(),
             sender: spec.sender.clone().unwrap_or_default(),
             kind: spec.kind.clone().unwrap_or_default(),
-            tags: spec.tags.iter().cloned().collect::<Vec<_>>().join(", "),
+            tags: spec.tags.clone(),
+            tag_input: String::new(),
             full_text: spec.full_text.clone().unwrap_or_default(),
         }
     }
@@ -121,7 +124,7 @@ impl Form {
             QueryField::Year => &self.year,
             QueryField::Sender => &self.sender,
             QueryField::Kind => &self.kind,
-            QueryField::Tags => &self.tags,
+            QueryField::Tags => &self.tag_input,
             QueryField::FullText => &self.full_text,
         }
     }
@@ -132,9 +135,21 @@ impl Form {
             QueryField::Year => &mut self.year,
             QueryField::Sender => &mut self.sender,
             QueryField::Kind => &mut self.kind,
-            QueryField::Tags => &mut self.tags,
+            QueryField::Tags => &mut self.tag_input,
             QueryField::FullText => &mut self.full_text,
         }
+    }
+
+    /// The tags of the chips and those typed but not added yet, comma
+    /// separated.
+    fn tags_with_input(&self) -> BTreeSet<String> {
+        let typed = self.tag_input.split(',').map(tag_name);
+        self.tags
+            .iter()
+            .cloned()
+            .chain(typed)
+            .filter(|tag| !tag.is_empty())
+            .collect()
     }
 
     /// What the form asks for; a year that is no year is a problem, never
@@ -157,7 +172,7 @@ impl Form {
             year,
             sender: non_empty(&self.sender),
             kind: non_empty(&self.kind),
-            tags: parse_tags(&self.tags),
+            tags: self.tags_with_input(),
             full_text: non_empty(&self.full_text),
         })
     }
@@ -456,6 +471,18 @@ impl SavedQueries {
         self.confirming_delete = false;
         self.export = None;
         self.exported = None;
+    }
+
+    /// Turns what is typed for tags into chips.
+    pub fn add_tags(&mut self) {
+        self.form.tags = self.form.tags_with_input();
+        self.form.tag_input.clear();
+        self.problem = None;
+    }
+
+    pub fn remove_tag(&mut self, tag: &str) {
+        self.form.tags.remove(tag);
+        self.problem = None;
     }
 
     pub fn set_text(&mut self, field: QueryField, text: String) {
@@ -809,12 +836,24 @@ pub mod tests {
         let mut list = loaded_list();
         list.select(0);
         list.set_text(QueryField::Year, "2025".to_owned());
-        list.set_text(QueryField::Tags, "office, tax,".to_owned());
+        list.set_text(QueryField::Tags, "Office, tax,".to_owned());
+        list.add_tags();
+        list.set_text(QueryField::Tags, "home office".to_owned());
 
         let spec = list.begin_run().unwrap();
 
         assert_eq!(spec.year, Some(2025));
-        assert_eq!(spec.tags.len(), 2);
+        assert_eq!(
+            spec.tags,
+            BTreeSet::from([
+                "home-office".to_owned(),
+                "office".to_owned(),
+                "tax".to_owned()
+            ])
+        );
+        assert_eq!(list.form().tags.len(), 2);
+        list.remove_tag("tax");
+        assert_eq!(list.form().tags, BTreeSet::from(["office".to_owned()]));
         assert!(list.is_busy());
         list.ran(vec![hit("a.pdf", false)]);
         let id = list.selected().unwrap().id;

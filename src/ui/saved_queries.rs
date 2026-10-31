@@ -4,7 +4,7 @@
 //!
 //! Nothing is copied before the export step has shown where to and how many.
 
-use iced::widget::{column, container, row};
+use iced::widget::{column, container, row, Row};
 use iced::{alignment, Element, Size};
 use ncrs_index::QuerySpec;
 
@@ -286,14 +286,39 @@ fn list<'a>(
 fn form<'a>(state: &'a SavedQueries, lang: Language, palette: &Palette) -> Element<'a, Message> {
     let values = state.form();
     let text_field = |field: QueryField, id: &'static str, value: &'a str| {
+        let on_enter = if field == QueryField::Tags {
+            send(SavedQueriesMessage::AddTag)
+        } else {
+            send(SavedQueriesMessage::Run)
+        };
         kit::text_field(
             "",
             value,
             id,
             Some(move |typed| send(SavedQueriesMessage::FieldChanged(field, typed))),
-            send(SavedQueriesMessage::Run),
+            on_enter,
             palette,
         )
+    };
+    let tags_control = {
+        let chips = values
+            .tags
+            .iter()
+            .map(|tag| {
+                kit::removable_chip(
+                    tag,
+                    send(SavedQueriesMessage::RemoveTag(tag.clone())),
+                    palette,
+                )
+            })
+            .fold(Row::new().spacing(spacing::XS), Row::push)
+            .wrap();
+        column![
+            chips,
+            text_field(QueryField::Tags, TAGS_ID, &values.tag_input)
+        ]
+        .spacing(spacing::XS)
+        .into()
     };
     let row_of = |label: Msg, hint: Option<Msg>, control: Element<'a, Message>| {
         form_row(
@@ -328,7 +353,7 @@ fn form<'a>(state: &'a SavedQueries, lang: Language, palette: &Palette) -> Eleme
         row_of(
             Msg::SavedQueriesFieldTags,
             Some(Msg::SavedQueriesHintTags),
-            text_field(QueryField::Tags, TAGS_ID, &values.tags),
+            tags_control,
         ),
         row_of(
             Msg::SavedQueriesFieldFullText,

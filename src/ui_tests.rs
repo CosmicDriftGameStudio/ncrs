@@ -2973,6 +2973,18 @@ mod review_list_card {
         matches_snapshot(after_filing(), "review_list_filed_en");
     }
 
+    #[test]
+    fn the_tags_and_the_default_target_match_their_snapshots() {
+        matches_snapshot(
+            crate::review_list::tests::tags_list(),
+            "review_list_tags_en",
+        );
+        matches_snapshot(
+            crate::review_list::tests::tags_list(),
+            "review_list_tags_de",
+        );
+    }
+
     fn filled_rgba(width: u32, height: u32, paint: impl Fn(u32, u32) -> [u8; 4]) -> Vec<u8> {
         let shared_paint = &paint;
         (0..height)
@@ -3287,10 +3299,10 @@ pub mod document_search_card {
 
     #[test]
     fn the_page_shows_its_facets_the_count_and_the_hits() {
-        assert!(shows(year_chosen(), "2 documents"));
+        assert!(shows(year_chosen(), "2 documents · Sum 246.90 EUR"));
         assert!(shows(year_chosen(), "2024 (2)"));
         assert!(shows(year_chosen(), "Clear filters"));
-        assert!(shows(loaded_search(), "6 documents"));
+        assert!(shows(loaded_search(), "6 documents · Sum 740.70 EUR"));
         assert!(!shows(loaded_search(), "Clear filters"));
     }
 
@@ -3377,7 +3389,10 @@ pub mod document_search_card {
         assert_eq!(form.full_text, "rent");
         assert_eq!(form.year, "2025");
         assert_eq!(form.sender, "Firma A");
-        assert_eq!(form.tags, "paid");
+        assert_eq!(
+            form.tags,
+            std::collections::BTreeSet::from(["paid".to_owned()])
+        );
         assert_eq!(form.name, "");
     }
 
@@ -3451,6 +3466,27 @@ pub mod document_search_card {
         matches_snapshot(year_chosen(), "document_search_de");
         matches_snapshot(with_snippets(), "document_search_snippets_en");
         matches_snapshot(with_snippets(), "document_search_snippets_de");
+    }
+
+    /// The recipient, the year and a tag chosen: the filters work together and
+    /// the sum is given for one currency.
+    fn recipient_and_tag_chosen() -> DocumentSearch {
+        let mut search = DocumentSearch::new(String::new());
+        let mut hits = crate::document_search::tests::six_hits();
+        for hit in &mut hits {
+            hit.fields.recipient = Some("Firma A GmbH".to_owned());
+        }
+        search.ran(hits);
+        search.toggle(FacetValue::Year(2025));
+        search.toggle(FacetValue::Recipient("Firma A GmbH".to_owned()));
+        search.toggle(FacetValue::Tag("paid".to_owned()));
+        search
+    }
+
+    #[test]
+    fn the_filters_with_a_recipient_and_a_tag_match_their_snapshots() {
+        matches_snapshot(recipient_and_tag_chosen(), "document_search_tags_en");
+        matches_snapshot(recipient_and_tag_chosen(), "document_search_tags_de");
     }
 }
 
@@ -3694,6 +3730,23 @@ mod saved_queries_card {
         matches_snapshot(at_export(), "saved_queries_export_en");
         matches_snapshot(empty_list(), "saved_queries_empty_en");
         matches_snapshot(empty_list(), "saved_queries_empty_de");
+    }
+
+    /// A new report from the template for open invoices, one more tag typed.
+    fn with_tag_chips(language: Language) -> SavedQueries {
+        use crate::saved_queries::{QueryField, ReportTemplate};
+
+        let mut list = empty_list();
+        list.use_template(ReportTemplate::OpenInvoices.form(language));
+        list.set_text(QueryField::Tags, "firma-a".to_owned());
+        list.add_tags();
+        list
+    }
+
+    #[test]
+    fn the_tags_of_a_report_match_their_snapshots() {
+        matches_snapshot(with_tag_chips(Language::English), "saved_queries_tags_en");
+        matches_snapshot(with_tag_chips(Language::German), "saved_queries_tags_de");
     }
 }
 
@@ -3944,6 +3997,61 @@ mod rules_card {
         ));
         assert_eq!(page.begin_save(), None);
         page
+    }
+
+    fn tag_rules() -> RulesPage {
+        let tagged = |id, origin, conditions, hits| {
+            let mut rule = listed(id, origin, conditions, ("", &[]), true, hits);
+            rule.rule.spec.kind = None;
+            rule.rule.spec.filing_pattern =
+                "{recipient}/{year}/{sender}/{date}_{sender}".to_owned();
+            rule
+        };
+        let mut page = RulesPage::new();
+        page.loaded(RulesLoad {
+            rules: vec![
+                tagged(
+                    1,
+                    RuleOrigin::Hand,
+                    RuleConditions::all_of(vec![
+                        Condition::new(ConditionKind::Tag, "rechnung"),
+                        Condition::new(ConditionKind::Tag, "firma-a"),
+                    ]),
+                    12,
+                ),
+                tagged(
+                    2,
+                    RuleOrigin::Hand,
+                    RuleConditions::all_of(vec![Condition::new(ConditionKind::Tag, "steuer")]),
+                    4,
+                ),
+                tagged(
+                    3,
+                    RuleOrigin::Suggestion,
+                    RuleConditions::all_of(vec![
+                        Condition::new(ConditionKind::Tag, "vertrag"),
+                        Condition::not(ConditionKind::Tag, "firma-a"),
+                    ]),
+                    3,
+                ),
+            ],
+        });
+        page
+    }
+
+    #[test]
+    fn the_rules_with_tags_match_their_snapshots() {
+        matches_snapshot(tag_rules(), "rules_tags_en");
+        matches_snapshot(tag_rules(), "rules_tags_de");
+    }
+
+    #[test]
+    fn the_rule_form_with_tags_matches_its_snapshots() {
+        for language in ["en", "de"] {
+            let mut page = tag_rules();
+            page.begin_edit();
+            matches_snapshot(page, &format!("rule_form_tags_{language}"));
+        }
     }
 
     #[test]
@@ -5074,6 +5182,32 @@ mod title_bar {
     }
 
     #[test]
+    fn the_file_lists_show_the_tags_after_the_names() {
+        use crate::file_list_tags::{FileListTags, TagGroup};
+
+        for (language, name) in [
+            (Language::English, "main_view_tags_en"),
+            (Language::German, "main_view_tags_de"),
+        ] {
+            let app = App::with_hermes_column_sample()
+                .with_file_list_tags_for_test(FileListTags {
+                    groups: vec![TagGroup::Kind, TagGroup::Sender, TagGroup::Own],
+                    ..FileListTags::default()
+                })
+                .in_language(language);
+            let matches = simulator(&app)
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(
+                matches,
+                "the main view does not match tests/snapshots/{name}.png"
+            );
+        }
+    }
+
+    #[test]
     fn the_hermes_quick_fix_matches_its_snapshots() {
         for (language, name) in [
             (Language::English, "hermes_quick_fix_en"),
@@ -5655,6 +5789,28 @@ mod settings_tab {
             &app().in_language(Language::English),
             "settings_appearance_en",
         );
+    }
+
+    #[test]
+    fn the_tags_in_the_file_list_match_their_snapshots() {
+        let scrolled_snapshot = |language: Language, name: &str| {
+            let mut app = App::with_settings_open(SettingsFeature::Look, Filing::default())
+                .in_language(language);
+            drop(app.update(Message::Settings(SettingsMessage::ChooseFileListTags)));
+            let mut sim = simulator(&app);
+            sim.point_at(iced::Point::new(700.0, 400.0));
+            let _statuses = sim.simulate([iced::Event::Mouse(iced::mouse::Event::WheelScrolled {
+                delta: iced::mouse::ScrollDelta::Lines { x: 0.0, y: -80.0 },
+            })]);
+            let matches = sim
+                .snapshot(&iced::Theme::Dark)
+                .unwrap()
+                .matches_image(format!("tests/snapshots/{name}.png"))
+                .expect("snapshot comparison");
+            assert!(matches, "the tab does not match tests/snapshots/{name}.png");
+        };
+        scrolled_snapshot(Language::German, "settings_appearance_tags_de");
+        scrolled_snapshot(Language::English, "settings_appearance_tags_en");
     }
 
     #[test]
@@ -6466,6 +6622,23 @@ mod hermes_overview_page {
             "hermes_overview_downloading",
         );
         in_both_languages(off, "hermes_overview_off");
+    }
+
+    #[test]
+    fn the_default_target_matches_its_snapshots() {
+        let own_target = || {
+            let config = Filing {
+                default_pattern: Some("{recipient}/{year}/{sender}/{date}_{sender}".to_owned()),
+                ..configured()
+            };
+            App::with_hermes_overview(Some(Phase::Ready), config, Some(five_open()))
+        };
+        for (lang, name) in [
+            (Language::English, "hermes_overview_standard_target_en"),
+            (Language::German, "hermes_overview_standard_target_de"),
+        ] {
+            assert_scrolled_snapshot(&own_target().in_language(lang), name);
+        }
     }
 
     #[test]

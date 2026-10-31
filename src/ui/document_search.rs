@@ -123,6 +123,11 @@ fn facet_rows<'a>(
         count: *count,
         value: FacetValue::Year(*year),
     });
+    let recipients = counts.recipients.iter().map(|(name, count)| Chip {
+        label: name.clone(),
+        count: *count,
+        value: FacetValue::Recipient(name.clone()),
+    });
     let senders = counts.senders.iter().map(|(name, count)| Chip {
         label: name.clone(),
         count: *count,
@@ -141,8 +146,12 @@ fn facet_rows<'a>(
     let mut rows = Vec::new();
     for (label, chips) in [
         (Msg::DocumentSearchFacetYear, years.collect::<Vec<_>>()),
-        (Msg::DocumentSearchFacetSender, senders.collect::<Vec<_>>()),
         (Msg::DocumentSearchFacetKind, kinds.collect::<Vec<_>>()),
+        (
+            Msg::DocumentSearchFacetRecipient,
+            recipients.collect::<Vec<_>>(),
+        ),
+        (Msg::DocumentSearchFacetSender, senders.collect::<Vec<_>>()),
         (Msg::DocumentSearchFacetTags, tags.collect::<Vec<_>>()),
     ] {
         if !chips.is_empty() {
@@ -213,19 +222,77 @@ fn facet_row<'a>(
     .into()
 }
 
+/// The number of documents with the sum of their amounts and the button that
+/// saves the question as a report; below it, while values are chosen, what
+/// they are.
 fn summary<'a>(state: &DocumentSearch, lang: Language, palette: &Palette) -> Element<'a, Message> {
     let count = state.shown_len();
-    dim(
-        fill_template(
-            lang.text(if count == 1 {
-                Msg::DocumentSearchCountOne
-            } else {
-                Msg::DocumentSearchCountOther
-            }),
-            &[("{count}", &count.to_string())],
+    let mut line = fill_template(
+        lang.text(if count == 1 {
+            Msg::DocumentSearchCountOne
+        } else {
+            Msg::DocumentSearchCountOther
+        }),
+        &[("{count}", &count.to_string())],
+    );
+    if let Some(total) = state.total_amount() {
+        line.push_str(" · ");
+        line.push_str(&fill_template(
+            lang.text(Msg::DocumentSearchSum),
+            &[("{amount}", &amount_text(&total))],
+        ));
+    }
+    let top = row![
+        dim(line, palette),
+        iced::widget::space::horizontal(),
+        kit::button(
+            lang.text(Msg::DocumentSearchSaveAsReport),
+            state
+                .can_save_as_report()
+                .then(|| send(DocumentSearchMessage::SaveAsReport)),
+            Tone::Secondary,
+            palette,
         ),
-        palette,
-    )
+    ]
+    .align_y(alignment::Vertical::Center);
+    let chosen = chosen_values(state, lang);
+    if chosen.is_empty() {
+        return top.into();
+    }
+    column![
+        top,
+        dim(
+            fill_template(
+                lang.text(Msg::DocumentSearchFiltersTogether),
+                &[(
+                    "{values}",
+                    &chosen.join(&format!(" {} ", lang.text(Msg::DocumentSearchFiltersAnd)))
+                )],
+            ),
+            palette
+        )
+    ]
+    .spacing(spacing::XS)
+    .into()
+}
+
+/// The chosen values in the order of the rows.
+fn chosen_values(state: &DocumentSearch, lang: Language) -> Vec<String> {
+    let selection = state.selection();
+    selection
+        .year
+        .map(|year| year.to_string())
+        .into_iter()
+        .chain(
+            selection
+                .kind
+                .as_deref()
+                .map(|kind| lang.kind_label(kind).into_owned()),
+        )
+        .chain(selection.recipient.clone())
+        .chain(selection.sender.clone())
+        .chain(selection.tags.iter().cloned())
+        .collect()
 }
 
 fn split<'a>(
@@ -381,14 +448,6 @@ fn buttons<'a>(
             palette,
         ));
     }
-    buttons.push(kit::button(
-        lang.text(Msg::DocumentSearchSaveAsReport),
-        state
-            .can_save_as_report()
-            .then(|| send(DocumentSearchMessage::SaveAsReport)),
-        Tone::Secondary,
-        palette,
-    ));
     buttons.push(kit::button(
         lang.text(Msg::DocumentSearchClose),
         Some(send(DocumentSearchMessage::Close)),

@@ -754,6 +754,19 @@ pub mod tests {
         list
     }
 
+    /// One document whose recipient is read, with two tags of the user's own,
+    /// that no rule covers: the default target is proposed.
+    pub fn tags_list() -> ReviewList {
+        let [one, _] = <[_; 2]>::try_from(ids()).unwrap();
+        let mut tagged = item(one, "scan-1.pdf", "Telekom");
+        tagged.proposed_pattern = None;
+        tagged.fields.recipient = Some("Firma A GmbH".to_owned());
+        tagged.fields.tags = ["steuer", "buero"].map(str::to_owned).into();
+        let mut list = ReviewList::new();
+        list.loaded(vec![tagged]);
+        list
+    }
+
     /// Two documents no rule covers: one the default pattern fills in, one
     /// without a date that it cannot.
     pub fn default_pattern_list() -> ReviewList {

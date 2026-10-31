@@ -8,25 +8,50 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Tags take the place of the tax contexts. Every document read carries tags
+  that ncrs derives from the fields (kind, sender, recipient, year) and tags of
+  your own; your own stay when a document is read again. The review list lets
+  you add and remove them, and says which ones are automatic.
+- Recipient is a field of its own: ncrs reads it from the address block, the
+  review list shows it, and the document search and the reports can narrow by
+  it. A tag filter also finds the more specific tags below it ("firma-a" finds
+  "firma-a-gmbh").
+- Rules test tags ("invoice and firma-a", "contract and not firma-a") and show
+  as cards: the conditions as chips, the target as folder chips, and the origin
+  with the number of hits. Rules from several tags that file to the same place
+  are two rules with the same target.
+- A default target for documents without a rule, built from the same folder
+  pieces as a rule (recipient, year, sender, ...). It only proposes a place in
+  the review list; nothing is filed before you confirm. It replaces the filing
+  pattern with curly braces in the settings.
+- File lists show the tags of a read document after its name (up to three, then
+  "+1"; your own tags have an accent outline). Settings › Appearance chooses
+  which: kind, recipient, sender, year, your own, or only some tags. The command
+  list switches them on and off.
+- The reports page and the document search page show the sum of the amounts
+  when all hits share one currency, and say that filters apply together.
 - The document search page shows, under each hit, the piece of its text around
   the words, with the words marked, and previews the selected document beside
   the list. "Save as report" opens the Reports page with a new report that asks
-  what the page asks (words, year, tax context, sender, kind, tags); it is
+  what the page asks (words, year, recipient, sender, kind, tags); it is
   saved there like any other report.
 - A Filing page "Search documents" searches the text of every document ncrs
-  has read. Click a year, tax context, sender, kind or tag to narrow the hits;
+  has read. Click a year, kind, recipient, sender or tag to narrow the hits;
   the numbers show how many documents each value leaves. Quick Open ends its
   document hits with a row that opens the page with the typed words, and "Go to
   file" shows the hit in the file panel.
 - Rule suggestions now come per sender: when most documents of a sender lie in
   one folder, ncrs suggests a rule for that sender with the folder's filing
-  pattern, and takes over the kind, tax context and tags that most of those
+  pattern, and takes over the kind and tags that most of those
   documents share. Each suggestion says why, for example "4 of 5 documents
   from this sender are in Insurance". Suggestions for a phrase remain for
   folders without a sender suggestion.
 
 ### Changed
 
+- The index schema is now 20. Open reviews about a missing tax context become
+  "No rule matches". The review "Move to" row shows the target as folder
+  chips with a "Change …" button.
 - The plain names now also reach the texts that still used the Futurama names:
   no body text, title or subtitle in English or German names Hermes, the
   Inspection, Pending, Smell-o-scope or another Futurama name any more. The
@@ -52,7 +77,7 @@ All notable changes to this project are documented here. The format follows
   are for: a saved search for recurring questions, such as all invoices of a
   year from one company for the tax return. A report can also ask for a sender,
   and its result shows the sum of the amounts per currency. Templates start a
-  report for the tax year before this one (for each tax context), for contracts
+  report for the tax year before this one, for contracts
   and for open invoices (invoices tagged "open"). The export step explains what
   the lines of the CSV file hold.
 
