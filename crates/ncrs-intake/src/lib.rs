@@ -66,7 +66,7 @@ pub use scan::{
     scan_location, settle_location, walk_location, Found, ScanReport, MAX_REPORTED_ERRORS,
 };
 pub use sender_detection::{
-    detect_sender, AliasOffer, DetectedSender, SenderDetection, SenderSource,
+    detect_sender, AliasOffer, DetectedSender, OwnIdentifiers, SenderDetection, SenderSource,
 };
 pub use stability::{StabilityTracker, STABLE_AFTER};
 pub use take_in::{has_symlink_ancestor_under, hash_path, take_in, Outcome};
