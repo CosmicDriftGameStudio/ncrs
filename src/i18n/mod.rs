@@ -131,6 +131,14 @@ impl Language {
         })
     }
 
+    /// The plain name, then the theme name in parentheses where there is one.
+    pub fn titled(self, label: Msg, theme_name: Option<FuturamaName>) -> String {
+        match theme_name.and_then(|name| self.futurama_name(name)) {
+            Some(theme) => format!("{} ({})", self.text(label), theme),
+            None => self.text(label).to_owned(),
+        }
+    }
+
     /// A document kind as shown: the translation for the kinds the rules and
     /// the AI usually write, anything else (user kinds) exactly as stored.
     pub fn kind_label<'a>(self, kind: &'a str) -> std::borrow::Cow<'a, str> {
@@ -287,13 +295,8 @@ mod tests {
                 // Only placeholders and a dot between them.
                 | Msg::HermesOverviewFlowFiledNote
                 | Msg::DeleteOne
-                // The module's name, the same in both languages.
-                | Msg::FilingSetupTitle
-                // The module's name heads its column.
-                | Msg::ColumnHermes
                 // The loanword, the same in both languages.
                 | Msg::HermesBeta
-                | Msg::HermesSetupBadge
                 // Names of color schemes.
                 | Msg::SettingsPresetCosmic
                 | Msg::SettingsPresetDracula
@@ -330,7 +333,10 @@ mod tests {
             );
             let same_word = matches!(
                 name,
-                FuturamaName::GroupHermes | FuturamaName::ActionFilingSetup
+                FuturamaName::GroupHermes
+                    | FuturamaName::ActionFilingSetup
+                    | FuturamaName::FilingSetupTitle
+                    | FuturamaName::HermesSetupFrameTitle
             );
             assert_eq!(en == de, same_word, "{name:?}: en {en:?}, de {de:?}");
         }

@@ -257,6 +257,10 @@ mod tests {
         let mut search = showcase_app();
         search.show_search_results_for_test("hello", showcase_search_results());
         write_screenshot(&search, "search.png");
+
+        let filing =
+            App::with_document_search(crate::ui_tests::document_search_card::with_snippets());
+        write_screenshot(&filing, "filing.png");
     }
 
     #[test]

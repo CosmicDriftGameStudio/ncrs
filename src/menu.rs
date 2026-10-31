@@ -5,7 +5,7 @@
 use iced::keyboard::{key, Key};
 
 use crate::commands::{self, Command, CommandGroup};
-use crate::i18n::{FuturamaName, Language, Msg};
+use crate::i18n::Language;
 use crate::keymap::{Binding, KeyAction, KeyScope, Keymap};
 use crate::messages::Message;
 
@@ -38,7 +38,7 @@ impl MenuModel {
     pub fn build(lang: Language, keymap: &Keymap) -> Self {
         let item_of = |command: Command| MenuItemSpec {
             action: command.action,
-            title: titled(lang, command.label, command.theme_name),
+            title: lang.titled(command.label, command.theme_name),
             accelerator: keymap
                 .bindings_of(command.action)
                 .find(|binding| is_safe_as_key_equivalent(binding))
@@ -53,7 +53,7 @@ impl MenuModel {
             .iter()
             .map(|&group| MenuSpec {
                 group,
-                title: titled(lang, group.label(), group.theme_name()),
+                title: lang.titled(group.label(), group.theme_name()),
                 items: commands::all()
                     .filter(|command| {
                         command.group == group && !APP_MENU_ACTIONS.contains(&command.action)
@@ -63,14 +63,6 @@ impl MenuModel {
             })
             .collect();
         Self { app, menus }
-    }
-}
-
-/// The plain name, then the theme name in parentheses where there is one.
-fn titled(lang: Language, label: Msg, theme_name: Option<FuturamaName>) -> String {
-    match theme_name.and_then(|name| lang.futurama_name(name)) {
-        Some(theme) => format!("{} ({})", lang.text(label), theme),
-        None => lang.text(label).to_owned(),
     }
 }
 

@@ -104,7 +104,7 @@ binary, so ncrs reads PDFs without anything else installed. `install.sh` and
 
 ![The drive menu on Alt+F1](docs/screenshots/drive-menu.png)
 
-The drive menu, called Planets in the app (`Alt+F1` for the left panel, `Alt+F2` for the right).
+The drive menu (`Alt+F1` for the left panel, `Alt+F2` for the right).
 Below the drives it lists your favourite folders: add the active folder with
 `Ctrl`+`D` (`Cmd`+`D` on macOS), remove one with `Del` (`⌫` on macOS) in the menu. A favourite whose folder is gone
 stays in the list, dimmed, and says so when you pick it.
@@ -153,10 +153,10 @@ The same window in German, switched with F9.
 - Errors (e.g. *Permission denied*) are shown in the status bar – no panics
 - Confirmations (e.g. *Path copied*) appear at the right of the status bar for three seconds
 - Mouse click selects a row and activates its panel; the wheel and the trackpad scroll the panel under the pointer
-- Planets (drive menu, `Alt`+`F1` / `Alt`+`F2`): jump a panel to the system volume, home, iCloud Drive and
+- Drive menu (`Alt`+`F1` / `Alt`+`F2`): jump a panel to the system volume, home, iCloud Drive and
   cloud storage folders such as Google Drive, OneDrive or Dropbox (macOS), mounted volumes or
   drive letters, the same places as in the Finder sidebar; see [Drives on macOS](#drives-on-macos)
-- Smell-o-scope (search) in file names and contents below a directory, in the panel, the way
+- Search in file names and contents below a directory, in the panel, the way
   VS Code does it: see [Search](#search)
 - Dropping files from the Finder, Explorer or another file manager onto the window copies them
   into the active panel, with the same conflict questions as `F5`; the panel is outlined while
@@ -220,17 +220,17 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Shift`+`F4`       | New file: creates an empty file under the name asked for and opens it in the editor like `F4`; an existing name is never overwritten |
 | `F8`               | Delete to the trash, after a confirmation |
 | `Shift`+`F8`       | Delete permanently (`Enter` cancels; `Shift`+`F8` again confirms) |
-| `Alt`+`F1` / `Alt`+`F2` | Planets (drive menu) for the left / right panel (`↑`/`↓`, `Home`/`End`, `Enter` goes, `Esc` closes; `Option` on macOS); below the drives come the favourite folders (`Enter` goes, `Del` (`⌫` on macOS) removes) |
+| `Alt`+`F1` / `Alt`+`F2` | Drive menu for the left / right panel (`↑`/`↓`, `Home`/`End`, `Enter` goes, `Esc` closes; `Option` on macOS); below the drives come the favourite folders (`Enter` goes, `Del` (`⌫` on macOS) removes) |
 | `Alt`+`←` / `Alt`+`→` (also `Cmd`+`[` / `Cmd`+`]` on macOS) | Back / forward in the active panel's folder history |
 | `Ctrl`+`D` (`Cmd`+`D` on macOS) | Add the active panel's folder to the favourites (`remove_favourite` and `favourites` have no default key) |
 | Right click / `Shift`+`F10` / `Option` tapped alone | Context menu at the pointer or the cursor row (`↑`/`↓`, `Home`/`End`, `Enter` runs, `Esc` closes; `Ctrl`+click also on a Mac) |
 | Click a column title | Sort that panel by Name / Size / Modified; a second click reverses the order (▲ / ▼). `..` and folders stay on top |
 | `Ctrl`+`F3` / `Ctrl`+`F5` / `Ctrl`+`F6` (macOS: `Cmd`+`1` / `Cmd`+`3` / `Cmd`+`2`) | Sort the active panel by name / modification time / size; again reverses. macOS uses `Cmd`+digit because the system takes `Ctrl`+`F`-keys |
-| `Alt`+`F7` / `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) | Smell-o-scope (search) below the directory of the active panel; pressed again, it moves to the next field. See [Search](#search) |
+| `Alt`+`F7` / `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) | Search below the directory of the active panel; pressed again, it moves to the next field. See [Search](#search) |
 | `F1` / `Cmd`+`Shift`+`P` / `Ctrl`+`Shift`+`P` | Lab (command palette): lists the actions that work where you are, with their keys; type to filter, `↑`/`↓` move, `Enter` runs, `Esc` closes |
-| `Cmd`+`P` / `Ctrl`+`P` | Dark Matter Drive (Quick Open): jump to a file by a few letters of its path. See [Quick Open](#quick-open) |
-| `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D`, or click the filing progress in the status bar | Inspection, the filing status page (filing module on, Hermes): pipeline state, load, workers, index figures and the last errors. `P` pauses or resumes, `1`/`2`/`3` set the load gentle ("By the book") / balanced ("Business as usual") / full ("Grade 36") for this session, `+`/`-` change the worker count, `↑`/`↓` and `Enter` show the file of an error, `Esc` closes |
-| `Cmd`+`Shift`+`L` / `Ctrl`+`Shift`+`L` | Hermes setup: choose the Tubes and document folders and save them to the config file. See [Filing](#filing). `Esc` closes |
+| `Cmd`+`P` / `Ctrl`+`P` | Quick Open: jump to a file by a few letters of its path. See [Quick Open](#quick-open) |
+| `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D`, or click the filing progress in the status bar | Status and errors, the filing status page (filing module on): what the page is for, pipeline state, load, workers, index figures and the last errors. `P` pauses or resumes, `1`/`2`/`3` set the load gentle / balanced / full for this session, `+`/`-` change the worker count, `↑`/`↓` and `Enter` show the file of an error, `Esc` closes |
+| `Cmd`+`Shift`+`L` / `Ctrl`+`Shift`+`L` | Filing folders: choose the inbox and document folders and save them to the config file. See [Filing](#filing). `Esc` closes |
 | `Backspace`        | Go to parent directory                   |
 | `Tab`              | Switch active panel                      |
 | `F9`               | Switch language for this session (start: `lang`) |
@@ -244,7 +244,7 @@ the keys reach the dialog. On Linux, and for now on Windows, the Lab (`F1`) is t
 
 ## Search
 
-The Smell-o-scope: `Alt`+`F7` or `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) opens
+Search: `Alt`+`F7` or `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) opens
 the search in the active panel. It searches below that panel's directory, starts
 as you type and stops a search still running when you type on. `Esc` brings the
 panel back; the next search starts with the same fields.
@@ -276,7 +276,7 @@ panel back; the next search starts with the same fields.
 
 ## Quick Open
 
-The Dark Matter Drive: `Cmd`+`P` (`Ctrl`+`P` on Linux and Windows) opens a box over the panels, as in
+Quick Open: `Cmd`+`P` (`Ctrl`+`P` on Linux and Windows) opens a box over the panels, as in
 VS Code. Type letters of a file's path and the best matches are listed with the
 matching characters highlighted: `cfgrs` finds `src/config.rs`. It lists the
 files below the active panel's directory, hidden ones too and without following
@@ -351,7 +351,7 @@ folder.
 
 ncrs reads an optional TOML file. Every value in it can also be set in the
 settings tab (`Cmd`+`,`, `Ctrl`+`,` on Linux and Windows): appearance and
-colors, language, the viewer and editor, keyboard shortcuts and Hermes with
+colors, language, the viewer and editor, keyboard shortcuts and filing with
 its AI provider. The tab writes only the changed lines and keeps comments and
 order, refuses a value that would not load and shows why at its row. A file
 with an error still opens the tab, which names the line and saves nothing
@@ -622,29 +622,53 @@ target = true
 - Exactly one archive is the `target`, the archive filed documents go to. An
   inbox cannot be the target, and no location may be the same folder as another
   or lie inside it.
-- `load` has the names `gentle`, `balanced` and `full`; the Inspection shows
-  them as "By the book", "Business as usual" and "Grade 36" (full load).
+- `load` has the names `gentle`, `balanced` and `full`; Status and errors
+  shows them as "Gentle", "Balanced" and "Full" (up to 2 workers, up to 4, one
+  per processor core). The Futurama variants add "By the book", "Business as
+  usual" and "Grade 36" beside them.
 
-Hermes is a beta. Every new version migrates the index and keeps its documents
+Filing is a beta. Every new version migrates the index and keeps its documents
 (the index has a schema version and the migrations are tested), but the
-behaviour, rules and screens of Hermes may still change before it leaves beta.
+behaviour, rules and screens of filing may still change before it leaves beta.
 1.0 does not wait for it.
 
-The filing module is called Hermes in the app. In the setup and on the
-Inspection the config terms read like this:
+In the app the module is called Filing. The setup and Status and errors name
+the config terms like this:
 
 | Config | English | German |
 | --- | --- | --- |
-| `mode = "inbox"` | Tubes: where new documents arrive, emptied | Rohrpost |
-| `mode = "archive"` and `target = true` | Central Filing: documents are filed here | Zentralregistratur |
-| `mode = "archive"` without `target` | Records: only read, nothing is moved | Aktenkeller |
-| the filing status page | Inspection | Inspektion |
-| the review list | Pending | Wiedervorlage |
+| `mode = "inbox"` | Inbox: where new documents arrive, emptied | Eingang |
+| `mode = "archive"` and `target = true` | Filing location: documents are filed here | Ablage |
+| `mode = "archive"` without `target` | Archive: only read, nothing is moved | Archiv |
+
+The standard languages show these plain names only. The Futurama variants
+(`lang = "en-futurama"` and `"de-futurama"`) show the names from the show
+beside them:
+
+| Plain name (English / German) | Futurama variants add (English / German) |
+| --- | --- |
+| Filing / Ablage | Hermes / Hermes |
+| Filing folders / Ablageordner | Hermes / Hermes |
+| Set up filing / Ablage einrichten | Hermes / Hermes |
+| Status and errors / Status und Fehler | Inspection / Inspektion |
+| Overview / Übersicht | Delivery / Lieferdienst |
+| Review / Rückfragen | Pending / Wiedervorlage |
+| Rules / Regeln | Bureaucratic Regulations / Bürokratische Vorschriften |
+| Rule suggestions / Regelvorschläge | Requisitions / Anträge |
+| Search documents / Dokumente durchsuchen | Paper trail / Papierspur |
+| Gentle / Schonend (`gentle`) | By the book / Dienst nach Vorschrift |
+| Balanced / Ausgewogen (`balanced`) | Business as usual / Normalbetrieb |
+| Full / Volle Last (`full`) | Grade 36 / Grad 36 |
+
+![The document search of the Filing module](docs/screenshots/filing.png)
+
+The document search: the words typed, the facets to narrow the hits, a snippet
+under each hit and the text of the selected document beside the list.
 
 **Setup.** `Cmd`+`Shift`+`L` (`Ctrl`+`Shift`+`L` on Linux and Windows,
 `filing_setup` in `[keys]`) opens the setup, also from the command palette
-(`F1`) as "Hermes: choose folders". It also opens on its own when the module is
-on and no locations are listed. The card has two sections: Tubes, where new
+(`F1`) as "Choose folders" in the Filing group. It also opens on its own when the module is
+on and no locations are listed. The card has two sections: the inbox, where new
 documents arrive (optional), and the folders where you keep your documents (at
 least one). "Add folder…" opens the system folder dialog; "Use the folder in
 the panel" adds the folder of the active panel instead, for keyboard use and
@@ -652,16 +676,16 @@ for systems without a dialog. The card stays open and the panels stay usable.
 Each entry has its images switch and can be removed. A folder that is already
 in the list is not added again; the card says "already added".
 
-With one document folder, it is the Central Filing. From two document folders
-on, pick the Central Filing with the radio buttons; saving waits for the
-choice. A list that breaks a rule, for example a Tubes folder inside a document
+With one document folder, it is the filing location. From two document folders
+on, pick the filing location with the radio buttons; saving waits for the
+choice. A list that breaks a rule, for example an inbox folder inside a document
 folder, says so and cannot be saved.
 
 Saving writes the locations by their real paths (symlinks resolved) to
 `[modules.filing]` and sets `enabled = true`. The rest of the file, comments
 included, stays as it is. A config file that does not load is not touched: fix
 it first, the setup shows the error. After saving, the card closes and the
-status bar says that Hermes is on and which key opens the Inspection. If no
+status bar says that filing is on and which key opens Status and errors. If no
 filing runs on configured locations yet, filing starts at once with the saved
 ones; otherwise the status bar says they apply from the next start of ncrs.
 
@@ -692,7 +716,7 @@ threads = 4
   for now (`localhost`, `127.0.0.1` or `::1`); `endpoint` and `model` are
   required and `threads` is not allowed. Without a consent given for that
   server, nothing is sent.
-- The Inspection shows a row "AI model" with the state while the AI is on.
+- Status and errors shows a row "AI model" with the state while the AI is on.
 
 **Recognition baseline.** How often the filing reads a field right is measured
 against a synthetic corpus: 26 documents (invoices, contracts, letters, tax
