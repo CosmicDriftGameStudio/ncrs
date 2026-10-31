@@ -546,6 +546,34 @@ pub fn is_iban_separator(ch: char) -> bool {
     ch.is_whitespace()
 }
 
+/// ISO 13616: separators are ignored, case does not matter.
+pub fn iban_is_valid(value: &str) -> bool {
+    let chars: Vec<char> = value
+        .chars()
+        .filter(|ch| !is_iban_separator(*ch))
+        .map(|ch| ch.to_ascii_uppercase())
+        .collect();
+    if !(15..=34).contains(&chars.len()) || !chars.iter().all(char::is_ascii_alphanumeric) {
+        return false;
+    }
+    let country_is_letters = chars.iter().take(2).all(char::is_ascii_alphabetic);
+    let check_is_digits = chars.iter().skip(2).take(2).all(char::is_ascii_digit);
+    if !country_is_letters || !check_is_digits {
+        return false;
+    }
+    let remainder =
+        chars
+            .iter()
+            .skip(4)
+            .chain(chars.iter().take(4))
+            .try_fold(0, |rest: u32, ch| {
+                let digit_value = ch.to_digit(36)?;
+                let shift = if digit_value < 10 { 10 } else { 100 };
+                Some((rest * shift + digit_value) % 97)
+            });
+    remainder == Some(1)
+}
+
 pub fn is_tax_id_separator(ch: char) -> bool {
     ch.is_whitespace() || matches!(ch, '/' | '-' | '.')
 }
@@ -1192,6 +1220,21 @@ pub struct ReorganisationPlan {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn real_ibans_pass_the_checksum_in_any_spelling() {
+        assert!(iban_is_valid("DE89 3704 0044 0532 0130 00"));
+        assert!(iban_is_valid("de89370400440532013000"));
+        assert!(iban_is_valid("GB82 WEST 1234 5698 7654 32"));
+    }
+
+    #[test]
+    fn broken_ibans_fail() {
+        assert!(!iban_is_valid("DE89 3704 0044 0532 0130 01"));
+        assert!(!iban_is_valid("DE89 3704"));
+        assert!(!iban_is_valid("DEXX 3704 0044 0532 0130 00"));
+        assert!(!iban_is_valid(""));
+    }
 
     #[test]
     fn the_sender_is_required_only_by_a_plain_sender_condition_under_all_of() {

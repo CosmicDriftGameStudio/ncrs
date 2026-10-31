@@ -206,6 +206,7 @@ fn problem_text(problem: &ConditionProblem, lang: Language) -> String {
             lang.text(Msg::ConditionEditorProblemRegex),
             &[("{reason}", reason)],
         ),
+        ConditionProblem::InvalidIban => lang.text(Msg::ConditionEditorProblemIban).to_owned(),
     }
 }
 

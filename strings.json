@@ -7171,6 +7171,12 @@
       "de": "Kein gültiger regulärer Ausdruck: {reason}"
     },
     {
+      "key": "condition_editor.problem_iban",
+      "context": "Error line under a condition of the kind IBAN whose value fails the checksum.",
+      "en": "Not a valid IBAN: the check digits do not match.",
+      "de": "Keine gültige IBAN: die Prüfziffern stimmen nicht."
+    },
+    {
       "key": "review_list.reason_no_tax_context",
       "context": "Review reason in the review list: the conditions of no tax context fit the document.",
       "en": "No tax context fits",
