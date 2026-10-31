@@ -1,7 +1,7 @@
 use std::fmt;
 use std::path::PathBuf;
 
-use crate::model::{DocumentId, ReviewEntryId, RuleId, SavedQueryId, SenderAliasId};
+use crate::model::{DocumentId, ReviewEntryId, RuleId, SavedQueryId, SenderAliasId, TaxContextId};
 
 /// Failures of the credential store, without ever carrying the secret.
 #[derive(Debug, PartialEq, Eq)]
@@ -88,6 +88,10 @@ pub enum IndexError {
     SenderAliasNotFound(SenderAliasId),
     /// No stored tax context has this short name.
     UnknownTaxContext(String),
+    /// There is no stored tax context with this id.
+    TaxContextNotFound(TaxContextId),
+    /// A tax context was refused; nothing was changed.
+    InvalidTaxContext(TaxContextProblem),
     /// Another saved query already has this name.
     SavedQueryNameTaken(String),
     /// The document already has an unresolved review entry.
@@ -160,6 +164,8 @@ impl fmt::Display for IndexError {
                     "there is no tax context with the short name '{short_name}'"
                 )
             }
+            Self::TaxContextNotFound(id) => write!(f, "there is no tax context {}", id.get()),
+            Self::InvalidTaxContext(problem) => problem.fmt(f),
             Self::SenderAliasNotFound(id) => write!(f, "there is no sender alias {id}"),
             Self::SavedQueryNameTaken(name) => {
                 write!(f, "a saved query named '{name}' already exists")
@@ -199,6 +205,55 @@ impl From<KeyStoreError> for IndexError {
 impl From<rusqlite::Error> for IndexError {
     fn from(err: rusqlite::Error) -> Self {
         Self::Sqlite(err)
+    }
+}
+
+/// Why a tax context name or short name, or a change to one, was refused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TaxContextProblem {
+    NameEmpty,
+    NameTooLong {
+        max: usize,
+    },
+    NameHasControlCharacter,
+    NameTaken,
+    ShortNameEmpty,
+    ShortNameTooLong {
+        max: usize,
+    },
+    ShortNameForbiddenCharacter(char),
+    ShortNameStartsWithDot,
+    ShortNameHasDoubleDot,
+    ShortNameReserved,
+    ShortNameTaken,
+    /// "No context" is built in and cannot be renamed or deleted.
+    NoContextIsFixed,
+    /// Documents cannot move to the context that is being deleted.
+    MoveToItself,
+}
+
+impl fmt::Display for TaxContextProblem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NameEmpty => write!(f, "the name must not be empty"),
+            Self::NameTooLong { max } => write!(f, "the name is longer than {max} characters"),
+            Self::NameHasControlCharacter => write!(f, "the name contains a control character"),
+            Self::NameTaken => write!(f, "another tax context already has this name"),
+            Self::ShortNameEmpty => write!(f, "the short name must not be empty"),
+            Self::ShortNameTooLong { max } => {
+                write!(f, "the short name is longer than {max} characters")
+            }
+            Self::ShortNameForbiddenCharacter(ch) => {
+                write!(f, "'{ch}' is not allowed in a short name")
+            }
+            Self::ShortNameStartsWithDot => write!(f, "the short name must not start with '.'"),
+            Self::ShortNameHasDoubleDot => write!(f, "the short name must not contain '..'"),
+            Self::ShortNameReserved => write!(f, "this short name is reserved"),
+            Self::ShortNameTaken => write!(f, "another tax context already has this short name"),
+            Self::NoContextIsFixed => write!(f, "'no context' cannot be changed"),
+            Self::MoveToItself => write!(f, "documents cannot move to the context being deleted"),
+        }
     }
 }
 

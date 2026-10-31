@@ -25,7 +25,7 @@ mod tax_contexts;
 #[cfg(test)]
 mod test_support;
 
-pub use error::{IndexError, KeyStoreError, RecoveryKeyError};
+pub use error::{IndexError, KeyStoreError, RecoveryKeyError, TaxContextProblem};
 pub use hermes_column::{FolderCounts, IncludeOutcome, PathState};
 pub use index::Index;
 pub use journal::{BatchKind, JournalItem, JournalState, NewJournalItem};
@@ -40,6 +40,7 @@ pub use model::{
     ReviewEntryId, ReviewReason, Rule, RuleConditions, RuleEvidence, RuleId, RuleSpec,
     RuleSuggestion, SavedQuery, SavedQueryId, SenderAlias, SenderAliasId, SenderAliasKind,
     SenderAliasState, SenderAliases, StatusCounts, SubtreePattern, TaxContext, TaxContextEntry,
-    TaxContextId,
+    TaxContextId, TaxContextUsage,
 };
 pub use regex_limits::compile_bounded_regex;
+pub use tax_contexts::{MAX_NAME_CHARS, MAX_SHORT_NAME_CHARS};

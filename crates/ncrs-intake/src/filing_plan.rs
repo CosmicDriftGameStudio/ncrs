@@ -559,6 +559,52 @@ mod tests {
     }
 
     #[test]
+    fn a_renamed_tax_context_is_the_new_short_name_in_the_planned_path() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut index = ncrs_index::Index::create_plain(&dir.path().join("index.db")).unwrap();
+        index.create_rule(&spec("{tax_context}/{sender}")).unwrap();
+        let company = index
+            .tax_contexts()
+            .unwrap()
+            .into_iter()
+            .find(|entry| entry.short_name == "company")
+            .unwrap();
+        let known = DocumentFields {
+            sender: Some("Company A".to_owned()),
+            ..DocumentFields::default()
+        };
+        let plan_stored_rules = |stored: &ncrs_index::Index| {
+            planned(plan(
+                &stored.rules().unwrap(),
+                &PlanInput {
+                    text: TEXT,
+                    fields: &known,
+                    path: None,
+                    sender_aliases: &SenderAliases::default(),
+                },
+            ))
+        };
+        assert_eq!(
+            plan_stored_rules(&index).relative_path,
+            Path::new("company").join("Company A")
+        );
+
+        index
+            .rename_tax_context(company.id, "Firma A", "company-a")
+            .unwrap();
+
+        let filed = plan_stored_rules(&index);
+        assert_eq!(
+            filed.relative_path,
+            Path::new("company-a").join("Company A")
+        );
+        assert_eq!(
+            filed.fields.tax_context,
+            Some(TaxContext::named("company-a"))
+        );
+    }
+
+    #[test]
     fn a_text_rule_matches_and_reads_number_date_and_amount() {
         let known = DocumentFields {
             sender: Some("Company A".to_owned()),

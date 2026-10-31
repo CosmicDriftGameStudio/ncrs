@@ -28,9 +28,14 @@ use crate::fs::OpenKind;
 use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{
     FilingStatusMessage, KeyBindingsMessage, Message, OcrModelsMessage, RemoteMessage,
-    SettingChange, SettingField, SettingsFeature, SettingsMessage, ThemeFetchMessage,
+    SettingChange, SettingField, SettingsFeature, SettingsMessage, TaxContextsMessage,
+    ThemeFetchMessage,
 };
 use crate::palette::{hex, parse_color, ColorRole, Palette, ThemePreset};
+use ncrs_index::{TaxContext, TaxContextProblem, TaxContextUsage};
+
+use crate::tax_context_work::TaxContextFailure;
+use crate::tax_contexts::{example_path, ContextList, EditForm, Step, TaxContextsState};
 
 /// The id of the search field above the feature list.
 pub const SEARCH_FIELD_ID: &str = "settings-search";
@@ -49,6 +54,8 @@ const EDITOR_FIELD_ID: &str = "settings-program-edit";
 const THREADS_FIELD_ID: &str = "settings-ai-threads";
 const ENDPOINT_FIELD_ID: &str = "settings-ai-endpoint";
 const MODEL_FIELD_ID: &str = "settings-ai-model";
+pub const TAX_CONTEXT_NAME_FIELD_ID: &str = "settings-tax-context-name";
+const TAX_CONTEXT_SHORT_NAME_FIELD_ID: &str = "settings-tax-context-short-name";
 const SWATCH_SIZE: f32 = 16.0;
 
 /// How many characters of the theme file name fit beside its button.
@@ -86,6 +93,9 @@ pub struct SettingsState {
     pub sandboxed: bool,
     /// The user opened the folded rows of the page.
     pub advanced_open: bool,
+    /// The tax contexts of the Hermes page; they live in the index, not in
+    /// the config file.
+    pub tax_contexts: TaxContextsState,
 }
 
 /// Why the value of a field was not written.
@@ -122,6 +132,7 @@ impl SettingsState {
             provider: None,
             sandboxed,
             advanced_open: false,
+            tax_contexts: TaxContextsState::default(),
         }
     }
 
@@ -441,10 +452,14 @@ struct SettingRow<'a> {
     /// What is wrong with the value, under the description.
     problem: Option<String>,
     control: Element<'a, Message>,
+    /// Rows that show a state or a user's own data are not commands.
+    in_command_list: bool,
     control_width: Option<f32>,
 }
 
 struct Group<'a> {
+    /// A sentence under the title that says what the group is for.
+    intro: Option<String>,
     /// Folded away behind its title until the user opens it or a search finds
     /// a row in it.
     advanced: bool,
@@ -642,6 +657,7 @@ fn simple_row<'a>(
         problem: None,
         control,
         control_width: None,
+        in_command_list: true,
     }
 }
 
@@ -682,11 +698,13 @@ fn look_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     );
     vec![
         Group {
+            intro: None,
             advanced: false,
             title: String::new(),
             rows: vec![preset_row, vscode_row(view), open_vsx_row],
         },
         Group {
+            intro: None,
             advanced: false,
             title: lang.text(Msg::SettingsGroupColors).to_owned(),
             rows: ColorRole::ALL
@@ -739,6 +757,7 @@ fn vscode_row<'a>(view: &SettingsView<'a>) -> SettingRow<'a> {
     SettingRow {
         problem: warning,
         control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
+        in_command_list: true,
         ..simple_row(
             Msg::SettingsRowVscode,
             Some(Msg::SettingsRowVscodeNote),
@@ -809,6 +828,7 @@ fn color_row<'a>(role: ColorRole, view: &SettingsView<'a>) -> SettingRow<'a> {
         problem: field_problem(field, view).or_else(|| contrast_problem(role, view)),
         control: control.into(),
         control_width: None,
+        in_command_list: true,
     }
 }
 
@@ -867,11 +887,13 @@ fn program_row<'a>(kind: OpenKind, view: &SettingsView<'a>) -> SettingRow<'a> {
         problem: field_problem(field, view),
         control: control.into(),
         control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
+        in_command_list: true,
     }
 }
 
 fn programs_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     vec![Group {
+        intro: None,
         advanced: false,
         title: String::new(),
         rows: vec![
@@ -893,6 +915,7 @@ fn keys_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         )
     };
     vec![Group {
+        intro: None,
         advanced: false,
         title: String::new(),
         rows: vec![simple_row(
@@ -925,9 +948,11 @@ fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
             palette,
         ),
         control_width: None,
+        in_command_list: true,
     };
     if view.servers.is_empty() {
         return vec![Group {
+            intro: None,
             advanced: false,
             title: String::new(),
             rows: vec![add(
@@ -976,11 +1001,13 @@ fn servers_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
                 .spacing(spacing::S)
                 .into(),
                 control_width: None,
+                in_command_list: true,
             }
         })
         .collect();
     rows.push(add(Msg::SettingsServersAdd, Msg::SettingsServersAddButton));
     vec![Group {
+        intro: None,
         advanced: false,
         title: String::new(),
         rows,
@@ -1004,6 +1031,7 @@ fn language_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
         .position(|&language| language == lang.base())
         .unwrap_or_default();
     vec![Group {
+        intro: None,
         advanced: false,
         title: String::new(),
         rows: vec![
@@ -1178,16 +1206,438 @@ fn hermes_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     advanced_rows.extend(provider_rows(view));
     vec![
         Group {
+            intro: None,
             advanced: false,
             title: String::new(),
             rows: hermes_main_rows(view),
         },
+        tax_contexts_group(view),
         Group {
+            intro: None,
             advanced: true,
             title: lang.text(Msg::SettingsGroupAdvanced).to_owned(),
             rows: advanced_rows,
         },
     ]
+}
+
+fn tax(message: TaxContextsMessage) -> Message {
+    settings_message(SettingsMessage::TaxContexts(message))
+}
+
+fn tax_row<'a>(
+    label: String,
+    description: Option<String>,
+    problem: Option<String>,
+    control: Element<'a, Message>,
+) -> SettingRow<'a> {
+    SettingRow {
+        label,
+        theme_name: None,
+        config_key: None,
+        description,
+        problem,
+        control,
+        control_width: None,
+        in_command_list: false,
+    }
+}
+
+fn nothing<'a>() -> Element<'a, Message> {
+    container("").into()
+}
+
+fn secondary_button<'a>(
+    label: &str,
+    message: Message,
+    view: &SettingsView<'_>,
+) -> Element<'a, Message> {
+    kit::button(label, Some(message), Tone::Secondary, view.palette)
+}
+
+fn problem_text_of_context(problem: &TaxContextProblem, lang: Language) -> String {
+    let with_max =
+        |msg: Msg, max: usize| fill_template(lang.text(msg), &[("{max}", &max.to_string())]);
+    match problem {
+        TaxContextProblem::NameEmpty => lang.text(Msg::SettingsTaxContextsNameEmpty).to_owned(),
+        TaxContextProblem::NameTooLong { max } => {
+            with_max(Msg::SettingsTaxContextsNameTooLong, *max)
+        }
+        TaxContextProblem::NameHasControlCharacter => {
+            lang.text(Msg::SettingsTaxContextsNameControl).to_owned()
+        }
+        TaxContextProblem::NameTaken => lang.text(Msg::SettingsTaxContextsNameTaken).to_owned(),
+        TaxContextProblem::ShortNameEmpty => {
+            lang.text(Msg::SettingsTaxContextsShortNameEmpty).to_owned()
+        }
+        TaxContextProblem::ShortNameTooLong { max } => {
+            with_max(Msg::SettingsTaxContextsShortNameTooLong, *max)
+        }
+        TaxContextProblem::ShortNameForbiddenCharacter(character) => fill_template(
+            lang.text(Msg::SettingsTaxContextsShortNameForbidden),
+            &[("{character}", &character.escape_debug().to_string())],
+        ),
+        TaxContextProblem::ShortNameStartsWithDot => lang
+            .text(Msg::SettingsTaxContextsShortNameLeadingDot)
+            .to_owned(),
+        TaxContextProblem::ShortNameHasDoubleDot => lang
+            .text(Msg::SettingsTaxContextsShortNameDoubleDot)
+            .to_owned(),
+        TaxContextProblem::ShortNameReserved => lang
+            .text(Msg::SettingsTaxContextsShortNameReserved)
+            .to_owned(),
+        TaxContextProblem::ShortNameTaken => {
+            lang.text(Msg::SettingsTaxContextsShortNameTaken).to_owned()
+        }
+        other => fill_template(
+            lang.text(Msg::SettingsTaxContextsChangeFailed),
+            &[("{reason}", &other.to_string())],
+        ),
+    }
+}
+
+fn failure_text(failure: &TaxContextFailure, lang: Language) -> String {
+    match failure {
+        TaxContextFailure::IndexNotOpen => {
+            lang.text(Msg::SettingsTaxContextsUnavailable).to_owned()
+        }
+        TaxContextFailure::Refused(problem) => problem_text_of_context(problem, lang),
+        TaxContextFailure::Other(reason) => fill_template(
+            lang.text(Msg::SettingsTaxContextsChangeFailed),
+            &[("{reason}", reason)],
+        ),
+    }
+}
+
+fn is_name_problem(failure: &TaxContextFailure) -> bool {
+    matches!(
+        failure,
+        TaxContextFailure::Refused(
+            TaxContextProblem::NameEmpty
+                | TaxContextProblem::NameTooLong { .. }
+                | TaxContextProblem::NameHasControlCharacter
+                | TaxContextProblem::NameTaken
+        )
+    )
+}
+
+fn is_short_name_problem(failure: &TaxContextFailure) -> bool {
+    matches!(
+        failure,
+        TaxContextFailure::Refused(
+            TaxContextProblem::ShortNameEmpty
+                | TaxContextProblem::ShortNameTooLong { .. }
+                | TaxContextProblem::ShortNameForbiddenCharacter(_)
+                | TaxContextProblem::ShortNameStartsWithDot
+                | TaxContextProblem::ShortNameHasDoubleDot
+                | TaxContextProblem::ShortNameReserved
+                | TaxContextProblem::ShortNameTaken
+        )
+    )
+}
+
+fn uses_text(usage: TaxContextUsage, lang: Language) -> String {
+    let counted = |count: usize, one: Msg, other: Msg| {
+        (count > 0).then(|| {
+            fill_template(
+                lang.text(if count == 1 { one } else { other }),
+                &[("{count}", &count.to_string())],
+            )
+        })
+    };
+    let parts: Vec<String> = [
+        counted(
+            usage.documents,
+            Msg::SettingsTaxContextsUsesDocumentsOne,
+            Msg::SettingsTaxContextsUsesDocumentsOther,
+        ),
+        counted(
+            usage.rules,
+            Msg::SettingsTaxContextsUsesRulesOne,
+            Msg::SettingsTaxContextsUsesRulesOther,
+        ),
+        counted(
+            usage.saved_queries,
+            Msg::SettingsTaxContextsUsesQueriesOne,
+            Msg::SettingsTaxContextsUsesQueriesOther,
+        ),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    match parts.as_slice() {
+        [one] => one.clone(),
+        [first, second] => fill_template(
+            lang.text(Msg::SettingsTaxContextsUsesTwo),
+            &[("{first}", first), ("{second}", second)],
+        ),
+        [first, second, third] => fill_template(
+            lang.text(Msg::SettingsTaxContextsUsesThree),
+            &[("{first}", first), ("{second}", second), ("{third}", third)],
+        ),
+        _ => String::new(),
+    }
+}
+
+fn tax_contexts_group<'a>(view: &SettingsView<'a>) -> Group<'a> {
+    let lang = view.lang;
+    let state = &view.state.tax_contexts;
+    let mut rows = Vec::new();
+    match &state.list {
+        ContextList::Loading => rows.push(tax_row(
+            lang.text(Msg::SettingsTaxContextsLoading).to_owned(),
+            None,
+            None,
+            nothing(),
+        )),
+        ContextList::Failed(TaxContextFailure::IndexNotOpen) => rows.push(tax_row(
+            lang.text(Msg::SettingsTaxContextsUnavailable).to_owned(),
+            None,
+            None,
+            nothing(),
+        )),
+        ContextList::Failed(failure) => rows.push(tax_row(
+            lang.text(Msg::SettingsTaxContextsReadFailed).to_owned(),
+            None,
+            Some(failure_text(failure, lang)),
+            nothing(),
+        )),
+        ContextList::Ready(entries) => {
+            if entries.is_empty() {
+                rows.push(tax_row(
+                    lang.text(Msg::SettingsTaxContextsEmptyLabel).to_owned(),
+                    Some(lang.text(Msg::SettingsTaxContextsEmptyHint).to_owned()),
+                    None,
+                    nothing(),
+                ));
+            }
+            for entry in entries {
+                let example = example_path(&entry.short_name).unwrap_or_default();
+                let detail = fill_template(
+                    lang.text(Msg::SettingsTaxContextsRowDetail),
+                    &[("{short_name}", &entry.short_name), ("{example}", &example)],
+                );
+                let buttons = row![
+                    secondary_button(
+                        lang.text(Msg::SettingsTaxContextsRename),
+                        tax(TaxContextsMessage::Rename(entry.id)),
+                        view,
+                    ),
+                    secondary_button(
+                        lang.text(Msg::SettingsTaxContextsDelete),
+                        tax(TaxContextsMessage::Delete(entry.id)),
+                        view,
+                    ),
+                ]
+                .spacing(spacing::S);
+                rows.push(tax_row(
+                    entry.name.clone(),
+                    Some(detail),
+                    None,
+                    buttons.into(),
+                ));
+            }
+            match &state.step {
+                Step::Idle => rows.push(tax_row(
+                    lang.text(Msg::SettingsTaxContextsAddLabel).to_owned(),
+                    None,
+                    None,
+                    secondary_button(
+                        lang.text(Msg::SettingsTaxContextsAddButton),
+                        tax(TaxContextsMessage::Add),
+                        view,
+                    ),
+                )),
+                Step::Editing(form) => rows.extend(edit_rows(form, view)),
+                Step::Deleting(_) => rows.extend(delete_rows(state, view)),
+            }
+        }
+    }
+    Group {
+        intro: Some(lang.text(Msg::SettingsTaxContextsPurpose).to_owned()),
+        advanced: false,
+        title: lang.text(Msg::SettingsTaxContextsTitle).to_owned(),
+        rows,
+    }
+}
+
+fn edit_rows<'a>(form: &EditForm, view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
+    let lang = view.lang;
+    let palette = view.palette;
+    let field = |id: &'static str, value: &str, on_input: fn(String) -> TaxContextsMessage| {
+        kit::text_field(
+            "",
+            value,
+            id,
+            Some(move |typed| tax(on_input(typed))),
+            tax(TaxContextsMessage::Save),
+            palette,
+        )
+    };
+    let failure_if = |belongs: fn(&TaxContextFailure) -> bool| {
+        form.failure
+            .as_ref()
+            .filter(|failure| belongs(failure))
+            .map(|failure| failure_text(failure, lang))
+    };
+    let other_failure = form
+        .failure
+        .as_ref()
+        .filter(|failure| !is_name_problem(failure) && !is_short_name_problem(failure))
+        .map(|failure| failure_text(failure, lang));
+    let short_name_refused = form.failure.as_ref().is_some_and(is_short_name_problem);
+    let example = if short_name_refused {
+        None
+    } else {
+        example_path(&form.short_name)
+    }
+    .unwrap_or_else(|| "–".to_owned());
+    let heading = match form.target {
+        Some(_) => fill_template(
+            lang.text(Msg::SettingsTaxContextsFormRenaming),
+            &[("{name}", &form.previous_name)],
+        ),
+        None => lang.text(Msg::SettingsTaxContextsFormAdding).to_owned(),
+    };
+    let mut name_row = tax_row(
+        lang.text(Msg::SettingsTaxContextsFieldName).to_owned(),
+        Some(lang.text(Msg::SettingsTaxContextsFieldNameNote).to_owned()),
+        failure_if(is_name_problem),
+        field(
+            TAX_CONTEXT_NAME_FIELD_ID,
+            &form.name,
+            TaxContextsMessage::NameChanged,
+        ),
+    );
+    name_row.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
+    let mut short_row = tax_row(
+        lang.text(Msg::SettingsTaxContextsFieldShortName).to_owned(),
+        Some(
+            lang.text(Msg::SettingsTaxContextsFieldShortNameNote)
+                .to_owned(),
+        ),
+        failure_if(is_short_name_problem),
+        field(
+            TAX_CONTEXT_SHORT_NAME_FIELD_ID,
+            &form.short_name,
+            TaxContextsMessage::ShortNameChanged,
+        ),
+    );
+    short_row.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
+    let mut example_row = tax_row(
+        lang.text(Msg::SettingsTaxContextsFieldExample).to_owned(),
+        None,
+        None,
+        mono(example, palette.text),
+    );
+    example_row.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
+    let buttons = row![
+        secondary_button(
+            lang.text(Msg::SettingsTaxContextsCancel),
+            tax(TaxContextsMessage::Cancel),
+            view,
+        ),
+        kit::button(
+            lang.text(Msg::SettingsTaxContextsSave),
+            Some(tax(TaxContextsMessage::Save)),
+            Tone::Primary,
+            palette,
+        ),
+    ]
+    .spacing(spacing::S);
+    vec![
+        name_row,
+        short_row,
+        example_row,
+        tax_row(
+            heading,
+            Some(lang.text(Msg::SettingsTaxContextsFormNote).to_owned()),
+            other_failure,
+            buttons.into(),
+        ),
+    ]
+}
+
+fn delete_rows<'a>(state: &TaxContextsState, view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
+    let Step::Deleting(question) = &state.step else {
+        return Vec::new();
+    };
+    let lang = view.lang;
+    let palette = view.palette;
+    let name = question.entry.name.as_str();
+    let description = match question.usage {
+        None => lang.text(Msg::SettingsTaxContextsDeleteChecking).to_owned(),
+        Some(usage) if usage.is_unused() => {
+            lang.text(Msg::SettingsTaxContextsDeleteUnused).to_owned()
+        }
+        Some(usage) => fill_template(
+            lang.text(Msg::SettingsTaxContextsDeleteUsed),
+            &[("{name}", name), ("{uses}", &uses_text(usage, lang))],
+        ),
+    };
+    let mut rows = vec![tax_row(
+        fill_template(
+            lang.text(Msg::SettingsTaxContextsDeleteQuestion),
+            &[("{name}", name)],
+        ),
+        Some(description),
+        question
+            .failure
+            .as_ref()
+            .map(|failure| failure_text(failure, lang)),
+        nothing(),
+    )];
+    if question.usage.is_some_and(|usage| !usage.is_unused()) {
+        let choice = |label: &str, target: TaxContext| {
+            let chosen = question.move_to == target;
+            row![
+                kit::checkbox(
+                    if chosen { Check::On } else { Check::Off },
+                    Some(tax(TaxContextsMessage::MoveTo(target))),
+                    palette,
+                ),
+                status_text(label.to_owned(), palette.text),
+            ]
+            .spacing(spacing::S)
+            .align_y(alignment::Vertical::Center)
+        };
+        let mut choices = Column::new().spacing(spacing::XS);
+        for other in state.move_targets() {
+            choices = choices.push(choice(&other.name, TaxContext::named(&other.short_name)));
+        }
+        choices = choices.push(choice(
+            lang.text(Msg::SettingsTaxContextsMoveNone),
+            TaxContext::None,
+        ));
+        rows.push(tax_row(
+            lang.text(Msg::SettingsTaxContextsMoveLabel).to_owned(),
+            Some(lang.text(Msg::SettingsTaxContextsMoveNote).to_owned()),
+            None,
+            choices.into(),
+        ));
+    }
+    let buttons = row![
+        secondary_button(
+            lang.text(Msg::SettingsTaxContextsCancel),
+            tax(TaxContextsMessage::Cancel),
+            view,
+        ),
+        kit::button(
+            lang.text(Msg::SettingsTaxContextsDeleteConfirm),
+            (question.usage.is_some()).then(|| tax(TaxContextsMessage::ConfirmDelete)),
+            Tone::Danger,
+            palette,
+        ),
+    ]
+    .spacing(spacing::S);
+    rows.push(tax_row(
+        lang.text(Msg::SettingsTaxContextsDeleteConfirmLabel)
+            .to_owned(),
+        None,
+        None,
+        buttons.into(),
+    ));
+    rows
 }
 
 fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group<'a>> {
@@ -1265,12 +1715,15 @@ pub fn search_targets(view: &SettingsView<'_>) -> Vec<SettingsTarget> {
         let rows = groups_of(feature, view)
             .into_iter()
             .flat_map(|group| group.rows);
-        targets.extend(rows.map(|setting| SettingsTarget {
-            feature,
-            row: Some(setting.label.clone()),
-            label: setting.label,
-            theme_name: setting.theme_name,
-        }));
+        targets.extend(
+            rows.filter(|setting| setting.in_command_list)
+                .map(|setting| SettingsTarget {
+                    feature,
+                    row: Some(setting.label.clone()),
+                    label: setting.label,
+                    theme_name: setting.theme_name,
+                }),
+        );
     }
     targets
 }
@@ -1462,7 +1915,13 @@ fn page<'a>(shown: Option<SettingsFeature>, view: &SettingsView<'a>) -> Element<
         if rows.is_empty() {
             continue;
         }
-        let content = Column::with_children(rows);
+        let mut content = Column::with_children(rows);
+        if let Some(intro) = group.intro {
+            content = Column::new()
+                .push(kit::dim(intro, palette))
+                .push(content)
+                .spacing(spacing::XS);
+        }
         // A group without a title would only repeat its row's label.
         if group.title.is_empty() {
             body = body.push(container(content).padding(Padding {
@@ -1685,6 +2144,7 @@ mod tests {
             let rows: Vec<String> = groups_of(feature, &view)
                 .into_iter()
                 .flat_map(|group| group.rows)
+                .filter(|setting| setting.in_command_list)
                 .map(|setting| setting.label)
                 .collect();
             let listed: Vec<String> = targets

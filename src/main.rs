@@ -66,6 +66,8 @@ mod search_view;
 mod selection;
 mod session_state;
 mod suggestion_work;
+mod tax_context_work;
+mod tax_contexts;
 mod theme_fetch;
 mod transfer_dialog;
 mod trash_view;

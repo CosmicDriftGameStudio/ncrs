@@ -66,7 +66,7 @@ use crate::messages::{
     HermesSetupMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide, QuickFixMessage,
     QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage,
     RuleSuggestionsMessage, SavedQueriesMessage, SearchMessage, SettingChange, SettingsMessage,
-    ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
+    TaxContextsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -87,6 +87,7 @@ use crate::saved_queries::SavedQueries;
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
 use crate::session_state::{self, PanelRecord, SessionState, WindowSize, WriteOrder};
 use crate::suggestion_work::{SuggestedRule, SuggestionAccess, INDEX_NOT_OPEN};
+use crate::tax_context_work::{TaxContextAccess, TaxContextFailure};
 use crate::theme_fetch::{Fetched, Installed, Pick, Stage, ThemeFetch};
 use crate::transfer_dialog::{self, Policy, TransferDialog, TransferDialogMessage};
 use crate::trash_view::TrashView;
@@ -11520,7 +11521,11 @@ impl App {
                         state.feature = feature;
                         state.marked_row = None;
                     }
-                    Task::none()
+                    if feature == crate::messages::SettingsFeature::Hermes {
+                        app.load_tax_contexts()
+                    } else {
+                        Task::none()
+                    }
                 })
             }
             SettingsMessage::ToggleAdvanced => self.in_settings(|state| {
@@ -11561,6 +11566,115 @@ impl App {
             | SettingsMessage::ThemeFilePicked(None) => Task::none(),
             SettingsMessage::Change(change) => self.write_setting(change),
             SettingsMessage::Written { change, result } => self.setting_written(change, result),
+            SettingsMessage::TaxContexts(tax_context_message) => {
+                self.update_tax_contexts(tax_context_message)
+            }
+        }
+    }
+
+    fn tax_context_access(&self) -> Option<TaxContextAccess> {
+        self.filing
+            .as_ref()
+            .and_then(FilingModule::tax_context_access)
+    }
+
+    /// Runs `work` on a blocking thread; its answer goes back as the message
+    /// `answer` makes of it. Without an open index the answer is that.
+    fn tax_context_work<T: Send + 'static>(
+        &self,
+        work: impl FnOnce(TaxContextAccess) -> Result<T, TaxContextFailure> + Send + 'static,
+        answer: impl Fn(Result<T, TaxContextFailure>) -> TaxContextsMessage + Send + 'static,
+    ) -> Task<Message> {
+        let wrap = move |result| Message::Settings(SettingsMessage::TaxContexts(answer(result)));
+        let Some(access) = self.tax_context_access() else {
+            return Task::done(wrap(Err(TaxContextFailure::IndexNotOpen)));
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || work(access)),
+            move |joined| {
+                wrap(joined.unwrap_or_else(|join| Err(TaxContextFailure::Other(join.to_string()))))
+            },
+        )
+    }
+
+    fn load_tax_contexts(&self) -> Task<Message> {
+        self.tax_context_work(|access| access.list(), TaxContextsMessage::Loaded)
+    }
+
+    fn update_tax_contexts(&mut self, message: TaxContextsMessage) -> Task<Message> {
+        let Some(state) = self
+            .settings
+            .as_mut()
+            .map(|settings| &mut settings.tax_contexts)
+        else {
+            return Task::none();
+        };
+        let focus_name = || operation::focus(settings_ui::TAX_CONTEXT_NAME_FIELD_ID);
+        match message {
+            TaxContextsMessage::Loaded(result) => {
+                state.loaded(result);
+                Task::none()
+            }
+            TaxContextsMessage::Add => {
+                state.begin_add();
+                focus_name()
+            }
+            TaxContextsMessage::Rename(id) => {
+                state.begin_rename(id);
+                focus_name()
+            }
+            TaxContextsMessage::NameChanged(name) => {
+                state.edit_name(name);
+                Task::none()
+            }
+            TaxContextsMessage::ShortNameChanged(short_name) => {
+                state.edit_short_name(short_name);
+                Task::none()
+            }
+            TaxContextsMessage::Save => match state.save_request() {
+                Some(request) => self.tax_context_work(
+                    move |access| match request.target {
+                        Some(id) => access.rename(id, &request.name, &request.short_name),
+                        None => access.create(&request.name, &request.short_name),
+                    },
+                    TaxContextsMessage::Saved,
+                ),
+                None => Task::none(),
+            },
+            TaxContextsMessage::Saved(result) => {
+                state.saved(result);
+                Task::none()
+            }
+            TaxContextsMessage::Delete(id) => {
+                state.begin_delete(id);
+                self.tax_context_work(
+                    move |access| access.usage(id),
+                    move |result| TaxContextsMessage::UsageLoaded { id, result },
+                )
+            }
+            TaxContextsMessage::UsageLoaded { id, result } => {
+                state.usage_loaded(id, result);
+                Task::none()
+            }
+            TaxContextsMessage::MoveTo(choice) => {
+                state.choose_move_to(choice);
+                Task::none()
+            }
+            TaxContextsMessage::ConfirmDelete => match state.delete_request() {
+                Some(request) => self.tax_context_work(
+                    move |access| access.delete(request.id, request.move_to),
+                    TaxContextsMessage::Deleted,
+                ),
+                None => Task::none(),
+            },
+            TaxContextsMessage::Deleted(result) => {
+                state.deleted(result);
+                Task::none()
+            }
+            TaxContextsMessage::Cancel => {
+                state.cancel();
+                Task::none()
+            }
         }
     }
 
@@ -11685,7 +11799,7 @@ impl App {
         self.notice = None;
         self.settings_failure = None;
         self.settings = Some(self.fresh_settings_state());
-        release_focus()
+        Task::batch([release_focus(), self.load_tax_contexts()])
     }
 
     fn ocr_models_present(&self) -> bool {
@@ -15801,6 +15915,32 @@ impl App {
         state.feature = feature;
         app.settings = Some(state);
         app
+    }
+
+    /// The Hermes settings page with the tax contexts section in `state`.
+    pub fn with_settings_tax_contexts(
+        filing: Filing,
+        state: crate::tax_contexts::TaxContextsState,
+    ) -> Self {
+        let mut app = Self::with_settings_open(crate::messages::SettingsFeature::Hermes, filing);
+        if let Some(settings) = app.settings.as_mut() {
+            settings.tax_contexts = state;
+        }
+        app
+    }
+
+    /// The Hermes settings page over a ready module that has `index` open.
+    pub fn with_settings_over_index(index: ncrs_index::Index) -> Self {
+        let mut app =
+            Self::with_settings_open(crate::messages::SettingsFeature::Hermes, Filing::default());
+        app.filing = Some(FilingModule::in_phase_over_index(Phase::Ready, index));
+        app
+    }
+
+    pub fn tax_contexts_for_test(&self) -> Option<&crate::tax_contexts::TaxContextsState> {
+        self.settings
+            .as_ref()
+            .map(|settings| &settings.tax_contexts)
     }
 
     /// Fixed panels with the settings tab open on `feature`, showing `file`
@@ -29228,5 +29368,274 @@ mod folder_size_tests {
         drop(app.update(Message::ComputeFolderSizes));
 
         assert!(app.folder_size_run.is_none());
+    }
+}
+
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[cfg(test)]
+mod tax_context_flow {
+    use chrono::{TimeZone as _, Utc};
+    use iced_test::futures::futures::StreamExt as _;
+    use iced_test::runtime::{task, Action};
+    use ncrs_index::{
+        ContentHash, DocumentFields, DocumentSource, FieldOrigin, Index, NewDocument, QuerySpec,
+        TaxContext, TaxContextProblem,
+    };
+
+    use super::*;
+    use crate::tax_context_work::TaxContextFailure;
+    use crate::tax_contexts::{ContextList, Step};
+
+    async fn settle(app: &mut App, message: Message) {
+        let mut queue = vec![message];
+        while let Some(next) = queue.pop() {
+            let Some(mut stream) = task::into_stream(app.update(next)) else {
+                continue;
+            };
+            while let Some(action) = stream.next().await {
+                if let Action::Output(reported) = action {
+                    queue.push(reported);
+                }
+            }
+        }
+    }
+
+    fn tax(message: TaxContextsMessage) -> Message {
+        Message::Settings(SettingsMessage::TaxContexts(message))
+    }
+
+    /// An index with two documents of the company context.
+    fn app_over_stocked_index() -> (tempfile::TempDir, App) {
+        let dir = tempfile::TempDir::new().unwrap();
+        let mut index = Index::create_plain(&dir.path().join("index.db")).unwrap();
+        for seed in 1..=2 {
+            let id = index
+                .insert_document(&NewDocument {
+                    hash: ContentHash([seed; 32]),
+                    path: PathBuf::from(format!("inbox/scan-{seed}.pdf")),
+                    source: DocumentSource::Inbox,
+                    received_at: Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
+                    stamp: None,
+                })
+                .unwrap();
+            index
+                .set_document_fields(
+                    id,
+                    &DocumentFields {
+                        tax_context: Some(TaxContext::named("company")),
+                        ..DocumentFields::default()
+                    },
+                    |_| FieldOrigin::Unknown,
+                )
+                .unwrap();
+        }
+        (dir, App::with_settings_over_index(index))
+    }
+
+    async fn read_list(app: &mut App) -> TaxContextAccess {
+        let access = app
+            .filing
+            .as_ref()
+            .and_then(FilingModule::tax_context_access)
+            .unwrap();
+        settle(app, tax(TaxContextsMessage::Loaded(access.list()))).await;
+        access
+    }
+
+    fn short_names(app: &App) -> Vec<String> {
+        app.tax_contexts_for_test()
+            .unwrap()
+            .entries()
+            .iter()
+            .map(|entry| entry.short_name.clone())
+            .collect()
+    }
+
+    fn documents_in(app: &App, short_name: &str) -> usize {
+        app.filing
+            .as_ref()
+            .and_then(FilingModule::query_access)
+            .unwrap()
+            .run(&QuerySpec {
+                tax_context: Some(TaxContext::named(short_name)),
+                ..QuerySpec::default()
+            })
+            .unwrap()
+            .len()
+    }
+
+    fn id_of(app: &App, short_name: &str) -> ncrs_index::TaxContextId {
+        app.tax_contexts_for_test()
+            .unwrap()
+            .entries()
+            .iter()
+            .find(|entry| entry.short_name == short_name)
+            .unwrap()
+            .id
+    }
+
+    #[tokio::test]
+    async fn the_list_is_read_from_the_index_when_the_page_asks() {
+        let (_dir, mut app) = app_over_stocked_index();
+
+        settle(&mut app, tax(TaxContextsMessage::Loaded(Ok(Vec::new())))).await;
+        let task = app.load_tax_contexts();
+        let mut stream = task::into_stream(task).unwrap();
+        while let Some(Action::Output(reported)) = stream.next().await {
+            settle(&mut app, reported).await;
+        }
+
+        assert_eq!(short_names(&app), ["company", "private"]);
+    }
+
+    #[tokio::test]
+    async fn without_an_open_index_the_page_says_so_and_adds_nothing() {
+        let mut app =
+            App::with_settings_open(crate::messages::SettingsFeature::Hermes, Filing::default());
+
+        let task = app.load_tax_contexts();
+        let mut stream = task::into_stream(task).unwrap();
+        while let Some(Action::Output(reported)) = stream.next().await {
+            settle(&mut app, reported).await;
+        }
+        settle(&mut app, tax(TaxContextsMessage::Add)).await;
+
+        let state = app.tax_contexts_for_test().unwrap();
+        assert_eq!(
+            state.list,
+            ContextList::Failed(TaxContextFailure::IndexNotOpen)
+        );
+        assert_eq!(state.step, Step::Idle);
+    }
+
+    #[tokio::test]
+    async fn an_added_context_is_in_the_index_and_in_the_list_after_save() {
+        let (_dir, mut app) = app_over_stocked_index();
+        read_list(&mut app).await;
+
+        settle(&mut app, tax(TaxContextsMessage::Add)).await;
+        settle(
+            &mut app,
+            tax(TaxContextsMessage::NameChanged("Firma B".to_owned())),
+        )
+        .await;
+        settle(
+            &mut app,
+            tax(TaxContextsMessage::ShortNameChanged("company-b".to_owned())),
+        )
+        .await;
+        assert_eq!(
+            short_names(&app),
+            ["company", "private"],
+            "nothing is written before Save"
+        );
+        settle(&mut app, tax(TaxContextsMessage::Save)).await;
+
+        assert_eq!(short_names(&app), ["company", "company-b", "private"]);
+        assert_eq!(app.tax_contexts_for_test().unwrap().step, Step::Idle);
+        let stored = app
+            .filing
+            .as_ref()
+            .and_then(FilingModule::tax_context_access)
+            .unwrap()
+            .list()
+            .unwrap();
+        assert_eq!(stored.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn a_refused_name_stays_in_the_form_and_writes_nothing() {
+        let (_dir, mut app) = app_over_stocked_index();
+        let access = read_list(&mut app).await;
+
+        settle(&mut app, tax(TaxContextsMessage::Add)).await;
+        settle(
+            &mut app,
+            tax(TaxContextsMessage::NameChanged("Firma B".to_owned())),
+        )
+        .await;
+        settle(
+            &mut app,
+            tax(TaxContextsMessage::ShortNameChanged("a/b".to_owned())),
+        )
+        .await;
+        settle(&mut app, tax(TaxContextsMessage::Save)).await;
+
+        let Step::Editing(form) = &app.tax_contexts_for_test().unwrap().step else {
+            panic!("the form closed");
+        };
+        assert_eq!(
+            form.failure,
+            Some(TaxContextFailure::Refused(
+                TaxContextProblem::ShortNameForbiddenCharacter('/')
+            ))
+        );
+        assert_eq!(access.list().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn deleting_with_a_move_takes_the_documents_along() {
+        let (_dir, mut app) = app_over_stocked_index();
+        read_list(&mut app).await;
+        let company = id_of(&app, "company");
+
+        settle(&mut app, tax(TaxContextsMessage::Delete(company))).await;
+        let Step::Deleting(question) = &app.tax_contexts_for_test().unwrap().step else {
+            panic!("no question");
+        };
+        assert_eq!(question.usage.map(|usage| usage.documents), Some(2));
+        settle(
+            &mut app,
+            tax(TaxContextsMessage::MoveTo(TaxContext::named("private"))),
+        )
+        .await;
+        assert_eq!(
+            documents_in(&app, "company"),
+            2,
+            "nothing changes before the confirmation"
+        );
+        settle(&mut app, tax(TaxContextsMessage::ConfirmDelete)).await;
+
+        assert_eq!(short_names(&app), ["private"]);
+        assert_eq!(documents_in(&app, "private"), 2);
+        assert_eq!(app.tax_contexts_for_test().unwrap().step, Step::Idle);
+    }
+
+    #[tokio::test]
+    async fn cancelling_the_delete_question_changes_nothing() {
+        let (_dir, mut app) = app_over_stocked_index();
+        read_list(&mut app).await;
+        let company = id_of(&app, "company");
+
+        settle(&mut app, tax(TaxContextsMessage::Delete(company))).await;
+        settle(&mut app, tax(TaxContextsMessage::MoveTo(TaxContext::None))).await;
+        settle(&mut app, tax(TaxContextsMessage::Cancel)).await;
+        settle(&mut app, tax(TaxContextsMessage::ConfirmDelete)).await;
+
+        assert_eq!(short_names(&app), ["company", "private"]);
+        assert_eq!(documents_in(&app, "company"), 2);
+    }
+
+    #[tokio::test]
+    async fn a_rename_keeps_the_documents_under_the_new_short_name() {
+        let (_dir, mut app) = app_over_stocked_index();
+        read_list(&mut app).await;
+        let company = id_of(&app, "company");
+
+        settle(&mut app, tax(TaxContextsMessage::Rename(company))).await;
+        settle(
+            &mut app,
+            tax(TaxContextsMessage::NameChanged("Firma A".to_owned())),
+        )
+        .await;
+        settle(
+            &mut app,
+            tax(TaxContextsMessage::ShortNameChanged("company-a".to_owned())),
+        )
+        .await;
+        settle(&mut app, tax(TaxContextsMessage::Save)).await;
+
+        assert_eq!(short_names(&app), ["company-a", "private"]);
+        assert_eq!(documents_in(&app, "company-a"), 2);
     }
 }
