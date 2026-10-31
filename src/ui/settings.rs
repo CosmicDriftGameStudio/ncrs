@@ -1751,32 +1751,28 @@ fn delete_rows<'a>(state: &TaxContextsState, view: &SettingsView<'a>) -> Vec<Set
         nothing(),
     )];
     if question.usage.is_some_and(|usage| !usage.is_unused()) {
-        let choice = |label: &str, target: TaxContext| {
-            let chosen = question.move_to == target;
-            row![
-                kit::checkbox(
-                    if chosen { Check::On } else { Check::Off },
-                    Some(tax(TaxContextsMessage::MoveTo(target))),
-                    palette,
-                ),
-                status_text(label.to_owned(), palette.text),
-            ]
-            .spacing(spacing::S)
-            .align_y(alignment::Vertical::Center)
-        };
-        let mut choices = Column::new().spacing(spacing::XS);
-        for other in state.move_targets() {
-            choices = choices.push(choice(&other.name, TaxContext::named(&other.short_name)));
-        }
-        choices = choices.push(choice(
+        let mut targets: Vec<(&str, TaxContext)> = state
+            .move_targets()
+            .into_iter()
+            .map(|other| (other.name.as_str(), TaxContext::named(&other.short_name)))
+            .collect();
+        targets.push((
             lang.text(Msg::SettingsTaxContextsMoveNone),
             TaxContext::None,
         ));
+        let options: Vec<(&str, Message)> = targets
+            .iter()
+            .map(|(label, target)| (*label, tax(TaxContextsMessage::MoveTo(target.clone()))))
+            .collect();
+        let chosen = targets
+            .iter()
+            .position(|(_, target)| *target == question.move_to)
+            .unwrap_or_default();
         rows.push(tax_row(
             lang.text(Msg::SettingsTaxContextsMoveLabel).to_owned(),
             Some(lang.text(Msg::SettingsTaxContextsMoveNote).to_owned()),
             None,
-            choices.into(),
+            kit::dropdown(&options, chosen, true, palette),
         ));
     }
     let buttons = row![

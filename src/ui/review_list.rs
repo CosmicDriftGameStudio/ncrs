@@ -362,7 +362,7 @@ fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element
             lang.text(Msg::ReviewListFieldTaxContext),
             None,
             assigned_by.as_deref(),
-            kit::segmented(&tax_options, selected_tax, true, palette),
+            kit::dropdown(&tax_options, selected_tax, true, palette),
             palette,
         ),
         row_of(
