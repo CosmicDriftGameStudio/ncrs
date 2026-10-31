@@ -154,6 +154,19 @@ pub fn icon_rotated<'a, M: 'a>(icon: Icon, color: Color, radians: f32) -> Elemen
         .into()
 }
 
+/// A short label on a tinted, rounded ground, one line: the reason of a
+/// document. `on_fill` for a chip on the highlighted row of a list.
+pub fn chip<'a, M: 'a>(label: &str, on_fill: bool, palette: &Palette) -> Element<'a, M> {
+    container(
+        text(label.to_owned())
+            .size(font_size::SMALL)
+            .wrapping(Wrapping::None),
+    )
+    .padding([1.0, spacing::S])
+    .style(theme::chip(palette, on_fill))
+    .into()
+}
+
 /// A key as a small outlined cap.
 pub fn key_cap<'a>(label: &str, palette: &Palette) -> Element<'a, Message> {
     cap(label, false, palette)
@@ -666,6 +679,31 @@ impl Columns<'_> {
             ..Padding::ZERO
         })
         .align_x(align)
+        .clip(true)
+        .into()
+    }
+
+    /// A [`chip`] in column `index`, its label cut at the end where it is too
+    /// long for the column.
+    pub fn chip_cell<'a>(
+        &self,
+        index: usize,
+        label: &str,
+        on_fill: bool,
+        palette: &Palette,
+    ) -> Element<'a, Message> {
+        let portion = self.portions.get(index).copied().unwrap_or(1);
+        let room = (self.text_width(index) - 2.0 * spacing::S).max(0.0);
+        container(chip(
+            &format::fit_end(label, room, font_size::SMALL),
+            on_fill,
+            palette,
+        ))
+        .width(Length::FillPortion(portion))
+        .padding(Padding {
+            right: spacing::S,
+            ..Padding::ZERO
+        })
         .clip(true)
         .into()
     }

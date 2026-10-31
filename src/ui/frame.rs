@@ -113,6 +113,12 @@ pub fn frame_size(size: DialogSize, window: Size) -> Size {
     Size::new(width.of(window.width), height.of(window.height))
 }
 
+/// The height of the page of a frame of a size that does not grow with its
+/// content: the frame less header, footer and the padding of the page.
+pub fn content_height(size: DialogSize, window: Size) -> f32 {
+    frame_size(size, window).height - VERTICAL_CHROME - 2.0 * spacing::L
+}
+
 /// How many characters of one line fit into `width` pixels.
 pub fn chars_that_fit(width: f32) -> usize {
     (width / AVERAGE_GLYPH_WIDTH).floor().max(1.0) as usize

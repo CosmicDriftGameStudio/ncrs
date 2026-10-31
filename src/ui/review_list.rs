@@ -7,11 +7,12 @@
 
 use std::path::Path;
 
-use iced::widget::{column, row};
-use iced::{alignment, Element, Size};
+use iced::widget::{column, row, Space};
+use iced::{alignment, Element, Length, Size};
 use ncrs_index::{DocumentFields, Field, ReviewReason};
 use ncrs_intake::PatternSource;
 
+use super::document_preview;
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::hermes::{self, Badges};
@@ -37,8 +38,22 @@ const PATTERN_ID: &str = "review-pattern";
 
 const SIZE: DialogSize = DialogSize::Card;
 
-/// How the width of a row is shared: file, reason, sender, kind, date.
-const PORTIONS: [u16; 5] = [5, 6, 4, 3, 3];
+/// How the width of a row of the list is shared: file, reason.
+const PORTIONS: [u16; 2] = [4, 5];
+
+/// How the room below the explanation is shared: the list, then the preview
+/// and the form.
+const LIST_PORTION: u16 = 2;
+const DETAIL_PORTION: u16 = 3;
+
+/// What the lines above the list take of the page, to size the split below
+/// them: the explanation, which may wrap; the warning; the problem line.
+const EXPLAIN_HEIGHT: f32 = 44.0;
+const HINT_HEIGHT: f32 = 36.0;
+const PROBLEM_HEIGHT: f32 = 20.0;
+
+/// The split never gets smaller than this; the page scrolls instead.
+const MIN_SPLIT_HEIGHT: f32 = 480.0;
 
 fn send(message: ReviewListMessage) -> Message {
     Message::ReviewList(message)
@@ -101,9 +116,28 @@ pub fn view<'a>(
             palette,
         ));
     } else {
-        body = body.push(list(state, line_chars, badges.focus, lang, palette));
-        body = body.push(form(state, lang, palette));
-        body = body.push(preview(state, root, lang, palette));
+        let above = EXPLAIN_HEIGHT
+            + if guide.explains_empty_fields() {
+                HINT_HEIGHT
+            } else {
+                0.0
+            }
+            + if state.problem().is_some() {
+                PROBLEM_HEIGHT
+            } else {
+                0.0
+            };
+        let height =
+            (frame::content_height(SIZE, window) - above - spacing::LINE_GAP).max(MIN_SPLIT_HEIGHT);
+        body = body.push(split(
+            state,
+            root,
+            height,
+            line_chars,
+            badges.focus,
+            lang,
+            palette,
+        ));
     }
     if let Some(problem) = state.problem() {
         body = body.push(error_line(problem_text(problem, lang), palette));
@@ -149,56 +183,116 @@ fn finish<'a>(
     frame.into_element()
 }
 
+/// Why a document is here, before it is put into words.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Cause {
+    NoRule,
+    NoText,
+    ImageWithoutText,
+    DefaultPattern,
+    NothingRecognised,
+    Unconfirmed,
+    RuleConflict,
+    NoTaxContext,
+    SeveralTaxContexts,
+    TargetExists,
+    MissingField(Field),
+    LowConfidence(Field),
+}
+
+impl Cause {
+    fn of(reason: ReviewReason, text_state: TextState) -> Self {
+        match reason {
+            ReviewReason::NoMatchingRule => match text_state {
+                TextState::NotReadable => Self::ImageWithoutText,
+                TextState::NoneFound => Self::NoText,
+                TextState::Read => Self::NoRule,
+            },
+            ReviewReason::UnconfirmedRule => Self::Unconfirmed,
+            ReviewReason::RuleConflict => Self::RuleConflict,
+            ReviewReason::NoTaxContextMatches => Self::NoTaxContext,
+            ReviewReason::SeveralTaxContextsMatch => Self::SeveralTaxContexts,
+            ReviewReason::TargetExists => Self::TargetExists,
+            ReviewReason::MissingField(field) => Self::MissingField(field),
+            ReviewReason::LowConfidence(field) => Self::LowConfidence(field),
+        }
+    }
+
+    /// The cause of a row: where the pattern comes from and whether anything
+    /// was recognised refine "no rule matches"; every other reason stays.
+    fn of_row(item: &ReviewItem, source: Option<PatternSource>) -> Self {
+        match (item.reason, item.text_state, source) {
+            (ReviewReason::NoMatchingRule, _, Some(PatternSource::Default)) => Self::DefaultPattern,
+            (ReviewReason::NoMatchingRule, TextState::Read, None)
+                if fields_are_empty(&item.fields) =>
+            {
+                Self::NothingRecognised
+            }
+            _ => Self::of(item.reason, item.text_state),
+        }
+    }
+
+    /// The sentence, the field a cause names spelled out.
+    fn long_text(self, lang: Language) -> String {
+        let message = match self {
+            Self::NoRule => Msg::ReviewListReasonNoRule,
+            Self::NoText => Msg::ReviewListReasonNoText,
+            Self::ImageWithoutText => Msg::ReviewListReasonImageNoText,
+            Self::DefaultPattern => Msg::ReviewListReasonDefaultPattern,
+            Self::NothingRecognised => Msg::ReviewListReasonNothingRecognised,
+            Self::Unconfirmed => Msg::ReviewListReasonUnconfirmed,
+            Self::RuleConflict => Msg::ReviewListReasonRuleConflict,
+            Self::NoTaxContext => Msg::ReviewListReasonNoTaxContext,
+            Self::SeveralTaxContexts => Msg::ReviewListReasonSeveralTaxContexts,
+            Self::TargetExists => Msg::ReviewListReasonTargetExists,
+            Self::MissingField(field) => {
+                return named(Msg::ReviewListReasonMissingField, field, lang)
+            }
+            Self::LowConfidence(field) => {
+                return named(Msg::ReviewListReasonLowConfidence, field, lang)
+            }
+        };
+        lang.text(message).to_owned()
+    }
+
+    /// The few words of the chip in the list.
+    fn short_text(self, lang: Language) -> String {
+        let message = match self {
+            Self::NoRule => Msg::ReviewListChipNoRule,
+            Self::NoText => Msg::ReviewListChipNoText,
+            Self::ImageWithoutText => Msg::ReviewListChipImageNoText,
+            Self::DefaultPattern => Msg::ReviewListChipDefaultPattern,
+            Self::NothingRecognised => Msg::ReviewListChipNothingRecognised,
+            Self::Unconfirmed => Msg::ReviewListChipUnconfirmed,
+            Self::RuleConflict => Msg::ReviewListChipRuleConflict,
+            Self::NoTaxContext => Msg::ReviewListChipNoTaxContext,
+            Self::SeveralTaxContexts => Msg::ReviewListChipSeveralTaxContexts,
+            Self::TargetExists => Msg::ReviewListChipTargetExists,
+            Self::MissingField(field) => {
+                return named(Msg::ReviewListChipMissingField, field, lang)
+            }
+            Self::LowConfidence(field) => {
+                return named(Msg::ReviewListChipLowConfidence, field, lang)
+            }
+        };
+        lang.text(message).to_owned()
+    }
+}
+
+fn named(template: Msg, field: Field, lang: Language) -> String {
+    fill_template(
+        lang.text(template),
+        &[("{field}", lang.text(field_name(field)))],
+    )
+}
+
 /// Why the document is here, in words; the field a reason names is spelled out.
 pub fn reason_text(reason: ReviewReason, text_state: TextState, lang: Language) -> String {
-    let named = |template: Msg, field: Field| {
-        fill_template(
-            lang.text(template),
-            &[("{field}", lang.text(field_name(field)))],
-        )
-    };
-    match reason {
-        ReviewReason::NoMatchingRule => lang
-            .text(match text_state {
-                TextState::NotReadable => Msg::ReviewListReasonImageNoText,
-                TextState::NoneFound => Msg::ReviewListReasonNoText,
-                TextState::Read => Msg::ReviewListReasonNoRule,
-            })
-            .to_owned(),
-        ReviewReason::UnconfirmedRule => lang.text(Msg::ReviewListReasonUnconfirmed).to_owned(),
-        ReviewReason::RuleConflict => lang.text(Msg::ReviewListReasonRuleConflict).to_owned(),
-        ReviewReason::NoTaxContextMatches => {
-            lang.text(Msg::ReviewListReasonNoTaxContext).to_owned()
-        }
-        ReviewReason::SeveralTaxContextsMatch => lang
-            .text(Msg::ReviewListReasonSeveralTaxContexts)
-            .to_owned(),
-        ReviewReason::TargetExists => lang.text(Msg::ReviewListReasonTargetExists).to_owned(),
-        ReviewReason::MissingField(field) => named(Msg::ReviewListReasonMissingField, field),
-        ReviewReason::LowConfidence(field) => named(Msg::ReviewListReasonLowConfidence, field),
-    }
+    Cause::of(reason, text_state).long_text(lang)
 }
 
 fn fields_are_empty(fields: &DocumentFields) -> bool {
     *fields == DocumentFields::default()
-}
-
-/// The reason of a row: where the pattern comes from and whether anything
-/// was recognised refine "no rule matches"; every other reason stays.
-fn row_reason_text(item: &ReviewItem, source: Option<PatternSource>, lang: Language) -> String {
-    let refined = match (item.reason, item.text_state, source) {
-        (ReviewReason::NoMatchingRule, _, Some(PatternSource::Default)) => {
-            Some(Msg::ReviewListReasonDefaultPattern)
-        }
-        (ReviewReason::NoMatchingRule, TextState::Read, None) if fields_are_empty(&item.fields) => {
-            Some(Msg::ReviewListReasonNothingRecognised)
-        }
-        _ => None,
-    };
-    refined.map_or_else(
-        || reason_text(item.reason, item.text_state, lang),
-        |message| lang.text(message).to_owned(),
-    )
 }
 
 fn field_name(field: Field) -> Msg {
@@ -219,6 +313,51 @@ fn file_name(item: &ReviewItem) -> String {
     )
 }
 
+fn split<'a>(
+    state: &'a ReviewList,
+    root: PreviewRoot<'_>,
+    height: f32,
+    line_chars: usize,
+    focus: HermesFocus,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let portions = LIST_PORTION + DETAIL_PORTION;
+    let list_chars = (line_chars * usize::from(LIST_PORTION))
+        .checked_div(usize::from(portions))
+        .unwrap_or_default()
+        .saturating_sub(frame::chars_that_fit(spacing::L));
+    let left = column![
+        list(state, list_chars, focus, lang, palette),
+        selected_cause(state, lang, palette),
+        target_line(state, root, lang, palette),
+    ]
+    .spacing(spacing::LINE_GAP)
+    .width(Length::FillPortion(LIST_PORTION));
+    let right = column![
+        document_preview::view(state.document_preview(), lang, palette),
+        form(state, lang, palette),
+    ]
+    .spacing(spacing::LINE_GAP)
+    .width(Length::FillPortion(DETAIL_PORTION))
+    .height(Length::Fill);
+    row![left, right].spacing(spacing::L).height(height).into()
+}
+
+fn selected_cause<'a>(
+    state: &ReviewList,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    match state.selected() {
+        Some(item) => paragraph(
+            Cause::of_row(item, state.pattern_source(item)).long_text(lang),
+            palette,
+        ),
+        None => Space::new().into(),
+    }
+}
+
 fn list<'a>(
     state: &'a ReviewList,
     line_chars: usize,
@@ -234,9 +373,6 @@ fn list<'a>(
         &[
             lang.text(Msg::ReviewListColumnFile),
             lang.text(Msg::ReviewListColumnReason),
-            lang.text(Msg::ReviewListColumnSender),
-            lang.text(Msg::ReviewListColumnKind),
-            lang.text(Msg::ReviewListColumnDate),
         ],
         palette,
     );
@@ -249,37 +385,16 @@ fn list<'a>(
         .take(VISIBLE_ROWS)
         .map(|(index, item)| {
             let selected = index == state.cursor();
-            let color = if selected && focus == HermesFocus::Content {
+            let on_fill = selected && focus == HermesFocus::Content;
+            let color = if on_fill {
                 palette.cursor_text
             } else {
                 palette.text
             };
+            let cause = Cause::of_row(item, state.pattern_source(item));
             let content = row![
                 columns.path_cell(0, &file_name(item), color),
-                columns.cell(
-                    1,
-                    &row_reason_text(item, state.pattern_source(item), lang),
-                    color
-                ),
-                columns.cell(2, item.fields.sender.as_deref().unwrap_or_default(), color),
-                columns.cell(
-                    3,
-                    item.fields
-                        .kind
-                        .as_deref()
-                        .map_or_else(Default::default, |kind| lang.kind_label(kind))
-                        .as_ref(),
-                    color
-                ),
-                columns.cell(
-                    4,
-                    &item
-                        .fields
-                        .date
-                        .map(|date| date.to_string())
-                        .unwrap_or_default(),
-                    color
-                ),
+                columns.chip_cell(1, &cause.short_text(lang), on_fill, palette),
             ]
             .align_y(alignment::Vertical::Center);
             kit::list_row(
@@ -405,7 +520,7 @@ fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element
     .into()
 }
 
-fn preview<'a>(
+fn target_line<'a>(
     state: &ReviewList,
     root: PreviewRoot<'_>,
     lang: Language,

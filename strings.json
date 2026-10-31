@@ -3493,6 +3493,138 @@
       "de": "{field} unsicher"
     },
     {
+      "key": "review_list.chip_no_rule",
+      "context": "Short label (chip) of the review reason: no rule matched the document. One or two words.",
+      "en": "No rule",
+      "de": "Keine Regel"
+    },
+    {
+      "key": "review_list.chip_no_text",
+      "context": "Short label (chip) of the review reason: no text could be read from the document.",
+      "en": "No text",
+      "de": "Kein Text"
+    },
+    {
+      "key": "review_list.chip_image_no_text",
+      "context": "Short label (chip) of the review reason: the document is an image that is not read for text.",
+      "en": "Image without text",
+      "de": "Bild ohne Text"
+    },
+    {
+      "key": "review_list.chip_default_pattern",
+      "context": "Short label (chip) of the review reason: the pattern is the default one, not one from a rule.",
+      "en": "Default pattern",
+      "de": "Standardmuster"
+    },
+    {
+      "key": "review_list.chip_nothing_recognised",
+      "context": "Short label (chip) of the review reason: no rule matches and no field was recognised.",
+      "en": "Nothing recognised",
+      "de": "Nichts erkannt"
+    },
+    {
+      "key": "review_list.chip_unconfirmed",
+      "context": "Short label (chip) of the review reason: a rule matched but is not confirmed yet.",
+      "en": "Unconfirmed rule",
+      "de": "Regel unbestätigt"
+    },
+    {
+      "key": "review_list.chip_rule_conflict",
+      "context": "Short label (chip) of the review reason: several confirmed rules match with different results.",
+      "en": "Rule conflict",
+      "de": "Regelkonflikt"
+    },
+    {
+      "key": "review_list.chip_no_tax_context",
+      "context": "Short label (chip) of the review reason: no tax context fits the document.",
+      "en": "No tax context",
+      "de": "Kein Steuerkontext"
+    },
+    {
+      "key": "review_list.chip_several_tax_contexts",
+      "context": "Short label (chip) of the review reason: several tax contexts fit the document.",
+      "en": "Several tax contexts",
+      "de": "Mehrere Steuerkontexte"
+    },
+    {
+      "key": "review_list.chip_target_exists",
+      "context": "Short label (chip) of the review reason: a file with the target name already exists.",
+      "en": "Target exists",
+      "de": "Ziel existiert"
+    },
+    {
+      "key": "review_list.chip_missing_field",
+      "context": "Short label (chip) of the review reason: a field could not be read. Takes the field name.",
+      "en": "Missing: {field}",
+      "de": "Fehlt: {field}"
+    },
+    {
+      "key": "review_list.chip_low_confidence",
+      "context": "Short label (chip) of the review reason: a field was read with low confidence. Takes the field name.",
+      "en": "Low confidence: {field}",
+      "de": "Unsicher: {field}"
+    },
+    {
+      "key": "document_preview.loading",
+      "context": "Placeholder in the document preview while the preview is being made.",
+      "en": "Loading preview...",
+      "de": "Vorschau wird geladen ..."
+    },
+    {
+      "key": "document_preview.unsupported",
+      "context": "Note in the document preview: the file type cannot be previewed.",
+      "en": "No preview for this file type.",
+      "de": "Für diesen Dateityp gibt es keine Vorschau."
+    },
+    {
+      "key": "document_preview.library_missing",
+      "context": "Note in the document preview: the PDF library is missing, so a PDF cannot be previewed.",
+      "en": "PDF library missing, no preview of PDFs.",
+      "de": "PDF-Bibliothek fehlt, keine Vorschau von PDFs."
+    },
+    {
+      "key": "document_preview.too_large",
+      "context": "Note in the document preview: the file is too big to preview.",
+      "en": "The file is too large for a preview.",
+      "de": "Die Datei ist zu groß für eine Vorschau."
+    },
+    {
+      "key": "document_preview.timed_out",
+      "context": "Note in the document preview: making the preview took too long and was stopped.",
+      "en": "The preview took too long.",
+      "de": "Die Vorschau hat zu lange gedauert."
+    },
+    {
+      "key": "document_preview.failed",
+      "context": "Note in the document preview: the file could not be read for a preview. Takes the technical detail, which stays English.",
+      "en": "No preview possible: {detail}",
+      "de": "Keine Vorschau möglich: {detail}"
+    },
+    {
+      "key": "document_preview.caption_page",
+      "context": "Caption under the preview of a PDF page. Takes the number of pages of the document.",
+      "en": "Page 1 of {count}",
+      "de": "Seite 1 von {count}"
+    },
+    {
+      "key": "document_preview.caption_image",
+      "context": "Caption under the preview of a picture. Takes its width and height in pixels.",
+      "en": "Image, {width} × {height}",
+      "de": "Bild, {width} × {height}"
+    },
+    {
+      "key": "document_preview.caption_text",
+      "context": "Caption under the preview of the text of a document: the start of the text is shown.",
+      "en": "Text excerpt",
+      "de": "Textauszug"
+    },
+    {
+      "key": "document_preview.caption_text_shortened",
+      "context": "Caption under the preview of the text of a document that is longer than what is shown.",
+      "en": "Text excerpt, shortened",
+      "de": "Textauszug, gekürzt"
+    },
+    {
       "key": "review_list.field_sender",
       "context": "Form label in the review list: sender. Also names the field in a review reason.",
       "en": "Sender",

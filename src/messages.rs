@@ -22,6 +22,7 @@ use crate::config::{
     AiProviderChoice, AiProviderName, Config, Filing, FilingWriteError, ProgramLine, ServerEntry,
 };
 use crate::dialog::PromptKind;
+use crate::document_preview::PreviewContent;
 use crate::execute::UndoReport;
 use crate::filing::{FilingMessage, IndexFigures};
 use crate::filing_work::FilingSummary;
@@ -1110,6 +1111,13 @@ pub enum ReviewListMessage {
     ReplanConfirm,
     /// Leaves the preview; nothing was filed.
     ReplanCancel,
+    /// The preview of a document is ready. Dropped when the list was closed
+    /// or opened again, or the cursor has moved on since.
+    PreviewLoaded {
+        generation: u64,
+        serial: u64,
+        content: PreviewContent,
+    },
 }
 
 /// Everything the rules page sends.

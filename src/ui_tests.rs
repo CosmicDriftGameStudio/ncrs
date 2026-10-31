@@ -2684,6 +2684,7 @@ mod review_list_card {
     use std::path::PathBuf;
 
     use super::*;
+    use crate::document_preview::{PreviewContent, PreviewImage};
     use crate::messages::{HermesFocus, HermesPage, ReviewListMessage};
     use crate::review_list::tests::{
         default_pattern_list, loaded_list, long_list, nothing_recognised_list, tax_context_list,
@@ -2985,6 +2986,102 @@ mod review_list_card {
         matches_snapshot(after_filing(), "review_list_filed_en");
     }
 
+    fn filled_rgba(width: u32, height: u32, paint: impl Fn(u32, u32) -> [u8; 4]) -> Vec<u8> {
+        let shared_paint = &paint;
+        (0..height)
+            .flat_map(|y| (0..width).flat_map(move |x| shared_paint(x, y)))
+            .collect()
+    }
+
+    /// A white page with a dark header bar and grey bars for the lines of text.
+    fn pdf_page() -> PreviewContent {
+        let (width, height) = (600, 850);
+        let rgba = filled_rgba(width, height, |x, y| {
+            let in_margin = (60..width - 60).contains(&x);
+            let header = in_margin && (60..110).contains(&y);
+            let text_line = in_margin && y >= 160 && y < height - 80 && y % 28 < 10;
+            if header {
+                [60, 70, 90, 255]
+            } else if text_line {
+                [200, 200, 205, 255]
+            } else {
+                [255, 255, 255, 255]
+            }
+        });
+        PreviewContent::Page {
+            image: PreviewImage::from_rgba(width, height, rgba),
+            page_count: 3,
+        }
+    }
+
+    /// A landscape picture of coloured areas.
+    fn photo() -> PreviewContent {
+        let (width, height) = (800, 500);
+        let rgba = filled_rgba(width, height, |x, y| {
+            if y < height.checked_div(2).unwrap_or_default() {
+                [90, 150, 220, 255]
+            } else if x < width.checked_div(3).unwrap_or_default() {
+                [70, 140, 80, 255]
+            } else {
+                [200, 170, 110, 255]
+            }
+        });
+        PreviewContent::Image(PreviewImage::from_rgba(width, height, rgba))
+    }
+
+    fn invoice_text() -> PreviewContent {
+        PreviewContent::Text {
+            excerpt: "Company A GmbH\nSample Street 1, 12345 Sampletown\n\nInvoice 4711\n\
+                      Date: 9 March 2024\n\nPosition 1  Consulting      600.00 EUR\n\
+                      Position 2  Travel costs    120.00 EUR\n\nTotal 720.00 EUR"
+                .to_owned(),
+            truncated: true,
+        }
+    }
+
+    #[test]
+    fn the_preview_matches_its_snapshots() {
+        for (kind, content) in [
+            ("pdf", pdf_page as fn() -> PreviewContent),
+            ("image", photo),
+            ("text", invoice_text),
+        ] {
+            for language in ["en", "de"] {
+                let mut list = loaded_list();
+                list.show_preview_for_test(content());
+                matches_snapshot(list, &format!("review_preview_{kind}_{language}"));
+            }
+        }
+    }
+
+    #[test]
+    fn moving_the_cursor_asks_for_the_preview_of_the_new_document_once() {
+        let mut list = loaded_list();
+        let first = list.preview_request().expect("a request for the first row");
+        assert_eq!(first.path, PathBuf::from("inbox/scan-1.pdf"));
+        assert_eq!(list.preview_request(), None);
+        list.move_cursor(1);
+        let second = list
+            .preview_request()
+            .expect("a request for the second row");
+        assert_eq!(second.path, PathBuf::from("inbox/scan-2.pdf"));
+        assert_ne!(first.serial, second.serial);
+    }
+
+    #[test]
+    fn an_answer_for_a_row_the_cursor_left_changes_nothing() {
+        let mut app = App::with_review_list(loaded_list());
+        let _ = app.update(review_message(ReviewListMessage::Select(1)));
+        let before = app.review_list_for_test().unwrap().clone();
+        let generation = app.review_list_generation_for_test();
+        let _ = app.update(review_message(ReviewListMessage::PreviewLoaded {
+            generation,
+            serial: 0,
+            content: PreviewContent::TooLarge,
+        }));
+        assert_eq!(app.review_list_for_test().unwrap(), &before);
+    }
+
     /// One document that would be filed, one that stays in review, one the
     /// rules cannot judge yet.
     fn replan_preview() -> ReviewList {
@@ -3051,8 +3148,9 @@ mod review_list_card {
     #[test]
     fn the_default_pattern_is_named_in_the_reason_and_previewed() {
         for label in [
+            "Default pattern",
             "Default pattern, please check",
-            "No rule matches",
+            "No rule",
             "Will be filed as 2024/20240309_Frost_3318.pdf",
         ] {
             assert!(shows(default_pattern_list(), label), "{label}");
@@ -3076,8 +3174,8 @@ mod review_list_card {
     #[test]
     fn the_tax_context_reasons_are_named_and_the_assigning_condition_is_shown() {
         for label in [
-            "No tax context fits",
-            "Several tax contexts fit",
+            "No tax context",
+            "Several tax contexts",
             "Tax context from condition (Recipient: Firma A GmbH)",
         ] {
             assert!(shows(tax_context_list(), label), "{label}");

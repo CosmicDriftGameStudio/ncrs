@@ -34,6 +34,16 @@ pub struct PageImage {
     pub pixels: Vec<u8>,
 }
 
+/// The first page of a PDF for a preview: `rgba` holds `width * height * 4`
+/// bytes, row by row from the top left, without padding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreviewPage {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Vec<u8>,
+    pub page_count: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Extracted {
     Text(String),
@@ -214,50 +224,115 @@ impl PdfText {
         document: &pdfium_render::prelude::PdfDocument<'_>,
         path: &Path,
     ) -> Result<Vec<PageImage>, TextError> {
-        let unreadable = |reason: String| TextError::Unreadable {
-            path: path.to_path_buf(),
-            reason,
-        };
         let mut images = Vec::new();
         for page in document.pages().iter().take(MAX_SCAN_PAGES) {
-            let width_points = page.width().value;
-            let height_points = page.height().value;
-            let longest_side = width_points.max(height_points).max(1.0);
-            let scale = (SCAN_DPI / POINTS_PER_INCH).min(MAX_SCAN_SIDE_PIXELS / longest_side);
-            let config = PdfRenderConfig::new()
-                .set_target_size(
-                    scaled_pixels(width_points, scale),
-                    scaled_pixels(height_points, scale),
-                )
-                .set_format(PdfBitmapFormat::BGRx);
-            let bitmap = page
-                .render_with_config(&config)
-                .map_err(|err| unreadable(format!("cannot render a page: {err:?}")))?;
-            let width = usize::try_from(bitmap.width()).unwrap_or(0);
-            let height = usize::try_from(bitmap.height()).unwrap_or(0);
-            let raw = bitmap.as_raw_bytes();
-            let stride = raw.len().checked_div(height).unwrap_or(0);
-            if width == 0 || stride < width * BYTES_PER_RENDERED_PIXEL {
-                return Err(unreadable("a page rendered without pixels".to_owned()));
-            }
-            let pixels: Vec<u8> = raw
-                .chunks_exact(stride)
-                .flat_map(|row| {
-                    row.as_chunks::<BYTES_PER_RENDERED_PIXEL>()
-                        .0
-                        .iter()
-                        .take(width)
-                })
-                .map(grey_of_bgrx)
-                .collect();
+            let (width, height, pixels) = render_page(
+                &page,
+                path,
+                SCAN_DPI / POINTS_PER_INCH,
+                MAX_SCAN_SIDE_PIXELS,
+                grey_of_bgrx,
+            )?;
             images.push(PageImage {
-                width: u32::try_from(width).unwrap_or(u32::MAX),
-                height: u32::try_from(height).unwrap_or(u32::MAX),
+                width,
+                height,
                 pixels,
             });
         }
         Ok(images)
     }
+
+    /// The first page of the PDF in colour, at most `max_side_pixels` on its
+    /// longer side, for a preview.
+    pub fn render_preview_page(
+        &self,
+        path: &Path,
+        max_side_pixels: u16,
+    ) -> Result<PreviewPage, TextError> {
+        let unreadable = |reason: String| TextError::Unreadable {
+            path: path.to_path_buf(),
+            reason,
+        };
+        let document = self
+            .pdfium
+            .load_pdf_from_file(path, None)
+            .map_err(|err| unreadable(format!("cannot open the PDF: {err:?}")))?;
+        let pages = document.pages();
+        let page = pages
+            .get(0)
+            .map_err(|err| unreadable(format!("cannot read the first page: {err:?}")))?;
+        let (width, height, pixels) = render_page(
+            &page,
+            path,
+            f32::INFINITY,
+            f32::from(max_side_pixels),
+            rgba_of_rendered,
+        )?;
+        Ok(PreviewPage {
+            width,
+            height,
+            rgba: pixels.into_iter().flatten().collect(),
+            page_count: usize::try_from(pages.len()).unwrap_or(1),
+        })
+    }
+}
+
+/// Renders `page` as BGRx at `max_scale` pixels per point, but at most
+/// `max_side_pixels` on the longer side, and maps every pixel row by row from
+/// the top left, without the padding at the end of a row.
+fn render_page<T>(
+    page: &pdfium_render::prelude::PdfPage<'_>,
+    path: &Path,
+    max_scale: f32,
+    max_side_pixels: f32,
+    map_pixel: impl Fn(&[u8; BYTES_PER_RENDERED_PIXEL]) -> T,
+) -> Result<(u32, u32, Vec<T>), TextError> {
+    let unreadable = |reason: String| TextError::Unreadable {
+        path: path.to_path_buf(),
+        reason,
+    };
+    let width_points = page.width().value;
+    let height_points = page.height().value;
+    let longest_side = width_points.max(height_points).max(1.0);
+    let scale = max_scale.min(max_side_pixels / longest_side);
+    let config = PdfRenderConfig::new()
+        .set_target_size(
+            scaled_pixels(width_points, scale),
+            scaled_pixels(height_points, scale),
+        )
+        .set_format(PdfBitmapFormat::BGRx);
+    let bitmap = page
+        .render_with_config(&config)
+        .map_err(|err| unreadable(format!("cannot render a page: {err:?}")))?;
+    let width = usize::try_from(bitmap.width()).unwrap_or(0);
+    let height = usize::try_from(bitmap.height()).unwrap_or(0);
+    let raw = bitmap.as_raw_bytes();
+    let stride = raw.len().checked_div(height).unwrap_or(0);
+    if width == 0 || stride < width * BYTES_PER_RENDERED_PIXEL {
+        return Err(unreadable("a page rendered without pixels".to_owned()));
+    }
+    let pixels: Vec<T> = raw
+        .chunks_exact(stride)
+        .flat_map(|row| {
+            row.as_chunks::<BYTES_PER_RENDERED_PIXEL>()
+                .0
+                .iter()
+                .take(width)
+        })
+        .map(map_pixel)
+        .collect();
+    Ok((
+        u32::try_from(width).unwrap_or(u32::MAX),
+        u32::try_from(height).unwrap_or(u32::MAX),
+        pixels,
+    ))
+}
+
+/// pdfium-render reverses the byte order of a BGRx bitmap by default, so the
+/// bytes of a rendered pixel are red, green, blue, unused.
+fn rgba_of_rendered(pixel: &[u8; BYTES_PER_RENDERED_PIXEL]) -> [u8; 4] {
+    let [red, green, blue, _unused] = *pixel;
+    [red, green, blue, u8::MAX]
 }
 
 fn grey_of_bgrx(pixel: &[u8; BYTES_PER_RENDERED_PIXEL]) -> u8 {
@@ -439,6 +514,23 @@ mod tests {
             panic!("expected text, got {extracted:?}");
         };
         assert!(text.contains("Invoice 4711 Company A"), "{text}");
+    }
+
+    #[test]
+    fn render_preview_renders_the_first_page_in_colour_within_the_limit() {
+        let dir = TempDir::new().unwrap();
+        let path = write(
+            &dir,
+            "filled.pdf",
+            &pdf_bytes("1 0 0 rg 20 20 100 100 re f", "", &[]),
+        );
+        let page = pdf_text().render_preview_page(&path, 300).unwrap();
+        assert_eq!(page.page_count, 1);
+        assert!(page.width <= 300 && page.height <= 300);
+        assert_eq!(page.rgba.len(), (page.width * page.height * 4) as usize);
+        let red = page.rgba.as_chunks::<4>().0.contains(&[255, 0, 0, 255]);
+        let white = page.rgba.as_chunks::<4>().0.contains(&[255, 255, 255, 255]);
+        assert!(red && white, "red {red}, white {white}");
     }
 
     #[test]
