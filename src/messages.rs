@@ -4,8 +4,8 @@
 use std::path::PathBuf;
 
 use ncrs_index::{
-    HermesCounts, IncludeOutcome, RuleId, SavedQuery, SavedQueryId, TaxContext, TaxContextEntry,
-    TaxContextId, TaxContextUsage,
+    Combinator, ConditionKind, HermesCounts, IncludeOutcome, RuleConditions, RuleId, SavedQuery,
+    SavedQueryId, TaxContext, TaxContextEntry, TaxContextId, TaxContextUsage,
 };
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
@@ -573,6 +573,19 @@ pub enum TaxContextsMessage {
     ConfirmDelete,
     Deleted(ContextsResult),
     Cancel,
+    /// The conditions of a context are looked up, then edited.
+    EditConditions(TaxContextId),
+    ConditionsLoaded {
+        id: TaxContextId,
+        result: Result<RuleConditions, TaxContextFailure>,
+    },
+    CombinatorChosen(Combinator),
+    NewConditionKindChosen(ConditionKind),
+    NewConditionValueChanged(String),
+    AddCondition,
+    RemoveCondition(usize),
+    SaveConditions,
+    ConditionsSaved(ContextsResult),
 }
 
 /// Everything the keyboard shortcuts dialog sends.

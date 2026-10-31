@@ -2,21 +2,21 @@ use std::collections::BTreeSet;
 
 use rusqlite::{params, Connection, OptionalExtension as _};
 
+use crate::condition_store::{
+    read_conditions, replace_conditions, require_compilable_regexes, ConditionOwner,
+};
 use crate::error::IndexError;
 use crate::index::Index;
-use crate::model::{
-    Combinator, Condition, ConditionKind, Rule, RuleConditions, RuleId, RuleSpec, TaxContext,
-};
+use crate::model::{Combinator, Condition, Rule, RuleConditions, RuleId, RuleSpec, TaxContext};
 use crate::names::{name_id, NameTable};
-use crate::regex_limits::compile_bounded_regex;
-use crate::tax_contexts::tax_context_id;
+use crate::tax_contexts::optional_tax_context_id;
 
 const RULE_COLUMNS: &str = "SELECT r.id, r.combinator,
         r.extract_number, r.extract_date, r.extract_amount, k.name, tc.short_name,
         r.filing_pattern, r.confirmed, r.enabled, r.position
     FROM rule r
     JOIN document_kind k ON k.id = r.kind_id
-    JOIN tax_context tc ON tc.id = r.tax_context_id";
+    LEFT JOIN tax_context tc ON tc.id = r.tax_context_id";
 
 struct RuleRow {
     id: i64,
@@ -25,7 +25,7 @@ struct RuleRow {
     extract_date: Option<String>,
     extract_amount: Option<String>,
     kind: String,
-    tax_context: String,
+    tax_context: Option<String>,
     filing_pattern: String,
     confirmed: bool,
     enabled: bool,
@@ -62,7 +62,7 @@ impl RuleRow {
                 extract_date: self.extract_date,
                 extract_amount: self.extract_amount,
                 kind: self.kind,
-                tax_context: TaxContext::from_short_name(self.tax_context),
+                tax_context: self.tax_context.map(TaxContext::from_short_name),
                 tags,
                 filing_pattern: self.filing_pattern,
                 confirmed: self.confirmed,
@@ -76,17 +76,7 @@ fn require_condition(spec: &RuleSpec) -> Result<(), IndexError> {
     if spec.conditions.list.is_empty() {
         return Err(IndexError::RuleWithoutCondition);
     }
-    for (position, condition) in spec.conditions.list.iter().enumerate() {
-        if condition.kind != ConditionKind::Regex {
-            continue;
-        }
-        if let Err(err) = compile_bounded_regex(&condition.value) {
-            return Err(IndexError::InvalidRegex {
-                position,
-                reason: err.to_string(),
-            });
-        }
-    }
+    require_compilable_regexes(&spec.conditions.list)?;
     Ok(())
 }
 
@@ -106,34 +96,12 @@ fn replace_rule_tags(
     Ok(())
 }
 
-fn replace_rule_conditions(
-    conn: &Connection,
-    id: RuleId,
-    list: &[Condition],
-) -> Result<(), IndexError> {
-    conn.execute("DELETE FROM rule_condition WHERE rule_id = ?1", [id.get()])?;
-    for (position, condition) in list.iter().enumerate() {
-        conn.execute(
-            "INSERT INTO rule_condition (rule_id, position, kind, value, negated)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![
-                id.get(),
-                i64::try_from(position).unwrap_or(i64::MAX),
-                condition.kind.as_str(),
-                condition.value,
-                condition.negated,
-            ],
-        )?;
-    }
-    Ok(())
-}
-
 impl Index {
     pub fn create_rule(&mut self, spec: &RuleSpec) -> Result<RuleId, IndexError> {
         require_condition(spec)?;
         let tx = self.conn_mut().transaction()?;
         let kind_id = name_id(&tx, NameTable::Kind, &spec.kind)?;
-        let tax_context_id = tax_context_id(&tx, &spec.tax_context)?;
+        let tax_context_id = optional_tax_context_id(&tx, spec.tax_context.as_ref())?;
         tx.execute(
             "INSERT INTO rule (combinator, extract_number, extract_date, extract_amount,
                  kind_id, tax_context_id, filing_pattern, confirmed, enabled, position)
@@ -152,7 +120,7 @@ impl Index {
             ],
         )?;
         let id = RuleId::new(tx.last_insert_rowid());
-        replace_rule_conditions(&tx, id, &spec.conditions.list)?;
+        replace_conditions(&tx, ConditionOwner::Rule, id.get(), &spec.conditions.list)?;
         replace_rule_tags(&tx, id, &spec.tags)?;
         tx.commit()?;
         Ok(id)
@@ -196,7 +164,7 @@ impl Index {
         require_condition(spec)?;
         let tx = self.conn_mut().transaction()?;
         let kind_id = name_id(&tx, NameTable::Kind, &spec.kind)?;
-        let tax_context_id = tax_context_id(&tx, &spec.tax_context)?;
+        let tax_context_id = optional_tax_context_id(&tx, spec.tax_context.as_ref())?;
         let changed = tx.execute(
             "UPDATE rule SET combinator = ?2, extract_number = ?3, extract_date = ?4,
                  extract_amount = ?5, kind_id = ?6, tax_context_id = ?7, filing_pattern = ?8,
@@ -218,7 +186,7 @@ impl Index {
         if changed == 0 {
             return Err(IndexError::RuleNotFound(id));
         }
-        replace_rule_conditions(&tx, id, &spec.conditions.list)?;
+        replace_conditions(&tx, ConditionOwner::Rule, id.get(), &spec.conditions.list)?;
         replace_rule_tags(&tx, id, &spec.tags)?;
         tx.commit()?;
         Ok(())
@@ -256,28 +224,7 @@ impl Index {
     }
 
     fn rule_conditions(&self, id: i64) -> Result<Vec<Condition>, IndexError> {
-        let mut statement = self.connection().prepare(
-            "SELECT kind, value, negated FROM rule_condition
-             WHERE rule_id = ?1 ORDER BY position",
-        )?;
-        let rows = statement
-            .query_map([id], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, bool>(2)?,
-                ))
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-        rows.into_iter()
-            .map(|(kind, value, negated)| {
-                Ok(Condition {
-                    kind: ConditionKind::parse(&kind)?,
-                    value,
-                    negated,
-                })
-            })
-            .collect()
+        read_conditions(self.connection(), ConditionOwner::Rule, id)
     }
 
     fn rule_tags(&self, id: i64) -> Result<BTreeSet<String>, IndexError> {
@@ -301,6 +248,7 @@ impl Index {
 )]
 mod tests {
     use super::*;
+    use crate::model::ConditionKind;
     use crate::test_support::{encrypted_index, rule_spec};
 
     #[test]
@@ -420,7 +368,7 @@ mod tests {
                 Condition::new(ConditionKind::Regex, "Invoice \\d+"),
                 Condition::new(ConditionKind::Sender, "Agency B"),
             ]),
-            tax_context: TaxContext::named("private"),
+            tax_context: Some(TaxContext::named("private")),
             tags: BTreeSet::from(["other".to_owned()]),
             confirmed: true,
             ..rule_spec()

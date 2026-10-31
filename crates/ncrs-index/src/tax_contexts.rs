@@ -1,8 +1,14 @@
 use rusqlite::{params, Connection, OptionalExtension as _};
 
+use crate::condition_store::{
+    read_conditions, replace_conditions, require_compilable_regexes, ConditionOwner,
+};
 use crate::error::{IndexError, TaxContextProblem};
 use crate::index::Index;
-use crate::model::{TaxContext, TaxContextEntry, TaxContextId, TaxContextUsage};
+use crate::model::{
+    Combinator, RuleConditions, TaxContext, TaxContextConditions, TaxContextEntry, TaxContextId,
+    TaxContextUsage,
+};
 
 pub const MAX_NAME_CHARS: usize = 60;
 pub const MAX_SHORT_NAME_CHARS: usize = 40;
@@ -239,6 +245,54 @@ impl Index {
         Ok(())
     }
 
+    pub fn tax_context_conditions(&self, id: TaxContextId) -> Result<RuleConditions, IndexError> {
+        let conn = self.connection();
+        require_changeable(conn, id)?;
+        let combinator: String = conn.query_row(
+            "SELECT combinator FROM tax_context WHERE id = ?1",
+            [id.get()],
+            |row| row.get(0),
+        )?;
+        Ok(RuleConditions {
+            combinator: Combinator::parse(&combinator)?,
+            list: read_conditions(conn, ConditionOwner::TaxContext, id.get())?,
+        })
+    }
+
+    /// An empty list takes the context out of the automatic assignment.
+    pub fn set_tax_context_conditions(
+        &mut self,
+        id: TaxContextId,
+        conditions: &RuleConditions,
+    ) -> Result<(), IndexError> {
+        require_compilable_regexes(&conditions.list)?;
+        let tx = self.conn_mut().transaction()?;
+        require_changeable(&tx, id)?;
+        tx.execute(
+            "UPDATE tax_context SET combinator = ?2 WHERE id = ?1",
+            params![id.get(), conditions.combinator.as_str()],
+        )?;
+        replace_conditions(&tx, ConditionOwner::TaxContext, id.get(), &conditions.list)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// The contexts that take part in the automatic assignment: those with at
+    /// least one condition, ordered by name.
+    pub fn assignable_tax_contexts(&self) -> Result<Vec<TaxContextConditions>, IndexError> {
+        let mut assignable = Vec::new();
+        for entry in self.tax_contexts()? {
+            let conditions = self.tax_context_conditions(entry.id)?;
+            if !conditions.list.is_empty() {
+                assignable.push(TaxContextConditions {
+                    short_name: entry.short_name,
+                    conditions,
+                });
+            }
+        }
+        Ok(assignable)
+    }
+
     /// Ordered by name, without the "no context" row.
     pub fn tax_contexts(&self) -> Result<Vec<TaxContextEntry>, IndexError> {
         let mut statement = self.connection().prepare(
@@ -269,7 +323,9 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::*;
-    use crate::model::{DocumentFields, FieldOrigin, QuerySpec};
+    use crate::model::{
+        Combinator, Condition, ConditionKind, DocumentFields, FieldOrigin, QuerySpec,
+    };
     use crate::test_support::{encrypted_index, new_document, rule_spec};
 
     fn problem_of(result: Result<impl std::fmt::Debug, IndexError>) -> TaxContextProblem {
@@ -513,7 +569,10 @@ mod tests {
             .into_iter()
             .find(|r| r.id == rule)
             .unwrap();
-        assert_eq!(moved_rule.spec.tax_context, TaxContext::named("private"));
+        assert_eq!(
+            moved_rule.spec.tax_context,
+            Some(TaxContext::named("private"))
+        );
         assert_eq!(
             index.saved_queries().unwrap()[0].spec.tax_context,
             Some(TaxContext::named("private"))
@@ -554,7 +613,10 @@ mod tests {
         index.delete_tax_context(company, TaxContext::None).unwrap();
 
         assert_eq!(context_of(&index, document), Some(TaxContext::None));
-        assert_eq!(index.rules().unwrap()[0].spec.tax_context, TaxContext::None);
+        assert_eq!(
+            index.rules().unwrap()[0].spec.tax_context,
+            Some(TaxContext::None)
+        );
         assert_eq!(
             index.saved_queries().unwrap()[0].spec.tax_context,
             Some(TaxContext::None)
@@ -626,5 +688,133 @@ mod tests {
             context_of(&index, document),
             Some(TaxContext::named("company-a"))
         );
+    }
+
+    fn recipient_conditions(value: &str) -> RuleConditions {
+        RuleConditions::any_of(vec![
+            Condition::new(ConditionKind::Recipient, value),
+            Condition::not(ConditionKind::Folder, "Archive"),
+        ])
+    }
+
+    #[test]
+    fn conditions_round_trip_per_context_and_only_contexts_with_conditions_are_assignable() {
+        let (_dir, mut index) = encrypted_index();
+        let company = entry(&index, "company").id;
+        let private = entry(&index, "private").id;
+        assert!(index.assignable_tax_contexts().unwrap().is_empty());
+
+        index
+            .set_tax_context_conditions(company, &recipient_conditions("Firma A GmbH"))
+            .unwrap();
+
+        assert_eq!(
+            index.tax_context_conditions(company).unwrap(),
+            recipient_conditions("Firma A GmbH")
+        );
+        assert!(index
+            .tax_context_conditions(private)
+            .unwrap()
+            .list
+            .is_empty());
+        assert_eq!(
+            index.assignable_tax_contexts().unwrap(),
+            [TaxContextConditions {
+                short_name: "company".to_owned(),
+                conditions: recipient_conditions("Firma A GmbH"),
+            }]
+        );
+
+        index
+            .set_tax_context_conditions(company, &RuleConditions::all_of(Vec::new()))
+            .unwrap();
+        assert!(index.assignable_tax_contexts().unwrap().is_empty());
+        assert_eq!(
+            index.tax_context_conditions(company).unwrap().combinator,
+            Combinator::AllOf
+        );
+    }
+
+    #[test]
+    fn a_condition_with_an_invalid_regex_is_refused_and_nothing_is_stored() {
+        let (_dir, mut index) = encrypted_index();
+        let company = entry(&index, "company").id;
+
+        let result = index.set_tax_context_conditions(
+            company,
+            &RuleConditions::any_of(vec![Condition::new(ConditionKind::Regex, "(")]),
+        );
+
+        assert!(matches!(result, Err(IndexError::InvalidRegex { .. })));
+        assert!(index
+            .tax_context_conditions(company)
+            .unwrap()
+            .list
+            .is_empty());
+    }
+
+    #[test]
+    fn deleting_a_context_deletes_its_conditions_and_the_others_stay() {
+        let (_dir, mut index) = encrypted_index();
+        let company = entry(&index, "company").id;
+        let private = entry(&index, "private").id;
+        index
+            .set_tax_context_conditions(company, &recipient_conditions("Firma A GmbH"))
+            .unwrap();
+        index
+            .set_tax_context_conditions(private, &recipient_conditions("Max Muster"))
+            .unwrap();
+        let document = file_with_context(&mut index, 1, "company");
+
+        index
+            .delete_tax_context(company, TaxContext::named("private"))
+            .unwrap();
+
+        let remaining: i64 = index
+            .connection()
+            .query_row("SELECT COUNT(*) FROM tax_context_condition", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(remaining, 2);
+        assert_eq!(
+            index.tax_context_conditions(private).unwrap(),
+            recipient_conditions("Max Muster")
+        );
+        assert_eq!(
+            context_of(&index, document),
+            Some(TaxContext::named("private"))
+        );
+    }
+
+    #[test]
+    fn a_rule_with_an_open_context_round_trips_apart_from_one_without_context() {
+        let (_dir, mut index) = encrypted_index();
+        let open = index
+            .create_rule(&crate::model::RuleSpec {
+                tax_context: None,
+                ..rule_spec()
+            })
+            .unwrap();
+        let without_context = index
+            .create_rule(&crate::model::RuleSpec {
+                tax_context: Some(TaxContext::None),
+                ..rule_spec()
+            })
+            .unwrap();
+
+        let context_of_rule =
+            |stored: &Index, id| stored.rule(id).unwrap().unwrap().spec.tax_context;
+
+        assert_eq!(context_of_rule(&index, open), None);
+        assert_eq!(
+            context_of_rule(&index, without_context),
+            Some(TaxContext::None)
+        );
+        let company = entry(&index, "company").id;
+        index
+            .delete_tax_context(company, TaxContext::named("private"))
+            .unwrap();
+        assert_eq!(context_of_rule(&index, open), None);
     }
 }

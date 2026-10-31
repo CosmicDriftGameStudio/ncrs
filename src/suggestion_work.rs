@@ -495,7 +495,7 @@ mod tests {
             .find(|suggestion| condition_text(&suggestion.spec) == Some("City Works"))
             .unwrap_or_else(|| panic!("{suggestions:#?}"));
         assert_eq!(works.spec.kind, "Utility bill");
-        assert_eq!(works.spec.tax_context, TaxContext::named("private"));
+        assert_eq!(works.spec.tax_context, Some(TaxContext::named("private")));
         assert_eq!(works.spec.filing_pattern, "Utilities/{date}_{name}");
     }
 

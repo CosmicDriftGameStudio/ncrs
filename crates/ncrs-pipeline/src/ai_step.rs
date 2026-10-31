@@ -5,7 +5,7 @@ use ncrs_ai::{AiError, ExtractedField, ExtractionRequest, Provider, CONFIDENT};
 use ncrs_index::{
     Document, DocumentFields, DocumentStatus, Field, FieldOrigin, IndexError, ReviewReason,
 };
-use ncrs_intake::{plan, LocationMode, PlanInput, Planning, FIELD_ORDER};
+use ncrs_intake::{plan, planned_field_origin, LocationMode, PlanInput, Planning, FIELD_ORDER};
 
 use crate::step::{resolve_reviews_of, with_index_value, IndexAccess, Item, Step, StepOutcome};
 use crate::steps::NO_INDEX;
@@ -228,6 +228,7 @@ impl AiStep {
                 return Ok(None);
             }
             let sender_aliases = index.confirmed_sender_aliases()?;
+            let tax_contexts = index.assignable_tax_contexts()?;
             let planning = plan(
                 &index.rules()?,
                 &PlanInput {
@@ -235,12 +236,18 @@ impl AiStep {
                     fields: &merged,
                     path: Some(&item.path),
                     sender_aliases: &sender_aliases,
+                    tax_contexts: &tax_contexts,
                 },
             );
             if let Planning::Plan(filing) = &planning {
                 if filing.fields != merged {
-                    index.set_document_fields(id, &filing.fields, |_| {
-                        FieldOrigin::Rule(Some(filing.rule))
+                    let rule_origin = FieldOrigin::Rule(Some(filing.rule));
+                    index.set_document_fields(id, &filing.fields, |field| {
+                        planned_field_origin(
+                            field,
+                            &rule_origin,
+                            filing.tax_context_assigned_by.as_ref(),
+                        )
                     })?;
                 }
                 index.set_document_status(id, DocumentStatus::Planned)?;
@@ -305,7 +312,7 @@ mod tests {
             extract_date: None,
             extract_amount: None,
             kind: "invoice".to_owned(),
-            tax_context: TaxContext::named("company"),
+            tax_context: Some(TaxContext::named("company")),
             tags: BTreeSet::new(),
             filing_pattern: filing_pattern.to_owned(),
             confirmed,
@@ -821,5 +828,96 @@ mod tests {
         let requests = provider.requests();
         assert_eq!(short_names(&requests[0]), ["company", "private"]);
         assert_eq!(short_names(&requests[1]), ["company", "firma-a", "private"]);
+    }
+
+    fn open_invoice_rule(filing_pattern: &str) -> RuleSpec {
+        RuleSpec {
+            tax_context: None,
+            ..invoice_rule(filing_pattern, true)
+        }
+    }
+
+    fn give_company_conditions(fixture: &Fixture, conditions: &RuleConditions) {
+        let mut index = fixture.index.lock().unwrap();
+        let company = index
+            .tax_contexts()
+            .unwrap()
+            .into_iter()
+            .find(|entry| entry.short_name == "company")
+            .unwrap();
+        index
+            .set_tax_context_conditions(company.id, conditions)
+            .unwrap();
+    }
+
+    #[test]
+    fn a_tax_context_the_conditions_assigned_is_not_asked_for_and_keeps_its_origin() {
+        let fixture = Fixture::new();
+        let provider = Arc::new(reply("0.95"));
+        let steps = fixture.steps(&provider);
+        give_company_conditions(
+            &fixture,
+            &RuleConditions::any_of(vec![Condition::new(ConditionKind::Substring, "company a")]),
+        );
+        fixture
+            .index
+            .lock()
+            .unwrap()
+            .create_rule(&open_invoice_rule("{tax_context}/{sender}/{number}.pdf"))
+            .unwrap();
+        let document = fixture.add_document(1);
+        let mut item = fixture.item(document, INVOICE_TEXT);
+
+        run(&steps, RULES, &mut item);
+        assert_eq!(item.review, Some(ReviewReason::MissingField(Field::Sender)));
+        let outcome = run(&steps, AI, &mut item);
+
+        let asked = provider.requests();
+        assert_eq!(asked.len(), 1);
+        assert!(!asked[0].open_fields.contains(&Field::TaxContext));
+        assert_eq!(outcome, StepOutcome::Finished);
+        assert_eq!(
+            fixture.fields(document).tax_context,
+            Some(TaxContext::named("company"))
+        );
+        let origins = fixture
+            .index
+            .lock()
+            .unwrap()
+            .field_origins(document)
+            .unwrap();
+        assert_eq!(
+            origins.of(Field::TaxContext),
+            FieldOrigin::Condition {
+                kind: ConditionKind::Substring,
+                value: "company a".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn an_unclear_tax_context_is_reviewed_and_not_sent_to_the_provider() {
+        let fixture = Fixture::new();
+        let provider = Arc::new(reply("0.95"));
+        let steps = fixture.steps(&provider);
+        give_company_conditions(
+            &fixture,
+            &RuleConditions::any_of(vec![Condition::new(ConditionKind::Substring, "agency b")]),
+        );
+        fixture
+            .index
+            .lock()
+            .unwrap()
+            .create_rule(&open_invoice_rule("{number}.pdf"))
+            .unwrap();
+        let document = fixture.add_document(1);
+        let mut item = fixture.item(document, INVOICE_TEXT);
+
+        run(&steps, RULES, &mut item);
+        run(&steps, AI, &mut item);
+
+        assert_eq!(item.review, Some(ReviewReason::NoTaxContextMatches));
+        assert!(provider.requests().is_empty());
+        assert_eq!(fixture.fields(document).tax_context, None);
     }
 }

@@ -169,7 +169,9 @@ fn spec_of(
 /// What at least `MIN_SHARE_IN_FOLDER_PERCENT` of some documents agree on.
 struct SharedFields {
     kind: Option<String>,
-    tax_context: TaxContext,
+    /// `None` when no context reaches the share: the suggested rule then
+    /// leaves it to the conditions of the contexts.
+    tax_context: Option<TaxContext>,
     tags: BTreeSet<String>,
 }
 
@@ -202,16 +204,20 @@ fn shared_fields(archive: &[ArchiveText], members: &[usize]) -> SharedFields {
             .flatten()
     });
 
-    let tax_context = [TaxContext::named("company"), TaxContext::named("private")]
-        .into_iter()
-        .find(|context| {
-            let count = all_fields
-                .iter()
-                .filter(|fields| fields.tax_context.as_ref() == Some(context))
-                .count();
-            at_least_share(count, total, MIN_SHARE_IN_FOLDER_PERCENT)
+    let mut context_counts: BTreeMap<&str, usize> = BTreeMap::new();
+    for context in all_fields
+        .iter()
+        .filter_map(|fields| match fields.tax_context.as_ref()? {
+            TaxContext::Named(short_name) => Some(short_name.as_str()),
+            TaxContext::None => None,
         })
-        .unwrap_or(TaxContext::None);
+    {
+        *context_counts.entry(context).or_default() += 1;
+    }
+    let tax_context = context_counts
+        .into_iter()
+        .find(|&(_context, count)| at_least_share(count, total, MIN_SHARE_IN_FOLDER_PERCENT))
+        .map(|(context, _count)| TaxContext::named(context));
 
     let mut tag_counts: BTreeMap<&str, usize> = BTreeMap::new();
     for tag in all_fields.iter().flat_map(|fields| &fields.tags) {
@@ -853,8 +859,23 @@ mod tests {
                 .clone()
         };
 
-        assert_eq!(with_private(4), TaxContext::named("private"));
-        assert_eq!(with_private(3), TaxContext::None);
+        assert_eq!(with_private(4), Some(TaxContext::named("private")));
+        assert_eq!(with_private(3), None);
+    }
+
+    #[test]
+    fn any_context_the_documents_share_is_suggested_not_only_the_two_standard_ones() {
+        let mut archive = filed_by_company_a(folder("Insurance", 5, insurance));
+        for entry in archive.iter_mut().take(4) {
+            entry.fields.tax_context = Some(TaxContext::named("company-b"));
+        }
+
+        let candidates = suggest(&archive);
+
+        assert_eq!(
+            only_sender_candidate(&candidates).spec.tax_context,
+            Some(TaxContext::named("company-b"))
+        );
     }
 
     #[test]
@@ -917,7 +938,10 @@ mod tests {
             .iter()
             .find(|candidate| candidate.phrase == "company a ltd")
             .expect("the phrase rule");
-        assert_eq!(candidate.spec.tax_context, TaxContext::named("company"));
+        assert_eq!(
+            candidate.spec.tax_context,
+            Some(TaxContext::named("company"))
+        );
         assert_eq!(
             candidate.spec.tags,
             BTreeSet::from(["insurance".to_owned()])

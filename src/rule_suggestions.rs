@@ -318,7 +318,7 @@ pub mod tests {
             extract_date: None,
             extract_amount: None,
             kind: kind.to_owned(),
-            tax_context: TaxContext::None,
+            tax_context: Some(TaxContext::None),
             tags: BTreeSet::new(),
             filing_pattern: format!("{kind}/{{date}}_{{name}}"),
             confirmed: false,

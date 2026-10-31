@@ -32,10 +32,12 @@ use crate::messages::{
     ThemeFetchMessage,
 };
 use crate::palette::{hex, parse_color, ColorRole, Palette, ThemePreset};
-use ncrs_index::{TaxContext, TaxContextProblem, TaxContextUsage};
+use ncrs_index::{Combinator, TaxContext, TaxContextProblem, TaxContextUsage};
 
 use crate::tax_context_work::TaxContextFailure;
-use crate::tax_contexts::{example_path, ContextList, EditForm, Step, TaxContextsState};
+use crate::tax_contexts::{
+    example_path, ConditionForm, ContextList, EditForm, Step, TaxContextsState, NEW_CONDITION_KINDS,
+};
 
 /// The id of the search field above the feature list.
 pub const SEARCH_FIELD_ID: &str = "settings-search";
@@ -56,6 +58,7 @@ const ENDPOINT_FIELD_ID: &str = "settings-ai-endpoint";
 const MODEL_FIELD_ID: &str = "settings-ai-model";
 pub const TAX_CONTEXT_NAME_FIELD_ID: &str = "settings-tax-context-name";
 const TAX_CONTEXT_SHORT_NAME_FIELD_ID: &str = "settings-tax-context-short-name";
+const TAX_CONTEXT_CONDITION_FIELD_ID: &str = "settings-tax-context-condition";
 const SWATCH_SIZE: f32 = 16.0;
 
 /// How many characters of the theme file name fit beside its button.
@@ -1419,6 +1422,11 @@ fn tax_contexts_group<'a>(view: &SettingsView<'a>) -> Group<'a> {
                 );
                 let buttons = row![
                     secondary_button(
+                        lang.text(Msg::SettingsTaxContextsConditions),
+                        tax(TaxContextsMessage::EditConditions(entry.id)),
+                        view,
+                    ),
+                    secondary_button(
                         lang.text(Msg::SettingsTaxContextsRename),
                         tax(TaxContextsMessage::Rename(entry.id)),
                         view,
@@ -1430,12 +1438,9 @@ fn tax_contexts_group<'a>(view: &SettingsView<'a>) -> Group<'a> {
                     ),
                 ]
                 .spacing(spacing::S);
-                rows.push(tax_row(
-                    entry.name.clone(),
-                    Some(detail),
-                    None,
-                    buttons.into(),
-                ));
+                let mut entry_row = tax_row(entry.name.clone(), Some(detail), None, buttons.into());
+                entry_row.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
+                rows.push(entry_row);
             }
             match &state.step {
                 Step::Idle => rows.push(tax_row(
@@ -1450,6 +1455,7 @@ fn tax_contexts_group<'a>(view: &SettingsView<'a>) -> Group<'a> {
                 )),
                 Step::Editing(form) => rows.extend(edit_rows(form, view)),
                 Step::Deleting(_) => rows.extend(delete_rows(state, view)),
+                Step::Conditions(form) => rows.extend(condition_rows(form, view)),
             }
         }
     }
@@ -1556,6 +1562,163 @@ fn edit_rows<'a>(form: &EditForm, view: &SettingsView<'a>) -> Vec<SettingRow<'a>
             buttons.into(),
         ),
     ]
+}
+
+fn condition_rows<'a>(form: &ConditionForm, view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
+    let lang = view.lang;
+    let palette = view.palette;
+    let failure = form
+        .failure
+        .as_ref()
+        .map(|failure| failure_text(failure, lang));
+    let heading = fill_template(
+        lang.text(Msg::SettingsTaxContextsConditionsHeading),
+        &[("{name}", &form.entry.name)],
+    );
+    let note = Some(lang.text(Msg::SettingsTaxContextsConditionsNote).to_owned());
+    let Some(conditions) = &form.conditions else {
+        let loading = lang.text(Msg::SettingsTaxContextsConditionsLoading);
+        return vec![
+            tax_row(heading, note, failure, nothing()),
+            tax_row(loading.to_owned(), None, None, nothing()),
+            tax_row(
+                String::new(),
+                None,
+                None,
+                secondary_button(
+                    lang.text(Msg::SettingsTaxContextsCancel),
+                    tax(TaxContextsMessage::Cancel),
+                    view,
+                ),
+            ),
+        ];
+    };
+    let mut rows = vec![tax_row(heading, note, failure, nothing())];
+    if conditions.list.is_empty() {
+        rows.push(tax_row(
+            lang.text(Msg::SettingsTaxContextsConditionsEmpty)
+                .to_owned(),
+            None,
+            None,
+            nothing(),
+        ));
+    }
+    for (position, condition) in conditions.list.iter().enumerate() {
+        let control = row![
+            mono(condition.value.clone(), palette.text),
+            secondary_button(
+                lang.text(Msg::SettingsTaxContextsConditionRemove),
+                tax(TaxContextsMessage::RemoveCondition(position)),
+                view,
+            ),
+        ]
+        .spacing(spacing::S)
+        .align_y(alignment::Vertical::Center);
+        rows.push(tax_row(
+            lang.text(kit::condition_kind_name(condition.kind))
+                .to_owned(),
+            None,
+            None,
+            control.into(),
+        ));
+    }
+    if conditions.list.len() > 1 {
+        let combinators = [
+            (Msg::SettingsTaxContextsCombinatorAny, Combinator::AnyOf),
+            (Msg::SettingsTaxContextsCombinatorAll, Combinator::AllOf),
+        ];
+        let options: Vec<(&str, Message)> = combinators
+            .iter()
+            .map(|&(label, combinator)| {
+                (
+                    lang.text(label),
+                    tax(TaxContextsMessage::CombinatorChosen(combinator)),
+                )
+            })
+            .collect();
+        let chosen = combinators
+            .iter()
+            .position(|&(_, combinator)| combinator == conditions.combinator)
+            .unwrap_or_default();
+        let mut combinator_row = tax_row(
+            lang.text(Msg::SettingsTaxContextsCombinatorLabel)
+                .to_owned(),
+            None,
+            None,
+            kit::segmented(&options, chosen, true, palette),
+        );
+        combinator_row.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
+        rows.push(combinator_row);
+    }
+    let kind_options: Vec<(&str, Message)> = NEW_CONDITION_KINDS
+        .iter()
+        .map(|&kind| {
+            (
+                lang.text(kit::condition_kind_name(kind)),
+                tax(TaxContextsMessage::NewConditionKindChosen(kind)),
+            )
+        })
+        .collect();
+    let chosen_kind = NEW_CONDITION_KINDS
+        .iter()
+        .position(|&kind| kind == form.new_kind)
+        .unwrap_or_default();
+    let mut kind_row = tax_row(
+        lang.text(Msg::SettingsTaxContextsConditionKindLabel)
+            .to_owned(),
+        None,
+        None,
+        kit::segmented(&kind_options, chosen_kind, true, palette),
+    );
+    kind_row.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
+    rows.push(kind_row);
+    let value_field = kit::text_field(
+        "",
+        &form.new_value,
+        TAX_CONTEXT_CONDITION_FIELD_ID,
+        Some(|typed| tax(TaxContextsMessage::NewConditionValueChanged(typed))),
+        tax(TaxContextsMessage::AddCondition),
+        palette,
+    );
+    let mut value_row = tax_row(
+        lang.text(Msg::SettingsTaxContextsConditionValueLabel)
+            .to_owned(),
+        None,
+        None,
+        row![
+            value_field,
+            secondary_button(
+                lang.text(Msg::SettingsTaxContextsConditionAdd),
+                tax(TaxContextsMessage::AddCondition),
+                view,
+            ),
+        ]
+        .spacing(spacing::S)
+        .into(),
+    );
+    value_row.control_width = Some(SETTINGS_WIDE_CONTROL_WIDTH);
+    rows.push(value_row);
+    rows.push(tax_row(
+        String::new(),
+        None,
+        None,
+        row![
+            secondary_button(
+                lang.text(Msg::SettingsTaxContextsCancel),
+                tax(TaxContextsMessage::Cancel),
+                view,
+            ),
+            kit::button(
+                lang.text(Msg::SettingsTaxContextsSave),
+                Some(tax(TaxContextsMessage::SaveConditions)),
+                Tone::Primary,
+                palette,
+            ),
+        ]
+        .spacing(spacing::S)
+        .into(),
+    ));
+    rows
 }
 
 fn delete_rows<'a>(state: &TaxContextsState, view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {

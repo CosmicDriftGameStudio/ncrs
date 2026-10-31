@@ -2686,7 +2686,7 @@ mod review_list_card {
     use super::*;
     use crate::messages::{HermesFocus, HermesPage, ReviewListMessage};
     use crate::review_list::tests::{
-        default_pattern_list, loaded_list, long_list, nothing_recognised_list,
+        default_pattern_list, loaded_list, long_list, nothing_recognised_list, tax_context_list,
     };
     use crate::review_list::{FormField, ReviewList};
     use crate::review_work::ConfirmOutcome;
@@ -2927,6 +2927,23 @@ mod review_list_card {
     fn the_default_pattern_matches_its_snapshots() {
         matches_snapshot(default_pattern_list(), "review_list_default_pattern_en");
         matches_snapshot(default_pattern_list(), "review_list_default_pattern_de");
+    }
+
+    #[test]
+    fn the_tax_context_reasons_are_named_and_the_assigning_condition_is_shown() {
+        for label in [
+            "No tax context fits",
+            "Several tax contexts fit",
+            "Tax context from condition (Recipient: Firma A GmbH)",
+        ] {
+            assert!(shows(tax_context_list(), label), "{label}");
+        }
+    }
+
+    #[test]
+    fn the_tax_context_reasons_match_their_snapshots() {
+        matches_snapshot(tax_context_list(), "review_list_tax_context_en");
+        matches_snapshot(tax_context_list(), "review_list_tax_context_de");
     }
 
     fn without_rules(list: ReviewList, language: Language) -> App {
@@ -4696,6 +4713,40 @@ mod settings_tab {
             || tax_contexts_app(state.clone()),
             "settings_tax_context_edit",
         );
+    }
+
+    fn contexts_with_conditions() -> (TaxContextsState, ncrs_index::TaxContextId) {
+        let mut state = ready_contexts();
+        let company = short_name_id(&state, "company");
+        state.begin_conditions(company);
+        state.conditions_loaded(
+            company,
+            Ok(ncrs_index::RuleConditions::any_of(vec![
+                ncrs_index::Condition::new(ncrs_index::ConditionKind::Recipient, "Firma A GmbH"),
+                ncrs_index::Condition::new(ncrs_index::ConditionKind::Word, "Firma A"),
+            ])),
+        );
+        state.edit_new_condition_value("DE02 1203 0000 0000 2020 51".to_owned());
+        (state, company)
+    }
+
+    #[test]
+    fn the_condition_editor_matches_its_snapshots() {
+        let (state, _) = contexts_with_conditions();
+        both_languages(
+            || tax_contexts_app(state.clone()),
+            "settings_tax_context_conditions",
+        );
+    }
+
+    #[test]
+    fn the_condition_editor_names_the_order_and_the_choice_of_any_or_all() {
+        let (state, _) = contexts_with_conditions();
+        let app = tax_contexts_app(state).in_language(Language::English);
+
+        simulator(&app).find("Conditions of Firma").unwrap();
+        simulator(&app).find("one condition holds").unwrap();
+        simulator(&app).find("Firma A GmbH").unwrap();
     }
 
     #[test]

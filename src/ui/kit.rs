@@ -14,14 +14,29 @@ use iced::widget::{
 use iced::{
     alignment, Background, Color, Element, Font, Length, Padding, Pixels, Radians, Rotation, Theme,
 };
-use ncrs_index::{TaxContext, TaxContextEntry};
+use ncrs_index::{ConditionKind, TaxContext, TaxContextEntry};
 use std::sync::LazyLock;
 
 use super::format;
 use super::frame::{AVERAGE_GLYPH_WIDTH, SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
 use super::theme::{self, font_size, size, spacing, DISABLED_OPACITY};
+use crate::i18n::Msg;
 use crate::messages::Message;
 use crate::palette::Palette;
+
+pub fn condition_kind_name(kind: ConditionKind) -> Msg {
+    match kind {
+        ConditionKind::Substring => Msg::ConditionKindSubstring,
+        ConditionKind::Word => Msg::ConditionKindWord,
+        ConditionKind::Regex => Msg::ConditionKindRegex,
+        ConditionKind::Sender => Msg::ConditionKindSender,
+        ConditionKind::SenderAddress => Msg::ConditionKindSenderAddress,
+        ConditionKind::Iban => Msg::ConditionKindIban,
+        ConditionKind::TaxId => Msg::ConditionKindTaxId,
+        ConditionKind::Recipient => Msg::ConditionKindRecipient,
+        ConditionKind::Folder => Msg::ConditionKindFolder,
+    }
+}
 
 /// The picker choices for a tax context: the unset entry, each stored context
 /// by its name, then "no context".

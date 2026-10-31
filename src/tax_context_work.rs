@@ -4,8 +4,8 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
 use ncrs_index::{
-    Index, IndexError, TaxContext, TaxContextEntry, TaxContextId, TaxContextProblem,
-    TaxContextUsage,
+    Index, IndexError, RuleConditions, TaxContext, TaxContextEntry, TaxContextId,
+    TaxContextProblem, TaxContextUsage,
 };
 
 type IndexSlot = Arc<Mutex<Option<Index>>>;
@@ -47,6 +47,17 @@ impl TaxContextAccess {
 
     pub fn usage(&self, id: TaxContextId) -> Result<TaxContextUsage, TaxContextFailure> {
         self.with_index(|index| index.tax_context_usage(id))
+    }
+
+    pub fn conditions(&self, id: TaxContextId) -> Result<RuleConditions, TaxContextFailure> {
+        self.with_index(|index| index.tax_context_conditions(id))
+    }
+
+    pub fn set_conditions(&self, id: TaxContextId, conditions: &RuleConditions) -> ContextsResult {
+        self.with_index(|index| {
+            index.set_tax_context_conditions(id, conditions)?;
+            index.tax_contexts()
+        })
     }
 
     pub fn create(&self, name: &str, short_name: &str) -> ContextsResult {
