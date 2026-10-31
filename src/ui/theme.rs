@@ -1,6 +1,7 @@
 //! Colors, spacing and reusable widget styles (dark, Norton Commander inspired).
 
-use iced::widget::{button, checkbox, container, text_input, Space};
+use iced::widget::overlay::menu;
+use iced::widget::{button, checkbox, container, pick_list, text_input, Space};
 use iced::{Background, Border, Color, Element, Length, Theme};
 
 use crate::hermes_column::{FolderRole, HermesFileState};
@@ -770,6 +771,44 @@ pub fn field_input(palette: &Palette) -> impl Fn(&Theme, text_input::Status) -> 
             colors.border
         };
         style
+    }
+}
+
+/// The closed field of a dropdown: outlined like the other controls, the
+/// outline in the accent color while it is hovered or open.
+pub fn dropdown_field(palette: &Palette) -> impl Fn(&Theme, pick_list::Status) -> pick_list::Style {
+    let colors = *palette;
+    move |_theme, status| pick_list::Style {
+        text_color: colors.text,
+        placeholder_color: colors.dim_text,
+        handle_color: colors.dim_text,
+        background: Background::Color(colors.dialog),
+        border: Border {
+            color: if matches!(status, pick_list::Status::Active) {
+                colors.border
+            } else {
+                colors.accent
+            },
+            width: spacing::BORDER_WIDTH,
+            radius: radius::CONTROL.into(),
+        },
+    }
+}
+
+/// The open list of a dropdown; the chosen entry in the cursor colors.
+pub fn dropdown_menu(palette: &Palette) -> impl Fn(&Theme) -> menu::Style {
+    let colors = *palette;
+    move |_theme| menu::Style {
+        background: Background::Color(colors.menu),
+        border: Border {
+            color: colors.border,
+            width: spacing::BORDER_WIDTH,
+            radius: radius::CONTROL.into(),
+        },
+        text_color: colors.text,
+        selected_text_color: colors.cursor_text,
+        selected_background: Background::Color(colors.cursor),
+        shadow: iced::Shadow::default(),
     }
 }
 

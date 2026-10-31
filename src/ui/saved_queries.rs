@@ -311,7 +311,7 @@ fn form<'a>(state: &'a SavedQueries, lang: Language, palette: &Palette) -> Eleme
         row_of(
             Msg::SavedQueriesFieldTaxContext,
             None,
-            kit::segmented(&tax_options, selected_tax, true, palette),
+            kit::dropdown(&tax_options, selected_tax, true, palette),
         ),
         row_of(
             Msg::SavedQueriesFieldKind,

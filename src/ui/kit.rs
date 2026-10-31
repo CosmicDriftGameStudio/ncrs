@@ -9,7 +9,7 @@ use iced::widget::checkbox as widget_checkbox;
 use iced::widget::svg::{self, Svg};
 use iced::widget::text::{IntoFragment, LineHeight, Shaping, Wrapping};
 use iced::widget::{
-    column, container, mouse_area, row, rule, text, text_input, Column, Row, Space,
+    column, container, mouse_area, pick_list, row, rule, text, text_input, Column, Row, Space,
 };
 use iced::{
     alignment, Background, Color, Element, Font, Length, Padding, Pixels, Radians, Rotation, Theme,
@@ -846,6 +846,75 @@ pub fn segmented<'a>(
         .into()
 }
 
+/// An entry of a dropdown: equal to another by its position, so that two
+/// entries with the same label stay apart.
+#[derive(Debug, Clone)]
+struct DropdownChoice {
+    label: String,
+    position: usize,
+    message: Message,
+}
+
+impl PartialEq for DropdownChoice {
+    fn eq(&self, other: &Self) -> bool {
+        self.position == other.position
+    }
+}
+
+impl std::fmt::Display for DropdownChoice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.label)
+    }
+}
+
+fn dropdown_choices(options: &[(&str, Message)]) -> Vec<DropdownChoice> {
+    options
+        .iter()
+        .enumerate()
+        .map(|(position, (label, message))| DropdownChoice {
+            label: (*label).to_owned(),
+            position,
+            message: message.clone(),
+        })
+        .collect()
+}
+
+/// A closed list of which one entry is shown and the others drop down on a
+/// click; the same shape as [`segmented`], for a list that may grow long.
+/// Disabled, it shows the chosen entry fainter and does not open.
+pub fn dropdown<'a>(
+    options: &[(&str, Message)],
+    selected: usize,
+    enabled: bool,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let choices = dropdown_choices(options);
+    let chosen = choices.get(selected).cloned();
+    if !enabled {
+        let label = chosen.map(|choice| choice.label).unwrap_or_default();
+        let dimmed = palette.text.scale_alpha(DISABLED_OPACITY);
+        return container(
+            text(label)
+                .size(font_size::BODY)
+                .wrapping(Wrapping::None)
+                .color(dimmed),
+        )
+        .padding([spacing::XS, spacing::S])
+        .center_y(size::ROW_TALL)
+        .width(Length::Fill)
+        .style(theme::outlined(palette))
+        .into();
+    }
+    pick_list(choices, chosen, |choice| choice.message)
+        .width(Length::Fill)
+        .padding([spacing::XS, spacing::S])
+        .text_size(font_size::BODY)
+        .text_line_height(LineHeight::Absolute(Pixels(FIELD_LINE_HEIGHT)))
+        .style(theme::dropdown_field(palette))
+        .menu_style(theme::dropdown_menu(palette))
+        .into()
+}
+
 /// The state of a checkbox.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Check {
@@ -960,6 +1029,15 @@ pub fn count_summary<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_picked_dropdown_choice_sends_the_message_of_its_option() {
+        let options = [("a", Message::PageUp), ("b", Message::PageDown)];
+        let choices = dropdown_choices(&options);
+        let picked = choices.get(1).cloned().map(|choice| choice.message);
+        assert_eq!(picked, Some(Message::PageDown));
+        assert_ne!(choices.first(), choices.get(1));
+    }
 
     #[test]
     fn a_column_holds_its_share_of_the_line_less_the_gap() {
