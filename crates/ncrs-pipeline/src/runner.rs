@@ -1246,7 +1246,7 @@ mod tests {
 
     use super::*;
     use crate::step::IndexAccess;
-    use crate::steps::intake_steps;
+    use crate::steps::{intake_steps, OwnDetails};
 
     const HANG_GUARD: Duration = Duration::from_secs(30);
     const INVOICE: &[u8] = b"Invoice 4711 from Company A";
@@ -1714,7 +1714,7 @@ mod tests {
                 Arc::new(SharedIndex(Arc::clone(&self.index))),
                 Arc::new(chain),
                 None,
-                None,
+                OwnDetails::default(),
             )
         }
     }
@@ -2361,6 +2361,70 @@ mod tests {
         let index = fixture.index.lock().unwrap();
         let document = index.document(id).unwrap().unwrap();
         assert_eq!(document.fields.sender.as_deref(), Some("Own Choice"));
+    }
+
+    #[test]
+    fn the_recipient_and_the_kind_are_read_from_the_letter_with_their_origins() {
+        let text = "Frau Erika Beispiel\nMusterweg 3\n12345 Musterstadt\n\nRechnung 4711";
+        let fixture = run_text_with_rules(&[], text);
+
+        let index = fixture.index.lock().unwrap();
+        let id = index.search_text("4711", 10).unwrap()[0];
+        let document = index.document(id).unwrap().unwrap();
+        assert_eq!(document.fields.recipient.as_deref(), Some("Erika Beispiel"));
+        assert_eq!(document.fields.kind.as_deref(), Some("Rechnung"));
+        let origins = index.field_origins(id).unwrap();
+        assert_eq!(
+            origins.of(ncrs_index::Field::Recipient),
+            ncrs_index::FieldOrigin::AddressBlock
+        );
+        assert_eq!(
+            origins.of(ncrs_index::Field::Kind),
+            ncrs_index::FieldOrigin::Heading
+        );
+    }
+
+    #[test]
+    fn an_own_tag_survives_reading_and_planning_again() {
+        let text = "Nordlicht Energie GmbH\nInvoice 4711 Company A";
+        let inbox_dir = TempDir::new().unwrap();
+        let inbox = location(&inbox_dir, LocationMode::Inbox);
+        let path = put(&inbox, "invoice.pdf", INVOICE);
+        let fixture = IndexFixture::new();
+        let chain = TextChain::new().with_source(FixedText(Ok(Extracted::Text(text.to_owned()))));
+        let runner = Runner::start(
+            settings(workers(1)),
+            fixture.steps_reading(chain),
+            vec![inbox],
+            stepping_clock(),
+        );
+        runner.wait_for("the file handled", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[2].done == 1
+        });
+        let id = {
+            let mut index = fixture.index.lock().unwrap();
+            let id = index.search_text("4711", 10).unwrap()[0];
+            let mut fields = index.document(id).unwrap().unwrap().fields;
+            fields.tags.insert("steuer".to_owned());
+            index
+                .set_document_fields(id, &fields, |_| ncrs_index::FieldOrigin::Manual)
+                .unwrap();
+            index.set_document_status(id, DocumentStatus::New).unwrap();
+            id
+        };
+
+        assert!(runner.process_again(&path));
+        runner.wait_for("the file handled again", |snapshot| {
+            is_idle(snapshot) && snapshot.steps[2].done == 2
+        });
+
+        let index = fixture.index.lock().unwrap();
+        let document = index.document(id).unwrap().unwrap();
+        assert!(document.fields.tags.contains("steuer"));
+        assert!(document
+            .fields
+            .all_tags()
+            .contains("nordlicht-energie-gmbh"));
     }
 
     #[test]

@@ -9,7 +9,7 @@ use std::ops::Range;
 use std::path::Path;
 
 use iced::widget::text::Wrapping;
-use iced::widget::{column, container, rich_text, row, text, Space};
+use iced::widget::{column, container, rich_text, row, text, Row, Space};
 use iced::{alignment, Element, Length, Size};
 use ncrs_index::{DocumentFields, Field, FieldOrigin, ReviewReason};
 use ncrs_intake::{PatternPart, PatternSource};
@@ -28,16 +28,22 @@ use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{HermesFocus, HermesPage, Message, ReviewListMessage};
 use crate::palette::Palette;
 use crate::replan_work::{ReplanAfter, ReplanItem};
-use crate::review_list::{FiledNotice, FormField, Problem, ReplanStep, ReviewList, VISIBLE_ROWS};
+use crate::review_list::{
+    FiledNotice, Form, FormField, Problem, ReplanStep, ReviewList, VISIBLE_ROWS,
+};
 use crate::review_work::{ReviewItem, TextState};
 
 pub const SENDER_ID: &str = "review-sender";
+const RECIPIENT_ID: &str = "review-recipient";
 const KIND_ID: &str = "review-kind";
 const DATE_ID: &str = "review-date";
 const NUMBER_ID: &str = "review-number";
 const AMOUNT_ID: &str = "review-amount";
-const TAGS_ID: &str = "review-tags";
+const TAG_INPUT_ID: &str = "review-tag-input";
 const PATTERN_ID: &str = "review-pattern";
+
+/// The room for "automatic" and "added by you" before the chips.
+const TAG_ROW_LABEL_WIDTH: f32 = 96.0;
 
 const SIZE: DialogSize = DialogSize::Card;
 
@@ -293,6 +299,7 @@ fn fields_are_empty(fields: &DocumentFields) -> bool {
 fn field_name(field: Field) -> Msg {
     match field {
         Field::Sender => Msg::ReviewListFieldSender,
+        Field::Recipient => Msg::ReviewListFieldRecipient,
         Field::Kind => Msg::ReviewListFieldKind,
         Field::Date => Msg::ReviewListFieldDate,
         Field::Number => Msg::ReviewListFieldNumber,
@@ -427,6 +434,8 @@ pub fn origin_text(origin: &FieldOrigin, edited: bool, lang: Language) -> Option
             &[("{percent}", &confidence_percent.to_string())],
         )),
         FieldOrigin::Manual => Some(lang.text(Msg::ReviewListOriginManual).to_owned()),
+        FieldOrigin::AddressBlock => Some(lang.text(Msg::ReviewListOriginAddress).to_owned()),
+        FieldOrigin::Heading => Some(lang.text(Msg::ReviewListOriginHeading).to_owned()),
     }
 }
 
@@ -459,6 +468,66 @@ fn field_row<'a>(
     .into()
 }
 
+/// A row of the tags block: its label and the chips, or a dimmed "none".
+fn tag_row<'a>(
+    label: Msg,
+    chips: Vec<Element<'a, Message>>,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let shown: Element<'a, Message> = if chips.is_empty() {
+        dim(lang.text(Msg::ReviewListTagsNone), palette)
+    } else {
+        Row::with_children(chips).spacing(spacing::XS).wrap().into()
+    };
+    row![
+        container(dim(lang.text(label), palette)).width(TAG_ROW_LABEL_WIDTH),
+        shown,
+    ]
+    .spacing(spacing::M)
+    .align_y(alignment::Vertical::Center)
+    .into()
+}
+
+/// The tags: those the fields give (gray, nothing to remove), those the user
+/// added (outlined, with a cross), the field for a new one and a note.
+fn tags_block<'a>(values: &'a Form, lang: Language, palette: &Palette) -> Element<'a, Message> {
+    let automatic = values
+        .automatic_tags()
+        .into_iter()
+        .filter(|tag| !values.tags.contains(tag))
+        .map(|tag| kit::chip(&tag, false, palette))
+        .collect();
+    let own = values
+        .tags
+        .iter()
+        .map(|tag| {
+            kit::removable_chip(
+                tag,
+                send(ReviewListMessage::RemoveTag(tag.clone())),
+                palette,
+            )
+        })
+        .collect();
+    let input = kit::text_field(
+        lang.text(Msg::ReviewListTagsAdd),
+        &values.tag_input,
+        TAG_INPUT_ID,
+        Some(|typed| send(ReviewListMessage::FieldChanged(FormField::TagInput, typed))),
+        send(ReviewListMessage::AddTag),
+        palette,
+    );
+    column![
+        paragraph(lang.text(Msg::ReviewListFieldTags).to_owned(), palette),
+        tag_row(Msg::ReviewListTagsAutomatic, automatic, lang, palette),
+        tag_row(Msg::ReviewListTagsOwn, own, lang, palette),
+        input,
+        dim(lang.text(Msg::ReviewListTagsNote), palette),
+    ]
+    .spacing(spacing::XS)
+    .into()
+}
+
 /// The fields in groups: who, what, when, where.
 fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element<'a, Message> {
     let values = state.form();
@@ -482,6 +551,12 @@ fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element
             lang.text(Msg::ReviewListFieldSender),
             origin_of(Field::Sender),
             text_field(FormField::Sender, SENDER_ID, None, &values.sender),
+            palette,
+        ),
+        field_row(
+            lang.text(Msg::ReviewListFieldRecipient),
+            origin_of(Field::Recipient),
+            text_field(FormField::Recipient, RECIPIENT_ID, None, &values.recipient),
             palette,
         ),
         group_heading(Msg::ReviewListGroupWhat, lang, palette),
@@ -508,17 +583,7 @@ fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element
             ),
             palette,
         ),
-        field_row(
-            lang.text(Msg::ReviewListFieldTags),
-            None,
-            text_field(
-                FormField::Tags,
-                TAGS_ID,
-                Some(Msg::ReviewListHintTags),
-                &values.tags,
-            ),
-            palette,
-        ),
+        tags_block(values, lang, palette),
         group_heading(Msg::ReviewListGroupWhen, lang, palette),
         field_row(
             lang.text(Msg::ReviewListFieldDate),
@@ -841,11 +906,12 @@ fn problem_text(problem: &Problem, lang: Language) -> String {
 pub fn field_id(field: FormField) -> &'static str {
     match field {
         FormField::Sender => SENDER_ID,
+        FormField::Recipient => RECIPIENT_ID,
         FormField::Kind => KIND_ID,
         FormField::Date => DATE_ID,
         FormField::Number => NUMBER_ID,
         FormField::Amount => AMOUNT_ID,
-        FormField::Tags => TAGS_ID,
+        FormField::TagInput => TAG_INPUT_ID,
         FormField::Pattern => PATTERN_ID,
     }
 }

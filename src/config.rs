@@ -18,6 +18,7 @@ use std::ops::Range;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
+use ncrs_index::iban_is_valid;
 use ncrs_intake::{pattern_is_valid, pattern_without_tax_context, LocationMode};
 use ncrs_pipeline::Load;
 use serde::de::{Deserializer, Error as _, MapAccess, SeqAccess, Visitor};
@@ -168,6 +169,14 @@ pub struct FilingSection {
     /// Checked by `resolve_filing`: a pattern Hermes cannot render is ignored.
     #[serde(default)]
     pub default_pattern: Option<String>,
+    /// Checked by `resolve_filing`: empty entries are dropped.
+    #[serde(default)]
+    pub own_names: Vec<String>,
+    /// Checked by `resolve_filing`: an entry that is no IBAN is dropped.
+    #[serde(default)]
+    pub own_ibans: Vec<String>,
+    #[serde(default)]
+    pub own_tax_ids: Vec<String>,
 }
 
 /// The `[modules.filing.ai]` section, unchecked.
@@ -287,6 +296,10 @@ pub struct Filing {
     /// The one pattern proposed for documents no rule covers, instead of the
     /// built-in ones; only ever a pattern `pattern_is_valid` accepts.
     pub default_pattern: Option<String>,
+    /// Names and companies of the user; never taken for a sender.
+    pub own_names: Vec<String>,
+    pub own_ibans: Vec<String>,
+    pub own_tax_ids: Vec<String>,
 }
 
 /// A location with an expanded, absolute, `..`-free path. Not looked up on
@@ -1216,6 +1229,18 @@ fn without_retired_placeholders(pattern: &str) -> String {
     }
 }
 
+/// Trimmed, without empty or repeated entries and without those `is_valid`
+/// refuses.
+fn own_entries(entries: &[String], is_valid: impl Fn(&str) -> bool) -> Vec<String> {
+    let mut kept: Vec<String> = Vec::new();
+    for entry in entries.iter().map(|entry| entry.trim()) {
+        if !entry.is_empty() && is_valid(entry) && !kept.iter().any(|known| known == entry) {
+            kept.push(entry.to_owned());
+        }
+    }
+    kept
+}
+
 /// Text rules only, no file system access: a dead mount must not block the
 /// start or cost the user the rest of the config.
 fn resolve_filing(section: &FilingSection, home: Option<&Path>) -> Result<Filing, FilingError> {
@@ -1230,6 +1255,9 @@ fn resolve_filing(section: &FilingSection, home: Option<&Path>) -> Result<Filing
             .map(str::trim)
             .map(without_retired_placeholders)
             .filter(|pattern| pattern_is_valid(pattern)),
+        own_names: OwnDetail::Names.entries_in(section),
+        own_ibans: OwnDetail::Ibans.entries_in(section),
+        own_tax_ids: OwnDetail::TaxIds.entries_in(section),
     };
     let Some(listed) = &section.locations else {
         return Ok(filing);
@@ -1567,6 +1595,51 @@ fn default_pattern_setting(pattern: Option<&str>) -> Setting {
     }
 }
 
+/// The lists of what is the user's own in `[modules.filing]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum OwnDetail {
+    Names,
+    Ibans,
+    TaxIds,
+}
+
+impl OwnDetail {
+    /// Whether the loader keeps `entry` (trimmed): only an IBAN is checked.
+    pub fn accepts(self, entry: &str) -> bool {
+        match self {
+            Self::Ibans => iban_is_valid(entry),
+            Self::Names | Self::TaxIds => true,
+        }
+    }
+
+    /// The entries the file gives for this list, as the loader keeps them.
+    pub fn entries_in(self, section: &FilingSection) -> Vec<String> {
+        let listed = match self {
+            Self::Names => &section.own_names,
+            Self::Ibans => &section.own_ibans,
+            Self::TaxIds => &section.own_tax_ids,
+        };
+        own_entries(listed, |entry| self.accepts(entry))
+    }
+
+    fn key(self) -> &'static str {
+        match self {
+            Self::Names => "own_names",
+            Self::Ibans => "own_ibans",
+            Self::TaxIds => "own_tax_ids",
+        }
+    }
+}
+
+fn own_detail_setting(detail: OwnDetail, entries: &[String]) -> Setting {
+    Setting {
+        tables: &[MODULES_TABLE, FILING_TABLE],
+        key: detail.key(),
+        value: (!entries.is_empty())
+            .then(|| toml_edit::Value::Array(entries.iter().map(String::as_str).collect())),
+    }
+}
+
 fn ai_enabled_setting(enabled: bool) -> Setting {
     Setting {
         tables: AI_TABLES,
@@ -1614,6 +1687,21 @@ pub fn write_default_pattern(
     write_setting(
         path,
         default_pattern_setting(pattern.map(str::trim)),
+        home_from_env().as_deref(),
+    )
+}
+
+/// Sets one list of the user's own details in `[modules.filing]`, or drops the
+/// line for an empty list; same guarantees as [`write_theme_preset`]. The
+/// loader drops what is not valid, so a caller checks an IBAN first.
+pub fn write_own_details(
+    path: &Path,
+    detail: OwnDetail,
+    entries: &[String],
+) -> Result<Config, FilingWriteError> {
+    write_setting(
+        path,
+        own_detail_setting(detail, entries),
         home_from_env().as_deref(),
     )
 }
@@ -2437,6 +2525,52 @@ mod tests {
             default_pattern_of("[modules.filing]\ndefault_pattern = \"{tax_context}\"\n"),
             Some(ncrs_intake::DEFAULT_PATTERNS[0].to_owned())
         );
+    }
+
+    const VALID_IBAN: &str = "DE89 3704 0044 0532 0130 00";
+
+    #[test]
+    fn the_own_details_are_read_without_empty_repeated_or_invalid_entries() {
+        let text = format!(
+            "[modules.filing]\nown_names = [\" Max Muster \", \"\", \"Max Muster\", \"Muster GmbH\"]\nown_ibans = [\"{VALID_IBAN}\", \"DE00 1234\", \" \"]\nown_tax_ids = [\"98/765/43210\", \"\"]\n"
+        );
+
+        let filing = load_filing(&text, None).unwrap().filing;
+
+        assert_eq!(filing.own_names, ["Max Muster", "Muster GmbH"]);
+        assert_eq!(filing.own_ibans, [VALID_IBAN]);
+        assert_eq!(filing.own_tax_ids, ["98/765/43210"]);
+        assert!(load_filing("[modules.filing]\n", None)
+            .unwrap()
+            .filing
+            .own_names
+            .is_empty());
+    }
+
+    #[test]
+    fn the_own_details_are_written_and_dropped_keeping_the_rest() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "version = 1\n# my note\nlang = \"en\"\n\n[modules.filing]\nenabled = true\n",
+        )
+        .unwrap();
+        let names = vec!["Max Muster".to_owned(), "Muster GmbH".to_owned()];
+
+        let written = write_own_details(&path, OwnDetail::Names, &names).unwrap();
+        let with_iban =
+            write_own_details(&path, OwnDetail::Ibans, &[VALID_IBAN.to_owned()]).unwrap();
+
+        assert_eq!(written.filing.own_names, names);
+        assert_eq!(with_iban.filing.own_names, names);
+        assert_eq!(with_iban.filing.own_ibans, [VALID_IBAN]);
+        let dropped = write_own_details(&path, OwnDetail::Names, &[]).unwrap();
+        assert!(dropped.filing.own_names.is_empty());
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("# my note"));
+        assert!(text.contains("enabled = true"));
+        assert!(!text.contains("own_names"));
     }
 
     #[test]

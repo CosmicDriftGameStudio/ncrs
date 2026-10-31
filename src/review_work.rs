@@ -321,6 +321,7 @@ fn with_planned_origins(
 fn same_value(left: &DocumentFields, right: &DocumentFields, field: Field) -> bool {
     match field {
         Field::Sender => left.sender == right.sender,
+        Field::Recipient => left.recipient == right.recipient,
         Field::Kind => left.kind == right.kind,
         Field::Date => left.date == right.date,
         Field::Number => left.number == right.number,

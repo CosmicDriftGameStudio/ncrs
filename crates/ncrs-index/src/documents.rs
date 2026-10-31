@@ -14,7 +14,7 @@ use crate::names::{name_id, optional_name_id, NameTable};
 
 pub const DOCUMENT_COLUMNS: &str = "SELECT d.id, d.hash, d.path, d.source, d.received_at, d.status,
         s.name, k.name, d.document_date, d.document_number,
-        d.amount_minor, d.currency, d.file_size, d.file_mtime, d.missing_since
+        d.amount_minor, d.currency, d.file_size, d.file_mtime, d.missing_since, d.recipient
     FROM document d
     LEFT JOIN sender s ON s.id = d.sender_id
     LEFT JOIN document_kind k ON k.id = d.kind_id";
@@ -36,6 +36,7 @@ pub struct DocumentRow {
     file_size: Option<i64>,
     file_mtime: Option<i64>,
     missing_since: Option<i64>,
+    recipient: Option<String>,
 }
 
 impl DocumentRow {
@@ -60,6 +61,7 @@ impl DocumentRow {
             file_size: row.get(12)?,
             file_mtime: row.get(13)?,
             missing_since: row.get(14)?,
+            recipient: row.get(15)?,
         })
     }
 
@@ -80,6 +82,7 @@ impl DocumentRow {
             status: DocumentStatus::parse(&self.status)?,
             fields: DocumentFields {
                 sender: self.sender,
+                recipient: self.recipient,
                 kind: self.kind,
                 date: self.date.as_deref().map(date_from_column).transpose()?,
                 number: self.number,
@@ -176,7 +179,7 @@ impl Index {
         let stored = tx
             .query_row(
                 "SELECT sender_id, kind_id, document_date, document_number,
-                     amount_minor, currency
+                     amount_minor, currency, recipient
                  FROM document WHERE id = ?1",
                 [id.get()],
                 StoredFields::read,
@@ -197,6 +200,11 @@ impl Index {
                 stored.sender_id != sender_id,
                 sender_id.is_some(),
             ),
+            (
+                Field::Recipient,
+                stored.recipient != fields.recipient,
+                fields.recipient.is_some(),
+            ),
             (Field::Kind, stored.kind_id != kind_id, kind_id.is_some()),
             (Field::Date, stored.date != date, date.is_some()),
             (
@@ -212,7 +220,8 @@ impl Index {
         ];
         tx.execute(
             "UPDATE document SET sender_id = ?2, kind_id = ?3,
-                 document_date = ?4, document_number = ?5, amount_minor = ?6, currency = ?7
+                 document_date = ?4, document_number = ?5, amount_minor = ?6, currency = ?7,
+                 recipient = ?8
              WHERE id = ?1",
             params![
                 id.get(),
@@ -222,6 +231,7 @@ impl Index {
                 fields.number,
                 amount_minor,
                 currency,
+                fields.recipient,
             ],
         )?;
         for (field, changed, has_value) in changes {
@@ -233,12 +243,15 @@ impl Index {
             "DELETE FROM document_tag WHERE document_id = ?1",
             [id.get()],
         )?;
-        for tag in &fields.tags {
-            let tag_id = name_id(&tx, NameTable::Tag, tag)?;
-            tx.execute(
-                "INSERT OR IGNORE INTO document_tag (document_id, tag_id) VALUES (?1, ?2)",
-                [id.get(), tag_id],
-            )?;
+        for (tags, automatic) in [(fields.own_tags(), 0), (fields.automatic_tags(), 1)] {
+            for tag in &tags {
+                let tag_id = name_id(&tx, NameTable::Tag, tag)?;
+                tx.execute(
+                    "INSERT OR IGNORE INTO document_tag (document_id, tag_id, automatic)
+                     VALUES (?1, ?2, ?3)",
+                    [id.get(), tag_id, automatic],
+                )?;
+            }
         }
         tx.commit()?;
         Ok(())
@@ -408,7 +421,7 @@ impl Index {
     pub fn document_tags(&self, id: i64) -> Result<BTreeSet<String>, IndexError> {
         let mut statement = self.connection().prepare(
             "SELECT t.name FROM document_tag dt JOIN tag t ON t.id = dt.tag_id
-             WHERE dt.document_id = ?1",
+             WHERE dt.document_id = ?1 AND dt.automatic = 0",
         )?;
         let tags = statement
             .query_map([id], |row| row.get(0))?
@@ -424,6 +437,7 @@ struct StoredFields {
     number: Option<String>,
     amount_minor: Option<i64>,
     currency: Option<String>,
+    recipient: Option<String>,
 }
 
 impl StoredFields {
@@ -435,6 +449,7 @@ impl StoredFields {
             number: row.get(3)?,
             amount_minor: row.get(4)?,
             currency: row.get(5)?,
+            recipient: row.get(6)?,
         })
     }
 }
@@ -575,6 +590,7 @@ mod tests {
                 minor_units: 12_345,
                 currency: Currency::new("EUR").unwrap(),
             }),
+            recipient: Some("Erika Beispiel".to_owned()),
             tags: BTreeSet::from(["services".to_owned(), "2026".to_owned()]),
         };
         index
@@ -682,6 +698,107 @@ mod tests {
             .unwrap();
 
         assert_eq!(index.document(id).unwrap().unwrap().fields, only_b);
+    }
+
+    fn tag_rows(index: &Index, id: DocumentId) -> Vec<(String, i64)> {
+        let mut statement = index
+            .connection()
+            .prepare(
+                "SELECT t.name, dt.automatic FROM document_tag dt
+                 JOIN tag t ON t.id = dt.tag_id WHERE dt.document_id = ?1 ORDER BY t.name",
+            )
+            .unwrap();
+        statement
+            .query_map([id.get()], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+
+    fn invoice_of(sender: &str, own_tags: &[&str]) -> DocumentFields {
+        DocumentFields {
+            sender: Some(sender.to_owned()),
+            kind: Some("Rechnung".to_owned()),
+            date: NaiveDate::from_ymd_opt(2026, 2, 28),
+            tags: own_tags.iter().map(|tag| (*tag).to_owned()).collect(),
+            ..DocumentFields::default()
+        }
+    }
+
+    #[test]
+    fn automatic_tags_follow_a_field_change() {
+        let (_dir, mut index) = encrypted_index();
+        let id = index.insert_document(&new_document(1)).unwrap();
+        index
+            .set_document_fields(id, &invoice_of("Firma A", &[]), |_| FieldOrigin::Unknown)
+            .unwrap();
+        assert_eq!(
+            tag_rows(&index, id),
+            vec![
+                ("2026".to_owned(), 1),
+                ("firma-a".to_owned(), 1),
+                ("rechnung".to_owned(), 1)
+            ]
+        );
+
+        index
+            .set_document_fields(id, &invoice_of("Firma B", &[]), |_| FieldOrigin::Unknown)
+            .unwrap();
+
+        let names: Vec<String> = tag_rows(&index, id).into_iter().map(|row| row.0).collect();
+        assert_eq!(names, ["2026", "firma-b", "rechnung"]);
+    }
+
+    #[test]
+    fn own_tags_survive_a_rewrite_and_are_the_only_ones_read() {
+        let (_dir, mut index) = encrypted_index();
+        let id = index.insert_document(&new_document(1)).unwrap();
+        let fields = invoice_of("Firma A", &["Steuer"]);
+        index
+            .set_document_fields(id, &fields, |_| FieldOrigin::Unknown)
+            .unwrap();
+        index
+            .set_document_fields(id, &fields, |_| FieldOrigin::Unknown)
+            .unwrap();
+
+        let read = index.document(id).unwrap().unwrap().fields;
+
+        assert_eq!(read.tags, BTreeSet::from(["steuer".to_owned()]));
+        assert!(tag_rows(&index, id).contains(&("steuer".to_owned(), 0)));
+    }
+
+    #[test]
+    fn an_own_tag_equal_to_an_automatic_one_stays_own() {
+        let (_dir, mut index) = encrypted_index();
+        let id = index.insert_document(&new_document(1)).unwrap();
+        index
+            .set_document_fields(id, &invoice_of("Firma A", &["Rechnung"]), |_| {
+                FieldOrigin::Unknown
+            })
+            .unwrap();
+
+        assert!(tag_rows(&index, id).contains(&("rechnung".to_owned(), 0)));
+        assert_eq!(
+            index.document(id).unwrap().unwrap().fields.tags,
+            BTreeSet::from(["rechnung".to_owned()])
+        );
+    }
+
+    #[test]
+    fn a_changed_recipient_gets_the_origin_given() {
+        let (_dir, mut index) = encrypted_index();
+        let id = index.insert_document(&new_document(1)).unwrap();
+        let fields = DocumentFields {
+            recipient: Some("Erika Beispiel".to_owned()),
+            ..DocumentFields::default()
+        };
+        index
+            .set_document_fields(id, &fields, |_| FieldOrigin::AddressBlock)
+            .unwrap();
+
+        let origins = index.field_origins(id).unwrap();
+
+        assert_eq!(origins.of(Field::Recipient), FieldOrigin::AddressBlock);
     }
 
     #[test]
@@ -844,6 +961,7 @@ mod tests {
     fn all_fields() -> DocumentFields {
         DocumentFields {
             sender: Some("Company A".to_owned()),
+            recipient: Some("Erika Beispiel".to_owned()),
             kind: Some("Invoice".to_owned()),
             date: NaiveDate::from_ymd_opt(2026, 2, 28),
             number: Some("4711".to_owned()),
@@ -868,11 +986,11 @@ mod tests {
         let (_dir, mut index) = encrypted_index();
         let id = index.insert_document(&new_document(1)).unwrap();
 
-        assert_eq!(all_origins(&index, id), [const { FieldOrigin::Unknown }; 5]);
+        assert_eq!(all_origins(&index, id), [const { FieldOrigin::Unknown }; 6]);
         index
             .set_document_fields(id, &all_fields(), |_| FieldOrigin::Unknown)
             .unwrap();
-        assert_eq!(all_origins(&index, id), [const { FieldOrigin::Unknown }; 5]);
+        assert_eq!(all_origins(&index, id), [const { FieldOrigin::Unknown }; 6]);
     }
 
     #[test]
@@ -905,6 +1023,7 @@ mod tests {
         index
             .set_document_fields(id, &all_fields(), |field| match field {
                 Field::Sender => FieldOrigin::Rule(Some(rule)),
+                Field::Recipient => FieldOrigin::AddressBlock,
                 Field::Kind => FieldOrigin::Ai {
                     confidence_percent: 0,
                 },
@@ -920,6 +1039,7 @@ mod tests {
             all_origins(&index, id),
             [
                 FieldOrigin::Rule(Some(rule)),
+                FieldOrigin::AddressBlock,
                 FieldOrigin::Ai {
                     confidence_percent: 0
                 },
@@ -958,6 +1078,7 @@ mod tests {
         assert_eq!(
             all_origins(&index, id),
             [
+                FieldOrigin::Manual,
                 FieldOrigin::Manual,
                 FieldOrigin::Manual,
                 FieldOrigin::Manual,
@@ -1022,7 +1143,7 @@ mod tests {
 
         assert_eq!(
             all_origins(&index, id),
-            [const { FieldOrigin::Rule(None) }; 5]
+            [const { FieldOrigin::Rule(None) }; 6]
         );
     }
 
@@ -1115,7 +1236,7 @@ mod tests {
                 .unwrap()
         };
         assert_eq!(stored("sender"), vec!["Ärztekammer".to_owned()]);
-        assert_eq!(stored("tag"), vec!["Ärztekammer".to_owned()]);
+        assert_eq!(stored("tag"), vec!["ärztekammer".to_owned()]);
         let last = index.document(DocumentId::new(3)).unwrap().unwrap();
         assert_eq!(last.fields.sender.as_deref(), Some("Ärztekammer"));
     }

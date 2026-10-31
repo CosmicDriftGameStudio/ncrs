@@ -504,6 +504,21 @@ pub fn chip(palette: &Palette, on_fill: bool) -> impl Fn(&Theme) -> container::S
 }
 
 /// How strongly the tint of a chip shows against its ground.
+/// A chip the user added himself: the tint of a chip with an accent outline.
+pub fn own_chip(palette: &Palette) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
+    move |_theme| container::Style {
+        text_color: Some(colors.text),
+        background: Some(colors.dim_text.scale_alpha(CHIP_TINT_ALPHA).into()),
+        border: Border {
+            color: colors.accent,
+            width: spacing::BORDER_WIDTH,
+            radius: radius::CHIP.into(),
+        },
+        ..container::Style::default()
+    }
+}
+
 const CHIP_TINT_ALPHA: f32 = 0.25;
 
 /// One option of a segmented control: flat, the chosen one outlined in the

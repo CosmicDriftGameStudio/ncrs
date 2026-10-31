@@ -8,7 +8,7 @@ use std::path::Path;
 
 use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::text::Wrapping;
-use iced::widget::{button, column, container, row, scrollable, text, Column};
+use iced::widget::{button, column, container, row, scrollable, text, Column, Row};
 use iced::{alignment, Color, Element, Font, Length, Padding};
 
 use super::format::ellipsize_middle;
@@ -21,7 +21,7 @@ use super::theme::{self, font_size, size, spacing};
 use crate::app::fill_template;
 use crate::config::{
     check_ai_endpoint, AiEndpointProblem, AiProviderChoice, AiProviderName, AiSection, Config,
-    ConfigError, Filing, ProgramLine, ProgramLineProblem, ServerEntry,
+    ConfigError, Filing, OwnDetail, ProgramLine, ProgramLineProblem, ServerEntry,
 };
 use crate::filing_setup::shown_path;
 use crate::fs::OpenKind;
@@ -49,6 +49,9 @@ const EDITOR_FIELD_ID: &str = "settings-program-edit";
 const THREADS_FIELD_ID: &str = "settings-ai-threads";
 const ENDPOINT_FIELD_ID: &str = "settings-ai-endpoint";
 const MODEL_FIELD_ID: &str = "settings-ai-model";
+const OWN_NAMES_FIELD_ID: &str = "settings-own-names";
+const OWN_IBANS_FIELD_ID: &str = "settings-own-ibans";
+const OWN_TAX_IDS_FIELD_ID: &str = "settings-own-tax-ids";
 const SWATCH_SIZE: f32 = 16.0;
 
 /// How many characters of the theme file name fit beside its button.
@@ -99,6 +102,7 @@ pub enum FieldProblem {
     Endpoint(AiEndpointProblem),
     /// Empty, but an own server needs it.
     Needed,
+    NotAnIban,
     /// The write failed; the text is already worded.
     Write(String),
 }
@@ -192,7 +196,15 @@ impl SettingsState {
                 .unwrap_or_default(),
             SettingField::AiEndpoint => ai_text(ai.and_then(|section| section.endpoint.as_ref())),
             SettingField::AiModel => ai_text(ai.and_then(|section| section.model.as_ref())),
+            SettingField::Own(_) => String::new(),
         }
+    }
+
+    /// What the file lists for `detail`.
+    fn own_entries(&self, detail: OwnDetail) -> Vec<String> {
+        self.config()
+            .map(|config| detail.entries_in(&config.modules.filing))
+            .unwrap_or_default()
     }
 
     /// What the field shows: the draft, else the value in the file.
@@ -220,6 +232,14 @@ impl SettingsState {
             SettingField::Color(role) => color_change(role, text.trim()),
             SettingField::AiThreads => threads_change(text.trim()),
             SettingField::AiEndpoint | SettingField::AiModel => self.http_change(),
+            SettingField::Own(detail) => {
+                let entry = text.trim();
+                if entry.is_empty() {
+                    self.drafts.remove(&field);
+                    return None;
+                }
+                own_detail_change(detail, entry, self.own_entries(detail))
+            }
         };
         match checked {
             Ok(change) => Some(change),
@@ -265,7 +285,7 @@ impl SettingsState {
             SettingField::AiEndpoint | SettingField::AiModel => {
                 self.provider() == AiProviderName::Http
             }
-            SettingField::Program(_) | SettingField::Color(_) => true,
+            SettingField::Program(_) | SettingField::Color(_) | SettingField::Own(_) => true,
         }
     }
 
@@ -374,6 +394,7 @@ fn fields_of(change: &SettingChange) -> Vec<SettingField> {
         | SettingChange::AiEnabled(_)
         | SettingChange::VscodeTheme(_)
         | SettingChange::Servers(_) => Vec::new(),
+        SettingChange::OwnDetails { detail, .. } => vec![SettingField::Own(*detail)],
     }
 }
 
@@ -399,6 +420,18 @@ fn color_change(role: ColorRole, text: &str) -> Checked {
         role,
         color: (!text.is_empty()).then(|| text.to_owned()),
     })
+}
+
+/// `entry` joins the entries of the list; one that is there already changes
+/// nothing but is still written, which leaves the list as it is.
+fn own_detail_change(detail: OwnDetail, entry: &str, mut entries: Vec<String>) -> Checked {
+    if !detail.accepts(entry) {
+        return Err((SettingField::Own(detail), FieldProblem::NotAnIban));
+    }
+    if !entries.iter().any(|known| known == entry) {
+        entries.push(entry.to_owned());
+    }
+    Ok(SettingChange::OwnDetails { detail, entries })
 }
 
 fn threads_change(text: &str) -> Checked {
@@ -508,6 +541,7 @@ fn problem_text(problem: &FieldProblem, lang: Language) -> String {
         }
         FieldProblem::Endpoint(AiEndpointProblem::NotLocal) => Msg::SettingsProblemEndpointNotLocal,
         FieldProblem::Needed => Msg::SettingsProblemNeeded,
+        FieldProblem::NotAnIban => Msg::SettingsProblemIban,
         FieldProblem::Write(failure) => return failure.clone(),
     };
     lang.text(message).to_owned()
@@ -1189,6 +1223,67 @@ fn provider_rows<'a>(view: &SettingsView<'a>) -> Vec<SettingRow<'a>> {
     rows
 }
 
+/// The list of one own detail as chips with a cross, and the field for the
+/// next entry.
+fn own_detail_row<'a>(detail: OwnDetail, view: &SettingsView<'a>) -> SettingRow<'a> {
+    let lang = view.lang;
+    let field = SettingField::Own(detail);
+    let (label, placeholder, id) = match detail {
+        OwnDetail::Names => (
+            Msg::SettingsRowOwnNames,
+            Msg::SettingsOwnNamesPlaceholder,
+            OWN_NAMES_FIELD_ID,
+        ),
+        OwnDetail::Ibans => (
+            Msg::SettingsRowOwnIbans,
+            Msg::SettingsOwnIbansPlaceholder,
+            OWN_IBANS_FIELD_ID,
+        ),
+        OwnDetail::TaxIds => (
+            Msg::SettingsRowOwnTaxIds,
+            Msg::SettingsOwnTaxIdsPlaceholder,
+            OWN_TAX_IDS_FIELD_ID,
+        ),
+    };
+    let entries = view.state.own_entries(detail);
+    let chips: Vec<Element<'a, Message>> = entries
+        .iter()
+        .map(|entry| {
+            let remaining = entries
+                .iter()
+                .filter(|other| *other != entry)
+                .cloned()
+                .collect();
+            kit::removable_chip(
+                entry,
+                change(SettingChange::OwnDetails {
+                    detail,
+                    entries: remaining,
+                }),
+                view.palette,
+            )
+        })
+        .collect();
+    let input = setting_field(field, id, lang.text(placeholder), true, view);
+    let control: Element<'a, Message> = if chips.is_empty() {
+        input
+    } else {
+        column![Row::with_children(chips).spacing(spacing::XS).wrap(), input]
+            .spacing(spacing::XS)
+            .into()
+    };
+    SettingRow {
+        label: lang.text(label).to_owned(),
+        theme_name: None,
+        config_key: None,
+        description: None,
+        problem: field_problem(field, view),
+        control,
+        control_width: Some(SETTINGS_WIDE_CONTROL_WIDTH),
+        in_command_list: true,
+    }
+}
+
 fn hermes_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     let lang = view.lang;
     let mut advanced_rows = ocr_rows(view);
@@ -1199,6 +1294,15 @@ fn hermes_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
             advanced: false,
             title: String::new(),
             rows: hermes_main_rows(view),
+        },
+        Group {
+            intro: Some(lang.text(Msg::SettingsGroupOwnDetailsIntro).to_owned()),
+            advanced: false,
+            title: lang.text(Msg::SettingsGroupOwnDetails).to_owned(),
+            rows: [OwnDetail::Names, OwnDetail::Ibans, OwnDetail::TaxIds]
+                .into_iter()
+                .map(|detail| own_detail_row(detail, view))
+                .collect(),
         },
         Group {
             intro: None,
@@ -1831,6 +1935,40 @@ mod tests {
         );
         state.edit(accent, "#ff0".to_owned());
         assert!(!state.problems.contains_key(&accent));
+    }
+
+    #[test]
+    fn an_own_detail_joins_the_list_of_the_file_and_a_wrong_iban_is_refused() {
+        let mut state = state_of("[modules.filing]\nown_names = [\"Max Muster\"]\n");
+        let names = SettingField::Own(OwnDetail::Names);
+
+        assert_eq!(
+            typed(&mut state, names, " Muster GmbH "),
+            Some(SettingChange::OwnDetails {
+                detail: OwnDetail::Names,
+                entries: vec!["Max Muster".to_owned(), "Muster GmbH".to_owned()],
+            })
+        );
+        assert_eq!(
+            typed(&mut state, names, "Max Muster"),
+            Some(SettingChange::OwnDetails {
+                detail: OwnDetail::Names,
+                entries: vec!["Max Muster".to_owned()],
+            })
+        );
+        assert_eq!(typed(&mut state, names, "  "), None);
+        assert!(!state.drafts.contains_key(&names));
+
+        let ibans = SettingField::Own(OwnDetail::Ibans);
+        assert_eq!(typed(&mut state, ibans, "DE00 1234"), None);
+        assert_eq!(state.problems.get(&ibans), Some(&FieldProblem::NotAnIban));
+        assert_eq!(
+            typed(&mut state, ibans, "DE89 3704 0044 0532 0130 00"),
+            Some(SettingChange::OwnDetails {
+                detail: OwnDetail::Ibans,
+                entries: vec!["DE89 3704 0044 0532 0130 00".to_owned()],
+            })
+        );
     }
 
     #[test]

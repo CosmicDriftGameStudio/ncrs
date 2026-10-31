@@ -1066,6 +1066,9 @@ fn write_setting_change(
         SettingChange::Color { role, color } => config::write_color(path, role, color.as_deref()),
         SettingChange::AiProvider(choice) => config::write_ai_provider(path, &choice),
         SettingChange::Servers(servers) => config::write_servers(path, &servers),
+        SettingChange::OwnDetails { detail, entries } => {
+            config::write_own_details(path, detail, &entries)
+        }
     };
     written.map(Box::new)
 }
@@ -10686,6 +10689,18 @@ impl App {
                 }
                 Task::none()
             }
+            ReviewListMessage::AddTag => {
+                if let Some(view) = self.review_list.as_mut() {
+                    view.add_tag();
+                }
+                Task::none()
+            }
+            ReviewListMessage::RemoveTag(tag) => {
+                if let Some(view) = self.review_list.as_mut() {
+                    view.remove_tag(&tag);
+                }
+                Task::none()
+            }
             ReviewListMessage::FocusField { backwards } => {
                 if backwards {
                     operation::focus_previous()
@@ -12649,6 +12664,15 @@ impl App {
                 if let Some(card) = self.ai_model.as_mut() {
                     card.set_outcome(outcome);
                 }
+                if matches!(applies, SavedFilingApplies::AtNextStart) {
+                    let notice = self.lang.text(Msg::SettingsSavedNextStart).to_owned();
+                    Task::batch([task, self.show_notice(notice)])
+                } else {
+                    task
+                }
+            }
+            SettingChange::OwnDetails { .. } => {
+                let (applies, task) = self.apply_ai_change(config.filing);
                 if matches!(applies, SavedFilingApplies::AtNextStart) {
                     let notice = self.lang.text(Msg::SettingsSavedNextStart).to_owned();
                     Task::batch([task, self.show_notice(notice)])
@@ -22313,6 +22337,9 @@ mod filing_tests {
             load: ncrs_pipeline::Load::default(),
             ai: crate::config::AiSetting::Off,
             default_pattern: None,
+            own_names: Vec::new(),
+            own_ibans: Vec::new(),
+            own_tax_ids: Vec::new(),
         };
 
         let (app, _task) = App::with_fixed_panels().with_filing(&off, Some(db.clone()), store);
@@ -22379,6 +22406,9 @@ mod filing_setup_tests {
             load: Load::default(),
             ai: crate::config::AiSetting::Off,
             default_pattern: None,
+            own_names: Vec::new(),
+            own_ibans: Vec::new(),
+            own_tax_ids: Vec::new(),
         }
     }
 
@@ -22724,6 +22754,9 @@ mod filing_setup_tests {
             load: Load::default(),
             ai: crate::config::AiSetting::Off,
             default_pattern: None,
+            own_names: Vec::new(),
+            own_ibans: Vec::new(),
+            own_tax_ids: Vec::new(),
         };
         let (empty, _empty_start) =
             App::with_fixed_panels().with_filing(&without_locations, None, store());

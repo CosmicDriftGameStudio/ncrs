@@ -6,8 +6,8 @@ use ncrs_ai::Provider;
 use ncrs_index::{DocumentStatus, Field, FieldOrigin, IndexError, ReviewReason};
 use ncrs_intake::text_is_readable;
 use ncrs_intake::{
-    detect_sender, plan, OwnIdentifiers, PlanInput, Planning, StabilityTracker, TextChain,
-    TextError,
+    detect_recipient, detect_sender, kind_from_heading, plan, OwnIdentifiers, PlanInput, Planning,
+    StabilityTracker, TextChain, TextError,
 };
 use ncrs_intake::{settle_location, take_in, IntakeError, Location, LocationMode, Outcome};
 
@@ -15,6 +15,15 @@ use crate::ai_step::AiStep;
 use crate::step::{resolve_reviews_of, with_index_value, IndexAccess, Item, Step, StepOutcome};
 
 pub const NO_INDEX: &str = "index not open";
+
+/// What belongs to the user and never to a sender.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OwnDetails {
+    /// The user's full name and the names of their companies.
+    pub names: Vec<String>,
+    pub ibans: Vec<String>,
+    pub tax_ids: Vec<String>,
+}
 
 /// The steps every file passes, in order. Steps that classify documents (text,
 /// OCR, rules, fields, filing) register before the review step. The AI step
@@ -24,7 +33,7 @@ pub fn intake_steps(
     index: Arc<dyn IndexAccess>,
     text: Arc<TextChain>,
     ai: Option<Arc<dyn Provider>>,
-    own_name: Option<String>,
+    own: OwnDetails,
 ) -> Vec<Box<dyn Step>> {
     let mut steps: Vec<Box<dyn Step>> = vec![
         Box::new(IntakeStep {
@@ -37,14 +46,14 @@ pub fn intake_steps(
         }),
         Box::new(RulesStep {
             index: Arc::clone(&index),
-            own_name: own_name.clone(),
+            own: own.clone(),
         }),
     ];
     if let Some(provider) = ai {
         steps.push(Box::new(AiStep::new(
             Arc::clone(&index),
             provider,
-            own_name,
+            own.names,
         )));
     }
     steps.push(Box::new(ReviewStep { index }));
@@ -172,7 +181,7 @@ impl Step for TextStep {
 #[derive(Debug)]
 struct RulesStep {
     index: Arc<dyn IndexAccess>,
-    own_name: Option<String>,
+    own: OwnDetails,
 }
 
 impl Step for RulesStep {
@@ -199,8 +208,28 @@ impl Step for RulesStep {
             }
             let rules = index.rules()?;
             let aliases = index.confirmed_sender_aliases()?;
+            let detected_recipient = document
+                .fields
+                .recipient
+                .is_none()
+                .then(|| detect_recipient(text))
+                .flatten();
+            let detected_kind = document
+                .fields
+                .kind
+                .is_none()
+                .then(|| kind_from_heading(text))
+                .flatten();
             let detection = if document.fields.sender.is_none() {
-                let own = OwnIdentifiers::from_names(self.own_name.as_deref());
+                let own = OwnIdentifiers::new(
+                    self.own.names.iter().map(String::as_str).chain(
+                        detected_recipient
+                            .as_deref()
+                            .or(document.fields.recipient.as_deref()),
+                    ),
+                    self.own.ibans.iter().map(String::as_str),
+                    self.own.tax_ids.iter().map(String::as_str),
+                );
                 Some(detect_sender(text, &aliases, &index.sender_names()?, &own))
             } else {
                 None
@@ -212,6 +241,12 @@ impl Step for RulesStep {
             let mut known = document.fields.clone();
             if detected_name.is_some() {
                 known.sender.clone_from(&detected_name);
+            }
+            if detected_recipient.is_some() {
+                known.recipient.clone_from(&detected_recipient);
+            }
+            if detected_kind.is_some() {
+                known.kind.clone_from(&detected_kind);
             }
             // Offered even when the plan ends in review: the user confirms
             // them from the alias list, not from this document.
@@ -240,12 +275,13 @@ impl Step for RulesStep {
             };
             if *found != document.fields {
                 let sender_was_detected = detected_name.is_some();
-                index.set_document_fields(id, found, |field| {
-                    if field == Field::Sender && sender_was_detected {
-                        FieldOrigin::Rule(None)
-                    } else {
-                        rule_origin.clone()
+                index.set_document_fields(id, found, |field| match field {
+                    Field::Sender if sender_was_detected => FieldOrigin::Rule(None),
+                    Field::Recipient if found.recipient == detected_recipient => {
+                        FieldOrigin::AddressBlock
                     }
+                    Field::Kind if found.kind == detected_kind => FieldOrigin::Heading,
+                    _ => rule_origin.clone(),
                 })?;
             }
             if matches!(planning, Planning::Plan(_)) {

@@ -101,25 +101,42 @@ pub struct SenderDetection {
     pub offers: Vec<AliasOffer>,
 }
 
-/// What belongs to the user, not to a sender: their own names stand in many
-/// letters and are neither detected nor offered as a name of a sender.
+/// What belongs to the user, not to a sender: it stands in many letters
+/// (direct debit notices, tax letters) and is neither detected nor offered.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct OwnIdentifiers {
+    ibans: Vec<String>,
+    tax_ids: Vec<String>,
     names: Vec<String>,
 }
 
 impl OwnIdentifiers {
-    pub fn from_names<'a>(names: impl IntoIterator<Item = &'a str>) -> Self {
-        Self {
-            names: names
+    pub fn new<'a>(
+        names: impl IntoIterator<Item = &'a str>,
+        ibans: impl IntoIterator<Item = &'a str>,
+        tax_ids: impl IntoIterator<Item = &'a str>,
+    ) -> Self {
+        let normalised = |kind: SenderAliasKind, values: Vec<&str>| {
+            values
                 .into_iter()
-                .map(|name| SenderAliasKind::Name.normalise(name))
-                .collect(),
+                .map(|value| kind.normalise(value))
+                .collect()
+        };
+        Self {
+            names: normalised(SenderAliasKind::Name, names.into_iter().collect()),
+            ibans: normalised(SenderAliasKind::Iban, ibans.into_iter().collect()),
+            tax_ids: normalised(SenderAliasKind::TaxId, tax_ids.into_iter().collect()),
         }
     }
 
-    fn holds_name(&self, normalised: &str) -> bool {
-        self.names.iter().any(|own| own == normalised)
+    fn holds(&self, kind: SenderAliasKind, normalised: &str) -> bool {
+        let known = match kind {
+            SenderAliasKind::Iban => &self.ibans,
+            SenderAliasKind::TaxId => &self.tax_ids,
+            SenderAliasKind::Name => &self.names,
+            SenderAliasKind::Domain => return false,
+        };
+        known.iter().any(|own| own == normalised)
     }
 }
 
@@ -139,13 +156,21 @@ struct Identifiers {
 }
 
 impl Identifiers {
-    /// Without freemail domains: they do not say who wrote the letter, whether
-    /// offered or already confirmed.
-    fn find(text: &str) -> Self {
+    /// Without what is the user's own and without freemail domains: neither
+    /// says who wrote the letter, whether offered or already confirmed.
+    fn find(text: &str, own: &OwnIdentifiers) -> Self {
         let lowered = text.to_lowercase();
+        let not_own =
+            |kind: SenderAliasKind| move |value: &String| !own.holds(kind, &kind.normalise(value));
         Self {
-            ibans: found_ibans(text),
-            tax_ids: found_tax_ids(text),
+            ibans: found_ibans(text)
+                .into_iter()
+                .filter(not_own(SenderAliasKind::Iban))
+                .collect(),
+            tax_ids: found_tax_ids(text)
+                .into_iter()
+                .filter(not_own(SenderAliasKind::TaxId))
+                .collect(),
             domains: domains_found(&EMAIL_ADDRESS, &lowered)
                 .into_iter()
                 .chain(domains_found(&WEB_DOMAIN, &lowered))
@@ -196,7 +221,7 @@ pub fn detect_sender(
     known_senders: &[String],
     own: &OwnIdentifiers,
 ) -> SenderDetection {
-    let identifiers = Identifiers::find(text);
+    let identifiers = Identifiers::find(text, own);
     // The recipient stands in the addressee block; it is never the sender.
     let addressee = addressee_block_lines(text).unwrap_or_default();
     let lines: Vec<&str> = text
@@ -272,7 +297,7 @@ fn offers_for(
     }
     offers.extend(
         name_variant_offer(sender, known_senders)
-            .filter(|offer| offer.kind != SenderAliasKind::Name || !own.holds_name(&offer.value)),
+            .filter(|offer| !own.holds(offer.kind, &offer.value)),
     );
     offers
 }
@@ -712,7 +737,16 @@ mod tests {
         );
     }
 
+    const OWN_IBAN: &str = "DE02 1203 0000 0000 2020 51";
     const SENDER_IBAN: &str = "DE89 3704 0044 0532 0130 00";
+
+    fn own_with_iban_and_tax_id() -> OwnIdentifiers {
+        OwnIdentifiers::new(
+            ["Erika Beispiel", "Max  Muster"],
+            ["de02 1203 0000 0000 2020 51"],
+            ["98/765/43210"],
+        )
+    }
 
     fn offered_values(detection: &SenderDetection) -> Vec<(SenderAliasKind, &str)> {
         detection
@@ -723,14 +757,16 @@ mod tests {
     }
 
     #[test]
-    fn a_freemail_address_is_not_offered_as_the_senders() {
-        let text = format!("Stadtwerke Musterstadt GmbH\nIBAN {SENDER_IBAN}\nkontakt@gmail.com\n");
+    fn the_users_own_iban_and_a_freemail_address_are_not_offered_as_the_senders() {
+        let text = format!(
+            "Stadtwerke Musterstadt GmbH\nIBAN {SENDER_IBAN}\nIhr Konto {OWN_IBAN}\nSteuernummer: 98/765/43210\nkontakt@gmail.com\n"
+        );
 
         let detection = detect_sender(
             &text,
             &SenderAliases::default(),
             &[],
-            &OwnIdentifiers::default(),
+            &own_with_iban_and_tax_id(),
         );
 
         assert_eq!(
@@ -772,10 +808,26 @@ mod tests {
     }
 
     #[test]
+    fn an_own_iban_never_detects_a_sender() {
+        let aliases = confirmed(&[(
+            SenderAliasKind::Iban,
+            "DE02120300000000202051",
+            "Kranich Versicherung AG",
+        )]);
+        let text = format!("Hallo\nLastschrift von {OWN_IBAN}\n");
+
+        let without_own = detect_sender(&text, &aliases, &[], &OwnIdentifiers::default());
+        let with_own = detect_sender(&text, &aliases, &[], &own_with_iban_and_tax_id());
+
+        assert!(without_own.sender.is_some());
+        assert_eq!(with_own.sender, None);
+    }
+
+    #[test]
     fn an_own_name_is_not_offered_as_a_name_variant_of_a_sender() {
         let text = "Max Muster GmbH\nRechnung\n";
         let known = vec!["Max".to_owned()];
-        let own = OwnIdentifiers::from_names(["Max Muster GmbH"]);
+        let own = OwnIdentifiers::new(["Max Muster GmbH"], [], []);
 
         let with_own = detect_sender(text, &SenderAliases::default(), &known, &own);
         let without_own = detect_sender(

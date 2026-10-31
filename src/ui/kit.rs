@@ -149,6 +149,32 @@ pub fn chip<'a, M: 'a>(label: &str, on_fill: bool, palette: &Palette) -> Element
     .into()
 }
 
+/// A chip the user can take away again: the label and a cross. The chip
+/// has an accent outline.
+pub fn removable_chip<'a>(
+    label: &str,
+    on_remove: Message,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let cross = widget_button(text("×").size(font_size::SMALL))
+        .padding([0.0, spacing::XS])
+        .on_press(on_remove)
+        .style(theme::close_button(palette));
+    container(
+        row![
+            text(label.to_owned())
+                .size(font_size::SMALL)
+                .wrapping(Wrapping::None),
+            cross
+        ]
+        .spacing(spacing::XS)
+        .align_y(alignment::Vertical::Center),
+    )
+    .padding([1.0, spacing::S])
+    .style(theme::own_chip(palette))
+    .into()
+}
+
 /// A key as a small outlined cap.
 pub fn key_cap<'a>(label: &str, palette: &Palette) -> Element<'a, Message> {
     cap(label, false, palette)

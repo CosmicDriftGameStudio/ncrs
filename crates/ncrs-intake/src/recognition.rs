@@ -17,6 +17,7 @@ use ncrs_index::{
 use tempfile::TempDir;
 
 use crate::filing_plan::{plan, PlanInput, Planning, FIELD_ORDER};
+use crate::recipient_detection::{detect_recipient, kind_from_heading};
 use crate::sender_detection::{detect_sender, OwnIdentifiers};
 
 const CORPUS_FOLDER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/recognition");
@@ -89,6 +90,7 @@ fn set_expected(fields: &mut DocumentFields, field: Field, value: &str) -> Resul
     }
     match field {
         Field::Sender => fields.sender = Some(value.to_owned()),
+        Field::Recipient => fields.recipient = Some(value.to_owned()),
         Field::Kind => fields.kind = Some(value.to_owned()),
         Field::Number => fields.number = Some(value.to_owned()),
         Field::Date => {
@@ -284,6 +286,10 @@ pub fn score_field(field: Field, expected: &DocumentFields, actual: &DocumentFie
             trimmed_lowercase(expected.sender.as_deref()),
             trimmed_lowercase(actual.sender.as_deref()),
         ),
+        Field::Recipient => score_values(
+            trimmed_lowercase(expected.recipient.as_deref()),
+            trimmed_lowercase(actual.recipient.as_deref()),
+        ),
         Field::Kind => score_values(
             trimmed_lowercase(expected.kind.as_deref()),
             trimmed_lowercase(actual.kind.as_deref()),
@@ -439,14 +445,23 @@ pub fn measure(
     mut fill_open_fields: impl FnMut(&CorpusDocument, &DocumentFields) -> Option<DocumentFields>,
 ) -> RecognitionReport {
     let sender_aliases = fixed_sender_aliases();
-    let own = OwnIdentifiers::from_names(["Frau Beispiel", "Ms Example"]);
     let results = corpus
         .iter()
         .map(|document| {
+            let recipient = detect_recipient(&document.text);
+            let own = OwnIdentifiers::new(
+                ["Frau Beispiel", "Ms Example"]
+                    .into_iter()
+                    .chain(recipient.as_deref()),
+                [],
+                [],
+            );
             let detected = DocumentFields {
                 sender: detect_sender(&document.text, &sender_aliases, &[], &own)
                     .sender
                     .map(|found| found.name),
+                recipient,
+                kind: kind_from_heading(&document.text),
                 ..DocumentFields::default()
             };
             let rules_planning = plan(

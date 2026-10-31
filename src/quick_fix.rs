@@ -83,6 +83,7 @@ pub fn field_to_fix(item: &ReviewItem) -> FormField {
     if let ReviewReason::MissingField(field) | ReviewReason::LowConfidence(field) = item.reason {
         match field {
             Field::Sender => return FormField::Sender,
+            Field::Recipient => return FormField::Recipient,
             Field::Kind => return FormField::Kind,
             Field::Date => return FormField::Date,
             Field::Number => return FormField::Number,
