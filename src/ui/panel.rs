@@ -500,14 +500,12 @@ fn file_row<'a, M: Clone + 'a>(
             .wrapping(text::Wrapping::None)
     };
 
-    // The chips keep their room; the name gives way first.
     let fitted = hermes.as_ref().map(|cell_of| {
         HermesCell::<M>::fit_tags(cell_of.tags(), cell_of.panel_width(), name.chars().count())
     });
-    let shown_name = match (&fitted, hermes.as_ref()) {
-        (Some(tags), Some(cell_of)) if !tags.chips.is_empty() => {
-            let room = HermesCell::<M>::name_room(tags, cell_of.panel_width());
-            format::ellipsize_middle(&name, room)
+    let shown_name = match hermes.as_ref() {
+        Some(cell_of) if cell_of.has_tags() => {
+            format::ellipsize_middle(&name, HermesCell::<M>::name_room(cell_of.panel_width()))
         }
         _ => name,
     };
@@ -558,13 +556,9 @@ const SUMMARY_GAP: f32 = 6.0;
 const ICON_COUNT_GAP: f32 = 2.0;
 const ROLE_TAG_FONT: f32 = 10.0;
 /// Room kept free beside the cells of a row, for borders and rounding.
-const NAME_SAFETY_MARGIN: f32 = 12.0;
+const NAME_SAFETY_MARGIN: f32 = 4.0;
 /// A name is never cut shorter than this, whatever the chips need.
 const MIN_NAME_CHARS: f32 = 8.0;
-/// A name keeps at least this many characters before a chip may take room.
-const NAME_CHARS_KEPT: usize = 12;
-/// A chip's label is proportional, narrower than the monospaced names.
-const CHIP_CHAR_WIDTH: f32 = 0.62;
 const NOT_COUNTED: &str = "…";
 
 /// What the Hermes column shows for one row. Built from lookups only, so
@@ -618,16 +612,22 @@ impl<'a, M: 'a> HermesCell<'a, M> {
         &self.tags
     }
 
+    fn has_tags(&self) -> bool {
+        !self.tags.chips.is_empty() || self.tags.more > 0
+    }
+
     const fn panel_width(&self) -> f32 {
         self.panel_width
     }
 
-    /// How many characters of the name fit beside the chips, in the width the
-    /// panel has. The font of the name is monospaced, so this is exact enough;
-    /// the row clips whatever is left over.
-    fn name_room(tags: &ShownTags, panel_width: f32) -> usize {
-        let left = Self::room_beside_name(panel_width) - Self::chips_width(tags);
-        (left / (font_size::FILE * DIGIT_WIDTH_PER_SIZE)).max(MIN_NAME_CHARS) as usize
+    /// How many characters of the name fit in the row. The font of the name
+    /// is monospaced, so this is exact enough; the row clips what is left.
+    fn name_room(panel_width: f32) -> usize {
+        (Self::room_beside_name(panel_width) / Self::name_char_width()).max(MIN_NAME_CHARS) as usize
+    }
+
+    const fn name_char_width() -> f32 {
+        font_size::FILE * DIGIT_WIDTH_PER_SIZE
     }
 
     fn room_beside_name(panel_width: f32) -> f32 {
@@ -640,38 +640,41 @@ impl<'a, M: 'a> HermesCell<'a, M> {
         panel_width - fixed
     }
 
-    fn chips_width(tags: &ShownTags) -> f32 {
-        let chip_width = |label: &str| {
-            label.chars().count() as f32 * ROLE_TAG_FONT * CHIP_CHAR_WIDTH
-                + 2.0 * (spacing::XS + spacing::BORDER_WIDTH)
-                + spacing::XS
-        };
-        let chips: f32 = tags.chips.iter().map(|chip| chip_width(&chip.tag)).sum();
-        let more = if tags.more > 0 {
-            chip_width(&format!("+{}", tags.more))
-        } else {
-            0.0
-        };
-        chips + more
+    fn chip_width(label: &str) -> f32 {
+        format::estimated_width(label, ROLE_TAG_FONT)
+            + 2.0 * (spacing::XS + spacing::BORDER_WIDTH)
+            + spacing::XS
     }
 
-    /// The chips that fit beside a name of `name_chars` characters, which
-    /// keeps at most [`NAME_CHARS_KEPT`] of them; those left out are counted
-    /// in `more`.
+    /// The chips that fit behind a name of `name_chars` characters, in order.
+    /// The name keeps its width; the chips left out are counted in `more`, and
+    /// the count shows only when it fits as well.
     fn fit_tags(tags: &ShownTags, panel_width: f32, name_chars: usize) -> ShownTags {
-        let wanted =
-            name_chars.min(NAME_CHARS_KEPT) as f32 * font_size::FILE * DIGIT_WIDTH_PER_SIZE;
-        let mut fitted = tags.clone();
-        while !fitted.chips.is_empty()
-            && Self::room_beside_name(panel_width) - Self::chips_width(&fitted) < wanted
-        {
-            fitted.chips.pop();
-            fitted.more += 1;
+        let left =
+            Self::room_beside_name(panel_width) - name_chars as f32 * Self::name_char_width();
+        let total = tags.chips.len() + tags.more;
+        let fits = |kept: usize| {
+            let chips: f32 = tags
+                .chips
+                .iter()
+                .take(kept)
+                .map(|chip| Self::chip_width(&chip.tag))
+                .sum();
+            let count = if total > kept {
+                Self::chip_width(&format!("+{}", total - kept))
+            } else {
+                0.0
+            };
+            chips + count <= left
+        };
+        let fitting = (0..=tags.chips.len()).rev().find(|count| fits(*count));
+        match fitting {
+            Some(kept) => ShownTags {
+                chips: tags.chips.iter().take(kept).cloned().collect(),
+                more: total - kept,
+            },
+            None => ShownTags::default(),
         }
-        if fitted.chips.is_empty() {
-            fitted.more = 0;
-        }
-        fitted
     }
 
     /// The tags of the file after its name, small, the ones the user set with
@@ -891,6 +894,44 @@ mod tests {
             })
             .collect();
         p
+    }
+
+    fn chips_of(labels: &[&str], more: usize) -> ShownTags {
+        ShownTags {
+            chips: labels
+                .iter()
+                .map(|label| crate::file_list_tags::FileChip {
+                    tag: (*label).to_owned(),
+                    own: false,
+                })
+                .collect(),
+            more,
+        }
+    }
+
+    #[test]
+    fn a_short_name_keeps_all_its_chips() {
+        let tags = chips_of(&["invoice", "telekom", "2026"], 0);
+        let fitted = HermesCell::<()>::fit_tags(&tags, 1200.0, 10);
+        assert_eq!(fitted, tags);
+    }
+
+    #[test]
+    fn a_long_name_keeps_its_text_and_the_chips_turn_into_a_count() {
+        let tags = chips_of(&["invoice", "telekom", "2026"], 0);
+        let room = HermesCell::<()>::name_room(600.0);
+        let fitted = HermesCell::<()>::fit_tags(&tags, 600.0, room - 6);
+        assert!(fitted.chips.len() < 3);
+        assert_eq!(fitted.chips.len() + fitted.more, 3);
+        assert!(fitted.more > 0);
+    }
+
+    #[test]
+    fn a_name_wider_than_the_room_has_no_chips() {
+        let tags = chips_of(&["invoice", "2026"], 1);
+        let room = HermesCell::<()>::name_room(600.0);
+        let fitted = HermesCell::<()>::fit_tags(&tags, 600.0, room + 5);
+        assert_eq!(fitted, ShownTags::default());
     }
 
     #[test]

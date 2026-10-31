@@ -1248,10 +1248,11 @@ mod tests {
         for value in hostile {
             let fields = DocumentFields {
                 sender: Some(value.to_owned()),
+                recipient: Some(value.to_owned()),
                 number: Some(value.to_owned()),
                 ..DocumentFields::default()
             };
-            let mut hostile_rule = spec("{sender}/{kind}/{number}.pdf");
+            let mut hostile_rule = spec("{recipient}/{sender}/{kind}/{number}.pdf");
             hostile_rule.kind = Some(value.to_owned());
             hostile_rule.extract_number = None;
             hostile_rule.extract_date = None;

@@ -16346,15 +16346,20 @@ impl App {
         app
     }
 
-    /// Fixed panels with the Hermes column up and filled by hand: folders in
-    /// every role on the left, files in every state on the right with the
-    /// cursor on an inquiry.
     /// The sample column with tags after the names, as the setting says.
     pub fn with_file_list_tags_for_test(mut self, setting: FileListTags) -> Self {
         self.file_list_tags = setting;
         self
     }
 
+    pub fn with_window_size_for_test(mut self, size: Size) -> Self {
+        self.apply_window_size(size);
+        self
+    }
+
+    /// Fixed panels with the Hermes column up and filled by hand: folders in
+    /// every role on the left, files in every state on the right with the
+    /// cursor on an inquiry.
     pub fn with_hermes_column_sample() -> Self {
         use crate::hermes_column::{ColumnReading, DirectoryStates, FolderReading};
         use ncrs_index::{DocumentStatus, PathState, ReviewReason, StatusCounts};

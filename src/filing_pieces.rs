@@ -4,7 +4,7 @@
 
 use chrono::NaiveDate;
 use ncrs_index::DocumentFields;
-use ncrs_intake::render_pattern;
+use ncrs_intake::{is_plain_literal, render_pattern};
 
 use crate::i18n::{Language, Msg};
 
@@ -84,7 +84,7 @@ pub enum FolderNameProblem {
     Empty,
     /// "." and ".." name no folder of their own.
     Dots,
-    /// A separator, a brace or a control character.
+    /// A separator, a brace, a reserved or a control character.
     Character,
 }
 
@@ -103,12 +103,9 @@ pub fn own_folder_name(input: &str) -> Result<String, FolderNameProblem> {
     let name = input.trim();
     if name.is_empty() {
         Err(FolderNameProblem::Empty)
-    } else if matches!(name, "." | "..") {
+    } else if name.trim_matches(['.', ' ']).is_empty() {
         Err(FolderNameProblem::Dots)
-    } else if name
-        .chars()
-        .any(|c| matches!(c, '/' | '\\' | '{' | '}') || c.is_control())
-    {
+    } else if name.contains(['{', '}']) || name.ends_with('.') || !is_plain_literal(name) {
         Err(FolderNameProblem::Character)
     } else {
         Ok(name.to_owned())
@@ -490,7 +487,25 @@ mod tests {
         assert_eq!(own_folder_name("   "), Err(FolderNameProblem::Empty));
         assert_eq!(own_folder_name(".."), Err(FolderNameProblem::Dots));
         assert_eq!(own_folder_name("."), Err(FolderNameProblem::Dots));
-        for bad in ["a/b", "a\\b", "{year}", "a}", "a\u{7}b", "a\nb"] {
+        assert_eq!(own_folder_name("..."), Err(FolderNameProblem::Dots));
+        assert_eq!(own_folder_name(" . . "), Err(FolderNameProblem::Dots));
+        for bad in [
+            "a/b",
+            "a\\b",
+            "{year}",
+            "a}",
+            "a\u{7}b",
+            "a\nb",
+            "a<b",
+            "a>b",
+            "a:b",
+            "a\"b",
+            "a|b",
+            "a?b",
+            "a*b",
+            "x\u{202E}gpj",
+            "name.",
+        ] {
             assert_eq!(
                 own_folder_name(bad),
                 Err(FolderNameProblem::Character),

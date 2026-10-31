@@ -150,3 +150,8 @@ WHERE substr(filing_pattern, -1) <> '/'
     AND instr(substr(filing_pattern, length(rtrim(filing_pattern, replace(filing_pattern, '/', ''))) + 1), '{day}') = 0
     AND instr(substr(filing_pattern, length(rtrim(filing_pattern, replace(filing_pattern, '/', ''))) + 1), '{date}') = 0
     AND instr(substr(filing_pattern, length(rtrim(filing_pattern, replace(filing_pattern, '/', ''))) + 1), '{number}') = 0;
+UPDATE location_subtree SET pattern = pattern || '/'
+WHERE substr(pattern, -1) <> '/'
+    AND instr(substr(pattern, length(rtrim(pattern, replace(pattern, '/', ''))) + 1), '{day}') = 0
+    AND instr(substr(pattern, length(rtrim(pattern, replace(pattern, '/', ''))) + 1), '{date}') = 0
+    AND instr(substr(pattern, length(rtrim(pattern, replace(pattern, '/', ''))) + 1), '{number}') = 0;

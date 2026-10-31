@@ -730,7 +730,7 @@ pub mod tests {
             entry,
             document_id,
             path: PathBuf::from(format!("inbox/{name}")),
-            reason: ReviewReason::NoMatchingRule,
+            reason: ReviewReason::UnconfirmedRule,
             text_state: TextState::Read,
             fields: DocumentFields {
                 sender: (!sender.is_empty()).then(|| sender.to_owned()),
@@ -760,6 +760,7 @@ pub mod tests {
         let [one, _] = <[_; 2]>::try_from(ids()).unwrap();
         let mut tagged = item(one, "scan-1.pdf", "Telekom");
         tagged.proposed_pattern = None;
+        tagged.reason = ReviewReason::NoMatchingRule;
         tagged.fields.recipient = Some("Firma A GmbH".to_owned());
         tagged.fields.tags = ["steuer", "buero"].map(str::to_owned).into();
         let mut list = ReviewList::new();
@@ -773,9 +774,11 @@ pub mod tests {
         let [one, two] = <[_; 2]>::try_from(ids()).unwrap();
         let mut frost = item(one, "scan-1.pdf", "Frost");
         frost.proposed_pattern = None;
+        frost.reason = ReviewReason::NoMatchingRule;
         frost.fields.number = Some("3318".to_owned());
         let mut undated = item(two, "scan-2.pdf", "Agency B");
         undated.proposed_pattern = None;
+        undated.reason = ReviewReason::NoMatchingRule;
         undated.fields.date = None;
         let mut list = ReviewList::new();
         list.loaded(vec![frost, undated]);
@@ -787,6 +790,7 @@ pub mod tests {
         let [one, _] = <[_; 2]>::try_from(ids()).unwrap();
         let mut blank = item(one, "scan-1.pdf", "");
         blank.proposed_pattern = None;
+        blank.reason = ReviewReason::NoMatchingRule;
         blank.fields = DocumentFields::default();
         let mut list = ReviewList::new();
         list.loaded(vec![blank]);

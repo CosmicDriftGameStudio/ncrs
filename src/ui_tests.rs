@@ -2712,7 +2712,7 @@ mod review_list_card {
             "Review",
             "scan-1.pdf",
             "scan-2.pdf",
-            "No rule matches",
+            "Rule not confirmed",
             "Sender",
             "Move to",
             "Will be filed as",
@@ -3223,7 +3223,7 @@ mod review_list_card {
             (Language::English, "review_list_no_rules_en"),
             (Language::German, "review_list_no_rules_de"),
         ] {
-            let app = without_rules(loaded_list(), language);
+            let app = without_rules(default_pattern_list(), language);
             let matches = simulator(&app)
                 .snapshot(&iced::Theme::Dark)
                 .unwrap()
@@ -3960,7 +3960,8 @@ mod rules_card {
         matches_snapshot(empty(), "rules_empty_de");
         let mut asking = three_rules();
         asking.ask_delete();
-        matches_snapshot(asking, "rules_delete_en");
+        matches_snapshot(asking.clone(), "rules_delete_en");
+        matches_snapshot(asking, "rules_delete_de");
     }
 
     fn with_new_form() -> RulesPage {
@@ -5189,13 +5190,15 @@ mod title_bar {
             (Language::English, "main_view_tags_en"),
             (Language::German, "main_view_tags_de"),
         ] {
+            let size = iced::Size::new(1600.0, 760.0);
             let app = App::with_hermes_column_sample()
+                .with_window_size_for_test(size)
                 .with_file_list_tags_for_test(FileListTags {
                     groups: vec![TagGroup::Kind, TagGroup::Sender, TagGroup::Own],
                     ..FileListTags::default()
                 })
                 .in_language(language);
-            let matches = simulator(&app)
+            let matches = Simulator::with_size(iced::Settings::default(), size, app.view())
                 .snapshot(&iced::Theme::Dark)
                 .unwrap()
                 .matches_image(format!("tests/snapshots/{name}.png"))

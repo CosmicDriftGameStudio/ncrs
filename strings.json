@@ -7395,8 +7395,8 @@
     {
       "key": "rules.delete_question",
       "context": "Question on the rules page before a rule is deleted. Takes the rule sentence.",
-      "en": "Delete this rule? {rule} Documents stay as they are.",
-      "de": "Diese Regel löschen? {rule} Dokumente bleiben unverändert."
+      "en": "Delete this rule? {rule}. Documents stay as they are.",
+      "de": "Diese Regel löschen? {rule}. Dokumente bleiben unverändert."
     },
     {
       "key": "rules.problem_failed",
@@ -7868,9 +7868,9 @@
     },
     {
       "key": "filing_pieces.name_character",
-      "context": "Problem: the name typed for a new folder holds a slash, a brace or a control character.",
-      "en": "A folder name must not contain slashes, backslashes, braces or control characters.",
-      "de": "Ein Ordnername darf keine Schrägstriche, geschweiften Klammern oder Steuerzeichen enthalten."
+      "context": "Problem: the name typed for a new folder holds a slash, a brace, a character a file system reserves or a control character.",
+      "en": "A folder name must not contain slashes, braces, control characters or any of < > : \" | ? * , and must not end with a dot.",
+      "de": "Ein Ordnername darf keine Schrägstriche, geschweiften Klammern, Steuerzeichen oder eines der Zeichen < > : \" | ? * enthalten und nicht mit einem Punkt enden."
     },
     {
       "key": "condition_kind.tag",

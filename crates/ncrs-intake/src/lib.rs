@@ -64,7 +64,7 @@ pub use rule_suggestions::{
     MAX_SHARE_ELSEWHERE_PERCENT, MIN_FOLDER_DOCUMENTS, MIN_PHRASE_CHARS,
     MIN_SHARE_IN_FOLDER_PERCENT,
 };
-pub use sanitise::{sanitise_value, stays_below};
+pub use sanitise::{is_plain_literal, sanitise_value, stays_below};
 pub use scan::{
     scan_location, settle_location, walk_location, Found, ScanReport, MAX_REPORTED_ERRORS,
 };
