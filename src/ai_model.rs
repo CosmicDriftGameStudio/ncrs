@@ -1123,6 +1123,7 @@ mod tests {
             text: "Rechnung".to_owned(),
             open_fields: vec![ncrs_index::Field::Number],
             known: ncrs_index::DocumentFields::default(),
+            tax_contexts: Vec::new(),
             source: PathBuf::from("inbox-one"),
         };
 

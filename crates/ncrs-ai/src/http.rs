@@ -190,7 +190,10 @@ impl OpenAiCompatible {
                         Json::object([
                             ("name", Json::text("document_fields")),
                             ("strict", Json::Bool(false)),
-                            ("schema", output_schema(&request.open_fields)),
+                            (
+                                "schema",
+                                output_schema(&request.open_fields, &request.tax_contexts),
+                            ),
                         ]),
                     ),
                 ]),
@@ -229,7 +232,11 @@ impl Provider for OpenAiCompatible {
             return Err(AiError::ConsentRequired(self.preview(request)));
         }
         let reply = self.post(&self.request_body(request).pretty())?;
-        parse_reply(&message_content(&reply)?, &request.open_fields)
+        parse_reply(
+            &message_content(&reply)?,
+            &request.open_fields,
+            &request.tax_contexts,
+        )
     }
 }
 
@@ -325,6 +332,7 @@ mod tests {
             text: format!("Invoice 4711 from Company A. {INJECTION}"),
             open_fields: vec![Field::Sender, Field::Number],
             known: DocumentFields::default(),
+            tax_contexts: Vec::new(),
             source: PathBuf::from("inbox-one"),
         }
     }

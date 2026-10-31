@@ -14,6 +14,8 @@ pub use json::Json;
 mod local;
 mod model_file;
 mod prompt;
+#[cfg(test)]
+mod test_contexts;
 #[cfg(any(test, feature = "testing"))]
 mod testing;
 

@@ -131,9 +131,12 @@ impl LocalModel {
 
         // Grammar first, greedy second: the grammar rules out every token that
         // would leave the reply shape, so greedy only ever sees legal ones.
-        let grammar =
-            LlamaSampler::grammar(&self.model, &reply_grammar(&request.open_fields), "root")
-                .map_err(|_refused| AiError::Model("llama.cpp refused the reply grammar"))?;
+        let grammar = LlamaSampler::grammar(
+            &self.model,
+            &reply_grammar(&request.open_fields, &request.tax_contexts),
+            "root",
+        )
+        .map_err(|_refused| AiError::Model("llama.cpp refused the reply grammar"))?;
         let mut sampler = LlamaSampler::chain_simple([grammar, LlamaSampler::greedy()]);
 
         let mut reply = Vec::new();
@@ -161,7 +164,11 @@ impl Provider for LocalModel {
             .one_at_a_time
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        parse_reply(&self.generate(request)?, &request.open_fields)
+        parse_reply(
+            &self.generate(request)?,
+            &request.open_fields,
+            &request.tax_contexts,
+        )
     }
 }
 
@@ -324,7 +331,7 @@ pub fn prompt_tokens(
 ) -> Result<Vec<LlamaToken>, AiError> {
     let head = format!(
         "<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n<|im_start|>user\n{}",
-        user_message_prefix(&request.open_fields)
+        user_message_prefix(&request.open_fields, &request.tax_contexts)
     );
     let tail = format!(
         "{}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
@@ -393,6 +400,7 @@ mod tests {
             text: text.to_owned(),
             open_fields: open_fields.to_vec(),
             known: DocumentFields::default(),
+            tax_contexts: crate::test_contexts::stored_contexts(&[]),
             source: PathBuf::from("inbox-one"),
         }
     }
@@ -492,12 +500,19 @@ mod tests {
         let open = [Field::Sender, Field::Number, Field::Date, Field::Amount];
         let text = "Company A\nInvoice number: 4711\nDate: 2024-03-05\nTotal: 12.50 EUR";
 
-        let extraction = model().extract(&request(text, &open)).unwrap();
+        let asked = request(text, &open);
+        let extraction = model().extract(&asked).unwrap();
 
         assert_only_open_fields_once(&extraction, &open);
         for found in &extraction.fields {
             assert_eq!(
-                ExtractedField::new(found.field, &found.value, found.confidence).as_ref(),
+                ExtractedField::new(
+                    found.field,
+                    &found.value,
+                    found.confidence,
+                    &asked.tax_contexts
+                )
+                .as_ref(),
                 Some(found)
             );
         }
