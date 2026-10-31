@@ -101,9 +101,6 @@ pub fn view<'a>(
     } else {
         body = body.push(list(state, badges.focus, lang, palette));
         body = body.push(dim(lang.text(Msg::RulesHintTwoRules), palette));
-        if let Some(selected) = state.selected().filter(|_| !state.is_confirming_delete()) {
-            body = body.push(paragraph(sentence_of(selected, lang), palette));
-        }
     }
     if state.is_confirming_delete() {
         body = body.push(delete_question(state, lang, palette));
@@ -242,7 +239,7 @@ fn rule_card<'a>(
         }
         conditions = conditions.push(kit::chip(&label, on_fill, palette));
     }
-    let target = row![
+    let mut target = row![
         quiet("→".to_owned()),
         folder_chips_read_only(
             &FilingTarget::parse(&spec.filing_pattern),
@@ -253,6 +250,12 @@ fn rule_card<'a>(
     ]
     .spacing(spacing::XS)
     .align_y(alignment::Vertical::Center);
+    if let Some(kind) = &spec.kind {
+        target = target.push(quiet(format!("· {}", lang.kind_label(kind))));
+    }
+    for tag in &spec.tags {
+        target = target.push(kit::chip(tag, on_fill, palette));
+    }
     column![
         conditions,
         target,

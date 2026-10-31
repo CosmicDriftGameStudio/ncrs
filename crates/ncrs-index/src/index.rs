@@ -1284,7 +1284,8 @@ mod tests {
                  INSERT INTO location_profile (location, learned_at) VALUES ('archive', 1);
                  INSERT INTO location_subtree (location, subtree, pattern, documents, total)
                      VALUES ('archive', 'a', '{year}/{tax_context}', 3, 3),
-                            ('archive', 'b', NULL, 1, 1);
+                            ('archive', 'b', NULL, 1, 1),
+                            ('archive', 'c', '{year}/{date}_{sender}', 2, 2);
                  INSERT INTO saved_query (id, name, year, tax_context_id, kind, created_at, sender)
                      VALUES (7, 'Firma A only', 2026, 3, 'Invoice', 1700000000, 'Company A');",
             )
@@ -1378,7 +1379,14 @@ mod tests {
             .unwrap()
             .collect::<Result<_, _>>()
             .unwrap();
-        assert_eq!(subtree_patterns, [Some("{year}".to_owned()), None]);
+        assert_eq!(
+            subtree_patterns,
+            [
+                Some("{year}/".to_owned()),
+                None,
+                Some("{year}/{date}_{sender}".to_owned())
+            ]
+        );
 
         let reasons: Vec<ReviewReason> = index
             .conn
@@ -1721,7 +1729,7 @@ mod tests {
         let profile = index.location_profile(Path::new("archive")).unwrap();
         assert_eq!(profile.len(), 1);
         assert_eq!(profile[0].subtree, "2026");
-        assert_eq!(profile[0].pattern.as_deref(), Some("{year}/{sender}"));
+        assert_eq!(profile[0].pattern.as_deref(), Some("{year}/{sender}/"));
 
         let queries = index.saved_queries().unwrap();
         assert_eq!(queries.len(), 1);
