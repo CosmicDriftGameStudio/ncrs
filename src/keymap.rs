@@ -134,6 +134,7 @@ key_actions! {
     HermesQuickFix => "hermes_quick_fix",
     HermesHandToInbox => "hermes_hand_to_inbox",
     HermesProcessAgain => "hermes_process_again",
+    HermesReprocessFolder => "hermes_reprocess_folder",
     HermesSetInbox => "hermes_set_inbox",
     HermesSetFilingLocation => "hermes_set_filing_location",
     HermesSetArchive => "hermes_set_archive",
@@ -239,6 +240,7 @@ impl KeyAction {
             | Self::HermesQuickFix
             | Self::HermesHandToInbox
             | Self::HermesProcessAgain
+            | Self::HermesReprocessFolder
             | Self::HermesSetInbox
             | Self::HermesSetFilingLocation
             | Self::HermesSetArchive
@@ -311,6 +313,7 @@ impl KeyAction {
             Self::HermesQuickFix
                 | Self::HermesHandToInbox
                 | Self::HermesProcessAgain
+                | Self::HermesReprocessFolder
                 | Self::HermesSetInbox
                 | Self::HermesSetFilingLocation
                 | Self::HermesSetArchive
@@ -389,6 +392,7 @@ impl KeyAction {
             Self::HermesQuickFix => Message::QuickFix(QuickFixMessage::Open),
             Self::HermesHandToInbox => Message::HermesFile(HermesFileMessage::HandToInbox),
             Self::HermesProcessAgain => Message::HermesFile(HermesFileMessage::ProcessAgain),
+            Self::HermesReprocessFolder => Message::HermesFile(HermesFileMessage::ReprocessFolder),
             Self::HermesSetInbox => {
                 Message::HermesFile(HermesFileMessage::SetRole(FolderRole::Inbox))
             }
@@ -517,6 +521,7 @@ impl KeyAction {
             | Self::HermesQuickFix
             | Self::HermesHandToInbox
             | Self::HermesProcessAgain
+            | Self::HermesReprocessFolder
             | Self::HermesSetInbox
             | Self::HermesSetFilingLocation
             | Self::HermesSetArchive
@@ -604,6 +609,7 @@ impl KeyAction {
             | Self::HermesQuickFix
             | Self::HermesHandToInbox
             | Self::HermesProcessAgain
+            | Self::HermesReprocessFolder
             | Self::HermesSetInbox
             | Self::HermesSetFilingLocation
             | Self::HermesSetArchive
@@ -2048,6 +2054,7 @@ mod tests {
             KeyAction::OpenTrashInFinder,
             KeyAction::ComputeFolderSizes,
             KeyAction::HermesHandToInbox,
+            KeyAction::HermesReprocessFolder,
             KeyAction::HermesSetInbox,
             KeyAction::HermesSetFilingLocation,
             KeyAction::HermesSetArchive,

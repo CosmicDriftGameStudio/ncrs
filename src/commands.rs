@@ -228,6 +228,9 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
         KeyAction::HermesProcessAgain => {
             Command::plain(action, Hermes, Msg::ActionHermesProcessAgain)
         }
+        KeyAction::HermesReprocessFolder => {
+            Command::plain(action, Hermes, Msg::ActionHermesReprocessFolder)
+        }
         KeyAction::HermesSetInbox => Command::plain(action, Hermes, Msg::ActionHermesSetInbox),
         KeyAction::HermesSetFilingLocation => {
             Command::plain(action, Hermes, Msg::ActionHermesSetFilingLocation)

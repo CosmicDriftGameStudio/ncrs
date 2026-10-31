@@ -81,6 +81,7 @@ use crate::quick_open::{DocumentRequest, QuickOpen, MAX_DOCUMENT_HITS, QUICK_OPE
 use crate::remote_dialog::{self, ConnectDialog, Missing, Then};
 use crate::reorganisation_plan::ReorganisationView;
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
+use crate::replan_work::{ReplanItem, ReplanScope, ReplanSummary};
 use crate::review_list::{rule_prefill_of, ReviewList};
 use crate::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
 use crate::rule_form::{RuleForm, RuleSave, TRY_DEBOUNCE};
@@ -182,6 +183,7 @@ fn archive_refusal(panel: &PanelState, message: &Message) -> Option<Msg> {
         | Message::HermesFile(
             HermesFileMessage::HandToInbox
             | HermesFileMessage::ProcessAgain
+            | HermesFileMessage::ReprocessFolder
             | HermesFileMessage::SetRole(_)
             | HermesFileMessage::ToggleExclusion
             | HermesFileMessage::ShowInInspection,
@@ -222,6 +224,7 @@ fn remote_refusal(panel: &PanelState, message: &Message) -> Option<Msg> {
         | Message::HermesFile(
             HermesFileMessage::HandToInbox
             | HermesFileMessage::ProcessAgain
+            | HermesFileMessage::ReprocessFolder
             | HermesFileMessage::SetRole(_)
             | HermesFileMessage::ToggleExclusion
             | HermesFileMessage::ShowInInspection,
@@ -488,6 +491,7 @@ fn asks_for_hermes(message: &Message) -> bool {
         Message::HermesFile(
             HermesFileMessage::HandToInbox
                 | HermesFileMessage::ProcessAgain
+                | HermesFileMessage::ReprocessFolder
                 | HermesFileMessage::SetRole(_)
                 | HermesFileMessage::ToggleExclusion
                 | HermesFileMessage::ShowInInspection
@@ -1480,6 +1484,8 @@ pub struct App {
     plans_filed_for: usize,
     /// The filing job was due but another job was running.
     filing_due: bool,
+    /// Documents the user confirmed to file again, waiting for a free queue.
+    pending_refile: Option<(PathBuf, Vec<ReplanItem>)>,
     /// Downloads an extension, on a blocking thread. Injected so tests need
     /// no network.
     fetch_extension: fn(&ExtensionId) -> Result<FetchedExtension, FetchError>,
@@ -1599,6 +1605,8 @@ pub struct PromptKeyState {
     pub review_list: bool,
     /// Its form is up, so the text fields take the letters.
     pub review_list_editing: bool,
+    /// The review list shows the preview of re-planned documents.
+    pub review_list_replanning: bool,
     /// The saved queries page is up, so Enter, the arrows and Tab are its.
     pub saved_queries: bool,
     /// The overview's pattern field has the focus, so the letters are the field's.
@@ -1668,6 +1676,7 @@ impl Default for PromptKeyState {
             rules_confirming_delete: false,
             review_list: false,
             review_list_editing: false,
+            review_list_replanning: false,
             saved_queries: false,
             hermes_overview_editing: false,
             hermes_sidebar: false,
@@ -1770,7 +1779,13 @@ fn review_list_key(
     }
     match key.as_ref() {
         Key::Named(Named::Escape) => review(ReviewListMessage::Close),
+        Key::Named(Named::Enter) if prompt.review_list_replanning => {
+            review(ReviewListMessage::ReplanConfirm)
+        }
         Key::Named(Named::Enter) => review(ReviewListMessage::Confirm),
+        Key::Character("a") if plain && !prompt.review_list_editing => {
+            review(ReviewListMessage::ReplanOpenCases)
+        }
         Key::Named(Named::Tab) if prompt.review_list_editing => {
             review(ReviewListMessage::FocusField {
                 backwards: key_modifiers.shift(),
@@ -3422,6 +3437,7 @@ impl App {
             reorganisation_generation: 0,
             plans_filed_for: 0,
             filing_due: false,
+            pending_refile: None,
             fetch_extension: open_vsx::fetch_extension,
             install_theme: install_picked_theme,
             about: None,
@@ -4210,6 +4226,7 @@ impl App {
             Message::ReorganisationExecuted(result) => self.reorganisation_executed(result),
             Message::UndoReorganisation => self.undo_reorganisation(),
             Message::DocumentsFiled(result) => self.documents_filed(result),
+            Message::DocumentsRefiled(result) => self.documents_refiled(result),
             Message::ReorganisationUndone(result) => self.reorganisation_undone(result),
             Message::About(about_message) => self.update_about(about_message),
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
@@ -5702,6 +5719,10 @@ impl App {
             .review_list
             .as_ref()
             .is_some_and(ReviewList::is_editing);
+        let review_list_replanning = self
+            .review_list
+            .as_ref()
+            .is_some_and(|view| view.replan().is_some());
         let saved_queries = self.saved_queries.is_some();
         let hermes_sidebar =
             self.hermes_focus == HermesFocus::Sidebar && self.open_hermes_page().is_some();
@@ -5752,6 +5773,7 @@ impl App {
                 rules_confirming_delete,
                 review_list,
                 review_list_editing,
+                review_list_replanning,
                 saved_queries,
                 hermes_sidebar,
                 reorganisation_plan,
@@ -5801,6 +5823,7 @@ impl App {
                 rules_confirming_delete,
                 review_list,
                 review_list_editing,
+                review_list_replanning,
                 saved_queries,
                 hermes_sidebar,
                 reorganisation_plan,
@@ -6748,6 +6771,7 @@ impl App {
                         .iter()
                         .any(|location| entry.path.starts_with(&location.path))
             }
+            HermesAction::ReprocessFolder => entry.is_dir,
             HermesAction::SetInbox => entry.is_dir && role_free(FolderRole::Inbox),
             HermesAction::SetFilingLocation => {
                 entry.is_dir && role_free(FolderRole::FilingLocation)
@@ -6765,6 +6789,7 @@ impl App {
             }
             HermesFileMessage::HandToInbox
             | HermesFileMessage::ProcessAgain
+            | HermesFileMessage::ReprocessFolder
             | HermesFileMessage::SetRole(_)
             | HermesFileMessage::ToggleExclusion
             | HermesFileMessage::ShowInInspection => {}
@@ -6777,10 +6802,17 @@ impl App {
         if self.overlay_is_open() || self.search_open || !available {
             return Task::none();
         }
-        let Some((path, is_dir)) = self
+        let cursor = self
             .hermes_cursor_entry()
-            .map(|entry| (entry.path.clone(), entry.is_dir))
-        else {
+            .map(|entry| (entry.path.clone(), entry.is_dir));
+        if message == HermesFileMessage::ReprocessFolder {
+            let folder = match cursor {
+                Some((path, true)) => path,
+                Some((_, false)) | None => self.active_panel().path.clone(),
+            };
+            return self.reprocess_folder(folder);
+        }
+        let Some((path, is_dir)) = cursor else {
             return Task::none();
         };
         match message {
@@ -6796,6 +6828,7 @@ impl App {
             HermesFileMessage::ToggleExclusion => self.toggle_hermes_exclusion(path),
             HermesFileMessage::ShowInInspection => self.show_in_inspection(&path),
             HermesFileMessage::SetRole(_)
+            | HermesFileMessage::ReprocessFolder
             | HermesFileMessage::RoleSaved(_)
             | HermesFileMessage::Included { .. } => Task::none(),
         }
@@ -10655,7 +10688,169 @@ impl App {
                 };
                 self.open_rule_form(RuleForm::from_document(prefill), Some(HermesPage::Review))
             }
+            ReviewListMessage::ReplanOpenCases => self.start_replan(ReplanScope::OpenCases),
+            ReviewListMessage::Previewed {
+                generation,
+                serial,
+                result,
+            } => {
+                if generation != self.review_list_generation {
+                    return Task::none();
+                }
+                if let Some(view) = self.review_list.as_mut() {
+                    match result {
+                        Ok(items) => view.previewed(serial, items),
+                        Err(detail) => view.failed(detail),
+                    }
+                }
+                Task::none()
+            }
+            ReviewListMessage::ReplanConfirm => self.confirm_replan(),
+            ReviewListMessage::ReplanCancel => {
+                if let Some(view) = self.review_list.as_mut() {
+                    view.cancel_replan();
+                }
+                Task::none()
+            }
         }
+    }
+
+    /// Opens the review page if it is not up and plans the documents of
+    /// `scope` again there, on a blocking thread. It only reads; the user
+    /// sees the result before anything is filed.
+    fn start_replan(&mut self, scope: ReplanScope) -> Task<Message> {
+        let Some(access) = self.filing.as_ref().and_then(FilingModule::replan_access) else {
+            self.set_status_error(INDEX_NOT_OPEN);
+            return Task::none();
+        };
+        let opened = self.open_review_list();
+        let generation = self.review_list_generation;
+        let Some(serial) = self
+            .review_list
+            .as_mut()
+            .and_then(|view| view.begin_replan(scope.clone()))
+        else {
+            return opened;
+        };
+        let preview = Task::perform(
+            tokio::task::spawn_blocking(move || access.preview(&scope)),
+            move |joined| {
+                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                Message::ReviewList(ReviewListMessage::Previewed {
+                    generation,
+                    serial,
+                    result,
+                })
+            },
+        );
+        Task::batch([opened, preview])
+    }
+
+    /// Plans the documents below `folder` again, if it lies in an inbox
+    /// location. Anywhere else nothing happens but the message.
+    fn reprocess_folder(&mut self, folder: PathBuf) -> Task<Message> {
+        let inbox_roots: Vec<PathBuf> = self
+            .filing_config
+            .locations
+            .iter()
+            .filter(|location| location.mode == LocationMode::Inbox)
+            .map(|location| location.path.clone())
+            .collect();
+        if !crate::replan_work::lies_in_inbox(&folder, &inbox_roots) {
+            let text = self.lang.text(Msg::StatusReprocessOutsideInbox).to_owned();
+            return self.show_notice(text);
+        }
+        self.start_replan(ReplanScope::Folder(folder))
+    }
+
+    /// The user confirmed the preview: the previewed documents are filed by
+    /// one job, as soon as the queue is free.
+    fn confirm_replan(&mut self) -> Task<Message> {
+        if self.pending_refile.is_some() {
+            return Task::none();
+        }
+        let Some((scope, items)) = self
+            .review_list
+            .as_mut()
+            .and_then(ReviewList::confirm_replan)
+        else {
+            return Task::none();
+        };
+        let folder = match scope {
+            ReplanScope::Folder(folder) => folder,
+            ReplanScope::OpenCases => PathBuf::new(),
+        };
+        self.pending_refile = Some((folder, items));
+        if self.jobs.is_busy() {
+            let text = self.lang.text(Msg::StatusRefileWaiting).to_owned();
+            return self.show_notice(text);
+        }
+        self.run_refile()
+    }
+
+    /// Starts the confirmed refiling if no other job runs; asked for again on
+    /// the next tick otherwise, so it never queues behind another job.
+    fn run_refile(&mut self) -> Task<Message> {
+        if self.jobs.is_busy() {
+            return Task::none();
+        }
+        let Some((folder, items)) = self.pending_refile.take() else {
+            return Task::none();
+        };
+        let Some(access) = self.filing.as_ref().and_then(FilingModule::replan_access) else {
+            self.set_status_error(INDEX_NOT_OPEN);
+            return Task::none();
+        };
+        let progress_tx = self.progress_sender();
+        self.jobs.enqueue(jobs::Job {
+            kind: jobs::JobKind::File,
+            path: folder,
+            total: Some(items.iter().filter(|item| item.would_be_filed()).count()),
+        });
+        self.jobs
+            .start_next(|_| {
+                Task::perform(
+                    tokio::task::spawn_blocking(move || {
+                        let mut progress = fs::transfer::Reporting::new(&progress_tx);
+                        access.file_previewed(&items, &mut progress)
+                    }),
+                    |joined| {
+                        Message::DocumentsRefiled(
+                            joined.unwrap_or_else(|join| Err(join.to_string())),
+                        )
+                    },
+                )
+            })
+            .unwrap_or_else(Task::none)
+    }
+
+    fn documents_refiled(&mut self, result: Result<ReplanSummary, String>) -> Task<Message> {
+        self.jobs.finish();
+        self.job_progress = None;
+        let reload = if self.review_list.is_some() {
+            self.run_review_load()
+        } else {
+            Task::none()
+        };
+        let notice = match result {
+            Ok(summary) => {
+                let text = fill_template(
+                    self.lang.text(Msg::StatusRefileDone),
+                    &[
+                        ("{filed}", &summary.filed.to_string()),
+                        ("{reviewed}", &summary.reviewed.to_string()),
+                        ("{changed}", &summary.changed.to_string()),
+                        ("{requeued}", &summary.requeued.to_string()),
+                    ],
+                );
+                self.show_notice(text)
+            }
+            Err(detail) => {
+                self.set_status_error(&detail);
+                Task::none()
+            }
+        };
+        Task::batch([notice, reload])
     }
 
     fn review_access(&mut self) -> Option<ReviewAccess> {
@@ -10749,6 +10944,10 @@ impl App {
             Some(view) if view.is_editing() => {
                 view.cancel_edit();
                 release_focus()
+            }
+            Some(view) if view.replan().is_some() => {
+                view.cancel_replan();
+                Task::none()
             }
             Some(_) => {
                 self.review_list = None;
@@ -13781,6 +13980,7 @@ impl App {
                 } else {
                     Task::none()
                 };
+                let refiling = self.run_refile();
                 let counts =
                     if self.live_pipeline().is_some() && self.filing_status.tick_wants_counts() {
                         self.request_hermes_counts()
@@ -13788,9 +13988,15 @@ impl App {
                         Task::none()
                     };
                 if self.filing_status.tick_wants_figures() {
-                    Task::batch([filing, counts, settled, self.request_index_figures()])
+                    Task::batch([
+                        filing,
+                        refiling,
+                        counts,
+                        settled,
+                        self.request_index_figures(),
+                    ])
                 } else {
-                    Task::batch([filing, counts, settled])
+                    Task::batch([filing, refiling, counts, settled])
                 }
             }
             FilingStatusMessage::TogglePause => {
@@ -15705,6 +15911,7 @@ impl App {
             reorganisation_generation: 0,
             plans_filed_for: 0,
             filing_due: false,
+            pending_refile: None,
             fetch_extension: |_| Err(FetchError::NoConnection("no network in tests".to_owned())),
             install_theme: |_, _| Err(FetchError::NoConfigPath),
             about: None,
@@ -30006,5 +30213,282 @@ mod tax_context_flow {
 
         assert_eq!(short_names(&app), ["company-a", "private"]);
         assert_eq!(documents_in(&app, "company-a"), 2);
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod replan_flow {
+    use iced_test::futures::futures::StreamExt as _;
+    use iced_test::runtime::{task, Action};
+    use ncrs_index::ReviewReason;
+
+    use super::*;
+    use crate::replan_work::tests::Setup;
+    use crate::replan_work::ReplanAfter;
+    use crate::review_list::ReplanStep;
+
+    /// Runs the tasks `message` starts and hands their answers back to `update`.
+    async fn settle(app: &mut App, message: Message) {
+        let first = app.update(message);
+        settle_task(app, first).await;
+    }
+
+    async fn settle_task(app: &mut App, first: Task<Message>) {
+        let mut queue = vec![first];
+        while let Some(next) = queue.pop() {
+            let Some(mut stream) = task::into_stream(next) else {
+                continue;
+            };
+            while let Some(action) = stream.next().await {
+                if let Action::Output(reported) = action {
+                    queue.push(app.update(reported));
+                }
+            }
+        }
+    }
+
+    struct Fixture {
+        _dir: tempfile::TempDir,
+        inbox: PathBuf,
+        archive: PathBuf,
+        document: PathBuf,
+        app: App,
+    }
+
+    /// A document in review that the one rule would file, a review page that
+    /// is up and loaded, and a ready Hermes over the index.
+    fn fixture() -> Fixture {
+        let mut setup = Setup::new();
+        let document = setup.in_review("scan.pdf", "Invoice from Company A");
+        setup.add_rule();
+        let (dir, inbox, archive, index) = setup.into_parts();
+        let locations = vec![
+            config::FilingLocation {
+                path: inbox.clone(),
+                mode: LocationMode::Inbox,
+                images: false,
+                is_target: false,
+            },
+            config::FilingLocation {
+                path: archive.clone(),
+                mode: LocationMode::Archive,
+                images: false,
+                is_target: true,
+            },
+        ];
+        let mut app = App::with_fixed_panels();
+        app.filing = Some(FilingModule::ready_over_index_with_locations(
+            index, &locations,
+        ));
+        app.filing_config = Filing {
+            locations,
+            ..Filing::default()
+        };
+        let mut list = ReviewList::new();
+        list.loaded(Vec::new());
+        app.review_list = Some(list);
+        Fixture {
+            _dir: dir,
+            inbox,
+            archive,
+            document: document.path,
+            app,
+        }
+    }
+
+    fn step(app: &App) -> Option<&ReplanStep> {
+        app.review_list_for_test().and_then(ReviewList::replan)
+    }
+
+    fn previewed_items(app: &App) -> Vec<ReplanItem> {
+        match step(app) {
+            Some(ReplanStep::Preview { items, .. }) => items.clone(),
+            Some(ReplanStep::Looking(_)) | None => panic!("no preview"),
+        }
+    }
+
+    fn review_open(app: &App) -> bool {
+        let access = app
+            .filing
+            .as_ref()
+            .and_then(FilingModule::review_access)
+            .unwrap();
+        !access.load().unwrap().is_empty()
+    }
+
+    #[tokio::test]
+    async fn replan_the_button_shows_a_preview_and_files_nothing() {
+        let mut fixture = fixture();
+
+        settle(
+            &mut fixture.app,
+            Message::ReviewList(ReviewListMessage::ReplanOpenCases),
+        )
+        .await;
+
+        let items = previewed_items(&fixture.app);
+        assert_eq!(items.len(), 1);
+        assert!(matches!(items[0].after, ReplanAfter::Filed(_)));
+        assert!(
+            fixture.document.exists(),
+            "nothing moves before the confirm"
+        );
+        assert!(!fixture.app.jobs.is_busy());
+        assert!(fixture.app.pending_refile.is_none());
+        assert!(review_open(&fixture.app));
+    }
+
+    #[tokio::test]
+    async fn replan_cancel_and_escape_leave_everything_as_it_was() {
+        let mut fixture = fixture();
+        settle(
+            &mut fixture.app,
+            Message::ReviewList(ReviewListMessage::ReplanOpenCases),
+        )
+        .await;
+
+        settle(
+            &mut fixture.app,
+            Message::ReviewList(ReviewListMessage::ReplanCancel),
+        )
+        .await;
+        assert!(step(&fixture.app).is_none());
+
+        settle(
+            &mut fixture.app,
+            Message::ReviewList(ReviewListMessage::ReplanOpenCases),
+        )
+        .await;
+        assert!(step(&fixture.app).is_some());
+        settle(
+            &mut fixture.app,
+            Message::ReviewList(ReviewListMessage::Close),
+        )
+        .await;
+
+        assert!(step(&fixture.app).is_none());
+        assert!(
+            fixture.app.review_list_for_test().is_some(),
+            "the page stays"
+        );
+        assert!(fixture.document.exists());
+        assert!(!fixture.app.jobs.is_busy());
+        assert!(review_open(&fixture.app));
+    }
+
+    #[tokio::test]
+    async fn replan_confirm_files_the_previewed_documents_in_one_job() {
+        let mut fixture = fixture();
+        settle(
+            &mut fixture.app,
+            Message::ReviewList(ReviewListMessage::ReplanOpenCases),
+        )
+        .await;
+
+        let job = fixture
+            .app
+            .update(Message::ReviewList(ReviewListMessage::ReplanConfirm));
+        let mut stream = task::into_stream(job).unwrap();
+        let mut notice = None;
+        while let Some(action) = stream.next().await {
+            if let Action::Output(reported) = action {
+                drop(fixture.app.update(reported));
+                notice = notice.or(fixture.app.notice_for_test().map(str::to_owned));
+            }
+        }
+
+        assert!(!fixture.document.exists());
+        assert!(fixture
+            .archive
+            .join("Insurance")
+            .join("invoice.pdf")
+            .exists());
+        assert!(!fixture.app.jobs.is_busy(), "the job is finished");
+        assert!(step(&fixture.app).is_none());
+        assert_eq!(
+            notice.as_deref(),
+            Some("1 filed, 0 stayed in review, 0 changed since the preview, 0 read again")
+        );
+        assert!(!review_open(&fixture.app));
+    }
+
+    #[tokio::test]
+    async fn replan_confirm_waits_for_a_running_job_and_queues_exactly_one() {
+        let mut fixture = fixture();
+        settle(
+            &mut fixture.app,
+            Message::ReviewList(ReviewListMessage::ReplanOpenCases),
+        )
+        .await;
+        let previewed = previewed_items(&fixture.app);
+        fixture.app.jobs.enqueue(jobs::Job {
+            kind: jobs::JobKind::Copy,
+            path: PathBuf::new(),
+            total: None,
+        });
+        drop(fixture.app.jobs.start_next(|_| Task::none()));
+
+        drop(
+            fixture
+                .app
+                .update(Message::ReviewList(ReviewListMessage::ReplanConfirm)),
+        );
+
+        assert_eq!(fixture.app.jobs.waiting(), 0, "it does not queue behind");
+        assert_eq!(
+            fixture.app.pending_refile,
+            Some((PathBuf::new(), previewed))
+        );
+        assert!(fixture.document.exists());
+
+        fixture.app.jobs.finish();
+        drop(fixture.app.run_refile());
+
+        let running = fixture.app.jobs.running().unwrap();
+        assert_eq!(running.kind, jobs::JobKind::File);
+        assert_eq!(running.total, Some(1));
+        assert_eq!(fixture.app.jobs.waiting(), 0);
+        assert!(fixture.app.pending_refile.is_none());
+    }
+
+    #[tokio::test]
+    async fn replan_reprocess_folder_outside_the_inbox_only_says_so() {
+        let mut fixture = fixture();
+        fixture.app.review_list = None;
+
+        drop(fixture.app.reprocess_folder(fixture.archive.clone()));
+
+        assert_eq!(
+            fixture.app.notice_for_test(),
+            Some("Only folders in an inbox location can be reprocessed.")
+        );
+        assert!(fixture.app.review_list_for_test().is_none());
+        assert!(!fixture.app.jobs.is_busy());
+        assert!(fixture.document.exists());
+    }
+
+    #[tokio::test]
+    async fn replan_reprocess_folder_in_the_inbox_opens_the_preview() {
+        let mut fixture = fixture();
+        fixture.app.review_list = None;
+        assert_eq!(
+            crate::keymap::KeyAction::HermesReprocessFolder.message(),
+            Message::HermesFile(HermesFileMessage::ReprocessFolder)
+        );
+
+        let task = fixture.app.reprocess_folder(fixture.inbox.clone());
+        settle_task(&mut fixture.app, task).await;
+
+        let items = previewed_items(&fixture.app);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].now, Some(ReviewReason::NoMatchingRule));
+        assert!(fixture.document.exists());
+        assert!(review_open(&fixture.app));
     }
 }

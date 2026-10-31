@@ -163,6 +163,7 @@ pub enum HermesAction {
     ShowSuggestion,
     HandToInbox,
     ProcessAgain,
+    ReprocessFolder,
     SetInbox,
     SetFilingLocation,
     SetArchive,
@@ -173,10 +174,11 @@ pub enum HermesAction {
 
 impl HermesAction {
     #[cfg(test)]
-    pub const ALL: [HermesAction; 9] = [
+    pub const ALL: [HermesAction; 10] = [
         HermesAction::ShowSuggestion,
         HermesAction::HandToInbox,
         HermesAction::ProcessAgain,
+        HermesAction::ReprocessFolder,
         HermesAction::SetInbox,
         HermesAction::SetFilingLocation,
         HermesAction::SetArchive,
@@ -193,6 +195,7 @@ impl HermesAction {
             HermesAction::ShowSuggestion
             | HermesAction::HandToInbox
             | HermesAction::ProcessAgain
+            | HermesAction::ReprocessFolder
             | HermesAction::SetInbox
             | HermesAction::SetFilingLocation
             | HermesAction::SetArchive
@@ -209,6 +212,7 @@ impl HermesAction {
             HermesAction::ShowSuggestion
             | HermesAction::HandToInbox
             | HermesAction::ProcessAgain
+            | HermesAction::ReprocessFolder
             | HermesAction::SetInbox
             | HermesAction::SetFilingLocation
             | HermesAction::SetArchive
@@ -223,6 +227,9 @@ impl HermesAction {
             HermesAction::ShowSuggestion => Message::QuickFix(QuickFixMessage::Open),
             HermesAction::HandToInbox => Message::HermesFile(HermesFileMessage::HandToInbox),
             HermesAction::ProcessAgain => Message::HermesFile(HermesFileMessage::ProcessAgain),
+            HermesAction::ReprocessFolder => {
+                Message::HermesFile(HermesFileMessage::ReprocessFolder)
+            }
             HermesAction::SetInbox => {
                 Message::HermesFile(HermesFileMessage::SetRole(FolderRole::Inbox))
             }
@@ -244,6 +251,7 @@ impl HermesAction {
             HermesAction::ShowSuggestion => Msg::HermesMenuShowSuggestion,
             HermesAction::HandToInbox => Msg::HermesMenuHandToInbox,
             HermesAction::ProcessAgain => Msg::HermesMenuProcessAgain,
+            HermesAction::ReprocessFolder => Msg::HermesMenuReprocessFolder,
             HermesAction::SetInbox => Msg::HermesMenuSetInbox,
             HermesAction::SetFilingLocation => Msg::HermesMenuSetFilingLocation,
             HermesAction::SetArchive => Msg::HermesMenuSetArchive,
@@ -260,6 +268,7 @@ impl HermesAction {
             HermesAction::SetArchive => Some(Msg::HermesMenuNoteReadOnly),
             HermesAction::ShowSuggestion
             | HermesAction::ProcessAgain
+            | HermesAction::ReprocessFolder
             | HermesAction::SetInbox
             | HermesAction::SetFilingLocation
             | HermesAction::Exclude
@@ -298,7 +307,11 @@ struct Submenu {
 fn sub_groups(excluded: bool) -> [Vec<HermesAction>; 4] {
     [
         vec![HermesAction::ShowSuggestion],
-        vec![HermesAction::HandToInbox, HermesAction::ProcessAgain],
+        vec![
+            HermesAction::HandToInbox,
+            HermesAction::ProcessAgain,
+            HermesAction::ReprocessFolder,
+        ],
         vec![
             HermesAction::SetInbox,
             HermesAction::SetFilingLocation,
@@ -1342,7 +1355,11 @@ mod tests {
 
     #[test]
     fn the_submenu_skips_separators_and_greyed_entries() {
-        let mut menu = hermes_menu(&[HermesAction::ProcessAgain, HermesAction::SetInbox]);
+        let mut menu = hermes_menu(&[
+            HermesAction::ProcessAgain,
+            HermesAction::ReprocessFolder,
+            HermesAction::SetInbox,
+        ]);
         menu.select_last();
         menu.open_submenu();
         menu.move_by(1);

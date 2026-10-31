@@ -59,6 +59,7 @@ mod reading_again;
 mod remote_dialog;
 mod reorganisation_plan;
 mod reorganisation_work;
+mod replan_work;
 mod review_list;
 mod review_work;
 mod rule_form;
