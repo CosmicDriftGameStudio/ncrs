@@ -18,7 +18,7 @@ use std::ops::Range;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use ncrs_index::{iban_is_valid, tag_name};
+use ncrs_index::{iban_is_valid, tag_name, CustomKind, KindCatalog, KindSkip};
 use ncrs_intake::{pattern_is_valid, LocationMode};
 use ncrs_pipeline::Load;
 use serde::de::{Deserializer, Error as _, MapAccess, SeqAccess, Visitor};
@@ -101,6 +101,31 @@ pub struct Config {
     /// The tags the file panels show after a name.
     #[serde(skip)]
     pub file_list_tags: FileListTags,
+    /// The `[[kinds]]` entries as written; `load` checks them into `kinds`.
+    #[serde(default, rename = "kinds")]
+    pub kind_sections: Vec<KindSection>,
+    /// The document kinds in effect: the built-in ones with `kind_sections`
+    /// applied.
+    #[serde(skip)]
+    pub kinds: Arc<KindCatalog>,
+    /// What `load` left out of `kind_sections`, if anything.
+    #[serde(skip)]
+    pub kind_warning: Option<KindWarning>,
+}
+
+/// One `[[kinds]]` entry, unchecked: an ID (new, or a built-in one to extend),
+/// the words it is shown as and further words that name it.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KindSection {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub de: Option<String>,
+    #[serde(default)]
+    pub en: Option<String>,
+    #[serde(default)]
+    pub words: Vec<String>,
 }
 
 /// The `[file_list_tags]` section, unchecked.
@@ -361,6 +386,13 @@ pub struct LanguageWarning {
     pub path: PathBuf,
     pub line: Option<usize>,
     pub code: String,
+}
+
+/// `[[kinds]]` entries or words that were left out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KindWarning {
+    pub path: PathBuf,
+    pub skips: Vec<KindSkip>,
 }
 
 /// One line of `[theme]`: a role (or `preset`) and the text written for it.
@@ -1133,7 +1165,29 @@ fn parse_config(source: &str, path: &Path, home: Option<&Path>) -> Result<Config
             line: line_at(source.as_bytes(), err.span.start),
             reason: err.reason,
         })?;
+    let (kinds, skips) = resolve_kinds(&config.kind_sections);
+    config.kinds = kinds;
+    config.kind_warning = (!skips.is_empty()).then(|| KindWarning {
+        path: path.to_path_buf(),
+        skips,
+    });
     Ok(config)
+}
+
+/// The built-in kinds with the `[[kinds]]` entries applied; an entry without
+/// an ID, and a word that names two kinds, are left out and returned.
+fn resolve_kinds(sections: &[KindSection]) -> (Arc<KindCatalog>, Vec<KindSkip>) {
+    let custom: Vec<CustomKind> = sections
+        .iter()
+        .map(|section| CustomKind {
+            id: section.id.clone(),
+            german: section.de.clone(),
+            english: section.en.clone(),
+            words: section.words.clone(),
+        })
+        .collect();
+    let (catalog, skips) = KindCatalog::built_in().extended(&custom);
+    (Arc::new(catalog), skips)
 }
 
 fn resolve_file_list_tags(section: &FileListTagsSection) -> FileListTags {
@@ -2781,6 +2835,41 @@ mod tests {
         let warning = config.language_warning.unwrap();
         assert_eq!(warning.line, Some(2));
         assert_eq!(warning.code, "fr");
+    }
+
+    #[test]
+    fn kinds_without_an_id_and_a_word_of_two_kinds_are_skipped_with_a_warning() {
+        let config = load_text(
+            "version = 1\n\
+             [[kinds]]\nid = \"  \"\nwords = [\"Notiz\"]\n\
+             [[kinds]]\nid = \"payslip\"\nde = \"Lohnabrechnung\"\nwords = [\"Gehaltsabrechnung\"]\n\
+             [[kinds]]\nid = \"wage\"\nwords = [\"Gehaltsabrechnung\", \"Lohnzettel\"]\n",
+        );
+
+        let warning = config.kind_warning.unwrap();
+        assert_eq!(
+            warning.skips,
+            vec![
+                KindSkip::EmptyId,
+                KindSkip::Word {
+                    id: "wage".to_owned(),
+                    word: "Gehaltsabrechnung".to_owned(),
+                },
+            ]
+        );
+        assert_eq!(config.kinds.stored_kind("Gehaltsabrechnung"), "payslip");
+        assert_eq!(config.kinds.stored_kind("Lohnabrechnung"), "payslip");
+        assert_eq!(config.kinds.stored_kind("Lohnzettel"), "wage");
+        assert_eq!(config.kinds.stored_kind("Notiz"), "Notiz");
+        assert_eq!(config.kinds.stored_kind("Rechnung"), "invoice");
+    }
+
+    #[test]
+    fn valid_kinds_load_without_a_warning() {
+        let config =
+            load_text("version = 1\n[[kinds]]\nid = \"invoice\"\nwords = [\"Honorarnote\"]\n");
+        assert_eq!(config.kind_warning, None);
+        assert_eq!(config.kinds.stored_kind("honorarnote"), "invoice");
     }
 
     #[test]

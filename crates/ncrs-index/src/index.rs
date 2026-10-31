@@ -1,12 +1,14 @@
 use std::fs::File;
 use std::io::{ErrorKind, Read as _};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use rusqlite::{Connection, ErrorCode};
 
 use crate::error::IndexError;
 use crate::key::{IndexKey, RecoveryKey};
 use crate::key_store::{InMemoryKeyStore, KeyStore};
+use crate::kinds::KindCatalog;
 use crate::migrations::{run_migrations, MIGRATIONS};
 use crate::model::IndexStatistics;
 
@@ -25,6 +27,7 @@ const PLAINTEXT_HEADER: &[u8; 16] = b"SQLite format 3\0";
 pub struct Index {
     conn: Connection,
     encrypted: bool,
+    kinds: Arc<KindCatalog>,
 }
 
 impl Index {
@@ -180,6 +183,7 @@ impl Index {
             Self {
                 conn,
                 encrypted: true,
+                kinds: Arc::default(),
             },
             recovery_key,
         ))
@@ -195,6 +199,7 @@ impl Index {
         Ok(Self {
             conn,
             encrypted: false,
+            kinds: Arc::default(),
         })
     }
 
@@ -213,7 +218,20 @@ impl Index {
             unlock(&conn, &IndexKey::from_stored(&stored)?)?;
         }
         run_migrations(&mut conn, migrations)?;
-        Ok(Self { conn, encrypted })
+        Ok(Self {
+            conn,
+            encrypted,
+            kinds: Arc::default(),
+        })
+    }
+
+    /// The kinds this index knows; the built-in ones until the config is applied.
+    pub fn kinds(&self) -> &Arc<KindCatalog> {
+        &self.kinds
+    }
+
+    pub fn set_kinds(&mut self, kinds: Arc<KindCatalog>) {
+        self.kinds = kinds;
     }
 }
 

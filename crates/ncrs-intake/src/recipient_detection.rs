@@ -2,7 +2,7 @@
 //! first name line of the addressee block) and what kind of letter it is (a
 //! heading near the top).
 
-use ncrs_index::Kind;
+use ncrs_index::KindCatalog;
 
 use crate::conditions::addressee_block_lines;
 
@@ -24,23 +24,6 @@ const SALUTATIONS: [&str; 11] = [
 const COMPANY_LINE: &str = "firma";
 
 const HEADING_SEARCH_LINES: usize = 15;
-
-/// Single first words of a heading and the kind they name.
-const HEADING_KINDS: [(&str, Kind); 11] = [
-    ("rechnung", Kind::Invoice),
-    ("gutschrift", Kind::CreditNote),
-    ("mahnung", Kind::Reminder),
-    ("vertrag", Kind::Contract),
-    ("kündigung", Kind::Termination),
-    ("angebot", Kind::Quote),
-    ("lieferschein", Kind::DeliveryNote),
-    ("invoice", Kind::Invoice),
-    ("reminder", Kind::Reminder),
-    ("contract", Kind::Contract),
-    ("quote", Kind::Quote),
-];
-
-const BESCHEID_SUFFIX: &str = "bescheid";
 
 fn without_leading_salutation(line: &str) -> &str {
     let mut rest = line.trim();
@@ -85,40 +68,15 @@ pub fn detect_recipient(text: &str) -> Option<String> {
     })
 }
 
-fn first_word(line: &str) -> String {
-    line.split_whitespace()
-        .next()
-        .unwrap_or_default()
-        .trim_matches(|c: char| !c.is_alphanumeric())
-        .to_lowercase()
-}
-
-fn kind_of_heading(line: &str) -> Option<String> {
-    let word = first_word(line);
-    if let Some((_, kind)) = HEADING_KINDS.iter().find(|(heading, _)| *heading == word) {
-        return Some(kind.id().to_owned());
-    }
-    if word.ends_with(BESCHEID_SUFFIX) {
-        return Some(Kind::Notice.id().to_owned());
-    }
-    let second = line.split_whitespace().nth(1).map(|second| {
-        second
-            .trim_matches(|c: char| !c.is_alphanumeric())
-            .to_lowercase()
-    });
-    (word == "credit" && second.as_deref() == Some("note"))
-        .then(|| Kind::CreditNote.id().to_owned())
-}
-
 /// The kind a heading names: one of the first lines that starts with a
 /// word like "Rechnung" or "Invoice". Running text never counts, only the
 /// start of a line.
-pub fn kind_from_heading(text: &str) -> Option<String> {
+pub fn kind_from_heading(text: &str, kinds: &KindCatalog) -> Option<String> {
     text.lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .take(HEADING_SEARCH_LINES)
-        .find_map(kind_of_heading)
+        .find_map(|line| kinds.heading_kind(line))
 }
 
 #[cfg(test)]
@@ -177,18 +135,28 @@ mod tests {
             ("Shop\nCredit note 12\n", "credit_note"),
             ("Kündigung des Vertrags", "termination"),
         ] {
-            assert_eq!(kind_from_heading(text).as_deref(), Some(kind), "{text}");
+            assert_eq!(
+                kind_from_heading(text, &KindCatalog::built_in()).as_deref(),
+                Some(kind),
+                "{text}"
+            );
         }
     }
 
     #[test]
     fn running_text_and_late_lines_are_no_heading() {
         assert_eq!(
-            kind_from_heading("Wir senden Ihnen die Rechnung in der Anlage."),
+            kind_from_heading(
+                "Wir senden Ihnen die Rechnung in der Anlage.",
+                &KindCatalog::built_in()
+            ),
             None
         );
-        assert_eq!(kind_from_heading("Credit card statement"), None);
+        assert_eq!(
+            kind_from_heading("Credit card statement", &KindCatalog::built_in()),
+            None
+        );
         let late = format!("{}Rechnung\n", "Zeile\n".repeat(HEADING_SEARCH_LINES));
-        assert_eq!(kind_from_heading(&late), None);
+        assert_eq!(kind_from_heading(&late, &KindCatalog::built_in()), None);
     }
 }

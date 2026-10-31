@@ -12,8 +12,8 @@ use std::path::{Component, Path, PathBuf};
 
 use chrono::Datelike as _;
 use ncrs_index::{
-    ConflictReason, ContentHash, DocumentFields, Finding, FindingKind, KindLanguage,
-    NoActionReason, PlanItem, PlanOutcome, Rule, RuleEvidence, SenderAliases, SubtreePattern,
+    ConflictReason, ContentHash, DocumentFields, Finding, FindingKind, Kinds, NoActionReason,
+    PlanItem, PlanOutcome, Rule, RuleEvidence, SenderAliases, SubtreePattern,
 };
 
 use crate::archive_profile::{
@@ -67,7 +67,7 @@ pub struct ReorganisationInput<'a> {
     /// target in here is a conflict.
     pub existing: &'a BTreeSet<PathBuf>,
     /// The language a `{kind}` folder of a proposed target is written in.
-    pub kind_language: KindLanguage,
+    pub kinds: &'a Kinds,
 }
 
 /// What one finding would do to the file.
@@ -112,7 +112,7 @@ pub fn plan_reorganisation(input: &ReorganisationInput<'_>) -> Vec<PlanItem> {
         eligible: eligible_rules(input.rules, files.len()),
         files: &files,
         patterns: &patterns,
-        kind_language: input.kind_language,
+        kinds: input.kinds,
     };
     let keepers = duplicate_keepers(&context);
 
@@ -162,7 +162,7 @@ struct Context<'a> {
     eligible: Vec<Rule>,
     files: &'a [&'a PlanFile],
     patterns: &'a [Option<DocumentPattern>],
-    kind_language: KindLanguage,
+    kinds: &'a Kinds,
 }
 
 /// Confirmed rules, then suggestions whose stored evidence meets the B2
@@ -222,7 +222,7 @@ impl Context<'_> {
             path: Some(&file.relative_path),
             sender_aliases: &SenderAliases::default(),
             manual_fields: &[],
-            kind_language: self.kind_language,
+            kinds: self.kinds,
         };
         let Planning::Plan(filing) = plan(&self.eligible, &input) else {
             return None;

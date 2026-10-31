@@ -2264,10 +2264,19 @@ mod tests {
     }
 
     fn run_text_with_rules(specs: &[ncrs_index::RuleSpec], text: &str) -> IndexFixture {
+        run_text_with_kinds(specs, text, Arc::default())
+    }
+
+    fn run_text_with_kinds(
+        specs: &[ncrs_index::RuleSpec],
+        text: &str,
+        kinds: Arc<ncrs_index::KindCatalog>,
+    ) -> IndexFixture {
         let inbox_dir = TempDir::new().unwrap();
         let inbox = location(&inbox_dir, LocationMode::Inbox);
         put(&inbox, "invoice.pdf", INVOICE);
         let fixture = IndexFixture::new();
+        fixture.index.lock().unwrap().set_kinds(kinds);
         for spec in specs {
             fixture.index.lock().unwrap().create_rule(spec).unwrap();
         }
@@ -2385,6 +2394,57 @@ mod tests {
         );
     }
 
+    fn custom_kinds() -> Arc<ncrs_index::KindCatalog> {
+        let (kinds, skips) = ncrs_index::KindCatalog::built_in().extended(&[
+            ncrs_index::CustomKind {
+                id: "payslip".to_owned(),
+                german: Some("Lohnabrechnung".to_owned()),
+                english: Some("Payslip".to_owned()),
+                words: vec!["Gehaltsabrechnung".to_owned()],
+            },
+            ncrs_index::CustomKind {
+                id: "invoice".to_owned(),
+                words: vec!["Honorarnote".to_owned()],
+                ..ncrs_index::CustomKind::default()
+            },
+        ]);
+        assert_eq!(skips, Vec::new());
+        Arc::new(kinds)
+    }
+
+    #[test]
+    fn a_custom_kind_is_read_from_the_heading_and_filed_by_a_rule_on_its_word() {
+        let fixture = run_text_with_kinds(
+            &[ncrs_index::RuleSpec {
+                kind: None,
+                ..tag_rule(&["lohnabrechnung"])
+            }],
+            "Gehaltsabrechnung 4711",
+            custom_kinds(),
+        );
+
+        let index = fixture.index.lock().unwrap();
+        let id = index.search_text("4711", 10).unwrap()[0];
+        let document = index.document(id).unwrap().unwrap();
+        assert_eq!(document.fields.kind.as_deref(), Some("payslip"));
+        assert_eq!(document.status, DocumentStatus::Planned);
+    }
+
+    #[test]
+    fn an_extra_word_of_a_known_kind_is_a_heading_and_matches_its_rules() {
+        let fixture = run_text_with_kinds(
+            &[tag_rule(&["rechnung"])],
+            "Honorarnote 4711",
+            custom_kinds(),
+        );
+
+        let index = fixture.index.lock().unwrap();
+        let id = index.search_text("4711", 10).unwrap()[0];
+        let document = index.document(id).unwrap().unwrap();
+        assert_eq!(document.fields.kind.as_deref(), Some("invoice"));
+        assert_eq!(document.status, DocumentStatus::Planned);
+    }
+
     #[test]
     fn an_own_tag_survives_reading_and_planning_again() {
         let text = "Nordlicht Energie GmbH\nInvoice 4711 Company A";
@@ -2424,7 +2484,7 @@ mod tests {
         assert!(document.fields.tags.contains("steuer"));
         assert!(document
             .fields
-            .all_tags()
+            .all_tags(index.kinds())
             .contains("nordlicht-energie-gmbh"));
     }
 

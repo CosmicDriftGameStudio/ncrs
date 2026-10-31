@@ -489,12 +489,23 @@ fn tag_row<'a>(
 
 /// The tags: those the fields give (gray, nothing to remove), those the user
 /// added (outlined, with a cross), the field for a new one and a note.
-fn tags_block<'a>(values: &'a Form, lang: Language, palette: &Palette) -> Element<'a, Message> {
-    let automatic = values
+fn tags_block<'a>(
+    state: &ReviewList,
+    values: &'a Form,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let automatic = state
         .automatic_tags()
         .into_iter()
         .filter(|tag| !values.tags.contains(tag))
-        .map(|tag| kit::chip(&lang.tag_label(&tag), false, palette))
+        .map(|tag| {
+            kit::chip(
+                &lang.tag_label(&state.kinds().catalog, &tag),
+                false,
+                palette,
+            )
+        })
         .collect();
     let own = values
         .tags
@@ -581,7 +592,7 @@ fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element
             ),
             palette,
         ),
-        tags_block(values, lang, palette),
+        tags_block(state, values, lang, palette),
         group_heading(Msg::ReviewListGroupWhen, lang, palette),
         field_row(
             lang.text(Msg::ReviewListFieldDate),

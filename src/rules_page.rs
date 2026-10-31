@@ -5,7 +5,9 @@
 
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{Combinator, Condition, ConditionKind, RuleId, RuleOrigin, RuleSpec};
+use std::sync::Arc;
+
+use ncrs_index::{Combinator, Condition, ConditionKind, KindCatalog, RuleId, RuleOrigin, RuleSpec};
 
 use crate::app::fill_template;
 use crate::filing_pieces::FilingTarget;
@@ -35,6 +37,7 @@ pub struct RulesPage {
     return_to: Option<HermesPage>,
     /// The rule the first load puts the cursor on.
     select_on_load: Option<RuleId>,
+    kinds: Arc<KindCatalog>,
 }
 
 impl RulesPage {
@@ -50,7 +53,16 @@ impl RulesPage {
             form: None,
             return_to: None,
             select_on_load: None,
+            kinds: Arc::default(),
         }
+    }
+
+    pub fn with_kinds(self, kinds: Arc<KindCatalog>) -> Self {
+        Self { kinds, ..self }
+    }
+
+    pub fn kinds(&self) -> &KindCatalog {
+        &self.kinds
     }
 
     /// The next load puts the cursor on this rule, if it is listed.
@@ -312,7 +324,7 @@ pub fn sentence_part(condition: &Condition, first: bool, lang: Language) -> (boo
 
 /// The rule as one sentence: the conditions, then after the arrow the kind,
 /// the tags to set and where the document moves to.
-pub fn rule_sentence(spec: &RuleSpec, lang: Language) -> String {
+pub fn rule_sentence(spec: &RuleSpec, lang: Language, kinds: &KindCatalog) -> String {
     let combinator = spec.conditions.combinator;
     let mut conditions = String::new();
     for (position, condition) in spec.conditions.list.iter().enumerate() {
@@ -331,7 +343,7 @@ pub fn rule_sentence(spec: &RuleSpec, lang: Language) -> String {
     }
     let mut target = Vec::new();
     if let Some(kind) = &spec.kind {
-        target.push(lang.kind_label(kind).into_owned());
+        target.push(lang.kind_label(kinds, kind).into_owned());
     }
     if !spec.tags.is_empty() {
         target.push(
@@ -691,7 +703,11 @@ pub mod tests {
         page.loaded(access.load().unwrap());
 
         assert!(page.form().is_none());
-        let sentence = rule_sentence(&page.selected().unwrap().rule.spec, Language::English);
+        let sentence = rule_sentence(
+            &page.selected().unwrap().rule.spec,
+            Language::English,
+            &KindCatalog::built_in(),
+        );
         assert_eq!(sentence, "If telekom → Year / Sender");
 
         page.begin_edit();
@@ -744,7 +760,7 @@ pub mod tests {
         };
 
         assert_eq!(
-            rule_sentence(&spec, Language::English),
+            rule_sentence(&spec, Language::English, &KindCatalog::built_in()),
             "If the text contains the word “rent” and the sender is “Company A” → \
              Invoice · “office” “tax” · Year / Sender"
         );
@@ -762,7 +778,7 @@ pub mod tests {
         };
 
         assert_eq!(
-            rule_sentence(&spec, Language::English),
+            rule_sentence(&spec, Language::English, &KindCatalog::built_in()),
             "If the sender is not “Agency B” or the text matches /No\\. \\d+/ → \
              Invoice · Year / Sender"
         );
@@ -780,7 +796,7 @@ pub mod tests {
         };
 
         assert_eq!(
-            rule_sentence(&spec, Language::German),
+            rule_sentence(&spec, Language::German, &KindCatalog::built_in()),
             "Wenn der Text das Wort „Mahnung“ nicht enthält oder das Dokument in \
              „Post/2024“ liegt → Rechnung · Jahr / Absender"
         );

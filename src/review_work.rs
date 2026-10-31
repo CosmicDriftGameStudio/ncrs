@@ -11,9 +11,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono::NaiveDate;
 use ncrs_index::{
-    kind_key, Amount, BatchKind, Condition, ConditionKind, Currency, DocumentFields, DocumentId,
+    Amount, BatchKind, Condition, ConditionKind, Currency, DocumentFields, DocumentId,
     DocumentStatus, Field, FieldOrigin, FieldOrigins, IncludeOutcome, Index, IndexError,
-    KindLanguage, ReviewEntryId, ReviewReason, Rule, RuleId, SenderAliases,
+    KindCatalog, KindLanguage, Kinds, ReviewEntryId, ReviewReason, Rule, RuleId, SenderAliases,
 };
 use ncrs_intake::{
     condition_match_ranges, plan, render_pattern_in, text_is_readable, PlanInput, Planning,
@@ -77,9 +77,9 @@ pub struct ReviewItem {
 impl ReviewItem {
     /// Where the closest rule would file it, below the archive; `None` when
     /// no rule came close or the fields do not fit its pattern.
-    pub fn suggested_target(&self, kind_language: KindLanguage) -> Option<PathBuf> {
+    pub fn suggested_target(&self, kinds: &Kinds) -> Option<PathBuf> {
         let pattern = self.proposed_pattern.as_deref()?;
-        render_pattern_in(pattern, &self.fields, kind_language)
+        render_pattern_in(pattern, &self.fields, kinds)
     }
 }
 
@@ -276,6 +276,7 @@ fn review_item(
     let text = stored_text.clone().unwrap_or_default();
     let origins = index.field_origins(document.id)?;
     let manual_fields = origins.manual_fields();
+    let kinds = Kinds::new(Arc::clone(index.kinds()), kind_language);
     let planning = plan(
         rules,
         &PlanInput {
@@ -284,7 +285,7 @@ fn review_item(
             path: Some(&document.path),
             sender_aliases,
             manual_fields: &manual_fields,
-            kind_language,
+            kinds: &kinds,
         },
     );
     let (fields, proposed_pattern, nearest_rule) = match planning {
@@ -305,7 +306,7 @@ fn review_item(
         }
     };
     let effective_origins = match nearest_rule {
-        Some(id) => with_planned_origins(origins, &document.fields, &fields, id),
+        Some(id) => with_planned_origins(origins, &document.fields, &fields, id, &kinds.catalog),
         None => origins,
     };
     let passages = passages_of(rules, &effective_origins, nearest_rule, &fields, &text);
@@ -329,20 +330,29 @@ fn with_planned_origins(
     stored_fields: &DocumentFields,
     planned_fields: &DocumentFields,
     rule: RuleId,
+    kinds: &KindCatalog,
 ) -> FieldOrigins {
     Field::ALL
         .into_iter()
-        .filter(|field| !same_value(stored_fields, planned_fields, *field))
+        .filter(|field| !same_value(stored_fields, planned_fields, *field, kinds))
         .fold(stored, |origins, field| {
             origins.with(field, FieldOrigin::Rule(Some(rule)))
         })
 }
 
-fn same_value(left: &DocumentFields, right: &DocumentFields, field: Field) -> bool {
+fn same_value(
+    left: &DocumentFields,
+    right: &DocumentFields,
+    field: Field,
+    kinds: &KindCatalog,
+) -> bool {
     match field {
         Field::Sender => left.sender == right.sender,
         Field::Recipient => left.recipient == right.recipient,
-        Field::Kind => left.kind.as_deref().map(kind_key) == right.kind.as_deref().map(kind_key),
+        Field::Kind => {
+            left.kind.as_deref().map(|kind| kinds.kind_key(kind))
+                == right.kind.as_deref().map(|kind| kinds.kind_key(kind))
+        }
         Field::Date => left.date == right.date,
         Field::Number => left.number == right.number,
         Field::Amount => left.amount == right.amount,
@@ -427,9 +437,10 @@ fn suggestion_for(
             document,
             kind_language,
         )?;
+        let kinds = Kinds::new(Arc::clone(index.kinds()), kind_language);
         let target = item
             .proposed_pattern
-            .and_then(|pattern| render_pattern_in(&pattern, &item.fields, kind_language));
+            .and_then(|pattern| render_pattern_in(&pattern, &item.fields, &kinds));
         return Ok(Some((item.text_state, target)));
     }
     Ok(None)
@@ -445,7 +456,8 @@ fn confirm<S: Source>(
     kind_language: KindLanguage,
 ) -> Result<ConfirmOutcome, String> {
     let failed = |err: IndexError| err.to_string();
-    let relative = render_pattern_in(pattern, fields, kind_language)
+    let kinds = Kinds::new(Arc::clone(index.kinds()), kind_language);
+    let relative = render_pattern_in(pattern, fields, &kinds)
         .ok_or_else(|| PATTERN_DOES_NOT_FIT.to_owned())?;
     let document = index
         .document(document_id)

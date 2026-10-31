@@ -1124,6 +1124,7 @@ mod tests {
             open_fields: vec![ncrs_index::Field::Number],
             known: ncrs_index::DocumentFields::default(),
             source: PathBuf::from("inbox-one"),
+            kinds: Arc::default(),
         };
 
         let error = lazy.extract(&request).unwrap_err();

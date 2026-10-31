@@ -4,6 +4,8 @@
 use iced::widget::{button, column, container, mouse_area, opaque, pin, row, text, Column};
 use iced::{alignment, Element, Length};
 
+use ncrs_index::Kinds;
+
 use super::format;
 use super::kit;
 use super::layout::{MENU_ITEM_HEIGHT, MENU_PADDING, QUICK_FIX_HEADER_HEIGHT, QUICK_FIX_WIDTH};
@@ -91,11 +93,14 @@ pub fn header_lines(menu: &QuickFix, lang: Language) -> (String, String) {
     }
     match menu.items() {
         [] => (lang.text(Msg::QuickFixLoading).to_owned(), String::new()),
-        [item] => (single_header(item, lang), read_line(item, lang)),
+        [item] => (
+            single_header(item, lang),
+            read_line(item, menu.kinds(), lang),
+        ),
         items => {
             let without = items
                 .iter()
-                .filter(|item| item.suggested_target(lang.kind_language()).is_none())
+                .filter(|item| item.suggested_target(menu.kinds()).is_none())
                 .count();
             (
                 fill_template(
@@ -121,10 +126,13 @@ fn single_header(item: &ReviewItem, lang: Language) -> String {
     )
 }
 
-fn read_line(item: &ReviewItem, lang: Language) -> String {
+fn read_line(item: &ReviewItem, kinds: &Kinds, lang: Language) -> String {
     let fields = &item.fields;
     let date = fields.date.map(|date| date.to_string());
-    let kind = fields.kind.as_deref().map(|kind| lang.kind_label(kind));
+    let kind = fields
+        .kind
+        .as_deref()
+        .map(|kind| lang.kind_label(&kinds.catalog, kind));
     fill_template(
         lang.text(Msg::QuickFixRead),
         &[

@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use chrono::{DateTime, NaiveDate, Utc};
 
 use crate::error::IndexError;
-use crate::kinds::Kind;
+use crate::kinds::KindCatalog;
 
 macro_rules! id_newtype {
     ($name:ident) => {
@@ -374,23 +374,6 @@ pub fn tag_name(text: &str) -> String {
     name
 }
 
-/// Whether `tag` is `wanted` or a more specific tag below it (`firma-a-gmbh`
-/// matches `firma-a`, `firma-ab` does not). Two spellings of one known kind
-/// match each other.
-pub fn tag_matches(tag: &str, wanted: &str) -> bool {
-    let wanted_name = tag_name(wanted);
-    if wanted_name.is_empty() {
-        return false;
-    }
-    if let Some(kind) = Kind::resolve(wanted) {
-        if Kind::resolve(tag) == Some(kind) {
-            return true;
-        }
-    }
-    let tag_key = tag_name(tag);
-    tag_key == wanted_name || tag_key.starts_with(&format!("{wanted_name}-"))
-}
-
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DocumentFields {
     pub sender: Option<String>,
@@ -404,12 +387,9 @@ pub struct DocumentFields {
 
 impl DocumentFields {
     /// The tags the fields imply: kind, sender, recipient and year.
-    pub fn automatic_tags(&self) -> BTreeSet<String> {
+    pub fn automatic_tags(&self, kinds: &KindCatalog) -> BTreeSet<String> {
         let year = self.date.map(|date| date.format("%Y").to_string());
-        let kind = self
-            .kind
-            .as_deref()
-            .map(|kind| Kind::resolve(kind).map_or_else(|| tag_name(kind), Kind::tag));
+        let kind = self.kind.as_deref().map(|kind| kinds.kind_tag(kind));
         let others = [
             self.sender.as_deref(),
             self.recipient.as_deref(),
@@ -433,9 +413,9 @@ impl DocumentFields {
             .collect()
     }
 
-    pub fn all_tags(&self) -> BTreeSet<String> {
+    pub fn all_tags(&self, kinds: &KindCatalog) -> BTreeSet<String> {
         let mut all = self.own_tags();
-        all.extend(self.automatic_tags());
+        all.extend(self.automatic_tags(kinds));
         all
     }
 }
@@ -1323,6 +1303,10 @@ mod tag_tests {
         assert_eq!(tag_name("Büro"), "büro");
     }
 
+    fn tag_matches(tag: &str, wanted: &str) -> bool {
+        KindCatalog::built_in().tag_matches(tag, wanted)
+    }
+
     #[test]
     fn two_spellings_of_a_known_kind_match() {
         assert!(tag_matches("invoice", "rechnung"));
@@ -1338,7 +1322,7 @@ mod tag_tests {
             ..DocumentFields::default()
         };
         assert_eq!(
-            fields.automatic_tags(),
+            fields.automatic_tags(&KindCatalog::built_in()),
             BTreeSet::from(["credit-note".to_owned()])
         );
     }
@@ -1362,9 +1346,9 @@ mod tag_tests {
             ..DocumentFields::default()
         };
         assert_eq!(
-            fields.automatic_tags(),
+            fields.automatic_tags(&KindCatalog::built_in()),
             BTreeSet::from(["firma-a-gmbh", "erika-beispiel", "invoice", "2026"].map(String::from))
         );
-        assert!(fields.all_tags().contains("steuer"));
+        assert!(fields.all_tags(&KindCatalog::built_in()).contains("steuer"));
     }
 }

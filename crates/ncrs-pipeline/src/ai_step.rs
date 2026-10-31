@@ -3,8 +3,8 @@ use std::time::SystemTime;
 
 use ncrs_ai::{AiError, ExtractedField, ExtractionRequest, Provider, CONFIDENT};
 use ncrs_index::{
-    Document, DocumentFields, DocumentStatus, Field, FieldOrigin, IndexError, KindLanguage,
-    ReviewReason,
+    Document, DocumentFields, DocumentStatus, Field, FieldOrigin, IndexError, KindCatalog,
+    KindLanguage, Kinds, ReviewReason,
 };
 use ncrs_intake::{plan, LocationMode, PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER};
 
@@ -39,14 +39,21 @@ impl AiStep {
         }
     }
 
-    fn document(&self, item: &Item) -> Result<Option<Document>, String> {
+    /// The new document and the kinds the index knows.
+    fn document(&self, item: &Item) -> Result<Option<(Document, Arc<KindCatalog>)>, String> {
         let id = item
             .document
             .ok_or_else(|| "the file has no document".to_owned())?;
-        let document = with_index_value(self.index.as_ref(), |index| index.document(id))
-            .ok_or_else(|| NO_INDEX.to_owned())?
-            .map_err(|err| err.to_string())?;
-        Ok(document.filter(|found| found.status == DocumentStatus::New))
+        let (document, kinds) = with_index_value(self.index.as_ref(), |index| {
+            index
+                .document(id)
+                .map(|document| (document, Arc::clone(index.kinds())))
+        })
+        .ok_or_else(|| NO_INDEX.to_owned())?
+        .map_err(|err| err.to_string())?;
+        Ok(document
+            .filter(|found| found.status == DocumentStatus::New)
+            .map(|found| (found, kinds)))
     }
 }
 
@@ -116,7 +123,7 @@ impl Step for AiStep {
         if item.location.mode == LocationMode::Archive {
             return Ok(StepOutcome::Continue);
         }
-        let Some(document) = self.document(item)? else {
+        let Some((document, kinds)) = self.document(item)? else {
             return Ok(StepOutcome::Continue);
         };
         // The recipient alone is no reason to send the text anywhere.
@@ -135,6 +142,7 @@ impl Step for AiStep {
             open_fields: open_fields.clone(),
             known: document.fields,
             source: item.location.path.clone(),
+            kinds,
         };
         let extraction = match self.provider.extract(&request) {
             Ok(extraction) => extraction,
@@ -217,7 +225,7 @@ impl AiStep {
             let mut merged = current.fields;
             let mut changed = false;
             for found in confident {
-                changed |= found.fill(&mut merged);
+                changed |= found.fill(&mut merged, index.kinds());
             }
             if changed {
                 index.set_document_fields(id, &merged, |field| {
@@ -233,6 +241,7 @@ impl AiStep {
                 return Ok(None);
             }
             let sender_aliases = index.confirmed_sender_aliases()?;
+            let kinds = Kinds::new(Arc::clone(index.kinds()), self.kind_language);
             let planning = plan(
                 &index.rules()?,
                 &PlanInput {
@@ -241,7 +250,7 @@ impl AiStep {
                     path: Some(&item.path),
                     sender_aliases: &sender_aliases,
                     manual_fields: &[],
-                    kind_language: self.kind_language,
+                    kinds: &kinds,
                 },
             );
             if let Planning::Plan(filing) = &planning {

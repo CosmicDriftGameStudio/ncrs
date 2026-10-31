@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use ncrs_index::{
-    BatchKind, Document, DocumentStatus, FieldOrigin, Index, IndexError, KindLanguage,
+    BatchKind, Document, DocumentStatus, FieldOrigin, Index, IndexError, KindLanguage, Kinds,
     ReviewReason, Rule, SenderAliases,
 };
 use ncrs_intake::{plan, PlanInput, Planning};
@@ -104,6 +104,7 @@ fn decide(
 ) -> Result<Decision, IndexError> {
     let text = index.document_text(document.id)?.unwrap_or_default();
     let manual_fields = index.field_origins(document.id)?.manual_fields();
+    let kinds = Kinds::new(Arc::clone(index.kinds()), kind_language);
     let planning = plan(
         rules,
         &PlanInput {
@@ -112,7 +113,7 @@ fn decide(
             path: Some(&document.path),
             sender_aliases,
             manual_fields: &manual_fields,
-            kind_language,
+            kinds: &kinds,
         },
     );
     match planning {

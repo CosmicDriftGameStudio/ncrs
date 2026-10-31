@@ -9,9 +9,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use ncrs_index::{
-    DocumentStatus, FileTags, Index, IndexError, KindLanguage, PathState, StatusCounts,
-};
+use ncrs_index::{DocumentStatus, FileTags, Index, IndexError, Kinds, PathState, StatusCounts};
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::{Snapshot, Task};
 
@@ -569,7 +567,7 @@ pub struct ColumnView<'a> {
     tags: &'a FileListTags,
     /// The width of one panel, to see how much of a name is left.
     panel_width: f32,
-    kind_language: KindLanguage,
+    kinds: &'a Kinds,
 }
 
 impl<'a> ColumnView<'a> {
@@ -579,7 +577,7 @@ impl<'a> ColumnView<'a> {
         angle: f32,
         tags: &'a FileListTags,
         panel_width: f32,
-        kind_language: KindLanguage,
+        kinds: &'a Kinds,
     ) -> Self {
         Self {
             column,
@@ -587,7 +585,7 @@ impl<'a> ColumnView<'a> {
             angle,
             tags,
             panel_width,
-            kind_language,
+            kinds,
         }
     }
 
@@ -601,7 +599,7 @@ impl<'a> ColumnView<'a> {
         self.column
             .tags_of(path)
             .map_or_else(ShownTags::default, |tags| {
-                shown_tags(tags, self.tags, self.kind_language)
+                shown_tags(tags, self.tags, self.kinds)
             })
     }
 

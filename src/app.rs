@@ -24,7 +24,7 @@ use crate::command_line::{self, CommandLine, ShellOutcome, Submission};
 use crate::command_palette::{CommandPalette, Target, RECENT_LIMIT};
 use crate::config::ServerEntry;
 use crate::config::{
-    self, Config, ConfigError, ContrastWarning, Filing, FilingWriteError, KeyChange,
+    self, Config, ConfigError, ContrastWarning, Filing, FilingWriteError, KeyChange, KindWarning,
     LanguageWarning, VscodeWarning,
 };
 use crate::context_menu::{ContextAction, ContextMenu, HermesAction, HermesMenu, InputState};
@@ -132,7 +132,7 @@ use crate::ui::transfer as transfer_ui;
 use crate::ui::trash as trash_ui;
 use crate::ui::volumes::{self as volumes_view, FavouriteRow, ServerRow};
 use crate::ui::{conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelProps, PanelState};
-use ncrs_index::{IncludeOutcome, KeyStore, KeyringKeyStore, RuleId};
+use ncrs_index::{IncludeOutcome, KeyStore, KeyringKeyStore, KindSkip, Kinds, RuleId};
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::{Load, RunnerState};
 use tokio::sync::mpsc;
@@ -1195,6 +1195,8 @@ enum ConfigProblem {
     /// The file is in use, but the VS Code theme it names was not applied in full.
     VscodeTheme(VscodeWarning),
     UnknownLanguage(LanguageWarning),
+    /// The file is in use, but some `[[kinds]]` entries or words were left out.
+    Kinds(KindWarning),
 }
 
 pub struct App {
@@ -1422,6 +1424,8 @@ pub struct App {
     filing_config: Filing,
     /// Which tags the file panels show after a file name.
     file_list_tags: FileListTags,
+    /// The document kinds the config asks for, on top of the built-in ones.
+    kinds: Kinds,
     /// The settings tab, while it is open.
     settings: Option<settings_ui::SettingsState>,
     /// A write of the settings tab that failed; it stays until the next write.
@@ -3178,6 +3182,7 @@ impl App {
             return Task::none();
         };
         module.set_kind_language(self.lang.kind_language());
+        module.set_kinds(Arc::clone(&self.kinds.catalog));
         self.filing = Some(module);
         work.map_or_else(Task::none, run_filing_work)
     }
@@ -3196,11 +3201,13 @@ impl App {
                 self.open_programs = config.open;
                 self.saved_servers = config.servers;
                 self.file_list_tags = config.file_list_tags;
+                self.kinds = Kinds::new(config.kinds, self.lang.kind_language());
                 self.keymap = config.keymap;
                 self.refresh_function_keys();
                 self.palette = config.palette;
                 self.report_look_warnings(config.contrast_warning, config.vscode_warning);
                 self.report_language_warning(config.language_warning);
+                self.report_kind_warning(config.kind_warning);
             }
             Err(err) => self.report(ConfigProblem::Invalid(err)),
         }
@@ -3222,6 +3229,12 @@ impl App {
         }
     }
 
+    fn report_kind_warning(&mut self, found: Option<KindWarning>) {
+        if let Some(warning) = found {
+            self.report(ConfigProblem::Kinds(warning));
+        }
+    }
+
     fn report_language_warning(&mut self, found: Option<LanguageWarning>) {
         if let Some(warning) = found {
             self.report(ConfigProblem::UnknownLanguage(warning));
@@ -3238,11 +3251,13 @@ impl App {
         if let Some(module) = &mut self.filing {
             module.set_kind_language(lang.kind_language());
         }
+        self.kinds = self.kinds.in_language(lang.kind_language());
+        let kinds = self.kinds.clone();
         if let Some(list) = &mut self.review_list {
-            list.set_kind_language(lang.kind_language());
+            list.set_kinds(kinds.clone());
         }
         if let Some(view) = &mut self.saved_queries {
-            view.set_kind_language(lang.kind_language());
+            view.set_kinds(kinds);
         }
         self.refresh_function_keys();
         if let Some(problem) = &self.config_problem {
@@ -3316,6 +3331,25 @@ impl App {
                     }
                     None => fill_template(self.lang.text(Msg::ErrorUnknownLanguage), &values),
                 }
+            }
+            ConfigProblem::Kinds(warning) => {
+                let path = warning.path.display().to_string();
+                let skipped = warning
+                    .skips
+                    .iter()
+                    .map(|skip| match skip {
+                        KindSkip::EmptyId => self.lang.text(Msg::ErrorKindsNoId).to_owned(),
+                        KindSkip::Word { id, word } => fill_template(
+                            self.lang.text(Msg::ErrorKindsWordTaken),
+                            &[("{word}", word), ("{id}", id)],
+                        ),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                fill_template(
+                    self.lang.text(Msg::ErrorKinds),
+                    &[("{path}", &path), ("{skipped}", &skipped)],
+                )
             }
             ConfigProblem::LowContrast(warning) => {
                 let path = warning.path.display().to_string();
@@ -3461,6 +3495,7 @@ impl App {
             config_path: None,
             filing_config: Filing::default(),
             file_list_tags: FileListTags::default(),
+            kinds: Kinds::default(),
             filing_index_path: None,
             filing_key_store: None,
             filing_setup: None,
@@ -4555,9 +4590,8 @@ impl App {
         self.notice = None;
         self.quick_fix_generation = self.quick_fix_generation.wrapping_add(1);
         let generation = self.quick_fix_generation;
-        self.quick_fix = Some(
-            QuickFix::new(anchor, self.window_size).with_kind_language(self.lang.kind_language()),
-        );
+        self.quick_fix =
+            Some(QuickFix::new(anchor, self.window_size).with_kinds(self.kinds.clone()));
         Task::perform(
             tokio::task::spawn_blocking(move || access.items_for(&paths)),
             move |joined| {
@@ -4703,12 +4737,9 @@ impl App {
         let prefill = rule_prefill_of(
             item,
             self.filing_config.default_pattern.as_deref(),
-            self.lang.kind_language(),
+            &self.kinds,
         );
-        self.open_rule_form(
-            RuleForm::from_document(prefill, self.lang.kind_language()),
-            None,
-        )
+        self.open_rule_form(RuleForm::from_document(prefill, &self.kinds), None)
     }
 
     fn update_context_menu(&mut self, message: Message) -> Task<Message> {
@@ -5226,7 +5257,7 @@ impl App {
                             self.hermes_spinner_angle,
                             &self.file_list_tags,
                             self.window_size.width / 2.0,
-                            self.lang.kind_language(),
+                            &self.kinds,
                         )
                     }),
                 },
@@ -10514,7 +10545,7 @@ impl App {
         }
         self.context_menu = None;
         self.rules_generation = self.rules_generation.wrapping_add(1);
-        self.rules = Some(RulesPage::new());
+        self.rules = Some(RulesPage::new().with_kinds(Arc::clone(&self.kinds.catalog)));
         self.run_rules_load()
     }
 
@@ -10806,7 +10837,7 @@ impl App {
                     return Task::none();
                 };
                 self.open_rule_form(
-                    RuleForm::from_document(prefill, self.lang.kind_language()),
+                    RuleForm::from_document(prefill, &self.kinds),
                     Some(HermesPage::Review),
                 )
             }
@@ -11030,7 +11061,7 @@ impl App {
         self.review_list = Some(
             ReviewList::new()
                 .with_default_pattern(self.filing_config.default_pattern.clone())
-                .with_kind_language(self.lang.kind_language()),
+                .with_kinds(self.kinds.clone()),
         );
         let counts = if self.filing_status.hermes_counts().is_none() {
             self.request_hermes_counts()
@@ -11477,7 +11508,7 @@ impl App {
                     .document_search
                     .as_ref()
                     .filter(|view| view.can_save_as_report())
-                    .map(|view| Form::of_spec(&view.spec(), self.lang.kind_language()))
+                    .map(|view| Form::of_spec(&view.spec(), &self.kinds))
                 else {
                     return Task::none();
                 };
@@ -11552,7 +11583,7 @@ impl App {
         }
         self.context_menu = None;
         self.document_search_generation = self.document_search_generation.wrapping_add(1);
-        let mut view = DocumentSearch::new(text);
+        let mut view = DocumentSearch::new(text, Arc::clone(&self.kinds.catalog));
         let spec = view.begin_search();
         self.document_search = Some(view);
         // With the sidebar holding the arrows the field must not take the keys.
@@ -11639,7 +11670,7 @@ impl App {
         self.saved_queries_generation = self.saved_queries_generation.wrapping_add(1);
         self.saved_queries = Some(
             SavedQueries::new(chrono::Datelike::year(&chrono::Local::now()))
-                .with_kind_language(self.lang.kind_language()),
+                .with_kinds(self.kinds.clone()),
         );
         self.run_query_load()
     }
@@ -12800,12 +12831,18 @@ impl App {
         self.theme_preset = config.theme_preset();
         self.vscode_theme = config.vscode_theme_path().map(str::to_owned);
         self.palette = config.palette;
+        self.kinds = Kinds::new(config.kinds, self.lang.kind_language());
+        let catalog = Arc::clone(&self.kinds.catalog);
+        if let Some(module) = &mut self.filing {
+            module.set_kinds(catalog);
+        }
         if matches!(
             self.config_problem,
             Some(
                 ConfigProblem::LowContrast(_)
                     | ConfigProblem::VscodeTheme(_)
                     | ConfigProblem::UnknownLanguage(_)
+                    | ConfigProblem::Kinds(_)
             )
         ) {
             self.config_problem = None;
@@ -12813,6 +12850,7 @@ impl App {
         }
         self.report_look_warnings(config.contrast_warning, config.vscode_warning);
         self.report_language_warning(config.language_warning);
+        self.report_kind_warning(config.kind_warning);
     }
 
     fn settings_write_failure(&self, error: &FilingWriteError) -> String {
@@ -16189,6 +16227,7 @@ impl App {
             config_path: None,
             filing_config: Filing::default(),
             file_list_tags: FileListTags::default(),
+            kinds: Kinds::default(),
             filing_index_path: None,
             filing_key_store: None,
             filing_setup: None,
@@ -20925,6 +20964,34 @@ mod config_status_tests {
         let german = app.status_error().unwrap_or_default();
         assert!(german.contains("Zeile 2"), "{german}");
         assert!(german.contains("unbekannte Sprache \"fr\""), "{german}");
+    }
+
+    #[test]
+    fn skipped_kinds_are_named_in_both_languages_and_cleared_by_a_fresh_look() {
+        let text = "[[kinds]]\nid = \"\"\n[[kinds]]\nid = \"payslip\"\nwords = [\"Gehaltsabrechnung\"]\n[[kinds]]\nid = \"wage\"\nwords = [\"Gehaltsabrechnung\"]\n";
+        let mut app = App::with_fixed_panels().with_config(Ok(loaded(text)));
+        let english = app.status_error().unwrap_or_default();
+        assert!(english.contains("an entry without an id"), "{english}");
+        assert!(
+            english.contains("\"Gehaltsabrechnung\" in wage"),
+            "{english}"
+        );
+        assert_eq!(
+            app.kinds.catalog.stored_kind("Gehaltsabrechnung"),
+            "payslip"
+        );
+
+        drop(app.update(Message::SwitchLanguage));
+        let german = app.status_error().unwrap_or_default();
+        assert!(german.contains("ein Eintrag ohne id"), "{german}");
+        assert!(german.contains("„Gehaltsabrechnung“ bei wage"), "{german}");
+
+        app.apply_look(loaded(""));
+        assert_eq!(app.status_error(), None);
+        assert_eq!(
+            app.kinds.catalog.stored_kind("Gehaltsabrechnung"),
+            "Gehaltsabrechnung"
+        );
     }
 
     #[test]

@@ -190,7 +190,10 @@ impl OpenAiCompatible {
                         Json::object([
                             ("name", Json::text("document_fields")),
                             ("strict", Json::Bool(false)),
-                            ("schema", output_schema(&request.open_fields)),
+                            (
+                                "schema",
+                                output_schema(&request.open_fields, &request.kinds),
+                            ),
                         ]),
                     ),
                 ]),
@@ -326,6 +329,7 @@ mod tests {
             open_fields: vec![Field::Sender, Field::Number],
             known: DocumentFields::default(),
             source: PathBuf::from("inbox-one"),
+            kinds: Arc::default(),
         }
     }
 

@@ -33,10 +33,8 @@ pub use index::Index;
 pub use journal::{BatchKind, JournalItem, JournalState, NewJournalItem};
 pub use key::RecoveryKey;
 pub use key_store::{InMemoryKeyStore, KeyStore, KeyringKeyStore};
-pub use kinds::{
-    detected_kind, kind_key, kind_tag_word, kind_word, stored_kind, Kind, KindLanguage,
-};
-pub use model::{iban_is_valid, is_iban_separator, is_tax_id_separator, tag_matches, tag_name};
+pub use kinds::{CustomKind, KindCatalog, KindEntry, KindLanguage, KindSkip, Kinds};
+pub use model::{iban_is_valid, is_iban_separator, is_tax_id_separator, tag_name};
 pub use model::{
     Amount, BatchId, Combinator, Condition, ConditionKind, ConflictReason, ContentHash, Currency,
     Document, DocumentFields, DocumentId, DocumentSource, DocumentStatus, Field, FieldOrigin,

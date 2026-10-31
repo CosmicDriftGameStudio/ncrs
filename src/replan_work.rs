@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use ncrs_index::{
     BatchKind, Document, DocumentId, DocumentStatus, FieldOrigin, Index, IndexError, KindLanguage,
-    ReviewEntry, ReviewEntryId, ReviewReason, Rule, SenderAliases,
+    Kinds, ReviewEntry, ReviewEntryId, ReviewReason, Rule, SenderAliases,
 };
 use ncrs_intake::{plan, PlanInput, Planning};
 
@@ -148,7 +148,7 @@ impl ReplanAccess {
 struct Rulebook {
     rules: Vec<Rule>,
     sender_aliases: SenderAliases,
-    kind_language: KindLanguage,
+    kinds: Kinds,
 }
 
 impl Rulebook {
@@ -156,7 +156,7 @@ impl Rulebook {
         Ok(Self {
             rules: index.rules()?,
             sender_aliases: index.confirmed_sender_aliases()?,
-            kind_language,
+            kinds: Kinds::new(Arc::clone(index.kinds()), kind_language),
         })
     }
 
@@ -176,7 +176,7 @@ impl Rulebook {
                 path: Some(&document.path),
                 sender_aliases: &self.sender_aliases,
                 manual_fields: &manual_fields,
-                kind_language: self.kind_language,
+                kinds: &self.kinds,
             },
         )))
     }
