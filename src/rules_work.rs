@@ -4,10 +4,13 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
-use ncrs_index::{Index, IndexError, Rule, RuleId, RuleOrigin, TaxContextEntry};
+use ncrs_index::{Index, IndexError, Rule, RuleId, TaxContextEntry};
 
 use crate::rule_form::RuleSave;
 use crate::suggestion_work::INDEX_NOT_OPEN;
+
+/// Another confirm or a discard got to the suggestion first.
+const NO_SUCH_SUGGESTION: &str = "the suggested rule is not there any more";
 
 type IndexSlot = Arc<Mutex<Option<Index>>>;
 
@@ -88,10 +91,18 @@ impl RulesAccess {
     /// Index refusals, such as a regex that does not compile, come back as
     /// the text of the error.
     pub fn save(&self, save: RuleSave) -> Result<(), String> {
-        self.with_index(|index| match save {
-            RuleSave::Create(spec) => index.create_rule_from(&spec, RuleOrigin::Hand).map(|_| ()),
-            RuleSave::Update(id, spec) => index.update_rule(id, &spec),
-        })
+        let done = self.with_index(|index| match save {
+            RuleSave::Create { spec, origin } => {
+                index.create_rule_from(&spec, origin).map(|_| true)
+            }
+            RuleSave::Update(id, spec) => index.update_rule(id, &spec).map(|()| true),
+            RuleSave::ConfirmSuggestion(id, spec) => index.confirm_suggested_rule(id, &spec),
+        })?;
+        if done {
+            Ok(())
+        } else {
+            Err(NO_SUCH_SUGGESTION.to_owned())
+        }
     }
 
     fn with_index<T>(
@@ -295,12 +306,74 @@ mod tests {
     fn a_created_rule_is_listed_with_the_origin_hand() {
         let fixture = fixture();
 
-        fixture.access.save(RuleSave::Create(spec("rent"))).unwrap();
+        fixture
+            .access
+            .save(RuleSave::Create {
+                spec: spec("rent"),
+                origin: RuleOrigin::Hand,
+            })
+            .unwrap();
 
         let load = fixture.access.load().unwrap();
         assert_eq!(load.rules.len(), 1);
         assert_eq!(load.rules[0].rule.origin, RuleOrigin::Hand);
         assert_eq!(load.rules[0].rule.spec, spec("rent"));
+    }
+
+    #[test]
+    fn a_rule_made_from_a_filed_document_has_the_origin_filing() {
+        let fixture = fixture();
+
+        fixture
+            .access
+            .save(RuleSave::Create {
+                spec: spec("rent"),
+                origin: RuleOrigin::Filing,
+            })
+            .unwrap();
+
+        let load = fixture.access.load().unwrap();
+        assert_eq!(load.rules[0].rule.origin, RuleOrigin::Filing);
+    }
+
+    #[test]
+    fn confirming_a_suggestion_makes_it_a_listed_rule_and_keeps_its_origin() {
+        let fixture = fixture();
+        let [_a, s, _b] = a_suggestion_between_two_rules(&fixture);
+        let mut edited = spec("tax");
+        edited.filing_pattern = "{year}/{sender}".to_owned();
+
+        fixture
+            .access
+            .save(RuleSave::ConfirmSuggestion(s, edited.clone()))
+            .unwrap();
+
+        let load = fixture.access.load().unwrap();
+        let confirmed = load
+            .rules
+            .iter()
+            .find(|listed| listed.rule.id == s)
+            .unwrap();
+        assert!(confirmed.rule.spec.confirmed);
+        assert_eq!(confirmed.rule.spec.filing_pattern, "{year}/{sender}");
+        assert_eq!(confirmed.rule.origin, RuleOrigin::Suggestion);
+        assert_eq!(load.rules.len(), 3);
+    }
+
+    #[test]
+    fn confirming_a_suggestion_that_is_gone_fails_with_a_plain_message() {
+        let fixture = fixture();
+        let [_a, s, _b] = a_suggestion_between_two_rules(&fixture);
+        fixture
+            .with_index(|index| index.discard_rule_suggestion(s))
+            .unwrap();
+
+        let error = fixture
+            .access
+            .save(RuleSave::ConfirmSuggestion(s, spec("tax")))
+            .unwrap_err();
+
+        assert_eq!(error, NO_SUCH_SUGGESTION);
     }
 
     #[test]
@@ -343,7 +416,13 @@ mod tests {
         let mut broken = spec("rent");
         broken.conditions = RuleConditions::all_of(vec![Condition::new(ConditionKind::Regex, "(")]);
 
-        let error = fixture.access.save(RuleSave::Create(broken)).unwrap_err();
+        let error = fixture
+            .access
+            .save(RuleSave::Create {
+                spec: broken,
+                origin: RuleOrigin::Hand,
+            })
+            .unwrap_err();
 
         assert!(!error.is_empty());
         assert!(fixture.access.load().unwrap().rules.is_empty());

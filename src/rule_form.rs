@@ -2,8 +2,11 @@
 //! stored before Save; the conditions are edited with the editor the tax
 //! contexts use too. No widgets, the view is `ui::rules`.
 
+use std::collections::BTreeSet;
+
 use ncrs_index::{
-    Condition, ConditionKind, DocumentFields, Rule, RuleConditions, RuleId, RuleSpec, TaxContext,
+    Condition, ConditionKind, DocumentFields, Rule, RuleConditions, RuleId, RuleOrigin, RuleSpec,
+    TaxContext,
 };
 
 use crate::condition_editor::{ConditionEditor, ConditionProblem, ALL_CONDITION_KINDS};
@@ -18,7 +21,21 @@ const EXAMPLE_TAX_CONTEXT: &str = "company";
 #[derive(Debug, Clone, PartialEq)]
 pub enum RuleFormTarget {
     New,
+    /// Made from a document the user filed by hand.
+    FromDocument,
     Edit(Rule),
+    /// A suggestion the user looks over before it becomes a rule.
+    FromSuggestion(Rule),
+}
+
+/// What a form made from a document starts with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RulePrefill {
+    pub sender: String,
+    pub kind: String,
+    pub tax_context: Option<TaxContext>,
+    pub tags: BTreeSet<String>,
+    pub pattern: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -57,8 +74,13 @@ pub struct RuleFormProblems {
 /// What to write to the index.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuleSave {
-    Create(RuleSpec),
+    Create {
+        spec: RuleSpec,
+        origin: RuleOrigin,
+    },
     Update(RuleId, RuleSpec),
+    /// The suggestion becomes a confirmed rule with these values.
+    ConfirmSuggestion(RuleId, RuleSpec),
 }
 
 impl RuleForm {
@@ -80,9 +102,39 @@ impl RuleForm {
     }
 
     pub fn edit(rule: &Rule) -> Self {
+        Self::of_rule(rule, RuleFormTarget::Edit(rule.clone()))
+    }
+
+    pub fn from_suggestion(rule: &Rule) -> Self {
+        Self::of_rule(rule, RuleFormTarget::FromSuggestion(rule.clone()))
+    }
+
+    pub fn from_document(prefill: RulePrefill) -> Self {
+        let pattern = if prefill.pattern.trim().is_empty() {
+            NEW_RULE_PATTERN.to_owned()
+        } else {
+            prefill.pattern
+        };
+        Self {
+            target: RuleFormTarget::FromDocument,
+            conditions: ConditionEditor::new(
+                RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, prefill.sender)]),
+                &ALL_CONDITION_KINDS,
+                true,
+            ),
+            kind: prefill.kind,
+            tax_context: prefill.tax_context,
+            tags: tags_text(&prefill.tags),
+            pattern,
+            saving: false,
+            failure: None,
+        }
+    }
+
+    fn of_rule(rule: &Rule, target: RuleFormTarget) -> Self {
         let spec = &rule.spec;
         Self {
-            target: RuleFormTarget::Edit(rule.clone()),
+            target,
             conditions: ConditionEditor::new(spec.conditions.clone(), &ALL_CONDITION_KINDS, true),
             kind: spec.kind.clone(),
             tax_context: spec.tax_context.clone(),
@@ -172,30 +224,39 @@ impl RuleForm {
         let tax_context = self.tax_context.clone();
         let tags = parse_tags(&self.tags);
         let filing_pattern = self.pattern.trim().to_owned();
+        let new_rule = || RuleSpec {
+            conditions: conditions.clone(),
+            extract_number: None,
+            extract_date: None,
+            extract_amount: None,
+            kind: kind.clone(),
+            tax_context: tax_context.clone(),
+            tags: tags.clone(),
+            filing_pattern: filing_pattern.clone(),
+            confirmed: true,
+            enabled: true,
+        };
+        let changed = |rule: &Rule| RuleSpec {
+            conditions: conditions.clone(),
+            kind: kind.clone(),
+            tax_context: tax_context.clone(),
+            tags: tags.clone(),
+            filing_pattern: filing_pattern.clone(),
+            ..rule.spec.clone()
+        };
         Some(match &self.target {
-            RuleFormTarget::New => RuleSave::Create(RuleSpec {
-                conditions,
-                extract_number: None,
-                extract_date: None,
-                extract_amount: None,
-                kind,
-                tax_context,
-                tags,
-                filing_pattern,
-                confirmed: true,
-                enabled: true,
-            }),
-            RuleFormTarget::Edit(rule) => RuleSave::Update(
-                rule.id,
-                RuleSpec {
-                    conditions,
-                    kind,
-                    tax_context,
-                    tags,
-                    filing_pattern,
-                    ..rule.spec.clone()
-                },
-            ),
+            RuleFormTarget::New => RuleSave::Create {
+                spec: new_rule(),
+                origin: RuleOrigin::Hand,
+            },
+            RuleFormTarget::FromDocument => RuleSave::Create {
+                spec: new_rule(),
+                origin: RuleOrigin::Filing,
+            },
+            RuleFormTarget::Edit(rule) => RuleSave::Update(rule.id, changed(rule)),
+            RuleFormTarget::FromSuggestion(rule) => {
+                RuleSave::ConfirmSuggestion(rule.id, changed(rule))
+            }
         })
     }
 
@@ -214,10 +275,6 @@ impl RuleForm {
     clippy::indexing_slicing
 )]
 mod tests {
-    use std::collections::BTreeSet;
-
-    use ncrs_index::RuleOrigin;
-
     use super::*;
     use crate::condition_editor::ConditionEdit;
     use crate::rules_page::tests::rule_id;
@@ -356,9 +413,10 @@ mod tests {
         let second = form.save_request();
 
         assert_eq!(second, None);
-        let RuleSave::Create(spec) = first else {
+        let RuleSave::Create { spec, origin } = first else {
             panic!("not a create");
         };
+        assert_eq!(origin, RuleOrigin::Hand);
         assert_eq!(
             spec.conditions,
             RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, "Telekom")])
@@ -402,5 +460,75 @@ mod tests {
         assert_eq!(form.failure.as_deref(), Some("invalid regex"));
         assert!(form.save_request().is_some());
         assert_eq!(form.failure, None);
+    }
+
+    fn prefill() -> RulePrefill {
+        RulePrefill {
+            sender: "Telekom".to_owned(),
+            kind: "invoice".to_owned(),
+            tax_context: Some(TaxContext::named("company")),
+            tags: BTreeSet::from(["tax".to_owned()]),
+            pattern: "{sender}/{date}".to_owned(),
+        }
+    }
+
+    #[test]
+    fn a_form_from_a_document_starts_with_its_sender_and_fields() {
+        let form = RuleForm::from_document(prefill());
+
+        assert_eq!(form.target, RuleFormTarget::FromDocument);
+        assert_eq!(
+            form.conditions.conditions(),
+            RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, "Telekom")])
+        );
+        assert_eq!(form.kind, "invoice");
+        assert_eq!(form.tax_context, Some(TaxContext::named("company")));
+        assert_eq!(form.tags, "tax");
+        assert_eq!(form.pattern, "{sender}/{date}");
+        assert!(form.is_valid());
+    }
+
+    #[test]
+    fn a_form_from_a_document_without_a_pattern_takes_the_usual_one() {
+        let form = RuleForm::from_document(RulePrefill {
+            pattern: "  ".to_owned(),
+            sender: String::new(),
+            ..prefill()
+        });
+
+        assert_eq!(form.pattern, "{year}/{sender}");
+        assert_eq!(form.conditions.rows.len(), 1);
+        assert_eq!(form.conditions.rows[0].value, "");
+        assert!(!form.is_valid());
+    }
+
+    #[test]
+    fn a_form_from_a_document_saves_a_rule_with_the_origin_filing() {
+        let mut form = RuleForm::from_document(prefill());
+
+        let RuleSave::Create { spec, origin } = form.save_request().unwrap() else {
+            panic!("not a create");
+        };
+
+        assert_eq!(origin, RuleOrigin::Filing);
+        assert!(spec.confirmed && spec.enabled);
+        assert_eq!(spec.tags, BTreeSet::from(["tax".to_owned()]));
+    }
+
+    #[test]
+    fn a_form_from_a_suggestion_confirms_it_and_keeps_what_it_does_not_show() {
+        let rule = stored_rule();
+        let mut form = RuleForm::from_suggestion(&rule);
+        assert_eq!(form.target, RuleFormTarget::FromSuggestion(rule.clone()));
+        form.update(RuleFormMessage::Pattern("{year}".to_owned()));
+
+        let RuleSave::ConfirmSuggestion(id, spec) = form.save_request().unwrap() else {
+            panic!("not a confirmation");
+        };
+
+        assert_eq!(id, rule.id);
+        assert_eq!(spec.filing_pattern, "{year}");
+        assert_eq!(spec.extract_date, rule.spec.extract_date);
+        assert_eq!(spec.conditions, rule.spec.conditions);
     }
 }

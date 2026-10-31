@@ -12,6 +12,7 @@ use ncrs_index::{
 use crate::app::fill_template;
 use crate::i18n::{Language, Msg};
 use crate::list_window::ListWindow;
+use crate::messages::HermesPage;
 use crate::rule_form::{RuleForm, RuleSave};
 use crate::rules_work::{ListedRule, RuleChange, RulesLoad};
 
@@ -31,6 +32,9 @@ pub struct RulesPage {
     problem: Option<String>,
     /// While it is open it replaces the list, and the list takes no keys.
     form: Option<RuleForm>,
+    /// The page the form was opened from; the card goes back to it when the
+    /// form is saved or cancelled.
+    return_to: Option<HermesPage>,
 }
 
 impl RulesPage {
@@ -45,6 +49,7 @@ impl RulesPage {
             confirming_delete: false,
             problem: None,
             form: None,
+            return_to: None,
         }
     }
 
@@ -101,7 +106,16 @@ impl RulesPage {
         }
         self.confirming_delete = false;
         self.problem = None;
+        self.return_to = None;
         self.form = Some(RuleForm::new());
+    }
+
+    /// Opens a form made elsewhere, also while the list still loads.
+    pub fn open_form(&mut self, form: RuleForm, return_to: Option<HermesPage>) {
+        self.confirming_delete = false;
+        self.problem = None;
+        self.return_to = return_to;
+        self.form = Some(form);
     }
 
     /// Opens the form for the rule under the cursor.
@@ -115,6 +129,7 @@ impl RulesPage {
         let form = RuleForm::edit(&listed.rule);
         self.confirming_delete = false;
         self.problem = None;
+        self.return_to = None;
         self.form = Some(form);
     }
 
@@ -128,10 +143,17 @@ impl RulesPage {
         self.form.as_mut()?.save_request()
     }
 
-    /// The write is done: the form closes. The caller loads the list again.
-    pub fn saved(&mut self) {
+    /// The write is done: the form closes. The caller loads the list again,
+    /// or goes back to the page the form came from.
+    pub fn saved(&mut self) -> Option<HermesPage> {
         self.form = None;
         self.busy = true;
+        self.return_to.take()
+    }
+
+    /// The page to go back to after the form was cancelled.
+    pub fn take_return_to(&mut self) -> Option<HermesPage> {
+        self.return_to.take()
     }
 
     pub fn save_failed(&mut self, detail: String) {
@@ -420,6 +442,41 @@ pub mod tests {
             tax_contexts: entries(),
         });
         page
+    }
+
+    #[test]
+    fn a_form_opened_from_elsewhere_survives_the_load_and_remembers_where_to_go_back() {
+        let mut page = RulesPage::new();
+        page.open_form(RuleForm::new(), Some(HermesPage::Review));
+
+        page.loaded(RulesLoad::default());
+
+        assert!(page.form().is_some());
+        assert_eq!(page.saved(), Some(HermesPage::Review));
+        assert_eq!(page.saved(), None);
+    }
+
+    #[test]
+    fn cancelling_a_form_opened_from_elsewhere_names_the_page_to_go_back_to() {
+        let mut page = page();
+        page.open_form(RuleForm::new(), Some(HermesPage::RuleSuggestions));
+
+        assert!(page.cancel_form());
+
+        assert_eq!(page.take_return_to(), Some(HermesPage::RuleSuggestions));
+    }
+
+    #[test]
+    fn a_form_of_the_page_itself_goes_back_nowhere() {
+        let mut page = page();
+        page.open_form(RuleForm::new(), Some(HermesPage::Review));
+        assert!(page.cancel_form());
+        page.take_return_to();
+
+        page.begin_new();
+
+        assert!(page.cancel_form());
+        assert_eq!(page.take_return_to(), None);
     }
 
     #[test]

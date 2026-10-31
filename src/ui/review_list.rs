@@ -100,15 +100,6 @@ pub fn view<'a>(
     if let Some(problem) = state.problem() {
         body = body.push(error_line(problem_text(problem, lang), palette));
     }
-    if let Some(filed) = state.filed().filter(|filed| filed.rule_created) {
-        body = body.push(dim(
-            fill_template(
-                lang.text(Msg::ReviewListRuleCreated),
-                &[("{sender}", &filed.sender)],
-            ),
-            palette,
-        ));
-    }
 
     let mut frame = Frame::new(
         lang.text(Msg::ActionReviewList),

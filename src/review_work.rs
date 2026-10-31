@@ -12,14 +12,12 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono::NaiveDate;
 use ncrs_index::{
-    Amount, BatchKind, Condition, ConditionKind, Currency, DocumentFields, DocumentId,
-    DocumentStatus, Field, FieldOrigin, IncludeOutcome, Index, IndexError, ReviewEntryId,
-    ReviewReason, RuleConditions, RuleId, RuleSpec, SenderAliases, TaxContext,
+    Amount, BatchKind, Currency, DocumentFields, DocumentId, DocumentStatus, Field, FieldOrigin,
+    IncludeOutcome, Index, IndexError, ReviewEntryId, ReviewReason, SenderAliases,
     TaxContextConditions, TaxContextEntry,
 };
 use ncrs_intake::{
-    pattern_is_valid, plan, render_pattern, text_is_readable, AssigningCondition, PlanInput,
-    Planning,
+    plan, render_pattern, text_is_readable, AssigningCondition, PlanInput, Planning,
 };
 
 use crate::execute::{execute_with, ItemOutcome, SkipReason};
@@ -203,39 +201,6 @@ impl ReviewAccess {
             pattern,
             &Move,
         )
-    }
-
-    /// A confirmed rule for documents of this sender; the sender is only
-    /// compared for equality.
-    pub fn create_rule_for_sender(
-        &self,
-        typed_sender: &str,
-        typed_kind: &str,
-        tax_context: Option<TaxContext>,
-        tags: BTreeSet<String>,
-        pattern: &str,
-    ) -> Result<RuleId, String> {
-        let sender = typed_sender.trim();
-        let kind = typed_kind.trim();
-        if sender.is_empty() || kind.is_empty() {
-            return Err("a rule needs a sender and a kind".to_owned());
-        }
-        if !pattern_is_valid(pattern) {
-            return Err(PATTERN_DOES_NOT_FIT.to_owned());
-        }
-        let spec = RuleSpec {
-            conditions: RuleConditions::all_of(vec![Condition::new(ConditionKind::Sender, sender)]),
-            extract_number: None,
-            extract_date: None,
-            extract_amount: None,
-            kind: kind.to_owned(),
-            tax_context,
-            tags,
-            filing_pattern: pattern.to_owned(),
-            confirmed: true,
-            enabled: true,
-        };
-        self.with_index(|index| index.create_rule_from(&spec, ncrs_index::RuleOrigin::Filing))
     }
 
     fn with_index<T>(
@@ -522,7 +487,9 @@ mod tests {
     use std::fs;
 
     use chrono::{TimeZone as _, Utc};
-    use ncrs_index::{DocumentSource, NewDocument};
+    use ncrs_index::{
+        Condition, ConditionKind, DocumentSource, NewDocument, RuleConditions, RuleSpec, TaxContext,
+    };
     use ncrs_intake::hash_path;
     use tempfile::TempDir;
 
@@ -702,16 +669,26 @@ mod tests {
     #[test]
     fn a_rule_for_the_sender_files_the_next_document_without_a_review() {
         let setup = Setup::new();
-        let access = setup.access();
-        access
-            .create_rule_for_sender(
-                "Company A",
-                "invoice",
-                Some(TaxContext::named("company")),
-                BTreeSet::new(),
-                "{sender}/{kind}",
-            )
-            .unwrap();
+        setup.with_index(|index| {
+            let spec = RuleSpec {
+                conditions: RuleConditions::all_of(vec![Condition::new(
+                    ConditionKind::Sender,
+                    "Company A",
+                )]),
+                extract_number: None,
+                extract_date: None,
+                extract_amount: None,
+                kind: "invoice".to_owned(),
+                tax_context: Some(TaxContext::named("company")),
+                tags: BTreeSet::new(),
+                filing_pattern: "{sender}/{kind}".to_owned(),
+                confirmed: true,
+                enabled: true,
+            };
+            index
+                .create_rule_from(&spec, ncrs_index::RuleOrigin::Filing)
+                .unwrap();
+        });
         let next = setup.document("next.pdf", DocumentStatus::Planned);
         setup.with_index(|index| {
             index
@@ -797,46 +774,6 @@ mod tests {
             assert_eq!(document.status, DocumentStatus::New);
             assert!(index.open_reviews().unwrap().is_empty());
         });
-    }
-
-    #[test]
-    fn a_rule_needs_a_sender_a_kind_and_a_pattern_that_fits() {
-        let setup = Setup::new();
-        let access = setup.access();
-        let create = |sender: &str, kind: &str, pattern: &str| {
-            access.create_rule_for_sender(sender, kind, None, BTreeSet::new(), pattern)
-        };
-
-        create(" ", "invoice", "{kind}").unwrap_err();
-        create("Company A", "", "{kind}").unwrap_err();
-        create("Company A", "invoice", "{nonsense}").unwrap_err();
-        assert!(setup.with_index(|index| index.rules().unwrap()).is_empty());
-    }
-
-    #[test]
-    fn a_rule_made_with_an_open_tax_context_leaves_the_context_open() {
-        let setup = Setup::new();
-        let access = setup.access();
-
-        access
-            .create_rule_for_sender("Company A", "invoice", None, BTreeSet::new(), "{kind}")
-            .unwrap();
-        access
-            .create_rule_for_sender(
-                "Company B",
-                "invoice",
-                Some(TaxContext::None),
-                BTreeSet::new(),
-                "{kind}",
-            )
-            .unwrap();
-
-        let contexts: Vec<_> = setup
-            .with_index(|index| index.rules().unwrap())
-            .into_iter()
-            .map(|rule| rule.spec.tax_context)
-            .collect();
-        assert_eq!(contexts, vec![None, Some(TaxContext::None)]);
     }
 
     #[test]

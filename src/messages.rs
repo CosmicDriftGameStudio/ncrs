@@ -1090,12 +1090,8 @@ pub enum ReviewListMessage {
     },
     /// The AI can read now: every open entry goes through Hermes again.
     ReadAgainWithAi,
-    /// The offer after filing: a rule for this sender.
+    /// The offer after filing: opens the rule form for this sender.
     CreateRule,
-    RuleCreated {
-        generation: u64,
-        result: Result<RuleId, String>,
-    },
 }
 
 /// Everything the rules page sends.
@@ -1173,16 +1169,9 @@ pub enum RuleSuggestionsMessage {
     Move(isize),
     /// A click on the suggestion at this position.
     Select(usize),
+    /// Opens the rule form for the selected suggestion.
     Edit,
-    CancelEdit,
-    ConditionChanged(String),
-    KindChanged(String),
-    PatternChanged(String),
-    /// Tab (`false`) or Shift+Tab (`true`) in the form.
-    FocusField {
-        backwards: bool,
-    },
-    /// Enter or the button: confirms the suggestion as it is, or as edited.
+    /// Enter or the button: confirms the suggestion as it is.
     Confirm,
     Discard,
     /// The documents a suggestion's condition finds.
