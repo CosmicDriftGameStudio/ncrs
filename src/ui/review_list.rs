@@ -15,6 +15,7 @@ use ncrs_index::{DocumentFields, Field, FieldOrigin, ReviewReason};
 use ncrs_intake::{PatternPart, PatternSource};
 
 use super::document_preview;
+use super::filing_pieces::{target_view, TargetHost};
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::hermes::{self, Badges};
@@ -22,6 +23,7 @@ use super::kit::{self, dim, error_line, paragraph, Columns, Tone};
 use super::picker::highlight_spans;
 use super::theme::{font_size, size, spacing};
 use crate::app::fill_template;
+use crate::filing_pieces::FilingTarget;
 use crate::filing_setup::shown_path;
 use crate::filing_work::target_of;
 use crate::i18n::{FuturamaName, Language, Msg};
@@ -40,7 +42,7 @@ const DATE_ID: &str = "review-date";
 const NUMBER_ID: &str = "review-number";
 const AMOUNT_ID: &str = "review-amount";
 const TAG_INPUT_ID: &str = "review-tag-input";
-const PATTERN_ID: &str = "review-pattern";
+pub const FOLDER_NAME_FIELD_ID: &str = "review-folder-name";
 
 /// The room for "automatic" and "added by you" before the chips.
 const TAG_ROW_LABEL_WIDTH: f32 = 96.0;
@@ -201,7 +203,6 @@ enum Cause {
     DefaultPattern,
     NothingRecognised,
     Unconfirmed,
-    RuleConflict,
     TargetExists,
     MissingField(Field),
     LowConfidence(Field),
@@ -216,7 +217,6 @@ impl Cause {
                 TextState::Read => Self::NoRule,
             },
             ReviewReason::UnconfirmedRule => Self::Unconfirmed,
-            ReviewReason::RuleConflict => Self::RuleConflict,
             ReviewReason::TargetExists => Self::TargetExists,
             ReviewReason::MissingField(field) => Self::MissingField(field),
             ReviewReason::LowConfidence(field) => Self::LowConfidence(field),
@@ -246,7 +246,6 @@ impl Cause {
             Self::DefaultPattern => Msg::ReviewListReasonDefaultPattern,
             Self::NothingRecognised => Msg::ReviewListReasonNothingRecognised,
             Self::Unconfirmed => Msg::ReviewListReasonUnconfirmed,
-            Self::RuleConflict => Msg::ReviewListReasonRuleConflict,
             Self::TargetExists => Msg::ReviewListReasonTargetExists,
             Self::MissingField(field) => {
                 return named(Msg::ReviewListReasonMissingField, field, lang)
@@ -267,7 +266,6 @@ impl Cause {
             Self::DefaultPattern => Msg::ReviewListChipDefaultPattern,
             Self::NothingRecognised => Msg::ReviewListChipNothingRecognised,
             Self::Unconfirmed => Msg::ReviewListChipUnconfirmed,
-            Self::RuleConflict => Msg::ReviewListChipRuleConflict,
             Self::TargetExists => Msg::ReviewListChipTargetExists,
             Self::MissingField(field) => {
                 return named(Msg::ReviewListChipMissingField, field, lang)
@@ -597,26 +595,84 @@ fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element
             palette,
         ),
         group_heading(Msg::ReviewListGroupWhere, lang, palette),
-        field_row(
-            lang.text(Msg::ReviewListFieldPattern),
-            None,
-            text_field(FormField::Pattern, PATTERN_ID, None, &values.pattern),
-            palette,
-        ),
+        where_block(state, lang, palette),
     ]
     .spacing(spacing::XS)
     .into()
 }
 
+/// "Move to": where the document goes in words with the origin of it, and
+/// "Change" to turn it into the widget.
+fn where_block<'a>(
+    state: &'a ReviewList,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let origin_text = state
+        .selected()
+        .and_then(|item| state.pattern_source(item))
+        .map(|source| match source {
+            PatternSource::Default => Msg::ReviewListOriginDefaultTarget,
+            PatternSource::RuleOrProfile => Msg::ReviewListOriginRule,
+        });
+    let mut heading = row![paragraph(
+        lang.text(Msg::ReviewListMoveTo).to_owned(),
+        palette
+    )]
+    .spacing(spacing::S);
+    if let Some(origin) = origin_text {
+        heading = heading.push(dim(lang.text(origin), palette));
+    }
+    let body: Element<'a, Message> = match state.target_editor() {
+        Some(editor) => target_view(
+            editor,
+            &TargetHost {
+                wrap: |edit| send(ReviewListMessage::TargetEdited(edit)),
+                name_field_id: FOLDER_NAME_FIELD_ID,
+                lang,
+                palette,
+            },
+        ),
+        None => row![
+            paragraph(
+                FilingTarget::parse(&state.form().pattern).in_words(lang),
+                palette,
+            ),
+            kit::button(
+                lang.text(Msg::ReviewListChangeTarget),
+                Some(send(ReviewListMessage::ChangeTarget)),
+                Tone::Secondary,
+                palette,
+            ),
+        ]
+        .spacing(spacing::M)
+        .align_y(alignment::Vertical::Center)
+        .into(),
+    };
+    column![heading, body].spacing(spacing::XS).into()
+}
+
 /// "Will be filed as" with the path; the parts of it that are values of a
-/// field in the accent color. Below it the placeholders a pattern may use.
+/// field in the accent color. Below it where the pattern comes from.
 fn target_line<'a>(
     state: &ReviewList,
     root: PreviewRoot<'_>,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let hint = dim(lang.text(Msg::ReviewListHintPattern), palette);
+    let source_line = state
+        .selected()
+        .and_then(|item| state.pattern_source(item))
+        .map(|source| match source {
+            PatternSource::Default => fill_template(
+                lang.text(Msg::ReviewListSourceDefault),
+                &[(
+                    "{target}",
+                    &FilingTarget::parse(&state.form().pattern).in_words(lang),
+                )],
+            ),
+            PatternSource::RuleOrProfile => lang.text(Msg::ReviewListSourceRule).to_owned(),
+        });
     let line = match shown_target(state, root) {
         Some((shown, marked)) => {
             let template = lang.text(Msg::ReviewListPreview);
@@ -649,7 +705,11 @@ fn target_line<'a>(
             None => dim(lang.text(Msg::ReviewListPreviewNone), palette),
         },
     };
-    column![line, hint].spacing(spacing::XS).into()
+    let mut lines = column![line].spacing(spacing::XS);
+    if let Some(text) = source_line {
+        lines = lines.push(dim(text, palette));
+    }
+    lines.into()
 }
 
 /// The path the document would be filed under as shown, and the places in it
@@ -912,7 +972,6 @@ pub fn field_id(field: FormField) -> &'static str {
         FormField::Number => NUMBER_ID,
         FormField::Amount => AMOUNT_ID,
         FormField::TagInput => TAG_INPUT_ID,
-        FormField::Pattern => PATTERN_ID,
     }
 }
 

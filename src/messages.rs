@@ -24,6 +24,7 @@ use crate::document_preview::PreviewContent;
 use crate::document_search::FacetValue;
 use crate::execute::UndoReport;
 use crate::filing::{FilingMessage, IndexFigures};
+use crate::filing_pieces::TargetEdit;
 use crate::filing_work::FilingSummary;
 use crate::fs::remote::session::ConnectFailure;
 use crate::fs::remote::{RemotePath, Secret, ServerId};
@@ -859,13 +860,8 @@ pub enum HermesSetupMessage {
 #[derive(Debug, Clone, PartialEq)]
 pub enum HermesOverviewMessage {
     Close,
-    PatternEdited(String),
-    /// The key or a click that puts the focus into the pattern field.
-    FocusPattern,
-    /// Escape in the pattern field: the text is entered and the field lets go.
-    LeavePattern,
-    /// Enter in the pattern field, or the page being left.
-    PatternSubmit,
+    /// An edit of the default target; it is written at once.
+    TargetEdited(TargetEdit),
     PatternWritten(Result<Box<Config>, FilingWriteError>),
     SetAiEnabled(bool),
     SetLoad(Load),
@@ -1104,6 +1100,9 @@ pub enum ReviewListMessage {
     Select(usize),
     Edit,
     FieldChanged(FormField, String),
+    /// "Change": the filing target turns into the widget that edits it.
+    ChangeTarget,
+    TargetEdited(TargetEdit),
     /// Enter in the tag field: the typed tag joins the user's own.
     AddTag,
     RemoveTag(String),
@@ -1192,12 +1191,12 @@ pub enum RulesMessage {
 /// Everything the form of a rule sends.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RuleFormMessage {
+    Name(String),
     Condition(ConditionEdit),
-    Kind(String),
-    Tags(String),
-    Pattern(String),
-    /// Appends `{name}` to the filing pattern.
-    InsertBlock(&'static str),
+    Target(TargetEdit),
+    TagInput(String),
+    AddTag,
+    RemoveTag(String),
     Save,
     Cancel,
     /// The work of the generation is done. Dropped when the page was closed

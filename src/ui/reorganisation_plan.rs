@@ -14,6 +14,7 @@ use super::hermes::{self, Badges};
 use super::kit::{self, dim, error_line, paragraph, Columns, Tone};
 use super::theme::{size, spacing};
 use crate::app::fill_template;
+use crate::filing_pieces::FilingTarget;
 use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{HermesFocus, HermesPage, Message, ReorganisationPlanMessage};
 use crate::palette::Palette;
@@ -205,7 +206,7 @@ pub fn reason_text(planned: &PlannedItem, lang: Language) -> String {
                 ),
                 Some(Finding::NameOutlier { pattern }) => fill_template(
                     lang.text(Msg::ReorganisationPlanReasonName),
-                    &[("{pattern}", pattern)],
+                    &[("{pattern}", &FilingTarget::parse(pattern).in_words(lang))],
                 ),
                 None => String::new(),
             }
@@ -279,7 +280,10 @@ pub fn finding_sentence(planned: &PlannedItem, lang: Language) -> String {
                 },
                 Some(Finding::NameOutlier { pattern }) => fill_template(
                     lang.text(Msg::ReorganisationPlanFindingName),
-                    &[("{pattern}", pattern), ("{target}", &target)],
+                    &[
+                        ("{pattern}", &FilingTarget::parse(pattern).in_words(lang)),
+                        ("{target}", &target),
+                    ],
                 ),
                 None => String::new(),
             }

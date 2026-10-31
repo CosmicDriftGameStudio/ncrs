@@ -338,11 +338,12 @@ mod tests {
 
     fn spec(word: &str) -> RuleSpec {
         RuleSpec {
+            name: None,
             conditions: RuleConditions::all_of(vec![Condition::new(ConditionKind::Word, word)]),
             extract_number: None,
             extract_date: None,
             extract_amount: None,
-            kind: "Invoice".to_owned(),
+            kind: Some("Invoice".to_owned()),
             tags: BTreeSet::new(),
             filing_pattern: "{year}".to_owned(),
             confirmed: true,
@@ -749,7 +750,7 @@ mod tests {
     }
 
     #[test]
-    fn a_second_confirmed_rule_that_matches_is_a_conflict_with_its_place() {
+    fn an_earlier_rule_that_matches_as_well_files_first_and_is_named_with_its_place() {
         let fixture = fixture();
         fixture
             .with_index(|index| index.create_rule(&filing_spec("power", "{kind}")))
@@ -770,7 +771,7 @@ mod tests {
             tried.now,
             TryOutcome::Filed(PathBuf::from("Invoice").join("other"))
         );
-        assert_eq!(tried.after, TryOutcome::Review(ReviewReason::RuleConflict));
+        assert_eq!(tried.after, tried.now);
         assert_eq!(result.conflict_names, HashMap::from([(other, 2)]));
     }
 
@@ -797,6 +798,43 @@ mod tests {
             TryOutcome::Filed(PathBuf::from("Invoice").join("edited"))
         );
         assert!(tried.conflicts.is_empty());
+    }
+
+    #[test]
+    fn a_rule_on_tags_tries_the_own_tags_of_each_document() {
+        let fixture = fixture();
+        let tagged = fixture.document(&fixture.inbox, "tagged.pdf", "no word of the rule");
+        fixture.document(&fixture.inbox, "untagged.pdf", "no word of the rule");
+        fixture.with_index(|index| {
+            let fields = DocumentFields {
+                sender: Some("Firma A GmbH".to_owned()),
+                tags: BTreeSet::from(["rechnung".to_owned()]),
+                ..DocumentFields::default()
+            };
+            index
+                .set_document_fields(tagged, &fields, |_| FieldOrigin::Manual)
+                .unwrap();
+        });
+        let on_tags = RuleTry {
+            replaces: None,
+            spec: RuleSpec {
+                conditions: RuleConditions::all_of(vec![
+                    Condition::new(ConditionKind::Tag, "rechnung"),
+                    Condition::new(ConditionKind::Tag, "firma-a"),
+                ]),
+                ..filing_spec("unused", "Tags/{kind}")
+            },
+        };
+
+        let result = fixture.access.try_rule(&on_tags).unwrap();
+
+        assert_eq!(result.documents.len(), 1);
+        let tried = result.documents.first().unwrap();
+        assert_eq!(tried.path, PathBuf::from("tagged.pdf"));
+        assert_eq!(
+            tried.after,
+            TryOutcome::Filed(PathBuf::from("Tags").join("Invoice"))
+        );
     }
 
     #[test]

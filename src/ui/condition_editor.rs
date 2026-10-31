@@ -1,12 +1,13 @@
-//! The rows of a [`ConditionEditor`]: kind, value, "not", remove, and under
-//! them the combinator and the button that adds a condition. The host (the
+//! The rows of a [`ConditionEditor`]: kind, has / has not, value, remove, and
+//! under them the button that adds a condition. The combinator is offered
+//! apart by [`combinator_choice`]. The host (the
 //! rule form) lays the rows out in its own row type.
 
 use iced::widget::{container, row};
 use iced::{alignment, Element};
 use ncrs_index::{Combinator, Condition, ConditionKind};
 
-use super::kit::{self, dim, Check, Tone};
+use super::kit::{self, Tone};
 use super::theme::spacing;
 use crate::app::fill_template;
 use crate::condition_editor::{
@@ -34,7 +35,10 @@ pub const CONDITION_VALUE_FIELD_IDS: [&str; MAX_CONDITION_ROWS] = [
 pub const FIRST_CONDITION_FIELD_ID: &str = "condition-value-0";
 
 /// The room of the kind dropdown in a row, in pixels.
-const KIND_WIDTH: f32 = 160.0;
+const KIND_WIDTH: f32 = 180.0;
+
+/// The room of the has / has not dropdown in a row, in pixels.
+const NEGATION_WIDTH: f32 = 120.0;
 
 /// A label, what is wrong with the row and the control.
 pub type ConditionRow<'a> = (String, Option<String>, Element<'a, Message>);
@@ -60,10 +64,7 @@ pub fn condition_editor_rows<'a>(
         .enumerate()
         .map(|(index, ((condition, problem), id))| {
             (
-                fill_template(
-                    lang.text(Msg::ConditionEditorRowLabel),
-                    &[("{number}", &(index + 1).to_string())],
-                ),
+                String::new(),
                 problem.map(|found| problem_text(&found, lang)),
                 condition_row(editor, index, condition, id, host),
             )
@@ -74,13 +75,6 @@ pub fn condition_editor_rows<'a>(
             lang.text(Msg::ConditionEditorEmpty).to_owned(),
             None,
             container("").into(),
-        ));
-    }
-    if editor.rows.len() > 1 {
-        rows.push((
-            lang.text(Msg::ConditionEditorCombinatorLabel).to_owned(),
-            None,
-            combinator_choice(editor.combinator, host),
         ));
     }
     rows.push((
@@ -143,31 +137,30 @@ fn condition_row<'a>(
             palette,
         )
     };
-    let mut cells = row![
-        container(kit::dropdown(&options, selected, true, palette)).width(KIND_WIDTH),
-        value_field,
-    ]
-    .spacing(spacing::S)
-    .align_y(alignment::Vertical::Center);
+    let mut cells =
+        row![container(kit::dropdown(&options, selected, true, palette)).width(KIND_WIDTH)]
+            .spacing(spacing::S)
+            .align_y(alignment::Vertical::Center);
     if editor.negation {
+        let has = [
+            (lang.text(Msg::ConditionEditorHas), false),
+            (lang.text(Msg::ConditionEditorHasNot), true),
+        ];
+        let has_options: Vec<(&str, Message)> = has
+            .iter()
+            .map(|&(label, negated)| (label, wrap(ConditionEdit::Negated(index, negated))))
+            .collect();
+        let has_selected = has
+            .iter()
+            .position(|&(_, negated)| negated == condition.negated)
+            .unwrap_or_default();
         cells = cells.push(
-            row![
-                kit::checkbox(
-                    if condition.negated {
-                        Check::On
-                    } else {
-                        Check::Off
-                    },
-                    Some(wrap(ConditionEdit::Negated(index, !condition.negated))),
-                    palette,
-                ),
-                dim(lang.text(Msg::ConditionEditorNot), palette),
-            ]
-            .spacing(spacing::XS)
-            .align_y(alignment::Vertical::Center),
+            container(kit::dropdown(&has_options, has_selected, true, palette))
+                .width(NEGATION_WIDTH),
         );
     }
     cells
+        .push(value_field)
         .push(kit::button(
             lang.text(Msg::ConditionEditorRemove),
             Some(wrap(ConditionEdit::Remove(index))),
@@ -177,10 +170,10 @@ fn condition_row<'a>(
         .into()
 }
 
-fn combinator_choice<'a>(chosen: Combinator, host: &ConditionHost<'_>) -> Element<'a, Message> {
+pub fn combinator_choice<'a>(chosen: Combinator, host: &ConditionHost<'_>) -> Element<'a, Message> {
     let choices = [
-        (Msg::ConditionEditorCombinatorAny, Combinator::AnyOf),
         (Msg::ConditionEditorCombinatorAll, Combinator::AllOf),
+        (Msg::ConditionEditorCombinatorAny, Combinator::AnyOf),
     ];
     let options: Vec<(&str, Message)> = choices
         .iter()

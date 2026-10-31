@@ -166,7 +166,7 @@ pub const MAX_MATCH_RANGES: usize = 24;
 
 /// The byte ranges of `text` the condition holds because of, for marking them
 /// in a preview. Negated conditions and the kinds that read no passage of the
-/// text (sender, recipient, folder) mark nothing, and neither does a condition
+/// text (sender, recipient, folder, tag) mark nothing, and neither does a condition
 /// that does not hold.
 pub fn condition_match_ranges(condition: &Condition, text: &str) -> Vec<Range<usize>> {
     let value = condition.value.trim();
@@ -186,7 +186,10 @@ pub fn condition_match_ranges(condition: &Condition, text: &str) -> Vec<Range<us
         }
         ConditionKind::Iban => separated_number_ranges(text, value, is_iban_separator).collect(),
         ConditionKind::TaxId => separated_number_ranges(text, value, is_tax_id_separator).collect(),
-        ConditionKind::Sender | ConditionKind::Recipient | ConditionKind::Folder => Vec::new(),
+        ConditionKind::Sender
+        | ConditionKind::Recipient
+        | ConditionKind::Folder
+        | ConditionKind::Tag => Vec::new(),
     };
     ranges.truncate(MAX_MATCH_RANGES);
     ranges

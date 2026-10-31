@@ -410,7 +410,7 @@ mod tests {
         };
         let edited = RuleSpec {
             conditions: text_condition("company a"),
-            kind: "Letter".to_owned(),
+            kind: Some("Letter".to_owned()),
             filing_pattern: "{year}/Letters".to_owned(),
             ..suggestion()
         };
@@ -421,7 +421,7 @@ mod tests {
         let rule = index.rule(id).unwrap().unwrap();
         assert!(rule.spec.confirmed);
         assert_eq!(rule.spec.conditions, edited.conditions);
-        assert_eq!(rule.spec.kind, "Letter");
+        assert_eq!(rule.spec.kind.as_deref(), Some("Letter"));
         assert_eq!(rule.spec.filing_pattern, "{year}/Letters");
         assert_eq!(again, RuleSuggestion::Discarded);
         assert_eq!(index.rules().unwrap().len(), 1);

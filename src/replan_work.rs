@@ -393,6 +393,7 @@ pub mod tests {
         pub fn add_rule(&mut self) {
             self.index
                 .create_rule(&RuleSpec {
+                    name: None,
                     conditions: RuleConditions::all_of(vec![Condition::new(
                         ConditionKind::Substring,
                         "company a",
@@ -400,7 +401,7 @@ pub mod tests {
                     extract_number: None,
                     extract_date: None,
                     extract_amount: None,
-                    kind: "invoice".to_owned(),
+                    kind: Some("invoice".to_owned()),
                     tags: BTreeSet::new(),
                     filing_pattern: "Insurance/{kind}.pdf".to_owned(),
                     confirmed: true,
@@ -456,6 +457,80 @@ pub mod tests {
         fn target(&self) -> PathBuf {
             self.archive.join("Insurance").join("invoice.pdf")
         }
+    }
+
+    impl Setup {
+        /// A rule on the tags "rechnung" and "firma-a", which no text holds.
+        fn add_tag_rule(&mut self) {
+            self.index
+                .create_rule(&RuleSpec {
+                    conditions: RuleConditions::all_of(vec![
+                        Condition::new(ConditionKind::Tag, "rechnung"),
+                        Condition::new(ConditionKind::Tag, "firma-a"),
+                    ]),
+                    ..rule_on_text()
+                })
+                .unwrap();
+        }
+
+        /// Gives the document the own tag "rechnung" and the sender Firma A
+        /// GmbH, whose tag is "firma-a-gmbh".
+        fn tag(&mut self, document: &Document) {
+            let fields = DocumentFields {
+                sender: Some("Firma A GmbH".to_owned()),
+                tags: BTreeSet::from(["rechnung".to_owned()]),
+                ..DocumentFields::default()
+            };
+            self.index
+                .set_document_fields(document.id, &fields, |_| ncrs_index::FieldOrigin::Manual)
+                .unwrap();
+        }
+    }
+
+    fn rule_on_text() -> RuleSpec {
+        RuleSpec {
+            name: None,
+            conditions: RuleConditions::all_of(vec![Condition::new(
+                ConditionKind::Substring,
+                "company a",
+            )]),
+            extract_number: None,
+            extract_date: None,
+            extract_amount: None,
+            kind: Some("invoice".to_owned()),
+            tags: BTreeSet::new(),
+            filing_pattern: "Insurance/{kind}.pdf".to_owned(),
+            confirmed: true,
+            enabled: true,
+        }
+    }
+
+    #[test]
+    fn a_rule_on_tags_files_open_cases_and_a_folder_by_the_tags_of_the_document() {
+        let mut setup = Setup::new();
+        let tagged = setup.in_review("tagged.pdf", "no word of the rule");
+        let untagged = setup.in_review("untagged.pdf", "no word of the rule");
+        let in_folder = setup.in_review("sub/folder.pdf", "no word of the rule");
+        setup.tag(&tagged);
+        setup.tag(&in_folder);
+        setup.add_tag_rule();
+        let filed = ReplanAfter::Filed(PathBuf::from("Insurance").join("invoice.pdf"));
+
+        let open_cases = setup.preview(&ReplanScope::OpenCases);
+        let after_of = |items: &[ReplanItem], document: &Document| {
+            items
+                .iter()
+                .find(|item| item.document_id == document.id)
+                .map(|item| item.after.clone())
+        };
+        assert_eq!(after_of(&open_cases, &tagged), Some(filed.clone()));
+        assert_eq!(
+            after_of(&open_cases, &untagged),
+            Some(ReplanAfter::Review(ReviewReason::NoMatchingRule))
+        );
+
+        let folder = setup.preview(&ReplanScope::Folder(setup.inbox.join("sub")));
+        assert_eq!(after_of(&folder, &in_folder), Some(filed));
     }
 
     const INVOICE_TEXT: &str = "Invoice from Company A";

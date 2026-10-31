@@ -8,6 +8,7 @@ use iced::mouse::ScrollDelta;
 use ncrs_index::{Combinator, Condition, ConditionKind, RuleId, RuleOrigin, RuleSpec};
 
 use crate::app::fill_template;
+use crate::filing_pieces::FilingTarget;
 use crate::i18n::{Language, Msg};
 use crate::list_window::ListWindow;
 use crate::messages::HermesPage;
@@ -287,6 +288,8 @@ fn condition_template(kind: ConditionKind, negated: bool) -> Msg {
         (ConditionKind::Recipient, true) => Msg::RulesSentenceRecipientNot,
         (ConditionKind::Folder, false) => Msg::RulesSentenceFolder,
         (ConditionKind::Folder, true) => Msg::RulesSentenceFolderNot,
+        (ConditionKind::Tag, false) => Msg::RulesSentenceTag,
+        (ConditionKind::Tag, true) => Msg::RulesSentenceTagNot,
     }
 }
 
@@ -297,24 +300,39 @@ fn condition_sentence(condition: &Condition, lang: Language) -> String {
     )
 }
 
+/// One condition in the sentence; a tag reads as the bare tag.
+fn sentence_part(condition: &Condition, first: bool, lang: Language) -> (bool, String) {
+    let bare_tag = condition.kind == ConditionKind::Tag && (!condition.negated || !first);
+    if bare_tag {
+        (condition.negated, condition.value.clone())
+    } else {
+        (false, condition_sentence(condition, lang))
+    }
+}
+
 /// The rule as one sentence: the conditions, then after the arrow the kind,
-/// the tags and the filing pattern.
+/// the tags to set and where the document moves to.
 pub fn rule_sentence(spec: &RuleSpec, lang: Language) -> String {
-    let joiner = format!(
-        " {} ",
-        lang.text(match spec.conditions.combinator {
-            Combinator::AllOf => Msg::RulesJoinerAll,
-            Combinator::AnyOf => Msg::RulesJoinerAny,
-        })
-    );
-    let conditions = spec
-        .conditions
-        .list
-        .iter()
-        .map(|condition| condition_sentence(condition, lang))
-        .collect::<Vec<_>>()
-        .join(&joiner);
-    let mut target = vec![lang.kind_label(&spec.kind).into_owned()];
+    let combinator = spec.conditions.combinator;
+    let mut conditions = String::new();
+    for (position, condition) in spec.conditions.list.iter().enumerate() {
+        let (not_joiner, text) = sentence_part(condition, position == 0, lang);
+        if position > 0 {
+            conditions.push(' ');
+            conditions.push_str(lang.text(match (combinator, not_joiner) {
+                (Combinator::AllOf, false) => Msg::RulesJoinerAll,
+                (Combinator::AnyOf, false) => Msg::RulesJoinerAny,
+                (Combinator::AllOf, true) => Msg::RulesJoinerAllNot,
+                (Combinator::AnyOf, true) => Msg::RulesJoinerAnyNot,
+            }));
+            conditions.push(' ');
+        }
+        conditions.push_str(&text);
+    }
+    let mut target = Vec::new();
+    if let Some(kind) = &spec.kind {
+        target.push(lang.kind_label(kind).into_owned());
+    }
     if !spec.tags.is_empty() {
         target.push(
             spec.tags
@@ -324,7 +342,7 @@ pub fn rule_sentence(spec: &RuleSpec, lang: Language) -> String {
                 .join(" "),
         );
     }
-    target.push(spec.filing_pattern.clone());
+    target.push(FilingTarget::parse(&spec.filing_pattern).in_words(lang));
     fill_template(
         lang.text(Msg::RulesRuleIf),
         &[
@@ -384,11 +402,12 @@ pub mod tests {
 
     fn spec(conditions: RuleConditions) -> RuleSpec {
         RuleSpec {
+            name: None,
             conditions,
             extract_number: None,
             extract_date: None,
             extract_amount: None,
-            kind: "Invoice".to_owned(),
+            kind: Some("Invoice".to_owned()),
             tags: BTreeSet::from(["tax".to_owned(), "office".to_owned()]),
             filing_pattern: "{year}/{sender}".to_owned(),
             confirmed: true,
@@ -648,6 +667,7 @@ pub mod tests {
     #[test]
     fn saving_a_new_form_creates_the_rule_and_an_edit_form_changes_it() {
         use crate::condition_editor::ConditionEdit;
+        use crate::filing_pieces::TargetEdit;
         use crate::messages::RuleFormMessage;
         use crate::rules_work::RulesAccess;
         use std::sync::{Arc, Mutex};
@@ -660,33 +680,30 @@ pub mod tests {
 
         page.begin_new();
         assert_eq!(page.begin_save(), None);
-        for message in [
-            RuleFormMessage::Condition(ConditionEdit::Value(0, "Telekom".to_owned())),
-            RuleFormMessage::Kind("Invoice".to_owned()),
-        ] {
-            page.form_mut().unwrap().update(message);
-        }
+        page.form_mut()
+            .unwrap()
+            .update(RuleFormMessage::Condition(ConditionEdit::Value(
+                0,
+                "telekom".to_owned(),
+            )));
         access.save(page.begin_save().unwrap()).unwrap();
         page.saved();
         page.loaded(access.load().unwrap());
 
         assert!(page.form().is_none());
         let sentence = rule_sentence(&page.selected().unwrap().rule.spec, Language::English);
-        assert_eq!(
-            sentence,
-            "If the sender is “Telekom” → invoice · {year}/{sender}"
-        );
+        assert_eq!(sentence, "If telekom → Year / Sender");
 
         page.begin_edit();
         page.form_mut()
             .unwrap()
-            .update(RuleFormMessage::Pattern("{year}".to_owned()));
+            .update(RuleFormMessage::Target(TargetEdit::Remove(1)));
         access.save(page.begin_save().unwrap()).unwrap();
         page.saved();
         page.loaded(access.load().unwrap());
 
         assert_eq!(page.rows().len(), 1);
-        assert_eq!(page.selected().unwrap().rule.spec.filing_pattern, "{year}");
+        assert_eq!(page.selected().unwrap().rule.spec.filing_pattern, "{year}/");
     }
 
     #[test]
@@ -717,15 +734,19 @@ pub mod tests {
 
     #[test]
     fn a_sentence_joins_all_of_with_and_and_ends_in_the_target() {
-        let spec = spec(RuleConditions::all_of(vec![
+        let plain = spec(RuleConditions::all_of(vec![
             Condition::new(ConditionKind::Word, "rent"),
             Condition::new(ConditionKind::Sender, "Company A"),
         ]));
+        let spec = RuleSpec {
+            filing_pattern: "{year}/{sender}/".to_owned(),
+            ..plain
+        };
 
         assert_eq!(
             rule_sentence(&spec, Language::English),
             "If the text contains the word “rent” and the sender is “Company A” → \
-             invoice · #office #tax · {year}/{sender}"
+             invoice · #office #tax · Year / Sender"
         );
     }
 
@@ -733,6 +754,7 @@ pub mod tests {
     fn a_sentence_joins_any_of_with_or_and_words_a_negation() {
         let spec = RuleSpec {
             tags: BTreeSet::new(),
+            filing_pattern: "{year}/{sender}/".to_owned(),
             ..spec(RuleConditions::any_of(vec![
                 Condition::not(ConditionKind::Sender, "Agency B"),
                 Condition::new(ConditionKind::Regex, r"No\. \d+"),
@@ -742,7 +764,7 @@ pub mod tests {
         assert_eq!(
             rule_sentence(&spec, Language::English),
             "If the sender is not “Agency B” or the text matches /No\\. \\d+/ → \
-             invoice · {year}/{sender}"
+             invoice · Year / Sender"
         );
     }
 
@@ -750,6 +772,7 @@ pub mod tests {
     fn a_german_sentence_uses_german_quotes_and_joiners() {
         let spec = RuleSpec {
             tags: BTreeSet::new(),
+            filing_pattern: "{year}/{sender}/".to_owned(),
             ..spec(RuleConditions::any_of(vec![
                 Condition::not(ConditionKind::Word, "Mahnung"),
                 Condition::new(ConditionKind::Folder, "Post/2024"),
@@ -759,7 +782,7 @@ pub mod tests {
         assert_eq!(
             rule_sentence(&spec, Language::German),
             "Wenn der Text das Wort „Mahnung“ nicht enthält oder das Dokument in \
-             „Post/2024“ liegt → Rechnung · {year}/{sender}"
+             „Post/2024“ liegt → Rechnung · Jahr / Absender"
         );
     }
 

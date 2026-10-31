@@ -139,6 +139,7 @@ mod tests {
         confirmed: bool,
     ) -> RuleSpec {
         RuleSpec {
+            name: None,
             conditions: RuleConditions::all_of(
                 std::iter::once(Condition::new(ConditionKind::Word, phrase))
                     .chain(sender.map(|name| Condition::new(ConditionKind::Sender, name)))
@@ -147,7 +148,7 @@ mod tests {
             extract_number: None,
             extract_date: None,
             extract_amount: None,
-            kind: kind.to_owned(),
+            kind: Some(kind.to_owned()),
             tags: Default::default(),
             filing_pattern: pattern.to_owned(),
             confirmed,

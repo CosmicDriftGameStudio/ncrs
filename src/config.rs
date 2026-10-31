@@ -19,7 +19,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 use ncrs_index::iban_is_valid;
-use ncrs_intake::{pattern_is_valid, pattern_without_tax_context, LocationMode};
+use ncrs_intake::{pattern_is_valid, LocationMode};
 use ncrs_pipeline::Load;
 use serde::de::{Deserializer, Error as _, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
@@ -1219,16 +1219,6 @@ struct FilingError {
     reason: String,
 }
 
-/// A config written before tax contexts went away may still name them; the
-/// file itself stays as the user wrote it.
-fn without_retired_placeholders(pattern: &str) -> String {
-    if pattern.contains("{tax_context}") {
-        pattern_without_tax_context(pattern)
-    } else {
-        pattern.to_owned()
-    }
-}
-
 /// Trimmed, without empty or repeated entries and without those `is_valid`
 /// refuses.
 fn own_entries(entries: &[String], is_valid: impl Fn(&str) -> bool) -> Vec<String> {
@@ -1253,7 +1243,8 @@ fn resolve_filing(section: &FilingSection, home: Option<&Path>) -> Result<Filing
             .default_pattern
             .as_deref()
             .map(str::trim)
-            .map(without_retired_placeholders)
+            .filter(|pattern| !pattern.is_empty())
+            .map(ncrs_intake::upgraded_pattern)
             .filter(|pattern| pattern_is_valid(pattern)),
         own_names: OwnDetail::Names.entries_in(section),
         own_ibans: OwnDetail::Ibans.entries_in(section),
@@ -2508,8 +2499,8 @@ mod tests {
     fn a_valid_default_pattern_is_read_and_an_invalid_one_is_ignored() {
         assert_eq!(default_pattern_of("[modules.filing]\n"), None);
         assert_eq!(
-            default_pattern_of("[modules.filing]\ndefault_pattern = \"{year}/{sender}\"\n"),
-            Some("{year}/{sender}".to_owned())
+            default_pattern_of("[modules.filing]\ndefault_pattern = \"{year}/{sender}/\"\n"),
+            Some("{year}/{sender}/".to_owned())
         );
         for invalid in ["{nope}/x", "", "/abs/{year}", "{year"] {
             let text = format!("[modules.filing]\ndefault_pattern = '{invalid}'\n");
@@ -2518,12 +2509,19 @@ mod tests {
     }
 
     #[test]
-    fn a_default_pattern_with_a_retired_tax_context_loses_it_without_touching_the_file() {
+    fn a_default_pattern_of_an_older_version_is_upgraded_without_touching_the_file() {
         let text = "[modules.filing]\ndefault_pattern = \"{tax_context}/{year}/{sender}\"\n";
-        assert_eq!(default_pattern_of(text), Some("{year}/{sender}".to_owned()));
+        assert_eq!(
+            default_pattern_of(text),
+            Some("{year}/{sender}/".to_owned())
+        );
         assert_eq!(
             default_pattern_of("[modules.filing]\ndefault_pattern = \"{tax_context}\"\n"),
-            Some(ncrs_intake::DEFAULT_PATTERNS[0].to_owned())
+            Some(ncrs_intake::FALLBACK_PATTERN.to_owned())
+        );
+        assert_eq!(
+            default_pattern_of("[modules.filing]\ndefault_pattern = \"{year}/{sender}\"\n"),
+            Some("{year}/{sender}/".to_owned())
         );
     }
 

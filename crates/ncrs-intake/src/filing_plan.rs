@@ -4,14 +4,17 @@
 //!
 //! A filing pattern is a relative path with these placeholders:
 //! `{year}`, `{month}`, `{day}`, `{date}` (`YYYY-MM-DD`), `{sender}`,
-//! `{number}` and `{kind}`. Patterns learned from an archive
+//! `{recipient}`, `{number}` and `{kind}`. Patterns learned from an archive
 //! add `{folder}` (the sender) and `{name}` (the kind).
+//!
+//! A pattern that ends in `/` names folders only; the file name is then made
+//! from the date, the sender and the number, as far as they are known.
 
 use std::path::{Path, PathBuf};
 
 use chrono::Datelike as _;
 use ncrs_index::{
-    Combinator, Condition, ConditionKind, DocumentFields, Field, ReviewReason, Rule,
+    tag_matches, Combinator, Condition, ConditionKind, DocumentFields, Field, ReviewReason, Rule,
     RuleConditions, RuleId, RuleSpec, SenderAliases,
 };
 
@@ -78,8 +81,16 @@ pub fn pattern_is_valid(source: &str) -> bool {
 
 /// The blocks a pattern editor offers; `folder` and `name` stay valid but are
 /// not offered.
-pub const FILING_PLACEHOLDERS: [&str; 7] =
-    ["year", "month", "day", "date", "sender", "number", "kind"];
+pub const FILING_PLACEHOLDERS: [&str; 8] = [
+    "year",
+    "month",
+    "day",
+    "date",
+    "sender",
+    "recipient",
+    "number",
+    "kind",
+];
 
 /// The name of the first `{name}` of `source` that is not a block a pattern
 /// knows; an unclosed brace is no block.
@@ -95,10 +106,9 @@ pub fn unknown_placeholder(source: &str) -> Option<String> {
     None
 }
 
-/// Plans with the enabled rules that match, in the order of `rules`. When
-/// several confirmed rules match they must agree: the same result for the
-/// document, whichever rule it came from. Otherwise the document needs review
-/// with `ReviewReason::RuleConflict` and the contested fields stay as given.
+/// Plans with the first enabled confirmed rule that matches, in the order of
+/// `rules`. Rules after it that match too change nothing; they are only
+/// listed in `matching_rules`.
 pub fn plan(rules: &[Rule], input: &PlanInput<'_>) -> Planning {
     let search = SearchText::new(input.text);
     let (confirmed, unconfirmed): (Vec<&Rule>, Vec<&Rule>) = rules
@@ -123,19 +133,7 @@ pub fn plan(rules: &[Rule], input: &PlanInput<'_>) -> Planning {
         };
     };
     let matching_rules = ids_of(&confirmed);
-    let planning = plan_with(first, input);
-    let agree = confirmed.iter().skip(1).all(|rule| {
-        blanked(plan_with(rule, input), first.id) == blanked(planning.clone(), first.id)
-    });
-    if !agree {
-        return Planning::Review {
-            reason: ReviewReason::RuleConflict,
-            rule: Some(first.id),
-            matching_rules,
-            fields: input.fields.clone(),
-        };
-    }
-    match planning {
+    match plan_with(first, input) {
         Planning::Plan(filing) => Planning::Plan(FilingPlan {
             matching_rules,
             ..filing
@@ -149,24 +147,6 @@ pub fn plan(rules: &[Rule], input: &PlanInput<'_>) -> Planning {
             reason,
             rule,
             matching_rules,
-            fields,
-        },
-    }
-}
-
-/// The result with every rule id replaced by `canonical` or dropped, to tell whether two rules came to the
-/// same conclusion.
-fn blanked(planning: Planning, canonical: RuleId) -> Planning {
-    match planning {
-        Planning::Plan(filing) => Planning::Plan(FilingPlan {
-            rule: canonical,
-            matching_rules: Vec::new(),
-            ..filing
-        }),
-        Planning::Review { reason, fields, .. } => Planning::Review {
-            reason,
-            rule: None,
-            matching_rules: Vec::new(),
             fields,
         },
     }
@@ -220,6 +200,11 @@ fn condition_outcome(
         ConditionKind::TaxId => tax_id_holds(input.text, &condition.value),
         ConditionKind::Recipient => recipient_holds(input.text, &condition.value),
         ConditionKind::Folder => folder_holds(input.path?, &condition.value)?,
+        ConditionKind::Tag => input
+            .fields
+            .all_tags()
+            .iter()
+            .any(|tag| tag_matches(tag, &condition.value)),
         ConditionKind::Regex => {
             compile(&condition.value).map(|regex| regex.is_match(input.text))?
         }
@@ -240,8 +225,8 @@ fn filled_fields(spec: &RuleSpec, input: &PlanInput<'_>) -> DocumentFields {
     if fields.sender.is_none() {
         fields.sender = spec.conditions.required_sender().map(str::to_owned);
     }
-    if !spec.kind.is_empty() {
-        fields.kind = Some(spec.kind.clone());
+    if let Some(kind) = spec.kind.as_ref().filter(|kind| !kind.is_empty()) {
+        fields.kind = Some(kind.clone());
     }
     fields.tags.extend(spec.tags.iter().cloned());
     if let Some(number) = spec
@@ -384,7 +369,7 @@ fn first_missing(fields: &DocumentFields, spec: &RuleSpec, pattern: &Pattern) ->
                 Field::Sender | Field::Recipient | Field::Kind => false,
             }
     };
-    FIELD_ORDER
+    AI_FIELD_ORDER
         .into_iter()
         .find(|&field| needed(field) && !field_is_present(fields, field))
 }
@@ -408,7 +393,7 @@ fn field_is_present(fields: &DocumentFields, field: Field) -> bool {
 /// none is, or the pattern does not read.
 pub fn missing_field(source: &str, fields: &DocumentFields) -> Option<Field> {
     let pattern = Pattern::parse(source)?;
-    FIELD_ORDER
+    AI_FIELD_ORDER
         .into_iter()
         .find(|&field| pattern.uses(field) && !field_is_present(fields, field))
 }
@@ -420,6 +405,7 @@ enum Placeholder {
     Day,
     Date,
     Sender,
+    Recipient,
     Number,
     Kind,
     Folder,
@@ -434,6 +420,7 @@ impl Placeholder {
             "day" => Self::Day,
             "date" => Self::Date,
             "sender" => Self::Sender,
+            "recipient" => Self::Recipient,
             "number" => Self::Number,
             "kind" => Self::Kind,
             "folder" => Self::Folder,
@@ -446,6 +433,7 @@ impl Placeholder {
         match self {
             Self::Year | Self::Month | Self::Day | Self::Date => Field::Date,
             Self::Sender | Self::Folder => Field::Sender,
+            Self::Recipient => Field::Recipient,
             Self::Number => Field::Number,
             Self::Kind | Self::Name => Field::Kind,
         }
@@ -459,6 +447,7 @@ impl Placeholder {
             Self::Day => fields.date.map(|date| format!("{:02}", date.day())),
             Self::Date => fields.date.map(|date| date.to_string()),
             Self::Sender | Self::Folder => fields.sender.as_deref().and_then(sanitise_value),
+            Self::Recipient => fields.recipient.as_deref().and_then(sanitise_value),
             Self::Number => fields.number.as_deref().and_then(sanitise_value),
             Self::Kind | Self::Name => fields.kind.as_deref().and_then(sanitise_value),
         }
@@ -471,10 +460,22 @@ enum Token {
     Placeholder(Placeholder),
 }
 
+/// The file names a pattern that ends in `/` takes, the first one all of whose
+/// values are known.
+const AUTOMATIC_FILE_NAMES: [&str; 4] = [
+    "{date}_{sender}_{number}",
+    "{date}_{sender}",
+    "{date}_{number}",
+    "{date}",
+];
+
 /// A parsed filing pattern: folders and a file name, each a list of tokens.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Pattern {
     components: Vec<Vec<Token>>,
+    /// The pattern ends in `/`: its components are all folders and the file
+    /// name is made from the fields.
+    automatic_file_name: bool,
 }
 
 impl Pattern {
@@ -485,11 +486,18 @@ impl Pattern {
     /// Both `/` and `\` separate components.
     fn parse(source: &str) -> Option<Self> {
         let unified = source.replace('\\', "/");
-        let components = unified
+        let (folders, automatic_file_name) = match unified.strip_suffix('/') {
+            Some(folders) => (folders, true),
+            None => (unified.as_str(), false),
+        };
+        let components = folders
             .split('/')
             .map(Self::parse_component)
             .collect::<Option<Vec<_>>>()?;
-        Some(Self { components })
+        Some(Self {
+            components,
+            automatic_file_name,
+        })
     }
 
     fn parse_component(text: &str) -> Option<Vec<Token>> {
@@ -520,10 +528,11 @@ impl Pattern {
     }
 
     fn uses(&self, field: Field) -> bool {
-        self.components.iter().flatten().any(|token| match token {
-            Token::Placeholder(placeholder) => placeholder.field() == field,
-            Token::Literal(_) => false,
-        })
+        (self.automatic_file_name && field == Field::Date)
+            || self.components.iter().flatten().any(|token| match token {
+                Token::Placeholder(placeholder) => placeholder.field() == field,
+                Token::Literal(_) => false,
+            })
     }
 
     /// `None` when a value is missing.
@@ -533,25 +542,52 @@ impl Pattern {
     }
 
     fn render_components(&self, fields: &DocumentFields) -> Option<Vec<Vec<PatternPart>>> {
-        self.components
+        let mut rendered = self
+            .components
             .iter()
-            .map(|component| {
-                component
-                    .iter()
-                    .map(|token| match token {
-                        Token::Literal(literal) => Some(PatternPart {
-                            text: literal.clone(),
-                            field: None,
-                        }),
-                        Token::Placeholder(placeholder) => Some(PatternPart {
-                            text: placeholder.value(fields)?,
-                            field: Some(placeholder.field()),
-                        }),
-                    })
-                    .collect()
-            })
-            .collect()
+            .map(|component| render_tokens(component, fields, false))
+            .collect::<Option<Vec<_>>>()?;
+        if self.automatic_file_name {
+            rendered.push(automatic_file_name(fields)?);
+        }
+        Some(rendered)
     }
+}
+
+/// The values of the tokens; `dashed` writes the spaces in a value as `-`, as
+/// a file name made automatically does.
+fn render_tokens(
+    tokens: &[Token],
+    fields: &DocumentFields,
+    dashed: bool,
+) -> Option<Vec<PatternPart>> {
+    tokens
+        .iter()
+        .map(|token| match token {
+            Token::Literal(literal) => Some(PatternPart {
+                text: literal.clone(),
+                field: None,
+            }),
+            Token::Placeholder(placeholder) => {
+                let value = placeholder.value(fields)?;
+                Some(PatternPart {
+                    text: if dashed {
+                        value.replace(' ', "-")
+                    } else {
+                        value
+                    },
+                    field: Some(placeholder.field()),
+                })
+            }
+        })
+        .collect()
+}
+
+fn automatic_file_name(fields: &DocumentFields) -> Option<Vec<PatternPart>> {
+    AUTOMATIC_FILE_NAMES.iter().find_map(|source| {
+        let tokens = Pattern::parse_component(source)?;
+        render_tokens(&tokens, fields, true)
+    })
 }
 
 #[cfg(test)]
@@ -610,6 +646,7 @@ mod tests {
 
     fn spec(pattern: &str) -> RuleSpec {
         RuleSpec {
+            name: None,
             conditions: RuleConditions::all_of(vec![Condition::new(
                 ConditionKind::Substring,
                 "company a ltd",
@@ -617,7 +654,7 @@ mod tests {
             extract_number: Some(r"Invoice\s+(\d+)".to_owned()),
             extract_date: Some(r"Date:\s*(\d{2}\.\d{2}\.\d{4})".to_owned()),
             extract_amount: Some(r"Total:\s*([\d.,]+\s*€)".to_owned()),
-            kind: "invoice".to_owned(),
+            kind: Some("invoice".to_owned()),
             tags: BTreeSet::from(["office".to_owned()]),
             filing_pattern: pattern.to_owned(),
             confirmed: true,
@@ -1100,27 +1137,13 @@ mod tests {
     }
 
     #[test]
-    fn two_matching_rules_with_different_results_are_a_conflict() {
+    fn the_first_matching_rule_files_even_if_a_later_one_gives_another_result() {
         let rules = rules_from(&[spec("{number}"), spec("{year}/{number}")]);
 
-        let planning = plan_all(&rules);
+        let filing = planned(plan_all(&rules));
 
-        assert_eq!(
-            planning,
-            Planning::Review {
-                reason: ReviewReason::RuleConflict,
-                rule: Some(rules[0].id),
-                matching_rules: vec![rules[0].id, rules[1].id],
-                fields: DocumentFields::default(),
-            }
-        );
-    }
-
-    #[test]
-    fn a_plan_and_a_missing_field_are_different_results() {
-        let rules = rules_from(&[spec("{number}"), spec("{sender}/{number}")]);
-
-        assert_eq!(reason(&plan_all(&rules)), ReviewReason::RuleConflict);
+        assert_eq!(filing.rule, rules[0].id);
+        assert_eq!(filing.relative_path, Path::new("4711"));
     }
 
     #[test]
@@ -1229,7 +1252,7 @@ mod tests {
                 ..DocumentFields::default()
             };
             let mut hostile_rule = spec("{sender}/{kind}/{number}.pdf");
-            hostile_rule.kind = value.to_owned();
+            hostile_rule.kind = Some(value.to_owned());
             hostile_rule.extract_number = None;
             hostile_rule.extract_date = None;
             hostile_rule.extract_amount = None;

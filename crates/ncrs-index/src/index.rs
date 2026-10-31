@@ -1130,13 +1130,14 @@ mod tests {
         assert_eq!(evidence.matching_in_folder, 5);
         assert_eq!(evidence.subtree, None);
         let suggestion = |kind| RuleSpec {
+            name: None,
             conditions: RuleConditions::all_of(vec![Condition::new(kind, "Company A Ltd")]),
             extract_number: None,
             extract_date: None,
             extract_amount: None,
-            kind: "Insurance".to_owned(),
+            kind: Some("Insurance".to_owned()),
             tags: Default::default(),
-            filing_pattern: "{year}".to_owned(),
+            filing_pattern: "{year}/".to_owned(),
             confirmed: false,
             enabled: true,
         };
@@ -1260,9 +1261,12 @@ mod tests {
                  INSERT INTO document_tag (document_id, tag_id) VALUES (1, 1);
                  INSERT INTO rule (id, kind_id, tax_context_id, filing_pattern, confirmed)
                      VALUES (3, 1, 3, '{tax_context}/{year}/{sender}', 1),
-                            (4, 1, 4, '{tax_context}', 0);
+                            (4, 1, 4, '{tax_context}', 0),
+                            (5, 1, 0, '{year}/{number}', 1),
+                            (6, 1, 0, '{year}/{year}{month}{day}_{sender}', 1);
                  INSERT INTO rule_condition (rule_id, position, kind, value)
-                     VALUES (3, 0, 'word', 'rent'), (4, 0, 'word', 'tax');
+                     VALUES (3, 0, 'word', 'rent'), (4, 0, 'word', 'tax'),
+                            (5, 0, 'word', 'a'), (6, 0, 'word', 'b');
                  INSERT INTO document_field_origin
                          (document_id, field, origin, rule_id, confidence, condition_kind,
                           condition_value)
@@ -1271,7 +1275,8 @@ mod tests {
                  INSERT INTO review_entry (id, document_id, reason, field, created_at, resolved_at)
                      VALUES (1, 1, 'missing_field', 'tax_context', 1700000000, NULL),
                             (2, 2, 'no_tax_context_matches', NULL, 1700000000, NULL),
-                            (3, 3, 'several_tax_contexts_match', NULL, 1700000000, 1700000100);
+                            (3, 3, 'several_tax_contexts_match', NULL, 1700000000, 1700000100),
+                            (4, 2, 'rule_conflict', NULL, 1700000000, 1700000200);
                  INSERT INTO discarded_rule_suggestion
                          (match_text, condition_kind, kind, filing_pattern, discarded_at)
                      VALUES ('company a ltd', 'word', 'insurance', '{tax_context}/{year}', 1),
@@ -1322,12 +1327,19 @@ mod tests {
         let rules = index.rules().unwrap();
         assert_eq!(
             rules.iter().map(|rule| rule.id).collect::<Vec<_>>(),
-            [RuleId::new(3), RuleId::new(4)]
+            [
+                RuleId::new(3),
+                RuleId::new(4),
+                RuleId::new(5),
+                RuleId::new(6)
+            ]
         );
-        assert_eq!(rules[0].spec.filing_pattern, "{year}/{sender}");
+        assert_eq!(rules[0].spec.filing_pattern, "{year}/{sender}/");
+        assert_eq!(rules[1].spec.filing_pattern, "{year}/");
+        assert_eq!(rules[2].spec.filing_pattern, "{year}/{number}");
         assert_eq!(
-            rules[1].spec.filing_pattern,
-            "{year}/{year}{month}{day}_{sender}_{number}"
+            rules[3].spec.filing_pattern,
+            "{year}/{year}{month}{day}_{sender}"
         );
         assert_eq!(rules[0].spec.conditions.list.len(), 1);
         index
@@ -1381,7 +1393,7 @@ mod tests {
                 ReviewReason::parse(&reason, field.as_deref()).unwrap()
             })
             .collect();
-        assert_eq!(reasons, [ReviewReason::NoMatchingRule; 3]);
+        assert_eq!(reasons, [ReviewReason::NoMatchingRule; 4]);
         let open: Vec<_> = index
             .open_reviews()
             .unwrap()
@@ -1698,7 +1710,7 @@ mod tests {
                 Condition::new(ConditionKind::Sender, "Company A"),
             ])
         );
-        assert_eq!(rule.filing_pattern, "{year}/{sender}");
+        assert_eq!(rule.filing_pattern, "{year}/{sender}/");
         assert!(rule.confirmed);
 
         let reviews = index.open_reviews().unwrap();

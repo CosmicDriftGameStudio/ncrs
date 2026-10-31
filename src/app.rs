@@ -35,6 +35,7 @@ use crate::execute;
 use crate::filing::{
     DocumentFinder, FilingMessage, FilingModule, LocationStatus, Phase, Work, WorkOutcome,
 };
+use crate::filing_pieces::TargetEdit;
 use crate::filing_setup::{self, FilePick, FilingSetup, SetupNote};
 use crate::filing_status::{FilingStatus, SNAPSHOT_EVERY};
 use crate::filing_work::FilingSummary;
@@ -2762,10 +2763,11 @@ fn dialog_focus_key(key: Key, modifiers: Modifiers) -> Option<Message> {
     }
 }
 
-/// The overview has one text field. While it has the focus the letters, the
-/// digits and the arrows are its, Enter enters the text and Escape lets go of
-/// the field; otherwise the page has the keys of the pause, the load, the
-/// workers and the sidebar, and `e` or Enter put the focus into the field.
+/// The overview has one text field, for the name of a folder of the default
+/// target, and it exists only while it is open. While it has the focus the
+/// letters, the digits and the arrows are its, Enter adds the folder and
+/// Escape closes the field; otherwise the page has the keys of the pause, the
+/// load, the workers and the sidebar.
 fn hermes_overview_key(
     prompt: &PromptKeyState,
     key: &Key,
@@ -2779,11 +2781,13 @@ fn hermes_overview_key(
         return Some(focus);
     }
     match key.as_ref() {
-        Key::Named(Named::Escape) if editing => overview(HermesOverviewMessage::LeavePattern),
+        Key::Named(Named::Escape) if editing => overview(HermesOverviewMessage::TargetEdited(
+            TargetEdit::OwnNameCancel,
+        )),
         Key::Named(Named::Escape) => overview(HermesOverviewMessage::Close),
-        Key::Named(Named::Enter) if editing => overview(HermesOverviewMessage::PatternSubmit),
-        Key::Named(Named::Enter) if plain => overview(HermesOverviewMessage::FocusPattern),
-        Key::Character("e") if plain && !editing => overview(HermesOverviewMessage::FocusPattern),
+        Key::Named(Named::Enter) if editing => overview(HermesOverviewMessage::TargetEdited(
+            TargetEdit::OwnNameSubmit,
+        )),
         Key::Character("p") if plain && !editing => {
             Some(Message::FilingStatus(FilingStatusMessage::TogglePause))
         }
@@ -10689,6 +10693,23 @@ impl App {
                 }
                 Task::none()
             }
+            ReviewListMessage::ChangeTarget => {
+                if let Some(view) = self.review_list.as_mut() {
+                    view.change_target();
+                }
+                Task::none()
+            }
+            ReviewListMessage::TargetEdited(edit) => {
+                let starts_own_name = edit == TargetEdit::StartOwnName;
+                if let Some(view) = self.review_list.as_mut() {
+                    view.edit_target(edit);
+                }
+                if starts_own_name {
+                    operation::focus(review_list_ui::FOLDER_NAME_FIELD_ID)
+                } else {
+                    Task::none()
+                }
+            }
             ReviewListMessage::AddTag => {
                 if let Some(view) = self.review_list.as_mut() {
                     view.add_tag();
@@ -11700,20 +11721,17 @@ impl App {
         self.request_hermes_counts()
     }
 
-    /// Closes the overview; a pattern typed and not yet entered is written
-    /// first, because the text field tells nobody that it lost the focus.
     fn leave_hermes_overview(&mut self) -> Task<Message> {
         if self.hermes_overview.is_none() {
             return Task::none();
         }
-        let write = self.leave_hermes_overview_state();
-        Task::batch([release_focus(), write])
+        self.hermes_overview = None;
+        release_focus()
     }
 
     fn leave_hermes_overview_state(&mut self) -> Task<Message> {
-        let write = self.commit_overview_pattern();
         self.hermes_overview = None;
-        write
+        Task::none()
     }
 
     fn card_covers_overview(&self) -> bool {
@@ -11762,6 +11780,7 @@ impl App {
                 if let Some(state) = self.hermes_overview.as_mut() {
                     state.pattern_written(config.filing.default_pattern.as_deref());
                 }
+                return self.commit_overview_pattern();
             }
             Err(error) => {
                 let reason = self.settings_write_failure(&error);
@@ -11774,30 +11793,12 @@ impl App {
     }
 
     fn update_hermes_overview(&mut self, message: HermesOverviewMessage) -> Task<Message> {
-        let stays_in_field = matches!(
-            message,
-            HermesOverviewMessage::PatternEdited(_)
-                | HermesOverviewMessage::PatternSubmit
-                | HermesOverviewMessage::PatternWritten(_)
-                | HermesOverviewMessage::FocusPattern
-        );
-        if !stays_in_field {
+        if !matches!(message, HermesOverviewMessage::TargetEdited(_)) {
             if let Some(state) = self.hermes_overview.as_mut() {
-                state.set_editing(false);
+                state.edit_target(TargetEdit::OwnNameCancel);
             }
         }
         match message {
-            HermesOverviewMessage::FocusPattern => {
-                if let Some(state) = self.hermes_overview.as_mut() {
-                    state.set_editing(true);
-                }
-                self.hermes_focus = HermesFocus::Content;
-                operation::focus(hermes_overview_ui::PATTERN_FIELD_ID)
-            }
-            HermesOverviewMessage::LeavePattern => {
-                let write = self.commit_overview_pattern();
-                Task::batch([release_focus(), write])
-            }
             HermesOverviewMessage::Close => self.leave_hermes_overview(),
             HermesOverviewMessage::EnterRecoveryKey => {
                 let card = self.update_filing(FilingMessage::AskKeyAgain);
@@ -11829,13 +11830,22 @@ impl App {
                 }
                 self.change_protection(FilingModule::begin_starting_over)
             }
-            HermesOverviewMessage::PatternEdited(text) => {
+            HermesOverviewMessage::TargetEdited(edit) => {
+                let opens_name_field = edit == TargetEdit::StartOwnName;
                 if let Some(state) = self.hermes_overview.as_mut() {
-                    state.edit_pattern(text);
+                    state.edit_target(edit);
                 }
-                Task::none()
+                let write = self.commit_overview_pattern();
+                if opens_name_field {
+                    self.hermes_focus = HermesFocus::Content;
+                    Task::batch([
+                        operation::focus(hermes_overview_ui::FOLDER_NAME_FIELD_ID),
+                        write,
+                    ])
+                } else {
+                    write
+                }
             }
-            HermesOverviewMessage::PatternSubmit => self.commit_overview_pattern(),
             HermesOverviewMessage::PatternWritten(result) => self.overview_pattern_written(result),
             HermesOverviewMessage::SetAiEnabled(on) => {
                 self.write_setting(SettingChange::AiEnabled(on))
@@ -28713,61 +28723,65 @@ mod hermes_overview_tests {
         app
     }
 
-    fn type_pattern(app: &mut App, pattern: &str) {
-        drop(app.update(Message::HermesOverview(
-            HermesOverviewMessage::PatternEdited(pattern.to_owned()),
-        )));
+    fn edit_target(edit: TargetEdit) -> Message {
+        Message::HermesOverview(HermesOverviewMessage::TargetEdited(edit))
+    }
+
+    fn with_default_pattern(config_dir: &TempDir, pattern: &str) -> App {
+        let mut app = App::with_hermes_overview(
+            Some(Phase::Ready),
+            Filing {
+                default_pattern: Some(pattern.to_owned()),
+                ..configured()
+            },
+            None,
+        );
+        let config_path = config_dir.path().join("config.toml");
+        std::fs::write(
+            &config_path,
+            format!("[modules.filing]\ndefault_pattern = \"{pattern}\"\n"),
+        )
+        .unwrap();
+        app.config_path = Some(config_path);
+        app
     }
 
     #[tokio::test]
-    async fn a_valid_pattern_is_written_on_enter_and_an_invalid_one_is_not() {
+    async fn a_change_of_the_standard_target_is_written_at_once_and_an_unusable_one_is_not() {
         let config_dir = TempDir::new().unwrap();
         let mut app = overview_with_config_file(&config_dir);
 
-        type_pattern(&mut app, "{year}/{sender}");
-        settle(
-            &mut app,
-            Message::HermesOverview(HermesOverviewMessage::PatternSubmit),
-        )
-        .await;
+        settle(&mut app, edit_target(TargetEdit::Remove(0))).await;
         let written = std::fs::read_to_string(config_dir.path().join("config.toml")).unwrap();
-        assert!(written.contains("{year}/{sender}"), "{written}");
+        assert!(written.contains("{year}/{sender}/"), "{written}");
         assert_eq!(
             app.filing_config.default_pattern.as_deref(),
-            Some("{year}/{sender}")
+            Some("{year}/{sender}/")
         );
 
-        type_pattern(&mut app, "{nonsense");
-        settle(
-            &mut app,
-            Message::HermesOverview(HermesOverviewMessage::PatternSubmit),
-        )
-        .await;
+        settle(&mut app, edit_target(TargetEdit::Remove(0))).await;
+        settle(&mut app, edit_target(TargetEdit::Remove(0))).await;
         let unchanged = std::fs::read_to_string(config_dir.path().join("config.toml")).unwrap();
-        assert_eq!(unchanged, written);
-        assert!(app
-            .hermes_overview
-            .as_ref()
-            .unwrap()
-            .pattern_note()
-            .is_some());
+        assert!(unchanged.contains("{sender}/"), "{unchanged}");
+        assert_eq!(
+            app.filing_config.default_pattern.as_deref(),
+            Some("{sender}/")
+        );
+        settle(&mut app, edit_target(TargetEdit::Remove(0))).await;
+        let still = std::fs::read_to_string(config_dir.path().join("config.toml")).unwrap();
+        assert_eq!(still, unchanged, "an empty target is not stored");
     }
 
     #[tokio::test]
-    async fn an_empty_pattern_removes_the_key() {
+    async fn getting_back_to_the_built_in_target_removes_the_key() {
         let config_dir = TempDir::new().unwrap();
-        let mut app = overview_with_config_file(&config_dir);
-        type_pattern(&mut app, "{year}/{sender}");
-        settle(
-            &mut app,
-            Message::HermesOverview(HermesOverviewMessage::PatternSubmit),
-        )
-        .await;
+        let mut app = with_default_pattern(&config_dir, "{recipient}/{year}/");
 
-        type_pattern(&mut app, "");
         settle(
             &mut app,
-            Message::HermesOverview(HermesOverviewMessage::PatternSubmit),
+            edit_target(TargetEdit::AddField(
+                crate::filing_pieces::FolderField::Sender,
+            )),
         )
         .await;
 
@@ -28914,14 +28928,7 @@ mod hermes_overview_tests {
             route(Key::Character("+".into())),
             Some(Message::FilingStatus(FilingStatusMessage::StepWorkers(1)))
         );
-        assert_eq!(
-            route(Key::Character("e".into())),
-            overview(HermesOverviewMessage::FocusPattern)
-        );
-        assert_eq!(
-            route(Key::Named(Named::Enter)),
-            overview(HermesOverviewMessage::FocusPattern)
-        );
+        assert_eq!(route(Key::Character("e".into())), None);
         assert_eq!(
             route(Key::Named(Named::ArrowLeft)),
             Some(Message::HermesFocus(HermesFocus::Sidebar))
@@ -28946,20 +28953,24 @@ mod hermes_overview_tests {
         assert_eq!(route(Key::Named(Named::ArrowLeft)), None);
         assert_eq!(
             route(Key::Named(Named::Enter)),
-            overview(HermesOverviewMessage::PatternSubmit)
+            overview(HermesOverviewMessage::TargetEdited(
+                TargetEdit::OwnNameSubmit
+            ))
         );
         assert_eq!(
             route(Key::Named(Named::Escape)),
-            overview(HermesOverviewMessage::LeavePattern)
+            overview(HermesOverviewMessage::TargetEdited(
+                TargetEdit::OwnNameCancel
+            ))
         );
     }
 
     #[test]
-    fn typing_in_the_field_and_any_other_click_decide_who_has_the_letters() {
+    fn typing_an_own_folder_name_and_any_other_click_decide_who_has_the_letters() {
         let mut app = App::with_hermes_overview(Some(Phase::Ready), configured(), None);
         assert!(!app.prompt_key_state().hermes_overview_editing);
 
-        type_pattern(&mut app, "{year}");
+        drop(app.update(edit_target(TargetEdit::StartOwnName)));
         assert!(app.prompt_key_state().hermes_overview_editing);
 
         drop(app.update(Message::HermesOverview(

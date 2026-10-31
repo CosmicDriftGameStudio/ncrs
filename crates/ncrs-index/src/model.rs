@@ -251,8 +251,6 @@ impl FieldOrigins {
 pub enum ReviewReason {
     NoMatchingRule,
     UnconfirmedRule,
-    /// Several confirmed rules match and do not agree on the result.
-    RuleConflict,
     /// The place the rules chose is taken by another file.
     TargetExists,
     MissingField(Field),
@@ -266,7 +264,6 @@ impl ReviewReason {
         match self {
             Self::NoMatchingRule => ("no_matching_rule", None),
             Self::UnconfirmedRule => ("unconfirmed_rule", None),
-            Self::RuleConflict => ("rule_conflict", None),
             Self::TargetExists => ("target_exists", None),
             Self::MissingField(field) => ("missing_field", Some(field)),
             Self::LowConfidence(field) => ("low_confidence", Some(field)),
@@ -278,7 +275,6 @@ impl ReviewReason {
         match (reason, named) {
             ("no_matching_rule", None) => Ok(Self::NoMatchingRule),
             ("unconfirmed_rule", None) => Ok(Self::UnconfirmedRule),
-            ("rule_conflict", None) => Ok(Self::RuleConflict),
             ("target_exists", None) => Ok(Self::TargetExists),
             ("missing_field", Some(of)) => Ok(Self::MissingField(of)),
             ("low_confidence", Some(of)) => Ok(Self::LowConfidence(of)),
@@ -645,10 +641,12 @@ pub enum ConditionKind {
     TaxId,
     Recipient,
     Folder,
+    /// The document has a tag (own or automatic) that is this one or below it.
+    Tag,
 }
 
 impl ConditionKind {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Substring,
         Self::Word,
         Self::Regex,
@@ -658,6 +656,7 @@ impl ConditionKind {
         Self::TaxId,
         Self::Recipient,
         Self::Folder,
+        Self::Tag,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -671,6 +670,7 @@ impl ConditionKind {
             Self::TaxId => "tax_id",
             Self::Recipient => "recipient",
             Self::Folder => "folder",
+            Self::Tag => "tag",
         }
     }
 
@@ -685,6 +685,7 @@ impl ConditionKind {
             "tax_id" => Ok(Self::TaxId),
             "recipient" => Ok(Self::Recipient),
             "folder" => Ok(Self::Folder),
+            "tag" => Ok(Self::Tag),
             other => Err(corrupt("rule_condition.kind", other)),
         }
     }
@@ -804,11 +805,14 @@ impl RuleConditions {
 /// The extract patterns are regex sources the index only stores.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuleSpec {
+    /// What the user calls the rule; shown in lists.
+    pub name: Option<String>,
     pub conditions: RuleConditions,
     pub extract_number: Option<String>,
     pub extract_date: Option<String>,
     pub extract_amount: Option<String>,
-    pub kind: String,
+    /// A rule without a kind sets none.
+    pub kind: Option<String>,
     pub tags: BTreeSet<String>,
     pub filing_pattern: String,
     pub confirmed: bool,

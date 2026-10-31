@@ -3,15 +3,14 @@
 //! the order Hermes tries the rules in. A page of the Hermes card. Pure view
 //! over [`RulesPage`].
 
-use iced::widget::{column, container, row, Column, Space};
+use iced::widget::{column, container, row, Column, Row, Space};
 use iced::{alignment, Element, Length, Size};
-use ncrs_intake::FILING_PLACEHOLDERS;
 
-use super::condition_editor::{condition_editor_rows, ConditionHost, ConditionRow};
+use super::condition_editor::{combinator_choice, condition_editor_rows, ConditionHost};
+use super::filing_pieces::{target_view, TargetHost};
 use super::frame::{self, DialogSize, Frame, KeyHints, PageHint};
 use super::hermes::{self, Badges};
 use super::kit::{self, dim, error_line, paragraph, Check, Columns, Tone};
-use super::layout::SETTINGS_WIDE_CONTROL_WIDTH;
 use super::review_list::reason_text;
 use super::theme::spacing;
 use crate::app::fill_template;
@@ -19,7 +18,7 @@ use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{HermesFocus, HermesPage, Message, RuleFormMessage, RulesMessage};
 use crate::palette::Palette;
 use crate::review_work::TextState;
-use crate::rule_form::{PatternProblem, RuleForm, RuleFormProblems, RuleFormTarget, TryStatus};
+use crate::rule_form::{RuleForm, RuleFormTarget, TryStatus};
 use crate::rules_page::{hits_text, origin_text, rule_sentence, RulesPage, VISIBLE_ROWS};
 use crate::rules_work::{ListedRule, TriedDocument, TryOutcome, TryResult, TrySection};
 
@@ -39,12 +38,9 @@ const TRY_PORTIONS: [u16; 4] = [3, 7, 13, 4];
 /// Documents of the try listed at once; the form has to fit with them.
 const TRY_VISIBLE_ROWS: usize = 6;
 
-/// Blocks of the filing pattern offered side by side in one row.
-const BLOCKS_PER_ROW: usize = 4;
-
-const KIND_FIELD_ID: &str = "rule-form-kind";
-const TAGS_FIELD_ID: &str = "rule-form-tags";
-const PATTERN_FIELD_ID: &str = "rule-form-pattern";
+const NAME_FIELD_ID: &str = "rule-form-name";
+const TAG_FIELD_ID: &str = "rule-form-tag";
+const TARGET_NAME_FIELD_ID: &str = "rule-form-folder-name";
 
 const PAGE_HINTS: &[PageHint] = &[
     PageHint {
@@ -90,13 +86,7 @@ pub fn view<'a>(
     let line_chars = frame::content_chars(SIZE, window, frame::SIDEBAR_ROOM);
     let mut body = column![
         paragraph(lang.text(Msg::RulesExplain), palette),
-        dim(
-            fill_template(
-                lang.text(Msg::RulesExample),
-                &[("{rule}", lang.text(Msg::RulesExampleRule))],
-            ),
-            palette,
-        ),
+        dim(lang.text(Msg::RulesHintTwoRules), palette),
     ]
     .spacing(spacing::LINE_GAP);
 
@@ -354,24 +344,6 @@ fn form_view<'a>(
         .into_element()
 }
 
-fn field_row<'a>(
-    label: &str,
-    description: Option<&str>,
-    problem: Option<&str>,
-    control: Element<'a, Message>,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    kit::form_row_with_problem(
-        label,
-        None,
-        description,
-        problem,
-        control,
-        SETTINGS_WIDE_CONTROL_WIDTH,
-        palette,
-    )
-}
-
 fn form_rows<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Vec<Element<'a, Message>> {
     let problems = form.problems();
     let save = send_form(RuleFormMessage::Save);
@@ -381,101 +353,86 @@ fn form_rows<'a>(form: &RuleForm, lang: Language, palette: &Palette) -> Vec<Elem
         lang,
         palette,
     };
+    let mut rows: Vec<Element<'a, Message>> = Vec::new();
+
+    rows.push(
+        column![
+            paragraph(lang.text(Msg::RulesFormName), palette),
+            kit::text_field(
+                "",
+                &form.name,
+                NAME_FIELD_ID,
+                Some(|typed| send_form(RuleFormMessage::Name(typed))),
+                save.clone(),
+                palette,
+            ),
+        ]
+        .spacing(spacing::XS)
+        .into(),
+    );
+
+    let mut when = Column::new()
+        .push(paragraph(lang.text(Msg::ConditionEditorHeading), palette))
+        .spacing(spacing::S);
+    if form.conditions.rows.len() > 1 {
+        when = when.push(combinator_choice(form.conditions.combinator, &host));
+    }
     let condition_rows = condition_editor_rows(&form.conditions, &host);
     let last = condition_rows.len().saturating_sub(1);
-    let mut rows: Vec<Element<'a, Message>> = condition_rows
-        .into_iter()
-        .enumerate()
-        .map(
-            |(position, (label, problem, control)): (usize, ConditionRow<'a>)| {
-                let missing = (position == last && problems.no_condition)
-                    .then(|| lang.text(Msg::RulesFormProblemNoCondition).to_owned());
-                field_row(
-                    &label,
-                    None,
-                    problem.or(missing).as_deref(),
-                    control,
-                    palette,
-                )
-            },
-        )
-        .collect();
+    for (position, (_, problem, control)) in condition_rows.into_iter().enumerate() {
+        when = when.push(control);
+        let missing = (position == last && problems.no_condition)
+            .then(|| lang.text(Msg::RulesFormProblemNoCondition).to_owned());
+        if let Some(text) = problem.or(missing) {
+            when = when.push(error_line(text, palette));
+        }
+    }
+    when = when.push(dim(lang.text(Msg::ConditionEditorHelp), palette));
+    rows.push(when.into());
 
-    let text_field = |value: &str, id: &'static str, on_input: fn(String) -> RuleFormMessage| {
-        kit::text_field(
-            "",
-            value,
-            id,
-            Some(move |typed| send_form(on_input(typed))),
-            save.clone(),
+    let target = target_view(
+        &form.filing,
+        &TargetHost {
+            wrap: |edit| send_form(RuleFormMessage::Target(edit)),
+            name_field_id: TARGET_NAME_FIELD_ID,
+            lang,
             palette,
-        )
-    };
-    rows.push(field_row(
-        lang.text(Msg::ReviewListFieldKind),
-        None,
-        problems
-            .kind_blank
-            .then(|| lang.text(Msg::RuleSuggestionsProblemNoKind)),
-        text_field(&form.kind, KIND_FIELD_ID, RuleFormMessage::Kind),
-        palette,
-    ));
-    rows.push(field_row(
-        lang.text(Msg::ReviewListFieldTags),
-        Some(lang.text(Msg::ReviewListHintTags)),
-        None,
-        text_field(&form.tags, TAGS_FIELD_ID, RuleFormMessage::Tags),
-        palette,
-    ));
-    let example = form
-        .example_path()
-        .map(|path| fill_template(lang.text(Msg::RulesFormExample), &[("{path}", &path)]));
-    let pattern_problem = pattern_problem_text(&problems, lang);
-    let pattern_field = column![
-        text_field(&form.pattern, PATTERN_FIELD_ID, RuleFormMessage::Pattern),
-        block_buttons(palette),
-    ]
-    .spacing(spacing::S);
-    rows.push(field_row(
-        lang.text(Msg::ReviewListFieldPattern),
-        example.as_deref(),
-        pattern_problem.as_deref(),
-        pattern_field.into(),
-        palette,
-    ));
-    rows
-}
-
-fn block_buttons<'a>(palette: &Palette) -> Element<'a, Message> {
-    FILING_PLACEHOLDERS
-        .chunks(BLOCKS_PER_ROW)
-        .fold(Column::new().spacing(spacing::XS), |lines, names| {
-            lines.push(
-                row(names.iter().map(|&name| {
-                    kit::button(
-                        &format!("{{{name}}}"),
-                        Some(send_form(RuleFormMessage::InsertBlock(name))),
-                        Tone::Secondary,
-                        palette,
-                    )
-                }))
-                .spacing(spacing::XS),
+        },
+    );
+    let chips = form
+        .tags
+        .iter()
+        .map(|tag| {
+            kit::removable_chip(
+                tag,
+                send_form(RuleFormMessage::RemoveTag(tag.clone())),
+                palette,
             )
         })
-        .into()
-}
-
-fn pattern_problem_text(problems: &RuleFormProblems, lang: Language) -> Option<String> {
-    Some(match problems.pattern.as_ref()? {
-        PatternProblem::Blank => lang.text(Msg::RulesFormProblemPatternBlank).to_owned(),
-        PatternProblem::UnknownBlock(name) => fill_template(
-            lang.text(Msg::RulesFormProblemUnknownBlock),
-            &[("{block}", name)],
-        ),
-        PatternProblem::Invalid => lang
-            .text(Msg::RuleSuggestionsProblemInvalidPattern)
-            .to_owned(),
-    })
+        .fold(Row::new().spacing(spacing::XS), Row::push)
+        .wrap();
+    let add_tag = kit::text_field(
+        lang.text(Msg::RulesFormTagsAdd),
+        &form.tag_input,
+        TAG_FIELD_ID,
+        Some(|typed| send_form(RuleFormMessage::TagInput(typed))),
+        send_form(RuleFormMessage::AddTag),
+        palette,
+    );
+    let then = column![
+        paragraph(lang.text(Msg::RulesFormMoveTo), palette),
+        target,
+        row![
+            paragraph(lang.text(Msg::RulesFormTags), palette),
+            dim(lang.text(Msg::RulesFormTagsOptional), palette),
+        ]
+        .spacing(spacing::S),
+        chips,
+        add_tag,
+    ]
+    .spacing(spacing::S);
+    rows.push(kit::section(lang.text(Msg::RulesFormThen), then, palette));
+    rows
 }
 
 fn try_section<'a>(
