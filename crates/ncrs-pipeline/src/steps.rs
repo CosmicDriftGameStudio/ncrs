@@ -3,7 +3,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
 use ncrs_ai::Provider;
-use ncrs_index::{DocumentStatus, Field, FieldOrigin, IndexError, KindLanguage, ReviewReason};
+use ncrs_index::{
+    DocumentStatus, Field, FieldOrigin, IndexError, KindLanguage, Kinds, ReviewReason,
+};
 use ncrs_intake::text_is_readable;
 use ncrs_intake::{
     detect_recipient, detect_sender, kind_from_heading, plan, OwnIdentifiers, PlanInput, Planning,
@@ -221,7 +223,7 @@ impl Step for RulesStep {
                 .fields
                 .kind
                 .is_none()
-                .then(|| kind_from_heading(text))
+                .then(|| kind_from_heading(text, index.kinds()))
                 .flatten();
             let detection = if document.fields.sender.is_none() {
                 let own = OwnIdentifiers::new(
@@ -257,6 +259,7 @@ impl Step for RulesStep {
                 index.offer_sender_alias(&offer.sender, offer.kind, &offer.value)?;
             }
             let manual_fields = index.field_origins(id)?.manual_fields();
+            let kinds = Kinds::new(Arc::clone(index.kinds()), self.own.kind_language);
             let planning = plan(
                 &rules,
                 &PlanInput {
@@ -265,7 +268,7 @@ impl Step for RulesStep {
                     path: Some(&item.path),
                     sender_aliases: &aliases,
                     manual_fields: &manual_fields,
-                    kind_language: self.own.kind_language,
+                    kinds: &kinds,
                 },
             );
             let (found, rule_origin) = match &planning {

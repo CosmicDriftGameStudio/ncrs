@@ -1,5 +1,6 @@
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use rusqlite::{params, Connection, OptionalExtension as _};
 
@@ -10,7 +11,7 @@ use crate::model::{
     Amount, ContentHash, Document, DocumentFields, DocumentId, DocumentSource, DocumentStatus,
     Field, FieldOrigin, FieldOrigins, FileStamp, NewDocument,
 };
-use crate::names::{name_id, optional_name_id, NameTable};
+use crate::names::{name_id, optional_kind_id, optional_name_id, NameTable};
 
 pub const DOCUMENT_COLUMNS: &str = "SELECT d.id, d.hash, d.path, d.source, d.received_at, d.status,
         s.name, k.name, d.document_date, d.document_number,
@@ -175,6 +176,7 @@ impl Index {
         fields: &DocumentFields,
         origin_of: impl Fn(Field) -> FieldOrigin,
     ) -> Result<(), IndexError> {
+        let kinds = Arc::clone(self.kinds());
         let tx = self.conn_mut().transaction()?;
         let stored = tx
             .query_row(
@@ -187,7 +189,7 @@ impl Index {
             .optional()?
             .ok_or(IndexError::DocumentNotFound(id))?;
         let sender_id = optional_name_id(&tx, NameTable::Sender, fields.sender.as_deref())?;
-        let kind_id = optional_name_id(&tx, NameTable::Kind, fields.kind.as_deref())?;
+        let kind_id = optional_kind_id(&tx, &kinds, fields.kind.as_deref())?;
         let date = fields.date.map(|date| date.to_string());
         let amount_minor = fields.amount.as_ref().map(|amount| amount.minor_units);
         let currency = fields
@@ -243,7 +245,7 @@ impl Index {
             "DELETE FROM document_tag WHERE document_id = ?1",
             [id.get()],
         )?;
-        for (tags, automatic) in [(fields.own_tags(), 0), (fields.automatic_tags(), 1)] {
+        for (tags, automatic) in [(fields.own_tags(), 0), (fields.automatic_tags(&kinds), 1)] {
             for tag in &tags {
                 let tag_id = name_id(&tx, NameTable::Tag, tag)?;
                 tx.execute(

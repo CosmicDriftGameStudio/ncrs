@@ -25,7 +25,8 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError, TryLockError};
 use std::thread;
 
 use ncrs_index::{
-    HermesCounts, Index, IndexError, IndexStatistics, KeyStore, KindLanguage, RecoveryKey,
+    HermesCounts, Index, IndexError, IndexStatistics, KeyStore, KindCatalog, KindLanguage,
+    RecoveryKey,
 };
 #[cfg(target_os = "macos")]
 use ncrs_intake::ImageTextWithFallback;
@@ -338,6 +339,9 @@ pub struct FilingModule {
     /// What the card said when "Not now" left it, so the overview can still
     /// offer the way back to it.
     dismissed_key_problem: Option<KeyProblem>,
+    /// The document kinds the config asks for; every index of this module
+    /// gets them as soon as it is open.
+    kinds: Arc<KindCatalog>,
 }
 
 /// The name of the person using the app, as the system has it; `None` where
@@ -1091,6 +1095,7 @@ impl FilingModule {
             key_store_reachable: true,
             protection_note: None,
             dismissed_key_problem: None,
+            kinds: Arc::default(),
         };
         if db_path.is_none() {
             module.phase = Phase::Failed(NO_DATA_DIRECTORY.to_owned());
@@ -1168,6 +1173,21 @@ impl FilingModule {
     pub fn plan_access(&self) -> Option<PlanAccess> {
         self.archive_handle(PlanAccess::new)
             .map(|access| access.with_kind_language(self.own.kind_language))
+    }
+
+    /// Takes the document kinds of a (re)loaded config; an open index uses
+    /// them from now on, a pipeline already running keeps the ones it started with.
+    pub fn set_kinds(&mut self, kinds: Arc<KindCatalog>) {
+        self.kinds = kinds;
+        self.give_kinds_to_index();
+    }
+
+    fn give_kinds_to_index(&self) {
+        if let Some(index) = lock(&self.index).as_mut() {
+            if !Arc::ptr_eq(index.kinds(), &self.kinds) {
+                index.set_kinds(Arc::clone(&self.kinds));
+            }
+        }
     }
 
     /// The language `{kind}` folders are worded in. The running pipeline
@@ -1707,6 +1727,7 @@ impl FilingModule {
         if self.index_encrypted.is_none() {
             self.index_encrypted = lock(&self.index).as_ref().map(Index::is_encrypted);
         }
+        self.give_kinds_to_index();
     }
 
     fn enter(&mut self, opened: OpenOutcome) {
@@ -1852,6 +1873,7 @@ impl FilingModule {
             key_store_reachable: true,
             protection_note: None,
             dismissed_key_problem: None,
+            kinds: Arc::default(),
             ai: AiWiring::Off,
             own: OwnDetails::default(),
         }

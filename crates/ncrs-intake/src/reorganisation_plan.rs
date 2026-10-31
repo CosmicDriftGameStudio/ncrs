@@ -3,8 +3,9 @@
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use ncrs_index::{Index, KindLanguage, ReorganisationPlan};
+use ncrs_index::{Index, KindLanguage, Kinds, ReorganisationPlan};
 use walkdir::WalkDir;
 
 use crate::archive_profile::{learn_archive, ArchiveDocument};
@@ -19,7 +20,7 @@ use crate::reorganisation::{plan_reorganisation, PlanFile, PlanRule, Reorganisat
 pub fn plan_location(
     index: &mut Index,
     root: &Path,
-    kind_language: KindLanguage,
+    language: KindLanguage,
 ) -> Result<ReorganisationPlan, IntakeError> {
     let files = plan_files(index, root)?;
     let documents: Vec<ArchiveDocument> = files
@@ -32,12 +33,13 @@ pub fn plan_location(
     let profile = learn_archive(&documents);
     let rules = plan_rules(index)?;
     let existing = existing_paths(root)?;
+    let kinds = Kinds::new(Arc::clone(index.kinds()), language);
     let items = plan_reorganisation(&ReorganisationInput {
         files: &files,
         profile: &profile,
         rules: &rules,
         existing: &existing,
-        kind_language,
+        kinds: &kinds,
     });
     index.replace_reorganisation_plan(root, &items)?;
     index
@@ -669,7 +671,7 @@ mod tests {
             profile: &[],
             rules: &[],
             existing: &BTreeSet::new(),
-            kind_language: KindLanguage::English,
+            kinds: &Kinds::built_in(KindLanguage::English),
         });
 
         assert_eq!(items.len(), 1);

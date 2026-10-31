@@ -3308,7 +3308,7 @@ pub mod document_search_card {
 
     #[test]
     fn a_page_without_documents_says_so() {
-        let mut search = DocumentSearch::new(String::new());
+        let mut search = DocumentSearch::new(String::new(), Default::default());
         search.ran(Vec::new());
         assert!(shows(
             search,
@@ -3411,7 +3411,7 @@ pub mod document_search_card {
     pub fn with_snippets() -> DocumentSearch {
         use crate::document_preview::PreviewContent;
 
-        let mut search = DocumentSearch::new("rent".to_owned());
+        let mut search = DocumentSearch::new("rent".to_owned(), Default::default());
         search.ran(crate::document_search::tests::six_hits());
         search.set_snippets(vec![
             (
@@ -3471,7 +3471,7 @@ pub mod document_search_card {
     /// The recipient, the year and a tag chosen: the filters work together and
     /// the sum is given for one currency.
     fn recipient_and_tag_chosen() -> DocumentSearch {
-        let mut search = DocumentSearch::new(String::new());
+        let mut search = DocumentSearch::new(String::new(), Default::default());
         let mut hits = crate::document_search::tests::six_hits();
         for hit in &mut hits {
             hit.fields.recipient = Some("Firma A GmbH".to_owned());
@@ -3737,7 +3737,9 @@ mod saved_queries_card {
         use crate::saved_queries::{QueryField, ReportTemplate};
 
         let mut list = empty_list();
-        list.use_template(ReportTemplate::OpenInvoices.form(language));
+        list.use_template(
+            ReportTemplate::OpenInvoices.form(language, &ncrs_index::KindCatalog::built_in()),
+        );
         list.set_text(QueryField::Tags, "firma-a".to_owned());
         list.add_tags();
         list

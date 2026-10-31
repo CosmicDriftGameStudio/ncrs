@@ -6,8 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use ncrs_index::{
-    kind_tag_word, stored_kind, tag_name, Condition, ConditionKind, KindLanguage, Rule,
-    RuleConditions, RuleId, RuleOrigin, RuleSpec,
+    tag_name, Condition, ConditionKind, Kinds, Rule, RuleConditions, RuleId, RuleOrigin, RuleSpec,
 };
 
 use crate::condition_editor::{ConditionEditor, ConditionProblem, NEW_CONDITION_KINDS};
@@ -118,9 +117,9 @@ impl RuleForm {
 
     /// The conditions are the tags the kind and the sender of the document
     /// give; the target is the pattern of the review.
-    pub fn from_document(prefill: RulePrefill, kind_language: KindLanguage) -> Self {
+    pub fn from_document(prefill: RulePrefill, kinds: &Kinds) -> Self {
         let tag_conditions: Vec<Condition> = [
-            kind_tag_word(&tag_name(&prefill.kind), kind_language),
+            kinds.kind_tag_word(&tag_name(&prefill.kind)),
             tag_name(&prefill.sender),
         ]
         .into_iter()
@@ -142,7 +141,8 @@ impl RuleForm {
             RuleConditions::all_of(conditions),
             pattern,
         );
-        form.kept_kind = Some(stored_kind(&prefill.kind)).filter(|kind| !kind.is_empty());
+        form.kept_kind =
+            Some(kinds.catalog.stored_kind(&prefill.kind)).filter(|kind| !kind.is_empty());
         form.tags = prefill.tags;
         form
     }
@@ -327,6 +327,7 @@ mod tests {
     use crate::condition_editor::ConditionEdit;
     use crate::filing_pieces::{FolderField, TargetEdit};
     use crate::rules_page::tests::rule_id;
+    use ncrs_index::KindLanguage;
 
     fn stored_rule() -> Rule {
         Rule {
@@ -523,7 +524,7 @@ mod tests {
 
     #[test]
     fn a_form_from_a_document_asks_for_the_tags_of_its_kind_and_sender() {
-        let form = RuleForm::from_document(prefill(), KindLanguage::English);
+        let form = RuleForm::from_document(prefill(), &Kinds::built_in(KindLanguage::English));
 
         assert_eq!(form.target, RuleFormTarget::FromDocument);
         assert_eq!(
@@ -540,7 +541,7 @@ mod tests {
 
     #[test]
     fn a_form_from_a_document_words_the_kind_tag_in_the_language_and_keeps_the_id() {
-        let mut form = RuleForm::from_document(prefill(), KindLanguage::German);
+        let mut form = RuleForm::from_document(prefill(), &Kinds::built_in(KindLanguage::German));
 
         assert_eq!(
             form.conditions.conditions(),
@@ -564,7 +565,7 @@ mod tests {
                 kind: String::new(),
                 ..prefill()
             },
-            KindLanguage::English,
+            &Kinds::built_in(KindLanguage::English),
         );
 
         assert_eq!(form.filing.pattern(), "{year}/{sender}/");
@@ -575,7 +576,7 @@ mod tests {
 
     #[test]
     fn a_form_from_a_document_saves_a_rule_with_the_origin_filing_and_its_kind() {
-        let mut form = RuleForm::from_document(prefill(), KindLanguage::English);
+        let mut form = RuleForm::from_document(prefill(), &Kinds::built_in(KindLanguage::English));
 
         let RuleSave::Create { spec, origin } = form.save_request().unwrap() else {
             panic!("not a create");

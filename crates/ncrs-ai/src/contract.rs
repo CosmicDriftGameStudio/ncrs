@@ -1,8 +1,9 @@
 use std::fmt;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use jsonc_parser::{parse_to_value, JsonObject, JsonValue, ParseOptions};
-use ncrs_index::{detected_kind, DocumentFields, Field};
+use ncrs_index::{DocumentFields, Field, KindCatalog};
 use ncrs_intake::{parse_amount, parse_date, AI_FIELD_ORDER};
 
 use crate::error::AiError;
@@ -25,6 +26,8 @@ pub struct ExtractionRequest {
     pub known: DocumentFields,
     /// The inbox location the document came from, which consent is given for.
     pub source: PathBuf,
+    /// The kinds the document may be named as.
+    pub kinds: Arc<KindCatalog>,
 }
 
 /// A value the provider found, checked: it reads as the type of its field.
@@ -44,23 +47,25 @@ impl ExtractedField {
             return None;
         }
         let cleaned = clean_value(value)?;
-        let candidate = Self {
+        let reads_as_field = match field {
+            Field::Date => parse_date(&cleaned).is_some(),
+            Field::Amount => parse_amount(&cleaned, None).is_some(),
+            Field::Sender | Field::Recipient | Field::Kind | Field::Number => true,
+        };
+        reads_as_field.then_some(Self {
             field,
             value: cleaned,
             confidence,
-        };
-        candidate
-            .fill(&mut DocumentFields::default())
-            .then_some(candidate)
+        })
     }
 
     /// Sets the field if it is still empty; a field that is filled stays as
-    /// it is. Whether it was set.
-    pub fn fill(&self, fields: &mut DocumentFields) -> bool {
+    /// it is. Whether it was set. A kind is written as the ID of a known kind.
+    pub fn fill(&self, fields: &mut DocumentFields, kinds: &KindCatalog) -> bool {
         match self.field {
             Field::Sender => set_if_empty(&mut fields.sender, Some(self.value.clone())),
             Field::Recipient => set_if_empty(&mut fields.recipient, Some(self.value.clone())),
-            Field::Kind => set_if_empty(&mut fields.kind, Some(detected_kind(&self.value))),
+            Field::Kind => set_if_empty(&mut fields.kind, Some(kinds.detected_kind(&self.value))),
             Field::Number => set_if_empty(&mut fields.number, Some(self.value.clone())),
             Field::Date => set_if_empty(&mut fields.date, parse_date(&self.value)),
             Field::Amount => set_if_empty(&mut fields.amount, parse_amount(&self.value, None)),
@@ -105,11 +110,11 @@ pub trait Provider: Send + Sync + fmt::Debug {
 /// open field, each `{ "value": string, "confidence": number }`, and nothing
 /// else. A provider that enforces schemas then cannot answer with more; one
 /// that does not is handled by `parse_reply`, which drops what is not asked.
-pub fn output_schema(open_fields: &[Field]) -> Json {
+pub fn output_schema(open_fields: &[Field], kinds: &KindCatalog) -> Json {
     let properties = AI_FIELD_ORDER
         .into_iter()
         .filter(|field| open_fields.contains(field))
-        .map(|field| (field.as_str().to_owned(), field_schema(field)))
+        .map(|field| (field.as_str().to_owned(), field_schema(field, kinds)))
         .collect();
     Json::object([
         ("type", Json::text("object")),
@@ -118,11 +123,11 @@ pub fn output_schema(open_fields: &[Field]) -> Json {
     ])
 }
 
-fn field_schema(field: Field) -> Json {
-    let hint = match field {
+fn field_schema(field: Field, kinds: &KindCatalog) -> Json {
+    let hint: &str = match field {
         Field::Sender => "who issued the document: the letterhead, company or sender line; never the addressee or recipient, never the name after Mr/Mrs/Herr/Frau in the address block",
         Field::Recipient => "to whom the document is addressed: the person or company in the address block, never the sender",
-        Field::Kind => "what kind of document it is, for example invoice",
+        Field::Kind => &kind_hint(kinds),
         Field::Date => "the document date as YYYY-MM-DD",
         Field::Number => "the document or invoice number",
         Field::Amount => "the total with its currency code, for example 12.50 EUR",
@@ -150,6 +155,14 @@ fn field_schema(field: Field) -> Json {
         ),
         ("additionalProperties", Json::Bool(false)),
     ])
+}
+
+fn kind_hint(kinds: &KindCatalog) -> String {
+    let ids: Vec<&str> = kinds.ids().collect();
+    format!(
+        "what kind of document it is, one of: {}, or another short word",
+        ids.join(", ")
+    )
 }
 
 /// Lenient in shape, strict in effect: unknown keys, fields that were not
@@ -263,7 +276,7 @@ mod tests {
         let mut fields = DocumentFields::default();
 
         for found in &parse(raw, &ALL).fields {
-            assert!(found.fill(&mut fields));
+            assert!(found.fill(&mut fields, &KindCatalog::built_in()));
         }
 
         assert_eq!(fields.date.unwrap().to_string(), "2024-03-05");
@@ -280,7 +293,7 @@ mod tests {
             ..DocumentFields::default()
         };
 
-        assert!(!found.fill(&mut fields));
+        assert!(!found.fill(&mut fields, &KindCatalog::built_in()));
         assert_eq!(fields.sender.as_deref(), Some("Company A"));
     }
 
@@ -298,23 +311,53 @@ mod tests {
 
     #[test]
     fn the_recipient_is_asked_and_filled_only_while_empty() {
-        let schema = output_schema(&[Field::Recipient]).pretty();
+        let schema = output_schema(&[Field::Recipient], &KindCatalog::built_in()).pretty();
         let found = ExtractedField::new(Field::Recipient, "Erika Beispiel", 0.9).unwrap();
         let mut fields = DocumentFields::default();
 
         assert!(schema.contains("\"recipient\""));
-        assert!(found.fill(&mut fields));
+        assert!(found.fill(&mut fields, &KindCatalog::built_in()));
         assert_eq!(fields.recipient.as_deref(), Some("Erika Beispiel"));
-        assert!(!found.fill(&mut fields));
+        assert!(!found.fill(&mut fields, &KindCatalog::built_in()));
     }
 
     #[test]
     fn the_schema_asks_for_the_open_fields_only() {
-        let schema = output_schema(&[Field::Date, Field::Sender]).pretty();
+        let schema =
+            output_schema(&[Field::Date, Field::Sender], &KindCatalog::built_in()).pretty();
 
         assert!(schema.contains("\"sender\""));
         assert!(schema.contains("\"date\""));
         assert!(!schema.contains("\"amount\""));
         assert!(schema.contains("\"additionalProperties\": false"));
+    }
+
+    #[test]
+    fn the_kind_hint_names_the_known_and_custom_ids() {
+        let (kinds, _) = KindCatalog::built_in().extended(&[ncrs_index::CustomKind {
+            id: "payslip".to_owned(),
+            ..ncrs_index::CustomKind::default()
+        }]);
+
+        let schema = output_schema(&[Field::Kind], &kinds).pretty();
+
+        assert!(schema.contains(
+            "one of: invoice, credit_note, reminder, contract, notice, receipt, letter, insurance, quote, delivery_note, termination, payslip, or another short word"
+        ));
+    }
+
+    #[test]
+    fn a_kind_the_provider_names_is_written_as_the_id_of_a_known_kind() {
+        let (kinds, _) = KindCatalog::built_in().extended(&[ncrs_index::CustomKind {
+            id: "payslip".to_owned(),
+            words: vec!["Lohnabrechnung".to_owned()],
+            ..ncrs_index::CustomKind::default()
+        }]);
+        let mut fields = DocumentFields::default();
+
+        let found = ExtractedField::new(Field::Kind, "Lohnabrechnung", 0.9).unwrap();
+
+        assert!(found.fill(&mut fields, &kinds));
+        assert_eq!(fields.kind.as_deref(), Some("payslip"));
     }
 }

@@ -12,14 +12,12 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ops::Range;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use chrono::Datelike as _;
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{
-    kind_key, stored_kind, tag_matches, tag_name, Amount, QuerySpec, SNIPPET_MARK_END,
-    SNIPPET_MARK_START,
-};
+use ncrs_index::{tag_name, Amount, KindCatalog, QuerySpec, SNIPPET_MARK_END, SNIPPET_MARK_START};
 
 use crate::document_preview::{DocumentPreview, PreviewContent, PreviewRequest};
 use crate::list_window::ListWindow;
@@ -143,7 +141,7 @@ impl FacetSelection {
     }
 
     /// Whether the value is one of the chosen ones.
-    pub fn holds(&self, value: &FacetValue) -> bool {
+    pub fn holds(&self, value: &FacetValue, kinds: &KindCatalog) -> bool {
         let same = |chosen: &Option<String>, other: &str| {
             chosen
                 .as_deref()
@@ -156,7 +154,7 @@ impl FacetSelection {
             FacetValue::Kind(other) => self
                 .kind
                 .as_deref()
-                .is_some_and(|chosen| kind_key(chosen) == kind_key(other)),
+                .is_some_and(|chosen| kinds.kind_key(chosen) == kinds.kind_key(other)),
             FacetValue::Tag(other) => self
                 .tags
                 .iter()
@@ -166,7 +164,7 @@ impl FacetSelection {
 
     /// Chooses the value, or drops it when it is chosen already. A value of a
     /// facet that takes one replaces the other; a tag joins the others.
-    pub fn toggle(&mut self, value: FacetValue) {
+    pub fn toggle(&mut self, value: FacetValue, kinds: &KindCatalog) {
         match value {
             FacetValue::Year(year) => {
                 self.year = (self.year != Some(year)).then_some(year);
@@ -189,8 +187,8 @@ impl FacetSelection {
                 let chosen_already = self
                     .kind
                     .as_ref()
-                    .is_some_and(|held| kind_key(held) == kind_key(&chosen));
-                self.kind = (!chosen_already).then(|| stored_kind(&chosen));
+                    .is_some_and(|held| kinds.kind_key(held) == kinds.kind_key(&chosen));
+                self.kind = (!chosen_already).then(|| kinds.stored_kind(&chosen));
             }
             FacetValue::Tag(chosen) => {
                 let before = self.tags.len();
@@ -204,7 +202,7 @@ impl FacetSelection {
 
     /// Whether the hit fits the chosen values, leaving `except` out. The same
     /// meaning as `Index::run_query` gives a `QuerySpec` with these values.
-    fn admits(&self, hit: &QueryHit, except: Option<Facet>) -> bool {
+    fn admits(&self, hit: &QueryHit, except: Option<Facet>, kinds: &KindCatalog) -> bool {
         let fields = &hit.fields;
         let counts = |facet: Facet| except != Some(facet);
         if let Some(year) = self.year.filter(|_| counts(Facet::Year)) {
@@ -229,15 +227,15 @@ impl FacetSelection {
                 fields
                     .kind
                     .as_ref()
-                    .is_some_and(|held| kind_key(held) == kind_key(wanted))
+                    .is_some_and(|held| kinds.kind_key(held) == kinds.kind_key(wanted))
             });
             if !same_kind {
                 return false;
             }
         }
         if counts(Facet::Tags) {
-            let held = fields.all_tags();
-            let has = |wanted: &String| held.iter().any(|tag| tag_matches(tag, wanted));
+            let held = fields.all_tags(kinds);
+            let has = |wanted: &String| held.iter().any(|tag| kinds.tag_matches(tag, wanted));
             if !self.tags.iter().all(has) {
                 return false;
             }
@@ -245,8 +243,8 @@ impl FacetSelection {
         true
     }
 
-    pub fn admits_hit(&self, hit: &QueryHit) -> bool {
-        self.admits(hit, None)
+    pub fn admits_hit(&self, hit: &QueryHit, kinds: &KindCatalog) -> bool {
+        self.admits(hit, None, kinds)
     }
 }
 
@@ -287,16 +285,22 @@ fn named(name: &str) -> (String, String) {
 }
 
 /// A known kind counts under its ID whatever it was written as.
-fn named_kind(kind: &str) -> (String, String) {
-    (kind_key(kind), stored_kind(kind))
+fn named_kind(kind: &str, kinds: &KindCatalog) -> (String, String) {
+    (kinds.kind_key(kind), kinds.stored_kind(kind))
 }
 
 /// The values of every facet. A facet that takes one value counts over the
 /// hits that fit all the other choices, so the user can switch from one value
 /// to another; the tags count over the hits that fit everything chosen.
-pub fn facet_counts(hits: &[QueryHit], selection: &FacetSelection) -> FacetCounts {
-    let among =
-        |except: Option<Facet>| hits.iter().filter(move |hit| selection.admits(hit, except));
+pub fn facet_counts(
+    hits: &[QueryHit],
+    selection: &FacetSelection,
+    kinds: &KindCatalog,
+) -> FacetCounts {
+    let among = |except: Option<Facet>| {
+        hits.iter()
+            .filter(move |hit| selection.admits(hit, except, kinds))
+    };
 
     let mut years = tally(
         among(Some(Facet::Year))
@@ -327,8 +331,8 @@ pub fn facet_counts(hits: &[QueryHit], selection: &FacetSelection) -> FacetCount
         among(Some(Facet::Kind))
             .filter_map(|hit| hit.fields.kind.as_deref())
             .filter(|kind| !kind.trim().is_empty())
-            .map(named_kind),
-        selection.kind.iter().map(|kind| named_kind(kind)),
+            .map(|kind| named_kind(kind, kinds)),
+        selection.kind.iter().map(|kind| named_kind(kind, kinds)),
     );
     let tags = tally(
         among(None)
@@ -375,13 +379,15 @@ pub struct DocumentSearch {
     /// By the path of the document; only while words are typed.
     snippets: HashMap<PathBuf, Snippet>,
     preview: DocumentPreview,
+    kinds: Arc<KindCatalog>,
 }
 
 impl DocumentSearch {
     /// Opens busy: the first search starts with the page.
-    pub fn new(text: String) -> Self {
+    pub fn new(text: String, kinds: Arc<KindCatalog>) -> Self {
         Self {
             text,
+            kinds,
             hits: Vec::new(),
             selection: FacetSelection::default(),
             shown: Vec::new(),
@@ -409,6 +415,10 @@ impl DocumentSearch {
 
     pub fn selection(&self) -> &FacetSelection {
         &self.selection
+    }
+
+    pub fn kinds(&self) -> &KindCatalog {
+        &self.kinds
     }
 
     pub fn counts(&self) -> &FacetCounts {
@@ -577,7 +587,7 @@ impl DocumentSearch {
     }
 
     pub fn toggle(&mut self, value: FacetValue) {
-        self.selection.toggle(value);
+        self.selection.toggle(value, &self.kinds);
         self.refilter();
     }
 
@@ -593,10 +603,10 @@ impl DocumentSearch {
             .hits
             .iter()
             .enumerate()
-            .filter(|(_, hit)| self.selection.admits_hit(hit))
+            .filter(|(_, hit)| self.selection.admits_hit(hit, &self.kinds))
             .map(|(at, _)| at)
             .collect();
-        self.counts = facet_counts(&self.hits, &self.selection);
+        self.counts = facet_counts(&self.hits, &self.selection, &self.kinds);
         self.cursor = self.cursor.min(self.shown.len().saturating_sub(1));
         self.window
             .ensure_visible(self.cursor, self.shown.len(), VISIBLE_ROWS);
@@ -710,7 +720,7 @@ pub mod tests {
     }
 
     pub fn loaded_search() -> DocumentSearch {
-        let mut search = DocumentSearch::new(String::new());
+        let mut search = DocumentSearch::new(String::new(), Arc::default());
         search.ran(six_hits());
         search
     }
@@ -810,46 +820,91 @@ pub mod tests {
         let mut selection = FacetSelection::default();
 
         assert_eq!(
-            facet_counts(&hits, &selection).kinds,
+            facet_counts(&hits, &selection, &KindCatalog::built_in()).kinds,
             [("invoice".to_owned(), 2), ("Steuerbescheid".to_owned(), 1)]
         );
-        selection.toggle(FacetValue::Kind("Rechnung".to_owned()));
+        selection.toggle(
+            FacetValue::Kind("Rechnung".to_owned()),
+            &KindCatalog::built_in(),
+        );
         let found: Vec<&str> = hits
             .iter()
-            .filter(|hit| selection.admits_hit(hit))
+            .filter(|hit| selection.admits_hit(hit, &KindCatalog::built_in()))
             .filter_map(|hit| hit.path.file_name()?.to_str())
             .collect();
 
         assert_eq!(found, ["a.pdf", "b.pdf"]);
-        assert!(selection.holds(&FacetValue::Kind("Invoice".to_owned())));
-        selection.toggle(FacetValue::Kind("invoice".to_owned()));
+        assert!(selection.holds(
+            &FacetValue::Kind("Invoice".to_owned()),
+            &KindCatalog::built_in()
+        ));
+        selection.toggle(
+            FacetValue::Kind("invoice".to_owned()),
+            &KindCatalog::built_in(),
+        );
         assert!(selection.is_empty());
+    }
+
+    #[test]
+    fn the_words_of_a_custom_kind_are_one_facet_entry_and_one_choice() {
+        let (catalog, skips) = KindCatalog::built_in().extended(&[ncrs_index::CustomKind {
+            id: "payslip".to_owned(),
+            german: Some("Lohnabrechnung".to_owned()),
+            english: None,
+            words: vec!["Gehaltsabrechnung".to_owned()],
+        }]);
+        assert!(skips.is_empty());
+        let hits = vec![
+            found_hit("a.pdf", None, None, Some("payslip"), &[]),
+            found_hit("b.pdf", None, None, Some("Gehaltsabrechnung"), &[]),
+        ];
+        let mut selection = FacetSelection::default();
+
+        assert_eq!(
+            facet_counts(&hits, &selection, &catalog).kinds,
+            [("payslip".to_owned(), 2)]
+        );
+        selection.toggle(FacetValue::Kind("Lohnabrechnung".to_owned()), &catalog);
+        assert_eq!(selection.kind.as_deref(), Some("payslip"));
+        assert!(hits.iter().all(|hit| selection.admits_hit(hit, &catalog)));
     }
 
     #[test]
     fn a_value_of_a_single_valued_facet_replaces_the_chosen_one() {
         let mut selection = FacetSelection::default();
 
-        selection.toggle(FacetValue::Kind("invoice".to_owned()));
-        selection.toggle(FacetValue::Kind("contract".to_owned()));
-        selection.toggle(FacetValue::Tag("a".to_owned()));
-        selection.toggle(FacetValue::Tag("b".to_owned()));
-        selection.toggle(FacetValue::Tag("A".to_owned()));
-        selection.toggle(FacetValue::Sender("X".to_owned()));
-        selection.toggle(FacetValue::Sender(" x ".to_owned()));
+        selection.toggle(
+            FacetValue::Kind("invoice".to_owned()),
+            &KindCatalog::built_in(),
+        );
+        selection.toggle(
+            FacetValue::Kind("contract".to_owned()),
+            &KindCatalog::built_in(),
+        );
+        selection.toggle(FacetValue::Tag("a".to_owned()), &KindCatalog::built_in());
+        selection.toggle(FacetValue::Tag("b".to_owned()), &KindCatalog::built_in());
+        selection.toggle(FacetValue::Tag("A".to_owned()), &KindCatalog::built_in());
+        selection.toggle(FacetValue::Sender("X".to_owned()), &KindCatalog::built_in());
+        selection.toggle(
+            FacetValue::Sender(" x ".to_owned()),
+            &KindCatalog::built_in(),
+        );
 
         assert_eq!(selection.kind.as_deref(), Some("contract"));
         assert_eq!(selection.tags, ["b".to_owned()].into());
         assert_eq!(selection.sender, None);
         assert!(!selection.is_empty());
-        selection.toggle(FacetValue::Kind("Contract".to_owned()));
-        selection.toggle(FacetValue::Tag("b".to_owned()));
+        selection.toggle(
+            FacetValue::Kind("Contract".to_owned()),
+            &KindCatalog::built_in(),
+        );
+        selection.toggle(FacetValue::Tag("b".to_owned()), &KindCatalog::built_in());
         assert!(selection.is_empty());
     }
 
     #[test]
     fn the_spec_holds_the_trimmed_words_and_the_choices() {
-        let mut search = DocumentSearch::new("  rent office ".to_owned());
+        let mut search = DocumentSearch::new("  rent office ".to_owned(), Arc::default());
         search.toggle(FacetValue::Year(2024));
         search.toggle(FacetValue::Tag("office".to_owned()));
 
@@ -867,7 +922,12 @@ pub mod tests {
             }
         );
         assert!(search.is_busy());
-        assert_eq!(DocumentSearch::new("  ".to_owned()).spec().full_text, None);
+        assert_eq!(
+            DocumentSearch::new("  ".to_owned(), Arc::default())
+                .spec()
+                .full_text,
+            None
+        );
     }
 
     #[test]
@@ -893,7 +953,7 @@ pub mod tests {
 
     #[test]
     fn a_failure_ends_busy_and_is_shown_and_a_search_clears_it() {
-        let mut search = DocumentSearch::new(String::new());
+        let mut search = DocumentSearch::new(String::new(), Arc::default());
         assert!(search.is_busy());
 
         search.failed("the index is not open".to_owned());
@@ -965,7 +1025,7 @@ pub mod tests {
 
     #[test]
     fn snippets_belong_to_the_hits_found_and_go_with_a_new_search() {
-        let mut search = DocumentSearch::new("rent".to_owned());
+        let mut search = DocumentSearch::new("rent".to_owned(), Arc::default());
         search.ran(six_hits());
         let (paths, words) = search.snippet_request().unwrap();
         assert_eq!(paths.len(), 6);
@@ -984,7 +1044,7 @@ pub mod tests {
 
         search.ran(six_hits());
         assert!(!search.has_snippets());
-        assert!(DocumentSearch::new("  ".to_owned())
+        assert!(DocumentSearch::new("  ".to_owned(), Arc::default())
             .snippet_request()
             .is_none());
     }
@@ -1120,7 +1180,7 @@ pub mod tests {
         let access = QueryAccess::new(Arc::new(Mutex::new(Some(index))));
 
         // The last word is a prefix while it is typed.
-        let mut search = DocumentSearch::new("office ren".to_owned());
+        let mut search = DocumentSearch::new("office ren".to_owned(), Arc::default());
         let asked = search.begin_search();
         search.ran(access.run(&asked).unwrap());
         search.toggle(FacetValue::Year(2025));
@@ -1169,7 +1229,7 @@ pub mod tests {
 
     #[test]
     fn the_recipient_narrows_counts_and_is_saved_as_the_tag_it_makes() {
-        let mut search = DocumentSearch::new(String::new());
+        let mut search = DocumentSearch::new(String::new(), Arc::default());
         search.ran(vec![
             hit_for("a.pdf", "Firma A GmbH", "Rechnung", &["steuer"], 100, "EUR"),
             hit_for("b.pdf", "Marc privat", "Rechnung", &[], 250, "EUR"),
@@ -1191,7 +1251,7 @@ pub mod tests {
 
     #[test]
     fn a_chosen_tag_also_matches_the_automatic_and_the_more_specific_tags() {
-        let mut search = DocumentSearch::new(String::new());
+        let mut search = DocumentSearch::new(String::new(), Arc::default());
         search.ran(vec![
             hit_for("a.pdf", "Firma A GmbH", "Rechnung", &[], 100, "EUR"),
             hit_for("b.pdf", "Firma AB", "Rechnung", &["steuer"], 100, "EUR"),
@@ -1207,7 +1267,7 @@ pub mod tests {
 
     #[test]
     fn the_total_is_only_given_for_one_currency() {
-        let mut search = DocumentSearch::new(String::new());
+        let mut search = DocumentSearch::new(String::new(), Arc::default());
         search.ran(vec![
             hit_for("a.pdf", "X", "Rechnung", &[], 100, "EUR"),
             hit_for("b.pdf", "X", "Rechnung", &[], 250, "EUR"),

@@ -5,7 +5,7 @@
 
 use iced::widget::{column, container, row, text, Column, Row, Space};
 use iced::{alignment, Element, Font, Length, Size};
-use ncrs_index::Combinator;
+use ncrs_index::{Combinator, KindCatalog};
 
 use super::condition_editor::{combinator_choice, condition_editor_rows, ConditionHost};
 use super::filing_pieces::{folder_chips_read_only, target_view, TargetHost};
@@ -132,8 +132,8 @@ pub fn view<'a>(
     .into_element()
 }
 
-fn sentence_of(listed: &ListedRule, lang: Language) -> String {
-    rule_sentence(&listed.rule.spec, lang)
+fn sentence_of(listed: &ListedRule, lang: Language, kinds: &KindCatalog) -> String {
+    rule_sentence(&listed.rule.spec, lang, kinds)
 }
 
 fn list<'a>(
@@ -160,7 +160,7 @@ fn list<'a>(
             );
             let content = row![
                 container(switch).width(SWITCH_WIDTH),
-                rule_card(listed, on_fill, lang, palette),
+                rule_card(listed, on_fill, lang, state.kinds(), palette),
             ]
             .align_y(alignment::Vertical::Center);
             kit::list_row_of_height(
@@ -194,6 +194,7 @@ fn rule_card<'a>(
     listed: &ListedRule,
     on_fill: bool,
     lang: Language,
+    kinds: &KindCatalog,
     palette: &Palette,
 ) -> Element<'a, Message> {
     let spec = &listed.rule.spec;
@@ -251,7 +252,7 @@ fn rule_card<'a>(
     .spacing(spacing::XS)
     .align_y(alignment::Vertical::Center);
     if let Some(kind) = &spec.kind {
-        target = target.push(quiet(format!("· {}", lang.kind_label(kind))));
+        target = target.push(quiet(format!("· {}", lang.kind_label(kinds, kind))));
     }
     for tag in &spec.tags {
         target = target.push(kit::chip(tag, on_fill, palette));
@@ -276,7 +277,7 @@ fn delete_question<'a>(
 ) -> Element<'a, Message> {
     let rule = state
         .selected()
-        .map(|listed| sentence_of(listed, lang))
+        .map(|listed| sentence_of(listed, lang, state.kinds()))
         .unwrap_or_default();
     container(paragraph(
         fill_template(lang.text(Msg::RulesDeleteQuestion), &[("{rule}", &rule)]),

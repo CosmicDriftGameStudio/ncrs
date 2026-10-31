@@ -8,10 +8,7 @@ use std::path::PathBuf;
 
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{
-    kind_key, kind_word, stored_kind, tag_name, DocumentFields, DocumentId, Field, KindLanguage,
-    ReviewEntryId,
-};
+use ncrs_index::{tag_name, DocumentFields, DocumentId, Field, KindCatalog, Kinds, ReviewEntryId};
 use ncrs_intake::{
     choose_pattern, default_pattern_for, missing_field, render_pattern_in, render_pattern_parts,
     PatternPart, PatternSource,
@@ -55,7 +52,7 @@ pub struct Form {
 }
 
 impl Form {
-    fn of(item: &ReviewItem, custom_default: Option<&str>, kind_language: KindLanguage) -> Self {
+    fn of(item: &ReviewItem, custom_default: Option<&str>, kinds: &Kinds) -> Self {
         let fields = &item.fields;
         Self {
             sender: fields.sender.clone().unwrap_or_default(),
@@ -63,7 +60,7 @@ impl Form {
             kind: fields
                 .kind
                 .as_deref()
-                .map(|kind| kind_word(kind, kind_language).into_owned())
+                .map(|kind| kinds.kind_word(kind).into_owned())
                 .unwrap_or_default(),
             date: fields.date.map(|date| date.to_string()).unwrap_or_default(),
             number: fields.number.clone().unwrap_or_default(),
@@ -90,7 +87,7 @@ impl Form {
 
     /// The fields the form holds; what is typed and no field can hold is a
     /// problem, never silently dropped.
-    fn fields(&self) -> Result<DocumentFields, Problem> {
+    fn fields(&self, kinds: &KindCatalog) -> Result<DocumentFields, Problem> {
         let non_empty = |typed: &str| {
             let text = typed.trim();
             (!text.is_empty()).then(|| text.to_owned())
@@ -98,7 +95,7 @@ impl Form {
         Ok(DocumentFields {
             sender: non_empty(&self.sender),
             recipient: non_empty(&self.recipient),
-            kind: non_empty(&self.kind).map(|kind| stored_kind(&kind)),
+            kind: non_empty(&self.kind).map(|kind| kinds.stored_kind(&kind)),
             date: parse_date(&self.date).map_err(Problem::from)?,
             number: non_empty(&self.number),
             amount: parse_amount(&self.amount).map_err(Problem::from)?,
@@ -108,7 +105,7 @@ impl Form {
 
     /// The tags the fields as typed give; a date that does not read only
     /// leaves out the year.
-    pub fn automatic_tags(&self) -> BTreeSet<String> {
+    pub fn automatic_tags(&self, kinds: &KindCatalog) -> BTreeSet<String> {
         let non_empty = |typed: &str| {
             let text = typed.trim();
             (!text.is_empty()).then(|| text.to_owned())
@@ -116,11 +113,11 @@ impl Form {
         DocumentFields {
             sender: non_empty(&self.sender),
             recipient: non_empty(&self.recipient),
-            kind: non_empty(&self.kind).map(|kind| stored_kind(&kind)),
+            kind: non_empty(&self.kind).map(|kind| kinds.stored_kind(&kind)),
             date: parse_date(&self.date).ok().flatten(),
             ..DocumentFields::default()
         }
-        .automatic_tags()
+        .automatic_tags(kinds)
     }
 }
 
@@ -180,14 +177,18 @@ impl FiledNotice {
 pub fn rule_prefill_of(
     item: &ReviewItem,
     custom_default: Option<&str>,
-    kind_language: KindLanguage,
+    kinds: &Kinds,
 ) -> RulePrefill {
     let fields = &item.fields;
     RulePrefill {
         sender: fields.sender.clone().unwrap_or_default(),
-        kind: fields.kind.as_deref().map(stored_kind).unwrap_or_default(),
+        kind: fields
+            .kind
+            .as_deref()
+            .map(|kind| kinds.catalog.stored_kind(kind))
+            .unwrap_or_default(),
         tags: fields.tags.clone(),
-        pattern: Form::of(item, custom_default, kind_language).pattern,
+        pattern: Form::of(item, custom_default, kinds).pattern,
     }
 }
 
@@ -245,7 +246,7 @@ pub struct ReviewList {
     /// Tells the answer of the preview that is current from a stale one.
     replan_serial: u64,
     document_preview: DocumentPreview,
-    kind_language: KindLanguage,
+    kinds: Kinds,
 }
 
 impl ReviewList {
@@ -269,20 +270,26 @@ impl ReviewList {
             replan: None,
             replan_serial: 0,
             document_preview: DocumentPreview::default(),
-            kind_language: KindLanguage::default(),
+            kinds: Kinds::default(),
         }
     }
 
-    pub fn with_kind_language(self, kind_language: KindLanguage) -> Self {
-        Self {
-            kind_language,
-            ..self
-        }
+    pub fn with_kinds(self, kinds: Kinds) -> Self {
+        Self { kinds, ..self }
     }
 
-    pub fn set_kind_language(&mut self, kind_language: KindLanguage) {
-        self.kind_language = kind_language;
-        self.form.kind = kind_word(&self.form.kind, kind_language).into_owned();
+    pub fn set_kinds(&mut self, kinds: Kinds) {
+        self.kinds = kinds;
+        self.form.kind = self.kinds.kind_word(&self.form.kind).into_owned();
+    }
+
+    pub fn kinds(&self) -> &Kinds {
+        &self.kinds
+    }
+
+    /// The fields the form holds, with a kind in its stored form.
+    pub fn typed_fields(&self) -> Result<DocumentFields, Problem> {
+        self.form.fields(&self.kinds.catalog)
     }
 
     /// The pattern proposed for documents without a rule or learned pattern,
@@ -340,6 +347,11 @@ impl ReviewList {
         self.editing
     }
 
+    /// The tags the fields as typed give.
+    pub fn automatic_tags(&self) -> BTreeSet<String> {
+        self.form.automatic_tags(&self.kinds.catalog)
+    }
+
     pub fn form(&self) -> &Form {
         &self.form
     }
@@ -385,15 +397,15 @@ impl ReviewList {
     /// Where the pattern files the document with the fields as typed, or
     /// `None` while they do not fit.
     pub fn preview(&self) -> Option<PathBuf> {
-        let fields = self.form.fields().ok()?;
-        render_pattern_in(self.form.pattern.trim(), &fields, self.kind_language)
+        let fields = self.typed_fields().ok()?;
+        render_pattern_in(self.form.pattern.trim(), &fields, &self.kinds)
     }
 
     /// [`Self::preview`] in the pieces the path is made of, to show which come
     /// from which field.
     pub fn preview_parts(&self) -> Option<Vec<PatternPart>> {
-        let fields = self.form.fields().ok()?;
-        render_pattern_parts(self.form.pattern.trim(), &fields, self.kind_language)
+        let fields = self.typed_fields().ok()?;
+        render_pattern_parts(self.form.pattern.trim(), &fields, &self.kinds)
     }
 
     /// The user changed what the form holds for `field` since the document
@@ -402,15 +414,14 @@ impl ReviewList {
         let Some(item) = self.selected() else {
             return false;
         };
-        let loaded = Form::of(
-            item,
-            self.custom_default_pattern.as_deref(),
-            self.kind_language,
-        );
+        let loaded = Form::of(item, self.custom_default_pattern.as_deref(), &self.kinds);
         match field {
             Field::Sender => self.form.sender != loaded.sender,
             Field::Recipient => self.form.recipient != loaded.recipient,
-            Field::Kind => kind_key(&self.form.kind) != kind_key(&loaded.kind),
+            Field::Kind => {
+                self.kinds.catalog.kind_key(&self.form.kind)
+                    != self.kinds.catalog.kind_key(&loaded.kind)
+            }
             Field::Date => self.form.date != loaded.date,
             Field::Number => self.form.number != loaded.number,
             Field::Amount => self.form.amount != loaded.amount,
@@ -420,7 +431,7 @@ impl ReviewList {
     /// The field the pattern needs and the form leaves empty, if the pattern
     /// reads and the fields are valid.
     pub fn missing_field(&self) -> Option<Field> {
-        let fields = self.form.fields().ok()?;
+        let fields = self.typed_fields().ok()?;
         missing_field(self.form.pattern.trim(), &fields)
     }
 
@@ -615,7 +626,7 @@ impl ReviewList {
     }
 
     fn follow_fields_with_default_pattern(&mut self) {
-        if let Ok(fields) = self.form.fields() {
+        if let Ok(fields) = self.typed_fields() {
             self.form.pattern =
                 default_pattern_for(self.custom_default_pattern.as_deref(), &fields)
                     .unwrap_or_default();
@@ -631,7 +642,7 @@ impl ReviewList {
             return None;
         }
         let row = self.rows.get(self.cursor)?;
-        let fields = match self.form.fields() {
+        let fields = match self.typed_fields() {
             Ok(fields) => fields,
             Err(problem) => {
                 self.problem = Some(problem);
@@ -639,7 +650,7 @@ impl ReviewList {
             }
         };
         let pattern = self.form.pattern.trim().to_owned();
-        if render_pattern_in(&pattern, &fields, self.kind_language).is_none() {
+        if render_pattern_in(&pattern, &fields, &self.kinds).is_none() {
             self.problem = Some(Problem::PatternDoesNotFit);
             return None;
         }
@@ -693,10 +704,10 @@ impl ReviewList {
     /// the last try belongs to the document it was tried on.
     fn fill_form(&mut self) {
         let custom_default = self.custom_default_pattern.clone();
-        let kind_language = self.kind_language;
+        let kinds = self.kinds.clone();
         self.form = self
             .selected()
-            .map(|item| Form::of(item, custom_default.as_deref(), kind_language))
+            .map(|item| Form::of(item, custom_default.as_deref(), &kinds))
             .unwrap_or_default();
         self.pattern_is_default = self
             .selected()
@@ -716,6 +727,7 @@ impl ReviewList {
 )]
 #[cfg(test)]
 pub mod tests {
+    use ncrs_index::KindLanguage;
     use ncrs_index::{Index, ReviewReason};
 
     use super::*;
@@ -1124,7 +1136,7 @@ pub mod tests {
 
     fn list_in(kind_language: KindLanguage) -> ReviewList {
         let [one, _] = <[_; 2]>::try_from(ids()).unwrap();
-        let mut list = ReviewList::new().with_kind_language(kind_language);
+        let mut list = ReviewList::new().with_kinds(Kinds::built_in(kind_language));
         list.loaded(vec![item(one, "scan-1.pdf", "Company A")]);
         list
     }
@@ -1141,12 +1153,12 @@ pub mod tests {
         let mut edited = list_in(KindLanguage::German);
         edited.set_text(FormField::Kind, "Gutschrift".to_owned());
         assert_eq!(
-            edited.form().fields().unwrap().kind.as_deref(),
+            edited.typed_fields().unwrap().kind.as_deref(),
             Some("credit_note")
         );
         edited.set_text(FormField::Kind, "Steuerbescheid 2024".to_owned());
         assert_eq!(
-            edited.form().fields().unwrap().kind.as_deref(),
+            edited.typed_fields().unwrap().kind.as_deref(),
             Some("Steuerbescheid 2024")
         );
     }
@@ -1173,13 +1185,13 @@ pub mod tests {
         list.set_text(FormField::Recipient, " Erika Beispiel ".to_owned());
         list.set_text(FormField::Date, "not a date".to_owned());
 
-        let automatic = list.form().automatic_tags();
+        let automatic = list.automatic_tags();
         assert!(automatic.contains("company-c"));
         assert!(automatic.contains("erika-beispiel"));
         assert!(!list.form().tags.contains("company-c"));
 
         list.set_text(FormField::Date, "2024-03-09".to_owned());
-        assert!(list.form().automatic_tags().contains("2024"));
+        assert!(list.automatic_tags().contains("2024"));
         let request = list.begin_confirm().unwrap();
         assert_eq!(request.fields.recipient.as_deref(), Some("Erika Beispiel"));
         assert!(request.fields.tags.is_empty());

@@ -1,4 +1,5 @@
 use std::collections::{BTreeSet, HashSet};
+use std::sync::Arc;
 
 use chrono::{NaiveDate, Utc};
 use rusqlite::types::Value;
@@ -7,7 +8,6 @@ use rusqlite::{params, params_from_iter, Connection, OptionalExtension as _};
 use crate::documents::{DocumentRow, DOCUMENT_COLUMNS};
 use crate::error::IndexError;
 use crate::index::Index;
-use crate::kinds::{stored_kind, Kind};
 use crate::model::{tag_name, Document, DocumentId, QuerySpec, SavedQuery, SavedQueryId};
 use crate::names::{name_id, NameTable};
 
@@ -110,6 +110,7 @@ impl Index {
         spec: &QuerySpec,
     ) -> Result<SavedQueryId, IndexError> {
         let name = clean_name(raw_name)?;
+        let kinds = Arc::clone(self.kinds());
         let tx = self.conn_mut().transaction()?;
         require_free_name(&tx, name, None)?;
         tx.execute(
@@ -118,7 +119,7 @@ impl Index {
             params![
                 name,
                 spec.year,
-                blank_to_none(&spec.kind).map(stored_kind),
+                blank_to_none(&spec.kind).map(|kind| kinds.stored_kind(kind)),
                 full_text_words(spec),
                 Utc::now().timestamp(),
                 blank_to_none(&spec.sender),
@@ -137,6 +138,7 @@ impl Index {
         spec: &QuerySpec,
     ) -> Result<(), IndexError> {
         let name = clean_name(raw_name)?;
+        let kinds = Arc::clone(self.kinds());
         let tx = self.conn_mut().transaction()?;
         require_free_name(&tx, name, Some(id))?;
         let changed = tx.execute(
@@ -147,7 +149,7 @@ impl Index {
                 id.get(),
                 name,
                 spec.year,
-                blank_to_none(&spec.kind).map(stored_kind),
+                blank_to_none(&spec.kind).map(|kind| kinds.stored_kind(kind)),
                 full_text_words(spec),
                 blank_to_none(&spec.sender),
             ],
@@ -225,8 +227,7 @@ impl Index {
             values.push(Value::Text(sender.to_lowercase()));
         }
         if let Some(kind) = blank_to_none(&spec.kind) {
-            let keys =
-                Kind::resolve(kind).map_or_else(|| vec![kind.to_lowercase()], Kind::name_keys);
+            let keys = self.kinds().kind_name_keys(kind);
             conditions.push(format!("k.name_key IN ({})", placeholders(keys.len())));
             values.extend(keys.into_iter().map(Value::Text));
         }
@@ -236,7 +237,7 @@ impl Index {
             .map(|tag| tag_name(tag))
             .filter(|tag| !tag.is_empty())
         {
-            let other_spellings = Kind::resolve(&tag).map_or_else(Vec::new, Kind::tag_names);
+            let other_spellings = self.kinds().tag_spellings(&tag);
             conditions.push(format!(
                 "EXISTS (SELECT 1 FROM document_tag dt JOIN tag t ON t.id = dt.tag_id
                          WHERE dt.document_id = d.id
@@ -436,6 +437,43 @@ mod tests {
         };
 
         assert_eq!(found(&index, &spec), vec![ids[0], ids[1]]);
+    }
+
+    #[test]
+    fn a_custom_kind_is_found_by_its_tag_and_its_words() {
+        let (_dir, mut index) = encrypted_index();
+        let (catalog, skips) = crate::KindCatalog::built_in().extended(&[crate::CustomKind {
+            id: "payslip".to_owned(),
+            german: Some("Lohnabrechnung".to_owned()),
+            english: Some("Payslip".to_owned()),
+            words: vec!["Gehaltsabrechnung".to_owned()],
+        }]);
+        assert_eq!(skips, Vec::new());
+        index.set_kinds(Arc::new(catalog));
+        let mut ids = Vec::new();
+        for (seed, kind) in [(1, "Gehaltsabrechnung"), (2, "Invoice")] {
+            let id = index.insert_document(&new_document(seed)).unwrap();
+            let fields = DocumentFields {
+                kind: Some(kind.to_owned()),
+                ..DocumentFields::default()
+            };
+            index
+                .set_document_fields(id, &fields, |_| FieldOrigin::Unknown)
+                .unwrap();
+            ids.push(id);
+        }
+
+        let by_tag = QuerySpec {
+            tags: tags(&["lohnabrechnung"]),
+            ..QuerySpec::default()
+        };
+        let by_kind = QuerySpec {
+            kind: Some("Lohnabrechnung".to_owned()),
+            ..QuerySpec::default()
+        };
+
+        assert_eq!(found(&index, &by_tag), vec![ids[0]]);
+        assert_eq!(found(&index, &by_kind), vec![ids[0]]);
     }
 
     #[test]

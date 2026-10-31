@@ -1,7 +1,7 @@
 //! Which tags the file panels show after a file name: the setting and the
 //! choice from the tags a document has. Pure; the panel draws the result.
 
-use ncrs_index::{kind_tag_word, tag_matches, FileTags, KindLanguage};
+use ncrs_index::{FileTags, Kinds};
 
 /// Most chips after one name; the rest is counted.
 pub const MOST_CHIPS: usize = 3;
@@ -97,21 +97,17 @@ pub struct ShownTags {
     pub more: usize,
 }
 
-fn worded(group: TagGroup, tag: &str, kind_language: KindLanguage) -> String {
+fn worded(group: TagGroup, tag: &str, kinds: &Kinds) -> String {
     match group {
-        TagGroup::Kind => kind_tag_word(tag, kind_language),
+        TagGroup::Kind => kinds.kind_tag_word(tag),
         TagGroup::Recipient | TagGroup::Sender | TagGroup::Year | TagGroup::Own => tag.to_owned(),
     }
 }
 
 /// Kind, recipient, sender, year, then the own tags. A tag that is both read
-/// and set shows once, as an own one. A known kind is worded in
-/// `kind_language`.
-pub fn shown_tags(
-    tags: &FileTags,
-    setting: &FileListTags,
-    kind_language: KindLanguage,
-) -> ShownTags {
+/// and set shows once, as an own one. A known kind is worded in the language
+/// of `kinds`.
+pub fn shown_tags(tags: &FileTags, setting: &FileListTags, kinds: &Kinds) -> ShownTags {
     if !setting.show {
         return ShownTags::default();
     }
@@ -129,12 +125,12 @@ pub fn shown_tags(
         let Some(tag) = automatic_tag.filter(|_| wanted(group)) else {
             continue;
         };
-        let shown = worded(group, tag, kind_language);
+        let shown = worded(group, tag, kinds);
         let set_by_user = own_listed
             && tags
                 .own
                 .iter()
-                .any(|own| worded(group, own, kind_language) == shown);
+                .any(|own| worded(group, own, kinds) == shown);
         let seen = candidates.iter().any(|chip| chip.tag == shown);
         if !set_by_user && !seen {
             candidates.push(FileChip {
@@ -154,7 +150,7 @@ pub fn shown_tags(
             setting
                 .only
                 .iter()
-                .any(|entry| tag_matches(&chip.tag, entry))
+                .any(|entry| kinds.catalog.tag_matches(&chip.tag, entry))
         });
     }
     let more = candidates.len().saturating_sub(MOST_CHIPS);
@@ -168,6 +164,7 @@ pub fn shown_tags(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ncrs_index::KindLanguage;
 
     const GERMAN: KindLanguage = KindLanguage::German;
 
@@ -191,7 +188,11 @@ mod tests {
 
     #[test]
     fn by_default_the_kind_and_the_own_tags_show() {
-        let shown = shown_tags(&read_document(), &FileListTags::default(), GERMAN);
+        let shown = shown_tags(
+            &read_document(),
+            &FileListTags::default(),
+            &Kinds::built_in(GERMAN),
+        );
 
         assert_eq!(texts(&shown), [("rechnung", false), ("steuer", true)]);
         assert_eq!(shown.more, 0);
@@ -202,10 +203,14 @@ mod tests {
         let mut tags = read_document();
         tags.kind = Some("invoice".to_owned());
 
-        let english = shown_tags(&tags, &FileListTags::default(), KindLanguage::English);
-        let german = shown_tags(&tags, &FileListTags::default(), GERMAN);
+        let english = shown_tags(
+            &tags,
+            &FileListTags::default(),
+            &Kinds::built_in(KindLanguage::English),
+        );
+        let german = shown_tags(&tags, &FileListTags::default(), &Kinds::built_in(GERMAN));
         tags.own = vec!["rechnung".to_owned()];
-        let twin = shown_tags(&tags, &FileListTags::default(), GERMAN);
+        let twin = shown_tags(&tags, &FileListTags::default(), &Kinds::built_in(GERMAN));
 
         assert_eq!(texts(&english), [("invoice", false), ("steuer", true)]);
         assert_eq!(texts(&german), [("rechnung", false), ("steuer", true)]);
@@ -219,7 +224,7 @@ mod tests {
             ..FileListTags::default()
         };
 
-        let shown = shown_tags(&read_document(), &setting, GERMAN);
+        let shown = shown_tags(&read_document(), &setting, &Kinds::built_in(GERMAN));
 
         assert_eq!(
             texts(&shown),
@@ -237,7 +242,7 @@ mod tests {
         let mut tags = read_document();
         tags.own = vec!["rechnung".to_owned()];
 
-        let shown = shown_tags(&tags, &FileListTags::default(), GERMAN);
+        let shown = shown_tags(&tags, &FileListTags::default(), &Kinds::built_in(GERMAN));
 
         assert_eq!(texts(&shown), [("rechnung", true)]);
     }
@@ -249,7 +254,7 @@ mod tests {
         let setting = FileListTags::default().with_group(TagGroup::Own, false);
 
         assert_eq!(
-            texts(&shown_tags(&tags, &setting, GERMAN)),
+            texts(&shown_tags(&tags, &setting, &Kinds::built_in(GERMAN))),
             [("rechnung", false)]
         );
     }
@@ -262,7 +267,7 @@ mod tests {
             ..FileListTags::default()
         };
 
-        let shown = shown_tags(&read_document(), &setting, GERMAN);
+        let shown = shown_tags(&read_document(), &setting, &Kinds::built_in(GERMAN));
 
         assert_eq!(texts(&shown), [("firma-a-gmbh", false), ("2026", false)]);
     }
@@ -275,11 +280,15 @@ mod tests {
         };
 
         assert_eq!(
-            shown_tags(&read_document(), &off, GERMAN),
+            shown_tags(&read_document(), &off, &Kinds::built_in(GERMAN)),
             ShownTags::default()
         );
         assert_eq!(
-            shown_tags(&FileTags::default(), &FileListTags::default(), GERMAN),
+            shown_tags(
+                &FileTags::default(),
+                &FileListTags::default(),
+                &Kinds::built_in(GERMAN)
+            ),
             ShownTags::default()
         );
     }

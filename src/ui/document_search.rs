@@ -134,12 +134,12 @@ fn facet_rows<'a>(
         value: FacetValue::Sender(name.clone()),
     });
     let kinds = counts.kinds.iter().map(|(kind, count)| Chip {
-        label: lang.kind_label(kind).into_owned(),
+        label: lang.kind_label(state.kinds(), kind).into_owned(),
         count: *count,
         value: FacetValue::Kind(kind.clone()),
     });
     let tags = counts.tags.iter().map(|(tag, count)| Chip {
-        label: lang.tag_label(tag),
+        label: lang.tag_label(state.kinds(), tag),
         count: *count,
         value: FacetValue::Tag(tag.clone()),
     });
@@ -168,7 +168,7 @@ fn facet_row<'a>(
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let chosen = |chip: &Chip| state.selection().holds(&chip.value);
+    let chosen = |chip: &Chip| state.selection().holds(&chip.value, state.kinds());
     let total = chips.len();
     // The chosen values always show; the others fill what is left of the room.
     let mut room = MAX_CHIPS.saturating_sub(chips.iter().filter(|chip| chosen(chip)).count());
@@ -287,7 +287,7 @@ fn chosen_values(state: &DocumentSearch, lang: Language) -> Vec<String> {
             selection
                 .kind
                 .as_deref()
-                .map(|kind| lang.kind_label(kind).into_owned()),
+                .map(|kind| lang.kind_label(state.kinds(), kind).into_owned()),
         )
         .chain(selection.recipient.clone())
         .chain(selection.sender.clone())

@@ -782,6 +782,55 @@ the review step, not by the threshold. This is 26 synthetic documents and a
 0.6B model; the numbers show the method, not what a larger model or real
 documents would give.
 
+#### Own document kinds
+
+ncrs knows the kinds below. Each kind has an ID, one word per language and
+some more words that mean the same. The index stores the ID. Fields, tags and a
+`{kind}` folder show the word of the interface language, so a German interface
+files an invoice under `Rechnung`. A heading line, a tag in a rule, the search
+and the reports accept the ID and every word of a kind as the same kind.
+
+| ID | English | German | Further words |
+| --- | --- | --- | --- |
+| `invoice` | Invoice | Rechnung | |
+| `credit_note` | Credit note | Gutschrift | |
+| `reminder` | Reminder | Mahnung | Zahlungserinnerung |
+| `contract` | Contract | Vertrag | |
+| `notice` | Notice | Bescheid | |
+| `receipt` | Receipt | Beleg | Quittung |
+| `letter` | Letter | Brief | |
+| `insurance` | Insurance | Versicherung | |
+| `quote` | Quote | Angebot | |
+| `delivery_note` | Delivery note | Lieferschein | |
+| `termination` | Termination | Kündigung | |
+
+You can add to the list in `config.toml` with `[[kinds]]` entries. ncrs writes
+no default config, so add them by hand:
+
+```toml
+[[kinds]]
+id = "payslip"                  # a new kind
+de = "Lohnabrechnung"
+en = "Payslip"
+words = ["Gehaltsabrechnung", "Entgeltabrechnung"]
+
+[[kinds]]
+id = "invoice"                  # an existing ID: adds words
+words = ["Honorarnote"]
+```
+
+An existing ID keeps its words and takes the new ones; `de` and `en` replace
+the word it is shown as, and the old word keeps working as a synonym. A new ID
+is a new kind; if only `de` or `en` is given, the other language shows the same
+word, and without both the ID is shown. A document with the heading
+"Gehaltsabrechnung" is then a payslip, and a rule "tag has lohnabrechnung" finds
+it. A heading ending in "bescheid" is still a notice.
+
+An entry without an ID, and a word that already names another kind, are left
+out; the status line names each of them and the rest of the config stays in
+use. The kinds load at start and again when the config is reloaded; filing
+that is already running keeps the old list until ncrs restarts.
+
 ### Remembered state
 
 ncrs remembers both panels' folders, sort and cursor row, the active panel and

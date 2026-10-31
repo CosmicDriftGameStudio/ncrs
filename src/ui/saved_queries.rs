@@ -6,7 +6,7 @@
 
 use iced::widget::{column, container, row, Row};
 use iced::{alignment, Element, Size};
-use ncrs_index::QuerySpec;
+use ncrs_index::{KindCatalog, QuerySpec};
 
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
@@ -173,8 +173,11 @@ fn templates<'a>(state: &SavedQueries, lang: Language, palette: &Palette) -> Ele
         .map(|template: &ReportTemplate| {
             kit::button(
                 &template.name(lang),
-                (!state.is_busy())
-                    .then(|| send(SavedQueriesMessage::UseTemplate(template.form(lang)))),
+                (!state.is_busy()).then(|| {
+                    send(SavedQueriesMessage::UseTemplate(
+                        template.form(lang, &state.kinds().catalog),
+                    ))
+                }),
                 Tone::Secondary,
                 palette,
             )
@@ -196,7 +199,7 @@ fn templates<'a>(state: &SavedQueries, lang: Language, palette: &Palette) -> Ele
 }
 
 /// What a query asks for, short enough for a column.
-pub fn criteria_text(spec: &QuerySpec, lang: Language) -> String {
+pub fn criteria_text(spec: &QuerySpec, lang: Language, kinds: &KindCatalog) -> String {
     let mut parts = Vec::new();
     if let Some(year) = spec.year {
         parts.push(year.to_string());
@@ -205,7 +208,7 @@ pub fn criteria_text(spec: &QuerySpec, lang: Language) -> String {
         parts.push(sender.clone());
     }
     if let Some(kind) = &spec.kind {
-        parts.push(lang.kind_label(kind).into_owned());
+        parts.push(lang.kind_label(kinds, kind).into_owned());
     }
     parts.extend(spec.tags.iter().map(|tag| format!("#{tag}")));
     if let Some(full_text) = &spec.full_text {
@@ -257,7 +260,11 @@ fn list<'a>(
                 .unwrap_or_default();
             let content = row![
                 columns.cell(0, &query.name, color),
-                columns.cell(1, &criteria_text(&query.spec, lang), color),
+                columns.cell(
+                    1,
+                    &criteria_text(&query.spec, lang, &state.kinds().catalog),
+                    color
+                ),
                 columns.cell(2, &hits, color),
             ]
             .align_y(alignment::Vertical::Center);

@@ -11,8 +11,8 @@ use std::fs;
 
 use chrono::NaiveDate;
 use ncrs_index::{
-    kind_key, Amount, Condition, ConditionKind, Currency, DocumentFields, Field, Index,
-    KindLanguage, ReviewReason, Rule, RuleConditions, RuleId, RuleSpec, SenderAliasKind,
+    Amount, Condition, ConditionKind, Currency, DocumentFields, Field, Index, KindCatalog,
+    KindLanguage, Kinds, ReviewReason, Rule, RuleConditions, RuleId, RuleSpec, SenderAliasKind,
     SenderAliases,
 };
 use tempfile::TempDir;
@@ -282,7 +282,12 @@ fn trimmed_lowercase(value: Option<&str>) -> Option<String> {
 
 /// Sender is compared trimmed and case-insensitive, the kind by its ID where
 /// it is a known one, the rest exactly.
-pub fn score_field(field: Field, expected: &DocumentFields, actual: &DocumentFields) -> FieldScore {
+pub fn score_field(
+    field: Field,
+    expected: &DocumentFields,
+    actual: &DocumentFields,
+    kinds: &KindCatalog,
+) -> FieldScore {
     match field {
         Field::Sender => score_values(
             trimmed_lowercase(expected.sender.as_deref()),
@@ -293,8 +298,8 @@ pub fn score_field(field: Field, expected: &DocumentFields, actual: &DocumentFie
             trimmed_lowercase(actual.recipient.as_deref()),
         ),
         Field::Kind => score_values(
-            expected.kind.as_deref().map(kind_key),
-            actual.kind.as_deref().map(kind_key),
+            expected.kind.as_deref().map(|kind| kinds.kind_key(kind)),
+            actual.kind.as_deref().map(|kind| kinds.kind_key(kind)),
         ),
         Field::Date => score_values(expected.date, actual.date),
         Field::Number => score_values(expected.number.as_deref(), actual.number.as_deref()),
@@ -439,6 +444,7 @@ pub fn measure(
     mut fill_open_fields: impl FnMut(&CorpusDocument, &DocumentFields) -> Option<DocumentFields>,
 ) -> RecognitionReport {
     let sender_aliases = fixed_sender_aliases();
+    let kinds = Kinds::built_in(KindLanguage::English);
     let results = corpus
         .iter()
         .map(|document| {
@@ -455,7 +461,7 @@ pub fn measure(
                     .sender
                     .map(|found| found.name),
                 recipient,
-                kind: kind_from_heading(&document.text),
+                kind: kind_from_heading(&document.text, &kinds.catalog),
                 ..DocumentFields::default()
             };
             let rules_planning = plan(
@@ -466,7 +472,7 @@ pub fn measure(
                     path: None,
                     sender_aliases: &sender_aliases,
                     manual_fields: &[],
-                    kind_language: KindLanguage::English,
+                    kinds: &kinds,
                 },
             );
             let planning = match rules_planning {
@@ -484,7 +490,7 @@ pub fn measure(
                             path: None,
                             sender_aliases: &sender_aliases,
                             manual_fields: &[],
-                            kind_language: KindLanguage::English,
+                            kinds: &kinds,
                         },
                     ),
                     Some(merged) => Planning::Review {
@@ -502,20 +508,24 @@ pub fn measure(
                 },
                 other => other,
             };
-            result_of(document, &planning)
+            result_of(document, &planning, &kinds.catalog)
         })
         .collect();
     RecognitionReport { results }
 }
 
-fn result_of(document: &CorpusDocument, planning: &Planning) -> DocumentResult {
+fn result_of(
+    document: &CorpusDocument,
+    planning: &Planning,
+    kinds: &KindCatalog,
+) -> DocumentResult {
     let (rule, actual) = chosen_rule_and_fields(planning);
     let scores: Vec<(Field, FieldScore)> = FIELD_ORDER
         .into_iter()
-        .map(|field| (field, score_field(field, &document.expected, actual)))
+        .map(|field| (field, score_field(field, &document.expected, actual, kinds)))
         .collect();
     let assigned_wrongly =
-        score_field(Field::Kind, &document.expected, actual) == FieldScore::Wrong;
+        score_field(Field::Kind, &document.expected, actual, kinds) == FieldScore::Wrong;
     DocumentResult {
         name: document.name.clone(),
         outcome: outcome_of(planning),
@@ -532,6 +542,10 @@ pub fn measure_rules_only() -> RecognitionReport {
 
 #[cfg(test)]
 mod tests {
+    fn score_field(field: Field, expected: &DocumentFields, actual: &DocumentFields) -> FieldScore {
+        super::score_field(field, expected, actual, &KindCatalog::built_in())
+    }
+
     use super::*;
 
     fn fields(sender: &str, kind: &str) -> DocumentFields {

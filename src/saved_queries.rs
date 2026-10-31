@@ -8,9 +8,7 @@ use std::path::{Path, PathBuf};
 
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{
-    kind_word, stored_kind, tag_name, Amount, KindLanguage, QuerySpec, SavedQuery, SavedQueryId,
-};
+use ncrs_index::{tag_name, Amount, KindCatalog, Kinds, QuerySpec, SavedQuery, SavedQueryId};
 
 use crate::i18n::{Language, Msg};
 use crate::list_window::ListWindow;
@@ -62,7 +60,7 @@ impl ReportTemplate {
         }
     }
 
-    pub fn form(&self, lang: Language) -> Form {
+    pub fn form(&self, lang: Language, kinds: &KindCatalog) -> Form {
         let named = Form {
             name: self.name(lang),
             ..Form::default()
@@ -70,15 +68,15 @@ impl ReportTemplate {
         match self {
             Self::InvoicesOfYear { year } => Form {
                 year: year.to_string(),
-                kind: lang.kind_label("invoice").into_owned(),
+                kind: lang.kind_label(kinds, "invoice").into_owned(),
                 ..named
             },
             Self::Contracts => Form {
-                kind: lang.kind_label("contract").into_owned(),
+                kind: lang.kind_label(kinds, "contract").into_owned(),
                 ..named
             },
             Self::OpenInvoices => Form {
-                kind: lang.kind_label("invoice").into_owned(),
+                kind: lang.kind_label(kinds, "invoice").into_owned(),
                 tags: BTreeSet::from([tag_name(lang.text(Msg::SavedQueriesTagOpen))]),
                 ..named
             },
@@ -101,7 +99,7 @@ pub struct Form {
 
 impl Form {
     /// A form that asks what `spec` asks, without a name.
-    pub fn of_spec(spec: &QuerySpec, kind_language: KindLanguage) -> Self {
+    pub fn of_spec(spec: &QuerySpec, kinds: &Kinds) -> Self {
         Self {
             name: String::new(),
             year: spec.year.map(|year| year.to_string()).unwrap_or_default(),
@@ -109,7 +107,7 @@ impl Form {
             kind: spec
                 .kind
                 .as_deref()
-                .map(|kind| kind_word(kind, kind_language).into_owned())
+                .map(|kind| kinds.kind_word(kind).into_owned())
                 .unwrap_or_default(),
             tags: spec.tags.clone(),
             tag_input: String::new(),
@@ -117,10 +115,10 @@ impl Form {
         }
     }
 
-    fn of(query: &SavedQuery, kind_language: KindLanguage) -> Self {
+    fn of(query: &SavedQuery, kinds: &Kinds) -> Self {
         Self {
             name: query.name.clone(),
-            ..Self::of_spec(&query.spec, kind_language)
+            ..Self::of_spec(&query.spec, kinds)
         }
     }
 
@@ -160,7 +158,7 @@ impl Form {
 
     /// What the form asks for; a year that is no year is a problem, never
     /// silently dropped.
-    fn spec(&self) -> Result<QuerySpec, Problem> {
+    fn spec(&self, kinds: &KindCatalog) -> Result<QuerySpec, Problem> {
         let year = match self.year.trim() {
             "" => None,
             text => Some(
@@ -177,7 +175,7 @@ impl Form {
         Ok(QuerySpec {
             year,
             sender: non_empty(&self.sender),
-            kind: non_empty(&self.kind).map(|kind| stored_kind(&kind)),
+            kind: non_empty(&self.kind).map(|kind| kinds.stored_kind(&kind)),
             tags: self.tags_with_input(),
             full_text: non_empty(&self.full_text),
         })
@@ -268,7 +266,7 @@ pub struct SavedQueries {
     prefilled: Option<Form>,
     /// The year the templates count back from.
     this_year: i32,
-    kind_language: KindLanguage,
+    kinds: Kinds,
 }
 
 impl SavedQueries {
@@ -289,19 +287,20 @@ impl SavedQueries {
             select_after_load: None,
             prefilled: None,
             this_year,
-            kind_language: KindLanguage::default(),
+            kinds: Kinds::default(),
         }
     }
 
-    pub fn with_kind_language(self, kind_language: KindLanguage) -> Self {
-        Self {
-            kind_language,
-            ..self
-        }
+    pub fn with_kinds(self, kinds: Kinds) -> Self {
+        Self { kinds, ..self }
     }
 
-    pub fn set_kind_language(&mut self, kind_language: KindLanguage) {
-        self.kind_language = kind_language;
+    pub fn set_kinds(&mut self, kinds: Kinds) {
+        self.kinds = kinds;
+    }
+
+    pub const fn kinds(&self) -> &Kinds {
+        &self.kinds
     }
 
     pub fn templates(&self) -> Vec<ReportTemplate> {
@@ -425,7 +424,7 @@ impl SavedQueries {
                 .ensure_visible(cursor, self.rows.len(), VISIBLE_ROWS);
         }
         if let Some(query) = self.selected().cloned() {
-            self.form = Form::of(&query, self.kind_language);
+            self.form = Form::of(&query, &self.kinds);
         } else if previous {
             self.form = Form::default();
             self.results = None;
@@ -456,7 +455,7 @@ impl SavedQueries {
         let Some(query) = self.rows.get(index) else {
             return;
         };
-        self.form = Form::of(query, self.kind_language);
+        self.form = Form::of(query, &self.kinds);
         self.cursor = Some(index);
         self.window
             .ensure_visible(index, self.rows.len(), VISIBLE_ROWS);
@@ -516,7 +515,7 @@ impl SavedQueries {
         if self.busy {
             return None;
         }
-        let spec = match self.form.spec() {
+        let spec = match self.form.spec(&self.kinds.catalog) {
             Ok(spec) => spec,
             Err(problem) => {
                 self.problem = Some(problem);
@@ -577,7 +576,7 @@ impl SavedQueries {
         if self.busy {
             return None;
         }
-        match self.form.spec() {
+        match self.form.spec(&self.kinds.catalog) {
             Ok(spec) => {
                 self.busy = true;
                 self.problem = None;
@@ -733,7 +732,10 @@ pub mod tests {
     fn a_template_fills_the_form_with_exactly_its_criteria() {
         let invoices = ReportTemplate::InvoicesOfYear { year: 2026 };
         for lang in [Language::English, Language::German] {
-            let spec = invoices.form(lang).spec().unwrap();
+            let spec = invoices
+                .form(lang, &KindCatalog::built_in())
+                .spec(&KindCatalog::built_in())
+                .unwrap();
             assert_eq!(
                 spec,
                 QuerySpec {
@@ -742,12 +744,12 @@ pub mod tests {
                     ..QuerySpec::default()
                 }
             );
-            assert_eq!(invoices.form(lang).year, "2026");
+            assert_eq!(invoices.form(lang, &KindCatalog::built_in()).year, "2026");
         }
 
         let open = ReportTemplate::OpenInvoices
-            .form(Language::German)
-            .spec()
+            .form(Language::German, &KindCatalog::built_in())
+            .spec(&KindCatalog::built_in())
             .unwrap();
         assert_eq!(
             open,
@@ -758,13 +760,15 @@ pub mod tests {
             }
         );
         assert_eq!(
-            ReportTemplate::OpenInvoices.form(Language::English).name,
+            ReportTemplate::OpenInvoices
+                .form(Language::English, &KindCatalog::built_in())
+                .name,
             "Open invoices"
         );
         assert_eq!(
             ReportTemplate::Contracts
-                .form(Language::English)
-                .spec()
+                .form(Language::English, &KindCatalog::built_in())
+                .spec(&KindCatalog::built_in())
                 .unwrap()
                 .kind,
             Some("contract".to_owned())
@@ -775,7 +779,7 @@ pub mod tests {
     fn using_a_template_starts_a_new_report_without_results() {
         let mut list = ran_list();
         assert!(list.cursor().is_some() && list.results().is_some());
-        let form = ReportTemplate::Contracts.form(Language::English);
+        let form = ReportTemplate::Contracts.form(Language::English, &KindCatalog::built_in());
 
         list.use_template(form.clone());
 
@@ -788,7 +792,9 @@ pub mod tests {
     fn a_busy_page_ignores_a_template() {
         let mut list = SavedQueries::new(THIS_YEAR);
 
-        list.use_template(ReportTemplate::Contracts.form(Language::English));
+        list.use_template(
+            ReportTemplate::Contracts.form(Language::English, &KindCatalog::built_in()),
+        );
 
         assert_eq!(list.form(), &Form::default());
     }

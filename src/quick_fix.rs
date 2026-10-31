@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use iced::{Point, Size};
-use ncrs_index::{Field, KindLanguage, ReviewReason};
+use ncrs_index::{Field, Kinds, ReviewReason};
 
 use crate::context_menu::place;
 use crate::review_list::FormField;
@@ -50,14 +50,11 @@ pub struct Group {
 
 /// Splits `items` by the directory their suggestion files them in, the biggest
 /// group first, and lists those that have no suggestion.
-pub fn group_by_target(
-    items: &[ReviewItem],
-    kind_language: KindLanguage,
-) -> (Vec<Group>, Vec<usize>) {
+pub fn group_by_target(items: &[ReviewItem], kinds: &Kinds) -> (Vec<Group>, Vec<usize>) {
     let mut groups: Vec<Group> = Vec::new();
     let mut without = Vec::new();
     for (position, item) in items.iter().enumerate() {
-        let Some(target) = item.suggested_target(kind_language) else {
+        let Some(target) = item.suggested_target(kinds) else {
             without.push(position);
             continue;
         };
@@ -122,7 +119,7 @@ pub struct QuickFix {
     groups: Vec<Group>,
     without: Vec<usize>,
     selected: usize,
-    kind_language: KindLanguage,
+    kinds: Kinds,
 }
 
 impl QuickFix {
@@ -136,15 +133,16 @@ impl QuickFix {
             groups: Vec::new(),
             without: Vec::new(),
             selected: 0,
-            kind_language: KindLanguage::default(),
+            kinds: Kinds::default(),
         }
     }
 
-    pub fn with_kind_language(self, kind_language: KindLanguage) -> Self {
-        Self {
-            kind_language,
-            ..self
-        }
+    pub fn with_kinds(self, kinds: Kinds) -> Self {
+        Self { kinds, ..self }
+    }
+
+    pub fn kinds(&self) -> &Kinds {
+        &self.kinds
     }
 
     pub fn items(&self) -> &[ReviewItem] {
@@ -161,7 +159,7 @@ impl QuickFix {
 
     /// The reviews the work returned.
     pub fn loaded(&mut self, items: Vec<ReviewItem>) {
-        (self.groups, self.without) = group_by_target(&items, self.kind_language);
+        (self.groups, self.without) = group_by_target(&items, &self.kinds);
         self.items = items;
         self.stage = Stage::Menu;
         self.selected = 0;
@@ -206,7 +204,7 @@ impl QuickFix {
                 target: if single {
                     self.items
                         .first()
-                        .and_then(|item| item.suggested_target(self.kind_language))
+                        .and_then(|item| item.suggested_target(&self.kinds))
                 } else {
                     Some(group.directory.clone())
                 },
@@ -331,6 +329,7 @@ impl QuickFix {
 pub mod tests {
     use super::*;
     use crate::review_list::tests::loaded_list;
+    use ncrs_index::KindLanguage;
 
     fn items() -> Vec<ReviewItem> {
         let list = loaded_list();
@@ -352,7 +351,7 @@ pub mod tests {
     #[test]
     fn documents_are_grouped_by_the_directory_of_their_target() {
         let all = items();
-        let (groups, without) = group_by_target(&all, KindLanguage::English);
+        let (groups, without) = group_by_target(&all, &Kinds::built_in(KindLanguage::English));
         assert_eq!(without, [3]);
         assert_eq!(groups.len(), 2);
         assert_eq!(groups[0].directory, PathBuf::from("Company A"));

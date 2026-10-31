@@ -877,6 +877,24 @@
       "de": "Konfigurationsdatei {path}: unbekannte Sprache \"{code}\", es gilt Englisch. Erlaubt: {allowed}."
     },
     {
+      "key": "error.kinds",
+      "context": "Status bar at startup or after a config reload when some `[[kinds]]` entries of the config were left out. The rest of the config is in use. Takes the config file path and the list of the entries or words that were left out, each described by one of the next three texts.",
+      "en": "Config file {path}: left out of [[kinds]]: {skipped}.",
+      "de": "Konfigurationsdatei {path}: aus [[kinds]] ausgelassen: {skipped}."
+    },
+    {
+      "key": "error.kinds_no_id",
+      "context": "One item in the list of the document kinds warning: a `[[kinds]]` entry that has no id, so it was left out.",
+      "en": "an entry without an id",
+      "de": "ein Eintrag ohne id"
+    },
+    {
+      "key": "error.kinds_word_taken",
+      "context": "One item in the list of the document kinds warning: a word that already names another document kind, so it was left out. Takes the word and the id of the entry it was written in.",
+      "en": "\"{word}\" in {id}, it already names another kind",
+      "de": "„{word}“ bei {id}, das Wort gehört schon zu einer anderen Art"
+    },
+    {
       "key": "error.vscode_theme_at_line",
       "context": "Status bar at startup when the VS Code theme file named by `vscode` in the config's [theme] section could not be used, or not in full. The config itself is valid and in use, with the preset colors and the color keys. Takes the config file path, the line of the `vscode` entry, the path of the theme file and the reason, which is English and stays untranslated.",
       "en": "Config file {path}, line {line}: VS Code theme {theme}: {reason}. Where it gives no colors, the preset applies.",

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use ncrs_index::{
-    Index, IndexError, KindLanguage, ReviewReason, Rule, RuleId, RuleOrigin, RuleSpec,
+    Index, IndexError, KindLanguage, Kinds, ReviewReason, Rule, RuleId, RuleOrigin, RuleSpec,
 };
 use ncrs_intake::{plan, Location, LocationMode, PlanInput, Planning};
 
@@ -140,6 +140,7 @@ impl RulesAccess {
                 .map(|entry| entry.document_id)
                 .collect();
             let mut tried = Vec::new();
+            let kinds = Kinds::new(Arc::clone(index.kinds()), self.kind_language);
             for location in &self.locations {
                 for (id, absolute) in index.documents_under(&location.path)? {
                     let Some(text) = index.document_text(id)? else {
@@ -155,7 +156,7 @@ impl RulesAccess {
                         path: Some(&absolute),
                         sender_aliases: &aliases,
                         manual_fields: &manual_fields,
-                        kind_language: self.kind_language,
+                        kinds: &kinds,
                     };
                     let after = plan(&rules_after, &input);
                     let matching = matching_rules(&after);

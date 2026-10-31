@@ -394,6 +394,7 @@ mod tests {
             open_fields: open_fields.to_vec(),
             known: DocumentFields::default(),
             source: PathBuf::from("inbox-one"),
+            kinds: std::sync::Arc::default(),
         }
     }
 
@@ -587,8 +588,13 @@ mod tests {
             for found in &asked.extraction.fields {
                 if found.confidence < threshold {
                     unsure_documents.insert(document.name.clone());
-                } else if found.fill(&mut merged) {
-                    match score_field(found.field, &document.expected, &merged) {
+                } else if found.fill(&mut merged, &ncrs_index::KindCatalog::built_in()) {
+                    match score_field(
+                        found.field,
+                        &document.expected,
+                        &merged,
+                        &ncrs_index::KindCatalog::built_in(),
+                    ) {
                         FieldScore::Hit => right_values += 1,
                         _ => wrong_values += 1,
                     }
@@ -672,9 +678,13 @@ mod tests {
             };
             for found in &asked.extraction.fields {
                 let mut alone = asked.known.clone();
-                found.fill(&mut alone);
-                let correct =
-                    score_field(found.field, &document.expected, &alone) == FieldScore::Hit;
+                found.fill(&mut alone, &ncrs_index::KindCatalog::built_in());
+                let correct = score_field(
+                    found.field,
+                    &document.expected,
+                    &alone,
+                    &ncrs_index::KindCatalog::built_in(),
+                ) == FieldScore::Hit;
                 let permille = (found.confidence * 1000.0).round() as u32;
                 let entry = by_confidence.entry(permille).or_default();
                 entry.0 += 1;

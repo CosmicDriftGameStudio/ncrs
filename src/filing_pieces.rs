@@ -3,7 +3,7 @@
 //! the view is `ui::filing_pieces`.
 
 use chrono::NaiveDate;
-use ncrs_index::DocumentFields;
+use ncrs_index::{DocumentFields, Kinds};
 use ncrs_intake::{is_plain_literal, render_pattern_in};
 
 use crate::i18n::{Language, Msg};
@@ -199,7 +199,11 @@ impl FilingTarget {
             number: Some("RE-42".to_owned()),
             ..DocumentFields::default()
         };
-        let path = render_pattern_in(&self.to_pattern(), &fields, lang.kind_language())?;
+        let path = render_pattern_in(
+            &self.to_pattern(),
+            &fields,
+            &Kinds::built_in(lang.kind_language()),
+        )?;
         let parts: Vec<_> = path
             .components()
             .map(|part| part.as_os_str().to_string_lossy())

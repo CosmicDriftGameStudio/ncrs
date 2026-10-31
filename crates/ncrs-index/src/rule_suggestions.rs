@@ -3,7 +3,6 @@ use rusqlite::{params, OptionalExtension as _};
 
 use crate::error::IndexError;
 use crate::index::Index;
-use crate::kinds::{kind_key, Kind};
 use crate::model::{
     Condition, ConditionKind, Rule, RuleEvidence, RuleId, RuleOrigin, RuleSpec, RuleSuggestion,
 };
@@ -107,7 +106,15 @@ impl Index {
         };
         self.update_rule(id, &confirmed)?;
         let changed = rule.spec.conditions != confirmed.conditions
-            || rule.spec.kind.as_deref().map(kind_key) != confirmed.kind.as_deref().map(kind_key)
+            || rule
+                .spec
+                .kind
+                .as_deref()
+                .map(|kind| self.kinds().kind_key(kind))
+                != confirmed
+                    .kind
+                    .as_deref()
+                    .map(|kind| self.kinds().kind_key(kind))
             || rule.spec.filing_pattern != confirmed.filing_pattern;
         if changed {
             self.remember_discarded(&rule.spec)?;
@@ -141,7 +148,7 @@ impl Index {
             params![
                 condition.value,
                 discard_class(condition.kind),
-                spec.kind.as_deref().map(kind_key),
+                spec.kind.as_deref().map(|kind| self.kinds().kind_key(kind)),
                 spec.filing_pattern,
                 Utc::now().timestamp()
             ],
@@ -157,7 +164,7 @@ impl Index {
             params![
                 condition.value,
                 discard_class(condition.kind),
-                spec.kind.as_deref().map(kind_key),
+                spec.kind.as_deref().map(|kind| self.kinds().kind_key(kind)),
                 spec.filing_pattern
             ],
             |row| row.get(0),
@@ -174,8 +181,7 @@ impl Index {
         let Some(kind) = spec.kind.as_deref() else {
             return Ok(None);
         };
-        let spellings =
-            Kind::resolve(kind).map_or_else(|| vec![kind.trim().to_lowercase()], Kind::name_keys);
+        let spellings = self.kinds().kind_name_keys(kind);
         let marks = vec!["?"; spellings.len()].join(", ");
         let sql = format!(
             "SELECT r.id, r.confirmed FROM rule r

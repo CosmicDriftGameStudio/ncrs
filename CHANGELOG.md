@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format follows
   contract and so on), shown in your language in the review list, the rules,
   the search, the reports and the tags, so a rule on "invoice" or "Rechnung"
   finds the same documents.
+- Own document kinds: `[[kinds]]` entries in `config.toml` add kinds or further
+  words to the known ones (for example a payslip, or "Honorarnote" for an
+  invoice); the AI is offered them too, and a skipped entry is named in the
+  status line.
 - Recipient is a field of its own: ncrs reads it from the address block, the
   review list shows it, and the document search and the reports can narrow by
   it. A tag filter also finds the more specific tags below it ("firma-a" finds
