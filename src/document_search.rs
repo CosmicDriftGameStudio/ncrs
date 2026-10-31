@@ -295,11 +295,11 @@ fn named_kind(kind: &str, kinds: &KindCatalog) -> (String, String) {
 pub fn facet_counts(
     hits: &[QueryHit],
     selection: &FacetSelection,
-    kinds: &KindCatalog,
+    catalog: &KindCatalog,
 ) -> FacetCounts {
     let among = |except: Option<Facet>| {
         hits.iter()
-            .filter(move |hit| selection.admits(hit, except, kinds))
+            .filter(move |hit| selection.admits(hit, except, catalog))
     };
 
     let mut years = tally(
@@ -331,8 +331,8 @@ pub fn facet_counts(
         among(Some(Facet::Kind))
             .filter_map(|hit| hit.fields.kind.as_deref())
             .filter(|kind| !kind.trim().is_empty())
-            .map(|kind| named_kind(kind, kinds)),
-        selection.kind.iter().map(|kind| named_kind(kind, kinds)),
+            .map(|kind| named_kind(kind, catalog)),
+        selection.kind.iter().map(|kind| named_kind(kind, catalog)),
     );
     let tags = tally(
         among(None)
