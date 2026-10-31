@@ -233,7 +233,7 @@ impl PdfText {
                 path,
                 SCAN_DPI / POINTS_PER_INCH,
                 MAX_SCAN_SIDE_PIXELS,
-                grey_of_bgrx,
+                grey_of_rendered,
             )?;
             images.push(PageImage {
                 width,
@@ -429,8 +429,8 @@ fn rgba_of_rendered(pixel: &[u8; BYTES_PER_RENDERED_PIXEL]) -> [u8; 4] {
     [red, green, blue, u8::MAX]
 }
 
-fn grey_of_bgrx(pixel: &[u8; BYTES_PER_RENDERED_PIXEL]) -> u8 {
-    let [blue, green, red, _unused] = *pixel;
+fn grey_of_rendered(pixel: &[u8; BYTES_PER_RENDERED_PIXEL]) -> u8 {
+    let [red, green, blue, _unused] = *pixel;
     // Rec. 601 luma with the weights scaled to sum to 1024.
     let weighted = u32::from(red) * 306 + u32::from(green) * 601 + u32::from(blue) * 117;
     u8::try_from(weighted >> 10).unwrap_or(u8::MAX)
@@ -700,6 +700,25 @@ mod tests {
             image.pixels.iter().any(|&pixel| pixel > 192),
             "no light pixels"
         );
+    }
+
+    #[test]
+    fn scan_pages_are_grey_by_the_luma_of_their_colour() {
+        let dir = TempDir::new().unwrap();
+        let cases: [(&str, u8); 2] = [("1 0 0", 76), ("0 0 1", 29)];
+        for (colour, expected) in cases {
+            let content = format!("{colour} rg 0 0 200 200 re f");
+            let path = write(&dir, "fill.pdf", &pdf_bytes(&content, "", &[]));
+            let Extracted::PageImages(images) = pdf_text().extract(&path).unwrap() else {
+                panic!("expected page images");
+            };
+            assert!(
+                images[0].pixels.iter().all(|p| p.abs_diff(expected) <= 1),
+                "{colour}: {:?}..{:?}",
+                images[0].pixels.iter().min(),
+                images[0].pixels.iter().max()
+            );
+        }
     }
 
     #[test]
