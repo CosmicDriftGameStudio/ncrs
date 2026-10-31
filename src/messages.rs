@@ -4,8 +4,8 @@
 use std::path::PathBuf;
 
 use ncrs_index::{
-    Combinator, ConditionKind, HermesCounts, IncludeOutcome, RuleConditions, RuleId, SavedQuery,
-    SavedQueryId, TaxContext, TaxContextEntry, TaxContextId, TaxContextUsage,
+    HermesCounts, IncludeOutcome, RuleConditions, RuleId, SavedQuery, SavedQueryId, TaxContext,
+    TaxContextEntry, TaxContextId, TaxContextUsage,
 };
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
@@ -17,6 +17,7 @@ use crate::ai_model::DownloadError as AiDownloadError;
 use crate::app::{RowFailure, Transfer};
 use crate::clipboard_paste::PastedContent;
 use crate::command_line::ShellOutcome;
+use crate::condition_editor::ConditionEdit;
 use crate::config::{
     AiProviderChoice, AiProviderName, Config, Filing, FilingWriteError, ProgramLine, ServerEntry,
 };
@@ -581,11 +582,7 @@ pub enum TaxContextsMessage {
         id: TaxContextId,
         result: Result<RuleConditions, TaxContextFailure>,
     },
-    CombinatorChosen(Combinator),
-    NewConditionKindChosen(ConditionKind),
-    NewConditionValueChanged(String),
-    AddCondition,
-    RemoveCondition(usize),
+    Condition(ConditionEdit),
     SaveConditions,
     ConditionsSaved(ContextsResult),
 }
@@ -1128,6 +1125,31 @@ pub enum RulesMessage {
     CancelDelete,
     ConfirmDelete,
     Changed {
+        generation: u64,
+        result: Result<(), String>,
+    },
+    /// Opens the form for a new rule.
+    New,
+    /// Opens the form for the rule under the cursor.
+    Edit,
+    Form(RuleFormMessage),
+}
+
+/// Everything the form of a rule sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RuleFormMessage {
+    Condition(ConditionEdit),
+    Kind(String),
+    TaxContext(Option<TaxContext>),
+    Tags(String),
+    Pattern(String),
+    /// Appends `{name}` to the filing pattern.
+    InsertBlock(&'static str),
+    Save,
+    Cancel,
+    /// The work of the generation is done. Dropped when the page was closed
+    /// or opened again meanwhile.
+    Saved {
         generation: u64,
         result: Result<(), String>,
     },

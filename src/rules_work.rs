@@ -4,8 +4,9 @@
 
 use std::sync::{Arc, Mutex, PoisonError};
 
-use ncrs_index::{Index, IndexError, Rule, RuleId, TaxContextEntry};
+use ncrs_index::{Index, IndexError, Rule, RuleId, RuleOrigin, TaxContextEntry};
 
+use crate::rule_form::RuleSave;
 use crate::suggestion_work::INDEX_NOT_OPEN;
 
 type IndexSlot = Arc<Mutex<Option<Index>>>;
@@ -81,6 +82,15 @@ impl RulesAccess {
             }
             RuleChange::Move { id, to_index } => index.move_rule(id, to_index),
             RuleChange::Delete { id } => index.delete_rule(id).map(|_| ()),
+        })
+    }
+
+    /// Index refusals, such as a regex that does not compile, come back as
+    /// the text of the error.
+    pub fn save(&self, save: RuleSave) -> Result<(), String> {
+        self.with_index(|index| match save {
+            RuleSave::Create(spec) => index.create_rule_from(&spec, RuleOrigin::Hand).map(|_| ()),
+            RuleSave::Update(id, spec) => index.update_rule(id, &spec),
         })
     }
 
@@ -279,6 +289,64 @@ mod tests {
         fixture.access.apply(RuleChange::Delete { id: a }).unwrap();
 
         assert_eq!(listed_ids(&fixture), [b]);
+    }
+
+    #[test]
+    fn a_created_rule_is_listed_with_the_origin_hand() {
+        let fixture = fixture();
+
+        fixture.access.save(RuleSave::Create(spec("rent"))).unwrap();
+
+        let load = fixture.access.load().unwrap();
+        assert_eq!(load.rules.len(), 1);
+        assert_eq!(load.rules[0].rule.origin, RuleOrigin::Hand);
+        assert_eq!(load.rules[0].rule.spec, spec("rent"));
+    }
+
+    #[test]
+    fn an_update_changes_the_form_fields_and_keeps_the_rest_of_the_rule() {
+        let fixture = fixture();
+        let id = fixture.with_index(|index| {
+            let mut stored = spec("rent");
+            stored.extract_date = Some(r"\d{4}".to_owned());
+            stored.enabled = false;
+            let id = index.create_rule_from(&stored, RuleOrigin::Filing).unwrap();
+            index.create_rule(&spec("power")).unwrap();
+            id
+        });
+        let before = fixture.access.load().unwrap().rules[0].clone();
+        let changed = RuleSpec {
+            conditions: RuleConditions::any_of(vec![Condition::new(
+                ConditionKind::Sender,
+                "Telekom",
+            )]),
+            filing_pattern: "{year}/{sender}".to_owned(),
+            ..before.rule.spec.clone()
+        };
+
+        fixture
+            .access
+            .save(RuleSave::Update(id, changed.clone()))
+            .unwrap();
+
+        let after = fixture.access.load().unwrap().rules[0].clone();
+        assert_eq!(after.rule.spec, changed);
+        assert_eq!(after.rule.spec.extract_date.as_deref(), Some(r"\d{4}"));
+        assert!(!after.rule.spec.enabled);
+        assert_eq!(after.rule.origin, RuleOrigin::Filing);
+        assert_eq!(after.rule.position, before.rule.position);
+    }
+
+    #[test]
+    fn a_regex_the_index_refuses_comes_back_as_the_error_text() {
+        let fixture = fixture();
+        let mut broken = spec("rent");
+        broken.conditions = RuleConditions::all_of(vec![Condition::new(ConditionKind::Regex, "(")]);
+
+        let error = fixture.access.save(RuleSave::Create(broken)).unwrap_err();
+
+        assert!(!error.is_empty());
+        assert!(fixture.access.load().unwrap().rules.is_empty());
     }
 
     #[test]

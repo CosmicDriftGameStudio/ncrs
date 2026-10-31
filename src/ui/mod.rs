@@ -6,6 +6,7 @@ pub mod about;
 pub mod ai_model;
 pub mod command_line;
 pub mod command_palette;
+pub mod condition_editor;
 pub mod conflict;
 pub mod context_menu;
 pub mod delete;

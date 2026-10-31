@@ -7057,54 +7057,6 @@
       "de": "Bedingungen werden gelesen …"
     },
     {
-      "key": "settings.tax_contexts_conditions_empty",
-      "context": "Row of the condition editor of a tax context that has no condition yet.",
-      "en": "No conditions yet: documents are not assigned to this context automatically.",
-      "de": "Noch keine Bedingungen: Dokumente werden diesem Kontext nicht automatisch zugeordnet."
-    },
-    {
-      "key": "settings.tax_contexts_combinator_label",
-      "context": "Label of the choice between any and all conditions in the condition editor of a tax context.",
-      "en": "The context fits when",
-      "de": "Der Kontext passt, wenn"
-    },
-    {
-      "key": "settings.tax_contexts_combinator_any",
-      "context": "Choice in the condition editor of a tax context: one condition is enough.",
-      "en": "one condition holds",
-      "de": "eine Bedingung zutrifft"
-    },
-    {
-      "key": "settings.tax_contexts_combinator_all",
-      "context": "Choice in the condition editor of a tax context: every condition must hold.",
-      "en": "all conditions hold",
-      "de": "alle Bedingungen zutreffen"
-    },
-    {
-      "key": "settings.tax_contexts_condition_remove",
-      "context": "Button in the condition editor of a tax context: removes the condition of the row.",
-      "en": "Remove",
-      "de": "Entfernen"
-    },
-    {
-      "key": "settings.tax_contexts_condition_kind_label",
-      "context": "Label of the kind choice for a new condition in the condition editor of a tax context.",
-      "en": "New condition",
-      "de": "Neue Bedingung"
-    },
-    {
-      "key": "settings.tax_contexts_condition_value_label",
-      "context": "Label of the text field for a new condition in the condition editor of a tax context.",
-      "en": "Text to look for",
-      "de": "Gesuchter Text"
-    },
-    {
-      "key": "settings.tax_contexts_condition_add",
-      "context": "Button in the condition editor of a tax context: adds the typed condition to the list.",
-      "en": "Add",
-      "de": "Hinzufügen"
-    },
-    {
       "key": "condition_kind.substring",
       "context": "Kind of a condition: the document text contains the value.",
       "en": "Contains",
@@ -7157,6 +7109,66 @@
       "context": "Kind of a condition: the document lies in this folder.",
       "en": "Folder",
       "de": "Ordner"
+    },
+    {
+      "key": "condition_editor.row_label",
+      "context": "Label of one condition in the condition editor, which the rule form and the tax contexts of the Hermes settings share. Takes the position of the condition in the list, starting at 1.",
+      "en": "Condition {number}",
+      "de": "Bedingung {number}"
+    },
+    {
+      "key": "condition_editor.empty",
+      "context": "Line of the condition editor when the list has no condition yet.",
+      "en": "No conditions yet.",
+      "de": "Noch keine Bedingungen."
+    },
+    {
+      "key": "condition_editor.combinator_label",
+      "context": "Label of the choice between any and all conditions in the condition editor. Shown when there are two or more conditions.",
+      "en": "Matches when",
+      "de": "Trifft zu, wenn"
+    },
+    {
+      "key": "condition_editor.combinator_any",
+      "context": "Choice in the condition editor: one condition is enough. Continues the label Matches when.",
+      "en": "one condition holds",
+      "de": "eine Bedingung zutrifft"
+    },
+    {
+      "key": "condition_editor.combinator_all",
+      "context": "Choice in the condition editor: every condition must hold. Continues the label Matches when.",
+      "en": "all conditions hold",
+      "de": "alle Bedingungen zutreffen"
+    },
+    {
+      "key": "condition_editor.add",
+      "context": "Button of the condition editor: adds an empty condition to the list.",
+      "en": "Add condition",
+      "de": "Bedingung hinzufügen"
+    },
+    {
+      "key": "condition_editor.remove",
+      "context": "Button at the end of a condition in the condition editor: removes that condition.",
+      "en": "Remove",
+      "de": "Entfernen"
+    },
+    {
+      "key": "condition_editor.not",
+      "context": "Label of the checkbox at a condition in the condition editor: the condition holds when the text does not match. One word, lowercase.",
+      "en": "not",
+      "de": "nicht"
+    },
+    {
+      "key": "condition_editor.problem_empty",
+      "context": "Error line under a condition in the condition editor when its value is empty and the user tried to save.",
+      "en": "Enter a value.",
+      "de": "Gib einen Wert ein."
+    },
+    {
+      "key": "condition_editor.problem_regex",
+      "context": "Error line under a condition of the kind regular expression whose value cannot be compiled. Takes the reason, which stays in English.",
+      "en": "Not a valid regular expression: {reason}",
+      "de": "Kein gültiger regulärer Ausdruck: {reason}"
     },
     {
       "key": "review_list.reason_no_tax_context",
@@ -7215,8 +7227,8 @@
     {
       "key": "rules.empty",
       "context": "Shown on the rules page when there is no confirmed rule yet.",
-      "en": "No rules yet. Rules come from suggestions and from filing in the review list.",
-      "de": "Noch keine Regeln. Regeln entstehen aus Vorschlägen und beim Ablegen in der Prüfliste."
+      "en": "No rules yet. Create one with “New rule”, or let rules come from suggestions and from filing in the review list.",
+      "de": "Noch keine Regeln. Lege mit „Neue Regel“ eine an, oder lass Regeln aus Vorschlägen und beim Ablegen in der Prüfliste entstehen."
     },
     {
       "key": "rules.column_rule",
@@ -7469,6 +7481,84 @@
       "context": "Error line on the rules page when the index could not be read or changed. Takes the technical detail, which stays in English.",
       "en": "The rules could not be read or changed: {detail}",
       "de": "Die Regeln konnten nicht gelesen oder geändert werden: {detail}"
+    },
+    {
+      "key": "rules.new",
+      "context": "Button of the rules page: opens the form for a new rule.",
+      "en": "New rule",
+      "de": "Neue Regel"
+    },
+    {
+      "key": "rules.edit",
+      "context": "Button of the rules page: opens the form to change the selected rule.",
+      "en": "Edit",
+      "de": "Bearbeiten"
+    },
+    {
+      "key": "rules.hint_new",
+      "context": "Verb next to the N key in the footer of the rules page: opens the form for a new rule.",
+      "en": "new",
+      "de": "neu"
+    },
+    {
+      "key": "rules.hint_edit",
+      "context": "Verb next to the Enter key in the footer of the rules page: opens the form to change the selected rule.",
+      "en": "edit",
+      "de": "bearbeiten"
+    },
+    {
+      "key": "rules.form_title_new",
+      "context": "Title of the rules page while the form for a new rule is open.",
+      "en": "New rule",
+      "de": "Neue Regel"
+    },
+    {
+      "key": "rules.form_title_edit",
+      "context": "Title of the rules page while the form to change a rule is open.",
+      "en": "Edit rule",
+      "de": "Regel bearbeiten"
+    },
+    {
+      "key": "rules.form_purpose",
+      "context": "Paragraph at the top of the rule form: what the parts of a rule are, and that nothing is stored before Save.",
+      "en": "Conditions say which documents the rule is for; the rest says how Hermes files them. Nothing is stored before you save.",
+      "de": "Die Bedingungen legen fest, für welche Dokumente die Regel gilt; der Rest sagt, wie Hermes sie ablegt. Gespeichert wird erst mit „Speichern“."
+    },
+    {
+      "key": "rules.form_save",
+      "context": "Button of the rule form: stores the rule.",
+      "en": "Save",
+      "de": "Speichern"
+    },
+    {
+      "key": "rules.form_cancel",
+      "context": "Button of the rule form: closes the form and drops the changes.",
+      "en": "Cancel",
+      "de": "Abbrechen"
+    },
+    {
+      "key": "rules.form_example",
+      "context": "Line in the rule form under the filing pattern: the folder and file name the pattern gives for a sample document. Takes the path.",
+      "en": "Example: {path}",
+      "de": "Beispiel: {path}"
+    },
+    {
+      "key": "rules.form_problem_no_condition",
+      "context": "Error line in the rule form when the user tried to save a rule without any condition, which would match every document.",
+      "en": "Add at least one condition, or the rule would match every document.",
+      "de": "Füge mindestens eine Bedingung hinzu, sonst würde die Regel auf jedes Dokument passen."
+    },
+    {
+      "key": "rules.form_problem_pattern_blank",
+      "context": "Error line in the rule form when the filing pattern is empty and the user tried to save.",
+      "en": "Enter a filing pattern.",
+      "de": "Gib ein Ablagemuster ein."
+    },
+    {
+      "key": "rules.form_problem_unknown_block",
+      "context": "Error line in the rule form when the filing pattern contains a block in braces that does not exist. Takes the name between the braces.",
+      "en": "“{block}” is not a block. Use the buttons below.",
+      "de": "„{block}“ ist kein Baustein. Nimm die Schaltflächen darunter."
     }
   ]
 }

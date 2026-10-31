@@ -12,6 +12,7 @@ use ncrs_index::{
 use crate::app::fill_template;
 use crate::i18n::{Language, Msg};
 use crate::list_window::ListWindow;
+use crate::rule_form::{RuleForm, RuleSave};
 use crate::rules_work::{ListedRule, RuleChange, RulesLoad};
 
 /// Most rules of the list shown at once; the list follows the cursor.
@@ -28,6 +29,8 @@ pub struct RulesPage {
     confirming_delete: bool,
     /// The work on the index failed; the technical detail stays English.
     problem: Option<String>,
+    /// While it is open it replaces the list, and the list takes no keys.
+    form: Option<RuleForm>,
 }
 
 impl RulesPage {
@@ -41,6 +44,7 @@ impl RulesPage {
             busy: true,
             confirming_delete: false,
             problem: None,
+            form: None,
         }
     }
 
@@ -77,6 +81,65 @@ impl RulesPage {
         self.problem.as_deref()
     }
 
+    pub fn form(&self) -> Option<&RuleForm> {
+        self.form.as_ref()
+    }
+
+    pub fn form_mut(&mut self) -> Option<&mut RuleForm> {
+        self.form.as_mut()
+    }
+
+    /// The list takes no change while a change runs or the form is up.
+    fn list_is_locked(&self) -> bool {
+        self.busy || self.form.is_some()
+    }
+
+    /// Opens the form for a new rule.
+    pub fn begin_new(&mut self) {
+        if self.list_is_locked() {
+            return;
+        }
+        self.confirming_delete = false;
+        self.problem = None;
+        self.form = Some(RuleForm::new());
+    }
+
+    /// Opens the form for the rule under the cursor.
+    pub fn begin_edit(&mut self) {
+        if self.list_is_locked() {
+            return;
+        }
+        let Some(listed) = self.rows.get(self.cursor) else {
+            return;
+        };
+        let form = RuleForm::edit(&listed.rule);
+        self.confirming_delete = false;
+        self.problem = None;
+        self.form = Some(form);
+    }
+
+    /// Closes the form without saving; whether there was one.
+    pub fn cancel_form(&mut self) -> bool {
+        self.form.take().is_some()
+    }
+
+    /// The write the form asks for, once and only while it is valid.
+    pub fn begin_save(&mut self) -> Option<RuleSave> {
+        self.form.as_mut()?.save_request()
+    }
+
+    /// The write is done: the form closes. The caller loads the list again.
+    pub fn saved(&mut self) {
+        self.form = None;
+        self.busy = true;
+    }
+
+    pub fn save_failed(&mut self, detail: String) {
+        if let Some(form) = self.form.as_mut() {
+            form.save_failed(detail);
+        }
+    }
+
     /// The list the work returned. The cursor stays on the rule it was on, if
     /// that is still there.
     pub fn loaded(&mut self, load: RulesLoad) {
@@ -106,6 +169,9 @@ impl RulesPage {
 
     /// The wheel moves the window; the cursor follows it when it would leave.
     pub fn scroll(&mut self, delta: ScrollDelta) {
+        if self.form.is_some() {
+            return;
+        }
         let mut cursor = self.cursor;
         self.window
             .scroll(delta, self.rows.len(), VISIBLE_ROWS, &mut cursor);
@@ -113,7 +179,7 @@ impl RulesPage {
     }
 
     pub fn select(&mut self, index: usize) {
-        if self.busy || index >= self.rows.len() || index == self.cursor {
+        if self.list_is_locked() || index >= self.rows.len() || index == self.cursor {
             return;
         }
         self.cursor = index;
@@ -125,7 +191,7 @@ impl RulesPage {
 
     /// Flips the switch of the rule at `index` and returns the change to make.
     pub fn begin_toggle(&mut self, index: usize) -> Option<RuleChange> {
-        if self.busy {
+        if self.list_is_locked() {
             return None;
         }
         self.select(index);
@@ -140,7 +206,7 @@ impl RulesPage {
     /// Moves the selected rule one place among the listed ones. The target is
     /// the place of the neighbour among all rules, suggestions included.
     pub fn begin_move(&mut self, delta: isize) -> Option<RuleChange> {
-        if self.busy {
+        if self.list_is_locked() {
             return None;
         }
         let neighbour = self.rows.get(self.cursor.checked_add_signed(delta)?)?;
@@ -152,7 +218,7 @@ impl RulesPage {
     }
 
     pub fn ask_delete(&mut self) {
-        if !self.busy && self.selected().is_some() {
+        if !self.list_is_locked() && self.selected().is_some() {
             self.confirming_delete = true;
         }
     }
@@ -497,6 +563,83 @@ pub mod tests {
         page.move_cursor(1);
 
         assert!(!page.is_confirming_delete());
+    }
+
+    #[test]
+    fn while_the_form_is_open_the_list_takes_no_change() {
+        let mut page = page();
+        page.begin_new();
+
+        page.move_cursor(1);
+        page.select(2);
+        page.ask_delete();
+
+        assert_eq!(page.cursor(), 0);
+        assert!(!page.is_confirming_delete());
+        assert_eq!(page.begin_toggle(0), None);
+        assert_eq!(page.begin_move(1), None);
+        assert!(page.cancel_form());
+        assert!(!page.cancel_form());
+        assert!(page.begin_toggle(0).is_some());
+    }
+
+    #[test]
+    fn saving_a_new_form_creates_the_rule_and_an_edit_form_changes_it() {
+        use crate::condition_editor::ConditionEdit;
+        use crate::messages::RuleFormMessage;
+        use crate::rules_work::RulesAccess;
+        use std::sync::{Arc, Mutex};
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let index = Index::create_plain(&dir.path().join("index.db")).unwrap();
+        let access = RulesAccess::new(Arc::new(Mutex::new(Some(index))));
+        let mut page = RulesPage::new();
+        page.loaded(access.load().unwrap());
+
+        page.begin_new();
+        assert_eq!(page.begin_save(), None);
+        for message in [
+            RuleFormMessage::Condition(ConditionEdit::Value(0, "Telekom".to_owned())),
+            RuleFormMessage::Kind("Invoice".to_owned()),
+        ] {
+            page.form_mut().unwrap().update(message);
+        }
+        access.save(page.begin_save().unwrap()).unwrap();
+        page.saved();
+        page.loaded(access.load().unwrap());
+
+        assert!(page.form().is_none());
+        let sentence = rule_sentence(&page.selected().unwrap().rule.spec, &[], Language::English);
+        assert_eq!(
+            sentence,
+            "If the sender is “Telekom” → invoice · tax context by its conditions · {year}/{sender}"
+        );
+
+        page.begin_edit();
+        page.form_mut()
+            .unwrap()
+            .update(RuleFormMessage::Pattern("{year}".to_owned()));
+        access.save(page.begin_save().unwrap()).unwrap();
+        page.saved();
+        page.loaded(access.load().unwrap());
+
+        assert_eq!(page.rows().len(), 1);
+        assert_eq!(page.selected().unwrap().rule.spec.filing_pattern, "{year}");
+    }
+
+    #[test]
+    fn a_failed_save_keeps_the_form_with_the_reason() {
+        let mut page = page();
+        page.begin_edit();
+        page.begin_save().unwrap();
+
+        page.save_failed("index not open".to_owned());
+
+        assert_eq!(
+            page.form().unwrap().failure.as_deref(),
+            Some("index not open")
+        );
+        assert!(page.begin_save().is_some());
     }
 
     #[test]
