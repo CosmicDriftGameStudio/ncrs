@@ -27,6 +27,16 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The plain names now also reach the texts that still used the Futurama names:
+  no body text, title or subtitle in English or German names Hermes, the
+  Inspection, Pending, Smell-o-scope or another Futurama name any more. The
+  module is "Filing" / "Ablage", the status page "Status and errors", and the
+  review list "Review" / "Rückfragen". The load
+  presets are "Gentle", "Balanced" and "Full" ("Schonend", "Ausgewogen", "Volle
+  Last"), and Status and errors says in one sentence what each preset uses.
+  The Futurama variants keep the names beside the plain ones ("Gentle (By the
+  book)"). The Filing pages that lacked a one-line purpose have one, and the
+  review list, rules and rule suggestions give an example.
 - A discarded rule suggestion is remembered per kind of condition, so
   discarding a phrase no longer hides the suggestion for the sender of the same
   name, and an edited sender suggestion does not come back after the next

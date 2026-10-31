@@ -12,7 +12,7 @@ use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::kit::{self, Tone};
 use super::theme::{font_size, spacing};
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::Message;
 use crate::palette::Palette;
 
@@ -75,7 +75,7 @@ pub fn view<'a>(
 
     let mut frame = Frame::new(title, content, SIZE, window, lang, palette);
     if !permanent {
-        frame = frame.subtitle(lang.text(Msg::DeleteSubtitleTrash));
+        frame = frame.title_theme(lang.futurama_name(FuturamaName::ActionDelete));
     }
     frame
         .buttons(vec![

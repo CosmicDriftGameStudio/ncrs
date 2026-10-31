@@ -32,9 +32,9 @@
     },
     {
       "key": "column.hermes",
-      "context": "Column header above the Hermes status column of a file panel; Hermes is the name of the automatic filing module and stays untranslated.",
-      "en": "Hermes",
-      "de": "Hermes"
+      "context": "Column header above the filing status column of a file panel; the filing module is the automatic document filing. A noun.",
+      "en": "Filing",
+      "de": "Ablage"
     },
     {
       "key": "hermes_column.state_reading",
@@ -99,8 +99,8 @@
     {
       "key": "hermes_column.role_archive_tooltip",
       "context": "Hover text of the archive tag: Hermes learns from this folder but never moves files in or out of it.",
-      "en": "Archive, read-only: Hermes learns from it but moves nothing",
-      "de": "Archiv, nur lesen: Hermes lernt daraus, verschiebt aber nichts"
+      "en": "Archive, read-only: ncrs learns from it but moves nothing",
+      "de": "Archiv, nur lesen: ncrs lernt daraus, verschiebt aber nichts"
     },
     {
       "key": "hermes_column.excluded_word",
@@ -703,12 +703,6 @@
       "de": "In den Papierkorb verschieben"
     },
     {
-      "key": "delete.subtitle_trash",
-      "context": "Playful line below the title of the confirmation dialog for F8, which moves entries to the trash. Not shown for permanent deletion.",
-      "en": "Off to the garbage ball",
-      "de": "Ab in den Müllball"
-    },
-    {
       "key": "delete.title_permanent",
       "context": "Title of the confirmation dialog for Shift+F8, which deletes without any way back. Must sound final and clearly different from delete.title_trash.",
       "en": "Delete permanently",
@@ -761,12 +755,6 @@
       "context": "Like error.trash_failed, for when the user has no key for deleting permanently: no hint about a key. Takes the name and the reason.",
       "en": "Could not move {name} to the trash: {reason}.",
       "de": "{name} konnte nicht in den Papierkorb: {reason}."
-    },
-    {
-      "key": "volumes.title",
-      "context": "Title of the drive menu opened with Alt+F1 or Alt+F2, above the line that says which panel it is for. A playful name for the places a panel can show (disks, mounted volumes, the home folder); a noun, no punctuation.",
-      "en": "Planets",
-      "de": "Planeten"
     },
     {
       "key": "volumes.subtitle_left",
@@ -902,9 +890,9 @@
     },
     {
       "key": "search.title",
-      "context": "Title bar of the search view that replaces a file panel, a single line: a playful name, a colon, then what it does. Takes {path}, the directory the search runs in.",
-      "en": "Smell-o-scope: search in {path}",
-      "de": "Riech-o-skop: Suche in {path}"
+      "context": "Tab title of the search view in the title bar. {path} is the directory searched. The Futurama variants add the theme name of the search action beside it.",
+      "en": "Search in {path}",
+      "de": "Suche in {path}"
     },
     {
       "key": "search.query_placeholder",
@@ -1007,12 +995,6 @@
       "context": "Summary line of the search view in red when the text is not a valid regular expression. Takes the reason, which is English text of the regex parser and stays untranslated.",
       "en": "Invalid regular expression: {reason}",
       "de": "Ungültiger regulärer Ausdruck: {reason}"
-    },
-    {
-      "key": "quickopen.title",
-      "context": "Title of the Quick Open box (Ctrl+P / Cmd+P) in which a file name is typed to jump to the file. A playful name, not a description; the plain description is quickopen.subtitle below it.",
-      "en": "Dark Matter Drive",
-      "de": "Dunkle-Materie-Antrieb"
     },
     {
       "key": "quickopen.subtitle",
@@ -1514,15 +1496,21 @@
     },
     {
       "key": "hermes_setup.frame_title",
-      "context": "Card of the first-time setup of Hermes (the document filing). Title of the card frame.",
-      "en": "Set up Hermes",
-      "de": "Hermes einrichten"
+      "context": "Card of the first-time setup of the document filing. Title of the card frame. The Futurama variants show the theme name beside it.",
+      "en": "Set up filing",
+      "de": "Ablage einrichten"
+    },
+    {
+      "key": "hermes_setup.frame_title.theme",
+      "context": "Theme name of the setup card title hermes_setup.frame_title, shown dimmed after the plain title in the Futurama variants only. The name of the filing module in the show.",
+      "en": "Hermes",
+      "de": "Hermes"
     },
     {
       "key": "hermes_setup.badge",
       "context": "Card of the first-time setup of Hermes (the document filing). Small overline above the headline, in capitals. Hermes is the name of the feature; Beta marks it as not final.",
-      "en": "HERMES · BETA",
-      "de": "HERMES · BETA"
+      "en": "FILING · BETA",
+      "de": "ABLAGE · BETA"
     },
     {
       "key": "hermes_setup.title",
@@ -1533,20 +1521,20 @@
     {
       "key": "hermes_setup.intro_mac",
       "context": "Card of the first-time setup of Hermes (the document filing). Introduction under the headline, shown on macOS, where the computer is called a Mac.",
-      "en": "Invoices, contracts, scans: Hermes reads every new document, recognises sender, date and amount and files it by your rules in the right place. Nothing leaves this Mac, and nothing is moved before you have confirmed it.",
-      "de": "Rechnungen, Verträge, Scans: Hermes liest jedes neue Dokument, erkennt Absender, Datum und Betrag und legt es nach deinen Regeln an den richtigen Platz. Nichts verlässt diesen Mac, und nichts wird verschoben, bevor du es bestätigt hast."
+      "en": "Invoices, contracts, scans: ncrs reads every new document, recognises sender, date and amount and files it by your rules in the right place. Nothing leaves this Mac, and nothing is moved before you have confirmed it.",
+      "de": "Rechnungen, Verträge, Scans: ncrs liest jedes neue Dokument, erkennt Absender, Datum und Betrag und legt es nach deinen Regeln an den richtigen Platz. Nichts verlässt diesen Mac, und nichts wird verschoben, bevor du es bestätigt hast."
     },
     {
       "key": "hermes_setup.intro_other",
       "context": "Card of the first-time setup of Hermes (the document filing). Introduction under the headline, shown on every system but macOS.",
-      "en": "Invoices, contracts, scans: Hermes reads every new document, recognises sender, date and amount and files it by your rules in the right place. Nothing leaves this computer, and nothing is moved before you have confirmed it.",
-      "de": "Rechnungen, Verträge, Scans: Hermes liest jedes neue Dokument, erkennt Absender, Datum und Betrag und legt es nach deinen Regeln an den richtigen Platz. Nichts verlässt diesen Computer, und nichts wird verschoben, bevor du es bestätigt hast."
+      "en": "Invoices, contracts, scans: ncrs reads every new document, recognises sender, date and amount and files it by your rules in the right place. Nothing leaves this computer, and nothing is moved before you have confirmed it.",
+      "de": "Rechnungen, Verträge, Scans: ncrs liest jedes neue Dokument, erkennt Absender, Datum und Betrag und legt es nach deinen Regeln an den richtigen Platz. Nichts verlässt diesen Computer, und nichts wird verschoben, bevor du es bestätigt hast."
     },
     {
       "key": "hermes_setup.off_note",
       "context": "Card of the first-time setup of Hermes (the document filing). Line at the top when Hermes is switched off: starting turns it on.",
-      "en": "Hermes is off. Starting Hermes switches it on.",
-      "de": "Hermes ist aus. Hermes starten schaltet es ein."
+      "en": "Filing is off. “Start filing” switches it on.",
+      "de": "Die Ablage ist aus. „Ablage starten“ schaltet sie ein."
     },
     {
       "key": "hermes_setup.flow_inbox",
@@ -1617,8 +1605,8 @@
     {
       "key": "hermes_setup.step_location_text",
       "context": "Card of the first-time setup of Hermes (the document filing). Explanation of step two: what the filing location is.",
-      "en": "Where Hermes files documents. Hermes takes existing subfolders as a model.",
-      "de": "Wohin Hermes einsortiert. Bestehende Unterordner nimmt Hermes als Vorbild."
+      "en": "Where ncrs files documents. ncrs takes existing subfolders as a model.",
+      "de": "Wohin ncrs einsortiert. Bestehende Unterordner nimmt ncrs als Vorbild."
     },
     {
       "key": "hermes_setup.step_protection",
@@ -1629,14 +1617,14 @@
     {
       "key": "hermes_setup.step_protection_text_mac",
       "context": "Card of the first-time setup of Hermes (the document filing). Explanation of step three on macOS: the index is stored encrypted on the computer.",
-      "en": "What Hermes knows about your documents is stored encrypted on this Mac.",
-      "de": "Was Hermes über deine Dokumente weiß, liegt verschlüsselt auf diesem Mac."
+      "en": "What ncrs knows about your documents is stored encrypted on this Mac.",
+      "de": "Was ncrs über deine Dokumente weiß, liegt verschlüsselt auf diesem Mac."
     },
     {
       "key": "hermes_setup.step_protection_text_other",
       "context": "Card of the first-time setup of Hermes (the document filing). Explanation of step three on every system but macOS.",
-      "en": "What Hermes knows about your documents is stored encrypted on this computer.",
-      "de": "Was Hermes über deine Dokumente weiß, liegt verschlüsselt auf diesem Computer."
+      "en": "What ncrs knows about your documents is stored encrypted on this computer.",
+      "de": "Was ncrs über deine Dokumente weiß, liegt verschlüsselt auf diesem Computer."
     },
     {
       "key": "hermes_setup.choose_folder",
@@ -1683,8 +1671,8 @@
     {
       "key": "hermes_setup.optional_model",
       "context": "Card of the first-time setup of Hermes (the document filing). Line about the optional AI model. Takes the download size, for example 639 MB.",
-      "en": "Optional: With the AI model ({size}, runs locally) Hermes also fills in fields for which there is no rule yet. Works later too.",
-      "de": "Optional: Mit dem KI-Modell ({size}, läuft lokal) füllt Hermes auch Felder aus, für die es noch keine Regel gibt. Geht auch später."
+      "en": "Optional: With the AI model ({size}, runs locally) ncrs also fills in fields for which there is no rule yet. Works later too.",
+      "de": "Optional: Mit dem KI-Modell ({size}, läuft lokal) füllt ncrs auch Felder aus, für die es noch keine Regel gibt. Geht auch später."
     },
     {
       "key": "hermes_setup.load_model_now",
@@ -1701,8 +1689,8 @@
     {
       "key": "hermes_setup.start",
       "context": "Card of the first-time setup of Hermes (the document filing). Primary button: saves the folders and starts Hermes.",
-      "en": "Start Hermes",
-      "de": "Hermes starten"
+      "en": "Start filing",
+      "de": "Ablage starten"
     },
     {
       "key": "hermes_setup.creating_index",
@@ -1851,8 +1839,8 @@
     {
       "key": "filing.failed_title",
       "context": "Title of the card shown when the index could not be opened at all.",
-      "en": "Hermes is unavailable",
-      "de": "Hermes ist nicht verfügbar"
+      "en": "Filing is unavailable",
+      "de": "Die Ablage ist nicht verfügbar"
     },
     {
       "key": "filing.failed_reason",
@@ -1875,8 +1863,8 @@
     {
       "key": "filing.locations_skipped",
       "context": "Notice in the title bar after the filing module (Hermes) started: some configured folders cannot be used. Takes the number of folders.",
-      "en": "{count} Hermes folders skipped: not reachable or overlapping",
-      "de": "{count} Hermes-Ordner übersprungen: nicht erreichbar oder überlappend"
+      "en": "{count} filing folders skipped: not reachable or overlapping",
+      "de": "{count} Ablageordner übersprungen: nicht erreichbar oder überlappend"
     },
     {
       "key": "hermes.status.running",
@@ -1929,20 +1917,26 @@
     {
       "key": "title_bar.hermes_rate",
       "context": "Chip in the title bar while the filing module (Hermes) is working: documents processed per minute (filed or sent to review), measured over the last full minutes; only shown while files are in work or queued. Takes the number. Pressing it opens the Inspection.",
-      "en": "Hermes {rate}/min processed",
-      "de": "Hermes {rate}/Min. verarbeitet"
+      "en": "Filing {rate}/min processed",
+      "de": "Ablage {rate}/Min. verarbeitet"
     },
     {
       "key": "title_bar.hermes_paused",
       "context": "Chip in the title bar while the filing module (Hermes) is paused; pressing it opens the Inspection.",
-      "en": "Hermes paused",
-      "de": "Hermes pausiert"
+      "en": "Filing paused",
+      "de": "Ablage pausiert"
     },
     {
       "key": "filing_status.section_pipeline",
       "context": "Heading of the section with the state, the load and the steps of the filing pipeline.",
       "en": "Pipeline",
       "de": "Verarbeitung"
+    },
+    {
+      "key": "filing_status.explain",
+      "context": "One sentence under the title of the filing status page: what the page is for.",
+      "en": "Shows what the filing is doing right now: the state of the pipeline, the load, the index figures and the latest errors.",
+      "de": "Zeigt, was die Ablage gerade tut: Zustand der Verarbeitung, Last, Zahlen des Index und die letzten Fehler."
     },
     {
       "key": "filing_status.section_workers",
@@ -2012,19 +2006,37 @@
     },
     {
       "key": "filing_status.load_gentle",
-      "context": "Button for the lowest load of the pipeline: few workers, so the computer stays usable (config value gentle). Themed name; the explanation line names the plain meaning.",
+      "context": "Button for the lowest load of the pipeline: few workers, so the computer stays usable (config value gentle). The Futurama variants show the theme name beside it.",
+      "en": "Gentle",
+      "de": "Schonend"
+    },
+    {
+      "key": "filing_status.load_gentle.theme",
+      "context": "Theme name of the gentle load, shown dimmed beside filing_status.load_gentle in the Futurama variants only. A playful name; the plain name beside it says what the load does.",
       "en": "By the book",
       "de": "Dienst nach Vorschrift"
     },
     {
       "key": "filing_status.load_balanced",
-      "context": "Button for the middle load of the pipeline (config value balanced). Themed name; the explanation line names the plain meaning.",
+      "context": "Button for the middle load of the pipeline (config value balanced). The Futurama variants show the theme name beside it.",
+      "en": "Balanced",
+      "de": "Ausgewogen"
+    },
+    {
+      "key": "filing_status.load_balanced.theme",
+      "context": "Theme name of the balanced load, shown dimmed beside filing_status.load_balanced in the Futurama variants only. A playful name; the plain name beside it says what the load does.",
       "en": "Business as usual",
       "de": "Normalbetrieb"
     },
     {
       "key": "filing_status.load_full",
-      "context": "Button for the highest load of the pipeline: one worker per processor core (config value full). Themed name; the explanation line names the plain meaning.",
+      "context": "Button for the highest load of the pipeline: one worker per processor core (config value full). The Futurama variants show the theme name beside it.",
+      "en": "Full",
+      "de": "Volle Last"
+    },
+    {
+      "key": "filing_status.load_full.theme",
+      "context": "Theme name of the full load, shown dimmed beside filing_status.load_full in the Futurama variants only. A playful name; the plain name beside it says what the load does.",
       "en": "Grade 36",
       "de": "Grad 36"
     },
@@ -2042,9 +2054,9 @@
     },
     {
       "key": "filing_status.load_explain",
-      "context": "Note next to the load buttons on the filing status page: the plain meaning of the three themed names, in the order of the buttons.",
-      "en": "By the book = gentle, Business as usual = balanced, Grade 36 = full load.",
-      "de": "Dienst nach Vorschrift = schonend, Normalbetrieb = ausgewogen, Grad 36 = volle Last."
+      "context": "Note next to the load buttons on the filing status page: what the three loads mean in workers. Keep the numbers in line with the worker counts of the pipeline.",
+      "en": "Gentle uses up to 2 workers, so the computer stays usable. Balanced uses up to 4. Full uses one per processor core. Never more than the computer has cores.",
+      "de": "Schonend nutzt bis zu 2 Worker, damit der Computer benutzbar bleibt. Ausgewogen nutzt bis zu 4. Volle Last nutzt einen je Prozessorkern. Nie mehr, als der Computer Kerne hat."
     },
     {
       "key": "filing_status.step_intake",
@@ -2054,9 +2066,9 @@
     },
     {
       "key": "filing_status.step_review",
-      "context": "Visible name of the pipeline step that decides which documents need the user's review. Themed name, the same word as the Pending label.",
-      "en": "Pending",
-      "de": "Wiedervorlage"
+      "context": "Visible name of the pipeline step that decides which documents need the user's review. The same word as the name of the review list.",
+      "en": "Review",
+      "de": "Rückfragen"
     },
     {
       "key": "filing_status.first_minute",
@@ -2168,9 +2180,9 @@
     },
     {
       "key": "filing_status.index_reviews",
-      "context": "Label for the number of documents waiting for the user's review. Pending is the themed name; the explanation follows the number in its own text.",
-      "en": "Pending",
-      "de": "Wiedervorlage"
+      "context": "Label for the number of documents waiting for the user's review. The same word as the name of the review list; the explanation follows the number in its own text.",
+      "en": "Review",
+      "de": "Rückfragen"
     },
     {
       "key": "filing_status.index_unavailable",
@@ -2205,8 +2217,8 @@
     {
       "key": "filing_status.counts_seen",
       "context": "Plain sentence at the top of the Inspection. Takes the documents Hermes has seen in the inbox, the ones it filed, and the ones that wait for the user.",
-      "en": "Hermes has seen {seen} documents: {filed} filed, {waiting} wait for you.",
-      "de": "Hermes hat {seen} Dokumente gesehen: {filed} abgelegt, {waiting} warten auf dich."
+      "en": "ncrs has seen {seen} documents: {filed} filed, {waiting} wait for you.",
+      "de": "ncrs hat {seen} Dokumente gesehen: {filed} abgelegt, {waiting} warten auf dich."
     },
     {
       "key": "filing_status.counts_without_text",
@@ -2276,15 +2288,21 @@
     },
     {
       "key": "filing_setup.title",
-      "context": "Title of the filing setup, a card above the panels where the user picks the folders Hermes (the name of the filing module) works with.",
+      "context": "Title of the filing setup, a card above the panels where the user picks the folders the filing works with. The Futurama variants show the theme name beside it.",
+      "en": "Filing folders",
+      "de": "Ablageordner"
+    },
+    {
+      "key": "filing_setup.title.theme",
+      "context": "Theme name of the filing setup title filing_setup.title, shown dimmed after the plain title in the Futurama variants only. The name of the filing module in the show.",
       "en": "Hermes",
       "de": "Hermes"
     },
     {
       "key": "filing_setup.explain",
       "context": "Explanation at the top of the filing setup card. Hermes is the name of the filing module; the two sections below ask for the inbox folders and the document folders.",
-      "en": "Hermes files your documents. Choose the folders it works with.",
-      "de": "Hermes legt deine Dokumente ab. Wähle die Ordner, mit denen er arbeitet."
+      "en": "ncrs files your documents. Choose the folders it works with.",
+      "de": "ncrs legt deine Dokumente ab. Wähle die Ordner, mit denen es arbeitet."
     },
     {
       "key": "filing_setup.inbox_heading",
@@ -2295,8 +2313,8 @@
     {
       "key": "filing_setup.inbox_explain",
       "context": "Explanation under the heading of the inbox section in the filing setup card: documents are picked up from these folders and filed, which empties them.",
-      "en": "Hermes picks them up there and files them. These folders are emptied.",
-      "de": "Hermes holt sie dort ab und legt sie ab. Diese Ordner werden geleert."
+      "en": "ncrs picks them up there and files them. These folders are emptied.",
+      "de": "ncrs holt sie dort ab und legt sie ab. Diese Ordner werden geleert."
     },
     {
       "key": "filing_setup.inbox_example",
@@ -2313,8 +2331,8 @@
     {
       "key": "filing_setup.documents_explain",
       "context": "Explanation under the heading of the documents section in the filing setup card. The filing location is the document folder that new documents are moved into (config key target).",
-      "en": "Hermes reads them and learns how you file. Documents are only moved into the filing location.",
-      "de": "Hermes liest sie und lernt, wie du ablegst. Dokumente werden nur in den Ablageort verschoben."
+      "en": "ncrs reads them and learns how you file. Documents are only moved into the filing location.",
+      "de": "ncrs liest sie und lernt, wie du ablegst. Dokumente werden nur in den Ablageort verschoben."
     },
     {
       "key": "filing_setup.documents_kinds",
@@ -2445,20 +2463,20 @@
     {
       "key": "filing_setup.saved_running",
       "context": "Notice in the title bar after saving the filing setup when Hermes starts with the saved folders right away. Takes the key that opens the Inspection (the filing status page), spelled for the platform.",
-      "en": "Hermes is on. Open the Inspection with {key}.",
-      "de": "Hermes ist eingeschaltet. Die Inspektion öffnest du mit {key}."
+      "en": "Filing is on. Open Status and errors with {key}.",
+      "de": "Die Ablage ist eingeschaltet. Status und Fehler öffnest du mit {key}."
     },
     {
       "key": "filing_setup.saved_running_unbound",
       "context": "Notice in the title bar after saving the filing setup when Hermes starts right away but no key is bound to the Inspection (the filing status page). Palette means the command palette of the app.",
-      "en": "Hermes is on. Open the Inspection from the command palette.",
-      "de": "Hermes ist eingeschaltet. Die Inspektion öffnest du über „Aktion ausführen“."
+      "en": "Filing is on. Open Status and errors from the command palette.",
+      "de": "Die Ablage ist eingeschaltet. Status und Fehler öffnest du über „Aktion ausführen“."
     },
     {
       "key": "filing_setup.saved_next_start",
       "context": "Notice in the title bar after saving the filing setup while Hermes already runs on configured folders: the new folders apply from the next start of ncrs.",
-      "en": "Saved. Hermes uses the new folders from the next start of ncrs.",
-      "de": "Gespeichert. Hermes nimmt die neuen Ordner ab dem nächsten Start von ncrs."
+      "en": "Saved. Filing uses the new folders from the next start of ncrs.",
+      "de": "Gespeichert. Die Ablage nimmt die neuen Ordner ab dem nächsten Start von ncrs."
     },
     {
       "key": "filing_setup.cancel",
@@ -2757,8 +2775,8 @@
     {
       "key": "ocr_models.installed",
       "context": "Sentence in the text recognition card after the models were downloaded and checked, above its Done button.",
-      "en": "The text recognition models are installed. Hermes now reads scans and images too.",
-      "de": "Die Texterkennungsmodelle sind installiert. Hermes liest jetzt auch Scans und Bilder."
+      "en": "The text recognition models are installed. ncrs now reads scans and images too.",
+      "de": "Die Texterkennungsmodelle sind installiert. ncrs liest jetzt auch Scans und Bilder."
     },
     {
       "key": "ocr_models.error",
@@ -2787,8 +2805,8 @@
     {
       "key": "rule_suggestions.explain",
       "context": "Paragraph at the top of the rule suggestions view. Says where the suggestions come from and that none of them does anything before the user confirms it.",
-      "en": "Suggested from how your documents are already filed. A suggestion does nothing until you confirm it.",
-      "de": "Vorgeschlagen aus der bisherigen Ablage deiner Dokumente. Ein Vorschlag bewirkt nichts, bevor du ihn bestätigst."
+      "en": "Suggested from how your documents are already filed. A suggestion does nothing until you confirm it. Example: if you filed several invoices of one sender into the same folder, ncrs suggests a rule for them.",
+      "de": "Vorgeschlagen aus der bisherigen Ablage deiner Dokumente. Ein Vorschlag bewirkt nichts, bevor du ihn bestätigst. Beispiel: Hast du mehrere Rechnungen eines Absenders im selben Ordner abgelegt, schlägt ncrs dafür eine Regel vor."
     },
     {
       "key": "rule_suggestions.analysing",
@@ -3357,20 +3375,20 @@
     {
       "key": "ai_model.turned_on",
       "context": "Sentence in the AI model card after the download ended, the AI was off and is on now, and the running Hermes uses it.",
-      "en": "The AI model is installed. AI is now on: Hermes fills in fields for which there is no rule yet.",
-      "de": "Das KI-Modell ist installiert. Die KI ist jetzt an: Hermes füllt auch Felder aus, für die es noch keine Regel gibt."
+      "en": "The AI model is installed. AI is now on: ncrs fills in fields for which there is no rule yet.",
+      "de": "Das KI-Modell ist installiert. Die KI ist jetzt an: ncrs füllt auch Felder aus, für die es noch keine Regel gibt."
     },
     {
       "key": "ai_model.turned_on_next_start",
       "context": "Sentence in the AI model card after the download ended and the AI switch was turned on, but the running Hermes cannot take it over now (files are being moved), so it applies at the next start.",
-      "en": "The AI model is installed. AI is on from the next start: Hermes then fills in fields for which there is no rule yet.",
-      "de": "Das KI-Modell ist installiert. Die KI ist ab dem nächsten Start an: Hermes füllt dann auch Felder aus, für die es noch keine Regel gibt."
+      "en": "The AI model is installed. AI is on from the next start: ncrs then fills in fields for which there is no rule yet.",
+      "de": "Das KI-Modell ist installiert. Die KI ist ab dem nächsten Start an: ncrs füllt dann auch Felder aus, für die es noch keine Regel gibt."
     },
     {
       "key": "ai_model.in_use",
       "context": "Sentence in the AI model card after the download ended while the AI was already switched on and was waiting for the file.",
-      "en": "The AI model is installed. Hermes uses it from now on.",
-      "de": "Das KI-Modell ist installiert. Hermes nutzt es ab jetzt."
+      "en": "The AI model is installed. ncrs uses it from now on.",
+      "de": "Das KI-Modell ist installiert. ncrs nutzt es ab jetzt."
     },
     {
       "key": "ai_model.still_off",
@@ -3459,14 +3477,14 @@
     {
       "key": "review_list.explain",
       "context": "Line at the top of the review list explaining what the list holds.",
-      "en": "Documents that no confirmed rule could file. Nothing is filed before you confirm.",
-      "de": "Dokumente, die keine bestätigte Regel ablegen konnte. Nichts wird abgelegt, bevor du bestätigst."
+      "en": "Documents that no confirmed rule could file. Nothing is filed before you confirm. Example: an invoice from a sender without a rule waits here until you have checked its fields.",
+      "de": "Dokumente, die keine bestätigte Regel ablegen konnte. Nichts wird abgelegt, bevor du bestätigst. Beispiel: Die Rechnung eines Absenders ohne Regel wartet hier, bis du ihre Felder geprüft hast."
     },
     {
       "key": "review_list.no_rules_hint",
       "context": "Hint line at the top of the review page while Hermes has no confirmed rule yet and the AI model is not ready: why the fields are empty and the two ways to fill them.",
-      "en": "No rules yet. Hermes suggests a default pattern for each document: check the fields and confirm. Load the AI model and it fills in the fields itself.",
-      "de": "Noch keine Regeln. Hermes schlägt für jedes Dokument ein Standardmuster vor: Felder prüfen und bestätigen. Mit dem KI-Modell füllt es die Felder selbst aus."
+      "en": "No rules yet. ncrs suggests a default pattern for each document: check the fields and confirm. Load the AI model and it fills in the fields itself.",
+      "de": "Noch keine Regeln. ncrs schlägt für jedes Dokument ein Standardmuster vor: Felder prüfen und bestätigen. Mit dem KI-Modell füllt es die Felder selbst aus."
     },
     {
       "key": "review_list.loading",
@@ -3477,8 +3495,8 @@
     {
       "key": "review_list.empty",
       "context": "Shown in the review list when no document waits. Says when entries appear.",
-      "en": "Nothing to review. Documents land here when Hermes cannot file them itself: without readable text or without a matching rule.",
-      "de": "Nichts zu prüfen. Hier landen Dokumente, die Hermes nicht selbst ablegen kann: ohne lesbaren Text oder ohne passende Regel."
+      "en": "Nothing to review. Documents land here when ncrs cannot file them itself: without readable text or without a matching rule.",
+      "de": "Nichts zu prüfen. Hier landen Dokumente, die ncrs nicht selbst ablegen kann: ohne lesbaren Text oder ohne passende Regel."
     },
     {
       "key": "review_list.column_file",
@@ -4359,8 +4377,8 @@
     {
       "key": "settings.feature_hermes_intro",
       "context": "Line under the heading of the filing page on the settings tab. Hermes is the name of the filing module.",
-      "en": "Hermes picks up new documents, reads them and files them by your rules.",
-      "de": "Hermes holt neue Dokumente ab, liest sie und legt sie nach deinen Regeln ab."
+      "en": "ncrs picks up new documents, reads them and files them by your rules.",
+      "de": "ncrs holt neue Dokumente ab, liest sie und legt sie nach deinen Regeln ab."
     },
     {
       "key": "settings.row_preset",
@@ -4449,8 +4467,8 @@
     {
       "key": "settings.row_hermes_enabled",
       "context": "Name of the setting on the filing page that switches the filing module Hermes on or off.",
-      "en": "Hermes on",
-      "de": "Hermes aktiv"
+      "en": "Filing on",
+      "de": "Ablage aktiv"
     },
     {
       "key": "settings.row_hermes_enabled_note",
@@ -4851,8 +4869,8 @@
     {
       "key": "settings.row_ai_threads_note",
       "context": "Explanation under the threads setting: an empty field lets Hermes pick the number itself.",
-      "en": "Empty: Hermes decides.",
-      "de": "Leer: Hermes entscheidet."
+      "en": "Empty: ncrs decides.",
+      "de": "Leer: ncrs entscheidet."
     },
     {
       "key": "settings.threads_placeholder",
@@ -5121,19 +5139,19 @@
     {
       "key": "action.hermes_quick_fix",
       "context": "Entry of the command list and the menu that runs the key action hermes_quick_fix: the menu of fixes for the inquiry under the cursor or among the marked files.",
-      "en": "Quick fix for an inquiry",
+      "en": "Quick fix for a review item",
       "de": "Schnellkorrektur für eine Rückfrage"
     },
     {
       "key": "quick_fix.header",
       "context": "First line of the quick-fix menu for one file. {reason} is why Hermes asks, already worded, for example the field that is missing.",
-      "en": "Inquiry · {reason}",
+      "en": "Review · {reason}",
       "de": "Rückfrage · {reason}"
     },
     {
       "key": "quick_fix.header_many",
       "context": "First line of the quick-fix menu for several marked files. {count} is their number.",
-      "en": "{count} inquiries",
+      "en": "{count} to review",
       "de": "{count} Rückfragen"
     },
     {
@@ -5193,14 +5211,14 @@
     {
       "key": "quick_fix.exclude",
       "context": "Entry of the quick-fix menu for one file: Hermes leaves it alone from now on.",
-      "en": "Exclude from Hermes",
-      "de": "Von Hermes ausschließen"
+      "en": "Exclude from filing",
+      "de": "Von der Ablage ausschließen"
     },
     {
       "key": "quick_fix.exclude_all",
       "context": "Entry of the quick-fix menu for several files: Hermes leaves all of them alone from now on. {count} is their number.",
-      "en": "Exclude all {count} from Hermes",
-      "de": "Alle {count} von Hermes ausschließen"
+      "en": "Exclude all {count} from filing",
+      "de": "Alle {count} von der Ablage ausschließen"
     },
     {
       "key": "quick_fix.summary_title",
@@ -5247,8 +5265,8 @@
     {
       "key": "status.quick_fix_requeued",
       "context": "Status bar message when the document changed or vanished while the quick-fix menu filed it, so Hermes looks at it again.",
-      "en": "The file changed, Hermes reads it again",
-      "de": "Die Datei hat sich geändert, Hermes liest sie neu"
+      "en": "The file changed, ncrs reads it again",
+      "de": "Die Datei hat sich geändert, ncrs liest sie neu"
     },
     {
       "key": "status.quick_fix_summary",
@@ -5259,8 +5277,8 @@
     {
       "key": "status.quick_fix_excluded",
       "context": "Status bar message after files were excluded from Hermes by the quick-fix menu. {count} is their number.",
-      "en": "Excluded from Hermes: {count}",
-      "de": "Von Hermes ausgeschlossen: {count}"
+      "en": "Excluded from filing: {count}",
+      "de": "Von der Ablage ausgeschlossen: {count}"
     },
     {
       "key": "hermes_menu.show_suggestion",
@@ -5271,8 +5289,8 @@
     {
       "key": "hermes_menu.hand_to_inbox",
       "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Opens the move dialog with the inbox as target.",
-      "en": "Hand to Hermes",
-      "de": "An Hermes geben"
+      "en": "Hand to filing",
+      "de": "An die Ablage geben"
     },
     {
       "key": "hermes_menu.note_inbox",
@@ -5313,20 +5331,20 @@
     {
       "key": "hermes_menu.exclude",
       "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Hermes leaves the file or folder alone from now on.",
-      "en": "Exclude from Hermes",
-      "de": "Von Hermes ausschließen"
+      "en": "Exclude from filing",
+      "de": "Von der Ablage ausschließen"
     },
     {
       "key": "hermes_menu.include",
       "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Takes back an exclusion.",
-      "en": "Include in Hermes again",
-      "de": "Wieder bei Hermes einbeziehen"
+      "en": "Include in filing again",
+      "de": "Wieder bei der Ablage einbeziehen"
     },
     {
       "key": "hermes_menu.inspect",
       "context": "Entry of the Hermes submenu of the context menu and the command list; acts on the file under the cursor. Opens the Hermes inspection page, at the file's error if it has one.",
-      "en": "Show in inspection",
-      "de": "In der Inspektion zeigen"
+      "en": "Show in Status and errors",
+      "de": "In Status und Fehler zeigen"
     },
     {
       "key": "status.hermes_processing_again",
@@ -5337,8 +5355,8 @@
     {
       "key": "status.hermes_restarting",
       "context": "Status bar text while Hermes is rebuilt after the AI setting changed. It stands where the idle line of Hermes stands.",
-      "en": "Hermes restarting …",
-      "de": "Hermes startet neu …"
+      "en": "Filing restarting …",
+      "de": "Die Ablage startet neu …"
     },
     {
       "key": "status.reading_again",
@@ -5397,14 +5415,14 @@
     {
       "key": "status.hermes_not_processable",
       "context": "Status bar message when a file cannot be run through the Hermes steps: it is excluded, outside the configured folders, or the pipeline is not running.",
-      "en": "Hermes cannot process this file now",
-      "de": "Hermes kann diese Datei jetzt nicht verarbeiten"
+      "en": "Filing cannot process this file now",
+      "de": "Die Ablage kann diese Datei jetzt nicht verarbeiten"
     },
     {
       "key": "status.hermes_included",
       "context": "Status bar message after a file or folder was taken back into Hermes' view. {name} is its name.",
-      "en": "Included in Hermes again: {name}",
-      "de": "Wieder bei Hermes einbezogen: {name}"
+      "en": "Included in filing again: {name}",
+      "de": "Wieder bei der Ablage einbezogen: {name}"
     },
     {
       "key": "status.hermes_included_by_folder",
@@ -5421,8 +5439,8 @@
     {
       "key": "status.hermes_is_off",
       "context": "Status bar message when the user starts a Hermes command while the filing module is switched off; the settings page with the switch opens at the same time. A whole sentence.",
-      "en": "Hermes is off. Switch it on here to sort your documents.",
-      "de": "Hermes ist aus. Schalte es hier ein, um deine Dokumente zu sortieren."
+      "en": "Filing is off. Switch it on here to sort your documents.",
+      "de": "Die Ablage ist aus. Schalte sie hier ein, um deine Dokumente zu sortieren."
     },
     {
       "key": "status.hermes_role_failed",
@@ -5439,8 +5457,8 @@
     {
       "key": "action.hermes_hand_to_inbox",
       "context": "Entry of the command list and the menu that runs the key action hermes_hand_to_inbox: opens the move dialog for the file under the cursor with the inbox as target.",
-      "en": "Hand to Hermes (into the inbox)",
-      "de": "An Hermes geben (in den Eingang)"
+      "en": "Hand to filing (into the inbox)",
+      "de": "An die Ablage geben (in den Eingang)"
     },
     {
       "key": "action.hermes_process_again",
@@ -5469,14 +5487,14 @@
     {
       "key": "action.hermes_exclude",
       "context": "Entry of the command list and the menu that runs the key action hermes_exclude: excludes the file or folder under the cursor from Hermes, or includes it again when it is excluded.",
-      "en": "Exclude from or include in Hermes",
-      "de": "Von Hermes ausschließen oder wieder einbeziehen"
+      "en": "Exclude from or include in filing",
+      "de": "Von der Ablage ausschließen oder wieder einbeziehen"
     },
     {
       "key": "action.hermes_inspect",
       "context": "Entry of the command list and the menu that runs the key action hermes_inspect: opens the Hermes inspection page for the file under the cursor.",
-      "en": "Show in inspection",
-      "de": "In der Inspektion zeigen"
+      "en": "Show in Status and errors",
+      "de": "In Status und Fehler zeigen"
     },
     {
       "key": "shortcut.command_line",
@@ -6189,20 +6207,20 @@
     {
       "key": "hermes_overview.title",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Headline of the page: the promise of the feature.",
-      "en": "Hermes files your documents",
-      "de": "Hermes legt deine Dokumente ab"
+      "en": "ncrs files your documents",
+      "de": "ncrs legt deine Dokumente ab"
     },
     {
       "key": "hermes_overview.intro_mac",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Intro under the headline on macOS. Says where the data stays.",
-      "en": "Put PDFs and scans in the inbox. Hermes reads them, recognises sender, date and amount and files them where your rules say. Everything stays on this Mac.",
-      "de": "Lege PDFs und Scans in den Eingang. Hermes liest sie, erkennt Absender, Datum und Betrag und sortiert sie nach deinen Regeln in den Ablageort. Alles bleibt auf diesem Mac."
+      "en": "Put PDFs and scans in the inbox. ncrs reads them, recognises sender, date and amount and files them where your rules say. Everything stays on this Mac.",
+      "de": "Lege PDFs und Scans in den Eingang. ncrs liest sie, erkennt Absender, Datum und Betrag und sortiert sie nach deinen Regeln in den Ablageort. Alles bleibt auf diesem Mac."
     },
     {
       "key": "hermes_overview.intro_other",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Intro under the headline on systems other than macOS. Says where the data stays.",
-      "en": "Put PDFs and scans in the inbox. Hermes reads them, recognises sender, date and amount and files them where your rules say. Everything stays on this computer.",
-      "de": "Lege PDFs und Scans in den Eingang. Hermes liest sie, erkennt Absender, Datum und Betrag und sortiert sie nach deinen Regeln in den Ablageort. Alles bleibt auf diesem Computer."
+      "en": "Put PDFs and scans in the inbox. ncrs reads them, recognises sender, date and amount and files them where your rules say. Everything stays on this computer.",
+      "de": "Lege PDFs und Scans in den Eingang. ncrs liest sie, erkennt Absender, Datum und Betrag und sortiert sie nach deinen Regeln in den Ablageort. Alles bleibt auf diesem Computer."
     },
     {
       "key": "hermes_overview.pill_running",
@@ -6328,7 +6346,7 @@
       "key": "hermes_overview.tile_ocr_missing",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the text recognition tile when its models are missing, so scans cannot be read yet.",
       "en": "Models missing, scans cannot be read yet",
-      "de": "Modelle fehlen, Scans kann Hermes noch nicht lesen"
+      "de": "Modelle fehlen, Scans kann ncrs noch nicht lesen"
     },
     {
       "key": "hermes_overview.tile_ocr_button",
@@ -6381,8 +6399,8 @@
     {
       "key": "hermes_overview.tile_ai_restart",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the AI tile when the AI was switched on but Hermes only takes it up at its next start.",
-      "en": "On · takes effect when Hermes restarts",
-      "de": "An · gilt, sobald Hermes neu startet"
+      "en": "On · takes effect when filing restarts",
+      "de": "An · gilt, sobald die Ablage neu startet"
     },
     {
       "key": "hermes_overview.tile_ai_failed",
@@ -6405,8 +6423,8 @@
     {
       "key": "hermes_overview.tile_review_text",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the open reviews tile: what confirming does.",
-      "en": "Confirm once, then Hermes suggests a rule",
-      "de": "Einmal bestätigen, dann schlägt Hermes eine Regel vor"
+      "en": "Confirm once, then ncrs suggests a rule",
+      "de": "Einmal bestätigen, dann schlägt ncrs eine Regel vor"
     },
     {
       "key": "hermes_overview.tile_review_button",
@@ -6423,8 +6441,8 @@
     {
       "key": "hermes_overview.tile_review_clear_text",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the open reviews tile when nothing waits.",
-      "en": "Hermes files what it can read by itself",
-      "de": "Hermes legt ab, was es selbst lesen kann"
+      "en": "ncrs files what it can read by itself",
+      "de": "ncrs legt ab, was es selbst lesen kann"
     },
     {
       "key": "hermes_overview.read_again",
@@ -6585,8 +6603,8 @@
     {
       "key": "hermes_overview.protection_none",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence in the protection section when Hermes has no index yet.",
-      "en": "Hermes has no index yet. It is created when you set Hermes up.",
-      "de": "Hermes hat noch keinen Index. Er entsteht, wenn du Hermes einrichtest."
+      "en": "Filing has no index yet. It is created when you set up filing.",
+      "de": "Die Ablage hat noch keinen Index. Er entsteht, wenn du die Ablage einrichtest."
     },
     {
       "key": "hermes_overview.key_missing_mac",
@@ -6639,8 +6657,8 @@
     {
       "key": "hermes_overview.protection_working",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence in the protection section while the index is being encrypted or removed.",
-      "en": "Please wait a moment. Hermes files nothing while this runs.",
-      "de": "Einen Moment bitte. Hermes legt währenddessen nichts ab."
+      "en": "Please wait a moment. Nothing is filed while this runs.",
+      "de": "Einen Moment bitte. Währenddessen wird nichts abgelegt."
     },
     {
       "key": "hermes_overview.encrypt_failed",
@@ -6663,20 +6681,20 @@
     {
       "key": "hermes_overview.start_over_title",
       "context": "Title of the question in the Hermes overview whether to remove the index and begin again.",
-      "en": "Start Hermes over?",
-      "de": "Hermes neu anfangen?"
+      "en": "Start filing over?",
+      "de": "Ablage neu anfangen?"
     },
     {
       "key": "hermes_overview.start_over_loss",
       "context": "Body of the question in the Hermes overview whether to remove the index: names what is lost.",
-      "en": "This removes the index of Hermes with its rules, rule suggestions, reports and the undo history. It also removes what it knows about your documents and the entries waiting for review.",
-      "de": "Damit wird der Index von Hermes entfernt, mit seinen Regeln, Regelvorschlägen, Auswertungen und dem Rückgängig-Verlauf. Auch sein Wissen über deine Dokumente und die Einträge, die auf Prüfung warten, gehen verloren."
+      "en": "This removes the filing index with its rules, rule suggestions, reports and the undo history. It also removes what ncrs knows about your documents and the entries waiting for review.",
+      "de": "Damit wird der Index der Ablage entfernt, mit seinen Regeln, Regelvorschlägen, Auswertungen und dem Rückgängig-Verlauf. Auch das Wissen von ncrs über deine Dokumente und die Einträge, die auf Prüfung warten, gehen verloren."
     },
     {
       "key": "hermes_overview.start_over_files",
       "context": "Body of the question in the Hermes overview whether to remove the index: says what stays.",
-      "en": "Your files and folders stay where they are. The key of the index is removed as well. Afterwards you set Hermes up again.",
-      "de": "Deine Dateien und Ordner bleiben, wo sie sind. Auch der Schlüssel des Index wird entfernt. Danach richtest du Hermes neu ein."
+      "en": "Your files and folders stay where they are. The key of the index is removed as well. Afterwards you set up filing again.",
+      "de": "Deine Dateien und Ordner bleiben, wo sie sind. Auch der Schlüssel des Index wird entfernt. Danach richtest du die Ablage neu ein."
     },
     {
       "key": "hermes_overview.start_over_confirm",
@@ -6687,20 +6705,20 @@
     {
       "key": "hermes_overview.off_note",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence at the top of the overview when Hermes is switched off.",
-      "en": "Hermes is off. Switch it on and it files your documents.",
-      "de": "Hermes ist aus. Schalte es ein, dann legt es deine Dokumente ab."
+      "en": "Filing is off. Switch it on and it files your documents.",
+      "de": "Die Ablage ist aus. Schalte sie ein, dann legt sie deine Dokumente ab."
     },
     {
       "key": "hermes_overview.switch_on",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button next to the sentence that says Hermes is off. Switches the module on.",
-      "en": "Switch Hermes on",
-      "de": "Hermes einschalten"
+      "en": "Switch filing on",
+      "de": "Ablage einschalten"
     },
     {
       "key": "hermes_overview.dismissed_note",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence at the top of the overview when the user put the setup off.",
-      "en": "The setup of Hermes is not finished.",
-      "de": "Die Einrichtung von Hermes ist nicht abgeschlossen."
+      "en": "The filing setup is not finished.",
+      "de": "Die Einrichtung der Ablage ist nicht abgeschlossen."
     },
     {
       "key": "hermes_overview.continue_setup",
@@ -6711,8 +6729,8 @@
     {
       "key": "hermes_overview.failed_note",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence at the top of the overview when the module failed to start. {reason} is the cause.",
-      "en": "Hermes could not start: {reason}",
-      "de": "Hermes konnte nicht starten: {reason}"
+      "en": "Filing could not start: {reason}",
+      "de": "Die Ablage konnte nicht starten: {reason}"
     },
     {
       "key": "hermes_overview.try_again",
@@ -6723,14 +6741,14 @@
     {
       "key": "hermes_overview.no_folders_note",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence at the top of the overview when Hermes has no folders yet.",
-      "en": "Hermes has no folders yet.",
-      "de": "Hermes hat noch keine Ordner."
+      "en": "Filing has no folders yet.",
+      "de": "Die Ablage hat noch keine Ordner."
     },
     {
       "key": "hermes_overview.waits_note",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Sentence at the top of the overview when Hermes waits for an answer in one of its cards.",
-      "en": "Hermes waits for an answer in its own card.",
-      "de": "Hermes wartet auf eine Antwort in seiner eigenen Karte."
+      "en": "Filing waits for an answer in its own card.",
+      "de": "Die Ablage wartet auf eine Antwort in ihrer eigenen Karte."
     },
     {
       "key": "filing_setup.grant_failed",
@@ -6741,14 +6759,14 @@
     {
       "key": "settings.row_hermes_open",
       "context": "Label of the row in the Hermes settings page that opens the Hermes overview.",
-      "en": "Open Hermes",
-      "de": "Hermes öffnen"
+      "en": "Open filing",
+      "de": "Ablage öffnen"
     },
     {
       "key": "settings.row_hermes_open_note",
       "context": "Note under the row that opens the Hermes overview: says what lives there instead of in the settings.",
-      "en": "Folders, filing pattern, AI, text recognition, load and protection are on the overview of Hermes.",
-      "de": "Ordner, Ablagemuster, KI, Texterkennung, Last und Schutz stehen in der Übersicht von Hermes."
+      "en": "Folders, filing pattern, AI, text recognition, load and protection are on the overview of filing.",
+      "de": "Ordner, Ablagemuster, KI, Texterkennung, Last und Schutz stehen in der Übersicht der Ablage."
     },
     {
       "key": "settings.hermes_open_button",
@@ -7065,8 +7083,8 @@
     {
       "key": "settings.tax_contexts_unavailable",
       "context": "Row of the tax contexts group on the Hermes settings page when the Hermes index is not open, so the contexts cannot be read or changed.",
-      "en": "Tax contexts are kept in the Hermes index, which is not open.",
-      "de": "Steuerkontexte liegen im Hermes-Index, der nicht geöffnet ist."
+      "en": "Tax contexts are kept in the filing index, which is not open.",
+      "de": "Steuerkontexte liegen im Index der Ablage, der nicht geöffnet ist."
     },
     {
       "key": "settings.tax_contexts_read_failed",
@@ -7485,8 +7503,8 @@
     {
       "key": "rules.explain",
       "context": "Paragraph at the top of the rules page: what rules are and in which order they apply.",
-      "en": "Hermes files a document with the first rule that matches; rules higher up come first.",
-      "de": "Hermes legt ein Dokument mit der ersten Regel ab, die passt; weiter oben stehende Regeln kommen zuerst."
+      "en": "ncrs files a document with the first rule that matches; rules higher up come first. Example: a rule for one sender above a general invoice rule wins for that sender's invoices.",
+      "de": "ncrs legt ein Dokument mit der ersten Regel ab, die passt; weiter oben stehende Regeln kommen zuerst. Beispiel: Eine Regel für einen bestimmten Absender über einer allgemeinen Rechnungsregel gilt für die Rechnungen dieses Absenders."
     },
     {
       "key": "rules.example",
@@ -7809,8 +7827,8 @@
     {
       "key": "rules.form_purpose",
       "context": "Paragraph at the top of the rule form: what the parts of a rule are, and that nothing is stored before Save.",
-      "en": "Conditions say which documents the rule is for; the rest says how Hermes files them. Nothing is stored before you save.",
-      "de": "Die Bedingungen legen fest, für welche Dokumente die Regel gilt; der Rest sagt, wie Hermes sie ablegt. Gespeichert wird erst mit „Speichern“."
+      "en": "Conditions say which documents the rule is for; the rest says how ncrs files them. Nothing is stored before you save.",
+      "de": "Die Bedingungen legen fest, für welche Dokumente die Regel gilt; der Rest sagt, wie ncrs sie ablegt. Gespeichert wird erst mit „Speichern“."
     },
     {
       "key": "rules.form_save",
@@ -8043,8 +8061,8 @@
     {
       "key": "document_search.explain",
       "context": "Line at the top of the document search page explaining what it is for.",
-      "en": "Searches the text of every document Hermes has read. Click a value below to narrow the hits, for example a year and a sender.",
-      "de": "Durchsucht den Text aller Dokumente, die Hermes gelesen hat. Klicke unten auf einen Wert, um die Treffer einzugrenzen, zum Beispiel ein Jahr und einen Absender."
+      "en": "Searches the text of every document ncrs has read. Click a value below to narrow the hits, for example a year and a sender.",
+      "de": "Durchsucht den Text aller Dokumente, die ncrs gelesen hat. Klicke unten auf einen Wert, um die Treffer einzugrenzen, zum Beispiel ein Jahr und einen Absender."
     },
     {
       "key": "document_search.placeholder",
@@ -8139,8 +8157,8 @@
     {
       "key": "document_search.empty_none",
       "context": "Shown on the document search page when Hermes has read no documents at all yet.",
-      "en": "No documents read yet. Documents appear here once Hermes has read them from the inbox.",
-      "de": "Noch keine Dokumente gelesen. Dokumente erscheinen hier, sobald Hermes sie aus dem Eingang gelesen hat."
+      "en": "No documents read yet. Documents appear here once ncrs has read them from the inbox.",
+      "de": "Noch keine Dokumente gelesen. Dokumente erscheinen hier, sobald ncrs sie aus dem Eingang gelesen hat."
     },
     {
       "key": "document_search.empty_no_match",

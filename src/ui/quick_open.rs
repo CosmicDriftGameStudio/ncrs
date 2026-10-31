@@ -11,7 +11,7 @@ use super::picker;
 use super::theme::{font_size, spacing};
 use crate::app::fill_template;
 use crate::filing::{FoundDocument, TextSource};
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{Message, QuickOpenMessage};
 use crate::palette::Palette;
 use crate::quick_open::{Hit, QuickOpen};
@@ -83,8 +83,10 @@ pub fn view<'a>(
     picker::frame(
         picker::Content {
             title: subtitle,
-            title_theme: None,
-            subtitle: Some(lang.text(Msg::QuickopenTitle).to_owned()),
+            title_theme: lang
+                .futurama_name(FuturamaName::ActionQuickOpen)
+                .map(str::to_owned),
+            subtitle: None,
             field,
             status: status(quick_open, lang),
             rows,

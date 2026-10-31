@@ -13,7 +13,7 @@ use super::kit;
 use super::theme::{self, font_size, spacing};
 use crate::fs::remote::ServerId;
 use crate::fs::Volume;
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{Message, PanelSide};
 use crate::palette::Palette;
 
@@ -136,9 +136,12 @@ pub fn view<'a>(
         servers,
         trash,
     } = listed;
-    let subtitle = match side {
-        PanelSide::Left => Msg::VolumesSubtitleLeft,
-        PanelSide::Right => Msg::VolumesSubtitleRight,
+    let (subtitle, theme_name) = match side {
+        PanelSide::Left => (Msg::VolumesSubtitleLeft, FuturamaName::ActionDriveMenuLeft),
+        PanelSide::Right => (
+            Msg::VolumesSubtitleRight,
+            FuturamaName::ActionDriveMenuRight,
+        ),
     };
     let mut lines: Vec<Line<'a>> = volumes
         .iter()
@@ -280,7 +283,7 @@ pub fn view<'a>(
         lang,
         palette,
     )
-    .subtitle(lang.text(Msg::VolumesTitle))
+    .title_theme(lang.futurama_name(theme_name))
     .on_close(Message::VolumeMenuClose)
     // Enter goes to the highlighted row, which the content defines.
     .hints(KeyHints::default())

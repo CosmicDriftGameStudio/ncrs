@@ -1735,7 +1735,7 @@ mod filing_status_page {
         let counts = sample_counts();
         assert_eq!(
             crate::ui::filing_status::counts_sentences(&counts, Language::English),
-            "Hermes has seen 2\u{a0}421 documents: 0 filed, 2\u{a0}421 wait for you. \
+            "ncrs has seen 2\u{a0}421 documents: 0 filed, 2\u{a0}421 wait for you. \
              1\u{a0}800 of them have no readable text. \
              For the rest no rule matches: there are no confirmed rules yet. \
              Rule suggestions learn from the 4\u{a0}871 of 5\u{a0}120 archive documents that have text."
@@ -1748,7 +1748,7 @@ mod filing_status_page {
         };
         assert_eq!(
             crate::ui::filing_status::counts_sentences(&with_rules, Language::German),
-            "Hermes hat 2\u{a0}421 Dokumente gesehen: 0 abgelegt, 2\u{a0}421 warten auf dich."
+            "ncrs hat 2\u{a0}421 Dokumente gesehen: 0 abgelegt, 2\u{a0}421 warten auf dich."
         );
     }
 
@@ -1813,21 +1813,14 @@ mod filing_status_page {
     #[test]
     fn the_inspection_uses_the_visible_names_and_says_when_figures_come() {
         let english = inspection(Language::English);
-        for label in [
-            "Intake",
-            "waiting",
-            "done",
-            "failed",
-            "unchanged",
-            "Pending",
-        ] {
+        for label in ["Intake", "waiting", "done", "failed", "unchanged", "Review"] {
             assert!(shows(&english, label), "{label}");
         }
         assert!(shows(&english, "after the first full minute"));
         let german = inspection(Language::German);
         assert!(shows(&german, "Annahme"));
         assert!(shows(&german, "wartend"));
-        assert!(shows(&german, "Wiedervorlage"));
+        assert!(shows(&german, "Rückfragen"));
         assert!(shows(&german, "ab der ersten vollen Minute"));
 
         let idle = page(snapshot(RunnerState::Idle, 0, 0));
@@ -1845,7 +1838,7 @@ mod filing_status_page {
         for (state, state_text) in cases {
             let app = page(snapshot(state, 0, 0));
             assert!(shows(&app, state_text), "{state:?}: {state_text}");
-            for control in ["Pause", "Resume", "Business as usual"] {
+            for control in ["Pause", "Resume", "Balanced"] {
                 assert!(!shows(&app, control), "{state:?}: {control}");
             }
         }
@@ -2070,7 +2063,7 @@ mod filing_setup_card {
         let app = App::with_filing_setup(&[], false);
 
         for label in [
-            "Hermes",
+            "Filing folders",
             "Inbox: where do new documents arrive?",
             "Where do you keep your documents?",
             NO_FOLDER_YET,
@@ -2739,7 +2732,7 @@ mod review_list_card {
 
         assert!(shows(
             list,
-            "Nothing to review. Documents land here when Hermes cannot file them itself: without readable text or without a matching rule."
+            "Nothing to review. Documents land here when ncrs cannot file them itself: without readable text or without a matching rule."
         ));
     }
 
@@ -3227,7 +3220,7 @@ mod review_list_card {
 
     #[test]
     fn the_page_explains_empty_fields_while_there_are_no_rules_and_no_ai() {
-        let hint = "No rules yet. Hermes suggests a default pattern for each document: check the fields and confirm. Load the AI model and it fills in the fields itself.";
+        let hint = "No rules yet. ncrs suggests a default pattern for each document: check the fields and confirm. Load the AI model and it fills in the fields itself.";
         let counts_unknown = App::with_review_list(loaded_list());
         simulator(&counts_unknown).find(hint).unwrap_err();
         let with_rules =
@@ -3301,7 +3294,7 @@ mod review_list_card {
     clippy::indexing_slicing
 )]
 #[cfg(test)]
-mod document_search_card {
+pub mod document_search_card {
     use super::*;
     use crate::document_search::tests::loaded_search;
     use crate::document_search::{DocumentSearch, FacetValue};
@@ -3334,7 +3327,10 @@ mod document_search_card {
     fn a_page_without_documents_says_so() {
         let mut search = DocumentSearch::new(String::new());
         search.ran(Vec::new());
-        assert!(shows(search, "No documents read yet. Documents appear here once Hermes has read them from the inbox."));
+        assert!(shows(
+            search,
+            "No documents read yet. Documents appear here once ncrs has read them from the inbox."
+        ));
     }
 
     #[test]
@@ -3426,7 +3422,7 @@ mod document_search_card {
 
     /// The words "rent" typed, snippets under the hits, and the text of the
     /// selected one beside the list.
-    fn with_snippets() -> DocumentSearch {
+    pub fn with_snippets() -> DocumentSearch {
         use crate::document_preview::PreviewContent;
 
         let mut search = DocumentSearch::new("rent".to_owned());
@@ -3851,7 +3847,8 @@ mod rules_card {
     fn the_page_shows_the_purpose_the_example_and_the_buttons() {
         for label in [
             "Rules",
-            "Hermes files a document with the first rule that matches; rules higher up come first.",
+            "ncrs files a document with the first rule that matches; rules higher up come first. \
+             Example: a rule for one sender above a general invoice rule wins for that sender's invoices.",
             "Close",
             "Delete",
             "Move up",
@@ -4938,7 +4935,7 @@ mod title_bar {
         SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000)
     }
 
-    /// Hermes on, with a measured rate of 78 files a minute.
+    /// Filing on, with a measured rate of 78 files a minute.
     fn with_hermes() -> App {
         let mut snapshot = Snapshot::off();
         snapshot.state = RunnerState::Running;
@@ -5006,10 +5003,10 @@ mod title_bar {
     #[test]
     fn the_chip_names_the_rate_in_the_language_of_the_app() {
         let english = with_hermes();
-        simulator(&english).find("Hermes 78/min processed").unwrap();
+        simulator(&english).find("Filing 78/min processed").unwrap();
         let german = with_hermes().in_language(Language::German);
         simulator(&german)
-            .find("Hermes 78/Min. verarbeitet")
+            .find("Ablage 78/Min. verarbeitet")
             .unwrap();
     }
 
@@ -5541,7 +5538,7 @@ mod ai_model_card {
         use crate::ai_model::InstallOutcome;
         assert!(shows(
             finished(InstallOutcome::TurnedOn),
-            "The AI model is installed. AI is now on: Hermes fills in fields for which there is no rule yet."
+            "The AI model is installed. AI is now on: ncrs fills in fields for which there is no rule yet."
         ));
         assert_eq!(
             messages_after_click(finished(InstallOutcome::TurnedOn), "Done"),
@@ -5931,11 +5928,11 @@ mod settings_tab {
     #[test]
     fn the_search_filters_the_rows_by_label() {
         let mut app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
-        simulator(&app).find("Hermes on").expect("the switch");
+        simulator(&app).find("Filing on").expect("the switch");
         drop(app.update(Message::Settings(SettingsMessage::SearchChanged(
             "threads".to_owned(),
         ))));
-        let switch_hidden = simulator(&app).find("Hermes on").is_err();
+        let switch_hidden = simulator(&app).find("Filing on").is_err();
         assert!(switch_hidden);
         simulator(&app).find("Threads").expect("the threads row");
     }
@@ -6466,9 +6463,9 @@ mod hermes_setup_card {
 
     #[test]
     fn start_sends_its_message_only_when_both_folders_are_chosen() {
-        assert!(clicks(&empty(), "Start Hermes").is_empty());
+        assert!(clicks(&empty(), "Start filing").is_empty());
         assert_eq!(
-            clicks(&filled(), "Start Hermes"),
+            clicks(&filled(), "Start filing"),
             [Message::HermesSetup(HermesSetupMessage::Start)]
         );
     }
@@ -6705,7 +6702,7 @@ mod hermes_overview_page {
     #[test]
     fn hermes_off_offers_to_switch_it_on() {
         assert_eq!(
-            clicks(&off(), "Switch Hermes on"),
+            clicks(&off(), "Switch filing on"),
             [overview_message(HermesOverviewMessage::SwitchHermesOn)]
         );
     }

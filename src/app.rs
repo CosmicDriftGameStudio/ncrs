@@ -22806,7 +22806,7 @@ mod filing_setup_tests {
             .shortcut_label(&Message::FilingStatus(FilingStatusMessage::Toggle))
             .unwrap();
         let notice = app.notice.as_deref().unwrap();
-        assert!(notice.contains("Hermes is on"), "{notice}");
+        assert!(notice.contains("Filing is on"), "{notice}");
         assert!(notice.contains(&key), "{notice}");
         assert!(app.filing.as_ref().unwrap().has_configured_locations());
         assert_eq!(app.filing_config, saved_filing());
@@ -22821,7 +22821,7 @@ mod filing_setup_tests {
         drop(app.update(setup_message(FilingSetupMessage::Saved(Ok(saved_filing())))));
 
         assert!(app.filing_setup.is_none());
-        assert!(app.notice.as_deref().unwrap().contains("Hermes is on"));
+        assert!(app.notice.as_deref().unwrap().contains("Filing is on"));
         assert!(app.pipeline.is_none());
         assert!(app.filing.as_ref().unwrap().has_configured_locations());
     }
@@ -28220,7 +28220,7 @@ mod hermes_roles_and_off_tests {
         assert!(app.hermes_overview.is_some(), "the overview is up");
         assert_eq!(
             app.status_error(),
-            Some("Hermes is off. Switch it on here to sort your documents.")
+            Some("Filing is off. Switch it on here to sort your documents.")
         );
     }
 
@@ -28234,7 +28234,7 @@ mod hermes_roles_and_off_tests {
 
         assert!(app.review_list_for_test().is_none());
         assert!(app.settings_for_test().is_none());
-        assert_eq!(app.notice_for_test(), Some("Hermes restarting …"));
+        assert_eq!(app.notice_for_test(), Some("Filing restarting …"));
     }
 
     #[test]

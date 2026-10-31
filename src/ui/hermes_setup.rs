@@ -18,7 +18,7 @@ use crate::app::fill_template;
 use crate::config::FilingLocation;
 use crate::filing_setup::{shown_path, SetupNote, SetupProblem};
 use crate::hermes_setup::{ExistingIndex, FolderSlot, HermesSetup, SetupFocus};
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{HermesSetupMessage, Message};
 use crate::palette::Palette;
 
@@ -114,6 +114,7 @@ pub fn view<'a>(card: &SetupView<'a>, palette: &Palette) -> Element<'a, Message>
         lang,
         palette,
     )
+    .title_theme(lang.futurama_name(FuturamaName::HermesSetupFrameTitle))
     .buttons(vec![later, start])
     .hints(KeyHints {
         enter: true,

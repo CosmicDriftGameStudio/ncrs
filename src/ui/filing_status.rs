@@ -93,7 +93,8 @@ pub fn view<'a>(
         pdf_library_missing,
     } = setting;
     let budget = LineBudget::of(window);
-    let mut notices = column![].spacing(spacing::LINE_GAP);
+    let mut notices =
+        column![paragraph(lang.text(Msg::FilingStatusExplain), palette)].spacing(spacing::LINE_GAP);
     if let Some(searched) = pdf_library_missing {
         notices = notices.push(kit::warning_box(
             format!(
@@ -114,17 +115,12 @@ pub fn view<'a>(
             palette,
         ));
     }
-    let has_notices = pdf_library_missing.is_some() || badges.counts.is_some();
     if let Some(counts) = badges.counts {
         notices = notices.push(paragraph(counts_sentences(&counts, lang), palette));
     }
     let pipeline =
         container(pipeline_section(status, load, lang, palette)).padding(iced::Padding {
-            top: if has_notices {
-                spacing::SECTION_LEAD
-            } else {
-                0.0
-            },
+            top: spacing::SECTION_LEAD,
             ..iced::Padding::ZERO
         });
     let body = column![
@@ -244,9 +240,18 @@ fn pipeline_section<'a>(
 
 fn load_text(load: Option<Load>, lang: Language) -> String {
     match load {
-        Some(Load::Gentle) => lang.text(Msg::FilingStatusLoadGentle).to_owned(),
-        Some(Load::Balanced) => lang.text(Msg::FilingStatusLoadBalanced).to_owned(),
-        Some(Load::Full) => lang.text(Msg::FilingStatusLoadFull).to_owned(),
+        Some(Load::Gentle) => lang.titled(
+            Msg::FilingStatusLoadGentle,
+            Some(FuturamaName::FilingStatusLoadGentle),
+        ),
+        Some(Load::Balanced) => lang.titled(
+            Msg::FilingStatusLoadBalanced,
+            Some(FuturamaName::FilingStatusLoadBalanced),
+        ),
+        Some(Load::Full) => lang.titled(
+            Msg::FilingStatusLoadFull,
+            Some(FuturamaName::FilingStatusLoadFull),
+        ),
         Some(Load::Workers(count)) => fill_template(
             lang.text(Msg::SettingsLoadWorkers),
             &[("{count}", &count.to_string())],
@@ -602,9 +607,43 @@ mod tests {
     fn the_known_steps_have_visible_names_and_others_keep_theirs() {
         assert_eq!(step_label("intake", Language::English), "Intake");
         assert_eq!(step_label("intake", Language::German), "Annahme");
-        assert_eq!(step_label("review", Language::English), "Pending");
-        assert_eq!(step_label("review", Language::German), "Wiedervorlage");
+        assert_eq!(step_label("review", Language::English), "Review");
+        assert_eq!(step_label("review", Language::German), "Rückfragen");
         assert_eq!(step_label("some_step", Language::English), "some_step");
         assert_eq!(step_label("some_step", Language::German), "some_step");
+    }
+
+    #[test]
+    fn the_standard_languages_name_the_loads_plainly_and_the_futurama_variants_add_the_theme_name()
+    {
+        let shown = |load, lang| load_text(Some(load), lang);
+        for (load, plain_en, plain_de, theme_en, theme_de) in [
+            (
+                Load::Gentle,
+                "Gentle",
+                "Schonend",
+                "By the book",
+                "Dienst nach Vorschrift",
+            ),
+            (
+                Load::Balanced,
+                "Balanced",
+                "Ausgewogen",
+                "Business as usual",
+                "Normalbetrieb",
+            ),
+            (Load::Full, "Full", "Volle Last", "Grade 36", "Grad 36"),
+        ] {
+            assert_eq!(shown(load, Language::English), plain_en);
+            assert_eq!(shown(load, Language::German), plain_de);
+            assert_eq!(
+                shown(load, Language::EnglishFuturama),
+                format!("{plain_en} ({theme_en})")
+            );
+            assert_eq!(
+                shown(load, Language::GermanFuturama),
+                format!("{plain_de} ({theme_de})")
+            );
+        }
     }
 }

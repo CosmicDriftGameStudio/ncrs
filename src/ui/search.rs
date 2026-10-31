@@ -11,7 +11,7 @@ use super::layout::{ROW_HEIGHT, SEARCH_HEADER_HEIGHT, TAG_COLUMN_WIDTH};
 use super::theme::{self, font_size, spacing};
 use crate::app::{fill_template, search_toggle_for_press};
 use crate::fs::search::{LineMatch, SearchError};
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use crate::keymap::Keymap;
 use crate::messages::{Message, SearchMessage};
 use crate::palette::Palette;
@@ -103,10 +103,14 @@ pub fn view<'a>(
 
 /// What the search view's tab in the title bar says.
 pub fn title(search: &SearchView, lang: Language) -> String {
-    fill_template(
+    let plain = fill_template(
         lang.text(Msg::SearchTitle),
         &[("{path}", &search.root.display().to_string())],
-    )
+    );
+    match lang.futurama_name(FuturamaName::ActionSearch) {
+        Some(theme) => format!("{plain} ({theme})"),
+        None => plain,
+    }
 }
 
 fn header<'a>(

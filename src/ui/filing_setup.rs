@@ -16,7 +16,7 @@ use super::theme::{self, font_size, spacing};
 use crate::app::fill_template;
 use crate::config::{ConfigError, FilingLocation, FilingRuleViolation, FilingWriteError};
 use crate::filing_setup::{shown_path, FilingSetup, SetupNote, SetupProblem};
-use crate::i18n::{Language, Msg};
+use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{FilingSetupMessage, Message};
 use crate::palette::Palette;
 
@@ -119,6 +119,7 @@ pub fn view<'a>(
         lang,
         palette,
     )
+    .title_theme(lang.futurama_name(FuturamaName::FilingSetupTitle))
     .buttons(vec![
         action(
             lang.text(Msg::FilingSetupCancel),
