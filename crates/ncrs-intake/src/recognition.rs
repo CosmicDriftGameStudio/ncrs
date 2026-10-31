@@ -13,6 +13,7 @@ use chrono::NaiveDate;
 use ncrs_index::{
     Amount, Condition, ConditionKind, Currency, DocumentFields, Field, Index, ReviewReason, Rule,
     RuleConditions, RuleId, RuleSpec, SenderAliasKind, SenderAliases, TaxContext,
+    TaxContextConditions,
 };
 use tempfile::TempDir;
 
@@ -133,7 +134,7 @@ fn word_rule(phrase: &str, kind: &str, tax_context: TaxContext, filing_pattern: 
         extract_date: None,
         extract_amount: None,
         kind: kind.to_owned(),
-        tax_context,
+        tax_context: Some(tax_context),
         tags: BTreeSet::new(),
         filing_pattern: filing_pattern.to_owned(),
         confirmed: true,
@@ -184,6 +185,20 @@ fn fixed_sender_aliases() -> SenderAliases {
     ])
 }
 
+/// What a user would have entered for the corpus. The corpus letters carry no
+/// addressee block, and nothing in them names a company of the user, so only
+/// the private context has conditions: the salutation of the letters to the
+/// user. A document no context claims goes to review.
+pub fn fixed_tax_contexts() -> Vec<TaxContextConditions> {
+    vec![TaxContextConditions {
+        short_name: "private".to_owned(),
+        conditions: RuleConditions::any_of(vec![
+            Condition::new(ConditionKind::Word, "Frau Beispiel"),
+            Condition::new(ConditionKind::Word, "Ms Example"),
+        ]),
+    }]
+}
+
 /// The rules the measurement plans against, with the ids 1..n in this order.
 /// The first one needs the IBAN of Nordlicht Energie on the document. Rules
 /// that would otherwise both match a document with different results exclude
@@ -214,6 +229,7 @@ pub fn fixed_rules() -> Vec<Rule> {
             extract_date: Some(r"Bescheid vom (\d{2}\.\d{2}\.\d{4})".to_owned()),
             extract_amount: Some(r"Nachzahlung:?\s*([\d.,]+)\s*(?P<currency>EUR)".to_owned()),
             conditions: word_ending_in("steuerbescheid"),
+            tax_context: None,
             ..word_rule(
                 "Steuerbescheid",
                 "Steuerbescheid",
@@ -232,6 +248,7 @@ pub fn fixed_rules() -> Vec<Rule> {
                     .chain([Condition::not(ConditionKind::Word, "rechnung")])
                     .collect(),
             ),
+            tax_context: None,
             ..word_rule(
                 "Vertrag",
                 "Vertrag",
@@ -266,6 +283,7 @@ pub fn fixed_rules() -> Vec<Rule> {
                 Condition::new(ConditionKind::Word, "Sehr geehrte"),
                 Condition::not(ConditionKind::Word, "Kündigung"),
             ]),
+            tax_context: None,
             ..word_rule(
                 "Sehr geehrte",
                 "Brief",
@@ -275,6 +293,7 @@ pub fn fixed_rules() -> Vec<Rule> {
         },
         RuleSpec {
             extract_date: Some(DATE_ISO.to_owned()),
+            tax_context: None,
             ..word_rule(
                 "Dear",
                 "Letter",
@@ -310,6 +329,8 @@ pub enum PlanningOutcome {
     UnconfirmedRule,
     Conflict,
     MissingField(Field),
+    /// The conditions of the tax contexts named none or several.
+    TaxContextUnclear,
 }
 
 fn score_values<T: PartialEq>(expected: Option<T>, actual: Option<T>) -> FieldScore {
@@ -430,11 +451,12 @@ impl fmt::Display for RecognitionReport {
             .collect();
         writeln!(
             f,
-            "planned: {}, no rule: {}, unconfirmed rule: {}, conflicts: {}, missing field: {} ({})",
+            "planned: {}, no rule: {}, unconfirmed rule: {}, conflicts: {}, tax context unclear: {}, missing field: {} ({})",
             self.outcome_count(|outcome| outcome == PlanningOutcome::Planned),
             self.outcome_count(|outcome| outcome == PlanningOutcome::NoRule),
             self.outcome_count(|outcome| outcome == PlanningOutcome::UnconfirmedRule),
             self.outcome_count(|outcome| outcome == PlanningOutcome::Conflict),
+            self.outcome_count(|outcome| outcome == PlanningOutcome::TaxContextUnclear),
             self.outcome_count(|outcome| matches!(outcome, PlanningOutcome::MissingField(_))),
             missing_per_field.join(", ")
         )?;
@@ -456,6 +478,9 @@ fn outcome_of(planning: &Planning) -> PlanningOutcome {
             ReviewReason::NoMatchingRule => PlanningOutcome::NoRule,
             ReviewReason::RuleConflict => PlanningOutcome::Conflict,
             ReviewReason::MissingField(field) => PlanningOutcome::MissingField(*field),
+            ReviewReason::NoTaxContextMatches | ReviewReason::SeveralTaxContextsMatch => {
+                PlanningOutcome::TaxContextUnclear
+            }
             // `plan` gives no other reason; the later steps set them.
             ReviewReason::UnconfirmedRule
             | ReviewReason::TargetExists
@@ -487,6 +512,7 @@ fn chosen_rule_and_fields(planning: &Planning) -> (Option<RuleId>, &DocumentFiel
 pub fn measure(
     corpus: &[CorpusDocument],
     rules: &[Rule],
+    tax_contexts: &[TaxContextConditions],
     mut fill_open_fields: impl FnMut(&CorpusDocument, &DocumentFields) -> Option<DocumentFields>,
 ) -> RecognitionReport {
     let sender_aliases = fixed_sender_aliases();
@@ -506,6 +532,7 @@ pub fn measure(
                     fields: &detected,
                     path: None,
                     sender_aliases: &sender_aliases,
+                    tax_contexts,
                 },
             );
             let planning = match rules_planning {
@@ -514,6 +541,7 @@ pub fn measure(
                     rule,
                     matching_rules,
                     fields,
+                    tax_context_assigned_by,
                 } => match fill_open_fields(document, &fields) {
                     Some(merged) if matches!(reason, ReviewReason::MissingField(_)) => plan(
                         rules,
@@ -522,6 +550,7 @@ pub fn measure(
                             fields: &merged,
                             path: None,
                             sender_aliases: &sender_aliases,
+                            tax_contexts,
                         },
                     ),
                     Some(merged) => Planning::Review {
@@ -529,12 +558,14 @@ pub fn measure(
                         rule,
                         matching_rules,
                         fields: merged,
+                        tax_context_assigned_by,
                     },
                     None => Planning::Review {
                         reason,
                         rule,
                         matching_rules,
                         fields,
+                        tax_context_assigned_by,
                     },
                 },
                 other => other,
@@ -553,7 +584,7 @@ fn result_of(document: &CorpusDocument, planning: &Planning) -> DocumentResult {
         .collect();
     let assigned_wrongly = [Field::Kind, Field::TaxContext]
         .into_iter()
-        .any(|field| score_field(field, &document.expected, actual) != FieldScore::Hit);
+        .any(|field| score_field(field, &document.expected, actual) == FieldScore::Wrong);
     DocumentResult {
         name: document.name.clone(),
         outcome: outcome_of(planning),
@@ -565,7 +596,12 @@ fn result_of(document: &CorpusDocument, planning: &Planning) -> DocumentResult {
 
 /// The corpus against the fixed rules, nothing filled in by an AI.
 pub fn measure_rules_only() -> RecognitionReport {
-    measure(&load_corpus(), &fixed_rules(), |_, _| None)
+    measure(
+        &load_corpus(),
+        &fixed_rules(),
+        &fixed_tax_contexts(),
+        |_, _| None,
+    )
 }
 
 #[cfg(test)]
@@ -589,7 +625,7 @@ mod tests {
     }
 
     fn only_result(corpus: &[CorpusDocument]) -> DocumentResult {
-        measure(corpus, &fixed_rules(), |_, _| None)
+        measure(corpus, &fixed_rules(), &fixed_tax_contexts(), |_, _| None)
             .results
             .remove(0)
     }

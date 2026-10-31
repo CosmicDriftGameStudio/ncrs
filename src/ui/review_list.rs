@@ -156,6 +156,12 @@ pub fn reason_text(reason: ReviewReason, text_state: TextState, lang: Language) 
             .to_owned(),
         ReviewReason::UnconfirmedRule => lang.text(Msg::ReviewListReasonUnconfirmed).to_owned(),
         ReviewReason::RuleConflict => lang.text(Msg::ReviewListReasonRuleConflict).to_owned(),
+        ReviewReason::NoTaxContextMatches => {
+            lang.text(Msg::ReviewListReasonNoTaxContext).to_owned()
+        }
+        ReviewReason::SeveralTaxContextsMatch => lang
+            .text(Msg::ReviewListReasonSeveralTaxContexts)
+            .to_owned(),
         ReviewReason::TargetExists => lang.text(Msg::ReviewListReasonTargetExists).to_owned(),
         ReviewReason::MissingField(field) => named(Msg::ReviewListReasonMissingField, field),
         ReviewReason::LowConfidence(field) => named(Msg::ReviewListReasonLowConfidence, field),
@@ -326,6 +332,21 @@ fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element
         .iter()
         .position(|(_, choice)| *choice == values.tax_context)
         .unwrap_or_default();
+    let assigned_by = state
+        .selected()
+        .and_then(|item| item.tax_context_assigned_by.as_ref())
+        .map(|assigned_by| {
+            fill_template(
+                lang.text(Msg::ReviewListTaxContextFromCondition),
+                &[
+                    (
+                        "{kind}",
+                        lang.text(kit::condition_kind_name(assigned_by.kind)),
+                    ),
+                    ("{value}", &assigned_by.value),
+                ],
+            )
+        });
     column![
         row_of(
             Msg::ReviewListFieldSender,
@@ -337,10 +358,12 @@ fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element
             None,
             text_field(FormField::Kind, KIND_ID, &values.kind),
         ),
-        row_of(
-            Msg::ReviewListFieldTaxContext,
+        form_row(
+            lang.text(Msg::ReviewListFieldTaxContext),
             None,
+            assigned_by.as_deref(),
             kit::segmented(&tax_options, selected_tax, true, palette),
+            palette,
         ),
         row_of(
             Msg::ReviewListFieldDate,

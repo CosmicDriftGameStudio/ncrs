@@ -7031,6 +7031,150 @@
       "context": "Button of the delete question on the Hermes settings page: deletes the tax context and moves its uses.",
       "en": "Delete",
       "de": "Löschen"
+    },
+    {
+      "key": "settings.tax_contexts_conditions",
+      "context": "Button in a tax context row on the Hermes settings page: opens the conditions that assign documents to this context.",
+      "en": "Conditions",
+      "de": "Bedingungen"
+    },
+    {
+      "key": "settings.tax_contexts_conditions_heading",
+      "context": "Label of the condition editor of a tax context on the Hermes settings page. Takes the context name.",
+      "en": "Conditions of {name}",
+      "de": "Bedingungen von {name}"
+    },
+    {
+      "key": "settings.tax_contexts_conditions_note",
+      "context": "Note of the condition editor of a tax context: the order in which a document gets its tax context.",
+      "en": "A rule that sets a context comes first, a context already set stays. Otherwise the conditions of all contexts decide: if exactly one context fits, the document gets it. If none or several fit, the document goes to the review.",
+      "de": "Zuerst zählt eine Regel, die einen Kontext setzt, ein schon gesetzter Kontext bleibt. Sonst entscheiden die Bedingungen aller Kontexte: Passt genau ein Kontext, bekommt das Dokument ihn. Passt keiner oder passen mehrere, kommt das Dokument in die Prüfung."
+    },
+    {
+      "key": "settings.tax_contexts_conditions_loading",
+      "context": "Row of the condition editor of a tax context while the stored conditions are read.",
+      "en": "Reading the conditions …",
+      "de": "Bedingungen werden gelesen …"
+    },
+    {
+      "key": "settings.tax_contexts_conditions_empty",
+      "context": "Row of the condition editor of a tax context that has no condition yet.",
+      "en": "No conditions yet: documents are not assigned to this context automatically.",
+      "de": "Noch keine Bedingungen: Dokumente werden diesem Kontext nicht automatisch zugeordnet."
+    },
+    {
+      "key": "settings.tax_contexts_combinator_label",
+      "context": "Label of the choice between any and all conditions in the condition editor of a tax context.",
+      "en": "The context fits when",
+      "de": "Der Kontext passt, wenn"
+    },
+    {
+      "key": "settings.tax_contexts_combinator_any",
+      "context": "Choice in the condition editor of a tax context: one condition is enough.",
+      "en": "one condition holds",
+      "de": "eine Bedingung zutrifft"
+    },
+    {
+      "key": "settings.tax_contexts_combinator_all",
+      "context": "Choice in the condition editor of a tax context: every condition must hold.",
+      "en": "all conditions hold",
+      "de": "alle Bedingungen zutreffen"
+    },
+    {
+      "key": "settings.tax_contexts_condition_remove",
+      "context": "Button in the condition editor of a tax context: removes the condition of the row.",
+      "en": "Remove",
+      "de": "Entfernen"
+    },
+    {
+      "key": "settings.tax_contexts_condition_kind_label",
+      "context": "Label of the kind choice for a new condition in the condition editor of a tax context.",
+      "en": "New condition",
+      "de": "Neue Bedingung"
+    },
+    {
+      "key": "settings.tax_contexts_condition_value_label",
+      "context": "Label of the text field for a new condition in the condition editor of a tax context.",
+      "en": "Text to look for",
+      "de": "Gesuchter Text"
+    },
+    {
+      "key": "settings.tax_contexts_condition_add",
+      "context": "Button in the condition editor of a tax context: adds the typed condition to the list.",
+      "en": "Add",
+      "de": "Hinzufügen"
+    },
+    {
+      "key": "condition_kind.substring",
+      "context": "Kind of a condition: the document text contains the value.",
+      "en": "Contains",
+      "de": "Enthält"
+    },
+    {
+      "key": "condition_kind.word",
+      "context": "Kind of a condition: the document text contains the value as a whole word.",
+      "en": "Word",
+      "de": "Wort"
+    },
+    {
+      "key": "condition_kind.regex",
+      "context": "Kind of a condition: the document text matches a regular expression.",
+      "en": "Pattern",
+      "de": "Muster"
+    },
+    {
+      "key": "condition_kind.sender",
+      "context": "Kind of a condition: the sender of the document is the value.",
+      "en": "Sender",
+      "de": "Absender"
+    },
+    {
+      "key": "condition_kind.sender_address",
+      "context": "Kind of a condition: the address of the sender is the value.",
+      "en": "Sender address",
+      "de": "Absenderadresse"
+    },
+    {
+      "key": "condition_kind.iban",
+      "context": "Kind of a condition: the document names this IBAN.",
+      "en": "Bank account (IBAN)",
+      "de": "Konto (IBAN)"
+    },
+    {
+      "key": "condition_kind.tax_id",
+      "context": "Kind of a condition: the document names this tax number.",
+      "en": "Tax number",
+      "de": "Steuernummer"
+    },
+    {
+      "key": "condition_kind.recipient",
+      "context": "Kind of a condition: the address block of the document names this recipient.",
+      "en": "Recipient",
+      "de": "Empfänger"
+    },
+    {
+      "key": "condition_kind.folder",
+      "context": "Kind of a condition: the document lies in this folder.",
+      "en": "Folder",
+      "de": "Ordner"
+    },
+    {
+      "key": "review_list.reason_no_tax_context",
+      "context": "Review reason in the review list: the conditions of no tax context fit the document.",
+      "en": "No tax context fits",
+      "de": "Kein Steuerkontext passt"
+    },
+    {
+      "key": "review_list.reason_several_tax_contexts",
+      "context": "Review reason in the review list: the conditions of several tax contexts fit the document, so none was chosen.",
+      "en": "Several tax contexts fit",
+      "de": "Mehrere Steuerkontexte passen"
+    },
+    {
+      "key": "review_list.tax_context_from_condition",
+      "context": "Line in the review list form: the tax context was assigned by a condition of the context. Takes the kind of the condition and its value.",
+      "en": "Tax context from condition ({kind}: {value})",
+      "de": "Steuerkontext aus Bedingung ({kind}: {value})"
     }
   ]
 }

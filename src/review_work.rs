@@ -13,10 +13,14 @@ use std::sync::{Arc, Mutex, PoisonError};
 use chrono::NaiveDate;
 use ncrs_index::{
     Amount, BatchKind, Condition, ConditionKind, Currency, DocumentFields, DocumentId,
-    DocumentStatus, FieldOrigin, IncludeOutcome, Index, IndexError, ReviewEntryId, ReviewReason,
-    RuleConditions, RuleId, RuleSpec, SenderAliases, TaxContext, TaxContextEntry,
+    DocumentStatus, Field, FieldOrigin, IncludeOutcome, Index, IndexError, ReviewEntryId,
+    ReviewReason, RuleConditions, RuleId, RuleSpec, SenderAliases, TaxContext,
+    TaxContextConditions, TaxContextEntry,
 };
-use ncrs_intake::{pattern_is_valid, plan, render_pattern, text_is_readable, PlanInput, Planning};
+use ncrs_intake::{
+    pattern_is_valid, plan, render_pattern, text_is_readable, AssigningCondition, PlanInput,
+    Planning,
+};
 
 use crate::execute::{execute_with, ItemOutcome, SkipReason};
 use crate::filing_work::target_of;
@@ -61,6 +65,8 @@ pub struct ReviewItem {
     pub fields: DocumentFields,
     /// The pattern of that rule, as a start for the one the user confirms.
     pub proposed_pattern: Option<String>,
+    /// The condition of a tax context that put the document into it.
+    pub tax_context_assigned_by: Option<AssigningCondition>,
 }
 
 impl ReviewItem {
@@ -223,7 +229,7 @@ impl ReviewAccess {
             extract_date: None,
             extract_amount: None,
             kind: kind.to_owned(),
-            tax_context: tax_context.unwrap_or(TaxContext::None),
+            tax_context,
             tags,
             filing_pattern: pattern.to_owned(),
             confirmed: true,
@@ -252,6 +258,7 @@ fn load_matching(
 ) -> Result<Vec<ReviewItem>, IndexError> {
     let rules = index.rules()?;
     let sender_aliases = index.confirmed_sender_aliases()?;
+    let tax_contexts = index.assignable_tax_contexts()?;
     let mut items = Vec::new();
     for entry in index.open_reviews()? {
         let Some(document) = index.document(entry.document_id)? else {
@@ -264,6 +271,7 @@ fn load_matching(
             index,
             &rules,
             &sender_aliases,
+            &tax_contexts,
             &entry,
             document,
         )?);
@@ -275,6 +283,7 @@ fn review_item(
     index: &Index,
     rules: &[ncrs_index::Rule],
     sender_aliases: &SenderAliases,
+    tax_contexts: &[TaxContextConditions],
     entry: &ncrs_index::ReviewEntry,
     document: ncrs_index::Document,
 ) -> Result<ReviewItem, IndexError> {
@@ -287,6 +296,7 @@ fn review_item(
             fields: &document.fields,
             path: Some(&document.path),
             sender_aliases,
+            tax_contexts,
         },
     );
     let (fields, proposed_pattern) = match planning {
@@ -303,6 +313,13 @@ fn review_item(
         ),
         Planning::Review { rule: None, .. } | Planning::Plan(_) => (document.fields, None),
     };
+    let tax_context_assigned_by = match index.field_origins(document.id)?.of(Field::TaxContext) {
+        FieldOrigin::Condition { kind, value } => Some(AssigningCondition { kind, value }),
+        FieldOrigin::Unknown
+        | FieldOrigin::Rule(_)
+        | FieldOrigin::Ai { .. }
+        | FieldOrigin::Manual => None,
+    };
     Ok(ReviewItem {
         entry: entry.id,
         document_id: document.id,
@@ -311,6 +328,7 @@ fn review_item(
         reason: entry.reason,
         fields,
         proposed_pattern,
+        tax_context_assigned_by,
     })
 }
 
@@ -322,6 +340,7 @@ fn suggestion_for(
 ) -> Result<Option<(TextState, Option<PathBuf>)>, IndexError> {
     let rules = index.rules()?;
     let sender_aliases = index.confirmed_sender_aliases()?;
+    let tax_contexts = index.assignable_tax_contexts()?;
     for entry in index.open_reviews()? {
         let Some(document) = index.document(entry.document_id)? else {
             continue;
@@ -329,7 +348,14 @@ fn suggestion_for(
         if document.path != path {
             continue;
         }
-        let item = review_item(index, &rules, &sender_aliases, &entry, document)?;
+        let item = review_item(
+            index,
+            &rules,
+            &sender_aliases,
+            &tax_contexts,
+            &entry,
+            document,
+        )?;
         let target = item
             .proposed_pattern
             .and_then(|pattern| render_pattern(&pattern, &item.fields));
@@ -785,6 +811,73 @@ mod tests {
         create("Company A", "", "{kind}").unwrap_err();
         create("Company A", "invoice", "{nonsense}").unwrap_err();
         assert!(setup.with_index(|index| index.rules().unwrap()).is_empty());
+    }
+
+    #[test]
+    fn a_rule_made_with_an_open_tax_context_leaves_the_context_open() {
+        let setup = Setup::new();
+        let access = setup.access();
+
+        access
+            .create_rule_for_sender("Company A", "invoice", None, BTreeSet::new(), "{kind}")
+            .unwrap();
+        access
+            .create_rule_for_sender(
+                "Company B",
+                "invoice",
+                Some(TaxContext::None),
+                BTreeSet::new(),
+                "{kind}",
+            )
+            .unwrap();
+
+        let contexts: Vec<_> = setup
+            .with_index(|index| index.rules().unwrap())
+            .into_iter()
+            .map(|rule| rule.spec.tax_context)
+            .collect();
+        assert_eq!(contexts, vec![None, Some(TaxContext::None)]);
+    }
+
+    #[test]
+    fn a_review_item_knows_the_condition_that_assigned_its_tax_context() {
+        let setup = Setup::new();
+        let assigned = setup.in_review("assigned.pdf");
+        let manual = setup.in_review("manual.pdf");
+        setup.with_index(|index| {
+            let fields = Setup::fields("Company A");
+            index
+                .set_document_fields(assigned, &fields, |field| match field {
+                    Field::TaxContext => FieldOrigin::Condition {
+                        kind: ConditionKind::Recipient,
+                        value: "Firma A GmbH".to_owned(),
+                    },
+                    _ => FieldOrigin::Unknown,
+                })
+                .unwrap();
+            index
+                .set_document_fields(manual, &fields, |_| FieldOrigin::Manual)
+                .unwrap();
+        });
+
+        let items = setup.access().load().unwrap();
+
+        let assigned_by = |id: DocumentId| {
+            items
+                .iter()
+                .find(|item| item.document_id == id)
+                .unwrap()
+                .tax_context_assigned_by
+                .clone()
+        };
+        assert_eq!(
+            assigned_by(assigned),
+            Some(AssigningCondition {
+                kind: ConditionKind::Recipient,
+                value: "Firma A GmbH".to_owned(),
+            })
+        );
+        assert_eq!(assigned_by(manual), None);
     }
 
     #[test]

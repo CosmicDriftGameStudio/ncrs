@@ -45,7 +45,7 @@ pub fn rule_spec() -> RuleSpec {
         extract_date: None,
         extract_amount: None,
         kind: "Invoice".to_owned(),
-        tax_context: TaxContext::named("company"),
+        tax_context: Some(TaxContext::named("company")),
         tags: BTreeSet::from(["services".to_owned(), "2026".to_owned()]),
         filing_pattern: "{year}/{sender}".to_owned(),
         confirmed: false,

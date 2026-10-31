@@ -6,7 +6,8 @@ use ncrs_ai::Provider;
 use ncrs_index::{DocumentStatus, Field, FieldOrigin, IndexError, ReviewReason};
 use ncrs_intake::text_is_readable;
 use ncrs_intake::{
-    detect_sender, plan, PlanInput, Planning, StabilityTracker, TextChain, TextError,
+    detect_sender, plan, planned_field_origin, PlanInput, Planning, StabilityTracker, TextChain,
+    TextError,
 };
 use ncrs_intake::{settle_location, take_in, IntakeError, Location, LocationMode, Outcome};
 
@@ -214,6 +215,7 @@ impl Step for RulesStep {
             for offer in detection.iter().flat_map(|found| &found.offers) {
                 index.offer_sender_alias(&offer.sender, offer.kind, &offer.value)?;
             }
+            let tax_contexts = index.assignable_tax_contexts()?;
             let planning = plan(
                 &rules,
                 &PlanInput {
@@ -221,25 +223,35 @@ impl Step for RulesStep {
                     fields: &known,
                     path: Some(&item.path),
                     sender_aliases: &aliases,
+                    tax_contexts: &tax_contexts,
                 },
             );
-            let found = match &planning {
-                Planning::Plan(filing) => &filing.fields,
-                Planning::Review { fields, .. } => fields,
-            };
-            if *found != document.fields {
-                let origin = match &planning {
-                    Planning::Plan(filing) => FieldOrigin::Rule(Some(filing.rule)),
-                    Planning::Review { rule, .. } => rule.map_or(FieldOrigin::Unknown, |rule_id| {
+            let (found, rule_origin, assignment) = match &planning {
+                Planning::Plan(filing) => (
+                    &filing.fields,
+                    FieldOrigin::Rule(Some(filing.rule)),
+                    filing.tax_context_assigned_by.as_ref(),
+                ),
+                Planning::Review {
+                    fields,
+                    rule,
+                    tax_context_assigned_by,
+                    ..
+                } => (
+                    fields,
+                    rule.map_or(FieldOrigin::Unknown, |rule_id| {
                         FieldOrigin::Rule(Some(rule_id))
                     }),
-                };
+                    tax_context_assigned_by.as_ref(),
+                ),
+            };
+            if *found != document.fields {
                 let sender_was_detected = detected_name.is_some();
                 index.set_document_fields(id, found, |field| {
                     if field == Field::Sender && sender_was_detected {
                         FieldOrigin::Rule(None)
                     } else {
-                        origin
+                        planned_field_origin(field, &rule_origin, assignment)
                     }
                 })?;
             }

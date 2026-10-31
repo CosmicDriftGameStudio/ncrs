@@ -1135,7 +1135,7 @@ mod tests {
             extract_date: None,
             extract_amount: None,
             kind: "Insurance".to_owned(),
-            tax_context: TaxContext::None,
+            tax_context: Some(TaxContext::None),
             tags: Default::default(),
             filing_pattern: "{year}".to_owned(),
             confirmed: false,
@@ -1261,7 +1261,7 @@ mod tests {
         assert_eq!(context_of(3), Some(TaxContext::None));
         assert_eq!(context_of(4), None);
         let rule = index.rule(RuleId::new(6)).unwrap().unwrap();
-        assert_eq!(rule.spec.tax_context, TaxContext::named("private"));
+        assert_eq!(rule.spec.tax_context, Some(TaxContext::named("private")));
         assert_eq!(rule.spec.filing_pattern, "{tax_context}/{year}");
 
         let queries = index.saved_queries().unwrap();
@@ -1302,6 +1302,94 @@ mod tests {
                 ("Firma".to_owned(), "company".to_owned()),
                 ("Privat".to_owned(), "private".to_owned())
             ]
+        );
+    }
+
+    #[test]
+    fn a_version_16_database_keeps_origins_and_rule_contexts_and_gains_conditions() {
+        use crate::model::{
+            Combinator, ConditionKind, DocumentId, Field, FieldOrigin, RuleConditions, RuleId,
+            TaxContext, TaxContextId,
+        };
+
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let old = Index::create_plain_with_migrations(&path, &MIGRATIONS[..16]).unwrap();
+        assert_eq!(user_version(&old), 16);
+        old.conn
+            .execute_batch(
+                "INSERT INTO document_kind (id, name, name_key) VALUES (1, 'Invoice', 'invoice');
+                 INSERT INTO rule (id, kind_id, tax_context_id, filing_pattern, confirmed)
+                 VALUES (6, 1, 1, '{tax_context}/{year}', 1),
+                        (7, 1, 0, '{year}', 1);
+                 INSERT INTO rule_condition (rule_id, position, kind, value)
+                 VALUES (6, 0, 'word', 'rent'), (7, 0, 'word', 'tax');
+                 INSERT INTO document (id, hash, path, source, received_at, status, tax_context_id)
+                 VALUES (1, zeroblob(32), 'a.pdf', 'inbox', 1700000000, 'planned', 1),
+                        (2, randomblob(32), 'b.pdf', 'inbox', 1700000000, 'planned', 2);
+                 INSERT INTO document_field_origin (document_id, field, origin, rule_id, confidence)
+                 VALUES (1, 'kind', 'rule', 6, NULL),
+                        (1, 'tax_context', 'rule', 6, NULL),
+                        (2, 'kind', 'ai', NULL, 83),
+                        (2, 'tax_context', 'manual', NULL, NULL);",
+            )
+            .unwrap();
+        drop(old);
+
+        let mut index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
+
+        assert_eq!(user_version(&index), latest_version());
+        let first = index.field_origins(DocumentId::new(1)).unwrap();
+        assert_eq!(
+            first.of(Field::Kind),
+            FieldOrigin::Rule(Some(RuleId::new(6)))
+        );
+        assert_eq!(
+            first.of(Field::TaxContext),
+            FieldOrigin::Rule(Some(RuleId::new(6)))
+        );
+        let second = index.field_origins(DocumentId::new(2)).unwrap();
+        assert_eq!(
+            second.of(Field::Kind),
+            FieldOrigin::Ai {
+                confidence_percent: 83
+            }
+        );
+        assert_eq!(second.of(Field::TaxContext), FieldOrigin::Manual);
+        let context_of_rule = |id: i64| {
+            index
+                .rule(RuleId::new(id))
+                .unwrap()
+                .unwrap()
+                .spec
+                .tax_context
+        };
+        assert_eq!(context_of_rule(6), Some(TaxContext::named("company")));
+        assert_eq!(context_of_rule(7), Some(TaxContext::None));
+        assert_eq!(
+            index.tax_context_conditions(TaxContextId::new(1)).unwrap(),
+            RuleConditions {
+                combinator: Combinator::AnyOf,
+                list: Vec::new()
+            }
+        );
+        assert!(index.assignable_tax_contexts().unwrap().is_empty());
+
+        let mut fields = index.document(DocumentId::new(2)).unwrap().unwrap().fields;
+        fields.tax_context = Some(TaxContext::named("company"));
+        let origin = FieldOrigin::Condition {
+            kind: ConditionKind::Recipient,
+            value: "Firma A GmbH".to_owned(),
+        };
+        index
+            .set_document_fields(DocumentId::new(2), &fields, |_| origin.clone())
+            .unwrap();
+        assert_eq!(
+            index
+                .field_origins(DocumentId::new(2))
+                .unwrap()
+                .of(Field::TaxContext),
+            origin
         );
     }
 

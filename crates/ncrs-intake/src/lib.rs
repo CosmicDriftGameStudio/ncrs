@@ -41,8 +41,9 @@ pub use extract::{
     extract_amount, extract_date, extract_number, parse_amount, parse_currency, parse_date,
 };
 pub use filing_plan::{
-    contains_condition_holds, missing_field, pattern_is_valid, plan, render_pattern, FilingPlan,
-    PlanInput, Planning, FIELD_ORDER,
+    contains_condition_holds, missing_field, pattern_is_valid, plan, planned_field_origin,
+    render_pattern, AssigningCondition, FilingPlan, PlanInput, Planning, TaxContextAssignment,
+    FIELD_ORDER,
 };
 pub use location::{Location, LocationMode};
 pub use ocr::{

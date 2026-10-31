@@ -248,7 +248,7 @@ pub mod tests {
             extract_date: None,
             extract_amount: None,
             kind: kind.to_owned(),
-            tax_context: TaxContext::None,
+            tax_context: Some(TaxContext::None),
             tags: Default::default(),
             filing_pattern: pattern.to_owned(),
             confirmed,

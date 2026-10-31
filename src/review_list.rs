@@ -563,6 +563,7 @@ pub mod tests {
                 ..DocumentFields::default()
             },
             proposed_pattern: Some("{sender}/{date}_{kind}".to_owned()),
+            tax_context_assigned_by: None,
         }
     }
 
@@ -608,6 +609,30 @@ pub mod tests {
         let mut list = ReviewList::new();
         list.set_tax_contexts(stored_tax_contexts());
         list.loaded(vec![blank]);
+        list
+    }
+
+    /// A document a condition assigned a context to, one no condition fits and
+    /// one that several conditions fit.
+    pub fn tax_context_list() -> ReviewList {
+        use ncrs_index::ConditionKind;
+        use ncrs_intake::AssigningCondition;
+
+        let [first, second, third] = <[_; 3]>::try_from(ids_of(3)).unwrap();
+        let mut assigned = item(first, "scan-1.pdf", "Telekom");
+        assigned.tax_context_assigned_by = Some(AssigningCondition {
+            kind: ConditionKind::Recipient,
+            value: "Firma A GmbH".to_owned(),
+        });
+        let mut none_fit = item(second, "scan-2.pdf", "Agency B");
+        none_fit.reason = ReviewReason::NoTaxContextMatches;
+        none_fit.fields.tax_context = None;
+        let mut several_fit = item(third, "scan-3.pdf", "Frost");
+        several_fit.reason = ReviewReason::SeveralTaxContextsMatch;
+        several_fit.fields.tax_context = None;
+        let mut list = ReviewList::new();
+        list.set_tax_contexts(stored_tax_contexts());
+        list.loaded(vec![assigned, none_fit, several_fit]);
         list
     }
 

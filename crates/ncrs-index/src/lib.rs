@@ -1,6 +1,7 @@
 //! Encrypted workspace index: a SQLCipher database whose key lives in the
 //! operating system's credential store.
 
+mod condition_store;
 mod documents;
 mod error;
 mod hermes_column;
@@ -39,8 +40,8 @@ pub use model::{
     NoActionReason, PlanId, PlanItem, PlanOutcome, QuerySpec, ReorganisationPlan, ReviewEntry,
     ReviewEntryId, ReviewReason, Rule, RuleConditions, RuleEvidence, RuleId, RuleSpec,
     RuleSuggestion, SavedQuery, SavedQueryId, SenderAlias, SenderAliasId, SenderAliasKind,
-    SenderAliasState, SenderAliases, StatusCounts, SubtreePattern, TaxContext, TaxContextEntry,
-    TaxContextId, TaxContextUsage,
+    SenderAliasState, SenderAliases, StatusCounts, SubtreePattern, TaxContext,
+    TaxContextConditions, TaxContextEntry, TaxContextId, TaxContextUsage,
 };
 pub use regex_limits::compile_bounded_regex;
 pub use tax_contexts::{MAX_NAME_CHARS, MAX_SHORT_NAME_CHARS};

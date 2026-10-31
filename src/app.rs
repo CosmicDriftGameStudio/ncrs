@@ -11675,6 +11675,48 @@ impl App {
                 state.cancel();
                 Task::none()
             }
+            TaxContextsMessage::EditConditions(id) => {
+                state.begin_conditions(id);
+                self.tax_context_work(
+                    move |access| access.conditions(id),
+                    move |result| TaxContextsMessage::ConditionsLoaded { id, result },
+                )
+            }
+            TaxContextsMessage::ConditionsLoaded { id, result } => {
+                state.conditions_loaded(id, result);
+                Task::none()
+            }
+            TaxContextsMessage::CombinatorChosen(combinator) => {
+                state.choose_combinator(combinator);
+                Task::none()
+            }
+            TaxContextsMessage::NewConditionKindChosen(kind) => {
+                state.choose_new_condition_kind(kind);
+                Task::none()
+            }
+            TaxContextsMessage::NewConditionValueChanged(value) => {
+                state.edit_new_condition_value(value);
+                Task::none()
+            }
+            TaxContextsMessage::AddCondition => {
+                state.add_condition();
+                Task::none()
+            }
+            TaxContextsMessage::RemoveCondition(position) => {
+                state.remove_condition(position);
+                Task::none()
+            }
+            TaxContextsMessage::SaveConditions => match state.conditions_request() {
+                Some(request) => self.tax_context_work(
+                    move |access| access.set_conditions(request.id, &request.conditions),
+                    TaxContextsMessage::ConditionsSaved,
+                ),
+                None => Task::none(),
+            },
+            TaxContextsMessage::ConditionsSaved(result) => {
+                state.conditions_saved(result);
+                Task::none()
+            }
         }
     }
 

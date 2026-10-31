@@ -259,7 +259,8 @@ impl Index {
     /// Fields without a stored origin read as `FieldOrigin::Unknown`.
     pub fn field_origins(&self, id: DocumentId) -> Result<FieldOrigins, IndexError> {
         let mut statement = self.connection().prepare(
-            "SELECT field, origin, rule_id, confidence FROM document_field_origin
+            "SELECT field, origin, rule_id, confidence, condition_kind, condition_value
+             FROM document_field_origin
              WHERE document_id = ?1",
         )?;
         let rows = statement
@@ -269,18 +270,25 @@ impl Index {
                     row.get::<_, String>(1)?,
                     row.get::<_, Option<i64>>(2)?,
                     row.get::<_, Option<i64>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
         let mut stored = HashMap::new();
-        for (field_name, origin, rule_id, confidence) in rows {
+        for (field_name, origin, rule_id, confidence, condition_kind, condition_value) in rows {
             let field = Field::ALL
                 .into_iter()
                 .find(|candidate| candidate.as_str() == field_name)
                 .ok_or_else(|| corrupt("document_field_origin.field", &field_name))?;
             stored.insert(
                 field,
-                FieldOrigin::from_columns(&origin, rule_id, confidence)?,
+                FieldOrigin::from_columns(
+                    &origin,
+                    rule_id,
+                    confidence,
+                    condition_kind.zip(condition_value),
+                )?,
             );
         }
         Ok(FieldOrigins::new(stored))
@@ -420,22 +428,36 @@ fn store_field_origin(
     field: Field,
     origin: Option<FieldOrigin>,
 ) -> Result<(), IndexError> {
-    let Some(kind) = origin.and_then(FieldOrigin::kind_column) else {
+    let Some(kind) = origin.as_ref().and_then(FieldOrigin::kind_column) else {
         conn.execute(
             "DELETE FROM document_field_origin WHERE document_id = ?1 AND field = ?2",
             params![id.get(), field.as_str()],
         )?;
         return Ok(());
     };
-    let rule_id = origin.and_then(FieldOrigin::rule_column);
-    let confidence = origin.and_then(FieldOrigin::confidence_column);
+    let rule_id = origin.as_ref().and_then(FieldOrigin::rule_column);
+    let confidence = origin.as_ref().and_then(FieldOrigin::confidence_column);
+    let condition_kind = origin.as_ref().and_then(FieldOrigin::condition_kind_column);
+    let condition_value = origin
+        .as_ref()
+        .and_then(FieldOrigin::condition_value_column);
     conn.execute(
-        "INSERT INTO document_field_origin (document_id, field, origin, rule_id, confidence)
-         VALUES (?1, ?2, ?3, ?4, ?5)
+        "INSERT INTO document_field_origin
+             (document_id, field, origin, rule_id, confidence, condition_kind, condition_value)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
          ON CONFLICT (document_id, field) DO UPDATE SET
              origin = excluded.origin, rule_id = excluded.rule_id,
-             confidence = excluded.confidence",
-        params![id.get(), field.as_str(), kind, rule_id, confidence],
+             confidence = excluded.confidence, condition_kind = excluded.condition_kind,
+             condition_value = excluded.condition_value",
+        params![
+            id.get(),
+            field.as_str(),
+            kind,
+            rule_id,
+            confidence,
+            condition_kind,
+            condition_value
+        ],
     )?;
     Ok(())
 }
@@ -805,11 +827,11 @@ mod tests {
         let (_dir, mut index) = encrypted_index();
         let id = index.insert_document(&new_document(1)).unwrap();
 
-        assert_eq!(all_origins(&index, id), [FieldOrigin::Unknown; 6]);
+        assert_eq!(all_origins(&index, id), [const { FieldOrigin::Unknown }; 6]);
         index
             .set_document_fields(id, &all_fields(), |_| FieldOrigin::Unknown)
             .unwrap();
-        assert_eq!(all_origins(&index, id), [FieldOrigin::Unknown; 6]);
+        assert_eq!(all_origins(&index, id), [const { FieldOrigin::Unknown }; 6]);
     }
 
     #[test]
@@ -886,8 +908,8 @@ mod tests {
                 FieldOrigin::Manual,
                 FieldOrigin::Manual,
                 FieldOrigin::Manual,
-                ai,
-                ai,
+                ai.clone(),
+                ai.clone(),
             ]
         );
     }
@@ -945,7 +967,10 @@ mod tests {
 
         assert!(index.delete_rule(rule).unwrap());
 
-        assert_eq!(all_origins(&index, id), [FieldOrigin::Rule(None); 6]);
+        assert_eq!(
+            all_origins(&index, id),
+            [const { FieldOrigin::Rule(None) }; 6]
+        );
     }
 
     #[test]
