@@ -86,6 +86,10 @@ pub enum IndexError {
     RuleNotFound(RuleId),
     SavedQueryNotFound(SavedQueryId),
     SenderAliasNotFound(SenderAliasId),
+    /// Another sender already holds this value as an offer or confirmed alias.
+    SenderAliasTaken {
+        sender: String,
+    },
     /// No stored tax context has this short name.
     UnknownTaxContext(String),
     /// There is no stored tax context with this id.
@@ -167,6 +171,9 @@ impl fmt::Display for IndexError {
             Self::TaxContextNotFound(id) => write!(f, "there is no tax context {}", id.get()),
             Self::InvalidTaxContext(problem) => problem.fmt(f),
             Self::SenderAliasNotFound(id) => write!(f, "there is no sender alias {id}"),
+            Self::SenderAliasTaken { sender } => {
+                write!(f, "this value is already an alias of {sender}")
+            }
             Self::SavedQueryNameTaken(name) => {
                 write!(f, "a saved query named '{name}' already exists")
             }

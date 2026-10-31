@@ -1,4 +1,4 @@
-use rusqlite::params;
+use rusqlite::{params, Connection, OptionalExtension as _};
 
 use crate::error::IndexError;
 use crate::index::Index;
@@ -38,8 +38,34 @@ impl Index {
         Ok(inserted > 0)
     }
 
+    /// Fails with `SenderAliasTaken` when another sender holds the same value
+    /// as an offer or a confirmed alias.
     pub fn confirm_sender_alias(&self, id: SenderAliasId) -> Result<(), IndexError> {
+        if let Some(sender) = other_holder_of_value(self.connection(), id)? {
+            return Err(IndexError::SenderAliasTaken { sender });
+        }
         self.set_sender_alias_state(id, SenderAliasState::Confirmed)
+    }
+
+    /// Confirms `id` and discards the offers or aliases of other senders with
+    /// the same value, in one transaction.
+    pub fn reassign_sender_alias(&mut self, id: SenderAliasId) -> Result<(), IndexError> {
+        let tx = self.conn_mut().transaction()?;
+        tx.execute(
+            "UPDATE sender_alias SET state = ?2
+             WHERE id <> ?1 AND state <> ?2
+               AND (kind, value) = (SELECT kind, value FROM sender_alias WHERE id = ?1)",
+            params![id.get(), SenderAliasState::Discarded.as_str()],
+        )?;
+        let changed = tx.execute(
+            "UPDATE sender_alias SET state = ?2 WHERE id = ?1",
+            params![id.get(), SenderAliasState::Confirmed.as_str()],
+        )?;
+        if changed == 0 {
+            return Err(IndexError::SenderAliasNotFound(id));
+        }
+        tx.commit()?;
+        Ok(())
     }
 
     pub fn discard_sender_alias(&self, id: SenderAliasId) -> Result<(), IndexError> {
@@ -111,6 +137,23 @@ impl Index {
             .collect::<Result<Vec<String>, _>>()?;
         Ok(names)
     }
+}
+
+fn other_holder_of_value(
+    connection: &Connection,
+    id: SenderAliasId,
+) -> Result<Option<String>, IndexError> {
+    Ok(connection
+        .query_row(
+            "SELECT s.name FROM sender_alias a
+             JOIN sender_alias o ON o.kind = a.kind AND o.value = a.value
+               AND o.id <> a.id AND o.state <> ?2
+             JOIN sender s ON s.id = o.sender_id
+             WHERE a.id = ?1",
+            params![id.get(), SenderAliasState::Discarded.as_str()],
+            |row| row.get(0),
+        )
+        .optional()?)
 }
 
 #[cfg(test)]
@@ -299,5 +342,77 @@ mod tests {
             .confirm_sender_alias(SenderAliasId::new(9))
             .unwrap_err();
         assert!(matches!(err, IndexError::SenderAliasNotFound(id) if id == SenderAliasId::new(9)));
+    }
+
+    /// A holds the value discarded, B offers it, then A's row is revived.
+    fn contested_value(index: &Index) -> (SenderAliasId, SenderAliasId) {
+        let id_of = |sender: &str| {
+            index
+                .sender_aliases()
+                .unwrap()
+                .into_iter()
+                .find(|alias| alias.sender == sender)
+                .unwrap()
+                .id
+        };
+        index
+            .offer_sender_alias("A GmbH", SenderAliasKind::Domain, "example.com")
+            .unwrap();
+        let first = id_of("A GmbH");
+        index.discard_sender_alias(first).unwrap();
+        index
+            .offer_sender_alias("B GmbH", SenderAliasKind::Domain, "example.com")
+            .unwrap();
+        (first, id_of("B GmbH"))
+    }
+
+    #[test]
+    fn confirming_a_value_another_sender_holds_is_refused() {
+        let (_dir, index) = encrypted_index();
+        let (first, _) = contested_value(&index);
+        let before = index.sender_aliases().unwrap();
+
+        let err = index.confirm_sender_alias(first).unwrap_err();
+
+        assert!(matches!(err, IndexError::SenderAliasTaken { sender } if sender == "B GmbH"));
+        assert_eq!(index.sender_aliases().unwrap(), before);
+    }
+
+    #[test]
+    fn reassigning_moves_the_value_to_the_new_sender() {
+        let (_dir, mut index) = encrypted_index();
+        let (first, second) = contested_value(&index);
+
+        index.reassign_sender_alias(first).unwrap();
+
+        let states: Vec<_> = index
+            .sender_aliases()
+            .unwrap()
+            .into_iter()
+            .map(|alias| (alias.id, alias.state))
+            .collect();
+        assert!(states.contains(&(first, SenderAliasState::Confirmed)));
+        assert!(states.contains(&(second, SenderAliasState::Discarded)));
+        assert_eq!(
+            index
+                .confirmed_sender_aliases()
+                .unwrap()
+                .sender_for(SenderAliasKind::Domain, "example.com"),
+            Some("A GmbH")
+        );
+    }
+
+    #[test]
+    fn reassigning_an_unknown_alias_changes_nothing() {
+        let (_dir, mut index) = encrypted_index();
+        contested_value(&index);
+        let before = index.sender_aliases().unwrap();
+
+        let err = index
+            .reassign_sender_alias(SenderAliasId::new(99))
+            .unwrap_err();
+
+        assert!(matches!(err, IndexError::SenderAliasNotFound(_)));
+        assert_eq!(index.sender_aliases().unwrap(), before);
     }
 }
