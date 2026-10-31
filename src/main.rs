@@ -27,6 +27,7 @@ mod config;
 mod context_menu;
 mod dialog;
 mod document_preview;
+mod document_search;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod drag_out;
 mod execute;

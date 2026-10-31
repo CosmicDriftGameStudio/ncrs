@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- A Filing page "Search documents" searches the text of every document ncrs
+  has read. Click a year, tax context, sender, kind or tag to narrow the hits;
+  the numbers show how many documents each value leaves. Quick Open ends its
+  document hits with a row that opens the page with the typed words, and "Go to
+  file" shows the hit in the file panel.
 - Rule suggestions now come per sender: when most documents of a sender lie in
   one folder, ncrs suggests a rule for that sender with the folder's filing
   pattern, and takes over the kind, tax context and tags that most of those

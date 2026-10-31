@@ -244,6 +244,12 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
             Msg::ActionSavedQueries,
             FuturamaName::ActionSavedQueries,
         ),
+        KeyAction::SearchDocuments => Command::themed(
+            action,
+            Hermes,
+            Msg::ActionSearchDocuments,
+            FuturamaName::ActionSearchDocuments,
+        ),
         KeyAction::ReorganisationPlan => Command::themed(
             action,
             Hermes,

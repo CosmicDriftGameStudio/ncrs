@@ -276,6 +276,8 @@ mod tests {
                 | Msg::SettingsTaxContextsFieldName
                 | Msg::RuleSuggestionsConditionText
                 | Msg::QuickFixLoading
+                // Only a placeholder behind a plus sign.
+                | Msg::DocumentSearchMoreValues
                 | Msg::MarkerDir
                 | Msg::MarkerUp
                 | Msg::DialogMkdirLabel

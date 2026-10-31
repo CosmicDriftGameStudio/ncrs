@@ -1,0 +1,352 @@
+//! The search page of the Hermes card: the words of the text, the values
+//! that narrow the hits and the list of what is left. Pure view over
+//! [`DocumentSearch`].
+
+use iced::widget::{column, row, text};
+use iced::{alignment, Element, Length, Size};
+use ncrs_index::{DocumentFields, TaxContext};
+
+use super::frame::{self, DialogSize, Frame, KeyHints};
+use super::hermes::{self, Badges};
+use super::kit::{self, dim, error_line, Columns, Tone};
+use super::theme::{font_size, spacing};
+use crate::app::fill_template;
+use crate::document_search::{DocumentSearch, FacetValue, VISIBLE_ROWS};
+use crate::i18n::{FuturamaName, Language, Msg};
+use crate::messages::{DocumentSearchMessage, HermesFocus, HermesPage, Message};
+use crate::palette::Palette;
+use crate::review_work::amount_text;
+
+pub const SEARCH_ID: &str = "document-search-text";
+
+const SIZE: DialogSize = DialogSize::Card;
+
+/// Most values shown in a row of a facet; chosen ones always are.
+const MAX_CHIPS: usize = 6;
+
+/// How the width of a row is shared: name, date, sender, amount.
+const PORTIONS: [u16; 4] = [6, 3, 4, 3];
+
+/// The width of the label of a facet row.
+const LABEL_WIDTH: f32 = 110.0;
+
+fn send(message: DocumentSearchMessage) -> Message {
+    Message::DocumentSearch(message)
+}
+
+pub fn view<'a>(
+    state: &'a DocumentSearch,
+    window: Size,
+    badges: Badges,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let line_chars = frame::content_chars(SIZE, window, frame::SIDEBAR_ROOM);
+    let mut body = column![
+        kit::paragraph(lang.text(Msg::DocumentSearchExplain), palette),
+        kit::text_field(
+            lang.text(Msg::DocumentSearchPlaceholder),
+            state.text(),
+            SEARCH_ID,
+            Some(|text| send(DocumentSearchMessage::TextChanged(text))),
+            send(DocumentSearchMessage::Activate),
+            palette,
+        ),
+    ]
+    .spacing(spacing::LINE_GAP);
+    for facet_row in facet_rows(state, lang, palette) {
+        body = body.push(facet_row);
+    }
+    if let Some(problem) = state.problem() {
+        body = body.push(error_line(problem.to_owned(), palette));
+    } else if state.is_busy() {
+        body = body.push(dim(lang.text(Msg::DocumentSearchSearching), palette));
+    } else if state.found().is_empty() {
+        body = body.push(dim(lang.text(Msg::DocumentSearchEmptyNone), palette));
+    } else {
+        body = body.push(summary(state, lang, palette));
+        if state.shown_len() == 0 {
+            body = body.push(dim(lang.text(Msg::DocumentSearchEmptyNoMatch), palette));
+        } else {
+            body = body.push(list(state, line_chars, badges.focus, lang, palette));
+        }
+    }
+
+    Frame::new(
+        lang.text(Msg::ActionSearchDocuments),
+        body,
+        SIZE,
+        window,
+        lang,
+        palette,
+    )
+    .title_theme(lang.futurama_name(FuturamaName::ActionSearchDocuments))
+    .buttons(buttons(state, lang, palette))
+    .sidebar(hermes::nav(HermesPage::Search, badges, lang, palette))
+    .on_close(send(DocumentSearchMessage::Close))
+    .hints(KeyHints {
+        enter: true,
+        tab: false,
+    })
+    .into_element()
+}
+
+/// One value of a facet row: what it is called, how many hits carry it and
+/// what choosing it means.
+struct Chip {
+    label: String,
+    count: usize,
+    value: FacetValue,
+}
+
+/// A row per facet that has values, with the label first.
+fn facet_rows<'a>(
+    state: &DocumentSearch,
+    lang: Language,
+    palette: &Palette,
+) -> Vec<Element<'a, Message>> {
+    let counts = state.counts();
+    let years = counts.years.iter().map(|(year, count)| Chip {
+        label: year.to_string(),
+        count: *count,
+        value: FacetValue::Year(*year),
+    });
+    let tax_contexts = counts.tax_contexts.iter().map(|(context, count)| Chip {
+        label: tax_context_name(state, context, lang),
+        count: *count,
+        value: FacetValue::TaxContext(context.clone()),
+    });
+    let senders = counts.senders.iter().map(|(name, count)| Chip {
+        label: name.clone(),
+        count: *count,
+        value: FacetValue::Sender(name.clone()),
+    });
+    let kinds = counts.kinds.iter().map(|(kind, count)| Chip {
+        label: lang.kind_label(kind).into_owned(),
+        count: *count,
+        value: FacetValue::Kind(kind.clone()),
+    });
+    let tags = counts.tags.iter().map(|(tag, count)| Chip {
+        label: tag.clone(),
+        count: *count,
+        value: FacetValue::Tag(tag.clone()),
+    });
+    let mut rows = Vec::new();
+    for (label, chips) in [
+        (Msg::DocumentSearchFacetYear, years.collect::<Vec<_>>()),
+        (
+            Msg::DocumentSearchFacetTaxContext,
+            tax_contexts.collect::<Vec<_>>(),
+        ),
+        (Msg::DocumentSearchFacetSender, senders.collect::<Vec<_>>()),
+        (Msg::DocumentSearchFacetKind, kinds.collect::<Vec<_>>()),
+        (Msg::DocumentSearchFacetTags, tags.collect::<Vec<_>>()),
+    ] {
+        if !chips.is_empty() {
+            rows.push(facet_row(state, lang.text(label), chips, lang, palette));
+        }
+    }
+    rows
+}
+
+fn tax_context_name(state: &DocumentSearch, context: &TaxContext, lang: Language) -> String {
+    match context {
+        TaxContext::None => lang.text(Msg::ReviewListTaxNone).to_owned(),
+        TaxContext::Named(short_name) => state
+            .tax_contexts()
+            .iter()
+            .find(|entry| entry.short_name.eq_ignore_ascii_case(short_name))
+            .map_or_else(|| short_name.clone(), |entry| entry.name.clone()),
+    }
+}
+
+fn facet_row<'a>(
+    state: &DocumentSearch,
+    label: &str,
+    chips: Vec<Chip>,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let chosen = |chip: &Chip| state.selection().holds(&chip.value);
+    let total = chips.len();
+    // The chosen values always show; the others fill what is left of the room.
+    let mut room = MAX_CHIPS.saturating_sub(chips.iter().filter(|chip| chosen(chip)).count());
+    let shown: Vec<Chip> = chips
+        .into_iter()
+        .filter(|chip| {
+            chosen(chip) || {
+                let fits = room > 0;
+                room = room.saturating_sub(1);
+                fits
+            }
+        })
+        .collect();
+    let left_out = total - shown.len();
+    let mut buttons: Vec<Element<'a, Message>> = shown
+        .into_iter()
+        .map(|chip| {
+            let tone = if chosen(&chip) {
+                Tone::Primary
+            } else {
+                Tone::Secondary
+            };
+            kit::button(
+                &format!("{} ({})", chip.label, chip.count),
+                Some(send(DocumentSearchMessage::ToggleFacet(chip.value))),
+                tone,
+                palette,
+            )
+        })
+        .collect();
+    if left_out > 0 {
+        buttons.push(dim(
+            fill_template(
+                lang.text(Msg::DocumentSearchMoreValues),
+                &[("{count}", &left_out.to_string())],
+            ),
+            palette,
+        ));
+    }
+    row![
+        text(label.to_owned())
+            .size(font_size::BODY)
+            .color(palette.dim_text)
+            .width(Length::Fixed(LABEL_WIDTH)),
+        row(buttons)
+            .spacing(spacing::S)
+            .align_y(alignment::Vertical::Center)
+            .wrap(),
+    ]
+    .spacing(spacing::S)
+    .into()
+}
+
+fn summary<'a>(state: &DocumentSearch, lang: Language, palette: &Palette) -> Element<'a, Message> {
+    let count = state.shown_len();
+    dim(
+        fill_template(
+            lang.text(if count == 1 {
+                Msg::DocumentSearchCountOne
+            } else {
+                Msg::DocumentSearchCountOther
+            }),
+            &[("{count}", &count.to_string())],
+        ),
+        palette,
+    )
+}
+
+fn list<'a>(
+    state: &DocumentSearch,
+    line_chars: usize,
+    focus: HermesFocus,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let columns = Columns {
+        portions: &PORTIONS,
+        line_chars,
+    };
+    let header = columns.header(
+        &[
+            lang.text(Msg::ColumnName),
+            lang.text(Msg::DocumentSearchColumnDate),
+            lang.text(Msg::DocumentSearchColumnSender),
+            lang.text(Msg::DocumentSearchColumnAmount),
+        ],
+        palette,
+    );
+    let first = state.first_visible();
+    let missing_mark = lang.text(Msg::DocumentSearchMissing);
+    let rows = state
+        .shown()
+        .enumerate()
+        .skip(first)
+        .take(VISIBLE_ROWS)
+        .map(|(index, hit)| {
+            let selected = state.cursor() == index;
+            let color = if selected && focus == HermesFocus::Content {
+                palette.cursor_text
+            } else {
+                palette.text
+            };
+            let file_name = hit
+                .path
+                .file_name()
+                .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+            let name = if hit.missing {
+                format!("{file_name} ({missing_mark})")
+            } else {
+                file_name
+            };
+            let DocumentFields {
+                date,
+                sender,
+                amount,
+                ..
+            } = &hit.fields;
+            let date_text = date.map(|day| day.format("%Y-%m-%d").to_string());
+            let content = row![
+                columns.cell(0, &name, color),
+                columns.cell(1, date_text.as_deref().unwrap_or_default(), color),
+                columns.cell(2, sender.as_deref().unwrap_or_default(), color),
+                columns.cell(
+                    3,
+                    &amount.as_ref().map(amount_text).unwrap_or_default(),
+                    color
+                ),
+            ]
+            .align_y(alignment::Vertical::Center);
+            kit::list_row(
+                content.into(),
+                send(DocumentSearchMessage::Select(index)),
+                selected,
+                focus == HermesFocus::Content,
+                palette,
+            )
+        })
+        .collect();
+    kit::scroll_list(
+        header,
+        rows,
+        kit::ListView {
+            len: state.shown_len(),
+            visible: VISIBLE_ROWS,
+            offset: first,
+        },
+        |delta| send(DocumentSearchMessage::Scrolled(delta)),
+        palette,
+    )
+}
+
+fn buttons<'a>(
+    state: &DocumentSearch,
+    lang: Language,
+    palette: &Palette,
+) -> Vec<Element<'a, Message>> {
+    let mut buttons = Vec::new();
+    if !state.selection().is_empty() {
+        buttons.push(kit::button(
+            lang.text(Msg::DocumentSearchClear),
+            Some(send(DocumentSearchMessage::ClearFacets)),
+            Tone::Secondary,
+            palette,
+        ));
+    }
+    buttons.push(kit::button(
+        lang.text(Msg::DocumentSearchClose),
+        Some(send(DocumentSearchMessage::Close)),
+        Tone::Secondary,
+        palette,
+    ));
+    buttons.push(kit::enter_button(
+        lang.text(Msg::DocumentSearchGoToFile),
+        state
+            .selected()
+            .is_some_and(|hit| !hit.missing)
+            .then(|| send(DocumentSearchMessage::Activate)),
+        Tone::Primary,
+        palette,
+    ));
+    buttons
+}

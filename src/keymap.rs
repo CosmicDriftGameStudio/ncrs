@@ -17,11 +17,11 @@ use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
-    FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesFileMessage, KeyBindingsMessage,
-    OcrModelsMessage, PanelSide, QuickFixMessage, QuickOpenMessage, RemoteMessage,
-    ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, RulesMessage,
-    SavedQueriesMessage, SearchMessage, SettingsMessage, ThemeFetchMessage, TransferKind,
-    TrashMessage,
+    DocumentSearchMessage, FilingSetupMessage, FilingStatusMessage, GrantMessage,
+    HermesFileMessage, KeyBindingsMessage, OcrModelsMessage, PanelSide, QuickFixMessage,
+    QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage,
+    RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingsMessage,
+    ThemeFetchMessage, TransferKind, TrashMessage,
 };
 
 /// A key plus the modifier that must be held. A bare press has no modifier.
@@ -141,6 +141,7 @@ key_actions! {
     HermesExclude => "hermes_exclude",
     HermesInspect => "hermes_inspect",
     SavedQueries => "saved_queries",
+    SearchDocuments => "search_documents",
     ReorganisationPlan => "reorganisation_plan",
     UndoReorganisation => "undo_reorganisation",
     FetchTheme => "fetch_theme",
@@ -247,6 +248,7 @@ impl KeyAction {
             | Self::HermesExclude
             | Self::HermesInspect
             | Self::SavedQueries
+            | Self::SearchDocuments
             | Self::ReorganisationPlan
             | Self::UndoReorganisation
             | Self::FetchTheme
@@ -405,6 +407,9 @@ impl KeyAction {
             Self::HermesExclude => Message::HermesFile(HermesFileMessage::ToggleExclusion),
             Self::HermesInspect => Message::HermesFile(HermesFileMessage::ShowInInspection),
             Self::SavedQueries => Message::SavedQueries(SavedQueriesMessage::Open),
+            Self::SearchDocuments => Message::DocumentSearch(DocumentSearchMessage::Open {
+                text: String::new(),
+            }),
             Self::ReorganisationPlan => {
                 Message::ReorganisationPlan(ReorganisationPlanMessage::Open)
             }
@@ -491,6 +496,7 @@ impl KeyAction {
             | Self::RuleSuggestions
             | Self::ReviewList
             | Self::SavedQueries
+            | Self::SearchDocuments
             | Self::ReorganisationPlan
             | Self::UndoReorganisation
             | Self::FetchTheme
@@ -578,6 +584,7 @@ impl KeyAction {
             | Self::RuleSuggestions
             | Self::ReviewList
             | Self::SavedQueries
+            | Self::SearchDocuments
             | Self::ReorganisationPlan
             | Self::UndoReorganisation
             | Self::FetchTheme
@@ -2060,6 +2067,7 @@ mod tests {
             KeyAction::HermesSetArchive,
             KeyAction::HermesExclude,
             KeyAction::HermesInspect,
+            KeyAction::SearchDocuments,
         ];
         // Ctrl+C is copy_files there; Escape and the cancel button stop a job.
         if !cfg!(target_os = "macos") {
