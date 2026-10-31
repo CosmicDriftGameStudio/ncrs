@@ -44,8 +44,8 @@ pub use extract::{
 };
 pub use filing_plan::{
     contains_condition_holds, missing_field, pattern_is_valid, plan, render_pattern,
-    render_pattern_parts, unknown_placeholder, FilingPlan, PatternPart, PlanInput, Planning,
-    AI_FIELD_ORDER, FIELD_ORDER, FILING_PLACEHOLDERS,
+    render_pattern_in, render_pattern_parts, unknown_placeholder, FilingPlan, PatternPart,
+    PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER, FILING_PLACEHOLDERS,
 };
 pub use location::{Location, LocationMode};
 pub use ocr::{

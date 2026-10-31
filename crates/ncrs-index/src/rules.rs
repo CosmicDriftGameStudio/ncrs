@@ -310,14 +310,14 @@ mod tests {
                 id,
                 &RuleSpec {
                     name: Some(" ".to_owned()),
-                    kind: Some("Invoice".to_owned()),
+                    kind: Some("invoice".to_owned()),
                     ..spec
                 },
             )
             .unwrap();
         let updated = index.rule(id).unwrap().unwrap().spec;
         assert_eq!(updated.name, None);
-        assert_eq!(updated.kind.as_deref(), Some("Invoice"));
+        assert_eq!(updated.kind.as_deref(), Some("invoice"));
     }
 
     #[test]
@@ -654,7 +654,7 @@ mod tests {
         let third = index.insert_document(&new_document(3)).unwrap();
         let fields = DocumentFields {
             sender: Some("Company A".to_owned()),
-            kind: Some("Invoice".to_owned()),
+            kind: Some("invoice".to_owned()),
             ..DocumentFields::default()
         };
         for (document, origin) in [

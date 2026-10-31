@@ -139,7 +139,7 @@ fn facet_rows<'a>(
         value: FacetValue::Kind(kind.clone()),
     });
     let tags = counts.tags.iter().map(|(tag, count)| Chip {
-        label: tag.clone(),
+        label: lang.tag_label(tag),
         count: *count,
         value: FacetValue::Tag(tag.clone()),
     });

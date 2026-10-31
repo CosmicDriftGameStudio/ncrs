@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use ncrs_index::{
-    BatchKind, Document, DocumentStatus, FieldOrigin, Index, IndexError, ReviewReason, Rule,
-    SenderAliases,
+    BatchKind, Document, DocumentStatus, FieldOrigin, Index, IndexError, KindLanguage,
+    ReviewReason, Rule, SenderAliases,
 };
 use ncrs_intake::{plan, PlanInput, Planning};
 
@@ -28,17 +28,36 @@ type IndexSlot = Arc<Mutex<Option<Index>>>;
 pub struct FilingAccess {
     slot: IndexSlot,
     target_root: PathBuf,
+    kind_language: KindLanguage,
 }
 
 impl FilingAccess {
     pub fn new(slot: IndexSlot, target_root: PathBuf) -> Self {
-        Self { slot, target_root }
+        Self {
+            slot,
+            target_root,
+            kind_language: KindLanguage::default(),
+        }
+    }
+
+    pub fn with_kind_language(self, kind_language: KindLanguage) -> Self {
+        Self {
+            kind_language,
+            ..self
+        }
     }
 
     pub fn file_planned<P: Progress>(&self, progress: &mut P) -> Result<FilingSummary, String> {
         let mut guard = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
         let index = guard.as_mut().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
-        file_planned(index, &self.target_root, progress, &Move).map_err(|err| err.to_string())
+        file_planned(
+            index,
+            &self.target_root,
+            progress,
+            &Move,
+            self.kind_language,
+        )
+        .map_err(|err| err.to_string())
     }
 }
 
@@ -81,6 +100,7 @@ fn decide(
     sender_aliases: &SenderAliases,
     root: &Path,
     document: &Document,
+    kind_language: KindLanguage,
 ) -> Result<Decision, IndexError> {
     let text = index.document_text(document.id)?.unwrap_or_default();
     let manual_fields = index.field_origins(document.id)?.manual_fields();
@@ -92,6 +112,7 @@ fn decide(
             path: Some(&document.path),
             sender_aliases,
             manual_fields: &manual_fields,
+            kind_language,
         },
     );
     match planning {
@@ -138,6 +159,7 @@ pub fn file_planned<P: Progress, S: Source>(
     root: &Path,
     progress: &mut P,
     effect: &S,
+    kind_language: KindLanguage,
 ) -> Result<FilingSummary, ExecuteError> {
     let rules = index.rules()?;
     let sender_aliases = index.confirmed_sender_aliases()?;
@@ -152,7 +174,14 @@ pub fn file_planned<P: Progress, S: Source>(
             summary.left += 1;
             continue;
         }
-        match decide(index, &rules, &sender_aliases, root, &document)? {
+        match decide(
+            index,
+            &rules,
+            &sender_aliases,
+            root,
+            &document,
+            kind_language,
+        )? {
             Decision::Move(item) => items.push(item),
             Decision::Reviewed => summary.reviewed += 1,
         }
@@ -292,11 +321,18 @@ mod tests {
         }
 
         fn run<S: Source>(&mut self, effect: &S) -> FilingSummary {
-            file_planned(&mut self.index, &self.archive, &mut Counting, effect).unwrap()
+            file_planned(
+                &mut self.index,
+                &self.archive,
+                &mut Counting,
+                effect,
+                KindLanguage::English,
+            )
+            .unwrap()
         }
 
         fn target(&self) -> PathBuf {
-            self.archive.join("Insurance").join("invoice.pdf")
+            self.archive.join("Insurance").join("Invoice.pdf")
         }
     }
 
@@ -322,7 +358,7 @@ mod tests {
             .unwrap()
             .map(|entry| entry.unwrap().file_name())
             .collect();
-        assert_eq!(staging, [std::ffi::OsString::from("invoice.pdf")]);
+        assert_eq!(staging, [std::ffi::OsString::from("Invoice.pdf")]);
     }
 
     #[test]

@@ -337,7 +337,7 @@ pub fn rule_sentence(spec: &RuleSpec, lang: Language) -> String {
         target.push(
             spec.tags
                 .iter()
-                .map(|tag| format!("#{tag}"))
+                .map(|tag| fill_template(lang.text(Msg::RulesSentenceSetTag), &[("{tag}", tag)]))
                 .collect::<Vec<_>>()
                 .join(" "),
         );
@@ -746,7 +746,7 @@ pub mod tests {
         assert_eq!(
             rule_sentence(&spec, Language::English),
             "If the text contains the word “rent” and the sender is “Company A” → \
-             invoice · #office #tax · Year / Sender"
+             Invoice · “office” “tax” · Year / Sender"
         );
     }
 
@@ -764,7 +764,7 @@ pub mod tests {
         assert_eq!(
             rule_sentence(&spec, Language::English),
             "If the sender is not “Agency B” or the text matches /No\\. \\d+/ → \
-             invoice · Year / Sender"
+             Invoice · Year / Sender"
         );
     }
 

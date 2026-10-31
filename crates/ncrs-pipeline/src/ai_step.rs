@@ -3,7 +3,8 @@ use std::time::SystemTime;
 
 use ncrs_ai::{AiError, ExtractedField, ExtractionRequest, Provider, CONFIDENT};
 use ncrs_index::{
-    Document, DocumentFields, DocumentStatus, Field, FieldOrigin, IndexError, ReviewReason,
+    Document, DocumentFields, DocumentStatus, Field, FieldOrigin, IndexError, KindLanguage,
+    ReviewReason,
 };
 use ncrs_intake::{plan, LocationMode, PlanInput, Planning, AI_FIELD_ORDER, FIELD_ORDER};
 
@@ -20,6 +21,7 @@ pub struct AiStep {
     /// The names of the person using the app and their companies; a sender
     /// that is one of them is the addressee the provider mistook for the sender.
     own_names: Vec<String>,
+    kind_language: KindLanguage,
 }
 
 impl AiStep {
@@ -27,11 +29,13 @@ impl AiStep {
         index: Arc<dyn IndexAccess>,
         provider: Arc<dyn Provider>,
         own_names: Vec<String>,
+        kind_language: KindLanguage,
     ) -> Self {
         Self {
             index,
             provider,
             own_names,
+            kind_language,
         }
     }
 
@@ -237,6 +241,7 @@ impl AiStep {
                     path: Some(&item.path),
                     sender_aliases: &sender_aliases,
                     manual_fields: &[],
+                    kind_language: self.kind_language,
                 },
             );
             if let Planning::Plan(filing) = &planning {
@@ -535,13 +540,8 @@ mod tests {
             .unwrap()
             .field_origins(document)
             .unwrap();
-        for field in [Field::Kind, Field::Number] {
-            assert_eq!(
-                origins.of(field),
-                FieldOrigin::Rule(Some(rule)),
-                "{field:?}"
-            );
-        }
+        assert_eq!(origins.of(Field::Number), FieldOrigin::Rule(Some(rule)));
+        assert_eq!(origins.of(Field::Kind), FieldOrigin::Heading);
         assert_eq!(origins.of(Field::Sender), FieldOrigin::Unknown);
     }
 
@@ -723,7 +723,7 @@ mod tests {
             Some(Arc::clone(&provider) as Arc<dyn Provider>),
             OwnDetails::default(),
         );
-        let rule = fixture
+        fixture
             .index
             .lock()
             .unwrap()
@@ -745,7 +745,7 @@ mod tests {
             .unwrap()
             .field_origins(document)
             .unwrap();
-        assert_eq!(origins.of(Field::Kind), FieldOrigin::Rule(Some(rule)));
+        assert_eq!(origins.of(Field::Kind), FieldOrigin::Heading);
         assert_eq!(
             origins.of(Field::Date),
             FieldOrigin::Ai {

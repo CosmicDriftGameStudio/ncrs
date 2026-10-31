@@ -11,8 +11,9 @@ use std::fs;
 
 use chrono::NaiveDate;
 use ncrs_index::{
-    Amount, Condition, ConditionKind, Currency, DocumentFields, Field, Index, ReviewReason, Rule,
-    RuleConditions, RuleId, RuleSpec, SenderAliasKind, SenderAliases,
+    kind_key, Amount, Condition, ConditionKind, Currency, DocumentFields, Field, Index,
+    KindLanguage, ReviewReason, Rule, RuleConditions, RuleId, RuleSpec, SenderAliasKind,
+    SenderAliases,
 };
 use tempfile::TempDir;
 
@@ -279,7 +280,8 @@ fn trimmed_lowercase(value: Option<&str>) -> Option<String> {
     value.map(|text| text.trim().to_lowercase())
 }
 
-/// Sender and kind are compared trimmed and case-insensitive, the rest exactly.
+/// Sender is compared trimmed and case-insensitive, the kind by its ID where
+/// it is a known one, the rest exactly.
 pub fn score_field(field: Field, expected: &DocumentFields, actual: &DocumentFields) -> FieldScore {
     match field {
         Field::Sender => score_values(
@@ -291,8 +293,8 @@ pub fn score_field(field: Field, expected: &DocumentFields, actual: &DocumentFie
             trimmed_lowercase(actual.recipient.as_deref()),
         ),
         Field::Kind => score_values(
-            trimmed_lowercase(expected.kind.as_deref()),
-            trimmed_lowercase(actual.kind.as_deref()),
+            expected.kind.as_deref().map(kind_key),
+            actual.kind.as_deref().map(kind_key),
         ),
         Field::Date => score_values(expected.date, actual.date),
         Field::Number => score_values(expected.number.as_deref(), actual.number.as_deref()),
@@ -464,6 +466,7 @@ pub fn measure(
                     path: None,
                     sender_aliases: &sender_aliases,
                     manual_fields: &[],
+                    kind_language: KindLanguage::English,
                 },
             );
             let planning = match rules_planning {
@@ -481,6 +484,7 @@ pub fn measure(
                             path: None,
                             sender_aliases: &sender_aliases,
                             manual_fields: &[],
+                            kind_language: KindLanguage::English,
                         },
                     ),
                     Some(merged) => Planning::Review {

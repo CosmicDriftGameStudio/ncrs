@@ -6,7 +6,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use ncrs_index::{
-    tag_name, Condition, ConditionKind, Rule, RuleConditions, RuleId, RuleOrigin, RuleSpec,
+    kind_tag_word, stored_kind, tag_name, Condition, ConditionKind, KindLanguage, Rule,
+    RuleConditions, RuleId, RuleOrigin, RuleSpec,
 };
 
 use crate::condition_editor::{ConditionEditor, ConditionProblem, NEW_CONDITION_KINDS};
@@ -117,13 +118,15 @@ impl RuleForm {
 
     /// The conditions are the tags the kind and the sender of the document
     /// give; the target is the pattern of the review.
-    pub fn from_document(prefill: RulePrefill) -> Self {
-        let tag_conditions: Vec<Condition> = [&prefill.kind, &prefill.sender]
-            .into_iter()
-            .map(|value| tag_name(value))
-            .filter(|tag| !tag.is_empty())
-            .map(|tag| Condition::new(ConditionKind::Tag, tag))
-            .collect();
+    pub fn from_document(prefill: RulePrefill, kind_language: KindLanguage) -> Self {
+        let tag_conditions: Vec<Condition> = [
+            kind_tag_word(&tag_name(&prefill.kind), kind_language),
+            tag_name(&prefill.sender),
+        ]
+        .into_iter()
+        .filter(|tag| !tag.is_empty())
+        .map(|tag| Condition::new(ConditionKind::Tag, tag))
+        .collect();
         let conditions = if tag_conditions.is_empty() {
             vec![Condition::new(ConditionKind::Tag, "")]
         } else {
@@ -139,7 +142,7 @@ impl RuleForm {
             RuleConditions::all_of(conditions),
             pattern,
         );
-        form.kept_kind = Some(prefill.kind.trim().to_owned()).filter(|kind| !kind.is_empty());
+        form.kept_kind = Some(stored_kind(&prefill.kind)).filter(|kind| !kind.is_empty());
         form.tags = prefill.tags;
         form
     }
@@ -520,7 +523,7 @@ mod tests {
 
     #[test]
     fn a_form_from_a_document_asks_for_the_tags_of_its_kind_and_sender() {
-        let form = RuleForm::from_document(prefill());
+        let form = RuleForm::from_document(prefill(), KindLanguage::English);
 
         assert_eq!(form.target, RuleFormTarget::FromDocument);
         assert_eq!(
@@ -536,13 +539,33 @@ mod tests {
     }
 
     #[test]
+    fn a_form_from_a_document_words_the_kind_tag_in_the_language_and_keeps_the_id() {
+        let mut form = RuleForm::from_document(prefill(), KindLanguage::German);
+
+        assert_eq!(
+            form.conditions.conditions(),
+            RuleConditions::all_of(vec![
+                Condition::new(ConditionKind::Tag, "rechnung"),
+                Condition::new(ConditionKind::Tag, "company-a"),
+            ])
+        );
+        let RuleSave::Create { spec, .. } = form.save_request().unwrap() else {
+            panic!("not a create");
+        };
+        assert_eq!(spec.kind.as_deref(), Some("invoice"));
+    }
+
+    #[test]
     fn a_form_from_a_document_without_a_pattern_takes_the_usual_one() {
-        let form = RuleForm::from_document(RulePrefill {
-            pattern: "  ".to_owned(),
-            sender: String::new(),
-            kind: String::new(),
-            ..prefill()
-        });
+        let form = RuleForm::from_document(
+            RulePrefill {
+                pattern: "  ".to_owned(),
+                sender: String::new(),
+                kind: String::new(),
+                ..prefill()
+            },
+            KindLanguage::English,
+        );
 
         assert_eq!(form.filing.pattern(), "{year}/{sender}/");
         assert_eq!(form.conditions.rows.len(), 1);
@@ -552,7 +575,7 @@ mod tests {
 
     #[test]
     fn a_form_from_a_document_saves_a_rule_with_the_origin_filing_and_its_kind() {
-        let mut form = RuleForm::from_document(prefill());
+        let mut form = RuleForm::from_document(prefill(), KindLanguage::English);
 
         let RuleSave::Create { spec, origin } = form.save_request().unwrap() else {
             panic!("not a create");
@@ -560,7 +583,7 @@ mod tests {
 
         assert_eq!(origin, RuleOrigin::Filing);
         assert!(spec.confirmed && spec.enabled);
-        assert_eq!(spec.kind.as_deref(), Some("Invoice"));
+        assert_eq!(spec.kind.as_deref(), Some("invoice"));
         assert_eq!(spec.tags, BTreeSet::from(["tax".to_owned()]));
     }
 

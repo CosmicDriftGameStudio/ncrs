@@ -10,6 +10,7 @@ mod index;
 mod journal;
 mod key;
 mod key_store;
+mod kinds;
 mod locations;
 mod migrations;
 mod model;
@@ -32,6 +33,9 @@ pub use index::Index;
 pub use journal::{BatchKind, JournalItem, JournalState, NewJournalItem};
 pub use key::RecoveryKey;
 pub use key_store::{InMemoryKeyStore, KeyStore, KeyringKeyStore};
+pub use kinds::{
+    detected_kind, kind_key, kind_tag_word, kind_word, stored_kind, Kind, KindLanguage,
+};
 pub use model::{iban_is_valid, is_iban_separator, is_tax_id_separator, tag_matches, tag_name};
 pub use model::{
     Amount, BatchId, Combinator, Condition, ConditionKind, ConflictReason, ContentHash, Currency,

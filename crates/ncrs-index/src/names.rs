@@ -1,6 +1,7 @@
 use rusqlite::Connection;
 
 use crate::error::IndexError;
+use crate::kinds::stored_kind;
 
 /// The lookup tables whose rows are addressed by name.
 #[derive(Debug, Clone, Copy)]
@@ -29,10 +30,13 @@ impl NameTable {
 }
 
 /// Looks the name up, inserting it when new. Surrounding whitespace is
-/// dropped. Names are matched by their lower-cased key, computed here because
-/// SQLite's `NOCASE` folds ASCII only; `name` keeps the spelling seen first.
+/// dropped, and a known kind is looked up by its ID. Names are matched by
+/// their lower-cased key, computed here because SQLite's `NOCASE` folds ASCII only; `name` keeps the spelling seen first.
 pub fn name_id(conn: &Connection, table: NameTable, raw_name: &str) -> Result<i64, IndexError> {
-    let name = raw_name.trim();
+    let name = match table {
+        NameTable::Kind => stored_kind(raw_name),
+        NameTable::Sender | NameTable::Tag => raw_name.trim().to_owned(),
+    };
     if name.is_empty() {
         return Err(IndexError::EmptyName { what: table.what() });
     }
@@ -43,7 +47,7 @@ pub fn name_id(conn: &Connection, table: NameTable, raw_name: &str) -> Result<i6
             "INSERT INTO {table_name} (name, name_key) VALUES (?1, ?2)
              ON CONFLICT (name_key) DO NOTHING"
         ),
-        [name, key.as_str()],
+        [name.as_str(), key.as_str()],
     )?;
     Ok(conn.query_row(
         &format!("SELECT id FROM {table_name} WHERE name_key = ?1"),

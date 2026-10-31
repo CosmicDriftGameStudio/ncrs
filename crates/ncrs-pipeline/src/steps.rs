@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
 use ncrs_ai::Provider;
-use ncrs_index::{DocumentStatus, Field, FieldOrigin, IndexError, ReviewReason};
+use ncrs_index::{DocumentStatus, Field, FieldOrigin, IndexError, KindLanguage, ReviewReason};
 use ncrs_intake::text_is_readable;
 use ncrs_intake::{
     detect_recipient, detect_sender, kind_from_heading, plan, OwnIdentifiers, PlanInput, Planning,
@@ -23,6 +23,8 @@ pub struct OwnDetails {
     pub names: Vec<String>,
     pub ibans: Vec<String>,
     pub tax_ids: Vec<String>,
+    /// The language a `{kind}` folder is written in.
+    pub kind_language: KindLanguage,
 }
 
 /// The steps every file passes, in order. Steps that classify documents (text,
@@ -54,6 +56,7 @@ pub fn intake_steps(
             Arc::clone(&index),
             provider,
             own.names,
+            own.kind_language,
         )));
     }
     steps.push(Box::new(ReviewStep { index }));
@@ -262,6 +265,7 @@ impl Step for RulesStep {
                     path: Some(&item.path),
                     sender_aliases: &aliases,
                     manual_fields: &manual_fields,
+                    kind_language: self.own.kind_language,
                 },
             );
             let (found, rule_origin) = match &planning {

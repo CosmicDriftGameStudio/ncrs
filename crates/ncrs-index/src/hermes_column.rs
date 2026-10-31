@@ -406,7 +406,7 @@ mod tests {
         assert_eq!(
             states[0].tags,
             FileTags {
-                kind: Some("rechnung".to_owned()),
+                kind: Some("invoice".to_owned()),
                 recipient: Some("firma-a-gmbh".to_owned()),
                 sender: Some("deutsche-telekom-ag".to_owned()),
                 year: Some("2026".to_owned()),

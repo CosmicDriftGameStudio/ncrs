@@ -45,7 +45,7 @@ pub fn rule_spec() -> RuleSpec {
         extract_number: Some(r"No\. (\d+)".to_owned()),
         extract_date: None,
         extract_amount: None,
-        kind: Some("Invoice".to_owned()),
+        kind: Some("invoice".to_owned()),
         tags: BTreeSet::from(["services".to_owned(), "2026".to_owned()]),
         filing_pattern: "{year}/{sender}".to_owned(),
         confirmed: false,

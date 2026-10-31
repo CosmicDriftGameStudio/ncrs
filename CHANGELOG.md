@@ -12,6 +12,10 @@ All notable changes to this project are documented here. The format follows
   that ncrs derives from the fields (kind, sender, recipient, year) and tags of
   your own; your own stay when a document is read again. The review list lets
   you add and remove them, and says which ones are automatic.
+- The kind of a document uses one list of known kinds (invoice, credit note,
+  contract and so on), shown in your language in the review list, the rules,
+  the search, the reports and the tags, so a rule on "invoice" or "Rechnung"
+  finds the same documents.
 - Recipient is a field of its own: ncrs reads it from the address block, the
   review list shows it, and the document search and the reports can narrow by
   it. A tag filter also finds the more specific tags below it ("firma-a" finds

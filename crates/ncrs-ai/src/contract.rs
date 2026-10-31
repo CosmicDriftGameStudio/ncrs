@@ -2,7 +2,7 @@ use std::fmt;
 use std::path::PathBuf;
 
 use jsonc_parser::{parse_to_value, JsonObject, JsonValue, ParseOptions};
-use ncrs_index::{DocumentFields, Field};
+use ncrs_index::{detected_kind, DocumentFields, Field};
 use ncrs_intake::{parse_amount, parse_date, AI_FIELD_ORDER};
 
 use crate::error::AiError;
@@ -60,7 +60,7 @@ impl ExtractedField {
         match self.field {
             Field::Sender => set_if_empty(&mut fields.sender, Some(self.value.clone())),
             Field::Recipient => set_if_empty(&mut fields.recipient, Some(self.value.clone())),
-            Field::Kind => set_if_empty(&mut fields.kind, Some(self.value.clone())),
+            Field::Kind => set_if_empty(&mut fields.kind, Some(detected_kind(&self.value))),
             Field::Number => set_if_empty(&mut fields.number, Some(self.value.clone())),
             Field::Date => set_if_empty(&mut fields.date, parse_date(&self.value)),
             Field::Amount => set_if_empty(&mut fields.amount, parse_amount(&self.value, None)),

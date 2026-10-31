@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 
 use chrono::Datelike as _;
 use ncrs_index::{
-    tag_matches, Combinator, Condition, ConditionKind, DocumentFields, Field, ReviewReason, Rule,
-    RuleConditions, RuleId, RuleSpec, SenderAliases,
+    kind_word, stored_kind, tag_matches, Combinator, Condition, ConditionKind, DocumentFields,
+    Field, KindLanguage, ReviewReason, Rule, RuleConditions, RuleId, RuleSpec, SenderAliases,
 };
 
 use crate::conditions::{
@@ -39,6 +39,8 @@ pub struct PlanInput<'a> {
     /// Fields the user set by hand: a rule does not overwrite them, they keep
     /// the value of `fields`.
     pub manual_fields: &'a [Field],
+    /// The language a `{kind}` folder is written in.
+    pub kind_language: KindLanguage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -226,7 +228,7 @@ fn filled_fields(spec: &RuleSpec, input: &PlanInput<'_>) -> DocumentFields {
         fields.sender = spec.conditions.required_sender().map(str::to_owned);
     }
     if let Some(kind) = spec.kind.as_ref().filter(|kind| !kind.is_empty()) {
-        fields.kind = Some(kind.clone());
+        fields.kind = Some(stored_kind(kind));
     }
     fields.tags.extend(spec.tags.iter().cloned());
     if let Some(number) = spec
@@ -283,7 +285,7 @@ fn plan_with(rule: &Rule, input: &PlanInput<'_>) -> Planning {
     if let Some(missing) = first_missing(&fields, &rule.spec, &pattern) {
         return review(ReviewReason::MissingField(missing), fields);
     }
-    match pattern.render(&fields) {
+    match pattern.render(&fields, Some(input.kind_language)) {
         Some(relative_path) if stays_below(&relative_path) => Planning::Plan(FilingPlan {
             rule: rule.id,
             matching_rules: vec![rule.id],
@@ -299,7 +301,18 @@ fn plan_with(rule: &Rule, input: &PlanInput<'_>) -> Planning {
 /// the result would not stay below the root.
 pub fn render_pattern(source: &str, fields: &DocumentFields) -> Option<PathBuf> {
     Pattern::parse(source)?
-        .render(fields)
+        .render(fields, None)
+        .filter(|path| stays_below(path))
+}
+
+/// [`render_pattern`], with the kind written as the word of `language`.
+pub fn render_pattern_in(
+    source: &str,
+    fields: &DocumentFields,
+    language: KindLanguage,
+) -> Option<PathBuf> {
+    Pattern::parse(source)?
+        .render(fields, Some(language))
         .filter(|path| stays_below(path))
 }
 
@@ -314,8 +327,12 @@ pub struct PatternPart {
 
 /// [`render_pattern`], in the pieces the path is made of; their texts joined
 /// are the path.
-pub fn render_pattern_parts(source: &str, fields: &DocumentFields) -> Option<Vec<PatternPart>> {
-    let components = Pattern::parse(source)?.render_components(fields)?;
+pub fn render_pattern_parts(
+    source: &str,
+    fields: &DocumentFields,
+    language: KindLanguage,
+) -> Option<Vec<PatternPart>> {
+    let components = Pattern::parse(source)?.render_components(fields, Some(language))?;
     if !stays_below(&path_of(&components)) {
         return None;
     }
@@ -440,7 +457,7 @@ impl Placeholder {
     }
 
     /// Text values pass through `sanitise_value` here, whatever their origin.
-    fn value(self, fields: &DocumentFields) -> Option<String> {
+    fn value(self, fields: &DocumentFields, language: Option<KindLanguage>) -> Option<String> {
         match self {
             Self::Year => fields.date.map(|date| format!("{:04}", date.year())),
             Self::Month => fields.date.map(|date| format!("{:02}", date.month())),
@@ -449,7 +466,13 @@ impl Placeholder {
             Self::Sender | Self::Folder => fields.sender.as_deref().and_then(sanitise_value),
             Self::Recipient => fields.recipient.as_deref().and_then(sanitise_value),
             Self::Number => fields.number.as_deref().and_then(sanitise_value),
-            Self::Kind | Self::Name => fields.kind.as_deref().and_then(sanitise_value),
+            Self::Kind | Self::Name => {
+                let kind = fields.kind.as_deref()?;
+                match language {
+                    Some(words) => sanitise_value(&kind_word(kind, words)),
+                    None => sanitise_value(kind),
+                }
+            }
         }
     }
 }
@@ -536,16 +559,20 @@ impl Pattern {
     }
 
     /// `None` when a value is missing.
-    fn render(&self, fields: &DocumentFields) -> Option<PathBuf> {
-        self.render_components(fields)
+    fn render(&self, fields: &DocumentFields, language: Option<KindLanguage>) -> Option<PathBuf> {
+        self.render_components(fields, language)
             .map(|components| path_of(&components))
     }
 
-    fn render_components(&self, fields: &DocumentFields) -> Option<Vec<Vec<PatternPart>>> {
+    fn render_components(
+        &self,
+        fields: &DocumentFields,
+        language: Option<KindLanguage>,
+    ) -> Option<Vec<Vec<PatternPart>>> {
         let mut rendered = self
             .components
             .iter()
-            .map(|component| render_tokens(component, fields, false))
+            .map(|component| render_tokens(component, fields, false, language))
             .collect::<Option<Vec<_>>>()?;
         if self.automatic_file_name {
             rendered.push(automatic_file_name(fields)?);
@@ -560,6 +587,7 @@ fn render_tokens(
     tokens: &[Token],
     fields: &DocumentFields,
     dashed: bool,
+    language: Option<KindLanguage>,
 ) -> Option<Vec<PatternPart>> {
     tokens
         .iter()
@@ -569,7 +597,7 @@ fn render_tokens(
                 field: None,
             }),
             Token::Placeholder(placeholder) => {
-                let value = placeholder.value(fields)?;
+                let value = placeholder.value(fields, language)?;
                 Some(PatternPart {
                     text: if dashed {
                         value.replace(' ', "-")
@@ -586,7 +614,7 @@ fn render_tokens(
 fn automatic_file_name(fields: &DocumentFields) -> Option<Vec<PatternPart>> {
     AUTOMATIC_FILE_NAMES.iter().find_map(|source| {
         let tokens = Pattern::parse_component(source)?;
-        render_tokens(&tokens, fields, true)
+        render_tokens(&tokens, fields, true, None)
     })
 }
 
@@ -698,6 +726,7 @@ mod tests {
                 path: None,
                 sender_aliases: &SenderAliases::default(),
                 manual_fields: &[],
+                kind_language: KindLanguage::English,
             },
         )
     }
@@ -725,8 +754,110 @@ mod tests {
                 path: None,
                 sender_aliases: &SenderAliases::default(),
                 manual_fields,
+                kind_language: KindLanguage::English,
             },
         ))
+    }
+
+    fn kind_tag_rule(tag: &str, negated: bool) -> RuleSpec {
+        let condition = if negated {
+            Condition::not(ConditionKind::Tag, tag)
+        } else {
+            Condition::new(ConditionKind::Tag, tag)
+        };
+        RuleSpec {
+            conditions: RuleConditions::all_of(vec![condition]),
+            extract_number: None,
+            extract_date: None,
+            extract_amount: None,
+            kind: None,
+            tags: BTreeSet::new(),
+            ..spec("{kind}/{sender}")
+        }
+    }
+
+    fn fields_of_kind(kind: &str) -> DocumentFields {
+        DocumentFields {
+            sender: Some("Company A".to_owned()),
+            kind: Some(kind.to_owned()),
+            ..DocumentFields::default()
+        }
+    }
+
+    #[test]
+    fn a_kind_the_ai_wrote_in_english_is_filed_by_a_german_tag_rule() {
+        let planning = plan_for(
+            kind_tag_rule("rechnung", false),
+            "",
+            &fields_of_kind("invoice"),
+        );
+
+        assert_eq!(
+            planned(planning).relative_path,
+            Path::new("Invoice").join("Company A")
+        );
+    }
+
+    #[test]
+    fn a_kind_from_a_german_heading_is_filed_by_an_english_tag_rule() {
+        let planning = plan_for(
+            kind_tag_rule("invoice", false),
+            "",
+            &fields_of_kind("Rechnung"),
+        );
+
+        assert!(matches!(planning, Planning::Plan(_)));
+    }
+
+    #[test]
+    fn a_rule_that_excludes_a_kind_excludes_its_other_spelling() {
+        let planning = plan_for(
+            kind_tag_rule("rechnung", true),
+            "",
+            &fields_of_kind("invoice"),
+        );
+
+        assert_eq!(reason(&planning), ReviewReason::NoMatchingRule);
+    }
+
+    #[test]
+    fn a_tag_rule_on_one_notice_does_not_match_every_notice() {
+        let planning = plan_for(
+            kind_tag_rule("steuerbescheid", false),
+            "",
+            &fields_of_kind("Rentenbescheid"),
+        );
+
+        assert_eq!(reason(&planning), ReviewReason::NoMatchingRule);
+    }
+
+    #[test]
+    fn the_kind_folder_is_written_in_the_language_of_the_plan() {
+        let rule = rules_from(&[kind_tag_rule("invoice", false)]);
+        let fields = fields_of_kind("invoice");
+        let planned_in = |kind_language| {
+            planned(plan(
+                &rule,
+                &PlanInput {
+                    text: "",
+                    fields: &fields,
+                    path: None,
+                    sender_aliases: &SenderAliases::default(),
+                    manual_fields: &[],
+                    kind_language,
+                },
+            ))
+            .relative_path
+        };
+
+        assert_eq!(
+            planned_in(KindLanguage::German),
+            Path::new("Rechnung").join("Company A")
+        );
+        assert_eq!(
+            planned_in(KindLanguage::English),
+            Path::new("Invoice").join("Company A")
+        );
     }
 
     #[test]
@@ -744,7 +875,7 @@ mod tests {
         let overwritten = plan_keeping(&by_hand, &[]);
         assert_eq!(
             overwritten.relative_path,
-            Path::new("invoice").join("2026-03-01")
+            Path::new("Invoice").join("2026-03-01")
         );
     }
 
@@ -933,6 +1064,7 @@ mod tests {
                         path: None,
                         sender_aliases: aliases,
                         manual_fields: &[],
+                        kind_language: KindLanguage::English,
                     },
                 ),
                 Planning::Review {
@@ -963,6 +1095,7 @@ mod tests {
                 path,
                 sender_aliases: &SenderAliases::default(),
                 manual_fields: &[],
+                kind_language: KindLanguage::English,
             },
         );
         !matches!(
@@ -1075,6 +1208,7 @@ mod tests {
                 path: None,
                 sender_aliases: &SenderAliases::default(),
                 manual_fields: &[],
+                kind_language: KindLanguage::English,
             },
         );
 
@@ -1096,6 +1230,7 @@ mod tests {
                 path: None,
                 sender_aliases: &SenderAliases::default(),
                 manual_fields: &[],
+                kind_language: KindLanguage::English,
             },
         );
 
@@ -1111,6 +1246,7 @@ mod tests {
                 path: None,
                 sender_aliases: &SenderAliases::default(),
                 manual_fields: &[],
+                kind_language: KindLanguage::English,
             },
         )
     }
@@ -1328,7 +1464,8 @@ mod tests {
             date: NaiveDate::from_ymd_opt(2024, 3, 5),
             ..DocumentFields::default()
         };
-        let parts = render_pattern_parts("{sender}/{date}_{kind}", &fields).unwrap();
+        let parts =
+            render_pattern_parts("{sender}/{date}_{kind}", &fields, KindLanguage::English).unwrap();
         let separator = std::path::MAIN_SEPARATOR_STR;
         let shown: Vec<(&str, Option<Field>)> = parts
             .iter()
@@ -1341,24 +1478,32 @@ mod tests {
                 (separator, None),
                 ("2024-03-05", Some(Field::Date)),
                 ("_", None),
-                ("invoice", Some(Field::Kind)),
+                ("Invoice", Some(Field::Kind)),
             ]
         );
         let joined: String = parts.iter().map(|part| part.text.as_str()).collect();
         assert_eq!(
             Some(PathBuf::from(joined)),
-            render_pattern("{sender}/{date}_{kind}", &fields)
+            render_pattern_in("{sender}/{date}_{kind}", &fields, KindLanguage::English)
         );
     }
 
     #[test]
     fn parts_are_refused_where_the_path_is() {
         assert_eq!(
-            render_pattern_parts("{sender}", &DocumentFields::default()),
+            render_pattern_parts(
+                "{sender}",
+                &DocumentFields::default(),
+                KindLanguage::English
+            ),
             None
         );
         assert_eq!(
-            render_pattern_parts("{nonsense}", &DocumentFields::default()),
+            render_pattern_parts(
+                "{nonsense}",
+                &DocumentFields::default(),
+                KindLanguage::English
+            ),
             None
         );
     }
