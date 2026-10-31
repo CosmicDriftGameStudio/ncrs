@@ -164,7 +164,7 @@ impl ReorganisationView {
         self.selected = rows
             .iter()
             .enumerate()
-            .filter(|(_, planned)| target(planned).is_some() && !planned.unconfirmed_rule)
+            .filter(|(_, planned)| target(planned).is_some() && !planned.unconfirmed_rule())
             .map(|(position, _)| position)
             .collect();
         self.rows = rows;

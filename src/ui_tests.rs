@@ -4535,6 +4535,78 @@ mod reorganisation_plan_card {
         assert_eq!(app.reorganisation_for_test().unwrap(), &before);
     }
 
+    fn plan_app_on(source: &str) -> (App, ncrs_index::RuleId) {
+        let view = loaded_view();
+        let rule = view.rows()[row_of(&view, source)].rule.clone().unwrap().id;
+        (
+            App::with_reorganisation_plan(view).with_starting_hermes_for_test(),
+            rule,
+        )
+    }
+
+    #[test]
+    fn the_link_of_a_confirmed_rule_ends_on_the_rules_page_with_that_rule_selected() {
+        use crate::messages::RulesMessage;
+        use crate::rules_page::tests::{listed, rule_id};
+        use crate::rules_work::RulesLoad;
+        let (mut app, rule) = plan_app_on("Insurance/2024/2024-07-01_invoice.pdf");
+
+        let _ = app.update(plan_message(ReorganisationPlanMessage::OpenRule(rule)));
+        assert!(app.reorganisation_for_test().is_none());
+        let _ = app.update(Message::Rules(RulesMessage::Loaded {
+            generation: 1,
+            result: Ok(RulesLoad {
+                rules: vec![listed(3, 0), listed(2, 1), listed(1, 2)],
+                tax_contexts: Vec::new(),
+            }),
+        }));
+
+        let page = app.rules_for_test().unwrap();
+        assert_eq!(rule, rule_id(1));
+        assert_eq!(page.selected().map(|row| row.rule.id), Some(rule));
+    }
+
+    #[test]
+    fn the_link_of_an_unconfirmed_rule_ends_on_the_suggestions_page_with_it_selected() {
+        use crate::messages::RuleSuggestionsMessage;
+        use crate::rule_suggestions::tests::{rule_ids, suggestion};
+        let (mut app, rule) = plan_app_on("Insurance/2024/2024-08-01_invoice.pdf");
+        let [first, second, third] = rule_ids();
+
+        let _ = app.update(plan_message(ReorganisationPlanMessage::OpenRule(rule)));
+        assert!(app.reorganisation_for_test().is_none());
+        assert!(app.rules_for_test().is_none());
+        let _ = app.update(Message::RuleSuggestions(RuleSuggestionsMessage::Loaded {
+            generation: 1,
+            result: Ok(vec![
+                suggestion(first, "a", "Letters"),
+                suggestion(third, "c", "Letters"),
+                suggestion(second, "b", "Letters"),
+            ]),
+        }));
+
+        let page = app.rule_suggestions_for_test().unwrap();
+        assert_eq!(rule, second);
+        assert_eq!(page.selected().map(|row| row.id), Some(rule));
+    }
+
+    #[test]
+    fn the_entry_under_the_cursor_is_explained_with_a_link_to_its_rule() {
+        let mut view = loaded_view();
+        let line = line_of(&view, "Insurance/2024/2024-07-01_invoice.pdf");
+        view.move_cursor(isize::try_from(line).unwrap());
+
+        assert!(shows(view.clone(), "Show rule"));
+        assert!(!shows(loaded_view(), "Show rule"));
+        let planned = view.rows()[row_of(&view, "Insurance/2024/2024-07-01_invoice.pdf")].clone();
+        assert_eq!(
+            messages_after_click(view, "Show rule"),
+            [plan_message(ReorganisationPlanMessage::OpenRule(
+                planned.rule.unwrap().id
+            ))]
+        );
+    }
+
     #[test]
     fn opening_without_an_index_ends_in_a_complaint() {
         let mut app = App::with_fixed_panels().with_starting_hermes_for_test();
@@ -4608,6 +4680,16 @@ mod reorganisation_plan_card {
     fn the_view_matches_its_snapshots() {
         matches_snapshot(loaded_view(), "reorganisation_plan_en");
         matches_snapshot(loaded_view(), "reorganisation_plan_de");
+    }
+
+    #[test]
+    fn an_entry_with_a_rule_matches_its_snapshots() {
+        let mut view = loaded_view();
+        let line = line_of(&view, "Insurance/2024/2024-07-01_invoice.pdf");
+        view.move_cursor(isize::try_from(line).unwrap());
+
+        matches_snapshot(view.clone(), "reorganisation_plan_rule_en");
+        matches_snapshot(view, "reorganisation_plan_rule_de");
     }
 }
 

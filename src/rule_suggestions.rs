@@ -41,6 +41,8 @@ pub struct RuleSuggestions {
     matches: Matches,
     /// The suggestion `matches` belongs to.
     matches_of: Option<RuleId>,
+    /// The suggestion the first load puts the cursor on.
+    select_on_load: Option<RuleId>,
 }
 
 impl RuleSuggestions {
@@ -54,7 +56,13 @@ impl RuleSuggestions {
             problem: None,
             matches: Matches::Unknown,
             matches_of: None,
+            select_on_load: None,
         }
+    }
+
+    /// The next load puts the cursor on this suggestion, if it is listed.
+    pub fn select_on_load(&mut self, id: RuleId) {
+        self.select_on_load = Some(id);
     }
 
     pub fn rows(&self) -> &[SuggestedRule] {
@@ -95,7 +103,10 @@ impl RuleSuggestions {
     /// The list the work returned. The cursor stays on the suggestion it was
     /// on, if that is still there.
     pub fn loaded(&mut self, rows: Vec<SuggestedRule>) {
-        let selected = self.selected().map(|row| row.id);
+        let selected = self
+            .select_on_load
+            .take()
+            .or_else(|| self.selected().map(|row| row.id));
         self.cursor = selected
             .and_then(|id| rows.iter().position(|row| row.id == id))
             .unwrap_or_else(|| self.cursor.min(rows.len().saturating_sub(1)));

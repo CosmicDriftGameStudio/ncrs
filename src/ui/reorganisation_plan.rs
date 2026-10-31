@@ -6,7 +6,7 @@
 
 use iced::widget::{column, container, row, Space};
 use iced::{alignment, Element, Length, Size};
-use ncrs_index::{ConflictReason, Finding, PlanOutcome};
+use ncrs_index::{ConflictReason, Finding, NoActionReason, PlanOutcome};
 
 use super::format;
 use super::frame::{self, DialogSize, Frame, KeyHints};
@@ -68,6 +68,9 @@ pub fn view<'a>(
         body = body.push(list(state, line_chars, badges.focus, lang, palette));
         if state.is_busy() {
             body = body.push(dim(lang.text(Msg::ReorganisationPlanPlanning), palette));
+        }
+        if let Some(line) = detail(state, lang, palette) {
+            body = body.push(line);
         }
         body = body.push(
             container(trees(
@@ -184,7 +187,7 @@ pub fn reason_text(planned: &PlannedItem, lang: Language) -> String {
                     &[("{keeper}", &keeper.display().to_string())],
                 ),
                 Some(Finding::Misplaced { .. }) => lang
-                    .text(if planned.unconfirmed_rule {
+                    .text(if planned.unconfirmed_rule() {
                         Msg::ReorganisationPlanReasonMisplacedUnconfirmed
                     } else {
                         Msg::ReorganisationPlanReasonMisplaced
@@ -208,6 +211,109 @@ pub fn reason_text(planned: &PlannedItem, lang: Language) -> String {
             }
         }
     }
+}
+
+/// One sentence that explains the entry: what was found and what the plan
+/// does about it, or why it cannot be run.
+pub fn finding_sentence(planned: &PlannedItem, lang: Language) -> String {
+    let target = proposed_text(planned);
+    let target_slot = [("{target}", target.as_str())];
+    match &planned.item.outcome {
+        PlanOutcome::Conflict { reason, .. } => match reason {
+            ConflictReason::TargetExists => fill_template(
+                lang.text(Msg::ReorganisationPlanFindingTargetExists),
+                &target_slot,
+            ),
+            ConflictReason::TargetTakenByOtherItem => fill_template(
+                lang.text(Msg::ReorganisationPlanFindingTargetTaken),
+                &target_slot,
+            ),
+            ConflictReason::TargetLeavesLocation => lang
+                .text(Msg::ReorganisationPlanFindingTargetLeaves)
+                .to_owned(),
+        },
+        PlanOutcome::NoAction(NoActionReason::MissingFields) => lang
+            .text(Msg::ReorganisationPlanFindingMissingFields)
+            .to_owned(),
+        PlanOutcome::Move { .. } | PlanOutcome::Rename { .. } => {
+            match deciding_finding(&planned.item) {
+                Some(Finding::Duplicate { keeper }) => fill_template(
+                    lang.text(Msg::ReorganisationPlanFindingDuplicate),
+                    &[
+                        ("{keeper}", &keeper.display().to_string()),
+                        ("{target}", &target),
+                    ],
+                ),
+                Some(Finding::Misplaced { .. }) => match &planned.rule {
+                    Some(rule) => fill_template(
+                        lang.text(if rule.confirmed {
+                            Msg::ReorganisationPlanFindingMisplaced
+                        } else {
+                            Msg::ReorganisationPlanFindingMisplacedUnconfirmed
+                        }),
+                        &[("{rule}", &rule.label), ("{target}", &target)],
+                    ),
+                    None => fill_template(
+                        lang.text(Msg::ReorganisationPlanFindingMisplacedUnknown),
+                        &target_slot,
+                    ),
+                },
+                Some(Finding::YearMismatch {
+                    folder_year,
+                    date_year,
+                }) => match planned.date {
+                    Some(date) => fill_template(
+                        lang.text(Msg::ReorganisationPlanFindingYearDated),
+                        &[
+                            ("{date}", &date.to_string()),
+                            ("{folder_year}", &folder_year.to_string()),
+                        ],
+                    ),
+                    None => fill_template(
+                        lang.text(Msg::ReorganisationPlanFindingYearUndated),
+                        &[
+                            ("{date_year}", &date_year.to_string()),
+                            ("{folder_year}", &folder_year.to_string()),
+                        ],
+                    ),
+                },
+                Some(Finding::NameOutlier { pattern }) => fill_template(
+                    lang.text(Msg::ReorganisationPlanFindingName),
+                    &[("{pattern}", pattern), ("{target}", &target)],
+                ),
+                None => String::new(),
+            }
+        }
+    }
+}
+
+/// The sentence for the entry under the cursor, and the link to its rule.
+/// Nothing for a group heading.
+fn detail<'a>(
+    state: &'a ReorganisationView,
+    lang: Language,
+    palette: &Palette,
+) -> Option<Element<'a, Message>> {
+    let Some(&Line::Item(row)) = state.lines().get(state.cursor()) else {
+        return None;
+    };
+    let planned = state.rows().get(row)?;
+    let mut line =
+        row![container(paragraph(finding_sentence(planned, lang), palette)).width(Length::Fill)]
+            .spacing(spacing::LINE_GAP)
+            .align_y(alignment::Vertical::Center);
+    if let Some(rule) = &planned.rule {
+        line = line.push(kit::link(
+            lang.text(if rule.confirmed {
+                Msg::ReorganisationPlanShowRule
+            } else {
+                Msg::ReorganisationPlanShowSuggestion
+            }),
+            send(ReorganisationPlanMessage::OpenRule(rule.id)),
+            palette,
+        ));
+    }
+    Some(line.into())
 }
 
 fn list<'a>(
@@ -422,4 +528,171 @@ fn buttons<'a>(
             palette,
         ),
     ]
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use std::path::{Path, PathBuf};
+
+    use super::*;
+    use crate::reorganisation_work::tests::{item, sample_items};
+
+    fn sentence(source: &str) -> String {
+        finding_sentence(item(&sample_items(), source), Language::English)
+    }
+
+    #[test]
+    fn a_confirmed_rule_is_named_with_its_target() {
+        let sentence = sentence("Insurance/2024/2024-07-01_invoice.pdf");
+
+        assert!(sentence.starts_with("Rule ‘tax notice’ files documents like this one under "));
+        let folder = Path::new("Taxes").join("2024").display().to_string();
+        assert!(sentence.contains(&folder), "{sentence}");
+    }
+
+    #[test]
+    fn a_suggested_rule_is_named_and_said_to_be_unconfirmed() {
+        let sentence = sentence("Insurance/2024/2024-08-01_invoice.pdf");
+
+        assert!(sentence.starts_with("The suggested rule ‘late fee’ would file this under "));
+        let folder = Path::new("Fees").join("2024").display().to_string();
+        assert!(sentence.contains(&folder), "{sentence}");
+        assert!(sentence.ends_with("it is not confirmed yet."), "{sentence}");
+    }
+
+    #[test]
+    fn a_rule_that_is_gone_is_described_without_its_name() {
+        let mut planned = item(&sample_items(), "Insurance/2024/2024-07-01_invoice.pdf").clone();
+        planned.rule = None;
+
+        let sentence = finding_sentence(&planned, Language::English);
+
+        assert!(sentence.starts_with("A rule that is no longer there would file this under "));
+    }
+
+    #[test]
+    fn a_wrong_year_names_the_date_and_the_folder() {
+        assert_eq!(
+            sentence("Insurance/2023/2024-05-01_invoice.pdf"),
+            "Dated 2024-05-01, but it lies in the folder 2023."
+        );
+    }
+
+    #[test]
+    fn a_wrong_year_without_a_known_date_names_the_year() {
+        let mut planned = item(&sample_items(), "Insurance/2023/2024-05-01_invoice.pdf").clone();
+        planned.date = None;
+
+        assert_eq!(
+            finding_sentence(&planned, Language::English),
+            "Dated in 2024, but it lies in the folder 2023."
+        );
+    }
+
+    #[test]
+    fn a_copy_names_the_file_that_stays_and_where_the_copy_goes() {
+        let planned = item(&sample_items(), "Misc/2024-04-01_invoice.pdf").clone();
+        let target = proposed_text(&planned);
+
+        let sentence = finding_sentence(&planned, Language::English);
+
+        assert!(
+            sentence
+                .starts_with("Same content as Insurance/2024/2024-04-01_invoice.pdf, which stays;"),
+            "{sentence}"
+        );
+        assert!(
+            sentence.ends_with(&format!("this copy moves to {target}.")),
+            "{sentence}"
+        );
+    }
+
+    #[test]
+    fn an_odd_name_names_the_pattern_and_the_new_name() {
+        let planned = item(&sample_items(), "Insurance/2024/scan 0042.pdf").clone();
+        let target = proposed_text(&planned);
+
+        let sentence = finding_sentence(&planned, Language::English);
+
+        assert!(
+            sentence.starts_with("The name does not follow the pattern "),
+            "{sentence}"
+        );
+        assert!(
+            sentence.ends_with(&format!("it becomes {target}.")),
+            "{sentence}"
+        );
+    }
+
+    #[test]
+    fn a_target_that_exists_says_which() {
+        let planned = item(&sample_items(), "Insurance/2023/2024-06-01_invoice.pdf").clone();
+        let target = proposed_text(&planned);
+
+        assert!(!target.is_empty());
+        assert_eq!(
+            finding_sentence(&planned, Language::English),
+            format!("{target} exists already, so this entry cannot be run.")
+        );
+    }
+
+    #[test]
+    fn a_target_wanted_twice_and_one_outside_the_folder_are_explained() {
+        let mut planned = item(&sample_items(), "Insurance/2023/2024-06-01_invoice.pdf").clone();
+        planned.item.outcome = PlanOutcome::Conflict {
+            target: Some(PathBuf::from("Taxes/2024/x.pdf")),
+            reason: ConflictReason::TargetTakenByOtherItem,
+        };
+        assert_eq!(
+            finding_sentence(&planned, Language::English),
+            "Another entry of this plan wants Taxes/2024/x.pdf as well, so this one cannot be run."
+        );
+
+        planned.item.outcome = PlanOutcome::Conflict {
+            target: None,
+            reason: ConflictReason::TargetLeavesLocation,
+        };
+        assert_eq!(
+            finding_sentence(&planned, Language::English),
+            "The proposed path would lie outside the document folder, so this entry cannot be run."
+        );
+    }
+
+    #[test]
+    fn missing_fields_are_explained_with_the_date_as_example() {
+        let items = sample_items();
+        let planned = item(&items, "Insurance/2024/IMG_7.pdf");
+        assert!(matches!(planned.item.outcome, PlanOutcome::NoAction(_)));
+
+        let sentence = finding_sentence(planned, Language::English);
+
+        assert!(
+            sentence.contains("unknown for this file, such as its date"),
+            "{sentence}"
+        );
+    }
+
+    #[test]
+    fn the_sentences_come_in_german_too() {
+        let items = sample_items();
+
+        let rule = finding_sentence(
+            item(&items, "Insurance/2024/2024-07-01_invoice.pdf"),
+            Language::German,
+        );
+        let year = finding_sentence(
+            item(&items, "Insurance/2023/2024-05-01_invoice.pdf"),
+            Language::German,
+        );
+
+        assert!(
+            rule.starts_with("Die Regel ‘tax notice’ legt solche Dokumente unter "),
+            "{rule}"
+        );
+        assert_eq!(year, "Datiert auf 2024-05-01, liegt aber im Ordner 2023.");
+        assert!(
+            Path::new(&proposed_text(item(&items, "Misc/2024-04-01_invoice.pdf"))).is_relative()
+        );
+    }
 }

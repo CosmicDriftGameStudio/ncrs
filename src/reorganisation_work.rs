@@ -5,11 +5,12 @@
 //! files of the location are not touched. The index is the one the intake
 //! shares, so it is held for as long as one location is planned.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use ncrs_index::{BatchKind, Finding, Index, IndexError, PlanItem, PlanOutcome, RuleId};
+use chrono::NaiveDate;
+use ncrs_index::{BatchKind, Finding, Index, IndexError, PlanItem, PlanOutcome, RuleId, RuleSpec};
 use ncrs_intake::{plan_location, FINDING_PRIORITY};
 
 use crate::execute::{self, ExecutionItem, UndoReport};
@@ -25,9 +26,54 @@ pub struct PlannedItem {
     /// The archive location, as the intake sees it; `item` paths are below it.
     pub location: PathBuf,
     pub item: PlanItem,
+    /// The rule behind a `Misplaced` finding that decides the action.
+    pub rule: Option<PlannedRule>,
+    /// The date of the document, for a `YearMismatch` finding that decides
+    /// the action.
+    pub date: Option<NaiveDate>,
+}
+
+impl PlannedItem {
     /// The finding that decides the action rests on a rule the user has not
-    /// confirmed.
-    pub unconfirmed_rule: bool,
+    /// confirmed, or on one the index no longer knows.
+    pub fn unconfirmed_rule(&self) -> bool {
+        match deciding_finding(&self.item) {
+            Some(Finding::Misplaced { .. }) => {
+                self.rule.as_ref().is_none_or(|rule| !rule.confirmed)
+            }
+            _ => false,
+        }
+    }
+}
+
+/// A rule a plan entry rests on.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlannedRule {
+    pub id: RuleId,
+    /// What the rule looks for, short enough for a sentence.
+    pub label: String,
+    pub confirmed: bool,
+}
+
+/// Longest label of a rule, in characters.
+const RULE_LABEL_CHARS: usize = 40;
+
+fn rule_label(spec: &RuleSpec) -> String {
+    let phrase = spec
+        .conditions
+        .list
+        .iter()
+        .filter(|condition| !condition.negated)
+        .map(|condition| condition.value.trim())
+        .find(|value| !value.is_empty());
+    match phrase {
+        Some(value) if value.chars().count() > RULE_LABEL_CHARS => {
+            let cut: String = value.chars().take(RULE_LABEL_CHARS).collect();
+            format!("{cut}…")
+        }
+        Some(value) => value.to_owned(),
+        None => spec.kind.clone(),
+    }
 }
 
 /// The finding the outcome of `item` follows: the first of the priority.
@@ -60,21 +106,37 @@ impl PlanAccess {
             let mut guard = self.slot.lock().unwrap_or_else(PoisonError::into_inner);
             let index = guard.as_mut().ok_or_else(|| INDEX_NOT_OPEN.to_owned())?;
             let plan = plan_location(index, root).map_err(|err| err.to_string())?;
-            let confirmed: HashSet<RuleId> = index
+            let rules: HashMap<RuleId, PlannedRule> = index
                 .rules()
                 .map_err(|err| err.to_string())?
                 .into_iter()
-                .filter(|rule| rule.spec.confirmed)
-                .map(|rule| rule.id)
+                .map(|rule| {
+                    let planned_rule = PlannedRule {
+                        id: rule.id,
+                        label: rule_label(&rule.spec),
+                        confirmed: rule.spec.confirmed,
+                    };
+                    (rule.id, planned_rule)
+                })
                 .collect();
-            planned.extend(plan.items.into_iter().map(|item| PlannedItem {
-                location: root.clone(),
-                unconfirmed_rule: matches!(
-                    deciding_finding(&item),
-                    Some(Finding::Misplaced { rule }) if !confirmed.contains(rule)
-                ),
-                item,
-            }));
+            for item in plan.items {
+                let (rule, date) = match deciding_finding(&item) {
+                    Some(Finding::Misplaced { rule }) => (rules.get(rule).cloned(), None),
+                    Some(Finding::YearMismatch { .. }) => {
+                        let found = index
+                            .document_by_path(&root.join(&item.source))
+                            .map_err(|err| err.to_string())?;
+                        (None, found.and_then(|document| document.fields.date))
+                    }
+                    _ => (None, None),
+                };
+                planned.push(PlannedItem {
+                    location: root.clone(),
+                    item,
+                    rule,
+                    date,
+                });
+            }
         }
         Ok(planned)
     }
@@ -466,9 +528,64 @@ pub mod tests {
     fn only_a_rule_the_user_has_not_confirmed_is_marked() {
         let items = sample_items();
 
-        assert!(!item(&items, "Insurance/2024/2024-07-01_invoice.pdf").unconfirmed_rule);
-        assert!(item(&items, "Insurance/2024/2024-08-01_invoice.pdf").unconfirmed_rule);
-        assert!(!item(&items, "Misc/2024-04-01_invoice.pdf").unconfirmed_rule);
+        assert!(!item(&items, "Insurance/2024/2024-07-01_invoice.pdf").unconfirmed_rule());
+        assert!(item(&items, "Insurance/2024/2024-08-01_invoice.pdf").unconfirmed_rule());
+        assert!(!item(&items, "Misc/2024-04-01_invoice.pdf").unconfirmed_rule());
+    }
+
+    #[test]
+    fn a_misplaced_entry_carries_the_label_and_state_of_its_rule() {
+        let items = sample_items();
+
+        let confirmed = item(&items, "Insurance/2024/2024-07-01_invoice.pdf");
+        let suggested = item(&items, "Insurance/2024/2024-08-01_invoice.pdf");
+
+        let confirmed_rule = confirmed.rule.as_ref().unwrap();
+        assert_eq!(
+            (confirmed_rule.label.as_str(), confirmed_rule.confirmed),
+            ("tax notice", true)
+        );
+        let suggested_rule = suggested.rule.as_ref().unwrap();
+        assert_eq!(
+            (suggested_rule.label.as_str(), suggested_rule.confirmed),
+            ("late fee", false)
+        );
+        assert!(item(&items, "Misc/2024-04-01_invoice.pdf").rule.is_none());
+    }
+
+    #[test]
+    fn a_year_mismatch_carries_the_date_of_the_document() {
+        let items = sample_items();
+
+        assert_eq!(
+            item(&items, "Insurance/2023/2024-05-01_invoice.pdf").date,
+            day(2024, 5, 1)
+        );
+        assert_eq!(
+            item(&items, "Insurance/2024/2024-07-01_invoice.pdf").date,
+            None
+        );
+    }
+
+    #[test]
+    fn a_long_condition_is_cut_for_the_label() {
+        let spec = rule_spec(&format!("  {}  ", "x".repeat(60)), "Tax", "", true);
+
+        assert_eq!(
+            rule_label(&spec),
+            format!("{}…", "x".repeat(RULE_LABEL_CHARS))
+        );
+    }
+
+    #[test]
+    fn a_rule_without_a_usable_condition_is_labelled_by_its_kind() {
+        let mut spec = rule_spec("  ", "Tax", "", true);
+        spec.conditions.list.push(Condition {
+            negated: true,
+            ..Condition::new(ConditionKind::Substring, "other")
+        });
+
+        assert_eq!(rule_label(&spec), "Tax");
     }
 
     #[test]

@@ -934,6 +934,9 @@ pub enum ReorganisationPlanMessage {
     ToggleCursor,
     /// Enter: hands the selection over as `Message::ExecuteReorganisation`.
     Execute,
+    /// The link under the list: opens the page of the rule behind the entry
+    /// under the cursor.
+    OpenRule(RuleId),
 }
 
 /// Which part of the Hermes card the arrow keys act on.
