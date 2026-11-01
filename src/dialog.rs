@@ -7,6 +7,7 @@
 //! Not yet in the roadmap's T10 (config): the prompt remembers the name the
 //! user typed while the operation runs, so a failure can be shown next to the
 //! text that caused it.
+use std::ffi::OsString;
 use std::path::PathBuf;
 
 use crate::fs::archive;
@@ -40,6 +41,19 @@ pub struct Prompt {
     busy: bool,
     /// Why the last attempt failed, in the active language.
     error: Option<String>,
+    /// Set for a pack prompt that packs a hit list.
+    hits: Option<PackHits>,
+}
+
+/// What a pack prompt knows about the hit list it packs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackHits {
+    /// The folder the search ran in; the folders below it are what "Keep
+    /// folders" keeps.
+    pub scope: PathBuf,
+    pub keep_folders: bool,
+    /// Files that share a name, with the name each gets in the archive.
+    pub numbered: Vec<(PathBuf, OsString)>,
 }
 
 impl Prompt {
@@ -51,6 +65,7 @@ impl Prompt {
             sources: Vec::new(),
             busy: false,
             error: None,
+            hits: None,
         }
     }
 
@@ -78,6 +93,37 @@ impl Prompt {
             name: parent.join(name).to_string_lossy().into_owned(),
             ..Self::new(PromptKind::Pack, parent)
         }
+    }
+
+    /// The pack prompt for the files of a hit list that ran in `scope`.
+    pub fn pack_hits(parent: PathBuf, sources: Vec<PathBuf>, scope: PathBuf, name: &str) -> Self {
+        let numbered = crate::fs::flat_names::members_of_shared_names(&sources);
+        Self {
+            hits: Some(PackHits {
+                scope,
+                keep_folders: false,
+                numbered,
+            }),
+            ..Self::pack(parent, sources, name)
+        }
+    }
+
+    pub fn hits(&self) -> Option<&PackHits> {
+        self.hits.as_ref()
+    }
+
+    pub fn toggle_keep_folders(&mut self) {
+        if let Some(hits) = self.hits.as_mut() {
+            hits.keep_folders = !hits.keep_folders;
+        }
+    }
+
+    /// The folder entry names are made relative to, when "Keep folders" is on.
+    pub fn kept_folders_under(&self) -> Option<&std::path::Path> {
+        self.hits
+            .as_ref()
+            .filter(|hits| hits.keep_folders)
+            .map(|hits| hits.scope.as_path())
     }
 
     /// Where a pack prompt writes: the typed text, a relative one taken from

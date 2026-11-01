@@ -3,6 +3,7 @@
 pub mod archive;
 mod delete;
 mod entry;
+pub mod flat_names;
 mod folder_size;
 #[cfg(any(all(feature = "sandbox", target_os = "macos"), test))]
 mod grants;

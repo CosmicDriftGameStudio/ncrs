@@ -4,14 +4,16 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use iced::mouse::ScrollDelta;
 
 use crate::fs::search::{
     LineMatch, PathFilter, SearchError, SearchEvent, SearchQuery, SearchTotals,
 };
+use crate::fs::FileEntry;
 use crate::search_filters::SearchFilters;
-use crate::ui::layout::ROW_HEIGHT;
+use crate::ui::layout::{HIT_LIST_ROW_HEIGHT, SEARCH_CONTENT_ROW_HEIGHT};
 
 /// The line number of a snippet from the index, which does not know lines;
 /// real lines count from 1.
@@ -49,21 +51,34 @@ pub struct FileResult {
     pub path: PathBuf,
     /// Empty for a search by file name.
     pub lines: Vec<LineMatch>,
+    /// As the search found the file, so drawing a row reads no file.
+    pub size: u64,
+    pub modified: Option<SystemTime>,
 }
 
-/// One row of the result list, by position in `SearchView::results`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SearchRow {
-    File(usize),
-    /// File index, then line index in that file.
-    Line(usize, usize),
-}
+impl FileResult {
+    /// The line the row shows under the folder.
+    pub fn first_match(&self) -> Option<&LineMatch> {
+        self.lines.first()
+    }
 
-impl SearchRow {
-    fn file(self) -> usize {
-        match self {
-            Self::File(file) | Self::Line(file, _) => file,
-        }
+    /// Matching lines beyond the one the row shows.
+    pub fn more_matches(&self) -> usize {
+        self.lines.len().saturating_sub(1)
+    }
+
+    /// The row the panel's file list draws for this hit.
+    pub fn entry(&self) -> Option<FileEntry> {
+        Some(FileEntry {
+            name: self.path.file_name()?.to_owned(),
+            path: self.path.clone(),
+            is_dir: false,
+            is_symlink: false,
+            is_parent: false,
+            size: self.size,
+            modified: self.modified,
+            folder_size: None,
+        })
     }
 }
 
@@ -80,13 +95,14 @@ pub struct SearchView {
     pub focused: SearchField,
     /// Kept sorted by path, whatever order the files arrive in.
     pub results: Vec<FileResult>,
-    /// Files whose lines are folded away. Survives a new search, so a file the
-    /// user folded stays folded when the query changes.
-    pub collapsed: HashSet<PathBuf>,
+    /// The rows have a third line: set once per result set, so the row height
+    /// does not change while results stream in.
+    pub third_line: bool,
     /// The files F5, F6 and F8 act on. By path, as in the panels, so a result
     /// that sorts in front does not shift a tag onto another file.
     pub tagged: HashSet<PathBuf>,
-    pub cursor: Option<SearchRow>,
+    /// Index in `results`.
+    pub cursor: Option<usize>,
     /// Until the user moves the cursor it stays on the first row, however many
     /// files sort in front of it; afterwards it stays on the item it is on.
     pub cursor_moved_by_user: bool,
@@ -128,7 +144,7 @@ impl SearchView {
             regex: false,
             focused: SearchField::Query,
             results: Vec::new(),
-            collapsed: HashSet::new(),
+            third_line: false,
             tagged: HashSet::new(),
             cursor: None,
             cursor_moved_by_user: false,
@@ -175,6 +191,8 @@ impl SearchView {
             .take(limit)
             .map(|hit| FileResult {
                 path: hit.path.clone(),
+                size: hit.stamp.map_or(0, |stamp| stamp.size),
+                modified: hit.stamp.map(|stamp| stamp.mtime),
                 lines: filters
                     .snippet_of(hit)
                     .map(|snippet| {
@@ -192,7 +210,7 @@ impl SearchView {
         let not_shown = admitted.count();
         let kept_on = self
             .cursor
-            .and_then(|row| self.results.get(row.file()))
+            .and_then(|file| self.results.get(file))
             .map(|result| result.path.clone());
         let busy = filters.is_busy();
         let matches = results.iter().map(|result| result.lines.len()).sum();
@@ -204,6 +222,7 @@ impl SearchView {
             truncated: false,
         });
         self.results = results;
+        self.third_line = true;
         self.not_shown = not_shown;
         self.error = None;
         self.running = busy;
@@ -211,8 +230,7 @@ impl SearchView {
             .retain(|path| self.results.iter().any(|result| &result.path == path));
         self.cursor = kept_on
             .and_then(|path| self.results.iter().position(|result| result.path == path))
-            .or_else(|| (!self.results.is_empty()).then_some(0))
-            .map(SearchRow::File);
+            .or_else(|| (!self.results.is_empty()).then_some(0));
         self.ensure_visible(visible_rows);
     }
 
@@ -234,31 +252,18 @@ impl SearchView {
         self.query.is_empty()
     }
 
-    /// The rows in display order: each file, followed by its lines unless the
-    /// file is folded. Lazy, so drawing a window of them does not build all.
-    pub fn rows_iter(&self) -> impl Iterator<Item = SearchRow> + '_ {
-        self.results.iter().enumerate().flat_map(|(file, result)| {
-            let lines = if self.collapsed.contains(&result.path) {
-                0
-            } else {
-                result.lines.len()
-            };
-            std::iter::once(SearchRow::File(file))
-                .chain((0..lines).map(move |line| SearchRow::Line(file, line)))
-        })
-    }
-
-    pub fn rows(&self) -> Vec<SearchRow> {
-        self.rows_iter().collect()
-    }
-
-    pub fn cursor_row_index(&self) -> Option<usize> {
-        let cursor = self.cursor?;
-        self.rows_iter().position(|row| row == cursor)
+    /// Height of a result row: name and folder, and under them the first
+    /// matching line of a content search or the tags of an index hit.
+    pub fn row_height(&self) -> f32 {
+        if self.third_line {
+            SEARCH_CONTENT_ROW_HEIGHT
+        } else {
+            HIT_LIST_ROW_HEIGHT
+        }
     }
 
     pub fn move_cursor(&mut self, delta: isize, visible_rows: usize) {
-        let from = self.cursor_row_index().unwrap_or(0);
+        let from = self.cursor.unwrap_or(0);
         self.select_row(from.saturating_add_signed(delta), visible_rows);
     }
 
@@ -278,47 +283,13 @@ impl SearchView {
         self.select_row(usize::MAX, visible_rows);
     }
 
-    /// Puts the cursor on row `index` (clamped) and scrolls it into view.
+    /// Puts the cursor on file `index` (clamped) and scrolls it into view.
     pub fn select_row(&mut self, index: usize, visible_rows: usize) {
-        let rows = self.rows();
-        let Some(last) = rows.len().checked_sub(1) else {
+        let Some(last) = self.results.len().checked_sub(1) else {
             return;
         };
-        self.cursor = rows.get(index.min(last)).copied();
+        self.cursor = Some(index.min(last));
         self.cursor_moved_by_user = true;
-        self.ensure_visible(visible_rows);
-    }
-
-    /// Right unfolds and Left folds the cursor's file. Left on a line folds
-    /// its file and moves the cursor up to it, so the cursor never sits on a
-    /// row that is gone.
-    pub fn set_expanded(&mut self, expanded: bool, visible_rows: usize) {
-        let Some(file) = self.cursor.map(SearchRow::file) else {
-            return;
-        };
-        self.set_group(file, expanded, visible_rows);
-    }
-
-    pub fn toggle_group(&mut self, file: usize, visible_rows: usize) {
-        let Some(result) = self.results.get(file) else {
-            return;
-        };
-        let expanded = self.collapsed.contains(&result.path);
-        self.set_group(file, expanded, visible_rows);
-    }
-
-    fn set_group(&mut self, file: usize, expanded: bool, visible_rows: usize) {
-        let Some(result) = self.results.get(file) else {
-            return;
-        };
-        if expanded {
-            self.collapsed.remove(&result.path);
-        } else if !result.lines.is_empty() {
-            self.collapsed.insert(result.path.clone());
-            if self.cursor.map(SearchRow::file) == Some(file) {
-                self.cursor = Some(SearchRow::File(file));
-            }
-        }
         self.ensure_visible(visible_rows);
     }
 
@@ -328,14 +299,13 @@ impl SearchView {
     pub fn scroll(&mut self, delta: ScrollDelta, visible_rows: usize) {
         let rows_down = match delta {
             ScrollDelta::Lines { y, .. } => -y,
-            ScrollDelta::Pixels { y, .. } => -y / ROW_HEIGHT,
+            ScrollDelta::Pixels { y, .. } => -y / self.row_height(),
         } + self.scroll_remainder;
         let whole = rows_down.trunc();
         self.scroll_remainder = rows_down - whole;
 
         let rows = visible_rows.max(1);
-        let all = self.rows();
-        let max_offset = all.len().saturating_sub(rows);
+        let max_offset = self.results.len().saturating_sub(rows);
         let moved = whole as isize;
         self.scroll_offset = self
             .scroll_offset
@@ -346,10 +316,10 @@ impl SearchView {
         {
             self.scroll_remainder = 0.0;
         }
-        if let Some(index) = self.cursor_row_index() {
+        if let Some(index) = self.cursor {
             let held = index.clamp(self.scroll_offset, self.scroll_offset + rows - 1);
             if held != index {
-                self.cursor = all.get(held).copied();
+                self.cursor = Some(held.min(self.results.len().saturating_sub(1)));
                 self.cursor_moved_by_user = true;
             }
         }
@@ -359,20 +329,21 @@ impl SearchView {
     /// the list after rows have gone.
     pub fn ensure_visible(&mut self, visible_rows: usize) {
         let rows = visible_rows.max(1);
-        if let Some(index) = self.cursor_row_index() {
+        if let Some(index) = self.cursor {
             if index < self.scroll_offset {
                 self.scroll_offset = index;
             } else if index >= self.scroll_offset + rows {
                 self.scroll_offset = index + 1 - rows;
             }
         }
-        let max_offset = self.rows_iter().count().saturating_sub(rows);
+        let max_offset = self.results.len().saturating_sub(rows);
         self.scroll_offset = self.scroll_offset.min(max_offset);
     }
 
     /// Forgets the results of the search before, keeping what the user set.
     pub fn clear_results(&mut self) {
         self.results.clear();
+        self.third_line = false;
         self.tagged.clear();
         self.cursor = None;
         self.cursor_moved_by_user = false;
@@ -391,11 +362,22 @@ impl SearchView {
         self.clear_results();
         self.generation = generation;
         self.running = true;
+        self.third_line = !self.is_name_search();
     }
 
     pub fn apply_event(&mut self, event: SearchEvent) {
         match event {
-            SearchEvent::File { path, lines } => self.insert_file(FileResult { path, lines }),
+            SearchEvent::File {
+                path,
+                lines,
+                size,
+                modified,
+            } => self.insert_file(FileResult {
+                path,
+                lines,
+                size,
+                modified,
+            }),
             SearchEvent::Progress { scanned, skipped } => {
                 self.scanned = scanned;
                 self.skipped = skipped;
@@ -410,7 +392,7 @@ impl SearchView {
     }
 
     fn insert_file(&mut self, found: FileResult) {
-        let at = match self
+        match self
             .results
             .binary_search_by(|result| result.path.cmp(&found.path))
         {
@@ -418,29 +400,19 @@ impl SearchView {
                 if let Some(slot) = self.results.get_mut(existing) {
                     *slot = found;
                 }
-                existing
             }
             Err(position) => {
                 self.results.insert(position, found);
                 // A file in front of the cursor pushes it down by one.
                 if let Some(cursor) = self.cursor.as_mut() {
-                    if position <= cursor.file() {
-                        *cursor = match *cursor {
-                            SearchRow::File(file) => SearchRow::File(file + 1),
-                            SearchRow::Line(file, line) => SearchRow::Line(file + 1, line),
-                        };
+                    if position <= *cursor {
+                        *cursor += 1;
                     }
                 }
-                position
             }
-        };
+        }
         if !self.cursor_moved_by_user {
-            self.cursor = (!self.results.is_empty()).then_some(SearchRow::File(0));
-        } else if let Some(SearchRow::Line(file, line)) = self.cursor {
-            // A replaced file may have fewer lines than the cursor's index.
-            if file == at && self.results.get(at).is_some_and(|r| line >= r.lines.len()) {
-                self.cursor = Some(SearchRow::File(at));
-            }
+            self.cursor = (!self.results.is_empty()).then_some(0);
         }
     }
 
@@ -476,10 +448,9 @@ impl SearchView {
     }
 
     /// Toggles the tag on the cursor's file and moves the cursor to the next
-    /// file row (`delta` > 0) or the previous one. A cursor on a line tags its
-    /// file. At either end the cursor stays.
+    /// file (`delta` > 0) or the previous one. At either end the cursor stays.
     pub fn tag_and_move(&mut self, delta: isize, visible_rows: usize) {
-        let Some(file) = self.cursor.map(SearchRow::file) else {
+        let Some(file) = self.cursor else {
             return;
         };
         let Some(result) = self.results.get(file) else {
@@ -489,8 +460,8 @@ impl SearchView {
             self.tagged.insert(result.path.clone());
         }
         let neighbour = file.checked_add_signed(delta.signum());
-        if neighbour.is_some_and(|next| next < self.results.len()) {
-            self.cursor = neighbour.map(SearchRow::File);
+        if let Some(next) = neighbour.filter(|next| *next < self.results.len()) {
+            self.cursor = Some(next);
             self.cursor_moved_by_user = true;
             self.ensure_visible(visible_rows);
         }
@@ -500,19 +471,15 @@ impl SearchView {
         self.tagged = self.found_files().into_iter().collect();
     }
 
-    /// The file under the cursor, and the line when the cursor is on one.
+    /// The file under the cursor, and where its first match is for an editor
+    /// to open it at.
     pub fn cursor_target(&self) -> Option<(PathBuf, Option<u64>)> {
-        match self.cursor? {
-            SearchRow::File(file) => Some((self.results.get(file)?.path.clone(), None)),
-            SearchRow::Line(file, line) => {
-                let result = self.results.get(file)?;
-                let number = result.lines.get(line)?.number;
-                Some((
-                    result.path.clone(),
-                    (number != UNNUMBERED_LINE).then_some(number),
-                ))
-            }
-        }
+        let result = self.results.get(self.cursor?)?;
+        let line = result
+            .first_match()
+            .map(|first| first.number)
+            .filter(|number| *number != UNNUMBERED_LINE);
+        Some((result.path.clone(), line))
     }
 }
 
@@ -539,6 +506,8 @@ mod tests {
         SearchEvent::File {
             path: PathBuf::from(path),
             lines: lines.iter().map(|&number| line(number)).collect(),
+            size: 0,
+            modified: None,
         }
     }
 
@@ -586,11 +555,11 @@ mod tests {
     }
 
     #[test]
-    fn without_tags_the_actions_take_the_cursors_file_even_on_a_line() {
+    fn without_tags_the_actions_take_the_cursors_file() {
         let mut view = three_files();
         view.select_row(1, 10);
-        assert_eq!(view.cursor, Some(SearchRow::Line(0, 0)));
-        assert_eq!(view.action_files(), [PathBuf::from("/root/a.txt")]);
+        assert_eq!(view.cursor, Some(1));
+        assert_eq!(view.action_files(), [PathBuf::from("/root/b.txt")]);
     }
 
     #[test]
@@ -612,26 +581,25 @@ mod tests {
     }
 
     #[test]
-    fn tagging_moves_to_the_next_file_row_and_skips_the_lines() {
+    fn tagging_moves_to_the_next_file() {
         let mut view = three_files();
         view.tag_and_move(1, 10);
-        assert_eq!(view.cursor, Some(SearchRow::File(1)));
+        assert_eq!(view.cursor, Some(1));
         view.tag_and_move(1, 10);
-        assert_eq!(view.cursor, Some(SearchRow::File(2)));
+        assert_eq!(view.cursor, Some(2));
         assert!(view.is_tagged(0) && view.is_tagged(1) && !view.is_tagged(2));
         // At the last file the tag still toggles and the cursor stays.
         view.tag_and_move(1, 10);
-        assert_eq!(view.cursor, Some(SearchRow::File(2)));
+        assert_eq!(view.cursor, Some(2));
         assert!(view.is_tagged(2));
     }
 
     #[test]
-    fn tagging_upwards_from_a_line_goes_to_the_previous_file() {
+    fn tagging_upwards_goes_to_the_previous_file() {
         let mut view = three_files();
-        view.select_row(4, 10);
-        assert_eq!(view.cursor, Some(SearchRow::Line(1, 0)));
+        view.select_row(1, 10);
         view.tag_and_move(-1, 10);
-        assert_eq!(view.cursor, Some(SearchRow::File(0)));
+        assert_eq!(view.cursor, Some(0));
         assert!(view.is_tagged(1));
     }
 
@@ -672,9 +640,9 @@ mod tests {
     #[test]
     fn the_cursor_stays_on_the_first_row_until_the_user_moves_it() {
         let mut view = view_with(vec![found("/root/m.txt", &[1])]);
-        assert_eq!(view.cursor, Some(SearchRow::File(0)));
+        assert_eq!(view.cursor, Some(0));
         view.apply_event(found("/root/a.txt", &[1]));
-        assert_eq!(view.cursor, Some(SearchRow::File(0)));
+        assert_eq!(view.cursor, Some(0));
         assert_eq!(
             view.cursor_target().unwrap().0,
             PathBuf::from("/root/a.txt")
@@ -682,91 +650,19 @@ mod tests {
     }
 
     #[test]
-    fn after_the_user_moved_the_cursor_it_stays_on_its_item_when_files_sort_in_front() {
+    fn after_the_user_moved_the_cursor_it_stays_on_its_file_when_files_sort_in_front() {
         let mut view = view_with(vec![found("/root/m.txt", &[4, 9])]);
-        view.move_cursor(2, 10);
-        assert_eq!(view.cursor, Some(SearchRow::Line(0, 1)));
+        view.move_cursor(0, 10);
+        assert_eq!(view.cursor, Some(0));
 
         view.apply_event(found("/root/a.txt", &[1]));
         view.apply_event(found("/root/z.txt", &[1]));
 
-        assert_eq!(view.cursor, Some(SearchRow::Line(1, 1)));
+        assert_eq!(view.cursor, Some(1));
         assert_eq!(
             view.cursor_target(),
-            Some((PathBuf::from("/root/m.txt"), Some(9)))
+            Some((PathBuf::from("/root/m.txt"), Some(4)))
         );
-    }
-
-    #[test]
-    fn rows_list_each_file_with_its_lines() {
-        let view = view_with(vec![
-            found("/root/a.txt", &[1, 2]),
-            found("/root/b.txt", &[3]),
-        ]);
-        assert_eq!(
-            view.rows(),
-            [
-                SearchRow::File(0),
-                SearchRow::Line(0, 0),
-                SearchRow::Line(0, 1),
-                SearchRow::File(1),
-                SearchRow::Line(1, 0),
-            ]
-        );
-    }
-
-    #[test]
-    fn a_name_search_has_only_file_rows() {
-        let view = view_with(vec![found("/root/a.txt", &[]), found("/root/b.txt", &[])]);
-        assert_eq!(view.rows(), [SearchRow::File(0), SearchRow::File(1)]);
-    }
-
-    #[test]
-    fn a_folded_file_hides_its_lines_and_unfolds_again() {
-        let mut view = view_with(vec![
-            found("/root/a.txt", &[1, 2]),
-            found("/root/b.txt", &[3]),
-        ]);
-        view.toggle_group(0, 10);
-        assert_eq!(
-            view.rows(),
-            [
-                SearchRow::File(0),
-                SearchRow::File(1),
-                SearchRow::Line(1, 0)
-            ]
-        );
-        view.toggle_group(0, 10);
-        assert_eq!(view.rows().len(), 5);
-    }
-
-    #[test]
-    fn left_on_a_line_folds_its_file_and_puts_the_cursor_on_it() {
-        let mut view = view_with(vec![
-            found("/root/a.txt", &[1, 2]),
-            found("/root/b.txt", &[3]),
-        ]);
-        view.select_row(2, 10);
-        assert_eq!(view.cursor, Some(SearchRow::Line(0, 1)));
-
-        view.set_expanded(false, 10);
-
-        assert_eq!(view.cursor, Some(SearchRow::File(0)));
-        assert!(view.collapsed.contains(Path::new("/root/a.txt")));
-        view.set_expanded(true, 10);
-        assert!(view.collapsed.is_empty());
-        assert_eq!(view.cursor, Some(SearchRow::File(0)));
-    }
-
-    #[test]
-    fn folding_survives_a_new_search() {
-        let mut view = view_with(vec![found("/root/a.txt", &[1])]);
-        view.toggle_group(0, 10);
-        view.begin(2);
-        assert!(view.collapsed.contains(Path::new("/root/a.txt")));
-        assert!(view.results.is_empty());
-        assert!(view.running);
-        assert_eq!(view.generation, 2);
     }
 
     #[test]
@@ -776,18 +672,15 @@ mod tests {
             .collect();
         let mut view = view_with(events);
         view.move_cursor(-5, 5);
-        assert_eq!((view.cursor_row_index(), view.scroll_offset), (Some(0), 0));
+        assert_eq!((view.cursor, view.scroll_offset), (Some(0), 0));
         view.move_cursor(7, 5);
-        assert_eq!((view.cursor_row_index(), view.scroll_offset), (Some(7), 3));
+        assert_eq!((view.cursor, view.scroll_offset), (Some(7), 3));
         view.last(5);
-        assert_eq!(
-            (view.cursor_row_index(), view.scroll_offset),
-            (Some(19), 15)
-        );
+        assert_eq!((view.cursor, view.scroll_offset), (Some(19), 15));
         view.page(-1, 5);
-        assert_eq!(view.cursor_row_index(), Some(14));
+        assert_eq!(view.cursor, Some(14));
         view.first(5);
-        assert_eq!((view.cursor_row_index(), view.scroll_offset), (Some(0), 0));
+        assert_eq!((view.cursor, view.scroll_offset), (Some(0), 0));
     }
 
     #[test]
@@ -795,8 +688,6 @@ mod tests {
         let mut view = SearchView::new(PathBuf::from("/root"));
         view.move_cursor(3, 5);
         view.last(5);
-        view.set_expanded(false, 5);
-        view.toggle_group(4, 5);
         view.scroll(ScrollDelta::Lines { x: 0.0, y: -3.0 }, 5);
         assert_eq!(view.cursor, None);
         assert_eq!(view.cursor_target(), None);
@@ -810,12 +701,25 @@ mod tests {
         let mut view = view_with(events);
         view.scroll(ScrollDelta::Lines { x: 0.0, y: -3.0 }, 5);
         assert_eq!(view.scroll_offset, 3);
-        assert_eq!(view.cursor_row_index(), Some(3));
+        assert_eq!(view.cursor, Some(3));
         view.scroll(ScrollDelta::Lines { x: 0.0, y: -100.0 }, 5);
         assert_eq!(view.scroll_offset, 15);
-        view.scroll(ScrollDelta::Pixels { x: 0.0, y: 11.0 }, 5);
+        let half_a_row = HIT_LIST_ROW_HEIGHT / 2.0;
+        view.scroll(
+            ScrollDelta::Pixels {
+                x: 0.0,
+                y: half_a_row,
+            },
+            5,
+        );
         assert_eq!(view.scroll_offset, 15, "half a row does not move yet");
-        view.scroll(ScrollDelta::Pixels { x: 0.0, y: 11.0 }, 5);
+        view.scroll(
+            ScrollDelta::Pixels {
+                x: 0.0,
+                y: half_a_row,
+            },
+            5,
+        );
         assert_eq!(view.scroll_offset, 14);
     }
 
@@ -879,16 +783,75 @@ mod tests {
     }
 
     #[test]
-    fn the_cursor_target_names_the_file_and_the_line() {
-        let mut view = view_with(vec![found("/root/a.txt", &[7])]);
-        assert_eq!(
-            view.cursor_target(),
-            Some((PathBuf::from("/root/a.txt"), None))
-        );
-        view.move_cursor(1, 10);
+    fn the_cursor_target_names_the_file_and_its_first_match() {
+        let view = view_with(vec![
+            found("/root/a.txt", &[7, 9]),
+            found("/root/b.txt", &[]),
+        ]);
         assert_eq!(
             view.cursor_target(),
             Some((PathBuf::from("/root/a.txt"), Some(7)))
         );
+        let mut moved = view;
+        moved.move_cursor(1, 10);
+        assert_eq!(
+            moved.cursor_target(),
+            Some((PathBuf::from("/root/b.txt"), None))
+        );
+    }
+
+    #[test]
+    fn a_content_row_shows_the_first_match_and_counts_the_others() {
+        let view = view_with(vec![
+            found("/root/a.txt", &[7, 9, 12]),
+            found("/root/b.txt", &[3]),
+        ]);
+        let several = &view.results[0];
+        assert_eq!(several.first_match().map(|m| m.number), Some(7));
+        assert_eq!(several.more_matches(), 2);
+        let single = &view.results[1];
+        assert_eq!(single.first_match().map(|m| m.number), Some(3));
+        assert_eq!(single.more_matches(), 0);
+    }
+
+    #[test]
+    fn a_name_search_has_no_matching_line_to_show() {
+        let view = view_with(vec![found("/root/a.txt", &[])]);
+        assert_eq!(view.results[0].first_match(), None);
+        assert_eq!(view.results[0].more_matches(), 0);
+    }
+
+    #[test]
+    fn a_content_search_has_three_line_rows_and_a_name_search_two() {
+        let height_is =
+            |view: &SearchView, expected: f32| view.row_height().total_cmp(&expected).is_eq();
+        let mut view = SearchView::new(PathBuf::from("/root"));
+        view.begin(1);
+        assert!(height_is(&view, HIT_LIST_ROW_HEIGHT));
+        view.query = "needle".into();
+        view.begin(2);
+        assert!(height_is(&view, SEARCH_CONTENT_ROW_HEIGHT));
+        view.query.clear();
+        assert!(
+            height_is(&view, SEARCH_CONTENT_ROW_HEIGHT),
+            "the height is fixed for the result set"
+        );
+        view.begin(3);
+        assert!(height_is(&view, HIT_LIST_ROW_HEIGHT));
+    }
+
+    #[test]
+    fn the_entry_of_a_result_carries_its_size_and_date() {
+        let modified = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(86_400);
+        let result = FileResult {
+            path: PathBuf::from("/root/sub/a.txt"),
+            lines: Vec::new(),
+            size: 42,
+            modified: Some(modified),
+        };
+        let entry = result.entry().unwrap();
+        assert_eq!(entry.name, std::ffi::OsString::from("a.txt"));
+        assert_eq!((entry.size, entry.modified), (42, Some(modified)));
+        assert!(!entry.is_dir);
     }
 }

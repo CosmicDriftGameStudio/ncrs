@@ -8,7 +8,7 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use grep_matcher::{LineTerminator, Matcher as _};
@@ -104,6 +104,9 @@ pub enum SearchEvent {
     File {
         path: PathBuf,
         lines: Vec<LineMatch>,
+        /// Read where the walk visits the file, so no row of the list has to.
+        size: u64,
+        modified: Option<SystemTime>,
     },
     Progress {
         scanned: usize,
@@ -674,9 +677,15 @@ pub fn run_blocking(compiled: CompiledSearch, sender: mpsc::Sender<SearchEvent>)
 
             worker_shared.files.fetch_add(1, Ordering::Relaxed);
             // The walker's own path: the NFC and lossy forms are for comparing only.
+            // Through links, like the panel's rows, else a link shows its own size.
+            let metadata = std::fs::metadata(entry.path())
+                .or_else(|_| entry.metadata())
+                .ok();
             let event = SearchEvent::File {
                 path: entry.path().to_path_buf(),
                 lines,
+                size: metadata.as_ref().map_or(0, Metadata::len),
+                modified: metadata.and_then(|stat| stat.modified().ok()),
             };
             if worker_sender.blocking_send(event).is_err() {
                 WalkState::Quit
@@ -735,7 +744,7 @@ mod tests {
         let mut files = Vec::new();
         while let Ok(event) = receiver.try_recv() {
             match event {
-                SearchEvent::File { path, lines } => {
+                SearchEvent::File { path, lines, .. } => {
                     let relative = path.strip_prefix(&root).unwrap().to_string_lossy();
                     files.push((relative.replace('\\', "/"), lines));
                 }
@@ -1134,6 +1143,34 @@ mod tests {
             ["link.txt", "target.txt"]
         );
         assert_eq!(names(&run(&text_query(&dir, "hit"))), ["target.txt"]);
+    }
+
+    #[test]
+    fn a_found_file_carries_its_size_and_date_from_the_walk() {
+        let dir = tree();
+        write(dir.path(), "sized.txt", "twelve bytes");
+        let (sender, mut receiver) = mpsc::channel(100);
+        let _ = run_blocking(compile(&name_query(&dir, "sized.txt")).unwrap(), sender);
+        let Some(SearchEvent::File { size, modified, .. }) = receiver.try_recv().ok() else {
+            panic!("no file found");
+        };
+        assert_eq!(size, 12);
+        assert!(modified.is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_found_symlink_carries_the_size_of_its_target() {
+        let dir = tree();
+        write(dir.path(), "target.txt", "hit");
+        std::os::unix::fs::symlink(dir.path().join("target.txt"), dir.path().join("link.txt"))
+            .unwrap();
+        let (sender, mut receiver) = mpsc::channel(100);
+        let _ = run_blocking(compile(&name_query(&dir, "link.txt")).unwrap(), sender);
+        let Some(SearchEvent::File { size, .. }) = receiver.try_recv().ok() else {
+            panic!("no file found");
+        };
+        assert_eq!(size, 3);
     }
 
     #[cfg(target_os = "linux")]

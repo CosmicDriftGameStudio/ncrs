@@ -1,7 +1,7 @@
 //! File panel: the state type ([`PanelState`]) and a pure view function
 //! ([`view`]). The component owns no state; it lives in the app state and is
 //! only mutated from `App::update`.
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use iced::mouse::ScrollDelta;
 use iced::widget::{button, column, container, mouse_area, row, text, tooltip, Column, Row, Space};
@@ -10,8 +10,8 @@ use iced::{alignment, Element, Font, Length};
 use super::format;
 use super::kit::{self, Icon};
 use super::layout::{
-    COLUMN_HEADER_HEIGHT, DATE_COLUMN_WIDTH, HERMES_COLUMN_WIDTH, ROW_HEIGHT, SIZE_COLUMN_WIDTH,
-    TAG_COLUMN_WIDTH,
+    self, COLUMN_HEADER_HEIGHT, DATE_COLUMN_WIDTH, HERMES_COLUMN_WIDTH, HIT_LIST_ROW_HEIGHT,
+    ROW_HEIGHT, SIZE_COLUMN_WIDTH, TAG_COLUMN_WIDTH,
 };
 use super::panel_history::PanelHistory;
 use super::theme::{self, font_size, size, spacing};
@@ -29,6 +29,16 @@ use crate::selection::{Selection, SelectionSet};
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
+
+/// A flat list of search hits that stands in for the folder listing. The
+/// entries are a snapshot; `scope` is the folder the search ran in and the
+/// path the panel reports, `return_to` the folder the panel showed before.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HitList {
+    pub query: String,
+    pub scope: PathBuf,
+    pub return_to: PathBuf,
+}
 
 #[derive(Debug, Clone)]
 pub struct PanelState {
@@ -63,6 +73,8 @@ pub struct PanelState {
     /// The archive file the panel is standing in right now; set from the
     /// listing that put it there.
     pub archive: Option<PathBuf>,
+    /// Set while the panel lists search hits instead of a folder.
+    pub hit_list: Option<HitList>,
 }
 
 impl PanelState {
@@ -81,6 +93,7 @@ impl PanelState {
             history: PanelHistory::default(),
             history_step_request: None,
             archive: None,
+            hit_list: None,
         }
     }
 
@@ -93,12 +106,81 @@ impl PanelState {
 
     /// Sorts the rows by the current key; the cursor stays on its entry.
     pub fn resort(&mut self, visible_rows: usize) {
-        let cursor_name = self.selected_entry().map(|entry| entry.name.clone());
+        let cursor_path = self.selected_entry().map(|entry| entry.path.clone());
         sort_entries(&mut self.entries, self.sort);
-        let index = cursor_name
-            .and_then(|name| self.entries.iter().position(|entry| entry.name == name))
+        let index = cursor_path
+            .and_then(|path| self.entries.iter().position(|entry| entry.path == path))
             .unwrap_or(self.selected);
         self.select(index, visible_rows);
+    }
+
+    pub fn is_hit_list(&self) -> bool {
+        self.hit_list.is_some()
+    }
+
+    /// Height of one row: a hit list shows the folder below the name.
+    pub fn row_height(&self) -> f32 {
+        if self.is_hit_list() {
+            HIT_LIST_ROW_HEIGHT
+        } else {
+            ROW_HEIGHT
+        }
+    }
+
+    /// Rows this panel shows where a folder shows `folder_rows`. Every method
+    /// that takes `visible_rows` expects the folder count and narrows it here,
+    /// so a caller cannot forget the taller rows of a hit list.
+    pub fn rows_in_view(&self, folder_rows: usize) -> usize {
+        if self.is_hit_list() {
+            layout::hit_list_rows(folder_rows)
+        } else {
+            folder_rows.max(1)
+        }
+    }
+
+    /// Turns the panel into an empty hit list that is being read. The request
+    /// id moves on, so a directory read still in flight cannot replace it.
+    pub fn begin_hit_list(&mut self, list: HitList) -> u64 {
+        self.path.clone_from(&list.scope);
+        self.hit_list = Some(list);
+        self.archive = None;
+        self.entries.clear();
+        self.selection.clear();
+        self.selected = 0;
+        self.scroll_offset = 0;
+        self.scroll_remainder = 0.0;
+        self.error = None;
+        self.begin_load()
+    }
+
+    /// Leaves the hit list without a visit in the history: the panel counts as
+    /// standing in the folder it came from.
+    pub fn drop_hit_list(&mut self) -> Option<HitList> {
+        let list = self.hit_list.take()?;
+        self.path.clone_from(&list.return_to);
+        Some(list)
+    }
+
+    /// Replaces the snapshot with `entries` (freshly read), keeping the sort,
+    /// the cursor and the tags, all by full path.
+    pub fn apply_hit_entries(&mut self, mut entries: Vec<FileEntry>, visible_rows: usize) {
+        sort_entries(&mut entries, self.sort);
+        let cursor_path = self.selected_entry().map(|entry| entry.path.clone());
+        let previous_index = self.selected;
+        self.selection.retain_present(&entries);
+        self.entries = entries;
+        self.loading = false;
+        let index = cursor_path
+            .and_then(|path| self.entries.iter().position(|entry| entry.path == path))
+            .unwrap_or(previous_index);
+        self.select(index, visible_rows);
+    }
+
+    /// Takes the rows at `paths` out of the list; the files are untouched.
+    pub fn remove_hits(&mut self, paths: &[PathBuf], visible_rows: usize) {
+        self.entries.retain(|entry| !paths.contains(&entry.path));
+        self.selection.retain_present(&self.entries);
+        self.select(self.selected, visible_rows);
     }
 
     pub fn selected_entry(&self) -> Option<&FileEntry> {
@@ -228,7 +310,7 @@ impl PanelState {
     pub fn scroll(&mut self, delta: ScrollDelta, visible_rows: usize) {
         let rows_down = match delta {
             ScrollDelta::Lines { y, .. } => -y,
-            ScrollDelta::Pixels { y, .. } => -y / ROW_HEIGHT,
+            ScrollDelta::Pixels { y, .. } => -y / self.row_height(),
         } + self.scroll_remainder;
         let whole = rows_down.trunc();
         self.scroll_remainder = rows_down - whole;
@@ -236,7 +318,7 @@ impl PanelState {
     }
 
     fn scroll_rows(&mut self, rows_down: isize, visible_rows: usize) {
-        let rows = visible_rows.max(1);
+        let rows = self.rows_in_view(visible_rows);
         let max_offset = self.entries.len().saturating_sub(rows);
         self.scroll_offset = self
             .scroll_offset
@@ -257,7 +339,7 @@ impl PanelState {
 
     /// Adjusts `scroll_offset` so the selected row is visible.
     pub fn ensure_visible(&mut self, visible_rows: usize) {
-        let rows = visible_rows.max(1);
+        let rows = self.rows_in_view(visible_rows);
         if self.selected < self.scroll_offset {
             self.scroll_offset = self.selected;
         } else if self.selected >= self.scroll_offset + rows {
@@ -314,7 +396,7 @@ pub fn view<'a, M: Clone + 'a>(
         .iter()
         .enumerate()
         .skip(state.scroll_offset)
-        .take(props.visible_rows)
+        .take(state.rows_in_view(props.visible_rows))
         .map(|(index, entry)| {
             let mark = state
                 .selection
@@ -323,28 +405,13 @@ pub fn view<'a, M: Clone + 'a>(
             // the rest of the row moves the cursor. iced gives a button one
             // message and no click position, so the star has to be its own
             // button rather than a region of the row button.
-            let mut row = Row::new();
-            row = row.push(
-                button(
-                    text(if mark.tagged { "*" } else { " " })
-                        .size(font_size::FILE)
-                        .font(Font::MONOSPACE)
-                        .color(if mark.tagged {
-                            theme::tag_star_color(
-                                palette,
-                                mark.cursor && props.is_active,
-                                props.is_active,
-                            )
-                        } else {
-                            palette.dim_text
-                        })
-                        .wrapping(iced::widget::text::Wrapping::None),
-                )
-                .width(Length::Fixed(TAG_COLUMN_WIDTH))
-                .height(ROW_HEIGHT)
-                .style(theme::tag_button(palette, mark.tagged))
-                .on_press(on_row_click(index, RowClick::Tag)),
-            );
+            let row = Row::new().push(tag_star(
+                mark,
+                props.is_active,
+                palette,
+                state.row_height(),
+                on_row_click(index, RowClick::Tag),
+            ));
             // A button takes only the left button, so the right press reaches
             // the area around it.
             mouse_area(file_row(
@@ -354,7 +421,14 @@ pub fn view<'a, M: Clone + 'a>(
                 palette,
                 |click| on_row_click(index, click),
                 row,
-                hermes.map(|column| HermesCell::of(entry, column, lang, palette)),
+                RowExtras {
+                    third_line: None,
+                    hermes: hermes.map(|column| HermesCell::of(entry, column, lang, palette)),
+                    hit_scope: state
+                        .hit_list
+                        .as_ref()
+                        .map(|list| (list.scope.as_path(), state.row_height())),
+                },
             ))
             .on_right_press(on_row_context(index))
             .into()
@@ -365,7 +439,13 @@ pub fn view<'a, M: Clone + 'a>(
     // has to ask for the wheel itself.
     mouse_area(
         column![
-            column_header(lang, palette, state.sort, hermes.is_some(), on_sort),
+            column_header(
+                lang,
+                palette,
+                Some(state.sort),
+                hermes.is_some(),
+                move |column| Some(on_sort(column)),
+            ),
             Column::with_children(rows).height(Length::Fill),
         ]
         .apply_frame(palette),
@@ -381,24 +461,28 @@ pub fn view<'a, M: Clone + 'a>(
 fn column_header<'a, M: Clone + 'a>(
     lang: Language,
     palette: &Palette,
-    sort: SortKey,
+    sort: Option<SortKey>,
     with_hermes: bool,
-    on_sort: impl Fn(SortColumn) -> M + 'a,
+    on_sort: impl Fn(SortColumn) -> Option<M> + 'a,
 ) -> Element<'a, M> {
     let title = |column: SortColumn, msg: Msg| {
-        let arrow = match (sort.column == column, sort.descending) {
-            (false, _) => "",
-            (true, false) => " ▲",
-            (true, true) => " ▼",
+        let arrow = match sort.filter(|key| key.column == column) {
+            None => "",
+            Some(key) if key.descending => " ▼",
+            Some(_) => " ▲",
         };
-        mouse_area(
+        let label = mouse_area(
             text(format!("{}{arrow}", lang.text(msg)))
                 .size(font_size::SMALL)
                 .color(palette.dim_text)
                 .wrapping(text::Wrapping::None),
-        )
-        .interaction(iced::mouse::Interaction::Pointer)
-        .on_press(on_sort(column))
+        );
+        match on_sort(column) {
+            Some(pressed) => label
+                .interaction(iced::mouse::Interaction::Pointer)
+                .on_press(pressed),
+            None => label,
+        }
     };
     column![
         container(
@@ -437,6 +521,84 @@ fn column_header<'a, M: Clone + 'a>(
     .into()
 }
 
+/// The column titles of a list that a click does not sort.
+pub fn plain_column_header<'a, M: Clone + 'a>(lang: Language, palette: &Palette) -> Element<'a, M> {
+    column_header(lang, palette, None, false, |_| None)
+}
+
+/// The star column of a row. Its own button so a click there tags the row
+/// instead of moving the cursor.
+pub fn tag_star<'a, M: Clone + 'a>(
+    mark: Selection,
+    panel_active: bool,
+    palette: &Palette,
+    row_height: f32,
+    pressed: M,
+) -> Element<'a, M> {
+    button(
+        text(if mark.tagged { "*" } else { " " })
+            .size(font_size::FILE)
+            .font(Font::MONOSPACE)
+            .color(if mark.tagged {
+                theme::tag_star_color(palette, mark.cursor && panel_active, panel_active)
+            } else {
+                palette.dim_text
+            })
+            .wrapping(iced::widget::text::Wrapping::None),
+    )
+    .width(Length::Fixed(TAG_COLUMN_WIDTH))
+    .height(row_height)
+    .style(theme::tag_button(palette, mark.tagged))
+    .on_press(pressed)
+    .into()
+}
+
+/// A file found by a search, drawn as a row of the hit list: the name, the
+/// folder below `scope`, size and date, and optionally a third line.
+pub struct HitRow<'a, M> {
+    pub entry: FileEntry,
+    pub mark: Selection,
+    pub scope: &'a Path,
+    pub height: f32,
+    pub third_line: Option<Element<'a, M>>,
+    /// What a right click on the row sends.
+    pub on_context: Option<M>,
+}
+
+pub fn hit_row<'a, M: Clone + 'a>(
+    hit: HitRow<'a, M>,
+    panel_active: bool,
+    palette: &Palette,
+    on_click: impl Fn(RowClick) -> M,
+    prefix: Row<'a, M>,
+) -> Element<'a, M> {
+    let HitRow {
+        entry,
+        mark,
+        scope,
+        height,
+        third_line,
+        on_context,
+    } = hit;
+    let row = file_row(
+        &entry,
+        mark,
+        panel_active,
+        palette,
+        on_click,
+        prefix,
+        RowExtras {
+            hermes: None,
+            hit_scope: Some((scope, height)),
+            third_line,
+        },
+    );
+    match on_context {
+        Some(message) => mouse_area(row).on_right_press(message).into(),
+        None => row,
+    }
+}
+
 /// What a click on a row of the panel does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RowClick {
@@ -448,19 +610,33 @@ pub enum RowClick {
     Open,
 }
 
+/// What only some rows have: the filing cell, and for a hit list the folder
+/// the scope is measured from with the row height.
+struct RowExtras<'a, M> {
+    hermes: Option<HermesCell<'a, M>>,
+    hit_scope: Option<(&'a Path, f32)>,
+    /// Under the folder of a hit.
+    third_line: Option<Element<'a, M>>,
+}
+
 /// One file row: the name, size and date, clickable as a whole.
 ///
 /// `prefix` is the tag button, built by the caller because it needs its own
 /// message; the row itself is one button around the rest.
 fn file_row<'a, M: Clone + 'a>(
-    entry: &'a FileEntry,
+    entry: &FileEntry,
     mark: Selection,
     panel_active: bool,
     palette: &Palette,
     on_click: impl Fn(RowClick) -> M,
     prefix: Row<'a, M>,
-    hermes: Option<HermesCell<'a, M>>,
+    extras: RowExtras<'a, M>,
 ) -> Element<'a, M> {
+    let RowExtras {
+        hermes,
+        hit_scope,
+        third_line,
+    } = extras;
     // The cursor row of the active panel is the one drawn as highlighted; a
     // tagged row is marked in its own column and tinted by the row style.
     let highlighted = mark.cursor && panel_active;
@@ -520,16 +696,39 @@ fn file_row<'a, M: Clone + 'a>(
         )
         .spacing(spacing::XS)
         .align_y(alignment::Vertical::Center);
-    let mut content = row![
-        prefix,
-        container(name_cell).width(Length::Fill).clip(true),
-        cell(format::entry_size(entry))
-            .width(SIZE_COLUMN_WIDTH)
-            .align_x(alignment::Horizontal::Right),
-        cell(format::time(entry.modified))
-            .width(DATE_COLUMN_WIDTH)
-            .align_x(alignment::Horizontal::Right),
-    ]
+    let name_column: Element<'a, M> = match hit_scope {
+        Some((scope, _)) => column![
+            name_cell,
+            text(format::folder_below(&entry.path, scope))
+                .size(font_size::SMALL)
+                .font(Font::MONOSPACE)
+                .color(if highlighted { color } else { palette.dim_text })
+                .wrapping(text::Wrapping::None),
+        ]
+        .into(),
+        None => name_cell.into(),
+    };
+    let name_element: Element<'a, M> = container(name_column).width(Length::Fill).clip(true).into();
+    let size_cell: Element<'a, M> = cell(format::entry_size(entry))
+        .width(SIZE_COLUMN_WIDTH)
+        .align_x(alignment::Horizontal::Right)
+        .into();
+    let date_cell: Element<'a, M> = cell(format::time(entry.modified))
+        .width(DATE_COLUMN_WIDTH)
+        .align_x(alignment::Horizontal::Right)
+        .into();
+    // The third line runs under size and date too, beside the tag column.
+    let mut content = match third_line {
+        Some(third) => row![
+            prefix,
+            column![
+                row![name_element, size_cell, date_cell].align_y(alignment::Vertical::Center),
+                container(third).width(Length::Fill).clip(true),
+            ]
+            .width(Length::Fill),
+        ],
+        None => row![prefix, name_element, size_cell, date_cell],
+    }
     .align_y(alignment::Vertical::Center);
     if let Some(status_cell) = hermes {
         content = content.push(status_cell.status());
@@ -542,7 +741,7 @@ fn file_row<'a, M: Clone + 'a>(
         .on_double_click(on_click(RowClick::Open));
     button(clicks)
         .padding([0.0, spacing::CELL_PADDING_X])
-        .height(ROW_HEIGHT)
+        .height(hit_scope.map_or(ROW_HEIGHT, |(_, height)| height))
         .width(Length::Fill)
         .style(theme::row(palette, mark.tagged, mark.cursor, panel_active))
         .into()
@@ -968,7 +1167,7 @@ mod tests {
 #[cfg(test)]
 mod tagging_tests {
     use super::*;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     fn entry(name: &str, is_parent: bool) -> FileEntry {
         FileEntry {
@@ -993,11 +1192,11 @@ mod tagging_tests {
     #[test]
     fn tags_live_on_the_panel() {
         let mut p = panel_with(&[("..", true), ("a", false), ("b", false)]);
-        let name = p.entries[1].name.clone();
+        let name = p.entries[1].path.clone();
         p.selection.toggle(&name);
 
         assert!(p.selection.is_tagged(&name));
-        assert!(!p.selection.is_tagged(&p.entries[2].name));
+        assert!(!p.selection.is_tagged(&p.entries[2].path));
     }
 
     /// `..` is not taggable: copying a directory into itself is not a thing
@@ -1006,8 +1205,8 @@ mod tagging_tests {
     fn the_parent_entry_is_not_tagged() {
         let mut p = panel_with(&[("..", true), ("a", false)]);
         p.selection.tag_all(&p.entries);
-        assert!(!p.selection.is_tagged(&p.entries[0].name));
-        assert!(p.selection.is_tagged(&p.entries[1].name));
+        assert!(!p.selection.is_tagged(&p.entries[0].path));
+        assert!(p.selection.is_tagged(&p.entries[1].path));
     }
 
     /// The point of tags being names rather than positions: a reload that
@@ -1017,7 +1216,7 @@ mod tagging_tests {
     #[test]
     fn a_reload_keeps_the_tag_on_the_same_file() {
         let mut p = panel_with(&[("..", true), ("alpha", false), ("beta", false)]);
-        p.selection.toggle(&p.entries[2].name.clone());
+        p.selection.toggle(&p.entries[2].path.clone());
 
         // Same files, new order, one file gone.
         p.apply_listing(
@@ -1033,7 +1232,7 @@ mod tagging_tests {
         );
 
         assert!(
-            p.selection.is_tagged(&std::ffi::OsString::from("beta")),
+            p.selection.is_tagged(Path::new("beta")),
             "the tag followed the position instead of the file"
         );
         assert_eq!(p.selection.len(), 1, "more than one row ended up tagged");
@@ -1043,7 +1242,7 @@ mod tagging_tests {
         let tagged: Vec<String> = p
             .entries
             .iter()
-            .filter(|e| p.selection.is_tagged(&e.name))
+            .filter(|e| p.selection.is_tagged(&e.path))
             .map(|e| e.name.to_string_lossy().into_owned())
             .collect();
         assert_eq!(tagged, vec!["beta".to_string()]);
@@ -1054,7 +1253,7 @@ mod tagging_tests {
     #[test]
     fn tags_for_vanished_files_are_dropped() {
         let mut p = panel_with(&[("..", true), ("a", false), ("b", false), ("c", false)]);
-        p.selection.toggle(&p.entries[3].name.clone());
+        p.selection.toggle(&p.entries[3].path.clone());
         assert_eq!(p.selection.len(), 1);
 
         p.apply_listing(
@@ -1073,7 +1272,7 @@ mod tagging_tests {
     #[test]
     fn tags_inside_the_new_listing_survive() {
         let mut p = panel_with(&[("..", true), ("a", false), ("b", false)]);
-        p.selection.toggle(&std::ffi::OsString::from("a"));
+        p.selection.toggle(Path::new("a"));
 
         p.apply_listing(
             PathBuf::from("/tmp"),
@@ -1083,7 +1282,7 @@ mod tagging_tests {
             10,
         );
 
-        assert!(p.selection.is_tagged(&std::ffi::OsString::from("a")));
+        assert!(p.selection.is_tagged(Path::new("a")));
     }
 }
 
@@ -1096,6 +1295,7 @@ mod tagging_tests {
 #[cfg(test)]
 mod sort_tests {
     use super::*;
+    use std::path::Path;
     use std::time::SystemTime;
 
     fn file(name: &str, size: u64) -> FileEntry {
@@ -1143,10 +1343,10 @@ mod sort_tests {
     #[test]
     fn tags_survive_a_sort() {
         let mut panel = loaded(5);
-        panel.selection.toggle(&"b".into());
+        panel.selection.toggle(Path::new("/d/b"));
         panel.request_sort(SortColumn::Size, 5);
         panel.request_sort(SortColumn::Size, 5);
-        assert!(panel.selection.is_tagged(&"b".into()));
+        assert!(panel.selection.is_tagged(Path::new("/d/b")));
     }
 
     #[test]

@@ -755,6 +755,26 @@ pub fn run_reporting(
     }
 }
 
+/// As `run_reporting`, but the source lands at exactly `target`, under another
+/// name than its own. Only for sources and targets on this computer's disk.
+pub fn run_reporting_as(
+    source: &Path,
+    target: &Path,
+    kind: crate::messages::TransferKind,
+    conflict: OnConflict,
+    sender: &mpsc::UnboundedSender<Tick>,
+) -> io::Result<usize> {
+    let mut reporting = Reporting::new(sender);
+    match kind {
+        crate::messages::TransferKind::Copy => {
+            transfer_to(source, target, &Copy, &mut reporting, conflict)
+        }
+        crate::messages::TransferKind::Move => {
+            transfer_to(source, target, &Move, &mut reporting, conflict)
+        }
+    }
+}
+
 /// A source that is not on disk but is a path inside an archive is copied out
 /// of it. `None` for every other source.
 fn out_of_archive<P: Progress>(

@@ -1,6 +1,7 @@
 //! Root application: state, `update` (the only place state changes) and
 //! `view` (pure composition of UI components).
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::ffi::OsString;
 use std::num::NonZeroUsize;
 use std::path::{Component, Path, PathBuf};
 
@@ -66,10 +67,11 @@ use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
     ConflictChoice, ConnectField, FilingSetupMessage, FilingStatusMessage, GrantMessage,
     HermesColumnMessage, HermesFileMessage, HermesFocus, HermesOverviewMessage, HermesPage,
-    HermesSetupMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide, QuickFixMessage,
-    QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage, RuleFormMessage,
-    RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingChange,
-    SettingsMessage, TagsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
+    HermesSetupMessage, HitListMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide,
+    QuickFixMessage, QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage,
+    RuleFormMessage, RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage,
+    SettingChange, SettingsMessage, TagsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind,
+    TrashMessage,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -118,6 +120,7 @@ use crate::ui::hermes_overview as hermes_overview_ui;
 use crate::ui::hermes_setup as hermes_setup_ui;
 use crate::ui::key_bindings as key_bindings_ui;
 use crate::ui::ocr_models as ocr_models_ui;
+use crate::ui::panel::HitList;
 use crate::ui::quick_fix as quick_fix_view;
 use crate::ui::quick_open as quick_open_ui;
 use crate::ui::remote as remote_ui;
@@ -164,6 +167,56 @@ fn suggested_archive_name(sources: &[PathBuf]) -> String {
     format!(
         "{}.zip",
         named.map_or_else(|| "archive".into(), |name| name.to_string_lossy())
+    )
+}
+
+/// The archive name a hit list suggests: its query, when that is one plain
+/// file name on every platform.
+fn hit_archive_name(typed: &str) -> Option<String> {
+    let query = typed.trim();
+    let forbidden = |c: char| c.is_control() || "<>:\"/\\|?*".contains(c);
+    let plain = !query.chars().any(forbidden)
+        && matches!(
+            fs::archive::safe_components(query).as_deref(),
+            Some([only]) if only == query
+        );
+    plain.then(|| format!("{query}.zip"))
+}
+
+/// Reads the files of a hit list off the UI thread. A file that is gone is
+/// left out.
+fn read_hit_files(side: PanelSide, request_id: u64, paths: Vec<PathBuf>) -> Task<Message> {
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || {
+                paths
+                    .iter()
+                    .filter_map(|path| fs::FileEntry::from_path(path))
+                    .collect::<Vec<_>>()
+            })
+            .await
+            .unwrap_or_default()
+        },
+        move |entries| {
+            Message::HitList(HitListMessage::Read {
+                side,
+                request_id,
+                entries,
+            })
+        },
+    )
+}
+
+/// What a list of search hits has no use for: it is not a folder, so nothing is
+/// made, pasted or measured in it.
+fn is_not_offered_in_hit_list(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::CreateDirPrompt
+            | Message::CreateFilePrompt
+            | Message::Paste
+            | Message::ComputeFolderSizes
+            | Message::PathFieldInput(_)
     )
 }
 
@@ -808,6 +861,19 @@ pub struct Transfer {
     /// up the selection may have moved.
     sources: Vec<PathBuf>,
     target: PathBuf,
+    /// The name each source gets in the target, by position; empty when every
+    /// source keeps its own. Differs only where sources from several folders
+    /// share a name.
+    names: Vec<OsString>,
+}
+
+impl Transfer {
+    /// The name the source at `index` gets in the target, when it is not its own.
+    fn name_in_target(&self, index: usize) -> Option<OsString> {
+        let name = self.names.get(index).filter(|name| !name.is_empty())?;
+        let source = self.sources.get(index)?;
+        (source.file_name() != Some(name.as_os_str())).then(|| name.clone())
+    }
 }
 
 /// What a delete works on, resolved once when F8 is pressed: by the time the
@@ -1595,6 +1661,8 @@ pub struct PromptKeyState {
     /// The trash view is up, so the cursor keys move in its rows and Enter
     /// restores.
     pub trash: bool,
+    /// The active panel lists search hits, so Escape goes back to the search.
+    pub hit_list: bool,
     /// Quick Open is up, so the up and down keys move in its hits.
     pub quick_open: bool,
     /// The command palette is up, so the up and down keys move in its entries.
@@ -1685,6 +1753,7 @@ impl Default for PromptKeyState {
             command_line: false,
             search: false,
             trash: false,
+            hit_list: false,
             quick_open: false,
             command_palette: false,
             key_bindings: false,
@@ -2424,6 +2493,8 @@ fn escape_message(prompt: &PromptKeyState) -> Option<Message> {
         Some(Message::AbortJob)
     } else if prompt.config_error {
         Some(Message::DismissConfigError)
+    } else if prompt.hit_list {
+        Some(Message::HitList(HitListMessage::BackToSearch))
     } else {
         None
     }
@@ -2450,8 +2521,6 @@ fn search_key(prompt: &PromptKeyState, key: &Key, key_modifiers: Modifiers) -> O
             Key::Named(Named::PageDown) => return search(SearchMessage::Page(1)),
             Key::Named(Named::Home) => return search(SearchMessage::First),
             Key::Named(Named::End) => return search(SearchMessage::Last),
-            Key::Named(Named::ArrowLeft) => return search(SearchMessage::Expand(false)),
-            Key::Named(Named::ArrowRight) => return search(SearchMessage::Expand(true)),
             Key::Named(Named::Enter) => return search(SearchMessage::Activate),
             _ => {}
         }
@@ -2813,7 +2882,7 @@ fn hermes_overview_key(
         _ if !is_not_typed_by_text_field(key, key_modifiers) => None,
         _ => match bound_message(&prompt.keymap, key, key_modifiers, scope) {
             Some(Message::FilingStatus(FilingStatusMessage::Toggle)) => {
-                overview(HermesOverviewMessage::Close)
+                Some(Message::FilingStatus(FilingStatusMessage::Toggle))
             }
             Some(Message::Quit) => Some(Message::Quit),
             _ => None,
@@ -2955,6 +3024,26 @@ fn child_path(folder: &Path, name: &std::ffi::OsStr) -> PathBuf {
 struct ClipboardText {
     text: String,
     count: usize,
+}
+
+/// The path or the name of each of `files`, one per line, for the results of
+/// the search, which are not rows of a panel.
+fn clipboard_text_of_files(files: &[PathBuf], kind: ClipboardKind) -> Option<ClipboardText> {
+    let lines: Vec<String> = files
+        .iter()
+        .map(|path| match kind {
+            ClipboardKind::Name => path
+                .file_name()
+                .unwrap_or(path.as_os_str())
+                .to_string_lossy()
+                .into_owned(),
+            ClipboardKind::Path | ClipboardKind::Directory => path.to_string_lossy().into_owned(),
+        })
+        .collect();
+    (!lines.is_empty()).then(|| ClipboardText {
+        count: lines.len(),
+        text: lines.join("\n"),
+    })
 }
 
 /// The tagged rows, else the cursor row, one per line in listing order. On `..`
@@ -3488,7 +3577,11 @@ impl App {
             search: None,
             search_open: false,
             search_side: PanelSide::Left,
-            search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE, false),
+            search_rows: layout::search_visible_rows(
+                layout::INITIAL_WINDOW_SIZE,
+                false,
+                layout::HIT_LIST_ROW_HEIGHT,
+            ),
             search_generation: 0,
             search_handle: None,
             quick_open: None,
@@ -3866,6 +3959,7 @@ impl App {
             // still list that entry for a moment after the abort.
             Message::AbortJob => self.abort_job(),
             Message::Trash(trash_message) => self.update_trash(trash_message),
+            Message::HitList(hit_message) => self.update_hit_list(hit_message),
 
             // One row of a transfer finished. Continue with the next, or ask
             // about a name that is in the way.
@@ -4080,6 +4174,7 @@ impl App {
                 }
                 Task::none()
             }
+            Message::PromptToggleKeepFolders => self.toggle_keep_folders(),
             // Its own arm, not an early return: starting the job changes what the
             // keys mean, and the routing state is published after the match.
             Message::PromptSubmit if self.valid_prompt_has_its_own_job() => self.start_prompt_job(),
@@ -4193,12 +4288,14 @@ impl App {
                 Task::none()
             }
             Message::PageUp => {
+                let page = self.visible_rows_of(self.active_panel);
                 self.active_panel_mut()
-                    .move_selection(-(rows as isize), rows);
+                    .move_selection(-(page as isize), rows);
                 Task::none()
             }
             Message::PageDown => {
-                self.active_panel_mut().move_selection(rows as isize, rows);
+                let page = self.visible_rows_of(self.active_panel);
+                self.active_panel_mut().move_selection(page as isize, rows);
                 Task::none()
             }
             Message::SelectFirst => {
@@ -4287,8 +4384,8 @@ impl App {
                     // same rule the keyboard path uses.
                     if let Some(entry) = panel.entries.get(index) {
                         if !entry.is_parent {
-                            let name = entry.name.clone();
-                            panel.selection.toggle(&name);
+                            let path = entry.path.clone();
+                            panel.selection.toggle(&path);
                         }
                     }
                 }
@@ -4596,6 +4693,7 @@ impl App {
         let anchor = layout::cursor_row_anchor(
             side == PanelSide::Right,
             panel.selected.saturating_sub(panel.scroll_offset),
+            panel.row_height(),
             self.window_size,
         );
         self.job_error = None;
@@ -5362,14 +5460,7 @@ impl App {
                     lang: self.lang,
                     palette: &self.palette,
                 }),
-                fkeys::view(
-                    if self.search_has_keys() {
-                        &self.search_function_keys
-                    } else {
-                        &self.function_keys
-                    },
-                    &self.palette,
-                ),
+                fkeys::view(&self.function_key_bar(), &self.palette,),
                 statusbar::view(
                     self.active_panel(),
                     self.lang,
@@ -5402,6 +5493,7 @@ impl App {
                         on_input: Message::PathFieldInput,
                         on_submit: Message::PathFieldSubmit,
                         on_copy: Message::CopyToClipboard(ClipboardKind::Directory),
+                        hit_line: self.hit_line(),
                     },
                 ),
             ])
@@ -5690,8 +5782,49 @@ impl App {
         self.job_error.as_deref().or(self.config_error.as_deref())
     }
 
+    /// What the bar's path field says while the active panel is a hit list:
+    /// the query, where it ran and how many files it left, with the way back.
+    /// The keys the bar shows: the search's while it has the keys, else the
+    /// panels'. A hit list is no folder, so F7 (new folder) is left out.
+    fn function_key_bar(&self) -> [Option<&'static str>; keymap::FUNCTION_KEY_COUNT] {
+        if self.search_has_keys() {
+            return self.search_function_keys;
+        }
+        let mut keys = self.function_keys;
+        if self.active_panel().is_hit_list() {
+            if let Some(slot) = keys.get_mut(keymap::NEW_FOLDER_SLOT) {
+                *slot = None;
+            }
+        }
+        keys
+    }
+
+    fn hit_line(&self) -> Option<statusbar::HitLine> {
+        let panel = self.active_panel();
+        let list = panel.hit_list.as_ref()?;
+        let count = panel.entries.len();
+        let template = self.lang.text(if count == 1 {
+            Msg::HitListPathBarOne
+        } else {
+            Msg::HitListPathBarMany
+        });
+        let scope = titlebar::tab_label(&list.scope, &self.home, false, usize::MAX);
+        Some(statusbar::HitLine {
+            text: fill_template(
+                template,
+                &[
+                    ("{query}", &list.query),
+                    ("{scope}", &scope),
+                    ("{count}", &count.to_string()),
+                ],
+            ),
+            back_key: "Esc".to_owned(),
+            back_label: self.lang.text(Msg::HitListBackHint).to_owned(),
+        })
+    }
+
     /// What the status bar shows instead of the panel's entry while the search
-    /// has the keys: the cursor's file below the root, with `:line` on a line.
+    /// has the keys: the cursor's file below the root.
     /// Empty without a cursor, so the panel's entry does not pose as the
     /// search's.
     fn search_status(&self) -> Option<String> {
@@ -5699,14 +5832,11 @@ impl App {
             return None;
         }
         let view = self.search.as_ref()?;
-        let Some((path, line)) = view.cursor_target() else {
+        let Some((path, _)) = view.cursor_target() else {
             return Some(String::new());
         };
         let relative = path.strip_prefix(&view.root).unwrap_or(&path);
-        Some(match line {
-            Some(number) => format!("{}:{number}", relative.display()),
-            None => relative.display().to_string(),
-        })
+        Some(relative.display().to_string())
     }
 
     /// The state the key routing needs, cheap to clone.
@@ -5724,6 +5854,7 @@ impl App {
         let command_line = self.command_line.is_focused();
         let search = self.search_has_keys();
         let trash = self.trash_has_keys();
+        let hit_list = self.active_panel().is_hit_list();
         let quick_open = self.quick_open.is_some();
         let command_palette = self.command_palette.is_some();
         let key_bindings = self.key_bindings.is_some();
@@ -5794,6 +5925,7 @@ impl App {
                 command_line,
                 search,
                 trash,
+                hit_list,
                 quick_open,
                 command_palette,
                 key_bindings,
@@ -5845,6 +5977,7 @@ impl App {
                 command_line,
                 search,
                 trash,
+                hit_list,
                 quick_open,
                 command_palette,
                 key_bindings,
@@ -5912,7 +6045,13 @@ impl App {
         if self.overlay_is_open() {
             return Task::none();
         }
-        let Some(copied) = clipboard_text(self.active_panel(), kind) else {
+        let from_results = self
+            .open_search_view()
+            .filter(|_| kind != ClipboardKind::Directory)
+            .map(|search| clipboard_text_of_files(&search.action_files(), kind));
+        let Some(copied) =
+            from_results.unwrap_or_else(|| clipboard_text(self.active_panel(), kind))
+        else {
             return Task::none();
         };
         self.job_error = None;
@@ -6693,6 +6832,23 @@ impl App {
     /// Whether the context menu entry can do something for the current
     /// cursor row and tags.
     fn context_action_enabled(&self, action: ContextAction) -> bool {
+        if let Some(search) = self.open_search_view() {
+            let has_cursor = search.cursor_target().is_some();
+            return match action {
+                ContextAction::Open
+                | ContextAction::View
+                | ContextAction::Edit
+                | ContextAction::ShowOnOtherSide => has_cursor,
+                ContextAction::Copy
+                | ContextAction::Move
+                | ContextAction::Trash
+                | ContextAction::DeletePermanently => !self.action_sources().is_empty(),
+                ContextAction::CopyPath | ContextAction::CopyName => has_cursor,
+                ContextAction::NewFolder
+                | ContextAction::ComputeFolderSizes
+                | ContextAction::RemoveFromList => false,
+            };
+        }
         let panel = self.active_panel();
         let cursor_row = panel.selected_entry();
         match action {
@@ -6708,7 +6864,26 @@ impl App {
             ContextAction::CopyPath => clipboard_text(panel, ClipboardKind::Path).is_some(),
             ContextAction::CopyName => clipboard_text(panel, ClipboardKind::Name).is_some(),
             ContextAction::ComputeFolderSizes => !folder_size_targets(panel).is_empty(),
+            ContextAction::ShowOnOtherSide => cursor_row.is_some(),
+            ContextAction::RemoveFromList => cursor_row.is_some(),
         }
+    }
+
+    /// The menu of the search results at the pointer, for the file the cursor
+    /// is on or the tagged ones.
+    fn open_search_context_menu(&mut self) {
+        if self.blocking_overlay_is_open() || !self.search_has_keys() {
+            return;
+        }
+        self.job_error = None;
+        self.notice = None;
+        let pointer = self.input.lock().pointer;
+        let is_enabled = |action| self.context_action_enabled(action);
+        self.context_menu = Some(ContextMenu::for_search_results(
+            pointer,
+            self.window_size,
+            is_enabled,
+        ));
     }
 
     /// Opens the context menu on row `index` of `side`, at `anchor` or, without
@@ -6732,7 +6907,7 @@ impl App {
         let on_untagged_row = panel
             .entries
             .get(index)
-            .is_some_and(|entry| !panel.selection.is_tagged(&entry.name));
+            .is_some_and(|entry| !panel.selection.is_tagged(&entry.path));
         if anchor.is_some() && on_untagged_row {
             panel.selection.clear();
         }
@@ -6745,6 +6920,7 @@ impl App {
                 cursor_panel
                     .selected
                     .saturating_sub(cursor_panel.scroll_offset),
+                cursor_panel.row_height(),
                 window,
             )
         });
@@ -6753,12 +6929,12 @@ impl App {
             excluded: self.cursor_is_excluded_from_hermes(),
             is_enabled: &hermes_enabled,
         });
-        self.context_menu = Some(ContextMenu::with_hermes(
-            place_at,
-            self.window_size,
-            |action| self.context_action_enabled(action),
-            hermes,
-        ));
+        let is_enabled = |action| self.context_action_enabled(action);
+        self.context_menu = Some(if self.panel(side).is_hit_list() {
+            ContextMenu::for_hit_list(place_at, self.window_size, is_enabled, hermes)
+        } else {
+            ContextMenu::with_hermes(place_at, self.window_size, is_enabled, hermes)
+        });
     }
 
     /// Closes the menu and sends the message its highlighted entry stands for,
@@ -6772,13 +6948,18 @@ impl App {
             open.open_submenu();
             return Task::none();
         }
+        let from_search = self.search_has_keys();
         let Some(menu) = self.context_menu.take() else {
             return Task::none();
         };
         let chosen = if menu.submenu_is_open() {
             menu.selected_hermes_action().map(HermesAction::message)
         } else {
-            menu.selected_action().map(ContextAction::message)
+            menu.selected_action().map(|action| match action {
+                // Enter on a result shows it in the other panel.
+                ContextAction::Open if from_search => Message::Search(SearchMessage::Activate),
+                other => other.message(),
+            })
         };
         chosen.map_or_else(Task::none, |message| self.update(message))
     }
@@ -7395,8 +7576,8 @@ impl App {
         let panel = self.active_panel_mut();
         if let Some(entry) = panel.selected_entry() {
             if !entry.is_parent {
-                let name = entry.name.clone();
-                panel.selection.toggle(&name);
+                let path = entry.path.clone();
+                panel.selection.toggle(&path);
             }
         }
         panel.move_selection(delta, rows);
@@ -8267,7 +8448,9 @@ impl App {
         let source_side = self.source_side();
         // An archive or a server in the other panel cannot take the new
         // archive, so it goes beside the files; the field shows where.
-        let target_side = if self.panel(source_side.other()).is_virtual() {
+        let target_side = if self.panel(source_side.other()).is_virtual()
+            || self.panel(source_side.other()).is_hit_list()
+        {
             source_side
         } else {
             source_side.other()
@@ -8283,11 +8466,28 @@ impl App {
         }
         self.job_error = None;
         self.notice = None;
-        let name = suggested_archive_name(&sources);
         let target = self.panel(target_side).path.clone();
-        self.prompt = Some(Prompt::pack(target, sources, &name));
+        let hit_list = self.panel(source_side).hit_list.as_ref();
+        self.prompt = Some(match hit_list {
+            Some(list) => {
+                let name = hit_archive_name(&list.query)
+                    .unwrap_or_else(|| suggested_archive_name(&sources));
+                Prompt::pack_hits(target, sources, list.scope.clone(), &name)
+            }
+            None => {
+                let name = suggested_archive_name(&sources);
+                Prompt::pack(target, sources, &name)
+            }
+        });
         self.prompt_side = Some(target_side);
         operation::focus(FIELD_ID)
+    }
+
+    fn toggle_keep_folders(&mut self) -> Task<Message> {
+        if let Some(prompt) = self.prompt.as_mut().filter(|prompt| !prompt.busy()) {
+            prompt.toggle_keep_folders();
+        }
+        Task::none()
     }
 
     /// Enter in the pack prompt, once its name passed `Prompt::validate`: the
@@ -8313,9 +8513,19 @@ impl App {
             what: ArchiveWriteKind::Pack { name, folder },
         };
         let packed = archive.clone();
-        self.start_archive_write(jobs::JobKind::Pack, archive, write, move |progress| {
-            fs::archive::pack(&sources, &packed, progress)
-        })
+        let keep_under = prompt.kept_folders_under().map(Path::to_path_buf);
+        let numbered: Option<Vec<(PathBuf, String)>> = (keep_under.is_some()
+            || fs::flat_names::from_several_folders(&sources))
+        .then(|| fs::flat_names::archive_names(&sources, keep_under.as_deref()));
+        self.start_archive_write(
+            jobs::JobKind::Pack,
+            archive,
+            write,
+            move |progress| match numbered {
+                Some(items) => fs::archive::pack_named(&items, &packed, progress),
+                None => fs::archive::pack(&sources, &packed, progress),
+            },
+        )
     }
 
     /// F5 with an archive, or a folder in one, as the target: one job rewrites
@@ -8704,6 +8914,11 @@ impl App {
         if sources.is_empty() {
             return Task::none();
         }
+        if preset.is_none() && self.panel(self.source_side().other()).is_hit_list() {
+            let text = self.lang.text(Msg::StatusHitListNotAFolder).to_owned();
+            self.set_status_error(&text);
+            return Task::none();
+        }
         self.job_error = None;
         self.notice = None;
         self.transfer_dialogs_opened = self.transfer_dialogs_opened.wrapping_add(1);
@@ -8713,8 +8928,14 @@ impl App {
                 .session(place.server())
                 .map(|session| session.home().to_owned())
         });
+        let hit_scope = self
+            .panel(self.source_side())
+            .hit_list
+            .as_ref()
+            .map(|list| list.scope.clone());
         let dialog = TransferDialog::new(self.transfer_dialogs_opened, kind, sources, base)
-            .with_remote_home(remote_home);
+            .with_remote_home(remote_home)
+            .with_hit_scope(hit_scope);
         let scan = scan_task(&dialog);
         let conflicts = conflicts_task(&dialog);
         self.transfer_dialog = Some(dialog);
@@ -8874,6 +9095,11 @@ impl App {
     /// cursor position or modifier, so the target is always the active panel
     /// and the transfer always a copy.
     fn copy_external_files_into_active_panel(&mut self, paths: Vec<PathBuf>) -> Task<Message> {
+        if self.active_panel().is_hit_list() {
+            let text = self.lang.text(Msg::StatusHitListNotAFolder).to_owned();
+            self.set_status_error(&text);
+            return Task::none();
+        }
         if self.transfer_into_panel_is_blocked() {
             let text = self.lang.text(Msg::StatusDropBusy).to_owned();
             return self.show_notice(text);
@@ -8934,6 +9160,11 @@ impl App {
     }
 
     fn ask_for_pasted_file_name(&mut self, pasted: PastedContent) -> Task<Message> {
+        if self.active_panel().is_hit_list() {
+            let text = self.lang.text(Msg::StatusHitListNotAFolder).to_owned();
+            self.set_status_error(&text);
+            return Task::none();
+        }
         let Some(kind) = pasted.kind() else {
             return Task::none();
         };
@@ -9152,7 +9383,18 @@ impl App {
         target: PathBuf,
         policy: Policy,
     ) -> Task<Message> {
-        if let Some(location) = fs::archive::locate_in_archive(&target) {
+        let needs_numbering = fs::flat_names::from_several_folders(&sources)
+            && fs::flat_names::flat_names(&sources)
+                .iter()
+                .zip(&sources)
+                .any(|(name, source)| name.as_deref() != source.file_name());
+        let into_archive = fs::archive::locate_in_archive(&target);
+        if needs_numbering && (into_archive.is_some() || RemotePath::parse(&target).is_some()) {
+            let text = self.lang.text(Msg::StatusNumberingNeedsFolder).to_owned();
+            self.set_status_error(&text);
+            return Task::none();
+        }
+        if let Some(location) = into_archive {
             return self.begin_copy_into_archive(location, sources, policy);
         }
         self.begin_transfer(kind, sources, target, policy)
@@ -9166,10 +9408,19 @@ impl App {
         target: PathBuf,
         policy: Policy,
     ) -> Task<Message> {
+        let names = if fs::flat_names::from_several_folders(&sources) {
+            fs::flat_names::flat_names(&sources)
+                .into_iter()
+                .map(Option::unwrap_or_default)
+                .collect()
+        } else {
+            Vec::new()
+        };
         let transfer = Transfer {
             kind,
             sources,
             target,
+            names,
         };
         self.transfer = Some(transfer.clone());
         self.conflict_rule = policy.standing_rule();
@@ -9241,7 +9492,13 @@ impl App {
                 .map(|item| &item.original),
             (None, None) => None,
         };
-        path.and_then(|source| source.file_name())
+        let renamed = self
+            .pending_conflict
+            .as_ref()
+            .and_then(|pending| pending.transfer.name_in_target(pending.index));
+        renamed
+            .as_deref()
+            .or_else(|| path?.file_name())
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default()
     }
@@ -9492,10 +9749,16 @@ impl App {
 
         let generation = self.generation;
         let target = transfer.target.clone();
+        let name_in_target = transfer.name_in_target(index);
         let pool = Arc::clone(&self.remote);
         let job = jobs::Job {
             kind: transfer.kind.job_kind(),
-            path: child_path(&target, source.file_name().unwrap_or_default()),
+            path: child_path(
+                &target,
+                name_in_target
+                    .as_deref()
+                    .unwrap_or_else(|| source.file_name().unwrap_or_default()),
+            ),
             total: None,
         };
         // One row per job keeps a conflict answerable between two files.
@@ -9508,7 +9771,17 @@ impl App {
                     let from = source.clone();
                     let to = target.clone();
                     let kind = transfer.kind;
+                    let renamed = name_in_target.clone();
                     move || {
+                        if let Some(name) = renamed {
+                            return crate::fs::transfer::run_reporting_as(
+                                &from,
+                                &to.join(name),
+                                kind,
+                                conflict,
+                                &progress_tx,
+                            );
+                        }
                         // Reports as it goes, so the bar moves during a long
                         // copy rather than jumping at the end. A server on
                         // either side is the SFTP layer's.
@@ -9676,6 +9949,9 @@ impl App {
             }
         }
         let panel = self.panel(self.source_side());
+        if panel.is_hit_list() && is_not_offered_in_hit_list(&message) {
+            return Task::none();
+        }
         match archive_refusal(panel, &message).or_else(|| remote_refusal(panel, &message)) {
             Some(refusal) => {
                 let text = self.lang.text(refusal).to_string();
@@ -9689,6 +9965,9 @@ impl App {
     /// Navigates `side` to its parent directory, re-selecting the directory
     /// we came from.
     fn go_up(&mut self, side: PanelSide) -> Task<Message> {
+        if self.panel(side).is_hit_list() {
+            return Task::none();
+        }
         let current = &self.panel(side).path;
         // A server path is cut as text: `Path::parent` would answer `sftp:` at
         // the root and does not know the root of a server.
@@ -9747,6 +10026,11 @@ impl App {
         }
     }
 
+    /// Rows a page of this panel moves by: a hit list fits fewer, taller rows.
+    fn visible_rows_of(&self, side: PanelSide) -> usize {
+        self.panel(side).rows_in_view(self.visible_rows)
+    }
+
     fn apply_window_size(&mut self, size: Size) {
         self.window_size = size;
         self.resize_command_palette(size);
@@ -9789,7 +10073,12 @@ impl App {
                 // in the home folder.
                 None if panel.remote().is_some() => (session_state::record_path(&self.home), None),
                 None => (
-                    session_state::record_path(&panel.path),
+                    session_state::record_path(
+                        panel
+                            .hit_list
+                            .as_ref()
+                            .map_or(&panel.path, |list| &list.return_to),
+                    ),
                     panel
                         .selected_entry()
                         .filter(|entry| !entry.is_parent)
@@ -9855,10 +10144,20 @@ impl App {
     }
 
     fn resize_search(&mut self, window: Size) {
-        self.search_rows = layout::search_visible_rows(window, self.search_filtered());
+        self.search_rows = self.search_rows_for(window);
         if let Some(view) = self.search.as_mut() {
             view.ensure_visible(self.search_rows);
         }
+    }
+
+    /// The result rows that fit in `window` at the height the search's rows
+    /// have now.
+    fn search_rows_for(&self, window: Size) -> usize {
+        let row_height = self
+            .search
+            .as_ref()
+            .map_or(layout::HIT_LIST_ROW_HEIGHT, SearchView::row_height);
+        layout::search_visible_rows(window, self.search_filtered(), row_height)
     }
 
     /// Whether the search shows its filters.
@@ -9926,7 +10225,7 @@ impl App {
         } else {
             None
         };
-        self.search_rows = layout::search_visible_rows(self.window_size, self.search_filtered());
+        self.refresh_search_rows();
         let search = self.restart_search();
         Task::batch([self.focus_search_field(), search])
     }
@@ -10006,6 +10305,7 @@ impl App {
                 task
             }
         };
+        self.refresh_search_rows();
         Task::batch([asked, walk])
     }
 
@@ -10075,7 +10375,160 @@ impl App {
             view.generation = generation;
             view.mirror_index(rows);
         }
+        self.refresh_search_rows();
         self.request_snippets()
+    }
+
+    /// Lists the hits of the search in the panel on `target`. The files are
+    /// read on the blocking pool; the panel shows itself loading meanwhile.
+    fn open_hit_list(&mut self, target: PanelSide) -> Task<Message> {
+        let Some(view) = self.open_search_view() else {
+            return Task::none();
+        };
+        if view.results.is_empty() {
+            return Task::none();
+        }
+        let paths: Vec<PathBuf> = view.results.iter().map(|file| file.path.clone()).collect();
+        let query = view.query.trim().to_owned();
+        let scope = view.root.clone();
+        let origin = self.search_side;
+        self.context_menu = None;
+        self.job_error = None;
+        self.notice = None;
+        let closed = if target == origin {
+            self.close_search()
+        } else {
+            if self.trash_view.is_some() && self.trash_side == target {
+                self.close_trash();
+            }
+            Task::none()
+        };
+        let panel = self.panel_mut(target);
+        let return_to = panel
+            .hit_list
+            .as_ref()
+            .map_or_else(|| panel.path.clone(), |list| list.return_to.clone());
+        let request_id = panel.begin_hit_list(HitList {
+            query,
+            scope,
+            return_to,
+        });
+        self.active_panel = target;
+        Task::batch([closed, read_hit_files(target, request_id, paths)])
+    }
+
+    /// Reads the files of the list again: the rows that vanished drop out.
+    fn refresh_hit_list(&mut self, side: PanelSide) -> Task<Message> {
+        let panel = self.panel_mut(side);
+        let paths: Vec<PathBuf> = panel
+            .entries
+            .iter()
+            .map(|entry| entry.path.clone())
+            .collect();
+        let request_id = panel.begin_load();
+        read_hit_files(side, request_id, paths)
+    }
+
+    fn update_hit_list(&mut self, message: HitListMessage) -> Task<Message> {
+        match message {
+            HitListMessage::Read {
+                side,
+                request_id,
+                entries,
+            } => {
+                let rows = self.visible_rows;
+                let panel = self.panel_mut(side);
+                if panel.request_id == request_id && panel.is_hit_list() {
+                    panel.apply_hit_entries(entries, rows);
+                }
+                Task::none()
+            }
+            HitListMessage::BackToSearch => {
+                if self.jobs.is_busy() {
+                    return Task::none();
+                }
+                let side = self.active_panel;
+                self.leave_hit_list(side, true)
+            }
+            HitListMessage::Close(side) => self.leave_hit_list(side, false),
+            HitListMessage::ShowOnOtherSide => self.show_hit_on_other_side(),
+            HitListMessage::RemoveFromList => {
+                let rows = self.visible_rows;
+                let panel = self.active_panel_mut();
+                if !panel.is_hit_list() {
+                    return Task::none();
+                }
+                let mut paths: Vec<PathBuf> = panel
+                    .entries
+                    .iter()
+                    .filter(|entry| panel.selection.is_tagged(&entry.path))
+                    .map(|entry| entry.path.clone())
+                    .collect();
+                if paths.is_empty() {
+                    paths.extend(panel.selected_entry().map(|entry| entry.path.clone()));
+                }
+                panel.remove_hits(&paths, rows);
+                Task::none()
+            }
+        }
+    }
+
+    /// Drops the list of `side` and shows the folder it came from. With
+    /// `search` the search comes back, with the fields it was left with.
+    fn leave_hit_list(&mut self, side: PanelSide, search: bool) -> Task<Message> {
+        let Some(list) = self.panel_mut(side).drop_hit_list() else {
+            return Task::none();
+        };
+        self.context_menu = None;
+        let load = self.load(side, list.return_to, None);
+        if !search || self.search.is_none() {
+            return load;
+        }
+        if self.search_open {
+            self.active_panel = self.search_side;
+            return load;
+        }
+        self.search_open = true;
+        self.active_panel = self.search_side;
+        self.refresh_search_rows();
+        let restarted = self.restart_search();
+        Task::batch([load, restarted, self.focus_search_field()])
+    }
+
+    /// Shows the file under the cursor in its folder on the other side. The
+    /// list stays.
+    fn show_hit_on_other_side(&mut self) -> Task<Message> {
+        let side = self.active_panel;
+        let target = match self.open_search_view() {
+            Some(search) => search.cursor_target().map(|(path, _)| path),
+            None => self
+                .panel(side)
+                .selected_entry()
+                .map(|entry| entry.path.clone()),
+        };
+        let Some(path) = target else {
+            return Task::none();
+        };
+        let (Some(folder), Some(name)) = (
+            path.parent().map(PathBuf::from),
+            path.file_name()
+                .map(|name| name.to_string_lossy().into_owned()),
+        ) else {
+            return Task::none();
+        };
+        let other = side.other();
+        let closed = if self.search_open && self.search_side == other {
+            self.close_search()
+        } else {
+            Task::none()
+        };
+        if self.trash_view.is_some() && self.trash_side == other {
+            self.close_trash();
+        }
+        self.panel_mut(other).drop_hit_list();
+        self.active_panel = other;
+        let load = self.load(other, folder, Some(name));
+        Task::batch([closed, load])
     }
 
     fn close_search(&mut self) -> Task<Message> {
@@ -10248,6 +10701,7 @@ impl App {
                 Task::none()
             }
             SearchMessage::Close => self.close_search(),
+            SearchMessage::OpenHitList(side) => self.open_hit_list(side),
             SearchMessage::IndexRan { generation, result } => {
                 let Some(filters) = view
                     .filters
@@ -10261,11 +10715,11 @@ impl App {
                     Err(detail) => filters.failed(detail),
                 }
                 if view.is_filtered() {
-                    self.refresh_search_rows();
                     let shown_rows = self.search_rows;
                     if let Some(kept) = self.search.as_mut() {
                         kept.mirror_index(shown_rows);
                     }
+                    self.refresh_search_rows();
                     return self.request_snippets();
                 }
                 self.refresh_search_rows();
@@ -10358,10 +10812,6 @@ impl App {
                 view.last(rows);
                 Task::none()
             }
-            SearchMessage::Expand(expanded) => {
-                view.set_expanded(expanded, rows);
-                Task::none()
-            }
             SearchMessage::Activate => self.activate_search_cursor(),
             SearchMessage::RowClicked(index) => {
                 view.select_row(index, rows);
@@ -10371,8 +10821,19 @@ impl App {
                 view.select_row(index, rows);
                 self.activate_search_cursor()
             }
-            SearchMessage::ToggleGroup(file) => {
-                view.toggle_group(file, rows);
+            SearchMessage::ToggleTagAt(index) => {
+                view.select_row(index, rows);
+                view.tag_and_move(0, rows);
+                release_focus()
+            }
+            SearchMessage::ContextAt(index) => {
+                // As in the panel: a click outside the tags drops them, so the
+                // menu cannot act on files the user did not point at.
+                if !view.is_tagged(index) {
+                    view.tagged.clear();
+                }
+                view.select_row(index, rows);
+                self.open_search_context_menu();
                 Task::none()
             }
             SearchMessage::Scrolled(delta) => {
@@ -10382,29 +10843,20 @@ impl App {
         }
     }
 
-    /// Enter on a result: a file is shown in the other panel, a line is opened
-    /// in the editor at that line.
+    /// Enter on a result: the file is shown in the other panel.
     fn activate_search_cursor(&mut self) -> Task<Message> {
-        let Some(target) = self.open_search_view().and_then(SearchView::cursor_target) else {
+        let Some((path, _)) = self.open_search_view().and_then(SearchView::cursor_target) else {
             return Task::none();
         };
-        match target {
-            (path, Some(line)) => {
-                self.launch_external(fs::OpenKind::Edit, path, Some(line), CopyOf::Nothing);
-                Task::none()
-            }
-            (path, None) => {
-                let (Some(directory), Some(file)) = (path.parent(), path.file_name()) else {
-                    return Task::none();
-                };
-                let name = file.to_string_lossy().into_owned();
-                self.load(
-                    self.search_side.other(),
-                    directory.to_path_buf(),
-                    Some(name),
-                )
-            }
-        }
+        let (Some(directory), Some(file)) = (path.parent(), path.file_name()) else {
+            return Task::none();
+        };
+        let name = file.to_string_lossy().into_owned();
+        self.load(
+            self.search_side.other(),
+            directory.to_path_buf(),
+            Some(name),
+        )
     }
 
     /// Cmd/Ctrl+P: lists the files below the active panel's directory. Pressed
@@ -14198,6 +14650,17 @@ impl App {
     fn title_bar_view(&self) -> Element<'_, Message> {
         let tab = |side: PanelSide| {
             let title = match self.search.as_ref() {
+                _ if self.panel(side).is_hit_list() => {
+                    let query = self
+                        .panel(side)
+                        .hit_list
+                        .as_ref()
+                        .map_or("", |list| list.query.as_str());
+                    titlebar::TabTitle::HitList(fill_template(
+                        self.lang.text(Msg::HitListTab),
+                        &[("{query}", query)],
+                    ))
+                }
                 Some(search) if self.search_open && side == self.search_side => {
                     titlebar::TabTitle::Search(search_ui::title(search, self.lang))
                 }
@@ -14431,7 +14894,7 @@ impl App {
                 .entries
                 .iter()
                 .skip(panel.scroll_offset)
-                .take(self.visible_rows)
+                .take(panel.rows_in_view(self.visible_rows))
                 .any(|entry| {
                     self.hermes_column.state_of(&entry.path) == Some(HermesFileState::Reading)
                 })
@@ -14464,7 +14927,7 @@ impl App {
             .entries
             .iter()
             .skip(panel.scroll_offset)
-            .take(self.visible_rows)
+            .take(panel.rows_in_view(self.visible_rows))
             .filter(|entry| entry.is_dir && !entry.is_parent)
             .map(|entry| entry.path.clone())
             .collect();
@@ -14810,16 +15273,14 @@ impl App {
                 self.filing_status.close_page();
                 Task::none()
             }
-            FilingStatusMessage::Toggle => {
-                if self.filing_status.page_open() {
+            FilingStatusMessage::Toggle => match self.open_hermes_page() {
+                Some(HermesPage::Inspection) => {
                     self.filing_status.close_page();
                     Task::none()
-                } else if self.hermes_overview.is_some() {
-                    self.leave_hermes_overview()
-                } else {
-                    self.open_hermes_overview()
                 }
-            }
+                Some(_) => self.go_to_hermes_page(HermesPage::Inspection),
+                None => self.open_filing_status(),
+            },
             FilingStatusMessage::Restarted(generation) => self.filing_restarted(generation),
             FilingStatusMessage::Tick => {
                 self.refresh_filing_snapshot();
@@ -14923,6 +15384,12 @@ impl App {
 
     /// Starts an async directory read for `side`.
     fn load(&mut self, side: PanelSide, path: PathBuf, select: Option<String>) -> Task<Message> {
+        if self.panel(side).is_hit_list() {
+            if path == self.panel(side).path {
+                return self.refresh_hit_list(side);
+            }
+            self.panel_mut(side).drop_hit_list();
+        }
         // A server is told from the text of the path before anything else
         // looks at it: nothing here may hand such a path to the local disk.
         if let Some(remote) = RemotePath::parse(&path) {
@@ -16601,7 +17068,7 @@ mod reload_order {
 /// What the snapshot of the search view shows: a plain file and a source file
 /// with two hits.
 #[cfg(test)]
-fn fixed_search_results(root: &Path) -> Vec<(PathBuf, Vec<crate::fs::search::LineMatch>)> {
+fn fixed_search_results(root: &Path) -> Vec<(fs::FileEntry, Vec<crate::fs::search::LineMatch>)> {
     use crate::fs::search::LineMatch;
     let hit = |number: u64, text: &str, from: usize, to: usize| LineMatch {
         number,
@@ -16610,17 +17077,78 @@ fn fixed_search_results(root: &Path) -> Vec<(PathBuf, Vec<crate::fs::search::Lin
     };
     vec![
         (
-            root.join("notes.txt"),
+            fixed_result_entry(root.join("notes.txt"), 4_300, (2026, 9, 12, 16, 20)),
             vec![hit(3, "say hello to the world", 4, 9)],
         ),
         (
-            root.join("src/main.rs"),
+            fixed_result_entry(root.join("src/main.rs"), 18_432, (2026, 10, 2, 11, 5)),
             vec![
                 hit(1, "// hello world example", 3, 8),
                 hit(12, "println!(\"hello\");", 10, 15),
             ],
         ),
     ]
+}
+
+#[cfg(test)]
+fn fixed_hit_scope() -> PathBuf {
+    PathBuf::from("/Users/alex/Documents")
+}
+
+/// Paths below the scope, with fixed sizes and local-time dates, so the rows
+/// print the same text in every time zone.
+#[cfg(test)]
+fn fixed_hit_entries() -> Vec<fs::FileEntry> {
+    let scope = fixed_hit_scope();
+    let hit = |relative: &str, size: u64, date: (i32, u32, u32, u32, u32)| {
+        fixed_result_entry(scope.join(relative), size, date)
+    };
+    vec![
+        hit("Telekom/2024/invoice.pdf", 184_320, (2024, 11, 4, 9, 12)),
+        hit("Telekom/2025/invoice.pdf", 201_728, (2025, 11, 3, 8, 47)),
+        hit("Telekom/contract-dsl.pdf", 1_153_433, (2023, 2, 17, 14, 5)),
+        hit("Telekom-mobile-notes.txt", 2_048, (2026, 5, 6, 18, 44)),
+    ]
+}
+
+#[cfg(test)]
+fn fixed_hit_search_results() -> Vec<(fs::FileEntry, Vec<crate::fs::search::LineMatch>)> {
+    use crate::fs::search::LineMatch;
+    fixed_hit_entries()
+        .into_iter()
+        .map(|entry| {
+            let line = LineMatch {
+                number: 1,
+                text: "Customer account with Telekom".to_owned(),
+                ranges: std::iter::once(22..29).collect(),
+            };
+            (entry, vec![line])
+        })
+        .collect()
+}
+
+/// A search result with a fixed size and a local-time date, so the rows print
+/// the same text in every time zone.
+#[cfg(test)]
+pub fn fixed_result_entry(
+    path: PathBuf,
+    size: u64,
+    (year, month, day, hour, minute): (i32, u32, u32, u32, u32),
+) -> fs::FileEntry {
+    use chrono::{Local, TimeZone as _};
+    fs::FileEntry {
+        name: path.file_name().map(OsString::from).unwrap_or_default(),
+        path,
+        is_dir: false,
+        is_symlink: false,
+        is_parent: false,
+        size,
+        modified: Local
+            .with_ymd_and_hms(year, month, day, hour, minute, 0)
+            .single()
+            .map(std::time::SystemTime::from),
+        folder_size: None,
+    }
 }
 
 #[cfg(test)]
@@ -16718,7 +17246,11 @@ impl App {
             search: None,
             search_open: false,
             search_side: PanelSide::Left,
-            search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE, false),
+            search_rows: layout::search_visible_rows(
+                layout::INITIAL_WINDOW_SIZE,
+                false,
+                layout::HIT_LIST_ROW_HEIGHT,
+            ),
             search_generation: 0,
             search_handle: None,
             quick_open: None,
@@ -17138,6 +17670,7 @@ impl App {
             app.right_panel
                 .selected
                 .saturating_sub(app.right_panel.scroll_offset),
+            layout::ROW_HEIGHT,
             app.window_size,
         );
         let mut menu = QuickFix::new(anchor, app.window_size);
@@ -17293,7 +17826,7 @@ impl App {
     pub fn show_search_results_for_test(
         &mut self,
         query: &str,
-        files: Vec<(PathBuf, Vec<crate::fs::search::LineMatch>)>,
+        files: Vec<(fs::FileEntry, Vec<crate::fs::search::LineMatch>)>,
     ) {
         use crate::fs::search::{SearchEvent, SearchTotals};
         drop(self.update(Message::OpenSearch));
@@ -17307,8 +17840,13 @@ impl App {
         if let Some(view) = self.search.as_mut() {
             view.query = query.to_string();
             view.begin(1);
-            for (path, lines) in files {
-                view.apply_event(SearchEvent::File { path, lines });
+            for (entry, lines) in files {
+                view.apply_event(SearchEvent::File {
+                    path: entry.path,
+                    lines,
+                    size: entry.size,
+                    modified: entry.modified,
+                });
             }
             view.apply_event(SearchEvent::Finished(totals));
             view.select_row(2, self.search_rows);
@@ -17513,9 +18051,11 @@ impl App {
         hits_below: impl FnOnce(&Path) -> SearchFilters,
     ) -> Self {
         let mut app = Self::with_fixed_panels();
+        // The home the README screenshots use, so the search shows the same paths.
+        app.left_panel.path = PathBuf::from("/Users/alex/Documents");
         drop(app.update(Message::OpenSearch));
         let root = app.panel(PanelSide::Left).path.clone();
-        app.search_rows = layout::search_visible_rows(app.window_size, true);
+        app.refresh_search_rows();
         let rows = app.search_rows;
         if let Some(view) = app.search.as_mut() {
             view.query = query.to_owned();
@@ -17639,6 +18179,8 @@ impl App {
             .map(|file| SearchEvent::File {
                 path: quick_open.root().join(file),
                 lines: Vec::new(),
+                size: 0,
+                modified: None,
             })
             .collect();
         events.push(SearchEvent::Finished(SearchTotals {
@@ -17713,10 +18255,10 @@ impl App {
 
     /// Tags the row at `index`, addressed by position the way a keypress is.
     pub fn toggle_tag_for_test(&mut self, index: usize) {
-        let Some(name) = self.left_panel.entries.get(index).map(|e| e.name.clone()) else {
+        let Some(path) = self.left_panel.entries.get(index).map(|e| e.path.clone()) else {
             return;
         };
-        self.left_panel.selection.toggle(&name);
+        self.left_panel.selection.toggle(&path);
     }
 
     pub fn tag_all_for_test(&mut self) {
@@ -17729,7 +18271,7 @@ impl App {
         self.left_panel
             .entries
             .get(index)
-            .is_some_and(|e| self.left_panel.selection.is_tagged(&e.name))
+            .is_some_and(|e| self.left_panel.selection.is_tagged(&e.path))
     }
 
     pub fn move_selection_for_test(&mut self, delta: isize) {
@@ -17932,6 +18474,61 @@ impl App {
         self.transfer_dialog = Some(dialog);
     }
 
+    /// The search view with four fixed hits for "Telekom", so the buttons that
+    /// open them as a list are enabled, for the snapshot tests.
+    pub fn with_fixed_search_hits() -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.left_panel.path = fixed_hit_scope();
+        app.show_search_results_for_test("Telekom", fixed_hit_search_results());
+        app
+    }
+
+    /// The left panel as a hit list of the four fixed Telekom files, for the
+    /// snapshot tests. Nothing is read from disk.
+    pub fn with_fixed_hit_list() -> Self {
+        let mut app = Self::with_fixed_panels();
+        let rows = app.visible_rows;
+        let scope = fixed_hit_scope();
+        let panel = app.panel_mut(PanelSide::Left);
+        let return_to = panel.path.clone();
+        panel.begin_hit_list(HitList {
+            query: "Telekom".to_owned(),
+            scope,
+            return_to,
+        });
+        panel.apply_hit_entries(fixed_hit_entries(), rows);
+        app
+    }
+
+    /// The hit list with its context menu open on the second row.
+    pub fn with_fixed_hit_list_menu() -> Self {
+        let mut app = Self::with_fixed_hit_list();
+        app.open_context_menu(PanelSide::Left, 1, Some(Point::new(260.0, 120.0)));
+        app
+    }
+
+    /// The search results with the context menu open on the third row.
+    pub fn with_fixed_search_hits_menu() -> Self {
+        let mut app = Self::with_fixed_search_hits();
+        app.set_pointer_for_test(Point::new(260.0, 380.0));
+        drop(app.update(Message::Search(SearchMessage::ContextAt(2))));
+        app
+    }
+
+    /// The pack prompt for the two `invoice.pdf` of the fixed hit list.
+    pub fn with_fixed_hit_list_pack() -> Self {
+        let mut app = Self::with_fixed_hit_list();
+        let scope = fixed_hit_scope();
+        let panel = app.panel_mut(PanelSide::Left);
+        for year in ["2024", "2025"] {
+            panel
+                .selection
+                .toggle(&scope.join(format!("Telekom/{year}/invoice.pdf")));
+        }
+        drop(app.open_pack_prompt());
+        app
+    }
+
     /// Puts the left panel inside a fixed archive and asks for a move there,
     /// so the notice that archives are read-only shows, for the snapshot tests.
     pub fn show_archive_read_only_for_test(&mut self) {
@@ -17966,6 +18563,7 @@ impl App {
             kind: TransferKind::Copy,
             sources: vec![PathBuf::from("/home/test/links/entry-1")],
             target: self.right_panel.path.clone(),
+            names: Vec::new(),
         });
         self.job_progress = Some(fs::transfer::Tick { done, total });
         self.transfer_mask_visible = true;
@@ -17992,6 +18590,7 @@ impl App {
                 kind: TransferKind::Copy,
                 sources: vec![PathBuf::from("/left").join(name)],
                 target,
+                names: Vec::new(),
             },
             index: 0,
         });
@@ -18166,8 +18765,9 @@ mod transfer_tests {
     async fn tagged_rows_win_over_the_cursor() {
         let mut app = app_with_files();
         app.left_panel.selected = 2;
-        app.left_panel.selection.toggle(&OsString::from("a.txt"));
-        app.left_panel.selection.toggle(&OsString::from("c.txt"));
+        let left = app.left_panel.path.clone();
+        app.left_panel.selection.toggle(&left.join("a.txt"));
+        app.left_panel.selection.toggle(&left.join("c.txt"));
 
         let _task = app.start_transfer(TransferKind::Copy);
 
@@ -18493,7 +19093,7 @@ mod mouse_tagging {
             .entries
             .get(1)
             .expect("the fixture has three files")
-            .name
+            .path
             .clone();
         assert!(
             app.left_panel.selection.is_tagged(&name),
@@ -18733,7 +19333,7 @@ mod reload_keeps_place {
     #[test]
     fn tags_survive_a_reload() {
         let mut p = panel_with(&["a", "b", "c"]);
-        p.selection.toggle(&p.entries[1].name.clone());
+        p.selection.toggle(&p.entries[1].path.clone());
 
         p.apply_listing(
             PathBuf::from("/left"),
@@ -19251,6 +19851,7 @@ mod conflict_keys {
                 kind: TransferKind::Copy,
                 sources: vec![PathBuf::from("/left/a.txt")],
                 target: PathBuf::from("/right"),
+                names: Vec::new(),
             },
             index: 0,
         });
@@ -19278,6 +19879,7 @@ mod conflict_keys {
                 kind: TransferKind::Copy,
                 sources: vec![PathBuf::from("/left/a.txt")],
                 target: PathBuf::from("/right"),
+                names: Vec::new(),
             },
             index: 0,
         });
@@ -19300,6 +19902,7 @@ mod conflict_keys {
                 kind: TransferKind::Copy,
                 sources: vec![PathBuf::from("/left/a.txt")],
                 target: PathBuf::from("/right"),
+                names: Vec::new(),
             },
             index: 0,
         });
@@ -19663,8 +20266,8 @@ mod delete_tests {
         assert_eq!(app.delete_subject(&one), "a.txt");
 
         app.delete_dialog = None;
-        app.left_panel.selection.toggle(&"a.txt".into());
-        app.left_panel.selection.toggle(&"b.txt".into());
+        app.left_panel.selection.toggle(Path::new("/left/a.txt"));
+        app.left_panel.selection.toggle(Path::new("/left/b.txt"));
         let _again = app.update(Message::Delete { permanent: true });
         let many = app.delete_dialog.clone().unwrap();
         assert_eq!(app.delete_subject(&many), "2 items\na.txt\nb.txt");
@@ -20084,8 +20687,8 @@ mod copy_to_clipboard_tests {
     fn tagged_rows_win_one_per_line_in_listing_order_without_trailing_newline() {
         let mut panel = panel();
         panel.selected = 0;
-        panel.selection.toggle(&OsString::from("alpha.txt"));
-        panel.selection.toggle(&OsString::from("zulu.txt"));
+        panel.selection.toggle(Path::new("/left/alpha.txt"));
+        panel.selection.toggle(Path::new("/left/zulu.txt"));
         assert_eq!(
             clipboard_text(&panel, ClipboardKind::Path),
             Some(ClipboardText {
@@ -20543,7 +21146,7 @@ mod context_menu_tests {
         drop(app.update(Message::ContextMenuKey));
 
         let menu = app.context_menu_for_test().unwrap();
-        let anchor = layout::cursor_row_anchor(true, 2, app.window_size);
+        let anchor = layout::cursor_row_anchor(true, 2, layout::ROW_HEIGHT, app.window_size);
         assert_eq!(menu.origin(), anchor);
         assert_eq!(app.active_panel_side_for_test(), PanelSide::Right);
         assert_eq!(app.panel(PanelSide::Right).selected, 2);
@@ -22251,7 +22854,6 @@ mod configured_keys_tests {
 mod search_tests {
     use super::*;
     use crate::fs::search::{LineMatch, SearchEvent};
-    use crate::search_view::SearchRow;
 
     fn route(search_open: bool, key: Key, modifiers: Modifiers) -> Option<Message> {
         let state = PromptKeyState {
@@ -22280,6 +22882,8 @@ mod search_tests {
                     ranges: std::iter::once(0..4).collect(),
                 })
                 .collect(),
+            size: 0,
+            modified: None,
         }
     }
 
@@ -22344,14 +22948,6 @@ mod search_tests {
         assert_eq!(
             route(true, named(Named::End), none),
             search(SearchMessage::Last)
-        );
-        assert_eq!(
-            route(true, named(Named::ArrowRight), none),
-            search(SearchMessage::Expand(true))
-        );
-        assert_eq!(
-            route(true, named(Named::ArrowLeft), none),
-            search(SearchMessage::Expand(false))
         );
         assert_eq!(
             route(true, named(Named::Enter), none),
@@ -22468,6 +23064,32 @@ mod search_tests {
     }
 
     #[test]
+    fn the_visible_rows_follow_the_row_height_of_the_kind_of_search() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::OpenSearch));
+        let rows_of =
+            |current: &App, height| layout::search_visible_rows(current.window_size, false, height);
+        assert_eq!(
+            app.search_rows_for_test(),
+            rows_of(&app, layout::HIT_LIST_ROW_HEIGHT),
+            "file names only: two lines"
+        );
+
+        drop(app.update(Message::Search(SearchMessage::QueryChanged(
+            "x".to_string(),
+        ))));
+        let generation = app.search_for_test().unwrap().generation;
+        drop(app.update(Message::Search(SearchMessage::Debounced(generation))));
+
+        assert!(app.search_for_test().unwrap().third_line);
+        assert_eq!(
+            app.search_rows_for_test(),
+            rows_of(&app, layout::SEARCH_CONTENT_ROW_HEIGHT),
+            "matching lines: three lines"
+        );
+    }
+
+    #[test]
     fn a_pause_that_a_later_keystroke_overtook_starts_nothing() {
         let mut app = App::with_fixed_panels();
         drop(app.update(Message::OpenSearch));
@@ -22517,9 +23139,10 @@ mod search_tests {
             "not every file found"
         );
 
-        // On a line of a file, the file is the source.
+        // Without tags the file under the cursor is the source.
+        let b = PathBuf::from("/home/test/links/b.txt");
         drop(app.update(search_message(SearchMessage::Move(1))));
-        assert_eq!(app.action_sources(), std::slice::from_ref(&a));
+        assert_eq!(app.action_sources(), [b]);
 
         // Tagged files win over the cursor, in display order.
         drop(app.update(search_message(SearchMessage::Last)));
@@ -22564,7 +23187,7 @@ mod search_tests {
         drop(app.update(search_message(SearchMessage::ToggleTag)));
         let view = app.search_for_test().unwrap();
         assert!(view.is_tagged(0));
-        assert_eq!(view.cursor, Some(SearchRow::File(1)));
+        assert_eq!(view.cursor, Some(1));
 
         drop(app.update(search_message(SearchMessage::TagAll)));
         assert_eq!(app.search_for_test().unwrap().tagged.len(), 2);
@@ -22879,21 +23502,16 @@ mod search_tests {
     }
 
     #[test]
-    fn enter_on_a_line_opens_the_editor_at_that_line() {
+    fn f4_edits_the_cursors_file_at_its_first_match() {
         let launcher = Arc::new(RecordingLauncher::default());
-        let mut app = app_with_results(&[("/home/test/links/a.txt", &[7])])
+        let mut app = app_with_results(&[("/home/test/links/a.txt", &[7, 9])])
             .with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>);
         app.open_programs = config::OpenPrograms {
             edit: Some(config::ProgramLine::new("editor", &["+{line}"])),
             ..config::OpenPrograms::default()
         };
-        drop(app.update(Message::Search(SearchMessage::Move(1))));
-        assert_eq!(
-            app.search_for_test().unwrap().cursor,
-            Some(SearchRow::Line(0, 0))
-        );
 
-        drop(app.update(Message::Search(SearchMessage::Activate)));
+        drop(app.update(Message::OpenExternal(fs::OpenKind::Edit)));
 
         let calls = launcher.0.lock().unwrap().clone();
         assert_eq!(calls.len(), 1);
@@ -22903,15 +23521,151 @@ mod search_tests {
     }
 
     #[test]
-    fn a_click_selects_the_row_and_the_chevron_folds_the_file() {
-        let mut app = app_with_results(&[("/home/test/links/a.txt", &[1, 2])]);
-        drop(app.update(Message::Search(SearchMessage::RowClicked(2))));
+    fn enter_shows_the_file_in_the_other_panel_and_opens_no_editor() {
+        let launcher = Arc::new(RecordingLauncher::default());
+        let mut app = app_with_results(&[("/home/test/links/a.txt", &[7])])
+            .with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>);
+        let other = app.search_side.other();
+        let before = app.panel(other).request_id;
+
+        drop(app.update(Message::Search(SearchMessage::Activate)));
+
+        assert!(launcher.0.lock().unwrap().is_empty());
+        assert_ne!(app.panel(other).request_id, before);
+        assert!(app.panel(other).loading);
+    }
+
+    #[test]
+    fn a_click_selects_the_file_and_the_star_tags_it() {
+        let mut app = app_with_results(&[
+            ("/home/test/links/a.txt", &[1, 2]),
+            ("/home/test/links/b.txt", &[3]),
+        ]);
+        drop(app.update(Message::Search(SearchMessage::RowClicked(1))));
+        assert_eq!(app.search_for_test().unwrap().cursor, Some(1));
+
+        drop(app.update(Message::Search(SearchMessage::ToggleTagAt(0))));
+
+        let view = app.search_for_test().unwrap();
+        assert_eq!(view.cursor, Some(0));
+        assert!(view.is_tagged(0) && !view.is_tagged(1));
+    }
+
+    fn menu_actions(app: &App) -> Vec<ContextAction> {
+        app.context_menu_for_test()
+            .unwrap()
+            .entries()
+            .iter()
+            .filter_map(|entry| match entry {
+                crate::context_menu::MenuEntry::Item { action, .. } => Some(*action),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn app_with_two_results() -> App {
+        app_with_results(&[
+            ("/home/test/links/a.txt", &[1]),
+            ("/home/test/links/sub/b.txt", &[3]),
+        ])
+    }
+
+    #[test]
+    fn a_right_click_opens_the_hit_list_menu_without_remove_from_list() {
+        let mut app = app_with_two_results();
+        app.set_pointer_for_test(Point::new(200.0, 150.0));
+
+        drop(app.update(Message::Search(SearchMessage::ContextAt(1))));
+
+        assert_eq!(app.search_for_test().unwrap().cursor, Some(1));
+        let actions = menu_actions(&app);
+        for expected in [
+            ContextAction::Open,
+            ContextAction::View,
+            ContextAction::Edit,
+            ContextAction::Copy,
+            ContextAction::Move,
+            ContextAction::ShowOnOtherSide,
+            ContextAction::CopyPath,
+            ContextAction::CopyName,
+            ContextAction::Trash,
+            ContextAction::DeletePermanently,
+        ] {
+            assert!(actions.contains(&expected), "{expected:?} is missing");
+        }
+        assert!(!actions.contains(&ContextAction::RemoveFromList));
+        assert!(!actions.contains(&ContextAction::NewFolder));
+    }
+
+    #[test]
+    fn a_right_click_outside_the_tags_drops_them_and_on_a_tagged_file_keeps_them() {
+        let mut app = app_with_two_results();
+        drop(app.update(Message::Search(SearchMessage::ToggleTagAt(0))));
+
+        drop(app.update(Message::Search(SearchMessage::ContextAt(0))));
+        assert!(app.search_for_test().unwrap().is_tagged(0));
+
+        drop(app.update(Message::Search(SearchMessage::ContextAt(1))));
+        let view = app.search_for_test().unwrap();
+        assert!(!view.is_tagged(0) && !view.is_tagged(1));
+        assert_eq!(view.cursor, Some(1));
+    }
+
+    #[test]
+    fn open_in_the_menu_shows_the_file_in_the_other_panel() {
+        let mut app = app_with_two_results();
+        let other = app.search_side.other();
+        let before = app.panel(other).request_id;
+        drop(app.update(Message::Search(SearchMessage::ContextAt(0))));
         assert_eq!(
-            app.search_for_test().unwrap().cursor,
-            Some(SearchRow::Line(0, 1))
+            app.context_menu_selected_action(),
+            Some(ContextAction::Open)
         );
-        drop(app.update(Message::Search(SearchMessage::ToggleGroup(0))));
-        assert_eq!(app.search_for_test().unwrap().rows(), [SearchRow::File(0)]);
+
+        drop(app.update(Message::ContextMenuActivate));
+
+        assert!(!app.context_menu_is_open());
+        assert_ne!(app.panel(other).request_id, before);
+    }
+
+    #[test]
+    fn show_on_the_other_side_loads_the_results_folder_and_keeps_the_search() {
+        let mut app = app_with_two_results();
+        let other = app.search_side.other();
+        drop(app.update(Message::Search(SearchMessage::ContextAt(1))));
+
+        drop(app.update(Message::HitList(HitListMessage::ShowOnOtherSide)));
+
+        assert!(app.panel(other).loading);
+        assert_eq!(app.active_panel, other);
+        assert!(app.search_is_open_for_test());
+    }
+
+    #[test]
+    fn trash_in_the_menu_deletes_the_result_under_the_pointer_not_the_panel_row() {
+        let mut app = app_with_two_results();
+        drop(app.update(Message::Search(SearchMessage::ContextAt(1))));
+        let trash = app
+            .context_menu_for_test()
+            .unwrap()
+            .entries()
+            .iter()
+            .position(|entry| {
+                matches!(
+                    entry,
+                    crate::context_menu::MenuEntry::Item {
+                        action: ContextAction::Trash,
+                        ..
+                    }
+                )
+            })
+            .unwrap();
+
+        drop(app.update(Message::ContextMenuClick(trash)));
+
+        let sources = &app.delete_dialog.as_ref().unwrap().sources;
+        let names: Vec<_> = sources.iter().filter_map(|path| path.file_name()).collect();
+        assert_eq!(names, [std::ffi::OsStr::new("b.txt")]);
     }
 }
 
@@ -23005,6 +23759,8 @@ mod quick_open_tests {
             events: vec![crate::fs::search::SearchEvent::File {
                 path: root.join("late.txt"),
                 lines: Vec::new(),
+                size: 0,
+                modified: None,
             }],
         })));
         assert_eq!(app.quick_open_for_test().unwrap().file_count(), 0);
@@ -23056,6 +23812,7 @@ mod quick_open_tests {
             kind: TransferKind::Copy,
             sources: vec![PathBuf::from("/left/a.txt")],
             target: PathBuf::from("/right"),
+            names: Vec::new(),
         };
         app.transfer = Some(transfer);
         drop(app.update(Message::TransferRowDone {
@@ -23687,6 +24444,35 @@ mod filing_status_tests {
     }
 
     #[test]
+    fn the_key_opens_status_and_errors_from_the_panels() {
+        let mut app = App::with_fixed_panels();
+
+        drop(app.update(status(FilingStatusMessage::Toggle)));
+
+        assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));
+    }
+
+    #[test]
+    fn the_key_goes_back_to_the_panels_from_status_and_errors() {
+        let mut app = App::with_filing_status_page(Snapshot::off(), SystemTime::UNIX_EPOCH);
+
+        drop(app.update(status(FilingStatusMessage::Toggle)));
+
+        assert_eq!(app.open_hermes_page(), None);
+    }
+
+    #[test]
+    fn the_key_switches_to_status_and_errors_from_the_overview() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(status(FilingStatusMessage::Open)));
+        assert_eq!(app.open_hermes_page(), Some(HermesPage::Overview));
+
+        drop(app.update(status(FilingStatusMessage::Toggle)));
+
+        assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));
+    }
+
+    #[test]
     fn the_page_owns_the_keys_while_it_is_open() {
         let open = PromptKeyState {
             filing_status: true,
@@ -23956,7 +24742,7 @@ mod command_palette_tests {
         type_into_palette(&mut app, "filing status");
         drop(app.update(palette_message(CommandPaletteMessage::Run)));
         assert!(app.command_palette_for_test().is_none());
-        assert!(app.hermes_overview.is_some());
+        assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));
         assert!(!app.prompt_key_state().command_palette);
     }
 
@@ -23967,7 +24753,7 @@ mod command_palette_tests {
         type_into_palette(&mut app, "filing status");
         drop(app.update(palette_message(CommandPaletteMessage::Select(1))));
         assert!(app.command_palette_for_test().is_none());
-        assert!(app.hermes_overview.is_some());
+        assert_eq!(app.open_hermes_page(), Some(HermesPage::Inspection));
     }
 
     #[test]
@@ -26455,6 +27241,7 @@ mod archive_view_tests {
             kind: TransferKind::Copy,
             sources: vec![file.clone()],
             target: folder.to_path_buf(),
+            names: Vec::new(),
         };
         let deletion = Deletion {
             sources: vec![file.clone()],
@@ -28614,7 +29401,7 @@ mod window_focus_tests {
             .position(|entry| entry.name == "b.txt")
             .unwrap();
         app.left_panel.select(index, rows);
-        app.left_panel.selection.toggle(&"c.txt".into());
+        app.left_panel.selection.toggle(&dir.path().join("c.txt"));
         assert_eq!(size_of(&app, "b.txt"), 0);
 
         std::fs::write(dir.path().join("b.txt"), "edited").unwrap();
@@ -28622,7 +29409,10 @@ mod window_focus_tests {
 
         assert_eq!(size_of(&app, "b.txt"), 6);
         assert_eq!(app.left_panel.selected_entry().unwrap().name, "b.txt");
-        assert!(app.left_panel.selection.is_tagged(&"c.txt".into()));
+        assert!(app
+            .left_panel
+            .selection
+            .is_tagged(&dir.path().join("c.txt")));
     }
 
     #[tokio::test]
@@ -30206,6 +30996,7 @@ mod file_drop_tests {
             kind: TransferKind::Move,
             sources: vec![PathBuf::from("/busy")],
             target: PathBuf::from("/elsewhere"),
+            names: Vec::new(),
         };
         case.app.transfer = Some(running.clone());
         let generation = drop_both(&mut case);
@@ -30469,6 +31260,7 @@ mod clipboard_tests {
             kind: TransferKind::Move,
             sources: vec![PathBuf::from("/busy")],
             target: PathBuf::from("/elsewhere"),
+            names: Vec::new(),
         };
         case.app.transfer = Some(running.clone());
 
@@ -30719,7 +31511,9 @@ mod folder_size_tests {
     async fn tagged_folders_are_measured_one_after_another_and_the_cursor_is_ignored() {
         let mut app = app_in_links();
         for name in ["alpha", "gamma", "note.txt"] {
-            app.panel_mut(SIDE).selection.toggle(&OsString::from(name));
+            app.panel_mut(SIDE)
+                .selection
+                .toggle(&directory().join(name));
         }
         put_cursor_on(&mut app, "beta");
 
@@ -30886,7 +31680,7 @@ mod folder_size_tests {
         assert_eq!(names(&app), ["..", "alpha", "beta", "gamma", "note.txt"]);
         app.panel_mut(SIDE)
             .selection
-            .toggle(&OsString::from("gamma"));
+            .toggle(&directory().join("gamma"));
         put_cursor_on(&mut app, "beta");
         drop(app.update(Message::ComputeFolderSizes));
         let id = run_id(&app);
@@ -31204,5 +31998,497 @@ mod replan_flow {
         assert_eq!(items[0].now, Some(ReviewReason::NoMatchingRule));
         assert!(fixture.document.exists());
         assert!(review_open(&fixture.app));
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod hit_list_tests {
+    use super::*;
+    use crate::fs::search::{LineMatch, SearchEvent};
+    use crate::messages::SearchMessage;
+
+    struct Hits {
+        app: App,
+        folder: tempfile::TempDir,
+        files: Vec<PathBuf>,
+    }
+
+    /// An app whose search found `names` (made as real files in two folders),
+    /// opened from the left panel.
+    fn searched(names: &[&str]) -> Hits {
+        let folder = tempfile::tempdir().unwrap();
+        let mut files = Vec::new();
+        for (index, name) in names.iter().enumerate() {
+            let dir = folder.path().join(format!("dir{index}"));
+            std::fs::create_dir_all(&dir).unwrap();
+            let file = dir.join(name);
+            std::fs::write(&file, name).unwrap();
+            files.push(file);
+        }
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::OpenSearch));
+        let generation = app.search_for_test().unwrap().generation;
+        let events = files
+            .iter()
+            .map(|path| SearchEvent::File {
+                path: path.clone(),
+                lines: vec![LineMatch {
+                    number: 1,
+                    text: "x".to_owned(),
+                    ranges: std::iter::once(0..1).collect(),
+                }],
+                size: 0,
+                modified: None,
+            })
+            .collect();
+        drop(app.update(Message::Search(SearchMessage::Events {
+            generation,
+            events,
+        })));
+        app.search.as_mut().unwrap().query = "needle".to_owned();
+        Hits { app, folder, files }
+    }
+
+    fn read_all(app: &mut App, side: PanelSide, files: &[PathBuf]) {
+        let request_id = app.panel(side).request_id;
+        let entries = files
+            .iter()
+            .filter_map(|path| fs::FileEntry::from_path(path))
+            .collect();
+        drop(app.update(Message::HitList(HitListMessage::Read {
+            side,
+            request_id,
+            entries,
+        })));
+    }
+
+    fn opened(names: &[&str], side: PanelSide) -> Hits {
+        let mut hits = searched(names);
+        drop(
+            hits.app
+                .update(Message::Search(SearchMessage::OpenHitList(side))),
+        );
+        let files = hits.files.clone();
+        read_all(&mut hits.app, side, &files);
+        hits
+    }
+
+    #[test]
+    fn opening_on_the_search_side_closes_the_search_and_lists_the_files() {
+        let hits = opened(&["a.txt", "b.txt"], PanelSide::Left);
+        let panel = hits.app.panel(PanelSide::Left);
+        assert!(!hits.app.search_open);
+        assert!(panel.is_hit_list() && !panel.is_virtual() && !panel.loading);
+        assert_eq!(panel.entries.len(), 2);
+        assert!(panel.entries.iter().all(|entry| !entry.is_parent));
+        let list = panel.hit_list.as_ref().unwrap();
+        assert_eq!(list.query, "needle");
+        assert_eq!(list.return_to, PathBuf::from("/home/test/links"));
+        assert_eq!(panel.path, list.scope);
+        assert_eq!(hits.app.search_for_test().unwrap().query, "needle");
+    }
+
+    #[test]
+    fn opening_on_the_other_side_keeps_the_search_and_activates_the_list() {
+        let hits = opened(&["a.txt"], PanelSide::Right);
+        assert!(hits.app.search_open);
+        assert_eq!(hits.app.active_panel, PanelSide::Right);
+        assert!(hits.app.panel(PanelSide::Right).is_hit_list());
+        assert!(!hits.app.panel(PanelSide::Left).is_hit_list());
+    }
+
+    #[test]
+    fn nothing_opens_without_results() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::OpenSearch));
+        drop(app.update(Message::Search(SearchMessage::OpenHitList(
+            PanelSide::Right,
+        ))));
+        assert!(!app.panel(PanelSide::Right).is_hit_list());
+        assert!(app.search_open);
+    }
+
+    #[test]
+    fn a_read_of_an_older_open_is_ignored() {
+        let mut hits = searched(&["a.txt"]);
+        drop(hits.app.update(Message::Search(SearchMessage::OpenHitList(
+            PanelSide::Right,
+        ))));
+        let stale = hits.app.panel(PanelSide::Right).request_id;
+        drop(hits.app.update(Message::Search(SearchMessage::OpenHitList(
+            PanelSide::Right,
+        ))));
+        assert_ne!(hits.app.panel(PanelSide::Right).request_id, stale);
+        drop(hits.app.update(Message::HitList(HitListMessage::Read {
+            side: PanelSide::Right,
+            request_id: stale,
+            entries: Vec::new(),
+        })));
+        assert!(hits.app.panel(PanelSide::Right).loading);
+        let files = hits.files.clone();
+        read_all(&mut hits.app, PanelSide::Right, &files);
+        assert_eq!(hits.app.panel(PanelSide::Right).entries.len(), 1);
+    }
+
+    #[test]
+    fn a_file_that_is_gone_is_not_listed() {
+        let hits = searched(&["a.txt"]);
+        std::fs::remove_file(&hits.files[0]).unwrap();
+        assert!(fs::FileEntry::from_path(&hits.files[0]).is_none());
+    }
+
+    #[test]
+    fn escape_goes_back_to_the_search_with_its_fields() {
+        let mut hits = opened(&["a.txt"], PanelSide::Left);
+        let state = hits.app.prompt_key_state();
+        assert!(state.hit_list);
+        assert_eq!(
+            route_key(&state, Key::Named(Named::Escape), Modifiers::default()),
+            Some(Message::HitList(HitListMessage::BackToSearch))
+        );
+        let running = PromptKeyState {
+            job_running: true,
+            ..state
+        };
+        assert_eq!(
+            route_key(&running, Key::Named(Named::Escape), Modifiers::default()),
+            Some(Message::AbortJob)
+        );
+
+        drop(
+            hits.app
+                .update(Message::HitList(HitListMessage::BackToSearch)),
+        );
+        let panel = hits.app.panel(PanelSide::Left);
+        assert!(!panel.is_hit_list());
+        assert_eq!(panel.path, PathBuf::from("/home/test/links"));
+        assert!(hits.app.search_open && hits.app.search_side == PanelSide::Left);
+        assert_eq!(hits.app.search_for_test().unwrap().query, "needle");
+        assert!(panel.history.back().is_empty());
+    }
+
+    #[test]
+    fn the_cross_closes_the_list_without_the_search() {
+        let mut hits = opened(&["a.txt"], PanelSide::Left);
+        drop(
+            hits.app
+                .update(Message::HitList(HitListMessage::Close(PanelSide::Left))),
+        );
+        assert!(!hits.app.panel(PanelSide::Left).is_hit_list());
+        assert!(!hits.app.search_open);
+    }
+
+    #[test]
+    fn going_up_does_nothing_in_a_list() {
+        let mut hits = opened(&["a.txt"], PanelSide::Left);
+        let path = hits.app.panel(PanelSide::Left).path.clone();
+        drop(hits.app.go_up(PanelSide::Left));
+        assert!(hits.app.panel(PanelSide::Left).is_hit_list());
+        assert_eq!(hits.app.panel(PanelSide::Left).path, path);
+    }
+
+    #[test]
+    fn loading_another_folder_drops_the_list_and_loading_its_scope_refreshes_it() {
+        let mut hits = opened(&["a.txt"], PanelSide::Left);
+        let scope = hits.app.panel(PanelSide::Left).path.clone();
+        drop(hits.app.load(PanelSide::Left, scope, None));
+        assert!(hits.app.panel(PanelSide::Left).is_hit_list());
+        assert!(hits.app.panel(PanelSide::Left).loading);
+
+        let elsewhere = hits.folder.path().to_path_buf();
+        drop(hits.app.load(PanelSide::Left, elsewhere, None));
+        assert!(!hits.app.panel(PanelSide::Left).is_hit_list());
+        assert!(hits.app.panel(PanelSide::Left).history.back().is_empty());
+    }
+
+    #[test]
+    fn a_refresh_drops_vanished_rows_and_keeps_cursor_and_tags_by_path() {
+        let mut hits = opened(&["a.txt", "b.txt", "c.txt"], PanelSide::Left);
+        let kept = hits.app.panel(PanelSide::Left).entries[2].path.clone();
+        let cursor_panel = hits.app.panel_mut(PanelSide::Left);
+        cursor_panel.selection.toggle(&kept);
+        cursor_panel.selected = 2;
+        std::fs::remove_file(&hits.files[0]).unwrap();
+        let scope = hits.app.panel(PanelSide::Left).path.clone();
+        drop(hits.app.load(PanelSide::Left, scope, None));
+        let survivors = hits.files[1..].to_vec();
+        read_all(&mut hits.app, PanelSide::Left, &survivors);
+        let panel = hits.app.panel(PanelSide::Left);
+        assert_eq!(panel.entries.len(), 2);
+        assert!(panel.selection.is_tagged(&kept));
+        assert_eq!(panel.selected_entry().unwrap().path, kept);
+    }
+
+    #[test]
+    fn remove_from_list_takes_the_tagged_rows_else_the_cursor_row() {
+        let mut hits = opened(&["a.txt", "b.txt", "c.txt"], PanelSide::Left);
+        hits.app.panel_mut(PanelSide::Left).selected = 1;
+        drop(
+            hits.app
+                .update(Message::HitList(HitListMessage::RemoveFromList)),
+        );
+        assert_eq!(hits.app.panel(PanelSide::Left).entries.len(), 2);
+
+        let first = hits.app.panel(PanelSide::Left).entries[0].path.clone();
+        let second = hits.app.panel(PanelSide::Left).entries[1].path.clone();
+        hits.app.panel_mut(PanelSide::Left).selection.toggle(&first);
+        hits.app
+            .panel_mut(PanelSide::Left)
+            .selection
+            .toggle(&second);
+        drop(
+            hits.app
+                .update(Message::HitList(HitListMessage::RemoveFromList)),
+        );
+        assert!(hits.app.panel(PanelSide::Left).entries.is_empty());
+        assert!(hits.files.iter().all(|file| file.exists()));
+    }
+
+    #[test]
+    fn show_on_the_other_side_loads_the_folder_and_keeps_the_list() {
+        let mut hits = opened(&["a.txt"], PanelSide::Left);
+        drop(
+            hits.app
+                .update(Message::HitList(HitListMessage::ShowOnOtherSide)),
+        );
+        assert!(hits.app.panel(PanelSide::Left).is_hit_list());
+        assert_eq!(hits.app.active_panel, PanelSide::Right);
+        assert!(hits.app.panel(PanelSide::Right).loading);
+    }
+
+    #[test]
+    fn making_folders_and_pasting_are_not_offered_in_a_list() {
+        let mut hits = opened(&["a.txt"], PanelSide::Left);
+        for message in [
+            Message::CreateDirPrompt,
+            Message::CreateFilePrompt,
+            Message::Paste,
+            Message::ComputeFolderSizes,
+        ] {
+            drop(hits.app.apply_unless_refused(message));
+            assert!(hits.app.prompt.is_none());
+        }
+    }
+
+    #[test]
+    fn a_list_is_refused_as_the_target_of_a_copy() {
+        let mut hits = opened(&["a.txt"], PanelSide::Right);
+        let own = hits.files[0].clone();
+        let folder = hits.folder.path().to_path_buf();
+        let entry = fs::FileEntry::from_path(&own).unwrap();
+        hits.app
+            .panel_mut(PanelSide::Left)
+            .apply_listing(folder, vec![entry], None, None, 12);
+        hits.app.active_panel = PanelSide::Left;
+        hits.app.search_open = false;
+        drop(hits.app.open_transfer_dialog_to(TransferKind::Copy, None));
+        assert!(hits.app.transfer_dialog.is_none());
+        let shown = hits.app.job_error.clone().unwrap();
+        assert_eq!(shown, hits.app.lang.text(Msg::StatusHitListNotAFolder));
+    }
+
+    #[tokio::test]
+    async fn equal_names_from_several_folders_are_numbered_in_the_transfer() {
+        let mut hits = searched(&["same.txt", "same.txt"]);
+        let target = tempfile::tempdir().unwrap();
+        let sources = hits.files.clone();
+        drop(hits.app.begin_transfer(
+            TransferKind::Copy,
+            sources,
+            target.path().to_path_buf(),
+            Policy::Ask,
+        ));
+        let transfer = hits.app.transfer.clone().unwrap();
+        assert_eq!(transfer.name_in_target(0), None);
+        assert_eq!(
+            transfer.name_in_target(1),
+            Some(OsString::from("same (2).txt"))
+        );
+    }
+
+    #[tokio::test]
+    async fn f5_on_two_tagged_results_with_equal_names_numbers_the_second() {
+        let mut hits = searched(&["same.txt", "same.txt"]);
+        let marking = |message| Message::Search(message);
+        drop(hits.app.update(marking(SearchMessage::ToggleTag)));
+        drop(hits.app.update(marking(SearchMessage::ToggleTag)));
+        let sources = hits.app.action_sources();
+        assert_eq!(sources, hits.files);
+
+        let target = tempfile::tempdir().unwrap();
+        drop(hits.app.begin_transfer(
+            TransferKind::Copy,
+            sources,
+            target.path().to_path_buf(),
+            Policy::Ask,
+        ));
+        let transfer = hits.app.transfer.clone().unwrap();
+        assert_eq!(transfer.name_in_target(0), None);
+        assert_eq!(
+            transfer.name_in_target(1),
+            Some(OsString::from("same (2).txt"))
+        );
+    }
+
+    #[test]
+    fn numbered_names_cannot_go_into_an_archive() {
+        let mut hits = searched(&["same.txt", "same.txt"]);
+        let target = tempfile::tempdir().unwrap();
+        let archive = target.path().join("x.zip");
+        let first = hits.files[0].clone();
+        let mut progress = fs::transfer::Counting;
+        fs::archive::pack(&[first], &archive, &mut progress).unwrap();
+        let sources = hits.files.clone();
+        drop(
+            hits.app
+                .start_validated_transfer(TransferKind::Copy, sources, archive, Policy::Ask),
+        );
+        assert!(hits.app.transfer.is_none() && hits.app.archive_write.is_none());
+        assert_eq!(
+            hits.app.job_error.clone().unwrap(),
+            hits.app.lang.text(Msg::StatusNumberingNeedsFolder)
+        );
+    }
+
+    #[test]
+    fn a_cursor_past_half_the_rows_stays_in_view_in_a_list() {
+        let names: Vec<String> = (0..10).map(|n| format!("f{n}.txt")).collect();
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        let mut hits = opened(&refs, PanelSide::Left);
+        let rows = hits.app.visible_rows_of(PanelSide::Left);
+        assert_eq!(rows, 6);
+        let folder_rows = hits.app.visible_rows;
+        let panel = hits.app.panel_mut(PanelSide::Left);
+        panel.select(rows + 1, folder_rows);
+        assert!(panel.scroll_offset <= panel.selected);
+        assert!(panel.selected < panel.scroll_offset + rows);
+    }
+
+    #[test]
+    fn the_archive_name_comes_from_a_plain_query_only() {
+        assert_eq!(
+            hit_archive_name(" invoice "),
+            Some("invoice.zip".to_owned())
+        );
+        assert_eq!(hit_archive_name("rech.*nung"), None);
+        assert_eq!(hit_archive_name("a/b"), None);
+        assert_eq!(hit_archive_name(".."), None);
+        assert_eq!(hit_archive_name(""), None);
+    }
+
+    fn pack_prompt_of(hits: &mut Hits) {
+        for file in hits.files.clone() {
+            hits.app.panel_mut(PanelSide::Left).selection.toggle(&file);
+        }
+        drop(hits.app.open_pack_prompt());
+    }
+
+    #[test]
+    fn the_pack_prompt_of_a_list_suggests_the_query_and_lists_equal_names() {
+        let mut hits = opened(&["same.txt", "same.txt"], PanelSide::Left);
+        pack_prompt_of(&mut hits);
+        let prompt = hits.app.prompt.as_ref().unwrap();
+        assert_eq!(
+            Path::new(prompt.name()).file_name(),
+            Some(std::ffi::OsStr::new("needle.zip"))
+        );
+        let pack = prompt.hits().unwrap();
+        assert!(!pack.keep_folders);
+        assert_eq!(pack.numbered.len(), 2);
+    }
+
+    #[test]
+    fn a_query_that_is_no_file_name_falls_back_to_the_folder_name() {
+        let mut hits = opened(&["a.txt", "b.txt"], PanelSide::Left);
+        hits.app
+            .panel_mut(PanelSide::Left)
+            .hit_list
+            .as_mut()
+            .unwrap()
+            .query = "rech.*nung".to_owned();
+        pack_prompt_of(&mut hits);
+        let name = hits.app.prompt.as_ref().unwrap().name().to_owned();
+        assert_eq!(
+            Path::new(&name).file_name(),
+            Some(std::ffi::OsStr::new(&suggested_archive_name(&hits.files)))
+        );
+    }
+
+    #[test]
+    fn keep_folders_toggles_in_the_prompt_and_is_off_at_first() {
+        let mut hits = opened(&["a.txt", "b.txt"], PanelSide::Left);
+        pack_prompt_of(&mut hits);
+        drop(hits.app.update(Message::PromptToggleKeepFolders));
+        let prompt = hits.app.prompt.as_ref().unwrap();
+        assert!(prompt.hits().unwrap().keep_folders);
+        assert_eq!(
+            prompt.kept_folders_under(),
+            Some(
+                hits.app
+                    .panel(PanelSide::Left)
+                    .hit_list
+                    .as_ref()
+                    .unwrap()
+                    .scope
+                    .as_path()
+            )
+        );
+        drop(hits.app.update(Message::PromptToggleKeepFolders));
+        assert!(hits
+            .app
+            .prompt
+            .as_ref()
+            .unwrap()
+            .kept_folders_under()
+            .is_none());
+    }
+
+    #[test]
+    fn the_status_line_of_a_list_counts_its_files() {
+        let mut hits = opened(&["a.txt", "b.txt"], PanelSide::Left);
+        let many = hits.app.hit_line().unwrap();
+        assert!(many.text.contains("needle") && many.text.contains("2"));
+        assert_eq!(many.back_key, "Esc");
+        let gone = hits.files[1].clone();
+        hits.app.panel_mut(PanelSide::Left).remove_hits(&[gone], 12);
+        let one = hits.app.hit_line().unwrap();
+        assert_ne!(one.text, many.text);
+        assert!(one.text.contains('1'));
+    }
+
+    #[test]
+    fn a_list_has_no_status_line_outside_a_list() {
+        assert!(App::with_fixed_panels().hit_line().is_none());
+    }
+
+    #[test]
+    fn a_tagged_row_of_a_list_is_marked() {
+        let mut hits = opened(&["a.txt", "b.txt"], PanelSide::Left);
+        let panel = hits.app.panel_mut(PanelSide::Left);
+        let tagged = panel.entries[1].path.clone();
+        panel.selection.toggle(&tagged);
+        let marks: Vec<bool> = (0..panel.entries.len())
+            .map(|index| {
+                panel
+                    .selection
+                    .state_of(index, &panel.entries, panel.selected)
+                    .tagged
+            })
+            .collect();
+        assert_eq!(marks, [false, true]);
+    }
+
+    #[test]
+    fn the_key_bar_of_a_list_leaves_out_new_folder() {
+        let mut hits = opened(&["a.txt"], PanelSide::Left);
+        assert!(hits.app.function_key_bar()[keymap::NEW_FOLDER_SLOT].is_none());
+        hits.app.panel_mut(PanelSide::Left).hit_list = None;
+        assert!(hits.app.function_key_bar()[keymap::NEW_FOLDER_SLOT].is_some());
     }
 }

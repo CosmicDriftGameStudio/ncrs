@@ -8,7 +8,7 @@ use crate::fs::OpenKind;
 use crate::hermes_column::FolderRole;
 use crate::i18n::Msg;
 use crate::messages::{
-    ClipboardKind, CommandLineMessage, CommandPaletteMessage, HermesFileMessage,
+    ClipboardKind, CommandLineMessage, CommandPaletteMessage, HermesFileMessage, HitListMessage,
     KeyBindingsMessage, Message, QuickFixMessage, QuickOpenMessage, ReorganisationPlanMessage,
     ReviewListMessage, RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage,
     SettingsMessage, TagsMessage, ThemeFetchMessage, TransferKind,
@@ -32,11 +32,15 @@ pub enum ContextAction {
     ComputeFolderSizes,
     Trash,
     DeletePermanently,
+    /// Only in the menu of a search-hit list.
+    ShowOnOtherSide,
+    /// Only in the menu of a search-hit list.
+    RemoveFromList,
 }
 
 impl ContextAction {
     #[cfg(test)]
-    pub const ALL: [ContextAction; 11] = [
+    pub const ALL: [ContextAction; 13] = [
         ContextAction::Open,
         ContextAction::View,
         ContextAction::Edit,
@@ -48,6 +52,8 @@ impl ContextAction {
         ContextAction::ComputeFolderSizes,
         ContextAction::Trash,
         ContextAction::DeletePermanently,
+        ContextAction::ShowOnOtherSide,
+        ContextAction::RemoveFromList,
     ];
 
     /// Whether a panel inside an archive may run the entry; see
@@ -61,7 +67,10 @@ impl ContextAction {
             | ContextAction::CopyName
             | ContextAction::Trash
             | ContextAction::DeletePermanently
-            | ContextAction::View => true,
+            | ContextAction::View
+            // Only a hit list offers these, and that is neither.
+            | ContextAction::ShowOnOtherSide
+            | ContextAction::RemoveFromList => true,
             ContextAction::Edit
             | ContextAction::Move
             | ContextAction::NewFolder
@@ -78,7 +87,9 @@ impl ContextAction {
             | ContextAction::Copy
             | ContextAction::CopyPath
             | ContextAction::CopyName
-            | ContextAction::View => true,
+            | ContextAction::View
+            | ContextAction::ShowOnOtherSide
+            | ContextAction::RemoveFromList => true,
             ContextAction::Edit
             | ContextAction::Move
             | ContextAction::NewFolder
@@ -101,6 +112,8 @@ impl ContextAction {
             ContextAction::ComputeFolderSizes => Message::ComputeFolderSizes,
             ContextAction::Trash => Message::Delete { permanent: false },
             ContextAction::DeletePermanently => Message::Delete { permanent: true },
+            ContextAction::ShowOnOtherSide => Message::HitList(HitListMessage::ShowOnOtherSide),
+            ContextAction::RemoveFromList => Message::HitList(HitListMessage::RemoveFromList),
         }
     }
 
@@ -117,6 +130,8 @@ impl ContextAction {
             ContextAction::ComputeFolderSizes => Msg::ContextMenuComputeFolderSizes,
             ContextAction::Trash => Msg::ContextMenuTrash,
             ContextAction::DeletePermanently => Msg::ContextMenuDeletePermanently,
+            ContextAction::ShowOnOtherSide => Msg::ContextMenuShowOnOtherSide,
+            ContextAction::RemoveFromList => Msg::ContextMenuRemoveFromList,
         }
     }
 }
@@ -134,6 +149,23 @@ const GROUPS: [&[ContextAction]; 5] = [
     ],
     &[ContextAction::CopyPath, ContextAction::CopyName],
     &[ContextAction::ComputeFolderSizes],
+    &[ContextAction::Trash, ContextAction::DeletePermanently],
+];
+
+/// The entries of the menu of a search-hit list: no new folder and no folder
+/// sizes, but showing the file in its folder and taking it off the list.
+const HIT_LIST_GROUPS: [&[ContextAction]; 5] = [
+    &[
+        ContextAction::Open,
+        ContextAction::View,
+        ContextAction::Edit,
+    ],
+    &[ContextAction::Copy, ContextAction::Move],
+    &[
+        ContextAction::ShowOnOtherSide,
+        ContextAction::RemoveFromList,
+    ],
+    &[ContextAction::CopyPath, ContextAction::CopyName],
     &[ContextAction::Trash, ContextAction::DeletePermanently],
 ];
 
@@ -376,15 +408,58 @@ impl ContextMenu {
         is_enabled: impl Fn(ContextAction) -> bool,
         hermes: Option<HermesMenu<'_>>,
     ) -> Self {
+        Self::of_groups(&GROUPS, &[], anchor, window, is_enabled, hermes)
+    }
+
+    /// The menu of a row of a search-hit list.
+    pub fn for_hit_list(
+        anchor: Point,
+        window: Size,
+        is_enabled: impl Fn(ContextAction) -> bool,
+        hermes: Option<HermesMenu<'_>>,
+    ) -> Self {
+        Self::of_groups(&HIT_LIST_GROUPS, &[], anchor, window, is_enabled, hermes)
+    }
+
+    /// The menu of a row of the search results: the hit list's, without
+    /// taking the file off the list, since a new search rebuilds the results.
+    pub fn for_search_results(
+        anchor: Point,
+        window: Size,
+        is_enabled: impl Fn(ContextAction) -> bool,
+    ) -> Self {
+        Self::of_groups(
+            &HIT_LIST_GROUPS,
+            &[ContextAction::RemoveFromList],
+            anchor,
+            window,
+            is_enabled,
+            None,
+        )
+    }
+
+    fn of_groups(
+        groups: &[&[ContextAction]],
+        left_out: &[ContextAction],
+        anchor: Point,
+        window: Size,
+        is_enabled: impl Fn(ContextAction) -> bool,
+        hermes: Option<HermesMenu<'_>>,
+    ) -> Self {
         let mut entries = Vec::new();
-        for (group_index, group) in GROUPS.iter().enumerate() {
+        for (group_index, group) in groups.iter().enumerate() {
             if group_index > 0 {
                 entries.push(MenuEntry::Separator);
             }
-            entries.extend(group.iter().map(|&action| MenuEntry::Item {
-                action,
-                enabled: is_enabled(action),
-            }));
+            entries.extend(
+                group
+                    .iter()
+                    .filter(|action| !left_out.contains(action))
+                    .map(|&action| MenuEntry::Item {
+                        action,
+                        enabled: is_enabled(action),
+                    }),
+            );
         }
         let submenu = hermes.map(|menu| {
             entries.push(MenuEntry::Separator);

@@ -7829,6 +7829,126 @@
       "context": "Action bar of the rules page while the form holds changes that are not saved; the selection is locked until they are saved or cancelled.",
       "en": "Unsaved changes",
       "de": "Ungespeicherte Änderungen"
+    },
+    {
+      "key": "search.hits_as_list_label",
+      "context": "Label in front of the two buttons under the summary line of the Search view that open the hits as a list in a panel.",
+      "en": "Hits as list:",
+      "de": "Treffer als Liste:"
+    },
+    {
+      "key": "search.more_matches",
+      "context": "Behind the first matching line of a hit in the Search view: how many more lines of the same file match. {count} is that number.",
+      "en": "+{count}",
+      "de": "+{count}"
+    },
+    {
+      "key": "search.open_hits_left",
+      "context": "Button under the summary line of the Search view: opens the hits as a list in the left panel. The arrow points to that panel.",
+      "en": "← Open left",
+      "de": "← Links öffnen"
+    },
+    {
+      "key": "search.open_hits_right",
+      "context": "Button under the summary line of the Search view: opens the hits as a list in the right panel. The arrow points to that panel.",
+      "en": "Open right →",
+      "de": "Rechts öffnen →"
+    },
+    {
+      "key": "action.open_hits_left",
+      "context": "Entry of the command palette that runs the key action open_hits_left: shows the hits of the open search as a list in the left panel.",
+      "en": "Open hits left",
+      "de": "Treffer links öffnen"
+    },
+    {
+      "key": "action.open_hits_right",
+      "context": "Entry of the command palette that runs the key action open_hits_right: shows the hits of the open search as a list in the right panel.",
+      "en": "Open hits right",
+      "de": "Treffer rechts öffnen"
+    },
+    {
+      "key": "hit_list.tab",
+      "context": "Tab title of a panel that shows the hits of a search as a list. {query} is the text that was searched for.",
+      "en": "Search result: {query}",
+      "de": "Suchergebnis: {query}"
+    },
+    {
+      "key": "hit_list.path_bar_many",
+      "context": "Line at the place of the folder path above the status bar while a panel shows search hits. {query} is the search text, {scope} the folder searched (with ~ for home), {count} the number of files in the list (two or more).",
+      "en": "Search result “{query}” in {scope} · {count} files",
+      "de": "Suchergebnis „{query}“ in {scope} · {count} Dateien"
+    },
+    {
+      "key": "hit_list.path_bar_one",
+      "context": "Like hit_list.path_bar_many, for a list with exactly one file.",
+      "en": "Search result “{query}” in {scope} · 1 file",
+      "de": "Suchergebnis „{query}“ in {scope} · 1 Datei"
+    },
+    {
+      "key": "hit_list.back_hint",
+      "context": "Hint at the right end of the line that names a search-hit list: what the Esc key does there.",
+      "en": "back to the search",
+      "de": "zurück zur Suche"
+    },
+    {
+      "key": "status.hit_list_not_a_folder",
+      "context": "Error in the status bar when files are copied, moved or dropped onto a panel that shows search hits as a list instead of a folder.",
+      "en": "The search result is a list, not a folder. Open a folder on that side first.",
+      "de": "Das Suchergebnis ist eine Liste, kein Ordner. Öffne dort zuerst einen Ordner."
+    },
+    {
+      "key": "status.numbering_needs_folder",
+      "context": "Error in the status bar when copying or moving files that share a name from different folders would need numbered names, but the target is inside an archive or on a server. {count} is the number of files.",
+      "en": "{count} files share a name. They can only be numbered into a folder on this computer.",
+      "de": "{count} Dateien heißen gleich. Durchnummerieren geht nur in einen Ordner auf diesem Computer."
+    },
+    {
+      "key": "context_menu.show_on_other_side",
+      "context": "Entry of the context menu on a search hit: opens the folder of the file in the other panel with the cursor on it.",
+      "en": "Show on the other side",
+      "de": "Auf der anderen Seite zeigen"
+    },
+    {
+      "key": "context_menu.remove_from_list",
+      "context": "Entry of the context menu on a search hit: takes the tagged rows, or the cursor row, out of the list. The files stay where they are.",
+      "en": "Remove from list",
+      "de": "Aus der Liste nehmen"
+    },
+    {
+      "key": "dialog.pack.subtitle_hits",
+      "context": "Line beside the title of the pack dialog when the files come from a search-hit list. {count} is the number of files.",
+      "en": "{count} files from the search result",
+      "de": "{count} Dateien aus dem Suchergebnis"
+    },
+    {
+      "key": "dialog.pack.keep_folders",
+      "context": "Checkbox in the pack dialog for files from a search-hit list: keeps the folder structure in the archive.",
+      "en": "Keep folders",
+      "de": "Ordner mitnehmen"
+    },
+    {
+      "key": "dialog.pack.keep_folders_note",
+      "context": "Note beside the Keep folders checkbox: what happens when it is off.",
+      "en": "otherwise flat, without folders",
+      "de": "sonst flach, ohne Ordner"
+    },
+    {
+      "key": "hint.numbered_in_archive",
+      "context": "Hint in the pack dialog above a list of files that get a number because several files share a name. {count} is the number of files that share a name.",
+      "en": "{count} files share a name. They are numbered in the archive:",
+      "de": "{count} Dateien heißen gleich. Im Archiv werden sie durchnummeriert:"
+    },
+    {
+      "key": "hint.numbered_in_target",
+      "context": "Hint in the copy and move dialog above a list of files that get a number because several files share a name. {count} is the number of files that share a name.",
+      "en": "{count} files share a name. They are numbered in the target folder:",
+      "de": "{count} Dateien heißen gleich. Im Zielordner werden sie durchnummeriert:"
+    },
+    {
+      "key": "hint.numbered_from",
+      "context": "Dim note after a numbered file name in the hint about equal names: the folder the file comes from. {folder} is a path.",
+      "en": "from {folder}",
+      "de": "aus {folder}"
     }
   ]
 }

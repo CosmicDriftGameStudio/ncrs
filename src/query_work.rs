@@ -8,15 +8,18 @@
 //! formula.
 
 use std::collections::HashSet;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsStr;
 use std::fs::OpenOptions;
 use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use chrono::NaiveDateTime;
-use ncrs_index::{DocumentFields, Index, IndexError, QuerySpec, SavedQuery, SavedQueryId};
+use ncrs_index::{
+    DocumentFields, FileStamp, Index, IndexError, QuerySpec, SavedQuery, SavedQueryId,
+};
 
+use crate::fs::flat_names::target_name;
 use crate::fs::transfer::{transfer_to, Copy, Counting, OnConflict};
 use crate::review_work::amount_digits;
 use crate::suggestion_work::INDEX_NOT_OPEN;
@@ -30,6 +33,8 @@ pub struct QueryHit {
     pub fields: DocumentFields,
     /// The index knows the file is gone.
     pub missing: bool,
+    /// Size and date of the file when the index read it.
+    pub stamp: Option<FileStamp>,
 }
 
 /// What the export did.
@@ -92,6 +97,7 @@ impl QueryAccess {
                 .into_iter()
                 .map(|document| QueryHit {
                     missing: document.missing_since.is_some(),
+                    stamp: document.stamp,
                     path: document.path,
                     fields: document.fields,
                 })
@@ -256,28 +262,6 @@ enum Copied {
     Failed,
 }
 
-/// The name a hit gets in the target: its own, or the first free `stem (n).ext`
-/// when a name this run already used takes it. Names are compared without
-/// case, since the target may sit on a case-insensitive file system, and
-/// against the generated names too. `None` for a path without a file name.
-fn target_name(path: &Path, taken: &mut HashSet<String>) -> Option<OsString> {
-    let name = path.file_name()?;
-    let mut claim = |candidate: &OsStr| taken.insert(candidate.to_string_lossy().to_lowercase());
-    if claim(name) {
-        return Some(name.to_owned());
-    }
-    let stem = path.file_stem().unwrap_or(name);
-    (2..).find_map(|number: usize| {
-        let mut renamed = stem.to_owned();
-        renamed.push(format!(" ({number})"));
-        if let Some(extension) = path.extension() {
-            renamed.push(".");
-            renamed.push(extension);
-        }
-        claim(&renamed).then_some(renamed)
-    })
-}
-
 fn copy_hit(hit: &QueryHit, target: &Path) -> Result<Copied, String> {
     match transfer_to(&hit.path, target, &Copy, &mut Counting, OnConflict::Fail) {
         Ok(_) => Ok(Copied::Yes),
@@ -417,6 +401,7 @@ mod tests {
                 tags: BTreeSet::from(["office".to_owned(), "tax".to_owned()]),
             },
             missing: false,
+            stamp: None,
         }
     }
 

@@ -79,6 +79,17 @@ pub fn entry_size(entry: &FileEntry) -> String {
     }
 }
 
+/// The folder of `path` as a hit list shows it below the name: relative to
+/// `scope` (`./` for a file directly in it), the full folder outside of it.
+pub fn folder_below(path: &std::path::Path, scope: &std::path::Path) -> String {
+    let folder = path.parent().unwrap_or(path);
+    match folder.strip_prefix(scope) {
+        Ok(relative) if relative.as_os_str().is_empty() => "./".to_owned(),
+        Ok(relative) => relative.to_string_lossy().into_owned(),
+        Err(_) => folder.to_string_lossy().into_owned(),
+    }
+}
+
 /// Local timestamp `YYYY-MM-DD HH:MM`, or empty if unknown.
 pub fn time(time: Option<SystemTime>) -> String {
     time.map(|t| {

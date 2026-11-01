@@ -288,6 +288,8 @@ pub enum Message {
     PackPrompt,
     /// A keystroke went to the open prompt.
     PromptInput(String),
+    /// The "Keep folders" box of the pack prompt for a hit list was clicked.
+    PromptToggleKeepFolders,
     /// The user confirmed the prompt.
     PromptSubmit,
     /// The user dismissed the prompt.
@@ -371,6 +373,7 @@ pub enum Message {
     /// it is already there.
     OpenSearch,
     Search(SearchMessage),
+    HitList(HitListMessage),
     Trash(TrashMessage),
 
     // --- Filing module: the index and its first-start questions ---
@@ -695,15 +698,15 @@ pub enum SearchMessage {
     Page(isize),
     First,
     Last,
-    /// Right (`true`) or Left (`false`) on the cursor's file.
-    Expand(bool),
-    /// Enter: open the file in the other panel, or the line in the editor.
+    /// Enter: open the file in the other panel.
     Activate,
     RowClicked(usize),
     /// Double click on a row.
     RowActivated(usize),
-    /// The chevron of the file at this index in the results.
-    ToggleGroup(usize),
+    /// The star of the file at this index in the results.
+    ToggleTagAt(usize),
+    /// A right click on the file at this index: the context menu at the pointer.
+    ContextAt(usize),
     Scrolled(iced::mouse::ScrollDelta),
     /// The index answered the question `generation` of the filters. Dropped
     /// when the words changed meanwhile.
@@ -726,6 +729,29 @@ pub enum SearchMessage {
     UpdateReport,
     /// The report was changed (or not): back to the Reports page.
     ReportUpdated(Result<(), String>),
+    /// The hits of the search as a list in the panel on this side.
+    OpenHitList(PanelSide),
+}
+
+/// Everything a panel that lists search hits sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HitListMessage {
+    /// The snapshot of the hits was read (or read again). Dropped when
+    /// `request_id` is not the panel's latest.
+    Read {
+        side: PanelSide,
+        request_id: u64,
+        entries: Vec<FileEntry>,
+    },
+    /// Escape: leave the list and go back to the search.
+    BackToSearch,
+    /// The cross of the tab: leave the list, nothing else.
+    Close(PanelSide),
+    /// Context menu: show the file under the cursor in its folder on the other
+    /// side.
+    ShowOnOtherSide,
+    /// Context menu: take the tagged rows, else the cursor row, off the list.
+    RemoveFromList,
 }
 
 /// Everything the trash view and putting entries back send.

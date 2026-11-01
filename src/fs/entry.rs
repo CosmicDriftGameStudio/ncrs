@@ -52,6 +52,24 @@ impl FileEntry {
         }
     }
 
+    /// The entry for `path` as it is now, or `None` when nothing is there any
+    /// more. Metadata follows links like [`Self::from_dir_entry`] does.
+    pub fn from_path(path: &Path) -> Option<Self> {
+        let own = std::fs::symlink_metadata(path).ok()?;
+        let metadata = std::fs::metadata(path).unwrap_or_else(|_| own.clone());
+        let is_dir = metadata.is_dir();
+        Some(Self {
+            name: path.file_name()?.to_owned(),
+            path: path.to_owned(),
+            is_dir,
+            is_symlink: own.file_type().is_symlink(),
+            is_parent: false,
+            size: if is_dir { 0 } else { metadata.len() },
+            modified: metadata.modified().ok(),
+            folder_size: None,
+        })
+    }
+
     /// The synthetic `..` entry pointing at `parent`.
     pub fn parent(parent: &Path) -> Self {
         Self {

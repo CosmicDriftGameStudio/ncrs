@@ -332,6 +332,8 @@ mod tests {
                 // Only placeholders and a dot between them.
                 | Msg::HermesOverviewFlowFiledNote
                 | Msg::DeleteOne
+                // A sign and a number, nothing to translate.
+                | Msg::SearchMoreMatches
                 // The loanword, the same in both languages.
                 | Msg::HermesBeta
                 // Names of color schemes.

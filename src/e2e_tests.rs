@@ -2629,7 +2629,6 @@ fn the_sort_keys_sort_the_active_panel_and_a_second_press_reverses() {
 #[cfg(test)]
 mod search_view {
     use super::*;
-    use crate::search_view::SearchRow;
     use iced::keyboard::{key::Named, Key, Modifiers};
 
     /// Alt+F7, a typed word, two files with their line numbers, Enter on the
@@ -2678,14 +2677,21 @@ mod search_view {
             ]
         );
 
-        session.press(Key::Named(Named::ArrowDown));
+        let first = &view.results[0];
+        assert_eq!(
+            first.size,
+            std::fs::metadata(&first.path).unwrap().len(),
+            "the walk read the size of the file"
+        );
+        assert!(first.modified.is_some());
+
         session.press(Key::Named(Named::ArrowDown));
         assert_eq!(
             session
                 .app
                 .search_for_test()
                 .and_then(|search| search.cursor),
-            Some(SearchRow::File(1))
+            Some(1)
         );
         session.press(Key::Named(Named::Enter));
 

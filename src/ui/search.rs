@@ -9,18 +9,20 @@ use iced::{alignment, Element, Font, Length};
 use super::format;
 use super::hermes_kit::{self, ChipKind, MenuItem};
 use super::key_intercept::key_intercept;
-use super::layout::{self, ROW_HEIGHT, TAG_COLUMN_WIDTH};
+use super::layout;
+use super::panel::{self, HitRow, RowClick};
 use super::theme::{self, font_size, spacing};
 use crate::app::{fill_template, search_toggle_for_press};
 use crate::fs::search::{LineMatch, SearchError};
 use crate::i18n::{FuturamaName, Language, Msg};
 use crate::keymap::Keymap;
-use crate::messages::{Message, SearchMessage};
+use crate::messages::{Message, PanelSide, SearchMessage};
 use crate::palette::Palette;
 use crate::query_work::QueryHit;
 use crate::review_work::amount_text;
 use crate::search_filters::{Facet, FacetValue, SearchFilters};
-use crate::search_view::{SearchField, SearchRow, SearchView, UNNUMBERED_LINE};
+use crate::search_view::{FileResult, SearchField, SearchView};
+use crate::selection::Selection;
 
 pub const QUERY_ID: &str = "search-query";
 pub const INCLUDE_ID: &str = "search-include";
@@ -36,7 +38,6 @@ pub fn field_id(field: SearchField) -> &'static str {
 
 const FIELD_ROW_HEIGHT: f32 = 28.0;
 const TOGGLE_WIDTH: f32 = 28.0;
-const INDENT: f32 = 22.0;
 
 fn to_search(message: SearchMessage) -> Message {
     Message::Search(message)
@@ -67,24 +68,12 @@ pub fn view<'a>(
     shortcuts: &ToggleShortcuts,
 ) -> Element<'a, Message> {
     let rows = search
-        .rows_iter()
+        .results
+        .iter()
         .enumerate()
         .skip(search.scroll_offset)
         .take(room.visible_rows)
-        .filter_map(|(index, search_row)| {
-            let cursor = search.cursor == Some(search_row);
-            result_row(
-                search,
-                search_row,
-                index,
-                RowMarks {
-                    highlighted: cursor && is_active,
-                    panel_active: is_active,
-                },
-                lang,
-                palette,
-            )
-        });
+        .filter_map(|(index, result)| result_row(search, result, index, is_active, lang, palette));
 
     let body: Element<'a, Message> = if search.results.is_empty() {
         container(
@@ -100,6 +89,7 @@ pub fn view<'a>(
 
     let framed = column![
         header(search, lang, palette, keymap, shortcuts),
+        panel::plain_column_header(lang, palette),
         container(body).height(Length::Fill).width(Length::Fill),
     ];
     mouse_area(
@@ -266,12 +256,41 @@ fn header<'a>(
         }
         None => fields = fields.push(status),
     }
+    fields = fields.push(hit_list_row(search, lang, palette));
     container(fields)
         .padding([2.0, spacing::CELL_PADDING_X])
         .height(height)
         .width(Length::Fill)
         .clip(true)
         .into()
+}
+
+/// The hits as a list in one of the panels; nothing to open without hits.
+fn hit_list_row<'a>(
+    search: &SearchView,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let open = |label: Msg, side: PanelSide| {
+        hermes_kit::secondary(
+            lang.text(label),
+            (!search.results.is_empty()).then(|| to_search(SearchMessage::OpenHitList(side))),
+            palette,
+        )
+    };
+    row![
+        iced::widget::Space::new().width(Length::Fill),
+        text(lang.text(Msg::SearchHitsAsListLabel))
+            .size(font_size::COLUMN_HEADER)
+            .color(palette.dim_text)
+            .wrapping(Wrapping::None),
+        open(Msg::SearchOpenHitsLeft, PanelSide::Left),
+        open(Msg::SearchOpenHitsRight, PanelSide::Right),
+    ]
+    .spacing(hermes_kit::GAP_S)
+    .align_y(alignment::Vertical::Center)
+    .height(layout::SEARCH_HIT_ROW_HEIGHT)
+    .into()
 }
 
 /// A filter of the row: what it is called, what is chosen and what it offers.
@@ -565,191 +584,110 @@ fn empty_text(search: &SearchView, lang: Language) -> &'static str {
     }
 }
 
-/// How a result row is drawn besides its content.
-#[derive(Clone, Copy)]
-struct RowMarks {
-    /// The cursor is on the row and its panel is the active one.
-    highlighted: bool,
-    panel_active: bool,
-}
-
+/// One hit as a row of the panel's file list: name, folder below the search
+/// root, size and date, and under them what the hit matched.
 fn result_row<'a>(
     search: &'a SearchView,
-    kind: SearchRow,
+    result: &'a FileResult,
     index: usize,
-    marks: RowMarks,
+    panel_active: bool,
     lang: Language,
     palette: &Palette,
 ) -> Option<Element<'a, Message>> {
-    let RowMarks {
-        highlighted: on_cursor,
-        panel_active,
-    } = marks;
-    // Every row starts with the tag column, so the lines stay under the names.
-    let (tagged, content): (bool, Element<'a, Message>) = match kind {
-        SearchRow::File(file) => (
-            search.is_tagged(file),
-            file_row(
-                search,
-                file,
-                RowMarks {
-                    highlighted: false,
-                    panel_active,
-                },
-                search.is_tagged(file),
-                lang,
-                palette,
-            )?,
-        ),
-        SearchRow::Line(file, line) => {
-            let matched = search.results.get(file)?.lines.get(line)?;
-            (false, line_row(matched, false, palette))
-        }
+    let mark = Selection {
+        tagged: search.is_tagged(index),
+        cursor: search.cursor == Some(index),
     };
-    let star = text(if tagged { "*" } else { " " })
-        .size(font_size::ROW)
-        .color(if tagged {
-            theme::tag_star_color(palette, false, panel_active)
-        } else {
-            palette.dim_text
-        })
-        .width(TAG_COLUMN_WIDTH)
-        .wrapping(Wrapping::None);
-    Some(
-        mouse_area(
-            container(
-                row![
-                    hermes_kit::bar(if on_cursor {
-                        palette.success
-                    } else {
-                        iced::Color::TRANSPARENT
-                    }),
-                    row![star, content].align_y(alignment::Vertical::Center),
-                ]
-                .spacing(spacing::CELL_PADDING_X - hermes_kit::SELECTION_BAR)
-                .height(Length::Fill)
-                .align_y(alignment::Vertical::Center),
-            )
-            .padding(iced::Padding::ZERO.right(spacing::CELL_PADDING_X))
-            .height(ROW_HEIGHT)
-            .width(Length::Fill)
-            .align_y(alignment::Vertical::Center)
-            .clip(true)
-            .style(theme::search_hit_row(
-                palette,
-                on_cursor,
-                tagged,
-                panel_active,
-            )),
-        )
-        .on_press(to_search(SearchMessage::RowClicked(index)))
-        .on_double_click(to_search(SearchMessage::RowActivated(index)))
-        .into(),
-    )
+    let height = search.row_height();
+    let third_line = search
+        .third_line
+        .then(|| third_line(search, result, mark.cursor && panel_active, lang, palette))
+        .flatten();
+    let prefix = Row::new().push(panel::tag_star(
+        mark,
+        panel_active,
+        palette,
+        height,
+        to_search(SearchMessage::ToggleTagAt(index)),
+    ));
+    Some(panel::hit_row(
+        HitRow {
+            entry: result.entry()?,
+            mark,
+            scope: &search.root,
+            height,
+            third_line,
+            on_context: Some(to_search(SearchMessage::ContextAt(index))),
+        },
+        panel_active,
+        palette,
+        |click| {
+            to_search(match click {
+                RowClick::Tag => SearchMessage::ToggleTagAt(index),
+                RowClick::Cursor => SearchMessage::RowClicked(index),
+                RowClick::Open => SearchMessage::RowActivated(index),
+            })
+        },
+        prefix,
+    ))
 }
 
-fn file_row<'a>(
+/// What the third line of a hit says: the tags and facts of a document of the
+/// index, else the first matching line.
+fn third_line<'a>(
     search: &'a SearchView,
-    file: usize,
-    marks: RowMarks,
-    tagged: bool,
+    result: &'a FileResult,
+    highlighted: bool,
     lang: Language,
     palette: &Palette,
 ) -> Option<Element<'a, Message>> {
-    let RowMarks {
-        highlighted,
-        panel_active,
-    } = marks;
-    let result = search.results.get(file)?;
-    let relative = result
-        .path
-        .strip_prefix(&search.root)
-        .unwrap_or(&result.path);
-    let name = relative
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let directory = relative
-        .parent()
-        .map(|parent| parent.display().to_string())
-        .unwrap_or_default();
-
-    let chevron: Element<'a, Message> = if result.lines.is_empty() {
-        iced::widget::Space::new().width(INDENT).into()
-    } else {
-        let folded = search.collapsed.contains(&result.path);
-        button(
-            text(if folded { "▸" } else { "▾" })
-                .size(font_size::ROW)
-                .align_x(alignment::Horizontal::Center),
-        )
-        .width(INDENT)
-        .height(ROW_HEIGHT)
-        .padding(0.0)
-        .style(theme::chevron_button(
-            palette,
-            highlighted,
-            tagged,
-            panel_active,
-        ))
-        .on_press(to_search(SearchMessage::ToggleGroup(file)))
-        .into()
-    };
-    // The tint of a tagged row is the panel's, where the text on it is the
-    // plain one: the dim colour nearly vanishes on it.
     let dim = if highlighted {
         palette.cursor_text
-    } else if tagged {
-        theme::tagged_text_color(palette, panel_active)
     } else {
         palette.dim_text
     };
-    if let Some(hit) = search
+    if let Some((filters, hit)) = search
         .filters
         .as_ref()
         .filter(|_| search.is_filtered())
         .and_then(|filters| filters.hit_at(&result.path).map(|hit| (filters, hit)))
     {
-        return Some(index_file_row(
-            chevron, name, hit.0, hit.1, dim, lang, palette,
-        ));
+        return Some(index_details(filters, hit, dim, lang, palette));
     }
-    let count = if result.lines.is_empty() {
-        String::new()
-    } else {
-        result.lines.len().to_string()
-    };
+    let first = result.first_match()?;
+    let more = more_matches_text(result, lang).map(|count| {
+        text(count)
+            .size(font_size::SMALL)
+            .font(Font::MONOSPACE)
+            .color(dim)
+            .wrapping(Wrapping::None)
+            .into()
+    });
     Some(
-        row![
-            chevron,
-            text(name)
-                .size(font_size::ROW)
-                .font(Font {
-                    weight: iced::font::Weight::Bold,
-                    ..Font::MONOSPACE
-                })
-                .wrapping(Wrapping::None),
-            text(directory)
-                .size(font_size::COLUMN_HEADER)
-                .color(dim)
-                .wrapping(Wrapping::None),
-            iced::widget::Space::new().width(Length::Fill),
-            text(count)
-                .size(font_size::COLUMN_HEADER)
-                .color(dim)
-                .wrapping(Wrapping::None),
-        ]
+        row![rich_text(match_spans(first, highlighted, palette))
+            .size(font_size::SMALL)
+            .font(Font::MONOSPACE)
+            .wrapping(Wrapping::None)]
+        .extend(more)
         .spacing(8.0)
         .align_y(alignment::Vertical::Center)
         .into(),
     )
 }
 
-/// A hit of the index: the name, the tags it has, and at the right the date
-/// and the amount.
-fn index_file_row<'a>(
-    chevron: Element<'a, Message>,
-    name: String,
+/// The "+3" behind the first matching line; nothing for a file with one.
+fn more_matches_text(result: &FileResult, lang: Language) -> Option<String> {
+    let more = result.more_matches();
+    (more > 0).then(|| {
+        fill_template(
+            lang.text(Msg::SearchMoreMatches),
+            &[("{count}", &more.to_string())],
+        )
+    })
+}
+
+/// A document of the index: the tags it has, and the date and the amount.
+fn index_details<'a>(
     filters: &SearchFilters,
     hit: &QueryHit,
     dim: iced::Color,
@@ -777,62 +715,14 @@ fn index_file_row<'a>(
     .collect::<Vec<_>>()
     .join(" · ");
     row![
-        chevron,
-        text(name)
-            .size(font_size::ROW)
-            .font(Font {
-                weight: iced::font::Weight::Bold,
-                ..Font::MONOSPACE
-            })
-            .wrapping(Wrapping::None),
         Row::with_children(chips.map(|(tag, kind)| {
             hermes_kit::chip(&lang.tag_label(kinds, &tag), kind, None, palette)
         }))
         .spacing(hermes_kit::GAP_XS)
         .align_y(alignment::Vertical::Center),
-        iced::widget::Space::new().width(Length::Fill),
         text(facts)
-            .size(font_size::COLUMN_HEADER)
+            .size(font_size::SMALL)
             .color(dim)
-            .wrapping(Wrapping::None),
-    ]
-    .spacing(8.0)
-    .align_y(alignment::Vertical::Center)
-    .into()
-}
-
-fn line_row<'a>(
-    matched: &'a LineMatch,
-    highlighted: bool,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let dim = if highlighted {
-        palette.cursor_text
-    } else {
-        palette.dim_text
-    };
-    let spans = match_spans(matched, highlighted, palette);
-    let number = if matched.number == UNNUMBERED_LINE {
-        String::new()
-    } else {
-        matched.number.to_string()
-    };
-    row![
-        iced::widget::Space::new().width(INDENT),
-        text(number)
-            .size(font_size::ROW)
-            .font(Font::MONOSPACE)
-            .color(dim)
-            .width(56.0)
-            .align_x(alignment::Horizontal::Right)
-            .wrapping(Wrapping::None),
-        rich_text(spans)
-            .size(if matched.number == UNNUMBERED_LINE {
-                font_size::FILE
-            } else {
-                font_size::ROW
-            })
-            .font(Font::MONOSPACE)
             .wrapping(Wrapping::None),
     ]
     .spacing(8.0)
@@ -851,7 +741,7 @@ fn match_spans<'a>(
     let plain = if highlighted {
         palette.cursor_text
     } else {
-        palette.text
+        palette.dim_text
     };
     let mut spans = Vec::new();
     let mut at = 0;
@@ -878,4 +768,43 @@ fn match_spans<'a>(
         }
     }
     spans
+}
+
+// reason: a failing assertion is the signal in a test
+#[allow(clippy::unwrap_used)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fs::search::LineMatch;
+
+    fn result_with(lines: usize) -> FileResult {
+        FileResult {
+            path: std::path::PathBuf::from("/root/a.txt"),
+            lines: (1..=lines as u64)
+                .map(|number| LineMatch {
+                    number,
+                    text: "needle".to_owned(),
+                    ranges: std::iter::once(0..6).collect(),
+                })
+                .collect(),
+            size: 0,
+            modified: None,
+        }
+    }
+
+    #[test]
+    fn more_matching_lines_are_counted_behind_the_first() {
+        for (lang, expected) in [(Language::English, "+3"), (Language::German, "+3")] {
+            assert_eq!(
+                more_matches_text(&result_with(4), lang).as_deref(),
+                Some(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn a_file_with_one_matching_line_or_none_has_no_count() {
+        assert_eq!(more_matches_text(&result_with(1), Language::English), None);
+        assert_eq!(more_matches_text(&result_with(0), Language::English), None);
+    }
 }

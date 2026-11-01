@@ -5,7 +5,7 @@
 //! Everything that touches the disk is a free function taking plain paths, so
 //! the app runs it on the blocking pool and the tests run it on a tempdir.
 
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -344,6 +344,10 @@ pub struct TransferDialog {
     refusal: Option<Refusal>,
     /// Set when the dialog goes away, which stops the scan and the count.
     stop_background: Arc<AtomicBool>,
+    /// Sources that share a name, with the name each gets in the target.
+    numbered: Vec<(PathBuf, OsString)>,
+    /// The folder of the hit list the sources come from, if they do.
+    hit_scope: Option<PathBuf>,
 }
 
 impl Drop for TransferDialog {
@@ -356,6 +360,8 @@ impl TransferDialog {
     pub fn new(id: u64, kind: TransferKind, sources: Vec<PathBuf>, base: PathBuf) -> Self {
         let target = base.display().to_string();
         Self {
+            numbered: crate::fs::flat_names::members_of_shared_names(&sources),
+            hit_scope: None,
             remote_home: None,
             id,
             kind,
@@ -370,6 +376,21 @@ impl TransferDialog {
             refusal: None,
             stop_background: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// Tells the dialog the sources are the rows of a hit list that ran in
+    /// `scope`, so the hint names their folders relative to it.
+    pub fn with_hit_scope(mut self, scope: Option<PathBuf>) -> Self {
+        self.hit_scope = scope;
+        self
+    }
+
+    pub fn numbered(&self) -> &[(PathBuf, OsString)] {
+        &self.numbered
+    }
+
+    pub fn hit_scope(&self) -> Option<&Path> {
+        self.hit_scope.as_deref()
     }
 
     /// Tells the dialog where `~` leads when the target is on a server.

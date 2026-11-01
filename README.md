@@ -235,8 +235,7 @@ The defaults. Most of them can be changed in the keyboard shortcuts dialog (`Cmd
 | `Alt`+`F7` / `Cmd`+`Shift`+`F` (`Ctrl`+`Shift`+`F` on Linux and Windows) | Search below the directory of the active panel; pressed again, it moves to the next field. See [Search](#search) |
 | `F1` / `Cmd`+`Shift`+`P` / `Ctrl`+`Shift`+`P` | Lab (command palette): lists the actions that work where you are, with their keys; type to filter, `↑`/`↓` move, `Enter` runs, `Esc` closes |
 | `Cmd`+`P` / `Ctrl`+`P` | Quick Open: jump to a file by a few letters of its path. See [Quick Open](#quick-open) |
-| `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D` | The filing tab on its Overview page (filing module on); pressed again, back to the panels. See [Filing](#filing) |
-| Status and errors in the filing sidebar | The filing status page: what the page is for, pipeline state, load, workers, index figures and the last errors. `P` pauses or resumes, `1`/`2`/`3` set the load gentle / balanced / full for this session, `+`/`-` change the worker count, `↑`/`↓` and `Enter` show the file of an error, `Esc` closes |
+| `Cmd`+`Shift`+`D` / `Ctrl`+`Shift`+`D` | Status and errors in the filing tab (filing module on): what the page is for, pipeline state, load, workers, index figures and the last errors. `P` pauses or resumes, `1`/`2`/`3` set the load gentle / balanced / full for this session, `+`/`-` change the worker count, `↑`/`↓` and `Enter` show the file of an error, `Esc` or the key again goes back to the panels. See [Filing](#filing) |
 | `Cmd`+`Shift`+`L` / `Ctrl`+`Shift`+`L` | Filing folders: choose the inbox and document folders and save them to the config file. See [Filing](#filing). `Esc` closes |
 | `Cmd`+`Shift`+`V` / `B` / `R` / `I` / `A` (`Ctrl`+`Shift` on Linux and Windows) | The filing pages Review, Rules, Rule suggestions, Sort again and Reports. See [Filing](#filing) |
 | `Cmd`+`.` / `Ctrl`+`.` | Quick fix for a review item: the fixes for the document under the cursor |
@@ -274,15 +273,33 @@ panel back; the next search starts with the same fields.
 - Hidden files are searched too; `.gitignore` is not read. Binary files and
   cloud files that are not downloaded are skipped, and the search stops after
   20,000 matching lines.
-- `↑`/`↓`, `PgUp`/`PgDn` and `Home`/`End` move through the results, `←`/`→`
-  fold and unfold a file. Typing goes to the search text, except `Space` and
-  `*`, which tag (see below).
-- `Enter` on a file shows it in the other panel. `Enter` on a line, or `F4`,
-  opens the editor at that line, see [Configuration](#configuration).
+- The results are a list of files like the panel's, with **Name**, **Size**
+  and **Modified**, and the folder below the search directory under each name.
+  A search for text adds the first matching line under it, the match underlined,
+  and how many more lines match (`+3`); the filter search puts the tags, the
+  date and the amount there.
+- `↑`/`↓`, `PgUp`/`PgDn` and `Home`/`End` move through the files. Typing goes to
+  the search text, except `Space` and `*`, which tag (see below).
+- `Enter` on a file shows it in the other panel. `F3` and `F4` view and edit it;
+  for a text search the editor opens at the first match, see
+  [Configuration](#configuration).
 - `Insert` or `Space` tags the file under the cursor and moves to the next file,
   `Shift`+`↑`/`↓` tag and move either way, `*` tags all files found and
   `Ctrl`+`*` clears the tags. `F5`, `F6` and `F8` copy, move and delete the
   tagged files, else the file under the cursor.
+- A right click on a file opens the context menu with **Show on the other
+  side**, which opens the file's folder in the other panel with the cursor on
+  the file.
+- **Hits as list:** **← Open left** and **Open right →** show the found files as
+  a list in a panel, one row per file with its folder below the name; both are
+  disabled while nothing is found. The tab reads "Search result: …" and has a
+  cross to close it; `Esc` goes back to the search with its fields. In the
+  list, everything that works on files works (copy, move, pack, delete); the
+  context menu adds **Show on the other side** and **Remove from list** (the
+  file itself stays). Files with equal names from different folders are
+  numbered when copied or packed (`invoice.pdf`, `invoice (2).pdf`), and the
+  dialog lists them. Packing offers **Keep folders** to keep the folders below
+  the search directory in the archive.
 
 ![The search with filters for documents](docs/screenshots/search-filters.png)
 
@@ -459,17 +476,18 @@ edit = "F3"
   `Right`, `plus` for `+`, or a single character such as `*` or `c`.
 - One key, two actions in one area is an error, also when the other action only
   has the key by default: say what the other action gets instead, or `[]`. The
-  panel and the search count apart. `search_case`, `search_whole_word` and
-  `search_regex` work only in the search; `quit`, `search`, `view`, `edit`,
-  `copy`, `move`, `delete`, `delete_permanently`, `abort_job`, `switch_language`,
-  `switch_panel` and the tag actions in both; the rest only in the panel.
-  `primary+q` and `ctrl+q` are the same key on Linux and Windows, so a file can
-  be fine on a Mac and conflict elsewhere. Keys that became defaults later give
-  way to a binding of your own instead: `F2` (`command_line`), `Shift+F4`
-  (`new_file`), the history keys (`history_back`, `history_forward`),
-  `primary+d` (`add_favourite`), `primary+k` (`key_bindings`), `primary+c`
-  (`copy_files`) and `primary+z` (`restore_last_deletion`). The action keeps its other keys and the
-  command list.
+  panel and the search count apart. `search_case`, `search_whole_word`,
+  `search_regex`, `open_hits_left` and `open_hits_right` work only in the
+  search; `quit`, `search`, `view`, `edit`, `copy`, `move`, `delete`,
+  `delete_permanently`, `abort_job`, `switch_language`, `switch_panel` and the
+  tag actions in both; the rest only in the panel. `primary+q` and `ctrl+q` are
+  the same key on Linux and Windows, so a file can be fine on a Mac and
+  conflict elsewhere. Keys that became defaults later give way to a binding of
+  your own instead: `F2` (`command_line`), `Shift+F4` (`new_file`), the history
+  keys (`history_back`, `history_forward`), `primary+d` (`add_favourite`),
+  `primary+k` (`key_bindings`), `primary+c` (`copy_files`) and `primary+z`
+  (`restore_last_deletion`). The action keeps its other keys and the command
+  list.
 - Not allowed: `Escape` (it closes dialogs and menus and stops jobs); letters and
   digits without `ctrl`, `alt`, `cmd` or `primary`, because they jump to a file
   name; `shift` with a character that is not a letter (`shift+8` arrives as `*`,
@@ -491,7 +509,7 @@ Actions: `quit`, `open`, `go_up`, `switch_panel`, `switch_language`,
 `copy_path`, `copy_name`, `copy_files`, `paste`, `trash`, `restore_last_deletion`, `open_trash_in_finder`, `drive_menu_left`, `drive_menu_right`,
 `history_back`, `history_forward`, `add_favourite`, `remove_favourite`, `favourites`,
 `sort_by_name`, `sort_by_modified`, `sort_by_size`, `compute_folder_sizes`, `context_menu`, `search`, `quick_open`, `command_line`, `command_palette`, `search_case`,
-`search_whole_word`, `search_regex`, `filing_status`, `filing_setup`, `key_bindings`,
+`search_whole_word`, `search_regex`, `open_hits_left`, `open_hits_right`, `filing_status`, `filing_setup`, `key_bindings`,
 `settings`, `about`, `fetch_theme`, `download_ocr_models`, `download_ai_model`,
 `grant_folder_access`, `connect_server`, `disconnect_server`,
 `file_list_tags_toggle`, `file_list_tags_choose`, and for the filing `rules`,
@@ -699,14 +717,14 @@ Linux and Windows); the name in `[keys]` changes the key.
 
 | Page | Key | `[keys]` | What it is for |
 | --- | --- | --- | --- |
-| Overview | `D` | `filing_status` | State, folders, text recognition, the AI model and the default target for documents no rule covers |
+| Overview | | | State, folders, text recognition, the AI model and the default target for documents no rule covers |
 | Review | `V` | `review_list` | Documents that no confirmed rule could file, with a preview, where each field came from and the target path. Nothing is filed before you confirm |
 | Rules | `B` | `rules` | Rules, checked from top to bottom; the first that matches files the document |
 | Rule suggestions | `R` | `rule_suggestions` | Rules suggested from how your documents are already filed, with the reason. A suggestion does nothing until you confirm it |
 | Sort again | `I` | `reorganisation_plan` | Checks the folders you already filed into and suggests moves and renames. Nothing moves before you run the selected steps; `U` (`undo_reorganisation`) moves the last run back |
 | Reports | `A` | `saved_queries` | Saved searches for recurring questions, with their sum. Exporting copies the hits into a folder; the originals stay unchanged |
 | Tags | | `file_list_tags_choose` | All tags in one place. A tick shows the tag in the file tree behind the file name |
-| Status and errors | | | What the filing is doing right now: the state of the pipeline, the load, the index figures and the latest errors |
+| Status and errors | `D` | `filing_status` | What the filing is doing right now: the state of the pipeline, the load, the index figures and the latest errors |
 
 ![The Review page of the filing tab](docs/screenshots/filing.png)
 

@@ -11,7 +11,7 @@ use std::time::SystemTime;
 use chrono::{Local, TimeZone as _};
 use iced_test::Simulator;
 
-use crate::app::App;
+use crate::app::{fixed_result_entry, App};
 use crate::fs::search::LineMatch;
 use crate::fs::{FileEntry, Volume};
 use crate::messages::{Message, PanelSide};
@@ -147,7 +147,9 @@ fn showcase_app() -> App {
     project.entries = entries_of(PROJECT_DIRECTORY, PROJECT_ROWS);
     project.selected = position_of(&project.entries, "README.md");
     for name in ["Cargo.toml", "CHANGELOG.md"] {
-        project.selection.toggle(&OsString::from(name));
+        project
+            .selection
+            .toggle(&PathBuf::from(PROJECT_DIRECTORY).join(name));
     }
 
     let downloads = app.panel_mut_for_test(PanelSide::Right);
@@ -157,27 +159,30 @@ fn showcase_app() -> App {
     app
 }
 
-fn showcase_search_results() -> Vec<(PathBuf, Vec<LineMatch>)> {
+fn showcase_search_results() -> Vec<(FileEntry, Vec<LineMatch>)> {
     let root = PathBuf::from(PROJECT_DIRECTORY);
     let hit = |number: u64, text: &str, from: usize, to: usize| LineMatch {
         number,
         text: text.to_string(),
         ranges: std::iter::once(from..to).collect(),
     };
+    let entry = |relative: &str, size: u64, date: (i32, u32, u32, u32, u32)| {
+        fixed_result_entry(root.join(relative), size, date)
+    };
     vec![
         (
-            root.join("README.md"),
+            entry("README.md", 6_144, (2026, 10, 1, 10, 14)),
             vec![hit(12, "Say hello to a two-panel file manager.", 4, 9)],
         ),
         (
-            root.join("src/main.rs"),
+            entry("src/main.rs", 18_432, (2026, 10, 2, 11, 5)),
             vec![
                 hit(8, "    println!(\"hello, world\");", 14, 19),
                 hit(41, "    // hello from the main window", 7, 12),
             ],
         ),
         (
-            root.join("docs/guide.md"),
+            entry("docs/guide.md", 12_288, (2026, 9, 18, 15, 36)),
             vec![hit(3, "A first hello for new users.", 8, 13)],
         ),
     ]
