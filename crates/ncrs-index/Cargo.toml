@@ -15,7 +15,7 @@ workspace = true
 # bundled-sqlcipher-vendored-openssl builds SQLCipher and its OpenSSL from
 # source, so no system library is needed. Windows has no system OpenSSL, and
 # the aarch64 Linux release is cross-compiled.
-rusqlite = { version = "0.40", features = ["bundled-sqlcipher-vendored-openssl"] }
+rusqlite = { version = "0.41", features = ["bundled-sqlcipher-vendored-openssl"] }
 # The default feature (v1) picks the platform store: Keychain on macOS,
 # Credential Manager on Windows, Secret Service over pure-Rust zbus on Linux
 # (no libdbus, no pkg-config; the store's crypto is RustCrypto, not a second
