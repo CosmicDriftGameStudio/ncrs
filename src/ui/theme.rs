@@ -906,6 +906,25 @@ pub fn search_row(
     }
 }
 
+/// A hit of the search: the cursor is a raised surface (the row draws the
+/// green bar), because a full green fill hides the chips on it.
+pub fn search_hit_row(
+    palette: &Palette,
+    cursor: bool,
+    tagged: bool,
+    panel_active: bool,
+) -> impl Fn(&Theme) -> container::Style {
+    let colors = *palette;
+    let plain = search_row(palette, false, tagged, panel_active);
+    move |theme| {
+        if cursor {
+            filled(colors.title, colors.text)
+        } else {
+            plain(theme)
+        }
+    }
+}
+
 fn filled_text_only(text: Color) -> container::Style {
     container::Style {
         text_color: Some(text),

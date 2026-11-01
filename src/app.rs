@@ -3488,7 +3488,7 @@ impl App {
             search: None,
             search_open: false,
             search_side: PanelSide::Left,
-            search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE, None),
+            search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE, false),
             search_generation: 0,
             search_handle: None,
             quick_open: None,
@@ -5299,7 +5299,6 @@ impl App {
                 search,
                 search_ui::Room {
                     visible_rows: self.search_rows,
-                    panel_width: layout::panel_width(self.window_size),
                 },
                 self.active_panel == side,
                 self.lang,
@@ -9856,20 +9855,17 @@ impl App {
     }
 
     fn resize_search(&mut self, window: Size) {
-        self.search_rows = layout::search_visible_rows(window, self.search_filter_lines(window));
+        self.search_rows = layout::search_visible_rows(window, self.search_filtered());
         if let Some(view) = self.search.as_mut() {
             view.ensure_visible(self.search_rows);
         }
     }
 
-    /// The lines the filters of the search take at this window size.
-    fn search_filter_lines(&self, window: Size) -> Option<usize> {
-        let filters = self.search.as_ref()?.filters.as_ref()?;
-        Some(search_ui::filter_lines(
-            filters,
-            self.lang,
-            layout::panel_width(window),
-        ))
+    /// Whether the search shows its filters.
+    fn search_filtered(&self) -> bool {
+        self.search
+            .as_ref()
+            .is_some_and(|view| view.filters.is_some())
     }
 
     /// The rows of the search after its filters changed what they offer.
@@ -9930,10 +9926,7 @@ impl App {
         } else {
             None
         };
-        self.search_rows = layout::search_visible_rows(
-            self.window_size,
-            self.search_filter_lines(self.window_size),
-        );
+        self.search_rows = layout::search_visible_rows(self.window_size, self.search_filtered());
         let search = self.restart_search();
         Task::batch([self.focus_search_field(), search])
     }
@@ -16725,7 +16718,7 @@ impl App {
             search: None,
             search_open: false,
             search_side: PanelSide::Left,
-            search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE, None),
+            search_rows: layout::search_visible_rows(layout::INITIAL_WINDOW_SIZE, false),
             search_generation: 0,
             search_handle: None,
             quick_open: None,
@@ -17526,7 +17519,7 @@ impl App {
         let mut app = Self::with_fixed_panels();
         drop(app.update(Message::OpenSearch));
         let root = app.panel(PanelSide::Left).path.clone();
-        app.search_rows = layout::search_visible_rows(app.window_size, Some(1));
+        app.search_rows = layout::search_visible_rows(app.window_size, true);
         let rows = app.search_rows;
         if let Some(view) = app.search.as_mut() {
             view.query = query.to_owned();

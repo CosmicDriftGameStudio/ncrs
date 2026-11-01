@@ -29,6 +29,7 @@ pub mod key_bindings;
 pub mod key_intercept;
 pub mod kit;
 pub mod layout;
+mod menu_button;
 pub mod ocr_models;
 pub mod panel;
 pub mod panel_history;

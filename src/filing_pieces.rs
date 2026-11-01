@@ -494,8 +494,8 @@ impl TargetEditor {
             .is_some()
     }
 
-    /// The last piece stays; a file name of its own goes back to the
-    /// automatic one.
+    /// Removing the last piece, or a file name of its own, goes back to the
+    /// automatic name.
     fn remove_name_piece(&mut self, position: usize) -> bool {
         let mut pieces = match &self.target.file_name {
             FileName::Own(_) => {
@@ -505,11 +505,15 @@ impl TargetEditor {
             FileName::Automatic => FileName::automatic_pieces(),
             FileName::Pieces(current) => current.clone(),
         };
-        if pieces.len() <= 1 || position >= pieces.len() {
+        if position >= pieces.len() {
             return false;
         }
         pieces.remove(position);
-        self.target.file_name = FileName::Pieces(pieces);
+        self.target.file_name = if pieces.is_empty() {
+            FileName::Automatic
+        } else {
+            FileName::Pieces(pieces)
+        };
         true
     }
 
@@ -707,8 +711,9 @@ mod tests {
         assert!(removing.apply(TargetEdit::RemoveNamePiece(2)));
         assert_eq!(removing.pattern(), "{year}/{date}_{sender}");
         assert!(removing.apply(TargetEdit::RemoveNamePiece(0)));
-        assert!(!removing.apply(TargetEdit::RemoveNamePiece(0)));
         assert_eq!(removing.pattern(), "{year}/{sender}");
+        assert!(removing.apply(TargetEdit::RemoveNamePiece(0)));
+        assert_eq!(removing.pattern(), "{year}/");
 
         let mut untouched = TargetEditor::new("{year}/");
         assert!(!untouched.apply(TargetEdit::RemoveNamePiece(7)));

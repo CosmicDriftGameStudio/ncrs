@@ -37,8 +37,6 @@ pub fn field_id(field: SearchField) -> &'static str {
 const FIELD_ROW_HEIGHT: f32 = 28.0;
 const TOGGLE_WIDTH: f32 = 28.0;
 const INDENT: f32 = 22.0;
-/// What the estimate of the filter widths may be off by.
-const FILTER_WRAP_MARGIN: f32 = 16.0;
 
 fn to_search(message: SearchMessage) -> Message {
     Message::Search(message)
@@ -57,7 +55,6 @@ pub struct ToggleShortcuts {
 #[derive(Debug, Clone, Copy)]
 pub struct Room {
     pub visible_rows: usize,
-    pub panel_width: f32,
 }
 
 pub fn view<'a>(
@@ -102,7 +99,7 @@ pub fn view<'a>(
     };
 
     let framed = column![
-        header(search, room.panel_width, lang, palette, keymap, shortcuts),
+        header(search, lang, palette, keymap, shortcuts),
         container(body).height(Length::Fill).width(Length::Fill),
     ];
     mouse_area(
@@ -129,7 +126,6 @@ pub fn title(search: &SearchView, lang: Language) -> String {
 
 fn header<'a>(
     search: &'a SearchView,
-    panel_width: f32,
     lang: Language,
     palette: &Palette,
     keymap: &'a Keymap,
@@ -260,11 +256,7 @@ fn header<'a>(
         container(labelled(Msg::SearchExcludeLabel, exclude)).height(FIELD_ROW_HEIGHT),
     ]
     .spacing(4.0);
-    let filter_lines = search
-        .filters
-        .as_ref()
-        .map(|filters| filter_lines(filters, lang, panel_width));
-    let height = layout::search_header_height(filter_lines);
+    let height = layout::search_header_height(search.filters.is_some());
     match search.filters.as_ref() {
         Some(filters) => {
             fields = fields
@@ -395,36 +387,14 @@ fn filter_row<'a>(
             lang.text(control.label),
             control.chosen.as_deref(),
             &control.items,
+            Length::FillPortion(1),
             to_search(SearchMessage::ClearFacet(control.facet)),
             palette,
         )
     }))
     .spacing(hermes_kit::GAP_S)
     .align_y(alignment::Vertical::Center)
-    .wrap()
     .into()
-}
-
-/// How many lines the filters take in a panel of `panel_width`, as the row
-/// wraps them.
-pub fn filter_lines(filters: &SearchFilters, lang: Language, panel_width: f32) -> usize {
-    let room = panel_width - 2.0 * spacing::CELL_PADDING_X - FILTER_WRAP_MARGIN;
-    let mut lines = 1;
-    let mut used = 0.0;
-    for control in filter_controls(filters, lang) {
-        let width = hermes_kit::filter_width(
-            lang.text(control.label),
-            control.chosen.as_deref(),
-            &control.items,
-        );
-        if used > 0.0 && used + hermes_kit::GAP_S + width > room {
-            lines += 1;
-            used = width;
-        } else {
-            used += if used > 0.0 { hermes_kit::GAP_S } else { 0.0 } + width;
-        }
-    }
-    lines
 }
 
 /// The width the two labels of the file name fields need in `lang`, and a
@@ -612,7 +582,7 @@ fn result_row<'a>(
     palette: &Palette,
 ) -> Option<Element<'a, Message>> {
     let RowMarks {
-        highlighted,
+        highlighted: on_cursor,
         panel_active,
     } = marks;
     // Every row starts with the tag column, so the lines stay under the names.
@@ -623,7 +593,7 @@ fn result_row<'a>(
                 search,
                 file,
                 RowMarks {
-                    highlighted,
+                    highlighted: false,
                     panel_active,
                 },
                 search.is_tagged(file),
@@ -633,13 +603,13 @@ fn result_row<'a>(
         ),
         SearchRow::Line(file, line) => {
             let matched = search.results.get(file)?.lines.get(line)?;
-            (false, line_row(matched, highlighted, palette))
+            (false, line_row(matched, false, palette))
         }
     };
     let star = text(if tagged { "*" } else { " " })
         .size(font_size::ROW)
         .color(if tagged {
-            theme::tag_star_color(palette, highlighted, panel_active)
+            theme::tag_star_color(palette, false, panel_active)
         } else {
             palette.dim_text
         })
@@ -647,18 +617,30 @@ fn result_row<'a>(
         .wrapping(Wrapping::None);
     Some(
         mouse_area(
-            container(row![star, content].align_y(alignment::Vertical::Center))
-                .padding([0.0, spacing::CELL_PADDING_X])
-                .height(ROW_HEIGHT)
-                .width(Length::Fill)
-                .align_y(alignment::Vertical::Center)
-                .clip(true)
-                .style(theme::search_row(
-                    palette,
-                    highlighted,
-                    tagged,
-                    panel_active,
-                )),
+            container(
+                row![
+                    hermes_kit::bar(if on_cursor {
+                        palette.success
+                    } else {
+                        iced::Color::TRANSPARENT
+                    }),
+                    row![star, content].align_y(alignment::Vertical::Center),
+                ]
+                .spacing(spacing::CELL_PADDING_X - hermes_kit::SELECTION_BAR)
+                .height(Length::Fill)
+                .align_y(alignment::Vertical::Center),
+            )
+            .padding(iced::Padding::ZERO.right(spacing::CELL_PADDING_X))
+            .height(ROW_HEIGHT)
+            .width(Length::Fill)
+            .align_y(alignment::Vertical::Center)
+            .clip(true)
+            .style(theme::search_hit_row(
+                palette,
+                on_cursor,
+                tagged,
+                panel_active,
+            )),
         )
         .on_press(to_search(SearchMessage::RowClicked(index)))
         .on_double_click(to_search(SearchMessage::RowActivated(index)))

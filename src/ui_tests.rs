@@ -4059,6 +4059,20 @@ mod tags_card {
     }
 
     #[test]
+    fn the_open_menu_shows_its_entries_in_full() {
+        let app = App::with_tags(with_sender_group_open()).in_language(Language::German);
+        let mut sim = simulator(&app);
+        sim.point_at(iced::Point::new(907.0, 247.0));
+        let _ = sim.simulate(iced_test::simulator::click());
+        let matches = sim
+            .snapshot(&iced::Theme::Dark)
+            .unwrap()
+            .matches_image("tests/snapshots/menu_open_tags_de.png")
+            .expect("snapshot comparison");
+        assert!(matches, "the view does not match menu_open_tags_de.png");
+    }
+
+    #[test]
     fn the_view_matches_its_snapshots() {
         for suffix in ["en", "de"] {
             matches_snapshot(with_sender_group_open(), &format!("hermes_tags_{suffix}"));
@@ -4127,41 +4141,54 @@ mod rules_card {
     }
 
     fn three_rules() -> RulesPage {
+        let named = |name: &str, mut rule: ListedRule| {
+            rule.rule.spec.name = Some(name.to_owned());
+            rule
+        };
         let mut page = RulesPage::new();
         page.loaded(RulesLoad {
             rules: vec![
-                listed(
-                    1,
-                    RuleOrigin::Hand,
-                    RuleConditions::all_of(vec![
-                        Condition::new(ConditionKind::Sender, "Company A"),
-                        Condition::new(ConditionKind::Word, "invoice"),
-                    ]),
-                    ("Invoice", &["tax"]),
-                    true,
-                    12,
+                named(
+                    "Telekom-Rechnungen",
+                    listed(
+                        1,
+                        RuleOrigin::Hand,
+                        RuleConditions::all_of(vec![
+                            Condition::new(ConditionKind::Sender, "Company A"),
+                            Condition::new(ConditionKind::Word, "invoice"),
+                        ]),
+                        ("Invoice", &["tax"]),
+                        true,
+                        12,
+                    ),
                 ),
-                listed(
-                    2,
-                    RuleOrigin::Suggestion,
-                    RuleConditions::any_of(vec![
-                        Condition::new(ConditionKind::Substring, "electricity"),
-                        Condition::new(ConditionKind::Iban, "DE89 3704 0044 0532 0130 00"),
-                    ]),
-                    ("Contract", &[]),
-                    true,
-                    1,
+                named(
+                    "Strom",
+                    listed(
+                        2,
+                        RuleOrigin::Suggestion,
+                        RuleConditions::any_of(vec![
+                            Condition::new(ConditionKind::Substring, "electricity"),
+                            Condition::new(ConditionKind::Iban, "DE89 3704 0044 0532 0130 00"),
+                        ]),
+                        ("Contract", &[]),
+                        true,
+                        1,
+                    ),
                 ),
-                listed(
-                    3,
-                    RuleOrigin::Filing,
-                    RuleConditions::all_of(vec![
-                        Condition::not(ConditionKind::Word, "reminder"),
-                        Condition::new(ConditionKind::Folder, "Inbox/Post"),
-                    ]),
-                    ("Receipt", &[]),
-                    false,
-                    0,
+                named(
+                    "Erinnerungen",
+                    listed(
+                        3,
+                        RuleOrigin::Filing,
+                        RuleConditions::all_of(vec![
+                            Condition::not(ConditionKind::Word, "reminder"),
+                            Condition::new(ConditionKind::Folder, "Inbox/Post"),
+                        ]),
+                        ("Receipt", &[]),
+                        false,
+                        0,
+                    ),
                 ),
             ],
         });
