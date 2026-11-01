@@ -44,7 +44,8 @@ fn fold_key(name: &OsString) -> String {
 /// files in either direction; the key orders within those groups. Directories
 /// go by their computed size under `Size`, those without one after those with
 /// one in either direction and by name; entries without a date come last under
-/// `Modified`, and the name breaks every tie.
+/// `Modified`, and the name breaks every tie, then the full path (a list of search hits
+/// holds equal names from different folders).
 pub fn sort_entries(entries: &mut Vec<FileEntry>, key: SortKey) {
     // The folded name is computed once per entry, not once per comparison:
     // `to_lowercase` allocates, and a large directory compares O(n log n) times.
@@ -64,7 +65,12 @@ fn compare(a: &FileEntry, folded_a: &str, b: &FileEntry, folded_b: &str, key: So
             ordering
         }
     };
-    let by_name = || folded_a.cmp(folded_b).then_with(|| a.name.cmp(&b.name));
+    let by_name = || {
+        folded_a
+            .cmp(folded_b)
+            .then_with(|| a.name.cmp(&b.name))
+            .then_with(|| a.path.cmp(&b.path))
+    };
     b.is_parent
         .cmp(&a.is_parent)
         .then(b.is_dir.cmp(&a.is_dir))

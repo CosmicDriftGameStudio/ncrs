@@ -459,8 +459,8 @@ edit = "F3"
   `Right`, `plus` for `+`, or a single character such as `*` or `c`.
 - One key, two actions in one area is an error, also when the other action only
   has the key by default: say what the other action gets instead, or `[]`. The
-  panel and the search count apart. `search_case`, `search_whole_word` and
-  `search_regex` work only in the search; `quit`, `search`, `view`, `edit`,
+  panel and the search count apart. `search_case`, `search_whole_word`,
+  `search_regex`, `open_hits_left` and `open_hits_right` work only in the search; `quit`, `search`, `view`, `edit`,
   `copy`, `move`, `delete`, `delete_permanently`, `abort_job`, `switch_language`,
   `switch_panel` and the tag actions in both; the rest only in the panel.
   `primary+q` and `ctrl+q` are the same key on Linux and Windows, so a file can
@@ -491,7 +491,7 @@ Actions: `quit`, `open`, `go_up`, `switch_panel`, `switch_language`,
 `copy_path`, `copy_name`, `copy_files`, `paste`, `trash`, `restore_last_deletion`, `open_trash_in_finder`, `drive_menu_left`, `drive_menu_right`,
 `history_back`, `history_forward`, `add_favourite`, `remove_favourite`, `favourites`,
 `sort_by_name`, `sort_by_modified`, `sort_by_size`, `compute_folder_sizes`, `context_menu`, `search`, `quick_open`, `command_line`, `command_palette`, `search_case`,
-`search_whole_word`, `search_regex`, `filing_status`, `filing_setup`, `key_bindings`,
+`search_whole_word`, `search_regex`, `open_hits_left`, `open_hits_right`, `filing_status`, `filing_setup`, `key_bindings`,
 `settings`, `about`, `fetch_theme`, `download_ocr_models`, `download_ai_model`,
 `grant_folder_access`, `connect_server`, `disconnect_server`,
 `file_list_tags_toggle`, `file_list_tags_choose`, and for the filing `rules`,

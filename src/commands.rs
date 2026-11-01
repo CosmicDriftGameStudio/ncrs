@@ -200,6 +200,8 @@ pub fn command_of(action: KeyAction) -> Option<Command> {
         KeyAction::SearchCase => Command::plain(action, Search, Msg::ActionSearchCase),
         KeyAction::SearchWholeWord => Command::plain(action, Search, Msg::ActionSearchWholeWord),
         KeyAction::SearchRegex => Command::plain(action, Search, Msg::ActionSearchRegex),
+        KeyAction::OpenHitsLeft => Command::plain(action, Search, Msg::ActionOpenHitsLeft),
+        KeyAction::OpenHitsRight => Command::plain(action, Search, Msg::ActionOpenHitsRight),
         KeyAction::FilingStatus => Command::themed(
             action,
             Hermes,

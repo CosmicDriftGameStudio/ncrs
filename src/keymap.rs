@@ -156,6 +156,8 @@ key_actions! {
     SearchCase => "search_case",
     SearchWholeWord => "search_whole_word",
     SearchRegex => "search_regex",
+    OpenHitsLeft => "open_hits_left",
+    OpenHitsRight => "open_hits_right",
     FileListTagsToggle => "file_list_tags_toggle",
     FileListTagsChoose => "file_list_tags_choose",
 }
@@ -203,7 +205,11 @@ impl KeyAction {
     /// action has to say where it works.
     pub fn works_in(self, scope: KeyScope) -> bool {
         let reach = match self {
-            Self::SearchCase | Self::SearchWholeWord | Self::SearchRegex => Reach::SearchOnly,
+            Self::SearchCase
+            | Self::SearchWholeWord
+            | Self::SearchRegex
+            | Self::OpenHitsLeft
+            | Self::OpenHitsRight => Reach::SearchOnly,
             Self::Quit
             | Self::Search
             | Self::CommandPalette
@@ -428,6 +434,8 @@ impl KeyAction {
             Self::SearchCase => Message::Search(SearchMessage::ToggleCase),
             Self::SearchWholeWord => Message::Search(SearchMessage::ToggleWholeWord),
             Self::SearchRegex => Message::Search(SearchMessage::ToggleRegex),
+            Self::OpenHitsLeft => Message::Search(SearchMessage::OpenHitList(PanelSide::Left)),
+            Self::OpenHitsRight => Message::Search(SearchMessage::OpenHitList(PanelSide::Right)),
             Self::FileListTagsToggle => Message::Settings(SettingsMessage::ToggleFileListTags),
             Self::FileListTagsChoose => Message::Settings(SettingsMessage::ChooseFileListTags),
         }
@@ -517,6 +525,8 @@ impl KeyAction {
             | Self::SearchCase
             | Self::SearchWholeWord
             | Self::SearchRegex
+            | Self::OpenHitsLeft
+            | Self::OpenHitsRight
             | Self::Delete
             | Self::DeletePermanently
             | Self::View => true,
@@ -607,6 +617,8 @@ impl KeyAction {
             | Self::SearchCase
             | Self::SearchWholeWord
             | Self::SearchRegex
+            | Self::OpenHitsLeft
+            | Self::OpenHitsRight
             | Self::View
             | Self::Copy => true,
             Self::Edit
@@ -2079,6 +2091,8 @@ mod tests {
             KeyAction::SearchDocuments,
             KeyAction::FileListTagsToggle,
             KeyAction::FileListTagsChoose,
+            KeyAction::OpenHitsLeft,
+            KeyAction::OpenHitsRight,
         ];
         // Ctrl+C is copy_files there; Escape and the cancel button stop a job.
         if !cfg!(target_os = "macos") {

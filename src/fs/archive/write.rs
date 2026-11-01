@@ -507,7 +507,8 @@ fn plan_named(
     let mut parents: HashSet<String> = HashSet::new();
     for (source, name) in items {
         refuse_nested_or_remote(source)?;
-        let clean = safe_components(name).filter(|parts| !parts.is_empty() && parts.join("/") == *name);
+        let clean =
+            safe_components(name).filter(|parts| !parts.is_empty() && parts.join("/") == *name);
         if clean.is_none() {
             return Err(invalid(format!("{name} cannot be a name in an archive")));
         }
@@ -1296,7 +1297,14 @@ mod tests {
         let dir = scratch("pack-named-refuse");
         let sources = two_invoices(dir.path());
         let source = sources[0].clone();
-        for bad in ["../x.pdf", "/abs.pdf", "", "a//b.pdf", "a/../b.pdf", "./x.pdf"] {
+        for bad in [
+            "../x.pdf",
+            "/abs.pdf",
+            "",
+            "a//b.pdf",
+            "a/../b.pdf",
+            "./x.pdf",
+        ] {
             let archive = dir.path().join("bad.zip");
             let err = pack_named(&[(source.clone(), bad.to_owned())], &archive, &mut Counting)
                 .unwrap_err();
@@ -1323,7 +1331,12 @@ mod tests {
         let dir = scratch("pack-named-folder");
         let tree = make_tree(dir.path());
         let archive = dir.path().join("tree.zip");
-        pack_named(&[(tree.clone(), "docs/kept".to_owned())], &archive, &mut Counting).unwrap();
+        pack_named(
+            &[(tree.clone(), "docs/kept".to_owned())],
+            &archive,
+            &mut Counting,
+        )
+        .unwrap();
         let names = names_in_file(&archive);
         assert!(names.contains(&"docs".to_owned()) && names.contains(&"docs/kept".to_owned()));
         assert!(names.iter().all(|name| name.starts_with("docs")));

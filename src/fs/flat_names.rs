@@ -53,9 +53,10 @@ pub fn flat_names(sources: &[PathBuf]) -> Vec<Option<OsString>> {
     let mut names: Vec<Option<OsString>> = vec![None; sources.len()];
     let mut seen = HashMap::new();
     let (firsts, others): (Vec<usize>, Vec<usize>) = order.into_iter().partition(|&index| {
-        sources[index]
-            .file_name()
-            .is_some_and(|name| seen.insert(name.to_string_lossy().to_lowercase(), ()).is_none())
+        sources[index].file_name().is_some_and(|name| {
+            seen.insert(name.to_string_lossy().to_lowercase(), ())
+                .is_none()
+        })
     });
     for index in firsts.into_iter().chain(others) {
         names[index] = target_name(&sources[index], &mut taken);
@@ -74,15 +75,28 @@ mod tests {
     fn names(list: &[&str]) -> Vec<String> {
         flat_names(&paths(list))
             .into_iter()
-            .map(|name| name.map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
+            .map(|name| {
+                name.map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+            })
             .collect()
     }
 
     #[test]
     fn equal_names_from_different_folders_are_numbered() {
         assert_eq!(
-            names(&["/a/invoice.pdf", "/b/invoice.pdf", "/c/other.pdf", "/c/invoice.pdf"]),
-            ["invoice.pdf", "invoice (2).pdf", "other.pdf", "invoice (3).pdf"]
+            names(&[
+                "/a/invoice.pdf",
+                "/b/invoice.pdf",
+                "/c/other.pdf",
+                "/c/invoice.pdf"
+            ]),
+            [
+                "invoice.pdf",
+                "invoice (2).pdf",
+                "other.pdf",
+                "invoice (3).pdf"
+            ]
         );
     }
 

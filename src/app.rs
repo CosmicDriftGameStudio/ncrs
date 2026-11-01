@@ -1,6 +1,7 @@
 //! Root application: state, `update` (the only place state changes) and
 //! `view` (pure composition of UI components).
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::ffi::OsString;
 use std::num::NonZeroUsize;
 use std::path::{Component, Path, PathBuf};
 
@@ -66,10 +67,11 @@ use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
     ConflictChoice, ConnectField, FilingSetupMessage, FilingStatusMessage, GrantMessage,
     HermesColumnMessage, HermesFileMessage, HermesFocus, HermesOverviewMessage, HermesPage,
-    HermesSetupMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide, QuickFixMessage,
-    QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage, RuleFormMessage,
-    RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingChange,
-    SettingsMessage, TagsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
+    HermesSetupMessage, HitListMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide,
+    QuickFixMessage, QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage,
+    RuleFormMessage, RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage,
+    SettingChange, SettingsMessage, TagsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind,
+    TrashMessage,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -118,6 +120,7 @@ use crate::ui::hermes_overview as hermes_overview_ui;
 use crate::ui::hermes_setup as hermes_setup_ui;
 use crate::ui::key_bindings as key_bindings_ui;
 use crate::ui::ocr_models as ocr_models_ui;
+use crate::ui::panel::HitList;
 use crate::ui::quick_fix as quick_fix_view;
 use crate::ui::quick_open as quick_open_ui;
 use crate::ui::remote as remote_ui;
@@ -174,6 +177,42 @@ fn suggested_archive_name(sources: &[PathBuf]) -> String {
 /// allowed: it works on a copy, see `open_external`.
 /// Keys, the command list and the context menu all end up here; the lists of
 /// what may run are `allowed_in_archive` on the three action enums.
+/// Reads the files of a hit list off the UI thread. A file that is gone is
+/// left out.
+fn read_hit_files(side: PanelSide, request_id: u64, paths: Vec<PathBuf>) -> Task<Message> {
+    Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || {
+                paths
+                    .iter()
+                    .filter_map(|path| fs::FileEntry::from_path(path))
+                    .collect::<Vec<_>>()
+            })
+            .await
+            .unwrap_or_default()
+        },
+        move |entries| {
+            Message::HitList(HitListMessage::Read {
+                side,
+                request_id,
+                entries,
+            })
+        },
+    )
+}
+
+/// What a list of search hits has no use for: it is not a folder, so nothing is
+/// made, pasted or measured in it.
+fn is_not_offered_in_hit_list(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::CreateDirPrompt
+            | Message::CreateFilePrompt
+            | Message::Paste
+            | Message::ComputeFolderSizes
+    )
+}
+
 fn archive_refusal(panel: &PanelState, message: &Message) -> Option<Msg> {
     panel.archive.as_ref()?;
     match message {
@@ -808,6 +847,19 @@ pub struct Transfer {
     /// up the selection may have moved.
     sources: Vec<PathBuf>,
     target: PathBuf,
+    /// The name each source gets in the target, by position; empty when every
+    /// source keeps its own. Differs only where sources from several folders
+    /// share a name.
+    names: Vec<OsString>,
+}
+
+impl Transfer {
+    /// The name the source at `index` gets in the target, when it is not its own.
+    fn name_in_target(&self, index: usize) -> Option<OsString> {
+        let name = self.names.get(index).filter(|name| !name.is_empty())?;
+        let source = self.sources.get(index)?;
+        (source.file_name() != Some(name.as_os_str())).then(|| name.clone())
+    }
 }
 
 /// What a delete works on, resolved once when F8 is pressed: by the time the
@@ -1595,6 +1647,8 @@ pub struct PromptKeyState {
     /// The trash view is up, so the cursor keys move in its rows and Enter
     /// restores.
     pub trash: bool,
+    /// The active panel lists search hits, so Escape goes back to the search.
+    pub hit_list: bool,
     /// Quick Open is up, so the up and down keys move in its hits.
     pub quick_open: bool,
     /// The command palette is up, so the up and down keys move in its entries.
@@ -1685,6 +1739,7 @@ impl Default for PromptKeyState {
             command_line: false,
             search: false,
             trash: false,
+            hit_list: false,
             quick_open: false,
             command_palette: false,
             key_bindings: false,
@@ -2424,6 +2479,8 @@ fn escape_message(prompt: &PromptKeyState) -> Option<Message> {
         Some(Message::AbortJob)
     } else if prompt.config_error {
         Some(Message::DismissConfigError)
+    } else if prompt.hit_list {
+        Some(Message::HitList(HitListMessage::BackToSearch))
     } else {
         None
     }
@@ -3866,6 +3923,7 @@ impl App {
             // still list that entry for a moment after the abort.
             Message::AbortJob => self.abort_job(),
             Message::Trash(trash_message) => self.update_trash(trash_message),
+            Message::HitList(hit_message) => self.update_hit_list(hit_message),
 
             // One row of a transfer finished. Continue with the next, or ask
             // about a name that is in the way.
@@ -5724,6 +5782,7 @@ impl App {
         let command_line = self.command_line.is_focused();
         let search = self.search_has_keys();
         let trash = self.trash_has_keys();
+        let hit_list = self.active_panel().is_hit_list();
         let quick_open = self.quick_open.is_some();
         let command_palette = self.command_palette.is_some();
         let key_bindings = self.key_bindings.is_some();
@@ -5794,6 +5853,7 @@ impl App {
                 command_line,
                 search,
                 trash,
+                hit_list,
                 quick_open,
                 command_palette,
                 key_bindings,
@@ -5845,6 +5905,7 @@ impl App {
                 command_line,
                 search,
                 trash,
+                hit_list,
                 quick_open,
                 command_palette,
                 key_bindings,
@@ -6708,6 +6769,8 @@ impl App {
             ContextAction::CopyPath => clipboard_text(panel, ClipboardKind::Path).is_some(),
             ContextAction::CopyName => clipboard_text(panel, ClipboardKind::Name).is_some(),
             ContextAction::ComputeFolderSizes => !folder_size_targets(panel).is_empty(),
+            ContextAction::ShowOnOtherSide => cursor_row.is_some(),
+            ContextAction::RemoveFromList => cursor_row.is_some(),
         }
     }
 
@@ -6753,12 +6816,12 @@ impl App {
             excluded: self.cursor_is_excluded_from_hermes(),
             is_enabled: &hermes_enabled,
         });
-        self.context_menu = Some(ContextMenu::with_hermes(
-            place_at,
-            self.window_size,
-            |action| self.context_action_enabled(action),
-            hermes,
-        ));
+        let is_enabled = |action| self.context_action_enabled(action);
+        self.context_menu = Some(if self.panel(side).is_hit_list() {
+            ContextMenu::for_hit_list(place_at, self.window_size, is_enabled, hermes)
+        } else {
+            ContextMenu::with_hermes(place_at, self.window_size, is_enabled, hermes)
+        });
     }
 
     /// Closes the menu and sends the message its highlighted entry stands for,
@@ -8267,7 +8330,9 @@ impl App {
         let source_side = self.source_side();
         // An archive or a server in the other panel cannot take the new
         // archive, so it goes beside the files; the field shows where.
-        let target_side = if self.panel(source_side.other()).is_virtual() {
+        let target_side = if self.panel(source_side.other()).is_virtual()
+            || self.panel(source_side.other()).is_hit_list()
+        {
             source_side
         } else {
             source_side.other()
@@ -8313,9 +8378,29 @@ impl App {
             what: ArchiveWriteKind::Pack { name, folder },
         };
         let packed = archive.clone();
-        self.start_archive_write(jobs::JobKind::Pack, archive, write, move |progress| {
-            fs::archive::pack(&sources, &packed, progress)
-        })
+        let numbered: Option<Vec<(PathBuf, String)>> =
+            fs::flat_names::from_several_folders(&sources).then(|| {
+                fs::flat_names::flat_names(&sources)
+                    .into_iter()
+                    .zip(&sources)
+                    .map(|(name, source)| {
+                        let name = name.or_else(|| source.file_name().map(OsString::from));
+                        (
+                            source.clone(),
+                            name.unwrap_or_default().to_string_lossy().into_owned(),
+                        )
+                    })
+                    .collect()
+            });
+        self.start_archive_write(
+            jobs::JobKind::Pack,
+            archive,
+            write,
+            move |progress| match numbered {
+                Some(items) => fs::archive::pack_named(&items, &packed, progress),
+                None => fs::archive::pack(&sources, &packed, progress),
+            },
+        )
     }
 
     /// F5 with an archive, or a folder in one, as the target: one job rewrites
@@ -8704,6 +8789,11 @@ impl App {
         if sources.is_empty() {
             return Task::none();
         }
+        if preset.is_none() && self.panel(self.source_side().other()).is_hit_list() {
+            let text = self.lang.text(Msg::StatusHitListNotAFolder).to_owned();
+            self.set_status_error(&text);
+            return Task::none();
+        }
         self.job_error = None;
         self.notice = None;
         self.transfer_dialogs_opened = self.transfer_dialogs_opened.wrapping_add(1);
@@ -8874,6 +8964,11 @@ impl App {
     /// cursor position or modifier, so the target is always the active panel
     /// and the transfer always a copy.
     fn copy_external_files_into_active_panel(&mut self, paths: Vec<PathBuf>) -> Task<Message> {
+        if self.active_panel().is_hit_list() {
+            let text = self.lang.text(Msg::StatusHitListNotAFolder).to_owned();
+            self.set_status_error(&text);
+            return Task::none();
+        }
         if self.transfer_into_panel_is_blocked() {
             let text = self.lang.text(Msg::StatusDropBusy).to_owned();
             return self.show_notice(text);
@@ -8934,6 +9029,11 @@ impl App {
     }
 
     fn ask_for_pasted_file_name(&mut self, pasted: PastedContent) -> Task<Message> {
+        if self.active_panel().is_hit_list() {
+            let text = self.lang.text(Msg::StatusHitListNotAFolder).to_owned();
+            self.set_status_error(&text);
+            return Task::none();
+        }
         let Some(kind) = pasted.kind() else {
             return Task::none();
         };
@@ -9152,7 +9252,18 @@ impl App {
         target: PathBuf,
         policy: Policy,
     ) -> Task<Message> {
-        if let Some(location) = fs::archive::locate_in_archive(&target) {
+        let needs_numbering = fs::flat_names::from_several_folders(&sources)
+            && fs::flat_names::flat_names(&sources)
+                .iter()
+                .zip(&sources)
+                .any(|(name, source)| name.as_deref() != source.file_name());
+        let into_archive = fs::archive::locate_in_archive(&target);
+        if needs_numbering && (into_archive.is_some() || RemotePath::parse(&target).is_some()) {
+            let text = self.lang.text(Msg::StatusNumberingNeedsFolder).to_owned();
+            self.set_status_error(&text);
+            return Task::none();
+        }
+        if let Some(location) = into_archive {
             return self.begin_copy_into_archive(location, sources, policy);
         }
         self.begin_transfer(kind, sources, target, policy)
@@ -9166,10 +9277,19 @@ impl App {
         target: PathBuf,
         policy: Policy,
     ) -> Task<Message> {
+        let names = if fs::flat_names::from_several_folders(&sources) {
+            fs::flat_names::flat_names(&sources)
+                .into_iter()
+                .map(Option::unwrap_or_default)
+                .collect()
+        } else {
+            Vec::new()
+        };
         let transfer = Transfer {
             kind,
             sources,
             target,
+            names,
         };
         self.transfer = Some(transfer.clone());
         self.conflict_rule = policy.standing_rule();
@@ -9241,7 +9361,13 @@ impl App {
                 .map(|item| &item.original),
             (None, None) => None,
         };
-        path.and_then(|source| source.file_name())
+        let renamed = self
+            .pending_conflict
+            .as_ref()
+            .and_then(|pending| pending.transfer.name_in_target(pending.index));
+        renamed
+            .as_deref()
+            .or_else(|| path.and_then(|source| source.file_name()))
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default()
     }
@@ -9492,10 +9618,16 @@ impl App {
 
         let generation = self.generation;
         let target = transfer.target.clone();
+        let name_in_target = transfer.name_in_target(index);
         let pool = Arc::clone(&self.remote);
         let job = jobs::Job {
             kind: transfer.kind.job_kind(),
-            path: child_path(&target, source.file_name().unwrap_or_default()),
+            path: child_path(
+                &target,
+                name_in_target
+                    .as_deref()
+                    .unwrap_or_else(|| source.file_name().unwrap_or_default()),
+            ),
             total: None,
         };
         // One row per job keeps a conflict answerable between two files.
@@ -9508,7 +9640,17 @@ impl App {
                     let from = source.clone();
                     let to = target.clone();
                     let kind = transfer.kind;
+                    let renamed = name_in_target.clone();
                     move || {
+                        if let Some(name) = renamed {
+                            return crate::fs::transfer::run_reporting_as(
+                                &from,
+                                &to.join(name),
+                                kind,
+                                conflict,
+                                &progress_tx,
+                            );
+                        }
                         // Reports as it goes, so the bar moves during a long
                         // copy rather than jumping at the end. A server on
                         // either side is the SFTP layer's.
@@ -9676,6 +9818,9 @@ impl App {
             }
         }
         let panel = self.panel(self.source_side());
+        if panel.is_hit_list() && is_not_offered_in_hit_list(&message) {
+            return Task::none();
+        }
         match archive_refusal(panel, &message).or_else(|| remote_refusal(panel, &message)) {
             Some(refusal) => {
                 let text = self.lang.text(refusal).to_string();
@@ -9689,6 +9834,9 @@ impl App {
     /// Navigates `side` to its parent directory, re-selecting the directory
     /// we came from.
     fn go_up(&mut self, side: PanelSide) -> Task<Message> {
+        if self.panel(side).is_hit_list() {
+            return Task::none();
+        }
         let current = &self.panel(side).path;
         // A server path is cut as text: `Path::parent` would answer `sftp:` at
         // the root and does not know the root of a server.
@@ -9789,7 +9937,12 @@ impl App {
                 // in the home folder.
                 None if panel.remote().is_some() => (session_state::record_path(&self.home), None),
                 None => (
-                    session_state::record_path(&panel.path),
+                    session_state::record_path(
+                        panel
+                            .hit_list
+                            .as_ref()
+                            .map_or(&panel.path, |list| &list.return_to),
+                    ),
                     panel
                         .selected_entry()
                         .filter(|entry| !entry.is_parent)
@@ -10078,6 +10231,153 @@ impl App {
         self.request_snippets()
     }
 
+    /// Lists the hits of the search in the panel on `target`. The files are
+    /// read on the blocking pool; the panel shows itself loading meanwhile.
+    fn open_hit_list(&mut self, target: PanelSide) -> Task<Message> {
+        let Some(view) = self.open_search_view() else {
+            return Task::none();
+        };
+        if view.results.is_empty() {
+            return Task::none();
+        }
+        let paths: Vec<PathBuf> = view.results.iter().map(|file| file.path.clone()).collect();
+        let query = view.query.trim().to_owned();
+        let scope = view.root.clone();
+        let origin = self.search_side;
+        self.context_menu = None;
+        self.job_error = None;
+        self.notice = None;
+        let closed = if target == origin {
+            self.close_search()
+        } else {
+            if self.trash_view.is_some() && self.trash_side == target {
+                self.close_trash();
+            }
+            Task::none()
+        };
+        let panel = self.panel_mut(target);
+        let return_to = panel
+            .hit_list
+            .as_ref()
+            .map_or_else(|| panel.path.clone(), |list| list.return_to.clone());
+        let request_id = panel.begin_hit_list(HitList {
+            query,
+            scope,
+            return_to,
+        });
+        self.active_panel = target;
+        Task::batch([closed, read_hit_files(target, request_id, paths)])
+    }
+
+    /// Reads the files of the list again: the rows that vanished drop out.
+    fn refresh_hit_list(&mut self, side: PanelSide) -> Task<Message> {
+        let panel = self.panel_mut(side);
+        let paths: Vec<PathBuf> = panel
+            .entries
+            .iter()
+            .map(|entry| entry.path.clone())
+            .collect();
+        let request_id = panel.begin_load();
+        read_hit_files(side, request_id, paths)
+    }
+
+    fn update_hit_list(&mut self, message: HitListMessage) -> Task<Message> {
+        match message {
+            HitListMessage::Read {
+                side,
+                request_id,
+                entries,
+            } => {
+                let rows = self.visible_rows;
+                let panel = self.panel_mut(side);
+                if panel.request_id == request_id && panel.is_hit_list() {
+                    panel.apply_hit_entries(entries, rows);
+                }
+                Task::none()
+            }
+            HitListMessage::BackToSearch => {
+                if self.jobs.is_busy() {
+                    return Task::none();
+                }
+                let side = self.active_panel;
+                self.leave_hit_list(side, true)
+            }
+            HitListMessage::Close(side) => self.leave_hit_list(side, false),
+            HitListMessage::ShowOnOtherSide => self.show_hit_on_other_side(),
+            HitListMessage::RemoveFromList => {
+                let rows = self.visible_rows;
+                let panel = self.active_panel_mut();
+                if !panel.is_hit_list() {
+                    return Task::none();
+                }
+                let mut paths: Vec<PathBuf> = panel
+                    .entries
+                    .iter()
+                    .filter(|entry| panel.selection.is_tagged(&entry.path))
+                    .map(|entry| entry.path.clone())
+                    .collect();
+                if paths.is_empty() {
+                    paths.extend(panel.selected_entry().map(|entry| entry.path.clone()));
+                }
+                panel.remove_hits(&paths, rows);
+                Task::none()
+            }
+        }
+    }
+
+    /// Drops the list of `side` and shows the folder it came from. With
+    /// `search` the search comes back, with the fields it was left with.
+    fn leave_hit_list(&mut self, side: PanelSide, search: bool) -> Task<Message> {
+        let Some(list) = self.panel_mut(side).drop_hit_list() else {
+            return Task::none();
+        };
+        self.context_menu = None;
+        let load = self.load(side, list.return_to, None);
+        if !search || self.search.is_none() {
+            return load;
+        }
+        if self.search_open {
+            self.active_panel = self.search_side;
+            return load;
+        }
+        self.search_open = true;
+        self.active_panel = self.search_side;
+        self.refresh_search_rows();
+        let restarted = self.restart_search();
+        Task::batch([load, restarted, self.focus_search_field()])
+    }
+
+    /// Shows the file under the cursor in its folder on the other side. The
+    /// list stays.
+    fn show_hit_on_other_side(&mut self) -> Task<Message> {
+        let side = self.active_panel;
+        let Some(entry) = self.panel(side).selected_entry() else {
+            return Task::none();
+        };
+        let (Some(folder), Some(name)) = (
+            entry.path.parent().map(PathBuf::from),
+            entry
+                .path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned()),
+        ) else {
+            return Task::none();
+        };
+        let other = side.other();
+        let closed = if self.search_open && self.search_side == other {
+            self.close_search()
+        } else {
+            Task::none()
+        };
+        if self.trash_view.is_some() && self.trash_side == other {
+            self.close_trash();
+        }
+        self.panel_mut(other).drop_hit_list();
+        self.active_panel = other;
+        let load = self.load(other, folder, Some(name));
+        Task::batch([closed, load])
+    }
+
     fn close_search(&mut self) -> Task<Message> {
         // Late timers and batches of the stopped search find another
         // generation and are dropped.
@@ -10248,6 +10548,7 @@ impl App {
                 Task::none()
             }
             SearchMessage::Close => self.close_search(),
+            SearchMessage::OpenHitList(side) => self.open_hit_list(side),
             SearchMessage::IndexRan { generation, result } => {
                 let Some(filters) = view
                     .filters
@@ -14923,6 +15224,12 @@ impl App {
 
     /// Starts an async directory read for `side`.
     fn load(&mut self, side: PanelSide, path: PathBuf, select: Option<String>) -> Task<Message> {
+        if self.panel(side).is_hit_list() {
+            if path == self.panel(side).path {
+                return self.refresh_hit_list(side);
+            }
+            self.panel_mut(side).drop_hit_list();
+        }
         // A server is told from the text of the path before anything else
         // looks at it: nothing here may hand such a path to the local disk.
         if let Some(remote) = RemotePath::parse(&path) {
@@ -17966,6 +18273,7 @@ impl App {
             kind: TransferKind::Copy,
             sources: vec![PathBuf::from("/home/test/links/entry-1")],
             target: self.right_panel.path.clone(),
+            names: Vec::new(),
         });
         self.job_progress = Some(fs::transfer::Tick { done, total });
         self.transfer_mask_visible = true;
@@ -17992,6 +18300,7 @@ impl App {
                 kind: TransferKind::Copy,
                 sources: vec![PathBuf::from("/left").join(name)],
                 target,
+                names: Vec::new(),
             },
             index: 0,
         });
@@ -19252,6 +19561,7 @@ mod conflict_keys {
                 kind: TransferKind::Copy,
                 sources: vec![PathBuf::from("/left/a.txt")],
                 target: PathBuf::from("/right"),
+                names: Vec::new(),
             },
             index: 0,
         });
@@ -19279,6 +19589,7 @@ mod conflict_keys {
                 kind: TransferKind::Copy,
                 sources: vec![PathBuf::from("/left/a.txt")],
                 target: PathBuf::from("/right"),
+                names: Vec::new(),
             },
             index: 0,
         });
@@ -19301,6 +19612,7 @@ mod conflict_keys {
                 kind: TransferKind::Copy,
                 sources: vec![PathBuf::from("/left/a.txt")],
                 target: PathBuf::from("/right"),
+                names: Vec::new(),
             },
             index: 0,
         });
@@ -23057,6 +23369,7 @@ mod quick_open_tests {
             kind: TransferKind::Copy,
             sources: vec![PathBuf::from("/left/a.txt")],
             target: PathBuf::from("/right"),
+            names: Vec::new(),
         };
         app.transfer = Some(transfer);
         drop(app.update(Message::TransferRowDone {
@@ -26456,6 +26769,7 @@ mod archive_view_tests {
             kind: TransferKind::Copy,
             sources: vec![file.clone()],
             target: folder.to_path_buf(),
+            names: Vec::new(),
         };
         let deletion = Deletion {
             sources: vec![file.clone()],
@@ -28623,7 +28937,10 @@ mod window_focus_tests {
 
         assert_eq!(size_of(&app, "b.txt"), 6);
         assert_eq!(app.left_panel.selected_entry().unwrap().name, "b.txt");
-        assert!(app.left_panel.selection.is_tagged(&dir.path().join("c.txt")));
+        assert!(app
+            .left_panel
+            .selection
+            .is_tagged(&dir.path().join("c.txt")));
     }
 
     #[tokio::test]
@@ -30207,6 +30524,7 @@ mod file_drop_tests {
             kind: TransferKind::Move,
             sources: vec![PathBuf::from("/busy")],
             target: PathBuf::from("/elsewhere"),
+            names: Vec::new(),
         };
         case.app.transfer = Some(running.clone());
         let generation = drop_both(&mut case);
@@ -30470,6 +30788,7 @@ mod clipboard_tests {
             kind: TransferKind::Move,
             sources: vec![PathBuf::from("/busy")],
             target: PathBuf::from("/elsewhere"),
+            names: Vec::new(),
         };
         case.app.transfer = Some(running.clone());
 
@@ -30720,7 +31039,9 @@ mod folder_size_tests {
     async fn tagged_folders_are_measured_one_after_another_and_the_cursor_is_ignored() {
         let mut app = app_in_links();
         for name in ["alpha", "gamma", "note.txt"] {
-            app.panel_mut(SIDE).selection.toggle(&directory().join(name));
+            app.panel_mut(SIDE)
+                .selection
+                .toggle(&directory().join(name));
         }
         put_cursor_on(&mut app, "beta");
 
@@ -31205,5 +31526,337 @@ mod replan_flow {
         assert_eq!(items[0].now, Some(ReviewReason::NoMatchingRule));
         assert!(fixture.document.exists());
         assert!(review_open(&fixture.app));
+    }
+}
+
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+#[cfg(test)]
+mod hit_list_tests {
+    use super::*;
+    use crate::fs::search::{LineMatch, SearchEvent};
+    use crate::messages::SearchMessage;
+
+    struct Hits {
+        app: App,
+        folder: tempfile::TempDir,
+        files: Vec<PathBuf>,
+    }
+
+    /// An app whose search found `names` (made as real files in two folders),
+    /// opened from the left panel.
+    fn searched(names: &[&str]) -> Hits {
+        let folder = tempfile::tempdir().unwrap();
+        let mut files = Vec::new();
+        for (index, name) in names.iter().enumerate() {
+            let dir = folder.path().join(format!("dir{index}"));
+            std::fs::create_dir_all(&dir).unwrap();
+            let file = dir.join(name);
+            std::fs::write(&file, name).unwrap();
+            files.push(file);
+        }
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::OpenSearch));
+        let generation = app.search_for_test().unwrap().generation;
+        let events = files
+            .iter()
+            .map(|path| SearchEvent::File {
+                path: path.clone(),
+                lines: vec![LineMatch {
+                    number: 1,
+                    text: "x".to_owned(),
+                    ranges: std::iter::once(0..1).collect(),
+                }],
+            })
+            .collect();
+        drop(app.update(Message::Search(SearchMessage::Events {
+            generation,
+            events,
+        })));
+        app.search.as_mut().unwrap().query = "needle".to_owned();
+        Hits { app, folder, files }
+    }
+
+    fn read_all(app: &mut App, side: PanelSide, files: &[PathBuf]) {
+        let request_id = app.panel(side).request_id;
+        let entries = files
+            .iter()
+            .filter_map(|path| fs::FileEntry::from_path(path))
+            .collect();
+        drop(app.update(Message::HitList(HitListMessage::Read {
+            side,
+            request_id,
+            entries,
+        })));
+    }
+
+    fn opened(names: &[&str], side: PanelSide) -> Hits {
+        let mut hits = searched(names);
+        drop(
+            hits.app
+                .update(Message::Search(SearchMessage::OpenHitList(side))),
+        );
+        let files = hits.files.clone();
+        read_all(&mut hits.app, side, &files);
+        hits
+    }
+
+    #[test]
+    fn opening_on_the_search_side_closes_the_search_and_lists_the_files() {
+        let hits = opened(&["a.txt", "b.txt"], PanelSide::Left);
+        let panel = hits.app.panel(PanelSide::Left);
+        assert!(!hits.app.search_open);
+        assert!(panel.is_hit_list() && !panel.is_virtual() && !panel.loading);
+        assert_eq!(panel.entries.len(), 2);
+        assert!(panel.entries.iter().all(|entry| !entry.is_parent));
+        let list = panel.hit_list.as_ref().unwrap();
+        assert_eq!(list.query, "needle");
+        assert_eq!(list.return_to, PathBuf::from("/home/test/links"));
+        assert_eq!(panel.path, list.scope);
+        assert_eq!(hits.app.search_for_test().unwrap().query, "needle");
+    }
+
+    #[test]
+    fn opening_on_the_other_side_keeps_the_search_and_activates_the_list() {
+        let hits = opened(&["a.txt"], PanelSide::Right);
+        assert!(hits.app.search_open);
+        assert_eq!(hits.app.active_panel, PanelSide::Right);
+        assert!(hits.app.panel(PanelSide::Right).is_hit_list());
+        assert!(!hits.app.panel(PanelSide::Left).is_hit_list());
+    }
+
+    #[test]
+    fn nothing_opens_without_results() {
+        let mut app = App::with_fixed_panels();
+        drop(app.update(Message::OpenSearch));
+        drop(app.update(Message::Search(SearchMessage::OpenHitList(
+            PanelSide::Right,
+        ))));
+        assert!(!app.panel(PanelSide::Right).is_hit_list());
+        assert!(app.search_open);
+    }
+
+    #[test]
+    fn a_read_of_an_older_open_is_ignored() {
+        let mut hits = searched(&["a.txt"]);
+        drop(hits.app.update(Message::Search(SearchMessage::OpenHitList(
+            PanelSide::Right,
+        ))));
+        let stale = hits.app.panel(PanelSide::Right).request_id;
+        drop(hits.app.update(Message::Search(SearchMessage::OpenHitList(
+            PanelSide::Right,
+        ))));
+        assert_ne!(hits.app.panel(PanelSide::Right).request_id, stale);
+        drop(hits.app.update(Message::HitList(HitListMessage::Read {
+            side: PanelSide::Right,
+            request_id: stale,
+            entries: Vec::new(),
+        })));
+        assert!(hits.app.panel(PanelSide::Right).loading);
+        let files = hits.files.clone();
+        read_all(&mut hits.app, PanelSide::Right, &files);
+        assert_eq!(hits.app.panel(PanelSide::Right).entries.len(), 1);
+    }
+
+    #[test]
+    fn a_file_that_is_gone_is_not_listed() {
+        let hits = searched(&["a.txt"]);
+        std::fs::remove_file(&hits.files[0]).unwrap();
+        assert!(fs::FileEntry::from_path(&hits.files[0]).is_none());
+    }
+
+    #[test]
+    fn escape_goes_back_to_the_search_with_its_fields() {
+        let mut hits = opened(&["a.txt"], PanelSide::Left);
+        let state = hits.app.prompt_key_state();
+        assert!(state.hit_list);
+        assert_eq!(
+            route_key(&state, Key::Named(Named::Escape), Modifiers::default()),
+            Some(Message::HitList(HitListMessage::BackToSearch))
+        );
+        let running = PromptKeyState {
+            job_running: true,
+            ..state
+        };
+        assert_eq!(
+            route_key(&running, Key::Named(Named::Escape), Modifiers::default()),
+            Some(Message::AbortJob)
+        );
+
+        drop(
+            hits.app
+                .update(Message::HitList(HitListMessage::BackToSearch)),
+        );
+        let panel = hits.app.panel(PanelSide::Left);
+        assert!(!panel.is_hit_list());
+        assert_eq!(panel.path, PathBuf::from("/home/test/links"));
+        assert!(hits.app.search_open && hits.app.search_side == PanelSide::Left);
+        assert_eq!(hits.app.search_for_test().unwrap().query, "needle");
+        assert!(panel.history.back().is_empty());
+    }
+
+    #[test]
+    fn the_cross_closes_the_list_without_the_search() {
+        let mut hits = opened(&["a.txt"], PanelSide::Left);
+        drop(
+            hits.app
+                .update(Message::HitList(HitListMessage::Close(PanelSide::Left))),
+        );
+        assert!(!hits.app.panel(PanelSide::Left).is_hit_list());
+        assert!(!hits.app.search_open);
+    }
+
+    #[test]
+    fn going_up_does_nothing_in_a_list() {
+        let mut hits = opened(&["a.txt"], PanelSide::Left);
+        let path = hits.app.panel(PanelSide::Left).path.clone();
+        drop(hits.app.go_up(PanelSide::Left));
+        assert!(hits.app.panel(PanelSide::Left).is_hit_list());
+        assert_eq!(hits.app.panel(PanelSide::Left).path, path);
+    }
+
+    #[test]
+    fn loading_another_folder_drops_the_list_and_loading_its_scope_refreshes_it() {
+        let mut hits = opened(&["a.txt"], PanelSide::Left);
+        let scope = hits.app.panel(PanelSide::Left).path.clone();
+        drop(hits.app.load(PanelSide::Left, scope, None));
+        assert!(hits.app.panel(PanelSide::Left).is_hit_list());
+        assert!(hits.app.panel(PanelSide::Left).loading);
+
+        let elsewhere = hits.folder.path().to_path_buf();
+        drop(hits.app.load(PanelSide::Left, elsewhere, None));
+        assert!(!hits.app.panel(PanelSide::Left).is_hit_list());
+        assert!(hits.app.panel(PanelSide::Left).history.back().is_empty());
+    }
+
+    #[test]
+    fn a_refresh_drops_vanished_rows_and_keeps_cursor_and_tags_by_path() {
+        let mut hits = opened(&["a.txt", "b.txt", "c.txt"], PanelSide::Left);
+        let kept = hits.app.panel(PanelSide::Left).entries[2].path.clone();
+        {
+            let panel = hits.app.panel_mut(PanelSide::Left);
+            panel.selection.toggle(&kept);
+            panel.selected = 2;
+        }
+        std::fs::remove_file(&hits.files[0]).unwrap();
+        let scope = hits.app.panel(PanelSide::Left).path.clone();
+        drop(hits.app.load(PanelSide::Left, scope, None));
+        let survivors = hits.files[1..].to_vec();
+        read_all(&mut hits.app, PanelSide::Left, &survivors);
+        let panel = hits.app.panel(PanelSide::Left);
+        assert_eq!(panel.entries.len(), 2);
+        assert!(panel.selection.is_tagged(&kept));
+        assert_eq!(panel.selected_entry().unwrap().path, kept);
+    }
+
+    #[test]
+    fn remove_from_list_takes_the_tagged_rows_else_the_cursor_row() {
+        let mut hits = opened(&["a.txt", "b.txt", "c.txt"], PanelSide::Left);
+        hits.app.panel_mut(PanelSide::Left).selected = 1;
+        drop(
+            hits.app
+                .update(Message::HitList(HitListMessage::RemoveFromList)),
+        );
+        assert_eq!(hits.app.panel(PanelSide::Left).entries.len(), 2);
+
+        let first = hits.app.panel(PanelSide::Left).entries[0].path.clone();
+        let second = hits.app.panel(PanelSide::Left).entries[1].path.clone();
+        hits.app.panel_mut(PanelSide::Left).selection.toggle(&first);
+        hits.app
+            .panel_mut(PanelSide::Left)
+            .selection
+            .toggle(&second);
+        drop(
+            hits.app
+                .update(Message::HitList(HitListMessage::RemoveFromList)),
+        );
+        assert!(hits.app.panel(PanelSide::Left).entries.is_empty());
+        assert!(hits.files.iter().all(|file| file.exists()));
+    }
+
+    #[test]
+    fn show_on_the_other_side_loads_the_folder_and_keeps_the_list() {
+        let mut hits = opened(&["a.txt"], PanelSide::Left);
+        drop(
+            hits.app
+                .update(Message::HitList(HitListMessage::ShowOnOtherSide)),
+        );
+        assert!(hits.app.panel(PanelSide::Left).is_hit_list());
+        assert_eq!(hits.app.active_panel, PanelSide::Right);
+        assert!(hits.app.panel(PanelSide::Right).loading);
+    }
+
+    #[test]
+    fn making_folders_and_pasting_are_not_offered_in_a_list() {
+        let mut hits = opened(&["a.txt"], PanelSide::Left);
+        for message in [
+            Message::CreateDirPrompt,
+            Message::CreateFilePrompt,
+            Message::Paste,
+            Message::ComputeFolderSizes,
+        ] {
+            drop(hits.app.apply_unless_refused(message));
+            assert!(hits.app.prompt.is_none());
+        }
+    }
+
+    #[test]
+    fn a_list_is_refused_as_the_target_of_a_copy() {
+        let mut hits = opened(&["a.txt"], PanelSide::Right);
+        let own = hits.files[0].clone();
+        let folder = hits.folder.path().to_path_buf();
+        let entry = fs::FileEntry::from_path(&own).unwrap();
+        hits.app
+            .panel_mut(PanelSide::Left)
+            .apply_listing(folder, vec![entry], None, None, 12);
+        hits.app.active_panel = PanelSide::Left;
+        hits.app.search_open = false;
+        drop(hits.app.open_transfer_dialog_to(TransferKind::Copy, None));
+        assert!(hits.app.transfer_dialog.is_none());
+        let shown = hits.app.job_error.clone().unwrap();
+        assert_eq!(shown, hits.app.lang.text(Msg::StatusHitListNotAFolder));
+    }
+
+    #[tokio::test]
+    async fn equal_names_from_several_folders_are_numbered_in_the_transfer() {
+        let mut hits = searched(&["same.txt", "same.txt"]);
+        let target = tempfile::tempdir().unwrap();
+        let sources = hits.files.clone();
+        drop(hits.app.begin_transfer(
+            TransferKind::Copy,
+            sources,
+            target.path().to_path_buf(),
+            Policy::Ask,
+        ));
+        let transfer = hits.app.transfer.clone().unwrap();
+        assert_eq!(transfer.name_in_target(0), None);
+        assert_eq!(
+            transfer.name_in_target(1),
+            Some(OsString::from("same (2).txt"))
+        );
+    }
+
+    #[test]
+    fn numbered_names_cannot_go_into_an_archive() {
+        let mut hits = searched(&["same.txt", "same.txt"]);
+        let target = tempfile::tempdir().unwrap();
+        let archive = target.path().join("x.zip");
+        let first = hits.files[0].clone();
+        let mut progress = fs::transfer::Counting;
+        fs::archive::pack(&[first], &archive, &mut progress).unwrap();
+        let sources = hits.files.clone();
+        drop(
+            hits.app
+                .start_validated_transfer(TransferKind::Copy, sources, archive, Policy::Ask),
+        );
+        assert!(hits.app.transfer.is_none() && hits.app.archive_write.is_none());
+        assert_eq!(
+            hits.app.job_error.clone().unwrap(),
+            hits.app.lang.text(Msg::StatusNumberingNeedsFolder)
+        );
     }
 }

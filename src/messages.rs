@@ -371,6 +371,7 @@ pub enum Message {
     /// it is already there.
     OpenSearch,
     Search(SearchMessage),
+    HitList(HitListMessage),
     Trash(TrashMessage),
 
     // --- Filing module: the index and its first-start questions ---
@@ -726,6 +727,29 @@ pub enum SearchMessage {
     UpdateReport,
     /// The report was changed (or not): back to the Reports page.
     ReportUpdated(Result<(), String>),
+    /// The hits of the search as a list in the panel on this side.
+    OpenHitList(PanelSide),
+}
+
+/// Everything a panel that lists search hits sends.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HitListMessage {
+    /// The snapshot of the hits was read (or read again). Dropped when
+    /// `request_id` is not the panel's latest.
+    Read {
+        side: PanelSide,
+        request_id: u64,
+        entries: Vec<FileEntry>,
+    },
+    /// Escape: leave the list and go back to the search.
+    BackToSearch,
+    /// The cross of the tab: leave the list, nothing else.
+    Close(PanelSide),
+    /// Context menu: show the file under the cursor in its folder on the other
+    /// side.
+    ShowOnOtherSide,
+    /// Context menu: take the tagged rows, else the cursor row, off the list.
+    RemoveFromList,
 }
 
 /// Everything the trash view and putting entries back send.
