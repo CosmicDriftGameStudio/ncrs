@@ -1,87 +1,38 @@
-//! The reports (saved queries): searches over the index by year,
-//! sender, kind, tags and text, each kept under a name, with the export of what a run found. A
-//! page of the Hermes card. Pure view over [`SavedQueries`].
+//! The reports (saved queries): searches over the index kept under a name,
+//! each with the hits it finds today and the export of them. A page of the
+//! Ablage tab. The criteria are only shown; they are changed in the search.
+//! Pure view over [`SavedQueries`].
 //!
 //! Nothing is copied before the export step has shown where to and how many.
 
-use iced::widget::{column, container, row, Row};
-use iced::{alignment, Element, Size};
+use iced::widget::{container, row, Row};
+use iced::{alignment, Element};
 use ncrs_index::{KindCatalog, QuerySpec};
 
 use super::format;
-use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::hermes::{self, Badges};
-use super::kit::{self, dim, error_line, form_row, one_line, paragraph, Columns, Tone};
-use super::theme::spacing;
+use super::hermes_kit::{self as page_kit, MenuItem, MenuLook, RowTwo, GAP_S, GAP_XS, TEXT_BODY};
+use super::kit;
 use crate::app::fill_template;
 use crate::i18n::{FuturamaName, Language, Msg};
-use iced::advanced::widget::operation::{Focusable, Outcome};
-use iced::advanced::widget::{self, Operation};
-use iced::Rectangle;
-
-use crate::messages::{HermesFocus, HermesPage, Message, SavedQueriesMessage};
+use crate::messages::{HermesPage, Message, SavedQueriesMessage};
 use crate::palette::Palette;
 use crate::review_work::amount_text;
-use crate::saved_queries::{Problem, QueryField, ReportTemplate, SavedQueries, VISIBLE_ROWS};
+use crate::rules_page::hits_text;
+use crate::saved_queries::{Draft, ExportStep, Problem, Results, SavedQueries, VISIBLE_ROWS};
 
-/// Most hits listed when the result is expanded; the rest is counted.
-pub const VISIBLE_HITS: usize = 6;
-
-/// The form field that has the keyboard focus, or `None` while none has.
-pub fn focused_field() -> impl Operation<Option<QueryField>> {
-    struct FocusedField {
-        found: Option<QueryField>,
-    }
-
-    impl Operation<Option<QueryField>> for FocusedField {
-        fn focusable(
-            &mut self,
-            id: Option<&widget::Id>,
-            _bounds: Rectangle,
-            state: &mut dyn Focusable,
-        ) {
-            if state.is_focused() {
-                self.found = id.and_then(field_of);
-            }
-        }
-
-        fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn Operation<Option<QueryField>>)) {
-            operate(self);
-        }
-
-        fn finish(&self) -> Outcome<Option<QueryField>> {
-            Outcome::Some(self.found)
-        }
-    }
-
-    FocusedField { found: None }
-}
-
-fn field_of(id: &widget::Id) -> Option<QueryField> {
-    [
-        (NAME_ID, QueryField::Name),
-        (YEAR_ID, QueryField::Year),
-        (SENDER_ID, QueryField::Sender),
-        (KIND_ID, QueryField::Kind),
-        (TAGS_ID, QueryField::Tags),
-        (FULL_TEXT_ID, QueryField::FullText),
-    ]
-    .into_iter()
-    .find(|(known, _)| *id == widget::Id::new(known))
-    .map(|(_, field)| field)
-}
+/// Hits listed in the detail; the rest is counted.
+pub const VISIBLE_HITS: usize = 5;
 
 pub const NAME_ID: &str = "saved-query-name";
-const YEAR_ID: &str = "saved-query-year";
-const SENDER_ID: &str = "saved-query-sender";
-const KIND_ID: &str = "saved-query-kind";
-const TAGS_ID: &str = "saved-query-tags";
-const FULL_TEXT_ID: &str = "saved-query-full-text";
 
-const SIZE: DialogSize = DialogSize::Card;
+/// Characters of the name and of the criteria that fit a row of the list.
+const NAME_CHARS: usize = 32;
+const CRITERIA_CHARS: usize = 44;
 
-/// How the width of a row is shared: name, criteria, hits.
-const PORTIONS: [u16; 3] = [4, 8, 2];
+/// Widths of the date and the sender in a line of a hit.
+const DATE_WIDTH: f32 = 88.0;
+const SENDER_WIDTH: f32 = 120.0;
 
 fn send(message: SavedQueriesMessage) -> Message {
     Message::SavedQueries(message)
@@ -89,543 +40,487 @@ fn send(message: SavedQueriesMessage) -> Message {
 
 pub fn view<'a>(
     state: &'a SavedQueries,
-    window: Size,
     badges: Badges,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let line_chars = frame::content_chars(SIZE, window, frame::SIDEBAR_ROOM);
-    let mut body =
-        column![paragraph(lang.text(Msg::SavedQueriesExplain), palette)].spacing(spacing::LINE_GAP);
-
-    // The export step takes the room of the list and the form: the page
-    // would not fit them all, and the step is what the user decides on.
-    if state.export_step().is_none() {
-        if state.cursor().is_none() {
-            body = body.push(templates(state, lang, palette));
-        }
-        if state.rows().is_empty() {
-            body = body.push(dim(
-                lang.text(if state.is_busy() {
-                    Msg::SavedQueriesLoading
-                } else {
-                    Msg::SavedQueriesEmpty
-                }),
-                palette,
-            ));
+    let body: Element<'a, Message> = if state.rows().is_empty() && state.unsaved().is_none() {
+        let sentence = if state.is_busy() {
+            Msg::SavedQueriesLoading
         } else {
-            body = body.push(list(state, line_chars, badges.focus, lang, palette));
-        }
-        body = body.push(form(state, lang, palette));
-    }
-    if state.is_confirming_delete() {
-        body = body.push(delete_question(state, lang, palette));
-    }
-    if let Some(problem) = state.problem() {
-        body = body.push(error_line(problem_text(problem, lang), palette));
-    }
-    if let Some(results) = state.results() {
-        body = body.push(result(state, results, line_chars, lang, palette));
-    }
-    if let Some(step) = state.export_step() {
-        body = body.push(export_step(state, step, line_chars, lang, palette));
-    }
-
-    let mut frame = Frame::new(
-        lang.text(Msg::ActionSavedQueries),
+            Msg::SavedQueriesEmpty
+        };
+        page_kit::centered_note(page_kit::hint(lang.text(sentence), palette))
+    } else {
+        page_kit::list_and_detail(list(state, lang, palette), detail(state, lang, palette))
+    };
+    page_kit::tab_page(
+        hermes::tab_nav(HermesPage::SavedQueries, badges, lang, palette),
+        header(state, lang, palette),
         body,
-        SIZE,
-        window,
-        lang,
+        Some(action_bar(state, lang, palette)),
         palette,
     )
-    .title_theme(lang.futurama_name(FuturamaName::ActionSavedQueries))
-    .buttons(buttons(state, lang, palette))
-    .sidebar(hermes::nav(HermesPage::SavedQueries, badges, lang, palette))
-    .on_close(send(SavedQueriesMessage::Close))
-    .hints(KeyHints {
-        enter: true,
-        tab: true,
-    });
-    if let Some(done) = state.exported() {
-        let csv_name = done
-            .csv_path
-            .file_name()
-            .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
-        frame = frame.footer_note(fill_template(
-            lang.text(Msg::SavedQueriesExportedNote),
-            &[
-                ("{copied}", &done.copied.to_string()),
-                ("{existing}", &done.skipped_existing.to_string()),
-                ("{missing}", &done.skipped_missing.to_string()),
-                ("{csv}", &format::ellipsize_middle(&csv_name, line_chars)),
-            ],
+}
+
+fn header<'a>(state: &SavedQueries, lang: Language, palette: &Palette) -> Element<'a, Message> {
+    let mut new_items = vec![MenuItem::new(
+        lang.text(Msg::SavedQueriesEmptySearch),
+        send(SavedQueriesMessage::NewSearch(QuerySpec::default())),
+    )];
+    new_items.extend(state.templates().iter().map(|template| {
+        MenuItem::new(
+            template.name(lang),
+            send(SavedQueriesMessage::NewSearch(template.spec(lang))),
+        )
+    }));
+    let mut actions = vec![page_kit::menu_button(
+        &format!("{} ▾", lang.text(Msg::SavedQueriesNew)),
+        &new_items,
+        MenuLook::Button,
+        palette,
+    )];
+    if !state.is_busy() && state.selected().is_some() {
+        let more = [MenuItem {
+            key_hint: Some("Del".to_owned()),
+            ..MenuItem::new(
+                lang.text(Msg::SavedQueriesDelete),
+                send(SavedQueriesMessage::AskDelete),
+            )
+        }];
+        actions.push(page_kit::menu_button("", &more, MenuLook::Icon, palette));
+    }
+    page_kit::page_header(
+        lang.text(Msg::ActionSavedQueries),
+        lang.futurama_name(FuturamaName::ActionSavedQueries),
+        Some(lang.text(Msg::SavedQueriesExplain).to_owned()),
+        None,
+        actions,
+        palette,
+    )
+}
+
+/// What a query asks for, as name and value, in the order of the filters.
+fn criteria(spec: &QuerySpec, lang: Language, kinds: &KindCatalog) -> Vec<(&'static str, String)> {
+    let mut found = Vec::new();
+    if let Some(kind) = &spec.kind {
+        found.push((
+            lang.text(Msg::SavedQueriesFieldKind),
+            lang.kind_label(kinds, kind).into_owned(),
         ));
     }
-    frame.into_element()
-}
-
-/// The buttons that start a report from a template, and what open means.
-fn templates<'a>(state: &SavedQueries, lang: Language, palette: &Palette) -> Element<'a, Message> {
-    let buttons: Vec<Element<'a, Message>> = state
-        .templates()
-        .iter()
-        .map(|template: &ReportTemplate| {
-            kit::button(
-                &template.name(lang),
-                (!state.is_busy()).then(|| {
-                    send(SavedQueriesMessage::UseTemplate(
-                        template.form(lang, &state.kinds().catalog),
-                    ))
-                }),
-                Tone::Secondary,
-                palette,
-            )
-        })
-        .collect();
-    column![
-        dim(lang.text(Msg::SavedQueriesTemplateLabel), palette),
-        row(buttons).spacing(spacing::S).wrap(),
-        dim(
-            fill_template(
-                lang.text(Msg::SavedQueriesOpenInvoicesNote),
-                &[("{tag}", lang.text(Msg::SavedQueriesTagOpen))],
-            ),
-            palette,
-        ),
-    ]
-    .spacing(spacing::XS)
-    .into()
-}
-
-/// What a query asks for, short enough for a column.
-pub fn criteria_text(spec: &QuerySpec, lang: Language, kinds: &KindCatalog) -> String {
-    let mut parts = Vec::new();
     if let Some(year) = spec.year {
-        parts.push(year.to_string());
+        found.push((lang.text(Msg::SavedQueriesFieldYear), year.to_string()));
     }
     if let Some(sender) = &spec.sender {
-        parts.push(sender.clone());
+        found.push((lang.text(Msg::SavedQueriesFieldSender), sender.clone()));
     }
-    if let Some(kind) = &spec.kind {
-        parts.push(lang.kind_label(kinds, kind).into_owned());
-    }
-    parts.extend(spec.tags.iter().map(|tag| format!("#{tag}")));
+    found.extend(
+        spec.tags
+            .iter()
+            .map(|tag| (lang.text(Msg::SavedQueriesFieldTags), tag.clone())),
+    );
     if let Some(full_text) = &spec.full_text {
-        parts.push(format!("\"{full_text}\""));
+        found.push((lang.text(Msg::SavedQueriesFieldFullText), full_text.clone()));
     }
+    found
+}
+
+/// What a query asks for in one line, short enough for a row.
+pub fn criteria_text(spec: &QuerySpec, lang: Language, kinds: &KindCatalog) -> String {
+    let parts: Vec<String> = criteria(spec, lang, kinds)
+        .into_iter()
+        .map(|(label, value)| format!("{label}: {value}"))
+        .collect();
     if parts.is_empty() {
         lang.text(Msg::SavedQueriesCriteriaAll).to_owned()
     } else {
-        parts.join(", ")
+        parts.join(" · ")
     }
 }
 
-fn list<'a>(
-    state: &'a SavedQueries,
-    line_chars: usize,
-    focus: HermesFocus,
-    lang: Language,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let columns = Columns {
-        portions: &PORTIONS,
-        line_chars,
-    };
-    let header = columns.header(
-        &[
-            lang.text(Msg::ColumnName),
-            lang.text(Msg::SavedQueriesColumnCriteria),
-            lang.text(Msg::SavedQueriesColumnHits),
-        ],
-        palette,
-    );
+fn list<'a>(state: &SavedQueries, lang: Language, palette: &Palette) -> Element<'a, Message> {
+    let kinds = &state.kinds().catalog;
+    let mut rows: Vec<Element<'a, Message>> = Vec::new();
+    if let Some(draft) = state.unsaved() {
+        rows.push(page_kit::list_row_two(
+            unsaved_row(draft, lang, kinds),
+            true,
+            None,
+            palette,
+        ));
+    }
+    let room = VISIBLE_ROWS.saturating_sub(rows.len());
     let first = state.first_visible();
-    let rows = state
-        .rows()
-        .iter()
-        .enumerate()
-        .skip(first)
-        .take(VISIBLE_ROWS)
-        .map(|(index, query)| {
-            let selected = state.cursor() == Some(index);
-            let color = if selected && focus == HermesFocus::Content {
-                palette.cursor_text
-            } else {
-                palette.text
-            };
-            let hits = state
-                .hit_count(query.id)
-                .map(|count| count.to_string())
-                .unwrap_or_default();
-            let content = row![
-                columns.cell(0, &query.name, color),
-                columns.cell(
-                    1,
-                    &criteria_text(&query.spec, lang, &state.kinds().catalog),
-                    color
+    for (index, query) in state.rows().iter().enumerate().skip(first).take(room) {
+        rows.push(page_kit::list_row_two(
+            RowTwo {
+                primary: format::ellipsize_end(&query.name, NAME_CHARS),
+                secondary: format::ellipsize_end(
+                    &criteria_text(&query.spec, lang, kinds),
+                    CRITERIA_CHARS,
                 ),
-                columns.cell(2, &hits, color),
-            ]
-            .align_y(alignment::Vertical::Center);
-            kit::list_row(
-                content.into(),
-                send(SavedQueriesMessage::Select(index)),
-                selected,
-                focus == HermesFocus::Content,
-                palette,
-            )
-        })
-        .collect();
-    kit::scroll_list(
-        header,
+                right: state
+                    .hit_count(query.id)
+                    .map(|count| hits_text(u64::try_from(count).unwrap_or(u64::MAX), lang)),
+                lead: None,
+                muted: false,
+            },
+            state.cursor() == Some(index),
+            Some(send(SavedQueriesMessage::Select(index))),
+            palette,
+        ));
+    }
+    page_kit::list_pane(
         rows,
-        kit::ListView {
-            len: state.rows().len(),
-            visible: VISIBLE_ROWS,
-            offset: first,
-        },
         |delta| send(SavedQueriesMessage::Scrolled(delta)),
         palette,
     )
 }
 
-fn form<'a>(state: &'a SavedQueries, lang: Language, palette: &Palette) -> Element<'a, Message> {
-    let values = state.form();
-    let text_field = |field: QueryField, id: &'static str, value: &'a str| {
-        let on_enter = if field == QueryField::Tags {
-            send(SavedQueriesMessage::AddTag)
+fn unsaved_row(draft: &Draft, lang: Language, kinds: &KindCatalog) -> RowTwo {
+    let name = draft.name.trim();
+    RowTwo {
+        primary: if name.is_empty() {
+            lang.text(Msg::SavedQueriesUnsaved).to_owned()
         } else {
-            send(SavedQueriesMessage::Run)
-        };
-        kit::text_field(
-            "",
-            value,
-            id,
-            Some(move |typed| send(SavedQueriesMessage::FieldChanged(field, typed))),
-            on_enter,
-            palette,
-        )
-    };
-    let tags_control = {
-        let chips = values
-            .tags
-            .iter()
-            .map(|tag| {
-                kit::removable_chip(
-                    tag,
-                    send(SavedQueriesMessage::RemoveTag(tag.clone())),
-                    palette,
-                )
-            })
-            .fold(Row::new().spacing(spacing::XS), Row::push)
-            .wrap();
-        column![
-            chips,
-            text_field(QueryField::Tags, TAGS_ID, &values.tag_input)
-        ]
-        .spacing(spacing::XS)
-        .into()
-    };
-    let row_of = |label: Msg, hint: Option<Msg>, control: Element<'a, Message>| {
-        form_row(
-            lang.text(label),
-            None,
-            hint.map(|message| lang.text(message)),
-            control,
-            palette,
-        )
-    };
-    column![
-        row_of(
-            Msg::ColumnName,
-            None,
-            text_field(QueryField::Name, NAME_ID, &values.name),
-        ),
-        row_of(
-            Msg::SavedQueriesFieldYear,
-            Some(Msg::SavedQueriesHintYear),
-            text_field(QueryField::Year, YEAR_ID, &values.year),
-        ),
-        row_of(
-            Msg::SavedQueriesFieldSender,
-            Some(Msg::SavedQueriesHintSender),
-            text_field(QueryField::Sender, SENDER_ID, &values.sender),
-        ),
-        row_of(
-            Msg::SavedQueriesFieldKind,
-            Some(Msg::SavedQueriesHintKind),
-            text_field(QueryField::Kind, KIND_ID, &values.kind),
-        ),
-        row_of(
-            Msg::SavedQueriesFieldTags,
-            Some(Msg::SavedQueriesHintTags),
-            tags_control,
-        ),
-        row_of(
-            Msg::SavedQueriesFieldFullText,
-            Some(Msg::SavedQueriesHintFullText),
-            text_field(QueryField::FullText, FULL_TEXT_ID, &values.full_text),
-        ),
-    ]
-    .into()
+            format::ellipsize_end(name, NAME_CHARS)
+        },
+        secondary: format::ellipsize_end(&criteria_text(&draft.spec, lang, kinds), CRITERIA_CHARS),
+        right: None,
+        lead: None,
+        muted: false,
+    }
 }
 
-fn delete_question<'a>(
-    state: &SavedQueries,
-    lang: Language,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let name = state.selected().map_or("", |query| query.name.as_str());
-    row![
-        container(paragraph(
+fn detail<'a>(state: &SavedQueries, lang: Language, palette: &Palette) -> Element<'a, Message> {
+    let mut children: Vec<Element<'a, Message>> = Vec::new();
+    if state.is_confirming_delete() {
+        let name = state.selected().map_or("", |query| query.name.as_str());
+        children.push(page_kit::error_line(
             fill_template(
                 lang.text(Msg::SavedQueriesDeleteQuestion),
-                &[("{name}", name)]
+                &[("{name}", name)],
             ),
             palette,
-        ))
-        .width(iced::Length::Fill),
-        kit::button(
-            lang.text(Msg::SavedQueriesCancel),
-            Some(send(SavedQueriesMessage::CancelStep)),
-            Tone::Secondary,
+        ));
+    }
+    if let Some(problem) = state.problem() {
+        children.push(page_kit::error_line(problem_text(problem, lang), palette));
+    }
+    let Some(spec) = state.selected_spec() else {
+        return page_kit::detail(children);
+    };
+    if let Some(step) = state.export_step() {
+        children.extend(export_step(state, step, lang, palette));
+    }
+    children.push(page_kit::form_row(
+        lang.text(Msg::ColumnName),
+        page_kit::text_field(
+            "",
+            state.name(),
+            NAME_ID,
+            Some(|typed| send(SavedQueriesMessage::NameChanged(typed))),
+            send(SavedQueriesMessage::Save),
             palette,
         ),
-        kit::button(
-            lang.text(Msg::SavedQueriesDeleteConfirm),
-            Some(send(SavedQueriesMessage::ConfirmDelete)),
-            Tone::Danger,
-            palette,
-        ),
-    ]
-    .spacing(spacing::S)
-    .align_y(alignment::Vertical::Center)
-    .into()
+        None,
+        palette,
+    ));
+    children.push(page_kit::form_row(
+        lang.text(Msg::SavedQueriesColumnCriteria),
+        criteria_control(spec, lang, state, palette),
+        None,
+        palette,
+    ));
+    children.push(page_kit::section(
+        lang.text(Msg::SavedQueriesResult),
+        palette,
+    ));
+    match state.results() {
+        Some(results) => {
+            children.extend(result_rows(results, lang, palette));
+            children.extend(hit_rows(results, lang, palette));
+        }
+        None => children.push(page_kit::hint(lang.text(Msg::SavedQueriesLoading), palette)),
+    }
+    page_kit::detail(children)
 }
 
-fn result<'a>(
-    state: &SavedQueries,
-    results: &crate::saved_queries::Results,
-    line_chars: usize,
+fn criteria_control<'a>(
+    spec: &QuerySpec,
     lang: Language,
+    state: &SavedQueries,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let mut figures = vec![
-        (
-            lang.text(Msg::SavedQueriesSummaryHits),
-            results.hits.len().to_string(),
-        ),
-        (
-            lang.text(if results.missing() == 1 {
+    let mut items: Vec<Element<'a, Message>> = criteria(spec, lang, &state.kinds().catalog)
+        .into_iter()
+        .map(|(label, value)| page_kit::criterion(label, &value, palette))
+        .collect();
+    if items.is_empty() {
+        items.push(page_kit::value_dim(
+            lang.text(Msg::SavedQueriesCriteriaAll),
+            palette,
+        ));
+    }
+    items.push(page_kit::link(
+        lang.text(Msg::SavedQueriesEditInSearch),
+        Some(send(SavedQueriesMessage::EditInSearch)),
+        palette,
+    ));
+    Row::with_children(items)
+        .spacing(GAP_S)
+        .align_y(alignment::Vertical::Center)
+        .wrap()
+        .into()
+}
+
+/// The figures: hits, their sum and the files that are gone.
+fn result_rows<'a>(
+    results: &Results,
+    lang: Language,
+    palette: &Palette,
+) -> Vec<Element<'a, Message>> {
+    let mut rows = vec![page_kit::form_row(
+        lang.text(Msg::SavedQueriesSummaryHits),
+        page_kit::value(results.hits.len().to_string(), palette),
+        None,
+        palette,
+    )];
+    let totals = results.totals();
+    if !totals.is_empty() {
+        rows.push(page_kit::form_row(
+            lang.text(Msg::SavedQueriesSummarySum),
+            page_kit::value(
+                totals
+                    .iter()
+                    .map(amount_text)
+                    .collect::<Vec<_>>()
+                    .join(" · "),
+                palette,
+            ),
+            None,
+            palette,
+        ));
+    }
+    let missing = results.missing();
+    if missing > 0 {
+        rows.push(page_kit::form_row(
+            lang.text(if missing == 1 {
                 Msg::SavedQueriesSummaryMissingOne
             } else {
                 Msg::SavedQueriesSummaryMissingOther
             }),
-            results.missing().to_string(),
-        ),
-    ];
-    let totals = results.totals();
-    if !totals.is_empty() {
-        figures.push((
-            lang.text(Msg::SavedQueriesSummarySum),
-            totals
-                .iter()
-                .map(amount_text)
-                .collect::<Vec<_>>()
-                .join(" · "),
+            page_kit::cell(vec![
+                page_kit::value_in(missing.to_string(), palette.error),
+                page_kit::link(
+                    lang.text(if results.missing_shown {
+                        Msg::SavedQueriesHideList
+                    } else {
+                        Msg::SavedQueriesShowList
+                    }),
+                    Some(send(SavedQueriesMessage::ToggleMissing)),
+                    palette,
+                ),
+            ]),
+            None,
+            palette,
         ));
     }
-    let mut content = column![kit::count_summary(
-        &figures,
-        None,
-        results.expanded,
-        send(SavedQueriesMessage::ToggleHits),
-        lang.text(Msg::SavedQueriesShowList),
-        lang.text(Msg::SavedQueriesHideList),
+    rows
+}
+
+/// The first hits, or the missing ones while those are asked for.
+fn hit_rows<'a>(results: &Results, lang: Language, palette: &Palette) -> Vec<Element<'a, Message>> {
+    let shown: Vec<_> = results
+        .hits
+        .iter()
+        .filter(|hit| hit.missing || !results.missing_shown)
+        .collect();
+    if shown.is_empty() {
+        return Vec::new();
+    }
+    let mut rows = vec![page_kit::section(
+        lang.text(Msg::SavedQueriesSummaryHits),
         palette,
-    )]
-    .spacing(spacing::S);
-    if results.expanded {
-        let missing_mark = lang.text(Msg::SavedQueriesHitMissing);
-        for hit in results.hits.iter().take(VISIBLE_HITS) {
-            let path = hit.path.display().to_string();
-            let line = if hit.missing {
-                let room = line_chars.saturating_sub(missing_mark.chars().count() + 3);
-                format!("{} ({missing_mark})", format::ellipsize_middle(&path, room))
-            } else {
-                format::ellipsize_middle(&path, line_chars)
-            };
-            content = content.push(one_line(line, palette));
-        }
-        let left_out = results.hits.len().saturating_sub(VISIBLE_HITS);
-        if left_out > 0 {
-            content = content.push(dim(
-                fill_template(
-                    lang.text(Msg::SavedQueriesHitsMore),
-                    &[("{count}", &left_out.to_string())],
-                ),
-                palette,
-            ));
-        }
+    )];
+    for hit in shown.iter().take(VISIBLE_HITS) {
+        let date = hit
+            .fields
+            .date
+            .map(|date| date.format("%Y-%m-%d").to_string())
+            .unwrap_or_default();
+        let file_name = hit
+            .path
+            .file_name()
+            .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+        let line: Element<'a, Message> = row![
+            container(page_kit::value_dim(date, palette)).width(DATE_WIDTH),
+            container(page_kit::value(
+                hit.fields.sender.clone().unwrap_or_default(),
+                palette
+            ))
+            .width(SENDER_WIDTH),
+            page_kit::mono(file_name, TEXT_BODY, palette.text),
+        ]
+        .spacing(GAP_XS)
+        .into();
+        rows.push(page_kit::list_row_one(
+            line,
+            hit.fields.amount.as_ref().map(amount_text),
+            false,
+            false,
+            None,
+            palette,
+        ));
     }
-    // The export step has its own buttons: the one that opens it has no place
-    // beside it.
-    if state.export_step().is_none() {
-        content = content.push(
-            row![kit::button(
-                lang.text(Msg::SavedQueriesExport),
-                (state.copies() > 0 && !state.is_busy())
-                    .then(|| send(SavedQueriesMessage::StartExport)),
-                Tone::Secondary,
-                palette,
-            )]
-            .align_y(alignment::Vertical::Center),
-        );
+    let left_out = shown.len().saturating_sub(VISIBLE_HITS);
+    if left_out > 0 {
+        rows.push(page_kit::hint(
+            fill_template(
+                lang.text(Msg::SavedQueriesHitsMore),
+                &[("{count}", &left_out.to_string())],
+            ),
+            palette,
+        ));
     }
-    content.into()
+    rows
 }
 
 fn export_step<'a>(
     state: &SavedQueries,
-    step: &crate::saved_queries::ExportStep,
-    line_chars: usize,
-    lang: Language,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let folder = format::ellipsize_middle(
-        &step.folder.display().to_string(),
-        line_chars.saturating_sub(24),
-    );
-    column![
-        kit::section(
-            lang.text(Msg::SavedQueriesExportTitle),
-            column![
-                paragraph(
-                    fill_template(
-                        lang.text(Msg::SavedQueriesExportFolder),
-                        &[("{folder}", &folder)]
-                    ),
-                    palette,
-                ),
-                paragraph(
-                    fill_template(
-                        lang.text(Msg::SavedQueriesExportCount),
-                        &[("{count}", &state.copies().to_string())],
-                    ),
-                    palette,
-                ),
-                paragraph(
-                    fill_template(
-                        lang.text(Msg::SavedQueriesExportCsv),
-                        &[("{name}", lang.text(Msg::SavedQueriesExportCsvName))],
-                    ),
-                    palette,
-                ),
-                paragraph(lang.text(Msg::SavedQueriesExportCsvExplain), palette),
-                dim(lang.text(Msg::SavedQueriesExportPromise), palette),
-            ]
-            .spacing(spacing::XS),
-            palette,
-        ),
-        row![kit::button(
-            lang.text(Msg::SavedQueriesChooseFolder),
-            Some(send(SavedQueriesMessage::PickFolder)),
-            Tone::Secondary,
-            palette,
-        )],
-    ]
-    .spacing(spacing::S)
-    .into()
-}
-
-fn buttons<'a>(
-    state: &SavedQueries,
+    step: &ExportStep,
     lang: Language,
     palette: &Palette,
 ) -> Vec<Element<'a, Message>> {
-    if state.export_step().is_some() {
-        return vec![
-            kit::button(
-                lang.text(Msg::SavedQueriesCancel),
-                Some(send(SavedQueriesMessage::CancelStep)),
-                Tone::Secondary,
-                palette,
+    vec![
+        page_kit::section(lang.text(Msg::SavedQueriesExportTitle), palette),
+        page_kit::form_row(
+            lang.text(Msg::SavedQueriesExportFolder),
+            page_kit::cell(vec![
+                page_kit::mono(step.folder.display().to_string(), TEXT_BODY, palette.text),
+                page_kit::link(
+                    lang.text(Msg::SavedQueriesChooseFolder),
+                    Some(send(SavedQueriesMessage::PickFolder)),
+                    palette,
+                ),
+            ]),
+            None,
+            palette,
+        ),
+        page_kit::form_row(
+            lang.text(Msg::SavedQueriesExportCount),
+            page_kit::value(state.copies().to_string(), palette),
+            None,
+            palette,
+        ),
+        page_kit::form_row(
+            lang.text(Msg::SavedQueriesExportCsv),
+            page_kit::mono(
+                lang.text(Msg::SavedQueriesExportCsvName).to_owned(),
+                TEXT_BODY,
+                palette.text,
             ),
-            kit::enter_button(
-                lang.text(Msg::SavedQueriesExportConfirm),
-                (!state.is_busy()).then(|| send(SavedQueriesMessage::Export)),
-                Tone::Primary,
+            Some(page_kit::hint(
+                lang.text(Msg::SavedQueriesExportCsvExplain),
                 palette,
-            ),
-        ];
+            )),
+            palette,
+        ),
+        page_kit::hint(lang.text(Msg::SavedQueriesExportPromise), palette),
+    ]
+}
+
+fn action_bar<'a>(state: &SavedQueries, lang: Language, palette: &Palette) -> Element<'a, Message> {
+    if state.is_confirming_delete() {
+        return page_kit::action_bar(
+            None,
+            vec![
+                page_kit::secondary(
+                    lang.text(Msg::SavedQueriesCancel),
+                    Some(send(SavedQueriesMessage::CancelStep)),
+                    palette,
+                ),
+                page_kit::primary(
+                    lang.text(Msg::SavedQueriesDeleteConfirm),
+                    Some(kit::ENTER_KEY),
+                    Some(send(SavedQueriesMessage::ConfirmDelete)),
+                    palette,
+                ),
+            ],
+            palette,
+        );
     }
+    if state.export_step().is_some() {
+        return page_kit::action_bar(
+            None,
+            vec![
+                page_kit::secondary(
+                    lang.text(Msg::SavedQueriesCancel),
+                    Some(send(SavedQueriesMessage::CancelStep)),
+                    palette,
+                ),
+                page_kit::primary(
+                    lang.text(Msg::SavedQueriesExportConfirm),
+                    Some(kit::ENTER_KEY),
+                    (!state.is_busy()).then(|| send(SavedQueriesMessage::Export)),
+                    palette,
+                ),
+            ],
+            palette,
+        );
+    }
+    if state.selected_spec().is_none() {
+        return page_kit::action_bar(None, Vec::new(), palette);
+    }
+    let note = match state.exported() {
+        Some(done) => {
+            let csv_name = done
+                .csv_path
+                .file_name()
+                .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+            fill_template(
+                lang.text(Msg::SavedQueriesExportedNote),
+                &[
+                    ("{copied}", &done.copied.to_string()),
+                    ("{existing}", &done.skipped_existing.to_string()),
+                    ("{missing}", &done.skipped_missing.to_string()),
+                    ("{csv}", &csv_name),
+                ],
+            )
+        }
+        None => lang.text(Msg::SavedQueriesExportNote).to_owned(),
+    };
     let idle = !state.is_busy();
-    let secondary = |label: Msg, message: SavedQueriesMessage, enabled: bool| {
-        kit::button(
-            lang.text(label),
-            enabled.then(|| send(message)),
-            Tone::Secondary,
+    let open = page_kit::secondary(
+        lang.text(Msg::SavedQueriesOpenInSearch),
+        Some(send(SavedQueriesMessage::OpenInSearch)),
+        palette,
+    );
+    let last = if state.unsaved().is_some() {
+        page_kit::primary(
+            lang.text(Msg::SavedQueriesSave),
+            Some(kit::ENTER_KEY),
+            idle.then(|| send(SavedQueriesMessage::Save)),
+            palette,
+        )
+    } else {
+        page_kit::primary(
+            lang.text(Msg::SavedQueriesExport),
+            Some(kit::ENTER_KEY),
+            (idle && state.copies() > 0).then(|| send(SavedQueriesMessage::StartExport)),
             palette,
         )
     };
-    vec![
-        secondary(Msg::SavedQueriesClose, SavedQueriesMessage::Close, true),
-        secondary(Msg::SavedQueriesNew, SavedQueriesMessage::New, idle),
-        secondary(Msg::SavedQueriesSave, SavedQueriesMessage::Save, idle),
-        secondary(
-            Msg::SavedQueriesDelete,
-            SavedQueriesMessage::AskDelete,
-            idle && state.selected().is_some(),
-        ),
-        kit::enter_button(
-            lang.text(Msg::SavedQueriesRun),
-            idle.then(|| send(SavedQueriesMessage::Run)),
-            Tone::Primary,
-            palette,
-        ),
-    ]
+    page_kit::action_bar(Some(note), vec![open, last], palette)
 }
 
 fn problem_text(problem: &Problem, lang: Language) -> String {
     match problem {
-        Problem::InvalidYear => lang.text(Msg::SavedQueriesProblemYear).to_owned(),
         Problem::NameMissing => lang.text(Msg::SavedQueriesProblemName).to_owned(),
         Problem::Failed(detail) => fill_template(
             lang.text(Msg::SavedQueriesProblemFailed),
             &[("{detail}", detail)],
         ),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    struct Field(bool);
-
-    impl Focusable for Field {
-        fn is_focused(&self) -> bool {
-            self.0
-        }
-        fn focus(&mut self) {}
-        fn unfocus(&mut self) {}
-    }
-
-    #[test]
-    fn the_focused_form_field_is_found_by_its_id() {
-        let mut operation = focused_field();
-        let bounds = Rectangle::default();
-        operation.focusable(Some(&widget::Id::new(NAME_ID)), bounds, &mut Field(false));
-        operation.focusable(Some(&widget::Id::new(KIND_ID)), bounds, &mut Field(true));
-        operation.focusable(
-            Some(&widget::Id::new("elsewhere")),
-            bounds,
-            &mut Field(false),
-        );
-        assert!(matches!(
-            operation.finish(),
-            Outcome::Some(Some(QueryField::Kind))
-        ));
     }
 }

@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use ncrs_index::{HermesCounts, IncludeOutcome, RuleId, SavedQuery, SavedQueryId};
+use ncrs_index::{HermesCounts, IncludeOutcome, QuerySpec, RuleId, SavedQuery, SavedQueryId};
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
 
@@ -48,7 +48,6 @@ use crate::replan_work::{ReplanItem, ReplanSummary};
 use crate::review_list::FormField;
 use crate::review_work::{AcceptSummary, ConfirmOutcome, ReviewItem};
 use crate::rules_work::{RulesLoad, TryResult};
-use crate::saved_queries::{Form, QueryField};
 use crate::search_filters::{Facet, FacetValue};
 use crate::suggestion_work::SuggestedRule;
 use crate::theme_fetch::{Fetched, Installed};
@@ -987,33 +986,32 @@ pub enum SavedQueriesMessage {
         generation: u64,
         result: Result<Vec<SavedQuery>, String>,
     },
+    /// The hits of every saved query, for the list.
+    Counted {
+        generation: u64,
+        result: Result<Vec<(SavedQueryId, usize)>, String>,
+    },
     /// The wheel or trackpad over the list.
     Scrolled(iced::mouse::ScrollDelta),
     Move(isize),
     /// A click on the query at this position.
     Select(usize),
-    New,
-    /// A template button: the form it fills, built where the text is known.
-    UseTemplate(Form),
-    FieldChanged(QueryField, String),
-    /// Enter in the tag field: the typed words become chips.
-    AddTag,
-    RemoveTag(String),
-    /// Tab (`false`) or Shift+Tab (`true`) in the form.
-    FocusField {
-        backwards: bool,
-    },
-    /// Left in the form: asks which field has the focus.
-    LeftInForm,
-    /// The answer: the field that has the focus, if any. Left only goes on to
-    /// the sidebar when that field is empty (iced does not tell where its
-    /// caret is) or none has the focus.
-    LeftChecked(Option<QueryField>),
+    /// An entry of "New": the search opens with these criteria.
+    NewSearch(QuerySpec),
+    /// The search opens on the criteria of the report, to change that one.
+    EditInSearch,
+    /// The search opens on the criteria of the report, as a search of its own.
+    OpenInSearch,
+    NameChanged(String),
+    /// Enter in the name field or the button: saves the name and criteria.
     Save,
     Saved {
         generation: u64,
         result: Result<SavedQueryId, String>,
     },
+    /// Enter: answers the step that is up, or else does what the page offers
+    /// first: saves the unsaved search, exports the hits.
+    Confirm,
     /// The first step of deleting: the question in the page.
     AskDelete,
     CancelStep,
@@ -1022,13 +1020,14 @@ pub enum SavedQueriesMessage {
         generation: u64,
         result: Result<SavedQueryId, String>,
     },
-    /// Enter or the button: asks the index.
-    Run,
+    /// Asks the index for the hits of the selected report.
     Ran {
         generation: u64,
+        serial: u64,
         result: Result<Vec<QueryHit>, String>,
     },
-    ToggleHits,
+    /// Lists the files that are gone, or the first hits again.
+    ToggleMissing,
     /// The first step of exporting: the page asks where to and shows what
     /// would be copied.
     StartExport,

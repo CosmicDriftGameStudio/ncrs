@@ -748,16 +748,6 @@ pub struct InputState {
 }
 
 impl InputState {
-    /// Left in the saved queries form: the text fields capture it, so the key
-    /// routing never sees it, yet at the start of a field it leads to the
-    /// sidebar.
-    fn leaves_form_left(&self, key: &Key, modifiers: Modifiers) -> bool {
-        self.saved_queries
-            && !self.hermes_sidebar
-            && modifiers.is_empty()
-            && matches!(key, Key::Named(Named::ArrowLeft))
-    }
-
     /// The overlay Escape closes, first match wins: the order is the stacking
     /// order, so an overlay on top closes before the one below it.
     fn closes_overlay(&self, key: &Key) -> Option<Message> {
@@ -827,11 +817,8 @@ impl InputState {
                 // is a click elsewhere.
                 (status == event::Status::Ignored).then_some(Message::ClickedOutside)
             }
-            event::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) => {
+            event::Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => {
                 self.alt_tap.key_pressed(key);
-                if self.leaves_form_left(key, *modifiers) {
-                    return Some(Message::SavedQueries(SavedQueriesMessage::LeftInForm));
-                }
                 let leaves_field = matches!(key, Key::Named(Named::Escape | Named::Tab));
                 if self.path_editing && leaves_field {
                     return Some(Message::PathFieldCancel);
@@ -1436,32 +1423,5 @@ mod tests {
                 ..
             }
         )));
-    }
-
-    #[test]
-    fn left_in_the_saved_queries_form_asks_where_the_focus_is() {
-        let mut input = InputState {
-            saved_queries: true,
-            ..InputState::default()
-        };
-        let left = |modifiers| {
-            event::Event::Keyboard(keyboard::Event::KeyPressed {
-                key: Key::Named(Named::ArrowLeft),
-                modified_key: Key::Named(Named::ArrowLeft),
-                physical_key: Physical::Unidentified(keyboard::key::NativeCode::Unidentified),
-                location: Location::Standard,
-                modifiers,
-                text: None,
-                repeat: false,
-            })
-        };
-        let asked = Message::SavedQueries(SavedQueriesMessage::LeftInForm);
-        assert_eq!(feed(&mut input, &[left(Modifiers::empty())]), [asked]);
-        assert!(feed(&mut input, &[left(Modifiers::SHIFT)]).is_empty());
-        input.hermes_sidebar = true;
-        assert!(feed(&mut input, &[left(Modifiers::empty())]).is_empty());
-        input.hermes_sidebar = false;
-        input.saved_queries = false;
-        assert!(feed(&mut input, &[left(Modifiers::empty())]).is_empty());
     }
 }

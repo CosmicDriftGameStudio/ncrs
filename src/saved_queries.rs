@@ -1,33 +1,22 @@
-//! State of the saved queries page: the list of queries, the form of the one
-//! under the cursor (or a new one), what running it found, and the steps of
-//! deleting and exporting. No widgets and no tasks; `App` owns it and changes
-//! it from `update`, the view is `ui::saved_queries`.
+//! State of the reports page: the list of saved queries, the one under the
+//! cursor (or a search not saved yet), what running it found, and the steps of
+//! deleting and exporting. The criteria are only shown here; they are changed
+//! in the search. No widgets and no tasks; `App` owns it and changes it from
+//! `update`, the view is `ui::saved_queries`.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use iced::mouse::ScrollDelta;
 
-use ncrs_index::{tag_name, Amount, KindCatalog, Kinds, QuerySpec, SavedQuery, SavedQueryId};
+use ncrs_index::{tag_name, Amount, Kinds, QuerySpec, SavedQuery, SavedQueryId};
 
 use crate::i18n::{Language, Msg};
 use crate::list_window::ListWindow;
 use crate::query_work::{copies_of, ExportSummary, QueryHit};
 
-/// A text field of the form.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum QueryField {
-    Name,
-    Year,
-    Sender,
-    Kind,
-    /// The field a tag is typed in; the tags themselves are chips.
-    Tags,
-    FullText,
-}
-
-/// A ready-made report the user starts from; the form it fills is theirs to
-/// change before saving.
+/// A ready-made report the user starts from; the search it opens is theirs
+/// to change before saving.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReportTemplate {
     InvoicesOfYear {
@@ -49,7 +38,7 @@ pub fn templates(this_year: i32) -> Vec<ReportTemplate> {
 }
 
 impl ReportTemplate {
-    /// The name of the template, as button and as name of the report.
+    /// The name of the template, as menu entry and as name of the report.
     pub fn name(&self, lang: Language) -> String {
         match self {
             Self::InvoicesOfYear { .. } => lang
@@ -60,131 +49,35 @@ impl ReportTemplate {
         }
     }
 
-    pub fn form(&self, lang: Language, kinds: &KindCatalog) -> Form {
-        let named = Form {
-            name: self.name(lang),
-            ..Form::default()
-        };
+    pub fn spec(&self, lang: Language) -> QuerySpec {
         match self {
-            Self::InvoicesOfYear { year } => Form {
-                year: year.to_string(),
-                kind: lang.kind_label(kinds, "invoice").into_owned(),
-                ..named
+            Self::InvoicesOfYear { year } => QuerySpec {
+                year: Some(*year),
+                kind: Some("invoice".to_owned()),
+                ..QuerySpec::default()
             },
-            Self::Contracts => Form {
-                kind: lang.kind_label(kinds, "contract").into_owned(),
-                ..named
+            Self::Contracts => QuerySpec {
+                kind: Some("contract".to_owned()),
+                ..QuerySpec::default()
             },
-            Self::OpenInvoices => Form {
-                kind: lang.kind_label(kinds, "invoice").into_owned(),
-                tags: BTreeSet::from([tag_name(lang.text(Msg::SavedQueriesTagOpen))]),
-                ..named
+            Self::OpenInvoices => QuerySpec {
+                kind: Some("invoice".to_owned()),
+                tags: [tag_name(lang.text(Msg::SavedQueriesTagOpen))].into(),
+                ..QuerySpec::default()
             },
         }
     }
 }
 
-/// The criteria as the user sees and edits them.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Form {
+/// A search not saved as a report yet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Draft {
     pub name: String,
-    pub year: String,
-    pub sender: String,
-    pub kind: String,
-    pub tags: BTreeSet<String>,
-    /// What is typed for the next tag.
-    pub tag_input: String,
-    pub full_text: String,
-}
-
-impl Form {
-    /// A form that asks what `spec` asks, without a name.
-    pub fn of_spec(spec: &QuerySpec, kinds: &Kinds) -> Self {
-        Self {
-            name: String::new(),
-            year: spec.year.map(|year| year.to_string()).unwrap_or_default(),
-            sender: spec.sender.clone().unwrap_or_default(),
-            kind: spec
-                .kind
-                .as_deref()
-                .map(|kind| kinds.kind_word(kind).into_owned())
-                .unwrap_or_default(),
-            tags: spec.tags.clone(),
-            tag_input: String::new(),
-            full_text: spec.full_text.clone().unwrap_or_default(),
-        }
-    }
-
-    fn of(query: &SavedQuery, kinds: &Kinds) -> Self {
-        Self {
-            name: query.name.clone(),
-            ..Self::of_spec(&query.spec, kinds)
-        }
-    }
-
-    pub fn text(&self, field: QueryField) -> &str {
-        match field {
-            QueryField::Name => &self.name,
-            QueryField::Year => &self.year,
-            QueryField::Sender => &self.sender,
-            QueryField::Kind => &self.kind,
-            QueryField::Tags => &self.tag_input,
-            QueryField::FullText => &self.full_text,
-        }
-    }
-
-    fn text_mut(&mut self, field: QueryField) -> &mut String {
-        match field {
-            QueryField::Name => &mut self.name,
-            QueryField::Year => &mut self.year,
-            QueryField::Sender => &mut self.sender,
-            QueryField::Kind => &mut self.kind,
-            QueryField::Tags => &mut self.tag_input,
-            QueryField::FullText => &mut self.full_text,
-        }
-    }
-
-    /// The tags of the chips and those typed but not added yet, comma
-    /// separated.
-    fn tags_with_input(&self) -> BTreeSet<String> {
-        let typed = self.tag_input.split(',').map(tag_name);
-        self.tags
-            .iter()
-            .cloned()
-            .chain(typed)
-            .filter(|tag| !tag.is_empty())
-            .collect()
-    }
-
-    /// What the form asks for; a year that is no year is a problem, never
-    /// silently dropped.
-    fn spec(&self, kinds: &KindCatalog) -> Result<QuerySpec, Problem> {
-        let year = match self.year.trim() {
-            "" => None,
-            text => Some(
-                text.parse::<i32>()
-                    .ok()
-                    .filter(|year| (1..=9999).contains(year))
-                    .ok_or(Problem::InvalidYear)?,
-            ),
-        };
-        let non_empty = |typed: &str| {
-            let text = typed.trim();
-            (!text.is_empty()).then(|| text.to_owned())
-        };
-        Ok(QuerySpec {
-            year,
-            sender: non_empty(&self.sender),
-            kind: non_empty(&self.kind).map(|kind| kinds.stored_kind(&kind)),
-            tags: self.tags_with_input(),
-            full_text: non_empty(&self.full_text),
-        })
-    }
+    pub spec: QuerySpec,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Problem {
-    InvalidYear,
     NameMissing,
     /// The work on the index or the files failed; the detail stays English.
     Failed(String),
@@ -194,8 +87,8 @@ pub enum Problem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Results {
     pub hits: Vec<QueryHit>,
-    /// The list of the hits is shown.
-    pub expanded: bool,
+    /// The detail lists the files that are gone instead of the first hits.
+    pub missing_shown: bool,
 }
 
 impl Results {
@@ -241,20 +134,23 @@ pub struct ExportRequest {
     pub folder: PathBuf,
 }
 
-/// Most queries of the list shown at once; the list follows the cursor.
-pub const VISIBLE_ROWS: usize = 3;
+/// Most reports of the list shown at once; the list follows the cursor.
+pub const VISIBLE_ROWS: usize = 12;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SavedQueries {
     rows: Vec<SavedQuery>,
-    /// `None` is a new query, not saved yet.
+    /// `None` is the search that is not saved yet, if there is one.
     cursor: Option<usize>,
     window: ListWindow,
     /// The list is loading or the work is running; the view takes no new task.
     busy: bool,
-    form: Form,
+    /// What is typed in the name field.
+    name: String,
     problem: Option<Problem>,
     results: Option<Results>,
+    /// Which run the results are waiting for; an older answer is dropped.
+    run_serial: u64,
     /// Hits counted so far, by query, for the list.
     hit_counts: HashMap<SavedQueryId, usize>,
     confirming_delete: bool,
@@ -262,8 +158,9 @@ pub struct SavedQueries {
     exported: Option<ExportSummary>,
     /// The query to put the cursor on when the list is loaded next.
     select_after_load: Option<SavedQueryId>,
-    /// A new report to start from once the list is there.
-    prefilled: Option<Form>,
+    /// A search to show as the unsaved row once the list is there.
+    pending_draft: Option<Draft>,
+    unsaved: Option<Draft>,
     /// The year the templates count back from.
     this_year: i32,
     kinds: Kinds,
@@ -277,15 +174,17 @@ impl SavedQueries {
             cursor: None,
             window: ListWindow::default(),
             busy: true,
-            form: Form::default(),
+            name: String::new(),
             problem: None,
             results: None,
+            run_serial: 0,
             hit_counts: HashMap::new(),
             confirming_delete: false,
             export: None,
             exported: None,
             select_after_load: None,
-            prefilled: None,
+            pending_draft: None,
+            unsaved: None,
             this_year,
             kinds: Kinds::default(),
         }
@@ -307,16 +206,6 @@ impl SavedQueries {
         templates(self.this_year)
     }
 
-    /// Starts a new report from a template's form.
-    pub fn use_template(&mut self, form: Form) {
-        if self.busy {
-            return;
-        }
-        self.cursor = None;
-        self.form = form;
-        self.leave_query();
-    }
-
     pub fn rows(&self) -> &[SavedQuery] {
         &self.rows
     }
@@ -335,12 +224,25 @@ impl SavedQueries {
         self.rows.get(index)
     }
 
+    /// The search that is not saved yet, while its row is the selected one.
+    pub fn unsaved(&self) -> Option<&Draft> {
+        self.unsaved.as_ref().filter(|_| self.cursor.is_none())
+    }
+
+    /// What the selected row asks the index.
+    pub fn selected_spec(&self) -> Option<&QuerySpec> {
+        match self.selected() {
+            Some(query) => Some(&query.spec),
+            None => self.unsaved().map(|draft| &draft.spec),
+        }
+    }
+
     pub fn is_busy(&self) -> bool {
         self.busy
     }
 
-    pub fn form(&self) -> &Form {
-        &self.form
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     pub fn problem(&self) -> Option<&Problem> {
@@ -389,46 +291,55 @@ impl SavedQueries {
     }
 
     /// The list the work returned. The cursor goes to the query that was just
-    /// saved, else stays on the one it was on if it is still there.
+    /// saved, else stays on the one it was on if it is still there, else on
+    /// the first.
     pub fn loaded(&mut self, rows: Vec<SavedQuery>) {
-        self.load_rows(rows);
-        if let Some(form) = self.prefilled.take() {
-            self.cursor = None;
-            self.form = form;
-            self.leave_query();
-        }
-    }
-
-    /// Opens a new report with `form` as soon as the list has loaded, so the
-    /// list does not replace it.
-    pub fn prefill(&mut self, form: Form) {
-        self.prefilled = Some(form);
-    }
-
-    /// The new report the list is waiting to open.
-    pub fn is_prefilled(&self) -> bool {
-        self.prefilled.is_some()
-    }
-
-    fn load_rows(&mut self, rows: Vec<SavedQuery>) {
         let wanted = self
             .select_after_load
             .take()
             .or_else(|| self.selected().map(|query| query.id));
-        let previous = self.cursor.is_some();
         self.rows = rows;
         self.busy = false;
+        if let Some(draft) = self.pending_draft.take() {
+            self.cursor = None;
+            self.name.clone_from(&draft.name);
+            self.unsaved = Some(draft);
+            self.leave_query();
+            return;
+        }
         self.cursor = wanted.and_then(|id| self.rows.iter().position(|query| query.id == id));
+        if self.cursor.is_none() && self.unsaved.is_none() && !self.rows.is_empty() {
+            self.cursor = Some(0);
+        }
         if let Some(cursor) = self.cursor {
             self.window
                 .ensure_visible(cursor, self.rows.len(), VISIBLE_ROWS);
         }
-        if let Some(query) = self.selected().cloned() {
-            self.form = Form::of(&query, &self.kinds);
-        } else if previous {
-            self.form = Form::default();
-            self.results = None;
+        if let Some(name) = self.selected().map(|query| query.name.clone()) {
+            self.name = name;
         }
+    }
+
+    /// Puts the cursor on the query `id` once the list has loaded.
+    pub fn select_when_loaded(&mut self, id: SavedQueryId) {
+        self.select_after_load = Some(id);
+    }
+
+    /// The name field holds another name than the selected report has.
+    pub fn name_is_changed(&self) -> bool {
+        self.selected()
+            .is_some_and(|query| query.name != self.name.trim())
+    }
+
+    /// Shows `draft` as the unsaved row as soon as the list has loaded, so the
+    /// list does not replace it.
+    pub fn prefill(&mut self, draft: Draft) {
+        self.pending_draft = Some(draft);
+    }
+
+    /// The unsaved row the list is waiting to show.
+    pub fn is_prefilled(&self) -> bool {
+        self.pending_draft.is_some()
     }
 
     pub fn failed(&mut self, detail: String) {
@@ -455,15 +366,16 @@ impl SavedQueries {
         let Some(query) = self.rows.get(index) else {
             return;
         };
-        self.form = Form::of(query, &self.kinds);
+        self.name.clone_from(&query.name);
         self.cursor = Some(index);
+        self.unsaved = None;
         self.window
             .ensure_visible(index, self.rows.len(), VISIBLE_ROWS);
         self.leave_query();
     }
 
     /// The wheel moves the window; a query under the cursor follows it when
-    /// the cursor would leave. A new query stays the one being edited.
+    /// the cursor would leave. The unsaved row stays the one shown.
     pub fn scroll(&mut self, delta: ScrollDelta) {
         let mut moved = self.cursor.unwrap_or_default();
         self.window
@@ -473,56 +385,29 @@ impl SavedQueries {
         }
     }
 
-    /// An empty form for a query that is not saved yet.
-    pub fn start_new(&mut self) {
-        if self.busy {
-            return;
-        }
-        self.cursor = None;
-        self.form = Form::default();
-        self.leave_query();
-    }
-
     fn leave_query(&mut self) {
         self.problem = None;
         self.results = None;
         self.confirming_delete = false;
         self.export = None;
         self.exported = None;
+        self.run_serial = self.run_serial.wrapping_add(1);
     }
 
-    /// Turns what is typed for tags into chips.
-    pub fn add_tags(&mut self) {
-        self.form.tags = self.form.tags_with_input();
-        self.form.tag_input.clear();
+    pub fn set_name(&mut self, name: String) {
+        self.name = name;
         self.problem = None;
     }
 
-    pub fn remove_tag(&mut self, tag: &str) {
-        self.form.tags.remove(tag);
-        self.problem = None;
-    }
-
-    pub fn set_text(&mut self, field: QueryField, text: String) {
-        *self.form.text_mut(field) = text;
-        self.problem = None;
-    }
-
-    /// The query as the form holds it, to be saved: new, or a change of the
-    /// one under the cursor. A missing name or a bad year is reported and
-    /// nothing is returned.
+    /// The report as the name field holds it, to be saved: new, or a rename of
+    /// the one under the cursor. A missing name is reported and nothing is
+    /// returned.
     pub fn begin_save(&mut self) -> Option<SaveRequest> {
         if self.busy {
             return None;
         }
-        let spec = match self.form.spec(&self.kinds.catalog) {
-            Ok(spec) => spec,
-            Err(problem) => {
-                self.problem = Some(problem);
-                return None;
-            }
-        };
-        let name = self.form.name.trim().to_owned();
+        let spec = self.selected_spec()?.clone();
+        let name = self.name.trim().to_owned();
         if name.is_empty() {
             self.problem = Some(Problem::NameMissing);
             return None;
@@ -539,6 +424,7 @@ impl SavedQueries {
     /// The query is saved; the list is loaded again, with the cursor on it.
     pub fn saved(&mut self, id: SavedQueryId) {
         self.select_after_load = Some(id);
+        self.unsaved = None;
         self.hit_counts.remove(&id);
         self.results = None;
     }
@@ -566,46 +452,44 @@ impl SavedQueries {
     pub fn deleted(&mut self, id: SavedQueryId) {
         self.hit_counts.remove(&id);
         self.cursor = None;
-        self.form = Form::default();
+        self.name.clear();
         self.leave_query();
     }
 
-    /// The form as a question to the index; a bad year is reported and
-    /// nothing is returned. Works on a query that is not saved too.
-    pub fn begin_run(&mut self) -> Option<QuerySpec> {
-        if self.busy {
-            return None;
-        }
-        match self.form.spec(&self.kinds.catalog) {
-            Ok(spec) => {
-                self.busy = true;
-                self.problem = None;
-                self.results = None;
-                self.export = None;
-                self.exported = None;
-                Some(spec)
-            }
-            Err(problem) => {
-                self.problem = Some(problem);
-                None
-            }
-        }
+    /// The selected criteria as a question to the index, with the number of
+    /// the run its answer is for; nothing when no row is selected.
+    pub fn begin_run(&mut self) -> Option<(u64, QuerySpec)> {
+        let spec = self.selected_spec()?.clone();
+        self.run_serial = self.run_serial.wrapping_add(1);
+        self.problem = None;
+        self.results = None;
+        self.export = None;
+        self.exported = None;
+        Some((self.run_serial, spec))
     }
 
-    pub fn ran(&mut self, hits: Vec<QueryHit>) {
-        self.busy = false;
+    /// The answer of run `serial`; one of an older run is dropped.
+    pub fn ran(&mut self, serial: u64, hits: Vec<QueryHit>) {
+        if serial != self.run_serial {
+            return;
+        }
         if let Some(id) = self.selected().map(|query| query.id) {
             self.hit_counts.insert(id, hits.len());
         }
         self.results = Some(Results {
             hits,
-            expanded: false,
+            missing_shown: false,
         });
     }
 
-    pub fn toggle_hits(&mut self) {
+    /// The hits counted for the list.
+    pub fn counted(&mut self, counts: Vec<(SavedQueryId, usize)>) {
+        self.hit_counts.extend(counts);
+    }
+
+    pub fn toggle_missing(&mut self) {
         if let Some(results) = self.results.as_mut() {
-            results.expanded = !results.expanded;
+            results.missing_shown = !results.missing_shown;
         }
     }
 
@@ -687,15 +571,13 @@ pub mod tests {
         list
     }
 
-    fn ran_list() -> SavedQueries {
+    pub fn ran_list() -> SavedQueries {
         let mut list = loaded_list();
-        list.select(0);
-        list.begin_run().unwrap();
-        list.ran(vec![
-            hit("a.pdf", false),
-            hit("b.pdf", false),
-            hit("c.pdf", true),
-        ]);
+        let (serial, _) = list.begin_run().unwrap();
+        list.ran(
+            serial,
+            vec![hit("a.pdf", false), hit("b.pdf", false), hit("c.pdf", true)],
+        );
         list
     }
 
@@ -729,30 +611,23 @@ pub mod tests {
     }
 
     #[test]
-    fn a_template_fills_the_form_with_exactly_its_criteria() {
-        let invoices = ReportTemplate::InvoicesOfYear { year: 2026 };
+    fn a_template_asks_for_exactly_its_criteria() {
         for lang in [Language::English, Language::German] {
-            let spec = invoices
-                .form(lang, &KindCatalog::built_in())
-                .spec(&KindCatalog::built_in())
-                .unwrap();
             assert_eq!(
-                spec,
+                ReportTemplate::InvoicesOfYear { year: 2026 }.spec(lang),
                 QuerySpec {
                     year: Some(2026),
                     kind: Some("invoice".to_owned()),
                     ..QuerySpec::default()
                 }
             );
-            assert_eq!(invoices.form(lang, &KindCatalog::built_in()).year, "2026");
+            assert_eq!(
+                ReportTemplate::Contracts.spec(lang).kind,
+                Some("contract".to_owned())
+            );
         }
-
-        let open = ReportTemplate::OpenInvoices
-            .form(Language::German, &KindCatalog::built_in())
-            .spec(&KindCatalog::built_in())
-            .unwrap();
         assert_eq!(
-            open,
+            ReportTemplate::OpenInvoices.spec(Language::German),
             QuerySpec {
                 kind: Some("invoice".to_owned()),
                 tags: ["offen".to_owned()].into(),
@@ -760,43 +635,9 @@ pub mod tests {
             }
         );
         assert_eq!(
-            ReportTemplate::OpenInvoices
-                .form(Language::English, &KindCatalog::built_in())
-                .name,
+            ReportTemplate::OpenInvoices.name(Language::English),
             "Open invoices"
         );
-        assert_eq!(
-            ReportTemplate::Contracts
-                .form(Language::English, &KindCatalog::built_in())
-                .spec(&KindCatalog::built_in())
-                .unwrap()
-                .kind,
-            Some("contract".to_owned())
-        );
-    }
-
-    #[test]
-    fn using_a_template_starts_a_new_report_without_results() {
-        let mut list = ran_list();
-        assert!(list.cursor().is_some() && list.results().is_some());
-        let form = ReportTemplate::Contracts.form(Language::English, &KindCatalog::built_in());
-
-        list.use_template(form.clone());
-
-        assert_eq!(list.cursor(), None);
-        assert_eq!(list.form(), &form);
-        assert!(list.results().is_none());
-    }
-
-    #[test]
-    fn a_busy_page_ignores_a_template() {
-        let mut list = SavedQueries::new(THIS_YEAR);
-
-        list.use_template(
-            ReportTemplate::Contracts.form(Language::English, &KindCatalog::built_in()),
-        );
-
-        assert_eq!(list.form(), &Form::default());
     }
 
     #[test]
@@ -809,7 +650,7 @@ pub mod tests {
                 hit_with(Some(amount(-50, "EUR")), true),
                 hit_with(Some(amount(1, "USD")), false),
             ],
-            expanded: false,
+            missing_shown: false,
         };
 
         assert_eq!(
@@ -818,7 +659,7 @@ pub mod tests {
         );
         let none = Results {
             hits: vec![hit_with(None, false)],
-            expanded: false,
+            missing_shown: false,
         };
         assert!(none.totals().is_empty());
     }
@@ -830,111 +671,125 @@ pub mod tests {
                 hit_with(Some(amount(i64::MAX, "EUR")), false),
                 hit_with(Some(amount(5, "EUR")), false),
             ],
-            expanded: false,
+            missing_shown: false,
         };
 
         assert_eq!(results.totals(), vec![amount(i64::MAX, "EUR")]);
     }
 
     #[test]
-    fn the_page_opens_busy_with_a_new_query() {
-        let list = SavedQueries::new(THIS_YEAR);
-
+    fn the_page_opens_busy_and_the_loaded_list_selects_the_first_report() {
+        let mut list = SavedQueries::new(THIS_YEAR);
         assert!(list.is_busy());
-        assert!(list.rows().is_empty());
-        assert_eq!(list.cursor(), None);
+        assert!(list.selected().is_none());
+
+        list.loaded(stored_queries());
+
+        assert!(!list.is_busy());
+        assert_eq!(list.cursor(), Some(0));
+        assert_eq!(list.name(), "Company A 2024");
     }
 
     #[test]
-    fn selecting_a_query_fills_the_form_and_clears_what_was_found() {
+    fn selecting_a_report_takes_its_name_and_clears_what_was_found() {
         let mut list = ran_list();
+        assert!(list.results().is_some());
 
         list.select(1);
 
-        assert_eq!(list.form().name, "Taxes 2023");
-        assert_eq!(list.form().year, "2023");
+        assert_eq!(list.cursor(), Some(1));
+        assert_eq!(list.name(), "Taxes 2023");
         assert!(list.results().is_none());
     }
 
     #[test]
-    fn running_asks_for_the_form_as_typed_and_counts_the_hits_of_the_query() {
+    fn running_asks_for_the_criteria_of_the_selection_and_counts_the_hits() {
         let mut list = loaded_list();
-        list.select(0);
-        list.set_text(QueryField::Year, "2025".to_owned());
-        list.set_text(QueryField::Tags, "Office, tax,".to_owned());
-        list.add_tags();
-        list.set_text(QueryField::Tags, "home office".to_owned());
-
-        let spec = list.begin_run().unwrap();
-
-        assert_eq!(spec.year, Some(2025));
-        assert_eq!(
-            spec.tags,
-            BTreeSet::from([
-                "home-office".to_owned(),
-                "office".to_owned(),
-                "tax".to_owned()
-            ])
-        );
-        assert_eq!(list.form().tags.len(), 2);
-        list.remove_tag("tax");
-        assert_eq!(list.form().tags, BTreeSet::from(["office".to_owned()]));
-        assert!(list.is_busy());
-        list.ran(vec![hit("a.pdf", false)]);
         let id = list.selected().unwrap().id;
-        assert_eq!(list.hit_count(id), Some(1));
-        assert!(!list.is_busy());
+
+        let (serial, spec) = list.begin_run().unwrap();
+        assert_eq!(spec.year, Some(2024));
+        list.ran(serial, vec![hit("a.pdf", false), hit("b.pdf", true)]);
+
+        assert_eq!(list.results().unwrap().hits.len(), 2);
+        assert_eq!(list.results().unwrap().missing(), 1);
+        assert_eq!(list.hit_count(id), Some(2));
     }
 
     #[test]
-    fn a_year_that_is_no_year_is_a_problem_and_nothing_runs() {
+    fn the_answer_of_an_older_run_is_dropped() {
         let mut list = loaded_list();
-        for year in ["20x4", "0", "12345"] {
-            list.set_text(QueryField::Year, year.to_owned());
+        let (old, _) = list.begin_run().unwrap();
+        list.select(1);
+        let (current, _) = list.begin_run().unwrap();
 
-            assert!(list.begin_run().is_none(), "{year}");
-            assert_eq!(list.problem(), Some(&Problem::InvalidYear));
-            assert!(!list.is_busy());
-        }
-        list.set_text(QueryField::Year, String::new());
-        assert!(list.begin_run().is_some());
+        list.ran(old, vec![hit("a.pdf", false)]);
+        assert!(list.results().is_none());
+        list.ran(current, vec![hit("b.pdf", false)]);
+        assert_eq!(list.results().unwrap().hits.len(), 1);
     }
 
     #[test]
-    fn saving_needs_a_name_and_keeps_the_cursor_on_the_saved_query() {
+    fn a_search_handed_over_is_the_unsaved_row_until_it_is_saved() {
+        let mut list = SavedQueries::new(THIS_YEAR);
+        let spec = QuerySpec {
+            year: Some(2025),
+            ..QuerySpec::default()
+        };
+        list.prefill(Draft {
+            name: "Mine".to_owned(),
+            spec: spec.clone(),
+        });
+        assert!(list.is_prefilled());
+
+        list.loaded(stored_queries());
+
+        assert_eq!(list.cursor(), None);
+        assert_eq!(list.unsaved().map(|draft| &draft.spec), Some(&spec));
+        assert_eq!(list.name(), "Mine");
+        let request = list.begin_save().unwrap();
+        assert_eq!(request.id, None);
+        assert_eq!(request.spec, spec);
+
+        list.saved(stored_queries()[0].id);
+        assert!(list.unsaved().is_none());
+    }
+
+    #[test]
+    fn leaving_the_unsaved_row_drops_it() {
+        let mut list = SavedQueries::new(THIS_YEAR);
+        list.prefill(Draft {
+            name: String::new(),
+            spec: QuerySpec::default(),
+        });
+        list.loaded(stored_queries());
+
+        list.select(0);
+
+        assert!(list.unsaved().is_none());
+        assert_eq!(list.cursor(), Some(0));
+    }
+
+    #[test]
+    fn saving_needs_a_name_and_a_rename_changes_the_selected_report() {
         let mut list = loaded_list();
-        list.start_new();
+        let id = list.selected().unwrap().id;
+
+        list.set_name("  ".to_owned());
         assert!(list.begin_save().is_none());
         assert_eq!(list.problem(), Some(&Problem::NameMissing));
 
-        list.set_text(QueryField::Name, "  Agency B  ".to_owned());
+        list.set_name("Renamed".to_owned());
         let request = list.begin_save().unwrap();
-        assert_eq!((request.id, request.name.as_str()), (None, "Agency B"));
-
-        let mut stored = stored_queries();
-        let id = stored[1].id;
-        list.saved(id);
-        stored.push(stored[0].clone());
-        list.loaded(stored);
-        assert_eq!(list.selected().unwrap().id, id);
-        assert_eq!(list.form().name, "Taxes 2023");
-    }
-
-    #[test]
-    fn saving_a_selected_query_changes_it() {
-        let mut list = loaded_list();
-        list.select(1);
-
-        let request = list.begin_save().unwrap();
-
-        assert_eq!(request.id, Some(list.selected().unwrap().id));
+        assert_eq!(request.id, Some(id));
+        assert_eq!(request.name, "Renamed");
+        assert!(list.is_busy());
     }
 
     #[test]
     fn deleting_asks_first_and_only_the_second_step_deletes() {
         let mut list = loaded_list();
-        list.select(0);
-        assert!(list.begin_delete().is_none(), "no go without the question");
+        assert!(list.begin_delete().is_none());
 
         list.ask_delete();
         assert!(list.is_confirming_delete());
@@ -943,69 +798,70 @@ pub mod tests {
 
         list.ask_delete();
         let id = list.begin_delete().unwrap();
-        assert_eq!(id, list.selected().unwrap().id);
         list.deleted(id);
         assert_eq!(list.cursor(), None);
-        assert_eq!(list.form(), &Form::default());
     }
 
     #[test]
-    fn the_hits_are_summed_up_and_the_list_folds_open_and_shut() {
+    fn the_missing_files_are_listed_on_demand() {
         let mut list = ran_list();
+        assert!(!list.results().unwrap().missing_shown);
 
-        let results = list.results().unwrap();
-        assert_eq!((results.hits.len(), results.missing()), (3, 1));
-        assert_eq!(list.copies(), 2);
-        assert!(!list.results().unwrap().expanded);
-        list.toggle_hits();
-        assert!(list.results().unwrap().expanded);
+        list.toggle_missing();
+
+        assert!(list.results().unwrap().missing_shown);
     }
 
     #[test]
     fn the_export_asks_first_and_only_the_go_hands_over_the_files() {
         let mut list = ran_list();
-        assert!(list.begin_export().is_none(), "no step, no export");
-
-        list.start_export(PathBuf::from("target"));
-        list.set_export_folder(Path::new("elsewhere"));
-        assert_eq!(
-            list.export_step().unwrap().folder,
-            PathBuf::from("elsewhere")
-        );
-        assert!(list.cancel_step());
         assert!(list.begin_export().is_none());
 
-        list.start_export(PathBuf::from("target"));
+        list.start_export(PathBuf::from("out"));
+        assert_eq!(list.copies(), 2);
         let request = list.begin_export().unwrap();
-        assert_eq!(request.folder, PathBuf::from("target"));
+        assert_eq!(request.folder, PathBuf::from("out"));
         assert_eq!(request.hits.len(), 3);
-        assert!(list.is_busy());
+
+        list.export_done(ExportSummary {
+            copied: 2,
+            skipped_existing: 0,
+            skipped_missing: 1,
+            csv_path: PathBuf::from("out/x.csv"),
+        });
+        assert!(list.exported().is_some());
+        assert!(!list.is_busy());
     }
 
     #[test]
     fn nothing_to_copy_means_no_export_step() {
         let mut list = loaded_list();
-        list.select(0);
-        list.begin_run().unwrap();
-        list.ran(vec![hit("gone.pdf", true)]);
+        let (serial, _) = list.begin_run().unwrap();
+        list.ran(serial, vec![hit("gone.pdf", true)]);
 
-        list.start_export(PathBuf::from("target"));
+        list.start_export(PathBuf::from("out"));
 
         assert!(list.export_step().is_none());
     }
 
     #[test]
-    fn a_failure_ends_busy_and_is_shown() {
+    fn the_counts_of_the_list_are_kept_by_report() {
         let mut list = loaded_list();
-        list.select(0);
-        list.begin_run().unwrap();
+        let ids: Vec<_> = list.rows().iter().map(|query| query.id).collect();
 
-        list.failed("the index is not open".to_owned());
+        list.counted(vec![(ids[0], 38), (ids[1], 7)]);
+
+        assert_eq!(list.hit_count(ids[0]), Some(38));
+        assert_eq!(list.hit_count(ids[1]), Some(7));
+    }
+
+    #[test]
+    fn a_failure_ends_busy_and_is_shown() {
+        let mut list = SavedQueries::new(THIS_YEAR);
+
+        list.failed("boom".to_owned());
 
         assert!(!list.is_busy());
-        assert_eq!(
-            list.problem(),
-            Some(&Problem::Failed("the index is not open".to_owned()))
-        );
+        assert_eq!(list.problem(), Some(&Problem::Failed("boom".to_owned())));
     }
 }

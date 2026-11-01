@@ -985,6 +985,12 @@
       "de": " · Limit erreicht"
     },
     {
+      "key": "search.index_cut",
+      "context": "Appended to the summary line of the Search view when filters apply and more documents fit than are listed. Starts with a separator and a space; takes the number left out.",
+      "en": " · {count} more not shown",
+      "de": " · {count} weitere nicht gezeigt"
+    },
+    {
       "key": "search.running",
       "context": "Summary line of the search view while the search is still running. Takes the number of files looked at so far.",
       "en": "Searching… {scanned} files scanned",
@@ -3818,9 +3824,9 @@
     },
     {
       "key": "saved_queries.explain",
-      "context": "Line at the top of the saved queries page explaining what it is for.",
-      "en": "A saved search for recurring questions, for example ‘all 2026 invoices from Firma A’ for the tax return. Running one only looks; exporting copies the files it found into a folder you choose and never changes the originals.",
-      "de": "Eine gespeicherte Suche für wiederkehrende Fragen, zum Beispiel ‚alle Rechnungen 2026 von Firma A‘ für die Steuererklärung. Ausführen schaut nur nach; Exportieren kopiert die gefundenen Dateien in einen Ordner deiner Wahl und ändert die Originale nie."
+      "context": "Explanation under the title of the reports page.",
+      "en": "Saved searches for recurring questions. Exporting copies the hits into a folder; the originals stay unchanged.",
+      "de": "Gespeicherte Suchen für wiederkehrende Fragen. Exportieren kopiert die Treffer in einen Ordner, Originale bleiben unverändert."
     },
     {
       "key": "saved_queries.loading",
@@ -3831,20 +3837,14 @@
     {
       "key": "saved_queries.empty",
       "context": "Shown on the reports page when no report is saved yet.",
-      "en": "No reports yet. Start from a template or fill in the form and save.",
-      "de": "Noch keine Auswertungen. Beginne mit einer Vorlage oder fülle das Formular aus und speichere."
+      "en": "No reports yet. Choose New to start a search and save it as a report.",
+      "de": "Noch keine Auswertungen. Wähle Neu, starte eine Suche und speichere sie als Auswertung."
     },
     {
       "key": "saved_queries.column_criteria",
       "context": "Column header of the saved queries list: what the query asks for, in short.",
       "en": "Criteria",
       "de": "Kriterien"
-    },
-    {
-      "key": "saved_queries.column_hits",
-      "context": "Column header of the saved queries list: how many documents the query found the last time it ran here.",
-      "en": "Hits",
-      "de": "Treffer"
     },
     {
       "key": "saved_queries.criteria_all",
@@ -3883,42 +3883,6 @@
       "de": "Volltext"
     },
     {
-      "key": "saved_queries.hint_year",
-      "context": "Description under the year field of the saved queries page.",
-      "en": "Year of the document date, for example 2024",
-      "de": "Jahr des Belegdatums, zum Beispiel 2024"
-    },
-    {
-      "key": "saved_queries.hint_sender",
-      "context": "Description under the sender field of the reports page.",
-      "en": "Upper and lower case do not matter",
-      "de": "Groß- und Kleinschreibung ist egal"
-    },
-    {
-      "key": "saved_queries.hint_kind",
-      "context": "Description under the kind field of the saved queries page.",
-      "en": "Upper and lower case do not matter",
-      "de": "Groß- und Kleinschreibung ist egal"
-    },
-    {
-      "key": "saved_queries.hint_tags",
-      "context": "Description under the tags field of the saved queries page.",
-      "en": "All of them must be on the document. Enter adds a tag; a tag also finds the more specific ones, firma-a finds firma-a-gmbh.",
-      "de": "Alle müssen am Dokument sein. Enter fügt hinzu; ein Schlagwort findet auch die genaueren, firma-a findet firma-a-gmbh."
-    },
-    {
-      "key": "saved_queries.hint_full_text",
-      "context": "Description under the full text field of the saved queries page.",
-      "en": "All words must occur in the text; the last one may also begin a longer word",
-      "de": "Alle Wörter müssen im Text vorkommen; das letzte darf auch Anfang eines längeren Worts sein"
-    },
-    {
-      "key": "saved_queries.template_label",
-      "context": "Label above the template buttons on the reports page, which fill the form with a ready-made report.",
-      "en": "Start from a template:",
-      "de": "Mit einer Vorlage beginnen:"
-    },
-    {
       "key": "saved_queries.template_invoices_of_year",
       "context": "Button and report name of the template that finds the invoices of the current year.",
       "en": "Invoices of a year",
@@ -3943,18 +3907,6 @@
       "de": "offen"
     },
     {
-      "key": "saved_queries.open_invoices_note",
-      "context": "Note under the template buttons: what the open invoices template means. Takes the {tag} that marks an open invoice.",
-      "en": "Open invoices are invoices with the tag ‘{tag}’. Remove the tag once one is paid.",
-      "de": "Offene Rechnungen sind Rechnungen mit dem Schlagwort ‚{tag}‘. Entferne es, sobald eine bezahlt ist."
-    },
-    {
-      "key": "saved_queries.problem_year",
-      "context": "Problem on the saved queries page: the year text is not a year.",
-      "en": "The year must be a number like 2024.",
-      "de": "Das Jahr muss eine Zahl wie 2024 sein."
-    },
-    {
       "key": "saved_queries.problem_name",
       "context": "Problem on the reports page: a report cannot be saved without a name.",
       "en": "A report needs a name.",
@@ -3967,16 +3919,46 @@
       "de": "Fehlgeschlagen: {detail}"
     },
     {
-      "key": "saved_queries.close",
-      "context": "Button on the saved queries page: closes it.",
-      "en": "Close",
-      "de": "Schließen"
-    },
-    {
       "key": "saved_queries.new",
       "context": "Button on the saved queries page: starts an empty, new query.",
       "en": "New",
       "de": "Neu"
+    },
+    {
+      "key": "saved_queries.empty_search",
+      "context": "Entry of the New menu on the reports page: opens the search with no criteria.",
+      "en": "Empty search",
+      "de": "Leere Suche"
+    },
+    {
+      "key": "saved_queries.unsaved",
+      "context": "Name of the row of a search handed over from the search view that has no name yet.",
+      "en": "New report",
+      "de": "Neue Auswertung"
+    },
+    {
+      "key": "saved_queries.edit_in_search",
+      "context": "Link beside the criteria of a report: opens the search to change them.",
+      "en": "Edit in search",
+      "de": "In der Suche bearbeiten"
+    },
+    {
+      "key": "saved_queries.open_in_search",
+      "context": "Button of the reports page: opens the search with the criteria of the report.",
+      "en": "Open in search",
+      "de": "In der Suche öffnen"
+    },
+    {
+      "key": "saved_queries.result",
+      "context": "Title of the section of the reports page that shows what the report finds.",
+      "en": "Result",
+      "de": "Ergebnis"
+    },
+    {
+      "key": "saved_queries.export_note",
+      "context": "Note in the action bar of the reports page: what the export does to the files.",
+      "en": "Copies only; moves and deletes nothing.",
+      "de": "Kopiert nur, verschiebt und löscht nichts."
     },
     {
       "key": "saved_queries.save",
@@ -3989,12 +3971,6 @@
       "context": "Button on the saved queries page: asks whether to delete the selected query.",
       "en": "Delete",
       "de": "Löschen"
-    },
-    {
-      "key": "saved_queries.run",
-      "context": "Button on the saved queries page: runs the query of the form and shows what it finds.",
-      "en": "Run",
-      "de": "Ausführen"
     },
     {
       "key": "saved_queries.export",
@@ -4051,12 +4027,6 @@
       "de": "… und {count} weitere"
     },
     {
-      "key": "saved_queries.hit_missing",
-      "context": "Mark behind a found document whose file is gone.",
-      "en": "missing",
-      "de": "fehlt"
-    },
-    {
       "key": "saved_queries.export_title",
       "context": "Heading of the export step on the saved queries page.",
       "en": "Export of the hits",
@@ -4064,21 +4034,21 @@
     },
     {
       "key": "saved_queries.export_folder",
-      "context": "Line in the export step: the folder the files are copied into. Takes the path.",
-      "en": "Target folder: {folder}",
-      "de": "Zielordner: {folder}"
+      "context": "Label of the target folder of the export in the reports page.",
+      "en": "Target folder",
+      "de": "Zielordner"
     },
     {
       "key": "saved_queries.export_count",
-      "context": "Line in the export step: how many files would be copied. Takes the number.",
-      "en": "Files to copy: {count}",
-      "de": "Zu kopierende Dateien: {count}"
+      "context": "Label of the number of files the export would copy.",
+      "en": "Files to copy",
+      "de": "Zu kopierende Dateien"
     },
     {
       "key": "saved_queries.export_csv",
-      "context": "Line in the export step: the CSV file written beside the copies. Takes the file name.",
-      "en": "CSV file: {name}",
-      "de": "CSV-Datei: {name}"
+      "context": "Label of the name of the CSV file the export writes.",
+      "en": "CSV file",
+      "de": "CSV-Datei"
     },
     {
       "key": "saved_queries.export_csv_name",

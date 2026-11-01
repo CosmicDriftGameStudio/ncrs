@@ -6,11 +6,10 @@ use iced::widget::{button, column, container, mouse_area, rich_text, row, span, 
 use iced::widget::{tooltip, Column, Row};
 use iced::{alignment, Element, Font, Length};
 
+use super::format;
 use super::hermes_kit::{self, ChipKind, MenuItem};
 use super::key_intercept::key_intercept;
-use super::layout::{
-    ROW_HEIGHT, SEARCH_FILTER_EXTRA_HEIGHT, SEARCH_HEADER_HEIGHT, TAG_COLUMN_WIDTH,
-};
+use super::layout::{self, ROW_HEIGHT, TAG_COLUMN_WIDTH};
 use super::theme::{self, font_size, spacing};
 use crate::app::{fill_template, search_toggle_for_press};
 use crate::fs::search::{LineMatch, SearchError};
@@ -36,9 +35,10 @@ pub fn field_id(field: SearchField) -> &'static str {
 }
 
 const FIELD_ROW_HEIGHT: f32 = 28.0;
-const LABEL_WIDTH: f32 = 64.0;
 const TOGGLE_WIDTH: f32 = 28.0;
 const INDENT: f32 = 22.0;
+/// What the estimate of the filter widths may be off by.
+const FILTER_WRAP_MARGIN: f32 = 16.0;
 
 fn to_search(message: SearchMessage) -> Message {
     Message::Search(message)
@@ -53,9 +53,16 @@ pub struct ToggleShortcuts {
     pub regex: Option<String>,
 }
 
+/// The space the search has in its panel.
+#[derive(Debug, Clone, Copy)]
+pub struct Room {
+    pub visible_rows: usize,
+    pub panel_width: f32,
+}
+
 pub fn view<'a>(
     search: &'a SearchView,
-    visible_rows: usize,
+    room: Room,
     is_active: bool,
     lang: Language,
     palette: &Palette,
@@ -66,7 +73,7 @@ pub fn view<'a>(
         .rows_iter()
         .enumerate()
         .skip(search.scroll_offset)
-        .take(visible_rows)
+        .take(room.visible_rows)
         .filter_map(|(index, search_row)| {
             let cursor = search.cursor == Some(search_row);
             result_row(
@@ -95,7 +102,7 @@ pub fn view<'a>(
     };
 
     let framed = column![
-        header(search, lang, palette, keymap, shortcuts),
+        header(search, room.panel_width, lang, palette, keymap, shortcuts),
         container(body).height(Length::Fill).width(Length::Fill),
     ];
     mouse_area(
@@ -122,6 +129,7 @@ pub fn title(search: &SearchView, lang: Language) -> String {
 
 fn header<'a>(
     search: &'a SearchView,
+    panel_width: f32,
     lang: Language,
     palette: &Palette,
     keymap: &'a Keymap,
@@ -183,12 +191,14 @@ fn header<'a>(
             tooltip::Position::Bottom,
         )
     };
+    let label_width = label_column_width(lang);
     let labelled = |label: Msg, input: Element<'a, Message>| {
         row![
             text(lang.text(label))
                 .size(font_size::COLUMN_HEADER)
                 .color(palette.dim_text)
-                .width(LABEL_WIDTH),
+                .wrapping(Wrapping::None)
+                .width(label_width),
             input,
         ]
         .align_y(alignment::Vertical::Center)
@@ -250,14 +260,17 @@ fn header<'a>(
         container(labelled(Msg::SearchExcludeLabel, exclude)).height(FIELD_ROW_HEIGHT),
     ]
     .spacing(4.0);
-    let mut height = SEARCH_HEADER_HEIGHT;
+    let filter_lines = search
+        .filters
+        .as_ref()
+        .map(|filters| filter_lines(filters, lang, panel_width));
+    let height = layout::search_header_height(filter_lines);
     match search.filters.as_ref() {
         Some(filters) => {
             fields = fields
                 .push(filter_row(filters, lang, palette))
                 .push(filter_hint(filters, lang, palette))
                 .push(summary_row(search, filters, status, lang, palette));
-            height += SEARCH_FILTER_EXTRA_HEIGHT;
         }
         None => fields = fields.push(status),
     }
@@ -269,12 +282,15 @@ fn header<'a>(
         .into()
 }
 
-/// One filter per facet that has values; a chosen value stays on its filter.
-fn filter_row<'a>(
-    filters: &'a SearchFilters,
-    lang: Language,
-    palette: &Palette,
-) -> Element<'a, Message> {
+/// A filter of the row: what it is called, what is chosen and what it offers.
+struct FilterControl {
+    label: Msg,
+    facet: Facet,
+    chosen: Option<String>,
+    items: Vec<MenuItem>,
+}
+
+fn filter_controls(filters: &SearchFilters, lang: Language) -> Vec<FilterControl> {
     let counts = filters.counts();
     let selection = filters.selection();
     let kinds = filters.kinds();
@@ -289,43 +305,6 @@ fn filter_row<'a>(
             to_search(SearchMessage::ToggleFacet(value)),
         )
     };
-    let tags: Vec<MenuItem> = counts
-        .tags
-        .iter()
-        .map(|(tag, count)| {
-            item(
-                lang.tag_label(kinds, tag),
-                *count,
-                FacetValue::Tag(tag.clone()),
-            )
-        })
-        .collect();
-    let kind_items: Vec<MenuItem> = counts
-        .kinds
-        .iter()
-        .map(|(kind, count)| {
-            item(
-                lang.kind_label(kinds, kind).into_owned(),
-                *count,
-                FacetValue::Kind(kind.clone()),
-            )
-        })
-        .collect();
-    let years: Vec<MenuItem> = counts
-        .years
-        .iter()
-        .map(|(year, count)| item(year.to_string(), *count, FacetValue::Year(*year)))
-        .collect();
-    let senders: Vec<MenuItem> = counts
-        .senders
-        .iter()
-        .map(|(name, count)| item(name.clone(), *count, FacetValue::Sender(name.clone())))
-        .collect();
-    let recipients: Vec<MenuItem> = counts
-        .recipients
-        .iter()
-        .map(|(name, count)| item(name.clone(), *count, FacetValue::Recipient(name.clone())))
-        .collect();
     let chosen_tags = (!selection.tags.is_empty()).then(|| {
         selection
             .tags
@@ -334,54 +313,128 @@ fn filter_row<'a>(
             .collect::<Vec<_>>()
             .join(", ")
     });
-    let controls = [
-        (Msg::DocumentSearchFacetTags, Facet::Tags, chosen_tags, tags),
-        (
-            Msg::DocumentSearchFacetKind,
-            Facet::Kind,
-            selection
+    vec![
+        FilterControl {
+            label: Msg::DocumentSearchFacetTags,
+            facet: Facet::Tags,
+            chosen: chosen_tags,
+            items: counts
+                .tags
+                .iter()
+                .map(|(tag, count)| {
+                    item(
+                        lang.tag_label(kinds, tag),
+                        *count,
+                        FacetValue::Tag(tag.clone()),
+                    )
+                })
+                .collect(),
+        },
+        FilterControl {
+            label: Msg::DocumentSearchFacetKind,
+            facet: Facet::Kind,
+            chosen: selection
                 .kind
                 .as_deref()
                 .map(|kind| lang.kind_label(kinds, kind).into_owned()),
-            kind_items,
-        ),
-        (
-            Msg::DocumentSearchFacetYear,
-            Facet::Year,
-            selection.year.map(|year| year.to_string()),
-            years,
-        ),
-        (
-            Msg::DocumentSearchFacetSender,
-            Facet::Sender,
-            selection.sender.clone(),
-            senders,
-        ),
-        (
-            Msg::DocumentSearchFacetRecipient,
-            Facet::Recipient,
-            selection.recipient.clone(),
-            recipients,
-        ),
-    ];
-    Row::with_children(
-        controls
-            .into_iter()
-            .filter(|(_, _, chosen, items)| chosen.is_some() || !items.is_empty())
-            .map(|(label, facet, chosen, items)| {
-                hermes_kit::filter(
-                    lang.text(label),
-                    chosen.as_deref(),
-                    &items,
-                    to_search(SearchMessage::ClearFacet(facet)),
-                    palette,
-                )
-            }),
-    )
+            items: counts
+                .kinds
+                .iter()
+                .map(|(kind, count)| {
+                    item(
+                        lang.kind_label(kinds, kind).into_owned(),
+                        *count,
+                        FacetValue::Kind(kind.clone()),
+                    )
+                })
+                .collect(),
+        },
+        FilterControl {
+            label: Msg::DocumentSearchFacetYear,
+            facet: Facet::Year,
+            chosen: selection.year.map(|year| year.to_string()),
+            items: counts
+                .years
+                .iter()
+                .map(|(year, count)| item(year.to_string(), *count, FacetValue::Year(*year)))
+                .collect(),
+        },
+        FilterControl {
+            label: Msg::DocumentSearchFacetSender,
+            facet: Facet::Sender,
+            chosen: selection.sender.clone(),
+            items: counts
+                .senders
+                .iter()
+                .map(|(name, count)| item(name.clone(), *count, FacetValue::Sender(name.clone())))
+                .collect(),
+        },
+        FilterControl {
+            label: Msg::DocumentSearchFacetRecipient,
+            facet: Facet::Recipient,
+            chosen: selection.recipient.clone(),
+            items: counts
+                .recipients
+                .iter()
+                .map(|(name, count)| {
+                    item(name.clone(), *count, FacetValue::Recipient(name.clone()))
+                })
+                .collect(),
+        },
+    ]
+}
+
+/// The five filters, always: one without values is shown dimmed.
+fn filter_row<'a>(
+    filters: &'a SearchFilters,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    Row::with_children(filter_controls(filters, lang).into_iter().map(|control| {
+        hermes_kit::filter(
+            lang.text(control.label),
+            control.chosen.as_deref(),
+            &control.items,
+            to_search(SearchMessage::ClearFacet(control.facet)),
+            palette,
+        )
+    }))
     .spacing(hermes_kit::GAP_S)
     .align_y(alignment::Vertical::Center)
     .wrap()
     .into()
+}
+
+/// How many lines the filters take in a panel of `panel_width`, as the row
+/// wraps them.
+pub fn filter_lines(filters: &SearchFilters, lang: Language, panel_width: f32) -> usize {
+    let room = panel_width - 2.0 * spacing::CELL_PADDING_X - FILTER_WRAP_MARGIN;
+    let mut lines = 1;
+    let mut used = 0.0;
+    for control in filter_controls(filters, lang) {
+        let width = hermes_kit::filter_width(
+            lang.text(control.label),
+            control.chosen.as_deref(),
+            &control.items,
+        );
+        if used > 0.0 && used + hermes_kit::GAP_S + width > room {
+            lines += 1;
+            used = width;
+        } else {
+            used += if used > 0.0 { hermes_kit::GAP_S } else { 0.0 } + width;
+        }
+    }
+    lines
+}
+
+/// The width the two labels of the file name fields need in `lang`, and a
+/// gap.
+fn label_column_width(lang: Language) -> f32 {
+    [Msg::SearchFilesLabel, Msg::SearchExcludeLabel]
+        .into_iter()
+        .map(|label| format::estimated_width(lang.text(label), font_size::COLUMN_HEADER))
+        .fold(0.0, f32::max)
+        + hermes_kit::GAP_S
 }
 
 /// That the filters look at the index, and while values are chosen that they
@@ -518,6 +571,12 @@ fn status_line(search: &SearchView, lang: Language, palette: &Palette) -> (Strin
     }
     if totals.truncated {
         line.push_str(lang.text(Msg::SearchTruncated));
+    }
+    if search.not_shown > 0 {
+        line.push_str(&fill_template(
+            lang.text(Msg::SearchIndexCut),
+            &[("{count}", &search.not_shown.to_string())],
+        ));
     }
     (line, palette.dim_text)
 }
