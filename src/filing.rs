@@ -746,35 +746,21 @@ impl ColumnReader {
     }
 }
 
-/// How the text of a found document was read, as far as the file type says.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TextSource {
-    Pdf,
-    Ocr,
-    Text,
-}
+pub use ncrs_core::{FoundDocument, TextSource};
 
-impl TextSource {
-    /// The index does not store how a text was read, so this follows the file
-    /// type: a scanned PDF, which was read by OCR, counts as `Pdf`.
-    fn of_file(path: &Path) -> Self {
-        if ncrs_intake::is_image_file(path) {
-            Self::Ocr
-        } else if path
-            .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("pdf"))
-        {
-            Self::Pdf
-        } else {
-            Self::Text
-        }
+/// The index does not store how a text was read, so this follows the file
+/// type: a scanned PDF, which was read by OCR, counts as `Pdf`.
+fn text_source_of_file(path: &Path) -> TextSource {
+    if ncrs_intake::is_image_file(path) {
+        TextSource::Ocr
+    } else if path
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("pdf"))
+    {
+        TextSource::Pdf
+    } else {
+        TextSource::Text
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FoundDocument {
-    pub path: PathBuf,
-    pub read_by: TextSource,
 }
 
 /// Looks documents up by their text, on a blocking thread like
@@ -805,7 +791,7 @@ impl DocumentFinder {
             };
             if document.missing_since.is_none() {
                 found.push(FoundDocument {
-                    read_by: TextSource::of_file(&document.path),
+                    read_by: text_source_of_file(&document.path),
                     path: document.path,
                 });
             }

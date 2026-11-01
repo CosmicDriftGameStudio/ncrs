@@ -13,7 +13,6 @@ pub use ncrs_ui_kit::layout::{
 };
 
 pub const STATUSBAR_HEIGHT: f32 = size::STATUS_BAR;
-pub const COMMAND_LINE_HEIGHT: f32 = size::COMMAND_LINE;
 /// The row across the window top that holds the path tabs, the Hermes chip and
 /// the Lab button (and the window buttons where the system draws none).
 pub const TITLE_BAR_HEIGHT: f32 = size::TITLE_BAR;
@@ -152,7 +151,7 @@ mod tests {
     fn chrome_matches_the_constants_the_view_uses() {
         let expected = STATUSBAR_HEIGHT
             + FKEYBAR_HEIGHT
-            + COMMAND_LINE_HEIGHT
+            + size::COMMAND_LINE
             + TITLE_BAR_HEIGHT
             + COLUMN_HEADER_HEIGHT;
         assert_eq!(

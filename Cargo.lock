@@ -3385,10 +3385,10 @@ dependencies = [
  "ncrs-intake",
  "ncrs-ocr-vision",
  "ncrs-ops",
+ "ncrs-palette",
  "ncrs-pipeline",
  "ncrs-search",
  "ncrs-ui-kit",
- "nucleo-matcher",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
@@ -3531,6 +3531,20 @@ dependencies = [
  "ncrs-i18n",
  "ncrs-ui-kit",
  "tempfile",
+]
+
+[[package]]
+name = "ncrs-palette"
+version = "0.0.0"
+dependencies = [
+ "iced",
+ "ncrs-core",
+ "ncrs-fs",
+ "ncrs-i18n",
+ "ncrs-ui-kit",
+ "nucleo-matcher",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]

@@ -5,13 +5,14 @@
 use iced::widget::{column, container, mouse_area, opaque, row, space, stack, text, text_input};
 use iced::{alignment, mouse, Element, Font, Length};
 
-use super::kit::{self, Icon};
-use super::layout::COMMAND_LINE_HEIGHT;
-use super::theme::{self, font_size, spacing};
-use crate::app::fill_template;
-use crate::i18n::{Language, Msg};
-use crate::messages::{CommandLineMessage, Message};
-use crate::palette::Palette;
+use ncrs_i18n::{fill_template, Language, Msg};
+use ncrs_ui_kit::kit::{self, Icon};
+use ncrs_ui_kit::palette::Palette;
+use ncrs_ui_kit::theme::{self, font_size, size, spacing};
+
+use super::message::CommandLineMessage;
+
+const COMMAND_LINE_HEIGHT: f32 = size::COMMAND_LINE;
 
 pub const COMMAND_LINE_ID: &str = "command-line";
 
@@ -31,7 +32,7 @@ pub struct Props<'a> {
     pub palette: &'a Palette,
 }
 
-pub fn view<'a>(props: Props<'a>) -> Element<'a, Message> {
+pub fn view<'a>(props: Props<'a>) -> Element<'a, CommandLineMessage> {
     let Props {
         prompt,
         typed,
@@ -68,8 +69,8 @@ pub fn view<'a>(props: Props<'a>) -> Element<'a, Message> {
     );
     let field = text_input("", typed)
         .id(COMMAND_LINE_ID)
-        .on_input(|text| Message::CommandLine(CommandLineMessage::Input(text)))
-        .on_submit(Message::CommandLine(CommandLineMessage::Submit))
+        .on_input(|text| CommandLineMessage::Input(text))
+        .on_submit(CommandLineMessage::Submit)
         .size(font_size::FILE)
         .font(Font::MONOSPACE)
         .padding(0.0)
@@ -113,9 +114,9 @@ pub fn view<'a>(props: Props<'a>) -> Element<'a, Message> {
     // the line through the app instead; under a dialog it takes the click
     // and does nothing.
     let cover = space().width(Length::Fill).height(Length::Fill);
-    let click_layer: Element<'a, Message> = if focusable {
+    let click_layer: Element<'a, CommandLineMessage> = if focusable {
         mouse_area(cover)
-            .on_press(Message::CommandLine(CommandLineMessage::Focus))
+            .on_press(CommandLineMessage::Focus)
             .interaction(mouse::Interaction::Text)
             .into()
     } else {

@@ -15,5 +15,6 @@ pub mod list_window;
 mod menu_button;
 pub mod numbered_hint;
 pub mod palette;
+pub mod picker;
 pub mod tags;
 pub mod theme;

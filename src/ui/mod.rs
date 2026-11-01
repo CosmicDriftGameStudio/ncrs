@@ -4,7 +4,7 @@
 
 pub mod about;
 pub mod ai_model;
-pub mod command_line;
+pub use ncrs_palette::command_line::view as command_line;
 pub mod command_palette;
 pub mod condition_editor;
 pub mod context_menu;
@@ -27,9 +27,9 @@ pub use ncrs_files::panel_history;
 pub use ncrs_ops::transfer::view as transfer;
 pub use ncrs_ops::trash::view as trash;
 pub use ncrs_ops::{conflict, delete};
-pub mod picker;
+pub use ncrs_ui_kit::picker;
 pub mod quick_fix;
-pub mod quick_open;
+pub use ncrs_palette::quick_open::view as quick_open;
 pub mod remote;
 pub mod reorganisation_plan;
 pub mod review_list;

@@ -12,7 +12,6 @@ use iced::Size;
 use crate::ai_model::DownloadError as AiDownloadError;
 use crate::app::{RowFailure, Transfer};
 use crate::clipboard_paste::PastedContent;
-use crate::command_line::ShellOutcome;
 use crate::condition_editor::ConditionEdit;
 use crate::config::{
     AiProviderChoice, AiProviderName, Config, Filing, FilingWriteError, OwnDetail, ProgramLine,
@@ -27,7 +26,6 @@ use crate::filing_pieces::TargetEdit;
 use crate::filing_work::FilingSummary;
 use crate::fs::remote::session::ConnectFailure;
 use crate::fs::remote::{RemotePath, Secret, ServerId};
-use crate::fs::search::SearchEvent;
 use crate::fs::{CreateDirError, OpenKind};
 use crate::fs::{Destination, PathProblem};
 use crate::hermes_column::{ColumnReading, ColumnStage, FileDetail, FolderRole};
@@ -1258,76 +1256,6 @@ pub enum RemoteMessage {
     PasswordStored(Result<(), String>),
 }
 
-/// Everything Quick Open sends.
-#[derive(Debug, Clone, PartialEq)]
-pub enum QuickOpenMessage {
-    Open,
-    QueryChanged(String),
-    /// A batch of the file walk. Dropped when `generation` is not the current
-    /// walk's.
-    Events {
-        generation: u64,
-        events: Vec<SearchEvent>,
-    },
-    /// The background ranking of `chunks_scored` chunks for the query of
-    /// `generation` in the box of `walk_generation` is done.
-    Ranked {
-        walk_generation: u64,
-        generation: u64,
-        hits: Vec<crate::quick_open::Hit>,
-        chunks_scored: usize,
-    },
-    /// The full-text search for the text of `generation` in the box of
-    /// `walk_generation` is done. An answer of an older text is dropped.
-    DocumentsFound {
-        walk_generation: u64,
-        generation: u64,
-        result: Result<Vec<crate::filing::FoundDocument>, String>,
-    },
-    Move(isize),
-    Activate,
-    RowActivated(usize),
-    Close,
-}
-
-/// Everything the command line below the panels sends.
-#[derive(Debug, Clone, PartialEq)]
-pub enum CommandLineMessage {
-    Focus,
-    Leave,
-    Input(String),
-    Submit,
-    HistoryPrevious,
-    HistoryNext,
-    /// The background look at the directory a `cd` asked for. An answer whose
-    /// `request_id` is not the latest is dropped.
-    CdChecked {
-        request_id: u64,
-        side: PanelSide,
-        target: PathBuf,
-        result: Result<Destination, PathProblem>,
-    },
-    /// A shell command ended.
-    Finished {
-        command: String,
-        outcome: ShellOutcome,
-    },
-}
-
-/// Everything the command palette sends.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CommandPaletteMessage {
-    /// Opens the palette, or gives its field the focus again when it is up.
-    Toggle,
-    QueryChanged(String),
-    Move(isize),
-    /// A click on the entry at this position of the list: runs it.
-    Select(usize),
-    /// Enter: runs the entry under the cursor.
-    Run,
-    Close,
-}
-
 /// What the copy chords put on the clipboard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClipboardKind {
@@ -1338,6 +1266,7 @@ pub enum ClipboardKind {
 }
 
 pub use ncrs_core::TransferKind;
+pub use ncrs_palette::{CommandLineMessage, CommandPaletteMessage, QuickOpenMessage};
 
 /// The job queue of the app, which `ncrs-core` knows nothing about.
 pub trait TransferKindJob {

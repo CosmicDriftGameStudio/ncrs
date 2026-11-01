@@ -22,7 +22,7 @@ use crate::ai_model::{
     DownloadJob, InstallOutcome,
 };
 use crate::clipboard_paste::{self, FileListWriter, PastedContent};
-use crate::command_line::{self, CommandLine, ShellOutcome, Submission};
+use crate::command_line::{self, CommandLine, CommandLineAction, CommandLineCtx};
 use crate::command_palette::{CommandPalette, Target, RECENT_LIMIT};
 use crate::config::ServerEntry;
 use crate::config::{
@@ -83,7 +83,10 @@ use crate::palette::{Palette, ThemePreset};
 use crate::panel_drag::PanelDrag;
 use crate::query_work::{self, QueryAccess};
 use crate::quick_fix::{field_to_fix, QuickFix, QuickFixAction};
-use crate::quick_open::{DocumentRequest, QuickOpen, MAX_DOCUMENT_HITS, QUICK_OPEN_FILE_LIMIT};
+use crate::quick_open::{
+    self, DocumentRequest, QuickOpen, QuickOpenAction, QuickOpenCtx, WalkEvent, MAX_DOCUMENT_HITS,
+    QUICK_OPEN_FILE_LIMIT,
+};
 use crate::remote_dialog::{self, ConnectDialog, Missing, Then};
 use crate::reorganisation_plan::ReorganisationView;
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
@@ -363,7 +366,20 @@ fn document_search_task(request: DocumentRequest, finder: DocumentFinder) -> Tas
 }
 
 fn quick_open_batch(generation: u64, events: Vec<fs::search::SearchEvent>) -> Message {
-    Message::QuickOpen(QuickOpenMessage::Events { generation, events })
+    let walk_events = events
+        .into_iter()
+        .filter_map(|event| match event {
+            fs::search::SearchEvent::File { path, .. } => Some(WalkEvent::File { path }),
+            fs::search::SearchEvent::Progress { .. } => None,
+            fs::search::SearchEvent::Finished(totals) => Some(WalkEvent::Finished {
+                truncated: totals.truncated,
+            }),
+        })
+        .collect();
+    Message::QuickOpen(QuickOpenMessage::Events {
+        generation,
+        events: walk_events,
+    })
 }
 
 /// How long a confirmation stays in the status bar.
@@ -4627,38 +4643,41 @@ impl App {
     }
 
     fn update_command_line(&mut self, message: CommandLineMessage) -> Task<Message> {
-        match message {
-            CommandLineMessage::Focus => {
-                if self.command_line_is_blocked() {
-                    return Task::none();
-                }
-                self.command_line.focus();
+        let ctx = CommandLineCtx {
+            blocked: self.command_line_is_blocked(),
+            lang: self.lang,
+            remote: self.active_panel().remote().is_some(),
+            active_side: self.panels.active,
+            active_path: self.active_panel().path.clone(),
+            home: &self.home,
+            shell_directory: shell_directory(self.active_panel()),
+        };
+        let (inner, action) = command_line::update(&mut self.command_line, message, &ctx);
+        let task = inner.map(Message::CommandLine);
+        match action {
+            None => task,
+            Some(CommandLineAction::ClosePathField) => {
                 self.set_path_field(None);
-                operation::focus(command_line_ui::COMMAND_LINE_ID).chain(
-                    operation::move_cursor_to_end(command_line_ui::COMMAND_LINE_ID),
-                )
+                task
             }
-            CommandLineMessage::Leave => {
-                self.command_line.leave();
-                release_focus()
+            Some(CommandLineAction::ShowError(text)) => {
+                self.set_status_error(&text);
+                task
             }
-            CommandLineMessage::Input(text) => {
-                self.command_line.input(text);
-                self.set_path_field(None);
-                Task::none()
+            Some(CommandLineAction::OpenDirectory { side, destination }) => {
+                self.job_error = None;
+                self.notice = None;
+                Task::batch([
+                    self.load(side, destination.directory, destination.select),
+                    task,
+                ])
             }
-            CommandLineMessage::HistoryPrevious => self.walk_command_history(CommandLine::previous),
-            CommandLineMessage::HistoryNext => self.walk_command_history(CommandLine::next),
-            CommandLineMessage::Submit => self.submit_command_line(),
-            CommandLineMessage::CdChecked {
-                request_id,
-                side,
-                target,
-                result,
-            } => self.finish_cd_check(request_id, side, &target, result),
-            CommandLineMessage::Finished { command, outcome } => {
-                self.finish_shell_command(&command, outcome)
+            Some(CommandLineAction::ShowPathProblem { problem, target }) => {
+                let reason = self.path_problem_text(&problem, &target);
+                self.set_status_error(&reason);
+                task
             }
+            Some(CommandLineAction::ShellFinished { report }) => self.finish_shell_command(report),
         }
     }
 
@@ -4667,128 +4686,13 @@ impl App {
         self.overlay_is_open() || self.settings.is_some() || self.filing_setup.is_some()
     }
 
-    fn walk_command_history(&mut self, step: fn(&mut CommandLine) -> bool) -> Task<Message> {
-        if step(&mut self.command_line) {
-            operation::move_cursor_to_end(command_line_ui::COMMAND_LINE_ID)
-        } else {
-            Task::none()
-        }
-    }
-
-    /// Enter in the command line: `cd` is checked off the UI thread and applied
-    /// to the active panel once the answer is in; anything else runs in the shell.
-    fn submit_command_line(&mut self) -> Task<Message> {
-        let typed = self.command_line.typed().to_owned();
-        match command_line::parse(&typed) {
-            Submission::Empty => {
-                self.command_line.leave();
-                release_focus()
-            }
-            // Neither a `cd` nor a command means anything on a server: the
-            // line runs on this computer.
-            Submission::ChangeDirectory(_) | Submission::Shell(_)
-                if self.active_panel().remote().is_some() =>
-            {
-                let text = self.lang.text(Msg::StatusRemoteNoShell).to_owned();
-                self.set_status_error(&text);
-                Task::none()
-            }
-            Submission::ChangeDirectory(path) => {
-                self.command_line.remember(&typed);
-                let side = self.panels.active;
-                let target = fs::resolve_typed_path(&self.active_panel().path, &self.home, path);
-                let request_id = self.command_line.next_cd_check();
-                Task::perform(fs::locate(target.clone()), move |result| {
-                    Message::CommandLine(CommandLineMessage::CdChecked {
-                        request_id,
-                        side,
-                        target: target.clone(),
-                        result,
-                    })
-                })
-            }
-            Submission::Shell(line) => {
-                self.command_line.remember(line);
-                self.command_line.started();
-                self.command_line.leave();
-                let directory = shell_directory(self.active_panel());
-                let command = line.to_owned();
-                Task::batch([
-                    release_focus(),
-                    Task::perform(
-                        command_line::run(command.clone(), directory),
-                        move |outcome| {
-                            Message::CommandLine(CommandLineMessage::Finished {
-                                command: command.clone(),
-                                outcome,
-                            })
-                        },
-                    ),
-                ])
-            }
-        }
-    }
-
-    /// The answer to a `cd`: a destination loads in the panel and ends the
-    /// line, a problem is reported and leaves the text to be fixed. An answer to
-    /// text that has since changed is dropped.
-    fn finish_cd_check(
-        &mut self,
-        request_id: u64,
-        side: PanelSide,
-        target: &Path,
-        result: Result<fs::Destination, fs::PathProblem>,
-    ) -> Task<Message> {
-        if !self.command_line.is_current_cd_check(request_id) || !self.command_line.is_focused() {
-            return Task::none();
-        }
-        match result {
-            Ok(destination) => {
-                self.command_line.leave();
-                self.job_error = None;
-                self.notice = None;
-                Task::batch([
-                    self.load(side, destination.directory, destination.select),
-                    release_focus(),
-                ])
-            }
-            Err(problem) => {
-                let reason = self.path_problem_text(&problem, target);
-                self.set_status_error(&reason);
-                Task::none()
-            }
-        }
-    }
-
-    /// A shell command ended: its exit status goes to the status bar and both
-    /// panels are re-read, as the command may have changed what they show.
-    fn finish_shell_command(&mut self, command: &str, outcome: ShellOutcome) -> Task<Message> {
-        self.command_line.finished();
+    /// A shell command ended: its report goes to the status bar and both panels
+    /// are re-read, as the command may have changed what they show.
+    fn finish_shell_command(&mut self, report: Result<String, String>) -> Task<Message> {
         let reloads = [PanelSide::Left, PanelSide::Right].map(|each| {
             let path = self.panel(each).path.clone();
             self.load(each, path, None)
         });
-        let report = match outcome {
-            ShellOutcome::Exited(code) => {
-                let text = fill_template(
-                    self.lang.text(Msg::CommandLineExitStatus),
-                    &[("{command}", command), ("{code}", &code.to_string())],
-                );
-                if code == 0 {
-                    Ok(text)
-                } else {
-                    Err(text)
-                }
-            }
-            ShellOutcome::NoExitCode => Err(fill_template(
-                self.lang.text(Msg::CommandLineNoExitStatus),
-                &[("{command}", command)],
-            )),
-            ShellOutcome::NotStarted { reason } => Err(fill_template(
-                self.lang.text(Msg::CommandLineNotStarted),
-                &[("{command}", command), ("{reason}", &reason)],
-            )),
-        };
         let notice = match report {
             Ok(text) => {
                 self.job_error = None;
@@ -5101,7 +5005,8 @@ impl App {
                         .shortcut_label(&KeyAction::CommandLine.message()),
                     lang: self.lang,
                     palette: &self.palette,
-                }),
+                })
+                .map(Message::CommandLine),
                 fkeys::view(&self.function_key_bar(), &self.palette,),
                 statusbar::view(
                     self.active_panel(),
@@ -5343,7 +5248,8 @@ impl App {
 
         if let Some(quick_open) = self.quick_open.as_ref() {
             let box_element =
-                quick_open_ui::view(quick_open, self.window_size, self.lang, &self.palette);
+                quick_open_ui::view(quick_open, self.window_size, self.lang, &self.palette)
+                    .map(Message::QuickOpen);
             return Stack::with_children([root, dialog::scrim(box_element)]).into();
         }
 
@@ -13594,84 +13500,39 @@ impl App {
     }
 
     fn update_quick_open(&mut self, message: QuickOpenMessage) -> Task<Message> {
-        match message {
-            QuickOpenMessage::Open => return self.open_quick_open(),
-            QuickOpenMessage::Close => return self.close_quick_open(),
-            _ => {}
-        }
-        let Some(quick_open) = self.quick_open.as_mut() else {
-            return Task::none();
+        let ctx = QuickOpenCtx {
+            documents_available: self.document_finder().is_some(),
         };
-        match message {
-            QuickOpenMessage::QueryChanged(text) => {
-                if let Some(rest) = text.strip_prefix('>') {
-                    let commands_query = rest.to_owned();
-                    return self.switch_quick_open_to_commands(commands_query);
-                }
-                let ranking = quick_open
-                    .set_query(text)
-                    .map(|job| Task::perform(job.run_in_background(), std::convert::identity));
-                // Apart from the name ranking: the names never wait for it.
-                let documents = self.start_documents_search();
-                Task::batch(ranking.into_iter().chain([documents]))
+        let (inner, action) = quick_open::update(&mut self.quick_open, message, &ctx);
+        let task = inner.map(Message::QuickOpen);
+        match action {
+            None => task,
+            Some(QuickOpenAction::Open) => self.open_quick_open(),
+            Some(QuickOpenAction::Close) => self.close_quick_open(),
+            Some(QuickOpenAction::SwitchToCommands(query)) => {
+                self.switch_quick_open_to_commands(query)
             }
-            QuickOpenMessage::DocumentsFound {
-                walk_generation,
-                generation,
-                result,
-            } => {
-                quick_open.apply_documents(walk_generation, generation, result);
-                Task::none()
+            Some(QuickOpenAction::FindDocuments(wanted)) => {
+                let documents = self
+                    .document_finder()
+                    .map_or_else(Task::none, |finder| document_search_task(wanted, finder));
+                Task::batch([task, documents])
             }
-            QuickOpenMessage::Events { generation, events } => {
-                if generation == quick_open.walk_generation() {
-                    quick_open.apply_events(events);
-                    if !quick_open.walking() {
-                        self.quick_open_walk = None;
-                    }
-                }
-                Task::none()
+            Some(QuickOpenAction::WalkFinished) => {
+                self.quick_open_walk = None;
+                task
             }
-            QuickOpenMessage::Ranked {
-                walk_generation,
-                generation,
-                hits,
-                chunks_scored,
-            } => {
-                quick_open.apply_ranked(walk_generation, generation, hits, chunks_scored);
-                Task::none()
+            // Enter on the last row.
+            Some(QuickOpenAction::OpenSearch(text)) => {
+                let closed = self.close_quick_open();
+                Task::batch([closed, self.open_search_with_words(text)])
             }
-            QuickOpenMessage::Move(delta) => {
-                quick_open.move_cursor(delta);
-                Task::none()
-            }
-            QuickOpenMessage::Activate => self.activate_quick_open(),
-            QuickOpenMessage::RowActivated(index) => {
-                quick_open.select(index);
-                self.activate_quick_open()
-            }
-            QuickOpenMessage::Open | QuickOpenMessage::Close => Task::none(),
-        }
-    }
-
-    /// Asks for the documents of the typed text, on a blocking thread.
-    fn start_documents_search(&mut self) -> Task<Message> {
-        let lookup = self.document_finder();
-        let Some(quick_open) = self.quick_open.as_mut() else {
-            return Task::none();
-        };
-        let Some(wanted) = quick_open.request_documents() else {
-            return Task::none();
-        };
-        match lookup {
-            Some(finder) => document_search_task(wanted, finder),
-            None => {
-                quick_open.apply_documents(
-                    wanted.walk_generation,
-                    wanted.generation,
-                    Err(String::from("no index")),
-                );
-                Task::none()
+            // Enter on a hit: the active panel shows the file's directory with
+            // the cursor on the file.
+            Some(QuickOpenAction::Reveal(path)) => {
+                let closed = self.close_quick_open();
+                let revealed = self.reveal_file(&path);
+                Task::batch([closed, revealed])
             }
         }
     }
@@ -13685,30 +13546,6 @@ impl App {
             palette.set_query(query);
         }
         Task::batch([closed, opened])
-    }
-
-    /// Enter on a hit: the active panel shows the file's directory with the
-    /// cursor on the file.
-    fn activate_quick_open(&mut self) -> Task<Message> {
-        // Typed fast, Enter before the background ranking is back.
-        if let Some(quick_open) = self.quick_open.as_mut() {
-            quick_open.rank_now();
-        }
-        if let Some(quick_open) = self
-            .quick_open
-            .as_ref()
-            .filter(|quick_open| quick_open.all_hits_selected())
-        {
-            let text = quick_open.query().to_owned();
-            let closed = self.close_quick_open();
-            return Task::batch([closed, self.open_search_with_words(text)]);
-        }
-        let Some(path) = self.quick_open.as_ref().and_then(QuickOpen::selected_path) else {
-            return Task::none();
-        };
-        let closed = self.close_quick_open();
-        let revealed = self.reveal_file(&path);
-        Task::batch([closed, revealed])
     }
 
     /// The active panel shows the file's directory with the cursor on the file.
@@ -17244,27 +17081,18 @@ impl App {
     /// over `files` (relative to the active panel's directory) would, ranked
     /// for `query` at once.
     pub fn open_quick_open_for_test(&mut self, files: &[&str], query: &str) {
-        use crate::fs::search::{SearchEvent, SearchTotals};
+        use crate::quick_open::WalkEvent;
         drop(self.update(Message::QuickOpen(QuickOpenMessage::Open)));
         let Some(quick_open) = self.quick_open.as_mut() else {
             return;
         };
-        let mut events: Vec<SearchEvent> = files
+        let mut events: Vec<WalkEvent> = files
             .iter()
-            .map(|file| SearchEvent::File {
+            .map(|file| WalkEvent::File {
                 path: quick_open.root().join(file),
-                lines: Vec::new(),
-                size: 0,
-                modified: None,
             })
             .collect();
-        events.push(SearchEvent::Finished(SearchTotals {
-            scanned: files.len(),
-            files: files.len(),
-            matches: files.len(),
-            skipped: 0,
-            truncated: false,
-        }));
+        events.push(WalkEvent::Finished { truncated: false });
         quick_open.apply_events(events);
         if let Some(ranking) = quick_open.set_query(query.to_string()) {
             if let QuickOpenMessage::Ranked {
@@ -20553,6 +20381,7 @@ mod type_ahead_tests {
 #[cfg(test)]
 mod command_line_tests {
     use super::*;
+    use crate::command_line::ShellOutcome;
     use crate::commands::command_of;
 
     const NONE: Modifiers = Modifiers::empty();
@@ -22872,11 +22701,8 @@ mod quick_open_tests {
         let root = app.quick_open_for_test().unwrap().root().to_path_buf();
         drop(app.update(Message::QuickOpen(QuickOpenMessage::Events {
             generation: old,
-            events: vec![crate::fs::search::SearchEvent::File {
+            events: vec![crate::quick_open::WalkEvent::File {
                 path: root.join("late.txt"),
-                lines: Vec::new(),
-                size: 0,
-                modified: None,
             }],
         })));
         assert_eq!(app.quick_open_for_test().unwrap().file_count(), 0);

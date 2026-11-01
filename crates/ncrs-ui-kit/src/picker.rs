@@ -8,35 +8,43 @@ use iced::widget::text::{Span, Wrapping};
 use iced::widget::{column, container, rich_text, span, text, Column};
 use iced::{Color, Element, Size};
 
-use super::format;
-use super::frame::{self, DialogSize, Frame, KeyHints};
-use super::theme::{font_size, spacing};
-use crate::i18n::Language;
-use crate::messages::Message;
+use ncrs_i18n::Language;
+
+use crate::format;
+use crate::frame::{self, DialogSize, Frame, KeyHints};
 use crate::palette::Palette;
+use crate::theme::{font_size, spacing};
 
 /// Both boxes list long paths and commands: the large frame, which grows with
 /// the list.
 pub const SIZE: DialogSize = DialogSize::Large;
 
 /// What the box shows.
-pub struct Content<'a> {
+pub struct Content<'a, M> {
     pub title: String,
     pub title_theme: Option<String>,
     pub subtitle: Option<String>,
-    pub field: Element<'a, Message>,
+    pub field: Element<'a, M>,
     pub status: String,
-    pub rows: Vec<Element<'a, Message>>,
-    pub on_close: Message,
+    pub rows: Vec<Element<'a, M>>,
+    pub on_close: M,
+}
+
+impl<M> std::fmt::Debug for Content<'_, M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Content")
+            .field("title", &self.title)
+            .finish_non_exhaustive()
+    }
 }
 
 /// The frame around the field and the rows.
-pub fn frame<'a>(
-    content: Content<'a>,
+pub fn frame<'a, M: Clone + 'a>(
+    content: Content<'a, M>,
     window: Size,
     lang: Language,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     let status_chars = frame::content_chars(SIZE, window, 0.0);
     let status = (!content.status.is_empty()).then(|| {
         text(format::ellipsize_end(&content.status, status_chars))
@@ -68,13 +76,13 @@ pub fn row_chars(window: Size, reserved: f32) -> usize {
 
 /// `text` cut at the matched ranges, which are drawn in the accent color. A
 /// text longer than `max_chars` loses its middle, and the ranges follow.
-pub fn highlighted<'a>(
+pub fn highlighted<'a, M: 'a>(
     text: &str,
     highlight: &[Range<usize>],
     selected: bool,
     max_chars: usize,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     let plain = if selected {
         palette.cursor_text
     } else {
@@ -85,13 +93,13 @@ pub fn highlighted<'a>(
 
 /// Like [`highlighted`], with the unmarked part dimmed: a second name beside
 /// the main one.
-pub fn highlighted_dim<'a>(
+pub fn highlighted_dim<'a, M: 'a>(
     text: &str,
     highlight: &[Range<usize>],
     selected: bool,
     max_chars: usize,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     let plain = if selected {
         palette.cursor_text
     } else {
@@ -100,14 +108,14 @@ pub fn highlighted_dim<'a>(
     highlighted_in(text, highlight, selected, max_chars, plain, palette)
 }
 
-fn highlighted_in<'a>(
+fn highlighted_in<'a, M: 'a>(
     text: &str,
     highlight: &[Range<usize>],
     selected: bool,
     max_chars: usize,
     plain: Color,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, M> {
     let (shown, ranges) = fit(text, highlight, max_chars);
     rich_text(highlight_spans(&shown, &ranges, selected, plain, palette))
         .size(font_size::ROW)
@@ -150,7 +158,7 @@ fn fit(text: &str, highlight: &[Range<usize>], max_chars: usize) -> (String, Vec
     (shown, moved)
 }
 
-pub(in crate::ui) fn highlight_spans<'a>(
+pub fn highlight_spans<'a>(
     text: &str,
     highlight: &[Range<usize>],
     selected: bool,

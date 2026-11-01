@@ -5,29 +5,25 @@ use iced::widget::text::Wrapping;
 use iced::widget::{container, row, text};
 use iced::{alignment, Element, Length, Size};
 
-use super::kit;
-use super::layout::ROW_HEIGHT;
-use super::picker;
-use super::theme::{font_size, spacing};
-use crate::app::fill_template;
-use crate::filing::{FoundDocument, TextSource};
-use crate::i18n::{FuturamaName, Language, Msg};
-use crate::messages::{Message, QuickOpenMessage};
-use crate::palette::Palette;
-use crate::quick_open::{Hit, QuickOpen};
+use ncrs_core::{FoundDocument, TextSource};
+use ncrs_i18n::{fill_template, FuturamaName, Language, Msg};
+use ncrs_ui_kit::kit;
+use ncrs_ui_kit::layout::ROW_HEIGHT;
+use ncrs_ui_kit::palette::Palette;
+use ncrs_ui_kit::picker;
+use ncrs_ui_kit::theme::{font_size, spacing};
+
+use super::{Hit, QuickOpen};
+use crate::message::QuickOpenMessage;
 
 pub const QUICK_OPEN_ID: &str = "quick-open-query";
-
-fn to_quick_open(message: QuickOpenMessage) -> Message {
-    Message::QuickOpen(message)
-}
 
 pub fn view<'a>(
     quick_open: &'a QuickOpen,
     window: Size,
     lang: Language,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, QuickOpenMessage> {
     let directory = quick_open.root().file_name().map_or_else(
         || quick_open.root().display().to_string(),
         |name| name.to_string_lossy().into_owned(),
@@ -38,12 +34,12 @@ pub fn view<'a>(
         lang.text(Msg::QuickopenPlaceholder),
         quick_open.query(),
         QUICK_OPEN_ID,
-        Some(|text| to_quick_open(QuickOpenMessage::QueryChanged(text))),
-        to_quick_open(QuickOpenMessage::Activate),
+        Some(QuickOpenMessage::QueryChanged),
+        QuickOpenMessage::Activate,
         palette,
     );
 
-    let mut rows: Vec<Element<'a, Message>> = quick_open
+    let mut rows: Vec<Element<'a, QuickOpenMessage>> = quick_open
         .hits()
         .iter()
         .enumerate()
@@ -90,7 +86,7 @@ pub fn view<'a>(
             field,
             status: status(quick_open, lang),
             rows,
-            on_close: to_quick_open(QuickOpenMessage::Close),
+            on_close: (QuickOpenMessage::Close),
         },
         window,
         lang,
@@ -118,7 +114,7 @@ fn hit_row<'a>(
     index: usize,
     window: Size,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, QuickOpenMessage> {
     let selected = index == quick_open.cursor();
     let path = quick_open.relative_path(hit);
     kit::list_row(
@@ -129,7 +125,7 @@ fn hit_row<'a>(
             picker::row_chars(window, 0.0),
             palette,
         ),
-        to_quick_open(QuickOpenMessage::RowActivated(index)),
+        QuickOpenMessage::RowActivated(index),
         selected,
         true,
         palette,
@@ -142,7 +138,7 @@ fn all_hits_row<'a>(
     cursor: usize,
     label: &str,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, QuickOpenMessage> {
     let selected = index == cursor;
     kit::list_row(
         text(label.to_owned())
@@ -154,7 +150,7 @@ fn all_hits_row<'a>(
             })
             .wrapping(Wrapping::None)
             .into(),
-        to_quick_open(QuickOpenMessage::RowActivated(index)),
+        QuickOpenMessage::RowActivated(index),
         selected,
         true,
         palette,
@@ -162,7 +158,7 @@ fn all_hits_row<'a>(
 }
 
 /// The heading of the documents section, not a place for the cursor.
-fn documents_header<'a>(label: &str, palette: &Palette) -> Element<'a, Message> {
+fn documents_header<'a>(label: &str, palette: &Palette) -> Element<'a, QuickOpenMessage> {
     container(
         text(label.to_uppercase())
             .size(font_size::COLUMN_HEADER)
@@ -196,7 +192,7 @@ fn document_row<'a>(
     cursor: usize,
     window: Size,
     palette: &Palette,
-) -> Element<'a, Message> {
+) -> Element<'a, QuickOpenMessage> {
     let selected = index == cursor;
     let name = document
         .path
@@ -227,7 +223,7 @@ fn document_row<'a>(
     .align_y(alignment::Vertical::Center);
     kit::list_row(
         line.into(),
-        to_quick_open(QuickOpenMessage::RowActivated(index)),
+        QuickOpenMessage::RowActivated(index),
         selected,
         true,
         palette,

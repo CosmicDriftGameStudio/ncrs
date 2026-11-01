@@ -58,7 +58,6 @@ grep-regex = "0.1.14"
 grep-searcher = "0.1.17"
 grep-matcher = "0.1.9"
 unicode-normalization = "0.1.26"
-nucleo-matcher = "0.3.1"
 ncrs-intake = { path = "crates/ncrs-intake", version = "0.0.0" }
 # The filing module opens the index and holds its key in the credential store.
 ncrs-index = { path = "crates/ncrs-index", version = "0.0.0" }
@@ -72,6 +71,8 @@ ncrs-files = { path = "crates/ncrs-files", version = "0.0.0" }
 ncrs-fs = { path = "crates/ncrs-fs", version = "0.0.0" }
 # The file operations: the copy and move dialog, the conflict and delete dialogs and the trash view.
 ncrs-ops = { path = "crates/ncrs-ops", version = "0.0.0" }
+# The command line, Quick Open and the messages of the command list.
+ncrs-palette = { path = "crates/ncrs-palette", version = "0.0.0" }
 # Translated UI strings, generated from strings.json.
 ncrs-i18n = { path = "crates/ncrs-i18n", version = "0.0.0" }
 # Colors, sizes and widgets the screens are built from, generic over the message type.
@@ -197,6 +198,8 @@ sha2 = "0.10"
 ncrs-fs = { path = "crates/ncrs-fs", version = "0.0.0", features = ["test-support"] }
 # Hits for the snapshot tests of the search filters.
 ncrs-search = { path = "crates/ncrs-search", version = "0.0.0", features = ["test-support"] }
+# The state of the documents section of Quick Open, for the tests of the app.
+ncrs-palette = { path = "crates/ncrs-palette", version = "0.0.0", features = ["test-support"] }
 # `PanelState::apply_listing`, for the tests of the panel in the app.
 ncrs-files = { path = "crates/ncrs-files", version = "0.0.0", features = ["test-support"] }
 
