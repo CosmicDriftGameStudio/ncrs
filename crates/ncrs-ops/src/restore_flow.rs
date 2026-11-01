@@ -232,7 +232,8 @@ pub fn end_restore(ops: &mut Ops, ctx: &FlowCtx<'_>, error_set: bool) -> Outcome
     let outcome = ops.restoring.take();
     ops.restore_conflict = None;
     ops.bump_generation();
-    let mut asked = vec![Action::ClearConflictAll, Action::ClearJobProgress];
+    ops.conflict_all = false;
+    let mut asked = vec![Action::ClearJobProgress];
     if let Some(done) = outcome {
         if !ctx.has_job_error && !error_set && (done.restored > 0 || done.skipped > 0) {
             let mut text = fill_template(

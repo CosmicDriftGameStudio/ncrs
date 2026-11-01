@@ -2,6 +2,8 @@
 
 use ncrs_fs::{RestoreError, TrashedItem};
 
+use crate::row_failure::RowFailure;
+use crate::state::Transfer;
 use crate::transfer::{Policy, Scan};
 use ncrs_core::TransferKind;
 
@@ -79,7 +81,7 @@ pub enum TrashMessage {
 /// five files into five dialogs and fifty thousand into an afternoon.
 ///
 /// The two `All` variants are what the single-file answers become when "for all
-/// files" is ticked; see `App::answer_conflict`.
+/// files" is ticked; see `answer_conflict`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConflictChoice {
     AllOverwrite,
@@ -137,6 +139,24 @@ pub enum OpsMessage {
     DeleteRowDone {
         result: Result<(), String>,
         index: usize,
+        generation: u64,
+    },
+    /// One row of a transfer is done or failed. Dropped when `generation` is
+    /// not the current one.
+    TransferRowDone {
+        result: Result<Transfer, RowFailure>,
+        index: usize,
+        generation: u64,
+    },
+    /// The copy for the viewer is there, or unpacking it failed.
+    ViewExtracted {
+        generation: u64,
+        slot: std::path::PathBuf,
+        result: Result<std::path::PathBuf, RowFailure>,
+    },
+    /// A pack, a copy into an archive or a delete from one is over.
+    ArchiveWritten {
+        result: Result<ncrs_fs::archive::WriteReport, RowFailure>,
         generation: u64,
     },
     /// The progress mask's abort button.

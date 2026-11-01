@@ -1,9 +1,10 @@
 //! What the app tells the file operations when it calls `update`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use ncrs_core::PanelSide;
+use ncrs_fs::remote::session::Pool;
 use ncrs_fs::{SandboxAccess, Trash};
 use ncrs_i18n::Language;
 
@@ -21,6 +22,8 @@ pub struct Ctx {
 pub struct FlowCtx<'a> {
     pub lang: Language,
     pub trash: &'a Arc<dyn Trash>,
+    /// A job runs.
+    pub jobs_busy: bool,
     /// A job runs, or a prompt or a conflict question holds the keyboard.
     pub start_blocked: bool,
     /// The copy or move dialog is up.
@@ -32,6 +35,11 @@ pub struct FlowCtx<'a> {
     pub source_side: PanelSide,
     pub left_archive: Option<&'a Path>,
     pub right_archive: Option<&'a Path>,
+    /// The root address of the server each panel shows a folder of.
+    pub left_server: Option<PathBuf>,
+    pub right_server: Option<PathBuf>,
+    /// The connections to the servers.
+    pub remote: &'a Arc<Pool>,
     /// The key that deletes for good, spelled for this platform.
     pub permanent_delete_key: Option<String>,
     /// The key that puts the latest deletion back.
@@ -48,6 +56,15 @@ impl std::fmt::Debug for FlowCtx<'_> {
 }
 
 impl FlowCtx<'_> {
+    /// Whether a panel is in `place`: an archive, or the root address of the
+    /// server whose folder it shows.
+    pub fn panel_shows(&self, place: &Path) -> bool {
+        self.left_archive == Some(place)
+            || self.right_archive == Some(place)
+            || self.left_server.as_deref() == Some(place)
+            || self.right_server.as_deref() == Some(place)
+    }
+
     pub fn archive_of(&self, side: PanelSide) -> Option<&Path> {
         match side {
             PanelSide::Left => self.left_archive,

@@ -10,6 +10,7 @@ use ncrs_i18n::{fill_template, Language, Msg};
 use ncrs_jobs::{Job, JobKind};
 
 use crate::action::{Action, StartJob};
+use crate::archive_flow::start_archive_delete;
 use crate::ctx::FlowCtx;
 use crate::delete::default_focus;
 use crate::message::OpsMessage;
@@ -22,8 +23,14 @@ pub fn idle() -> Outcome {
     (Task::none(), Vec::new())
 }
 
-fn actions(actions: Vec<Action>) -> Outcome {
+pub fn actions(actions: Vec<Action>) -> Outcome {
     (Task::none(), actions)
+}
+
+/// The outcome with `action` ahead of the others.
+pub fn with_front(action: Action, (task, mut rest): Outcome) -> Outcome {
+    rest.insert(0, action);
+    (task, rest)
 }
 
 /// What F8 or Shift+F8 found to delete, read by the app from its panels.
@@ -98,10 +105,7 @@ pub fn confirm_delete(ops: &mut Ops, ctx: &FlowCtx<'_>) -> Outcome {
         return idle();
     };
     if let Some(archive) = ctx.archive_of(deletion.side) {
-        return actions(vec![Action::DeleteInArchive {
-            archive: archive.to_path_buf(),
-            deletion,
-        }]);
+        return start_archive_delete(ops, archive.to_path_buf(), deletion, ctx);
     }
     if !deletion.permanent {
         ops.last_deletion.clear();

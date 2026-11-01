@@ -453,20 +453,6 @@ pub enum ClipboardKind {
 pub use ncrs_core::TransferKind;
 pub use ncrs_palette::{CommandLineMessage, CommandPaletteMessage, QuickOpenMessage};
 
-/// The job queue of the app, which `ncrs-core` knows nothing about.
-pub trait TransferKindJob {
-    fn job_kind(self) -> crate::jobs::JobKind;
-}
-
-impl TransferKindJob for TransferKind {
-    fn job_kind(self) -> crate::jobs::JobKind {
-        match self {
-            TransferKind::Copy => crate::jobs::JobKind::Copy,
-            TransferKind::Move => crate::jobs::JobKind::Move,
-        }
-    }
-}
-
 impl From<ncrs_remote::Message> for Message {
     fn from(message: ncrs_remote::Message) -> Self {
         Self::Remote(message)
@@ -513,6 +499,27 @@ impl From<OpsMessage> for Message {
                 index,
                 generation,
             },
+            OpsMessage::TransferRowDone {
+                result,
+                index,
+                generation,
+            } => Self::TransferRowDone {
+                result,
+                index,
+                generation,
+            },
+            OpsMessage::ViewExtracted {
+                generation,
+                slot,
+                result,
+            } => Self::ViewExtracted {
+                generation,
+                slot,
+                result,
+            },
+            OpsMessage::ArchiveWritten { result, generation } => {
+                Self::ArchiveWritten { result, generation }
+            }
             OpsMessage::AbortJob => Self::AbortJob,
             OpsMessage::Trash(trash) => Self::Trash(trash),
         }

@@ -1,7 +1,6 @@
 //! Root application: state, `update` (the only place state changes) and
 //! `view` (pure composition of UI components).
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::ffi::OsString;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -63,7 +62,6 @@ use crate::keymap::{self, KeyAction, KeyScope, Keymap};
 use crate::keymap::{KeyActionMessage as _, KeymapMessages as _};
 #[cfg(any(target_os = "macos", test))]
 use crate::menu::Availability;
-use crate::messages::TransferKindJob as _;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
     ConflictChoice, FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesColumnMessage,
@@ -153,9 +151,12 @@ use ncrs_index::{
     IncludeOutcome, KeyStore, KeyringKeyStore, KindSkip, Kinds, QuerySpec, SavedQueryId,
 };
 use ncrs_intake::LocationMode;
+use ncrs_ops::{child_path, TransferAction, TrashAction};
 #[cfg(test)]
 use ncrs_ops::{restore_one, Restoration};
-use ncrs_ops::{Deletion, TransferAction, TrashAction};
+#[cfg(test)]
+use ncrs_ops::{Deletion, Extracting, PendingConflict};
+pub use ncrs_ops::{RowFailure, Transfer};
 use ncrs_palette::command_list::{
     self, view as command_palette_ui, CommandPalette, CommandPaletteAction, CommandPaletteCtx,
     HermesCommands, RECENT_LIMIT,
@@ -168,6 +169,8 @@ use ncrs_settings::theme_fetch::install::download_theme;
 use ncrs_settings::theme_file::{copy_picked_theme_file, theme_file_entry, IncludeProblem};
 use ncrs_settings::Settings;
 use ncrs_ui_kit::focus::release_focus;
+#[cfg(test)]
+use std::ffi::OsString;
 use tokio::sync::mpsc;
 
 /// How often the bar of a model download reads the byte counter.
@@ -675,50 +678,6 @@ fn is_context_click(modifiers: Modifiers) -> bool {
     cfg!(target_os = "macos") && modifiers.control()
 }
 
-/// Why one row of a transfer failed.
-///
-/// The failure kind is carried across the task boundary rather than formatted
-/// into the message. It used to be a plain `String`, and the app told "the name
-/// is taken" from a real error by looking for `AlreadyExists` at the start of
-/// that string — which never matches, because `io::Error`'s `Display` is the
-/// *message*, not the kind's name. Every conflict therefore fell through as a
-/// hard error and the overwrite dialog was unreachable.
-///
-/// A typed failure is the fix that cannot rot: a wording change in the
-/// filesystem layer or on the operating system leaves this matching.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RowFailure {
-    /// The target already exists, and the user can say what to do about it.
-    Conflict(String),
-    /// A 7z archive ncrs refuses to unpack; the text is chosen in the user's
-    /// language when it is shown, not when the copy fails.
-    Refused(fs::archive::SevenZipRefusal),
-    /// A server sent a name that cannot be created here; the text is chosen in
-    /// the user's language when it is shown.
-    UnsafeName(String),
-    /// Anything else, shown as it came.
-    Other(String),
-}
-
-impl RowFailure {
-    pub fn from_io(err: std::io::Error) -> Self {
-        use std::io::ErrorKind;
-        let unsafe_name = err
-            .get_ref()
-            .and_then(|inner| inner.downcast_ref::<fs::remote::transfer::UnsafeName>())
-            .map(|named| named.0.clone());
-        if let Some(name) = unsafe_name {
-            RowFailure::UnsafeName(name)
-        } else if err.kind() == ErrorKind::AlreadyExists {
-            RowFailure::Conflict(err.to_string())
-        } else if let Some(refusal) = fs::archive::refusal_of(&err) {
-            RowFailure::Refused(refusal)
-        } else {
-            RowFailure::Other(err.to_string())
-        }
-    }
-}
-
 /// Runs one job and reports what happens as messages.
 ///
 /// Separate from `App` so the queue can hand it to `Task::abortable` without
@@ -740,33 +699,6 @@ struct PendingReload {
     name: String,
 }
 
-/// What a transfer does, and to which rows.
-///
-/// Carried inside `Message`, so it has to be public — but nothing outside this
-/// module constructs one; `start_transfer` is the only way in.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Transfer {
-    kind: TransferKind,
-    /// The rows the user tagged, or the single row under the cursor when nothing
-    /// is tagged. Resolved once at F5, because by the time a conflict dialog is
-    /// up the selection may have moved.
-    sources: Vec<PathBuf>,
-    target: PathBuf,
-    /// The name each source gets in the target, by position; empty when every
-    /// source keeps its own. Differs only where sources from several folders
-    /// share a name.
-    names: Vec<OsString>,
-}
-
-impl Transfer {
-    /// The name the source at `index` gets in the target, when it is not its own.
-    fn name_in_target(&self, index: usize) -> Option<OsString> {
-        let name = self.names.get(index).filter(|name| !name.is_empty())?;
-        let source = self.sources.get(index)?;
-        (source.file_name() != Some(name.as_os_str())).then(|| name.clone())
-    }
-}
-
 /// What a file handed to the viewer or editor is a copy of.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CopyOf {
@@ -774,39 +706,6 @@ enum CopyOf {
     Nothing,
     Archive,
     Server,
-}
-
-/// Whether a group of view copies is a server's, told by its key: the root
-/// address of the server.
-fn group_is_server(group: &Path) -> bool {
-    RemotePath::parse(group).is_some()
-}
-
-/// The archive file F3 is unpacking, and the folder it goes to.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Extracting {
-    archive: PathBuf,
-    slot: PathBuf,
-}
-
-/// A pack, a copy into an archive or a delete from one, while its job runs.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ArchiveWrite {
-    /// The panel the entries came from, which is cleared and reloaded at the
-    /// end even if the user switches panels meanwhile.
-    side: PanelSide,
-    what: ArchiveWriteKind,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum ArchiveWriteKind {
-    /// A new archive of this name in `folder`, by default the other panel's.
-    Pack {
-        name: String,
-        folder: PathBuf,
-    },
-    CopyIn,
-    Delete,
 }
 
 /// Which keys the open delete dialog answers to.
@@ -818,14 +717,6 @@ pub enum DeleteKeys {
     Trash,
     /// Enter cancels; only the permanent-delete key (Shift+F8) pressed again confirms.
     Permanent,
-}
-
-/// One file waiting for an answer.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct PendingConflict {
-    transfer: Transfer,
-    /// Which of `sources` is in the way.
-    index: usize,
 }
 
 /// What a click on the "access blocked" error sends. Only macOS has a privacy
@@ -989,11 +880,6 @@ pub struct App {
     pending_reload: Option<PendingReload>,
     /// Long-running file operations, one at a time.
     jobs: jobs::Queue,
-    /// What a transfer works on and where to. Kept so a conflict can resume
-    /// without asking the user to mark the rows again.
-    transfer: Option<Transfer>,
-    /// A transfer paused on a name that is already taken.
-    pending_conflict: Option<PendingConflict>,
     /// The trash view, in place of the panel on `trash_side`.
     trash_view: Option<TrashView>,
     trash_side: PanelSide,
@@ -1009,20 +895,8 @@ pub struct App {
     /// Counts the confirmations opened, so a result of the background scan can
     /// tell if its dialog is still the one on screen.
     transfer_dialogs_opened: u64,
-    /// Whether the progress mask of the running transfer is up. "In the
-    /// background" closes it; the status bar brings it back.
-    transfer_mask_visible: bool,
-    /// How many rows (top-level entries) of the running transfer are done.
-    transfer_rows_done: usize,
     /// The question whether to remove the Hermes index and begin again.
     start_over_dialog: bool,
-    /// The folders F3 unpacks archive files into. `None` when there is no
-    /// cache folder to put them in.
-    view_copies: Option<fs::archive::ViewCopies>,
-    /// The file F3 is unpacking, while its job runs.
-    extracting: Option<Extracting>,
-    /// The pack, copy into an archive or delete from one that is running.
-    archive_write: Option<ArchiveWrite>,
     /// The button the open dialog has focused, counted from the left.
     dialog_focus: usize,
     /// Modifiers held right now, for Cmd/Ctrl-click on a row.
@@ -1060,14 +934,8 @@ pub struct App {
     drop_generation: u64,
     /// How many items the running job has finished, for the progress bar.
     job_done: usize,
-    /// Whether "for all files" is ticked in the conflict dialog. Lives here so
-    /// the tick survives the dialog being rebuilt every frame.
-    conflict_all: bool,
-    /// The conflict rule from a previous "for all" answer, applied to the rest
-    /// without asking again.
-    conflict_rule: Option<fs::transfer::OnConflict>,
-    /// The state of the delete flow and the generation that tells a late result
-    /// of a transfer, a delete or a restore from the current one.
+    /// The state of the transfer, delete, restore and archive flows and the
+    /// generation that tells a late result from the current one.
     ops: ncrs_ops::Ops,
     /// How far the running transfer has got, filled from the job's channel.
     job_progress: Option<fs::transfer::Tick>,
@@ -2615,15 +2483,6 @@ pub fn route_key(prompt: &PromptKeyState, key: Key, modifiers: Modifiers) -> Opt
     }
 }
 
-/// `name` in `folder`. A folder on a server is joined as text, because
-/// `Path::join` would put a backslash in on Windows.
-fn child_path(folder: &Path, name: &std::ffi::OsStr) -> PathBuf {
-    match (RemotePath::parse(folder), name.to_str()) {
-        (Some(place), Some(plain)) => place.join(plain).to_path_buf(),
-        _ => folder.join(name),
-    }
-}
-
 /// What goes on the clipboard, and for how many rows.
 #[derive(Debug, PartialEq, Eq)]
 struct ClipboardText {
@@ -2843,7 +2702,7 @@ impl App {
         }));
         panels.passwords = passwords;
         panels.open_grant_dialog_if_needed();
-        panels.view_copies = view_copies_dir
+        panels.ops.view_copies = view_copies_dir
             .as_deref()
             .and_then(|dir| fs::archive::ViewCopies::open(dir).ok());
         panels.apply_session_state(&saved);
@@ -3117,8 +2976,6 @@ impl App {
             prompt_request_id: 0,
             pending_reload: None,
             jobs: jobs::Queue::new(),
-            transfer: None,
-            pending_conflict: None,
             trash_view: None,
             trash_side: PanelSide::Left,
             trash_generation: 0,
@@ -3127,12 +2984,7 @@ impl App {
             folder_size_runs_started: 0,
             transfer_dialog: None,
             transfer_dialogs_opened: 0,
-            transfer_mask_visible: false,
-            transfer_rows_done: 0,
             start_over_dialog: false,
-            view_copies: None,
-            extracting: None,
-            archive_write: None,
             dialog_focus: 0,
             modifiers: Modifiers::default(),
             trash: fs::system_trash(None),
@@ -3149,8 +3001,6 @@ impl App {
             dropped_files: Vec::new(),
             drop_generation: 0,
             job_done: 0,
-            conflict_all: false,
-            conflict_rule: None,
             ops: ncrs_ops::Ops::default(),
             job_progress: None,
             progress_rx: None,
@@ -3494,13 +3344,15 @@ impl App {
             }
             Message::DialogActivate => self.activate_dialog_button(),
             Message::ToggleConflictAll => {
-                self.conflict_all = !self.conflict_all;
+                self.ops.conflict_all = !self.ops.conflict_all;
                 Task::none()
             }
 
             // The user answered a conflict. The queue's pending job carries
             // what was asked, so the answer lands on the right file.
-            Message::TransferConflict(choice) => self.answer_conflict(choice),
+            Message::TransferConflict(choice) => {
+                self.with_ops(|ops, ctx| ncrs_ops::answer_conflict(ops, choice, ctx))
+            }
 
             // A tick from the copy on the blocking thread. The only thing the
             // status bar needs, and nothing more.
@@ -3532,61 +3384,9 @@ impl App {
                 result,
                 index,
                 generation,
-            } => {
-                if generation != self.ops.generation {
-                    return Task::none();
-                }
-                self.jobs.finish();
-                self.job_done += 1;
-                let Some(transfer) = self.transfer.clone() else {
-                    return Task::none();
-                };
-                match result {
-                    // A remembered "all" answer applies to the rows after this
-                    // one, without asking again.
-                    Ok(done) => {
-                        self.transfer_rows_done = index + 1;
-                        let rule = self.conflict_rule.unwrap_or(fs::transfer::OnConflict::Fail);
-                        self.run_from(done, index + 1, rule)
-                    }
-                    // A name that is taken is the one the user can answer.
-                    // Matched on the error kind, not on the message text: a
-                    // wording change in the filesystem layer would otherwise
-                    // silently turn every conflict into a hard failure.
-                    // The dialog names the file itself, so the reason travels
-                    // no further; it stays in the payload for the status line.
-                    Err(RowFailure::Conflict(_reason)) => {
-                        self.dialog_focus = conflict::OVERWRITE_FOCUS;
-                        self.pending_conflict = Some(PendingConflict { transfer, index });
-                        // Else the dialog would be asked behind the box.
-                        Task::batch([self.close_quick_open(), self.close_command_palette()])
-                    }
-                    // Rows before this one are already done, so the panels are
-                    // reloaded to show them.
-                    Err(RowFailure::Refused(refusal)) => {
-                        let text = self.lang.text(match refusal {
-                            fs::archive::SevenZipRefusal::Encrypted => Msg::ErrorArchiveEncrypted,
-                            fs::archive::SevenZipRefusal::DictionaryTooLarge => {
-                                Msg::ErrorArchiveDictionaryTooLarge
-                            }
-                        });
-                        self.set_status_error(text);
-                        self.end_transfer()
-                    }
-                    Err(RowFailure::UnsafeName(name)) => {
-                        let text = fill_template(
-                            self.lang.text(Msg::ErrorRemoteUnsafeName),
-                            &[("{name}", &name)],
-                        );
-                        self.set_status_error(&text);
-                        self.end_transfer()
-                    }
-                    Err(RowFailure::Other(reason)) => {
-                        self.set_status_error(&reason);
-                        self.end_transfer()
-                    }
-                }
-            }
+            } => self.with_ops(|ops, ctx| {
+                ncrs_ops::transfer_row_done(ops, result, index, generation, ctx)
+            }),
 
             Message::OpenExternal(kind) => self.open_external(kind),
 
@@ -3594,7 +3394,8 @@ impl App {
                 generation,
                 slot,
                 result,
-            } => self.view_extracted(generation, slot, result),
+            } => self
+                .with_ops(|ops, ctx| ncrs_ops::view_extracted(ops, generation, slot, result, ctx)),
 
             #[cfg(target_os = "macos")]
             Message::OpenPrivacySettings => {
@@ -3715,7 +3516,7 @@ impl App {
             }
             Message::PackPrompt => self.open_pack_prompt(),
             Message::ArchiveWritten { result, generation } => {
-                self.archive_written(generation, result)
+                self.with_ops(|ops, ctx| ncrs_ops::archive_written(ops, generation, result, ctx))
             }
             Message::PromptInput(text) => {
                 if let Some(prompt) = self.prompt.as_mut() {
@@ -4470,66 +4271,67 @@ impl App {
         ]
         .height(Length::Fill);
 
-        let below_title_bar = if let Some(state) = self.settings.page.as_ref() {
-            self.settings_area(state)
-        } else if let Some(area) = self.ablage_area() {
-            area
-        } else {
-            container(column![
-                panels,
-                command_line_ui::view(command_line_ui::Props {
-                    prompt: self.active_panel().path.display().to_string(),
-                    typed: self.command_line.typed(),
-                    focused: self.command_line.is_focused(),
-                    focusable: !self.command_line_is_blocked(),
-                    running: self.command_line.running(),
-                    key_label: self
-                        .keymap
-                        .shortcut_label(&KeyAction::CommandLine.message()),
-                    lang: self.lang,
-                    palette: &self.palette,
-                })
-                .map(Message::CommandLine),
-                fkeys::view(&self.function_key_bar(), &self.palette,),
-                statusbar::view(
-                    self.active_panel(),
-                    self.lang,
-                    &self.palette,
-                    statusbar::Activity {
-                        side: self.panels.active,
-                        theme_name: self.theme_name(),
-                        job: self.job_status(),
-                        job_press: self.transfer.is_some().then_some(Message::TransferDialog(
-                            TransferDialogMessage::ShowProgress,
-                        )),
-                        filing: self.filing_badge(),
-                        on_blocked_press: blocked_access_press(
-                            self.sandbox.active,
-                            &self.active_panel().path,
-                        ),
-                        on_failure_press: self
-                            .job_error
-                            .is_some()
-                            .then(|| self.job_error_press.clone())
-                            .flatten(),
-                        blocked_by_sandbox: cfg!(target_os = "macos") && self.sandbox.active,
-                        notice: self.notice.as_deref(),
-                        hermes_line: self.hermes_line(),
-                    },
-                    self.status_error(),
-                    self.search_status(),
-                    statusbar::PathBar {
-                        editing: self.path_field.as_deref(),
-                        on_input: Message::PathFieldInput,
-                        on_submit: Message::PathFieldSubmit,
-                        on_copy: Message::CopyToClipboard(ClipboardKind::Directory),
-                        hit_line: self.hit_line(),
-                    },
-                ),
-            ])
-            .width(Length::Fill)
-            .height(Length::Fill)
-        };
+        let below_title_bar =
+            if let Some(state) = self.settings.page.as_ref() {
+                self.settings_area(state)
+            } else if let Some(area) = self.ablage_area() {
+                area
+            } else {
+                container(column![
+                    panels,
+                    command_line_ui::view(command_line_ui::Props {
+                        prompt: self.active_panel().path.display().to_string(),
+                        typed: self.command_line.typed(),
+                        focused: self.command_line.is_focused(),
+                        focusable: !self.command_line_is_blocked(),
+                        running: self.command_line.running(),
+                        key_label: self
+                            .keymap
+                            .shortcut_label(&KeyAction::CommandLine.message()),
+                        lang: self.lang,
+                        palette: &self.palette,
+                    })
+                    .map(Message::CommandLine),
+                    fkeys::view(&self.function_key_bar(), &self.palette,),
+                    statusbar::view(
+                        self.active_panel(),
+                        self.lang,
+                        &self.palette,
+                        statusbar::Activity {
+                            side: self.panels.active,
+                            theme_name: self.theme_name(),
+                            job: self.job_status(),
+                            job_press: self.ops.transfer.is_some().then_some(
+                                Message::TransferDialog(TransferDialogMessage::ShowProgress,)
+                            ),
+                            filing: self.filing_badge(),
+                            on_blocked_press: blocked_access_press(
+                                self.sandbox.active,
+                                &self.active_panel().path,
+                            ),
+                            on_failure_press: self
+                                .job_error
+                                .is_some()
+                                .then(|| self.job_error_press.clone())
+                                .flatten(),
+                            blocked_by_sandbox: cfg!(target_os = "macos") && self.sandbox.active,
+                            notice: self.notice.as_deref(),
+                            hermes_line: self.hermes_line(),
+                        },
+                        self.status_error(),
+                        self.search_status(),
+                        statusbar::PathBar {
+                            editing: self.path_field.as_deref(),
+                            on_input: Message::PathFieldInput,
+                            on_submit: Message::PathFieldSubmit,
+                            on_copy: Message::CopyToClipboard(ClipboardKind::Directory),
+                            hit_line: self.hit_line(),
+                        },
+                    ),
+                ])
+                .width(Length::Fill)
+                .height(Length::Fill)
+            };
 
         let window = container(column![self.title_bar_view(), below_title_bar])
             .width(Length::Fill)
@@ -4720,7 +4522,7 @@ impl App {
                 &name,
                 self.lang,
                 &self.palette,
-                self.conflict_all,
+                self.ops.conflict_all,
                 self.dialog_focus,
                 self.window_size,
             )
@@ -5665,7 +5467,7 @@ impl App {
                 conflict::KEEP_FOCUS => ConflictChoice::ThisKeep,
                 _ => ConflictChoice::Cancel,
             };
-            return self.answer_conflict(choice);
+            return self.with_ops(|ops, ctx| ncrs_ops::answer_conflict(ops, choice, ctx));
         }
         Task::none()
     }
@@ -6316,7 +6118,7 @@ impl App {
                 &self.session_state(),
             );
         }
-        if let Some(copies) = self.view_copies.as_mut() {
+        if let Some(copies) = self.ops.view_copies.as_mut() {
             copies.close();
         }
         self.remote.close_all();
@@ -6486,6 +6288,7 @@ impl App {
             &ncrs_ops::FlowCtx {
                 lang: self.lang,
                 trash: &self.trash,
+                jobs_busy: self.jobs.is_busy(),
                 start_blocked,
                 transfer_dialog_open: self.transfer_dialog.is_some(),
                 has_job_error: self.job_error.is_some(),
@@ -6493,6 +6296,9 @@ impl App {
                 source_side: self.source_side(),
                 left_archive: self.panel(PanelSide::Left).archive.as_deref(),
                 right_archive: self.panel(PanelSide::Right).archive.as_deref(),
+                left_server: self.panel(PanelSide::Left).remote().map(|s| s.root_path()),
+                right_server: self.panel(PanelSide::Right).remote().map(|s| s.root_path()),
+                remote: &self.remote,
                 permanent_delete_key,
                 restore_last_key,
             },
@@ -6533,6 +6339,14 @@ impl App {
                     .start_next(move |_| build().map(Message::from))
                     .unwrap_or_else(Task::none)
             }
+            Ask::StartJobWithProgress(start) => {
+                let progress_tx = self.progress_sender();
+                self.jobs.enqueue(start.job);
+                let build = start.build;
+                self.jobs
+                    .start_next(move |_| build(progress_tx).map(Message::from))
+                    .unwrap_or_else(Task::none)
+            }
             Ask::FinishJob => {
                 self.jobs.finish();
                 Task::none()
@@ -6549,6 +6363,38 @@ impl App {
                 self.panel_mut(side).selection.clear();
                 Task::none()
             }
+            Ask::ReloadSourceThenTarget => {
+                let source_side = self.source_side();
+                let sides = [source_side, source_side.other()];
+                Task::batch(sides.map(|each| {
+                    let path = self.panel(each).path.clone();
+                    self.load(each, path, None)
+                }))
+            }
+            Ask::ReloadPanelsSelecting { folder, name } => {
+                let tasks = [PanelSide::Left, PanelSide::Right].map(|each| {
+                    let path = self.panel(each).path.clone();
+                    let select = (path == folder).then(|| name.clone());
+                    self.load(each, path, select)
+                });
+                Task::batch(tasks)
+            }
+            Ask::CountJobDone => {
+                self.job_done += 1;
+                Task::none()
+            }
+            Ask::ResetJobDone => {
+                self.job_done = 0;
+                Task::none()
+            }
+            Ask::LaunchViewCopy { path, origin } => {
+                let from = match origin {
+                    ncrs_ops::ViewOrigin::Archive => CopyOf::Archive,
+                    ncrs_ops::ViewOrigin::Server => CopyOf::Server,
+                };
+                self.launch_external(fs::OpenKind::View, path, None, from);
+                Task::none()
+            }
             Ask::ReloadPanels => {
                 let tasks = [PanelSide::Left, PanelSide::Right].map(|each| {
                     let path = self.panel(each).path.clone();
@@ -6561,16 +6407,9 @@ impl App {
             Ask::CloseQuickOpenAndPalette => {
                 Task::batch([self.close_quick_open(), self.close_command_palette()])
             }
-            Ask::ClearConflictAll => {
-                self.conflict_all = false;
-                Task::none()
-            }
             Ask::ShowErrorWithFinderPress(text) => {
                 self.set_status_error_with_press(&text, Message::Trash(TrashMessage::OpenInFinder));
                 Task::none()
-            }
-            Ask::DeleteInArchive { archive, deletion } => {
-                self.start_archive_delete(archive, deletion)
             }
         }
     }
@@ -6772,9 +6611,18 @@ impl App {
     /// viewer starts when the copy is there, see `view_extracted`.
     fn view_from_archive(&mut self, source: PathBuf, archive: PathBuf) -> Task<Message> {
         let shown = source.clone();
-        self.start_view_copy(archive, shown, jobs::JobKind::Extract, move |slot, tx| {
-            let mut progress = fs::transfer::Reporting::new(tx);
-            fs::archive::extract_for_view(&source, slot, &mut progress)
+        self.with_ops(move |ops, ctx| {
+            ncrs_ops::start_view_copy(
+                ops,
+                archive,
+                shown,
+                jobs::JobKind::Extract,
+                move |slot, tx| {
+                    let mut progress = fs::transfer::Reporting::new(tx);
+                    fs::archive::extract_for_view(&source, slot, &mut progress)
+                },
+                ctx,
+            )
         })
     }
 
@@ -6784,146 +6632,19 @@ impl App {
     fn view_from_server(&mut self, source: RemotePath) -> Task<Message> {
         let pool = Arc::clone(&self.remote);
         let (key, shown) = (source.server().root_path(), source.to_path_buf());
-        self.start_view_copy(key, shown, jobs::JobKind::Copy, move |slot, tx| {
-            let mut progress = fs::transfer::Reporting::new(tx);
-            fs::remote::transfer::download_for_view(&pool, &source, slot, &mut progress)
+        self.with_ops(move |ops, ctx| {
+            ncrs_ops::start_view_copy(
+                ops,
+                key,
+                shown,
+                jobs::JobKind::Copy,
+                move |slot, tx| {
+                    let mut progress = fs::transfer::Reporting::new(tx);
+                    fs::remote::transfer::download_for_view(&pool, &source, slot, &mut progress)
+                },
+                ctx,
+            )
         })
-    }
-
-    /// The job behind F3 on an entry that is not on the disk: makes a slot for
-    /// the copy under `group`, runs `work` on the blocking pool to fill it, and
-    /// reports as `ViewExtracted`.
-    fn start_view_copy(
-        &mut self,
-        group: PathBuf,
-        shown: PathBuf,
-        kind: jobs::JobKind,
-        work: impl FnOnce(&Path, &mpsc::UnboundedSender<fs::transfer::Tick>) -> std::io::Result<PathBuf>
-            + Send
-            + 'static,
-    ) -> Task<Message> {
-        // A transfer or delete under way, or a dialog about to start one, owns
-        // the queue and `generation`; unpacking beside it would lose its result.
-        if self.jobs.is_busy()
-            || self.transfer.is_some()
-            || self.ops.deleting.is_some()
-            || self.ops.delete_dialog.is_some()
-            || self.transfer_dialog.is_some()
-            || self.conflict_is_open()
-        {
-            let text = self.lang.text(Msg::StatusArchiveViewBusy).to_owned();
-            return self.show_notice(text);
-        }
-        let made = self
-            .view_copies
-            .as_mut()
-            .and_then(|copies| copies.slot(&group).ok());
-        let Some(slot) = made else {
-            let text = self
-                .lang
-                .text(if group_is_server(&group) {
-                    Msg::ErrorRemoteViewUnavailable
-                } else {
-                    Msg::ErrorArchiveViewUnavailable
-                })
-                .to_owned();
-            self.set_status_error(&text);
-            return Task::none();
-        };
-        self.job_error = None;
-        self.notice = None;
-        self.job_done = 0;
-        self.job_progress = None;
-        let progress_tx = self.progress_sender();
-        let generation = self.ops.generation;
-        self.extracting = Some(Extracting {
-            archive: group,
-            slot: slot.clone(),
-        });
-        self.jobs.enqueue(jobs::Job {
-            kind,
-            path: shown,
-            total: None,
-        });
-        self.jobs
-            .start_next(|_| {
-                Task::perform(
-                    tokio::task::spawn_blocking({
-                        let unpack_into = slot.clone();
-                        move || work(&unpack_into, &progress_tx)
-                    }),
-                    move |outcome| {
-                        let result = match outcome {
-                            Ok(Ok(copy)) => Ok(copy),
-                            Ok(Err(err)) => Err(RowFailure::from_io(err)),
-                            Err(join) => Err(RowFailure::Other(join.to_string())),
-                        };
-                        Message::ViewExtracted {
-                            generation,
-                            slot,
-                            result,
-                        }
-                    },
-                )
-            })
-            .unwrap_or_else(Task::none)
-    }
-
-    /// The copy for the viewer is there, or unpacking it failed.
-    fn view_extracted(
-        &mut self,
-        generation: u64,
-        slot: PathBuf,
-        result: Result<PathBuf, RowFailure>,
-    ) -> Task<Message> {
-        if generation != self.ops.generation {
-            // The unpacking thread removed the slot itself when it failed.
-            if result.is_ok() {
-                self.discard_view_slot(&slot);
-            }
-            return Task::none();
-        }
-        self.jobs.finish();
-        self.job_progress = None;
-        let finished = self.extracting.take();
-        match result {
-            Ok(copy) => {
-                let still_open = finished
-                    .as_ref()
-                    .is_some_and(|job| self.panel_shows(&job.archive));
-                if let (true, Some(job)) = (still_open, finished) {
-                    let origin = if group_is_server(&job.archive) {
-                        CopyOf::Server
-                    } else {
-                        CopyOf::Archive
-                    };
-                    self.launch_external(fs::OpenKind::View, copy, None, origin);
-                } else {
-                    self.discard_view_slot(&slot);
-                }
-            }
-            Err(failure) => {
-                if let Some(copies) = self.view_copies.as_mut() {
-                    copies.forget_slot(&slot);
-                }
-                let text = match failure {
-                    RowFailure::Refused(refusal) => self.refusal_text(refusal),
-                    RowFailure::UnsafeName(name) => fill_template(
-                        self.lang.text(Msg::ErrorRemoteUnsafeName),
-                        &[("{name}", &name)],
-                    ),
-                    RowFailure::Conflict(reason) | RowFailure::Other(reason) => reason,
-                };
-                self.set_status_error(&text);
-            }
-        }
-        Task::none()
-    }
-
-    fn discard_view_slot(&mut self, slot: &Path) {
-        if let Some(copies) = self.view_copies.as_mut() {
-            copies.discard(slot);
-        }
     }
 
     /// Whether a panel is in `place`: an archive, or the root address of the
@@ -6936,17 +6657,6 @@ impl App {
                     .remote()
                     .is_some_and(|server| server.root_path() == place)
         })
-    }
-
-    fn refusal_text(&self, refusal: fs::archive::SevenZipRefusal) -> String {
-        self.lang
-            .text(match refusal {
-                fs::archive::SevenZipRefusal::Encrypted => Msg::ErrorArchiveEncrypted,
-                fs::archive::SevenZipRefusal::DictionaryTooLarge => {
-                    Msg::ErrorArchiveDictionaryTooLarge
-                }
-            })
-            .to_owned()
     }
 
     /// Reads both panels again, except those inside an archive or on a server.
@@ -6972,7 +6682,7 @@ impl App {
             || self.conflict_is_open()
             || self.ops.delete_dialog.is_some()
             || self.transfer_dialog.is_some()
-            || self.transfer.is_some()
+            || self.ops.transfer.is_some()
         {
             return Task::none();
         }
@@ -7032,222 +6742,13 @@ impl App {
             return Task::none();
         };
         let target_side = self.prompt_side.take().unwrap_or(self.panels.active);
-        let archive = prompt.archive_path();
-        let name = archive
-            .file_name()
-            .map(|file_name| file_name.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let folder = archive.parent().map(Path::to_path_buf).unwrap_or_default();
-        let sources = prompt.sources().to_vec();
-        let write = ArchiveWrite {
-            side: target_side.other(),
-            what: ArchiveWriteKind::Pack { name, folder },
+        let request = ncrs_ops::PackRequest {
+            archive: prompt.archive_path(),
+            sources: prompt.sources().to_vec(),
+            keep_under: prompt.kept_folders_under().map(Path::to_path_buf),
+            target_side,
         };
-        let packed = archive.clone();
-        let keep_under = prompt.kept_folders_under().map(Path::to_path_buf);
-        let numbered: Option<Vec<(PathBuf, String)>> = (keep_under.is_some()
-            || fs::flat_names::from_several_folders(&sources))
-        .then(|| fs::flat_names::archive_names(&sources, keep_under.as_deref()));
-        self.start_archive_write(
-            jobs::JobKind::Pack,
-            archive,
-            write,
-            move |progress| match numbered {
-                Some(items) => fs::archive::pack_named(&items, &packed, progress),
-                None => fs::archive::pack(&sources, &packed, progress),
-            },
-        )
-    }
-
-    /// F5 with an archive, or a folder in one, as the target: one job rewrites
-    /// the archive with the selection added. `Ask` cannot ask per file here, so
-    /// it stops at the first name in the way and says what the dialog offers.
-    fn begin_copy_into_archive(
-        &mut self,
-        location: fs::archive::ArchiveLocation,
-        sources: Vec<PathBuf>,
-        policy: Policy,
-    ) -> Task<Message> {
-        let write = ArchiveWrite {
-            side: self.source_side(),
-            what: ArchiveWriteKind::CopyIn,
-        };
-        let conflict = policy.on_conflict();
-        let fs::archive::ArchiveLocation { archive, inner, .. } = location;
-        let shown = archive.clone();
-        self.start_archive_write(jobs::JobKind::Copy, shown, write, move |progress| {
-            fs::archive::add(&archive, &inner, &sources, conflict, progress)
-        })
-    }
-
-    /// The delete dialog of a panel inside `archive` was confirmed.
-    fn start_archive_delete(&mut self, archive: PathBuf, deletion: Deletion) -> Task<Message> {
-        let write = ArchiveWrite {
-            side: deletion.side,
-            what: ArchiveWriteKind::Delete,
-        };
-        let shown = archive.clone();
-        self.start_archive_write(jobs::JobKind::Delete, shown, write, move |progress| {
-            let entries = deletion
-                .sources
-                .iter()
-                .map(|path| {
-                    fs::archive::locate_in_archive(path)
-                        .filter(|place| place.archive == archive && !place.inner.is_empty())
-                        .map(|place| place.inner)
-                        .ok_or_else(|| {
-                            std::io::Error::new(
-                                std::io::ErrorKind::InvalidInput,
-                                "the entry is not in this archive",
-                            )
-                        })
-                })
-                .collect::<std::io::Result<Vec<_>>>()?;
-            fs::archive::delete(&archive, &entries, progress)
-        })
-    }
-
-    /// Runs `work` on the blocking pool as the one job of the queue. It reports
-    /// as `ArchiveWritten`; Escape closes the progress channel, which makes the
-    /// writer drop its temporary file and leave the archive as it was.
-    fn start_archive_write(
-        &mut self,
-        kind: jobs::JobKind,
-        shown: PathBuf,
-        write: ArchiveWrite,
-        work: impl FnOnce(&mut fs::transfer::Reporting<'_>) -> std::io::Result<fs::archive::WriteReport>
-            + Send
-            + 'static,
-    ) -> Task<Message> {
-        if self.jobs.is_busy()
-            || self.transfer.is_some()
-            || self.ops.deleting.is_some()
-            || self.extracting.is_some()
-            || self.archive_write.is_some()
-        {
-            let text = self.lang.text(Msg::StatusArchiveWriteBusy).to_owned();
-            return self.show_notice(text);
-        }
-        self.job_error = None;
-        self.notice = None;
-        self.job_done = 0;
-        self.job_progress = None;
-        let progress_tx = self.progress_sender();
-        self.ops.generation = self.ops.generation.wrapping_add(1);
-        let generation = self.ops.generation;
-        self.archive_write = Some(write);
-        self.jobs.enqueue(jobs::Job {
-            kind,
-            path: shown,
-            total: None,
-        });
-        self.jobs
-            .start_next(|_| {
-                Task::perform(
-                    tokio::task::spawn_blocking(move || {
-                        let mut progress = fs::transfer::Reporting::new(&progress_tx);
-                        work(&mut progress)
-                    }),
-                    move |outcome| {
-                        let result = match outcome {
-                            Ok(Ok(report)) => Ok(report),
-                            Ok(Err(err)) => Err(RowFailure::from_io(err)),
-                            Err(join) => Err(RowFailure::Other(join.to_string())),
-                        };
-                        Message::ArchiveWritten { result, generation }
-                    },
-                )
-            })
-            .unwrap_or_else(Task::none)
-    }
-
-    fn archive_written(
-        &mut self,
-        generation: u64,
-        result: Result<fs::archive::WriteReport, RowFailure>,
-    ) -> Task<Message> {
-        if generation != self.ops.generation {
-            return Task::none();
-        }
-        self.jobs.finish();
-        self.job_progress = None;
-        let Some(write) = self.archive_write.take() else {
-            return Task::none();
-        };
-        self.ops.generation = self.ops.generation.wrapping_add(1);
-        let notice = match result {
-            Ok(report) => Some(self.written_text(&write, report)),
-            Err(failure) => {
-                let text = self.write_failure_text(&write, failure);
-                self.set_status_error(&text);
-                None
-            }
-        };
-        let reload = self.end_archive_write(&write);
-        match notice {
-            Some(text) => Task::batch([self.show_notice(text), reload]),
-            None => reload,
-        }
-    }
-
-    fn written_text(&self, write: &ArchiveWrite, report: fs::archive::WriteReport) -> String {
-        let mut text = match &write.what {
-            ArchiveWriteKind::Pack { name, .. } => {
-                fill_template(self.lang.text(Msg::StatusPacked), &[("{name}", name)])
-            }
-            ArchiveWriteKind::CopyIn => self.lang.text(Msg::StatusArchiveCopiedIn).to_owned(),
-            ArchiveWriteKind::Delete => self.lang.text(Msg::StatusArchiveDeleted).to_owned(),
-        };
-        for (count, template) in [
-            (report.skipped, Msg::StatusArchiveSkipped),
-            (report.kept_existing, Msg::StatusArchiveKept),
-        ] {
-            if count > 0 {
-                text.push_str(&fill_template(
-                    self.lang.text(template),
-                    &[("{count}", &count.to_string())],
-                ));
-            }
-        }
-        text
-    }
-
-    fn write_failure_text(&self, write: &ArchiveWrite, failure: RowFailure) -> String {
-        match failure {
-            RowFailure::Refused(refusal) => self.refusal_text(refusal),
-            RowFailure::Conflict(detail) if write.what == ArchiveWriteKind::CopyIn => {
-                fill_template(
-                    self.lang.text(Msg::ErrorArchiveNameTaken),
-                    &[("{detail}", &detail)],
-                )
-            }
-            RowFailure::Conflict(reason)
-            | RowFailure::UnsafeName(reason)
-            | RowFailure::Other(reason) => fill_template(
-                self.lang.text(Msg::ErrorArchiveWriteFailed),
-                &[("{reason}", &reason)],
-            ),
-        }
-    }
-
-    /// Ends the bookkeeping of a write that finished, failed or was stopped:
-    /// the tags of a delete refer to entries that may be gone, and both panels
-    /// are read again, the new archive of a pack selected.
-    fn end_archive_write(&mut self, write: &ArchiveWrite) -> Task<Message> {
-        if write.what == ArchiveWriteKind::Delete {
-            self.panel_mut(write.side).selection.clear();
-        }
-        let tasks = [PanelSide::Left, PanelSide::Right].map(|each| {
-            let path = self.panel(each).path.clone();
-            let select = match &write.what {
-                ArchiveWriteKind::Pack { name, folder } if path == *folder => Some(name.clone()),
-                ArchiveWriteKind::Pack { .. }
-                | ArchiveWriteKind::CopyIn
-                | ArchiveWriteKind::Delete => None,
-            };
-            self.load(each, path, select)
-        });
-        Task::batch(tasks.into_iter().chain([self.restart_search()]))
+        self.with_ops(|ops, ctx| ncrs_ops::start_pack(ops, request, ctx))
     }
 
     /// Stops the running job, see `Message::AbortJob`.
@@ -7256,18 +6757,18 @@ impl App {
             return Task::none();
         }
         self.drop_progress_channel();
-        if self.extracting.is_some() {
-            self.end_extraction();
+        if self.ops.extracting.is_some() {
+            ncrs_ops::end_extraction(&mut self.ops);
             Task::none()
-        } else if let Some(write) = self.archive_write.take() {
-            self.ops.generation = self.ops.generation.wrapping_add(1);
-            self.end_archive_write(&write)
+        } else if let Some(outcome) = ncrs_ops::abort_archive_write(&mut self.ops) {
+            self.run_ops_outcome(outcome)
         } else if self.ops.deleting.is_some() {
             self.end_delete()
         } else if self.ops.restoring.is_some() {
             self.end_restore()
         } else {
-            self.end_transfer()
+            let outcome = ncrs_ops::end_transfer(&mut self.ops);
+            self.run_ops_outcome(outcome)
         }
     }
 
@@ -7282,15 +6783,6 @@ impl App {
         self.progress_tx = None;
     }
 
-    /// Ends the bookkeeping of an unpacking whose job was stopped; its result
-    /// is ignored if it still arrives. The slot stays known: the unpacking
-    /// thread removes it when it notices the stop, and if it finished first,
-    /// the copy goes with the others of its archive.
-    fn end_extraction(&mut self) {
-        self.ops.generation = self.ops.generation.wrapping_add(1);
-        self.extracting = None;
-    }
-
     /// A panel has left `archive`: the copies made for the viewer go, unless
     /// the other panel is still in it. A running unpacking stops first.
     fn drop_view_copies_of(&mut self, archive: &Path) {
@@ -7298,15 +6790,16 @@ impl App {
             return;
         }
         if self
+            .ops
             .extracting
             .as_ref()
             .is_some_and(|extracting| extracting.archive == archive)
         {
             self.jobs.abort_running();
             self.drop_progress_channel();
-            self.end_extraction();
+            ncrs_ops::end_extraction(&mut self.ops);
         }
-        if let Some(copies) = self.view_copies.as_mut() {
+        if let Some(copies) = self.ops.view_copies.as_mut() {
             copies.release(archive);
         }
     }
@@ -7395,11 +6888,11 @@ impl App {
         kind: TransferKind,
         preset: Option<PathBuf>,
     ) -> Task<Message> {
-        if self.transfer.is_some() {
-            self.transfer_mask_visible = true;
+        if self.ops.transfer.is_some() {
+            self.ops.transfer_mask_visible = true;
             return Task::none();
         }
-        if self.extracting.is_some() {
+        if self.ops.extracting.is_some() {
             let text = self.lang.text(Msg::StatusArchiveViewBusy).to_owned();
             return self.show_notice(text);
         }
@@ -7407,7 +6900,7 @@ impl App {
             || self.conflict_is_open()
             || self.ops.delete_dialog.is_some()
             || self.transfer_dialog.is_some()
-            || self.archive_write.is_some()
+            || self.ops.archive_write.is_some()
         {
             return Task::none();
         }
@@ -7461,11 +6954,11 @@ impl App {
             TransferAction::Closed => release_focus(),
             TransferAction::Confirm => self.confirm_transfer(),
             TransferAction::HideProgress => {
-                self.transfer_mask_visible = false;
+                self.ops.transfer_mask_visible = false;
                 Task::none()
             }
             TransferAction::ShowProgress => {
-                self.transfer_mask_visible = self.transfer.is_some();
+                self.ops.transfer_mask_visible = self.ops.transfer.is_some();
                 Task::none()
             }
         }
@@ -7492,7 +6985,9 @@ impl App {
         self.transfer_dialog = None;
         Task::batch([
             release_focus(),
-            self.start_validated_transfer(kind, sources, target, policy),
+            self.with_ops(|ops, ctx| {
+                ncrs_ops::start_validated_transfer(ops, kind, sources, target, policy, ctx)
+            }),
         ])
     }
 
@@ -7534,13 +7029,13 @@ impl App {
     /// A job runs or a dialog is open, so nothing may start a transfer into
     /// the active panel.
     fn transfer_into_panel_is_blocked(&self) -> bool {
-        self.transfer.is_some()
-            || self.extracting.is_some()
+        self.ops.transfer.is_some()
+            || self.ops.extracting.is_some()
             || self.prompt.is_some()
             || self.conflict_is_open()
             || self.ops.delete_dialog.is_some()
             || self.transfer_dialog.is_some()
-            || self.archive_write.is_some()
+            || self.ops.archive_write.is_some()
     }
 
     /// Copies files that come from outside the panels (dropped from another
@@ -7568,7 +7063,16 @@ impl App {
             Ok(resolved) => {
                 self.job_error = None;
                 self.notice = None;
-                self.start_validated_transfer(TransferKind::Copy, paths, resolved, Policy::Ask)
+                self.with_ops(|ops, ctx| {
+                    ncrs_ops::start_validated_transfer(
+                        ops,
+                        TransferKind::Copy,
+                        paths,
+                        resolved,
+                        Policy::Ask,
+                        ctx,
+                    )
+                })
             }
         }
     }
@@ -7761,64 +7265,9 @@ impl App {
         self.show_notice(text)
     }
 
-    /// Starts a transfer whose target passed `transfer_dialog::validate`.
-    fn start_validated_transfer(
-        &mut self,
-        kind: TransferKind,
-        sources: Vec<PathBuf>,
-        target: PathBuf,
-        policy: Policy,
-    ) -> Task<Message> {
-        let needs_numbering = fs::flat_names::from_several_folders(&sources)
-            && fs::flat_names::flat_names(&sources)
-                .iter()
-                .zip(&sources)
-                .any(|(name, source)| name.as_deref() != source.file_name());
-        let into_archive = fs::archive::locate_in_archive(&target);
-        if needs_numbering && (into_archive.is_some() || RemotePath::parse(&target).is_some()) {
-            let text = self.lang.text(Msg::StatusNumberingNeedsFolder).to_owned();
-            self.set_status_error(&text);
-            return Task::none();
-        }
-        if let Some(location) = into_archive {
-            return self.begin_copy_into_archive(location, sources, policy);
-        }
-        self.begin_transfer(kind, sources, target, policy)
-    }
-
-    /// Starts the first row of a confirmed transfer and shows its progress.
-    fn begin_transfer(
-        &mut self,
-        kind: TransferKind,
-        sources: Vec<PathBuf>,
-        target: PathBuf,
-        policy: Policy,
-    ) -> Task<Message> {
-        let names = if fs::flat_names::from_several_folders(&sources) {
-            fs::flat_names::flat_names(&sources)
-                .into_iter()
-                .map(Option::unwrap_or_default)
-                .collect()
-        } else {
-            Vec::new()
-        };
-        let transfer = Transfer {
-            kind,
-            sources,
-            target,
-            names,
-        };
-        self.transfer = Some(transfer.clone());
-        self.conflict_rule = policy.standing_rule();
-        self.ops.generation = self.ops.generation.wrapping_add(1);
-        self.transfer_mask_visible = true;
-        self.transfer_rows_done = 0;
-        self.run_from(transfer, 0, policy.on_conflict())
-    }
-
     /// Whether the progress mask is up over a running transfer.
     fn progress_mask_is_open(&self) -> bool {
-        self.transfer_mask_visible && self.transfer.is_some()
+        self.ops.progress_mask_is_open()
     }
 
     /// What the progress mask shows: how far, counted in rows when there are
@@ -7826,11 +7275,12 @@ impl App {
     /// when a single entry, maybe a whole folder, is the transfer.
     fn progress_mask(&self) -> Option<transfer_ui::Progress<'_>> {
         let transfer = self
+            .ops
             .transfer
             .as_ref()
-            .filter(|_| self.transfer_mask_visible)?;
+            .filter(|_| self.ops.transfer_mask_visible)?;
         let (done, total) = if transfer.sources.len() > 1 {
-            (self.transfer_rows_done, transfer.sources.len())
+            (self.ops.transfer_rows_done, transfer.sources.len())
         } else {
             self.job_progress
                 .map_or((0, 0), |tick| (tick.done, tick.total))
@@ -7843,100 +7293,15 @@ impl App {
         })
     }
 
-    /// Answers a conflict and remembers an "all" answer, so the next
-    /// conflict does not ask again.
-    fn answer_conflict(&mut self, clicked: ConflictChoice) -> Task<Message> {
-        if let Some(index) = self.ops.restore_conflict.take() {
-            let choice = self.conflict_answer(clicked);
-            return self.with_ops(|ops, ctx| ncrs_ops::resume_restore(ops, index, choice, ctx));
-        }
-        let Some(pending) = self.pending_conflict.take() else {
-            return Task::none();
-        };
-        let choice = self.conflict_answer(clicked);
-        // Cancel ends the transfer; the rows already done stay done.
-        if choice == ConflictChoice::Cancel {
-            return self.end_transfer();
-        }
-        if choice.applies_to_all() {
-            self.conflict_rule = Some(choice.conflict());
-        }
-        // The task is returned, not dropped: dropping it would leave the
-        // transfer standing still after the user answered, which is the one
-        // thing the dialog must not do.
-        self.resume_transfer(pending, choice)
-    }
-
     /// The file the open conflict dialog asks about.
     fn conflict_name(&self) -> String {
-        let path = match (self.pending_conflict.as_ref(), self.ops.restore_conflict) {
-            (Some(pending), _) => pending.transfer.sources.get(pending.index),
-            (None, Some(index)) => self
-                .ops
-                .restoring
-                .as_ref()
-                .and_then(|restoring| restoring.items.get(index))
-                .map(|item| &item.original),
-            (None, None) => None,
-        };
-        let renamed = self
-            .pending_conflict
-            .as_ref()
-            .and_then(|pending| pending.transfer.name_in_target(pending.index));
-        renamed
-            .as_deref()
-            .or_else(|| path?.file_name())
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default()
-    }
-
-    /// What the dialog's button means: the tick belonged to the question just
-    /// answered, so it goes with it.
-    fn conflict_answer(&mut self, clicked: ConflictChoice) -> ConflictChoice {
-        let choice = if self.conflict_all {
-            clicked.for_all()
-        } else {
-            clicked
-        };
-        self.conflict_all = false;
-        choice
+        self.ops.conflict_name()
     }
 
     /// Whether a name that is taken waits for an answer, in a transfer or in
     /// a restore from the trash.
     fn conflict_is_open(&self) -> bool {
-        self.pending_conflict.is_some() || self.ops.restore_conflict.is_some()
-    }
-
-    /// Continues a transfer from `index` under the given conflict rule.
-    fn resume_transfer(
-        &mut self,
-        pending: PendingConflict,
-        choice: ConflictChoice,
-    ) -> Task<Message> {
-        let PendingConflict { transfer, index } = pending;
-        self.transfer = Some(transfer.clone());
-        self.run_from(transfer, index, choice.conflict())
-    }
-
-    /// Ends the transfer, finished or not: forgets it and its "for all" rule, and
-    /// reloads both panels, since a move changes the source directory as well as
-    /// the target and rows before a failure or a cancel are already done.
-    fn end_transfer(&mut self) -> Task<Message> {
-        self.transfer = None;
-        self.transfer_mask_visible = false;
-        self.transfer_rows_done = 0;
-        self.conflict_rule = None;
-        self.ops.generation = self.ops.generation.wrapping_add(1);
-        let source_side = self.source_side();
-        let target_side = source_side.other();
-        let source_path = self.panel(source_side).path.clone();
-        let target_path = self.panel(target_side).path.clone();
-        Task::batch([
-            self.load(source_side, source_path, None),
-            self.load(target_side, target_path, None),
-            self.restart_search(),
-        ])
+        self.ops.conflict_is_open()
     }
 
     fn progress_sender(&mut self) -> mpsc::UnboundedSender<fs::transfer::Tick> {
@@ -8111,109 +7476,6 @@ impl App {
             ncrs_hermes_ui::replan_reorganisation_if_open(hermes, ctx)
         });
         task.map(Message::from)
-    }
-
-    /// Runs the rows from `index`, on the blocking pool, reporting progress.
-    ///
-    /// One row at a time rather than the whole list, so a conflict can be
-    /// answered between two files and the queue stays one job.
-    fn run_from(
-        &mut self,
-        transfer: Transfer,
-        index: usize,
-        conflict: fs::transfer::OnConflict,
-    ) -> Task<Message> {
-        let Some(source) = transfer.sources.get(index).cloned() else {
-            return self.end_transfer();
-        };
-
-        // One channel per transfer, but the receiving half is created once for
-        // the app (see `progress_rx`) and reused, so `subscription` does not
-        // have to hand out a fresh receiver after every row.
-        let progress_tx = self.progress_sender();
-
-        let generation = self.ops.generation;
-        let target = transfer.target.clone();
-        let name_in_target = transfer.name_in_target(index);
-        let pool = Arc::clone(&self.remote);
-        let job = jobs::Job {
-            kind: transfer.kind.job_kind(),
-            path: child_path(
-                &target,
-                name_in_target
-                    .as_deref()
-                    .unwrap_or_else(|| source.file_name().unwrap_or_default()),
-            ),
-            total: None,
-        };
-        // One row per job keeps a conflict answerable between two files.
-        self.jobs.enqueue(job.clone());
-        if let Some(task) = self.jobs.start_next(|_| {
-            // transfer::run is blocking filesystem work, so it goes on the
-            // blocking pool — the same reason read_directory does.
-            Task::perform(
-                tokio::task::spawn_blocking({
-                    let from = source.clone();
-                    let to = target.clone();
-                    let kind = transfer.kind;
-                    let renamed = name_in_target.clone();
-                    move || {
-                        if let Some(name) = renamed {
-                            return crate::fs::transfer::run_reporting_as(
-                                &from,
-                                &to.join(name),
-                                kind,
-                                conflict,
-                                &progress_tx,
-                            );
-                        }
-                        // Reports as it goes, so the bar moves during a long
-                        // copy rather than jumping at the end. A server on
-                        // either side is the SFTP layer's.
-                        fs::remote::transfer::run_reporting(
-                            &pool,
-                            &from,
-                            &to,
-                            kind,
-                            conflict,
-                            &progress_tx,
-                        )
-                        .unwrap_or_else(|| {
-                            crate::fs::transfer::run_reporting(
-                                &from,
-                                &to,
-                                kind,
-                                conflict,
-                                &progress_tx,
-                            )
-                        })
-                    }
-                }),
-                move |outcome| {
-                    // Two failures collapse into one string here: the join error
-                    // means the blocking task died, the other means the copy
-                    // itself failed. The dialog cannot tell them apart anyway.
-                    let result = match outcome {
-                        Ok(Ok(_)) => Ok(transfer.clone()),
-                        // The kind travels with the message rather than being
-                        // formatted into it: the dialog has to recognise a
-                        // conflict, and it cannot do that from wording.
-                        Ok(Err(e)) => Err(RowFailure::from_io(e)),
-                        // A dead blocking task is not a conflict. Its reason is
-                        // a string already, so it is shown as one.
-                        Err(join) => Err(RowFailure::Other(join.to_string())),
-                    };
-                    Message::TransferRowDone {
-                        result,
-                        index,
-                        generation,
-                    }
-                },
-            )
-        }) {
-            return task;
-        }
-        Task::none()
     }
 
     /// What the status bar shows about the queue: the running job, how far
@@ -12760,8 +12022,6 @@ impl App {
             prompt_request_id: 0,
             pending_reload: None,
             jobs: jobs::Queue::new(),
-            transfer: None,
-            pending_conflict: None,
             trash_view: None,
             trash_side: PanelSide::Left,
             trash_generation: 0,
@@ -12770,12 +12030,7 @@ impl App {
             folder_size_runs_started: 0,
             transfer_dialog: None,
             transfer_dialogs_opened: 0,
-            transfer_mask_visible: false,
-            transfer_rows_done: 0,
             start_over_dialog: false,
-            view_copies: None,
-            extracting: None,
-            archive_write: None,
             dialog_focus: 0,
             modifiers: Modifiers::default(),
             trash: fs::system_trash(None),
@@ -12792,8 +12047,6 @@ impl App {
             dropped_files: Vec::new(),
             drop_generation: 0,
             job_done: 0,
-            conflict_all: false,
-            conflict_rule: None,
             ops: ncrs_ops::Ops::default(),
             job_progress: None,
             progress_rx: None,
@@ -13755,7 +13008,7 @@ impl App {
     ///
     /// Read by the end-to-end tests, which cannot reach the private field.
     pub fn is_extracting_for_test(&self) -> bool {
-        self.extracting.is_some()
+        self.ops.extracting.is_some()
     }
 
     /// Whether a transfer is waiting on the overwrite dialog.
@@ -13855,7 +13108,7 @@ impl App {
     /// unpacks into its own.
     #[cfg(test)]
     pub fn with_view_copies_in(mut self, root: &Path) -> Self {
-        self.view_copies = fs::archive::ViewCopies::open(root).ok();
+        self.ops.view_copies = fs::archive::ViewCopies::open(root).ok();
         self
     }
 
@@ -13968,7 +13221,9 @@ impl App {
             return Task::none();
         }
         let target = self.panel(self.source_side().other()).path.clone();
-        self.begin_transfer(kind, sources, target, Policy::Ask)
+        self.with_ops(|ops, ctx| {
+            ncrs_ops::begin_transfer(ops, kind, sources, target, Policy::Ask, ctx)
+        })
     }
 
     /// Puts the delete dialog in front of the user for `count` fixed entries,
@@ -14092,14 +13347,14 @@ impl App {
     /// Shows the progress mask of a fixed copy that is `done` of `total`
     /// items in, for the snapshot tests.
     pub fn show_progress_for_test(&mut self, done: usize, total: usize) {
-        self.transfer = Some(Transfer {
+        self.ops.transfer = Some(Transfer {
             kind: TransferKind::Copy,
             sources: vec![PathBuf::from("/home/test/links/entry-1")],
             target: self.panels.right.path.clone(),
             names: Vec::new(),
         });
         self.job_progress = Some(fs::transfer::Tick { done, total });
-        self.transfer_mask_visible = true;
+        self.ops.transfer_mask_visible = true;
     }
 
     /// The text of the status-line error, for the end-to-end tests.
@@ -14118,7 +13373,7 @@ impl App {
     /// make the rendered image depend on what happens to be in the directory,
     /// and the test is about the dialog, not about the copy.
     pub fn open_conflict_for_test(&mut self, target: PathBuf, name: &str) {
-        self.pending_conflict = Some(PendingConflict {
+        self.ops.pending_conflict = Some(PendingConflict {
             transfer: Transfer {
                 kind: TransferKind::Copy,
                 sources: vec![PathBuf::from("/left").join(name)],
@@ -14175,7 +13430,7 @@ mod transfer_tests {
 
         let _task = app.start_transfer(TransferKind::Copy);
 
-        let transfer = app.transfer.as_ref().expect("F5 set up nothing");
+        let transfer = app.ops.transfer.as_ref().expect("F5 set up nothing");
         assert_eq!(transfer.sources, vec![PathBuf::from("/left/b.txt")]);
         assert_eq!(transfer.target, PathBuf::from("/right"));
     }
@@ -14206,7 +13461,7 @@ mod transfer_tests {
         let _task = app.update(Message::Transfer(TransferKind::Copy));
         let dialog = app.transfer_dialog.as_ref().expect("no confirmation");
         assert_eq!(dialog.target_path(), to);
-        assert!(app.transfer.is_none());
+        assert!(app.ops.transfer.is_none());
         assert!(!app.jobs.is_busy());
     }
 
@@ -14220,9 +13475,12 @@ mod transfer_tests {
         )));
         let _confirm = app.update(dialog_message(TransferDialogMessage::Confirm));
         assert!(app.transfer_dialog.is_none());
-        let transfer = app.transfer.as_ref().expect("nothing started");
+        let transfer = app.ops.transfer.as_ref().expect("nothing started");
         assert_eq!(transfer.target, std::fs::canonicalize(&to).unwrap());
-        assert_eq!(app.conflict_rule, Some(fs::transfer::OnConflict::Overwrite));
+        assert_eq!(
+            app.ops.conflict_rule,
+            Some(fs::transfer::OnConflict::Overwrite)
+        );
     }
 
     #[tokio::test]
@@ -14231,8 +13489,8 @@ mod transfer_tests {
         let (mut app, _, _) = dialog_app(root.path());
         let _open = app.update(Message::Transfer(TransferKind::Move));
         let _confirm = app.update(dialog_message(TransferDialogMessage::Confirm));
-        assert!(app.transfer.is_some());
-        assert_eq!(app.conflict_rule, None);
+        assert!(app.ops.transfer.is_some());
+        assert_eq!(app.ops.conflict_rule, None);
     }
 
     #[tokio::test]
@@ -14245,7 +13503,7 @@ mod transfer_tests {
             inside.display().to_string(),
         )));
         let _confirm = app.update(dialog_message(TransferDialogMessage::Confirm));
-        assert!(app.transfer.is_none());
+        assert!(app.ops.transfer.is_none());
         let dialog = app.transfer_dialog.as_ref().expect("dialog closed");
         assert!(dialog.refusal().is_some());
     }
@@ -14275,7 +13533,7 @@ mod transfer_tests {
         assert_eq!(escape, Some(dialog_message(TransferDialogMessage::Cancel)));
         let _closed = app.update(escape.unwrap());
         assert!(app.transfer_dialog.is_none());
-        assert!(app.transfer.is_none());
+        assert!(app.ops.transfer.is_none());
     }
 
     #[tokio::test]
@@ -14304,7 +13562,7 @@ mod transfer_tests {
 
         let _task = app.start_transfer(TransferKind::Copy);
 
-        let transfer = app.transfer.as_ref().expect("F5 set up nothing");
+        let transfer = app.ops.transfer.as_ref().expect("F5 set up nothing");
         assert_eq!(
             transfer.sources,
             vec![PathBuf::from("/left/a.txt"), PathBuf::from("/left/c.txt")],
@@ -14327,7 +13585,7 @@ mod transfer_tests {
         let _task = app.start_transfer(TransferKind::Copy);
 
         assert!(
-            app.transfer.is_none(),
+            app.ops.transfer.is_none(),
             "F5 offered to copy .. into the other panel"
         );
     }
@@ -14341,7 +13599,7 @@ mod transfer_tests {
 
         let _task = app.start_transfer(TransferKind::Copy);
 
-        let transfer = app.transfer.as_ref().expect("F5 set up nothing");
+        let transfer = app.ops.transfer.as_ref().expect("F5 set up nothing");
         assert_eq!(transfer.target, app.panels.right.path);
         assert_ne!(transfer.target, transfer.sources[0].parent().unwrap());
     }
@@ -14359,7 +13617,7 @@ mod transfer_tests {
 
         let _task = app.start_transfer(TransferKind::Copy);
 
-        let transfer = app.transfer.as_ref().expect("F5 set up nothing");
+        let transfer = app.ops.transfer.as_ref().expect("F5 set up nothing");
         // The source comes from the active panel, which is now the right one,
         // and the target is the other.
         assert_eq!(transfer.sources, vec![PathBuf::from("/right/x.txt")]);
@@ -14942,7 +14200,10 @@ mod abort_tests {
         let _stopped = app.update(message);
 
         assert!(!app.jobs.is_busy(), "the job kept running after Escape");
-        assert!(app.transfer.is_none(), "the transfer was left half-done");
+        assert!(
+            app.ops.transfer.is_none(),
+            "the transfer was left half-done"
+        );
     }
 
     /// After a stop, the next copy gets a channel somebody is listening on. A
@@ -15064,6 +14325,7 @@ mod conflict_tests {
         deliver_conflict(&mut app);
 
         let pending = app
+            .ops
             .pending_conflict
             .as_ref()
             .expect("a taken name should open the conflict dialog");
@@ -15078,12 +14340,16 @@ mod conflict_tests {
         let (mut app, _scratch) = with_conflict();
         let _started = app.start_transfer(TransferKind::Copy);
         deliver_conflict(&mut app);
-        assert!(app.pending_conflict.is_some(), "the dialog did not open");
+        assert!(
+            app.ops.pending_conflict.is_some(),
+            "the dialog did not open"
+        );
 
-        let _resumed = app.answer_conflict(ConflictChoice::AllOverwrite);
+        let _resumed = app
+            .with_ops(|ops, ctx| ncrs_ops::answer_conflict(ops, ConflictChoice::AllOverwrite, ctx));
 
         assert_eq!(
-            app.conflict_rule,
+            app.ops.conflict_rule,
             Some(fs::transfer::OnConflict::Overwrite),
             "the answer was not remembered for the remaining files"
         );
@@ -15097,10 +14363,12 @@ mod conflict_tests {
         let _started = app.start_transfer(TransferKind::Copy);
         deliver_conflict(&mut app);
 
-        let _resumed = app.answer_conflict(ConflictChoice::ThisOverwrite);
+        let _resumed = app.with_ops(|ops, ctx| {
+            ncrs_ops::answer_conflict(ops, ConflictChoice::ThisOverwrite, ctx)
+        });
 
         assert_eq!(
-            app.conflict_rule, None,
+            app.ops.conflict_rule, None,
             "one file's answer was applied to the rest"
         );
     }
@@ -15112,13 +14380,17 @@ mod conflict_tests {
         let (mut app, _scratch) = with_conflict();
         let _started = app.start_transfer(TransferKind::Copy);
         deliver_conflict(&mut app);
-        app.conflict_rule = Some(fs::transfer::OnConflict::Skip);
+        app.ops.conflict_rule = Some(fs::transfer::OnConflict::Skip);
 
-        let _task = app.answer_conflict(ConflictChoice::Cancel);
+        let _task =
+            app.with_ops(|ops, ctx| ncrs_ops::answer_conflict(ops, ConflictChoice::Cancel, ctx));
 
-        assert!(app.pending_conflict.is_none(), "the dialog is still up");
-        assert!(app.transfer.is_none(), "the transfer is still running");
-        assert_eq!(app.conflict_rule, None, "the rule outlived the transfer");
+        assert!(app.ops.pending_conflict.is_none(), "the dialog is still up");
+        assert!(app.ops.transfer.is_none(), "the transfer is still running");
+        assert_eq!(
+            app.ops.conflict_rule, None,
+            "the rule outlived the transfer"
+        );
     }
 
     /// "Keep all" is a standing rule to skip, not to ask again or to fail.
@@ -15128,10 +14400,11 @@ mod conflict_tests {
         let _started = app.start_transfer(TransferKind::Copy);
         deliver_conflict(&mut app);
 
-        let _task = app.answer_conflict(ConflictChoice::AllKeep);
+        let _task =
+            app.with_ops(|ops, ctx| ncrs_ops::answer_conflict(ops, ConflictChoice::AllKeep, ctx));
 
-        assert!(app.pending_conflict.is_none());
-        assert_eq!(app.conflict_rule, Some(fs::transfer::OnConflict::Skip));
+        assert!(app.ops.pending_conflict.is_none());
+        assert_eq!(app.ops.conflict_rule, Some(fs::transfer::OnConflict::Skip));
     }
 
     /// A rule from an earlier transfer must not answer the next transfer's
@@ -15139,11 +14412,11 @@ mod conflict_tests {
     #[tokio::test]
     async fn a_new_transfer_forgets_the_old_rule() {
         let (mut app, _scratch) = with_conflict();
-        app.conflict_rule = Some(fs::transfer::OnConflict::Overwrite);
+        app.ops.conflict_rule = Some(fs::transfer::OnConflict::Overwrite);
 
         let _started = app.start_transfer(TransferKind::Copy);
 
-        assert_eq!(app.conflict_rule, None);
+        assert_eq!(app.ops.conflict_rule, None);
     }
 
     #[tokio::test]
@@ -15202,7 +14475,7 @@ mod conflict_tests {
         });
 
         assert!(
-            app.transfer.is_some(),
+            app.ops.transfer.is_some(),
             "the old result ended the new transfer"
         );
         assert!(
@@ -15216,8 +14489,8 @@ mod conflict_tests {
     async fn a_finished_transfer_forgets_its_rule() {
         let (mut app, _scratch) = with_conflict();
         let _started = app.start_transfer(TransferKind::Copy);
-        app.conflict_rule = Some(fs::transfer::OnConflict::Overwrite);
-        let transfer = app.transfer.clone().expect("a running transfer");
+        app.ops.conflict_rule = Some(fs::transfer::OnConflict::Overwrite);
+        let transfer = app.ops.transfer.clone().expect("a running transfer");
 
         let _task = app.update(Message::TransferRowDone {
             result: Ok(transfer),
@@ -15225,8 +14498,8 @@ mod conflict_tests {
             generation: app.ops.generation,
         });
 
-        assert!(app.transfer.is_none());
-        assert_eq!(app.conflict_rule, None);
+        assert!(app.ops.transfer.is_none());
+        assert_eq!(app.ops.conflict_rule, None);
     }
 
     /// The conflict is recognised from the error kind, not from the wording.
@@ -15383,7 +14656,7 @@ mod conflict_keys {
     fn enter_overwrites_and_escape_keeps() {
         let (mut app, _scratch) = app_with_conflict();
         // The conflict is pending, so the keys answer it rather than the panels.
-        app.pending_conflict = Some(PendingConflict {
+        app.ops.pending_conflict = Some(PendingConflict {
             transfer: Transfer {
                 kind: TransferKind::Copy,
                 sources: vec![PathBuf::from("/left/a.txt")],
@@ -15411,7 +14684,7 @@ mod conflict_keys {
     async fn escape_does_not_stop_the_job_while_the_dialog_is_up() {
         let (mut app, _scratch) = app_with_conflict();
         let _started = app.start_transfer(TransferKind::Copy);
-        app.pending_conflict = Some(PendingConflict {
+        app.ops.pending_conflict = Some(PendingConflict {
             transfer: Transfer {
                 kind: TransferKind::Copy,
                 sources: vec![PathBuf::from("/left/a.txt")],
@@ -15434,7 +14707,7 @@ mod conflict_keys {
     #[test]
     fn ctrl_c_cancels_the_operation_on_a_mac_and_does_nothing_elsewhere() {
         let (mut app, _scratch) = app_with_conflict();
-        app.pending_conflict = Some(PendingConflict {
+        app.ops.pending_conflict = Some(PendingConflict {
             transfer: Transfer {
                 kind: TransferKind::Copy,
                 sources: vec![PathBuf::from("/left/a.txt")],
@@ -19396,13 +18669,13 @@ mod quick_open_tests {
             target: PathBuf::from("/right"),
             names: Vec::new(),
         };
-        app.transfer = Some(transfer);
+        app.ops.transfer = Some(transfer);
         drop(app.update(Message::TransferRowDone {
             result: Err(RowFailure::Conflict("exists".to_string())),
             index: 0,
             generation: app.ops.generation,
         }));
-        assert!(app.pending_conflict.is_some());
+        assert!(app.ops.pending_conflict.is_some());
         assert!(app.quick_open_for_test().is_none());
     }
 }
@@ -22662,8 +21935,8 @@ mod archive_view_tests {
     /// The state F3 leaves behind while its job runs, without a thread: the
     /// slot exists, the job is the running one.
     fn pretend_extracting(app: &mut App, archive: &Path) -> PathBuf {
-        let slot = app.view_copies.as_mut().unwrap().slot(archive).unwrap();
-        app.extracting = Some(Extracting {
+        let slot = app.ops.view_copies.as_mut().unwrap().slot(archive).unwrap();
+        app.ops.extracting = Some(Extracting {
             archive: archive.to_path_buf(),
             slot: slot.clone(),
         });
@@ -22709,7 +21982,13 @@ mod archive_view_tests {
         let dir = scratch("view-leave");
         let archive = dir.path().join("x.zip");
         let mut app = app_with_copies(&dir.path().join("cache"));
-        let slot = app.view_copies.as_mut().unwrap().slot(&archive).unwrap();
+        let slot = app
+            .ops
+            .view_copies
+            .as_mut()
+            .unwrap()
+            .slot(&archive)
+            .unwrap();
         app.panel_mut(PanelSide::Left).archive = Some(archive.clone());
         app.panel_mut(PanelSide::Right).archive = Some(archive.clone());
 
@@ -22726,7 +22005,13 @@ mod archive_view_tests {
         let cache = dir.path().join("cache");
         let archive = dir.path().join("x.zip");
         let mut app = app_with_copies(&cache);
-        let slot = app.view_copies.as_mut().unwrap().slot(&archive).unwrap();
+        let slot = app
+            .ops
+            .view_copies
+            .as_mut()
+            .unwrap()
+            .slot(&archive)
+            .unwrap();
         std::fs::write(slot.join("a.txt"), "x").unwrap();
 
         drop(app.update(Message::Quit));
@@ -22739,7 +22024,7 @@ mod archive_view_tests {
         let dir = scratch("view-leave-other");
         let (here, there) = (dir.path().join("x.zip"), dir.path().join("y.zip"));
         let mut app = app_with_copies(&dir.path().join("cache"));
-        let of_there = app.view_copies.as_mut().unwrap().slot(&there).unwrap();
+        let of_there = app.ops.view_copies.as_mut().unwrap().slot(&there).unwrap();
         app.panel_mut(PanelSide::Left).archive = Some(here);
 
         leave(&mut app, PanelSide::Left);
@@ -22758,7 +22043,7 @@ mod archive_view_tests {
 
         leave(&mut app, PanelSide::Left);
 
-        assert!(app.extracting.is_none());
+        assert!(app.ops.extracting.is_none());
         assert!(!app.jobs.is_busy(), "the job is still running");
         assert_ne!(
             app.ops.generation, generation,
@@ -22777,7 +22062,7 @@ mod archive_view_tests {
 
         leave(&mut app, PanelSide::Left);
 
-        assert!(app.extracting.is_some());
+        assert!(app.ops.extracting.is_some());
         assert!(app.jobs.is_busy());
         assert!(slot.exists());
     }
@@ -22798,7 +22083,7 @@ mod archive_view_tests {
             app.notice.as_deref(),
             Some(app.lang.text(Msg::StatusArchiveViewBusy))
         );
-        assert!(app.extracting.is_none());
+        assert!(app.ops.extracting.is_none());
         assert_eq!(app.jobs.waiting(), 1, "a job was queued behind the copy");
         assert!(launcher.0.lock().unwrap().is_empty());
     }
@@ -22818,7 +22103,7 @@ mod archive_view_tests {
             Some(app.lang.text(Msg::StatusArchiveViewBusy))
         );
         assert!(app.jobs.is_busy(), "the unpacking was dropped");
-        assert!(app.extracting.is_some());
+        assert!(app.ops.extracting.is_some());
 
         let copy = slot.join("a.txt");
         std::fs::write(&copy, "x").unwrap();
@@ -22829,7 +22114,7 @@ mod archive_view_tests {
         }));
 
         assert!(!app.jobs.is_busy(), "the queue is stuck");
-        assert!(app.extracting.is_none());
+        assert!(app.ops.extracting.is_none());
     }
 
     /// Puts `app` in the state `name` says: something else owns the queue.
@@ -22847,7 +22132,7 @@ mod archive_view_tests {
             side: PanelSide::Left,
         };
         match name {
-            "transfer" => app.transfer = Some(transfer),
+            "transfer" => app.ops.transfer = Some(transfer),
             "deleting" => app.ops.deleting = Some(deletion),
             "delete dialog" => app.ops.delete_dialog = Some(deletion),
             "transfer dialog" => {
@@ -22858,7 +22143,7 @@ mod archive_view_tests {
                     folder.to_path_buf(),
                 ));
             }
-            _ => app.pending_conflict = Some(PendingConflict { transfer, index: 0 }),
+            _ => app.ops.pending_conflict = Some(PendingConflict { transfer, index: 0 }),
         }
     }
 
@@ -22882,7 +22167,7 @@ mod archive_view_tests {
                 Some(app.lang.text(Msg::StatusArchiveViewBusy)),
                 "{name}"
             );
-            assert!(app.extracting.is_none(), "{name}");
+            assert!(app.ops.extracting.is_none(), "{name}");
             assert!(!app.jobs.is_busy(), "{name}");
             assert!(launcher.0.lock().unwrap().is_empty(), "{name}");
         }
@@ -22935,7 +22220,7 @@ mod archive_view_tests {
             app.job_error.as_deref(),
             Some(app.lang.text(Msg::ErrorArchiveEncrypted))
         );
-        assert!(app.extracting.is_none());
+        assert!(app.ops.extracting.is_none());
         assert!(!app.jobs.is_busy());
     }
 
@@ -22946,7 +22231,13 @@ mod archive_view_tests {
         let mut app = app_with_copies(&dir.path().join("cache"));
         let launcher = Arc::new(Recorded::default());
         app = app.with_launcher(Arc::clone(&launcher) as Arc<dyn fs::Launcher>);
-        let slot = app.view_copies.as_mut().unwrap().slot(&archive).unwrap();
+        let slot = app
+            .ops
+            .view_copies
+            .as_mut()
+            .unwrap()
+            .slot(&archive)
+            .unwrap();
         let copy = slot.join("a.txt");
         std::fs::write(&copy, "x").unwrap();
         let stale = app.ops.generation.wrapping_sub(1);
@@ -24285,7 +23576,7 @@ mod remote_panel_tests {
         assert_eq!(std::fs::read_to_string(&copy).unwrap(), "from the server");
         assert!(copy.starts_with(cache.path()), "{copy:?}");
         assert!(!app.jobs.is_busy());
-        assert!(app.extracting.is_none());
+        assert!(app.ops.extracting.is_none());
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -24365,7 +23656,7 @@ mod remote_panel_tests {
 
         drop(app.update(Message::OpenExternal(fs::OpenKind::View)));
 
-        assert!(app.extracting.is_none());
+        assert!(app.ops.extracting.is_none());
         assert_eq!(
             app.notice_for_test(),
             Some("Another job is running; try again when it is done")
@@ -24389,7 +23680,7 @@ mod remote_panel_tests {
             std::fs::read_to_string(local.path().join("doc.txt")).unwrap(),
             "downloaded"
         );
-        assert!(app.transfer.is_none());
+        assert!(app.ops.transfer.is_none());
         assert_eq!(app.status_error(), None);
         assert!(names(&app, PanelSide::Right).contains(&"doc.txt".to_owned()));
     }
@@ -24429,7 +23720,7 @@ mod remote_panel_tests {
         let task = app.start_transfer(TransferKind::Copy);
         run(&mut app, task).await;
         assert!(
-            app.pending_conflict.is_some(),
+            app.ops.pending_conflict.is_some(),
             "the conflict dialog is asked"
         );
         assert_eq!(
@@ -24447,7 +23738,7 @@ mod remote_panel_tests {
             std::fs::read_to_string(fixture.server.local("/home/tester/same.txt")).unwrap(),
             "new"
         );
-        assert!(app.pending_conflict.is_none());
+        assert!(app.ops.pending_conflict.is_none());
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -24533,7 +23824,7 @@ mod remote_panel_tests {
 
         let dialog = app.transfer_dialog.as_ref().unwrap();
         assert_eq!(dialog.refusal(), Some(transfer_dialog::Refusal::BadAddress));
-        assert!(app.transfer.is_none());
+        assert!(app.ops.transfer.is_none());
     }
 
     #[test]
@@ -24626,7 +23917,7 @@ mod remote_panel_tests {
             dialog.refusal(),
             Some(transfer_dialog::Refusal::MoveFromServer)
         );
-        assert!(app.transfer.is_none());
+        assert!(app.ops.transfer.is_none());
     }
 
     fn saved(name: Option<&str>, host: &str, path: Option<&str>) -> ServerEntry {
@@ -26563,7 +25854,7 @@ mod file_drop_tests {
 
         drop(case.app.update(Message::DropSettled(generation)));
 
-        let transfer = case.app.transfer.as_ref().expect("no transfer started");
+        let transfer = case.app.ops.transfer.as_ref().expect("no transfer started");
         assert_eq!(transfer.kind, TransferKind::Copy);
         assert_eq!(
             transfer.sources,
@@ -26583,7 +25874,7 @@ mod file_drop_tests {
         drop(case.app.update(Message::DropSettled(generation)));
 
         assert_eq!(
-            case.app.transfer.as_ref().unwrap().target,
+            case.app.ops.transfer.as_ref().unwrap().target,
             left.canonicalize().unwrap()
         );
     }
@@ -26595,7 +25886,7 @@ mod file_drop_tests {
 
         drop(case.app.update(Message::DropSettled(generation - 1)));
 
-        assert!(case.app.transfer.is_none());
+        assert!(case.app.ops.transfer.is_none());
     }
 
     #[tokio::test]
@@ -26606,7 +25897,10 @@ mod file_drop_tests {
 
         deliver(&mut case.app, Message::DropSettled(generation)).await;
 
-        assert!(case.app.pending_conflict.is_some(), "no conflict dialog");
+        assert!(
+            case.app.ops.pending_conflict.is_some(),
+            "no conflict dialog"
+        );
     }
 
     #[tokio::test]
@@ -26618,12 +25912,12 @@ mod file_drop_tests {
             target: PathBuf::from("/elsewhere"),
             names: Vec::new(),
         };
-        case.app.transfer = Some(running.clone());
+        case.app.ops.transfer = Some(running.clone());
         let generation = drop_both(&mut case);
 
         drop(case.app.update(Message::DropSettled(generation)));
 
-        assert_eq!(case.app.transfer.as_ref(), Some(&running));
+        assert_eq!(case.app.ops.transfer.as_ref(), Some(&running));
         assert!(case.app.notice.is_some());
     }
 
@@ -26635,7 +25929,7 @@ mod file_drop_tests {
 
         drop(case.app.update(Message::DropSettled(generation)));
 
-        assert!(case.app.transfer.is_none());
+        assert!(case.app.ops.transfer.is_none());
         assert!(case.app.job_error.is_some());
     }
 
@@ -26837,7 +26131,10 @@ mod clipboard_tests {
 
         deliver(&mut case.app, Message::PromptSubmit).await;
 
-        assert!(case.app.pending_conflict.is_some(), "no conflict dialog");
+        assert!(
+            case.app.ops.pending_conflict.is_some(),
+            "no conflict dialog"
+        );
     }
 
     #[tokio::test]
@@ -26853,7 +26150,7 @@ mod clipboard_tests {
                 ])))),
         );
 
-        let transfer = case.app.transfer.as_ref().expect("no transfer started");
+        let transfer = case.app.ops.transfer.as_ref().expect("no transfer started");
         assert_eq!(transfer.kind, TransferKind::Copy);
         assert_eq!(transfer.sources, [source]);
         assert_eq!(transfer.target, case.target.canonicalize().unwrap());
@@ -26869,7 +26166,7 @@ mod clipboard_tests {
             Some("The clipboard holds no files, image or text.")
         );
         assert!(case.app.prompt.is_none());
-        assert!(case.app.transfer.is_none());
+        assert!(case.app.ops.transfer.is_none());
     }
 
     #[tokio::test]
@@ -26882,11 +26179,11 @@ mod clipboard_tests {
             target: PathBuf::from("/elsewhere"),
             names: Vec::new(),
         };
-        case.app.transfer = Some(running.clone());
+        case.app.ops.transfer = Some(running.clone());
 
         drop(case.app.update(Message::Paste));
 
-        assert_eq!(case.app.transfer.as_ref(), Some(&running));
+        assert_eq!(case.app.ops.transfer.as_ref(), Some(&running));
         assert!(case.app.prompt.is_none());
         assert!(case.app.notice.is_some());
     }
@@ -27919,13 +27216,18 @@ mod hit_list_tests {
         let mut hits = searched(&["same.txt", "same.txt"]);
         let target = tempfile::tempdir().unwrap();
         let sources = hits.files.clone();
-        drop(hits.app.begin_transfer(
-            TransferKind::Copy,
-            sources,
-            target.path().to_path_buf(),
-            Policy::Ask,
-        ));
-        let transfer = hits.app.transfer.clone().unwrap();
+        let target_path = target.path().to_path_buf();
+        drop(hits.app.with_ops(|ops, ctx| {
+            ncrs_ops::begin_transfer(
+                ops,
+                TransferKind::Copy,
+                sources,
+                target_path,
+                Policy::Ask,
+                ctx,
+            )
+        }));
+        let transfer = hits.app.ops.transfer.clone().unwrap();
         assert_eq!(transfer.name_in_target(0), None);
         assert_eq!(
             transfer.name_in_target(1),
@@ -27943,13 +27245,18 @@ mod hit_list_tests {
         assert_eq!(sources, hits.files);
 
         let target = tempfile::tempdir().unwrap();
-        drop(hits.app.begin_transfer(
-            TransferKind::Copy,
-            sources,
-            target.path().to_path_buf(),
-            Policy::Ask,
-        ));
-        let transfer = hits.app.transfer.clone().unwrap();
+        let target_path = target.path().to_path_buf();
+        drop(hits.app.with_ops(|ops, ctx| {
+            ncrs_ops::begin_transfer(
+                ops,
+                TransferKind::Copy,
+                sources,
+                target_path,
+                Policy::Ask,
+                ctx,
+            )
+        }));
+        let transfer = hits.app.ops.transfer.clone().unwrap();
         assert_eq!(transfer.name_in_target(0), None);
         assert_eq!(
             transfer.name_in_target(1),
@@ -27966,11 +27273,17 @@ mod hit_list_tests {
         let mut progress = fs::transfer::Counting;
         fs::archive::pack(&[first], &archive, &mut progress).unwrap();
         let sources = hits.files.clone();
-        drop(
-            hits.app
-                .start_validated_transfer(TransferKind::Copy, sources, archive, Policy::Ask),
-        );
-        assert!(hits.app.transfer.is_none() && hits.app.archive_write.is_none());
+        drop(hits.app.with_ops(|ops, ctx| {
+            ncrs_ops::start_validated_transfer(
+                ops,
+                TransferKind::Copy,
+                sources,
+                archive,
+                Policy::Ask,
+                ctx,
+            )
+        }));
+        assert!(hits.app.ops.transfer.is_none() && hits.app.ops.archive_write.is_none());
         assert_eq!(
             hits.app.job_error.clone().unwrap(),
             hits.app.lang.text(Msg::StatusNumberingNeedsFolder)
