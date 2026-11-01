@@ -698,20 +698,30 @@ fn file_row<'a, M: Clone + 'a>(
                 .color(if highlighted { color } else { palette.dim_text })
                 .wrapping(text::Wrapping::None),
         ]
-        .extend(third_line)
         .into(),
         None => name_cell.into(),
     };
-    let mut content = row![
-        prefix,
-        container(name_column).width(Length::Fill).clip(true),
-        cell(format::entry_size(entry))
-            .width(SIZE_COLUMN_WIDTH)
-            .align_x(alignment::Horizontal::Right),
-        cell(format::time(entry.modified))
-            .width(DATE_COLUMN_WIDTH)
-            .align_x(alignment::Horizontal::Right),
-    ]
+    let name_element: Element<'a, M> = container(name_column).width(Length::Fill).clip(true).into();
+    let size_cell: Element<'a, M> = cell(format::entry_size(entry))
+        .width(SIZE_COLUMN_WIDTH)
+        .align_x(alignment::Horizontal::Right)
+        .into();
+    let date_cell: Element<'a, M> = cell(format::time(entry.modified))
+        .width(DATE_COLUMN_WIDTH)
+        .align_x(alignment::Horizontal::Right)
+        .into();
+    // The third line runs under size and date too, beside the tag column.
+    let mut content = match third_line {
+        Some(third) => row![
+            prefix,
+            column![
+                row![name_element, size_cell, date_cell].align_y(alignment::Vertical::Center),
+                container(third).width(Length::Fill).clip(true),
+            ]
+            .width(Length::Fill),
+        ],
+        None => row![prefix, name_element, size_cell, date_cell],
+    }
     .align_y(alignment::Vertical::Center);
     if let Some(status_cell) = hermes {
         content = content.push(status_cell.status());

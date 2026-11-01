@@ -740,7 +740,7 @@ fn match_spans<'a>(
     let plain = if highlighted {
         palette.cursor_text
     } else {
-        palette.text
+        palette.dim_text
     };
     let mut spans = Vec::new();
     let mut at = 0;

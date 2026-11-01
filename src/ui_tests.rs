@@ -3300,6 +3300,15 @@ pub mod search_filters_card {
                     if *month == 4 { &["paid"] } else { &[] },
                 );
                 hit.path = root.join(format!("telekom-2026-{month:02}.pdf"));
+                let file = crate::app::fixed_result_entry(
+                    hit.path.clone(),
+                    98_304 + u64::from(*month) * 2_048,
+                    (2026, *month, 6, 8, 30),
+                );
+                hit.stamp = file.modified.map(|mtime| ncrs_index::FileStamp {
+                    size: file.size,
+                    mtime,
+                });
                 hit.fields.amount = Some(Amount {
                     minor_units: 10_320,
                     currency: Currency::new("EUR").unwrap(),
