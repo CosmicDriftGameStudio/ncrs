@@ -22,6 +22,8 @@ ureq = { version = "=3.5.0", default-features = false, features = ["rustls"] }
 zip = { version = "=9.1.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 # Spanned: the config file as the settings page reads it names the keys by position.
 serde_spanned = { version = "1.1", features = ["serde"] }
+# The downloads and the writes of the config run on the blocking pool.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
 ncrs-ai = { path = "../ncrs-ai", version = "0.0.0" }
 ncrs-config = { path = "../ncrs-config", version = "0.0.0" }
 ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }

@@ -1,5 +1,15 @@
 use super::*;
 
+/// Held by a write of the config. Each writer reads, edits and writes the
+/// whole file: two quick changes on the blocking pool would otherwise lose
+/// one of them.
+pub fn one_config_writer() -> std::sync::MutexGuard<'static, ()> {
+    static ONE_WRITER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    ONE_WRITER
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 pub fn io_error(path: &Path) -> impl FnOnce(std::io::Error) -> FilingWriteError + '_ {
     move |err| FilingWriteError::Io {
         path: path.to_path_buf(),

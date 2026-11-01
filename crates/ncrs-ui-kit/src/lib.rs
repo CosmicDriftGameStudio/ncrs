@@ -4,6 +4,7 @@
 
 pub mod file_row;
 pub mod fkeys;
+pub mod focus;
 pub mod format;
 pub mod frame;
 pub mod hermes_kit;

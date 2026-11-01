@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::OsString;
 use std::num::NonZeroUsize;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use std::sync::atomic::{AtomicBool, AtomicU64};
@@ -26,7 +26,7 @@ use crate::command_line::{self, CommandLine, CommandLineAction, CommandLineCtx};
 use crate::command_palette::{CommandPalette, Target, RECENT_LIMIT};
 use crate::config::ServerEntry;
 use crate::config::{
-    self, Config, ConfigError, ContrastWarning, Filing, FilingWriteError, KeyChange, KindWarning,
+    self, Config, ConfigError, ContrastWarning, Filing, FilingWriteError, KindWarning,
     LanguageWarning, VscodeWarning,
 };
 use crate::context_menu::{ContextAction, ContextMenu, HermesAction, HermesMenu, InputState};
@@ -78,8 +78,10 @@ use crate::messages::{
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
-use crate::ocr_models::{download_models, DownloadError, OcrModelsCard};
-use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension, ThemeFileUrl, ThemeSource};
+#[cfg(test)]
+use crate::ocr_models::OcrModelsCard;
+use crate::ocr_models::{download_models, DownloadError};
+use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
 use crate::palette::{Palette, ThemePreset};
 use crate::panel_drag::PanelDrag;
 use crate::query_work::{self, QueryAccess};
@@ -105,7 +107,9 @@ use crate::session_state::{self, PanelRecord, SessionState, WindowSize, WriteOrd
 use crate::suggestion_work::{SuggestedRule, SuggestionAccess, INDEX_NOT_OPEN};
 use crate::tags_page::{TagRow, TagsPage};
 use crate::tags_work::{TagsAccess, TagsFailure, TagsLoaded};
-use crate::theme_fetch::{Fetched, Installed, Pick, Stage, ThemeFetch};
+#[cfg(test)]
+use crate::theme_fetch::{Fetched, Stage, ThemeFetch};
+use crate::theme_fetch::{Installed, Pick};
 use crate::transfer_dialog::{self, Policy, TransferDialog, TransferDialogMessage};
 use crate::trash_view::TrashView;
 use crate::ui::about as about_ui;
@@ -152,6 +156,11 @@ use ncrs_intake::LocationMode;
 use ncrs_ops::{TransferAction, TrashAction};
 use ncrs_pipeline::{Load, RunnerState};
 use ncrs_search::search_events;
+#[cfg(test)]
+use ncrs_settings::theme_fetch::install::download_theme;
+#[cfg(test)]
+use ncrs_settings::theme_file::{copy_picked_theme_file, theme_file_entry, IncludeProblem};
+use ncrs_settings::Settings;
 use tokio::sync::mpsc;
 
 /// How often the bar of a model download reads the byte counter.
@@ -650,48 +659,6 @@ fn conflicts_task(dialog: &TransferDialog) -> Task<Message> {
     )
 }
 
-/// The blocking part of the download: the package and the themes it offers.
-fn download_theme(
-    fetch: fn(&ExtensionId) -> Result<FetchedExtension, FetchError>,
-    id: &ExtensionId,
-) -> Result<Fetched, FetchError> {
-    let extension = fetch(id)?;
-    let themes = crate::vsix::list_themes(&extension.vsix)?;
-    Ok(Fetched { extension, themes })
-}
-
-/// The blocking part of the installation: files next to the config file, and
-/// the config pointing at them.
-fn install_picked_theme(pick: &Pick, config_path: &Path) -> Result<Box<Installed>, FetchError> {
-    let (fetched, theme) = pick;
-    let config = crate::vsix::install_theme(
-        &fetched.extension.vsix,
-        theme,
-        &fetched.extension.id,
-        config_path,
-    )?;
-    Ok(Box::new(Installed {
-        config,
-        label: theme.label.clone(),
-        license: fetched.extension.license.clone(),
-    }))
-}
-
-/// The blocking part of installing a theme from a link: the download, the
-/// check that it is a theme, the files and the config.
-fn install_theme_from_link(
-    link: &ThemeFileUrl,
-    config_path: &Path,
-) -> Result<Box<Installed>, FetchError> {
-    let bytes = open_vsx::fetch_theme_file(link)?;
-    let (config, label) = crate::vsix::install_theme_file(&bytes, link.file_name(), config_path)?;
-    Ok(Box::new(Installed {
-        config,
-        label,
-        license: None,
-    }))
-}
-
 /// Runs one blocking step of the filing module off the UI thread.
 fn run_filing_work(work: Work) -> Task<Message> {
     run_filing_work_after(None, work)
@@ -1024,158 +991,13 @@ impl VolumeMenu {
     }
 }
 
-/// Held by a write of the config. Each writer reads, edits and writes the
-/// whole file: two quick changes on the blocking pool would otherwise lose
-/// one of them.
-fn one_config_writer() -> std::sync::MutexGuard<'static, ()> {
-    static ONE_WRITER: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    ONE_WRITER
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-/// The writer of the config for an edit in the keyboard shortcuts dialog.
-fn write_key_changes(path: &Path, changes: &[KeyChange]) -> Result<Box<Config>, FilingWriteError> {
-    let _writing = one_config_writer();
-    config::write_keys(path, changes).map(Box::new)
-}
-
 /// The writer of the config for the filing pattern of the overview.
 fn write_default_pattern_alone(
     path: &Path,
     pattern: Option<&str>,
 ) -> Result<Box<Config>, FilingWriteError> {
-    let _writing = one_config_writer();
+    let _writing = config::one_config_writer();
     config::write_default_pattern(path, pattern).map(Box::new)
-}
-
-/// The writer of the config for one change of the settings tab.
-fn write_setting_change(
-    path: &Path,
-    change: SettingChange,
-) -> Result<Box<Config>, FilingWriteError> {
-    let _writing = one_config_writer();
-    let written = match change {
-        SettingChange::Preset(preset) => config::write_theme_preset(path, preset),
-        SettingChange::Language(lang) => config::write_language(path, lang),
-        SettingChange::HermesEnabled(enabled) => config::write_filing_enabled(path, enabled),
-        SettingChange::Load(load) => config::write_filing_load(path, load),
-        SettingChange::AiEnabled(enabled) => config::write_ai_enabled(path, enabled),
-        SettingChange::Program { kind, line } => config::write_program(path, kind, line.as_ref()),
-        SettingChange::VscodeTheme(Some(file)) => config::write_vscode_theme(path, &file),
-        SettingChange::VscodeTheme(None) => config::remove_vscode_theme(path),
-        SettingChange::Color { role, color } => config::write_color(path, role, color.as_deref()),
-        SettingChange::AiProvider(choice) => config::write_ai_provider(path, &choice),
-        SettingChange::Servers(servers) => config::write_servers(path, &servers),
-        SettingChange::OwnDetails { detail, entries } => {
-            config::write_own_details(path, detail, &entries)
-        }
-        SettingChange::FileListTags(tags) => config::write_file_list_tags(path, &tags),
-    };
-    written.map(Box::new)
-}
-
-/// What `[theme] vscode` says for a picked theme file. One inside the
-/// config's folder is named from there, as the downloaded ones are, so that
-/// the folder can move with it. `None` when the path is not text.
-fn theme_file_entry(config_path: Option<&Path>, picked: &Path) -> Option<String> {
-    let named = config_path
-        .and_then(Path::parent)
-        .and_then(|folder| picked.strip_prefix(folder).ok())
-        .unwrap_or(picked);
-    named.to_str().map(str::to_owned)
-}
-
-/// The folder below the config's, next to the downloaded themes, where the
-/// sandbox keeps the theme file a user picked.
-const PICKED_THEMES_FOLDER: &str = "themes/picked";
-
-/// What came of copying a picked theme file.
-struct PickedThemeCopy {
-    /// The entry for `[theme] vscode`.
-    entry: String,
-    include_not_copied: Option<IncludeNotCopied>,
-}
-
-struct IncludeNotCopied {
-    name: String,
-    reason: IncludeProblem,
-}
-
-enum IncludeProblem {
-    OutsideFolder,
-    Unreadable(String),
-}
-
-/// An `include` is copied only when it names a file at or below the theme's
-/// own folder: no `..`, no absolute path, no drive.
-fn include_stays_in_folder(name: &str) -> bool {
-    !name.is_empty()
-        && !name.split(['/', '\\']).any(|part| part == "..")
-        && Path::new(name)
-            .components()
-            .all(|part| matches!(part, Component::Normal(_) | Component::CurDir))
-        && !name.starts_with(['/', '\\'])
-}
-
-fn copy_included_theme_file(picked: &Path, folder: &Path, name: &str) -> Result<(), String> {
-    let source = picked.parent().unwrap_or_else(|| Path::new("")).join(name);
-    let target = folder.join(name);
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-    std::fs::copy(source, target)
-        .map(|_| ())
-        .map_err(|error| error.to_string())
-}
-
-/// Copies a picked theme file below the config's folder and returns the entry
-/// for `[theme] vscode`. The sandbox grants the file only until the app quits,
-/// so a path outside the container would be unreadable at the next start. The
-/// one file it `include`s is copied along when it lies below the theme's
-/// folder and is readable.
-fn copy_picked_theme_file(
-    config_path: &Path,
-    picked: &Path,
-) -> Result<PickedThemeCopy, FilingWriteError> {
-    let io_failure = |failed: &Path| {
-        let owned = failed.to_path_buf();
-        move |error: std::io::Error| FilingWriteError::Io {
-            path: owned,
-            reason: error.to_string(),
-        }
-    };
-    let file_name = picked.file_name().ok_or_else(|| FilingWriteError::Io {
-        path: picked.to_path_buf(),
-        reason: "not a file".to_owned(),
-    })?;
-    let folder = config_path
-        .parent()
-        .ok_or_else(|| FilingWriteError::Io {
-            path: config_path.to_path_buf(),
-            reason: "no folder".to_owned(),
-        })?
-        .join(PICKED_THEMES_FOLDER);
-    std::fs::create_dir_all(&folder).map_err(io_failure(&folder))?;
-    let target = folder.join(file_name);
-    std::fs::copy(picked, &target).map_err(io_failure(picked))?;
-    let include_not_copied = match crate::vscode_theme::included_name(picked) {
-        Ok(Some(name)) if !include_stays_in_folder(&name) => Some(IncludeNotCopied {
-            name,
-            reason: IncludeProblem::OutsideFolder,
-        }),
-        Ok(Some(name)) => copy_included_theme_file(picked, &folder, &name)
-            .err()
-            .map(|reason| IncludeNotCopied {
-                name,
-                reason: IncludeProblem::Unreadable(reason),
-            }),
-        Ok(None) | Err(_) => None,
-    };
-    Ok(PickedThemeCopy {
-        entry: format!("{PICKED_THEMES_FOLDER}/{}", file_name.to_string_lossy()),
-        include_not_copied,
-    })
 }
 
 /// When a saved filing list takes effect.
@@ -1374,8 +1196,6 @@ pub struct App {
     quick_open_walk: Option<iced::task::Handle>,
     /// The command palette (Cmd/Ctrl+Shift+P), while its box is up.
     command_palette: Option<CommandPalette>,
-    /// The keyboard shortcuts dialog, while it is up.
-    key_bindings: Option<KeyBindings>,
     /// The commands run from the command list this session, most recent
     /// first. Not kept across runs.
     recent_commands: Vec<KeyAction>,
@@ -1407,9 +1227,7 @@ pub struct App {
     /// The document kinds the config asks for, on top of the built-in ones.
     kinds: Kinds,
     /// The settings tab, while it is open.
-    settings: Option<settings_ui::SettingsState>,
-    /// A write of the settings tab that failed; it stays until the next write.
-    settings_failure: Option<String>,
+    settings: Settings,
     /// The preset and the VS Code theme file the config names, as last loaded
     /// or written.
     theme_preset: ThemePreset,
@@ -1446,10 +1264,6 @@ pub struct App {
     /// Where a pasted picture or text is written before it is copied into the
     /// panel. Kept until the next paste so the running copy keeps its source.
     paste_staging: Option<tempfile::TempDir>,
-    /// The card that fetches a color theme, while it is up.
-    theme_fetch: Option<ThemeFetch>,
-    /// Counts the cards opened, so the late answer of a closed one is dropped.
-    theme_fetch_generation: u64,
     rule_suggestions: Option<RuleSuggestions>,
     /// Tells the answer of the work that is current from a stale one.
     rule_suggestions_generation: u64,
@@ -1475,9 +1289,6 @@ pub struct App {
     /// The overview opened a card that covers it (folders, setup); it comes
     /// back when the card is gone.
     return_to_hermes_overview: bool,
-    /// The AI card was closed while its download runs on; the overview shows
-    /// the progress, and the card returns when the download ends.
-    ai_card_hidden: bool,
     /// Tells the answer of the plan that is current from a stale one.
     reorganisation_generation: u64,
     /// `Snapshot::plans_made` the filing job was last asked for.
@@ -1499,15 +1310,9 @@ pub struct App {
     find_third_party_licenses: fn() -> Option<PathBuf>,
     /// The version the about card shows.
     app_version: &'static str,
-    /// The card that asks before the OCR models are downloaded, while it is up.
-    ocr_models: Option<OcrModelsCard>,
-    /// Counts the cards opened, so the late answer of a closed one is dropped.
-    ocr_models_generation: u64,
     /// Downloads the OCR models into the folder, on a blocking thread.
     /// Injected so tests need no network.
     download_ocr_models: fn(&Path, &AtomicU64) -> Result<(), DownloadError>,
-    /// The card that asks before the AI model is downloaded, while it is up.
-    ai_model: Option<AiModelCard>,
     /// The dialog that asks for access to the home folder, while it is up.
     grant_dialog: bool,
     /// The App Sandbox side: whether it applies, where grants are kept, and
@@ -1524,8 +1329,6 @@ pub struct App {
     /// Counts the attempts to connect, so the late answer of an old one is
     /// dropped.
     connect_attempts: u64,
-    /// Counts the cards opened, so the late answer of a closed one is dropped.
-    ai_model_generation: u64,
     /// The card opened by itself for a missing model; once per start, so a
     /// "Cancel" is not asked again.
     ai_model_asked: bool,
@@ -3472,7 +3275,6 @@ impl App {
             quick_open_walk_generation: 0,
             quick_open_walk: None,
             command_palette: None,
-            key_bindings: None,
             recent_commands: Vec::new(),
             filing: None,
             pipeline: None,
@@ -3493,8 +3295,7 @@ impl App {
             hermes_setup: None,
             pending_hermes_start: None,
             hermes_flow_step: 0,
-            settings: None,
-            settings_failure: None,
+            settings: Settings::default(),
             theme_preset: ThemePreset::DEFAULT,
             vscode_theme: None,
             resolve_folder: filing_setup::resolve_folder,
@@ -3507,8 +3308,6 @@ impl App {
             },
             pending_paste: None,
             paste_staging: None,
-            theme_fetch: None,
-            theme_fetch_generation: 0,
             rule_suggestions: None,
             rule_suggestions_generation: 0,
             rules: None,
@@ -3524,21 +3323,16 @@ impl App {
             reorganisation: None,
             hermes_focus: HermesFocus::default(),
             return_to_hermes_overview: false,
-            ai_card_hidden: false,
             reorganisation_generation: 0,
             plans_filed_for: 0,
             filing_due: false,
             pending_refile: None,
             fetch_extension: open_vsx::fetch_extension,
-            install_theme: install_picked_theme,
+            install_theme: ncrs_settings::theme_fetch::install::install_picked_theme,
             about: None,
             find_third_party_licenses: crate::about::installed_third_party_licenses,
             app_version: env!("CARGO_PKG_VERSION"),
-            ocr_models: None,
-            ocr_models_generation: 0,
             download_ocr_models: download_models,
-            ai_model: None,
-            ai_model_generation: 0,
             ai_model_asked: false,
             reading_again: crate::reading_again::ReadingAgain::default(),
             filing_restart: None,
@@ -3653,13 +3447,13 @@ impl App {
             } else {
                 Subscription::none()
             },
-            if self.ai_model_download_runs() {
+            if self.settings.ai_model_download_runs() {
                 iced::time::every(DOWNLOAD_BAR_EVERY)
                     .map(|_| Message::AiModel(AiModelMessage::Progress))
             } else {
                 Subscription::none()
             },
-            if self.ocr_models_download_runs() {
+            if self.settings.ocr_models_download_runs() {
                 iced::time::every(DOWNLOAD_BAR_EVERY)
                     .map(|_| Message::OcrModels(OcrModelsMessage::Progress))
             } else {
@@ -4684,7 +4478,7 @@ impl App {
 
     /// Settings and the filing setup replace the panel area; an overlay covers it.
     fn command_line_is_blocked(&self) -> bool {
-        self.overlay_is_open() || self.settings.is_some() || self.filing_setup.is_some()
+        self.overlay_is_open() || self.settings.page.is_some() || self.filing_setup.is_some()
     }
 
     /// A shell command ended: its report goes to the status bar and both panels
@@ -4866,10 +4660,11 @@ impl App {
         input.quick_open = self.quick_open.is_some();
         input.command_palette = self.command_palette.is_some();
         input.key_bindings = self
+            .settings
             .key_bindings
             .as_ref()
             .is_some_and(|shortcuts| !shortcuts.is_recording());
-        input.theme_fetch = self.theme_fetch.is_some();
+        input.theme_fetch = self.settings.theme_fetch.is_some();
         input.rule_suggestions = self.rule_suggestions.is_some();
         input.rules = self.rules.is_some();
         input.review_list = self.review_list.is_some();
@@ -4878,7 +4673,7 @@ impl App {
         input.hermes_sidebar = state.hermes_sidebar;
         input.transfer_dialog = self.transfer_dialog.is_some();
         input.reorganisation_plan = self.reorganisation.is_some();
-        input.settings = self.settings.is_some()
+        input.settings = self.settings.page.is_some()
             && self.filing_setup.is_none()
             && !self.blocking_overlay_is_open();
         drop(input);
@@ -4988,7 +4783,7 @@ impl App {
         ]
         .height(Length::Fill);
 
-        let below_title_bar = if let Some(state) = self.settings.as_ref() {
+        let below_title_bar = if let Some(state) = self.settings.page.as_ref() {
             self.settings_area(state)
         } else if let Some(area) = self.ablage_area() {
             area
@@ -5166,7 +4961,7 @@ impl App {
             return Stack::with_children([root, dialog::scrim(card_element)]).into();
         }
 
-        if let Some(card) = self.ocr_models.as_ref() {
+        if let Some(card) = self.settings.ocr_models.as_ref() {
             let card_element = ocr_models_ui::view(
                 card,
                 self.dialog_focus,
@@ -5181,7 +4976,12 @@ impl App {
             .into();
         }
 
-        if let Some(card) = self.ai_model.as_ref().filter(|_| !self.ai_card_hidden) {
+        if let Some(card) = self
+            .settings
+            .ai_model
+            .as_ref()
+            .filter(|_| !self.settings.ai_card_hidden)
+        {
             let card_element = ai_model_ui::view(
                 card,
                 self.dialog_focus,
@@ -5259,7 +5059,7 @@ impl App {
             return Stack::with_children([root, dialog::scrim(box_element)]).into();
         }
 
-        if let Some(shortcuts) = self.key_bindings.as_ref() {
+        if let Some(shortcuts) = self.settings.key_bindings.as_ref() {
             let dialog_element =
                 key_bindings_ui::view(shortcuts, self.window_size, self.lang, &self.palette);
             return Stack::with_children([
@@ -5279,7 +5079,7 @@ impl App {
             return Stack::with_children([root, dialog::scrim(box_element)]).into();
         }
 
-        if let Some(card) = self.theme_fetch.as_ref() {
+        if let Some(card) = self.settings.theme_fetch.as_ref() {
             let card_element =
                 theme_fetch_ui::view(card, self.window_size, self.lang, &self.palette);
             return Stack::with_children([
@@ -5416,8 +5216,9 @@ impl App {
         let hit_list = self.active_panel().is_hit_list();
         let quick_open = self.quick_open.is_some();
         let command_palette = self.command_palette.is_some();
-        let key_bindings = self.key_bindings.is_some();
+        let key_bindings = self.settings.key_bindings.is_some();
         let key_bindings_recording = self
+            .settings
             .key_bindings
             .as_ref()
             .is_some_and(KeyBindings::is_recording);
@@ -5433,7 +5234,7 @@ impl App {
             .filing
             .as_ref()
             .is_some_and(FilingModule::card_can_be_dismissed);
-        let theme_fetch = self.theme_fetch.is_some();
+        let theme_fetch = self.settings.theme_fetch.is_some();
         let rule_suggestions = self.rule_suggestions.is_some();
         let rules = self.rules.is_some();
         let rules_form = self.rules.as_ref().is_some_and(RulesPage::is_editing);
@@ -5456,11 +5257,11 @@ impl App {
             self.hermes_focus == HermesFocus::Sidebar && self.open_hermes_page().is_some();
         let reorganisation_plan = self.reorganisation.is_some();
         let about = self.about.is_some();
-        let ocr_models = self.ocr_models.is_some();
-        let ai_model = self.ai_card_is_shown();
+        let ocr_models = self.settings.ocr_models.is_some();
+        let ai_model = self.settings.ai_card_is_shown();
         let grant_dialog = self.grant_dialog;
         let connect_dialog = self.connect_dialog.is_some();
-        let settings = self.settings.is_some();
+        let settings = self.settings.page.is_some();
         let transfer_dialog = self.transfer_dialog.is_some();
         let transfer_progress = self.progress_mask_is_open();
         let start_over_dialog = self.start_over_dialog;
@@ -5689,8 +5490,8 @@ impl App {
             tasks.push(self.run_filing());
         }
         if ask_for_ai_model && !self.ai_model_asked {
-            tasks.push(self.open_ai_model());
-            self.ai_model_asked = self.ai_model.is_some();
+            tasks.push(self.update_ai_model(AiModelMessage::Open));
+            self.ai_model_asked = self.settings.ai_model.is_some();
         }
         if skipped > 0 {
             let text = fill_template(
@@ -5982,8 +5783,8 @@ impl App {
             // The choice was made on the card; the module does not ask again.
             self.ai_model_asked = true;
             if load_model {
-                tasks.push(self.open_ai_model());
-                tasks.push(self.start_ai_model_download());
+                tasks.push(self.update_ai_model(AiModelMessage::Open));
+                tasks.push(self.update_ai_model(AiModelMessage::Download));
             }
         }
         Task::batch(tasks)
@@ -6229,8 +6030,8 @@ impl App {
             1
         } else if self.delete_dialog.is_some()
             || self.start_over_dialog
-            || self.ocr_models.is_some()
-            || self.ai_card_is_shown()
+            || self.settings.ocr_models.is_some()
+            || self.settings.ai_card_is_shown()
             || self.grant_dialog
         {
             2
@@ -6246,10 +6047,11 @@ impl App {
     /// button.
     fn model_card_has_one_button(&self) -> bool {
         let ocr = self
+            .settings
             .ocr_models
             .as_ref()
             .is_some_and(|card| card.is_installed() || card.is_finished());
-        let ai = self.ai_model.as_ref().is_some_and(|card| {
+        let ai = self.settings.ai_model.as_ref().is_some_and(|card| {
             card.is_installed()
                 || (card.is_finished() && card.outcome() != Some(InstallOutcome::StillOff))
         });
@@ -6285,31 +6087,36 @@ impl App {
             };
         }
         if self.model_card_has_one_button() {
-            return if self.ocr_models.is_some() {
-                self.close_ocr_models()
+            return if self.settings.ocr_models.is_some() {
+                self.update_ocr_models(OcrModelsMessage::Close)
             } else {
-                self.close_ai_model()
+                self.update_ai_model(AiModelMessage::Close)
             };
         }
-        if self.ai_model.as_ref().is_some_and(AiModelCard::is_finished) {
+        if self
+            .settings
+            .ai_model
+            .as_ref()
+            .is_some_and(AiModelCard::is_finished)
+        {
             return if self.dialog_focus == ai_model_ui::DOWNLOAD_FOCUS {
                 self.update_ai_model(AiModelMessage::ShowAiSetting)
             } else {
-                self.close_ai_model()
+                self.update_ai_model(AiModelMessage::Close)
             };
         }
-        if self.ocr_models.is_some() {
+        if self.settings.ocr_models.is_some() {
             return if self.dialog_focus == ocr_models_ui::DOWNLOAD_FOCUS {
-                self.start_ocr_models_download()
+                self.update_ocr_models(OcrModelsMessage::Download)
             } else {
-                self.close_ocr_models()
+                self.update_ocr_models(OcrModelsMessage::Close)
             };
         }
-        if self.ai_card_is_shown() {
+        if self.settings.ai_card_is_shown() {
             return if self.dialog_focus == ai_model_ui::DOWNLOAD_FOCUS {
                 self.press_ai_model_button()
             } else {
-                self.close_ai_model()
+                self.update_ai_model(AiModelMessage::Close)
             };
         }
         if self.grant_dialog {
@@ -6378,11 +6185,11 @@ impl App {
             || self.volume_menu.is_some()
             || self.quick_open.is_some()
             || self.command_palette.is_some()
-            || self.key_bindings.is_some()
-            || self.theme_fetch.is_some()
+            || self.settings.key_bindings.is_some()
+            || self.settings.theme_fetch.is_some()
             || self.about.is_some()
-            || self.ocr_models.is_some()
-            || self.ai_card_is_shown()
+            || self.settings.ocr_models.is_some()
+            || self.settings.ai_card_is_shown()
             || self.grant_dialog
             || self.connect_dialog.is_some()
             || self.hermes_setup.is_some()
@@ -11318,7 +11125,9 @@ impl App {
         let on = page.group_will_be_on(&self.file_list_tags, group);
         let exceptional = page.exceptional_tags(group);
         let switched = self.file_list_tags.with_group(group, on);
-        let write = self.write_setting(SettingChange::FileListTags(switched));
+        let write = self.update_settings(SettingsMessage::Change(SettingChange::FileListTags(
+            switched,
+        )));
         if exceptional.is_empty() {
             return write;
         }
@@ -11332,7 +11141,7 @@ impl App {
     /// The tags page, from the settings or the command list: in place of the
     /// page of the Ablage tab that is up, if any.
     fn show_tags_page(&mut self) -> Task<Message> {
-        let left = self.leave_settings_page(Self::close_settings);
+        let left = self.leave_settings_page();
         let opened = if self.open_hermes_page().is_some() {
             self.show_hermes_page(HermesPage::Tags)
         } else {
@@ -11465,6 +11274,7 @@ impl App {
             ai_on: self.filing_config.ai != crate::config::AiSetting::Off,
             ai_status: module.map(FilingModule::ai_status).unwrap_or_default(),
             ai_download: self
+                .settings
                 .ai_model
                 .as_ref()
                 .filter(|card| card.is_downloading())
@@ -11694,8 +11504,8 @@ impl App {
         if self.blocking_overlay_is_open() {
             return Task::none();
         }
-        let left_settings = self.leave_settings_page(Self::close_settings);
-        if self.settings.is_some() {
+        let left_settings = self.leave_settings_page();
+        if self.settings.page.is_some() {
             return left_settings;
         }
         self.hermes_focus = HermesFocus::Content;
@@ -11771,7 +11581,7 @@ impl App {
                 return self.commit_overview_pattern();
             }
             Err(error) => {
-                let reason = self.settings_write_failure(&error);
+                let reason = ncrs_settings::write::write_failure(&error, &self.settings_ctx());
                 if let Some(state) = self.hermes_overview.as_mut() {
                     state.pattern_write_failed(reason);
                 }
@@ -11843,19 +11653,21 @@ impl App {
             }
             HermesOverviewMessage::PatternWritten(result) => self.overview_pattern_written(result),
             HermesOverviewMessage::SetAiEnabled(on) => {
-                self.write_setting(SettingChange::AiEnabled(on))
+                self.update_settings(SettingsMessage::Change(SettingChange::AiEnabled(on)))
             }
-            HermesOverviewMessage::SetLoad(load) => self.write_setting(SettingChange::Load(load)),
+            HermesOverviewMessage::SetLoad(load) => {
+                self.update_settings(SettingsMessage::Change(SettingChange::Load(load)))
+            }
             HermesOverviewMessage::ChangeFolders => {
                 let write = self.leave_hermes_overview_state();
                 let card = self.update_filing_setup(FilingSetupMessage::Toggle);
                 self.return_to_hermes_overview = self.card_covers_overview();
                 Task::batch([write, card])
             }
-            HermesOverviewMessage::LoadOcrModels => self.open_ocr_models(),
+            HermesOverviewMessage::LoadOcrModels => self.update_ocr_models(OcrModelsMessage::Open),
             HermesOverviewMessage::LoadAiModel => {
-                let open = self.open_ai_model();
-                let download = self.start_ai_model_download();
+                let open = self.update_ai_model(AiModelMessage::Open);
+                let download = self.update_ai_model(AiModelMessage::Download);
                 Task::batch([open, download])
             }
             HermesOverviewMessage::ShowOwnServerSettings => {
@@ -11885,7 +11697,8 @@ impl App {
                 }
             }
             HermesOverviewMessage::SwitchHermesOn => {
-                let written = self.write_setting(SettingChange::HermesEnabled(true));
+                let written = self
+                    .update_settings(SettingsMessage::Change(SettingChange::HermesEnabled(true)));
                 if self.filing_config.locations.is_empty() {
                     let leave = self.leave_hermes_overview_state();
                     self.open_hermes_setup();
@@ -12150,208 +11963,6 @@ impl App {
         )
     }
 
-    fn update_theme_fetch(&mut self, message: ThemeFetchMessage) -> Task<Message> {
-        match message {
-            ThemeFetchMessage::Open => self.open_theme_fetch(),
-            ThemeFetchMessage::Close => self.close_theme_fetch(),
-            ThemeFetchMessage::TextChanged(text) => {
-                if let Some(card) = self.theme_fetch.as_mut() {
-                    card.set_text(text);
-                }
-                Task::none()
-            }
-            ThemeFetchMessage::Activate => self.activate_theme_fetch(),
-            ThemeFetchMessage::Move(delta) => {
-                if let Some(card) = self.theme_fetch.as_mut() {
-                    card.move_cursor(delta);
-                }
-                Task::none()
-            }
-            ThemeFetchMessage::Pick(index) => {
-                if let Some(card) = self.theme_fetch.as_mut() {
-                    card.select(index);
-                }
-                self.activate_theme_fetch()
-            }
-            ThemeFetchMessage::Fetched { generation, result } => {
-                self.theme_fetched(generation, result)
-            }
-            ThemeFetchMessage::Installed { generation, result } => {
-                self.theme_installed(generation, result)
-            }
-        }
-    }
-
-    fn open_theme_fetch(&mut self) -> Task<Message> {
-        let focus = operation::focus(theme_fetch_ui::FIELD_ID);
-        if self.theme_fetch.is_some() {
-            return focus;
-        }
-        if self.blocking_overlay_is_open() {
-            return Task::none();
-        }
-        self.context_menu = None;
-        self.theme_fetch_generation = self.theme_fetch_generation.wrapping_add(1);
-        self.theme_fetch = Some(ThemeFetch::new());
-        focus
-    }
-
-    /// Not while the theme is written: the config change would have no card
-    /// left to report to.
-    fn close_theme_fetch(&mut self) -> Task<Message> {
-        if self
-            .theme_fetch
-            .as_ref()
-            .is_some_and(|card| matches!(card.stage(), Stage::Installing))
-        {
-            return Task::none();
-        }
-        if self.theme_fetch.take().is_some() {
-            release_focus()
-        } else {
-            Task::none()
-        }
-    }
-
-    /// Enter or a click: fetches what was typed, or installs the chosen theme.
-    fn activate_theme_fetch(&mut self) -> Task<Message> {
-        let Some(card) = self.theme_fetch.as_mut() else {
-            return Task::none();
-        };
-        match card.stage() {
-            Stage::Input => match card.start() {
-                Some(ThemeSource::Extension(id)) => self.start_theme_download(id),
-                Some(ThemeSource::File(link)) => self.start_theme_link_install(link),
-                None => Task::none(),
-            },
-            Stage::Choosing { .. } => match card.choose() {
-                Some(pick) => self.start_theme_install(pick),
-                None => Task::none(),
-            },
-            Stage::Fetching | Stage::Installing => Task::none(),
-        }
-    }
-
-    fn start_theme_download(&self, id: ExtensionId) -> Task<Message> {
-        let generation = self.theme_fetch_generation;
-        let fetch = self.fetch_extension;
-        Task::perform(
-            tokio::task::spawn_blocking(move || download_theme(fetch, &id)),
-            move |joined| {
-                let result =
-                    joined.unwrap_or_else(|join| Err(FetchError::Network(join.to_string())));
-                Message::ThemeFetch(ThemeFetchMessage::Fetched { generation, result })
-            },
-        )
-    }
-
-    fn start_theme_link_install(&mut self, link: ThemeFileUrl) -> Task<Message> {
-        let Some(config_path) = self.config_path.clone() else {
-            return self.fail_theme_fetch(FetchError::NoConfigPath);
-        };
-        let generation = self.theme_fetch_generation;
-        let failed_path = config_path.display().to_string();
-        Task::perform(
-            tokio::task::spawn_blocking(move || install_theme_from_link(&link, &config_path)),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| {
-                    Err(FetchError::WriteFailed {
-                        path: failed_path,
-                        reason: join.to_string(),
-                    })
-                });
-                Message::ThemeFetch(ThemeFetchMessage::Installed { generation, result })
-            },
-        )
-    }
-
-    fn start_theme_install(&mut self, pick: Pick) -> Task<Message> {
-        let Some(config_path) = self.config_path.clone() else {
-            return self.fail_theme_fetch(FetchError::NoConfigPath);
-        };
-        let generation = self.theme_fetch_generation;
-        let install = self.install_theme;
-        let failed_path = config_path.display().to_string();
-        Task::perform(
-            tokio::task::spawn_blocking(move || install(&pick, &config_path)),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| {
-                    Err(FetchError::WriteFailed {
-                        path: failed_path,
-                        reason: join.to_string(),
-                    })
-                });
-                Message::ThemeFetch(ThemeFetchMessage::Installed { generation, result })
-            },
-        )
-    }
-
-    /// Back to the text field with the reason shown.
-    fn fail_theme_fetch(&mut self, error: FetchError) -> Task<Message> {
-        let Some(card) = self.theme_fetch.as_mut() else {
-            return Task::none();
-        };
-        card.fail(error);
-        operation::focus(theme_fetch_ui::FIELD_ID)
-    }
-
-    fn theme_fetched(
-        &mut self,
-        generation: u64,
-        result: Result<crate::theme_fetch::Fetched, FetchError>,
-    ) -> Task<Message> {
-        if generation != self.theme_fetch_generation {
-            return Task::none();
-        }
-        let Some(card) = self.theme_fetch.as_mut() else {
-            return Task::none();
-        };
-        if !matches!(card.stage(), Stage::Fetching) {
-            return Task::none();
-        }
-        match card.finish_fetching(result) {
-            Some(pick) => self.start_theme_install(pick),
-            None if matches!(card.stage(), Stage::Input) => {
-                operation::focus(theme_fetch_ui::FIELD_ID)
-            }
-            None => Task::none(),
-        }
-    }
-
-    fn theme_installed(
-        &mut self,
-        generation: u64,
-        result: Result<Box<Installed>, FetchError>,
-    ) -> Task<Message> {
-        if generation != self.theme_fetch_generation || self.theme_fetch.is_none() {
-            return Task::none();
-        }
-        let installed = match result {
-            Ok(installed) => *installed,
-            Err(error) => return self.fail_theme_fetch(error),
-        };
-        self.theme_fetch = None;
-        let Installed {
-            config,
-            label,
-            license,
-        } = installed;
-        if let Some(state) = self.settings.as_mut() {
-            state.file = Ok(Box::new(config.clone()));
-        }
-        self.apply_look(config);
-        let shown_license =
-            license.unwrap_or_else(|| self.lang.text(Msg::ThemeFetchLicenseNotStated).to_owned());
-        let notice = fill_template(
-            self.lang.text(Msg::ThemeFetchInstalled),
-            &[
-                ("{label}", label.as_str()),
-                ("{license}", shown_license.as_str()),
-            ],
-        );
-        Task::batch([release_focus(), self.show_notice(notice)])
-    }
-
     fn settings_view<'a>(
         &'a self,
         state: &'a settings_ui::SettingsState,
@@ -12392,6 +12003,183 @@ impl App {
         }
     }
 
+    fn settings_ctx(&self) -> ncrs_settings::Ctx<'_> {
+        ncrs_settings::Ctx {
+            lang: self.lang,
+            keymap: &self.keymap,
+            config_path: self.config_path.as_deref(),
+            home: &self.home,
+            sandbox_active: self.sandbox.active,
+            blocking_overlay_open: self.blocking_overlay_is_open(),
+            overlay_apart_from_overview_open: self.overlay_apart_from_overview_is_open(),
+            overview_open: self.hermes_overview.is_some(),
+            ocr_models_dir: self
+                .filing_index_path
+                .as_deref()
+                .and_then(crate::filing::ocr_models_dir),
+            ai_models_dir: self
+                .filing_index_path
+                .as_deref()
+                .and_then(crate::filing::ai_models_dir),
+            file_list_tags: &self.file_list_tags,
+            ai_is_on: self.filing_config.ai != crate::config::AiSetting::Off,
+            services: ncrs_settings::Services {
+                fetch_extension: self.fetch_extension,
+                install_theme: self.install_theme,
+                download_ocr_models: self.download_ocr_models,
+                download_ai_model: self.download_ai_model,
+            },
+        }
+    }
+
+    /// Runs `step` on the settings. The state is taken out for it, since the
+    /// context borrows the rest of the app; the overlay facts are read before,
+    /// while the settings' own dialogs still count.
+    fn with_settings<R>(
+        &mut self,
+        step: impl FnOnce(&mut ncrs_settings::Settings, &ncrs_settings::Ctx<'_>) -> R,
+    ) -> R {
+        let blocking_overlay_open = self.blocking_overlay_is_open();
+        let overlay_apart_from_overview_open = self.overlay_apart_from_overview_is_open();
+        let mut settings = std::mem::take(&mut self.settings);
+        let outcome = step(
+            &mut settings,
+            &ncrs_settings::Ctx {
+                blocking_overlay_open,
+                overlay_apart_from_overview_open,
+                ..self.settings_ctx()
+            },
+        );
+        self.settings = settings;
+        outcome
+    }
+
+    fn run_settings(&mut self, message: ncrs_settings::Message) -> Task<Message> {
+        let (task, actions) =
+            self.with_settings(|settings, ctx| ncrs_settings::update(settings, message, ctx));
+        self.run_settings_actions(task, actions)
+    }
+
+    fn run_settings_actions(
+        &mut self,
+        task: Task<ncrs_settings::Message>,
+        actions: Vec<ncrs_settings::Action>,
+    ) -> Task<Message> {
+        let mut tasks = vec![task.map(Message::from_settings)];
+        for action in actions {
+            tasks.push(self.run_settings_action(action));
+        }
+        Task::batch(tasks)
+    }
+
+    fn run_settings_action(&mut self, action: ncrs_settings::Action) -> Task<Message> {
+        use ncrs_settings::Action as Ask;
+        match action {
+            Ask::CloseContextMenu => {
+                self.context_menu = None;
+                Task::none()
+            }
+            Ask::SetDialogFocus(focus) => {
+                self.dialog_focus = focus;
+                Task::none()
+            }
+            Ask::ShowNotice(text) => self.show_notice(text),
+            Ask::LeaveAblagePage => {
+                let left_ablage = self.close_ablage_tab();
+                self.context_menu = None;
+                self.set_path_field(None);
+                self.notice = None;
+                left_ablage
+            }
+            Ask::PickProgram { kind, apps_only } => (self.pick_file)(FilePick::Program {
+                apps_only,
+            })
+            .map(move |path| Message::Settings(SettingsMessage::ProgramPicked { kind, path })),
+            Ask::PickThemeFile => (self.pick_file)(FilePick::ThemeFile)
+                .map(|path| Message::Settings(SettingsMessage::ThemeFilePicked(path))),
+            Ask::ShowTagsPage => self.show_tags_page(),
+            Ask::OpenServerAdd => self.update(Message::Remote(RemoteMessage::OpenAdd)),
+            Ask::OpenServer(url) => self.update(Message::Remote(RemoteMessage::OpenServer(url))),
+            Ask::OpenFilingStatus => self.update(Message::FilingStatus(FilingStatusMessage::Open)),
+            Ask::Protection(position) => {
+                let facts = self.overview_facts(
+                    self.settings
+                        .page
+                        .as_ref()
+                        .is_some_and(|state| state.ocr_models_present),
+                );
+                match hermes_overview_ui::protection_actions(&facts)
+                    .into_iter()
+                    .nth(position)
+                {
+                    Some(button) => self.update(Message::HermesOverview(button.message)),
+                    None => Task::none(),
+                }
+            }
+            Ask::Apply { change, config } => self.apply_setting(change, *config),
+            Ask::ApplyLook(config) => {
+                self.apply_look(*config);
+                Task::none()
+            }
+            Ask::KeymapChanged(keymap) => {
+                self.keymap = keymap;
+                self.refresh_function_keys();
+                Task::none()
+            }
+            Ask::OpenOverview => self.open_hermes_overview(),
+            Ask::OcrModelsInstalled => {
+                if let Some(overview) = self.hermes_overview.as_mut() {
+                    overview.set_ocr_models_present(true);
+                }
+                Task::none()
+            }
+            Ask::RefreshAiModel => {
+                if let Some(module) = self.filing.as_ref() {
+                    module.refresh_ai_model();
+                }
+                Task::none()
+            }
+        }
+    }
+
+    fn update_settings(&mut self, message: SettingsMessage) -> Task<Message> {
+        self.run_settings(ncrs_settings::Message::Settings(message))
+    }
+
+    fn update_key_bindings(&mut self, message: KeyBindingsMessage) -> Task<Message> {
+        self.run_settings(ncrs_settings::Message::KeyBindings(message))
+    }
+
+    fn update_theme_fetch(&mut self, message: ThemeFetchMessage) -> Task<Message> {
+        self.run_settings(ncrs_settings::Message::ThemeFetch(message))
+    }
+
+    fn update_ocr_models(&mut self, message: OcrModelsMessage) -> Task<Message> {
+        self.run_settings(ncrs_settings::Message::OcrModels(message))
+    }
+
+    fn update_ai_model(&mut self, message: AiModelMessage) -> Task<Message> {
+        self.run_settings(ncrs_settings::Message::AiModel(message))
+    }
+
+    fn press_ai_model_button(&mut self) -> Task<Message> {
+        let (task, actions) = self.with_settings(ncrs_settings::press_ai_model_button);
+        self.run_settings_actions(task, actions)
+    }
+
+    fn ocr_models_present(&self) -> bool {
+        ncrs_settings::ocr_models_present(self.settings_ctx().ocr_models_dir.as_deref())
+    }
+
+    fn close_settings(&mut self) -> Task<Message> {
+        ncrs_settings::close_settings(&mut self.settings).map(Message::from_settings)
+    }
+
+    /// Writes the values typed on the page and closes it.
+    fn leave_settings_page(&mut self) -> Task<Message> {
+        self.update_settings(SettingsMessage::Close)
+    }
+
     fn settings_area<'a>(
         &'a self,
         state: &'a settings_ui::SettingsState,
@@ -12399,7 +12187,7 @@ impl App {
         let page = settings_ui::view(&self.settings_view(state)).map(Message::Settings);
         let bar = settings_ui::status_bar(&settings_ui::StatusBar {
             changed: state.changed,
-            failure: self.settings_failure.as_deref(),
+            failure: self.settings.failure.as_deref(),
             notice: self.notice.as_deref(),
             lang: self.lang,
             palette: &self.palette,
@@ -12408,291 +12196,6 @@ impl App {
         container(column![page, bar])
             .width(Length::Fill)
             .height(Length::Fill)
-    }
-
-    fn update_settings(&mut self, message: SettingsMessage) -> Task<Message> {
-        match message {
-            SettingsMessage::Toggle if self.settings.is_some() => {
-                self.leave_settings_page(Self::close_settings)
-            }
-            SettingsMessage::Toggle => self.open_settings(),
-            SettingsMessage::ToggleFileListTags => {
-                let switched = FileListTags {
-                    show: !self.file_list_tags.show,
-                    ..self.file_list_tags.clone()
-                };
-                self.write_setting(SettingChange::FileListTags(switched))
-            }
-            SettingsMessage::ChooseFileListTags => self.show_tags_page(),
-            SettingsMessage::Close => self.leave_settings_page(Self::close_settings),
-            SettingsMessage::Select(feature)
-                if self
-                    .settings
-                    .as_ref()
-                    .is_some_and(|state| state.feature != feature) =>
-            {
-                self.leave_settings_page(|app| {
-                    if let Some(state) = app.settings.as_mut() {
-                        state.feature = feature;
-                        state.marked_row = None;
-                    }
-                    Task::none()
-                })
-            }
-            SettingsMessage::ToggleAdvanced => self.in_settings(|state| {
-                state.advanced_open = !state.advanced_open;
-                None
-            }),
-            SettingsMessage::Select(_) => self.in_settings(|state| {
-                state.marked_row = None;
-                None
-            }),
-            SettingsMessage::SearchChanged(query) => self.in_settings(|state| {
-                state.query = query;
-                state.marked_row = None;
-                None
-            }),
-            SettingsMessage::Edit { field, text } => self.in_settings(|state| {
-                state.edit(field, text);
-                None
-            }),
-            SettingsMessage::Submit(field) => self.in_settings(|state| state.submit(field)),
-            SettingsMessage::ChooseProvider(provider) => {
-                self.in_settings(|state| state.choose_provider(provider))
-            }
-            SettingsMessage::PickProgram(kind) => {
-                let apps_only = self.settings.as_ref().is_some_and(|state| state.sandboxed);
-                (self.pick_file)(FilePick::Program { apps_only }).map(move |path| {
-                    Message::Settings(SettingsMessage::ProgramPicked { kind, path })
-                })
-            }
-            SettingsMessage::ProgramPicked {
-                kind,
-                path: Some(path),
-            } => self.in_settings(|state| state.picked_program(kind, &path)),
-            SettingsMessage::PickThemeFile => (self.pick_file)(FilePick::ThemeFile)
-                .map(|path| Message::Settings(SettingsMessage::ThemeFilePicked(path))),
-            SettingsMessage::ThemeFilePicked(Some(path)) => self.theme_file_picked(&path),
-            SettingsMessage::ProgramPicked { path: None, .. }
-            | SettingsMessage::ThemeFilePicked(None) => Task::none(),
-            SettingsMessage::OpenThemeFetch => self.update_theme_fetch(ThemeFetchMessage::Open),
-            SettingsMessage::OpenKeyBindings => self.update_key_bindings(KeyBindingsMessage::Open),
-            SettingsMessage::OpenOcrModels => self.update_ocr_models(OcrModelsMessage::Open),
-            SettingsMessage::OpenServerAdd => self.update(Message::Remote(RemoteMessage::OpenAdd)),
-            SettingsMessage::OpenServer(url) => {
-                self.update(Message::Remote(RemoteMessage::OpenServer(url)))
-            }
-            SettingsMessage::OpenFilingStatus => {
-                self.update(Message::FilingStatus(FilingStatusMessage::Open))
-            }
-            SettingsMessage::Protection(position) => {
-                let facts = self.overview_facts(
-                    self.settings
-                        .as_ref()
-                        .is_some_and(|state| state.ocr_models_present),
-                );
-                match hermes_overview_ui::protection_actions(&facts)
-                    .into_iter()
-                    .nth(position)
-                {
-                    Some(action) => self.update(Message::HermesOverview(action.message)),
-                    None => Task::none(),
-                }
-            }
-            SettingsMessage::Change(change) => self.write_setting(change),
-            SettingsMessage::Written { change, result } => self.setting_written(change, result),
-        }
-    }
-
-    /// Writes the values typed on the page without Enter, one after the
-    /// other, and runs `then`. A wrong value keeps the page as it is: it shows
-    /// at its row and `then` does not run.
-    fn leave_settings_page(
-        &mut self,
-        then: impl FnOnce(&mut Self) -> Task<Message>,
-    ) -> Task<Message> {
-        let Some(changes) = self
-            .settings
-            .as_mut()
-            .and_then(settings_ui::SettingsState::leave)
-        else {
-            return Task::none();
-        };
-        let writes = changes
-            .into_iter()
-            .map(|change| self.write_setting(change))
-            .reduce(Task::chain)
-            .unwrap_or_else(Task::none);
-        Task::batch([then(self), writes])
-    }
-
-    /// Runs `edit` on the open tab and writes the change it asks for.
-    fn in_settings(
-        &mut self,
-        edit: impl FnOnce(&mut settings_ui::SettingsState) -> Option<SettingChange>,
-    ) -> Task<Message> {
-        match self.settings.as_mut().and_then(edit) {
-            Some(change) => self.write_setting(change),
-            None => Task::none(),
-        }
-    }
-
-    fn theme_file_picked(&mut self, path: &Path) -> Task<Message> {
-        if let (true, Some(config_path)) = (self.sandbox.active, self.config_path.as_deref()) {
-            return match copy_picked_theme_file(config_path, path) {
-                Ok(copy) => {
-                    let written = self.write_setting(SettingChange::VscodeTheme(Some(copy.entry)));
-                    match copy.include_not_copied {
-                        Some(problem) => {
-                            let text = self.include_not_copied_text(&problem);
-                            Task::batch([written, self.show_notice(text)])
-                        }
-                        None => written,
-                    }
-                }
-                Err(error) => {
-                    self.settings_failure = Some(self.settings_write_failure(&error));
-                    Task::none()
-                }
-            };
-        }
-        match theme_file_entry(self.config_path.as_deref(), path) {
-            Some(file) => self.write_setting(SettingChange::VscodeTheme(Some(file))),
-            None => {
-                self.settings_failure =
-                    Some(self.lang.text(Msg::SettingsProblemPathNotText).to_owned());
-                Task::none()
-            }
-        }
-    }
-
-    fn include_not_copied_text(&self, problem: &IncludeNotCopied) -> String {
-        let reason = match &problem.reason {
-            IncludeProblem::OutsideFolder => self
-                .lang
-                .text(Msg::SettingsThemeIncludeOutsideFolder)
-                .to_owned(),
-            IncludeProblem::Unreadable(reason) => reason.clone(),
-        };
-        fill_template(
-            self.lang.text(Msg::SettingsThemeIncludeNotCopied),
-            &[("{include}", &problem.name), ("{reason}", &reason)],
-        )
-    }
-
-    fn setting_written(
-        &mut self,
-        change: SettingChange,
-        result: Result<Box<Config>, FilingWriteError>,
-    ) -> Task<Message> {
-        match result {
-            Ok(config) => {
-                self.settings_failure = None;
-                if let Some(state) = self.settings.as_mut() {
-                    state.written(&change, &config);
-                }
-                self.apply_setting(change, *config)
-            }
-            Err(error) => {
-                if matches!(change, SettingChange::AiEnabled(true)) {
-                    if let Some(card) = self.ai_model.as_mut() {
-                        card.set_outcome(InstallOutcome::StillOff);
-                    }
-                }
-                let failure = self.settings_write_failure(&error);
-                let at_its_row = match self.settings.as_mut() {
-                    Some(state) => state.refused(&change, failure.clone()),
-                    None => false,
-                };
-                if at_its_row {
-                    Task::none()
-                } else if self.settings.is_some() {
-                    self.settings_failure = Some(failure);
-                    Task::none()
-                } else {
-                    self.show_notice(failure)
-                }
-            }
-        }
-    }
-
-    fn open_settings(&mut self) -> Task<Message> {
-        if self.overlay_apart_from_overview_is_open() {
-            return Task::none();
-        }
-        let left_ablage = self.close_ablage_tab();
-        self.context_menu = None;
-        self.set_path_field(None);
-        self.notice = None;
-        self.settings_failure = None;
-        self.settings = Some(self.fresh_settings_state());
-        Task::batch([left_ablage, release_focus()])
-    }
-
-    fn ocr_models_present(&self) -> bool {
-        self.filing_index_path
-            .as_deref()
-            .and_then(crate::filing::ocr_models_dir)
-            .is_some_and(|dir| dir.read_dir().is_ok_and(|mut files| files.next().is_some()))
-    }
-
-    fn fresh_settings_state(&self) -> settings_ui::SettingsState {
-        let ocr_models_present = self.ocr_models_present();
-        // Read again rather than kept from the start: the tab shows the values
-        // as the file spells them, and the file may have changed since.
-        let file = match &self.config_path {
-            Some(path) => config::load(path).map(Box::new),
-            None => Ok(Box::default()),
-        };
-        let mut state = settings_ui::SettingsState::new(
-            ocr_models_present,
-            file,
-            crate::fs::runs_in_app_sandbox(),
-        );
-        state.text_recognition_built_in = crate::ocr_models::system_reads_scans();
-        state
-    }
-
-    fn close_settings(&mut self) -> Task<Message> {
-        if self.settings.take().is_some() {
-            self.settings_failure = None;
-            release_focus()
-        } else {
-            Task::none()
-        }
-    }
-
-    /// Writes `change` to the config on a blocking thread; the answer is a
-    /// `Written` with the file read back, and only then it is applied.
-    fn write_setting(&mut self, change: SettingChange) -> Task<Message> {
-        let Some(config_path) = self.config_path.clone() else {
-            self.settings_failure = Some(self.lang.text(Msg::FilingSetupNoConfigPath).to_owned());
-            return Task::none();
-        };
-        self.settings_failure = None;
-        let written_path = config_path.clone();
-        let written_change = change.clone();
-        // Started only when the task runs, so writes chained one after the
-        // other do not read the file at the same time.
-        Task::perform(
-            async move {
-                tokio::task::spawn_blocking(move || {
-                    write_setting_change(&written_path, written_change)
-                })
-                .await
-            },
-            move |joined| {
-                Message::Settings(SettingsMessage::Written {
-                    change,
-                    result: joined.unwrap_or_else(|join| {
-                        Err(FilingWriteError::Io {
-                            path: config_path,
-                            reason: join.to_string(),
-                        })
-                    }),
-                })
-            },
-        )
     }
 
     /// Takes over what the file now says about `change`.
@@ -12729,7 +12232,7 @@ impl App {
                 } else {
                     InstallOutcome::TurnedOnAtNextStart
                 };
-                if let Some(card) = self.ai_model.as_mut() {
+                if let Some(card) = self.settings.ai_model.as_mut() {
                     card.set_outcome(outcome);
                 }
                 if matches!(applies, SavedFilingApplies::AtNextStart) {
@@ -12813,45 +12316,6 @@ impl App {
         self.report_kind_warning(config.kind_warning);
     }
 
-    fn settings_write_failure(&self, error: &FilingWriteError) -> String {
-        let shown = |path: &Path| filing_setup::shown_path(path, &self.home);
-        let write_failed = |path: &Path, reason: &str| {
-            fill_template(
-                self.lang.text(Msg::FilingSetupWriteFailed),
-                &[("{path}", &shown(path)), ("{reason}", reason)],
-            )
-        };
-        match error {
-            FilingWriteError::Io { path, reason } => write_failed(path, reason),
-            FilingWriteError::PathNotText(path) => fill_template(
-                self.lang.text(Msg::FilingSetupPathNotText),
-                &[("{path}", &shown(path))],
-            ),
-            FilingWriteError::Config(config_error) => {
-                let path = shown(config_error.path());
-                match config_error.line() {
-                    Some(line) => fill_template(
-                        self.lang.text(Msg::FilingSetupConfigBrokenAtLine),
-                        &[
-                            ("{path}", &path),
-                            ("{line}", &line.to_string()),
-                            ("{reason}", config_error.reason()),
-                        ],
-                    ),
-                    None => fill_template(
-                        self.lang.text(Msg::FilingSetupConfigBroken),
-                        &[("{path}", &path), ("{reason}", config_error.reason())],
-                    ),
-                }
-            }
-            // The writers of the tab check no filing rules.
-            FilingWriteError::Rule(violation) => write_failed(
-                self.config_path.as_deref().unwrap_or(Path::new("")),
-                &format!("{violation:?}"),
-            ),
-        }
-    }
-
     fn update_about(&mut self, message: AboutMessage) -> Task<Message> {
         match message {
             AboutMessage::Open => {
@@ -12894,238 +12358,6 @@ impl App {
                 .replace("{reason}", &reason);
             self.set_status_error(&failure);
         }
-    }
-
-    fn update_ocr_models(&mut self, message: OcrModelsMessage) -> Task<Message> {
-        match message {
-            OcrModelsMessage::Open => self.open_ocr_models(),
-            OcrModelsMessage::Close => self.close_ocr_models(),
-            OcrModelsMessage::Download => self.start_ocr_models_download(),
-            OcrModelsMessage::Progress => Task::none(),
-            OcrModelsMessage::Downloaded { generation, result } => {
-                self.ocr_models_downloaded(generation, result)
-            }
-        }
-    }
-
-    /// Only asks. Nothing is sent before the download button is pressed.
-    fn open_ocr_models(&mut self) -> Task<Message> {
-        if self.overlay_apart_from_overview_is_open() {
-            return Task::none();
-        }
-        self.context_menu = None;
-        self.ocr_models_generation = self.ocr_models_generation.wrapping_add(1);
-        self.dialog_focus = ocr_models_ui::CANCEL_FOCUS;
-        let target = self
-            .filing_index_path
-            .as_deref()
-            .and_then(crate::filing::ocr_models_dir);
-        self.ocr_models = Some(if self.ocr_models_present() {
-            OcrModelsCard::installed(target)
-        } else {
-            OcrModelsCard::new(target)
-        });
-        Task::none()
-    }
-
-    /// Not while the files are written: closing would leave a download nobody
-    /// reports on.
-    fn close_ocr_models(&mut self) -> Task<Message> {
-        if self
-            .ocr_models
-            .as_ref()
-            .is_some_and(OcrModelsCard::is_downloading)
-        {
-            return Task::none();
-        }
-        self.ocr_models = None;
-        Task::none()
-    }
-
-    fn start_ocr_models_download(&mut self) -> Task<Message> {
-        let Some(target) = self.ocr_models.as_mut().and_then(OcrModelsCard::start) else {
-            return Task::none();
-        };
-        let received = self.ocr_models.as_ref().map(OcrModelsCard::received);
-        let generation = self.ocr_models_generation;
-        let download = self.download_ocr_models;
-        Task::perform(
-            tokio::task::spawn_blocking(move || download(&target, &received.unwrap_or_default())),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| {
-                    Err(DownloadError::Network(FetchError::Network(
-                        join.to_string(),
-                    )))
-                });
-                Message::OcrModels(OcrModelsMessage::Downloaded { generation, result })
-            },
-        )
-    }
-
-    fn ocr_models_downloaded(
-        &mut self,
-        generation: u64,
-        result: Result<(), DownloadError>,
-    ) -> Task<Message> {
-        if generation != self.ocr_models_generation {
-            return Task::none();
-        }
-        let Some(card) = self.ocr_models.as_mut() else {
-            return Task::none();
-        };
-        if !card.finish(result) {
-            return Task::none();
-        }
-        if let Some(settings) = self.settings.as_mut() {
-            settings.ocr_models_present = true;
-        }
-        if let Some(overview) = self.hermes_overview.as_mut() {
-            overview.set_ocr_models_present(true);
-        }
-        Task::none()
-    }
-
-    /// The card is open and its download has not ended: the bar needs ticks.
-    fn ai_model_download_runs(&self) -> bool {
-        self.ai_model
-            .as_ref()
-            .is_some_and(AiModelCard::is_downloading)
-    }
-
-    fn ocr_models_download_runs(&self) -> bool {
-        self.ocr_models
-            .as_ref()
-            .is_some_and(OcrModelsCard::is_downloading)
-    }
-
-    fn update_ai_model(&mut self, message: AiModelMessage) -> Task<Message> {
-        match message {
-            AiModelMessage::Progress => Task::none(),
-            AiModelMessage::ShowAiSetting => {
-                self.ai_model = None;
-                self.open_hermes_overview()
-            }
-            AiModelMessage::Open => self.open_ai_model(),
-            AiModelMessage::Close => self.close_ai_model(),
-            AiModelMessage::Download => self.start_ai_model_download(),
-            AiModelMessage::Stop => {
-                if let Some(card) = self.ai_model.as_mut() {
-                    card.stop();
-                }
-                Task::none()
-            }
-            AiModelMessage::Downloaded { generation, result } => {
-                self.ai_model_downloaded(generation, result)
-            }
-        }
-    }
-
-    /// Only asks. Nothing is fetched before the download button is pressed.
-    fn ai_card_is_shown(&self) -> bool {
-        self.ai_model.is_some() && !self.ai_card_hidden
-    }
-
-    fn open_ai_model(&mut self) -> Task<Message> {
-        if self.overlay_apart_from_overview_is_open() {
-            return Task::none();
-        }
-        self.context_menu = None;
-        self.ai_card_hidden = false;
-        self.ai_model_generation = self.ai_model_generation.wrapping_add(1);
-        self.dialog_focus = ai_model_ui::CANCEL_FOCUS;
-        let target = self
-            .filing_index_path
-            .as_deref()
-            .and_then(crate::filing::ai_models_dir);
-        let has_partial = target
-            .as_deref()
-            .is_some_and(|dir| ncrs_ai::has_partial_download(dir, &ncrs_ai::LOCAL_MODEL));
-        self.ai_model = Some(if target.as_deref().is_some_and(model_is_installed) {
-            AiModelCard::installed(target)
-        } else {
-            AiModelCard::new(target, has_partial)
-        });
-        Task::none()
-    }
-
-    /// Not while the file is written: stopping comes first, then closing.
-    fn close_ai_model(&mut self) -> Task<Message> {
-        if self.ai_model_download_runs() {
-            self.ai_card_hidden = self.hermes_overview.is_some();
-            return Task::none();
-        }
-        self.ai_model = None;
-        self.ai_card_hidden = false;
-        Task::none()
-    }
-
-    /// The button next to Cancel: it stops a running download, otherwise it
-    /// starts or continues one.
-    fn press_ai_model_button(&mut self) -> Task<Message> {
-        if self
-            .ai_model
-            .as_ref()
-            .is_some_and(AiModelCard::is_downloading)
-        {
-            return self.update_ai_model(AiModelMessage::Stop);
-        }
-        self.start_ai_model_download()
-    }
-
-    fn start_ai_model_download(&mut self) -> Task<Message> {
-        let Some(job) = self.ai_model.as_mut().and_then(AiModelCard::start) else {
-            return Task::none();
-        };
-        let generation = self.ai_model_generation;
-        let download = self.download_ai_model;
-        Task::perform(
-            tokio::task::spawn_blocking(move || download(&job)),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| {
-                    Err(AiDownloadError::Network(FetchError::Network(
-                        join.to_string(),
-                    )))
-                });
-                Message::AiModel(AiModelMessage::Downloaded { generation, result })
-            },
-        )
-    }
-
-    fn ai_model_downloaded(
-        &mut self,
-        generation: u64,
-        result: Result<(), AiDownloadError>,
-    ) -> Task<Message> {
-        if generation != self.ai_model_generation {
-            return Task::none();
-        }
-        let Some(card) = self.ai_model.as_mut() else {
-            return Task::none();
-        };
-        if !card.finish(result) {
-            return Task::none();
-        }
-        self.ai_card_hidden = false;
-        self.dialog_focus = ai_model_ui::CANCEL_FOCUS;
-        if let Some(module) = self.filing.as_ref() {
-            module.refresh_ai_model();
-        }
-        let ai_is_on = self.filing_config.ai != crate::config::AiSetting::Off;
-        let can_write = self.config_path.is_some();
-        let (outcome, task) = if ai_is_on {
-            (InstallOutcome::InUse, Task::none())
-        } else if can_write {
-            (
-                InstallOutcome::TurningOn,
-                self.write_setting(SettingChange::AiEnabled(true)),
-            )
-        } else {
-            (InstallOutcome::StillOff, Task::none())
-        };
-        if let Some(open_card) = self.ai_model.as_mut() {
-            open_card.set_outcome(outcome);
-        }
-        task
     }
 
     fn update_grant(&mut self, message: GrantMessage) -> Task<Message> {
@@ -13265,157 +12497,6 @@ impl App {
         }
     }
 
-    fn update_key_bindings(&mut self, message: KeyBindingsMessage) -> Task<Message> {
-        use KeyBindingsMessage as Shortcuts;
-        match message {
-            Shortcuts::Open => return self.open_key_bindings(),
-            Shortcuts::Close => return self.close_key_bindings(),
-            Shortcuts::Written(result) => {
-                self.key_bindings_written(result);
-                return Task::none();
-            }
-            _ => {}
-        }
-        let keymap = Arc::clone(&self.keymap);
-        let Some(shortcuts) = self.key_bindings.as_mut() else {
-            return Task::none();
-        };
-        let edit = match message {
-            Shortcuts::SearchChanged(query) => {
-                shortcuts.set_query(query, &keymap);
-                None
-            }
-            Shortcuts::Typed(typed) => {
-                let query = format!("{}{typed}", shortcuts.query());
-                shortcuts.set_query(query, &keymap);
-                return operation::focus(key_bindings_ui::SEARCH_FIELD_ID).chain(
-                    operation::move_cursor_to_end(key_bindings_ui::SEARCH_FIELD_ID),
-                );
-            }
-            Shortcuts::SearchByKey(binding) => {
-                shortcuts.search_by_key(binding, &keymap);
-                None
-            }
-            // The list takes the keys from the field: Left, Right and the
-            // keys that remove would edit the text otherwise.
-            Shortcuts::Move(delta) => {
-                shortcuts.move_cursor(delta);
-                return release_focus();
-            }
-            Shortcuts::Select { row, key } => {
-                shortcuts.select(row, key);
-                return release_focus();
-            }
-            Shortcuts::MoveKey(delta) => {
-                shortcuts.move_key_cursor(delta);
-                None
-            }
-            Shortcuts::Scrolled(delta) => {
-                shortcuts.scroll(delta);
-                None
-            }
-            Shortcuts::Record => {
-                let changes = shortcuts.activate(&keymap);
-                if changes.is_none() {
-                    return release_focus();
-                }
-                changes
-            }
-            Shortcuts::RecordAdditional => {
-                shortcuts.record_additional();
-                return release_focus();
-            }
-            Shortcuts::Recorded(binding) => shortcuts.recorded(binding, &keymap),
-            Shortcuts::CancelRecording => {
-                shortcuts.cancel();
-                None
-            }
-            Shortcuts::RemoveKey => shortcuts.remove_key(),
-            Shortcuts::Reset => shortcuts.reset(&keymap),
-            Shortcuts::ResetAll => {
-                shortcuts.ask_reset_all();
-                None
-            }
-            Shortcuts::Confirm => shortcuts.confirm(&keymap),
-            Shortcuts::Dismiss => {
-                shortcuts.dismiss();
-                None
-            }
-            Shortcuts::Open | Shortcuts::Close | Shortcuts::Written(_) => None,
-        };
-        edit.map_or_else(Task::none, |changes| self.write_key_bindings(changes))
-    }
-
-    /// The key, the command list or the settings tab. Pressed while the
-    /// dialog is up, it only gives the search field the focus again.
-    fn open_key_bindings(&mut self) -> Task<Message> {
-        let focus = operation::focus(key_bindings_ui::SEARCH_FIELD_ID);
-        if self.key_bindings.is_some() {
-            return focus;
-        }
-        if self.blocking_overlay_is_open() {
-            return Task::none();
-        }
-        self.context_menu = None;
-        self.key_bindings = Some(KeyBindings::new(self.lang, &self.keymap));
-        focus
-    }
-
-    /// Escape and the close button: a clash or a question goes first.
-    fn close_key_bindings(&mut self) -> Task<Message> {
-        let Some(shortcuts) = self.key_bindings.as_mut() else {
-            return Task::none();
-        };
-        if shortcuts.escape() {
-            return Task::none();
-        }
-        self.key_bindings = None;
-        release_focus()
-    }
-
-    /// Writes the `[keys]` lines of an edit on a blocking thread; the keymap
-    /// read back is the one in effect from then on.
-    fn write_key_bindings(&mut self, changes: Vec<KeyChange>) -> Task<Message> {
-        let Some(config_path) = self.config_path.clone() else {
-            let failure = self.lang.text(Msg::FilingSetupNoConfigPath).to_owned();
-            if let Some(shortcuts) = self.key_bindings.as_mut() {
-                shortcuts.written(&self.keymap, Some(failure));
-            }
-            return Task::none();
-        };
-        if let Some(shortcuts) = self.key_bindings.as_mut() {
-            shortcuts.start_writing();
-        }
-        let written_path = config_path.clone();
-        Task::perform(
-            tokio::task::spawn_blocking(move || write_key_changes(&written_path, &changes)),
-            move |joined| {
-                Message::KeyBindings(KeyBindingsMessage::Written(joined.unwrap_or_else(|join| {
-                    Err(FilingWriteError::Io {
-                        path: config_path,
-                        reason: join.to_string(),
-                    })
-                })))
-            },
-        )
-    }
-
-    /// Takes over the keys the file now has: the panels, the function key
-    /// bar and the menu answer them at once.
-    fn key_bindings_written(&mut self, result: Result<Box<Config>, FilingWriteError>) {
-        let failure = match result {
-            Ok(config) => {
-                self.keymap = config.keymap;
-                self.refresh_function_keys();
-                None
-            }
-            Err(error) => Some(self.settings_write_failure(&error)),
-        };
-        if let Some(shortcuts) = self.key_bindings.as_mut() {
-            shortcuts.written(&self.keymap, failure);
-        }
-    }
-
     /// Cmd/Ctrl+Shift+P: lists the actions that work where the keys are now.
     /// Pressed while the box is up, it only gives the field the focus again.
     fn open_command_palette(&mut self) -> Task<Message> {
@@ -13442,10 +12523,10 @@ impl App {
             palette = palette.without_command(KeyAction::HermesProcessAgain);
         }
         let fresh;
-        let state = match &self.settings {
+        let state = match &self.settings.page {
             Some(open) => open,
             None => {
-                fresh = self.fresh_settings_state();
+                fresh = ncrs_settings::fresh_settings_state(&self.settings_ctx());
                 &fresh
             }
         };
@@ -13518,19 +12599,11 @@ impl App {
         feature: crate::messages::SettingsFeature,
         row: Option<String>,
     ) -> Task<Message> {
-        if self.settings.is_some() {
-            return self.leave_settings_page(|app| {
-                if let Some(state) = app.settings.as_mut() {
-                    state.show(feature, row);
-                }
-                Task::none()
-            });
-        }
-        let opened = self.open_settings();
-        if let Some(state) = self.settings.as_mut() {
-            state.show(feature, row);
-        }
-        opened
+        let mut actions = Vec::new();
+        let task = self.with_settings(|settings, ctx| {
+            ncrs_settings::show_setting(settings, ctx, feature, row, &mut actions)
+        });
+        self.run_settings_actions(task, actions)
     }
 
     /// Runs a command chosen from the command list or the menu bar: what its
@@ -13667,11 +12740,11 @@ impl App {
     }
 
     fn page_tab_is_open(&self) -> bool {
-        self.settings.is_some() || self.ablage_tab_is_open()
+        self.settings.page.is_some() || self.ablage_tab_is_open()
     }
 
     fn page_tab(&self) -> Option<titlebar::PageTab> {
-        if self.settings.is_some() {
+        if self.settings.page.is_some() {
             Some(titlebar::PageTab::Settings)
         } else {
             self.open_hermes_page()
@@ -14215,8 +13288,8 @@ impl App {
         if self.blocking_overlay_is_open() {
             return Task::none();
         }
-        let left_settings = self.leave_settings_page(Self::close_settings);
-        if self.settings.is_some() {
+        let left_settings = self.leave_settings_page();
+        if self.settings.page.is_some() {
             return left_settings;
         }
         self.context_menu = None;
@@ -14750,7 +13823,7 @@ impl App {
                 path,
             }),
         }
-        self.write_setting(SettingChange::Servers(servers))
+        self.update_settings(SettingsMessage::Change(SettingChange::Servers(servers)))
     }
 
     fn trust_host_key(&mut self) -> Task<Message> {
@@ -15464,6 +14537,17 @@ mod prompt_routing {
         );
     }
 
+    /// The open shortcuts dialog is itself an overlay: the theme fetch does
+    /// not open on top of it.
+    #[test]
+    fn the_theme_fetch_stays_shut_while_the_shortcuts_dialog_is_open() {
+        let mut commander = app();
+        drop(commander.update(Message::KeyBindings(KeyBindingsMessage::Open)));
+        drop(commander.update(Message::ThemeFetch(ThemeFetchMessage::Open)));
+        assert!(commander.settings.key_bindings.is_some());
+        assert!(commander.settings.theme_fetch.is_none());
+    }
+
     /// The dialog takes the arrows, Enter and Delete, while recording every
     /// key but Escape becomes the new key, and a chord the search field does
     /// not type searches by key.
@@ -15479,7 +14563,7 @@ mod prompt_routing {
         );
         assert_eq!(routed, shortcuts(KeyBindingsMessage::Open));
         drop(commander.update(Message::KeyBindings(KeyBindingsMessage::Open)));
-        assert!(commander.key_bindings.is_some());
+        assert!(commander.settings.key_bindings.is_some());
 
         let with = |dialog_open: &App, key: Key, modifiers| {
             route_key(&dialog_open.prompt_key_state(), key, modifiers)
@@ -15512,6 +14596,7 @@ mod prompt_routing {
         assert_eq!(enter, shortcuts(KeyBindingsMessage::Record));
         drop(commander.update(Message::KeyBindings(KeyBindingsMessage::Record)));
         assert!(commander
+            .settings
             .key_bindings
             .as_ref()
             .is_some_and(KeyBindings::is_recording));
@@ -16226,7 +15311,6 @@ impl App {
             quick_open_walk_generation: 0,
             quick_open_walk: None,
             command_palette: None,
-            key_bindings: None,
             recent_commands: Vec::new(),
             filing: None,
             pipeline: None,
@@ -16247,8 +15331,7 @@ impl App {
             hermes_setup: None,
             pending_hermes_start: None,
             hermes_flow_step: 0,
-            settings: None,
-            settings_failure: None,
+            settings: Settings::default(),
             theme_preset: ThemePreset::Cosmic,
             vscode_theme: None,
             resolve_folder: |folder| Ok(folder.to_path_buf()),
@@ -16258,8 +15341,6 @@ impl App {
             write_clipboard_files: Box::new(|_| Ok(())),
             pending_paste: None,
             paste_staging: None,
-            theme_fetch: None,
-            theme_fetch_generation: 0,
             rule_suggestions: None,
             rule_suggestions_generation: 0,
             rules: None,
@@ -16275,7 +15356,6 @@ impl App {
             reorganisation: None,
             hermes_focus: HermesFocus::default(),
             return_to_hermes_overview: false,
-            ai_card_hidden: false,
             reorganisation_generation: 0,
             plans_filed_for: 0,
             filing_due: false,
@@ -16285,11 +15365,7 @@ impl App {
             about: None,
             find_third_party_licenses: || None,
             app_version: env!("CARGO_PKG_VERSION"),
-            ocr_models: None,
-            ocr_models_generation: 0,
             download_ocr_models: |_, _| Err(DownloadError::NoDataFolder),
-            ai_model: None,
-            ai_model_generation: 0,
             ai_model_asked: false,
             reading_again: crate::reading_again::ReadingAgain::default(),
             filing_restart: None,
@@ -16389,8 +15465,8 @@ impl App {
         let mut card = AiModelCard::new(Some(PathBuf::from("models")), false);
         drop(card.start());
         card.set_received_for_test(ncrs_ai::LOCAL_MODEL.size.div_euclid(100) * percent);
-        self.ai_model = Some(card);
-        self.ai_card_hidden = true;
+        self.settings.ai_model = Some(card);
+        self.settings.ai_card_hidden = true;
         self
     }
 
@@ -16832,7 +15908,7 @@ impl App {
     }
 
     pub fn settings_for_test(&self) -> Option<&settings_ui::SettingsState> {
-        self.settings.as_ref()
+        self.settings.page.as_ref()
     }
 
     pub fn command_palette_for_test(&self) -> Option<&CommandPalette> {
@@ -16840,7 +15916,7 @@ impl App {
     }
 
     pub fn theme_fetch_for_test(&self) -> Option<&ThemeFetch> {
-        self.theme_fetch.as_ref()
+        self.settings.theme_fetch.as_ref()
     }
 
     pub fn about_for_test(&self) -> Option<&AboutCard> {
@@ -16864,26 +15940,26 @@ impl App {
     }
 
     pub fn ocr_models_for_test(&self) -> Option<&OcrModelsCard> {
-        self.ocr_models.as_ref()
+        self.settings.ocr_models.as_ref()
     }
 
     /// Fixed panels with the text recognition models card up.
     pub fn with_ocr_models_card(card: OcrModelsCard) -> Self {
         let mut app = Self::with_fixed_panels();
         app.dialog_focus = ocr_models_ui::CANCEL_FOCUS;
-        app.ocr_models = Some(card);
+        app.settings.ocr_models = Some(card);
         app
     }
 
     pub fn ai_model_for_test(&self) -> Option<&AiModelCard> {
-        self.ai_model.as_ref()
+        self.settings.ai_model.as_ref()
     }
 
     /// Fixed panels with the AI model card up.
     pub fn with_ai_model_card(card: AiModelCard) -> Self {
         let mut app = Self::with_fixed_panels();
         app.dialog_focus = ai_model_ui::CANCEL_FOCUS;
-        app.ai_model = Some(card);
+        app.settings.ai_model = Some(card);
         app
     }
 
@@ -16901,7 +15977,7 @@ impl App {
         app.filing_config = filing;
         let mut state = settings_ui::SettingsState::new(false, Ok(Box::default()), false);
         state.feature = feature;
-        app.settings = Some(state);
+        app.settings.page = Some(state);
         app
     }
 
@@ -16921,7 +15997,7 @@ impl App {
             app.saved_servers = config.servers.clone();
             app.apply_look(config.clone());
         }
-        if let Some(state) = app.settings.as_mut() {
+        if let Some(state) = app.settings.page.as_mut() {
             state.file = file.map(Box::new);
         }
         app
@@ -16940,7 +16016,7 @@ impl App {
     /// Fixed panels with the theme download card up, in the state of `card`.
     pub fn with_theme_fetch_card(card: ThemeFetch) -> Self {
         let mut app = Self::with_fixed_panels();
-        app.theme_fetch = Some(card);
+        app.settings.theme_fetch = Some(card);
         app
     }
 
@@ -24009,7 +23085,7 @@ mod theme_fetch_tests {
     fn deliver_download(app: &mut App) -> Result<Fetched, FetchError> {
         let id = ExtensionId::parse(app.theme_fetch_for_test().unwrap().text()).unwrap();
         let result = download_theme(app.fetch_extension, &id);
-        let generation = app.theme_fetch_generation;
+        let generation = app.settings.theme_fetch_generation;
         send(
             app,
             ThemeFetchMessage::Fetched {
@@ -24023,7 +23099,7 @@ mod theme_fetch_tests {
     fn deliver_install(app: &mut App, fetched: &Fetched, index: usize) {
         let pick = (fetched.clone(), fetched.themes[index].clone());
         let result = (app.install_theme)(&pick, Path::new(CONFIG));
-        let generation = app.theme_fetch_generation;
+        let generation = app.settings.theme_fetch_generation;
         send(app, ThemeFetchMessage::Installed { generation, result });
     }
 
@@ -24154,7 +23230,7 @@ mod theme_fetch_tests {
         let mut app = app_fetching_with(two_themes);
         type_id(&mut app);
         send(&mut app, ThemeFetchMessage::Activate);
-        let generation = app.theme_fetch_generation;
+        let generation = app.settings.theme_fetch_generation;
         let result = download_theme(
             two_themes,
             &ExtensionId::parse("example.dark-themes").unwrap(),
@@ -24220,7 +23296,7 @@ mod theme_fetch_tests {
         type_id(&mut app);
         send(&mut app, ThemeFetchMessage::Activate);
         deliver_download(&mut app).unwrap();
-        let generation = app.theme_fetch_generation;
+        let generation = app.settings.theme_fetch_generation;
         let error = FetchError::WriteFailed {
             path: CONFIG.to_owned(),
             reason: "disk full".to_owned(),
@@ -24465,7 +23541,7 @@ mod ocr_models_tests {
         let mut app = app_with_data_folder();
         send(&mut app, OcrModelsMessage::Open);
         send(&mut app, OcrModelsMessage::Download);
-        let generation = app.ocr_models_generation;
+        let generation = app.settings.ocr_models_generation;
         send(
             &mut app,
             OcrModelsMessage::Downloaded {
@@ -24482,10 +23558,10 @@ mod ocr_models_tests {
     async fn the_ocr_bar_ticks_only_while_the_download_runs() {
         let mut app = app_with_data_folder();
         send(&mut app, OcrModelsMessage::Open);
-        assert!(!app.ocr_models_download_runs());
+        assert!(!app.settings.ocr_models_download_runs());
         send(&mut app, OcrModelsMessage::Download);
-        assert!(app.ocr_models_download_runs());
-        let generation = app.ocr_models_generation;
+        assert!(app.settings.ocr_models_download_runs());
+        let generation = app.settings.ocr_models_generation;
         send(
             &mut app,
             OcrModelsMessage::Downloaded {
@@ -24493,7 +23569,7 @@ mod ocr_models_tests {
                 result: Ok(()),
             },
         );
-        assert!(!app.ocr_models_download_runs());
+        assert!(!app.settings.ocr_models_download_runs());
     }
 
     #[tokio::test]
@@ -24501,7 +23577,7 @@ mod ocr_models_tests {
         let mut app = app_with_data_folder();
         send(&mut app, OcrModelsMessage::Open);
         send(&mut app, OcrModelsMessage::Download);
-        let generation = app.ocr_models_generation;
+        let generation = app.settings.ocr_models_generation;
         send(
             &mut app,
             OcrModelsMessage::Downloaded {
@@ -24523,7 +23599,7 @@ mod ocr_models_tests {
     fn an_answer_for_a_closed_card_is_dropped() {
         let mut app = app_with_data_folder();
         send(&mut app, OcrModelsMessage::Open);
-        let stale = app.ocr_models_generation;
+        let stale = app.settings.ocr_models_generation;
         send(&mut app, OcrModelsMessage::Close);
         send(&mut app, OcrModelsMessage::Open);
         send(
@@ -24649,7 +23725,7 @@ mod ai_model_tests {
         let mut app = app_with_data_folder();
         send(&mut app, AiModelMessage::Open);
         send(&mut app, AiModelMessage::Download);
-        let generation = app.ai_model_generation;
+        let generation = app.settings.ai_model_generation;
         send(
             &mut app,
             AiModelMessage::Downloaded {
@@ -24669,12 +23745,15 @@ mod ai_model_tests {
     #[tokio::test]
     async fn the_bar_ticks_only_while_the_download_runs() {
         let mut app = app_with_data_folder();
-        assert!(!app.ai_model_download_runs());
+        assert!(!app.settings.ai_model_download_runs());
         send(&mut app, AiModelMessage::Open);
-        assert!(!app.ai_model_download_runs(), "an open card alone is idle");
+        assert!(
+            !app.settings.ai_model_download_runs(),
+            "an open card alone is idle"
+        );
         send(&mut app, AiModelMessage::Download);
-        assert!(app.ai_model_download_runs());
-        let generation = app.ai_model_generation;
+        assert!(app.settings.ai_model_download_runs());
+        let generation = app.settings.ai_model_generation;
         send(
             &mut app,
             AiModelMessage::Downloaded {
@@ -24683,7 +23762,7 @@ mod ai_model_tests {
             },
         );
         assert!(
-            !app.ai_model_download_runs(),
+            !app.settings.ai_model_download_runs(),
             "a finished card needs no ticks"
         );
     }
@@ -24694,7 +23773,7 @@ mod ai_model_tests {
         app.config_path = Some(PathBuf::from("/example/config.toml"));
         send(&mut app, AiModelMessage::Open);
         send(&mut app, AiModelMessage::Download);
-        let generation = app.ai_model_generation;
+        let generation = app.settings.ai_model_generation;
         send(
             &mut app,
             AiModelMessage::Downloaded {
@@ -24712,7 +23791,7 @@ mod ai_model_tests {
     fn an_answer_for_a_closed_card_is_dropped() {
         let mut app = app_with_data_folder();
         send(&mut app, AiModelMessage::Open);
-        let stale = app.ai_model_generation;
+        let stale = app.settings.ai_model_generation;
         send(&mut app, AiModelMessage::Close);
         send(&mut app, AiModelMessage::Open);
         send(
@@ -24762,9 +23841,9 @@ mod settings_tab_tests {
     fn the_key_opens_the_tab_and_closes_it_again() {
         let mut app = App::with_fixed_panels();
         open(&mut app);
-        assert!(app.settings.is_some());
+        assert!(app.settings.page.is_some());
         open(&mut app);
-        assert!(app.settings.is_none());
+        assert!(app.settings.page.is_none());
     }
 
     #[test]
@@ -24778,7 +23857,7 @@ mod settings_tab_tests {
         drop(app.update(Message::Panel(PanelMessage::ActivatePanel(
             PanelSide::Right,
         ))));
-        assert!(app.settings.is_none());
+        assert!(app.settings.page.is_none());
     }
 
     #[test]
@@ -24799,8 +23878,8 @@ mod settings_tab_tests {
         drop(app.update(Message::Settings(SettingsMessage::Change(
             SettingChange::Language(Language::German),
         ))));
-        assert!(app.settings_failure.is_some());
-        assert_eq!(app.settings.as_ref().unwrap().changed, 0);
+        assert!(app.settings.failure.is_some());
+        assert_eq!(app.settings.page.as_ref().unwrap().changed, 0);
     }
 
     #[test]
@@ -24812,7 +23891,7 @@ mod settings_tab_tests {
             result: Ok(Box::default()),
         })));
         assert_eq!(app.lang, Language::German);
-        assert_eq!(app.settings.as_ref().unwrap().changed, 1);
+        assert_eq!(app.settings.page.as_ref().unwrap().changed, 1);
     }
 
     #[test]
@@ -24827,7 +23906,7 @@ mod settings_tab_tests {
             }),
         })));
         assert_eq!(app.lang, Language::English);
-        assert!(app.settings_failure.as_deref().unwrap().contains("denied"));
+        assert!(app.settings.failure.as_deref().unwrap().contains("denied"));
     }
 
     #[test]
@@ -24877,8 +23956,8 @@ mod settings_tab_tests {
                 reason: "denied".to_owned(),
             }),
         })));
-        assert!(app.settings_failure.is_none());
-        let state = app.settings.as_ref().unwrap();
+        assert!(app.settings.failure.is_none());
+        let state = app.settings.page.as_ref().unwrap();
         assert!(
             matches!(state.problems.get(&field), Some(settings_ui::FieldProblem::Write(text)) if text.contains("denied"))
         );
@@ -24900,7 +23979,7 @@ mod settings_tab_tests {
         drop(app.update(Message::Settings(SettingsMessage::Select(
             SettingsFeature::Language,
         ))));
-        let state = app.settings.as_ref().unwrap();
+        let state = app.settings.page.as_ref().unwrap();
         assert_eq!(state.feature, SettingsFeature::Look);
         assert_eq!(
             state.problems.get(&accent),
@@ -24908,8 +23987,11 @@ mod settings_tab_tests {
         );
 
         drop(app.update(Message::Settings(SettingsMessage::Close)));
-        assert!(app.settings.is_some());
-        assert_eq!(app.settings.as_ref().unwrap().field_text(accent), "red");
+        assert!(app.settings.page.is_some());
+        assert_eq!(
+            app.settings.page.as_ref().unwrap().field_text(accent),
+            "red"
+        );
     }
 
     #[test]
@@ -24920,11 +24002,11 @@ mod settings_tab_tests {
             SettingsFeature::Language,
         ))));
         assert_eq!(
-            app.settings.as_ref().unwrap().feature,
+            app.settings.page.as_ref().unwrap().feature,
             SettingsFeature::Language
         );
         drop(app.update(Message::Settings(SettingsMessage::Close)));
-        assert!(app.settings.is_none());
+        assert!(app.settings.page.is_none());
     }
 
     #[test]
@@ -24968,7 +24050,7 @@ mod settings_tab_tests {
         let mut app = App::with_fixed_panels();
         app.config_path = Some(path);
         open(&mut app);
-        let state = app.settings.as_ref().expect("the tab is open");
+        let state = app.settings.page.as_ref().expect("the tab is open");
         assert_eq!(
             state.file.as_ref().err().and_then(ConfigError::line),
             Some(1)
@@ -24983,7 +24065,7 @@ mod settings_tab_tests {
             SettingsFeature::Hermes,
         ))));
         assert_eq!(
-            app.settings.as_ref().unwrap().feature,
+            app.settings.page.as_ref().unwrap().feature,
             SettingsFeature::Hermes
         );
     }
@@ -28788,7 +27870,7 @@ mod hermes_setup_tests {
         app.sandbox.active = true;
         app.config_path = Some(config_dir.path().join("config.toml"));
 
-        drop(app.theme_file_picked(&picked));
+        drop(app.update_settings(SettingsMessage::ThemeFilePicked(Some(picked.clone()))));
 
         let notice = app.notice.expect("a notice");
         assert!(notice.contains("../outside.json"), "{notice}");
@@ -28799,7 +27881,7 @@ mod hermes_setup_tests {
         let config_dir = TempDir::new().unwrap();
         let missing = config_dir.path().join("gone.json");
         let config_path = config_dir.path().join("config.toml");
-        assert!(copy_picked_theme_file(&config_path, &missing).is_err());
+        copy_picked_theme_file(&config_path, &missing).unwrap_err();
     }
     use crate::config::FilingLocation;
     use crate::filing::Phase;
@@ -29045,7 +28127,7 @@ mod hermes_setup_tests {
         assert!(app.hermes_setup.is_none());
         assert!(app.pending_hermes_start.is_none());
         assert!(app.ai_model_asked);
-        assert!(app.ai_model.as_ref().unwrap().is_downloading());
+        assert!(app.settings.ai_model.as_ref().unwrap().is_downloading());
     }
 
     #[test]
@@ -29054,7 +28136,7 @@ mod hermes_setup_tests {
         let mut app = app_ready_after_start(false, &models_dir);
         drop(app.advance_hermes_plan());
         assert!(app.hermes_setup.is_none());
-        assert!(app.ai_model.is_none());
+        assert!(app.settings.ai_model.is_none());
         assert!(app.ai_model_asked, "the module must not ask again");
     }
 
@@ -29328,7 +28410,7 @@ mod hermes_overview_tests {
         drop(app.update(Message::HermesOverview(HermesOverviewMessage::LoadAiModel)));
 
         assert!(app.hermes_overview.is_some());
-        assert!(app.ai_model.is_some());
+        assert!(app.settings.ai_model.is_some());
     }
 
     #[tokio::test]
@@ -29336,13 +28418,13 @@ mod hermes_overview_tests {
         let mut app = App::with_hermes_overview(Some(Phase::Ready), configured(), None);
         app.filing_index_path = Some(PathBuf::from("/example/data/index.db"));
         drop(app.update(Message::HermesOverview(HermesOverviewMessage::LoadAiModel)));
-        assert!(app.ai_card_is_shown());
+        assert!(app.settings.ai_card_is_shown());
 
         drop(app.update(Message::AiModel(AiModelMessage::Close)));
 
         assert!(app.hermes_overview.is_some());
-        assert!(!app.ai_card_is_shown());
-        assert!(app.ai_model_download_runs());
+        assert!(!app.settings.ai_card_is_shown());
+        assert!(app.settings.ai_model_download_runs());
         assert!(!app.overlay_apart_from_overview_is_open());
     }
 

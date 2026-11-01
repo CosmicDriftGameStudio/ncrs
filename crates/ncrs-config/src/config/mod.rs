@@ -186,6 +186,7 @@ pub use self::setting_writes::{
     write_file_list_tags, write_filing_enabled, write_filing_load, write_keys, write_language,
     write_own_details, write_program, write_theme_preset, AiProviderChoice, KeyChange, OwnDetail,
 };
+pub use self::write_support::one_config_writer;
 use self::write_support::*;
 use self::writing::*;
 pub use self::writing::{

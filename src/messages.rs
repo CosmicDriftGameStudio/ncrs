@@ -1079,3 +1079,16 @@ impl From<OpsMessage> for Message {
         }
     }
 }
+
+impl Message {
+    /// The message of the app for one of the settings.
+    pub fn from_settings(message: ncrs_settings::Message) -> Self {
+        match message {
+            ncrs_settings::Message::Settings(settings_message) => Self::Settings(settings_message),
+            ncrs_settings::Message::KeyBindings(keys_message) => Self::KeyBindings(keys_message),
+            ncrs_settings::Message::ThemeFetch(theme_message) => Self::ThemeFetch(theme_message),
+            ncrs_settings::Message::OcrModels(ocr_message) => Self::OcrModels(ocr_message),
+            ncrs_settings::Message::AiModel(ai_message) => Self::AiModel(ai_message),
+        }
+    }
+}

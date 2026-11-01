@@ -2,6 +2,7 @@
 //! widgets and no network: `App` owns it and changes it from `update`, the
 //! view is `ui::theme_fetch`.
 
+pub mod install;
 pub mod view;
 
 use crate::open_vsx::{FetchError, FetchedExtension, ThemeSource};

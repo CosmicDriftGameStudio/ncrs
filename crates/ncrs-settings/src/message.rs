@@ -222,3 +222,13 @@ pub enum AiModelMessage {
         result: Result<(), AiDownloadError>,
     },
 }
+
+/// Everything the settings send to `update`: the messages of its pages.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Message {
+    Settings(SettingsMessage),
+    KeyBindings(KeyBindingsMessage),
+    ThemeFetch(ThemeFetchMessage),
+    OcrModels(OcrModelsMessage),
+    AiModel(AiModelMessage),
+}
