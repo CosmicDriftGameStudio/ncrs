@@ -27,7 +27,6 @@ mod config;
 mod context_menu;
 mod dialog;
 mod document_preview;
-mod document_search;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod drag_out;
 mod execute;
@@ -71,6 +70,7 @@ mod rule_suggestions;
 mod rules_page;
 mod rules_work;
 mod saved_queries;
+mod search_filters;
 mod search_view;
 mod selection;
 mod session_state;

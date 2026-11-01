@@ -1,7 +1,7 @@
-//! State of the document search page: the words typed, the documents the index
-//! found for them, the facets chosen to narrow them and the cursor in the
-//! narrowed list. No widgets and no tasks; `App` owns it and changes it from
-//! `update`, the view is `ui::document_search`.
+//! The filters of the search view: the documents the index found for the
+//! words, the facets chosen to narrow them and the counts that offer the
+//! values. No widgets and no tasks; `SearchView` owns it and `App` changes it
+//! from `update`.
 //!
 //! The facets mirror what a report can save: at most one value of year,
 //! sender and kind, and any number of tags that must all be there. A recipient
@@ -11,20 +11,15 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ops::Range;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use chrono::Datelike as _;
-use iced::mouse::ScrollDelta;
+use ncrs_index::{
+    tag_name, Amount, KindCatalog, QuerySpec, SavedQueryId, SNIPPET_MARK_END, SNIPPET_MARK_START,
+};
 
-use ncrs_index::{tag_name, Amount, KindCatalog, QuerySpec, SNIPPET_MARK_END, SNIPPET_MARK_START};
-
-use crate::document_preview::{DocumentPreview, PreviewContent, PreviewRequest};
-use crate::list_window::ListWindow;
 use crate::query_work::QueryHit;
-
-/// Most documents of the list shown at once; the list follows the cursor.
-pub const VISIBLE_ROWS: usize = 5;
 
 /// Most documents a snippet is asked for; the first of the list, which is what
 /// is looked at.
@@ -122,7 +117,7 @@ pub enum FacetValue {
 
 /// A facet, to leave it out when its own values are counted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Facet {
+pub enum Facet {
     Year,
     Sender,
     Recipient,
@@ -138,6 +133,17 @@ fn name_key(name: &str) -> String {
 impl FacetSelection {
     pub fn is_empty(&self) -> bool {
         self == &Self::default()
+    }
+
+    /// Drops everything chosen of the facet.
+    pub fn clear(&mut self, facet: Facet) {
+        match facet {
+            Facet::Year => self.year = None,
+            Facet::Sender => self.sender = None,
+            Facet::Recipient => self.recipient = None,
+            Facet::Kind => self.kind = None,
+            Facet::Tags => self.tags.clear(),
+        }
     }
 
     /// Whether the value is one of the chosen ones.
@@ -363,46 +369,45 @@ fn display_order(first: &QueryHit, second: &QueryHit) -> std::cmp::Ordering {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct DocumentSearch {
-    text: String,
-    /// What the index found for the text alone, in display order.
+pub struct SearchFilters {
+    /// The words the hits stand for.
+    words: String,
+    /// What the index found for the words alone, in display order.
     hits: Vec<QueryHit>,
+    /// Where a path is in `hits`.
+    position_of: HashMap<PathBuf, usize>,
     selection: FacetSelection,
     /// The hits that fit the selection, as positions in `hits`.
     shown: Vec<usize>,
     counts: FacetCounts,
-    cursor: usize,
-    window: ListWindow,
-    /// The index is being asked; the view takes no new task.
+    /// The index is being asked.
     busy: bool,
     problem: Option<String>,
     /// By the path of the document; only while words are typed.
     snippets: HashMap<PathBuf, Snippet>,
-    preview: DocumentPreview,
     kinds: Arc<KindCatalog>,
+    /// Answers the question asked last; an older answer is stale.
+    asked: u64,
+    /// The report the search was opened to change.
+    report: Option<SavedQueryId>,
 }
 
-impl DocumentSearch {
-    /// Opens busy: the first search starts with the page.
-    pub fn new(text: String, kinds: Arc<KindCatalog>) -> Self {
+impl SearchFilters {
+    pub fn new(kinds: Arc<KindCatalog>) -> Self {
         Self {
-            text,
-            kinds,
+            words: String::new(),
             hits: Vec::new(),
+            position_of: HashMap::new(),
             selection: FacetSelection::default(),
             shown: Vec::new(),
             counts: FacetCounts::default(),
-            cursor: 0,
-            window: ListWindow::default(),
-            busy: true,
+            busy: false,
             problem: None,
             snippets: HashMap::new(),
-            preview: DocumentPreview::default(),
+            kinds,
+            asked: 0,
+            report: None,
         }
-    }
-
-    pub fn text(&self) -> &str {
-        &self.text
     }
 
     pub fn is_busy(&self) -> bool {
@@ -425,9 +430,9 @@ impl DocumentSearch {
         &self.counts
     }
 
-    /// The documents the words found, before the facets narrow them.
-    pub fn found(&self) -> &[QueryHit] {
-        &self.hits
+    /// A value is chosen, so the index answers the search instead of the walk.
+    pub fn is_active(&self) -> bool {
+        !self.selection.is_empty()
     }
 
     /// The documents that fit the facets, newest first.
@@ -435,8 +440,9 @@ impl DocumentSearch {
         self.shown.iter().filter_map(|at| self.hits.get(*at))
     }
 
-    pub fn shown_len(&self) -> usize {
-        self.shown.len()
+    /// What the index knows of the document at `path`, when it was found.
+    pub fn hit_at(&self, path: &Path) -> Option<&QueryHit> {
+        self.hits.get(*self.position_of.get(path)?)
     }
 
     /// The amounts of the documents shown added up; none when no document
@@ -456,24 +462,11 @@ impl DocumentSearch {
         total
     }
 
-    pub fn cursor(&self) -> usize {
-        self.cursor
-    }
-
-    /// The first document of the list that is shown.
-    pub fn first_visible(&self) -> usize {
-        self.window.offset(self.shown.len(), VISIBLE_ROWS)
-    }
-
-    pub fn selected(&self) -> Option<&QueryHit> {
-        self.hits.get(*self.shown.get(self.cursor)?)
-    }
-
     /// The words and the facets as one question to the index: what a report
-    /// saved from this page would ask.
+    /// saved from this search would ask.
     pub fn spec(&self) -> QuerySpec {
         let selection = &self.selection;
-        let text = self.text.trim();
+        let text = self.words.trim();
         let mut tags = selection.tags.clone();
         tags.extend(
             selection
@@ -491,89 +484,89 @@ impl DocumentSearch {
         }
     }
 
-    /// The question the page asks the index: the words alone, so the facets
-    /// can be counted and switched here without asking again.
-    pub fn begin_search(&mut self) -> QuerySpec {
+    /// The question the search asks the index: the words alone, so the facets
+    /// can be counted and switched here without asking again. `words` are
+    /// what the hits will stand for.
+    pub fn ask(&mut self, words: &str) -> (u64, QuerySpec) {
+        self.asked = self.asked.wrapping_add(1);
         self.busy = true;
         self.problem = None;
-        let text = self.text.trim();
-        QuerySpec {
-            full_text: (!text.is_empty()).then(|| text.to_owned()),
+        self.words = words.trim().to_owned();
+        let question = QuerySpec {
+            full_text: (!self.words.is_empty()).then(|| self.words.clone()),
             ..QuerySpec::default()
-        }
+        };
+        (self.asked, question)
     }
 
-    /// The words changed; the question to ask for them.
-    pub fn set_text(&mut self, text: String) -> QuerySpec {
-        self.text = text;
-        self.preview.clear();
-        self.begin_search()
+    pub fn generation(&self) -> u64 {
+        self.asked
+    }
+
+    pub fn is_current(&self, asked: u64) -> bool {
+        self.asked == asked
     }
 
     /// There is something to save as a report: words or a chosen value.
     pub fn can_save_as_report(&self) -> bool {
-        !self.text.trim().is_empty() || !self.selection.is_empty()
+        !self.words.is_empty() || !self.selection.is_empty()
     }
 
-    /// The paths to ask snippets for and the words to find in them; nothing
-    /// without words.
+    /// The report the search was opened to change, if any.
+    pub fn report(&self) -> Option<SavedQueryId> {
+        self.report
+    }
+
+    #[cfg(test)]
+    pub fn edit_report(&mut self, report: SavedQueryId, spec: &QuerySpec) {
+        self.report = Some(report);
+        self.selection = FacetSelection {
+            year: spec.year,
+            sender: spec.sender.clone(),
+            recipient: None,
+            kind: spec.kind.clone(),
+            tags: spec.tags.clone(),
+        };
+        self.refilter();
+    }
+
+    /// The paths of the hits shown that have no snippet yet, and the words to
+    /// find in them; nothing without words.
     pub fn snippet_request(&self) -> Option<(Vec<PathBuf>, String)> {
-        let words = self.text.trim();
-        if words.is_empty() {
+        if self.words.is_empty() {
             return None;
         }
         let paths: Vec<PathBuf> = self
-            .hits
-            .iter()
-            .filter(|hit| !hit.missing)
+            .shown()
+            .filter(|hit| !hit.missing && !self.snippets.contains_key(&hit.path))
             .take(SNIPPET_LIMIT)
             .map(|hit| hit.path.clone())
             .collect();
-        (!paths.is_empty()).then(|| (paths, words.to_owned()))
+        (!paths.is_empty()).then(|| (paths, self.words.clone()))
     }
 
-    pub fn set_snippets(&mut self, found: Vec<(PathBuf, String)>) {
-        self.snippets = found
-            .into_iter()
-            .map(|(path, marked)| (path, parse_snippet(&marked)))
-            .collect();
+    pub fn add_snippets(&mut self, found: Vec<(PathBuf, String)>) {
+        self.snippets.extend(
+            found
+                .into_iter()
+                .map(|(path, marked)| (path, parse_snippet(&marked))),
+        );
     }
 
     pub fn snippet_of(&self, hit: &QueryHit) -> Option<&Snippet> {
         self.snippets.get(&hit.path)
     }
 
-    pub fn has_snippets(&self) -> bool {
-        !self.snippets.is_empty()
-    }
-
-    pub fn preview(&self) -> &DocumentPreview {
-        &self.preview
-    }
-
-    /// The request for the preview of the selected document, when it is not
-    /// the one shown. A missing document or none has no preview.
-    pub fn preview_request(&mut self) -> Option<PreviewRequest> {
-        let Some(hit) = self.selected().filter(|hit| !hit.missing) else {
-            self.preview.clear();
-            return None;
-        };
-        let path = hit.path.clone();
-        let passages: Vec<String> = self.text.split_whitespace().map(str::to_owned).collect();
-        self.preview.request(&path, &passages)
-    }
-
-    pub fn preview_loaded(&mut self, serial: u64, content: PreviewContent) {
-        self.preview.loaded(serial, content);
-    }
-
-    #[cfg(test)]
-    pub fn show_preview_for_test(&mut self, content: PreviewContent) {
-        self.preview = DocumentPreview::showing(content);
-    }
-
+    /// The answer of the index. A document the index knows is gone is left out:
+    /// there is no file to go to.
     pub fn ran(&mut self, mut hits: Vec<QueryHit>) {
+        hits.retain(|hit| !hit.missing);
         hits.sort_by(display_order);
+        self.position_of = hits
+            .iter()
+            .enumerate()
+            .map(|(at, hit)| (hit.path.clone(), at))
+            .collect();
         self.hits = hits;
         self.snippets.clear();
         self.busy = false;
@@ -591,13 +584,12 @@ impl DocumentSearch {
         self.refilter();
     }
 
-    pub fn clear_facets(&mut self) {
-        self.selection = FacetSelection::default();
+    pub fn clear(&mut self, facet: Facet) {
+        self.selection.clear(facet);
         self.refilter();
     }
 
-    /// The facets and the list after the hits or the choice changed. The
-    /// cursor stays on its row number, held inside the narrowed list.
+    /// The facets and the list after the hits or the choice changed.
     fn refilter(&mut self) {
         self.shown = self
             .hits
@@ -607,32 +599,6 @@ impl DocumentSearch {
             .map(|(at, _)| at)
             .collect();
         self.counts = facet_counts(&self.hits, &self.selection, &self.kinds);
-        self.cursor = self.cursor.min(self.shown.len().saturating_sub(1));
-        self.window
-            .ensure_visible(self.cursor, self.shown.len(), VISIBLE_ROWS);
-    }
-
-    pub fn move_cursor(&mut self, delta: isize) {
-        let Some(last) = self.shown.len().checked_sub(1) else {
-            return;
-        };
-        self.cursor = self.cursor.saturating_add_signed(delta).min(last);
-        self.window
-            .ensure_visible(self.cursor, self.shown.len(), VISIBLE_ROWS);
-    }
-
-    pub fn select(&mut self, index: usize) {
-        if index < self.shown.len() {
-            self.cursor = index;
-            self.window
-                .ensure_visible(index, self.shown.len(), VISIBLE_ROWS);
-        }
-    }
-
-    /// The wheel moves the window; the cursor follows when it would leave.
-    pub fn scroll(&mut self, delta: ScrollDelta) {
-        self.window
-            .scroll(delta, self.shown.len(), VISIBLE_ROWS, &mut self.cursor);
     }
 }
 
@@ -719,13 +685,19 @@ pub mod tests {
         ]
     }
 
-    pub fn loaded_search() -> DocumentSearch {
-        let mut search = DocumentSearch::new(String::new(), Arc::default());
+    fn search_for(words: &str) -> SearchFilters {
+        let mut search = SearchFilters::new(Arc::default());
+        search.ask(words);
+        search
+    }
+
+    pub fn loaded_search() -> SearchFilters {
+        let mut search = search_for("");
         search.ran(six_hits());
         search
     }
 
-    fn names(search: &DocumentSearch) -> Vec<String> {
+    fn names(search: &SearchFilters) -> Vec<String> {
         search
             .shown()
             .map(|hit| hit.path.file_name().unwrap().to_string_lossy().into_owned())
@@ -755,7 +727,7 @@ pub mod tests {
         assert_eq!(names(&search), ["b.pdf", "a.pdf"]);
         search.toggle(FacetValue::Year(2025));
         assert_eq!(search.selection().year, None);
-        assert_eq!(search.shown_len(), 6);
+        assert_eq!(search.shown.len(), 6);
     }
 
     #[test]
@@ -904,7 +876,7 @@ pub mod tests {
 
     #[test]
     fn the_spec_holds_the_trimmed_words_and_the_choices() {
-        let mut search = DocumentSearch::new("  rent office ".to_owned(), Arc::default());
+        let mut search = search_for("  rent office ");
         search.toggle(FacetValue::Year(2024));
         search.toggle(FacetValue::Tag("office".to_owned()));
 
@@ -913,7 +885,7 @@ pub mod tests {
         assert_eq!(spec.full_text.as_deref(), Some("rent office"));
         assert_eq!(spec.year, Some(2024));
         assert_eq!(spec.tags, ["office".to_owned()].into());
-        let question = search.begin_search();
+        let (_, question) = search.ask("  rent office ");
         assert_eq!(
             question,
             QuerySpec {
@@ -922,45 +894,19 @@ pub mod tests {
             }
         );
         assert!(search.is_busy());
-        assert_eq!(
-            DocumentSearch::new("  ".to_owned(), Arc::default())
-                .spec()
-                .full_text,
-            None
-        );
-    }
-
-    #[test]
-    fn the_cursor_stays_inside_the_narrowed_list() {
-        let mut search = loaded_search();
-        search.move_cursor(5);
-        assert_eq!(search.cursor(), 5);
-        assert_eq!(
-            search.selected().unwrap().path,
-            PathBuf::from("archive/f.pdf")
-        );
-
-        search.toggle(FacetValue::Year(2025));
-
-        assert_eq!(search.cursor(), 1);
-        search.move_cursor(10);
-        assert_eq!(search.cursor(), 1);
-        search.move_cursor(-10);
-        assert_eq!(search.cursor(), 0);
-        search.select(7);
-        assert_eq!(search.cursor(), 0);
+        assert_eq!(search_for("  ").spec().full_text, None);
     }
 
     #[test]
     fn a_failure_ends_busy_and_is_shown_and_a_search_clears_it() {
-        let mut search = DocumentSearch::new(String::new(), Arc::default());
+        let mut search = search_for("");
         assert!(search.is_busy());
 
         search.failed("the index is not open".to_owned());
 
         assert!(!search.is_busy());
         assert_eq!(search.problem(), Some("the index is not open"));
-        search.set_text("rent".to_owned());
+        search.ask("rent");
         assert!(search.is_busy());
         assert_eq!(search.problem(), None);
     }
@@ -1025,49 +971,26 @@ pub mod tests {
 
     #[test]
     fn snippets_belong_to_the_hits_found_and_go_with_a_new_search() {
-        let mut search = DocumentSearch::new("rent".to_owned(), Arc::default());
+        let mut search = search_for("rent");
         search.ran(six_hits());
         let (paths, words) = search.snippet_request().unwrap();
         assert_eq!(paths.len(), 6);
         assert_eq!(words, "rent");
 
-        search.set_snippets(vec![(
+        search.add_snippets(vec![(
             PathBuf::from("archive/a.pdf"),
             "the \u{2}rent\u{3}".to_owned(),
         )]);
         let hit = search
-            .found()
+            .hits
             .iter()
             .find(|hit| hit.path.ends_with("a.pdf"))
             .unwrap();
         assert_eq!(marked(search.snippet_of(hit).unwrap()), ["rent"]);
 
         search.ran(six_hits());
-        assert!(!search.has_snippets());
-        assert!(DocumentSearch::new("  ".to_owned(), Arc::default())
-            .snippet_request()
-            .is_none());
-    }
-
-    #[test]
-    fn the_preview_follows_the_selection_and_a_missing_document_has_none() {
-        let mut search = loaded_search();
-        let first = search.preview_request().unwrap();
-        assert_eq!(first.path, PathBuf::from("archive/b.pdf"));
-        assert!(search.preview_request().is_none());
-
-        search.move_cursor(1);
-        let second = search.preview_request().unwrap();
-        assert_eq!(second.path, PathBuf::from("archive/a.pdf"));
-        assert_ne!(second.serial, first.serial);
-
-        let mut gone = found_hit("g.pdf", Some((2030, 1, 1)), None, None, &[]);
-        gone.missing = true;
-        let mut hits = six_hits();
-        hits.push(gone);
-        search.ran(hits);
-        search.select(0);
-        assert!(search.preview_request().is_none());
+        assert!(search.snippets.is_empty());
+        assert!(search_for("  ").snippet_request().is_none());
     }
 
     #[test]
@@ -1076,8 +999,8 @@ pub mod tests {
         assert!(!search.can_save_as_report());
         search.toggle(FacetValue::Year(2024));
         assert!(search.can_save_as_report());
-        search.clear_facets();
-        search.set_text("rent".to_owned());
+        search.clear(Facet::Year);
+        search.ask("rent");
         assert!(search.can_save_as_report());
     }
 
@@ -1180,8 +1103,8 @@ pub mod tests {
         let access = QueryAccess::new(Arc::new(Mutex::new(Some(index))));
 
         // The last word is a prefix while it is typed.
-        let mut search = DocumentSearch::new("office ren".to_owned(), Arc::default());
-        let asked = search.begin_search();
+        let mut search = search_for("office ren");
+        let (_, asked) = search.ask("office ren");
         search.ran(access.run(&asked).unwrap());
         search.toggle(FacetValue::Year(2025));
         search.toggle(FacetValue::Sender("Firma A".to_owned()));
@@ -1229,7 +1152,7 @@ pub mod tests {
 
     #[test]
     fn the_recipient_narrows_counts_and_is_saved_as_the_tag_it_makes() {
-        let mut search = DocumentSearch::new(String::new(), Arc::default());
+        let mut search = search_for("");
         search.ran(vec![
             hit_for("a.pdf", "Firma A GmbH", "Rechnung", &["steuer"], 100, "EUR"),
             hit_for("b.pdf", "Marc privat", "Rechnung", &[], 250, "EUR"),
@@ -1251,7 +1174,7 @@ pub mod tests {
 
     #[test]
     fn a_chosen_tag_also_matches_the_automatic_and_the_more_specific_tags() {
-        let mut search = DocumentSearch::new(String::new(), Arc::default());
+        let mut search = search_for("");
         search.ran(vec![
             hit_for("a.pdf", "Firma A GmbH", "Rechnung", &[], 100, "EUR"),
             hit_for("b.pdf", "Firma AB", "Rechnung", &["steuer"], 100, "EUR"),
@@ -1262,12 +1185,12 @@ pub mod tests {
         assert_eq!(names(&search), ["a.pdf"]);
         search.toggle(FacetValue::Tag("firma-a".to_owned()));
         search.toggle(FacetValue::Tag("rechnung".to_owned()));
-        assert_eq!(search.shown_len(), 2);
+        assert_eq!(search.shown.len(), 2);
     }
 
     #[test]
     fn the_total_is_only_given_for_one_currency() {
-        let mut search = DocumentSearch::new(String::new(), Arc::default());
+        let mut search = search_for("");
         search.ran(vec![
             hit_for("a.pdf", "X", "Rechnung", &[], 100, "EUR"),
             hit_for("b.pdf", "X", "Rechnung", &[], 250, "EUR"),

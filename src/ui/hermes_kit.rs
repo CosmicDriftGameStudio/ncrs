@@ -58,6 +58,7 @@ const MENU_PAD_X: f32 = 8.0;
 const KEY_HINT_ALPHA: f32 = 0.7;
 const ELLIPSIS: &str = "…";
 const REMOVE: &str = "×";
+const FILTER_ARROW_ROOM: f32 = 20.0;
 const SEPARATOR_HEIGHT: f32 = 1.0;
 
 fn semibold() -> Font {
@@ -940,6 +941,63 @@ pub fn chip<'a>(
             ..container::Style::default()
         })
         .into()
+}
+
+/// A filter of 28 px: its name with an arrow while nothing is chosen; with a
+/// value chosen the name and the value in the success colour, and a cross
+/// that clears it. `items` are the values to choose from.
+pub fn filter<'a>(
+    label: &str,
+    chosen: Option<&str>,
+    items: &[MenuItem],
+    on_clear: Message,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let choices = entries(items);
+    let caption = match chosen {
+        Some(value) => format!("{label}: {value}"),
+        None => label.to_owned(),
+    };
+    let widest = choices
+        .iter()
+        .map(|choice| format::estimated_width(&choice.label, TEXT_BODY))
+        .chain([format::estimated_width(&caption, TEXT_BODY)])
+        .fold(0.0, f32::max);
+    let is_set = chosen.is_some();
+    let colors = *palette;
+    let base = theme::dropdown_field(palette);
+    let field = pick_list(choices, None::<Entry>, |choice| choice.message)
+        .placeholder(caption)
+        .handle(if is_set {
+            pick_list::Handle::None
+        } else {
+            pick_list::Handle::default()
+        })
+        .width(Length::Fixed(
+            widest + 2.0 * MENU_PAD_X + if is_set { 0.0 } else { FILTER_ARROW_ROOM },
+        ))
+        .padding([CONTROL_PAD_Y, MENU_PAD_X])
+        .text_size(TEXT_BODY)
+        .text_line_height(LineHeight::Absolute(Pixels(BODY_LINE)))
+        .style(move |theme, status| {
+            let mut style = base(theme, status);
+            style.background = Background::Color(colors.background);
+            if is_set {
+                style.background = Background::Color(colors.cursor);
+                style.placeholder_color = colors.cursor_text;
+                style.border.color = colors.success;
+            }
+            style
+        })
+        .menu_style(theme::dropdown_menu(palette));
+    let mut line = Row::new()
+        .push(field)
+        .spacing(GAP_XS)
+        .align_y(alignment::Vertical::Center);
+    if is_set {
+        line = line.push(remove_button(on_clear, colors.success, palette));
+    }
+    line.into()
 }
 
 /// A piece of a path or a file name, 24 px, with a cross where it can go.

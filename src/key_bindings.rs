@@ -604,8 +604,9 @@ mod tests {
             .rows()
             .iter()
             .all(|row| row.action != KeyAction::GrantFolderAccess));
-        // The Finder's trash command is the other action only a Mac lists.
-        let hidden = if cfg!(target_os = "macos") { 1 } else { 2 };
+        // The Finder's trash command is the other action only a Mac lists; the
+        // old document search is listed nowhere.
+        let hidden = if cfg!(target_os = "macos") { 2 } else { 3 };
         assert_eq!(dialog.rows().len(), KeyAction::ALL.len() - hidden);
     }
 

@@ -77,9 +77,18 @@ impl QueryAccess {
     }
 
     pub fn run(&self, spec: &QuerySpec) -> Result<Vec<QueryHit>, String> {
+        self.run_inside(spec, None)
+    }
+
+    /// Like [`Self::run`], but only the documents at or below `under`.
+    pub fn run_under(&self, spec: &QuerySpec, under: &Path) -> Result<Vec<QueryHit>, String> {
+        self.run_inside(spec, Some(under))
+    }
+
+    fn run_inside(&self, spec: &QuerySpec, under: Option<&Path>) -> Result<Vec<QueryHit>, String> {
         self.with_index(|index| {
             Ok(index
-                .run_query(spec)?
+                .run_query_under(spec, under)?
                 .into_iter()
                 .map(|document| QueryHit {
                     missing: document.missing_since.is_some(),
@@ -87,6 +96,18 @@ impl QueryAccess {
                     fields: document.fields,
                 })
                 .collect())
+        })
+    }
+
+    /// Overwrites the criteria of the query `id` and keeps its name.
+    pub fn replace_spec(&self, id: SavedQueryId, spec: &QuerySpec) -> Result<(), String> {
+        self.with_index(|index| {
+            let saved = index
+                .saved_queries()?
+                .into_iter()
+                .find(|query| query.id == id)
+                .ok_or(IndexError::SavedQueryNotFound(id))?;
+            index.update_saved_query(id, &saved.name, spec)
         })
     }
 

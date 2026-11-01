@@ -56,7 +56,7 @@ const fn after_separator(separator: char) -> char {
     }
 }
 
-struct SubtreeRange {
+pub struct SubtreeRange {
     from: String,
     until: String,
     /// Characters of the folder name with its separator: what the rest of a
@@ -65,7 +65,7 @@ struct SubtreeRange {
 }
 
 impl SubtreeRange {
-    fn of(directory: &Path) -> Result<Self, IndexError> {
+    pub(crate) fn of(directory: &Path) -> Result<Self, IndexError> {
         let text = utf8(directory)?;
         let trimmed = text.trim_end_matches(MAIN_SEPARATOR);
         Ok(Self {
@@ -73,6 +73,10 @@ impl SubtreeRange {
             until: format!("{trimmed}{}", after_separator(MAIN_SEPARATOR)),
             prefix_chars: i64::try_from(trimmed.chars().count() + 1).unwrap_or(i64::MAX),
         })
+    }
+
+    pub(crate) fn into_bounds(self) -> (String, String) {
+        (self.from, self.until)
     }
 }
 

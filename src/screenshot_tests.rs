@@ -258,8 +258,7 @@ mod tests {
         search.show_search_results_for_test("hello", showcase_search_results());
         write_screenshot(&search, "search.png");
 
-        let filing =
-            App::with_document_search(crate::ui_tests::document_search_card::with_snippets());
+        let filing = crate::ui_tests::search_filters_card::app_with_filters();
         write_screenshot(&filing, "filing.png");
     }
 

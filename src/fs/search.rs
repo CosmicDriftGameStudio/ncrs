@@ -121,14 +121,55 @@ pub struct SearchTotals {
     pub truncated: bool,
 }
 
+/// Which paths below `root` the include and exclude globs let through.
 #[derive(Debug)]
-pub struct CompiledSearch {
+pub struct PathFilter {
     root: PathBuf,
     include: Option<GlobSet>,
     exclude: GlobSet,
     exclude_dirs: GlobSet,
-    content: Option<RegexMatcher>,
     case_sensitive: bool,
+}
+
+impl PathFilter {
+    /// Whether the walk goes into the entry at `path`.
+    fn walks_into(&self, path: &Path, is_dir: bool) -> bool {
+        let relative = comparable_path(&self.root, path, self.case_sensitive);
+        !self.exclude.is_match(&relative) && !(is_dir && self.exclude_dirs.is_match(&relative))
+    }
+
+    /// Whether the include globs take the file at `path`; all files when there
+    /// are none.
+    fn takes(&self, path: &Path) -> bool {
+        self.include.as_ref().is_none_or(|include| {
+            include.is_match(comparable_path(&self.root, path, self.case_sensitive))
+        })
+    }
+
+    /// Whether a file the walk would have listed is `path`: no folder on the
+    /// way to it and not the file itself is excluded, and the include globs
+    /// take it.
+    pub fn admits_file(&self, path: &Path) -> bool {
+        let Ok(relative) = path.strip_prefix(&self.root) else {
+            return false;
+        };
+        let mut walked = self.root.clone();
+        let mut parts = relative.components().peekable();
+        while let Some(part) = parts.next() {
+            walked.push(part);
+            if !self.walks_into(&walked, parts.peek().is_some()) {
+                return false;
+            }
+        }
+        self.takes(path)
+    }
+}
+
+#[derive(Debug)]
+pub struct CompiledSearch {
+    root: PathBuf,
+    paths: PathFilter,
+    content: Option<RegexMatcher>,
     same_file_system: bool,
     match_limit: usize,
 }
@@ -202,13 +243,36 @@ fn build_glob_set<'a>(
     })
 }
 
+impl PathFilter {
+    /// The filter of the file names and the excluded paths of `query`, to
+    /// apply to paths that did not come from the walk.
+    pub fn compile(query: &SearchQuery) -> Result<Self, SearchError> {
+        let include = parse_patterns(&query.include, true, cfg!(windows));
+        let exclude = parse_patterns(&query.exclude, false, cfg!(windows));
+        Ok(Self {
+            root: query.root.clone(),
+            include: if include.is_empty() {
+                None
+            } else {
+                Some(build_glob_set(include.iter(), query.case_sensitive)?)
+            },
+            exclude: build_glob_set(
+                exclude.iter().filter(|pattern| !pattern.dirs_only),
+                query.case_sensitive,
+            )?,
+            exclude_dirs: build_glob_set(
+                exclude.iter().filter(|pattern| pattern.dirs_only),
+                query.case_sensitive,
+            )?,
+            case_sensitive: query.case_sensitive,
+        })
+    }
+}
+
 pub fn compile(query: &SearchQuery) -> Result<CompiledSearch, SearchError> {
-    let include = parse_patterns(&query.include, true, cfg!(windows));
-    if query.text.is_empty() && include.is_empty() {
+    if query.text.is_empty() && parse_patterns(&query.include, true, cfg!(windows)).is_empty() {
         return Err(SearchError::Empty);
     }
-    let exclude = parse_patterns(&query.exclude, false, cfg!(windows));
-
     let content = if query.text.is_empty() {
         None
     } else {
@@ -225,21 +289,8 @@ pub fn compile(query: &SearchQuery) -> Result<CompiledSearch, SearchError> {
 
     Ok(CompiledSearch {
         root: query.root.clone(),
-        include: if include.is_empty() {
-            None
-        } else {
-            Some(build_glob_set(include.iter(), query.case_sensitive)?)
-        },
-        exclude: build_glob_set(
-            exclude.iter().filter(|pattern| !pattern.dirs_only),
-            query.case_sensitive,
-        )?,
-        exclude_dirs: build_glob_set(
-            exclude.iter().filter(|pattern| pattern.dirs_only),
-            query.case_sensitive,
-        )?,
+        paths: PathFilter::compile(query)?,
         content,
-        case_sensitive: query.case_sensitive,
         same_file_system: query.same_file_system,
         match_limit: MATCH_LIMIT,
     })
@@ -249,12 +300,15 @@ pub fn compile(query: &SearchQuery) -> Result<CompiledSearch, SearchError> {
 /// pattern. Stops and reports `truncated` after `limit` files.
 pub fn all_files(root: PathBuf, same_file_system: bool, limit: usize) -> CompiledSearch {
     CompiledSearch {
+        paths: PathFilter {
+            root: root.clone(),
+            include: None,
+            exclude: GlobSet::empty(),
+            exclude_dirs: GlobSet::empty(),
+            case_sensitive: true,
+        },
         root,
-        include: None,
-        exclude: GlobSet::empty(),
-        exclude_dirs: GlobSet::empty(),
         content: None,
-        case_sensitive: true,
         same_file_system,
         match_limit: limit,
     }
@@ -512,16 +566,8 @@ pub fn run_blocking(compiled: CompiledSearch, sender: mpsc::Sender<SearchEvent>)
             if entry.depth() == 0 {
                 return true;
             }
-            let relative = comparable_path(
-                &filter_search.root,
-                entry.path(),
-                filter_search.case_sensitive,
-            );
-            if filter_search.exclude.is_match(&relative) {
-                return false;
-            }
             let is_dir = entry.file_type().is_some_and(|t| t.is_dir());
-            !(is_dir && filter_search.exclude_dirs.is_match(&relative))
+            filter_search.paths.walks_into(entry.path(), is_dir)
         })
         .build_parallel();
 
@@ -563,14 +609,8 @@ pub fn run_blocking(compiled: CompiledSearch, sender: mpsc::Sender<SearchEvent>)
                 }
             }
 
-            if let Some(include) = &worker_search.include {
-                if !include.is_match(comparable_path(
-                    &worker_search.root,
-                    entry.path(),
-                    worker_search.case_sensitive,
-                )) {
-                    return WalkState::Continue;
-                }
+            if !worker_search.paths.takes(entry.path()) {
+                return WalkState::Continue;
             }
 
             let lines = match &worker_search.content {
@@ -1119,5 +1159,49 @@ mod tests {
         assert!(macos_flags_are_cloud_placeholder(0x4000_0000 | 0x2));
         assert!(!macos_flags_are_cloud_placeholder(0x2));
         assert!(!macos_flags_are_cloud_placeholder(0));
+    }
+
+    fn paths_of(include: &str, exclude: &str) -> PathFilter {
+        let mut query = SearchQuery::new(PathBuf::from("/data"), "");
+        query.include = include.to_owned();
+        query.exclude = exclude.to_owned();
+        PathFilter::compile(&query).unwrap()
+    }
+
+    #[test]
+    fn the_path_filter_admits_only_files_below_its_root() {
+        let paths = paths_of("", "");
+
+        assert!(paths.admits_file(Path::new("/data/a/b.pdf")));
+        assert!(!paths.admits_file(Path::new("/other/b.pdf")));
+        assert!(!paths.admits_file(Path::new("/database/b.pdf")));
+    }
+
+    #[test]
+    fn the_path_filter_takes_the_include_globs_and_leaves_the_excluded_out() {
+        let paths = paths_of("*.pdf", "*-old.pdf");
+
+        assert!(paths.admits_file(Path::new("/data/a/b.pdf")));
+        assert!(!paths.admits_file(Path::new("/data/a/b.txt")));
+        assert!(!paths.admits_file(Path::new("/data/a/b-old.pdf")));
+    }
+
+    #[test]
+    fn the_path_filter_leaves_out_what_is_below_an_excluded_folder() {
+        let paths = paths_of("", "target/");
+
+        assert!(paths.admits_file(Path::new("/data/src/a.rs")));
+        assert!(!paths.admits_file(Path::new("/data/target/debug/a.rs")));
+    }
+
+    #[test]
+    fn the_path_filter_reports_a_bad_pattern() {
+        let mut query = SearchQuery::new(PathBuf::from("/data"), "");
+        query.include = "[".to_owned();
+
+        assert!(matches!(
+            PathFilter::compile(&query),
+            Err(SearchError::Glob { .. })
+        ));
     }
 }

@@ -62,13 +62,18 @@ pub fn visible_rows(window: Size) -> usize {
 /// The three fields and the summary line of the search view, above the result
 /// rows. Fixed, like the column header it replaces.
 pub const SEARCH_HEADER_HEIGHT: f32 = 124.0;
+/// What the filter row, its hint and the taller summary row add to the header.
+pub const SEARCH_FILTER_EXTRA_HEIGHT: f32 = 64.0;
 
 /// Number of result rows that fit into the search view: the panel's rows,
 /// less the difference between the search header and the column header.
-pub fn search_visible_rows(window: Size) -> usize {
-    let rows = ((window.height - CHROME + COLUMN_HEADER_HEIGHT - SEARCH_HEADER_HEIGHT)
-        / ROW_HEIGHT)
-        .floor();
+pub fn search_visible_rows(window: Size, with_filters: bool) -> usize {
+    let header = if with_filters {
+        SEARCH_HEADER_HEIGHT + SEARCH_FILTER_EXTRA_HEIGHT
+    } else {
+        SEARCH_HEADER_HEIGHT
+    };
+    let rows = ((window.height - CHROME + COLUMN_HEADER_HEIGHT - header) / ROW_HEIGHT).floor();
     (rows as isize).max(1) as usize
 }
 
@@ -134,8 +139,10 @@ mod tests {
     fn the_search_view_gives_its_extra_header_the_rows_it_needs() {
         let window = Size::new(1200.0, 760.0);
         // (634 + 22 - 124) / 22 = 24.2
-        assert_eq!(search_visible_rows(window), 24);
-        assert_eq!(search_visible_rows(Size::new(1200.0, 10.0)), 1);
+        assert_eq!(search_visible_rows(window, false), 24);
+        // (634 + 22 - 188) / 22 = 21.3
+        assert_eq!(search_visible_rows(window, true), 21);
+        assert_eq!(search_visible_rows(Size::new(1200.0, 10.0), false), 1);
     }
 
     /// The window height the app is opened with, so the number in the startup
