@@ -7,8 +7,6 @@ use ncrs_filing::filing::FilingModule;
 use ncrs_i18n::Language;
 use ncrs_index::Kinds;
 
-use crate::message::HermesPage;
-
 /// What `update` reads from the app.
 #[derive(Debug, Clone)]
 pub struct Ctx<'a> {
@@ -17,15 +15,18 @@ pub struct Ctx<'a> {
     pub default_pattern: Option<&'a str>,
     pub filing: Option<&'a FilingModule>,
     pub file_list_tags: &'a FileListTags,
-    /// The overview or the status page is up. The pages and the menu in
-    /// [`crate::Hermes`] are read from the state, which changes while `update`
-    /// runs.
-    pub ablage_tab_apart_from_hermes_open: bool,
+    /// The status page is up. The pages and the menu in [`crate::Hermes`] are
+    /// read from the state, which changes while `update` runs.
+    pub status_page_open: bool,
     /// A dialog or card is up that nothing opens over, apart from the Ablage
     /// tab and the menu in [`crate::Hermes`].
     pub overlay_apart_from_ablage_tab_open: bool,
-    /// The overview or the status page, whichever is up.
-    pub page_apart_from_hermes: Option<HermesPage>,
+    /// The question whether to remove the index and begin again is up.
+    pub start_over_dialog_open: bool,
+    /// The module is being built again.
+    pub hermes_is_restarting: bool,
+    /// The counts say that something waits for review.
+    pub hermes_has_open_reviews: bool,
     pub context_menu_open: bool,
     pub search_open: bool,
     pub hermes_active: bool,

@@ -1,14 +1,16 @@
 use std::path::PathBuf;
 
 use ncrs_config::file_list_tags::{FileListTags, TagExceptions};
+use ncrs_filing::filing::{FilingModule, Work};
 use ncrs_filing::review_work::AcceptSummary;
 use ncrs_index::{QuerySpec, SavedQueryId};
 use ncrs_intake::LocationMode;
 use ncrs_jobs::Job;
+use ncrs_pipeline::Load;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::hermes_setup::FolderSlot;
-use crate::message::{HermesPage, Message};
+use crate::message::{HermesFocus, HermesPage, Message};
 
 /// The setup card a folder dialog or a folder access belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,6 +18,9 @@ pub enum SetupCard {
     Filing(LocationMode),
     Hermes(FolderSlot),
 }
+
+/// The step of the module that starts a change of the protection of the index.
+pub type ProtectionStep = fn(&mut FilingModule) -> Option<Work>;
 
 /// The task of a job that reports its progress, made only when the queue
 /// starts the job. It gets the sender of the app's progress channel.
@@ -48,11 +53,34 @@ pub enum Action {
     RequestHermesCounts,
     /// Hermes reads these files again.
     ReadPathsAgain(Vec<PathBuf>),
-    /// Closes the overview and the status page, which a page of this crate
-    /// replaces.
-    CloseOverviewAndStatus,
-    /// Goes to a page that the app still owns, from the page that is up.
+    /// Closes the status page, which a page of this crate replaces.
+    CloseStatusPage,
+    /// Goes to the status page, which the app still owns, from the page that
+    /// is up.
     GoToHermesPage(HermesPage),
+    SetHermesFocus(HermesFocus),
+    /// Takes in the latest snapshot of the pipeline and of the module.
+    RefreshFilingSnapshot,
+    /// The overview asks whether the OCR models are installed.
+    ReadOcrModelsPresent,
+    /// Stops the pipeline and runs the job that encrypts or removes the index.
+    ChangeProtection(ProtectionStep),
+    /// Opens the question whether to begin again, with this button focused.
+    OpenStartOverDialog(usize),
+    CloseStartOverDialog,
+    /// The setting of the AI changes.
+    SetAiEnabled(bool),
+    /// The setting of the load changes.
+    SetLoad(Load),
+    OpenOcrModels,
+    /// Opens the card of the AI model and starts the download.
+    OpenAndDownloadAiModel,
+    /// Shows the settings of Hermes at the row with this title.
+    ShowHermesSetting(String),
+    /// Opens the card that sets Hermes up the first time.
+    OpenHermesSetup,
+    /// Builds the module again from the config it started with.
+    RestartHermesModule,
     /// The tags the file list shows against their group, as the index has them.
     SetTagExceptions(TagExceptions),
     /// The setting of the tags in the file list changes.

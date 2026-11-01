@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use ncrs_filing::replan_work::ReplanItem;
 
 use crate::filing_setup::FilingSetup;
+use crate::hermes_overview::OverviewState;
 use crate::hermes_setup::HermesSetup;
 use crate::message::HermesPage;
 use crate::quick_fix::QuickFix;
@@ -18,6 +19,10 @@ use crate::tags_page::TagsPage;
 /// closed and opened again is not taken for the answer of the new one.
 #[derive(Debug, Default)]
 pub struct Hermes {
+    /// The overview of Hermes.
+    pub overview: Option<OverviewState>,
+    /// The overview comes back when the card that covers it is gone.
+    pub return_to_overview: bool,
     /// The card that lists the folders Hermes works on.
     pub filing_setup: Option<FilingSetup>,
     /// The card that sets Hermes up the first time.
@@ -52,7 +57,9 @@ impl Hermes {
 
     /// The page of this state that is up, if any.
     pub fn open_page(&self) -> Option<HermesPage> {
-        if self.review_list.is_some() {
+        if self.overview.is_some() {
+            Some(HermesPage::Overview)
+        } else if self.review_list.is_some() {
             Some(HermesPage::Review)
         } else if self.saved_queries.is_some() {
             Some(HermesPage::SavedQueries)
@@ -70,6 +77,7 @@ impl Hermes {
     }
 
     pub fn close_pages(&mut self) {
+        self.overview = None;
         self.review_list = None;
         self.reorganisation = None;
         self.rule_suggestions = None;

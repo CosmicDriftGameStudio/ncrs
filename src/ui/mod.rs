@@ -23,9 +23,8 @@ pub use ncrs_ui_kit::{fkeys, format, frame, hermes_kit, kit, theme};
 pub use panel::PanelState;
 
 pub use ncrs_hermes_ui::ui::{
-    filing, filing_pieces, filing_setup, filing_status, hermes, hermes_flow, hermes_overview,
-    hermes_setup, quick_fix, reorganisation_plan, review_list, rule_suggestions, rules,
-    saved_queries, tags,
+    filing, filing_setup, filing_status, hermes, hermes_flow, hermes_overview, hermes_setup,
+    quick_fix, reorganisation_plan, review_list, rule_suggestions, rules, saved_queries, tags,
 };
 pub use ncrs_settings::ai_model::view as ai_model;
 pub use ncrs_settings::key_bindings::view as key_bindings;

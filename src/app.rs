@@ -45,9 +45,7 @@ use crate::hermes_column::{
     role_of, ColumnRequest, ColumnStage, ColumnView, FileDetail, FolderRole, HermesColumn,
     HermesFileState,
 };
-use crate::hermes_overview::{
-    ModuleState, OcrFacts, OverviewFacts, OverviewState, PatternCommit, Protection,
-};
+use crate::hermes_overview::{ModuleState, OcrFacts, OverviewFacts, OverviewState, Protection};
 use crate::hermes_setup::{
     card_is_done_at, ExistingIndex, FolderSlot, HermesSetup, PlanStep, SetupFocus, SetupOffer,
     StartPlan,
@@ -800,15 +798,6 @@ impl VolumeMenu {
     }
 }
 
-/// The writer of the config for the filing pattern of the overview.
-fn write_default_pattern_alone(
-    path: &Path,
-    pattern: Option<&str>,
-) -> Result<Box<Config>, FilingWriteError> {
-    let _writing = config::one_config_writer();
-    config::write_default_pattern(path, pattern).map(Box::new)
-}
-
 /// When a saved filing list takes effect.
 enum SavedFilingApplies {
     Now,
@@ -1034,15 +1023,10 @@ pub struct App {
     /// Where a pasted picture or text is written before it is copied into the
     /// panel. Kept until the next paste so the running copy keeps its source.
     paste_staging: Option<tempfile::TempDir>,
-    /// The overview, the first page of the Hermes card.
-    hermes_overview: Option<OverviewState>,
     /// The tags the file list shows against their group, from the index.
     tag_exceptions: TagExceptions,
     /// Whether the arrow keys act on the sidebar or the page of the Hermes card.
     hermes_focus: HermesFocus,
-    /// The overview opened a card that covers it (folders, setup); it comes
-    /// back when the card is gone.
-    return_to_hermes_overview: bool,
     /// `Snapshot::plans_made` the filing job was last asked for.
     plans_filed_for: usize,
     /// Downloads an extension, on a blocking thread. Injected so tests need
@@ -3030,10 +3014,8 @@ impl App {
             },
             pending_paste: None,
             paste_staging: None,
-            hermes_overview: None,
             tag_exceptions: TagExceptions::new(),
             hermes_focus: HermesFocus::default(),
-            return_to_hermes_overview: false,
             plans_filed_for: 0,
             fetch_extension: open_vsx::fetch_extension,
             install_theme: ncrs_settings::theme_fetch::install::install_picked_theme,
@@ -3140,7 +3122,7 @@ impl App {
             // Keeps the status bar's progress and the open page current.
             if self.pipeline.is_some()
                 || self.filing_status.page_open()
-                || self.hermes_overview.is_some()
+                || self.hermes.overview.is_some()
             {
                 iced::time::every(SNAPSHOT_EVERY)
                     .map(|_| Message::FilingStatus(FilingStatusMessage::Tick))
@@ -3225,14 +3207,14 @@ impl App {
     }
 
     fn return_to_overview_when_its_card_is_gone(&mut self) -> Task<Message> {
-        if !self.return_to_hermes_overview
+        if !self.hermes.return_to_overview
             || self.hermes.filing_setup.is_some()
             || self.hermes.hermes_setup.is_some()
             || self.filing.as_ref().is_some_and(FilingModule::has_card)
         {
             return Task::none();
         }
-        self.return_to_hermes_overview = false;
+        self.hermes.return_to_overview = false;
         self.open_hermes_overview()
     }
 
@@ -4686,9 +4668,10 @@ impl App {
             .as_ref()
             .is_some_and(KeyBindings::is_recording);
         let filing_status = self.filing_status.page_open();
-        let hermes_overview = self.hermes_overview.is_some();
+        let hermes_overview = self.hermes.overview.is_some();
         let hermes_overview_editing = self
-            .hermes_overview
+            .hermes
+            .overview
             .as_ref()
             .is_some_and(OverviewState::is_editing);
         let filing_setup = self.hermes.filing_setup.is_some();
@@ -4954,9 +4937,9 @@ impl App {
         {
             self.open_hermes_setup();
         }
-        if protection_change_wants_a_card && self.hermes_overview.is_some() {
-            tasks.push(self.leave_hermes_overview_state());
-            self.return_to_hermes_overview = true;
+        if protection_change_wants_a_card && self.hermes.overview.is_some() {
+            self.hermes.overview = None;
+            self.hermes.return_to_overview = true;
         }
         tasks.push(self.advance_hermes_plan());
         tasks.extend(field.map(operation::focus));
@@ -4981,7 +4964,7 @@ impl App {
 
     /// The dots move only while the picture is on screen.
     fn hermes_flow_is_visible(&self) -> bool {
-        self.hermes.hermes_setup.is_some() || self.hermes_overview.is_some()
+        self.hermes.hermes_setup.is_some() || self.hermes.overview.is_some()
     }
 
     fn hermes_setup_offer(&self) -> SetupOffer {
@@ -5462,18 +5445,15 @@ impl App {
     /// The page of filing that stands in for the panels: the overview or the
     /// status.
     fn ablage_tab_is_open(&self) -> bool {
-        self.ablage_tab_apart_from_hermes_is_open() || self.hermes.page_is_open()
-    }
-
-    fn ablage_tab_apart_from_hermes_is_open(&self) -> bool {
-        self.hermes_overview.is_some() || self.filing_status.page_open()
+        self.filing_status.page_open() || self.hermes.page_is_open()
     }
 
     /// Closes the page of filing without a word, for a page that replaces it.
     fn close_ablage_tab(&mut self) -> Task<Message> {
         self.filing_status.close_page();
+        let left_overview = self.leave_hermes_overview();
         self.hermes.close_pages();
-        self.leave_hermes_overview()
+        left_overview
     }
 
     /// What the overview itself may open on top of it: the model cards.
@@ -8163,7 +8143,7 @@ impl App {
     }
 
     fn hermes_overview_view(&self) -> Option<Element<'_, Message>> {
-        let state = self.hermes_overview.as_ref()?;
+        let state = self.hermes.overview.as_ref()?;
         let snapshot = self.filing_status.snapshot();
         let page = hermes_overview_ui::OverviewView {
             facts: self.overview_facts(state.ocr_models_present()),
@@ -8380,213 +8360,41 @@ impl App {
         if self.settings.page.is_some() {
             return left_settings;
         }
-        self.hermes_focus = HermesFocus::Content;
-        self.return_to_hermes_overview = false;
-        self.context_menu = None;
-        self.hermes_overview = Some(OverviewState::new(
-            self.filing_config.default_pattern.as_deref(),
-            self.ocr_models_present(),
-        ));
-        self.refresh_filing_snapshot();
-        Task::batch([left_settings, self.request_hermes_counts()])
+        let opened = self.run_hermes_flow(Vec::new(), ncrs_hermes_ui::open_overview);
+        Task::batch([left_settings, opened])
     }
 
     fn leave_hermes_overview(&mut self) -> Task<Message> {
-        if self.hermes_overview.is_none() {
-            return Task::none();
-        }
-        self.hermes_overview = None;
-        release_focus()
-    }
-
-    fn leave_hermes_overview_state(&mut self) -> Task<Message> {
-        self.hermes_overview = None;
-        Task::none()
-    }
-
-    fn card_covers_overview(&self) -> bool {
-        self.hermes.filing_setup.is_some() || self.hermes.hermes_setup.is_some()
-    }
-
-    fn commit_overview_pattern(&mut self) -> Task<Message> {
-        let Some(state) = self.hermes_overview.as_mut() else {
-            return Task::none();
-        };
-        let PatternCommit::Write(pattern) = state.commit_pattern() else {
-            return Task::none();
-        };
-        let Some(config_path) = self.config_path.clone() else {
-            state.pattern_write_failed(self.lang.text(Msg::FilingSetupNoConfigPath).to_owned());
-            return Task::none();
-        };
-        let failed_path = config_path.clone();
-        Task::perform(
-            async move {
-                tokio::task::spawn_blocking(move || {
-                    write_default_pattern_alone(&config_path, pattern.as_deref())
-                })
-                .await
-            },
-            move |joined| {
-                Message::HermesOverview(HermesOverviewMessage::PatternWritten(
-                    joined.unwrap_or_else(|join| {
-                        Err(FilingWriteError::Io {
-                            path: failed_path,
-                            reason: join.to_string(),
-                        })
-                    }),
-                ))
-            },
-        )
-    }
-
-    fn overview_pattern_written(
-        &mut self,
-        result: Result<Box<Config>, FilingWriteError>,
-    ) -> Task<Message> {
-        match result {
-            Ok(config) => {
-                self.filing_config.default_pattern = config.filing.default_pattern.clone();
-                if let Some(state) = self.hermes_overview.as_mut() {
-                    state.pattern_written(config.filing.default_pattern.as_deref());
-                }
-                return self.commit_overview_pattern();
-            }
-            Err(error) => {
-                let reason = ncrs_settings::write::write_failure(&error, &self.settings_ctx());
-                if let Some(state) = self.hermes_overview.as_mut() {
-                    state.pattern_write_failed(reason);
-                }
-            }
-        }
-        Task::none()
+        ncrs_hermes_ui::leave_overview(&mut self.hermes).map(Message::from)
     }
 
     fn update_hermes_overview(&mut self, message: HermesOverviewMessage) -> Task<Message> {
-        if !matches!(message, HermesOverviewMessage::TargetEdited(_)) {
-            if let Some(state) = self.hermes_overview.as_mut() {
-                state.edit_target(TargetEdit::OwnNameCancel);
-            }
-        }
-        match message {
-            HermesOverviewMessage::Close => self.leave_hermes_overview(),
+        let before = match &message {
             HermesOverviewMessage::EnterRecoveryKey => {
-                let card = self.update_filing(FilingMessage::AskKeyAgain);
-                Task::batch([card, self.leave_hermes_overview()])
-            }
-            HermesOverviewMessage::EncryptNow => {
-                self.change_protection(FilingModule::begin_encrypting)
-            }
-            HermesOverviewMessage::AskStartOver => {
-                let can_ask = self
-                    .filing
-                    .as_ref()
-                    .is_some_and(FilingModule::can_start_over)
-                    && !self.jobs.is_busy()
-                    && !self.hermes_is_restarting();
-                if can_ask {
-                    self.dialog_focus = hermes_overview_ui::START_OVER_CANCEL_FOCUS;
-                    self.start_over_dialog = true;
-                }
-                Task::none()
-            }
-            HermesOverviewMessage::CancelStartOver => {
-                self.start_over_dialog = false;
-                Task::none()
-            }
-            HermesOverviewMessage::ConfirmStartOver => {
-                if !std::mem::take(&mut self.start_over_dialog) {
-                    return Task::none();
-                }
-                self.change_protection(FilingModule::begin_starting_over)
-            }
-            HermesOverviewMessage::TargetEdited(edit) => {
-                let opens_name_field = edit == TargetEdit::StartOwnName;
-                let opens_text_field = edit == TargetEdit::StartNameText;
-                if let Some(state) = self.hermes_overview.as_mut() {
-                    state.edit_target(edit);
-                }
-                let write = self.commit_overview_pattern();
-                if opens_name_field {
-                    self.hermes_focus = HermesFocus::Content;
-                    Task::batch([
-                        operation::focus(hermes_overview_ui::FOLDER_NAME_FIELD_ID),
-                        write,
-                    ])
-                } else if opens_text_field {
-                    self.hermes_focus = HermesFocus::Content;
-                    Task::batch([
-                        operation::focus(crate::ui::filing_pieces::FILE_NAME_TEXT_FIELD_ID),
-                        write,
-                    ])
-                } else {
-                    write
-                }
-            }
-            HermesOverviewMessage::PatternWritten(result) => self.overview_pattern_written(result),
-            HermesOverviewMessage::SetAiEnabled(on) => {
-                self.update_settings(SettingsMessage::Change(SettingChange::AiEnabled(on)))
-            }
-            HermesOverviewMessage::SetLoad(load) => {
-                self.update_settings(SettingsMessage::Change(SettingChange::Load(load)))
+                self.update_filing(FilingMessage::AskKeyAgain)
             }
             HermesOverviewMessage::ChangeFolders => {
-                let write = self.leave_hermes_overview_state();
-                let card = self.update_filing_setup(FilingSetupMessage::Toggle);
-                self.return_to_hermes_overview = self.card_covers_overview();
-                Task::batch([write, card])
-            }
-            HermesOverviewMessage::LoadOcrModels => self.update_ocr_models(OcrModelsMessage::Open),
-            HermesOverviewMessage::LoadAiModel => {
-                let open = self.update_ai_model(AiModelMessage::Open);
-                let download = self.update_ai_model(AiModelMessage::Download);
-                Task::batch([open, download])
-            }
-            HermesOverviewMessage::ShowOwnServerSettings => {
-                let write = self.leave_hermes_overview_state();
-                let row = self.lang.text(Msg::SettingsRowAiProvider).to_owned();
-                let shown = self.show_setting(crate::messages::SettingsFeature::Hermes, Some(row));
-                Task::batch([write, shown])
-            }
-            HermesOverviewMessage::ShowProtectionSettings => {
-                let write = self.leave_hermes_overview_state();
-                let row = self
-                    .lang
-                    .text(Msg::HermesOverviewSectionProtection)
-                    .to_owned();
-                let shown = self.show_setting(crate::messages::SettingsFeature::Hermes, Some(row));
-                Task::batch([write, shown])
-            }
-            HermesOverviewMessage::ShowReviews => {
-                let has_reviews = self
-                    .filing_status
-                    .hermes_counts()
-                    .is_some_and(|counts| counts.open_reviews > 0);
-                if has_reviews {
-                    self.go_to_hermes_page(HermesPage::Review)
-                } else {
-                    Task::none()
-                }
+                self.update_filing_setup(FilingSetupMessage::Toggle)
             }
             HermesOverviewMessage::SwitchHermesOn => {
-                let written = self
-                    .update_settings(SettingsMessage::Change(SettingChange::HermesEnabled(true)));
-                if self.filing_config.locations.is_empty() {
-                    let leave = self.leave_hermes_overview_state();
-                    self.open_hermes_setup();
-                    self.return_to_hermes_overview = true;
-                    return Task::batch([written, leave]);
-                }
-                written
+                self.update_settings(SettingsMessage::Change(SettingChange::HermesEnabled(true)))
             }
-            HermesOverviewMessage::ContinueSetup => {
-                let leave = self.leave_hermes_overview_state();
-                self.open_hermes_setup();
-                self.return_to_hermes_overview = true;
-                leave
+            HermesOverviewMessage::PatternWritten(Ok(config)) => {
+                self.filing_config.default_pattern = config.filing.default_pattern.clone();
+                Task::none()
             }
-            HermesOverviewMessage::TryAgain => self.restart_hermes_module(),
-        }
+            _ => Task::none(),
+        };
+        let write_failure = match &message {
+            HermesOverviewMessage::PatternWritten(Err(error)) => Some(
+                ncrs_settings::write::write_failure(error, &self.settings_ctx()),
+            ),
+            _ => None,
+        };
+        let after = self.run_hermes_flow(Vec::new(), |hermes, ctx| {
+            ncrs_hermes_ui::update_hermes_overview(hermes, message, ctx, write_failure)
+        });
+        Task::batch([before, after])
     }
 
     /// Stops the pipeline and runs the job that encrypts or removes the index.
@@ -8624,21 +8432,11 @@ impl App {
         task
     }
 
-    /// The overview or the status page, whichever is up; the others are in
-    /// [`ncrs_hermes_ui::Hermes`].
-    fn page_apart_from_hermes(&self) -> Option<HermesPage> {
-        if self.hermes_overview.is_some() {
-            Some(HermesPage::Overview)
-        } else if self.filing_status.page_open() {
-            Some(HermesPage::Inspection)
-        } else {
-            None
-        }
-    }
-
     /// The Hermes card that is up, if any.
     fn open_hermes_page(&self) -> Option<HermesPage> {
-        self.page_apart_from_hermes()
+        self.filing_status
+            .page_open()
+            .then_some(HermesPage::Inspection)
             .or_else(|| self.hermes.open_page())
     }
 
@@ -8646,25 +8444,20 @@ impl App {
     /// steps, the chosen page opens. Nothing happens when it is the open one,
     /// or when no Hermes card is up.
     fn go_to_hermes_page(&mut self, page: HermesPage) -> Task<Message> {
+        if page != HermesPage::Inspection {
+            return self.run_hermes_flow(Vec::new(), |hermes, ctx| {
+                ncrs_hermes_ui::go_to_hermes_page(hermes, page, ctx)
+            });
+        }
         match self.open_hermes_page() {
             None => return Task::none(),
             Some(open) if open == page => return Task::none(),
             Some(_) => {}
         }
-        let pattern_write = self.leave_hermes_overview_state();
-        self.filing_status.close_page();
         self.hermes.close_pages();
-        let open = match page {
-            HermesPage::Overview => self.open_hermes_overview(),
-            HermesPage::Inspection => self.open_filing_status(),
-            HermesPage::Review => self.open_review_list(),
-            HermesPage::SavedQueries => self.open_saved_queries(),
-            HermesPage::Rules => self.open_rules(),
-            HermesPage::RuleSuggestions => self.open_rule_suggestions(),
-            HermesPage::Tags => self.open_tags(),
-            HermesPage::Reorganisation => self.open_reorganisation(),
-        };
-        Task::batch([release_focus(), pattern_write, open])
+        self.filing_status.close_page();
+        let open = self.open_filing_status();
+        Task::batch([release_focus(), open])
     }
 
     /// The counts the sidebar shows, from what the app already holds.
@@ -8741,7 +8534,7 @@ impl App {
             sandbox_active: self.sandbox.active,
             blocking_overlay_open: self.blocking_overlay_is_open(),
             overlay_apart_from_overview_open: self.overlay_apart_from_overview_is_open(),
-            overview_open: self.hermes_overview.is_some(),
+            overview_open: self.hermes.overview.is_some(),
             ocr_models_dir: self
                 .filing_index_path
                 .as_deref()
@@ -8857,7 +8650,7 @@ impl App {
             }
             Ask::OpenOverview => self.open_hermes_overview(),
             Ask::OcrModelsInstalled => {
-                if let Some(overview) = self.hermes_overview.as_mut() {
+                if let Some(overview) = self.hermes.overview.as_mut() {
                     overview.set_ocr_models_present(true);
                 }
                 Task::none()
@@ -8879,10 +8672,15 @@ impl App {
             kinds: &self.kinds,
             default_pattern: self.filing_config.default_pattern.as_deref(),
             filing: self.filing.as_ref(),
-            ablage_tab_apart_from_hermes_open: self.ablage_tab_apart_from_hermes_is_open(),
+            status_page_open: self.filing_status.page_open(),
             overlay_apart_from_ablage_tab_open: self
                 .overlay_apart_from_overview_and_hermes_is_open(),
-            page_apart_from_hermes: self.page_apart_from_hermes(),
+            start_over_dialog_open: self.start_over_dialog,
+            hermes_is_restarting: self.hermes_is_restarting(),
+            hermes_has_open_reviews: self
+                .filing_status
+                .hermes_counts()
+                .is_some_and(|counts| counts.open_reviews > 0),
             file_list_tags: &self.file_list_tags,
             active_panel_path: &panel.path,
             other_panel_path: &self.panel(side.other()).path,
@@ -8994,12 +8792,56 @@ impl App {
             }
             Ask::RequestHermesCounts => self.request_hermes_counts(),
             Ask::ReadPathsAgain(paths) => self.read_paths_again(paths),
-            Ask::CloseOverviewAndStatus => {
-                let pattern_write = self.leave_hermes_overview_state();
+            Ask::CloseStatusPage => {
                 self.filing_status.close_page();
-                pattern_write
+                Task::none()
             }
             Ask::GoToHermesPage(page) => self.go_to_hermes_page(page),
+            Ask::SetHermesFocus(focus) => {
+                self.hermes_focus = focus;
+                Task::none()
+            }
+            Ask::RefreshFilingSnapshot => {
+                self.refresh_filing_snapshot();
+                Task::none()
+            }
+            Ask::ReadOcrModelsPresent => {
+                let present = self.ocr_models_present();
+                if let Some(overview) = self.hermes.overview.as_mut() {
+                    overview.set_ocr_models_present(present);
+                }
+                Task::none()
+            }
+            Ask::ChangeProtection(begin) => self.change_protection(begin),
+            Ask::OpenStartOverDialog(focus) => {
+                self.dialog_focus = focus;
+                self.start_over_dialog = true;
+                Task::none()
+            }
+            Ask::CloseStartOverDialog => {
+                self.start_over_dialog = false;
+                Task::none()
+            }
+            Ask::SetAiEnabled(on) => {
+                self.update_settings(SettingsMessage::Change(SettingChange::AiEnabled(on)))
+            }
+            Ask::SetLoad(load) => {
+                self.update_settings(SettingsMessage::Change(SettingChange::Load(load)))
+            }
+            Ask::OpenOcrModels => self.update_ocr_models(OcrModelsMessage::Open),
+            Ask::OpenAndDownloadAiModel => {
+                let open = self.update_ai_model(AiModelMessage::Open);
+                let download = self.update_ai_model(AiModelMessage::Download);
+                Task::batch([open, download])
+            }
+            Ask::ShowHermesSetting(row) => {
+                self.show_setting(crate::messages::SettingsFeature::Hermes, Some(row))
+            }
+            Ask::OpenHermesSetup => {
+                self.open_hermes_setup();
+                Task::none()
+            }
+            Ask::RestartHermesModule => self.restart_hermes_module(),
             Ask::SetTagExceptions(exceptions) => {
                 self.tag_exceptions = exceptions;
                 Task::none()
@@ -9106,21 +8948,6 @@ impl App {
         self.run_hermes_outcome(outcome)
     }
 
-    fn open_review_list(&mut self) -> Task<Message> {
-        let outcome = self.with_hermes(Vec::new(), ncrs_hermes_ui::open_review_list);
-        self.run_hermes_outcome(outcome)
-    }
-
-    fn open_rules(&mut self) -> Task<Message> {
-        let outcome = self.with_hermes(Vec::new(), ncrs_hermes_ui::open_rules);
-        self.run_hermes_outcome(outcome)
-    }
-
-    fn open_rule_suggestions(&mut self) -> Task<Message> {
-        let outcome = self.with_hermes(Vec::new(), ncrs_hermes_ui::open_rule_suggestions);
-        self.run_hermes_outcome(outcome)
-    }
-
     fn open_saved_queries(&mut self) -> Task<Message> {
         let outcome = self.with_hermes(Vec::new(), ncrs_hermes_ui::open_saved_queries);
         self.run_hermes_outcome(outcome)
@@ -9128,11 +8955,6 @@ impl App {
 
     fn open_tags(&mut self) -> Task<Message> {
         let outcome = self.with_hermes(Vec::new(), ncrs_hermes_ui::open_tags);
-        self.run_hermes_outcome(outcome)
-    }
-
-    fn open_reorganisation(&mut self) -> Task<Message> {
-        let outcome = self.with_hermes(Vec::new(), ncrs_hermes_ui::open_reorganisation);
         self.run_hermes_outcome(outcome)
     }
 
@@ -9888,7 +9710,7 @@ impl App {
     /// reason in the status bar.
     fn explain_hermes_is_off(&mut self) -> Task<Message> {
         let shown = self.open_hermes_overview();
-        if self.hermes_overview.is_some() {
+        if self.hermes.overview.is_some() {
             let reason = self.lang.text(Msg::StatusHermesIsOff).to_owned();
             self.set_status_error(&reason);
         }
@@ -11897,10 +11719,8 @@ impl App {
             write_clipboard_files: Box::new(|_| Ok(())),
             pending_paste: None,
             paste_staging: None,
-            hermes_overview: None,
             tag_exceptions: TagExceptions::new(),
             hermes_focus: HermesFocus::default(),
-            return_to_hermes_overview: false,
             plans_filed_for: 0,
             fetch_extension: |_| Err(FetchError::NoConnection("no network in tests".to_owned())),
             install_theme: |_, _| Err(FetchError::NoConfigPath),
@@ -11996,7 +11816,7 @@ impl App {
         if let Some(read) = counts {
             app.filing_status.counts_arrived(Ok(read));
         }
-        app.hermes_overview = Some(OverviewState::new(config.default_pattern.as_deref(), false));
+        app.hermes.overview = Some(OverviewState::new(config.default_pattern.as_deref(), false));
         app.filing_config = config;
         app
     }
@@ -12993,7 +12813,7 @@ impl App {
     }
 
     pub fn hermes_overview_is_open_for_test(&self) -> bool {
-        self.hermes_overview.is_some()
+        self.hermes.overview.is_some()
     }
 
     pub fn active_panel_side_for_test(&self) -> PanelSide {
@@ -24251,7 +24071,7 @@ mod hermes_roles_and_off_tests {
         drop(app.update(Message::ReviewList(ReviewListMessage::Open)));
 
         assert!(app.review_list_for_test().is_none());
-        assert!(app.hermes_overview.is_some(), "the overview is up");
+        assert!(app.hermes.overview.is_some(), "the overview is up");
         assert_eq!(
             app.status_error(),
             Some("Filing is off. Switch it on here to sort your documents.")
@@ -24277,7 +24097,7 @@ mod hermes_roles_and_off_tests {
 
         drop(app.update(Message::QuickFix(QuickFixMessage::Open)));
 
-        assert!(app.hermes_overview.is_some());
+        assert!(app.hermes.overview.is_some());
         assert!(app.status_error().is_some());
     }
 }
@@ -25009,7 +24829,7 @@ mod hermes_overview_tests {
         )
         .await;
 
-        assert!(app.hermes_overview.is_none());
+        assert!(app.hermes.overview.is_none());
         assert!(app.hermes.filing_setup.is_some());
     }
 
@@ -25019,7 +24839,7 @@ mod hermes_overview_tests {
 
         drop(app.update(Message::HermesOverview(HermesOverviewMessage::LoadAiModel)));
 
-        assert!(app.hermes_overview.is_some());
+        assert!(app.hermes.overview.is_some());
         assert!(app.settings.ai_model.is_some());
     }
 
@@ -25032,7 +24852,7 @@ mod hermes_overview_tests {
 
         drop(app.update(Message::AiModel(AiModelMessage::Close)));
 
-        assert!(app.hermes_overview.is_some());
+        assert!(app.hermes.overview.is_some());
         assert!(!app.settings.ai_card_is_shown());
         assert!(app.settings.ai_model_download_runs());
         assert!(!app.overlay_apart_from_overview_is_open());
@@ -25046,11 +24866,11 @@ mod hermes_overview_tests {
             HermesOverviewMessage::ChangeFolders,
         )));
         assert!(app.hermes.filing_setup.is_some());
-        assert!(app.hermes_overview.is_none());
+        assert!(app.hermes.overview.is_none());
 
         drop(app.update(Message::FilingSetup(FilingSetupMessage::Close)));
         assert!(app.hermes.filing_setup.is_none());
-        assert!(app.hermes_overview.is_some());
+        assert!(app.hermes.overview.is_some());
     }
 
     #[tokio::test]
@@ -25061,10 +24881,10 @@ mod hermes_overview_tests {
             HermesOverviewMessage::ContinueSetup,
         )));
         assert!(app.hermes.hermes_setup.is_some());
-        assert!(app.hermes_overview.is_none());
+        assert!(app.hermes.overview.is_none());
 
         drop(app.update(Message::HermesSetup(HermesSetupMessage::Later)));
-        assert!(app.hermes_overview.is_some());
+        assert!(app.hermes.overview.is_some());
     }
 
     #[tokio::test]
@@ -25097,7 +24917,7 @@ mod hermes_overview_tests {
             }
         }
 
-        assert!(app.hermes_overview.is_some());
+        assert!(app.hermes.overview.is_some());
         assert!(reported.iter().any(|message| matches!(
             message,
             Message::FilingStatus(FilingStatusMessage::HermesCounts(_))
@@ -25128,13 +24948,13 @@ mod hermes_overview_tests {
             App::with_hermes_overview(Some(Phase::Ready), config::Filing::default(), Some(counts));
         drop(waiting.update(Message::HermesOverview(HermesOverviewMessage::ShowReviews)));
         assert!(waiting.hermes.review_list.is_some());
-        assert!(waiting.hermes_overview.is_none());
+        assert!(waiting.hermes.overview.is_none());
 
         let mut clear =
             App::with_hermes_overview(Some(Phase::Ready), config::Filing::default(), None);
         drop(clear.update(Message::HermesOverview(HermesOverviewMessage::ShowReviews)));
         assert!(clear.hermes.review_list.is_none());
-        assert!(clear.hermes_overview.is_some());
+        assert!(clear.hermes.overview.is_some());
     }
 
     #[test]
@@ -25367,7 +25187,7 @@ mod hermes_overview_tests {
     }
 
     fn facts_of(app: &App) -> OverviewFacts {
-        app.overview_facts(app.hermes_overview.as_ref().unwrap().ocr_models_present())
+        app.overview_facts(app.hermes.overview.as_ref().unwrap().ocr_models_present())
     }
 
     #[test]
@@ -25404,10 +25224,10 @@ mod hermes_overview_tests {
         assert!(!ncrs_index::Index::file_is_plain(&db).unwrap());
         assert!(store.snapshot().is_some());
         assert!(
-            app.hermes_overview.is_none(),
+            app.hermes.overview.is_none(),
             "the card must not hide under the overview"
         );
-        assert!(app.return_to_hermes_overview);
+        assert!(app.hermes.return_to_overview);
     }
 
     #[tokio::test]
@@ -25427,7 +25247,7 @@ mod hermes_overview_tests {
         assert_eq!(module.phase(), &Phase::Ready);
         assert!(module.protection_note().is_some());
         assert!(ncrs_index::Index::file_is_plain(&db).unwrap());
-        assert!(app.hermes_overview.is_some());
+        assert!(app.hermes.overview.is_some());
         assert!(facts_of(&app).protection_note.is_some());
         assert!(facts_of(&app).can_encrypt, "the user may try again");
     }
@@ -25529,8 +25349,8 @@ mod hermes_overview_tests {
             .as_ref()
             .expect("the setup card opens");
         assert!(setup.can_start(), "the folders are still filled in");
-        assert!(app.hermes_overview.is_none());
-        assert!(app.return_to_hermes_overview);
+        assert!(app.hermes.overview.is_none());
+        assert!(app.hermes.return_to_overview);
     }
 
     #[tokio::test]
@@ -25572,7 +25392,7 @@ mod hermes_overview_tests {
             app.filing.as_ref().unwrap().phase(),
             Phase::AskRecoveryKey { .. }
         ));
-        assert!(app.hermes_overview.is_none());
+        assert!(app.hermes.overview.is_none());
     }
 }
 
