@@ -1744,7 +1744,7 @@ fn hermes_focus_key(
     }
 }
 
-/// The plan is a card: Enter runs the selection, Space selects or deselects
+/// The plan is a page: Enter runs the selection, Space selects or deselects
 /// what the cursor is on, the arrows move.
 fn reorganisation_plan_key(
     prompt: &PromptKeyState,
@@ -1805,22 +1805,18 @@ fn review_list_key(
             review(ReviewListMessage::ReplanConfirm)
         }
         Key::Named(Named::Enter) => review(ReviewListMessage::Confirm),
-        Key::Character("a") if plain && !prompt.review_list_editing => {
-            review(ReviewListMessage::ReplanOpenCases)
-        }
+        Key::Named(Named::F3) if plain => review(ReviewListMessage::TogglePreview),
         Key::Named(Named::Tab) if prompt.review_list_editing => {
             review(ReviewListMessage::FocusField {
                 backwards: key_modifiers.shift(),
             })
         }
+        Key::Named(Named::Tab) if !prompt.hermes_sidebar => review(ReviewListMessage::Edit),
         Key::Named(Named::ArrowUp) if plain && !prompt.review_list_editing => {
             review(ReviewListMessage::Move(-1))
         }
         Key::Named(Named::ArrowDown) if plain && !prompt.review_list_editing => {
             review(ReviewListMessage::Move(1))
-        }
-        Key::Character("e") if plain && !prompt.review_list_editing => {
-            review(ReviewListMessage::Edit)
         }
         _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
             .filter(|message| *message == Message::Quit)
@@ -1909,10 +1905,11 @@ fn rule_suggestions_key(
     }
 }
 
-/// The rules page is a card: the arrows move in the list, Alt with the arrows
-/// moves the rule, Space switches it, Delete asks to delete it, Enter answers
-/// that question or else edits the rule and `n` starts a new one. With the
-/// form up the fields take the keys and only Escape is the page's.
+/// The rules page: the arrows move in the list, Alt with the arrows moves the
+/// rule, Space switches it, Delete asks to delete it, Enter answers that
+/// question or else puts the keys into the form of the rule, and `n` starts a
+/// new one. With the keys in the form the fields take them; Escape and
+/// Command+Enter are the page's.
 fn rules_key(
     prompt: &PromptKeyState,
     key: &Key,
@@ -1927,6 +1924,9 @@ fn rules_key(
     if prompt.rules_form {
         return match key.as_ref() {
             Key::Named(Named::Escape) => rules(RulesMessage::Close),
+            Key::Named(Named::Enter) if key_modifiers == Modifiers::COMMAND => {
+                rules(RulesMessage::Form(RuleFormMessage::Save))
+            }
             _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
                 .filter(|message| *message == Message::Quit)
                 .filter(|_| is_not_typed_by_text_field(key, key_modifiers)),
@@ -1937,7 +1937,10 @@ fn rules_key(
         Key::Named(Named::Enter) if plain && prompt.rules_confirming_delete => {
             rules(RulesMessage::ConfirmDelete)
         }
-        Key::Named(Named::Enter) if plain => rules(RulesMessage::Edit),
+        Key::Named(Named::Enter) if key_modifiers == Modifiers::COMMAND => {
+            rules(RulesMessage::Form(RuleFormMessage::Save))
+        }
+        Key::Named(Named::Enter | Named::Tab) if plain => rules(RulesMessage::Edit),
         Key::Character("n") if plain => rules(RulesMessage::New),
         Key::Named(Named::Space) if plain => rules(RulesMessage::Toggle),
         Key::Named(Named::Delete) if plain => rules(RulesMessage::AskDelete),
@@ -5619,49 +5622,6 @@ impl App {
             return Stack::with_children([root, dialog::scrim(card_element)]).into();
         }
 
-        if let Some(view) = self.rules.as_ref() {
-            let card_element = rules_ui::view(
-                view,
-                self.window_size,
-                self.hermes_badges(),
-                self.lang,
-                &self.palette,
-            );
-            return Stack::with_children([root, dialog::scrim(card_element)]).into();
-        }
-
-        if let Some(view) = self.rule_suggestions.as_ref() {
-            let card_element = rule_suggestions_ui::view(
-                view,
-                self.window_size,
-                self.hermes_badges(),
-                self.lang,
-                &self.palette,
-            );
-            return Stack::with_children([root, dialog::scrim(card_element)]).into();
-        }
-
-        if let Some(view) = self.review_list.as_ref() {
-            let card_element = review_list_ui::view(
-                view,
-                self.window_size,
-                self.hermes_badges(),
-                self.review_field_guide(),
-                review_list_ui::PreviewRoot {
-                    archive: self
-                        .filing_config
-                        .locations
-                        .iter()
-                        .find(|location| location.is_target)
-                        .map(|location| location.path.as_path()),
-                    home: &self.home,
-                },
-                self.lang,
-                &self.palette,
-            );
-            return Stack::with_children([root, dialog::scrim(card_element)]).into();
-        }
-
         if let Some(view) = self.saved_queries.as_ref() {
             let card_element = saved_queries_ui::view(
                 view,
@@ -5675,17 +5635,6 @@ impl App {
 
         if let Some(view) = self.document_search.as_ref() {
             let card_element = document_search_ui::view(
-                view,
-                self.window_size,
-                self.hermes_badges(),
-                self.lang,
-                &self.palette,
-            );
-            return Stack::with_children([root, dialog::scrim(card_element)]).into();
-        }
-
-        if let Some(view) = self.reorganisation.as_ref() {
-            let card_element = reorganisation_plan_ui::view(
                 view,
                 self.window_size,
                 self.hermes_badges(),
@@ -5809,10 +5758,7 @@ impl App {
         let theme_fetch = self.theme_fetch.is_some();
         let rule_suggestions = self.rule_suggestions.is_some();
         let rules = self.rules.is_some();
-        let rules_form = self
-            .rules
-            .as_ref()
-            .is_some_and(|view| view.form().is_some());
+        let rules_form = self.rules.as_ref().is_some_and(RulesPage::is_editing);
         let rules_confirming_delete = self
             .rules
             .as_ref()
@@ -6702,12 +6648,21 @@ impl App {
     /// The page of filing that stands in for the panels: the overview or the
     /// status.
     fn ablage_tab_is_open(&self) -> bool {
-        self.hermes_overview.is_some() || self.filing_status.page_open()
+        self.hermes_overview.is_some()
+            || self.filing_status.page_open()
+            || self.rule_suggestions.is_some()
+            || self.review_list.is_some()
+            || self.rules.is_some()
+            || self.reorganisation.is_some()
     }
 
     /// Closes the page of filing without a word, for a page that replaces it.
     fn close_ablage_tab(&mut self) -> Task<Message> {
         self.filing_status.close_page();
+        self.rule_suggestions = None;
+        self.review_list = None;
+        self.rules = None;
+        self.reorganisation = None;
         self.leave_hermes_overview()
     }
 
@@ -6725,12 +6680,8 @@ impl App {
             || self.command_palette.is_some()
             || self.key_bindings.is_some()
             || self.theme_fetch.is_some()
-            || self.rule_suggestions.is_some()
-            || self.rules.is_some()
-            || self.review_list.is_some()
             || self.saved_queries.is_some()
             || self.document_search.is_some()
-            || self.reorganisation.is_some()
             || self.about.is_some()
             || self.ocr_models.is_some()
             || self.ai_card_is_shown()
@@ -10318,31 +10269,38 @@ impl App {
             RulesMessage::Open => self.open_rules(),
             RulesMessage::Close => self.close_rules(),
             RulesMessage::Loaded { generation, result } => {
-                if generation == self.rules_generation {
-                    if let Some(view) = self.rules.as_mut() {
-                        match result {
-                            Ok(load) => view.loaded(load),
-                            Err(detail) => view.failed(detail),
-                        }
+                if generation != self.rules_generation {
+                    return Task::none();
+                }
+                if let Some(view) = self.rules.as_mut() {
+                    match result {
+                        Ok(load) => view.loaded(load),
+                        Err(detail) => view.failed(detail),
                     }
                 }
-                Task::none()
+                self.schedule_rule_try()
             }
             RulesMessage::Move(delta) => {
                 if let Some(view) = self.rules.as_mut() {
                     view.move_cursor(delta);
                 }
-                Task::none()
+                self.schedule_rule_try()
             }
             RulesMessage::Scrolled(delta) => {
                 if let Some(view) = self.rules.as_mut() {
                     view.scroll(delta);
                 }
-                Task::none()
+                self.schedule_rule_try()
             }
             RulesMessage::Select(index) => {
                 if let Some(view) = self.rules.as_mut() {
                     view.select(index);
+                }
+                Task::batch([release_focus(), self.schedule_rule_try()])
+            }
+            RulesMessage::ToggleTryList => {
+                if let Some(view) = self.rules.as_mut() {
+                    view.toggle_try_list();
                 }
                 Task::none()
             }
@@ -10423,7 +10381,7 @@ impl App {
             .as_ref()
             .is_some_and(|view| view.form().is_some())
         {
-            operation::focus(crate::ui::condition_editor::FIRST_CONDITION_FIELD_ID)
+            operation::focus(crate::ui::rules::NAME_FIELD_ID)
         } else {
             Task::none()
         }
@@ -10438,7 +10396,7 @@ impl App {
         }
         Some(match view.take_return_to() {
             Some(page) => self.go_to_hermes_page(page),
-            None => Task::none(),
+            None => Task::batch([release_focus(), self.schedule_rule_try()]),
         })
     }
 
@@ -10518,10 +10476,18 @@ impl App {
                     }
                 }
             }
+            RuleFormMessage::OpenTagInput => {
+                if let Some(form) = view.form_mut() {
+                    form.update(RuleFormMessage::OpenTagInput);
+                }
+                view.start_editing();
+                operation::focus(crate::ui::rules::TAG_FIELD_ID)
+            }
             field_change => {
                 if let Some(form) = view.form_mut() {
                     form.update(field_change);
                 }
+                view.start_editing();
                 self.schedule_rule_try()
             }
         }
@@ -10537,8 +10503,8 @@ impl App {
         self.run_rules_load()
     }
 
-    /// Escape backs out of the delete question or closes the form first, then
-    /// leaves the page.
+    /// Escape backs out of the delete question, the list of the try, a form
+    /// that is not listed yet and the fields, then leaves the page.
     fn close_rules(&mut self) -> Task<Message> {
         let Some(view) = self.rules.as_mut() else {
             return Task::none();
@@ -10546,8 +10512,15 @@ impl App {
         if view.cancel_delete() {
             return Task::none();
         }
-        if let Some(back) = self.cancel_rule_form() {
-            return back;
+        if view.is_try_list_open() {
+            view.toggle_try_list();
+            return Task::none();
+        }
+        if view.has_unlisted_form() {
+            return self.cancel_rule_form().unwrap_or_else(Task::none);
+        }
+        if view.stop_editing() {
+            return release_focus();
         }
         self.rules = None;
         release_focus()
@@ -10740,11 +10713,22 @@ impl App {
                 }
                 Task::none()
             }
-            ReviewListMessage::ChangeTarget => {
+            ReviewListMessage::TogglePreview => {
                 if let Some(view) = self.review_list.as_mut() {
-                    view.change_target();
+                    view.toggle_preview();
                 }
                 Task::none()
+            }
+            ReviewListMessage::OpenTagInput => {
+                let Some(view) = self.review_list.as_mut() else {
+                    return Task::none();
+                };
+                view.open_tag_input();
+                if view.is_tag_input_open() {
+                    operation::focus(review_list_ui::TAG_INPUT_ID)
+                } else {
+                    Task::none()
+                }
             }
             ReviewListMessage::TargetEdited(edit) => {
                 let starts_own_name = edit == TargetEdit::StartOwnName;
@@ -11763,6 +11747,56 @@ impl App {
         Some(hermes_overview_ui::view(&page, &self.palette))
     }
 
+    fn rule_suggestions_view(&self) -> Option<Element<'_, Message>> {
+        let state = self.rule_suggestions.as_ref()?;
+        Some(rule_suggestions_ui::view(
+            state,
+            self.hermes_badges(),
+            self.lang,
+            &self.palette,
+        ))
+    }
+
+    fn reorganisation_view(&self) -> Option<Element<'_, Message>> {
+        let state = self.reorganisation.as_ref()?;
+        Some(reorganisation_plan_ui::view(
+            state,
+            self.hermes_badges(),
+            self.lang,
+            &self.palette,
+        ))
+    }
+
+    fn rules_view(&self) -> Option<Element<'_, Message>> {
+        let state = self.rules.as_ref()?;
+        Some(rules_ui::view(
+            state,
+            self.hermes_badges(),
+            self.lang,
+            &self.palette,
+        ))
+    }
+
+    fn review_list_view(&self) -> Option<Element<'_, Message>> {
+        let state = self.review_list.as_ref()?;
+        Some(review_list_ui::view(
+            state,
+            self.hermes_badges(),
+            self.review_field_guide(),
+            review_list_ui::PreviewRoot {
+                archive: self
+                    .filing_config
+                    .locations
+                    .iter()
+                    .find(|location| location.is_target)
+                    .map(|location| location.path.as_path()),
+                home: &self.home,
+            },
+            self.lang,
+            &self.palette,
+        ))
+    }
+
     fn filing_status_page(&self) -> Option<Element<'_, Message>> {
         if !self.filing_status.page_open() {
             return None;
@@ -11795,6 +11829,47 @@ impl App {
                     ("↑↓", Msg::HermesKitHintSelect),
                     ("Tab", Msg::HermesKitHintNextField),
                     ("Esc", Msg::DialogClose),
+                ],
+            )
+        } else if let Some(page) = self.rule_suggestions_view() {
+            (
+                page,
+                vec![
+                    ("↑↓", Msg::HermesKitHintSelect),
+                    ("Esc", Msg::DialogClose),
+                    ("↵", Msg::RuleSuggestionsConfirm),
+                ],
+            )
+        } else if let Some(page) = self.rules_view() {
+            (
+                page,
+                vec![
+                    ("N", Msg::RulesHintNew),
+                    (self.lang.text(Msg::HermesKitKeySpace), Msg::RulesHintToggle),
+                    ("Alt ↑↓", Msg::RulesHintOrder),
+                    ("Del", Msg::RulesHintDelete),
+                ],
+            )
+        } else if let Some(page) = self.reorganisation_view() {
+            (
+                page,
+                vec![
+                    ("↑↓", Msg::HermesKitHintSelect),
+                    (
+                        self.lang.text(Msg::HermesKitKeySpace),
+                        Msg::HermesKitHintCheck,
+                    ),
+                    ("Esc", Msg::DialogClose),
+                ],
+            )
+        } else if let Some(page) = self.review_list_view() {
+            (
+                page,
+                vec![
+                    ("↑↓", Msg::HermesKitHintSelect),
+                    ("Tab", Msg::HermesKitHintNextField),
+                    ("F3", Msg::HermesKitHintView),
+                    ("↵", Msg::ReviewListConfirm),
                 ],
             )
         } else {
@@ -12191,6 +12266,12 @@ impl App {
             ReorganisationPlanMessage::Scrolled(delta) => {
                 if let Some(view) = self.reorganisation.as_mut() {
                     view.scroll(delta);
+                }
+                Task::none()
+            }
+            ReorganisationPlanMessage::Select(line) => {
+                if let Some(view) = self.reorganisation.as_mut() {
+                    view.select(line);
                 }
                 Task::none()
             }

@@ -920,7 +920,10 @@ pub enum ReorganisationPlanMessage {
     /// The wheel or trackpad over the list.
     Scrolled(iced::mouse::ScrollDelta),
     Move(isize),
-    /// A click on the line at this position: an entry or a group heading.
+    /// A click on the row at this position: the cursor goes there.
+    Select(usize),
+    /// A click on the checkbox of the line at this position: an entry or a
+    /// group heading.
     Toggle(usize),
     ToggleCursor,
     /// Enter: hands the selection over as `Message::ExecuteReorganisation`.
@@ -1123,8 +1126,10 @@ pub enum ReviewListMessage {
     Select(usize),
     Edit,
     FieldChanged(FormField, String),
-    /// "Change": the filing target turns into the widget that edits it.
-    ChangeTarget,
+    /// F3 or the thumbnail: the page of the document instead of the fields.
+    TogglePreview,
+    /// "Add tag": the field for a new tag shows and takes the focus.
+    OpenTagInput,
     TargetEdited(TargetEdit),
     /// Enter in the tag field: the typed tag joins the user's own.
     AddTag,
@@ -1200,6 +1205,8 @@ pub enum RulesMessage {
     /// Opens the form for the rule under the cursor.
     Edit,
     Form(RuleFormMessage),
+    /// Shows the documents of the try instead of the form, or the form again.
+    ToggleTryList,
     /// The form has rested for the debounce time since the edit of this
     /// try generation.
     TryElapsed(u64),
@@ -1218,6 +1225,8 @@ pub enum RuleFormMessage {
     Condition(ConditionEdit),
     Target(TargetEdit),
     TagInput(String),
+    /// The link that offers a tag of its own.
+    OpenTagInput,
     AddTag,
     RemoveTag(String),
     Save,

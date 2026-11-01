@@ -68,6 +68,8 @@ pub struct RuleForm {
     /// The tags the rule sets.
     pub tags: BTreeSet<String>,
     pub tag_input: String,
+    /// The field for a tag of its own is shown.
+    pub tag_input_open: bool,
     pub filing: TargetEditor,
     pub saving: bool,
     /// The index refused the rule; the technical detail stays English.
@@ -155,6 +157,7 @@ impl RuleForm {
             kept_kind: None,
             tags: BTreeSet::new(),
             tag_input: String::new(),
+            tag_input_open: false,
             filing: TargetEditor::new(pattern),
             saving: false,
             failure: None,
@@ -183,7 +186,9 @@ impl RuleForm {
                 self.filing.apply(edit);
             }
             RuleFormMessage::TagInput(typed) => self.tag_input = typed,
+            RuleFormMessage::OpenTagInput => self.tag_input_open = true,
             RuleFormMessage::AddTag => {
+                self.tag_input_open = false;
                 let tag = tag_name(&self.tag_input);
                 self.tag_input.clear();
                 if !tag.is_empty() {
@@ -278,6 +283,17 @@ impl RuleForm {
             conditions: self.conditions.problems(),
             no_condition: self.save_was_tried() && self.conditions.rows.is_empty(),
             no_target: self.save_was_tried() && !self.filing.is_usable(),
+        }
+    }
+
+    /// Whether the form differs from the rule it shows. A form for a rule that
+    /// does not exist yet always does.
+    pub fn is_changed(&self) -> bool {
+        match &self.target {
+            RuleFormTarget::Edit(rule) => self.form_spec() != rule.spec,
+            RuleFormTarget::New
+            | RuleFormTarget::FromDocument
+            | RuleFormTarget::FromSuggestion(_) => true,
         }
     }
 

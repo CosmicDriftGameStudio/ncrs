@@ -7,7 +7,8 @@ use iced::{alignment, Element};
 
 use super::hermes_kit::{self as kit, MenuItem, MenuLook, GAP_S, GAP_XS, TEXT_SMALL};
 use crate::filing_pieces::{
-    FileName, FileNameField, FilingTarget, FolderField, FolderPiece, TargetEdit, TargetEditor,
+    FileName, FileNameField, FileNamePiece, FilingTarget, FolderField, FolderPiece, TargetEdit,
+    TargetEditor,
 };
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
@@ -16,11 +17,24 @@ use crate::palette::Palette;
 /// The id of the field for the text of a piece of the file name.
 pub const FILE_NAME_TEXT_FIELD_ID: &str = "filing-pieces-file-name-text";
 
+/// Where the widget shows the example path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExampleLine {
+    Hidden,
+    /// A line of its own under both rows.
+    Row,
+    /// The note under "File name".
+    UnderFileName,
+}
+
 /// What the host gives the widget.
 pub struct TargetHost<'p> {
     pub wrap: fn(TargetEdit) -> Message,
     /// The id of the field for the name of a folder of its own.
     pub name_field_id: &'static str,
+    /// A note under "Move to", like where the target comes from.
+    pub folder_hint: Option<String>,
+    pub example: ExampleLine,
     pub lang: Language,
     pub palette: &'p Palette,
 }
@@ -53,23 +67,28 @@ pub fn target_view<'a>(editor: &TargetEditor, host: &TargetHost<'_>) -> Element<
     if let Some(problem) = editor.name_text_problem {
         name_cell = name_cell.push(kit::error_line(problem.text(lang), palette));
     }
-    column![
+    let example = || example_line(&editor.target, lang, palette);
+    let mut rows = column![
         kit::form_row(
             lang.text(Msg::ReviewListMoveTo),
             folder_cell.into(),
-            None,
+            host.folder_hint
+                .clone()
+                .map(|note| kit::hint(note, palette)),
             palette
         ),
         kit::form_row(
             lang.text(Msg::FilingPiecesFileNameLabel),
             name_cell.into(),
-            None,
+            (host.example == ExampleLine::UnderFileName).then(example),
             palette
         ),
-        example_line(&editor.target, lang, palette),
     ]
-    .spacing(GAP_S)
-    .into()
+    .spacing(GAP_S);
+    if host.example == ExampleLine::Row {
+        rows = rows.push(example());
+    }
+    rows.into()
 }
 
 /// The example path: "Example: " dimmed, the path in monospace.
@@ -100,26 +119,36 @@ fn folder_label(piece: &FolderPiece, lang: Language) -> String {
     .in_words(lang)
 }
 
-/// The folders of a target as one line of monospace text, for the places
-/// that show a target and do not edit it.
-pub fn folder_chips_read_only<'a, M: 'a>(
-    target: &FilingTarget,
-    on_fill: bool,
-    lang: Language,
-    palette: &Palette,
-) -> Element<'a, M> {
-    let words = target
-        .folders
-        .iter()
-        .map(|piece| folder_label(piece, lang))
-        .collect::<Vec<_>>()
-        .join(" / ");
-    let color = if on_fill {
-        palette.cursor_text
-    } else {
-        palette.text
+/// The folders of a target as the parts of a path; the parts that stand for a
+/// field are marked, and `/` separates them.
+pub fn folder_path_parts(target: &FilingTarget, lang: Language) -> Vec<(String, bool)> {
+    let mut parts = Vec::new();
+    for (position, piece) in target.folders.iter().enumerate() {
+        if position > 0 {
+            parts.push((FOLDER_SEPARATOR.to_owned(), false));
+        }
+        let is_field = matches!(piece, FolderPiece::Field(_));
+        parts.push((folder_label(piece, lang), is_field));
+    }
+    parts
+}
+
+/// The file name of a target as the parts of a name, `_` between them.
+pub fn file_name_path_parts(target: &FilingTarget, lang: Language) -> Vec<(String, bool)> {
+    let pieces = match &target.file_name {
+        FileName::Automatic => FileName::automatic_pieces(),
+        FileName::Pieces(pieces) => pieces.clone(),
+        FileName::Own(_) => return vec![(target.file_name_in_words(lang), false)],
     };
-    kit::mono(words, TEXT_SMALL, color)
+    let mut parts = Vec::new();
+    for (position, piece) in pieces.iter().enumerate() {
+        if position > 0 {
+            parts.push((FILE_NAME_SEPARATOR.to_owned(), false));
+        }
+        let is_field = matches!(piece, FileNamePiece::Field(_));
+        parts.push((piece.label(lang).to_owned(), is_field));
+    }
+    parts
 }
 
 fn add_label(lang: Language) -> String {

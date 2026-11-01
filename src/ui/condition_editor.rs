@@ -1,13 +1,14 @@
-//! The rows of a [`ConditionEditor`]: kind, has / has not, value, remove, and
-//! under them the button that adds a condition. The combinator is offered
+//! The rows of a [`ConditionEditor`]: kind, has / has not, value and a cross,
+//! and the link that adds a condition. The combinator is offered
 //! apart by [`combinator_choice`]. The host (the
 //! rule form) lays the rows out in its own row type.
 
-use iced::widget::{container, row};
+use iced::widget::row;
 use iced::{alignment, Element};
 use ncrs_index::{Combinator, Condition, ConditionKind};
 
-use super::kit::{self, Tone};
+use super::hermes_kit::{self as page_kit, MenuItem};
+use super::kit;
 use super::theme::spacing;
 use crate::app::fill_template;
 use crate::condition_editor::{
@@ -32,16 +33,16 @@ pub const CONDITION_VALUE_FIELD_IDS: [&str; MAX_CONDITION_ROWS] = [
     "condition-value-11",
 ];
 
-pub const FIRST_CONDITION_FIELD_ID: &str = "condition-value-0";
+const REMOVE_ICON: &str = "×";
 
 /// The room of the kind dropdown in a row, in pixels.
-const KIND_WIDTH: f32 = 180.0;
+const KIND_WIDTH: f32 = 128.0;
 
 /// The room of the has / has not dropdown in a row, in pixels.
-const NEGATION_WIDTH: f32 = 120.0;
+const NEGATION_WIDTH: f32 = 104.0;
 
-/// A label, what is wrong with the row and the control.
-pub type ConditionRow<'a> = (String, Option<String>, Element<'a, Message>);
+/// What is wrong with the row, and the control.
+pub type ConditionRow<'a> = (Option<String>, Element<'a, Message>);
 
 /// How the rows send their edits and what Enter in a value field does.
 pub struct ConditionHost<'p> {
@@ -55,8 +56,7 @@ pub fn condition_editor_rows<'a>(
     editor: &ConditionEditor,
     host: &ConditionHost<'_>,
 ) -> Vec<ConditionRow<'a>> {
-    let ConditionHost { wrap, lang, .. } = *host;
-    let mut rows: Vec<ConditionRow<'a>> = editor
+    editor
         .rows
         .iter()
         .zip(editor.problems())
@@ -64,30 +64,23 @@ pub fn condition_editor_rows<'a>(
         .enumerate()
         .map(|(index, ((condition, problem), id))| {
             (
-                String::new(),
-                problem.map(|found| problem_text(&found, lang)),
+                problem.map(|found| problem_text(&found, host.lang)),
                 condition_row(editor, index, condition, id, host),
             )
         })
-        .collect();
-    if editor.rows.is_empty() {
-        rows.push((
-            lang.text(Msg::ConditionEditorEmpty).to_owned(),
-            None,
-            container("").into(),
-        ));
-    }
-    rows.push((
-        String::new(),
-        None,
-        kit::button(
-            lang.text(Msg::ConditionEditorAdd),
-            editor.can_add().then(|| wrap(ConditionEdit::Add)),
-            Tone::Secondary,
-            host.palette,
-        ),
-    ));
-    rows
+        .collect()
+}
+
+/// The link under the rows that adds a condition.
+pub fn add_condition_link<'a>(
+    editor: &ConditionEditor,
+    host: &ConditionHost<'_>,
+) -> Element<'a, Message> {
+    page_kit::link(
+        host.lang.text(Msg::ConditionEditorAdd),
+        editor.can_add().then(|| (host.wrap)(ConditionEdit::Add)),
+        host.palette,
+    )
 }
 
 fn condition_row<'a>(
@@ -104,10 +97,10 @@ fn condition_row<'a>(
         palette,
     } = *host;
     let choices = editor.kind_choices(index);
-    let options: Vec<(&str, Message)> = choices
+    let kinds: Vec<MenuItem> = choices
         .iter()
         .map(|&kind| {
-            (
+            MenuItem::new(
                 lang.text(kit::condition_kind_name(kind)),
                 wrap(ConditionEdit::Kind(index, kind)),
             )
@@ -119,7 +112,7 @@ fn condition_row<'a>(
         .unwrap_or_default();
     let on_input = move |typed| wrap(ConditionEdit::Value(index, typed));
     let value_field = if condition.kind == ConditionKind::Regex {
-        kit::mono_text_field(
+        page_kit::mono_text_field(
             "",
             &condition.value,
             id,
@@ -128,7 +121,7 @@ fn condition_row<'a>(
             palette,
         )
     } else {
-        kit::text_field(
+        page_kit::text_field(
             "",
             &condition.value,
             id,
@@ -137,34 +130,36 @@ fn condition_row<'a>(
             palette,
         )
     };
-    let mut cells =
-        row![container(kit::dropdown(&options, selected, true, palette)).width(KIND_WIDTH)]
-            .spacing(spacing::S)
-            .align_y(alignment::Vertical::Center);
+    let mut cells = row![page_kit::dropdown(KIND_WIDTH, &kinds, selected, palette)]
+        .spacing(spacing::S)
+        .align_y(alignment::Vertical::Center);
     if editor.negation {
         let has = [
             (lang.text(Msg::ConditionEditorHas), false),
             (lang.text(Msg::ConditionEditorHasNot), true),
         ];
-        let has_options: Vec<(&str, Message)> = has
+        let operators: Vec<MenuItem> = has
             .iter()
-            .map(|&(label, negated)| (label, wrap(ConditionEdit::Negated(index, negated))))
+            .map(|&(label, negated)| {
+                MenuItem::new(label, wrap(ConditionEdit::Negated(index, negated)))
+            })
             .collect();
         let has_selected = has
             .iter()
             .position(|&(_, negated)| negated == condition.negated)
             .unwrap_or_default();
-        cells = cells.push(
-            container(kit::dropdown(&has_options, has_selected, true, palette))
-                .width(NEGATION_WIDTH),
-        );
+        cells = cells.push(page_kit::dropdown(
+            NEGATION_WIDTH,
+            &operators,
+            has_selected,
+            palette,
+        ));
     }
     cells
         .push(value_field)
-        .push(kit::button(
-            lang.text(Msg::ConditionEditorRemove),
-            Some(wrap(ConditionEdit::Remove(index))),
-            Tone::Secondary,
+        .push(page_kit::icon_button(
+            REMOVE_ICON,
+            wrap(ConditionEdit::Remove(index)),
             palette,
         ))
         .into()
@@ -188,7 +183,7 @@ pub fn combinator_choice<'a>(chosen: Combinator, host: &ConditionHost<'_>) -> El
         .iter()
         .position(|&(_, combinator)| combinator == chosen)
         .unwrap_or_default();
-    kit::segmented(&options, selected, true, host.palette)
+    page_kit::segmented(&options, selected, host.palette)
 }
 
 fn problem_text(problem: &ConditionProblem, lang: Language) -> String {
@@ -199,18 +194,5 @@ fn problem_text(problem: &ConditionProblem, lang: Language) -> String {
             &[("{reason}", reason)],
         ),
         ConditionProblem::InvalidIban => lang.text(Msg::ConditionEditorProblemIban).to_owned(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_first_id_is_the_first_of_the_fixed_ids() {
-        assert_eq!(
-            CONDITION_VALUE_FIELD_IDS.first().copied(),
-            Some(FIRST_CONDITION_FIELD_ID)
-        );
     }
 }

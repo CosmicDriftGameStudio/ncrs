@@ -2804,9 +2804,9 @@
     },
     {
       "key": "rule_suggestions.explain",
-      "context": "Paragraph at the top of the rule suggestions view. Says where the suggestions come from and that none of them does anything before the user confirms it.",
-      "en": "Suggested from how your documents are already filed. A suggestion does nothing until you confirm it. Example: if you filed several invoices of one sender into the same folder, ncrs suggests a rule for them.",
-      "de": "Vorgeschlagen aus der bisherigen Ablage deiner Dokumente. Ein Vorschlag bewirkt nichts, bevor du ihn bestätigst. Beispiel: Hast du mehrere Rechnungen eines Absenders im selben Ordner abgelegt, schlägt ncrs dafür eine Regel vor."
+      "context": "Explanation in the header of the rule suggestions page. Says where the suggestions come from and that none of them does anything before the user confirms it.",
+      "en": "Suggested from how your documents are already filed. A suggestion does nothing until you confirm it.",
+      "de": "Vorgeschlagen aus der bisherigen Ablage deiner Dokumente. Ein Vorschlag bewirkt nichts, bevor du ihn bestätigst."
     },
     {
       "key": "rule_suggestions.analysing",
@@ -2917,12 +2917,6 @@
       "de": "Das hat nicht geklappt ({detail})."
     },
     {
-      "key": "rule_suggestions.close",
-      "context": "Button in the rule suggestions view: closes it.",
-      "en": "Close",
-      "de": "Schließen"
-    },
-    {
       "key": "rule_suggestions.reanalyse",
       "context": "Button in the rule suggestions view: reads the document folders again and refreshes the suggestions.",
       "en": "Analyse again",
@@ -2947,10 +2941,22 @@
       "de": "Bestätigen"
     },
     {
+      "key": "rule_suggestions.note",
+      "context": "Note at the left of the action bar of the rule suggestions page: a suggestion has no effect until the user confirms it.",
+      "en": "A suggestion does nothing until you confirm it.",
+      "de": "Ein Vorschlag bewirkt nichts, bevor du ihn bestätigst."
+    },
+    {
+      "key": "rule_suggestions.share",
+      "context": "Figure at the right of a row in the rule suggestions list: how many of the documents that fit the suggestion's condition lie in the folder. {matching} and {total} are numbers.",
+      "en": "{matching} of {total}",
+      "de": "{matching} von {total}"
+    },
+    {
       "key": "action.reorganisation_plan",
       "context": "Entry of the command list and the menu that runs the key action reorganisation_plan, which opens the view with the plan for tidying the document folders. The plain name of what the action does, as short as a menu entry; the key bound to it is shown beside it.",
-      "en": "Reorganisation plan",
-      "de": "Umräumplan"
+      "en": "Sort again",
+      "de": "Neu sortieren"
     },
     {
       "key": "action.reorganisation_plan.theme",
@@ -2996,9 +3002,9 @@
     },
     {
       "key": "reorganisation_plan.explain",
-      "context": "Paragraph at the top of the reorganisation plan view. Says in one sentence what the view is for, gives an example of what it finds, and says that nothing is moved before the user runs the selected steps.",
-      "en": "Reorganize checks the folders you already filed into and proposes moves and renames, for example an invoice dated 2025 that sits in the 2026 folder. Nothing is moved until you run the selected steps.",
-      "de": "Umräumen prüft die Ordner, in die du schon abgelegt hast, und schlägt Verschiebungen und Umbenennungen vor, etwa eine Rechnung von 2025, die im Ordner 2026 liegt. Nichts wird verschoben, bevor du die ausgewählten Schritte ausführst."
+      "context": "Paragraph in the header of the page for sorting the document folders again. Says in two sentences what the page is for and that nothing is moved before the user runs the selected steps.",
+      "en": "Checks the folders you already filed into and suggests moves and renames. Nothing moves before you run the selected steps.",
+      "de": "Prüft die Ordner, in die du schon abgelegt hast, und schlägt Verschiebungen und Umbenennungen vor. Nichts wird verschoben, bevor du die ausgewählten Schritte ausführst."
     },
     {
       "key": "reorganisation_plan.planning",
@@ -3065,6 +3071,24 @@
       "context": "Column heading in the reorganisation plan view above the plain-text reason for each proposal.",
       "en": "Why",
       "de": "Grund"
+    },
+    {
+      "key": "reorganisation_plan.action_move",
+      "context": "Figure at the right of an entry of the plan for sorting again: the entry moves to another folder.",
+      "en": "move",
+      "de": "verschieben"
+    },
+    {
+      "key": "reorganisation_plan.action_rename",
+      "context": "Figure at the right of an entry of the plan for sorting again: the entry keeps its folder and gets another name.",
+      "en": "rename",
+      "de": "umbenennen"
+    },
+    {
+      "key": "reorganisation_plan.cannot_run",
+      "context": "Last part of the sentence in the action bar of the plan for sorting again, after how many entries are selected: how many entries cannot be run. {count} is a number.",
+      "en": "{count} cannot run",
+      "de": "{count} nicht ausführbar"
     },
     {
       "key": "reorganisation_plan.reason_duplicate",
@@ -3199,34 +3223,10 @@
       "de": "Vorschlag anzeigen"
     },
     {
-      "key": "reorganisation_plan.before",
-      "context": "Heading of the tree in the reorganisation plan view that shows the folders and files affected by the selected entries as they are now.",
-      "en": "Before",
-      "de": "Vorher"
-    },
-    {
-      "key": "reorganisation_plan.after",
-      "context": "Heading of the tree in the reorganisation plan view that shows the folders and files affected by the selected entries as they would be after running them.",
-      "en": "After",
-      "de": "Nachher"
-    },
-    {
-      "key": "reorganisation_plan.tree_empty",
-      "context": "Line under a tree heading in the reorganisation plan view when no entry is selected, so there is nothing to show.",
-      "en": "Nothing selected.",
-      "de": "Nichts ausgewählt."
-    },
-    {
       "key": "reorganisation_plan.problem_failed",
       "context": "Line in the reorganisation plan view when the plan could not be worked out. Takes the technical detail, which stays English.",
       "en": "The plan could not be made ({detail}).",
       "de": "Der Plan konnte nicht erstellt werden ({detail})."
-    },
-    {
-      "key": "reorganisation_plan.close",
-      "context": "Button in the reorganisation plan view: closes the view without running anything.",
-      "en": "Close",
-      "de": "Schließen"
     },
     {
       "key": "reorganisation_plan.replan",
@@ -3239,12 +3239,6 @@
       "context": "Button in the reorganisation plan view: hands the selected entries over to be carried out. Disabled while no entry is selected.",
       "en": "Run selected",
       "de": "Ausgewählte ausführen"
-    },
-    {
-      "key": "reorganisation_plan.tree_more",
-      "context": "Last line under a tree of the reorganisation plan view when the tree has more lines than fit. Takes the number of lines left out.",
-      "en": "… {count} more",
-      "de": "… {count} weitere"
     },
     {
       "key": "action.download_ai_model",
@@ -3464,9 +3458,21 @@
     },
     {
       "key": "review_list.explain",
-      "context": "Line at the top of the review list explaining what the list holds.",
-      "en": "Documents that no confirmed rule could file. Nothing is filed before you confirm. Example: an invoice from a sender without a rule waits here until you have checked its fields.",
-      "de": "Dokumente, die keine bestätigte Regel ablegen konnte. Nichts wird abgelegt, bevor du bestätigst. Beispiel: Die Rechnung eines Absenders ohne Regel wartet hier, bis du ihre Felder geprüft hast."
+      "context": "Explanation in the header of the review page: what the list holds and that nothing is filed before the user confirms.",
+      "en": "Documents that no confirmed rule could file. Nothing is filed before you confirm.",
+      "de": "Dokumente, die keine bestätigte Regel ablegen konnte. Nichts wird abgelegt, bevor du bestätigst."
+    },
+    {
+      "key": "review_list.note",
+      "context": "Note at the left of the action bar of the review page: nothing is filed before the user confirms.",
+      "en": "Nothing is filed before you confirm.",
+      "de": "Nichts wird abgelegt, bevor du bestätigst."
+    },
+    {
+      "key": "review_list.section_filing",
+      "context": "Title of the group of rows of the review page that say where the document goes and how it is named. One word.",
+      "en": "Filing",
+      "de": "Ablage"
     },
     {
       "key": "review_list.no_rules_hint",
@@ -3485,36 +3491,6 @@
       "context": "Shown in the review list when no document waits. Says when entries appear.",
       "en": "Nothing to review. Documents land here when ncrs cannot file them itself: without readable text or without a matching rule.",
       "de": "Nichts zu prüfen. Hier landen Dokumente, die ncrs nicht selbst ablegen kann: ohne lesbaren Text oder ohne passende Regel."
-    },
-    {
-      "key": "review_list.column_file",
-      "context": "Column header of the review list: file name.",
-      "en": "File",
-      "de": "Datei"
-    },
-    {
-      "key": "review_list.column_reason",
-      "context": "Column header of the review list: why the document is here.",
-      "en": "Reason",
-      "de": "Grund"
-    },
-    {
-      "key": "review_list.column_sender",
-      "context": "Column header of the review list: sender.",
-      "en": "Sender",
-      "de": "Absender"
-    },
-    {
-      "key": "review_list.column_kind",
-      "context": "Column header of the review list: kind of document.",
-      "en": "Kind",
-      "de": "Art"
-    },
-    {
-      "key": "review_list.column_date",
-      "context": "Column header of the review list: document date.",
-      "en": "Date",
-      "de": "Datum"
     },
     {
       "key": "review_list.reason_no_rule",
@@ -3569,60 +3545,6 @@
       "context": "Review reason in the review list: a field was read with low confidence. Takes the field name.",
       "en": "{field} uncertain",
       "de": "{field} unsicher"
-    },
-    {
-      "key": "review_list.chip_no_rule",
-      "context": "Short label (chip) of the review reason: no rule matched the document. One or two words.",
-      "en": "No rule",
-      "de": "Keine Regel"
-    },
-    {
-      "key": "review_list.chip_no_text",
-      "context": "Short label (chip) of the review reason: no text could be read from the document.",
-      "en": "No text",
-      "de": "Kein Text"
-    },
-    {
-      "key": "review_list.chip_image_no_text",
-      "context": "Short label (chip) of the review reason: the document is an image that is not read for text.",
-      "en": "Image without text",
-      "de": "Bild ohne Text"
-    },
-    {
-      "key": "review_list.chip_default_pattern",
-      "context": "Short label (chip) of the review reason: the pattern is the default one, not one from a rule.",
-      "en": "Default target",
-      "de": "Standardziel"
-    },
-    {
-      "key": "review_list.chip_nothing_recognised",
-      "context": "Short label (chip) of the review reason: no rule matches and no field was recognised.",
-      "en": "Nothing recognised",
-      "de": "Nichts erkannt"
-    },
-    {
-      "key": "review_list.chip_unconfirmed",
-      "context": "Short label (chip) of the review reason: a rule matched but is not confirmed yet.",
-      "en": "Unconfirmed rule",
-      "de": "Regel unbestätigt"
-    },
-    {
-      "key": "review_list.chip_target_exists",
-      "context": "Short label (chip) of the review reason: a file with the target name already exists.",
-      "en": "Target exists",
-      "de": "Ziel existiert"
-    },
-    {
-      "key": "review_list.chip_missing_field",
-      "context": "Short label (chip) of the review reason: a field could not be read. Takes the field name.",
-      "en": "Missing: {field}",
-      "de": "Fehlt: {field}"
-    },
-    {
-      "key": "review_list.chip_low_confidence",
-      "context": "Short label (chip) of the review reason: a field was read with low confidence. Takes the field name.",
-      "en": "Low confidence: {field}",
-      "de": "Unsicher: {field}"
     },
     {
       "key": "document_preview.loading",
@@ -3727,24 +3649,6 @@
       "de": "Schlagworte"
     },
     {
-      "key": "review_list.tags_automatic",
-      "context": "Label of the row of automatic tags in the tags block of the review list form; the tags come from the fields and cannot be removed here.",
-      "en": "automatic",
-      "de": "automatisch"
-    },
-    {
-      "key": "review_list.tags_own",
-      "context": "Label of the row of the tags the user added in the tags block of the review list form.",
-      "en": "added by you",
-      "de": "von dir"
-    },
-    {
-      "key": "review_list.tags_none",
-      "context": "Dimmed text in a row of the tags block of the review list form when the row has no tags.",
-      "en": "none",
-      "de": "keine"
-    },
-    {
       "key": "review_list.tags_add",
       "context": "Placeholder of the field in the review list form where a new tag is typed; Enter adds it.",
       "en": "Add tag",
@@ -3767,30 +3671,6 @@
       "context": "Description under the amount field of the review list.",
       "en": "For example 12.34 EUR",
       "de": "Zum Beispiel 12,34 EUR"
-    },
-    {
-      "key": "review_list.group_who",
-      "context": "Small heading in the review list form above the field about who sent the document.",
-      "en": "Who",
-      "de": "Wer"
-    },
-    {
-      "key": "review_list.group_what",
-      "context": "Small heading in the review list form above the fields about what the document is: kind, number, amount, tags.",
-      "en": "What",
-      "de": "Was"
-    },
-    {
-      "key": "review_list.group_when",
-      "context": "Small heading in the review list form above the field about when the document is dated.",
-      "en": "When",
-      "de": "Wann"
-    },
-    {
-      "key": "review_list.group_where",
-      "context": "Small heading in the review list form above the fields about where the document is filed: the filing pattern.",
-      "en": "Where",
-      "de": "Wo"
     },
     {
       "key": "review_list.origin_rule",
@@ -3881,12 +3761,6 @@
       "context": "Problem in the review list. Takes the error detail.",
       "en": "Failed: {detail}",
       "de": "Fehlgeschlagen: {detail}"
-    },
-    {
-      "key": "review_list.close",
-      "context": "Button in the review list: closes it.",
-      "en": "Close",
-      "de": "Schließen"
     },
     {
       "key": "review_list.create_rule",
@@ -6301,7 +6175,7 @@
       "de": "Konnte nicht geladen werden: {reason}"
     },
     {
-      "key": "hermes_overview.tile_review_button",
+      "key": "hermes_overview.check_reviews",
       "context": "Primary button in the action bar of the Hermes overview; it opens the list of documents that wait for the user. Its label must differ from the sidebar entry Review.",
       "en": "Check",
       "de": "Prüfen"
@@ -6931,12 +6805,6 @@
       "de": "Bedingung hinzufügen"
     },
     {
-      "key": "condition_editor.remove",
-      "context": "Button at the end of a condition in the condition editor: removes that condition.",
-      "en": "Remove",
-      "de": "Entfernen"
-    },
-    {
       "key": "condition_editor.problem_empty",
       "context": "Error line under a condition in the condition editor when its value is empty and the user tried to save.",
       "en": "Enter a value.",
@@ -6985,24 +6853,6 @@
       "de": "Noch keine Regeln. Lege mit „Neue Regel“ eine an, oder lass Regeln aus Vorschlägen und beim Ablegen in der Prüfliste entstehen."
     },
     {
-      "key": "rules.column_rule",
-      "context": "Title of the column with the rule sentences in the list on the rules page.",
-      "en": "Rule",
-      "de": "Regel"
-    },
-    {
-      "key": "rules.column_origin",
-      "context": "Title of the column on the rules page that says how a rule came to be.",
-      "en": "Origin",
-      "de": "Herkunft"
-    },
-    {
-      "key": "rules.column_hits",
-      "context": "Title of the column on the rules page with the number of documents a rule has filed.",
-      "en": "Hits",
-      "de": "Treffer"
-    },
-    {
       "key": "rules.rule_if",
       "context": "Start of a rule sentence on the rules page. Takes the conditions of the rule, joined, and what the rule does with a matching document after the arrow.",
       "en": "If {conditions} → {target}",
@@ -7013,12 +6863,6 @@
       "context": "One tag a rule sets, inside the rule sentence on the rules page (also in the question before a rule is deleted). {tag} is the tag as the user wrote it; the quotes are the quotation marks of the language.",
       "en": "“{tag}”",
       "de": "„{tag}“"
-    },
-    {
-      "key": "rules.card_if",
-      "context": "First word of the conditions of a rule in the rules list, before the condition chips.",
-      "en": "If",
-      "de": "Wenn"
     },
     {
       "key": "rules.joiner_all",
@@ -7189,12 +7033,6 @@
       "de": "löschen"
     },
     {
-      "key": "rules.close",
-      "context": "Button of the rules page: leaves the page.",
-      "en": "Close",
-      "de": "Schließen"
-    },
-    {
       "key": "rules.move_up",
       "context": "Button of the rules page: moves the selected rule one place up, so it applies earlier.",
       "en": "Move up",
@@ -7243,10 +7081,22 @@
       "de": "Neue Regel"
     },
     {
-      "key": "rules.edit",
-      "context": "Button of the rules page: opens the form to change the selected rule.",
-      "en": "Edit",
-      "de": "Bearbeiten"
+      "key": "rules.off",
+      "context": "Right figure of a switched-off rule in the rules list, where the hits stand otherwise.",
+      "en": "off",
+      "de": "aus"
+    },
+    {
+      "key": "rules.try_back",
+      "context": "Link over the documents of the try on the rules page: back to the form of the rule.",
+      "en": "Back to the rule",
+      "de": "Zurück zur Regel"
+    },
+    {
+      "key": "rules.try_show_list",
+      "context": "Link in the action bar of the rules page after the sentence that counts the documents of the try: shows them.",
+      "en": "Show list",
+      "de": "Liste ansehen"
     },
     {
       "key": "rules.hint_new",
@@ -7255,34 +7105,16 @@
       "de": "neu"
     },
     {
-      "key": "rules.hint_edit",
-      "context": "Verb next to the Enter key in the footer of the rules page: opens the form to change the selected rule.",
-      "en": "edit",
-      "de": "bearbeiten"
-    },
-    {
       "key": "rules.form_title_new",
       "context": "Title of the rules page while the form for a new rule is open.",
       "en": "New rule",
       "de": "Neue Regel"
     },
     {
-      "key": "rules.form_title_edit",
-      "context": "Title of the rules page while the form to change a rule is open.",
-      "en": "Edit rule",
-      "de": "Regel bearbeiten"
-    },
-    {
       "key": "rules.form_title_confirm",
       "context": "Title of the rules page while the form of a suggested rule is open, before it is confirmed.",
       "en": "Confirm suggested rule",
       "de": "Vorgeschlagene Regel bestätigen"
-    },
-    {
-      "key": "rules.form_purpose",
-      "context": "Paragraph at the top of the rule form: what the parts of a rule are, and that nothing is stored before Save.",
-      "en": "Conditions say which documents the rule is for; the rest says how ncrs files them. Nothing is stored before you save.",
-      "de": "Die Bedingungen legen fest, für welche Dokumente die Regel gilt; der Rest sagt, wie ncrs sie ablegt. Gespeichert wird erst mit „Speichern“."
     },
     {
       "key": "rules.form_save",
@@ -7385,18 +7217,6 @@
       "context": "Sentence at the top of the preview step of the review list, which lists documents with where they stand now and where the current rules would put them.",
       "en": "With the current rules these documents would be filed. Nothing moves before you confirm.",
       "de": "Mit den aktuellen Regeln würden diese Dokumente abgelegt. Es wird nichts verschoben, bevor du bestätigst."
-    },
-    {
-      "key": "review_list.replan_column_now",
-      "context": "Column header in the preview step of the review list: why the document is in review now, or that it is not.",
-      "en": "Now",
-      "de": "Jetzt"
-    },
-    {
-      "key": "review_list.replan_column_after",
-      "context": "Column header in the preview step of the review list: where the current rules would put the document.",
-      "en": "After",
-      "de": "Danach"
     },
     {
       "key": "review_list.replan_now_none",
@@ -7819,12 +7639,6 @@
       "de": "oder nicht"
     },
     {
-      "key": "rules.hint_two_rules",
-      "context": "Line under the rules list: how to express a or-group with a shared target.",
-      "en": "For “a and b, or c”: create two rules with the same target.",
-      "de": "Für „a und b, oder c“: zwei Regeln mit demselben Ziel anlegen."
-    },
-    {
       "key": "rules.form_name",
       "context": "Label of the optional name field of the rule form.",
       "en": "Name",
@@ -7835,12 +7649,6 @@
       "context": "Heading of the part of the rule form that says what happens to matching documents.",
       "en": "Then",
       "de": "Dann"
-    },
-    {
-      "key": "rules.form_move_to",
-      "context": "Label of the filing target in the rule form.",
-      "en": "Move to",
-      "de": "Verschieben nach"
     },
     {
       "key": "rules.form_tags",
@@ -7867,28 +7675,10 @@
       "de": "Verschieben nach"
     },
     {
-      "key": "review_list.change_target",
-      "context": "Button beside the filing target in the review list form: turns it into the widget that edits it.",
-      "en": "Change …",
-      "de": "Ändern …"
-    },
-    {
       "key": "review_list.origin_default_target",
       "context": "Dim note beside Move to in the review list: the target comes from the default target.",
       "en": "Default target",
       "de": "Standardziel"
-    },
-    {
-      "key": "review_list.source_default",
-      "context": "Dim line under the preview in the review list. Takes the target in words.",
-      "en": "From the default target “{target}”. Change it under “Move to”.",
-      "de": "Aus dem Standardziel „{target}“. Ändern unter „Verschieben nach“."
-    },
-    {
-      "key": "review_list.source_rule",
-      "context": "Dim line under the preview in the review list: the target comes from a rule.",
-      "en": "From a rule. Changing it here only affects this document.",
-      "de": "Aus einer Regel. Eine Änderung hier gilt nur für dieses Dokument."
     },
     {
       "key": "document_search.facet_recipient",
@@ -8039,6 +7829,12 @@
       "context": "Word behind the Space key in the status line of a filing page: Space checks or unchecks the row under the cursor.",
       "en": "Check",
       "de": "Auswählen"
+    },
+    {
+      "key": "hermes_kit.hint_view",
+      "context": "Word behind the F3 key in the status line of the review page: F3 shows the page of the document.",
+      "en": "View",
+      "de": "Ansehen"
     },
     {
       "key": "hermes_kit.key_space",

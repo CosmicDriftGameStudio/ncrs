@@ -28,7 +28,7 @@ pub enum Matches {
 }
 
 /// Most suggestions of the list shown at once; the list follows the cursor.
-pub const VISIBLE_ROWS: usize = 8;
+pub const VISIBLE_ROWS: usize = 12;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuleSuggestions {

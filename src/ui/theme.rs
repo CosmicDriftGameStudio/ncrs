@@ -34,8 +34,6 @@ pub mod spacing {
     pub const LINE_GAP: f32 = 6.0;
     /// Room before the heading of a section.
     pub const SECTION_LEAD: f32 = L;
-    /// What a nested level of a list steps in.
-    pub const INDENT: f32 = 18.0;
 }
 
 /// Heights and widths of the dialog parts, in pixels.

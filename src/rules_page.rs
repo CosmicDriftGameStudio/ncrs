@@ -14,11 +14,11 @@ use crate::filing_pieces::FilingTarget;
 use crate::i18n::{Language, Msg};
 use crate::list_window::ListWindow;
 use crate::messages::HermesPage;
-use crate::rule_form::{RuleForm, RuleSave};
+use crate::rule_form::{RuleForm, RuleFormTarget, RuleSave};
 use crate::rules_work::{ListedRule, RuleChange, RulesLoad};
 
 /// Most rules of the list shown at once; the list follows the cursor.
-pub const VISIBLE_ROWS: usize = 6;
+pub const VISIBLE_ROWS: usize = 12;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RulesPage {
@@ -30,8 +30,12 @@ pub struct RulesPage {
     confirming_delete: bool,
     /// The work on the index failed; the technical detail stays English.
     problem: Option<String>,
-    /// While it is open it replaces the list, and the list takes no keys.
+    /// The form of the selected rule, or of a rule that is not listed yet.
     form: Option<RuleForm>,
+    /// The keys go to the fields of the form, not to the list.
+    editing: bool,
+    /// The documents of the try fill the detail instead of the form.
+    try_list_open: bool,
     /// The page the form was opened from; the card goes back to it when the
     /// form is saved or cancelled.
     return_to: Option<HermesPage>,
@@ -51,6 +55,8 @@ impl RulesPage {
             confirming_delete: false,
             problem: None,
             form: None,
+            editing: false,
+            try_list_open: false,
             return_to: None,
             select_on_load: None,
             kinds: Arc::default(),
@@ -107,9 +113,54 @@ impl RulesPage {
         self.form.as_mut()
     }
 
-    /// The list takes no change while a change runs or the form is up.
+    pub fn is_editing(&self) -> bool {
+        self.editing
+    }
+
+    /// The keys go to the fields.
+    pub fn start_editing(&mut self) {
+        self.editing = self.form.is_some();
+    }
+
+    /// The keys go to the list again; whether they went to the fields.
+    pub fn stop_editing(&mut self) -> bool {
+        std::mem::take(&mut self.editing)
+    }
+
+    pub fn is_try_list_open(&self) -> bool {
+        self.try_list_open
+    }
+
+    pub fn toggle_try_list(&mut self) {
+        self.try_list_open = self.form.is_some() && !self.try_list_open;
+    }
+
+    /// Whether the form is for a rule that is not in the list.
+    pub fn has_unlisted_form(&self) -> bool {
+        self.form.as_ref().is_some_and(|form| {
+            matches!(
+                form.target,
+                RuleFormTarget::New
+                    | RuleFormTarget::FromDocument
+                    | RuleFormTarget::FromSuggestion(_)
+            )
+        })
+    }
+
+    /// The list takes no change while a change runs.
     fn list_is_locked(&self) -> bool {
-        self.busy || self.form.is_some()
+        self.busy
+    }
+
+    /// Shows the form of the rule under the cursor and drops what was typed.
+    fn show_selected(&mut self) {
+        self.return_to = None;
+        self.editing = false;
+        self.try_list_open = false;
+        self.form = self
+            .rows
+            .get(self.cursor)
+            .map(|listed| RuleForm::edit(&listed.rule));
     }
 
     /// Opens the form for a new rule.
@@ -120,6 +171,8 @@ impl RulesPage {
         self.confirming_delete = false;
         self.problem = None;
         self.return_to = None;
+        self.try_list_open = false;
+        self.editing = true;
         self.form = Some(RuleForm::new());
     }
 
@@ -128,27 +181,30 @@ impl RulesPage {
         self.confirming_delete = false;
         self.problem = None;
         self.return_to = return_to;
+        self.try_list_open = false;
+        self.editing = true;
         self.form = Some(form);
     }
 
-    /// Opens the form for the rule under the cursor.
+    /// Enter in the list: the keys go to the fields of the selected rule.
     pub fn begin_edit(&mut self) {
         if self.list_is_locked() {
             return;
         }
-        let Some(listed) = self.rows.get(self.cursor) else {
-            return;
-        };
-        let form = RuleForm::edit(&listed.rule);
-        self.confirming_delete = false;
-        self.problem = None;
-        self.return_to = None;
-        self.form = Some(form);
+        if self.form.is_none() {
+            self.show_selected();
+        }
+        self.start_editing();
     }
 
-    /// Closes the form without saving; whether there was one.
+    /// Drops what was typed and shows the selected rule again; whether there
+    /// was a form.
     pub fn cancel_form(&mut self) -> bool {
-        self.form.take().is_some()
+        let had_form = self.form.is_some();
+        let back = self.return_to.take();
+        self.show_selected();
+        self.return_to = back;
+        had_form
     }
 
     /// The write the form asks for, once and only while it is valid.
@@ -160,6 +216,8 @@ impl RulesPage {
     /// or goes back to the page the form came from.
     pub fn saved(&mut self) -> Option<HermesPage> {
         self.form = None;
+        self.editing = false;
+        self.try_list_open = false;
         self.busy = true;
         self.return_to.take()
     }
@@ -188,6 +246,9 @@ impl RulesPage {
         self.rows = load.rules;
         self.window
             .ensure_visible(self.cursor, self.rows.len(), VISIBLE_ROWS);
+        if !self.has_unlisted_form() {
+            self.show_selected();
+        }
         self.busy = false;
         self.confirming_delete = false;
         self.problem = None;
@@ -206,17 +267,19 @@ impl RulesPage {
 
     /// The wheel moves the window; the cursor follows it when it would leave.
     pub fn scroll(&mut self, delta: ScrollDelta) {
-        if self.form.is_some() {
-            return;
-        }
         let mut cursor = self.cursor;
         self.window
             .scroll(delta, self.rows.len(), VISIBLE_ROWS, &mut cursor);
         self.select(cursor);
     }
 
+    /// Selecting another rule drops what was typed into the form of the one
+    /// before; so does selecting the rule of a form that is not listed yet.
     pub fn select(&mut self, index: usize) {
-        if self.list_is_locked() || index >= self.rows.len() || index == self.cursor {
+        if self.list_is_locked() || index >= self.rows.len() {
+            return;
+        }
+        if index == self.cursor && !self.has_unlisted_form() {
             return;
         }
         self.cursor = index;
@@ -224,6 +287,7 @@ impl RulesPage {
             .ensure_visible(index, self.rows.len(), VISIBLE_ROWS);
         self.confirming_delete = false;
         self.problem = None;
+        self.show_selected();
     }
 
     /// Flips the switch of the rule at `index` and returns the change to make.
@@ -659,21 +723,57 @@ pub mod tests {
     }
 
     #[test]
-    fn while_the_form_is_open_the_list_takes_no_change() {
+    fn selecting_a_rule_drops_a_new_form_and_shows_the_form_of_the_rule() {
         let mut page = page();
         page.begin_new();
+        assert!(page.has_unlisted_form());
+
+        page.select(0);
+
+        assert!(!page.has_unlisted_form());
+        assert_eq!(page.cursor(), 0);
+        assert!(!page.is_editing());
+        assert!(matches!(
+            page.form().unwrap().target,
+            crate::rule_form::RuleFormTarget::Edit(_)
+        ));
+        page.begin_new();
+        page.move_cursor(1);
+        assert_eq!(page.cursor(), 1);
+        assert!(!page.has_unlisted_form());
+    }
+
+    #[test]
+    fn while_a_change_runs_the_list_takes_no_change() {
+        let mut page = page();
+        assert!(page.begin_toggle(0).is_some());
 
         page.move_cursor(1);
         page.select(2);
         page.ask_delete();
+        page.begin_new();
 
         assert_eq!(page.cursor(), 0);
         assert!(!page.is_confirming_delete());
+        assert!(!page.has_unlisted_form());
         assert_eq!(page.begin_toggle(0), None);
         assert_eq!(page.begin_move(1), None);
+    }
+
+    #[test]
+    fn a_form_that_was_typed_into_is_changed_until_cancelled() {
+        let mut page = page();
+        assert!(!page.form().unwrap().is_changed());
+
+        page.form_mut()
+            .unwrap()
+            .update(crate::messages::RuleFormMessage::Name(
+                "Contract".to_owned(),
+            ));
+        assert!(page.form().unwrap().is_changed());
+
         assert!(page.cancel_form());
-        assert!(!page.cancel_form());
-        assert!(page.begin_toggle(0).is_some());
+        assert!(!page.form().unwrap().is_changed());
     }
 
     #[test]
@@ -702,7 +802,7 @@ pub mod tests {
         page.saved();
         page.loaded(access.load().unwrap());
 
-        assert!(page.form().is_none());
+        assert!(!page.has_unlisted_form());
         let sentence = rule_sentence(
             &page.selected().unwrap().rule.spec,
             Language::English,

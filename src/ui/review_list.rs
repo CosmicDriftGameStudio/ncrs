@@ -1,6 +1,6 @@
-//! The review list: the documents no confirmed rule could file, each with the
-//! reason and the fields, and a form to change the fields before the document
-//! is filed. A page of the Hermes card. Pure view over [`ReviewList`].
+//! The review page, a tab: the documents no confirmed rule could file, each
+//! with the reason, and right of the list the fields of the selected one to
+//! change before it is filed. Pure view over [`ReviewList`].
 //!
 //! The text of a document never shows up here as anything but a value in a
 //! field the user can read and change.
@@ -8,26 +8,22 @@
 use std::ops::Range;
 use std::path::Path;
 
-use iced::widget::text::Wrapping;
-use iced::widget::{column, container, rich_text, row, text, Row, Space};
-use iced::{alignment, Element, Length, Size};
+use iced::widget::{column, container, Column, Row};
+use iced::{alignment, Element};
 use ncrs_index::{DocumentFields, Field, FieldOrigin, ReviewReason};
 use ncrs_intake::{PatternPart, PatternSource};
 
 use super::document_preview;
-use super::filing_pieces::{folder_chips_read_only, target_view, TargetHost};
+use super::filing_pieces::{target_view, ExampleLine, TargetHost};
 use super::format;
-use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::hermes::{self, Badges};
-use super::kit::{self, dim, error_line, paragraph, Columns, Tone};
-use super::picker::highlight_spans;
-use super::theme::{font_size, size, spacing};
+use super::hermes_kit::{self as page_kit, ChipKind, MenuItem, MenuLook, RowTwo};
+use super::kit;
 use crate::app::fill_template;
-use crate::filing_pieces::FilingTarget;
 use crate::filing_setup::shown_path;
 use crate::filing_work::target_of;
 use crate::i18n::{FuturamaName, Language, Msg};
-use crate::messages::{HermesFocus, HermesPage, Message, ReviewListMessage};
+use crate::messages::{HermesPage, Message, ReviewListMessage};
 use crate::palette::Palette;
 use crate::replan_work::{ReplanAfter, ReplanItem};
 use crate::review_list::{
@@ -41,30 +37,19 @@ const KIND_ID: &str = "review-kind";
 const DATE_ID: &str = "review-date";
 const NUMBER_ID: &str = "review-number";
 const AMOUNT_ID: &str = "review-amount";
-const TAG_INPUT_ID: &str = "review-tag-input";
+pub const TAG_INPUT_ID: &str = "review-tag-input";
 pub const FOLDER_NAME_FIELD_ID: &str = "review-folder-name";
 
-/// The room for "automatic" and "added by you" before the chips.
-const TAG_ROW_LABEL_WIDTH: f32 = 96.0;
-
-const SIZE: DialogSize = DialogSize::Card;
-
-/// How the width of a row of the list is shared: file, reason.
-const PORTIONS: [u16; 2] = [4, 5];
-
-/// How the room below the explanation is shared: the list, then the preview
-/// and the form.
-const LIST_PORTION: u16 = 2;
-const DETAIL_PORTION: u16 = 3;
-
-/// What the lines above the list take of the page, to size the split below
-/// them: the explanation, which may wrap; the warning; the problem line.
-const EXPLAIN_HEIGHT: f32 = 44.0;
-const HINT_HEIGHT: f32 = 36.0;
-const PROBLEM_HEIGHT: f32 = 20.0;
-
-/// The split never gets smaller than this; the page scrolls instead.
-const MIN_SPLIT_HEIGHT: f32 = 480.0;
+/// What fits a line of the list, in characters.
+const NAME_CHARS: usize = 30;
+const REASON_CHARS: usize = 38;
+/// What fits beside the thumbnail and in a line of the preview, in characters.
+const HEAD_NAME_CHARS: usize = 56;
+const REPLAN_LINE_CHARS: usize = 84;
+const NOTE_PATH_CHARS: usize = 60;
+const CONTROL_WIDTH: f32 = 240.0;
+/// Most rows of the preview shown; the count line covers all of them.
+const REPLAN_VISIBLE_ROWS: usize = 12;
 
 fn send(message: ReviewListMessage) -> Message {
     Message::ReviewList(message)
@@ -93,105 +78,119 @@ pub struct PreviewRoot<'a> {
 
 pub fn view<'a>(
     state: &'a ReviewList,
-    window: Size,
     badges: Badges,
     guide: FieldGuide,
     root: PreviewRoot<'_>,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let line_chars = frame::content_chars(SIZE, window, frame::SIDEBAR_ROOM);
-    let mut body = column![].spacing(spacing::LINE_GAP);
-    if let Some(step) = state.replan() {
-        body = body.push(replan_section(step, line_chars, lang, palette));
-        if let Some(problem) = state.problem() {
-            body = body.push(error_line(problem_text(problem, lang), palette));
-        }
-        return finish(state, body, window, badges, guide, lang, palette);
-    }
-    body = body.push(paragraph(lang.text(Msg::ReviewListExplain), palette));
-    if guide.explains_empty_fields() {
-        body = body.push(kit::warning_box(
-            lang.text(Msg::ReviewListNoRulesHint),
-            palette,
-        ));
-    }
-
-    if state.rows().is_empty() {
-        body = body.push(dim(
-            lang.text(if state.is_busy() {
-                Msg::ReviewListLoading
-            } else {
-                Msg::ReviewListEmpty
-            }),
-            palette,
-        ));
+    let body: Element<'a, Message> = if let Some(step) = state.replan() {
+        replan_body(state, step, lang, palette)
+    } else if state.rows().is_empty() {
+        let sentence = if state.is_busy() {
+            Msg::ReviewListLoading
+        } else {
+            Msg::ReviewListEmpty
+        };
+        page_kit::centered_note(page_kit::hint(lang.text(sentence), palette))
     } else {
-        let above = EXPLAIN_HEIGHT
-            + if guide.explains_empty_fields() {
-                HINT_HEIGHT
-            } else {
-                0.0
-            }
-            + if state.problem().is_some() {
-                PROBLEM_HEIGHT
-            } else {
-                0.0
-            };
-        let height =
-            (frame::content_height(SIZE, window) - above - spacing::LINE_GAP).max(MIN_SPLIT_HEIGHT);
-        body = body.push(split(
-            state,
-            root,
-            height,
-            line_chars,
-            badges.focus,
-            lang,
-            palette,
-        ));
-    }
-    if let Some(problem) = state.problem() {
-        body = body.push(error_line(problem_text(problem, lang), palette));
-    }
-    finish(state, body, window, badges, guide, lang, palette)
+        page_kit::list_and_detail(
+            list(state, lang, palette),
+            detail(state, guide, root, lang, palette),
+        )
+    };
+    page_kit::tab_page(
+        hermes::tab_nav(HermesPage::Review, badges, lang, palette),
+        header(state, guide, lang, palette),
+        body,
+        Some(action_bar(state, lang, palette)),
+        palette,
+    )
 }
 
-fn finish<'a>(
-    state: &'a ReviewList,
-    body: iced::widget::Column<'a, Message>,
-    window: Size,
-    badges: Badges,
+fn header<'a>(
+    state: &ReviewList,
     guide: FieldGuide,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let line_chars = frame::content_chars(SIZE, window, frame::SIDEBAR_ROOM);
-    let mut frame = Frame::new(
+    let mut items = Vec::new();
+    if state.replan().is_none() && !state.is_busy() {
+        if let Some(filed) = state.filed().filter(|filed| filed.offers_rule()) {
+            items.push(MenuItem::new(
+                create_rule_label(filed, lang),
+                send(ReviewListMessage::CreateRule),
+            ));
+        }
+        if guide.ai_is_ready && !state.rows().is_empty() {
+            items.push(MenuItem::new(
+                read_again_label(state.rows().len(), lang),
+                send(ReviewListMessage::ReadAgainWithAi),
+            ));
+        }
+    }
+    let actions = if items.is_empty() {
+        Vec::new()
+    } else {
+        vec![page_kit::menu_button("", &items, MenuLook::Icon, palette)]
+    };
+    page_kit::page_header(
         lang.text(Msg::ActionReviewList),
-        body,
-        SIZE,
-        window,
-        lang,
+        lang.futurama_name(FuturamaName::ActionReviewList),
+        Some(lang.text(Msg::ReviewListExplain).to_owned()),
+        None,
+        actions,
         palette,
     )
-    .title_theme(lang.futurama_name(FuturamaName::ActionReviewList))
-    .buttons(buttons(state, &guide, lang, palette))
-    .sidebar(hermes::nav(HermesPage::Review, badges, lang, palette))
-    .on_close(send(ReviewListMessage::Close))
-    .hints(KeyHints {
-        enter: state.replan().is_none() || state.replan_fileable() > 0,
-        tab: state.is_editing(),
-    });
-    if let Some(filed) = state.filed() {
-        frame = frame.footer_note(fill_template(
+}
+
+fn action_bar<'a>(state: &ReviewList, lang: Language, palette: &Palette) -> Element<'a, Message> {
+    if state.replan().is_some() {
+        let fileable = state.replan_fileable();
+        return page_kit::action_bar(
+            None,
+            vec![
+                page_kit::secondary(
+                    lang.text(Msg::ReviewListReplanCancel),
+                    Some(send(ReviewListMessage::ReplanCancel)),
+                    palette,
+                ),
+                page_kit::primary(
+                    &replan_file_label(fileable, lang),
+                    Some(kit::ENTER_KEY),
+                    (fileable > 0).then(|| send(ReviewListMessage::ReplanConfirm)),
+                    palette,
+                ),
+            ],
+            palette,
+        );
+    }
+    let note = match state.filed() {
+        Some(filed) => fill_template(
             lang.text(Msg::ReviewListFiledNote),
             &[(
                 "{path}",
-                &format::ellipsize_middle(&filed.path.display().to_string(), line_chars),
+                &format::ellipsize_middle(&filed.path.display().to_string(), NOTE_PATH_CHARS),
             )],
+        ),
+        None => lang.text(Msg::ReviewListNote).to_owned(),
+    };
+    let mut buttons = Vec::new();
+    if !state.rows().is_empty() {
+        buttons.push(page_kit::secondary(
+            lang.text(Msg::ReviewListReplanButton),
+            (!state.is_busy()).then(|| send(ReviewListMessage::ReplanOpenCases)),
+            palette,
         ));
     }
-    frame.into_element()
+    let decidable = !state.is_busy() && state.selected().is_some();
+    buttons.push(page_kit::primary(
+        lang.text(Msg::ReviewListConfirm),
+        Some(kit::ENTER_KEY),
+        decidable.then(|| send(ReviewListMessage::Confirm)),
+        palette,
+    ));
+    page_kit::action_bar(Some(note), buttons, palette)
 }
 
 /// Why a document is here, before it is put into words.
@@ -256,26 +255,6 @@ impl Cause {
         };
         lang.text(message).to_owned()
     }
-
-    /// The few words of the chip in the list.
-    fn short_text(self, lang: Language) -> String {
-        let message = match self {
-            Self::NoRule => Msg::ReviewListChipNoRule,
-            Self::NoText => Msg::ReviewListChipNoText,
-            Self::ImageWithoutText => Msg::ReviewListChipImageNoText,
-            Self::DefaultPattern => Msg::ReviewListChipDefaultPattern,
-            Self::NothingRecognised => Msg::ReviewListChipNothingRecognised,
-            Self::Unconfirmed => Msg::ReviewListChipUnconfirmed,
-            Self::TargetExists => Msg::ReviewListChipTargetExists,
-            Self::MissingField(field) => {
-                return named(Msg::ReviewListChipMissingField, field, lang)
-            }
-            Self::LowConfidence(field) => {
-                return named(Msg::ReviewListChipLowConfidence, field, lang)
-            }
-        };
-        lang.text(message).to_owned()
-    }
 }
 
 fn named(template: Msg, field: Field, lang: Language) -> String {
@@ -312,110 +291,372 @@ fn file_name(item: &ReviewItem) -> String {
     )
 }
 
-fn split<'a>(
-    state: &'a ReviewList,
-    root: PreviewRoot<'_>,
-    height: f32,
-    line_chars: usize,
-    focus: HermesFocus,
-    lang: Language,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let portions = LIST_PORTION + DETAIL_PORTION;
-    let list_chars = (line_chars * usize::from(LIST_PORTION))
-        .checked_div(usize::from(portions))
-        .unwrap_or_default()
-        .saturating_sub(frame::chars_that_fit(spacing::L));
-    let left = column![
-        list(state, list_chars, focus, lang, palette),
-        selected_cause(state, lang, palette),
-        target_line(state, root, lang, palette),
-    ]
-    .spacing(spacing::LINE_GAP)
-    .width(Length::FillPortion(LIST_PORTION));
-    let right = column![
-        document_preview::view(state.document_preview(), lang, palette),
-        form(state, lang, palette),
-    ]
-    .spacing(spacing::LINE_GAP)
-    .width(Length::FillPortion(DETAIL_PORTION))
-    .height(Length::Fill);
-    row![left, right].spacing(spacing::L).height(height).into()
-}
-
-fn selected_cause<'a>(
-    state: &ReviewList,
-    lang: Language,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    match state.selected() {
-        Some(item) => paragraph(
-            Cause::of_row(item, state.pattern_source(item)).long_text(lang),
-            palette,
-        ),
-        None => Space::new().into(),
-    }
-}
-
-fn list<'a>(
-    state: &'a ReviewList,
-    line_chars: usize,
-    focus: HermesFocus,
-    lang: Language,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let columns = Columns {
-        portions: &PORTIONS,
-        line_chars,
-    };
-    let header = columns.header(
-        &[
-            lang.text(Msg::ReviewListColumnFile),
-            lang.text(Msg::ReviewListColumnReason),
-        ],
-        palette,
-    );
-    let first = state.first_visible();
+fn list<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element<'a, Message> {
     let rows = state
         .rows()
         .iter()
         .enumerate()
-        .skip(first)
+        .skip(state.first_visible())
         .take(VISIBLE_ROWS)
         .map(|(index, item)| {
-            let selected = index == state.cursor();
-            let on_fill = selected && focus == HermesFocus::Content;
-            let color = if on_fill {
-                palette.cursor_text
-            } else {
-                palette.text
-            };
             let cause = Cause::of_row(item, state.pattern_source(item));
-            let content = row![
-                columns.path_cell(0, &file_name(item), color),
-                columns.chip_cell(1, &cause.short_text(lang), on_fill, palette),
-            ]
-            .align_y(alignment::Vertical::Center);
-            kit::list_row(
-                content.into(),
-                send(ReviewListMessage::Select(index)),
-                selected,
-                focus == HermesFocus::Content,
+            page_kit::list_row_two(
+                RowTwo {
+                    primary: format::ellipsize_end(&file_name(item), NAME_CHARS),
+                    secondary: format::ellipsize_end(&cause.long_text(lang), REASON_CHARS),
+                    right: item.fields.date.map(|date| date.to_string()),
+                    lead: None,
+                    muted: false,
+                },
+                index == state.cursor(),
+                Some(send(ReviewListMessage::Select(index))),
                 palette,
             )
         })
         .collect();
-    kit::scroll_list(
-        header,
+    page_kit::list_pane(
         rows,
-        kit::ListView {
-            len: state.rows().len(),
-            visible: VISIBLE_ROWS,
-            offset: first,
-        },
         |delta| send(ReviewListMessage::Scrolled(delta)),
         palette,
     )
+}
+
+fn detail<'a>(
+    state: &'a ReviewList,
+    guide: FieldGuide,
+    root: PreviewRoot<'_>,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let Some(item) = state.selected() else {
+        return page_kit::detail(Vec::new());
+    };
+    let mut children = Vec::new();
+    if guide.explains_empty_fields() {
+        children.push(page_kit::hint(
+            lang.text(Msg::ReviewListNoRulesHint),
+            palette,
+        ));
+    }
+    children.push(head_block(state, item, root, lang, palette));
+    if state.is_preview_open() {
+        children.push(
+            container(document_preview::view(
+                state.document_preview(),
+                lang,
+                palette,
+            ))
+            .height(PREVIEW_HEIGHT)
+            .into(),
+        );
+    } else {
+        children.extend(field_rows(state, lang, palette));
+        children.push(page_kit::section(
+            lang.text(Msg::ReviewListSectionFiling),
+            palette,
+        ));
+        children.push(target_section(state, lang, palette));
+    }
+    if let Some(problem) = state.problem() {
+        children.push(page_kit::error_line(problem_text(problem, lang), palette));
+    }
+    page_kit::detail(children)
+}
+
+/// The room of the page preview in the detail.
+const PREVIEW_HEIGHT: f32 = 420.0;
+
+/// The thumbnail with the name, and where the document will be filed.
+fn head_block<'a>(
+    state: &ReviewList,
+    item: &ReviewItem,
+    root: PreviewRoot<'_>,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let template = lang.text(Msg::ReviewListPreview);
+    let label = template
+        .split_once("{path}")
+        .map_or(template, |(before, _)| before)
+        .trim();
+    let filed_as: Element<'a, Message> = match shown_target(state, root) {
+        Some((shown, marked)) => page_kit::path(path_parts(&shown, &marked), palette),
+        None => {
+            let note = match state.missing_field() {
+                Some(field) => fill_template(
+                    lang.text(Msg::ReviewListPreviewMissingField),
+                    &[("{field}", lang.text(field_name(field)))],
+                ),
+                None => lang.text(Msg::ReviewListPreviewNone).to_owned(),
+            };
+            page_kit::hint(note, palette)
+        }
+    };
+    let texts = column![
+        page_kit::value(
+            format::ellipsize_end(&file_name(item), HEAD_NAME_CHARS),
+            palette
+        ),
+        page_kit::hint(label.to_owned(), palette),
+        filed_as,
+    ]
+    .spacing(page_kit::GAP_XS);
+    column![
+        Row::new()
+            .push(page_kit::thumbnail(
+                Some(send(ReviewListMessage::TogglePreview)),
+                palette
+            ))
+            .push(texts)
+            .spacing(page_kit::GAP_M)
+            .align_y(alignment::Vertical::Center),
+        page_kit::rule(palette),
+    ]
+    .spacing(page_kit::GAP_S)
+    .into()
+}
+
+/// The shown path cut at the places that are values of a field, and for each
+/// piece whether it is one.
+fn path_parts(shown: &str, marked: &[Range<usize>]) -> Vec<(String, bool)> {
+    let mut parts = Vec::new();
+    let mut at = 0;
+    for range in marked {
+        if let Some(plain) = shown.get(at..range.start).filter(|plain| !plain.is_empty()) {
+            parts.push((plain.to_owned(), false));
+        }
+        if let Some(value) = shown.get(range.clone()) {
+            parts.push((value.to_owned(), true));
+        }
+        at = range.end;
+    }
+    if let Some(tail) = shown.get(at..).filter(|tail| !tail.is_empty()) {
+        parts.push((tail.to_owned(), false));
+    }
+    parts
+}
+
+fn field_rows<'a>(
+    state: &'a ReviewList,
+    lang: Language,
+    palette: &Palette,
+) -> Vec<Element<'a, Message>> {
+    let values = state.form();
+    let origin_of = |field: Field| {
+        let item = state.selected()?;
+        origin_text(&item.origins.of(field), state.is_edited(field), lang)
+    };
+    let row_of = |field: Field, form_field: FormField, value: &'a str, placeholder: Option<Msg>| {
+        let input = page_kit::text_field(
+            placeholder.map_or("", |message| lang.text(message)),
+            value,
+            field_id(form_field),
+            Some(move |typed| send(ReviewListMessage::FieldChanged(form_field, typed))),
+            send(ReviewListMessage::Confirm),
+            palette,
+        );
+        let mut control = Row::new()
+            .push(container(input).width(CONTROL_WIDTH))
+            .spacing(page_kit::GAP_S)
+            .align_y(alignment::Vertical::Center);
+        if let Some(origin) = origin_of(field) {
+            control = control.push(page_kit::value_dim(origin, palette));
+        }
+        page_kit::form_row(lang.text(field_name(field)), control.into(), None, palette)
+    };
+    vec![
+        row_of(Field::Sender, FormField::Sender, &values.sender, None),
+        row_of(
+            Field::Recipient,
+            FormField::Recipient,
+            &values.recipient,
+            None,
+        ),
+        row_of(Field::Kind, FormField::Kind, &values.kind, None),
+        row_of(Field::Number, FormField::Number, &values.number, None),
+        row_of(
+            Field::Amount,
+            FormField::Amount,
+            &values.amount,
+            Some(Msg::ReviewListHintAmount),
+        ),
+        row_of(
+            Field::Date,
+            FormField::Date,
+            &values.date,
+            Some(Msg::ReviewListHintDate),
+        ),
+        tags_row(state, values, lang, palette),
+    ]
+}
+
+/// The tags: those the fields give (gray, nothing to remove), those the user
+/// added (outlined, with a cross), the link for a new one and a note.
+fn tags_row<'a>(
+    state: &ReviewList,
+    values: &'a Form,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let automatic = state
+        .automatic_tags()
+        .into_iter()
+        .filter(|tag| !values.tags.contains(tag))
+        .map(|tag| {
+            page_kit::chip(
+                &lang.tag_label(&state.kinds().catalog, &tag),
+                ChipKind::Automatic,
+                None,
+                palette,
+            )
+        });
+    let own = values.tags.iter().map(|tag| {
+        page_kit::chip(
+            tag,
+            ChipKind::Own,
+            Some(send(ReviewListMessage::RemoveTag(tag.clone()))),
+            palette,
+        )
+    });
+    let mut items: Vec<Element<'a, Message>> = automatic.chain(own).collect();
+    if !state.is_tag_input_open() {
+        items.push(page_kit::link(
+            lang.text(Msg::ReviewListTagsAdd),
+            Some(send(ReviewListMessage::OpenTagInput)),
+            palette,
+        ));
+    }
+    let mut control = Column::new().push(
+        Row::with_children(items)
+            .spacing(page_kit::GAP_S)
+            .align_y(alignment::Vertical::Center)
+            .wrap()
+            .vertical_spacing(page_kit::GAP_XS),
+    );
+    if state.is_tag_input_open() {
+        control = control.push(
+            container(page_kit::text_field(
+                lang.text(Msg::ReviewListTagsAdd),
+                &values.tag_input,
+                TAG_INPUT_ID,
+                Some(|typed| send(ReviewListMessage::FieldChanged(FormField::TagInput, typed))),
+                send(ReviewListMessage::AddTag),
+                palette,
+            ))
+            .width(CONTROL_WIDTH),
+        );
+    }
+    page_kit::form_row(
+        lang.text(Msg::ReviewListFieldTags),
+        control.spacing(page_kit::GAP_XS).into(),
+        Some(page_kit::hint(lang.text(Msg::ReviewListTagsNote), palette)),
+        palette,
+    )
+}
+
+/// "Move to" and "File name": the shared widget, with where the target comes
+/// from under "Move to".
+fn target_section<'a>(
+    state: &'a ReviewList,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let origin = state
+        .selected()
+        .and_then(|item| state.pattern_source(item))
+        .map(|source| match source {
+            PatternSource::Default => Msg::ReviewListOriginDefaultTarget,
+            PatternSource::RuleOrProfile => Msg::ReviewListOriginRule,
+        })
+        .map(|message| lang.text(message).to_owned());
+    let Some(editor) = state.target_editor() else {
+        return column![].into();
+    };
+    target_view(
+        editor,
+        &TargetHost {
+            wrap: |edit| send(ReviewListMessage::TargetEdited(edit)),
+            name_field_id: FOLDER_NAME_FIELD_ID,
+            folder_hint: origin,
+            example: ExampleLine::Hidden,
+            lang,
+            palette,
+        },
+    )
+}
+
+fn replan_body<'a>(
+    state: &ReviewList,
+    step: &ReplanStep,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let mut children = Vec::new();
+    match step {
+        ReplanStep::Looking(_) => {
+            children.push(page_kit::hint(
+                lang.text(Msg::ReviewListReplanLooking),
+                palette,
+            ));
+        }
+        ReplanStep::Preview { items, .. } => {
+            children.push(page_kit::hint(
+                lang.text(Msg::ReviewListReplanExplain),
+                palette,
+            ));
+            if items.is_empty() {
+                children.push(page_kit::hint(
+                    lang.text(Msg::ReviewListReplanEmpty),
+                    palette,
+                ));
+            }
+            for item in items.iter().take(REPLAN_VISIBLE_ROWS) {
+                let (now, after) = replan_texts(item, lang);
+                children.push(page_kit::list_row_two(
+                    RowTwo {
+                        primary: format::ellipsize_end(&replan_file_name(item), HEAD_NAME_CHARS),
+                        secondary: format::ellipsize_end(
+                            &format!("{now} → {after}"),
+                            REPLAN_LINE_CHARS,
+                        ),
+                        right: None,
+                        lead: None,
+                        muted: false,
+                    },
+                    false,
+                    None,
+                    palette,
+                ));
+            }
+            let hidden = items.len().saturating_sub(REPLAN_VISIBLE_ROWS);
+            if hidden > 0 {
+                children.push(page_kit::hint(
+                    fill_template(
+                        lang.text(Msg::ReviewListReplanMore),
+                        &[("{count}", &hidden.to_string())],
+                    ),
+                    palette,
+                ));
+            }
+            if !items.is_empty() {
+                let fileable = items.iter().filter(|item| item.would_be_filed()).count();
+                children.push(page_kit::value(
+                    fill_template(
+                        lang.text(Msg::ReviewListReplanCount),
+                        &[
+                            ("{filed}", &fileable.to_string()),
+                            ("{total}", &items.len().to_string()),
+                        ],
+                    ),
+                    palette,
+                ));
+            }
+        }
+    }
+    if let Some(problem) = state.problem() {
+        children.push(page_kit::error_line(problem_text(problem, lang), palette));
+    }
+    page_kit::detail(children)
 }
 
 /// How the form shows the origin of a field: where the value came from, or
@@ -435,294 +676,6 @@ pub fn origin_text(origin: &FieldOrigin, edited: bool, lang: Language) -> Option
         FieldOrigin::AddressBlock => Some(lang.text(Msg::ReviewListOriginAddress).to_owned()),
         FieldOrigin::Heading => Some(lang.text(Msg::ReviewListOriginHeading).to_owned()),
     }
-}
-
-fn group_heading<'a>(heading: Msg, lang: Language, palette: &Palette) -> Element<'a, Message> {
-    text(lang.text(heading))
-        .size(font_size::SMALL)
-        .color(palette.dim_text)
-        .into()
-}
-
-/// A label with the origin of its value below, and the control on the right.
-fn field_row<'a>(
-    label: &str,
-    origin_line: Option<String>,
-    control: Element<'a, Message>,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let mut names = column![paragraph(label.to_owned(), palette)].spacing(spacing::XS / 2.0);
-    if let Some(line) = origin_line {
-        names = names.push(dim(line, palette));
-    }
-    row![
-        container(names).width(Length::Fill),
-        container(control)
-            .width(size::CONTROL_WIDTH)
-            .align_x(alignment::Horizontal::Right),
-    ]
-    .spacing(spacing::XL)
-    .align_y(alignment::Vertical::Center)
-    .into()
-}
-
-/// A row of the tags block: its label and the chips, or a dimmed "none".
-fn tag_row<'a>(
-    label: Msg,
-    chips: Vec<Element<'a, Message>>,
-    lang: Language,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let shown: Element<'a, Message> = if chips.is_empty() {
-        dim(lang.text(Msg::ReviewListTagsNone), palette)
-    } else {
-        Row::with_children(chips).spacing(spacing::XS).wrap().into()
-    };
-    row![
-        container(dim(lang.text(label), palette)).width(TAG_ROW_LABEL_WIDTH),
-        shown,
-    ]
-    .spacing(spacing::M)
-    .align_y(alignment::Vertical::Center)
-    .into()
-}
-
-/// The tags: those the fields give (gray, nothing to remove), those the user
-/// added (outlined, with a cross), the field for a new one and a note.
-fn tags_block<'a>(
-    state: &ReviewList,
-    values: &'a Form,
-    lang: Language,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let automatic = state
-        .automatic_tags()
-        .into_iter()
-        .filter(|tag| !values.tags.contains(tag))
-        .map(|tag| {
-            kit::chip(
-                &lang.tag_label(&state.kinds().catalog, &tag),
-                false,
-                palette,
-            )
-        })
-        .collect();
-    let own = values
-        .tags
-        .iter()
-        .map(|tag| {
-            kit::removable_chip(
-                tag,
-                send(ReviewListMessage::RemoveTag(tag.clone())),
-                palette,
-            )
-        })
-        .collect();
-    let input = kit::text_field(
-        lang.text(Msg::ReviewListTagsAdd),
-        &values.tag_input,
-        TAG_INPUT_ID,
-        Some(|typed| send(ReviewListMessage::FieldChanged(FormField::TagInput, typed))),
-        send(ReviewListMessage::AddTag),
-        palette,
-    );
-    column![
-        paragraph(lang.text(Msg::ReviewListFieldTags).to_owned(), palette),
-        tag_row(Msg::ReviewListTagsAutomatic, automatic, lang, palette),
-        tag_row(Msg::ReviewListTagsOwn, own, lang, palette),
-        input,
-        dim(lang.text(Msg::ReviewListTagsNote), palette),
-    ]
-    .spacing(spacing::XS)
-    .into()
-}
-
-/// The fields in groups: who, what, when, where.
-fn form<'a>(state: &'a ReviewList, lang: Language, palette: &Palette) -> Element<'a, Message> {
-    let values = state.form();
-    let text_field = |field: FormField, id: &'static str, hint: Option<Msg>, value: &'a str| {
-        kit::text_field(
-            hint.map_or("", |message| lang.text(message)),
-            value,
-            id,
-            Some(move |typed| send(ReviewListMessage::FieldChanged(field, typed))),
-            send(ReviewListMessage::Confirm),
-            palette,
-        )
-    };
-    let origin_of = |field: Field| {
-        let item = state.selected()?;
-        origin_text(&item.origins.of(field), state.is_edited(field), lang)
-    };
-    column![
-        group_heading(Msg::ReviewListGroupWho, lang, palette),
-        field_row(
-            lang.text(Msg::ReviewListFieldSender),
-            origin_of(Field::Sender),
-            text_field(FormField::Sender, SENDER_ID, None, &values.sender),
-            palette,
-        ),
-        field_row(
-            lang.text(Msg::ReviewListFieldRecipient),
-            origin_of(Field::Recipient),
-            text_field(FormField::Recipient, RECIPIENT_ID, None, &values.recipient),
-            palette,
-        ),
-        group_heading(Msg::ReviewListGroupWhat, lang, palette),
-        field_row(
-            lang.text(Msg::ReviewListFieldKind),
-            origin_of(Field::Kind),
-            text_field(FormField::Kind, KIND_ID, None, &values.kind),
-            palette,
-        ),
-        field_row(
-            lang.text(Msg::ReviewListFieldNumber),
-            origin_of(Field::Number),
-            text_field(FormField::Number, NUMBER_ID, None, &values.number),
-            palette,
-        ),
-        field_row(
-            lang.text(Msg::ReviewListFieldAmount),
-            origin_of(Field::Amount),
-            text_field(
-                FormField::Amount,
-                AMOUNT_ID,
-                Some(Msg::ReviewListHintAmount),
-                &values.amount,
-            ),
-            palette,
-        ),
-        tags_block(state, values, lang, palette),
-        group_heading(Msg::ReviewListGroupWhen, lang, palette),
-        field_row(
-            lang.text(Msg::ReviewListFieldDate),
-            origin_of(Field::Date),
-            text_field(
-                FormField::Date,
-                DATE_ID,
-                Some(Msg::ReviewListHintDate),
-                &values.date,
-            ),
-            palette,
-        ),
-        group_heading(Msg::ReviewListGroupWhere, lang, palette),
-        where_block(state, lang, palette),
-    ]
-    .spacing(spacing::XS)
-    .into()
-}
-
-/// "Move to": where the document goes in words with the origin of it, and
-/// "Change" to turn it into the widget.
-fn where_block<'a>(
-    state: &'a ReviewList,
-    lang: Language,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let origin_text = state
-        .selected()
-        .and_then(|item| state.pattern_source(item))
-        .map(|source| match source {
-            PatternSource::Default => Msg::ReviewListOriginDefaultTarget,
-            PatternSource::RuleOrProfile => Msg::ReviewListOriginRule,
-        });
-    let mut heading = row![paragraph(
-        lang.text(Msg::ReviewListMoveTo).to_owned(),
-        palette
-    )]
-    .spacing(spacing::S);
-    if let Some(origin) = origin_text {
-        heading = heading.push(dim(lang.text(origin), palette));
-    }
-    let body: Element<'a, Message> = match state.target_editor() {
-        Some(editor) => target_view(
-            editor,
-            &TargetHost {
-                wrap: |edit| send(ReviewListMessage::TargetEdited(edit)),
-                name_field_id: FOLDER_NAME_FIELD_ID,
-                lang,
-                palette,
-            },
-        ),
-        None => row![
-            folder_chips_read_only(
-                &FilingTarget::parse(&state.form().pattern),
-                false,
-                lang,
-                palette,
-            ),
-            kit::button(
-                lang.text(Msg::ReviewListChangeTarget),
-                Some(send(ReviewListMessage::ChangeTarget)),
-                Tone::Secondary,
-                palette,
-            ),
-        ]
-        .spacing(spacing::M)
-        .align_y(alignment::Vertical::Center)
-        .into(),
-    };
-    column![heading, body].spacing(spacing::XS).into()
-}
-
-/// "Will be filed as" with the path; the parts of it that are values of a
-/// field in the accent color. Below it where the pattern comes from.
-fn target_line<'a>(
-    state: &ReviewList,
-    root: PreviewRoot<'_>,
-    lang: Language,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let source_line = state
-        .selected()
-        .and_then(|item| state.pattern_source(item))
-        .map(|source| match source {
-            PatternSource::Default => fill_template(
-                lang.text(Msg::ReviewListSourceDefault),
-                &[(
-                    "{target}",
-                    &FilingTarget::parse(&state.form().pattern).in_words(lang),
-                )],
-            ),
-            PatternSource::RuleOrProfile => lang.text(Msg::ReviewListSourceRule).to_owned(),
-        });
-    let line = match shown_target(state, root) {
-        Some((shown, marked)) => {
-            let template = lang.text(Msg::ReviewListPreview);
-            let (before, after) = template.split_once("{path}").unwrap_or((template, ""));
-            let path = rich_text(highlight_spans(
-                &shown,
-                &marked,
-                false,
-                palette.text,
-                palette,
-            ))
-            .size(font_size::BODY)
-            .wrapping(Wrapping::WordOrGlyph)
-            .width(Length::Fill);
-            let mut line =
-                row![paragraph(before.trim_end().to_owned(), palette), path].spacing(spacing::XS);
-            if !after.trim().is_empty() {
-                line = line.push(paragraph(after.trim_start().to_owned(), palette));
-            }
-            line.into()
-        }
-        None => match state.missing_field() {
-            Some(field) => dim(
-                fill_template(
-                    lang.text(Msg::ReviewListPreviewMissingField),
-                    &[("{field}", lang.text(field_name(field)))],
-                ),
-                palette,
-            ),
-            None => dim(lang.text(Msg::ReviewListPreviewNone), palette),
-        },
-    };
-    let mut lines = column![line].spacing(spacing::XS);
-    if let Some(text) = source_line {
-        lines = lines.push(dim(text, palette));
-    }
-    lines.into()
 }
 
 /// The path the document would be filed under as shown, and the places in it
@@ -760,69 +713,6 @@ fn path_ranges(parts: &[PatternPart], offset: usize) -> Vec<Range<usize>> {
     ranges
 }
 
-fn buttons<'a>(
-    state: &ReviewList,
-    guide: &FieldGuide,
-    lang: Language,
-    palette: &Palette,
-) -> Vec<Element<'a, Message>> {
-    if state.replan().is_some() {
-        let fileable = state.replan_fileable();
-        return vec![
-            kit::button(
-                lang.text(Msg::ReviewListReplanCancel),
-                Some(send(ReviewListMessage::ReplanCancel)),
-                Tone::Secondary,
-                palette,
-            ),
-            kit::enter_button(
-                &replan_file_label(fileable, lang),
-                (fileable > 0).then(|| send(ReviewListMessage::ReplanConfirm)),
-                Tone::Primary,
-                palette,
-            ),
-        ];
-    }
-    let mut items = vec![kit::button(
-        lang.text(Msg::ReviewListClose),
-        Some(send(ReviewListMessage::Close)),
-        Tone::Secondary,
-        palette,
-    )];
-    if !state.rows().is_empty() {
-        items.push(kit::button(
-            lang.text(Msg::ReviewListReplanButton),
-            (!state.is_busy()).then(|| send(ReviewListMessage::ReplanOpenCases)),
-            Tone::Secondary,
-            palette,
-        ));
-    }
-    if guide.ai_is_ready && !state.rows().is_empty() {
-        items.push(kit::button(
-            &read_again_label(state.rows().len(), lang),
-            (!state.is_busy()).then(|| send(ReviewListMessage::ReadAgainWithAi)),
-            Tone::Secondary,
-            palette,
-        ));
-    }
-    if let Some(filed) = state.filed().filter(|filed| filed.offers_rule()) {
-        items.push(kit::button(
-            &create_rule_label(filed, lang),
-            (!state.is_busy()).then(|| send(ReviewListMessage::CreateRule)),
-            Tone::Secondary,
-            palette,
-        ));
-    }
-    let decidable = !state.is_busy() && state.selected().is_some();
-    items.push(kit::enter_button(
-        lang.text(Msg::ReviewListConfirm),
-        decidable.then(|| send(ReviewListMessage::Confirm)),
-        Tone::Primary,
-        palette,
-    ));
-    items
-}
-
 fn replan_file_label(count: usize, lang: Language) -> String {
     if count == 1 {
         lang.text(Msg::ReviewListReplanFileOne).to_owned()
@@ -832,79 +722,6 @@ fn replan_file_label(count: usize, lang: Language) -> String {
             &[("{count}", &count.to_string())],
         )
     }
-}
-
-/// How the width of a row of the preview is shared: file, now, after.
-const REPLAN_PORTIONS: [u16; 3] = [4, 5, 6];
-
-/// Most rows of the preview shown; the count line covers all of them.
-const REPLAN_VISIBLE_ROWS: usize = 6;
-
-fn replan_section<'a>(
-    step: &'a ReplanStep,
-    line_chars: usize,
-    lang: Language,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let items = match step {
-        ReplanStep::Looking(_) => {
-            return dim(lang.text(Msg::ReviewListReplanLooking), palette);
-        }
-        ReplanStep::Preview { items, .. } => items,
-    };
-    let mut section = column![paragraph(lang.text(Msg::ReviewListReplanExplain), palette)]
-        .spacing(spacing::LINE_GAP);
-    if items.is_empty() {
-        return section
-            .push(dim(lang.text(Msg::ReviewListReplanEmpty), palette))
-            .into();
-    }
-    let columns = Columns {
-        portions: &REPLAN_PORTIONS,
-        line_chars,
-    };
-    section = section.push(columns.header(
-        &[
-            lang.text(Msg::ReviewListColumnFile),
-            lang.text(Msg::ReviewListReplanColumnNow),
-            lang.text(Msg::ReviewListReplanColumnAfter),
-        ],
-        palette,
-    ));
-    for item in items.iter().take(REPLAN_VISIBLE_ROWS) {
-        let (now, after) = replan_texts(item, lang);
-        section = section.push(
-            row![
-                columns.path_cell(0, &replan_file_name(item), palette.text),
-                columns.cell(1, &now, palette.text),
-                columns.cell(2, &after, palette.text),
-            ]
-            .align_y(alignment::Vertical::Center),
-        );
-    }
-    let hidden = items.len().saturating_sub(REPLAN_VISIBLE_ROWS);
-    if hidden > 0 {
-        section = section.push(dim(
-            fill_template(
-                lang.text(Msg::ReviewListReplanMore),
-                &[("{count}", &hidden.to_string())],
-            ),
-            palette,
-        ));
-    }
-    let fileable = items.iter().filter(|item| item.would_be_filed()).count();
-    section
-        .push(paragraph(
-            fill_template(
-                lang.text(Msg::ReviewListReplanCount),
-                &[
-                    ("{filed}", &fileable.to_string()),
-                    ("{total}", &items.len().to_string()),
-                ],
-            ),
-            palette,
-        ))
-        .into()
 }
 
 fn replan_file_name(item: &ReplanItem) -> String {

@@ -2734,7 +2734,6 @@ mod review_list_card {
             "Move to",
             "Will be filed as",
             "Confirm",
-            "Close",
         ] {
             assert!(shows(loaded_list(), label), "{label}");
         }
@@ -2808,20 +2807,10 @@ mod review_list_card {
 
     #[test]
     fn after_filing_the_rule_for_the_sender_is_offered() {
-        let label = "Create rule for sender ‘Company A’";
-        assert!(shows(after_filing(), label));
         assert!(shows(
             after_filing(),
             "Filed as Company A/2024-03-09_invoice.pdf"
         ));
-
-        let app = App::with_review_list(after_filing());
-        let mut sim = simulator(&app);
-        sim.click(label).expect("the offer");
-        assert_eq!(
-            sim.into_messages().collect::<Vec<_>>(),
-            [review_message(ReviewListMessage::CreateRule)]
-        );
     }
 
     fn rules_form_of(app: &App) -> &crate::rule_form::RuleForm {
@@ -2904,13 +2893,7 @@ mod review_list_card {
     fn the_view_is_worded_in_german_too() {
         let app = App::with_review_list(after_filing()).in_language(Language::German);
         let mut sim = simulator(&app);
-        for label in [
-            "Rückfragen",
-            "Bestätigen",
-            "Schließen",
-            "Regel für Absender ‚Company A‘ anlegen",
-            "Verschieben nach",
-        ] {
+        for label in ["Rückfragen", "Bestätigen", "Verschieben nach"] {
             assert!(sim.find(label).is_ok(), "{label}");
         }
     }
@@ -3163,9 +3146,8 @@ mod review_list_card {
         for label in [
             "With the current rules these documents would be filed. Nothing moves before you confirm.",
             "scan-1.pdf",
-            "Company A/2024-03-09_invoice.pdf",
-            "Stays in review: Date missing",
-            "Not read yet",
+            "No rule matches → Company A/2024-03-09_invoice.pdf",
+            "No rule matches → Stays in review: Date missing",
             "1 of 3 documents would be filed.",
             "File 1 document",
             "Cancel",
@@ -3191,7 +3173,6 @@ mod review_list_card {
         for label in [
             "Default target",
             "Default target, please check",
-            "No rule",
             "Will be filed as",
         ] {
             assert!(shows(default_pattern_list(), label), "{label}");
@@ -3886,12 +3867,9 @@ mod rules_card {
         for label in [
             "Rules",
             "Rules, checked from top to bottom. The first that matches files the document.",
-            "Close",
-            "Delete",
-            "Move up",
-            "Move down",
             "New rule",
-            "Edit",
+            "Save",
+            "Cancel",
         ] {
             assert!(shows(three_rules(), label), "{label}");
         }
@@ -3907,17 +3885,41 @@ mod rules_card {
 
     #[test]
     fn the_buttons_send_what_they_say() {
-        for (label, message) in [
-            ("Close", RulesMessage::Close),
-            ("Move down", RulesMessage::Reorder(1)),
-        ] {
-            let app = App::with_rules(three_rules());
-            let mut sim = simulator(&app);
-            sim.click(label).expect(label);
+        let app = App::with_rules(three_rules());
+        let mut sim = simulator(&app);
+        sim.click("New rule").expect("New rule");
 
+        assert_eq!(
+            sim.into_messages().filter(is_action).collect::<Vec<_>>(),
+            [Message::Rules(RulesMessage::New)]
+        );
+    }
+
+    #[test]
+    fn save_and_cancel_wait_for_a_change() {
+        let app = App::with_rules(three_rules());
+        for label in ["Save", "Cancel"] {
+            let mut sim = simulator(&app);
+            let _ = sim.click(label);
+            assert!(
+                sim.into_messages().find(is_action).is_none(),
+                "{label} without a change"
+            );
+        }
+
+        let mut changed = App::with_rules(three_rules());
+        let _ = changed.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Name(
+            "Contract".to_owned(),
+        ))));
+        for (label, message) in [
+            ("Save", RuleFormMessage::Save),
+            ("Cancel", RuleFormMessage::Cancel),
+        ] {
+            let mut sim = simulator(&changed);
+            sim.click(label).expect(label);
             assert_eq!(
                 sim.into_messages().filter(is_action).collect::<Vec<_>>(),
-                [Message::Rules(message)],
+                [Message::Rules(RulesMessage::Form(message))],
                 "{label}"
             );
         }
@@ -4178,11 +4180,11 @@ mod rules_card {
         let _ = app.update(Message::Rules(RulesMessage::Edit));
         let edit_form = app.rules_for_test().unwrap().form().unwrap();
         assert_eq!(edit_form.filing.pattern(), "{year}/{sender}");
-        assert!(app_shows(&app, "Edit rule"));
+        assert!(app.rules_for_test().unwrap().is_editing());
     }
 
     #[test]
-    fn escape_closes_the_form_first_and_saves_nothing() {
+    fn escape_leaves_the_fields_first_and_saves_nothing() {
         let mut app = App::with_rules(with_edit_form());
         let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Name(
             "Contract".to_owned(),
@@ -4191,7 +4193,7 @@ mod rules_card {
         let _ = app.update(Message::Rules(RulesMessage::Close));
 
         let page = app.rules_for_test().unwrap();
-        assert!(page.form().is_none());
+        assert!(!page.is_editing());
         assert_eq!(
             page.rows().first().unwrap().rule.spec.kind.as_deref(),
             Some("Invoice")
@@ -4201,24 +4203,18 @@ mod rules_card {
     }
 
     #[test]
-    fn the_list_does_nothing_while_the_form_is_open() {
+    fn selecting_a_rule_while_the_new_form_is_up_shows_the_form_of_the_rule() {
         let mut app = App::with_rules(with_new_form());
-        for message in [
-            RulesMessage::Move(1),
-            RulesMessage::Select(2),
-            RulesMessage::Toggle,
-            RulesMessage::Reorder(1),
-            RulesMessage::AskDelete,
-            RulesMessage::ConfirmDelete,
-        ] {
-            let _ = app.update(Message::Rules(message));
-        }
+        let _ = app.update(Message::Rules(RulesMessage::Select(2)));
 
         let page = app.rules_for_test().unwrap();
-        assert_eq!(page.cursor(), 0);
-        assert!(!page.is_busy());
-        assert!(!page.is_confirming_delete());
-        assert!(page.form().is_some());
+        assert_eq!(page.cursor(), 2);
+        assert!(!page.has_unlisted_form());
+        assert!(!page.is_editing());
+        assert!(matches!(
+            page.form().unwrap().target,
+            crate::rule_form::RuleFormTarget::Edit(_)
+        ));
     }
 
     #[test]
@@ -4254,7 +4250,6 @@ mod rule_suggestions_card {
     use crate::suggestion_work::INDEX_NOT_OPEN;
 
     const FIRST_EVIDENCE: &str = "in 5 of 5 documents in Insurance, 0 elsewhere";
-    const SECOND_EVIDENCE: &str = "4 of 6 documents from this sender are in Taxes";
 
     fn suggestions_message(message: RuleSuggestionsMessage) -> Message {
         Message::RuleSuggestions(message)
@@ -4295,15 +4290,15 @@ mod rule_suggestions_card {
             "Text: company a ltd",
             "Sender: Agency B",
             "Condition",
-            "Insurance · File name: Date_Kind",
-            "Taxes · File name: Date_Kind",
+            "→ Insurance · File name: Date_Kind",
+            "→ Taxes · File name: Date_Kind",
+            "5 of 5",
+            "4 of 6",
             FIRST_EVIDENCE,
-            SECOND_EVIDENCE,
             "Confirm",
             "Edit",
             "Discard",
             "Analyse again",
-            "Close",
         ] {
             assert!(shows(two_rows(), label), "{label}");
         }
@@ -4316,7 +4311,7 @@ mod rule_suggestions_card {
         for label in [
             "Regelvorschläge",
             "in 5 von 5 Dokumenten in Insurance, 0 anderswo",
-            "4 von 6 Dokumenten dieses Absenders liegen in Taxes",
+            "4 von 6",
             "Absender: Agency B",
             "Bedingung",
             "Bestätigen",
@@ -4378,7 +4373,6 @@ mod rule_suggestions_card {
             ("Confirm", RuleSuggestionsMessage::Confirm),
             ("Discard", RuleSuggestionsMessage::Discard),
             ("Analyse again", RuleSuggestionsMessage::Reanalyse),
-            ("Close", RuleSuggestionsMessage::Close),
         ] {
             assert_eq!(
                 messages_after_click(two_rows(), label),
@@ -4404,7 +4398,7 @@ mod rule_suggestions_card {
     #[test]
     fn a_click_on_a_row_selects_it() {
         assert_eq!(
-            messages_after_click(two_rows(), SECOND_EVIDENCE),
+            messages_after_click(two_rows(), "Sender: Agency B"),
             [suggestions_message(RuleSuggestionsMessage::Select(1))]
         );
     }
@@ -4423,7 +4417,7 @@ mod rule_suggestions_card {
             ],
         );
 
-        assert!(shows(view.clone(), "Documents that contain this text"));
+        assert!(shows(view.clone(), "DOCUMENTS THAT CONTAIN THIS TEXT"));
         assert!(shows(view, "Insurance/2024_a.pdf"));
     }
 
@@ -4432,7 +4426,7 @@ mod rule_suggestions_card {
         let [one, _, _] = rule_ids();
         let mut view = two_rows();
         view.matches_wanted();
-        let paths = (0..9).map(|n| PathBuf::from(format!("Insurance/{n}.pdf")));
+        let paths = (0..15).map(|n| PathBuf::from(format!("Insurance/{n}.pdf")));
         view.matches_found(one, paths.collect());
 
         assert!(shows(view, "… and 3 more"));
@@ -4665,27 +4659,59 @@ mod reorganisation_plan_card {
             .unwrap()
     }
 
+    fn at(mut view: ReorganisationView, source: &str) -> ReorganisationView {
+        let line = line_of(&view, source);
+        view.select(line);
+        view
+    }
+
     #[test]
-    fn the_plan_is_listed_per_group_with_paths_and_reasons() {
+    fn the_plan_is_listed_per_group_with_the_action_of_each_entry() {
         for label in [
-            "Reorganisation plan",
-            "Duplicates  1 of 1 selected",
-            "Filed in the wrong folder  1 of 2 selected",
-            "Year does not match  1 of 1 selected",
-            "Name differs  1 of 1 selected",
+            "Sort again",
+            "Duplicates",
+            "Filed in the wrong folder",
+            "Year does not match",
+            "Name differs",
             "Cannot be done",
-            "Misc/2024-04-01_invoice.pdf",
-            "A rule files it elsewhere",
-            "An unconfirmed rule files it elsewhere",
-            "Filed under 2023, dated 2024",
-            "The target already exists",
-            "Not enough is known to name it",
+            "1 of 2 selected",
+            "2024-04-01_invoice.pdf",
+            "scan 0042.pdf",
+            "move",
+            "rename",
+            "4 of 5 selected · 2 cannot run",
             "Run selected",
             "Plan again",
-            "Close",
         ] {
             assert!(shows(loaded_view(), label), "{label}");
         }
+    }
+
+    #[test]
+    fn what_cannot_be_run_is_named_with_its_reason() {
+        for label in [
+            "2024-06-01_invoice.pdf: The target already exists",
+            "IMG_7.pdf: Not enough is known to name it",
+        ] {
+            assert!(shows(loaded_view(), label), "{label}");
+        }
+    }
+
+    #[test]
+    fn the_selected_entry_shows_now_proposed_and_why() {
+        let view = at(loaded_view(), "Insurance/2023/2024-05-01_invoice.pdf");
+
+        for label in [
+            "Now",
+            "Proposed",
+            "Why",
+            "Filed under 2023, dated 2024",
+            "Dated 2024-05-01, but it lies in the folder 2023.",
+        ] {
+            assert!(shows(view.clone(), label), "{label}");
+        }
+        assert!(!shows(loaded_view(), "Proposed"));
+        assert!(!shows(view, "Before"));
     }
 
     #[test]
@@ -4693,13 +4719,16 @@ mod reorganisation_plan_card {
         let app = App::with_reorganisation_plan(loaded_view()).in_language(Language::German);
         let mut sim = simulator(&app);
         for label in [
-            "Umräumplan",
-            "Duplikate  1 von 1 ausgewählt",
-            "Falsch abgelegt  1 von 2 ausgewählt",
-            "Jahr passt nicht  1 von 1 ausgewählt",
-            "Name weicht ab  1 von 1 ausgewählt",
+            "Neu sortieren",
+            "Duplikate",
+            "Falsch abgelegt",
+            "Jahr passt nicht",
+            "Name weicht ab",
             "Nicht ausführbar",
-            "Das Ziel gibt es schon",
+            "1 von 2 ausgewählt",
+            "verschieben",
+            "umbenennen",
+            "4 von 5 ausgewählt · 2 nicht ausführbar",
             "Ausgewählte ausführen",
             "Neu planen",
         ] {
@@ -4711,7 +4740,7 @@ mod reorganisation_plan_card {
     fn a_plan_still_being_made_says_so_and_runs_nothing() {
         let view = ReorganisationView::new();
         assert!(shows(view.clone(), "Working out the plan…"));
-        assert!(messages_after_click(view, "Run selected").is_empty());
+        assert!(!shows(view, "Run selected"));
     }
 
     #[test]
@@ -4725,23 +4754,23 @@ mod reorganisation_plan_card {
     }
 
     #[test]
-    fn a_click_selects_and_deselects_an_entry_and_a_group() {
+    fn a_click_on_a_row_selects_it_and_the_box_selects_for_the_run() {
         let mut app = App::with_reorganisation_plan(loaded_view());
         let view = app.reorganisation_for_test().unwrap().clone();
         let year = line_of(&view, "Insurance/2023/2024-05-01_invoice.pdf");
         let year_row = row_of(&view, "Insurance/2023/2024-05-01_invoice.pdf");
         assert!(view.is_selected(year_row));
+        let misplaced = header_line(&view, Group::Misplaced);
+        assert_eq!(
+            messages_after_click(view.clone(), "Filed in the wrong folder"),
+            [plan_message(ReorganisationPlanMessage::Select(misplaced))]
+        );
 
         let _ = app.update(plan_message(ReorganisationPlanMessage::Toggle(year)));
         assert!(!app.reorganisation_for_test().unwrap().is_selected(year_row));
         let _ = app.update(plan_message(ReorganisationPlanMessage::Toggle(year)));
         assert!(app.reorganisation_for_test().unwrap().is_selected(year_row));
 
-        let misplaced = header_line(&view, Group::Misplaced);
-        assert_eq!(
-            messages_after_click(view, "Filed in the wrong folder  1 of 2 selected"),
-            [plan_message(ReorganisationPlanMessage::Toggle(misplaced))]
-        );
         let _ = app.update(plan_message(ReorganisationPlanMessage::Toggle(misplaced)));
         assert_eq!(
             app.reorganisation_for_test()
@@ -4783,27 +4812,7 @@ mod reorganisation_plan_card {
     }
 
     #[test]
-    fn a_selected_move_is_in_the_after_tree_of_the_view() {
-        let mut view = loaded_view();
-        let year = line_of(&view, "Insurance/2023/2024-05-01_invoice.pdf");
-        assert!(view
-            .after_tree()
-            .iter()
-            .any(|line| line.name == "2024-05-01_invoice.pdf"));
-        for label in ["Before", "After"] {
-            assert!(shows(view.clone(), label), "{label}");
-        }
-
-        view.toggle(year);
-
-        assert!(!view
-            .after_tree()
-            .iter()
-            .any(|line| line.name == "2024-05-01_invoice.pdf"));
-    }
-
-    #[test]
-    fn nothing_selected_shows_empty_trees_and_the_button_does_nothing() {
+    fn nothing_selected_leaves_the_button_without_effect() {
         let mut view = loaded_view();
         for group in Group::ALL {
             let header = header_line(&view, group);
@@ -4812,7 +4821,7 @@ mod reorganisation_plan_card {
             }
         }
 
-        assert!(shows(view.clone(), "Nothing selected."));
+        assert!(shows(view.clone(), "0 of 5 selected · 2 cannot run"));
         assert!(messages_after_click(view, "Run selected").is_empty());
     }
 
@@ -4895,9 +4904,7 @@ mod reorganisation_plan_card {
 
     #[test]
     fn the_entry_under_the_cursor_is_explained_with_a_link_to_its_rule() {
-        let mut view = loaded_view();
-        let line = line_of(&view, "Insurance/2024/2024-07-01_invoice.pdf");
-        view.move_cursor(isize::try_from(line).unwrap());
+        let view = at(loaded_view(), "Insurance/2024/2024-07-01_invoice.pdf");
 
         assert!(shows(view.clone(), "Show rule"));
         assert!(!shows(loaded_view(), "Show rule"));

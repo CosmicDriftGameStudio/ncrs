@@ -9,7 +9,7 @@ use iced::widget::checkbox as widget_checkbox;
 use iced::widget::svg::{self, Svg};
 use iced::widget::text::{IntoFragment, LineHeight, Shaping, Wrapping};
 use iced::widget::{
-    column, container, mouse_area, pick_list, row, rule, text, text_input, Column, Row, Space,
+    column, container, mouse_area, row, rule, text, text_input, Column, Row, Space,
 };
 use iced::{
     alignment, Background, Color, Element, Font, Length, Padding, Pixels, Radians, Rotation, Theme,
@@ -135,19 +135,6 @@ pub fn icon_rotated<'a, M: 'a>(icon: Icon, color: Color, radians: f32) -> Elemen
         .rotation(Rotation::Floating(Radians(radians)))
         .style(move |_: &Theme, _| svg::Style { color: Some(color) })
         .into()
-}
-
-/// A short label on a tinted, rounded ground, one line: the reason of a
-/// document. `on_fill` for a chip on the highlighted row of a list.
-pub fn chip<'a, M: 'a>(label: &str, on_fill: bool, palette: &Palette) -> Element<'a, M> {
-    container(
-        text(label.to_owned())
-            .size(font_size::SMALL)
-            .wrapping(Wrapping::None),
-    )
-    .padding([1.0, spacing::S])
-    .style(theme::chip(palette, on_fill))
-    .into()
 }
 
 /// A chip the user can take away again: the label and a cross. The chip
@@ -306,16 +293,6 @@ pub fn enter_button<'a>(
     .spacing(spacing::S)
     .align_y(alignment::Vertical::Center);
     sized_button(content.into(), on_press, tone, palette)
-}
-
-/// A flat button in the accent color for a jump to another page, sized like
-/// a line of text.
-pub fn link<'a>(label: &str, on_press: Message, palette: &Palette) -> Element<'a, Message> {
-    widget_button(label_text(label))
-        .padding([0.0, spacing::S])
-        .on_press(on_press)
-        .style(theme::link_button(palette))
-        .into()
 }
 
 /// The label of the Enter key, on its cap and in the hints.
@@ -714,41 +691,6 @@ impl Columns<'_> {
         .into()
     }
 
-    /// A [`chip`] in column `index`, its label cut at the end where it is too
-    /// long for the column.
-    pub fn chip_cell<'a>(
-        &self,
-        index: usize,
-        label: &str,
-        on_fill: bool,
-        palette: &Palette,
-    ) -> Element<'a, Message> {
-        let portion = self.portions.get(index).copied().unwrap_or(1);
-        let room = (self.text_width(index) - 2.0 * spacing::S).max(0.0);
-        container(chip(
-            &format::fit_end(label, room, font_size::SMALL),
-            on_fill,
-            palette,
-        ))
-        .width(Length::FillPortion(portion))
-        .padding(Padding {
-            right: spacing::S,
-            ..Padding::ZERO
-        })
-        .clip(true)
-        .into()
-    }
-
-    /// The text of column `index`, cut in the middle where it is too long: a
-    /// path, whose end matters as much as its start.
-    pub fn path_cell<'a>(&self, index: usize, content: &str, color: Color) -> Element<'a, Message> {
-        self.cell_of(
-            index,
-            format::fit_middle(content, self.text_width(index), font_size::BODY),
-            color,
-        )
-    }
-
     /// The dimmed titles of the columns, one text line high: nothing selects
     /// them, so they need no list row height and stay close to the heading.
     pub fn header<'a>(&self, labels: &[&str], palette: &Palette) -> Element<'a, Message> {
@@ -928,75 +870,6 @@ pub fn segmented<'a>(
         .into()
 }
 
-/// An entry of a dropdown: equal to another by its position, so that two
-/// entries with the same label stay apart.
-#[derive(Debug, Clone)]
-struct DropdownChoice {
-    label: String,
-    position: usize,
-    message: Message,
-}
-
-impl PartialEq for DropdownChoice {
-    fn eq(&self, other: &Self) -> bool {
-        self.position == other.position
-    }
-}
-
-impl std::fmt::Display for DropdownChoice {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.label)
-    }
-}
-
-fn dropdown_choices(options: &[(&str, Message)]) -> Vec<DropdownChoice> {
-    options
-        .iter()
-        .enumerate()
-        .map(|(position, (label, message))| DropdownChoice {
-            label: (*label).to_owned(),
-            position,
-            message: message.clone(),
-        })
-        .collect()
-}
-
-/// A closed list of which one entry is shown and the others drop down on a
-/// click; the same shape as [`segmented`], for a list that may grow long.
-/// Disabled, it shows the chosen entry fainter and does not open.
-pub fn dropdown<'a>(
-    options: &[(&str, Message)],
-    selected: usize,
-    enabled: bool,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let choices = dropdown_choices(options);
-    let chosen = choices.get(selected).cloned();
-    if !enabled {
-        let label = chosen.map(|choice| choice.label).unwrap_or_default();
-        let dimmed = palette.text.scale_alpha(DISABLED_OPACITY);
-        return container(
-            text(label)
-                .size(font_size::BODY)
-                .wrapping(Wrapping::None)
-                .color(dimmed),
-        )
-        .padding([spacing::XS, spacing::S])
-        .center_y(size::ROW_TALL)
-        .width(Length::Fill)
-        .style(theme::outlined(palette))
-        .into();
-    }
-    pick_list(choices, chosen, |choice| choice.message)
-        .width(Length::Fill)
-        .padding([spacing::XS, spacing::S])
-        .text_size(font_size::BODY)
-        .text_line_height(LineHeight::Absolute(Pixels(FIELD_LINE_HEIGHT)))
-        .style(theme::dropdown_field(palette))
-        .menu_style(theme::dropdown_menu(palette))
-        .into()
-}
-
 /// The state of a checkbox.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Check {
@@ -1104,15 +977,6 @@ pub fn count_summary<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_picked_dropdown_choice_sends_the_message_of_its_option() {
-        let options = [("a", Message::PageUp), ("b", Message::PageDown)];
-        let choices = dropdown_choices(&options);
-        let picked = choices.get(1).cloned().map(|choice| choice.message);
-        assert_eq!(picked, Some(Message::PageDown));
-        assert_ne!(choices.first(), choices.get(1));
-    }
 
     #[test]
     fn a_column_holds_its_share_of_the_line_less_the_gap() {

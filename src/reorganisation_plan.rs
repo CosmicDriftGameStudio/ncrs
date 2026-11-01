@@ -4,8 +4,7 @@
 //! `ui::reorganisation_plan`.
 
 use std::collections::BTreeSet;
-use std::ffi::OsString;
-use std::path::{Component, Path, PathBuf};
+use std::path::Path;
 
 use iced::mouse::ScrollDelta;
 
@@ -65,16 +64,8 @@ pub enum Line {
     Item(usize),
 }
 
-/// A line of a before or after tree.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TreeLine {
-    pub depth: usize,
-    pub name: String,
-    pub is_folder: bool,
-}
-
 /// Most lines of the plan shown at once; the list follows the cursor.
-pub const VISIBLE_LINES: usize = 12;
+pub const VISIBLE_LINES: usize = 20;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReorganisationView {
@@ -192,6 +183,33 @@ impl ReorganisationView {
             .scroll(delta, self.lines.len(), VISIBLE_LINES, &mut self.cursor);
     }
 
+    /// Puts the cursor on the line without changing the selection.
+    pub fn select(&mut self, line: usize) {
+        if line < self.lines.len() {
+            self.cursor = line;
+            self.window
+                .ensure_visible(self.cursor, self.lines.len(), VISIBLE_LINES);
+        }
+    }
+
+    /// How many entries are selected to be run.
+    pub fn selected_count(&self) -> usize {
+        self.selected.len()
+    }
+
+    /// How many entries can be run at all.
+    pub fn runnable_count(&self) -> usize {
+        self.rows
+            .iter()
+            .filter(|planned| target(planned).is_some())
+            .count()
+    }
+
+    /// How many entries cannot be run.
+    pub fn blocked_count(&self) -> usize {
+        self.rows.len().saturating_sub(self.runnable_count())
+    }
+
     /// Selects or deselects what the line stands for: an entry, or every entry
     /// of a group. Entries without a target cannot be selected. The cursor
     /// moves to the line.
@@ -244,28 +262,6 @@ impl ReorganisationView {
             .collect()
     }
 
-    /// The folders and files the selected entries touch, as they are now.
-    pub fn before_tree(&self) -> Vec<TreeLine> {
-        tree_lines(
-            self.selected_rows()
-                .map(|planned| in_location(planned, &planned.item.source))
-                .collect(),
-        )
-    }
-
-    /// The same, as they would be after running the selection.
-    pub fn after_tree(&self) -> Vec<TreeLine> {
-        tree_lines(
-            self.selected_rows()
-                .filter_map(|planned| target(planned).map(|target| in_location(planned, target)))
-                .collect(),
-        )
-    }
-
-    fn selected_rows(&self) -> impl Iterator<Item = &PlannedItem> {
-        self.selected.iter().filter_map(|&row| self.rows.get(row))
-    }
-
     fn can_select(&self, row: usize) -> bool {
         self.rows
             .get(row)
@@ -280,58 +276,6 @@ impl ReorganisationView {
             .map(|(position, _)| position)
             .collect()
     }
-}
-
-/// A path below its location, led by the name of the location's folder so
-/// that two locations do not run together.
-fn in_location(planned: &PlannedItem, below: &Path) -> PathBuf {
-    planned
-        .location
-        .file_name()
-        .map_or_else(|| below.to_path_buf(), |name| Path::new(name).join(below))
-}
-
-/// Folders and files of `paths` as indented lines: every folder once, before
-/// what is in it, in path order.
-pub fn tree_lines(mut paths: Vec<PathBuf>) -> Vec<TreeLine> {
-    paths.sort();
-    paths.dedup();
-    let mut lines = Vec::new();
-    let mut open: Vec<OsString> = Vec::new();
-    for path in &paths {
-        let parts: Vec<OsString> = path
-            .components()
-            .filter_map(|part| match part {
-                Component::Normal(name) => Some(name.to_owned()),
-                Component::Prefix(_)
-                | Component::RootDir
-                | Component::CurDir
-                | Component::ParentDir => None,
-            })
-            .collect();
-        let Some((file, folders)) = parts.split_last() else {
-            continue;
-        };
-        let shared = open
-            .iter()
-            .zip(folders)
-            .take_while(|(shown, wanted)| shown == wanted)
-            .count();
-        for (depth, folder) in folders.iter().enumerate().skip(shared) {
-            lines.push(TreeLine {
-                depth,
-                name: folder.to_string_lossy().into_owned(),
-                is_folder: true,
-            });
-        }
-        open = folders.to_vec();
-        lines.push(TreeLine {
-            depth: folders.len(),
-            name: file.to_string_lossy().into_owned(),
-            is_folder: false,
-        });
-    }
-    lines
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the
@@ -373,20 +317,6 @@ pub mod tests {
             .iter()
             .position(|line| *line == Line::Header(group))
             .unwrap()
-    }
-
-    fn names(lines: &[TreeLine]) -> Vec<String> {
-        lines
-            .iter()
-            .map(|line| {
-                format!(
-                    "{}{}{}",
-                    "  ".repeat(line.depth),
-                    line.name,
-                    if line.is_folder { "/" } else { "" }
-                )
-            })
-            .collect()
     }
 
     #[test]
@@ -506,53 +436,6 @@ pub mod tests {
     }
 
     #[test]
-    fn a_selected_move_is_in_the_after_tree_and_a_deselected_one_is_not() {
-        let mut view = loaded_view();
-        let year = line_of(&view, "Insurance/2023/2024-05-01_invoice.pdf");
-
-        let before = names(&view.before_tree());
-        let after_selected = names(&view.after_tree());
-        assert!(
-            before.contains(&"      2024-05-01_invoice.pdf".to_owned()),
-            "{before:?}"
-        );
-        assert!(
-            after_selected.contains(&"      2024-05-01_invoice.pdf".to_owned()),
-            "{after_selected:?}"
-        );
-
-        view.toggle(year);
-
-        let after = names(&view.after_tree());
-        assert!(
-            !after.iter().any(|line| line.contains("2024-05-01")),
-            "{after:?}"
-        );
-    }
-
-    #[test]
-    fn the_trees_name_each_folder_once_before_what_is_in_it() {
-        let lines = tree_lines(vec![
-            PathBuf::from("Documents/Insurance/2024/b.pdf"),
-            PathBuf::from("Documents/Insurance/2024/a.pdf"),
-            PathBuf::from("Documents/Taxes/c.pdf"),
-        ]);
-
-        assert_eq!(
-            names(&lines),
-            [
-                "Documents/",
-                "  Insurance/",
-                "    2024/",
-                "      a.pdf",
-                "      b.pdf",
-                "  Taxes/",
-                "    c.pdf",
-            ]
-        );
-    }
-
-    #[test]
     fn the_cursor_stays_in_the_list_and_a_new_plan_resets_it() {
         let mut view = loaded_view();
 
@@ -564,6 +447,29 @@ pub mod tests {
         view.begin_planning();
         view.loaded(sample_items());
         assert_eq!(view.cursor(), 0);
+    }
+
+    #[test]
+    fn selecting_a_line_moves_the_cursor_and_keeps_the_selection() {
+        let mut view = loaded_view();
+        let before = view.selection();
+        let year = line_of(&view, "Insurance/2023/2024-05-01_invoice.pdf");
+
+        view.select(year);
+
+        assert_eq!(view.cursor(), year);
+        assert_eq!(view.selection(), before);
+        view.select(1000);
+        assert_eq!(view.cursor(), year);
+    }
+
+    #[test]
+    fn the_counts_tell_what_can_and_cannot_run() {
+        let view = loaded_view();
+
+        assert_eq!(view.selected_count(), 4);
+        assert_eq!(view.runnable_count(), 5);
+        assert_eq!(view.blocked_count(), 2);
     }
 
     #[test]
