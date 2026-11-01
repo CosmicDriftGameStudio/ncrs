@@ -3,54 +3,37 @@
 //! so they can be reused in other contexts.
 
 pub mod about;
-pub mod ai_model;
-pub mod command_line;
-pub mod command_palette;
-pub mod condition_editor;
-pub mod conflict;
-pub mod context_menu;
-pub mod delete;
+pub use ncrs_files::context_menu_view as context_menu;
+pub use ncrs_palette::command_line::view as command_line;
 pub mod dialog;
-pub mod document_preview;
-pub mod filing;
-pub mod filing_pieces;
-pub mod filing_setup;
-pub mod filing_status;
-pub mod fkeys;
-pub mod format;
-pub mod frame;
 pub mod grant;
-pub mod hermes;
-pub mod hermes_flow;
-pub mod hermes_kit;
-pub mod hermes_overview;
-pub mod hermes_setup;
-pub mod key_bindings;
-pub mod key_intercept;
-pub mod kit;
 pub mod layout;
-mod menu_button;
-pub mod ocr_models;
 pub mod panel;
-pub mod panel_history;
-pub mod picker;
-pub mod quick_fix;
-pub mod quick_open;
-pub mod remote;
-pub mod reorganisation_plan;
-pub mod review_list;
-pub mod rule_suggestions;
-pub mod rules;
-pub mod saved_queries;
-pub mod search;
-pub mod settings;
+pub use ncrs_files::panel_history;
+pub use ncrs_ops::transfer::view as transfer;
+pub use ncrs_ops::trash::view as trash;
+pub use ncrs_ops::{conflict, delete};
+pub use ncrs_palette::quick_open::view as quick_open;
+pub use ncrs_remote::view as remote;
 pub mod statusbar;
-pub mod tags;
-pub mod theme;
-pub mod theme_fetch;
 pub mod titlebar;
-pub mod transfer;
-pub mod trash;
-pub mod volumes;
+pub use ncrs_files::volumes_view as volumes;
 
-pub use panel::{PanelProps, PanelState};
+pub use ncrs_ui_kit::{fkeys, format, frame, kit, theme};
+pub use panel::PanelState;
+
+#[cfg(test)]
+pub use ncrs_hermes_ui::ui::filing_status;
+pub use ncrs_hermes_ui::ui::{
+    filing, filing_setup, hermes, hermes_flow, hermes_overview, hermes_setup, quick_fix,
+};
+pub use ncrs_settings::ai_model::view as ai_model;
+pub use ncrs_settings::key_bindings::view as key_bindings;
+pub use ncrs_settings::ocr_models::view as ocr_models;
+pub use ncrs_settings::theme_fetch::view as theme_fetch;
+
+/// The settings page: its state and its view.
+pub mod settings {
+    pub use ncrs_settings::settings::view::*;
+    pub use ncrs_settings::settings::*;
+}

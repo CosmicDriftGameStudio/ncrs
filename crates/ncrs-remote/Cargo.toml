@@ -1,0 +1,32 @@
+[package]
+name = "ncrs-remote"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "The SFTP connect feature of ncrs: the connect dialog, the host key question, the passwords of the keychain and the connect failures"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Same as the kit: no renderer or window system, the app picks them.
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced"] }
+# The host key the dialog asks about is a russh key. Same build as ncrs-fs: ring
+# as crypto backend, no `rsa` feature.
+russh = { version = "=0.65.0", default-features = false, features = ["ring"] }
+# The keychain is read and written on the blocking pool.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
+ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
+ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
+
+[features]
+# The helpers of the tests of the app: the accessors of the dialog the tests read.
+test-support = []
+
+[dev-dependencies]
+ncrs-fs = { path = "../ncrs-fs", version = "0.0.0", features = ["test-support"] }
+
+[lints]
+workspace = true

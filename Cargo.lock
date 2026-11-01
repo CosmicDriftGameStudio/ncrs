@@ -3364,52 +3364,46 @@ dependencies = [
  "arboard",
  "chrono",
  "clipboard-win",
- "data-encoding",
- "drag",
- "flate2",
  "globset",
  "grep-matcher",
  "grep-regex",
  "grep-searcher",
- "hmac",
  "iced",
  "iced_selector",
  "iced_test",
  "ignore",
  "image",
- "jsonc-parser",
- "keyring",
  "muda",
  "ncrs-ai",
+ "ncrs-config",
+ "ncrs-core",
+ "ncrs-files",
+ "ncrs-filing",
+ "ncrs-fs",
+ "ncrs-hermes-ui",
+ "ncrs-i18n",
  "ncrs-index",
  "ncrs-intake",
- "ncrs-ocr-vision",
+ "ncrs-jobs",
+ "ncrs-ops",
+ "ncrs-palette",
  "ncrs-pipeline",
- "ncrs-sandbox",
- "nucleo-matcher",
+ "ncrs-remote",
+ "ncrs-search",
+ "ncrs-settings",
+ "ncrs-ui-kit",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
- "png 0.18.1",
  "rfd",
  "russh",
- "russh-sftp",
- "same-file",
  "serde",
  "serde_spanned 1.1.2",
- "sevenz-rust2",
- "sha1",
  "sha2 0.10.9",
- "tar",
  "tempfile",
  "tokio",
  "toml_edit 0.25.17+spec-1.1.0",
- "trash",
  "unicode-normalization",
- "ureq",
- "zeroize",
- "zip",
- "zstd",
 ]
 
 [[package]]
@@ -3424,6 +3418,122 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "ureq",
+]
+
+[[package]]
+name = "ncrs-config"
+version = "0.0.0"
+dependencies = [
+ "iced",
+ "jsonc-parser",
+ "ncrs-ai",
+ "ncrs-core",
+ "ncrs-fs",
+ "ncrs-i18n",
+ "ncrs-index",
+ "ncrs-intake",
+ "ncrs-pipeline",
+ "ncrs-ui-kit",
+ "serde",
+ "serde_spanned 1.1.2",
+ "tempfile",
+ "toml_edit 0.25.17+spec-1.1.0",
+]
+
+[[package]]
+name = "ncrs-core"
+version = "0.0.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "ncrs-files"
+version = "0.0.0"
+dependencies = [
+ "iced",
+ "ncrs-core",
+ "ncrs-fs",
+ "ncrs-i18n",
+ "ncrs-ui-kit",
+ "tokio",
+]
+
+[[package]]
+name = "ncrs-filing"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "ncrs-ai",
+ "ncrs-config",
+ "ncrs-core",
+ "ncrs-fs",
+ "ncrs-index",
+ "ncrs-intake",
+ "ncrs-ocr-vision",
+ "ncrs-pipeline",
+ "ncrs-ui-kit",
+ "objc2-foundation 0.3.2",
+ "same-file",
+ "tempfile",
+]
+
+[[package]]
+name = "ncrs-fs"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "data-encoding",
+ "flate2",
+ "futures",
+ "hmac",
+ "keyring",
+ "ncrs-core",
+ "ncrs-sandbox",
+ "objc2-foundation 0.3.2",
+ "russh",
+ "russh-sftp",
+ "same-file",
+ "serde",
+ "sevenz-rust2",
+ "sha1",
+ "tar",
+ "tempfile",
+ "tokio",
+ "toml_edit 0.25.17+spec-1.1.0",
+ "trash",
+ "zeroize",
+ "zip",
+ "zstd",
+]
+
+[[package]]
+name = "ncrs-hermes-ui"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "iced",
+ "image",
+ "ncrs-ai",
+ "ncrs-config",
+ "ncrs-core",
+ "ncrs-filing",
+ "ncrs-fs",
+ "ncrs-i18n",
+ "ncrs-index",
+ "ncrs-intake",
+ "ncrs-jobs",
+ "ncrs-pipeline",
+ "ncrs-ui-kit",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "ncrs-i18n"
+version = "0.0.0"
+dependencies = [
+ "ncrs-index",
 ]
 
 [[package]]
@@ -3460,6 +3570,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ncrs-jobs"
+version = "0.0.0"
+dependencies = [
+ "iced",
+ "ncrs-i18n",
+]
+
+[[package]]
 name = "ncrs-ocr-vision"
 version = "0.0.0"
 dependencies = [
@@ -3470,6 +3588,39 @@ dependencies = [
  "objc2-vision",
  "png 0.18.1",
  "tempfile",
+]
+
+[[package]]
+name = "ncrs-ops"
+version = "0.0.0"
+dependencies = [
+ "arboard",
+ "chrono",
+ "drag",
+ "iced",
+ "ncrs-core",
+ "ncrs-fs",
+ "ncrs-i18n",
+ "ncrs-jobs",
+ "ncrs-ui-kit",
+ "png 0.18.1",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "ncrs-palette"
+version = "0.0.0"
+dependencies = [
+ "iced",
+ "ncrs-config",
+ "ncrs-core",
+ "ncrs-fs",
+ "ncrs-i18n",
+ "ncrs-ui-kit",
+ "nucleo-matcher",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -3484,6 +3635,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ncrs-remote"
+version = "0.0.0"
+dependencies = [
+ "iced",
+ "ncrs-core",
+ "ncrs-fs",
+ "ncrs-i18n",
+ "ncrs-ui-kit",
+ "russh",
+ "tokio",
+]
+
+[[package]]
 name = "ncrs-sandbox"
 version = "0.0.0"
 dependencies = [
@@ -3491,6 +3655,59 @@ dependencies = [
  "objc2 0.6.5",
  "objc2-foundation 0.3.2",
  "tempfile",
+]
+
+[[package]]
+name = "ncrs-search"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "globset",
+ "grep-matcher",
+ "grep-regex",
+ "grep-searcher",
+ "iced",
+ "ignore",
+ "ncrs-core",
+ "ncrs-i18n",
+ "ncrs-index",
+ "ncrs-ui-kit",
+ "tempfile",
+ "tokio",
+ "unicode-normalization",
+]
+
+[[package]]
+name = "ncrs-settings"
+version = "0.0.0"
+dependencies = [
+ "iced",
+ "jsonc-parser",
+ "ncrs-ai",
+ "ncrs-config",
+ "ncrs-fs",
+ "ncrs-i18n",
+ "ncrs-index",
+ "ncrs-intake",
+ "ncrs-pipeline",
+ "ncrs-ui-kit",
+ "serde_spanned 1.1.2",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "ureq",
+ "zip",
+]
+
+[[package]]
+name = "ncrs-ui-kit"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "iced",
+ "ncrs-core",
+ "ncrs-i18n",
+ "ncrs-index",
 ]
 
 [[package]]

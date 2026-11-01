@@ -1,0 +1,50 @@
+[package]
+name = "ncrs-hermes-ui"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "The Hermes pages of ncrs: the filing setup and status, the overview, the review list, the rules, the rule suggestions, the reorganisation plan, the saved queries, the tags and the quick-fix menu"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Same as the kit: no renderer or window system, the app picks them. "svg" draws
+# the icons of the Hermes column, "image-without-codecs" is the image widget of
+# the document preview.
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced", "svg", "image-without-codecs"] }
+ncrs-ai = { path = "../ncrs-ai", version = "0.0.0" }
+ncrs-config = { path = "../ncrs-config", version = "0.0.0" }
+ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
+ncrs-filing = { path = "../ncrs-filing", version = "0.0.0" }
+ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
+ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
+ncrs-intake = { path = "../ncrs-intake", version = "0.0.0" }
+ncrs-jobs = { path = "../ncrs-jobs", version = "0.0.0" }
+ncrs-pipeline = { path = "../ncrs-pipeline", version = "0.0.0" }
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# The preview decodes pictures itself, with limits on size and memory, and
+# scales them down before iced sees them.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tiff"] }
+# The preview is decoded on the blocking pool.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+
+# The index the fixtures take their ids from lives in a temporary folder; only the
+# `test-support` feature brings it in.
+tempfile = { version = "3.27", optional = true }
+
+[features]
+# The fixtures of the tests of the app: the lists and pages the view tests start from.
+test-support = ["dep:tempfile", "ncrs-filing/test-support"]
+
+[dev-dependencies]
+tempfile = "3.27"
+ncrs-config = { path = "../ncrs-config", version = "0.0.0", features = ["test-support"] }
+ncrs-filing = { path = "../ncrs-filing", version = "0.0.0", features = ["test-support"] }
+ncrs-fs = { path = "../ncrs-fs", version = "0.0.0", features = ["test-support"] }
+ncrs-intake = { path = "../ncrs-intake", version = "0.0.0", features = ["test-support"] }
+
+[lints]
+workspace = true

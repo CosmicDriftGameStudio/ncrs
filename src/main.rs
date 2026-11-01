@@ -12,77 +12,56 @@ mod screenshot_tests;
 mod ui_tests;
 
 mod about;
-mod ai_model;
 mod app;
 mod backend;
-mod clipboard_paste;
+pub use ncrs_ops::clipboard_paste;
 #[cfg(test)]
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod clipboard_system_tests;
 mod command_line;
-mod command_palette;
-mod commands;
-mod condition_editor;
-mod config;
-mod context_menu;
-mod dialog;
-mod document_preview;
+pub use ncrs_config::commands;
+pub use ncrs_config::config;
+mod context_action_message;
+pub use ncrs_config::file_list_tags;
+pub use ncrs_files::context_menu;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-mod drag_out;
-mod execute;
-mod file_list_tags;
-mod filing;
-mod filing_pieces;
-mod filing_setup;
-mod filing_status;
-mod filing_work;
+pub use ncrs_ops::drag_out;
 mod fs;
-mod hermes_column;
-mod hermes_overview;
-mod hermes_setup;
-mod hermes_status;
-mod i18n;
-mod jobs;
-mod key_bindings;
+mod input_state;
+pub use ncrs_filing::{
+    execute, filing, filing_work, query_work, reorganisation_work, replan_work, review_work,
+    rules_work, suggestion_work, tags_work,
+};
+pub use ncrs_hermes_ui::{
+    condition_editor, document_preview, filing_pieces, filing_setup, filing_status, hermes_column,
+    hermes_overview, hermes_setup, hermes_status, quick_fix, reading_again, reorganisation_plan,
+    review_list, rule_form, rule_suggestions, rules_page, saved_queries, tags_page,
+};
+pub use ncrs_i18n as i18n;
+pub use ncrs_jobs as jobs;
 mod keymap;
-mod list_window;
+pub use ncrs_ui_kit::list_window;
 #[cfg(any(target_os = "macos", test))]
 mod menu;
 mod messages;
 #[cfg(target_os = "macos")]
 mod native_menu;
-mod ocr_models;
-mod open_vsx;
-mod palette;
-mod panel_drag;
-mod query_work;
-mod quick_fix;
+pub use ncrs_config::palette;
+pub use ncrs_files::panel_drag;
 mod quick_open;
-mod reading_again;
-mod remote_dialog;
-mod reorganisation_plan;
-mod reorganisation_work;
-mod replan_work;
-mod review_list;
-mod review_work;
-mod rule_form;
-mod rule_suggestions;
-mod rules_page;
-mod rules_work;
-mod saved_queries;
+pub use ncrs_remote::dialog as remote_dialog;
+#[cfg(test)]
 mod search_filters;
 mod search_view;
-mod selection;
+pub use ncrs_core::selection;
 mod session_state;
-mod suggestion_work;
-mod tags_page;
-mod tags_work;
-mod theme_fetch;
-mod transfer_dialog;
-mod trash_view;
+mod system_dialogs;
+pub use ncrs_ops::prompt as dialog;
+pub use ncrs_ops::transfer as transfer_dialog;
+pub use ncrs_ops::trash as trash_view;
+pub use ncrs_settings::{ai_model, key_bindings, ocr_models, open_vsx, theme_fetch, vsix};
 mod ui;
-mod vscode_theme;
-mod vsix;
+pub use ncrs_config::vscode_theme;
 
 use app::App;
 use std::env;

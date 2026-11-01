@@ -268,7 +268,7 @@ mod tests {
         let search_filters = crate::ui_tests::search_filters_card::app_with_filters();
         write_screenshot(&search_filters, "search-filters.png");
 
-        let filing = App::with_review_list(crate::review_list::tests::loaded_list());
+        let filing = App::with_review_list(crate::review_list::fixtures::loaded_list());
         write_screenshot_to(&filing, OUTPUT_DIRECTORY, FILING_WINDOW_SIZE, "filing.png");
     }
 

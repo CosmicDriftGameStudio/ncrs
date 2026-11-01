@@ -29,10 +29,15 @@ use crate::app::App;
 use crate::filing::{FilingMessage, FilingModule, KeyProblem, Phase, SecretText};
 use crate::i18n::Language;
 use crate::messages::Message;
+use crate::messages::PanelMessage;
 
 /// Which panel the pointer is over is bookkeeping, not something the user did.
 fn is_action(message: &Message) -> bool {
-    !matches!(message, Message::PanelEntered(_) | Message::PanelExited(_))
+    !matches!(
+        message,
+        Message::Panel(PanelMessage::PanelEntered(_))
+            | Message::Panel(PanelMessage::PanelExited(_))
+    )
 }
 
 fn simulator(app: &App) -> Simulator<'_, Message, iced::Theme> {
@@ -1123,10 +1128,10 @@ mod context_menu_overlay {
         let messages: Vec<Message> = sim.into_messages().collect();
         assert_eq!(
             messages,
-            [Message::ContextMenuAt {
+            [Message::Panel(PanelMessage::RowContext {
                 side: PanelSide::Left,
                 index: 1
-            }]
+            })]
         );
     }
 
@@ -1581,9 +1586,9 @@ mod filing_cards {
             matches!(
                 messages.as_slice(),
                 [
-                    Message::RowClicked { .. },
-                    Message::RowClicked { .. },
-                    Message::RowActivated { .. }
+                    Message::Panel(PanelMessage::RowClicked { .. }),
+                    Message::Panel(PanelMessage::RowClicked { .. }),
+                    Message::Panel(PanelMessage::RowActivated { .. })
                 ]
             ),
             "{messages:?}"
@@ -1594,7 +1599,10 @@ mod filing_cards {
     fn the_panels_stay_usable_while_a_card_is_up() {
         let without_card = messages_for_a_click_on_a_panel_row(&App::with_fixed_panels());
         assert!(
-            matches!(without_card.as_slice(), [Message::RowClicked { .. }]),
+            matches!(
+                without_card.as_slice(),
+                [Message::Panel(PanelMessage::RowClicked { .. })]
+            ),
             "the click misses the row: {without_card:?}"
         );
 
@@ -2232,7 +2240,10 @@ mod filing_setup_card {
         };
         let without_setup = row_click(&App::with_fixed_panels());
         assert!(
-            matches!(without_setup.as_slice(), [Message::RowClicked { .. }]),
+            matches!(
+                without_setup.as_slice(),
+                [Message::Panel(PanelMessage::RowClicked { .. })]
+            ),
             "the click misses the row: {without_setup:?}"
         );
 
@@ -2373,13 +2384,13 @@ mod command_palette {
             .rows()
             .iter()
             .position(|row| match row {
-                crate::command_palette::Row::Hit(hit) => {
+                ncrs_palette::command_list::Row::Hit(hit) => {
                     palette
                         .entry(hit)
-                        .and_then(crate::command_palette::Entry::command)
+                        .and_then(ncrs_palette::command_list::Entry::command)
                         == Some(crate::keymap::KeyAction::SwitchLanguage)
                 }
-                crate::command_palette::Row::Header(_) => false,
+                ncrs_palette::command_list::Row::Header(_) => false,
             })
             .expect("Switch language is listed");
         let mut sim = simulator(&app);
@@ -2502,7 +2513,7 @@ mod theme_fetch_card {
     use super::*;
     use crate::messages::ThemeFetchMessage;
     use crate::open_vsx::FetchError;
-    use crate::theme_fetch::tests::fetched;
+    use crate::theme_fetch::fixtures::fetched;
     use crate::theme_fetch::{Fetched, ThemeFetch};
     use crate::vsix::Brightness;
 
@@ -2697,7 +2708,7 @@ mod review_list_card {
     use super::*;
     use crate::document_preview::{PreviewContent, PreviewImage};
     use crate::messages::{HermesFocus, HermesPage, ReviewListMessage};
-    use crate::review_list::tests::{
+    use crate::review_list::fixtures::{
         default_pattern_list, loaded_list, long_list, nothing_recognised_list, origins_list,
     };
     use crate::review_list::{FormField, ReviewList};
@@ -2856,7 +2867,7 @@ mod review_list_card {
         let mut saved = opened();
         let _ = saved.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Saved {
             generation: 1,
-            result: Ok(crate::rules_page::tests::rule_id(1)),
+            result: Ok(crate::rules_page::fixtures::rule_id(1)),
         })));
         assert!(saved.rules_for_test().is_none());
         assert!(saved.review_list_for_test().is_some());
@@ -2888,6 +2899,19 @@ mod review_list_card {
         )));
         assert!(app.rules_for_test().is_some());
         assert!(app.rules_for_test().unwrap().form().is_none());
+    }
+
+    #[test]
+    fn set_fields_in_the_quick_fix_opens_the_review_list() {
+        use crate::messages::QuickFixMessage;
+        let item = loaded_list().rows().to_vec().swap_remove(0);
+        let mut app = App::with_quick_fix_menu(item);
+        // Accept, set fields, create rule.
+        let _ = app.update(Message::QuickFix(QuickFixMessage::Hover(1)));
+
+        let _ = app.update(Message::QuickFix(QuickFixMessage::Activate));
+
+        assert!(app.review_list_for_test().is_some());
     }
 
     #[test]
@@ -2977,11 +3001,11 @@ mod review_list_card {
     #[test]
     fn the_tags_and_the_default_target_match_their_snapshots() {
         matches_snapshot(
-            crate::review_list::tests::tags_list(),
+            crate::review_list::fixtures::tags_list(),
             "review_list_tags_en",
         );
         matches_snapshot(
-            crate::review_list::tests::tags_list(),
+            crate::review_list::fixtures::tags_list(),
             "review_list_tags_de",
         );
     }
@@ -3279,6 +3303,7 @@ mod review_list_card {
 pub mod search_filters_card {
     use super::*;
     use crate::keymap::KeyAction;
+    use crate::keymap::KeyActionMessage as _;
     use crate::messages::{QuickOpenMessage, SavedQueriesMessage, SearchMessage};
     use crate::query_work::QueryHit;
     use crate::search_filters::tests::found_hit;
@@ -3484,7 +3509,7 @@ pub mod search_filters_card {
         let _inside = runtime.enter();
         let mut app = App::with_search_filters("telekom", |root| {
             let mut filters = filters_for(root, "telekom");
-            let report = crate::saved_queries::tests::stored_queries()[0].id;
+            let report = crate::saved_queries::fixtures::stored_queries()[0].id;
             filters.edit_report(report, &ncrs_index::QuerySpec::default());
             filters
         })
@@ -3577,7 +3602,7 @@ mod saved_queries_card {
 
     use super::*;
     use crate::messages::{HermesPage, SavedQueriesMessage};
-    use crate::saved_queries::tests::{hit, loaded_list, THIS_YEAR};
+    use crate::saved_queries::fixtures::{hit, loaded_list, THIS_YEAR};
     use crate::saved_queries::{Draft, SavedQueries};
 
     fn queries_message(message: SavedQueriesMessage) -> Message {
@@ -3741,7 +3766,7 @@ mod saved_queries_card {
 
     #[test]
     fn a_sidebar_click_opens_the_page_and_closes_the_other() {
-        let mut app = App::with_review_list(crate::review_list::tests::loaded_list());
+        let mut app = App::with_review_list(crate::review_list::fixtures::loaded_list());
         let _ = app.update(Message::HermesPage(HermesPage::SavedQueries));
 
         assert!(app.review_list_for_test().is_none());
@@ -3798,7 +3823,7 @@ mod saved_queries_card {
                 ..ncrs_index::QuerySpec::default()
             },
         });
-        list.loaded(crate::saved_queries::tests::stored_queries());
+        list.loaded(crate::saved_queries::fixtures::stored_queries());
         let (serial, _) = list.begin_run().expect("a spec");
         list.ran(serial, vec![hit("invoice-1.pdf", false)]);
         list
@@ -3820,7 +3845,7 @@ mod saved_queries_card {
     fn editing_in_the_search_binds_the_report_and_opening_does_not() {
         let runtime = tokio::runtime::Runtime::new().expect("a runtime");
         let _inside = runtime.enter();
-        let first = crate::saved_queries::tests::stored_queries()[0].id;
+        let first = crate::saved_queries::fixtures::stored_queries()[0].id;
         for (message, bound) in [
             (SavedQueriesMessage::EditInSearch, Some(first)),
             (SavedQueriesMessage::OpenInSearch, None),
@@ -3864,7 +3889,7 @@ mod tags_card {
     use crate::config::Filing;
     use crate::file_list_tags::TagExceptions;
     use crate::messages::{HermesPage, SettingsFeature, SettingsMessage, TagsMessage};
-    use crate::tags_page::tests::loaded_page;
+    use crate::tags_page::fixtures::loaded_page;
     use crate::tags_page::TagsPage;
     use crate::tags_work::{TagsFailure, TagsLoaded};
 
@@ -3992,7 +4017,7 @@ mod tags_card {
 
     #[test]
     fn a_sidebar_click_opens_the_page_and_closes_the_other() {
-        let mut app = App::with_saved_queries(crate::saved_queries::tests::loaded_list());
+        let mut app = App::with_saved_queries(crate::saved_queries::fixtures::loaded_list());
         let _ = app.update(Message::HermesPage(HermesPage::Tags));
         assert!(app.saved_queries_for_test().is_none());
         assert!(app.tags_for_test().is_some());
@@ -4107,7 +4132,7 @@ mod rules_card {
     use super::*;
     use crate::condition_editor::ConditionEdit;
     use crate::messages::{RuleFormMessage, RulesMessage};
-    use crate::rules_page::tests::rule_id;
+    use crate::rules_page::fixtures::rule_id;
     use crate::rules_page::RulesPage;
     use crate::rules_work::{ListedRule, RulesLoad};
 
@@ -4598,7 +4623,7 @@ mod rule_suggestions_card {
     use super::*;
     use crate::messages::{RuleFormMessage, RuleSuggestionsMessage, RulesMessage};
     use crate::rule_form::RuleFormTarget;
-    use crate::rule_suggestions::tests::{loaded_view, rule_ids, suggestion};
+    use crate::rule_suggestions::fixtures::{loaded_view, rule_ids, suggestion};
     use crate::rule_suggestions::{Problem, RuleSuggestions};
     use crate::suggestion_work::INDEX_NOT_OPEN;
 
@@ -4840,7 +4865,7 @@ mod rule_suggestions_card {
 
         let _ = app.update(Message::Rules(RulesMessage::Form(RuleFormMessage::Saved {
             generation: 1,
-            result: Ok(crate::rules_page::tests::rule_id(1)),
+            result: Ok(crate::rules_page::fixtures::rule_id(1)),
         })));
 
         assert!(app.rules_for_test().is_none());
@@ -4968,9 +4993,9 @@ mod rule_suggestions_card {
 mod reorganisation_plan_card {
     use super::*;
     use crate::messages::ReorganisationPlanMessage;
-    use crate::reorganisation_plan::tests::loaded_view;
+    use crate::reorganisation_plan::fixtures::loaded_view;
     use crate::reorganisation_plan::{Group, Line, ReorganisationView};
-    use crate::reorganisation_work::tests::{archive, sample_items};
+    use crate::reorganisation_work::fixtures::{archive, sample_items};
     use crate::suggestion_work::INDEX_NOT_OPEN;
 
     fn plan_message(message: ReorganisationPlanMessage) -> Message {
@@ -5230,7 +5255,7 @@ mod reorganisation_plan_card {
     #[test]
     fn the_link_of_a_confirmed_rule_ends_on_the_rules_page_with_that_rule_selected() {
         use crate::messages::RulesMessage;
-        use crate::rules_page::tests::{listed, rule_id};
+        use crate::rules_page::fixtures::{listed, rule_id};
         use crate::rules_work::RulesLoad;
         let (mut app, rule) = plan_app_on("Insurance/2024/2024-07-01_invoice.pdf");
 
@@ -5251,7 +5276,7 @@ mod reorganisation_plan_card {
     #[test]
     fn the_link_of_an_unconfirmed_rule_ends_on_the_suggestions_page_with_it_selected() {
         use crate::messages::RuleSuggestionsMessage;
-        use crate::rule_suggestions::tests::{rule_ids, suggestion};
+        use crate::rule_suggestions::fixtures::{rule_ids, suggestion};
         let (mut app, rule) = plan_app_on("Insurance/2024/2024-08-01_invoice.pdf");
         let [first, second, third] = rule_ids();
 
@@ -5423,7 +5448,12 @@ mod title_bar {
         assert_eq!(app.active_panel_side_for_test(), PanelSide::Left);
 
         let messages = messages_after_click(&app, RIGHT_TAB_ID);
-        assert_eq!(messages, vec![Message::ActivatePanel(PanelSide::Right)]);
+        assert_eq!(
+            messages,
+            vec![Message::Panel(PanelMessage::ActivatePanel(
+                PanelSide::Right
+            ))]
+        );
         for message in messages {
             drop(app.update(message));
         }
@@ -5431,7 +5461,7 @@ mod title_bar {
 
         assert_eq!(
             messages_after_click(&app, LEFT_TAB_ID),
-            vec![Message::ActivatePanel(PanelSide::Left)]
+            vec![Message::Panel(PanelMessage::ActivatePanel(PanelSide::Left))]
         );
     }
 
@@ -6356,9 +6386,7 @@ mod settings_tab {
         let app = App::with_settings_open(SettingsFeature::Hermes, hermes_config());
         assert_eq!(
             messages_after_click(&app, "Open").last(),
-            Some(&Message::FilingStatus(
-                crate::messages::FilingStatusMessage::Open
-            ))
+            Some(&Message::Settings(SettingsMessage::OpenFilingStatus))
         );
     }
 }
@@ -6699,7 +6727,7 @@ mod connect_dialog {
 #[cfg(test)]
 mod servers_page {
     use super::*;
-    use crate::messages::{RemoteMessage, SettingChange, SettingsFeature, SettingsMessage};
+    use crate::messages::{SettingChange, SettingsFeature, SettingsMessage};
     use std::path::PathBuf;
 
     fn page(source: &str) -> App {
@@ -6736,9 +6764,9 @@ mod servers_page {
         let app = page(TWO);
         assert_eq!(
             messages_after_click(&app, "Connect"),
-            [Message::Remote(RemoteMessage::OpenServer(PathBuf::from(
-                "sftp://marc@files.example.org/srv"
-            )))]
+            [Message::Settings(SettingsMessage::OpenServer(
+                PathBuf::from("sftp://marc@files.example.org/srv")
+            ))]
         );
         let sent = messages_after_click(&app, "Remove");
         let [Message::Settings(SettingsMessage::Change(SettingChange::Servers(rest)))] =
@@ -6756,7 +6784,7 @@ mod servers_page {
         simulator(&app).find("No saved servers").unwrap();
         assert_eq!(
             messages_after_click(&app, "Add…"),
-            [Message::Remote(RemoteMessage::OpenAdd)]
+            [Message::Settings(SettingsMessage::OpenServerAdd)]
         );
     }
 
@@ -6913,7 +6941,7 @@ mod hermes_overview_page {
 
     use super::*;
     use crate::config::{AiSetting, Filing, FilingLocation};
-    use crate::messages::HermesOverviewMessage;
+    use crate::messages::{HermesOverviewMessage, SettingsMessage};
 
     fn configured() -> Filing {
         let at = |path: &str, mode, is_target| FilingLocation {
@@ -7066,7 +7094,7 @@ mod hermes_overview_page {
             App::with_hermes_settings(Some(Phase::Ready), configured()).with_missing_key_for_test();
         assert_eq!(
             clicks(&missing, "Start over …"),
-            [overview_message(HermesOverviewMessage::AskStartOver)]
+            [Message::Settings(SettingsMessage::Protection(2))]
         );
         let asking = App::with_hermes_settings(Some(Phase::Ready), configured())
             .with_start_over_question_for_test();

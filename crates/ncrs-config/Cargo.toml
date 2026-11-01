@@ -1,0 +1,46 @@
+[package]
+name = "ncrs-config"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "The config file of ncrs, its key bindings, theme and command list. Knows nothing about the windows that show them"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Keys and colors only: no renderer or window system, the app picks them.
+iced = { version = "0.14", default-features = false }
+ncrs-ai = { path = "../ncrs-ai", version = "0.0.0" }
+ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
+ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
+ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
+ncrs-intake = { path = "../ncrs-intake", version = "0.0.0" }
+ncrs-pipeline = { path = "../ncrs-pipeline", version = "0.0.0" }
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
+# derive is the config schema: the structs in config are read straight from it.
+serde = { version = "1", features = ["derive"] }
+# Spanned: a config error names the line of the key that is wrong, and the
+# keymap only learns that after parsing. toml_edit does not re-export it.
+serde_spanned = { version = "1.1", features = ["serde"] }
+# toml_edit rather than toml: the config file is written back (keymap, theme,
+# language picked in the UI), and only toml_edit keeps the user's comments and
+# layout when it does. "parse" and "serde" read it, "display" writes it back.
+toml_edit = { version = "0.25", default-features = false, features = ["parse", "serde", "display"] }
+# Reads the VS Code theme files named by `vscode` in `[theme]`: JSON with
+# comments and trailing commas. No features, so no dependencies.
+jsonc-parser = { version = "=0.34.0", default-features = false }
+
+[features]
+# `config::from_text` and `KeyAction::allowed_in_archive`/`allowed_on_server`,
+# for the tests of the app; also keeps the OCR facts of the tests off the machine.
+test-support = []
+
+[dev-dependencies]
+tempfile = "3.27"
+# The guard that stops a test from reaching the user's config, index or keychain.
+ncrs-fs = { path = "../ncrs-fs", version = "0.0.0", features = ["test-support"] }
+
+[lints]
+workspace = true

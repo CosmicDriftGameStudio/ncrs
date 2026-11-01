@@ -219,7 +219,7 @@ jobs:
 
       - name: Tests, App Store build (macOS)
         if: runner.os == 'macOS'
-        run: cargo test --features sandbox -- --skip ui_tests
+        run: cargo test -p ncrs -p ncrs-fs --features ncrs/sandbox -- --skip ui_tests
 
       # These tests are ignored above because they need the model file. The
       # log is checked for the count: a wrong filter or a missing feature would

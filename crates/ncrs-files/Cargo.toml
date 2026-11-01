@@ -1,0 +1,27 @@
+[package]
+name = "ncrs-files"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "The file panel of ncrs: panel state, column header, history, the drag between panels and the hit list"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Same as the kit: no renderer or window system, the app picks them.
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced"] }
+ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
+ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
+ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
+
+# The reads of the hit list run on the blocking pool.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+
+[features]
+# `PanelState::apply_listing`, for the tests of the app.
+test-support = []
+
+[lints]
+workspace = true

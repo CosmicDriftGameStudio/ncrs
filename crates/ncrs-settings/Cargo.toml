@@ -1,0 +1,51 @@
+[package]
+name = "ncrs-settings"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "The settings of ncrs: the settings page, the key bindings page, the theme fetch and the pages of the text recognition and AI models"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Same as the kit: no renderer or window system, the app picks them.
+iced = { version = "0.14", default-features = false, features = ["tokio", "advanced"] }
+# Reads the VS Code theme files named by `vscode` in `[theme]`: JSON with
+# comments and trailing commas. No features, so no dependencies.
+jsonc-parser = { version = "=0.34.0", default-features = false }
+# Downloads a VS Code color theme from Open VSX, only when the user asks for it
+# in the command palette. Blocking and HTTPS only (rustls), run off the UI thread.
+ureq = { version = "=3.5.0", default-features = false, features = ["rustls"] }
+# Reads the downloaded .vsix in memory to pick the theme files out of it. Entries
+# are read by name with a size limit and never extracted to disk.
+zip = { version = "=9.1.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+# Spanned: the config file as the settings page reads it names the keys by position.
+serde_spanned = { version = "1.1", features = ["serde"] }
+# The downloads and the writes of the config run on the blocking pool.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+ncrs-ai = { path = "../ncrs-ai", version = "0.0.0" }
+ncrs-config = { path = "../ncrs-config", version = "0.0.0" }
+ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
+ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
+ncrs-intake = { path = "../ncrs-intake", version = "0.0.0" }
+ncrs-pipeline = { path = "../ncrs-pipeline", version = "0.0.0" }
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
+
+[features]
+# The helpers of the tests of the app: the fixtures of `theme_fetch` and `vsix`.
+test-support = []
+# The tests of the AI model download that start the real local model.
+local-ai = ["ncrs-ai/llama"]
+
+[dev-dependencies]
+tempfile = "3.27"
+sha2 = "0.10"
+ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
+# `config::from_text`, to build a config from a text.
+ncrs-config = { path = "../ncrs-config", version = "0.0.0", features = ["test-support"] }
+# The guard that stops a test from reaching the user's config, index or keychain.
+ncrs-fs = { path = "../ncrs-fs", version = "0.0.0", features = ["test-support"] }
+
+[lints]
+workspace = true

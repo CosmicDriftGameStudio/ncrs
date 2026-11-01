@@ -1,0 +1,16 @@
+[package]
+name = "ncrs-core"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "Plain data types several ncrs features share: file entries and selections"
+license = "MIT"
+publish = false
+
+[dependencies]
+# The side is read from and written to the config.
+serde = { version = "1", features = ["derive"] }
+
+[lints]
+workspace = true

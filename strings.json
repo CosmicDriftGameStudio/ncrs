@@ -1,7 +1,7 @@
 {
   "_comment": [
     "Source of truth for all translatable UI strings. build.rs generates",
-    "src/i18n/lang/*.rs from this file; do not edit those by hand.",
+    "crates/ncrs-i18n/ from this file; do not edit those by hand.",
     "",
     "The 'context' field is the deliverable for translators: it says where the",
     "string appears and what it means. Strings with identical English text but",

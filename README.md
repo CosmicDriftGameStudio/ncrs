@@ -1132,17 +1132,18 @@ src/
 │   ├── panel.rs     # PanelState (data + selection/scroll helpers) + view()
 │   ├── dialog.rs    # The prompt: text field, buttons, scrim
 │   ├── statusbar.rs # Active path | selected entry | size | date (or error)
-│   ├── theme.rs     # Colors, spacing, font sizes, widget style functions
 │   ├── layout.rs    # Fixed metrics (row height, column widths, visible rows)
-│   └── format.rs    # Size / date formatting
-├── i18n/            # Translated UI strings + per-string translator context
-│   ├── mod.rs        # Msg enum, Language, Msg::note() (context for translators)
-│   ├── lang/en.rs    # Source language
-│   └── lang/de.rs    # German
+│   └── format.rs    # File entry sizes, on top of the kit's formatting
 └── fs/              # Filesystem layer – knows nothing about the UI
     ├── entry.rs     # FileEntry (name, path, size, modified, is_dir, ...) + sort order
     ├── ops.rs       # create_dir() and friends, structured errors, no text
     └── reader.rs    # async read_directory(), home_dir(), root_of()
+
+crates/
+├── ncrs-i18n/       # Translated UI strings + per-string translator context
+│   ├── build.rs     # Generates the string modules from strings.json
+│   └── src/lib.rs   # Msg enum, Language, Msg::note() (context for translators)
+└── ncrs-ui-kit/     # Colors, spacing, theme, frame, menus and widgets, generic over the message
 ```
 
 ### Data flow (Elm architecture)
@@ -1183,7 +1184,7 @@ appears and what it means, written for someone working from that file alone — 
 "Open" as a button label, as a menu entry and inside an error message are three
 different strings.
 
-`build.rs` generates the Rust modules from it, so text and context cannot drift apart.
+`crates/ncrs-i18n/build.rs` generates the Rust modules from it, so text and context cannot drift apart.
 It fails the build when a string has no usable context or is missing a translation.
 
 ```bash
@@ -1200,7 +1201,7 @@ Adding or changing a string:
 Adding a language:
 
 1. Add the language to `strings.json` and to `build.rs`'s language list.
-2. Add the variant to `Language` and its lookup in `src/i18n/mod.rs`, with its config
+2. Add the variant to `Language` and its lookup in `crates/ncrs-i18n/src/lib.rs`, with its config
    code in `Language::code()` and an entry in `Language::ALL`; the compiler does not check
    `ALL`, and a language missing there cannot be set with `lang`. A key ending in `.theme`
    in `strings.json` is a Futurama name: it becomes a `FuturamaName`, not a `Msg`, and only

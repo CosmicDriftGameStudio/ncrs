@@ -1,0 +1,46 @@
+[package]
+name = "ncrs-filing"
+version = "0.0.0"
+edition = "2021"
+# Same as the root package: one place decides the compiler.
+rust-version = "1.98"
+description = "The filing logic of ncrs: the filing module, the work behind the review, rules, tags, queries and reorganisation pages, and the reading of the Hermes column. Knows nothing about the UI"
+license = "MIT"
+publish = false
+
+[dependencies]
+ncrs-ai = { path = "../ncrs-ai", version = "0.0.0" }
+ncrs-config = { path = "../ncrs-config", version = "0.0.0" }
+ncrs-core = { path = "../ncrs-core", version = "0.0.0" }
+ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
+ncrs-index = { path = "../ncrs-index", version = "0.0.0" }
+ncrs-intake = { path = "../ncrs-intake", version = "0.0.0" }
+ncrs-pipeline = { path = "../ncrs-pipeline", version = "0.0.0" }
+ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# Folders that overlap are found by file identity, which holds for symlinks and
+# case-insensitive file systems where comparing paths would not.
+same-file = "1.0"
+# The temporary folders of the fixtures; only the `test-support` feature brings it in.
+tempfile = { version = "3.27", optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Apple Vision as the first choice for reading scans; ocrs stays the fallback.
+ncrs-ocr-vision = { path = "../ncrs-ocr-vision", version = "0.0.0" }
+# The name of the person using the app, for the sender check of the AI.
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSPathUtilities", "NSFileManager", "NSURL", "NSError"] }
+
+[features]
+# The built-in model provider: the local model is wired when the config asks for it.
+local-ai = ["ncrs-ai/llama"]
+# The fixtures of the tests of the app: a filing module in a given phase, the
+# archive and the setup of the reorganisation and replan work.
+test-support = ["dep:tempfile"]
+
+[dev-dependencies]
+tempfile = "3.27"
+# The guard that stops a test from reaching the user's config, index or keychain.
+ncrs-fs = { path = "../ncrs-fs", version = "0.0.0", features = ["test-support"] }
+
+[lints]
+workspace = true
