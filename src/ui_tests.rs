@@ -2902,6 +2902,19 @@ mod review_list_card {
     }
 
     #[test]
+    fn set_fields_in_the_quick_fix_opens_the_review_list() {
+        use crate::messages::QuickFixMessage;
+        let item = loaded_list().rows().to_vec().swap_remove(0);
+        let mut app = App::with_quick_fix_menu(item);
+        // Accept, set fields, create rule.
+        let _ = app.update(Message::QuickFix(QuickFixMessage::Hover(1)));
+
+        let _ = app.update(Message::QuickFix(QuickFixMessage::Activate));
+
+        assert!(app.review_list_for_test().is_some());
+    }
+
+    #[test]
     fn the_view_is_worded_in_german_too() {
         let app = App::with_review_list(after_filing()).in_language(Language::German);
         let mut sim = simulator(&app);

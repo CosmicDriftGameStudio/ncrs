@@ -30,7 +30,6 @@ use crate::config::{
 };
 use crate::context_menu::{ContextAction, ContextMenu, HermesAction, HermesMenu, InputState};
 use crate::dialog::{Prompt, PromptKind};
-use crate::document_preview;
 use crate::execute;
 use crate::file_list_tags::{FileListTags, TagExceptions, TagGroup};
 use crate::filing::{
@@ -82,19 +81,22 @@ use crate::ocr_models::OcrModelsCard;
 use crate::ocr_models::{download_models, DownloadError};
 use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension};
 use crate::palette::{Palette, ThemePreset};
-use crate::panel_drag::PanelDrag;
 use crate::query_work::{self, QueryAccess};
-use crate::quick_fix::{field_to_fix, QuickFix, QuickFixAction};
+#[cfg(test)]
+use crate::quick_fix::QuickFix;
 use crate::quick_open::{
     self, DocumentRequest, QuickOpen, QuickOpenAction, QuickOpenCtx, WalkEvent, MAX_DOCUMENT_HITS,
     QUICK_OPEN_FILE_LIMIT,
 };
 use crate::remote_dialog::{self, ConnectDialog, Missing, Then};
+#[cfg(test)]
 use crate::reorganisation_plan::ReorganisationView;
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
 use crate::replan_work::{ReplanItem, ReplanScope, ReplanSummary};
-use crate::review_list::{rule_prefill_of, ReviewList};
-use crate::review_work::{AcceptSummary, ReviewAccess, ReviewItem};
+use crate::review_list::ReviewList;
+use crate::review_work::AcceptSummary;
+#[cfg(test)]
+use crate::review_work::ReviewItem;
 use crate::rule_form::{RuleForm, RuleSave, TRY_DEBOUNCE};
 use crate::rule_suggestions::RuleSuggestions;
 use crate::rules_page::RulesPage;
@@ -1155,9 +1157,6 @@ pub struct App {
     favourites: Vec<PathBuf>,
     /// The context menu, while it is up.
     context_menu: Option<ContextMenu>,
-    /// The fixes for an inquiry (Cmd+.); at most one of it and the context menu.
-    quick_fix: Option<QuickFix>,
-    quick_fix_generation: u64,
     /// The path as typed while the status bar's path field is being edited.
     path_field: Option<String>,
     command_line: CommandLine,
@@ -1225,6 +1224,8 @@ pub struct App {
     kinds: Kinds,
     /// The settings tab, while it is open.
     settings: Settings,
+    /// The review list, the reorganisation plan and the quick-fix menu.
+    hermes: ncrs_hermes_ui::Hermes,
     /// The preset and the VS Code theme file the config names, as last loaded
     /// or written.
     theme_preset: ThemePreset,
@@ -1267,11 +1268,8 @@ pub struct App {
     rules: Option<RulesPage>,
     /// Tells the answer of the work that is current from a stale one.
     rules_generation: u64,
-    review_list: Option<ReviewList>,
     /// The overview, the first page of the Hermes card.
     hermes_overview: Option<OverviewState>,
-    /// Tells the answer of the work that is current from a stale one.
-    review_list_generation: u64,
     saved_queries: Option<SavedQueries>,
     /// Tells the answer of the work that is current from a stale one.
     saved_queries_generation: u64,
@@ -1280,14 +1278,11 @@ pub struct App {
     tags_generation: u64,
     /// The tags the file list shows against their group, from the index.
     tag_exceptions: TagExceptions,
-    reorganisation: Option<ReorganisationView>,
     /// Whether the arrow keys act on the sidebar or the page of the Hermes card.
     hermes_focus: HermesFocus,
     /// The overview opened a card that covers it (folders, setup); it comes
     /// back when the card is gone.
     return_to_hermes_overview: bool,
-    /// Tells the answer of the plan that is current from a stale one.
-    reorganisation_generation: u64,
     /// `Snapshot::plans_made` the filing job was last asked for.
     plans_filed_for: usize,
     /// The filing job was due but another job was running.
@@ -3047,7 +3042,7 @@ impl App {
         }
         self.kinds = self.kinds.in_language(lang.kind_language());
         let kinds = self.kinds.clone();
-        if let Some(list) = &mut self.review_list {
+        if let Some(list) = &mut self.hermes.review_list {
             list.set_kinds(kinds.clone());
         }
         if let Some(view) = &mut self.saved_queries {
@@ -3253,8 +3248,6 @@ impl App {
             volume_menu: None,
             favourites: Vec::new(),
             context_menu: None,
-            quick_fix: None,
-            quick_fix_generation: 0,
             path_field: None,
             command_line: CommandLine::default(),
             path_check_id: 0,
@@ -3293,6 +3286,7 @@ impl App {
             pending_hermes_start: None,
             hermes_flow_step: 0,
             settings: Settings::default(),
+            hermes: ncrs_hermes_ui::Hermes::default(),
             theme_preset: ThemePreset::DEFAULT,
             vscode_theme: None,
             resolve_folder: filing_setup::resolve_folder,
@@ -3309,18 +3303,14 @@ impl App {
             rule_suggestions_generation: 0,
             rules: None,
             rules_generation: 0,
-            review_list: None,
             hermes_overview: None,
-            review_list_generation: 0,
             saved_queries: None,
             saved_queries_generation: 0,
             tags: None,
             tags_generation: 0,
             tag_exceptions: TagExceptions::new(),
-            reorganisation: None,
             hermes_focus: HermesFocus::default(),
             return_to_hermes_overview: false,
-            reorganisation_generation: 0,
             plans_filed_for: 0,
             filing_due: false,
             pending_refile: None,
@@ -4110,36 +4100,6 @@ impl App {
         self.next_folder_size_walk()
     }
 
-    fn update_quick_fix(&mut self, message: QuickFixMessage) -> Task<Message> {
-        match message {
-            QuickFixMessage::Open => self.open_quick_fix(),
-            QuickFixMessage::Close => {
-                self.quick_fix = None;
-                Task::none()
-            }
-            QuickFixMessage::Loaded { generation, result } => {
-                self.quick_fix_loaded(generation, result)
-            }
-            QuickFixMessage::Move(delta) => self.with_quick_fix(|menu| menu.move_by(delta)),
-            QuickFixMessage::First => self.with_quick_fix(QuickFix::select_first),
-            QuickFixMessage::Last => self.with_quick_fix(QuickFix::select_last),
-            QuickFixMessage::Hover(index) => self.with_quick_fix(|menu| menu.select(index)),
-            QuickFixMessage::Activate => self.run_quick_fix_entry(),
-            QuickFixMessage::Click(index) => {
-                drop(self.with_quick_fix(|menu| menu.select(index)));
-                self.run_quick_fix_entry()
-            }
-            QuickFixMessage::Filed(summary) => self.quick_fix_filed(&summary),
-        }
-    }
-
-    fn with_quick_fix(&mut self, change: impl FnOnce(&mut QuickFix)) -> Task<Message> {
-        if let Some(menu) = self.quick_fix.as_mut() {
-            change(menu);
-        }
-        Task::none()
-    }
-
     /// The inquiries under the cursor or among the marked files of the active
     /// panel.
     fn inquiry_paths(&self) -> Vec<PathBuf> {
@@ -4147,124 +4107,6 @@ impl App {
             .into_iter()
             .filter(|path| self.hermes_column.state_of(path) == Some(HermesFileState::Inquiry))
             .collect()
-    }
-
-    /// Cmd+.: opens the menu on the inquiries of the active panel, and looks up
-    /// their reviews on a blocking thread. Says so when there are none.
-    fn open_quick_fix(&mut self) -> Task<Message> {
-        if self.overlay_is_open() || self.search.open || !self.hermes_active() {
-            return Task::none();
-        }
-        let paths = self.inquiry_paths();
-        let found_access = self.filing.as_ref().and_then(FilingModule::review_access);
-        let Some(access) = found_access.filter(|_| !paths.is_empty()) else {
-            let text = self.lang.text(Msg::StatusQuickFixNone).to_owned();
-            return self.show_notice(text);
-        };
-        let side = self.panels.active;
-        let panel = self.panel(side);
-        let anchor = layout::cursor_row_anchor(
-            side == PanelSide::Right,
-            panel.selected.saturating_sub(panel.scroll_offset),
-            panel.row_height(),
-            self.window_size,
-        );
-        self.job_error = None;
-        self.notice = None;
-        self.quick_fix_generation = self.quick_fix_generation.wrapping_add(1);
-        let generation = self.quick_fix_generation;
-        self.quick_fix =
-            Some(QuickFix::new(anchor, self.window_size).with_kinds(self.kinds.clone()));
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.items_for(&paths)),
-            move |joined| {
-                let result = joined.unwrap_or_else(|err| Err(err.to_string()));
-                Message::QuickFix(QuickFixMessage::Loaded { generation, result })
-            },
-        )
-    }
-
-    fn quick_fix_loaded(
-        &mut self,
-        generation: u64,
-        result: Result<Vec<ReviewItem>, String>,
-    ) -> Task<Message> {
-        if generation != self.quick_fix_generation || self.quick_fix.is_none() {
-            return Task::none();
-        }
-        match result {
-            Ok(items) if items.is_empty() => {
-                self.quick_fix = None;
-                let text = self.lang.text(Msg::StatusQuickFixNone).to_owned();
-                self.show_notice(text)
-            }
-            Ok(items) => self.with_quick_fix(|menu| menu.loaded(items)),
-            Err(detail) => {
-                self.quick_fix = None;
-                self.set_status_error(&detail);
-                Task::none()
-            }
-        }
-    }
-
-    /// Carries out the highlighted entry. The menu closes first for everything
-    /// that opens or files something else.
-    fn run_quick_fix_entry(&mut self) -> Task<Message> {
-        let Some(menu) = self.quick_fix.as_mut() else {
-            return Task::none();
-        };
-        let Some(action) = menu.selected_action() else {
-            return Task::none();
-        };
-        match action {
-            QuickFixAction::Accept(group) if menu.group_items(group).len() > 1 => {
-                menu.summarise(group);
-                Task::none()
-            }
-            QuickFixAction::Accept(group) | QuickFixAction::FileGroup(group) => {
-                self.file_quick_fix_group(group)
-            }
-            QuickFixAction::Back => {
-                menu.back();
-                Task::none()
-            }
-            QuickFixAction::SetFields => self.open_review_from_quick_fix(),
-            QuickFixAction::CreateRule => self.open_rule_form_from_quick_fix(),
-            QuickFixAction::Later => {
-                self.quick_fix = None;
-                Task::none()
-            }
-            QuickFixAction::Exclude => {
-                let paths = menu.paths();
-                self.quick_fix = None;
-                self.exclude_from_hermes(paths)
-            }
-        }
-    }
-
-    /// Files the documents of a group one after the other, each through the
-    /// review's own confirm: never a plain move.
-    fn file_quick_fix_group(&mut self, group: usize) -> Task<Message> {
-        let Some(menu) = self.quick_fix.take() else {
-            return Task::none();
-        };
-        let items = menu.group_items(group);
-        let Some(access) = self.filing.as_ref().and_then(FilingModule::review_access) else {
-            self.set_status_error(INDEX_NOT_OPEN);
-            return Task::none();
-        };
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.accept(&items)),
-            |joined| {
-                Message::QuickFix(QuickFixMessage::Filed(joined.unwrap_or_else(|err| {
-                    AcceptSummary {
-                        failed: 1,
-                        first_failure: Some(err.to_string()),
-                        ..AcceptSummary::default()
-                    }
-                })))
-            },
-        )
     }
 
     fn quick_fix_filed(&mut self, summary: &AcceptSummary) -> Task<Message> {
@@ -4288,41 +4130,6 @@ impl App {
             self.load(each, path, cursor)
         });
         Task::batch(tasks.into_iter().chain([notice]))
-    }
-
-    /// Opens the review page on the document of the menu with its form open,
-    /// to fill in the missing field.
-    fn open_review_from_quick_fix(&mut self) -> Task<Message> {
-        let Some(menu) = self.quick_fix.take() else {
-            return Task::none();
-        };
-        let Some(item) = menu.item_to_fix() else {
-            return Task::none();
-        };
-        let field = field_to_fix(item);
-        let path = item.path.clone();
-        let opened = self.open_review_list();
-        if let Some(view) = self.review_list.as_mut() {
-            view.edit_on_load(path, field);
-        }
-        opened
-    }
-
-    /// Opens the rule form with what the review would file the document of the
-    /// menu with.
-    fn open_rule_form_from_quick_fix(&mut self) -> Task<Message> {
-        let Some(menu) = self.quick_fix.take() else {
-            return Task::none();
-        };
-        let Some(item) = menu.item_to_fix() else {
-            return Task::none();
-        };
-        let prefill = rule_prefill_of(
-            item,
-            self.filing_config.default_pattern.as_deref(),
-            &self.kinds,
-        );
-        self.open_rule_form(RuleForm::from_document(prefill, &self.kinds), None)
     }
 
     fn update_context_menu(&mut self, message: Message) -> Task<Message> {
@@ -4664,12 +4471,12 @@ impl App {
         input.theme_fetch = self.settings.theme_fetch.is_some();
         input.rule_suggestions = self.rule_suggestions.is_some();
         input.rules = self.rules.is_some();
-        input.review_list = self.review_list.is_some();
+        input.review_list = self.hermes.review_list.is_some();
         input.saved_queries = self.saved_queries.is_some();
         input.tags = self.tags.is_some();
         input.hermes_sidebar = state.hermes_sidebar;
         input.transfer_dialog = self.transfer_dialog.is_some();
-        input.reorganisation_plan = self.reorganisation.is_some();
+        input.reorganisation_plan = self.hermes.reorganisation.is_some();
         input.settings = self.settings.page.is_some()
             && self.filing_setup.is_none()
             && !self.blocking_overlay_is_open();
@@ -4886,7 +4693,7 @@ impl App {
             titlebar::with_resize_edges(base)
         };
 
-        if let Some(menu) = self.quick_fix.as_ref() {
+        if let Some(menu) = self.hermes.quick_fix.as_ref() {
             let click_catcher = mouse_area(Space::new().width(Length::Fill).height(Length::Fill))
                 .on_press(Message::QuickFix(QuickFixMessage::Close));
             return Stack::with_children([
@@ -5207,7 +5014,7 @@ impl App {
             .context_menu
             .as_ref()
             .is_some_and(ContextMenu::submenu_is_open);
-        let quick_fix = self.quick_fix.is_some();
+        let quick_fix = self.hermes.quick_fix.is_some();
         let path_editing = self.path_field.is_some();
         let command_line = self.command_line.is_focused();
         let search = self.search_has_keys();
@@ -5241,12 +5048,14 @@ impl App {
             .rules
             .as_ref()
             .is_some_and(RulesPage::is_confirming_delete);
-        let review_list = self.review_list.is_some();
+        let review_list = self.hermes.review_list.is_some();
         let review_list_editing = self
+            .hermes
             .review_list
             .as_ref()
             .is_some_and(ReviewList::is_editing);
         let review_list_replanning = self
+            .hermes
             .review_list
             .as_ref()
             .is_some_and(|view| view.replan().is_some());
@@ -5254,7 +5063,7 @@ impl App {
         let tags = self.tags.is_some();
         let hermes_sidebar =
             self.hermes_focus == HermesFocus::Sidebar && self.open_hermes_page().is_some();
-        let reorganisation_plan = self.reorganisation.is_some();
+        let reorganisation_plan = self.hermes.reorganisation.is_some();
         let about = self.about.is_some();
         let ocr_models = self.settings.ocr_models.is_some();
         let ai_model = self.settings.ai_card_is_shown();
@@ -6147,35 +5956,46 @@ impl App {
         self.ablage_tab_is_open() || self.overlay_apart_from_overview_is_open()
     }
 
+    /// The same, without the pages and the menu of the Hermes state, which the
+    /// update of those reads itself.
+    fn overlay_apart_from_hermes_is_open(&self) -> bool {
+        self.ablage_tab_apart_from_hermes_is_open()
+            || self.overlay_apart_from_overview_and_hermes_is_open()
+    }
+
     /// The page of filing that stands in for the panels: the overview or the
     /// status.
     fn ablage_tab_is_open(&self) -> bool {
+        self.ablage_tab_apart_from_hermes_is_open() || self.hermes.page_is_open()
+    }
+
+    fn ablage_tab_apart_from_hermes_is_open(&self) -> bool {
         self.hermes_overview.is_some()
             || self.filing_status.page_open()
             || self.rule_suggestions.is_some()
-            || self.review_list.is_some()
             || self.rules.is_some()
             || self.saved_queries.is_some()
             || self.tags.is_some()
-            || self.reorganisation.is_some()
     }
 
     /// Closes the page of filing without a word, for a page that replaces it.
     fn close_ablage_tab(&mut self) -> Task<Message> {
         self.filing_status.close_page();
         self.rule_suggestions = None;
-        self.review_list = None;
+        self.hermes.close_pages();
         self.rules = None;
         self.saved_queries = None;
         self.tags = None;
-        self.reorganisation = None;
         self.leave_hermes_overview()
     }
 
     /// What the overview itself may open on top of it: the model cards.
     fn overlay_apart_from_overview_is_open(&self) -> bool {
+        self.overlay_apart_from_overview_and_hermes_is_open() || self.hermes.quick_fix.is_some()
+    }
+
+    fn overlay_apart_from_overview_and_hermes_is_open(&self) -> bool {
         self.prompt.is_some()
-            || self.quick_fix.is_some()
             || self.conflict_is_open()
             || self.transfer_dialog.is_some()
             || self.progress_mask_is_open()
@@ -8459,7 +8279,8 @@ impl App {
         Task::none()
     }
 
-    fn end_panel_drag(&mut self) -> Option<PanelDrag> {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn end_panel_drag(&mut self) -> Option<crate::panel_drag::PanelDrag> {
         self.input.lock().panel_drag_armed = false;
         self.panels.drag.take()
     }
@@ -8869,12 +8690,10 @@ impl App {
 
     /// The files moved, so an open plan is out of date.
     fn replan_if_open(&mut self) -> Task<Message> {
-        let Some(view) = self.reorganisation.as_mut() else {
-            return Task::none();
-        };
-        view.begin_planning();
-        self.reorganisation_generation = self.reorganisation_generation.wrapping_add(1);
-        self.run_planning()
+        let task = self.with_hermes(Vec::new(), |hermes, ctx| {
+            ncrs_hermes_ui::replan_reorganisation_if_open(hermes, ctx)
+        });
+        task.map(Message::from)
     }
 
     /// Runs the rows from `index`, on the blocking pool, reporting progress.
@@ -10171,255 +9990,6 @@ impl App {
         )
     }
 
-    fn update_review_list(&mut self, message: ReviewListMessage) -> Task<Message> {
-        match message {
-            ReviewListMessage::Open => self.open_review_list(),
-            ReviewListMessage::Close => self.close_review_list(),
-            ReviewListMessage::ReadAgainWithAi => self.read_reviews_again_with_ai(),
-            ReviewListMessage::Loaded { generation, result } => {
-                if generation != self.review_list_generation {
-                    return Task::none();
-                }
-                let Some(view) = self.review_list.as_mut() else {
-                    return Task::none();
-                };
-                match result {
-                    Ok(rows) => view.loaded(rows),
-                    Err(detail) => view.failed(detail),
-                }
-                view.take_focus_request().map_or_else(Task::none, |field| {
-                    operation::focus(review_list_ui::field_id(field))
-                })
-            }
-            ReviewListMessage::Move(delta) => {
-                if let Some(view) = self.review_list.as_mut() {
-                    view.move_cursor(delta);
-                }
-                Task::none()
-            }
-            ReviewListMessage::Scrolled(delta) => {
-                if let Some(view) = self.review_list.as_mut() {
-                    view.scroll(delta);
-                }
-                Task::none()
-            }
-            ReviewListMessage::Select(index) => {
-                if let Some(view) = self.review_list.as_mut() {
-                    view.select(index);
-                }
-                Task::none()
-            }
-            ReviewListMessage::Edit => {
-                let Some(view) = self.review_list.as_mut() else {
-                    return Task::none();
-                };
-                view.start_edit();
-                if view.is_editing() {
-                    operation::focus(review_list_ui::FIRST_FIELD_ID)
-                } else {
-                    Task::none()
-                }
-            }
-            ReviewListMessage::FieldChanged(field, text) => {
-                if let Some(view) = self.review_list.as_mut() {
-                    view.set_text(field, text);
-                }
-                Task::none()
-            }
-            ReviewListMessage::TogglePreview => {
-                if let Some(view) = self.review_list.as_mut() {
-                    view.toggle_preview();
-                }
-                Task::none()
-            }
-            ReviewListMessage::OpenTagInput => {
-                let Some(view) = self.review_list.as_mut() else {
-                    return Task::none();
-                };
-                view.open_tag_input();
-                if view.is_tag_input_open() {
-                    operation::focus(review_list_ui::TAG_INPUT_ID)
-                } else {
-                    Task::none()
-                }
-            }
-            ReviewListMessage::TargetEdited(edit) => {
-                let starts_own_name = edit == TargetEdit::StartOwnName;
-                if let Some(view) = self.review_list.as_mut() {
-                    view.edit_target(edit);
-                }
-                if starts_own_name {
-                    operation::focus(review_list_ui::FOLDER_NAME_FIELD_ID)
-                } else {
-                    Task::none()
-                }
-            }
-            ReviewListMessage::AddTag => {
-                if let Some(view) = self.review_list.as_mut() {
-                    view.add_tag();
-                }
-                Task::none()
-            }
-            ReviewListMessage::RemoveTag(tag) => {
-                if let Some(view) = self.review_list.as_mut() {
-                    view.remove_tag(&tag);
-                }
-                Task::none()
-            }
-            ReviewListMessage::FocusField { backwards } => {
-                if backwards {
-                    operation::focus_previous()
-                } else {
-                    operation::focus_next()
-                }
-            }
-            ReviewListMessage::Confirm => {
-                let Some(request) = self
-                    .review_list
-                    .as_mut()
-                    .and_then(ReviewList::begin_confirm)
-                else {
-                    return Task::none();
-                };
-                let generation = self.review_list_generation;
-                let Some(access) = self.review_access() else {
-                    return Task::none();
-                };
-                Task::perform(
-                    tokio::task::spawn_blocking(move || {
-                        access.confirm(
-                            request.entry,
-                            request.document_id,
-                            &request.fields,
-                            &request.pattern,
-                        )
-                    }),
-                    move |joined| {
-                        let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                        Message::ReviewList(ReviewListMessage::Confirmed { generation, result })
-                    },
-                )
-            }
-            ReviewListMessage::Confirmed { generation, result } => {
-                if generation != self.review_list_generation {
-                    return Task::none();
-                }
-                let Some(view) = self.review_list.as_mut() else {
-                    return Task::none();
-                };
-                match result {
-                    Ok(outcome) => view.confirmed(outcome),
-                    Err(detail) => {
-                        view.failed(detail);
-                        return Task::none();
-                    }
-                }
-                self.run_review_load()
-            }
-            ReviewListMessage::CreateRule => {
-                let Some(prefill) = self.review_list.as_ref().and_then(ReviewList::rule_offer)
-                else {
-                    return Task::none();
-                };
-                self.open_rule_form(
-                    RuleForm::from_document(prefill, &self.kinds),
-                    Some(HermesPage::Review),
-                )
-            }
-            ReviewListMessage::ReplanOpenCases => self.start_replan(ReplanScope::OpenCases),
-            ReviewListMessage::Previewed {
-                generation,
-                serial,
-                result,
-            } => {
-                if generation != self.review_list_generation {
-                    return Task::none();
-                }
-                if let Some(view) = self.review_list.as_mut() {
-                    match result {
-                        Ok(items) => view.previewed(serial, items),
-                        Err(detail) => view.failed(detail),
-                    }
-                }
-                Task::none()
-            }
-            ReviewListMessage::ReplanConfirm => self.confirm_replan(),
-            ReviewListMessage::ReplanCancel => {
-                if let Some(view) = self.review_list.as_mut() {
-                    view.cancel_replan();
-                }
-                Task::none()
-            }
-            ReviewListMessage::PreviewLoaded {
-                generation,
-                serial,
-                content,
-            } => {
-                if generation == self.review_list_generation {
-                    if let Some(view) = self.review_list.as_mut() {
-                        view.preview_loaded(serial, content);
-                    }
-                }
-                Task::none()
-            }
-        }
-    }
-
-    /// Makes the preview of the document under the cursor, on a blocking
-    /// thread, when the cursor has moved to another one.
-    fn request_review_preview(&mut self) -> Task<Message> {
-        let generation = self.review_list_generation;
-        let Some(request) = self
-            .review_list
-            .as_mut()
-            .and_then(ReviewList::preview_request)
-        else {
-            return Task::none();
-        };
-        let serial = request.serial;
-        Task::perform(
-            document_preview::load_off_thread(request.path, request.passages),
-            move |content| {
-                Message::ReviewList(ReviewListMessage::PreviewLoaded {
-                    generation,
-                    serial,
-                    content,
-                })
-            },
-        )
-    }
-
-    /// Opens the review page if it is not up and plans the documents of
-    /// `scope` again there, on a blocking thread. It only reads; the user
-    /// sees the result before anything is filed.
-    fn start_replan(&mut self, scope: ReplanScope) -> Task<Message> {
-        let Some(access) = self.filing.as_ref().and_then(FilingModule::replan_access) else {
-            self.set_status_error(INDEX_NOT_OPEN);
-            return Task::none();
-        };
-        let opened = self.open_review_list();
-        let generation = self.review_list_generation;
-        let Some(serial) = self
-            .review_list
-            .as_mut()
-            .and_then(|view| view.begin_replan(scope.clone()))
-        else {
-            return opened;
-        };
-        let preview = Task::perform(
-            tokio::task::spawn_blocking(move || access.preview(&scope)),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                Message::ReviewList(ReviewListMessage::Previewed {
-                    generation,
-                    serial,
-                    result,
-                })
-            },
-        );
-        Task::batch([opened, preview])
-    }
-
     /// Plans the documents below `folder` again, if it lies in an inbox
     /// location. Anywhere else nothing happens but the message.
     fn reprocess_folder(&mut self, folder: PathBuf) -> Task<Message> {
@@ -10439,17 +10009,7 @@ impl App {
 
     /// The user confirmed the preview: the previewed documents are filed by
     /// one job, as soon as the queue is free.
-    fn confirm_replan(&mut self) -> Task<Message> {
-        if self.pending_refile.is_some() {
-            return Task::none();
-        }
-        let Some((scope, items)) = self
-            .review_list
-            .as_mut()
-            .and_then(ReviewList::confirm_replan)
-        else {
-            return Task::none();
-        };
+    fn confirm_replan(&mut self, scope: ReplanScope, items: Vec<ReplanItem>) -> Task<Message> {
         let folder = match scope {
             ReplanScope::Folder(folder) => folder,
             ReplanScope::OpenCases => PathBuf::new(),
@@ -10501,7 +10061,7 @@ impl App {
     fn documents_refiled(&mut self, result: Result<ReplanSummary, String>) -> Task<Message> {
         self.jobs.finish();
         self.job_progress = None;
-        let reload = if self.review_list.is_some() {
+        let reload = if self.hermes.review_list.is_some() {
             self.run_review_load()
         } else {
             Task::none()
@@ -10525,49 +10085,6 @@ impl App {
             }
         };
         Task::batch([notice, reload])
-    }
-
-    fn review_access(&mut self) -> Option<ReviewAccess> {
-        let access = self.filing.as_ref().and_then(FilingModule::review_access);
-        if access.is_none() {
-            if let Some(view) = self.review_list.as_mut() {
-                view.failed(INDEX_NOT_OPEN.to_owned());
-            }
-        }
-        access
-    }
-
-    fn open_review_list(&mut self) -> Task<Message> {
-        if self.review_list.is_some() || self.blocking_overlay_is_open() {
-            return Task::none();
-        }
-        self.context_menu = None;
-        self.review_list_generation = self.review_list_generation.wrapping_add(1);
-        self.review_list = Some(
-            ReviewList::new()
-                .with_default_pattern(self.filing_config.default_pattern.clone())
-                .with_kinds(self.kinds.clone()),
-        );
-        let counts = if self.filing_status.hermes_counts().is_none() {
-            self.request_hermes_counts()
-        } else {
-            Task::none()
-        };
-        Task::batch([self.run_review_load(), counts])
-    }
-
-    /// Hands every open review to Hermes again, now that the AI can read it.
-    /// Only on the click: nothing is re-read behind the user's back.
-    fn read_reviews_again_with_ai(&mut self) -> Task<Message> {
-        let Some(paths) = self.review_list.as_ref().map(|view| {
-            view.rows()
-                .iter()
-                .map(|row| row.path.clone())
-                .collect::<Vec<_>>()
-        }) else {
-            return Task::none();
-        };
-        self.read_paths_again(paths)
     }
 
     fn read_paths_again(&mut self, paths: Vec<PathBuf>) -> Task<Message> {
@@ -10612,41 +10129,6 @@ impl App {
                     | crate::filing::AiStatus::Failed(_)
             ),
         }
-    }
-
-    /// Escape leaves the form first, the list second.
-    fn close_review_list(&mut self) -> Task<Message> {
-        match self.review_list.as_mut() {
-            Some(view) if view.is_editing() => {
-                view.cancel_edit();
-                release_focus()
-            }
-            Some(view) if view.replan().is_some() => {
-                view.cancel_replan();
-                Task::none()
-            }
-            Some(_) => {
-                self.review_list = None;
-                release_focus()
-            }
-            None => Task::none(),
-        }
-    }
-
-    /// Loads on a blocking thread: the load plans every open entry again, and
-    /// the index is shared with the intake.
-    fn run_review_load(&mut self) -> Task<Message> {
-        let generation = self.review_list_generation;
-        let Some(access) = self.review_access() else {
-            return Task::none();
-        };
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.load()),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                Message::ReviewList(ReviewListMessage::Loaded { generation, result })
-            },
-        )
     }
 
     fn update_saved_queries(&mut self, message: SavedQueriesMessage) -> Task<Message> {
@@ -11315,7 +10797,7 @@ impl App {
     }
 
     fn reorganisation_view(&self) -> Option<Element<'_, Message>> {
-        let state = self.reorganisation.as_ref()?;
+        let state = self.hermes.reorganisation.as_ref()?;
         Some(
             reorganisation_plan_ui::view(state, self.hermes_badges(), self.lang, &self.palette)
                 .map(Message::from),
@@ -11353,7 +10835,7 @@ impl App {
     }
 
     fn review_list_view(&self) -> Option<Element<'_, Message>> {
-        let state = self.review_list.as_ref()?;
+        let state = self.hermes.review_list.as_ref()?;
         Some(
             review_list_ui::view(
                 state,
@@ -11758,7 +11240,7 @@ impl App {
             Some(HermesPage::Overview)
         } else if self.filing_status.page_open() {
             Some(HermesPage::Inspection)
-        } else if self.review_list.is_some() {
+        } else if self.hermes.review_list.is_some() {
             Some(HermesPage::Review)
         } else if self.saved_queries.is_some() {
             Some(HermesPage::SavedQueries)
@@ -11768,7 +11250,7 @@ impl App {
             Some(HermesPage::RuleSuggestions)
         } else if self.tags.is_some() {
             Some(HermesPage::Tags)
-        } else if self.reorganisation.is_some() {
+        } else if self.hermes.reorganisation.is_some() {
             Some(HermesPage::Reorganisation)
         } else {
             None
@@ -11788,10 +11270,9 @@ impl App {
         self.filing_status.close_page();
         self.rule_suggestions = None;
         self.rules = None;
-        self.review_list = None;
+        self.hermes.close_pages();
         self.saved_queries = None;
         self.tags = None;
-        self.reorganisation = None;
         let open = match page {
             HermesPage::Overview => self.open_hermes_overview(),
             HermesPage::Inspection => self.open_filing_status(),
@@ -11816,6 +11297,7 @@ impl App {
             focus: self.hermes_focus,
             counts: self.filing_status.hermes_counts().copied(),
             review: self
+                .hermes
                 .review_list
                 .as_ref()
                 .and_then(ReviewList::open_count)
@@ -11828,98 +11310,9 @@ impl App {
         }
     }
 
-    fn update_reorganisation(&mut self, message: ReorganisationPlanMessage) -> Task<Message> {
-        match message {
-            ReorganisationPlanMessage::Open => self.open_reorganisation(),
-            ReorganisationPlanMessage::Close => {
-                if self.reorganisation.take().is_some() {
-                    release_focus()
-                } else {
-                    Task::none()
-                }
-            }
-            ReorganisationPlanMessage::Replan => {
-                let Some(view) = self.reorganisation.as_mut() else {
-                    return Task::none();
-                };
-                if view.is_busy() {
-                    return Task::none();
-                }
-                view.begin_planning();
-                self.run_planning()
-            }
-            ReorganisationPlanMessage::Loaded { generation, result } => {
-                if generation != self.reorganisation_generation {
-                    return Task::none();
-                }
-                match (self.reorganisation.as_mut(), result) {
-                    (Some(view), Ok(rows)) => view.loaded(rows),
-                    (Some(view), Err(detail)) => view.failed(detail),
-                    (None, _) => {}
-                }
-                Task::none()
-            }
-            ReorganisationPlanMessage::Move(delta) => {
-                if let Some(view) = self.reorganisation.as_mut() {
-                    view.move_cursor(delta);
-                }
-                Task::none()
-            }
-            ReorganisationPlanMessage::Scrolled(delta) => {
-                if let Some(view) = self.reorganisation.as_mut() {
-                    view.scroll(delta);
-                }
-                Task::none()
-            }
-            ReorganisationPlanMessage::Select(line) => {
-                if let Some(view) = self.reorganisation.as_mut() {
-                    view.select(line);
-                }
-                Task::none()
-            }
-            ReorganisationPlanMessage::Toggle(line) => {
-                if let Some(view) = self.reorganisation.as_mut() {
-                    view.toggle(line);
-                }
-                Task::none()
-            }
-            ReorganisationPlanMessage::ToggleCursor => {
-                if let Some(view) = self.reorganisation.as_mut() {
-                    view.toggle_cursor();
-                }
-                Task::none()
-            }
-            ReorganisationPlanMessage::OpenRule(id) => self.open_rule_of_plan(id),
-            ReorganisationPlanMessage::Execute => match self.reorganisation.as_ref() {
-                Some(view) if view.has_selection() && !view.is_busy() => {
-                    Task::done(Message::ExecuteReorganisation(view.selection()))
-                }
-                _ => Task::none(),
-            },
-        }
-    }
-
     /// Leaves the plan for the page of the rule behind an entry: the Rules
     /// page for a confirmed rule, the suggestions for one that is not.
-    fn open_rule_of_plan(&mut self, id: RuleId) -> Task<Message> {
-        let Some(confirmed) = self
-            .reorganisation
-            .as_ref()
-            .and_then(|view| {
-                view.rows()
-                    .iter()
-                    .filter_map(|planned| planned.rule.as_ref())
-                    .find(|rule| rule.id == id)
-            })
-            .map(|rule| rule.confirmed)
-        else {
-            return Task::none();
-        };
-        let page = if confirmed {
-            HermesPage::Rules
-        } else {
-            HermesPage::RuleSuggestions
-        };
+    fn open_rule_of_plan(&mut self, id: RuleId, page: HermesPage) -> Task<Message> {
         let open = self.go_to_hermes_page(page);
         if let Some(rules) = self.rules.as_mut() {
             rules.select_on_load(id);
@@ -11928,39 +11321,6 @@ impl App {
             suggestions.select_on_load(id);
         }
         open
-    }
-
-    /// The plan is made as the view opens; the entries appear when it is done.
-    fn open_reorganisation(&mut self) -> Task<Message> {
-        if self.reorganisation.is_some() || self.blocking_overlay_is_open() {
-            return Task::none();
-        }
-        self.context_menu = None;
-        self.reorganisation_generation = self.reorganisation_generation.wrapping_add(1);
-        self.reorganisation = Some(ReorganisationView::new());
-        self.run_planning()
-    }
-
-    /// Plans on a blocking thread: the plan reads the whole folder tree and
-    /// holds the index the intake shares.
-    fn run_planning(&mut self) -> Task<Message> {
-        let generation = self.reorganisation_generation;
-        let Some(access) = self.filing.as_ref().and_then(FilingModule::plan_access) else {
-            if let Some(view) = self.reorganisation.as_mut() {
-                view.failed(INDEX_NOT_OPEN.to_owned());
-            }
-            return Task::none();
-        };
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.plan()),
-            move |joined| {
-                let result = joined.unwrap_or_else(|join| Err(join.to_string()));
-                Message::ReorganisationPlan(ReorganisationPlanMessage::Loaded {
-                    generation,
-                    result,
-                })
-            },
-        )
     }
 
     fn settings_view<'a>(
@@ -12140,6 +11500,135 @@ impl App {
                 Task::none()
             }
         }
+    }
+
+    fn hermes_ctx(&self, inquiry_paths: Vec<PathBuf>) -> ncrs_hermes_ui::Ctx<'_> {
+        let side = self.panels.active;
+        let panel = self.panel(side);
+        ncrs_hermes_ui::Ctx {
+            lang: self.lang,
+            kinds: &self.kinds,
+            default_pattern: self.filing_config.default_pattern.as_deref(),
+            filing: self.filing.as_ref(),
+            overlay_apart_from_hermes_open: self.overlay_apart_from_hermes_is_open(),
+            context_menu_open: self.context_menu.is_some(),
+            search_open: self.search.open,
+            hermes_active: self.hermes_active(),
+            hermes_counts_missing: self.filing_status.hermes_counts().is_none(),
+            refile_pending: self.pending_refile.is_some(),
+            window_size: self.window_size,
+            quick_fix_anchor: layout::cursor_row_anchor(
+                side == PanelSide::Right,
+                panel.selected.saturating_sub(panel.scroll_offset),
+                panel.row_height(),
+                self.window_size,
+            ),
+            inquiry_paths,
+        }
+    }
+
+    /// Runs `step` on the Hermes pages. The state is taken out for it, since
+    /// the context borrows the rest of the app. The context reads nothing of
+    /// the pages themselves: the update looks at those as they are while it
+    /// runs.
+    fn with_hermes<R>(
+        &mut self,
+        inquiry_paths: Vec<PathBuf>,
+        step: impl FnOnce(&mut ncrs_hermes_ui::Hermes, &ncrs_hermes_ui::Ctx<'_>) -> R,
+    ) -> R {
+        let mut hermes = std::mem::take(&mut self.hermes);
+        let outcome = step(&mut hermes, &self.hermes_ctx(inquiry_paths));
+        self.hermes = hermes;
+        outcome
+    }
+
+    fn run_hermes_outcome(&mut self, (task, actions): ncrs_hermes_ui::Outcome) -> Task<Message> {
+        let mut tasks = vec![task.map(Message::from)];
+        for action in actions {
+            tasks.push(self.run_hermes_action(action));
+        }
+        Task::batch(tasks)
+    }
+
+    fn run_hermes_action(&mut self, action: ncrs_hermes_ui::Action) -> Task<Message> {
+        use ncrs_hermes_ui::Action as Ask;
+        match action {
+            Ask::CloseContextMenu => {
+                self.context_menu = None;
+                Task::none()
+            }
+            Ask::ClearStatus => {
+                self.job_error = None;
+                self.notice = None;
+                Task::none()
+            }
+            Ask::ShowNotice(text) => self.show_notice(text),
+            Ask::ShowError(detail) => {
+                self.set_status_error(&detail);
+                Task::none()
+            }
+            Ask::RequestHermesCounts => self.request_hermes_counts(),
+            Ask::ReadPathsAgain(paths) => self.read_paths_again(paths),
+            Ask::OpenRuleForm { form, return_to } => self.open_rule_form(*form, return_to),
+            Ask::OpenRuleOfPlan { id, page } => self.open_rule_of_plan(id, page),
+            Ask::ExcludeFromHermes(paths) => self.exclude_from_hermes(paths),
+            Ask::Refile { scope, items } => self.confirm_replan(scope, items),
+            Ask::QuickFixFiled(summary) => self.quick_fix_filed(&summary),
+        }
+    }
+
+    fn update_review_list(&mut self, message: ReviewListMessage) -> Task<Message> {
+        let outcome = self.with_hermes(Vec::new(), |hermes, ctx| {
+            ncrs_hermes_ui::update_review_list(hermes, message, ctx)
+        });
+        self.run_hermes_outcome(outcome)
+    }
+
+    fn update_quick_fix(&mut self, message: QuickFixMessage) -> Task<Message> {
+        let inquiry_paths = if matches!(message, QuickFixMessage::Open) {
+            self.inquiry_paths()
+        } else {
+            Vec::new()
+        };
+        let outcome = self.with_hermes(inquiry_paths, |hermes, ctx| {
+            ncrs_hermes_ui::update_quick_fix(hermes, message, ctx)
+        });
+        self.run_hermes_outcome(outcome)
+    }
+
+    fn update_reorganisation(&mut self, message: ReorganisationPlanMessage) -> Task<Message> {
+        let outcome = self.with_hermes(Vec::new(), |hermes, ctx| {
+            ncrs_hermes_ui::update_reorganisation(hermes, message, ctx)
+        });
+        self.run_hermes_outcome(outcome)
+    }
+
+    fn open_review_list(&mut self) -> Task<Message> {
+        let outcome = self.with_hermes(Vec::new(), ncrs_hermes_ui::open_review_list);
+        self.run_hermes_outcome(outcome)
+    }
+
+    fn open_reorganisation(&mut self) -> Task<Message> {
+        let outcome = self.with_hermes(Vec::new(), ncrs_hermes_ui::open_reorganisation);
+        self.run_hermes_outcome(outcome)
+    }
+
+    /// Opens the review page if it is not up and plans the documents of
+    /// `scope` again there.
+    fn start_replan(&mut self, scope: ReplanScope) -> Task<Message> {
+        let outcome = self.with_hermes(Vec::new(), |hermes, ctx| {
+            ncrs_hermes_ui::start_replan(hermes, scope, ctx)
+        });
+        self.run_hermes_outcome(outcome)
+    }
+
+    fn run_review_load(&mut self) -> Task<Message> {
+        let task = self.with_hermes(Vec::new(), ncrs_hermes_ui::run_review_load);
+        task.map(Message::from)
+    }
+
+    fn request_review_preview(&mut self) -> Task<Message> {
+        ncrs_hermes_ui::request_review_preview(&mut self.hermes).map(Message::from)
     }
 
     fn update_settings(&mut self, message: SettingsMessage) -> Task<Message> {
@@ -15287,8 +14776,6 @@ impl App {
             volume_menu: None,
             favourites: Vec::new(),
             context_menu: None,
-            quick_fix: None,
-            quick_fix_generation: 0,
             path_field: None,
             command_line: CommandLine::default(),
             path_check_id: 0,
@@ -15327,6 +14814,7 @@ impl App {
             pending_hermes_start: None,
             hermes_flow_step: 0,
             settings: Settings::default(),
+            hermes: ncrs_hermes_ui::Hermes::default(),
             theme_preset: ThemePreset::Cosmic,
             vscode_theme: None,
             resolve_folder: |folder| Ok(folder.to_path_buf()),
@@ -15340,18 +14828,14 @@ impl App {
             rule_suggestions_generation: 0,
             rules: None,
             rules_generation: 0,
-            review_list: None,
             hermes_overview: None,
-            review_list_generation: 0,
             saved_queries: None,
             saved_queries_generation: 0,
             tags: None,
             tags_generation: 0,
             tag_exceptions: TagExceptions::new(),
-            reorganisation: None,
             hermes_focus: HermesFocus::default(),
             return_to_hermes_overview: false,
-            reorganisation_generation: 0,
             plans_filed_for: 0,
             filing_due: false,
             pending_refile: None,
@@ -15717,7 +15201,7 @@ impl App {
         );
         let mut menu = QuickFix::new(anchor, app.window_size);
         menu.loaded(vec![item]);
-        app.quick_fix = Some(menu);
+        app.hermes.quick_fix = Some(menu);
         app
     }
 
@@ -15726,7 +15210,7 @@ impl App {
         let mut app = Self::with_fixed_panels();
         let mut menu = QuickFix::new(iced::Point::ORIGIN, app.window_size);
         menu.loaded(vec![item]);
-        app.quick_fix = Some(menu);
+        app.hermes.quick_fix = Some(menu);
         app
     }
 
@@ -16041,18 +15525,18 @@ impl App {
     }
 
     pub fn review_list_for_test(&self) -> Option<&ReviewList> {
-        self.review_list.as_ref()
+        self.hermes.review_list.as_ref()
     }
 
     pub fn review_list_generation_for_test(&self) -> u64 {
-        self.review_list_generation
+        self.hermes.review_list_generation
     }
 
     /// Fixed panels with the review list up, in the state of `view`.
     pub fn with_review_list(view: ReviewList) -> Self {
         let mut app = Self::with_fixed_panels();
         app.set_idle_hermes_status();
-        app.review_list = Some(view);
+        app.hermes.review_list = Some(view);
         app
     }
 
@@ -16146,14 +15630,14 @@ impl App {
     }
 
     pub fn reorganisation_for_test(&self) -> Option<&ReorganisationView> {
-        self.reorganisation.as_ref()
+        self.hermes.reorganisation.as_ref()
     }
 
     /// Fixed panels with the reorganisation plan view up, in the state of `view`.
     pub fn with_reorganisation_plan(view: ReorganisationView) -> Self {
         let mut app = Self::with_fixed_panels();
         app.set_idle_hermes_status();
-        app.reorganisation = Some(view);
+        app.hermes.reorganisation = Some(view);
         app
     }
 
@@ -28515,13 +27999,13 @@ mod hermes_overview_tests {
         let mut waiting =
             App::with_hermes_overview(Some(Phase::Ready), config::Filing::default(), Some(counts));
         drop(waiting.update(Message::HermesOverview(HermesOverviewMessage::ShowReviews)));
-        assert!(waiting.review_list.is_some());
+        assert!(waiting.hermes.review_list.is_some());
         assert!(waiting.hermes_overview.is_none());
 
         let mut clear =
             App::with_hermes_overview(Some(Phase::Ready), config::Filing::default(), None);
         drop(clear.update(Message::HermesOverview(HermesOverviewMessage::ShowReviews)));
-        assert!(clear.review_list.is_none());
+        assert!(clear.hermes.review_list.is_none());
         assert!(clear.hermes_overview.is_some());
     }
 
@@ -29890,7 +29374,7 @@ mod replan_flow {
         };
         let mut list = ReviewList::new();
         list.loaded(Vec::new());
-        app.review_list = Some(list);
+        app.hermes.review_list = Some(list);
         Fixture {
             _dir: dir,
             inbox,
@@ -30058,7 +29542,7 @@ mod replan_flow {
     #[tokio::test]
     async fn replan_reprocess_folder_outside_the_inbox_only_says_so() {
         let mut fixture = fixture();
-        fixture.app.review_list = None;
+        fixture.app.hermes.review_list = None;
 
         drop(fixture.app.reprocess_folder(fixture.archive.clone()));
 
@@ -30074,7 +29558,7 @@ mod replan_flow {
     #[tokio::test]
     async fn replan_reprocess_folder_in_the_inbox_opens_the_preview() {
         let mut fixture = fixture();
-        fixture.app.review_list = None;
+        fixture.app.hermes.review_list = None;
         assert_eq!(
             crate::keymap::KeyAction::HermesReprocessFolder.message(),
             Message::HermesFile(HermesFileMessage::ReprocessFolder)

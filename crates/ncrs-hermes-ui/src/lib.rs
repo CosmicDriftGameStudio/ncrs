@@ -1,9 +1,11 @@
 //! The Hermes pages: the filing setup and status, the overview, the review
 //! list, the rules, the rule suggestions, the reorganisation plan, the saved
 //! queries, the tags and the quick-fix menu. Their state types, messages and
-//! views; the update logic is still in the app.
+//! views, and the update logic of the pages that have moved.
 
+pub mod action;
 pub mod condition_editor;
+pub mod ctx;
 pub mod document_preview;
 pub mod filing_pieces;
 pub mod filing_setup;
@@ -21,12 +23,22 @@ pub mod rule_form;
 pub mod rule_suggestions;
 pub mod rules_page;
 pub mod saved_queries;
+pub mod state;
 pub mod tags_page;
 pub mod ui;
+pub mod update;
 
+pub use action::Action;
+pub use ctx::Ctx;
 pub use message::{
     FilingSetupMessage, FilingStatusMessage, HermesColumnMessage, HermesFileMessage, HermesFocus,
     HermesOverviewMessage, HermesPage, HermesSetupMessage, Message, QuickFixMessage,
     ReorganisationPlanMessage, ReviewListMessage, RuleFormMessage, RuleSuggestionsMessage,
     RulesMessage, SavedQueriesMessage, TagsMessage,
+};
+pub use state::Hermes;
+pub use update::{
+    open_reorganisation, open_review_list, replan_reorganisation_if_open, request_review_preview,
+    run_review_load, start_replan, update_quick_fix, update_reorganisation, update_review_list,
+    Outcome,
 };
