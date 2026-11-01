@@ -1,6 +1,6 @@
 //! What the open prompt shows while its operation runs and after it failed.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use ncrs_core::PanelSide;
 use ncrs_fs::CreateDirError;
@@ -11,6 +11,37 @@ use crate::prompt::PromptKind;
 use crate::state::Ops;
 
 impl Ops {
+    /// Whether the create that reported is the one the prompt still waits for.
+    /// A prompt dismissed or retried while the operation ran has another id.
+    pub fn is_current_prompt_request(&self, request_id: u64) -> bool {
+        request_id == self.prompt_request_id
+    }
+
+    /// The create of the name prompt has reported: closes the prompt or shows
+    /// why it failed. Returns the new file to open when a file was created.
+    /// `created` is the path the queued reload selects.
+    pub fn finish_prompt(
+        &mut self,
+        kind: PromptKind,
+        result: Result<(), CreateDirError>,
+        created: Option<PathBuf>,
+        lang: Language,
+    ) -> Option<PathBuf> {
+        match result {
+            Ok(()) => {
+                self.prompt = None;
+                self.prompt_side = None;
+                created.filter(|_| kind == PromptKind::CreateFile)
+            }
+            Err(err) => {
+                self.set_prompt_busy(false);
+                let text = self.prompt_error(lang, &err);
+                self.set_prompt_error_text(&text);
+                None
+            }
+        }
+    }
+
     /// Shows a validation failure in the open prompt.
     pub fn set_prompt_error(&mut self, reason: &'static str) {
         if let Some(prompt) = self.prompt.as_mut() {

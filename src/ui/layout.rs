@@ -1,16 +1,14 @@
 //! Fixed layout metrics. Rows have a fixed height so the number of visible
 //! rows can be derived from the window height (used for scrolling).
-use iced::{Point, Size};
+use iced::Size;
 
-use super::theme::{size, spacing};
+use super::theme::size;
 
+pub use ncrs_ui_kit::layout::{cursor_row_anchor, CHROME, INITIAL_WINDOW_SIZE, ROW_HEIGHT};
 #[cfg(test)]
 pub use ncrs_ui_kit::layout::{
-    search_visible_rows, FKEYBAR_HEIGHT, HIT_LIST_ROW_HEIGHT, MENU_ITEM_HEIGHT, MENU_PADDING,
-    MENU_SEPARATOR_HEIGHT, MENU_WIDTH, SEARCH_CONTENT_ROW_HEIGHT,
-};
-pub use ncrs_ui_kit::layout::{
-    CHROME, COLUMN_HEADER_HEIGHT, INITIAL_WINDOW_SIZE, ROW_HEIGHT, TAG_COLUMN_WIDTH,
+    search_visible_rows, COLUMN_HEADER_HEIGHT, FKEYBAR_HEIGHT, HIT_LIST_ROW_HEIGHT,
+    MENU_ITEM_HEIGHT, MENU_PADDING, MENU_SEPARATOR_HEIGHT, MENU_WIDTH, SEARCH_CONTENT_ROW_HEIGHT,
 };
 
 pub const STATUSBAR_HEIGHT: f32 = size::STATUS_BAR;
@@ -32,29 +30,6 @@ pub fn visible_rows(window: Size) -> usize {
 /// hint lines at the bottom.
 pub fn trash_visible_rows(window: Size) -> usize {
     visible_rows(window).saturating_sub(3).max(1)
-}
-
-/// Where the context menu opens for the cursor row of a panel when it is
-/// opened from the keyboard: just below the row, a little into the name column.
-///
-/// `row_in_view` is the row's position counted from the first visible row.
-pub fn cursor_row_anchor(
-    right_panel: bool,
-    row_in_view: usize,
-    row_height: f32,
-    window: Size,
-) -> Point {
-    let panel_width = (window.width - spacing::BORDER_WIDTH) / 2.0;
-    let panel_left = if right_panel {
-        panel_width + spacing::BORDER_WIDTH
-    } else {
-        0.0
-    };
-    let rows_top = TITLE_BAR_HEIGHT + COLUMN_HEADER_HEIGHT;
-    Point::new(
-        panel_left + 3.0 * TAG_COLUMN_WIDTH,
-        rows_top + (row_in_view + 1) as f32 * row_height,
-    )
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the

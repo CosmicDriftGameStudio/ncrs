@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use crate::context_menu::{ContextAction, HermesAction};
 use iced::Point;
 use ncrs_core::{PanelSide, TransferKind};
 use ncrs_fs::remote::{RemoteUrl, ServerId};
@@ -30,6 +31,12 @@ pub enum Action {
         index: usize,
     },
     CloseContextMenu,
+    /// The chosen file entry of the context menu, as the message its key sends.
+    RunContextEntry(ContextAction),
+    /// The chosen Hermes entry of the context menu.
+    RunHermesEntry(HermesAction),
+    /// Enter on a search result in the menu: shows it in the other panel.
+    ActivateSearchResult,
     /// A reload of `side` makes an open context menu stale.
     CloseMenuOfReloaded(PanelSide),
     /// The copies of the files of this archive or server made for viewing are

@@ -13,6 +13,7 @@ pub mod delete_flow;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub mod drag_out;
 pub mod drop_paste;
+pub mod keys;
 pub mod message;
 pub mod open_flow;
 pub mod prompt;

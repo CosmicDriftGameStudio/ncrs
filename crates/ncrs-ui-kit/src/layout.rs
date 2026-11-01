@@ -1,7 +1,7 @@
 //! Layout metrics the kit components and the app share.
-use iced::Size;
+use iced::{Point, Size};
 
-use super::theme::size;
+use super::theme::{size, spacing};
 
 pub const INITIAL_WINDOW_SIZE: Size = Size::new(1200.0, 760.0);
 
@@ -101,4 +101,27 @@ pub fn place(anchor: f32, length: f32, limit: f32) -> f32 {
         anchor
     };
     start.min(limit - length).max(0.0)
+}
+
+/// Where the context menu opens for the cursor row of a panel when it is
+/// opened from the keyboard: just below the row, a little into the name column.
+///
+/// `row_in_view` is the row's position counted from the first visible row.
+pub fn cursor_row_anchor(
+    right_panel: bool,
+    row_in_view: usize,
+    row_height: f32,
+    window: Size,
+) -> Point {
+    let panel_width = (window.width - spacing::BORDER_WIDTH) / 2.0;
+    let panel_left = if right_panel {
+        panel_width + spacing::BORDER_WIDTH
+    } else {
+        0.0
+    };
+    let rows_top = size::TITLE_BAR + COLUMN_HEADER_HEIGHT;
+    Point::new(
+        panel_left + 3.0 * TAG_COLUMN_WIDTH,
+        rows_top + (row_in_view + 1) as f32 * row_height,
+    )
 }

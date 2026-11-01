@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use iced::Task;
 use ncrs_core::PanelSide;
+use ncrs_i18n::{fill_template, Language, Msg};
 
 use crate::hit_list::{read_hit_files, HitList, HitListMessage};
 use crate::state::Panels;
@@ -118,4 +119,22 @@ impl Panels {
         self.panel_mut(other).drop_hit_list();
         self.active = other;
     }
+}
+
+/// The path bar of a hit list: what was searched for, where, and how many
+/// files it found. `scope_label` is the searched folder as the path tabs write it.
+pub fn hit_line_text(lang: Language, list: &HitList, count: usize, scope_label: &str) -> String {
+    let template = lang.text(if count == 1 {
+        Msg::HitListPathBarOne
+    } else {
+        Msg::HitListPathBarMany
+    });
+    fill_template(
+        template,
+        &[
+            ("{query}", &list.query),
+            ("{scope}", scope_label),
+            ("{count}", &count.to_string()),
+        ],
+    )
 }

@@ -27,7 +27,9 @@ use crate::config::{
     self, Config, ConfigError, ContrastWarning, Filing, KindWarning, LanguageWarning, VscodeWarning,
 };
 use crate::context_action_message::ContextActionMessage as _;
-use crate::context_menu::{ContextAction, ContextMenu, HermesAction, HermesMenu};
+#[cfg(test)]
+use crate::context_menu::ContextAction;
+use crate::context_menu::{ContextMenu, HermesAction};
 use crate::dialog::{Prompt, PromptKind};
 use crate::execute;
 use crate::file_list_tags::{FileListTags, TagExceptions};
@@ -139,9 +141,13 @@ use crate::ui::trash as trash_ui;
 use crate::ui::volumes::FavouriteRow;
 use crate::ui::volumes::{self as volumes_view, ServerRow};
 use crate::ui::{conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelState};
+use ncrs_files::context_menu_flow::{HermesCursor, HermesFacts, MenuFacts, MenuNav, MenuOpenCtx};
 #[cfg(test)]
 use ncrs_files::hit_list::HitList;
 use ncrs_files::hit_list_flow::HitListAsk;
+use ncrs_files::keys::{ContextMenuKey, VolumeMenuKey};
+use ncrs_files::load_flow::{LoadStart, ReloadNow};
+use ncrs_files::open_plan::{open_refused_text, CopyOf, OpenPlan, OpenSource};
 #[cfg(test)]
 use ncrs_files::volumes::VolumeMenu;
 use ncrs_files::{PanelMessage, Panels, PendingReload};
@@ -149,6 +155,9 @@ use ncrs_hermes_ui::{SavedFilingApplies, SetupCard};
 pub use ncrs_i18n::fill_template;
 use ncrs_index::{KeyStore, KeyringKeyStore, KindSkip, Kinds, QuerySpec, SavedQueryId};
 use ncrs_intake::LocationMode;
+use ncrs_ops::keys::{
+    Bound as OpsBound, ConflictKey, DialogKey, TransferOverlayKey, TrashBound, TrashKey,
+};
 use ncrs_ops::prompt_view::PromptMessages;
 use ncrs_ops::PanelRows;
 #[cfg(test)]
@@ -512,15 +521,6 @@ fn folder_size_task(walk: Option<ncrs_files::folder_size::FolderWalk>) -> Task<M
 /// that reaches the queue's `start_next` here has nothing left to do.
 fn run_job(_job: jobs::Job) -> Task<Message> {
     Task::done(Message::JobFinished(JobEvent::Done))
-}
-
-/// What a file handed to the viewer or editor is a copy of.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum CopyOf {
-    /// Nothing: it is the file itself.
-    Nothing,
-    Archive,
-    Server,
 }
 
 /// Which keys the open delete dialog answers to.
@@ -997,21 +997,13 @@ fn conflict_key(
     key_modifiers: Modifiers,
     scope: KeyScope,
 ) -> Option<Message> {
-    match key.as_ref() {
-        // Escape means "no" to a question, and "keep" is the no that does
-        // not lose data. Cancelling the whole transfer is on the key that
-        // already aborts a job (Ctrl+C on a Mac unless rebound).
-        Key::Named(Named::Escape) => Some(Message::TransferConflict(ConflictChoice::ThisKeep)),
-        // Space ticks "for all files", as it ticks a checkbox elsewhere.
-        Key::Named(Named::Space) => Some(Message::ToggleConflictAll),
-        // The fixed dialog keys before the configured one, so a rebound
-        // abort key cannot take Enter or an arrow. The key that aborts a
-        // job then cancels the whole operation.
-        _ => dialog_focus_key(key.clone(), key_modifiers).or_else(|| {
-            (bound_message(&prompt.keymap, &key, key_modifiers, scope) == Some(Message::AbortJob))
-                .then_some(Message::TransferConflict(ConflictChoice::Cancel))
-        }),
-    }
+    let aborts =
+        || bound_message(&prompt.keymap, &key, key_modifiers, scope) == Some(Message::AbortJob);
+    ncrs_ops::keys::conflict_key(&key, key_modifiers, aborts).map(|pressed| match pressed {
+        ConflictKey::Answer(choice) => Message::TransferConflict(choice),
+        ConflictKey::ToggleAll => Message::ToggleConflictAll,
+        ConflictKey::Dialog(dialog) => dialog_message(dialog),
+    })
 }
 
 fn transfer_overlay_key(
@@ -1020,41 +1012,34 @@ fn transfer_overlay_key(
     key_modifiers: Modifiers,
     scope: KeyScope,
 ) -> Option<Message> {
-    if prompt.transfer_dialog {
-        let dialog = |message| Some(Message::TransferDialog(message));
-        return match key.as_ref() {
-            Key::Named(Named::Escape) => dialog(TransferDialogMessage::Cancel),
-            Key::Named(Named::Enter) => dialog(TransferDialogMessage::Confirm),
-            Key::Named(Named::Tab) => dialog(TransferDialogMessage::ToggleKind),
-            _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
-                .filter(|message| *message == Message::Quit)
-                .filter(|_| is_not_typed_by_text_field(key, key_modifiers)),
-        };
-    }
-    // The progress mask has no field. Escape stops the job, as it does with the
-    // mask closed; the panel keys do nothing behind it.
-    match key.as_ref() {
-        Key::Named(Named::Escape) => Some(Message::AbortJob),
-        _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
-            .filter(|message| *message == Message::Quit || *message == Message::AbortJob),
-    }
+    let bound = || match bound_message(&prompt.keymap, key, key_modifiers, scope) {
+        Some(Message::Quit) => OpsBound::Quit,
+        Some(Message::AbortJob) => OpsBound::AbortJob,
+        _ => OpsBound::Other,
+    };
+    ncrs_ops::keys::transfer_overlay_key(
+        prompt.transfer_dialog,
+        key,
+        is_not_typed_by_text_field(key, key_modifiers),
+        bound,
+    )
+    .map(|pressed| match pressed {
+        TransferOverlayKey::Dialog(message) => Message::TransferDialog(message),
+        TransferOverlayKey::AbortJob => Message::AbortJob,
+        TransferOverlayKey::Quit => Message::Quit,
+    })
 }
 
-/// The keys of the open context menu; Left and Right walk between the menu
-/// and its Hermes submenu.
 fn context_menu_key(prompt: &PromptKeyState, key: &Key) -> Option<Message> {
-    match key.as_ref() {
-        Key::Named(Named::Escape) if prompt.context_submenu => Some(Message::ContextMenuCloseSub),
-        Key::Named(Named::Escape) => Some(Message::ContextMenuClose),
-        Key::Named(Named::ArrowRight) => Some(Message::ContextMenuOpenSub),
-        Key::Named(Named::ArrowLeft) => Some(Message::ContextMenuCloseSub),
-        Key::Named(Named::Enter) => Some(Message::ContextMenuActivate),
-        Key::Named(Named::ArrowUp) => Some(Message::ContextMenuMove(-1)),
-        Key::Named(Named::ArrowDown) => Some(Message::ContextMenuMove(1)),
-        Key::Named(Named::Home) => Some(Message::ContextMenuFirst),
-        Key::Named(Named::End) => Some(Message::ContextMenuLast),
-        _ => None,
-    }
+    ncrs_files::keys::context_menu_key(prompt.context_submenu, key).map(|pressed| match pressed {
+        ContextMenuKey::CloseSub => Message::ContextMenuCloseSub,
+        ContextMenuKey::Close => Message::ContextMenuClose,
+        ContextMenuKey::OpenSub => Message::ContextMenuOpenSub,
+        ContextMenuKey::Activate => Message::ContextMenuActivate,
+        ContextMenuKey::Move(delta) => Message::ContextMenuMove(delta),
+        ContextMenuKey::First => Message::ContextMenuFirst,
+        ContextMenuKey::Last => Message::ContextMenuLast,
+    })
 }
 
 /// The keys of the connect dialog: its fields take the typing and Enter, Tab
@@ -1112,16 +1097,14 @@ fn keys_without_prompt(
     // The menu takes the arrows and Enter that would otherwise move the panel
     // behind it; any other key does nothing until it is closed.
     if prompt.volume_menu {
-        return match key.as_ref() {
-            Key::Named(Named::Escape) => Some(Message::VolumeMenuClose),
-            Key::Named(Named::Enter) => Some(Message::VolumeMenuActivate),
-            Key::Named(Named::ArrowUp) => Some(Message::VolumeMenuMove(-1)),
-            Key::Named(Named::ArrowDown) => Some(Message::VolumeMenuMove(1)),
-            Key::Named(Named::Home) => Some(Message::VolumeMenuFirst),
-            Key::Named(Named::End) => Some(Message::VolumeMenuLast),
-            Key::Named(Named::Delete | Named::Backspace) => Some(Message::VolumeMenuRemove),
-            _ => None,
-        };
+        return ncrs_files::keys::volume_menu_key(&key).map(|pressed| match pressed {
+            VolumeMenuKey::Close => Message::VolumeMenuClose,
+            VolumeMenuKey::Activate => Message::VolumeMenuActivate,
+            VolumeMenuKey::Move(delta) => Message::VolumeMenuMove(delta),
+            VolumeMenuKey::First => Message::VolumeMenuFirst,
+            VolumeMenuKey::Last => Message::VolumeMenuLast,
+            VolumeMenuKey::Remove => Message::VolumeMenuRemove,
+        });
     }
     if prompt.quick_fix {
         return ncrs_hermes_ui::keys::quick_fix_key(&key).map(Message::from);
@@ -1505,32 +1488,33 @@ fn search_key(prompt: &PromptKeyState, key: &Key, key_modifiers: Modifiers) -> O
 /// leave the view reach through; everything else, F5 and F8 included, does
 /// nothing here.
 fn trash_key(prompt: &PromptKeyState, key: &Key, key_modifiers: Modifiers) -> Option<Message> {
-    let trash = |message| Some(Message::Trash(message));
     let bound = bound_message(&prompt.keymap, key, key_modifiers, KeyScope::Panel);
-    if let Some(message) = bound.as_ref().and_then(trash_tagging) {
-        return trash(message);
-    }
-    if (key_modifiers - Modifiers::SHIFT).is_empty() {
-        match key.as_ref() {
-            Key::Named(Named::Escape) if prompt.job_running => return Some(Message::AbortJob),
-            Key::Named(Named::Escape) => return trash(TrashMessage::Close),
-            Key::Named(Named::ArrowUp) => return trash(TrashMessage::Move(-1)),
-            Key::Named(Named::ArrowDown) => return trash(TrashMessage::Move(1)),
-            Key::Named(Named::PageUp) => return trash(TrashMessage::Page(-1)),
-            Key::Named(Named::PageDown) => return trash(TrashMessage::Page(1)),
-            Key::Named(Named::Home) => return trash(TrashMessage::First),
-            Key::Named(Named::End) => return trash(TrashMessage::Last),
-            Key::Named(Named::Enter) => return trash(TrashMessage::Restore),
-            _ => {}
+    let kind = match bound.as_ref() {
+        Some(message) => {
+            if let Some(tagging) = trash_tagging(message) {
+                TrashBound::Tagging(tagging)
+            } else if *message == Message::Quit {
+                TrashBound::Quit
+            } else if *message == Message::Panel(PanelMessage::SwitchPanel) {
+                TrashBound::SwitchPanel
+            } else if *message == KeyAction::CommandPalette.message() {
+                TrashBound::CommandPalette
+            } else if *message == KeyAction::RestoreLastDeletion.message() {
+                TrashBound::RestoreLast
+            } else if *message == KeyAction::OpenTrashInFinder.message() {
+                TrashBound::OpenInFinder
+            } else {
+                TrashBound::Other
+            }
         }
+        None => TrashBound::Other,
+    };
+    let pressed = ncrs_ops::keys::trash_key(prompt.job_running, key, key_modifiers, kind)?;
+    match pressed {
+        TrashKey::Message(message) => Some(Message::Trash(message)),
+        TrashKey::AbortJob => Some(Message::AbortJob),
+        TrashKey::Bound(_) => bound,
     }
-    bound.filter(|message| {
-        *message == Message::Quit
-            || *message == Message::Panel(PanelMessage::SwitchPanel)
-            || *message == KeyAction::CommandPalette.message()
-            || *message == KeyAction::RestoreLastDeletion.message()
-            || *message == KeyAction::OpenTrashInFinder.message()
-    })
 }
 
 /// The trash view's version of a bound tagging message.
@@ -1639,14 +1623,8 @@ fn is_not_typed_by_text_field(key: &Key, modifiers: Modifiers) -> bool {
     is_function_key || is_chord
 }
 
-/// A printable character with at most Shift held. With Option held a Mac types
-/// another character, so Alt, Ctrl and Cmd all rule it out.
 fn type_ahead_message(key: &Key, modifiers: Modifiers) -> Option<Message> {
-    let Key::Character(typed) = key else {
-        return None;
-    };
-    ((modifiers - Modifiers::SHIFT).is_empty() && typed.chars().all(|c| !c.is_control()))
-        .then(|| Message::Panel(PanelMessage::TypeAhead(typed.to_string())))
+    ncrs_files::keys::type_ahead_message(key, modifiers).map(Message::Panel)
 }
 
 fn lowercase_character(key: &Key) -> Key {
@@ -1747,16 +1725,14 @@ pub fn route_press(
     route_key(prompt, routed_key, modifiers).filter(|message| !repeat || repeats(message))
 }
 
-/// The keys every button dialog shares: arrows and Tab move the focus, Enter
-/// presses the focused button.
 fn dialog_focus_key(key: Key, modifiers: Modifiers) -> Option<Message> {
-    match key.as_ref() {
-        Key::Named(Named::Enter) => Some(Message::DialogActivate),
-        Key::Named(Named::ArrowLeft) => Some(Message::DialogFocus(-1)),
-        Key::Named(Named::ArrowRight) => Some(Message::DialogFocus(1)),
-        Key::Named(Named::Tab) if modifiers.shift() => Some(Message::DialogFocus(-1)),
-        Key::Named(Named::Tab) => Some(Message::DialogFocus(1)),
-        _ => None,
+    ncrs_ops::keys::dialog_focus_key(&key, modifiers).map(dialog_message)
+}
+
+fn dialog_message(pressed: DialogKey) -> Message {
+    match pressed {
+        DialogKey::Activate => Message::DialogActivate,
+        DialogKey::Focus(step) => Message::DialogFocus(step),
     }
 }
 
@@ -3095,84 +3071,33 @@ impl App {
     }
 
     fn update_context_menu(&mut self, message: Message) -> Task<Message> {
-        match message {
+        let nav = match message {
             Message::ContextMenuAt { side, index } => {
                 let pointer = self.input.lock().pointer;
                 self.open_context_menu(side, index, Some(pointer));
-                Task::none()
+                return Task::none();
             }
             Message::ContextMenuKey => {
                 let side = self.panels.active;
                 let index = self.panel(side).selected;
                 self.open_context_menu(side, index, None);
-                Task::none()
+                return Task::none();
             }
-            Message::ContextMenuMove(delta) => {
-                if let Some(menu) = self.panels.context_menu.as_mut() {
-                    menu.move_by(delta);
-                }
-                Task::none()
-            }
-            Message::ContextMenuFirst => {
-                if let Some(menu) = self.panels.context_menu.as_mut() {
-                    menu.select_first();
-                }
-                Task::none()
-            }
-            Message::ContextMenuLast => {
-                if let Some(menu) = self.panels.context_menu.as_mut() {
-                    menu.select_last();
-                }
-                Task::none()
-            }
-            Message::ContextMenuHover(index) => {
-                if let Some(menu) = self.panels.context_menu.as_mut() {
-                    menu.hover(index);
-                }
-                Task::none()
-            }
-            Message::ContextMenuActivate => self.run_context_menu_entry(),
-            Message::ContextMenuClick(index) => {
-                if let Some(menu) = self.panels.context_menu.as_mut() {
-                    menu.select(index);
-                    if menu.selected_is_hermes() {
-                        menu.open_submenu();
-                        return Task::none();
-                    }
-                    menu.close_submenu();
-                }
-                self.run_context_menu_entry()
-            }
-            Message::ContextMenuOpenSub => {
-                if let Some(menu) = self.panels.context_menu.as_mut() {
-                    menu.open_submenu();
-                }
-                Task::none()
-            }
-            Message::ContextMenuCloseSub => {
-                if let Some(menu) = self.panels.context_menu.as_mut() {
-                    menu.close_submenu();
-                }
-                Task::none()
-            }
-            Message::ContextMenuSubHover(index) => {
-                if let Some(menu) = self.panels.context_menu.as_mut() {
-                    menu.select_sub(index);
-                }
-                Task::none()
-            }
-            Message::ContextMenuSubClick(index) => {
-                if let Some(menu) = self.panels.context_menu.as_mut() {
-                    menu.select_sub(index);
-                }
-                self.run_context_menu_entry()
-            }
-            Message::ContextMenuClose => {
-                self.panels.context_menu = None;
-                Task::none()
-            }
-            _ => Task::none(),
-        }
+            Message::ContextMenuActivate => return self.run_context_menu_entry(),
+            Message::ContextMenuClick(index) => return self.click_context_menu(index, false),
+            Message::ContextMenuSubClick(index) => return self.click_context_menu(index, true),
+            Message::ContextMenuMove(delta) => MenuNav::Move(delta),
+            Message::ContextMenuFirst => MenuNav::First,
+            Message::ContextMenuLast => MenuNav::Last,
+            Message::ContextMenuHover(index) => MenuNav::Hover(index),
+            Message::ContextMenuOpenSub => MenuNav::OpenSub,
+            Message::ContextMenuCloseSub => MenuNav::CloseSub,
+            Message::ContextMenuSubHover(index) => MenuNav::SubHover(index),
+            Message::ContextMenuClose => MenuNav::Close,
+            _ => return Task::none(),
+        };
+        self.panels.navigate_context_menu(nav);
+        Task::none()
     }
 
     fn update_path_field(&mut self, message: Message) -> Task<Message> {
@@ -3833,21 +3758,9 @@ impl App {
         let panel = self.active_panel();
         let list = panel.hit_list.as_ref()?;
         let count = panel.entries.len();
-        let template = self.lang.text(if count == 1 {
-            Msg::HitListPathBarOne
-        } else {
-            Msg::HitListPathBarMany
-        });
         let scope = titlebar::tab_label(&list.scope, &self.home, false, usize::MAX);
         Some(statusbar::HitLine {
-            text: fill_template(
-                template,
-                &[
-                    ("{query}", &list.query),
-                    ("{scope}", &scope),
-                    ("{count}", &count.to_string()),
-                ],
-            ),
+            text: ncrs_files::hit_list_flow::hit_line_text(self.lang, list, count, &scope),
             back_key: "Esc".to_owned(),
             back_label: self.lang.text(Msg::HitListBackHint).to_owned(),
         })
@@ -4318,49 +4231,25 @@ impl App {
             || self.remote_ui.dialog.is_some()
     }
 
-    /// Whether the context menu entry can do something for the current
-    /// cursor row and tags.
-    fn context_action_enabled(&self, action: ContextAction) -> bool {
-        if let Some(search) = self.open_search_view() {
-            let has_cursor = search.cursor_target().is_some();
-            return match action {
-                ContextAction::Open
-                | ContextAction::View
-                | ContextAction::Edit
-                | ContextAction::ShowOnOtherSide => has_cursor,
-                ContextAction::Copy
-                | ContextAction::Move
-                | ContextAction::Trash
-                | ContextAction::DeletePermanently => !self.action_sources().is_empty(),
-                ContextAction::CopyPath | ContextAction::CopyName => has_cursor,
-                ContextAction::NewFolder
-                | ContextAction::ComputeFolderSizes
-                | ContextAction::RemoveFromList => false,
-            };
-        }
+    fn context_menu_facts(&self) -> MenuFacts {
         let panel = self.active_panel();
-        let cursor_row = panel.selected_entry();
-        match action {
-            ContextAction::Open => cursor_row.is_some(),
-            ContextAction::View | ContextAction::Edit => {
-                cursor_row.is_some_and(|entry| !entry.is_dir && !entry.is_parent)
-            }
-            ContextAction::Copy
-            | ContextAction::Move
-            | ContextAction::Trash
-            | ContextAction::DeletePermanently => !self.action_sources().is_empty(),
-            ContextAction::NewFolder => true,
-            ContextAction::CopyPath => {
-                ncrs_ops::clipboard_text(rows_of(panel), ClipboardKind::Path).is_some()
-            }
-            ContextAction::CopyName => {
-                ncrs_ops::clipboard_text(rows_of(panel), ClipboardKind::Name).is_some()
-            }
-            ContextAction::ComputeFolderSizes => {
-                !ncrs_files::folder_size::folder_size_targets(panel).is_empty()
-            }
-            ContextAction::ShowOnOtherSide => cursor_row.is_some(),
-            ContextAction::RemoveFromList => cursor_row.is_some(),
+        MenuFacts {
+            search_cursor: self
+                .open_search_view()
+                .map(|search| search.cursor_target().is_some()),
+            has_sources: !self.action_sources().is_empty(),
+            can_copy_path: ncrs_ops::clipboard_text(rows_of(panel), ClipboardKind::Path).is_some(),
+            can_copy_name: ncrs_ops::clipboard_text(rows_of(panel), ClipboardKind::Name).is_some(),
+            hermes: self.hermes_facts(),
+        }
+    }
+
+    fn menu_open_ctx(&self) -> MenuOpenCtx {
+        MenuOpenCtx {
+            blocking_overlay_is_open: self.blocking_overlay_is_open(),
+            search_side: self.search.open.then_some(self.search.side),
+            visible_rows: self.visible_rows,
+            window: self.window_size,
         }
     }
 
@@ -4373,90 +4262,37 @@ impl App {
         self.job_error = None;
         self.notice = None;
         let pointer = self.input.lock().pointer;
-        let is_enabled = |action| self.context_action_enabled(action);
-        self.panels.context_menu = Some(ContextMenu::for_search_results(
-            pointer,
-            self.window_size,
-            is_enabled,
-        ));
+        let facts = self.context_menu_facts();
+        self.panels
+            .show_search_context_menu(pointer, self.window_size, &facts);
     }
 
     /// Opens the context menu on row `index` of `side`, at `anchor` or, without
-    /// one, below that row. The cursor goes to the row; tags stay, so the menu
-    /// acts on them as F5 and F8 do.
+    /// one, below that row.
     fn open_context_menu(&mut self, side: PanelSide, index: usize, anchor: Option<Point>) {
-        if self.blocking_overlay_is_open() || (self.search.open && side == self.search.side) {
+        let ctx = self.menu_open_ctx();
+        let Some(place_at) = self.panels.point_at_menu_row(side, index, anchor, &ctx) else {
             return;
-        }
-        // An open menu is replaced by a right click and left alone by the keys.
-        if anchor.is_none() && self.panels.context_menu.is_some() {
-            return;
-        }
-        let rows = self.visible_rows;
-        self.panels.active = side;
+        };
         self.job_error = None;
         self.notice = None;
-        let panel = self.panel_mut(side);
-        // As in the Finder: a click on a row outside the tags drops them, so
-        // the menu cannot act on rows the user did not point at.
-        let on_untagged_row = panel
-            .entries
-            .get(index)
-            .is_some_and(|entry| !panel.selection.is_tagged(&entry.path));
-        if anchor.is_some() && on_untagged_row {
-            panel.selection.clear();
-        }
-        panel.select(index, rows);
-        let window = self.window_size;
-        let cursor_panel = self.panel(side);
-        let place_at = anchor.unwrap_or_else(|| {
-            layout::cursor_row_anchor(
-                side == PanelSide::Right,
-                cursor_panel
-                    .selected
-                    .saturating_sub(cursor_panel.scroll_offset),
-                cursor_panel.row_height(),
-                window,
-            )
-        });
-        let hermes_enabled = |action| self.hermes_action_enabled(action);
-        let hermes = self.hermes.is_ready().then(|| HermesMenu {
-            excluded: self.cursor_is_excluded_from_hermes(),
-            is_enabled: &hermes_enabled,
-        });
-        let is_enabled = |action| self.context_action_enabled(action);
-        self.panels.context_menu = Some(if self.panel(side).is_hit_list() {
-            ContextMenu::for_hit_list(place_at, self.window_size, is_enabled, hermes)
-        } else {
-            ContextMenu::with_hermes(place_at, self.window_size, is_enabled, hermes)
-        });
+        let facts = self.context_menu_facts();
+        self.panels
+            .show_context_menu(side, place_at, self.window_size, &facts);
     }
 
-    /// Closes the menu and sends the message its highlighted entry stands for,
-    /// the same one its key sends. Closed first: the actions refuse to run
-    /// under an overlay.
     fn run_context_menu_entry(&mut self) -> Task<Message> {
-        let Some(open) = self.panels.context_menu.as_mut() else {
-            return Task::none();
-        };
-        if open.selected_is_hermes() && !open.submenu_is_open() {
-            open.open_submenu();
-            return Task::none();
-        }
         let from_search = self.search_has_keys();
-        let Some(menu) = self.panels.context_menu.take() else {
-            return Task::none();
-        };
-        let chosen = if menu.submenu_is_open() {
-            menu.selected_hermes_action().map(HermesAction::message)
-        } else {
-            menu.selected_action().map(|action| match action {
-                // Enter on a result shows it in the other panel.
-                ContextAction::Open if from_search => Message::Search(SearchMessage::Activate),
-                other => other.message(),
-            })
-        };
-        chosen.map_or_else(Task::none, |message| self.update(message))
+        let actions = self.panels.run_context_menu_entry(from_search);
+        self.run_panel_actions(actions)
+    }
+
+    fn click_context_menu(&mut self, index: usize, in_submenu: bool) -> Task<Message> {
+        let from_search = self.search_has_keys();
+        let actions = self
+            .panels
+            .click_context_menu(index, in_submenu, from_search);
+        self.run_panel_actions(actions)
     }
 
     /// The file or folder under the cursor of the active panel, for the Hermes
@@ -4489,46 +4325,36 @@ impl App {
             .map(|location| location.path.as_path())
     }
 
-    /// Whether the Hermes entry can do something for the cursor row; the
-    /// greyed-out entries of the submenu.
+    /// What the Hermes entry of the context menu checks for the cursor row.
+    fn hermes_facts(&self) -> HermesFacts {
+        let locations = &self.hermes.filing_config.locations;
+        let cursor = self.hermes_cursor_entry().map(|entry| {
+            let role_free = |role| role_of(&entry.path, locations) != Some(role);
+            HermesCursor {
+                is_dir: entry.is_dir,
+                excluded: self.cursor_is_excluded_from_hermes(),
+                can_be_handed_to_inbox: self
+                    .inbox_location()
+                    .is_some_and(|inbox| !entry.path.starts_with(inbox)),
+                lies_in_a_filing_location: locations
+                    .iter()
+                    .any(|location| entry.path.starts_with(&location.path)),
+                inbox_role_is_free: role_free(FolderRole::Inbox),
+                filing_location_role_is_free: role_free(FolderRole::FilingLocation),
+                archive_role_is_free: role_free(FolderRole::Archive),
+            }
+        });
+        HermesFacts {
+            ready: self.hermes.is_ready(),
+            active: self.hermes.is_active(),
+            has_inquiry_paths: !self.inquiry_paths().is_empty(),
+            has_live_pipeline: self.hermes.live_pipeline().is_some(),
+            cursor,
+        }
+    }
+
     fn hermes_action_enabled(&self, action: HermesAction) -> bool {
-        let Some(entry) = self.hermes_cursor_entry() else {
-            return false;
-        };
-        let role_free =
-            |role| role_of(&entry.path, &self.hermes.filing_config.locations) != Some(role);
-        let needs_locations = !matches!(
-            action,
-            HermesAction::SetInbox | HermesAction::SetFilingLocation | HermesAction::SetArchive
-        );
-        if needs_locations && !self.hermes.is_active() {
-            return false;
-        }
-        match action {
-            HermesAction::ShowSuggestion => !self.inquiry_paths().is_empty(),
-            HermesAction::HandToInbox => self
-                .inbox_location()
-                .is_some_and(|inbox| !entry.path.starts_with(inbox)),
-            HermesAction::ProcessAgain => {
-                !entry.is_dir
-                    && self.hermes.live_pipeline().is_some()
-                    && self.hermes.hermes_column.state_of(&entry.path)
-                        != Some(HermesFileState::Excluded)
-                    && self
-                        .hermes
-                        .filing_config
-                        .locations
-                        .iter()
-                        .any(|location| entry.path.starts_with(&location.path))
-            }
-            HermesAction::ReprocessFolder => entry.is_dir,
-            HermesAction::SetInbox => entry.is_dir && role_free(FolderRole::Inbox),
-            HermesAction::SetFilingLocation => {
-                entry.is_dir && role_free(FolderRole::FilingLocation)
-            }
-            HermesAction::SetArchive => entry.is_dir && role_free(FolderRole::Archive),
-            HermesAction::Exclude | HermesAction::Include | HermesAction::Inspect => true,
-        }
+        self.hermes_facts().action_enabled(action)
     }
 
     fn update_hermes_file(&mut self, message: HermesFileMessage) -> Task<Message> {
@@ -4613,37 +4439,19 @@ impl App {
         request_id: u64,
         result: Result<(), fs::CreateDirError>,
     ) -> Task<Message> {
-        if request_id != self.ops.prompt_request_id {
-            // Dismissed or retried while the operation ran.
+        if !self.ops.is_current_prompt_request(request_id) {
             return Task::none();
         }
-        // The queued reload runs here, after the create has reported —
-        // never beside it. On success it selects the new entry; on
-        // failure it still re-reads, because the name may belong to
-        // something else that appeared meanwhile.
-        let created = self
-            .panels
-            .pending_reload
-            .as_ref()
-            .map(|pending| self.panel(pending.side).path.join(&pending.name));
-        let reload = self.panels.pending_reload.take().map(|pending| {
-            let path = self.panel(pending.side).path.clone();
-            self.load(pending.side, path, Some(pending.name))
-        });
-
-        match result {
-            Ok(()) => {
-                self.ops.prompt = None;
-                self.ops.prompt_side = None;
-                if let (PromptKind::CreateFile, Some(path)) = (kind, created) {
-                    self.launch_external(fs::OpenKind::Edit, path, None, CopyOf::Nothing);
-                }
-            }
-            Err(err) => {
-                self.ops.set_prompt_busy(false);
-                let text = self.ops.prompt_error(self.lang, &err);
-                self.ops.set_prompt_error_text(&text);
-            }
+        // The queued reload runs here, after the create has reported, never
+        // beside it. On success it selects the new entry; on failure it still
+        // re-reads, because the name may belong to something else that
+        // appeared meanwhile.
+        let pending = self.panels.take_pending_reload();
+        let created = pending.as_ref().map(ReloadNow::created);
+        let reload = pending.map(|due| self.load(due.side, due.path, Some(due.name)));
+        let lang = self.lang;
+        if let Some(path) = self.ops.finish_prompt(kind, result, created, lang) {
+            self.launch_external(fs::OpenKind::Edit, path, None, CopyOf::Nothing);
         }
         reload.unwrap_or_else(Task::none)
     }
@@ -4959,40 +4767,25 @@ impl App {
     /// to view or edit. A file inside an archive is unpacked first, and only
     /// viewing works: the copy is thrown away, so an edit would be lost.
     fn open_external(&mut self, kind: fs::OpenKind) -> Task<Message> {
-        let target = match self.open_search_view() {
-            Some(search) => search.cursor_target().filter(|(path, _)| !path.is_dir()),
-            None => self
-                .active_panel()
-                .selected_entry()
-                .filter(|entry| !entry.is_parent && !entry.is_dir)
-                .map(|entry| (entry.path.clone(), None)),
+        let source = match self.open_search_view() {
+            Some(search) => {
+                OpenSource::Search(search.cursor_target().filter(|(path, _)| !path.is_dir()))
+            }
+            None => OpenSource::ActivePanel,
         };
-        let Some((path, line)) = target else {
-            return Task::none();
-        };
-        // A file on a server is fetched, never opened in place: the path is an
-        // address, and the program would get nothing it can open.
-        if let Some(source) = RemotePath::parse(&path) {
-            return match kind {
-                fs::OpenKind::Edit => {
-                    let text = self.lang.text(Msg::StatusRemoteReadOnly).to_owned();
-                    self.set_status_error(&text);
-                    Task::none()
-                }
-                fs::OpenKind::View => self.view_from_server(source),
-            };
-        }
-        let in_archive = fs::archive::locate_in_archive(&path)
-            .filter(|location| !location.inner.is_empty())
-            .map(|location| location.archive);
-        match (in_archive, kind) {
-            (Some(_), fs::OpenKind::Edit) => {
-                let text = self.lang.text(Msg::StatusArchiveReadOnly).to_owned();
+        match self.panels.plan_open(kind, source) {
+            OpenPlan::Nothing => Task::none(),
+            OpenPlan::Refused(msg) => {
+                let text = self.lang.text(msg).to_owned();
                 self.set_status_error(&text);
                 Task::none()
             }
-            (Some(archive), fs::OpenKind::View) => self.view_from_archive(path, archive),
-            (None, _) => {
+            OpenPlan::ViewFromServer(remote) => self.view_from_server(remote),
+            OpenPlan::ViewFromArchive {
+                source: packed,
+                archive,
+            } => self.view_from_archive(packed, archive),
+            OpenPlan::Launch { path, line } => {
                 self.launch_external(kind, path, line, CopyOf::Nothing);
                 Task::none()
             }
@@ -5133,20 +4926,14 @@ impl App {
         let executable = fs::could_execute(&path);
         let Some(command) = fs::open_command(&self.open_programs, kind, &path, executable, line)
         else {
-            let message = if from != CopyOf::Nothing {
-                // The edit key is refused in an archive and on a server, so it
-                // is not offered.
-                fill_template(
-                    self.lang.text(if from == CopyOf::Server {
-                        Msg::ErrorRemoteViewExecutable
-                    } else {
-                        Msg::ErrorArchiveViewExecutable
-                    }),
-                    &[("{name}", &name)],
-                )
-            } else {
-                self.open_refused_text(&name)
-            };
+            let label = |opener| self.keymap.shortcut_label(&Message::OpenExternal(opener));
+            let message = open_refused_text(
+                self.lang,
+                &name,
+                from,
+                label(fs::OpenKind::View),
+                label(fs::OpenKind::Edit),
+            );
             self.set_status_error(&message);
             return;
         };
@@ -5157,27 +4944,6 @@ impl App {
                 .replace("{name}", &name)
                 .replace("{reason}", &reason);
             self.set_status_error(&message);
-        }
-    }
-
-    fn open_refused_text(&self, name: &str) -> String {
-        let keys: Vec<String> = [
-            Message::OpenExternal(fs::OpenKind::View),
-            Message::OpenExternal(fs::OpenKind::Edit),
-        ]
-        .iter()
-        .filter_map(|opener| self.keymap.shortcut_label(opener))
-        .collect();
-        if keys.is_empty() {
-            fill_template(
-                self.lang.text(Msg::ErrorOpenRefusedNoKey),
-                &[("{name}", name)],
-            )
-        } else {
-            fill_template(
-                self.lang.text(Msg::ErrorOpenRefused),
-                &[("{name}", name), ("{keys}", &keys.join("/"))],
-            )
         }
     }
 
@@ -5257,6 +5023,7 @@ impl App {
         self.panels.drag_cursor(side, self.modifiers)
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn drag_out_started(&mut self, started: Result<(), String>) -> Task<Message> {
         let failure = ncrs_ops::drag_out::drag_out_failure(self.lang, started);
         self.run_ops_actions(failure.into_iter().collect())
@@ -5268,6 +5035,7 @@ impl App {
         self.panels.drag.take()
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn start_drag_out(&mut self) -> Task<Message> {
         self.end_panel_drag();
         let sources = self.action_sources();
@@ -5890,6 +5658,9 @@ impl App {
                 self.panels.context_menu = None;
                 Task::none()
             }
+            Action::RunContextEntry(entry) => self.update(entry.message()),
+            Action::RunHermesEntry(entry) => self.update(entry.message()),
+            Action::ActivateSearchResult => self.update(Message::Search(SearchMessage::Activate)),
             Action::CloseMenuOfReloaded(side) => {
                 self.panels.close_menu_of_reloaded(side);
                 Task::none()
@@ -7410,31 +7181,11 @@ impl App {
 
     /// Starts an async directory read for `side`.
     fn load(&mut self, side: PanelSide, path: PathBuf, select: Option<String>) -> Task<Message> {
-        if self.panel(side).is_hit_list() {
-            if path == self.panel(side).path {
-                return self.refresh_hit_list(side);
-            }
-            self.panel_mut(side).drop_hit_list();
+        match self.panels.start_load(side, path, select.clone()) {
+            LoadStart::RefreshHitList => self.refresh_hit_list(side),
+            LoadStart::Remote(remote) => self.load_remote(side, remote, select),
+            LoadStart::Local(read) => read.map(Message::Panel),
         }
-        // A server is told from the text of the path before anything else
-        // looks at it: nothing here may hand such a path to the local disk.
-        if let Some(remote) = RemotePath::parse(&path) {
-            return self.load_remote(side, remote, select);
-        }
-        let panel = self.panel_mut(side);
-        let request_id = panel.begin_load();
-        Task::perform(fs::read_directory(path, panel.sort), move |listing| {
-            Message::Panel(PanelMessage::DirectoryLoaded {
-                side,
-                request_id,
-                path: listing.path,
-                entries: listing.entries,
-                error: listing.error,
-                sorted_by: listing.sorted_by,
-                select: select.clone(),
-                archive: listing.archive,
-            })
-        })
     }
 
     /// Opens a folder on a server in `side`. With a connection the listing is
@@ -23323,9 +23074,14 @@ mod folder_size_tests {
         drop(app.update(Message::ComputeFolderSizes));
 
         assert!(app.panels.folder_size_run.is_none());
-        assert!(!app.context_action_enabled(ContextAction::ComputeFolderSizes));
+        let enabled = |shown: &App| {
+            shown
+                .context_menu_facts()
+                .action_enabled(ContextAction::ComputeFolderSizes, &shown.panels)
+        };
+        assert!(!enabled(&app));
         put_cursor_on(&mut app, "alpha");
-        assert!(app.context_action_enabled(ContextAction::ComputeFolderSizes));
+        assert!(enabled(&app));
     }
 
     #[tokio::test]
