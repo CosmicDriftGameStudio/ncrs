@@ -4,6 +4,7 @@
 //! content, an action bar of 48 px and a status bar of 22 px.
 
 use iced::font::Weight;
+use iced::mouse::ScrollDelta;
 use iced::widget::text::LineHeight;
 use iced::widget::text::Wrapping;
 use iced::widget::{
@@ -24,6 +25,10 @@ pub const ACTION_BAR_HEIGHT: f32 = 48.0;
 pub const STATUS_BAR_HEIGHT: f32 = 22.0;
 pub const NAV_WIDTH: f32 = 200.0;
 pub const ROW_ONE_LINE: f32 = 28.0;
+pub const ROW_TWO_LINE: f32 = 48.0;
+pub const LIST_WIDTH: f32 = 360.0;
+pub const THUMBNAIL_WIDTH: f32 = 48.0;
+pub const THUMBNAIL_HEIGHT: f32 = 64.0;
 pub const LABEL_WIDTH: f32 = 160.0;
 pub const CONTROL_HEIGHT: f32 = 28.0;
 pub const CHIP_HEIGHT: f32 = 20.0;
@@ -281,14 +286,20 @@ pub fn action_bar<'a>(
     palette: &Palette,
 ) -> Element<'a, Message> {
     let note_line: Element<'a, Message> = match note {
-        Some(sentence) => container(small(sentence, palette.dim_text))
-            .width(Length::Fill)
-            .clip(true)
-            .into(),
-        None => Space::new().width(Length::Fill).into(),
+        Some(sentence) => small(sentence, palette.dim_text),
+        None => Space::new().into(),
     };
+    action_bar_with(note_line, buttons, palette)
+}
+
+/// [`action_bar`] with anything at the left, like a sentence and a link.
+pub fn action_bar_with<'a>(
+    left: Element<'a, Message>,
+    buttons: Vec<Element<'a, Message>>,
+    palette: &Palette,
+) -> Element<'a, Message> {
     let content = row![
-        note_line,
+        container(left).width(Length::Fill).clip(true),
         Row::with_children(buttons)
             .spacing(GAP_S)
             .align_y(alignment::Vertical::Center),
@@ -668,6 +679,19 @@ pub fn value<'a, M: 'a>(
     body(content, palette.text)
 }
 
+/// [`value`] that wraps where the line is full.
+pub fn sentence<'a, M: 'a>(
+    content: impl iced::widget::text::IntoFragment<'a>,
+    palette: &Palette,
+) -> Element<'a, M> {
+    text(content)
+        .size(TEXT_BODY)
+        .line_height(LineHeight::Absolute(Pixels(BODY_LINE)))
+        .color(palette.text)
+        .wrapping(Wrapping::Word)
+        .into()
+}
+
 /// [`value`] in the dimmed colour.
 pub fn value_dim<'a, M: 'a>(
     content: impl iced::widget::text::IntoFragment<'a>,
@@ -784,6 +808,18 @@ pub fn text_field<'a>(
     palette: &Palette,
 ) -> Element<'a, Message> {
     field_in(placeholder, value, id, on_input, on_submit, false, palette)
+}
+
+/// [`text_field`] in the monospace font.
+pub fn mono_text_field<'a>(
+    placeholder: &str,
+    value: &str,
+    id: &'static str,
+    on_input: Option<impl Fn(String) -> Message + 'a>,
+    on_submit: Message,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    field_in(placeholder, value, id, on_input, on_submit, true, palette)
 }
 
 /// A checkbox with its label; a click on either toggles.
@@ -1018,6 +1054,227 @@ pub fn list_row_one<'a>(
     list_row_shell(padded, ROW_ONE_LINE, selected, on_press, palette)
 }
 
+/// What a row of two lines shows: the name, a dimmed second line, a figure at
+/// the right and, where the row can be checked, the box before it.
+pub struct RowTwo {
+    pub primary: String,
+    pub secondary: String,
+    pub right: Option<String>,
+    pub lead: Option<(Check, Message)>,
+    /// The row is switched off: its name is dimmed too.
+    pub muted: bool,
+}
+
+/// A row of 48 px.
+pub fn list_row_two<'a>(
+    row_content: RowTwo,
+    selected: bool,
+    on_press: Option<Message>,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let marker = if selected {
+        palette.success
+    } else {
+        Color::TRANSPARENT
+    };
+    let name_color = if row_content.muted {
+        palette.dim_text
+    } else {
+        palette.text
+    };
+    let lines = Column::new()
+        .push(body(row_content.primary, name_color))
+        .push(small(row_content.secondary, palette.dim_text));
+    let mut line = Row::new()
+        .push(container(lines).width(Length::Fill).clip(true))
+        .spacing(GAP_S)
+        .align_y(alignment::Vertical::Center);
+    if let Some(figure) = row_content.right {
+        line = line.push(small(figure, palette.dim_text));
+    }
+    let text_cell = button(
+        container(line)
+            .padding(Padding {
+                left: if row_content.lead.is_some() {
+                    0.0
+                } else {
+                    GAP_M - SELECTION_BAR
+                },
+                right: GAP_M,
+                ..Padding::ZERO
+            })
+            .width(Length::Fill)
+            .center_y(Length::Fill),
+    )
+    .on_press_maybe(on_press)
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .padding(0.0)
+    .style(row_button(palette, false));
+    let mut cells = Row::new().push(bar(marker));
+    if let Some((state, toggle)) = row_content.lead {
+        cells = cells.push(
+            mouse_area(
+                container(kit::checkbox(state, None, palette))
+                    .padding(Padding {
+                        left: GAP_M - SELECTION_BAR,
+                        right: GAP_S,
+                        ..Padding::ZERO
+                    })
+                    .height(Length::Fill)
+                    .center_y(Length::Fill),
+            )
+            .on_press(toggle),
+        );
+    }
+    let fill = if selected {
+        palette.title
+    } else {
+        Color::TRANSPARENT
+    };
+    column![
+        container(cells.push(text_cell))
+            .height(ROW_TWO_LINE - SEPARATOR_HEIGHT)
+            .style(fill_style(fill)),
+        theme::horizontal_rule(palette.border_inactive),
+    ]
+    .into()
+}
+
+/// The list left of a detail: the rows, 360 px wide, a line at the right. The
+/// wheel over it sends `on_scroll`.
+pub fn list_pane<'a>(
+    rows: Vec<Element<'a, Message>>,
+    on_scroll: impl Fn(ScrollDelta) -> Message + 'a,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    row![
+        mouse_area(
+            container(Column::with_children(rows))
+                .width(LIST_WIDTH)
+                .height(Length::Fill)
+                .clip(true),
+        )
+        .on_scroll(on_scroll),
+        theme::vertical_rule(palette.border_inactive),
+    ]
+    .into()
+}
+
+/// The part right of a list: padding of 16 and 24, scrolling when it is long.
+pub fn detail<'a>(children: Vec<Element<'a, Message>>) -> Element<'a, Message> {
+    scrollable(
+        container(
+            Column::with_children(children)
+                .spacing(GAP_S)
+                .width(Length::Fill),
+        )
+        .padding([GAP_M, GAP_L]),
+    )
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .into()
+}
+
+/// A list and the detail of the selected entry side by side.
+pub fn list_and_detail<'a>(
+    list: Element<'a, Message>,
+    detail_part: Element<'a, Message>,
+) -> Element<'a, Message> {
+    row![list, detail_part]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
+}
+
+/// A path in monospace; the parts that stand for a field are in the accent.
+pub fn path<'a, M: 'a>(parts: Vec<(String, bool)>, palette: &Palette) -> Element<'a, M> {
+    let texts = parts.into_iter().map(|(part, is_field)| {
+        mono(
+            part,
+            TEXT_SMALL,
+            if is_field {
+                palette.accent
+            } else {
+                palette.text
+            },
+        )
+    });
+    container(Row::with_children(texts).align_y(alignment::Vertical::Center))
+        .height(CONTROL_HEIGHT)
+        .align_y(alignment::Vertical::Center)
+        .clip(true)
+        .into()
+}
+
+/// The page of a document as a stand-in of 48 x 64 px; a press shows the
+/// preview.
+pub fn thumbnail<'a>(on_press: Option<Message>, palette: &Palette) -> Element<'a, Message> {
+    let colors = *palette;
+    let lines = Column::with_children(
+        std::iter::repeat_with(|| {
+            container(Space::new())
+                .width(Length::Fill)
+                .height(3.0)
+                .style(fill_style(colors.border_inactive))
+                .into()
+        })
+        .take(6),
+    )
+    .spacing(GAP_XS);
+    button(lines)
+        .on_press_maybe(on_press)
+        .width(THUMBNAIL_WIDTH)
+        .height(THUMBNAIL_HEIGHT)
+        .padding([GAP_S, GAP_S - GAP_XS / 2.0])
+        .style(move |_, _| button::Style {
+            background: Some(Background::Color(colors.title)),
+            border: Border {
+                color: colors.border_inactive,
+                width: 1.0,
+                radius: RADIUS.into(),
+            },
+            ..button::Style::default()
+        })
+        .into()
+}
+
+/// A square button of 28 px with a one-character label.
+pub fn icon_button<'a>(label: &str, on_press: Message, palette: &Palette) -> Element<'a, Message> {
+    button(
+        container(label_text(label))
+            .width(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill),
+    )
+    .on_press(on_press)
+    .width(CONTROL_HEIGHT)
+    .height(CONTROL_HEIGHT)
+    .padding(0.0)
+    .style(button_style(palette, ButtonLook::Secondary))
+    .into()
+}
+
+/// A dropdown of 28 px that shows the chosen entry. `items` hold the labels
+/// and what choosing one sends.
+pub fn dropdown<'a>(
+    width: f32,
+    items: &[MenuItem],
+    selected: usize,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let choices = entries(items);
+    let chosen = choices.get(selected).cloned();
+    pick_list(choices, chosen, |choice| choice.message)
+        .width(width)
+        .padding([CONTROL_PAD_Y, MENU_PAD_X])
+        .text_size(TEXT_BODY)
+        .text_line_height(LineHeight::Absolute(Pixels(BODY_LINE)))
+        .style(pick_style(palette, MenuLook::Icon))
+        .menu_style(theme::dropdown_menu(palette))
+        .into()
+}
+
 /// [`detail`] for forms: no wider than `FORM_WIDTH`.
 pub fn form_column<'a>(children: Vec<Element<'a, Message>>) -> Element<'a, Message> {
     scrollable(
@@ -1032,6 +1289,21 @@ pub fn form_column<'a>(children: Vec<Element<'a, Message>>) -> Element<'a, Messa
     .width(Length::Fill)
     .height(Length::Fill)
     .into()
+}
+
+/// A line across the detail.
+pub fn rule<'a, M: 'a>(palette: &Palette) -> Element<'a, M> {
+    theme::horizontal_rule(palette.border_inactive)
+}
+
+/// A note in the middle of the content, for a page with nothing to list.
+pub fn centered_note<'a>(content: Element<'a, Message>) -> Element<'a, Message> {
+    container(container(content).max_width(FORM_WIDTH))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+        .into()
 }
 
 /// What a page says when it has nothing to show.

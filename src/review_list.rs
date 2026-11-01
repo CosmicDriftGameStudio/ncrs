@@ -214,7 +214,7 @@ pub enum ReplanStep {
 }
 
 /// Most entries of the list shown at once; the list follows the cursor.
-pub const VISIBLE_ROWS: usize = 14;
+pub const VISIBLE_ROWS: usize = 12;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReviewList {
@@ -246,6 +246,10 @@ pub struct ReviewList {
     /// Tells the answer of the preview that is current from a stale one.
     replan_serial: u64,
     document_preview: DocumentPreview,
+    /// The page of the document shows in the detail instead of the fields.
+    preview_open: bool,
+    /// The field for a new tag shows under the tags.
+    tag_input_open: bool,
     kinds: Kinds,
 }
 
@@ -270,6 +274,8 @@ impl ReviewList {
             replan: None,
             replan_serial: 0,
             document_preview: DocumentPreview::default(),
+            preview_open: false,
+            tag_input_open: false,
             kinds: Kinds::default(),
         }
     }
@@ -571,6 +577,7 @@ impl ReviewList {
     pub fn set_text(&mut self, field: FormField, text: String) {
         if self.selected().is_some() {
             *self.form.text_mut(field) = text;
+            self.editing = true;
             self.problem = None;
             if self.pattern_is_default {
                 self.follow_fields_with_default_pattern();
@@ -582,11 +589,24 @@ impl ReviewList {
         self.target_editor.as_ref()
     }
 
-    /// Opens the widget on the pattern the form holds.
-    pub fn change_target(&mut self) {
+    pub fn is_preview_open(&self) -> bool {
+        self.preview_open
+    }
+
+    pub fn toggle_preview(&mut self) {
         if self.selected().is_some() && self.replan.is_none() {
-            self.target_editor = Some(TargetEditor::new(&self.form.pattern));
-            self.pattern_is_default = false;
+            self.preview_open = !self.preview_open;
+        }
+    }
+
+    pub fn is_tag_input_open(&self) -> bool {
+        self.tag_input_open
+    }
+
+    /// Shows the field for a new tag; the keys belong to the form then.
+    pub fn open_tag_input(&mut self) {
+        if self.selected().is_some() && self.replan.is_none() {
+            self.tag_input_open = true;
             self.editing = true;
         }
     }
@@ -599,6 +619,7 @@ impl ReviewList {
             let pattern = editor.pattern();
             self.set_pattern(pattern);
         }
+        self.editing = true;
     }
 
     /// The user's pattern replaces the proposed one and stops following the
@@ -616,6 +637,7 @@ impl ReviewList {
     pub fn add_tag(&mut self) {
         let tag = tag_name(&self.form.tag_input);
         self.form.tag_input.clear();
+        self.tag_input_open = false;
         if !tag.is_empty() {
             self.form.tags.insert(tag);
         }
@@ -630,6 +652,7 @@ impl ReviewList {
             self.form.pattern =
                 default_pattern_for(self.custom_default_pattern.as_deref(), &fields)
                     .unwrap_or_default();
+            self.target_editor = Some(TargetEditor::new(&self.form.pattern));
         }
     }
 
@@ -712,7 +735,11 @@ impl ReviewList {
         self.pattern_is_default = self
             .selected()
             .is_some_and(|item| item.proposed_pattern.is_none());
-        self.target_editor = None;
+        self.target_editor = self
+            .selected()
+            .map(|_| TargetEditor::new(&self.form.pattern));
+        self.preview_open = false;
+        self.tag_input_open = false;
         self.problem = None;
     }
 }

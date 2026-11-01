@@ -1,32 +1,33 @@
-//! The rule suggestions view: one row per suggested rule with its condition,
-//! target, kind and evidence, and the documents the selected one matches.
-//! Modal, like the Inspection. Pure view over [`RuleSuggestions`].
+//! The rule suggestions page, a tab: one row per suggested rule and, right of
+//! it, the condition, target, kind and evidence of the selected one with the
+//! documents it matches. Pure view over [`RuleSuggestions`].
 
-use iced::widget::{column, row};
-use iced::{alignment, Element, Size};
+use iced::widget::Column;
+use iced::Element;
 use ncrs_index::{ConditionKind, HermesCounts};
 use ncrs_intake::{MIN_FOLDER_DOCUMENTS, MIN_SHARE_IN_FOLDER_PERCENT};
 
+use super::filing_pieces::{file_name_path_parts, folder_path_parts};
 use super::format;
-use super::frame::{self, DialogSize, Frame, KeyHints};
 use super::hermes::{self, Badges};
-use super::kit::{self, dim, error_line, paragraph, section, Columns, Tone};
-use super::theme::spacing;
+use super::hermes_kit::{self as page_kit, RowTwo};
+use super::kit;
 use crate::app::fill_template;
 use crate::filing_pieces::FilingTarget;
 use crate::i18n::{FuturamaName, Language, Msg};
-use crate::messages::{HermesFocus, HermesPage, Message, RuleSuggestionsMessage};
+use crate::messages::{HermesPage, Message, RuleSuggestionsMessage};
 use crate::palette::Palette;
 use crate::rule_suggestions::{Matches, Problem, RuleSuggestions, VISIBLE_ROWS};
 use crate::suggestion_work::{condition_text, SuggestedRule};
 
 /// Most matching documents listed; the rest is counted.
-pub const SHOWN_DOCUMENTS: usize = 6;
+pub const SHOWN_DOCUMENTS: usize = 12;
 
-const SIZE: DialogSize = DialogSize::Card;
-
-/// How the width of a row is shared: condition, target, kind, evidence.
-const PORTIONS: [u16; 4] = [4, 6, 1, 9];
+/// What fits a line of the list, in characters.
+const NAME_CHARS: usize = 30;
+const TARGET_CHARS: usize = 38;
+/// What fits a line of the detail, in characters.
+const DOCUMENT_CHARS: usize = 76;
 
 fn send(message: RuleSuggestionsMessage) -> Message {
     Message::RuleSuggestions(message)
@@ -34,56 +35,54 @@ fn send(message: RuleSuggestionsMessage) -> Message {
 
 pub fn view<'a>(
     state: &'a RuleSuggestions,
-    window: Size,
     badges: Badges,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let line_chars = frame::content_chars(SIZE, window, frame::SIDEBAR_ROOM);
-    let mut body = column![paragraph(lang.text(Msg::RuleSuggestionsExplain), palette)]
-        .spacing(spacing::LINE_GAP);
-
-    if state.rows().is_empty() {
-        body = body.push(dim(
-            empty_text(state.is_busy(), badges.counts, lang),
-            palette,
-        ));
+    let body: Element<'a, Message> = if state.rows().is_empty() {
+        empty(state, badges.counts, lang, palette)
     } else {
-        body = body.push(list(state, line_chars, badges.focus, lang, palette));
-        if state.is_busy() {
-            body = body.push(dim(lang.text(Msg::RuleSuggestionsAnalysing), palette));
-        }
-    }
-
-    if state.selected().is_some() {
-        body = body.push(documents(state, line_chars, lang, palette));
-    }
-    if let Some(problem) = state.problem() {
-        body = body.push(error_line(problem_text(problem, lang), palette));
-    }
-
-    Frame::new(
-        lang.text(Msg::ActionRuleSuggestions),
+        page_kit::list_and_detail(list(state, lang, palette), detail(state, lang, palette))
+    };
+    page_kit::tab_page(
+        hermes::tab_nav(HermesPage::RuleSuggestions, badges, lang, palette),
+        header(state, lang, palette),
         body,
-        SIZE,
-        window,
-        lang,
+        Some(action_bar(state, lang, palette)),
         palette,
     )
-    .title_theme(lang.futurama_name(FuturamaName::ActionRuleSuggestions))
-    .buttons(buttons(state, lang, palette))
-    .sidebar(hermes::nav(
-        HermesPage::RuleSuggestions,
-        badges,
-        lang,
+}
+
+fn header<'a>(state: &RuleSuggestions, lang: Language, palette: &Palette) -> Element<'a, Message> {
+    page_kit::page_header(
+        lang.text(Msg::ActionRuleSuggestions),
+        lang.futurama_name(FuturamaName::ActionRuleSuggestions),
+        Some(lang.text(Msg::RuleSuggestionsExplain).to_owned()),
+        None,
+        vec![page_kit::secondary(
+            lang.text(Msg::RuleSuggestionsReanalyse),
+            (!state.is_busy()).then_some(send(RuleSuggestionsMessage::Reanalyse)),
+            palette,
+        )],
         palette,
-    ))
-    .on_close(send(RuleSuggestionsMessage::Close))
-    .hints(KeyHints {
-        enter: true,
-        tab: false,
-    })
-    .into_element()
+    )
+}
+
+fn empty<'a>(
+    state: &RuleSuggestions,
+    counts: Option<HermesCounts>,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let mut lines = Column::new().spacing(page_kit::GAP_S);
+    lines = lines.push(page_kit::hint(
+        empty_text(state.is_busy(), counts, lang),
+        palette,
+    ));
+    if let Some(problem) = state.problem() {
+        lines = lines.push(page_kit::error_line(problem_text(problem, lang), palette));
+    }
+    page_kit::centered_note(lines.into())
 }
 
 /// Why the list is empty: the analysis is still running, or what a
@@ -174,105 +173,152 @@ fn evidence_text(suggestion: &SuggestedRule, lang: Language) -> String {
     )
 }
 
-fn list<'a>(
-    state: &'a RuleSuggestions,
-    line_chars: usize,
-    focus: HermesFocus,
-    lang: Language,
-    palette: &Palette,
-) -> Element<'a, Message> {
-    let columns = Columns {
-        portions: &PORTIONS,
-        line_chars,
+/// How many of the documents that fit the condition lie in the folder.
+fn share_text(suggestion: &SuggestedRule, lang: Language) -> String {
+    let evidence = &suggestion.evidence;
+    let total = if is_sender_suggestion(suggestion) {
+        evidence
+            .matching_in_folder
+            .saturating_add(evidence.matching_elsewhere)
+    } else {
+        evidence.folder_documents
     };
-    let header = columns.header(
+    fill_template(
+        lang.text(Msg::RuleSuggestionsShare),
         &[
-            lang.text(Msg::RuleSuggestionsColumnCondition),
-            lang.text(Msg::RuleSuggestionsColumnPattern),
-            lang.text(Msg::RuleSuggestionsColumnKind),
-            lang.text(Msg::RuleSuggestionsColumnEvidence),
+            ("{matching}", &evidence.matching_in_folder.to_string()),
+            ("{total}", &total.to_string()),
         ],
-        palette,
-    );
+    )
+}
 
-    let first = state.first_visible();
+fn list<'a>(state: &'a RuleSuggestions, lang: Language, palette: &Palette) -> Element<'a, Message> {
     let rows = state
         .rows()
         .iter()
         .enumerate()
-        .skip(first)
+        .skip(state.first_visible())
         .take(VISIBLE_ROWS)
         .map(|(index, suggestion)| {
-            let selected = index == state.cursor();
-            let color = if selected && focus == HermesFocus::Content {
-                palette.cursor_text
-            } else {
-                palette.text
-            };
-            let content = row![
-                columns.cell(0, &condition_label(suggestion, lang), color),
-                columns.cell(
-                    1,
-                    &FilingTarget::parse(&suggestion.spec.filing_pattern).in_words(lang),
-                    color,
-                ),
-                columns.cell(
-                    2,
-                    suggestion.spec.kind.as_deref().unwrap_or_default(),
-                    color
-                ),
-                columns.cell(3, &evidence_text(suggestion, lang), color),
-            ]
-            .align_y(alignment::Vertical::Center);
-            kit::list_row(
-                content.into(),
-                send(RuleSuggestionsMessage::Select(index)),
-                selected,
-                focus == HermesFocus::Content,
+            let target = FilingTarget::parse(&suggestion.spec.filing_pattern).in_words(lang);
+            page_kit::list_row_two(
+                RowTwo {
+                    primary: format::ellipsize_end(&condition_label(suggestion, lang), NAME_CHARS),
+                    secondary: format::ellipsize_end(&format!("→ {target}"), TARGET_CHARS),
+                    right: Some(share_text(suggestion, lang)),
+                    lead: None,
+                    muted: false,
+                },
+                index == state.cursor(),
+                Some(send(RuleSuggestionsMessage::Select(index))),
                 palette,
             )
         })
         .collect();
-    kit::scroll_list(
-        header,
+    page_kit::list_pane(
         rows,
-        kit::ListView {
-            len: state.rows().len(),
-            visible: VISIBLE_ROWS,
-            offset: first,
-        },
         |delta| send(RuleSuggestionsMessage::Scrolled(delta)),
         palette,
     )
 }
 
-fn documents<'a>(
+fn detail<'a>(
     state: &'a RuleSuggestions,
-    line_chars: usize,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    let mut lines = column![].spacing(spacing::LINE_GAP);
+    let Some(suggestion) = state.selected() else {
+        return page_kit::detail(Vec::new());
+    };
+    let target = FilingTarget::parse(&suggestion.spec.filing_pattern);
+    let mut children = vec![
+        page_kit::form_row(
+            lang.text(Msg::RuleSuggestionsColumnCondition),
+            page_kit::value(condition_label(suggestion, lang), palette),
+            None,
+            palette,
+        ),
+        page_kit::form_row(
+            lang.text(Msg::RuleSuggestionsColumnPattern),
+            page_kit::path(folder_path_parts(&target, lang), palette),
+            None,
+            palette,
+        ),
+        page_kit::form_row(
+            lang.text(Msg::FilingPiecesFileNameLabel),
+            page_kit::path(file_name_path_parts(&target, lang), palette),
+            None,
+            palette,
+        ),
+        page_kit::form_row(
+            lang.text(Msg::RuleSuggestionsColumnKind),
+            page_kit::value(suggestion.spec.kind.clone().unwrap_or_default(), palette),
+            None,
+            palette,
+        ),
+        page_kit::form_row(
+            lang.text(Msg::RuleSuggestionsColumnEvidence),
+            page_kit::sentence(evidence_text(suggestion, lang), palette),
+            None,
+            palette,
+        ),
+    ];
+    children.push(documents_heading(suggestion, lang, palette));
+    children.extend(documents(state, lang, palette));
+    if let Some(problem) = state.problem() {
+        children.push(page_kit::error_line(problem_text(problem, lang), palette));
+    }
+    page_kit::detail(children)
+}
+
+fn documents_heading<'a>(
+    suggestion: &SuggestedRule,
+    lang: Language,
+    palette: &Palette,
+) -> Element<'a, Message> {
+    let heading = if is_sender_suggestion(suggestion) {
+        Msg::RuleSuggestionsDocumentsHeadingSender
+    } else {
+        Msg::RuleSuggestionsDocumentsHeading
+    };
+    page_kit::section(lang.text(heading), palette)
+}
+
+fn documents<'a>(
+    state: &RuleSuggestions,
+    lang: Language,
+    palette: &Palette,
+) -> Vec<Element<'a, Message>> {
+    let note = |sentence: String| vec![page_kit::hint(sentence, palette)];
     match state.matches() {
         Matches::Unknown | Matches::Looking => {
-            lines = lines.push(dim(
-                lang.text(Msg::RuleSuggestionsDocumentsLooking),
-                palette,
-            ));
+            note(lang.text(Msg::RuleSuggestionsDocumentsLooking).to_owned())
         }
         Matches::Found(paths) if paths.is_empty() => {
-            lines = lines.push(dim(lang.text(Msg::RuleSuggestionsDocumentsNone), palette));
+            note(lang.text(Msg::RuleSuggestionsDocumentsNone).to_owned())
         }
         Matches::Found(paths) => {
-            for path in paths.iter().take(SHOWN_DOCUMENTS) {
-                lines = lines.push(paragraph(
-                    format::ellipsize_middle(&path.display().to_string(), line_chars),
-                    palette,
-                ));
-            }
+            let mut lines: Vec<Element<'a, Message>> = paths
+                .iter()
+                .take(SHOWN_DOCUMENTS)
+                .map(|path| {
+                    page_kit::list_row_one(
+                        page_kit::mono(
+                            format::ellipsize_middle(&path.display().to_string(), DOCUMENT_CHARS),
+                            page_kit::TEXT_SMALL,
+                            palette.text,
+                        ),
+                        None,
+                        false,
+                        false,
+                        None,
+                        palette,
+                    )
+                })
+                .collect();
             let rest = paths.len().saturating_sub(SHOWN_DOCUMENTS);
             if rest > 0 {
-                lines = lines.push(dim(
+                lines.push(page_kit::hint(
                     fill_template(
                         lang.text(Msg::RuleSuggestionsDocumentsMore),
                         &[("{count}", &rest.to_string())],
@@ -280,62 +326,40 @@ fn documents<'a>(
                     palette,
                 ));
             }
+            lines
         }
     }
-    let heading = if state.selected().is_some_and(is_sender_suggestion) {
-        Msg::RuleSuggestionsDocumentsHeadingSender
-    } else {
-        Msg::RuleSuggestionsDocumentsHeading
-    };
-    section(lang.text(heading), lines, palette)
 }
 
-fn buttons<'a>(
+fn action_bar<'a>(
     state: &RuleSuggestions,
     lang: Language,
     palette: &Palette,
-) -> Vec<Element<'a, Message>> {
-    let action = |label: Msg, on_press: Option<RuleSuggestionsMessage>, primary: bool| {
-        if primary {
-            kit::enter_button(lang.text(label), on_press.map(send), Tone::Primary, palette)
-        } else {
-            kit::button(
-                lang.text(label),
-                on_press.map(send),
-                Tone::Secondary,
-                palette,
-            )
-        }
-    };
+) -> Element<'a, Message> {
     let decidable = !state.is_busy() && state.selected().is_some();
-    let confirm = action(
-        Msg::RuleSuggestionsConfirm,
-        decidable.then_some(RuleSuggestionsMessage::Confirm),
-        true,
-    );
-    vec![
-        action(
-            Msg::RuleSuggestionsClose,
-            Some(RuleSuggestionsMessage::Close),
-            false,
-        ),
-        action(
-            Msg::RuleSuggestionsReanalyse,
-            (!state.is_busy()).then_some(RuleSuggestionsMessage::Reanalyse),
-            false,
-        ),
-        action(
-            Msg::RuleSuggestionsDiscard,
-            decidable.then_some(RuleSuggestionsMessage::Discard),
-            false,
-        ),
-        action(
-            Msg::RuleSuggestionsEdit,
-            decidable.then_some(RuleSuggestionsMessage::Edit),
-            false,
-        ),
-        confirm,
-    ]
+    let on_press = |message| decidable.then_some(send(message));
+    page_kit::action_bar(
+        Some(lang.text(Msg::RuleSuggestionsNote).to_owned()),
+        vec![
+            page_kit::secondary(
+                lang.text(Msg::RuleSuggestionsDiscard),
+                on_press(RuleSuggestionsMessage::Discard),
+                palette,
+            ),
+            page_kit::secondary(
+                lang.text(Msg::RuleSuggestionsEdit),
+                on_press(RuleSuggestionsMessage::Edit),
+                palette,
+            ),
+            page_kit::primary(
+                lang.text(Msg::RuleSuggestionsConfirm),
+                Some(kit::ENTER_KEY),
+                on_press(RuleSuggestionsMessage::Confirm),
+                palette,
+            ),
+        ],
+        palette,
+    )
 }
 
 fn problem_text(problem: &Problem, lang: Language) -> String {

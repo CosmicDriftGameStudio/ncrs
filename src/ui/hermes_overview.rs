@@ -8,7 +8,7 @@ use iced::widget::column;
 use iced::{Color, Element, Size};
 use ncrs_pipeline::RunnerState;
 
-use super::filing_pieces::{target_view, TargetHost};
+use super::filing_pieces::{target_view, ExampleLine, TargetHost};
 use super::frame::{DialogSize, Frame, KeyHints};
 use super::hermes::{self, Badges};
 use super::hermes_kit::{self as page_kit, MenuItem, MenuLook};
@@ -157,7 +157,7 @@ fn action_bar<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Mes
     page_kit::action_bar(
         Some(waiting_text(waiting, lang)),
         vec![page_kit::primary(
-            lang.text(Msg::HermesOverviewTileReviewButton),
+            lang.text(Msg::HermesOverviewCheckReviews),
             Some(kit::ENTER_KEY),
             (waiting > 0).then(|| send(HermesOverviewMessage::ShowReviews)),
             palette,
@@ -281,6 +281,8 @@ fn sections<'a>(page: &OverviewView<'a>, palette: &Palette) -> Element<'a, Messa
     let host = TargetHost {
         wrap: |edit| send(HermesOverviewMessage::TargetEdited(edit)),
         name_field_id: FOLDER_NAME_FIELD_ID,
+        folder_hint: None,
+        example: ExampleLine::Row,
         lang,
         palette,
     };
