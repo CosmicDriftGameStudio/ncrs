@@ -1724,7 +1724,7 @@ fn own_detail_setting(detail: OwnDetail, entries: &[String]) -> Setting {
     }
 }
 
-fn file_list_tags_settings(tags: &FileListTags) -> [Setting; 2] {
+fn file_list_tags_settings(tags: &FileListTags) -> [Setting; 3] {
     let list = |entries: Vec<&str>| toml_edit::Value::Array(entries.into_iter().collect());
     [
         Setting {
@@ -1736,6 +1736,12 @@ fn file_list_tags_settings(tags: &FileListTags) -> [Setting; 2] {
             tables: &[FILE_LIST_TAGS_TABLE],
             key: "groups",
             value: Some(list(tags.groups.iter().map(|group| group.name()).collect())),
+        },
+        // Older files keep tag names here; the next write takes them out.
+        Setting {
+            tables: &[FILE_LIST_TAGS_TABLE],
+            key: "only",
+            value: None,
         },
     ]
 }
@@ -2700,6 +2706,9 @@ mod tests {
         let written = write_file_list_tags(&path, &FileListTags::default()).unwrap();
 
         assert!(written.file_list_tags.show);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("only"), "{text}");
+        assert!(!text.contains("steuer"), "{text}");
     }
 
     const VALID_IBAN: &str = "DE89 3704 0044 0532 0130 00";

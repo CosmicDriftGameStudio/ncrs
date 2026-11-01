@@ -153,6 +153,13 @@ impl PathFilter {
         let Ok(relative) = path.strip_prefix(&self.root) else {
             return false;
         };
+        // `strip_prefix` compares components, so `root/../x` would pass it.
+        if !relative
+            .components()
+            .all(|part| matches!(part, std::path::Component::Normal(_)))
+        {
+            return false;
+        }
         let mut walked = self.root.clone();
         let mut parts = relative.components().peekable();
         while let Some(part) = parts.next() {
@@ -1175,6 +1182,8 @@ mod tests {
         assert!(paths.admits_file(Path::new("/data/a/b.pdf")));
         assert!(!paths.admits_file(Path::new("/other/b.pdf")));
         assert!(!paths.admits_file(Path::new("/database/b.pdf")));
+        assert!(!paths.admits_file(Path::new("/data/../other/b.pdf")));
+        assert!(!paths.admits_file(Path::new("/data/a/../../other/b.pdf")));
     }
 
     #[test]
