@@ -77,6 +77,8 @@ ncrs-ops = { path = "crates/ncrs-ops", version = "0.0.0" }
 ncrs-palette = { path = "crates/ncrs-palette", version = "0.0.0" }
 # The settings: the settings page, the key bindings page, the theme fetch and the model pages.
 ncrs-settings = { path = "crates/ncrs-settings", version = "0.0.0" }
+# The SFTP connect feature: the connect dialog, the host key question and the keychain passwords.
+ncrs-remote = { path = "crates/ncrs-remote", version = "0.0.0" }
 # The filing logic: the filing module, the work behind the Hermes pages and the reading of the column.
 ncrs-filing = { path = "crates/ncrs-filing", version = "0.0.0" }
 # The Hermes pages: filing setup and status, overview, review, rules, tags, reorganisation.
@@ -195,6 +197,8 @@ ncrs-search = { path = "crates/ncrs-search", version = "0.0.0", features = ["tes
 ncrs-palette = { path = "crates/ncrs-palette", version = "0.0.0", features = ["test-support"] }
 # The fixtures of the theme fetch, for the tests of the app.
 ncrs-settings = { path = "crates/ncrs-settings", version = "0.0.0", features = ["test-support"] }
+# `ConnectDialog::then`, for the tests of the app.
+ncrs-remote = { path = "crates/ncrs-remote", version = "0.0.0", features = ["test-support"] }
 # The fixtures of the filing module and of the reorganisation and replan work, for the tests of the app.
 ncrs-filing = { path = "crates/ncrs-filing", version = "0.0.0", features = ["test-support"] }
 ncrs-hermes-ui = { path = "crates/ncrs-hermes-ui", version = "0.0.0", features = ["test-support"] }

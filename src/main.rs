@@ -48,7 +48,7 @@ mod native_menu;
 pub use ncrs_config::palette;
 pub use ncrs_files::panel_drag;
 mod quick_open;
-mod remote_dialog;
+pub use ncrs_remote::dialog as remote_dialog;
 mod search_filters;
 mod search_view;
 pub use ncrs_core::selection;

@@ -1,6 +1,5 @@
-//! State of the dialog that connects to an SFTP server. Lives next to `App`,
-//! like the other dialogs: `App` owns it and only `App::update` changes it; the
-//! view is `ui::remote`.
+//! State of the dialog that connects to an SFTP server. The app owns it and only
+//! `update` changes it; the view is `view`.
 //!
 //! The password is a [`Secret`]: this type prints without it, so no `{:?}` of
 //! the dialog or of a message that carries it can leak it.
@@ -10,8 +9,10 @@ use std::path::PathBuf;
 
 use russh::keys::PublicKey;
 
-use crate::fs::remote::{RemoteUrl, Secret, ServerId};
-use crate::messages::{ConnectField, PanelSide};
+use ncrs_core::PanelSide;
+use ncrs_fs::remote::{RemoteUrl, Secret, ServerId};
+
+use crate::message::ConnectField;
 
 /// Where a folder that was asked for goes once the connection is there.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -141,7 +142,7 @@ impl ConnectDialog {
         self.stage != Stage::Editing
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn then(&self) -> Option<&Then> {
         self.then.as_ref()
     }

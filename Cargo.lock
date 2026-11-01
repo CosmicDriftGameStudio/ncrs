@@ -3388,6 +3388,7 @@ dependencies = [
  "ncrs-ops",
  "ncrs-palette",
  "ncrs-pipeline",
+ "ncrs-remote",
  "ncrs-search",
  "ncrs-settings",
  "ncrs-ui-kit",
@@ -3616,6 +3617,19 @@ dependencies = [
  "ncrs-index",
  "ncrs-intake",
  "tempfile",
+]
+
+[[package]]
+name = "ncrs-remote"
+version = "0.0.0"
+dependencies = [
+ "iced",
+ "ncrs-core",
+ "ncrs-fs",
+ "ncrs-i18n",
+ "ncrs-ui-kit",
+ "russh",
+ "tokio",
 ]
 
 [[package]]

@@ -41,8 +41,8 @@ use crate::filing_status::{FilingStatus, SNAPSHOT_EVERY};
 use crate::filing_work::FilingSummary;
 use crate::fs::remote::credentials::KeyringPasswords;
 use crate::fs::remote::credentials::PasswordStore;
-use crate::fs::remote::session::{ConnectFailure, Pool};
-use crate::fs::remote::{KnownHostsFiles, RemotePath, Secret, ServerId};
+use crate::fs::remote::session::Pool;
+use crate::fs::remote::{KnownHostsFiles, RemotePath, ServerId};
 use crate::fs::{self, CreateDirError};
 use crate::hermes_column::{
     role_of, ColumnRequest, ColumnStage, ColumnView, FileDetail, FolderRole, HermesColumn,
@@ -66,13 +66,12 @@ use crate::menu::Availability;
 use crate::messages::TransferKindJob as _;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
-    ConflictChoice, ConnectField, FilingSetupMessage, FilingStatusMessage, GrantMessage,
-    HermesColumnMessage, HermesFileMessage, HermesFocus, HermesOverviewMessage, HermesPage,
-    HermesSetupMessage, HitListMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide,
-    QuickFixMessage, QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage,
-    RuleFormMessage, RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage,
-    SettingChange, SettingsMessage, TagsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind,
-    TrashMessage,
+    ConflictChoice, FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesColumnMessage,
+    HermesFileMessage, HermesFocus, HermesOverviewMessage, HermesPage, HermesSetupMessage,
+    HitListMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide, QuickFixMessage,
+    QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage, RuleFormMessage,
+    RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingChange,
+    SettingsMessage, TagsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -87,7 +86,6 @@ use crate::quick_open::{
     self, DocumentRequest, QuickOpen, QuickOpenAction, QuickOpenCtx, WalkEvent, MAX_DOCUMENT_HITS,
     QUICK_OPEN_FILE_LIMIT,
 };
-use crate::remote_dialog::{self, ConnectDialog, Missing, Then};
 #[cfg(test)]
 use crate::reorganisation_plan::ReorganisationView;
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
@@ -1300,13 +1298,11 @@ pub struct App {
     remote: Arc<Pool>,
     /// Where the passwords the user asked to remember are kept.
     passwords: Arc<dyn PasswordStore>,
-    /// The dialog that connects to a server, while it is up.
-    connect_dialog: Option<ConnectDialog>,
+    /// The dialog that connects to a server, while it is up, and the count of
+    /// its attempts.
+    remote_ui: ncrs_remote::Remote,
     /// The servers of `[[servers]]`, as last loaded or written.
     saved_servers: Vec<ServerEntry>,
-    /// Counts the attempts to connect, so the late answer of an old one is
-    /// dropped.
-    connect_attempts: u64,
     /// The card opened by itself for a missing model; once per start, so a
     /// "Cancel" is not asked again.
     ai_model_asked: bool,
@@ -3305,9 +3301,8 @@ impl App {
             sandbox: fs::SandboxAccess::detect(None),
             remote: Arc::new(Pool::over_tcp(KnownHostsFiles::default())),
             passwords: Arc::new(KeyringPasswords::new()),
-            connect_dialog: None,
+            remote_ui: ncrs_remote::Remote::default(),
             saved_servers: Vec::new(),
-            connect_attempts: 0,
         };
 
         let tasks = Task::batch([
@@ -3929,7 +3924,12 @@ impl App {
             Message::OcrModels(models_message) => self.update_ocr_models(models_message),
             Message::AiModel(model_message) => self.update_ai_model(model_message),
             Message::Grant(grant_message) => self.update_grant(grant_message),
-            Message::Remote(remote_message) => self.update_remote(remote_message),
+            Message::Remote(remote_message) => {
+                let outcome = self.with_connect_feature(|remote, ctx| {
+                    ncrs_remote::update(remote, remote_message, ctx)
+                });
+                self.run_remote_outcome(outcome)
+            }
             Message::Settings(settings_message) => self.update_settings(settings_message),
             Message::Filing(filing_message) => self.update_filing(filing_message),
             Message::FilingStatus(page_message) => self.update_filing_status(page_message),
@@ -4340,7 +4340,10 @@ impl App {
                     Some(place) => place,
                     None => {
                         self.set_path_field(None);
-                        let opened = self.open_connect_dialog_for(&url);
+                        let outcome = self.with_connect_feature(|remote, ctx| {
+                            ncrs_remote::open_connect_dialog_for(remote, ctx, &url)
+                        });
+                        let opened = self.run_remote_outcome(outcome);
                         return Some(Task::batch([opened, release_focus()]));
                     }
                 },
@@ -4365,16 +4368,6 @@ impl App {
             self.load(side, target.to_path_buf(), None),
             release_focus(),
         ]))
-    }
-
-    /// The connect dialog for an address that names no user.
-    fn open_connect_dialog_for(&mut self, url: &fs::remote::RemoteUrl) -> Task<Message> {
-        if self.blocking_overlay_is_open() {
-            return Task::none();
-        }
-        self.connect_attempts = self.connect_attempts.wrapping_add(1);
-        self.connect_dialog = Some(ConnectDialog::for_address(self.connect_attempts, url));
-        operation::focus(remote_ui::field_id(ConnectField::User))
     }
 
     /// The answer to [`Self::go_to_typed_path`]: a destination closes the field
@@ -4784,9 +4777,10 @@ impl App {
             return Stack::with_children([root, dialog::scrim(question)]).into();
         }
 
-        if let Some(dialog) = self.connect_dialog.as_ref() {
+        if let Some(dialog) = self.remote_ui.dialog.as_ref() {
             let dialog_element =
-                remote_ui::view(dialog, self.window_size, self.lang, &self.palette);
+                remote_ui::view(dialog, self.window_size, self.lang, &self.palette)
+                    .map(Message::from);
             return Stack::with_children([root, dialog::scrim(dialog_element)]).into();
         }
 
@@ -5049,7 +5043,7 @@ impl App {
         let ocr_models = self.settings.ocr_models.is_some();
         let ai_model = self.settings.ai_card_is_shown();
         let grant_dialog = self.grant_dialog;
-        let connect_dialog = self.connect_dialog.is_some();
+        let connect_dialog = self.remote_ui.dialog.is_some();
         let settings = self.settings.page.is_some();
         let transfer_dialog = self.transfer_dialog.is_some();
         let transfer_progress = self.progress_mask_is_open();
@@ -5812,7 +5806,7 @@ impl App {
             || self.settings.ocr_models.is_some()
             || self.settings.ai_card_is_shown()
             || self.grant_dialog
-            || self.connect_dialog.is_some()
+            || self.remote_ui.dialog.is_some()
     }
 
     /// Whether the context menu entry can do something for the current
@@ -11801,303 +11795,121 @@ impl App {
         )
     }
 
-    fn update_remote(&mut self, message: RemoteMessage) -> Task<Message> {
-        match message {
-            RemoteMessage::OpenConnect => self.open_connect_dialog(),
-            RemoteMessage::Field(field, text) => {
-                if let Some(dialog) = self.connect_dialog.as_mut() {
-                    dialog.set(field, text);
-                }
+    /// Runs `step` on the connect feature. The state is taken out for it, since
+    /// the context borrows the rest of the app; the overlay fact is read before,
+    /// while the connect dialog still counts.
+    fn with_connect_feature<R>(
+        &mut self,
+        step: impl FnOnce(&mut ncrs_remote::Remote, &ncrs_remote::Ctx<'_>) -> R,
+    ) -> R {
+        let blocking_overlay_open = self.blocking_overlay_is_open();
+        let mut remote_ui = std::mem::take(&mut self.remote_ui);
+        let outcome = step(
+            &mut remote_ui,
+            &ncrs_remote::Ctx {
+                lang: self.lang,
+                pool: &self.remote,
+                passwords: &self.passwords,
+                blocking_overlay_open,
+                active_side: self.panels.active,
+                active_panel_server: self.active_panel().remote(),
+                left_request_id: self.panel(PanelSide::Left).request_id,
+                right_request_id: self.panel(PanelSide::Right).request_id,
+            },
+        );
+        self.remote_ui = remote_ui;
+        outcome
+    }
+
+    fn run_remote_outcome(&mut self, (task, actions): ncrs_remote::Outcome) -> Task<Message> {
+        let mut tasks = vec![task.map(Message::from)];
+        for action in actions {
+            tasks.push(self.run_remote_action(action));
+        }
+        Task::batch(tasks)
+    }
+
+    fn run_remote_action(&mut self, action: ncrs_remote::Action) -> Task<Message> {
+        use ncrs_remote::Action as Ask;
+        match action {
+            Ask::CloseContextMenu => {
+                self.context_menu = None;
                 Task::none()
             }
-            RemoteMessage::Password(password) => {
-                if let Some(dialog) = self.connect_dialog.as_mut() {
-                    dialog.set_password(password);
-                }
+            Ask::ClearJobError => {
+                self.job_error = None;
                 Task::none()
             }
-            RemoteMessage::ToggleRemember => {
-                if let Some(dialog) = self.connect_dialog.as_mut() {
-                    dialog.toggle_remember();
-                }
+            Ask::ShowNotice(text) => self.show_notice(text),
+            Ask::ShowError(text) => {
+                self.set_status_error(&text);
                 Task::none()
             }
-            RemoteMessage::ToggleSave => {
-                if let Some(dialog) = self.connect_dialog.as_mut() {
-                    dialog.toggle_save();
-                }
-                Task::none()
-            }
-            RemoteMessage::OpenAdd => {
-                let opened = self.open_connect_dialog();
-                if let Some(dialog) = self.connect_dialog.take() {
-                    self.connect_dialog = Some(dialog.with_save(true));
-                }
-                opened
-            }
-            RemoteMessage::OpenServer(url) => {
+            Ask::OpenServer(url) => {
                 self.job_error = None;
                 self.notice = None;
                 let side = self.panels.active;
                 self.load(side, url, None)
             }
-            RemoteMessage::FocusField { backwards } => {
-                if backwards {
-                    operation::focus_previous()
-                } else {
-                    operation::focus_next()
-                }
+            Ask::LoadFolder { side, path, select } => self.load(side, path, select),
+            Ask::SaveServer { server, typed_path } => {
+                self.save_server(&server, typed_path.as_deref())
             }
-            RemoteMessage::Submit => self.submit_connect_dialog(),
-            RemoteMessage::Cancel => self.cancel_connect_dialog(),
-            RemoteMessage::Connected { attempt, result } => self.connection_made(attempt, result),
-            RemoteMessage::TrustHostKey => self.trust_host_key(),
-            RemoteMessage::HostKeyLearned { attempt, result } => {
-                self.host_key_learned(attempt, result)
-            }
-            RemoteMessage::DisconnectActive => match self.active_panel().remote() {
-                Some(server) => self.disconnect_server(&server),
-                None => {
-                    let text = self.lang.text(Msg::StatusRemoteNotConnected).to_owned();
-                    self.show_notice(text)
+            Ask::StopWaiting { side, request_id } => {
+                let panel = self.panel_mut(side);
+                if panel.request_id == request_id {
+                    panel.loading = false;
                 }
-            },
-            RemoteMessage::Disconnect(server) => self.disconnect_server(&server),
-            RemoteMessage::PasswordLoaded {
+                Task::none()
+            }
+            Ask::LeaveServer(server) => {
+                let mut tasks = Vec::new();
+                for side in [PanelSide::Left, PanelSide::Right] {
+                    if self.panel(side).remote().as_ref() == Some(&server) {
+                        let home = self.home.clone();
+                        tasks.push(self.load(side, home, None));
+                    }
+                }
+                Task::batch(tasks)
+            }
+            Ask::ListFolder {
                 side,
                 request_id,
                 remote,
                 select,
-                result,
-            } => self.password_loaded(side, request_id, remote, select, result),
-            RemoteMessage::AutoConnected {
+            } => {
+                let sort = self.panel(side).sort;
+                remote_listing(
+                    Arc::clone(&self.remote),
+                    side,
+                    request_id,
+                    remote,
+                    sort,
+                    select,
+                )
+            }
+            Ask::ReportDisconnected {
                 side,
                 request_id,
                 remote,
-                select,
-                password,
-                result,
-            } => self.auto_connected(side, request_id, remote, select, password, result),
-            RemoteMessage::PasswordStored(result) => {
-                if let Err(reason) = result {
-                    let text = fill_template(
-                        self.lang.text(Msg::ErrorRemoteKeychain),
-                        &[("{reason}", &reason)],
-                    );
-                    self.set_status_error(&text);
-                }
-                Task::none()
+            } => {
+                let server = remote.server().clone();
+                Task::done(Message::Panel(PanelMessage::DirectoryLoaded {
+                    side,
+                    request_id,
+                    path: remote.to_path_buf(),
+                    entries: remote
+                        .parent()
+                        .map(|above| fs::FileEntry::parent(&above.to_path_buf()))
+                        .into_iter()
+                        .collect(),
+                    error: Some(fs::ReadError::RemoteDisconnected { server }),
+                    sorted_by: self.panel(side).sort,
+                    select: None,
+                    archive: None,
+                }))
             }
         }
-    }
-
-    fn open_connect_dialog(&mut self) -> Task<Message> {
-        if self.blocking_overlay_is_open() {
-            return Task::none();
-        }
-        self.context_menu = None;
-        self.connect_attempts = self.connect_attempts.wrapping_add(1);
-        self.connect_dialog = Some(ConnectDialog::new(self.connect_attempts));
-        operation::focus(remote_ui::field_id(ConnectField::Host))
-    }
-
-    fn submit_connect_dialog(&mut self) -> Task<Message> {
-        let Some(dialog) = self.connect_dialog.as_ref() else {
-            return Task::none();
-        };
-        if *dialog.stage() != remote_dialog::Stage::Editing {
-            return Task::none();
-        }
-        match dialog.target() {
-            Ok(_) => self.start_connecting(),
-            Err(missing) => operation::focus(remote_ui::field_id(match missing {
-                Missing::Host => ConnectField::Host,
-                Missing::Port => ConnectField::Port,
-                Missing::User => ConnectField::User,
-                Missing::Password => ConnectField::Password,
-            })),
-        }
-    }
-
-    /// Locks the dialog and connects with what it holds.
-    fn start_connecting(&mut self) -> Task<Message> {
-        self.connect_attempts = self.connect_attempts.wrapping_add(1);
-        let attempt = self.connect_attempts;
-        let Some(dialog) = self.connect_dialog.as_mut() else {
-            return Task::none();
-        };
-        let Ok((server, _)) = dialog.target() else {
-            return Task::none();
-        };
-        dialog.next_attempt(attempt);
-        dialog.set_stage(remote_dialog::Stage::Connecting);
-        let password = dialog.password().clone();
-        let pool = Arc::clone(&self.remote);
-        Task::perform(
-            async move { pool.connect(&server, &password).await },
-            move |result| Message::Remote(RemoteMessage::Connected { attempt, result }),
-        )
-    }
-
-    fn cancel_connect_dialog(&mut self) -> Task<Message> {
-        let Some(mut dialog) = self.connect_dialog.take() else {
-            return Task::none();
-        };
-        // The folder that started the dialog is not coming: the panel stops
-        // waiting for it.
-        if let Some(then) = dialog.take_then() {
-            let panel = self.panel_mut(then.side);
-            if panel.request_id == then.request_id {
-                panel.loading = false;
-            }
-        }
-        Task::none()
-    }
-
-    fn connection_made(
-        &mut self,
-        attempt: u64,
-        result: Result<(), ConnectFailure>,
-    ) -> Task<Message> {
-        if self.connect_dialog.as_ref().map(ConnectDialog::attempt) != Some(attempt) {
-            return Task::none();
-        }
-        match result {
-            Ok(()) => self.finish_connect(),
-            Err(failure) => {
-                self.connect_failed(failure);
-                Task::none()
-            }
-        }
-    }
-
-    /// Back to editing with the reason, or on to the question about an unknown
-    /// server.
-    fn connect_failed(&mut self, failure: ConnectFailure) {
-        let host = self
-            .connect_dialog
-            .as_ref()
-            .map(|dialog| dialog.value(ConnectField::Host).to_owned())
-            .unwrap_or_default();
-        let text = self.connect_failure_text(&failure, &host);
-        let Some(dialog) = self.connect_dialog.as_mut() else {
-            return;
-        };
-        match failure {
-            ConnectFailure::UnknownHost { fingerprint, key } => {
-                dialog.set_stage(remote_dialog::Stage::HostKey { fingerprint, key });
-            }
-            _ => {
-                dialog.set_stage(remote_dialog::Stage::Editing);
-                dialog.set_error(text);
-            }
-        }
-    }
-
-    fn connect_failure_text(&self, failure: &ConnectFailure, host: &str) -> String {
-        let lang = self.lang;
-        match failure {
-            ConnectFailure::UnknownHost { .. } => String::new(),
-            ConnectFailure::HostKeyChanged { file, line, .. } => fill_template(
-                lang.text(Msg::ErrorRemoteHostkeyChanged),
-                &[
-                    ("{host}", host),
-                    ("{file}", &file.display().to_string()),
-                    ("{line}", &line.to_string()),
-                ],
-            ),
-            ConnectFailure::HostKeyOtherType { file, line, .. } => fill_template(
-                lang.text(Msg::ErrorRemoteHostkeyOtherType),
-                &[
-                    ("{host}", host),
-                    ("{file}", &file.display().to_string()),
-                    ("{line}", &line.to_string()),
-                ],
-            ),
-            ConnectFailure::KnownHostsUnreadable { file, reason } => fill_template(
-                lang.text(Msg::ErrorRemoteKnownHostsUnreadable),
-                &[
-                    ("{file}", &file.display().to_string()),
-                    ("{reason}", reason),
-                ],
-            ),
-            ConnectFailure::PasswordNotOffered => fill_template(
-                lang.text(Msg::ErrorRemotePasswordNotOffered),
-                &[("{host}", host)],
-            ),
-            ConnectFailure::HostKeyRevoked => fill_template(
-                lang.text(Msg::ErrorRemoteHostkeyRevoked),
-                &[("{host}", host)],
-            ),
-            ConnectFailure::AuthFailed => lang.text(Msg::ErrorRemoteAuthFailed).to_owned(),
-            ConnectFailure::Timeout => {
-                fill_template(lang.text(Msg::ErrorRemoteTimeout), &[("{host}", host)])
-            }
-            ConnectFailure::NoCommonAlgorithm => fill_template(
-                lang.text(Msg::ErrorRemoteNoCommonAlgorithm),
-                &[("{host}", host)],
-            ),
-            ConnectFailure::Unreachable(reason) => fill_template(
-                lang.text(Msg::ErrorRemoteUnreachable),
-                &[("{host}", host), ("{reason}", reason)],
-            ),
-            ConnectFailure::Keychain(reason) => {
-                fill_template(lang.text(Msg::ErrorRemoteKeychain), &[("{reason}", reason)])
-            }
-        }
-    }
-
-    /// The connection is made: the dialog closes, the password goes to the
-    /// keychain when asked, and the panel opens the folder it was waiting for.
-    fn finish_connect(&mut self) -> Task<Message> {
-        let Some(mut dialog) = self.connect_dialog.take() else {
-            return Task::none();
-        };
-        let Ok((server, typed_path)) = dialog.target() else {
-            return Task::none();
-        };
-        let then = dialog.take_then();
-        self.job_error = None;
-        let mut tasks = Vec::new();
-        if dialog.save() {
-            tasks.push(self.save_server(&server, typed_path.as_deref()));
-        }
-        if dialog.remember() {
-            let passwords = Arc::clone(&self.passwords);
-            let (stored_for, password) = (server.clone(), dialog.password().clone());
-            tasks.push(Task::perform(
-                async move {
-                    tokio::task::spawn_blocking(move || passwords.set(&stored_for, &password))
-                        .await
-                        .unwrap_or_else(|failure| Err(failure.to_string()))
-                },
-                |result| Message::Remote(RemoteMessage::PasswordStored(result)),
-            ));
-        }
-        let home = self
-            .remote
-            .session(&server)
-            .map_or_else(|| "/".to_owned(), |session| session.home().to_owned());
-        let start = RemotePath::new(server.clone(), &home);
-        let side = then
-            .as_ref()
-            .map_or(self.panels.active, |waiting| waiting.side);
-        let (target, select) = match (typed_path, then) {
-            (Some(typed), _) => (start.resolve_typed(&typed, &home).to_path_buf(), None),
-            (None, Some(Then { path, select, .. }))
-                if RemotePath::parse(&path).is_some_and(|place| *place.server() == server) =>
-            {
-                (path, select)
-            }
-            _ => (start.to_path_buf(), None),
-        };
-        let text = fill_template(
-            self.lang.text(Msg::StatusRemoteConnected),
-            &[("{server}", &server.to_string())],
-        );
-        tasks.push(self.show_notice(text));
-        tasks.push(self.load(side, target, select));
-        Task::batch(tasks)
     }
 
     /// Puts the server into `[[servers]]`, or updates its start folder when it
@@ -12130,231 +11942,6 @@ impl App {
             }),
         }
         self.update_settings(SettingsMessage::Change(SettingChange::Servers(servers)))
-    }
-
-    fn trust_host_key(&mut self) -> Task<Message> {
-        let Some(dialog) = self.connect_dialog.as_mut() else {
-            return Task::none();
-        };
-        let remote_dialog::Stage::HostKey { key, .. } = dialog.stage().clone() else {
-            return Task::none();
-        };
-        let Ok((server, _)) = dialog.target() else {
-            return Task::none();
-        };
-        self.connect_attempts = self.connect_attempts.wrapping_add(1);
-        let attempt = self.connect_attempts;
-        dialog.next_attempt(attempt);
-        dialog.set_stage(remote_dialog::Stage::Connecting);
-        let pool = Arc::clone(&self.remote);
-        Task::perform(
-            async move {
-                tokio::task::spawn_blocking(move || {
-                    pool.trust(&server, &key).map_err(|error| error.to_string())
-                })
-                .await
-                .unwrap_or_else(|failure| Err(failure.to_string()))
-            },
-            move |result| Message::Remote(RemoteMessage::HostKeyLearned { attempt, result }),
-        )
-    }
-
-    fn host_key_learned(&mut self, attempt: u64, result: Result<(), String>) -> Task<Message> {
-        if self.connect_dialog.as_ref().map(ConnectDialog::attempt) != Some(attempt) {
-            return Task::none();
-        }
-        match result {
-            Ok(()) => self.start_connecting(),
-            Err(reason) => {
-                let text = fill_template(
-                    self.lang.text(Msg::ErrorRemoteFailed),
-                    &[("{reason}", &reason)],
-                );
-                if let Some(dialog) = self.connect_dialog.as_mut() {
-                    dialog.set_stage(remote_dialog::Stage::Editing);
-                    dialog.set_error(text);
-                }
-                Task::none()
-            }
-        }
-    }
-
-    /// Closes the connection. A panel that was on the server goes home.
-    fn disconnect_server(&mut self, server: &ServerId) -> Task<Message> {
-        self.remote.forget(server);
-        let text = fill_template(
-            self.lang.text(Msg::StatusRemoteDisconnected),
-            &[("{server}", &server.to_string())],
-        );
-        let mut tasks = vec![self.show_notice(text)];
-        for side in [PanelSide::Left, PanelSide::Right] {
-            if self.panel(side).remote().as_ref() == Some(server) {
-                let home = self.home.clone();
-                tasks.push(self.load(side, home, None));
-            }
-        }
-        Task::batch(tasks)
-    }
-
-    fn password_loaded(
-        &mut self,
-        side: PanelSide,
-        request_id: u64,
-        remote: RemotePath,
-        select: Option<String>,
-        stored: Result<Option<Secret>, String>,
-    ) -> Task<Message> {
-        if self.panel(side).request_id != request_id {
-            return Task::none();
-        }
-        match stored {
-            Ok(Some(password)) => {
-                let pool = Arc::clone(&self.remote);
-                let server = remote.server().clone();
-                Task::perform(
-                    async move {
-                        let outcome = pool.connect(&server, &password).await;
-                        (password, outcome)
-                    },
-                    move |(kept, result)| {
-                        Message::Remote(RemoteMessage::AutoConnected {
-                            side,
-                            request_id,
-                            remote: remote.clone(),
-                            select: select.clone(),
-                            password: kept,
-                            result,
-                        })
-                    },
-                )
-            }
-            Ok(None) => self.ask_for_password(side, request_id, remote, select, None, None),
-            Err(reason) => self.ask_for_password(
-                side,
-                request_id,
-                remote,
-                select,
-                None,
-                Some(ConnectFailure::Keychain(reason)),
-            ),
-        }
-    }
-
-    fn auto_connected(
-        &mut self,
-        side: PanelSide,
-        request_id: u64,
-        remote: RemotePath,
-        select: Option<String>,
-        password: Secret,
-        result: Result<(), ConnectFailure>,
-    ) -> Task<Message> {
-        if self.panel(side).request_id != request_id {
-            return Task::none();
-        }
-        match result {
-            Ok(()) => {
-                let sort = self.panel(side).sort;
-                remote_listing(
-                    Arc::clone(&self.remote),
-                    side,
-                    request_id,
-                    remote,
-                    sort,
-                    select,
-                )
-            }
-            // A password that no longer fits is not kept, so that it is not
-            // tried again with every folder, and not offered again.
-            Err(ConnectFailure::AuthFailed) => {
-                let forget = self.forget_remembered_password(remote.server());
-                let ask = self.ask_for_password(
-                    side,
-                    request_id,
-                    remote,
-                    select,
-                    None,
-                    Some(ConnectFailure::AuthFailed),
-                );
-                Task::batch([forget, ask])
-            }
-            Err(failure) => self.ask_for_password(
-                side,
-                request_id,
-                remote,
-                select,
-                Some(password),
-                Some(failure),
-            ),
-        }
-    }
-
-    /// Removes what the keychain holds for `server`, off the UI thread.
-    fn forget_remembered_password(&self, server: &ServerId) -> Task<Message> {
-        let passwords = Arc::clone(&self.passwords);
-        let gone = server.clone();
-        Task::perform(
-            async move {
-                tokio::task::spawn_blocking(move || passwords.forget(&gone))
-                    .await
-                    .unwrap_or_else(|failure| Err(failure.to_string()))
-            },
-            |result| Message::Remote(RemoteMessage::PasswordStored(result)),
-        )
-    }
-
-    /// Opens the connect dialog for the server of a folder that was asked for.
-    /// Another dialog being up, the panel is told it has no connection instead.
-    fn ask_for_password(
-        &mut self,
-        side: PanelSide,
-        request_id: u64,
-        remote: RemotePath,
-        select: Option<String>,
-        password: Option<Secret>,
-        failure: Option<ConnectFailure>,
-    ) -> Task<Message> {
-        let server = remote.server().clone();
-        if self.blocking_overlay_is_open() {
-            return Task::done(Message::Panel(PanelMessage::DirectoryLoaded {
-                side,
-                request_id,
-                path: remote.to_path_buf(),
-                entries: remote
-                    .parent()
-                    .map(|above| fs::FileEntry::parent(&above.to_path_buf()))
-                    .into_iter()
-                    .collect(),
-                error: Some(fs::ReadError::RemoteDisconnected { server }),
-                sorted_by: self.panel(side).sort,
-                select: None,
-                archive: None,
-            }));
-        }
-        let host_text = server.host.clone();
-        let failure_text = failure
-            .as_ref()
-            .map(|reason| self.connect_failure_text(reason, &host_text));
-        self.connect_attempts = self.connect_attempts.wrapping_add(1);
-        let then = Then {
-            side,
-            path: remote.to_path_buf(),
-            select,
-            request_id,
-        };
-        let mut dialog = ConnectDialog::for_server(self.connect_attempts, &server, Some(then));
-        if let Some(remembered) = password {
-            dialog.keep_password(remembered);
-        }
-        match (failure, failure_text) {
-            (Some(ConnectFailure::UnknownHost { fingerprint, key }), _) => {
-                dialog.set_stage(remote_dialog::Stage::HostKey { fingerprint, key });
-            }
-            (Some(_), Some(text)) => dialog.set_error(text),
-            _ => {}
-        }
-        self.connect_dialog = Some(dialog);
-        operation::focus(remote_ui::field_id(ConnectField::Password))
     }
 }
 
@@ -13666,9 +13253,8 @@ impl App {
             sandbox: fs::SandboxAccess::inactive(),
             remote: Arc::new(Pool::over_tcp(KnownHostsFiles::default())),
             passwords: Arc::new(fs::remote::credentials::InMemoryPasswords::default()),
-            connect_dialog: None,
+            remote_ui: ncrs_remote::Remote::default(),
             saved_servers: Vec::new(),
-            connect_attempts: 0,
         };
         for (side, names) in [
             (PanelSide::Left, ["..", "Documents", "Projects", "Desktop"]),
@@ -14256,9 +13842,9 @@ impl App {
     }
 
     /// Fixed panels with the connect dialog up.
-    pub fn with_connect_dialog(dialog: ConnectDialog) -> Self {
+    pub fn with_connect_dialog(dialog: ncrs_remote::dialog::ConnectDialog) -> Self {
         let mut app = Self::with_fixed_panels();
-        app.connect_dialog = Some(dialog);
+        app.remote_ui.dialog = Some(dialog);
         app
     }
 
@@ -24133,8 +23719,11 @@ mod remote_panel_tests {
     use super::*;
     use crate::context_menu::{ContextAction, HermesAction};
     use crate::fs::remote::credentials::InMemoryPasswords;
+    use crate::fs::remote::session::ConnectFailure;
     use crate::fs::remote::test_server::{Fixture, HOME, PASSWORD, USER};
-    use crate::messages::SettingsMessage;
+    use crate::fs::remote::Secret;
+    use crate::messages::{ConnectField, SettingsMessage};
+    use crate::remote_dialog;
     use iced_test::futures::futures::StreamExt as _;
     use iced_test::runtime::{task, Action};
 
@@ -24325,7 +23914,7 @@ mod remote_panel_tests {
 
         let reported = reports(&mut app, Message::PathFieldSubmit).await;
 
-        let dialog = app.connect_dialog.as_ref().unwrap();
+        let dialog = app.remote_ui.dialog.as_ref().unwrap();
         assert_eq!(dialog.value(ConnectField::Host), "example.org");
         assert_eq!(dialog.value(ConnectField::Port), "2222");
         assert_eq!(dialog.value(ConnectField::User), "");
@@ -24347,7 +23936,7 @@ mod remote_panel_tests {
         settle(&mut app, Message::PathFieldSubmit).await;
 
         assert_eq!(app.status_error(), Some("Not a valid sftp:// address"));
-        assert!(app.connect_dialog.is_none());
+        assert!(app.remote_ui.dialog.is_none());
         assert!(app.path_field_for_test().is_some());
     }
 
@@ -24364,7 +23953,7 @@ mod remote_panel_tests {
         )
         .await;
 
-        let dialog = app.connect_dialog.as_ref().unwrap();
+        let dialog = app.remote_ui.dialog.as_ref().unwrap();
         assert_eq!(dialog.value(ConnectField::Host), HOST);
         assert_eq!(dialog.value(ConnectField::User), USER);
         assert_eq!(dialog.value(ConnectField::Password), "");
@@ -24398,7 +23987,7 @@ mod remote_panel_tests {
 
         open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
 
-        assert!(app.connect_dialog.is_none());
+        assert!(app.remote_ui.dialog.is_none());
         assert!(fixture.pool.is_connected(&Fixture::id()));
         assert_eq!(app.panels.left.path, url("/home/tester"));
         assert_eq!(names(&app, PanelSide::Left), ["..", "a.txt"]);
@@ -24414,7 +24003,7 @@ mod remote_panel_tests {
 
         open(&mut app, PanelSide::Left, url("/home"), None).await;
 
-        let dialog = app.connect_dialog.as_ref().unwrap();
+        let dialog = app.remote_ui.dialog.as_ref().unwrap();
         assert_eq!(dialog.error(), Some("User name or password is wrong"));
         assert_eq!(dialog.value(ConnectField::Password), "");
         assert_eq!(
@@ -24435,7 +24024,7 @@ mod remote_panel_tests {
         open(&mut app, PanelSide::Left, url("/home"), None).await;
 
         assert!(matches!(
-            app.connect_dialog.as_ref().unwrap().stage(),
+            app.remote_ui.dialog.as_ref().unwrap().stage(),
             remote_dialog::Stage::HostKey { .. }
         ));
         assert!(passwords.get(&Fixture::id()).unwrap().is_some());
@@ -24459,7 +24048,7 @@ mod remote_panel_tests {
         settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
         settle(&mut app, Message::Remote(RemoteMessage::TrustHostKey)).await;
 
-        let dialog = app.connect_dialog.as_ref().unwrap();
+        let dialog = app.remote_ui.dialog.as_ref().unwrap();
         assert_eq!(*dialog.stage(), remote_dialog::Stage::Editing);
         let error = dialog.error().unwrap();
         assert!(
@@ -24479,7 +24068,7 @@ mod remote_panel_tests {
 
         settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
 
-        let dialog = app.connect_dialog.as_ref().unwrap();
+        let dialog = app.remote_ui.dialog.as_ref().unwrap();
         assert_eq!(*dialog.stage(), remote_dialog::Stage::Editing);
         let error = dialog.error().unwrap();
         assert!(
@@ -24508,7 +24097,7 @@ mod remote_panel_tests {
         settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
 
         assert_eq!(
-            app.connect_dialog.as_ref().unwrap().error(),
+            app.remote_ui.dialog.as_ref().unwrap().error(),
             Some("test.invalid does not accept password sign-in")
         );
     }
@@ -24580,7 +24169,11 @@ mod remote_panel_tests {
             for lang in [Language::English, Language::German] {
                 let mut speaking = App::with_environment(Environment::isolated()).0;
                 speaking.lang = lang;
-                let text = speaking.connect_failure_text(&failure, "files.example.org");
+                let text = ncrs_remote::update::connect_failure_text(
+                    speaking.lang,
+                    &failure,
+                    "files.example.org",
+                );
                 assert!(
                     !text.contains(secret) && !text.is_empty(),
                     "{failure:?}: {text}"
@@ -24609,7 +24202,7 @@ mod remote_panel_tests {
 
         settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
 
-        assert!(app.connect_dialog.is_none());
+        assert!(app.remote_ui.dialog.is_none());
         assert_eq!(app.panels.left.path, url(HOME));
         assert_eq!(app.panels.left.error, None);
         assert_eq!(
@@ -24665,7 +24258,7 @@ mod remote_panel_tests {
 
         settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
 
-        let dialog = app.connect_dialog.as_ref().unwrap();
+        let dialog = app.remote_ui.dialog.as_ref().unwrap();
         let remote_dialog::Stage::HostKey { fingerprint, .. } = dialog.stage() else {
             panic!("{:?}", dialog.stage());
         };
@@ -24675,7 +24268,7 @@ mod remote_panel_tests {
 
         settle(&mut app, Message::Remote(RemoteMessage::TrustHostKey)).await;
 
-        assert!(app.connect_dialog.is_none());
+        assert!(app.remote_ui.dialog.is_none());
         assert!(fixture.pool.is_connected(&Fixture::id()));
         let learned = std::fs::read_to_string(fixture.known.own.as_deref().unwrap()).unwrap();
         assert!(learned.contains("\ntest.invalid ssh-ed25519 "), "{learned}");
@@ -24690,7 +24283,7 @@ mod remote_panel_tests {
 
         settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
 
-        let dialog = app.connect_dialog.as_ref().unwrap();
+        let dialog = app.remote_ui.dialog.as_ref().unwrap();
         assert_eq!(*dialog.stage(), remote_dialog::Stage::Editing);
         assert_eq!(dialog.error(), Some("User name or password is wrong"));
         assert!(!format!("{dialog:?}").contains("nope"));
@@ -24714,7 +24307,7 @@ mod remote_panel_tests {
         settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
         settle(&mut app, Message::Remote(RemoteMessage::TrustHostKey)).await;
 
-        let dialog = app.connect_dialog.as_ref().unwrap();
+        let dialog = app.remote_ui.dialog.as_ref().unwrap();
         assert_eq!(*dialog.stage(), remote_dialog::Stage::Editing);
         let error = dialog.error().unwrap();
         assert!(
@@ -24739,7 +24332,7 @@ mod remote_panel_tests {
         assert_eq!(route, Some(Message::Remote(RemoteMessage::Cancel)));
         settle(&mut app, Message::Remote(RemoteMessage::Cancel)).await;
 
-        assert!(app.connect_dialog.is_none());
+        assert!(app.remote_ui.dialog.is_none());
         assert!(!app.panels.left.loading);
     }
 
@@ -24778,7 +24371,7 @@ mod remote_panel_tests {
         settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
 
         assert_eq!(
-            *app.connect_dialog.as_ref().unwrap().stage(),
+            *app.remote_ui.dialog.as_ref().unwrap().stage(),
             remote_dialog::Stage::Editing
         );
         assert_eq!(fixture.server.control.dials(), 0);
@@ -25011,11 +24604,11 @@ mod remote_panel_tests {
         app.open_delete_dialog_for_test(1, false);
 
         settle(&mut app, KeyAction::ConnectServer.message()).await;
-        assert!(app.connect_dialog.is_none());
+        assert!(app.remote_ui.dialog.is_none());
 
         app.delete_dialog = None;
         settle(&mut app, KeyAction::ConnectServer.message()).await;
-        assert!(app.connect_dialog.is_some());
+        assert!(app.remote_ui.dialog.is_some());
     }
 
     #[derive(Default)]
@@ -25454,7 +25047,7 @@ mod remote_panel_tests {
 
         settle(&mut app, Message::VolumeMenuActivate).await;
 
-        let dialog = app.connect_dialog.as_ref().unwrap();
+        let dialog = app.remote_ui.dialog.as_ref().unwrap();
         assert_eq!(dialog.value(ConnectField::Host), HOST);
         assert_eq!(dialog.value(ConnectField::User), USER);
         assert_eq!(
@@ -25486,8 +25079,8 @@ mod remote_panel_tests {
 
         settle(&mut app, Message::Remote(RemoteMessage::OpenAdd)).await;
 
-        assert!(app.connect_dialog.as_ref().unwrap().save());
-        assert!(!app.connect_dialog.as_ref().unwrap().remember());
+        assert!(app.remote_ui.dialog.as_ref().unwrap().save());
+        assert!(!app.remote_ui.dialog.as_ref().unwrap().remember());
     }
 
     #[tokio::test]

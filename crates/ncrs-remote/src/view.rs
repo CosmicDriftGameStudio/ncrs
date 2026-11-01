@@ -1,19 +1,19 @@
 //! The dialog that connects to an SFTP server, and the stage of it that asks
 //! whether to trust a server for the first time. Modal. A pure view over
-//! [`ConnectDialog`]; what the buttons do is decided by `App`.
+//! [`ConnectDialog`]; what the buttons do is decided by `update`.
 
 use iced::widget::{column, row, Row};
 use iced::{Element, Length, Size};
 
-use super::frame::{DialogSize, Frame, KeyHints};
-use super::kit::{self, dim, error_line, paragraph, Check, Tone};
-use super::theme::spacing;
-use crate::app::fill_template;
-use crate::fs::remote::Secret;
-use crate::i18n::{Language, Msg};
-use crate::messages::{ConnectField, Message, RemoteMessage};
-use crate::palette::Palette;
-use crate::remote_dialog::{ConnectDialog, Stage};
+use crate::dialog::{ConnectDialog, Stage};
+use crate::message::{ConnectField, Message};
+use ncrs_fs::remote::Secret;
+use ncrs_i18n::fill_template;
+use ncrs_i18n::{Language, Msg};
+use ncrs_ui_kit::frame::{DialogSize, Frame, KeyHints};
+use ncrs_ui_kit::kit::{self, dim, error_line, paragraph, Check, Tone};
+use ncrs_ui_kit::palette::Palette;
+use ncrs_ui_kit::theme::spacing;
 
 const SIZE: DialogSize = DialogSize::Medium;
 
@@ -61,15 +61,13 @@ fn labelled<'a>(
 ) -> Element<'a, Message> {
     let label = lang.text(field_label(field));
     let typing = !dialog.is_locked();
-    let submit = Message::Remote(RemoteMessage::Submit);
+    let submit = Message::Submit;
     let input = if field == ConnectField::Password {
         kit::secret_field(
             label,
             dialog.value(field),
             field_id(field),
-            typing.then_some(|text: String| {
-                Message::Remote(RemoteMessage::Password(Secret::new(text)))
-            }),
+            typing.then_some(|text: String| Message::Password(Secret::new(text))),
             submit,
             palette,
         )
@@ -78,8 +76,7 @@ fn labelled<'a>(
             label,
             dialog.value(field),
             field_id(field),
-            typing
-                .then_some(move |text: String| Message::Remote(RemoteMessage::Field(field, text))),
+            typing.then_some(move |text: String| Message::Field(field, text)),
             submit,
             palette,
         )
@@ -93,12 +90,12 @@ fn labelled<'a>(
 fn tick<'a>(
     label: &str,
     checked: bool,
-    on_toggle: RemoteMessage,
+    on_toggle: Message,
     locked: bool,
     palette: &Palette,
 ) -> Element<'a, Message> {
     let state = if checked { Check::On } else { Check::Off };
-    let toggle = (!locked).then_some(Message::Remote(on_toggle));
+    let toggle = (!locked).then_some(on_toggle);
     let row: Row<'a, Message> = row![
         kit::checkbox(state, toggle, palette),
         paragraph(label.to_owned(), palette)
@@ -127,14 +124,14 @@ fn form<'a>(
         tick(
             lang.text(Msg::RemoteRemember),
             dialog.remember(),
-            RemoteMessage::ToggleRemember,
+            Message::ToggleRemember,
             locked,
             palette,
         ),
         tick(
             lang.text(Msg::RemoteSave),
             dialog.save(),
-            RemoteMessage::ToggleSave,
+            Message::ToggleSave,
             locked,
             palette,
         ),
@@ -146,7 +143,7 @@ fn form<'a>(
     if let Some(error) = dialog.error() {
         body = body.push(error_line(error.to_owned(), palette));
     }
-    let cancel = Message::Remote(RemoteMessage::Cancel);
+    let cancel = Message::Cancel;
     Frame::new(
         lang.text(Msg::RemoteDialogTitle),
         body,
@@ -164,7 +161,7 @@ fn form<'a>(
         ),
         kit::enter_button(
             lang.text(Msg::RemoteConnect),
-            (!locked).then_some(Message::Remote(RemoteMessage::Submit)),
+            (!locked).then_some(Message::Submit),
             Tone::Primary,
             palette,
         ),
@@ -208,7 +205,7 @@ fn host_key<'a>(
         palette,
     )]
     .spacing(spacing::LINE_GAP);
-    let cancel = Message::Remote(RemoteMessage::Cancel);
+    let cancel = Message::Cancel;
     Frame::new(
         lang.text(Msg::RemoteHostkeyTitle),
         body,
@@ -226,7 +223,7 @@ fn host_key<'a>(
         ),
         kit::button(
             lang.text(Msg::RemoteHostkeyTrust),
-            Some(Message::Remote(RemoteMessage::TrustHostKey)),
+            Some(Message::TrustHostKey),
             Tone::Secondary,
             palette,
         ),

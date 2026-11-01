@@ -14,7 +14,7 @@ pub use ncrs_ops::transfer::view as transfer;
 pub use ncrs_ops::trash::view as trash;
 pub use ncrs_ops::{conflict, delete};
 pub use ncrs_palette::quick_open::view as quick_open;
-pub mod remote;
+pub use ncrs_remote::view as remote;
 pub mod statusbar;
 pub mod titlebar;
 pub mod volumes;
