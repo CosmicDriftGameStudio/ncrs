@@ -1457,15 +1457,7 @@ fn row_matches(setting: &SettingRow<'_>, query: &str) -> bool {
             .any(|name| contains_query(name, query))
 }
 
-/// What the command list can open: a page, or one setting of a page.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettingsTarget {
-    pub feature: SettingsFeature,
-    /// The label of the row; `None` for the page itself.
-    pub row: Option<String>,
-    pub label: String,
-    pub theme_name: Option<String>,
-}
+pub use ncrs_config::SettingsTarget;
 
 /// Every page and every row of every page, from the same rows the tab's search
 /// goes through.

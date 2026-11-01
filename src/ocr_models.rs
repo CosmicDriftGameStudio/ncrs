@@ -17,12 +17,7 @@ use crate::open_vsx::{self, FetchError};
 /// The only host a model may come from, redirects included.
 const MODEL_HOSTS: [&str; 1] = [OCR_MODELS_HOST];
 
-/// macOS reads scans with its own text recognition, so there is nothing to
-/// download there. Tests behave like the other systems, so that snapshots do
-/// not depend on the machine they run on.
-pub const fn system_reads_scans() -> bool {
-    cfg!(target_os = "macos") && !cfg!(test)
-}
+pub use ncrs_config::keymap::system_reads_scans;
 
 /// What can go wrong between pressing the button and having the files in
 /// place. The card words it with the detail in English.

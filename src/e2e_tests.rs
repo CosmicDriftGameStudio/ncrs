@@ -736,6 +736,7 @@ impl crate::fs::Launcher for MissingProgramLauncher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::keymap::KeymapMessages as _;
 
     use crate::messages::{ConflictChoice, TrashMessage};
     use iced::keyboard::key::Named;

@@ -962,6 +962,7 @@ impl InputState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::keymap::KeymapMessages as _;
     use iced::keyboard::{key::Physical, Location};
 
     const WINDOW: Size = Size::new(1200.0, 760.0);

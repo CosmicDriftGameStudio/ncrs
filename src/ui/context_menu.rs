@@ -15,6 +15,7 @@ use super::theme::{self, font_size, spacing};
 use crate::context_menu::{ContextMenu, MenuEntry, SubEntry};
 use crate::i18n::{Language, Msg};
 use crate::keymap::Keymap;
+use crate::keymap::KeymapMessages as _;
 use crate::messages::Message;
 use crate::palette::Palette;
 

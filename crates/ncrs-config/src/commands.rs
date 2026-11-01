@@ -3,8 +3,8 @@
 //! plain label and, for the playful ones, a theme name. Its shortcut is read
 //! from the keymap, so a `[keys]` override shows up everywhere.
 
-use crate::i18n::{FuturamaName, Msg};
 use crate::keymap::KeyAction;
+use ncrs_i18n::{FuturamaName, Msg};
 
 /// The headings of the Lab and of the menu, in this order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -324,7 +324,7 @@ pub fn all() -> impl Iterator<Item = Command> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::i18n::Language;
+    use ncrs_i18n::Language;
 
     #[test]
     fn only_movement_is_not_a_command() {

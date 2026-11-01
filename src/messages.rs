@@ -379,27 +379,7 @@ pub enum Message {
     Quit,
 }
 
-/// A page of the settings tab, one entry of its feature list.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SettingsFeature {
-    Look,
-    Language,
-    Programs,
-    Keys,
-    Servers,
-    Hermes,
-}
-
-impl SettingsFeature {
-    pub const ALL: [Self; 6] = [
-        Self::Look,
-        Self::Language,
-        Self::Programs,
-        Self::Keys,
-        Self::Servers,
-        Self::Hermes,
-    ];
-}
+pub use ncrs_config::SettingsFeature;
 
 /// A setting the settings tab changes: applied at once and written to the
 /// config.

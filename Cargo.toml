@@ -67,6 +67,8 @@ ncrs-core = { path = "crates/ncrs-core", version = "0.0.0" }
 ncrs-search = { path = "crates/ncrs-search", version = "0.0.0" }
 # The file panel: its state, column header, history, the drag between panels and the hit list.
 ncrs-files = { path = "crates/ncrs-files", version = "0.0.0" }
+# The config file, the key bindings, the theme and the command list.
+ncrs-config = { path = "crates/ncrs-config", version = "0.0.0" }
 # The filesystem layer: reading folders, copying, archives, the trash, SFTP.
 ncrs-fs = { path = "crates/ncrs-fs", version = "0.0.0" }
 # The file operations: the copy and move dialog, the conflict and delete dialogs and the trash view.
@@ -196,6 +198,8 @@ ncrs-intake = { path = "crates/ncrs-intake", version = "0.0.0", features = ["tes
 sha2 = "0.10"
 # What the filesystem layer keeps for tests only: the real trash scene and the in-memory stores.
 ncrs-fs = { path = "crates/ncrs-fs", version = "0.0.0", features = ["test-support"] }
+# `config::from_text` and the key action lists, for the tests of the app.
+ncrs-config = { path = "crates/ncrs-config", version = "0.0.0", features = ["test-support"] }
 # Hits for the snapshot tests of the search filters.
 ncrs-search = { path = "crates/ncrs-search", version = "0.0.0", features = ["test-support"] }
 # The state of the documents section of Quick Open, for the tests of the app.

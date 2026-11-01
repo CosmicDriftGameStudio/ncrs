@@ -9,6 +9,7 @@ use std::ops::Range;
 use crate::commands::{self, CommandGroup};
 use crate::i18n::{FuturamaName, Language, Msg};
 use crate::keymap::{KeyAction, KeyScope, Keymap};
+use crate::keymap::{KeyActionMessage as _, KeymapMessages as _};
 use crate::messages::SettingsFeature;
 use crate::ui::settings::SettingsTarget;
 

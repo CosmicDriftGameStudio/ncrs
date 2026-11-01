@@ -3290,6 +3290,7 @@ mod review_list_card {
 pub mod search_filters_card {
     use super::*;
     use crate::keymap::KeyAction;
+    use crate::keymap::KeyActionMessage as _;
     use crate::messages::{QuickOpenMessage, SavedQueriesMessage, SearchMessage};
     use crate::query_work::QueryHit;
     use crate::search_filters::tests::found_hit;

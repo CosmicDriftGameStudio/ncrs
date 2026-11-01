@@ -3377,6 +3377,7 @@ dependencies = [
  "jsonc-parser",
  "muda",
  "ncrs-ai",
+ "ncrs-config",
  "ncrs-core",
  "ncrs-files",
  "ncrs-fs",
@@ -3419,6 +3420,25 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "ureq",
+]
+
+[[package]]
+name = "ncrs-config"
+version = "0.0.0"
+dependencies = [
+ "iced",
+ "jsonc-parser",
+ "ncrs-ai",
+ "ncrs-fs",
+ "ncrs-i18n",
+ "ncrs-index",
+ "ncrs-intake",
+ "ncrs-pipeline",
+ "ncrs-ui-kit",
+ "serde",
+ "serde_spanned 1.1.2",
+ "tempfile",
+ "toml_edit 0.25.17+spec-1.1.0",
 ]
 
 [[package]]

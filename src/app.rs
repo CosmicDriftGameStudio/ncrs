@@ -62,6 +62,7 @@ use crate::i18n::{FuturamaName, Language, Msg};
 use crate::jobs::{self, JobEvent};
 use crate::key_bindings::KeyBindings;
 use crate::keymap::{self, KeyAction, KeyScope, Keymap};
+use crate::keymap::{KeyActionMessage as _, KeymapMessages as _};
 #[cfg(any(target_os = "macos", test))]
 use crate::menu::Availability;
 use crate::messages::TransferKindJob as _;
