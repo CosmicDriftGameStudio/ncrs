@@ -29,10 +29,15 @@ use crate::app::App;
 use crate::filing::{FilingMessage, FilingModule, KeyProblem, Phase, SecretText};
 use crate::i18n::Language;
 use crate::messages::Message;
+use crate::messages::PanelMessage;
 
 /// Which panel the pointer is over is bookkeeping, not something the user did.
 fn is_action(message: &Message) -> bool {
-    !matches!(message, Message::PanelEntered(_) | Message::PanelExited(_))
+    !matches!(
+        message,
+        Message::Panel(PanelMessage::PanelEntered(_))
+            | Message::Panel(PanelMessage::PanelExited(_))
+    )
 }
 
 fn simulator(app: &App) -> Simulator<'_, Message, iced::Theme> {
@@ -1123,10 +1128,10 @@ mod context_menu_overlay {
         let messages: Vec<Message> = sim.into_messages().collect();
         assert_eq!(
             messages,
-            [Message::ContextMenuAt {
+            [Message::Panel(PanelMessage::RowContext {
                 side: PanelSide::Left,
                 index: 1
-            }]
+            })]
         );
     }
 
@@ -1581,9 +1586,9 @@ mod filing_cards {
             matches!(
                 messages.as_slice(),
                 [
-                    Message::RowClicked { .. },
-                    Message::RowClicked { .. },
-                    Message::RowActivated { .. }
+                    Message::Panel(PanelMessage::RowClicked { .. }),
+                    Message::Panel(PanelMessage::RowClicked { .. }),
+                    Message::Panel(PanelMessage::RowActivated { .. })
                 ]
             ),
             "{messages:?}"
@@ -1594,7 +1599,10 @@ mod filing_cards {
     fn the_panels_stay_usable_while_a_card_is_up() {
         let without_card = messages_for_a_click_on_a_panel_row(&App::with_fixed_panels());
         assert!(
-            matches!(without_card.as_slice(), [Message::RowClicked { .. }]),
+            matches!(
+                without_card.as_slice(),
+                [Message::Panel(PanelMessage::RowClicked { .. })]
+            ),
             "the click misses the row: {without_card:?}"
         );
 
@@ -2232,7 +2240,10 @@ mod filing_setup_card {
         };
         let without_setup = row_click(&App::with_fixed_panels());
         assert!(
-            matches!(without_setup.as_slice(), [Message::RowClicked { .. }]),
+            matches!(
+                without_setup.as_slice(),
+                [Message::Panel(PanelMessage::RowClicked { .. })]
+            ),
             "the click misses the row: {without_setup:?}"
         );
 
@@ -5423,7 +5434,12 @@ mod title_bar {
         assert_eq!(app.active_panel_side_for_test(), PanelSide::Left);
 
         let messages = messages_after_click(&app, RIGHT_TAB_ID);
-        assert_eq!(messages, vec![Message::ActivatePanel(PanelSide::Right)]);
+        assert_eq!(
+            messages,
+            vec![Message::Panel(PanelMessage::ActivatePanel(
+                PanelSide::Right
+            ))]
+        );
         for message in messages {
             drop(app.update(message));
         }
@@ -5431,7 +5447,7 @@ mod title_bar {
 
         assert_eq!(
             messages_after_click(&app, LEFT_TAB_ID),
-            vec![Message::ActivatePanel(PanelSide::Left)]
+            vec![Message::Panel(PanelMessage::ActivatePanel(PanelSide::Left))]
         );
     }
 

@@ -15,6 +15,7 @@ use crate::fs::{OpenKind, SortColumn};
 use crate::hermes_column::FolderRole;
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
+use crate::messages::PanelMessage;
 use crate::messages::{
     AboutMessage, AiModelMessage, ClipboardKind, CommandLineMessage, CommandPaletteMessage,
     FilingSetupMessage, FilingStatusMessage, GrantMessage, HermesFileMessage, KeyBindingsMessage,
@@ -348,15 +349,15 @@ impl KeyAction {
     pub fn message(self) -> Message {
         match self {
             Self::Quit => Message::Quit,
-            Self::GoUp => Message::GoUp,
-            Self::Open => Message::OpenSelected,
-            Self::SwitchPanel => Message::SwitchPanel,
+            Self::GoUp => Message::Panel(PanelMessage::GoUp),
+            Self::Open => Message::Panel(PanelMessage::OpenSelected),
+            Self::SwitchPanel => Message::Panel(PanelMessage::SwitchPanel),
             Self::SwitchLanguage => Message::SwitchLanguage,
-            Self::ToggleTag => Message::ToggleTag,
-            Self::TagDown => Message::TagMove(1),
-            Self::TagUp => Message::TagMove(-1),
-            Self::TagAll => Message::TagAll,
-            Self::ClearTags => Message::ClearTags,
+            Self::ToggleTag => Message::Panel(PanelMessage::ToggleTag),
+            Self::TagDown => Message::Panel(PanelMessage::TagMove(1)),
+            Self::TagUp => Message::Panel(PanelMessage::TagMove(-1)),
+            Self::TagAll => Message::Panel(PanelMessage::TagAll),
+            Self::ClearTags => Message::Panel(PanelMessage::ClearTags),
             Self::AbortJob => Message::AbortJob,
             Self::CopyPath => Message::CopyToClipboard(ClipboardKind::Path),
             Self::CopyName => Message::CopyToClipboard(ClipboardKind::Name),
@@ -376,22 +377,22 @@ impl KeyAction {
             Self::Pack => Message::PackPrompt,
             Self::DriveMenuLeft => Message::VolumeMenu(PanelSide::Left),
             Self::DriveMenuRight => Message::VolumeMenu(PanelSide::Right),
-            Self::HistoryBack => Message::HistoryBack,
-            Self::HistoryForward => Message::HistoryForward,
+            Self::HistoryBack => Message::Panel(PanelMessage::HistoryBack),
+            Self::HistoryForward => Message::Panel(PanelMessage::HistoryForward),
             Self::AddFavourite => Message::AddFavourite,
             Self::RemoveFavourite => Message::RemoveFavourite,
             Self::Favourites => Message::OpenFavourites,
-            Self::SortByName => Message::SortActive(SortColumn::Name),
-            Self::SortByModified => Message::SortActive(SortColumn::Modified),
-            Self::SortBySize => Message::SortActive(SortColumn::Size),
+            Self::SortByName => Message::Panel(PanelMessage::SortActive(SortColumn::Name)),
+            Self::SortByModified => Message::Panel(PanelMessage::SortActive(SortColumn::Modified)),
+            Self::SortBySize => Message::Panel(PanelMessage::SortActive(SortColumn::Size)),
             Self::ComputeFolderSizes => Message::ComputeFolderSizes,
             Self::ContextMenu => Message::ContextMenuKey,
-            Self::CursorUp => Message::MoveSelection(-1),
-            Self::CursorDown => Message::MoveSelection(1),
-            Self::PageUp => Message::PageUp,
-            Self::PageDown => Message::PageDown,
-            Self::First => Message::SelectFirst,
-            Self::Last => Message::SelectLast,
+            Self::CursorUp => Message::Panel(PanelMessage::MoveSelection(-1)),
+            Self::CursorDown => Message::Panel(PanelMessage::MoveSelection(1)),
+            Self::PageUp => Message::Panel(PanelMessage::PageUp),
+            Self::PageDown => Message::Panel(PanelMessage::PageDown),
+            Self::First => Message::Panel(PanelMessage::SelectFirst),
+            Self::Last => Message::Panel(PanelMessage::SelectLast),
             Self::Search => Message::OpenSearch,
             Self::QuickOpen => Message::QuickOpen(QuickOpenMessage::Open),
             Self::CommandLine => Message::CommandLine(CommandLineMessage::Focus),
@@ -1678,7 +1679,7 @@ mod tests {
         ] {
             assert_eq!(
                 map_key(Key::Character(digit.into()), Modifiers::COMMAND),
-                Some(Message::SortActive(column))
+                Some(Message::Panel(PanelMessage::SortActive(column)))
             );
             assert_eq!(
                 map_key(Key::Character(digit.into()), Modifiers::default()),
@@ -1698,7 +1699,7 @@ mod tests {
         ] {
             assert_eq!(
                 map_key(Key::Named(function_key), Modifiers::CTRL),
-                Some(Message::SortActive(column))
+                Some(Message::Panel(PanelMessage::SortActive(column)))
             );
         }
         assert_eq!(
@@ -1781,7 +1782,7 @@ mod tests {
     fn bindings_produce_the_expected_messages() {
         assert_eq!(
             map_key(Key::Named(Named::Enter), Modifiers::default()),
-            Some(Message::OpenSelected)
+            Some(Message::Panel(PanelMessage::OpenSelected))
         );
         assert_eq!(
             map_key(Key::Named(Named::F10), Modifiers::default()),
@@ -1913,7 +1914,7 @@ mod tests {
                 Modifiers::ALT,
                 KeyScope::Panel
             ),
-            Some(Message::HistoryBack)
+            Some(Message::Panel(PanelMessage::HistoryBack))
         );
         assert_eq!(
             keymap.map_key(
@@ -1994,7 +1995,7 @@ mod tests {
     #[test]
     fn shortcuts_are_spelled_for_the_platform() {
         let label = |message: Message| shortcut_label(&message).unwrap();
-        assert_eq!(label(Message::OpenSelected), "Enter");
+        assert_eq!(label(Message::Panel(PanelMessage::OpenSelected)), "Enter");
         assert_eq!(label(Message::Transfer(TransferKind::Copy)), "F5");
         if cfg!(target_os = "macos") {
             assert_eq!(label(Message::Delete { permanent: true }), "⇧F8");

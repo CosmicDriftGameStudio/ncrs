@@ -3378,6 +3378,7 @@ dependencies = [
  "muda",
  "ncrs-ai",
  "ncrs-core",
+ "ncrs-files",
  "ncrs-fs",
  "ncrs-i18n",
  "ncrs-index",
@@ -3424,6 +3425,17 @@ name = "ncrs-core"
 version = "0.0.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "ncrs-files"
+version = "0.0.0"
+dependencies = [
+ "iced",
+ "ncrs-core",
+ "ncrs-fs",
+ "ncrs-i18n",
+ "ncrs-ui-kit",
 ]
 
 [[package]]

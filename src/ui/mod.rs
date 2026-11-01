@@ -25,7 +25,7 @@ pub mod key_bindings;
 pub mod layout;
 pub mod ocr_models;
 pub mod panel;
-pub mod panel_history;
+pub use ncrs_files::panel_history;
 pub mod picker;
 pub mod quick_fix;
 pub mod quick_open;
@@ -45,4 +45,4 @@ pub mod trash;
 pub mod volumes;
 
 pub use ncrs_ui_kit::{fkeys, format, frame, hermes_kit, kit, theme};
-pub use panel::{PanelProps, PanelState};
+pub use panel::PanelState;

@@ -7,6 +7,8 @@ pub const INITIAL_WINDOW_SIZE: Size = Size::new(1200.0, 760.0);
 
 pub const FKEYBAR_HEIGHT: f32 = size::FKEY_BAR;
 
+pub const COLUMN_HEADER_HEIGHT: f32 = size::COLUMN_HEADER;
+
 /// Slots in the function key bar: F1 to F10.
 pub const FUNCTION_KEY_COUNT: usize = 10;
 
@@ -57,6 +59,11 @@ pub fn search_header_height(filtered: bool) -> f32 {
     } else {
         SEARCH_HEADER_HEIGHT
     }
+}
+
+/// Rows of a hit list that fit where `normal_rows` folder rows fit.
+pub fn hit_list_rows(normal_rows: usize) -> usize {
+    normal_rows.div_euclid(2).max(1)
 }
 
 /// Number of result rows of `row_height` that fit into the search view: the

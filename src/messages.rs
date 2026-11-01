@@ -7,7 +7,7 @@ use ncrs_index::{HermesCounts, IncludeOutcome, QuerySpec, RuleId, SavedQuery, Sa
 use ncrs_intake::LocationMode;
 use ncrs_pipeline::Load;
 
-use iced::{Point, Size};
+use iced::Size;
 
 use crate::ai_model::DownloadError as AiDownloadError;
 use crate::app::{RowFailure, Transfer};
@@ -29,7 +29,7 @@ use crate::fs::remote::session::ConnectFailure;
 use crate::fs::remote::{RemotePath, Secret, ServerId};
 use crate::fs::search::SearchEvent;
 use crate::fs::{CreateDirError, OpenKind};
-use crate::fs::{Destination, FileEntry, PathProblem, ReadError, SortColumn, SortKey};
+use crate::fs::{Destination, PathProblem};
 use crate::fs::{RestoreError, TrashedItem};
 use crate::hermes_column::{ColumnReading, ColumnStage, FileDetail, FolderRole};
 use crate::hermes_setup::FolderSlot;
@@ -52,39 +52,16 @@ use crate::tags_work::{TagsFailure, TagsLoaded};
 use crate::theme_fetch::{Fetched, Installed};
 use crate::transfer_dialog::TransferDialogMessage;
 pub use ncrs_core::PanelSide;
+pub use ncrs_files::hit_list::HitListMessage;
+pub use ncrs_files::message::PanelMessage;
 pub use ncrs_search::message::SearchMessage;
 
 /// PartialEq so bindings can be compared; Eq is not derivable because
 /// WindowResized carries floats.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Message {
-    /// Result of an async directory read.
-    DirectoryLoaded {
-        side: PanelSide,
-        /// Matches `PanelState::request_id`; stale results are dropped.
-        request_id: u64,
-        path: PathBuf,
-        entries: Vec<FileEntry>,
-        error: Option<ReadError>,
-        /// The order the reader put `entries` in.
-        sorted_by: SortKey,
-        /// Entry name to select after loading (e.g. the dir we came from).
-        select: Option<String>,
-        /// The archive file, when `path` lies inside one.
-        archive: Option<PathBuf>,
-    },
-
-    // --- Navigation inside the active panel ---
-    MoveSelection(isize),
-    PageUp,
-    PageDown,
-    SelectFirst,
-    SelectLast,
-    OpenSelected,
-    GoUp,
-    /// A printable key: jump to the first entry that starts with what was
-    /// typed in the last second.
-    TypeAhead(String),
+    // --- The file panels: navigation, selection, sorting, the pointer over them ---
+    Panel(PanelMessage),
 
     // --- copy / move (F5, F6) ---
     /// The abort key (Ctrl+C on a Mac) or Escape while a job runs: stop it.
@@ -199,10 +176,6 @@ pub enum Message {
     /// Delete or Backspace in the drive menu: take the highlighted favourite
     /// out of the list. A drive row ignores it.
     VolumeMenuRemove,
-    /// Alt+Left: the active panel returns to the folder it was in before.
-    HistoryBack,
-    /// Alt+Right: undo of [`Message::HistoryBack`].
-    HistoryForward,
     /// Adds the active panel's folder to the favourites.
     AddFavourite,
     /// Takes the active panel's folder out of the favourites.
@@ -285,61 +258,14 @@ pub enum Message {
         result: Result<(), CreateDirError>,
     },
 
-    // --- Selection ---
-    /// Insert or Space: tag or untag the row under the cursor and go down one.
-    ToggleTag,
-    /// Shift+Up/Down: tag or untag the row under the cursor, then move.
-    TagMove(isize),
-    /// `*`: tag everything except `..`.
-    TagAll,
-    /// Ctrl+`*`: drop every tag.
-    ClearTags,
-
-    // --- Panel handling ---
-    /// Wheel or trackpad over a panel.
-    PanelScrolled {
-        side: PanelSide,
-        delta: iced::mouse::ScrollDelta,
-    },
-    SwitchPanel,
-    /// A click on a path tab in the title bar: that panel becomes the active one.
-    ActivatePanel(PanelSide),
     /// The window row: moving, zooming and, where the system draws no frame,
     /// the window buttons and the edges that resize.
     TitleBar(TitleBarMessage),
     /// Temporarily switches the UI language. Not yet persisted in config.
     SwitchLanguage,
-    /// Mouse click on a row of a panel.  is true when the click landed in
-    /// the tag column, which toggles the tag instead of moving the cursor.
-    RowClicked {
-        side: PanelSide,
-        index: usize,
-        on_tag: bool,
-    },
-    /// The pointer entered a panel.
-    PanelEntered(PanelSide),
-    /// The pointer left a panel.
-    PanelExited(PanelSide),
-    /// The pointer moved while a row is held with the left button.
-    PanelDragMoved(Point),
-    /// The left button went up while a row was held.
-    PanelDragReleased,
     /// The system drag out of the window could not be started, or did.
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     DragOutStarted(Result<(), String>),
-    /// Double click on a row of a panel: the row's Enter.
-    RowActivated {
-        side: PanelSide,
-        index: usize,
-    },
-
-    /// A click on a column title: sort that panel by the column.
-    SortBy {
-        side: PanelSide,
-        column: SortColumn,
-    },
-    /// Ctrl+F3, Ctrl+F5 or Ctrl+F6: sort the active panel.
-    SortActive(SortColumn),
 
     /// Measure the tagged folders, or the one under the cursor.
     ComputeFolderSizes,
@@ -646,27 +572,6 @@ impl ResizeEdge {
             Self::SouthWest => Direction::SouthWest,
         }
     }
-}
-
-/// Everything a panel that lists search hits sends.
-#[derive(Debug, Clone, PartialEq)]
-pub enum HitListMessage {
-    /// The snapshot of the hits was read (or read again). Dropped when
-    /// `request_id` is not the panel's latest.
-    Read {
-        side: PanelSide,
-        request_id: u64,
-        entries: Vec<FileEntry>,
-    },
-    /// Escape: leave the list and go back to the search.
-    BackToSearch,
-    /// The cross of the tab: leave the list, nothing else.
-    Close(PanelSide),
-    /// Context menu: show the file under the cursor in its folder on the other
-    /// side.
-    ShowOnOtherSide,
-    /// Context menu: take the tagged rows, else the cursor row, off the list.
-    RemoveFromList,
 }
 
 /// Everything the trash view and putting entries back send.

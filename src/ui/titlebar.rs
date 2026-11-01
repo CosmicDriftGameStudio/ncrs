@@ -11,6 +11,7 @@ use super::format::ellipsize_middle;
 use super::layout::{TITLE_BAR_HEIGHT, TRAFFIC_LIGHTS_INSET};
 use super::theme::{self, font_size, size, spacing};
 use crate::i18n::{Language, Msg};
+use crate::messages::PanelMessage;
 use crate::messages::{
     CommandPaletteMessage, FilingStatusMessage, HitListMessage, Message, PanelSide, ResizeEdge,
     SettingsMessage, TitleBarMessage,
@@ -176,7 +177,7 @@ pub fn view<'a>(bar: &TitleBar<'a>) -> Element<'a, Message> {
         }
         let content =
             button(label_row.push(text(letter).size(font_size::SMALL).color(palette.dim_text)))
-                .on_press(Message::ActivatePanel(tab.side))
+                .on_press(Message::Panel(PanelMessage::ActivatePanel(tab.side)))
                 .padding([0.0, TAB_PADDING_X])
                 .width(Length::Fill)
                 .height(Length::Fill)

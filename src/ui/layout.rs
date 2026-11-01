@@ -5,10 +5,11 @@ use iced::{Point, Size};
 use super::theme::{size, spacing};
 
 #[cfg(test)]
-pub use ncrs_ui_kit::layout::{search_visible_rows, FKEYBAR_HEIGHT, SEARCH_CONTENT_ROW_HEIGHT};
 pub use ncrs_ui_kit::layout::{
-    CHROME, DATE_COLUMN_WIDTH, HERMES_CELL_GAP, HERMES_COLUMN_WIDTH, HIT_LIST_ROW_HEIGHT,
-    INITIAL_WINDOW_SIZE, ROW_HEIGHT, SIZE_COLUMN_WIDTH, TAG_COLUMN_WIDTH,
+    search_visible_rows, FKEYBAR_HEIGHT, HIT_LIST_ROW_HEIGHT, SEARCH_CONTENT_ROW_HEIGHT,
+};
+pub use ncrs_ui_kit::layout::{
+    CHROME, COLUMN_HEADER_HEIGHT, INITIAL_WINDOW_SIZE, ROW_HEIGHT, TAG_COLUMN_WIDTH,
 };
 
 pub const STATUSBAR_HEIGHT: f32 = size::STATUS_BAR;
@@ -18,7 +19,6 @@ pub const COMMAND_LINE_HEIGHT: f32 = size::COMMAND_LINE;
 pub const TITLE_BAR_HEIGHT: f32 = size::TITLE_BAR;
 /// Where the row starts on macOS: the traffic lights are drawn over its left end.
 pub const TRAFFIC_LIGHTS_INSET: f32 = 78.0;
-pub const COLUMN_HEADER_HEIGHT: f32 = size::COLUMN_HEADER;
 
 pub const MENU_WIDTH: f32 = 300.0;
 /// The Hermes submenu has labels with a note and a key.
@@ -37,11 +37,6 @@ pub fn visible_rows(window: Size) -> usize {
     // `max(1)`: a window too small for the chrome still has to show one row,
     // otherwise the panel renders nothing and the user cannot move the cursor.
     (rows as isize).max(1) as usize
-}
-
-/// Rows of a hit list that fit where `normal_rows` folder rows fit.
-pub fn hit_list_rows(normal_rows: usize) -> usize {
-    normal_rows.div_euclid(2).max(1)
 }
 
 /// Rows the trash view shows: the panel's, less its title line and the two

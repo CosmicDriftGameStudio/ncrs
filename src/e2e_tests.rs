@@ -60,7 +60,7 @@ use iced_test::runtime::user_interface::{self, UserInterface};
 use iced_test::runtime::{task, Action, Task};
 
 use crate::app::App;
-use crate::messages::{Message, PanelSide};
+use crate::messages::{Message, PanelMessage, PanelSide};
 
 /// One end-to-end session: the app's own state, subscriptions and task channel.
 ///
@@ -2833,8 +2833,8 @@ mod archive_browsing {
             "F5 did not copy the entry out of the archive"
         );
 
-        session.send(Message::GoUp);
-        session.send(Message::GoUp);
+        session.send(Message::Panel(PanelMessage::GoUp));
+        session.send(Message::Panel(PanelMessage::GoUp));
         assert_eq!(session.app.panel(PanelSide::Left).path, canonical);
         assert!(session.app.panel(PanelSide::Left).archive.is_none());
         assert_eq!(
@@ -3175,7 +3175,7 @@ mod archive_viewing {
             "the lock and one slot"
         );
 
-        session.send(Message::GoUp);
+        session.send(Message::Panel(PanelMessage::GoUp));
 
         assert!(session.app.panel(PanelSide::Left).archive.is_none());
         assert!(!copy.exists(), "the copy outlived the archive panel");
@@ -3275,7 +3275,7 @@ mod archive_viewing {
         let held = session.send_held(Message::OpenExternal(crate::fs::OpenKind::View));
         wait_for_a_copy(&cache.path().join("view"));
 
-        session.send(Message::GoUp);
+        session.send(Message::Panel(PanelMessage::GoUp));
 
         assert!(!session.app.is_extracting_for_test());
         assert!(session.app.job_is_idle());

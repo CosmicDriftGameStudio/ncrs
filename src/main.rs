@@ -54,7 +54,7 @@ mod native_menu;
 mod ocr_models;
 mod open_vsx;
 mod palette;
-mod panel_drag;
+pub use ncrs_files::panel_drag;
 mod query_work;
 mod quick_fix;
 mod quick_open;

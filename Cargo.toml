@@ -66,6 +66,8 @@ ncrs-index = { path = "crates/ncrs-index", version = "0.0.0" }
 ncrs-core = { path = "crates/ncrs-core", version = "0.0.0" }
 # The search: engine, filters, view state and messages.
 ncrs-search = { path = "crates/ncrs-search", version = "0.0.0" }
+# The file panel: its state, column header, history, the drag between panels and the hit list.
+ncrs-files = { path = "crates/ncrs-files", version = "0.0.0" }
 # The filesystem layer: reading folders, copying, archives, the trash, SFTP.
 ncrs-fs = { path = "crates/ncrs-fs", version = "0.0.0" }
 # Translated UI strings, generated from strings.json.
@@ -193,6 +195,8 @@ sha2 = "0.10"
 ncrs-fs = { path = "crates/ncrs-fs", version = "0.0.0", features = ["test-support"] }
 # Hits for the snapshot tests of the search filters.
 ncrs-search = { path = "crates/ncrs-search", version = "0.0.0", features = ["test-support"] }
+# `PanelState::apply_listing`, for the tests of the panel in the app.
+ncrs-files = { path = "crates/ncrs-files", version = "0.0.0", features = ["test-support"] }
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 # The clipboard tests read the pasteboard the way the Finder does and give the

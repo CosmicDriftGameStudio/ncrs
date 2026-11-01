@@ -80,7 +80,7 @@ use crate::native_menu;
 use crate::ocr_models::{download_models, DownloadError, OcrModelsCard};
 use crate::open_vsx::{self, ExtensionId, FetchError, FetchedExtension, ThemeFileUrl, ThemeSource};
 use crate::palette::{Palette, ThemePreset};
-use crate::panel_drag::{self, PanelDrag};
+use crate::panel_drag::PanelDrag;
 use crate::query_work::{self, QueryAccess};
 use crate::quick_fix::{field_to_fix, QuickFix, QuickFixAction};
 use crate::quick_open::{DocumentRequest, QuickOpen, MAX_DOCUMENT_HITS, QUICK_OPEN_FILE_LIMIT};
@@ -138,7 +138,8 @@ use crate::ui::titlebar;
 use crate::ui::transfer as transfer_ui;
 use crate::ui::trash as trash_ui;
 use crate::ui::volumes::{self as volumes_view, FavouriteRow, ServerRow};
-use crate::ui::{conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelProps, PanelState};
+use crate::ui::{conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelState};
+use ncrs_files::{PanelMessage, Panels};
 pub use ncrs_i18n::fill_template;
 use ncrs_index::{
     IncludeOutcome, KeyStore, KeyringKeyStore, KindSkip, Kinds, QuerySpec, RuleId, SavedQueryId,
@@ -247,7 +248,7 @@ fn archive_refusal(panel: &PanelState, message: &Message) -> Option<Msg> {
             | HermesFileMessage::ShowInInspection,
         )
         | Message::QuickOpen(QuickOpenMessage::Open) => Some(Msg::StatusArchiveReadOnly),
-        Message::OpenSelected
+        Message::Panel(PanelMessage::OpenSelected)
             if panel.selected_entry().is_some_and(|entry| {
                 !entry.is_dir && !entry.is_parent && fs::archive::is_archive_name(&entry.name)
             }) =>
@@ -455,64 +456,11 @@ impl std::hash::Hash for InputCell {
     }
 }
 
-/// How long a typed character still belongs to the same prefix.
-const TYPE_AHEAD_WINDOW: std::time::Duration = std::time::Duration::from_secs(1);
-
-/// What has been typed to jump to an entry.
-#[derive(Debug, Default)]
-struct TypeAhead {
-    prefix: String,
-    last_typed: Option<std::time::Instant>,
-}
-
-impl TypeAhead {
-    /// The prefix after `typed` arrives at `now`: it extends the previous one
-    /// within the window and starts a new one after it.
-    fn extend(&mut self, typed: &str, now: std::time::Instant) -> &str {
-        let continues = self
-            .last_typed
-            .is_some_and(|last| now.saturating_duration_since(last) <= TYPE_AHEAD_WINDOW);
-        if !continues {
-            self.prefix.clear();
-        }
-        self.prefix.push_str(typed);
-        self.last_typed = Some(now);
-        &self.prefix
-    }
-
-    fn reset(&mut self) {
-        self.prefix.clear();
-        self.last_typed = None;
-    }
-}
-
 /// Not inside an archive and not on an SFTP server: something other apps can
 /// be handed by path.
 fn is_file_on_local_disk(path: &Path) -> bool {
     RemotePath::parse(path).is_none()
         && fs::archive::locate_in_archive(path).is_none_or(|place| place.inner.is_empty())
-}
-
-/// Moving the cursor or the focus by other means ends a prefix.
-fn resets_type_ahead(message: &Message) -> bool {
-    matches!(
-        message,
-        Message::MoveSelection(_)
-            | Message::PageUp
-            | Message::PageDown
-            | Message::SelectFirst
-            | Message::SelectLast
-            | Message::SwitchPanel
-            | Message::ActivatePanel(_)
-            | Message::RowClicked { .. }
-            | Message::RowActivated { .. }
-            | Message::TagMove(_)
-            | Message::ToggleTag
-            | Message::OpenSelected
-            | Message::GoUp
-            | Message::HistoryBack
-            | Message::HistoryForward
-    )
 }
 
 /// The user asks for something only Hermes can do, as opposed to the answers
@@ -542,8 +490,8 @@ fn asks_for_hermes(message: &Message) -> bool {
 fn leaves_bar_fields(message: &Message) -> bool {
     matches!(
         message,
-        Message::RowClicked { .. }
-            | Message::RowActivated { .. }
+        Message::Panel(PanelMessage::RowClicked { .. })
+            | Message::Panel(PanelMessage::RowActivated { .. })
             | Message::Transfer(_)
             | Message::OpenSearch
             | Message::QuickOpen(QuickOpenMessage::Open)
@@ -578,9 +526,9 @@ fn leaves_bar_fields(message: &Message) -> bool {
             | Message::CopyToClipboard(_)
             | Message::Paste
             | Message::CopyFilesToClipboard
-            | Message::SwitchPanel
-            | Message::ActivatePanel(_)
-            | Message::SortBy { .. }
+            | Message::Panel(PanelMessage::SwitchPanel)
+            | Message::Panel(PanelMessage::ActivatePanel(_))
+            | Message::Panel(PanelMessage::SortBy { .. })
     )
 }
 
@@ -965,13 +913,6 @@ fn blocked_access_press(sandbox_active: bool, blocked: &Path) -> Option<Message>
     None
 }
 
-/// Which way Alt+Left / Alt+Right walks a panel's history.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum HistoryDirection {
-    Back,
-    Forward,
-}
-
 /// The open drive menu. The list is read when the menu opens, so a drive
 /// plugged in a moment ago is there and one removed since is gone.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1240,9 +1181,8 @@ enum ConfigProblem {
 }
 
 pub struct App {
-    left_panel: PanelState,
-    right_panel: PanelState,
-    active_panel: PanelSide,
+    /// Both panels, which one is active, the type-ahead and the drag between them.
+    panels: Panels,
     /// Number of file rows that fit into a panel (derived from window size).
     visible_rows: usize,
     lang: Language,
@@ -1340,10 +1280,6 @@ pub struct App {
     notice_generation: u64,
     /// Files from another app are held over the window.
     drop_hover: bool,
-    /// A row is held with the left button; it is a drag once the pointer moved.
-    panel_drag: Option<PanelDrag>,
-    /// The panel under the pointer, which is where a drag can be dropped.
-    hovered_panel: Option<PanelSide>,
     /// The files of the drop still arriving.
     dropped_files: Vec<PathBuf>,
     /// Counts the dropped files, so the settle timer knows the burst is over.
@@ -1385,7 +1321,6 @@ pub struct App {
     /// The fixes for an inquiry (Cmd+.); at most one of it and the context menu.
     quick_fix: Option<QuickFix>,
     quick_fix_generation: u64,
-    type_ahead: TypeAhead,
     /// The path as typed while the status bar's path field is being edited.
     path_field: Option<String>,
     command_line: CommandLine,
@@ -2486,7 +2421,9 @@ fn search_key(prompt: &PromptKeyState, key: &Key, key_modifiers: Modifiers) -> O
     bound
         .filter(|_| is_not_typed_by_text_field(key, key_modifiers))
         .or_else(|| match type_ahead_message(key, key_modifiers) {
-            Some(Message::TypeAhead(typed)) => search(SearchMessage::AppendToQuery(typed)),
+            Some(Message::Panel(PanelMessage::TypeAhead(typed))) => {
+                search(SearchMessage::AppendToQuery(typed))
+            }
             _ => None,
         })
 }
@@ -2517,7 +2454,7 @@ fn trash_key(prompt: &PromptKeyState, key: &Key, key_modifiers: Modifiers) -> Op
     }
     bound.filter(|message| {
         *message == Message::Quit
-            || *message == Message::SwitchPanel
+            || *message == Message::Panel(PanelMessage::SwitchPanel)
             || *message == KeyAction::CommandPalette.message()
             || *message == KeyAction::RestoreLastDeletion.message()
             || *message == KeyAction::OpenTrashInFinder.message()
@@ -2527,10 +2464,10 @@ fn trash_key(prompt: &PromptKeyState, key: &Key, key_modifiers: Modifiers) -> Op
 /// The trash view's version of a bound tagging message.
 fn trash_tagging(message: &Message) -> Option<TrashMessage> {
     match message {
-        Message::ToggleTag => Some(TrashMessage::ToggleTag),
-        Message::TagMove(delta) => Some(TrashMessage::TagMove(*delta)),
-        Message::TagAll => Some(TrashMessage::TagAll),
-        Message::ClearTags => Some(TrashMessage::ClearTags),
+        Message::Panel(PanelMessage::ToggleTag) => Some(TrashMessage::ToggleTag),
+        Message::Panel(PanelMessage::TagMove(delta)) => Some(TrashMessage::TagMove(*delta)),
+        Message::Panel(PanelMessage::TagAll) => Some(TrashMessage::TagAll),
+        Message::Panel(PanelMessage::ClearTags) => Some(TrashMessage::ClearTags),
         _ => None,
     }
 }
@@ -2545,10 +2482,10 @@ fn is_search_toggle(message: &SearchMessage) -> bool {
 /// The search's version of a bound tagging or toggle message.
 fn tag_or_toggle(message: &Message) -> Option<SearchMessage> {
     match message {
-        Message::ToggleTag => Some(SearchMessage::ToggleTag),
-        Message::TagMove(delta) => Some(SearchMessage::TagMove(*delta)),
-        Message::TagAll => Some(SearchMessage::TagAll),
-        Message::ClearTags => Some(SearchMessage::ClearTags),
+        Message::Panel(PanelMessage::ToggleTag) => Some(SearchMessage::ToggleTag),
+        Message::Panel(PanelMessage::TagMove(delta)) => Some(SearchMessage::TagMove(*delta)),
+        Message::Panel(PanelMessage::TagAll) => Some(SearchMessage::TagAll),
+        Message::Panel(PanelMessage::ClearTags) => Some(SearchMessage::ClearTags),
         Message::Search(toggle) if is_search_toggle(toggle) => Some(toggle.clone()),
         _ => None,
     }
@@ -2675,7 +2612,7 @@ fn type_ahead_message(key: &Key, modifiers: Modifiers) -> Option<Message> {
         return None;
     };
     ((modifiers - Modifiers::SHIFT).is_empty() && typed.chars().all(|c| !c.is_control()))
-        .then(|| Message::TypeAhead(typed.to_string()))
+        .then(|| Message::Panel(PanelMessage::TypeAhead(typed.to_string())))
 }
 
 fn lowercase_character(key: &Key) -> Key {
@@ -2876,13 +2813,13 @@ fn filing_status_key(
 fn repeats(message: &Message) -> bool {
     matches!(
         message,
-        Message::MoveSelection(_)
-            | Message::PageUp
-            | Message::PageDown
-            | Message::SelectFirst
-            | Message::SelectLast
-            | Message::ToggleTag
-            | Message::TagMove(_)
+        Message::Panel(PanelMessage::MoveSelection(_))
+            | Message::Panel(PanelMessage::PageUp)
+            | Message::Panel(PanelMessage::PageDown)
+            | Message::Panel(PanelMessage::SelectFirst)
+            | Message::Panel(PanelMessage::SelectLast)
+            | Message::Panel(PanelMessage::ToggleTag)
+            | Message::Panel(PanelMessage::TagMove(_))
             | Message::PromptInput(_)
             | Message::CommandLine(
                 CommandLineMessage::HistoryPrevious | CommandLineMessage::HistoryNext,
@@ -3435,9 +3372,11 @@ impl App {
     ) -> (Self, Task<Message>) {
         let [left_cursor, right_cursor] = cursors;
         let mut app = Self {
-            left_panel: PanelState::new(left.clone()),
-            right_panel: PanelState::new(right.clone()),
-            active_panel: PanelSide::Left,
+            panels: Panels::new(
+                PanelState::new(left.clone()),
+                PanelState::new(right.clone()),
+                PanelSide::Left,
+            ),
             visible_rows: layout::visible_rows(layout::INITIAL_WINDOW_SIZE),
             lang: Language::default(),
             function_keys: Keymap::built_in().function_keys(Language::default(), KeyScope::Panel),
@@ -3483,8 +3422,6 @@ impl App {
             notice: None,
             notice_generation: 0,
             drop_hover: false,
-            panel_drag: None,
-            hovered_panel: None,
             dropped_files: Vec::new(),
             drop_generation: 0,
             job_done: 0,
@@ -3500,7 +3437,6 @@ impl App {
             context_menu: None,
             quick_fix: None,
             quick_fix_generation: 0,
-            type_ahead: TypeAhead::default(),
             path_field: None,
             command_line: CommandLine::default(),
             path_check_id: 0,
@@ -3782,8 +3718,10 @@ impl App {
     }
 
     fn update_message(&mut self, message: Message) -> Task<Message> {
-        if resets_type_ahead(&message) {
-            self.type_ahead.reset();
+        if let Message::Panel(panel_message) = &message {
+            if panel_message.resets_type_ahead() {
+                self.panels.type_ahead.reset();
+            }
         }
         if let Message::NoticeExpired(generation) = message {
             if generation == self.notice_generation {
@@ -3835,8 +3773,6 @@ impl App {
     }
 
     fn apply(&mut self, message: Message) -> Task<Message> {
-        let rows = self.visible_rows;
-
         let task = match message {
             // A raw key press. Routed here rather than in the subscription,
             // because that one cannot see whether a prompt is open.
@@ -3991,8 +3927,6 @@ impl App {
                 Task::none()
             }
             Message::VolumeMenuRemove => self.remove_highlighted_row(),
-            Message::HistoryBack => self.step_history(HistoryDirection::Back),
-            Message::HistoryForward => self.step_history(HistoryDirection::Forward),
             Message::AddFavourite => self.add_favourite(),
             Message::RemoveFavourite => self.remove_favourite(),
             Message::OpenFavourites => self.open_favourites(),
@@ -4117,7 +4051,7 @@ impl App {
                     return Task::none();
                 }
                 let kind = prompt.kind();
-                let side = self.prompt_side.unwrap_or(self.active_panel);
+                let side = self.prompt_side.unwrap_or(self.panels.active);
                 let parent = self.panel(side).path.clone();
                 let new_name = prompt.name().trim().to_string();
                 let request_id = self.prompt_request_id.wrapping_add(1);
@@ -4161,123 +4095,8 @@ impl App {
                 result,
             } => self.finish_prompt(kind, request_id, result),
 
-            Message::DirectoryLoaded {
-                side,
-                request_id,
-                path,
-                mut entries,
-                error,
-                sorted_by,
-                select,
-                archive,
-            } => {
-                let sorted_by_claim = self.fill_cached_folder_sizes(
-                    side,
-                    &path,
-                    archive.is_none(),
-                    &mut entries,
-                    sorted_by,
-                );
-                let panel = self.panel_mut(side);
-                let mut left_archive = None;
-                let mut left_server = None;
-                if panel.request_id == request_id {
-                    let before = panel.remote();
-                    left_archive = panel
-                        .archive
-                        .take()
-                        .filter(|old| Some(old) != archive.as_ref());
-                    panel.archive = archive;
-                    let previous = panel.path.clone();
-                    panel.apply_sorted_listing(
-                        path,
-                        entries,
-                        error,
-                        select.as_deref(),
-                        rows,
-                        sorted_by_claim,
-                    );
-                    panel.record_arrival(previous, request_id);
-                    left_server = before.filter(|server| panel.remote().as_ref() != Some(server));
-                    self.close_menu_of_reloaded(side);
-                }
-                if let Some(old) = left_archive {
-                    self.drop_view_copies_of(&old);
-                }
-                if let Some(server) = left_server {
-                    self.drop_view_copies_of(&server.root_path());
-                }
-                self.stop_folder_size_run_if_left(side);
-                Task::none()
-            }
-
-            Message::MoveSelection(delta) => {
-                self.job_error = None;
-                self.notice = None;
-                self.active_panel_mut().move_selection(delta, rows);
-                Task::none()
-            }
-            Message::PageUp => {
-                let page = self.visible_rows_of(self.active_panel);
-                self.active_panel_mut()
-                    .move_selection(-(page as isize), rows);
-                Task::none()
-            }
-            Message::PageDown => {
-                let page = self.visible_rows_of(self.active_panel);
-                self.active_panel_mut().move_selection(page as isize, rows);
-                Task::none()
-            }
-            Message::SelectFirst => {
-                self.active_panel_mut().select(0, rows);
-                Task::none()
-            }
-            Message::SelectLast => {
-                self.active_panel_mut().select_last(rows);
-                Task::none()
-            }
-
-            Message::OpenSelected => self.open_selected(),
-            Message::GoUp => self.go_up(self.active_panel),
-            Message::TypeAhead(typed) => {
-                self.jump_to_typed(&typed);
-                Task::none()
-            }
-
-            // --- selection ---
-            Message::ToggleTag => self.tag_and_move(1),
-            Message::TagMove(delta) => self.tag_and_move(delta),
-            Message::TagAll => {
-                // Split borrow: the set is filled while the entries are read.
-                let panel = self.active_panel_mut();
-                let mut selection = std::mem::take(&mut panel.selection);
-                selection.tag_all(&panel.entries);
-                panel.selection = selection;
-                Task::none()
-            }
-            Message::ClearTags => {
-                self.active_panel_mut().selection.clear();
-                Task::none()
-            }
-
-            // The overlays do not capture the wheel, so the panel behind one
-            // would otherwise scroll under a dialog.
-            Message::PanelScrolled { side, delta } => {
-                if !self.overlay_is_open() {
-                    self.panel_mut(side).scroll(delta, rows);
-                }
-                Task::none()
-            }
-            Message::SwitchPanel => {
-                self.active_panel = self.active_panel.other();
-                Task::none()
-            }
-            Message::ActivatePanel(side) => {
-                self.active_panel = side;
-                self.close_settings()
-            }
+            Message::Panel(panel_message) => self.update_panel(panel_message),
             Message::TitleBar(title_bar) => update_title_bar(title_bar),
-            Message::SortBy { .. } | Message::SortActive(_) => self.update_sort(message),
             Message::ComputeFolderSizes => self.compute_folder_sizes(),
             Message::FolderSizeMeasured { run, folder, size } => {
                 self.folder_size_measured(run, folder, size)
@@ -4286,50 +4105,8 @@ impl App {
                 self.switch_language();
                 Task::none()
             }
-            // A click in the tag column toggles the tag; anywhere else it moves
-            // the cursor. Without this, tagging is keyboard-only, and the
-            // column of stars the view draws cannot be clicked at all.
-            // A Ctrl+click is a right click: it replaces an open menu.
-            Message::RowClicked { side, index, .. } if is_context_click(self.modifiers) => {
-                let pointer = self.input.lock().pointer;
-                self.open_context_menu(side, index, Some(pointer));
-                Task::none()
-            }
-            Message::RowClicked { .. } if self.context_menu.is_some() => {
-                // A click beside the menu only closes it.
-                self.context_menu = None;
-                Task::none()
-            }
-            Message::RowClicked {
-                side,
-                index,
-                on_tag,
-            } => {
-                self.active_panel = side;
-                let toggle = on_tag || self.modifiers.command();
-                let panel = self.panel_mut(side);
-                panel.select(index, rows);
-                if toggle {
-                    // `..` is not a thing to copy, so it is not taggable — the
-                    // same rule the keyboard path uses.
-                    if let Some(entry) = panel.entries.get(index) {
-                        if !entry.is_parent {
-                            let path = entry.path.clone();
-                            panel.selection.toggle(&path);
-                        }
-                    }
-                }
-                self.arm_panel_drag(side, on_tag);
-                Task::none()
-            }
-            panel_message @ (Message::PanelEntered(_)
-            | Message::PanelExited(_)
-            | Message::PanelDragMoved(_)
-            | Message::PanelDragReleased) => self.update_panel_pointer(panel_message),
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             Message::DragOutStarted(started) => self.drag_out_started(started),
-
-            Message::RowActivated { side, index } => self.activate_row(side, index),
 
             Message::WindowResized(size) => {
                 self.apply_window_size(size);
@@ -4430,34 +4207,6 @@ impl App {
         }
     }
 
-    /// Puts the values of this session into a fresh local listing. The returned
-    /// sort claim is dropped when a value moved a folder in a size-sorted
-    /// panel, so that the listing is sorted again.
-    fn fill_cached_folder_sizes(
-        &self,
-        side: PanelSide,
-        path: &Path,
-        outside_an_archive: bool,
-        entries: &mut [fs::FileEntry],
-        sorted_by: fs::SortKey,
-    ) -> Option<fs::SortKey> {
-        let cached = self.folder_sizes.get(path);
-        let Some(known) =
-            cached.filter(|_| outside_an_archive && RemotePath::parse(path).is_none())
-        else {
-            return Some(sorted_by);
-        };
-        let mut filled = false;
-        for entry in entries.iter_mut().filter(|entry| entry.is_dir) {
-            if let Some(size) = known.get(&entry.name) {
-                entry.folder_size = Some(*size);
-                filled = true;
-            }
-        }
-        let resort = filled && self.panel(side).sort.column == fs::SortColumn::Size;
-        (!resort).then_some(sorted_by)
-    }
-
     /// A reload of the same folder keeps the run; another folder ends it.
     fn stop_folder_size_run_if_left(&mut self, side: PanelSide) {
         let left = self
@@ -4484,7 +4233,7 @@ impl App {
         self.folder_size_runs_started += 1;
         self.folder_size_run = Some(FolderSizeRun {
             id: self.folder_size_runs_started,
-            side: self.active_panel,
+            side: self.panels.active,
             directory: self.active_panel().path.clone(),
             waiting: targets.into(),
             stop: Arc::new(AtomicBool::new(false)),
@@ -4552,21 +4301,6 @@ impl App {
         self.next_folder_size_walk()
     }
 
-    fn update_sort(&mut self, message: Message) -> Task<Message> {
-        let rows = self.visible_rows;
-        match message {
-            // A click beside an open menu only closes it.
-            Message::SortBy { .. } if self.context_menu.is_some() => self.context_menu = None,
-            Message::SortBy { side, column } => {
-                self.active_panel = side;
-                self.panel_mut(side).request_sort(column, rows);
-            }
-            Message::SortActive(column) => self.active_panel_mut().request_sort(column, rows),
-            _ => {}
-        }
-        Task::none()
-    }
-
     fn update_quick_fix(&mut self, message: QuickFixMessage) -> Task<Message> {
         match message {
             QuickFixMessage::Open => self.open_quick_fix(),
@@ -4618,7 +4352,7 @@ impl App {
             let text = self.lang.text(Msg::StatusQuickFixNone).to_owned();
             return self.show_notice(text);
         };
-        let side = self.active_panel;
+        let side = self.panels.active;
         let panel = self.panel(side);
         let anchor = layout::cursor_row_anchor(
             side == PanelSide::Right,
@@ -4790,7 +4524,7 @@ impl App {
                 Task::none()
             }
             Message::ContextMenuKey => {
-                let side = self.active_panel;
+                let side = self.panels.active;
                 let index = self.panel(side).selected;
                 self.open_context_menu(side, index, None);
                 Task::none()
@@ -4960,7 +4694,7 @@ impl App {
             }
             Submission::ChangeDirectory(path) => {
                 self.command_line.remember(&typed);
-                let side = self.active_panel;
+                let side = self.panels.active;
                 let target = fs::resolve_typed_path(&self.active_panel().path, &self.home, path);
                 let request_id = self.command_line.next_cd_check();
                 Task::perform(fs::locate(target.clone()), move |result| {
@@ -5070,7 +4804,7 @@ impl App {
     /// The rows the menu was opened on are gone. It acts on the active panel,
     /// so only that panel's reload closes it.
     fn close_menu_of_reloaded(&mut self, side: PanelSide) {
-        if side == self.active_panel {
+        if side == self.panels.active {
             self.context_menu = None;
         }
     }
@@ -5093,7 +4827,7 @@ impl App {
             self.set_path_field(None);
             return release_focus();
         }
-        let side = self.active_panel;
+        let side = self.panels.active;
         // Before anything that asks the disk: an address, or a path typed
         // while the panel is on a server, is no path of this computer.
         if let Some(opened) = self.open_typed_remote(side, typed) {
@@ -5209,29 +4943,6 @@ impl App {
         }
     }
 
-    /// Moves the cursor to the first entry named like what has been typed.
-    /// Nothing happens under an overlay or when no entry matches.
-    fn jump_to_typed(&mut self, typed: &str) {
-        if self.overlay_is_open() {
-            return;
-        }
-        let rows = self.visible_rows;
-        let now = (self.clock)();
-        let prefix = self.type_ahead.extend(typed, now).to_lowercase();
-        let panel = self.active_panel_mut();
-        let found = panel.entries.iter().position(|entry| {
-            !entry.is_parent
-                && entry
-                    .name
-                    .to_string_lossy()
-                    .to_lowercase()
-                    .starts_with(&prefix)
-        });
-        if let Some(index) = found {
-            panel.select(index, rows);
-        }
-    }
-
     /// Writes the current routing state into the cell the keyboard reads.
     ///
     /// A no-op before the first `subscription()` call, which is the only time
@@ -5284,41 +4995,34 @@ impl App {
 
     pub fn view(&self) -> Element<'_, Message> {
         let panel_view = |side: PanelSide| {
-            panel::view(
+            let hermes_cell: Option<ncrs_files::HermesCellOf<'_>> =
+                self.hermes_active().then(|| {
+                    let column = ColumnView::new(
+                        &self.hermes_column,
+                        &self.filing_config.locations,
+                        self.hermes_spinner_angle,
+                        &self.file_list_tags,
+                        &self.tag_exceptions,
+                        self.window_size.width / 2.0,
+                        &self.kinds,
+                    );
+                    let (lang, palette) = (self.lang, self.palette);
+                    Box::new(move |entry: &fs::FileEntry| {
+                        panel::hermes_cell_of(entry, column, lang, &palette)
+                    }) as ncrs_files::HermesCellOf<'_>
+                });
+            ncrs_files::view(
                 self.panel(side),
-                PanelProps {
-                    is_active: self.active_panel == side,
-                    visible_rows: self.visible_rows,
+                ncrs_files::ViewCtx {
+                    side,
+                    lang: self.lang,
                     palette: self.palette,
-                    hermes: self.hermes_active().then(|| {
-                        ColumnView::new(
-                            &self.hermes_column,
-                            &self.filing_config.locations,
-                            self.hermes_spinner_angle,
-                            &self.file_list_tags,
-                            &self.tag_exceptions,
-                            self.window_size.width / 2.0,
-                            &self.kinds,
-                        )
-                    }),
-                },
-                self.lang,
-                move |index, click| match click {
-                    panel::RowClick::Open => Message::RowActivated { side, index },
-                    panel::RowClick::Tag | panel::RowClick::Cursor => Message::RowClicked {
-                        side,
-                        index,
-                        on_tag: click == panel::RowClick::Tag,
-                    },
-                },
-                move |index| Message::ContextMenuAt { side, index },
-                move |column| Message::SortBy { side, column },
-                panel::PanelPointer {
-                    scrolled: move |delta| Message::PanelScrolled { side, delta },
-                    entered: Message::PanelEntered(side),
-                    exited: Message::PanelExited(side),
+                    is_active: self.panels.active == side,
+                    visible_rows: self.visible_rows,
+                    hermes_cell,
                 },
             )
+            .map(Message::Panel)
         };
 
         let side_view_plain = |side: PanelSide| match self.search.view.as_ref() {
@@ -5331,7 +5035,7 @@ impl App {
                     ncrs_search::ViewCtx {
                         lang: self.lang,
                         palette: &self.palette,
-                        is_active: self.active_panel == side,
+                        is_active: self.panels.active == side,
                         shortcuts: self.toggle_shortcuts(),
                         toggle_for_press: Rc::new(move |key, physical_key, modifiers| {
                             search_toggle_for_press(keymap, key, physical_key, modifiers)
@@ -5403,7 +5107,7 @@ impl App {
                     self.lang,
                     &self.palette,
                     statusbar::Activity {
-                        side: self.active_panel,
+                        side: self.panels.active,
                         theme_name: self.theme_name(),
                         job: self.job_status(),
                         job_press: self.transfer.is_some().then_some(Message::TransferDialog(
@@ -5688,30 +5392,24 @@ impl App {
     // -----------------------------------------------------------------------
 
     pub fn panel(&self, side: PanelSide) -> &PanelState {
-        match side {
-            PanelSide::Left => &self.left_panel,
-            PanelSide::Right => &self.right_panel,
-        }
+        self.panels.panel(side)
     }
 
     pub fn panel_mut(&mut self, side: PanelSide) -> &mut PanelState {
-        match side {
-            PanelSide::Left => &mut self.left_panel,
-            PanelSide::Right => &mut self.right_panel,
-        }
+        self.panels.panel_mut(side)
     }
 
     pub fn active_panel(&self) -> &PanelState {
-        self.panel(self.active_panel)
+        self.panels.active_panel()
     }
 
     pub fn active_panel_mut(&mut self) -> &mut PanelState {
-        self.panel_mut(self.active_panel)
+        self.panels.active_panel_mut()
     }
 
     #[allow(dead_code)] // Used by upcoming two-panel operations (copy/move).
     pub fn inactive_panel_mut(&mut self) -> &mut PanelState {
-        self.panel_mut(self.active_panel.other())
+        self.panel_mut(self.panels.active.other())
     }
 
     /// The error the status line shows: a job's, else the config's.
@@ -6835,7 +6533,7 @@ impl App {
             return;
         }
         let rows = self.visible_rows;
-        self.active_panel = side;
+        self.panels.active = side;
         self.job_error = None;
         self.notice = None;
         let panel = self.panel_mut(side);
@@ -7370,7 +7068,7 @@ impl App {
             let text = self.lang.text(Msg::StatusNoFavourites).to_owned();
             return self.show_notice(text);
         }
-        self.open_volume_menu_on(self.active_panel, true);
+        self.open_volume_menu_on(self.panels.active, true);
         Task::none()
     }
 
@@ -7403,45 +7101,6 @@ impl App {
             Msg::StatusFavouriteNotOne
         };
         self.favourite_notice(msg, &path)
-    }
-
-    /// Alt+Left / Alt+Right on the active panel. A folder that is gone since
-    /// opens its nearest existing parent, and the arrival does not count as a
-    /// visit, so Forward survives it.
-    fn step_history(&mut self, direction: HistoryDirection) -> Task<Message> {
-        let side = self.active_panel;
-        let current = self.panel(side).path.clone();
-        let history = &mut self.panel_mut(side).history;
-        let stepped = match direction {
-            HistoryDirection::Back => history.step_back(current.clone()),
-            HistoryDirection::Forward => history.step_forward(current.clone()),
-        };
-        let Some(target) = stepped else {
-            return Task::none();
-        };
-        let (resolved, select) = if let Some(place) = RemotePath::parse(&target) {
-            // Whether a folder on a server is still there is found out by
-            // opening it; going up puts the cursor on the folder just left.
-            let left = RemotePath::parse(&current)
-                .filter(|from| from.parent().as_ref() == Some(&place))
-                .and_then(|from| from.file_name().map(str::to_owned));
-            (target, left)
-        } else {
-            let resolved = session_state::nearest_existing_directory(&target).unwrap_or(target);
-            // Going up to a parent puts the cursor on the folder just left.
-            let select = current
-                .strip_prefix(&resolved)
-                .ok()
-                .and_then(|below| below.components().next())
-                .map(|first| first.as_os_str().to_string_lossy().into_owned());
-            (resolved, select)
-        };
-        self.job_error = None;
-        self.notice = None;
-        let task = self.load(side, resolved, select);
-        let panel = self.panel_mut(side);
-        panel.history_step_request = Some(panel.request_id);
-        task
     }
 
     /// A click on the "access blocked" error: the Full Disk Access page of
@@ -7502,23 +7161,8 @@ impl App {
         };
         self.job_error = None;
         self.notice = None;
-        self.active_panel = menu.side;
+        self.panels.active = menu.side;
         self.load(menu.side, target, None)
-    }
-
-    /// Toggles the tag on the cursor row and moves by `delta`, as NC does. The
-    /// `..` entry cannot be tagged but the cursor still moves past it.
-    fn tag_and_move(&mut self, delta: isize) -> Task<Message> {
-        let rows = self.visible_rows;
-        let panel = self.active_panel_mut();
-        if let Some(entry) = panel.selected_entry() {
-            if !entry.is_parent {
-                let path = entry.path.clone();
-                panel.selection.toggle(&path);
-            }
-        }
-        panel.move_selection(delta, rows);
-        Task::none()
     }
 
     /// F8 / Shift+F8: ask before deleting. Nothing to act on, or something
@@ -7788,7 +7432,7 @@ impl App {
         } else {
             Task::none()
         };
-        self.active_panel = side;
+        self.panels.active = side;
         self.trash_side = side;
         self.trash_view = Some(TrashView::new(reach));
         Task::batch([closed_search, self.list_trash()])
@@ -7829,7 +7473,7 @@ impl App {
         trash_ui::view(trash_ui::Props {
             view,
             visible_rows: self.trash_rows(),
-            is_active: self.active_panel == side,
+            is_active: self.panels.active == side,
             panel_width: self.window_size.width / 2.0,
             lang: self.lang,
             palette: &self.palette,
@@ -8110,7 +7754,7 @@ impl App {
     /// F7 and Shift+F4: the name prompt for the active panel's folder.
     fn open_prompt(&mut self, prompt: Prompt) -> Task<Message> {
         self.prompt = Some(prompt);
-        self.prompt_side = Some(self.active_panel);
+        self.prompt_side = Some(self.panels.active);
         // The field has to be focused or the prompt swallows every
         // keystroke: `TextInput` only takes keys while focused, and
         // giving it an Id does not focus it.
@@ -8343,21 +7987,6 @@ impl App {
             .to_owned()
     }
 
-    /// Alt+F5: the name prompt for a new archive in the other panel's folder,
-    /// with the name of the single entry, or of the folder they are in, as a
-    /// start.
-    /// A double click on a row: the row's Enter, unless it is a context click
-    /// or a context menu is open.
-    fn activate_row(&mut self, side: PanelSide, index: usize) -> Task<Message> {
-        if is_context_click(self.modifiers) || self.context_menu.is_some() {
-            return Task::none();
-        }
-        self.active_panel = side;
-        let rows = self.visible_rows;
-        self.panel_mut(side).select(index, rows);
-        self.update(Message::OpenSelected)
-    }
-
     /// Reads both panels again, except those inside an archive or on a server.
     fn reload_local_panels(&mut self) -> Task<Message> {
         let reloads = [PanelSide::Left, PanelSide::Right].map(|side| {
@@ -8372,6 +8001,9 @@ impl App {
         )
     }
 
+    /// Alt+F5: the name prompt for a new archive in the other panel's folder,
+    /// with the name of the single entry, or of the folder they are in, as a
+    /// start.
     fn open_pack_prompt(&mut self) -> Task<Message> {
         if self.jobs.is_busy()
             || self.prompt.is_some()
@@ -8437,7 +8069,7 @@ impl App {
         let Some(prompt) = self.prompt.take() else {
             return Task::none();
         };
-        let target_side = self.prompt_side.take().unwrap_or(self.active_panel);
+        let target_side = self.prompt_side.take().unwrap_or(self.panels.active);
         let archive = prompt.archive_path();
         let name = archive
             .file_name()
@@ -9158,49 +8790,13 @@ impl App {
     /// Files from another app held over the window outline the active panel;
     /// a row dragged over the other panel outlines that one.
     fn is_drop_target(&self, side: PanelSide) -> bool {
-        let drag_hovers_side = self.panel_drag.is_some_and(|drag| {
-            drag.is_dragging() && drag.source().other() == side && self.hovered_panel == Some(side)
-        });
-        (self.drop_hover && side == self.active_panel) || drag_hovers_side
+        (self.drop_hover && side == self.panels.active) || self.panels.drag_hovers_side(side)
     }
 
     /// A cursor only where a drag from a panel is over a panel; files held over
     /// the window from another app keep the OS cursor.
     fn drag_cursor(&self, side: PanelSide) -> Option<mouse::Interaction> {
-        let drag = self.panel_drag.filter(|drag| drag.is_dragging())?;
-        if self.hovered_panel != Some(side) {
-            return None;
-        }
-        if drag.source() == side {
-            Some(mouse::Interaction::NoDrop)
-        } else if panel_drag::move_modifier_held(self.modifiers) {
-            Some(mouse::Interaction::Move)
-        } else {
-            Some(mouse::Interaction::Copy)
-        }
-    }
-
-    /// A press on the star only tags, so it never starts a drag.
-    fn arm_panel_drag(&mut self, side: PanelSide, on_tag: bool) {
-        if on_tag {
-            return;
-        }
-        let mut input = self.input.lock();
-        self.panel_drag = Some(PanelDrag::new(side, input.pointer));
-        input.panel_drag_armed = true;
-    }
-
-    fn update_panel_pointer(&mut self, message: Message) -> Task<Message> {
-        match message {
-            Message::PanelEntered(side) => self.hovered_panel = Some(side),
-            Message::PanelExited(side) if self.hovered_panel == Some(side) => {
-                self.hovered_panel = None;
-            }
-            Message::PanelDragMoved(position) => return self.move_panel_drag(position),
-            Message::PanelDragReleased => return self.finish_panel_drag(),
-            _ => {}
-        }
-        Task::none()
+        self.panels.drag_cursor(side, self.modifiers)
     }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -9217,39 +8813,7 @@ impl App {
 
     fn end_panel_drag(&mut self) -> Option<PanelDrag> {
         self.input.lock().panel_drag_armed = false;
-        self.panel_drag.take()
-    }
-
-    fn move_panel_drag(&mut self, position: Point) -> Task<Message> {
-        let Some(drag) = self.panel_drag.as_mut() else {
-            return Task::none();
-        };
-        drag.moved_to(position);
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        if drag.is_dragging() && panel_drag::is_outside(position, self.window_size) {
-            return self.start_drag_out();
-        }
-        Task::none()
-    }
-
-    /// Dropping on the other panel asks the F5 or F6 question for it.
-    fn finish_panel_drag(&mut self) -> Task<Message> {
-        let Some(drag) = self.end_panel_drag() else {
-            return Task::none();
-        };
-        if !drag.is_dragging()
-            || self.overlay_is_open()
-            || self.hovered_panel != Some(drag.source().other())
-        {
-            return Task::none();
-        }
-        self.active_panel = drag.source();
-        let kind = if panel_drag::move_modifier_held(self.modifiers) {
-            TransferKind::Move
-        } else {
-            TransferKind::Copy
-        };
-        self.open_transfer_dialog_to(kind, None)
+        self.panels.drag.take()
     }
 
     /// The pointer left the window with files held: hands them to the system
@@ -9853,27 +9417,6 @@ impl App {
         }
     }
 
-    /// Enter: up, into a folder, or into an archive file. An archive inside an
-    /// archive is refused before this runs.
-    fn open_selected(&mut self) -> Task<Message> {
-        let side = self.active_panel;
-        let panel = self.active_panel();
-        let Some(entry) = panel.selected_entry() else {
-            return Task::none();
-        };
-        if entry.is_parent {
-            return self.go_up(side);
-        }
-        let opens_as_folder =
-            entry.is_dir || (!panel.is_virtual() && fs::archive::is_archive_name(&entry.name));
-        if !opens_as_folder {
-            // Placeholder for file actions (view / edit / open with …).
-            return Task::none();
-        }
-        let path = entry.path.clone();
-        self.load(side, path, None)
-    }
-
     /// A panel inside an archive can be read and copied from, nothing else.
     fn apply_unless_refused(&mut self, message: Message) -> Task<Message> {
         if asks_for_hermes(&message) {
@@ -9899,31 +9442,6 @@ impl App {
         }
     }
 
-    /// Navigates `side` to its parent directory, re-selecting the directory
-    /// we came from.
-    fn go_up(&mut self, side: PanelSide) -> Task<Message> {
-        if self.panel(side).is_hit_list() {
-            return Task::none();
-        }
-        let current = &self.panel(side).path;
-        // A server path is cut as text: `Path::parent` would answer `sftp:` at
-        // the root and does not know the root of a server.
-        if let Some(place) = RemotePath::parse(current) {
-            let Some(above) = place.parent() else {
-                return Task::none();
-            };
-            let came_from = place.file_name().map(str::to_owned);
-            return self.load(side, above.to_path_buf(), came_from);
-        }
-        let Some(parent) = current.parent().map(PathBuf::from) else {
-            return Task::none();
-        };
-        let came_from = current
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned());
-        self.load(side, parent, came_from)
-    }
-
     fn toggle_shortcuts(&self) -> ncrs_search::ToggleShortcuts {
         let label = |toggle| self.keymap.shortcut_label(&Message::Search(toggle));
         ncrs_search::ToggleShortcuts {
@@ -9944,11 +9462,11 @@ impl App {
     /// The trash view is up and its panel is the active one: its keys are
     /// the cursor's.
     fn trash_has_keys(&self) -> bool {
-        self.trash_view.is_some() && self.active_panel == self.trash_side
+        self.trash_view.is_some() && self.panels.active == self.trash_side
     }
 
     fn search_has_keys(&self) -> bool {
-        self.search.open && self.active_panel == self.search.side
+        self.search.open && self.panels.active == self.search.side
     }
 
     /// The panel that file actions take their files from: the one the search
@@ -9959,13 +9477,8 @@ impl App {
         } else if self.trash_has_keys() {
             self.trash_side
         } else {
-            self.active_panel
+            self.panels.active
         }
-    }
-
-    /// Rows a page of this panel moves by: a hit list fits fewer, taller rows.
-    fn visible_rows_of(&self, side: PanelSide) -> usize {
-        self.panel(side).rows_in_view(self.visible_rows)
     }
 
     fn apply_window_size(&mut self, size: Size) {
@@ -9973,23 +9486,23 @@ impl App {
         self.resize_command_palette(size);
         self.visible_rows = layout::visible_rows(size);
         self.search.resize(size);
-        self.left_panel.ensure_visible(self.visible_rows);
-        self.right_panel.ensure_visible(self.visible_rows);
+        self.panels.left.ensure_visible(self.visible_rows);
+        self.panels.right.ensure_visible(self.visible_rows);
     }
 
     /// Puts what an earlier run remembered on top of the fresh start. The first
     /// listing of each panel arrives sorted the default way and is re-sorted by
     /// `apply_sorted_listing`, which compares its `sorted_by` with the panel's.
     fn apply_session_state(&mut self, saved: &SessionState) {
-        self.left_panel.sort = saved.left.sort_key();
-        self.right_panel.sort = saved.right.sort_key();
-        self.left_panel.history = saved.left.history();
-        self.right_panel.history = saved.right.history();
+        self.panels.left.sort = saved.left.sort_key();
+        self.panels.right.sort = saved.right.sort_key();
+        self.panels.left.history = saved.left.history();
+        self.panels.right.history = saved.right.history();
         // Not checked for existence: a favourite on a drive that is not
         // plugged in now is still wanted when it is.
         self.favourites = saved.favourites.iter().map(PathBuf::from).collect();
         if let Some(side) = saved.active {
-            self.active_panel = side;
+            self.panels.active = side;
         }
         if let Some(size) = saved.window_size() {
             self.apply_window_size(size);
@@ -10043,11 +9556,11 @@ impl App {
         };
         SessionState {
             version: session_state::STATE_VERSION,
-            active: Some(self.active_panel),
+            active: Some(self.panels.active),
             favourites: session_state::record_paths(&self.favourites),
             window,
-            left: record(&self.left_panel),
-            right: record(&self.right_panel),
+            left: record(&self.panels.left),
+            right: record(&self.panels.right),
         }
     }
 
@@ -10117,14 +9630,14 @@ impl App {
                     view.focused = view.focused.next();
                 }
             } else {
-                self.active_panel = self.search.side;
+                self.panels.active = self.search.side;
             }
             return self.focus_search_field();
         }
         self.context_menu = None;
         self.job_error = None;
         self.notice = None;
-        let side = self.active_panel;
+        let side = self.panels.active;
         if self.trash_side == side {
             self.close_trash();
         }
@@ -10205,7 +9718,7 @@ impl App {
             scope,
             return_to,
         });
-        self.active_panel = target;
+        self.panels.active = target;
         Task::batch([closed, read_hit_files(target, request_id, paths)])
     }
 
@@ -10239,7 +9752,7 @@ impl App {
                 if self.jobs.is_busy() {
                     return Task::none();
                 }
-                let side = self.active_panel;
+                let side = self.panels.active;
                 self.leave_hit_list(side, true)
             }
             HitListMessage::Close(side) => self.leave_hit_list(side, false),
@@ -10277,11 +9790,11 @@ impl App {
             return load;
         }
         if self.search.open {
-            self.active_panel = self.search.side;
+            self.panels.active = self.search.side;
             return load;
         }
         self.search.open = true;
-        self.active_panel = self.search.side;
+        self.panels.active = self.search.side;
         self.refresh_search_rows();
         let restarted = self.restart_search();
         Task::batch([load, restarted, self.focus_search_field()])
@@ -10290,7 +9803,7 @@ impl App {
     /// Shows the file under the cursor in its folder on the other side. The
     /// list stays.
     fn show_hit_on_other_side(&mut self) -> Task<Message> {
-        let side = self.active_panel;
+        let side = self.panels.active;
         let target = match self.open_search_view() {
             Some(search) => search.cursor_target().map(|(path, _)| path),
             None => self
@@ -10318,7 +9831,7 @@ impl App {
             self.close_trash();
         }
         self.panel_mut(other).drop_hit_list();
-        self.active_panel = other;
+        self.panels.active = other;
         let load = self.load(other, folder, Some(name));
         Task::batch([closed, load])
     }
@@ -10365,6 +9878,84 @@ impl App {
         Task::batch([opened, self.restart_search()])
     }
 
+    fn update_panel(&mut self, message: PanelMessage) -> Task<Message> {
+        let overlay_is_open = self.overlay_is_open();
+        let context_menu_is_open = self.context_menu.is_some();
+        let pointer = self.input.lock().pointer;
+        let ctx = ncrs_files::Ctx {
+            visible_rows: self.visible_rows,
+            window_size: self.window_size,
+            modifiers: self.modifiers,
+            is_context_click: is_context_click(self.modifiers),
+            pointer,
+            overlay_is_open,
+            context_menu_is_open,
+            clock: &*self.clock,
+            folder_sizes: &self.folder_sizes,
+            nearest_existing_directory: session_state::nearest_existing_directory,
+        };
+        let (task, actions) = ncrs_files::update(&mut self.panels, message, &ctx);
+        let mapped = task.map(Message::Panel);
+        let acted: Vec<_> = actions
+            .into_iter()
+            .map(|action| self.run_panel_action(action))
+            .collect();
+        Task::batch(std::iter::once(mapped).chain(acted))
+    }
+
+    /// What the panels asked for because it reaches outside the panels.
+    fn run_panel_action(&mut self, action: ncrs_files::Action) -> Task<Message> {
+        use ncrs_files::Action;
+        match action {
+            Action::Load { side, path, select } => self.load(side, path, select),
+            Action::MarkHistoryStep(side) => {
+                self.panel_mut(side).mark_history_step();
+                Task::none()
+            }
+            Action::ClearMessages => {
+                self.job_error = None;
+                self.notice = None;
+                Task::none()
+            }
+            Action::OpenContextMenu {
+                side,
+                index,
+                pointer,
+            } => {
+                self.open_context_menu(side, index, Some(pointer));
+                Task::none()
+            }
+            Action::ContextMenuAt { side, index } => {
+                self.update(Message::ContextMenuAt { side, index })
+            }
+            Action::CloseContextMenu => {
+                self.context_menu = None;
+                Task::none()
+            }
+            Action::CloseMenuOfReloaded(side) => {
+                self.close_menu_of_reloaded(side);
+                Task::none()
+            }
+            Action::DropViewCopies(place) => {
+                self.drop_view_copies_of(&place);
+                Task::none()
+            }
+            Action::StopFolderSizeRunIfLeft(side) => {
+                self.stop_folder_size_run_if_left(side);
+                Task::none()
+            }
+            Action::DragArmed(armed) => {
+                self.input.lock().panel_drag_armed = armed;
+                Task::none()
+            }
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            Action::StartDragOut => self.start_drag_out(),
+            Action::OpenTransferDialog(kind) => self.open_transfer_dialog_to(kind, None),
+            Action::OpenSelected => self.update(Message::Panel(PanelMessage::OpenSelected)),
+            Action::CloseSettings => self.close_settings(),
+        }
+    }
+
     fn update_search(&mut self, message: SearchMessage) -> Task<Message> {
         if !self.search.open {
             return Task::none();
@@ -10375,7 +9966,7 @@ impl App {
         if ncrs_search::activates_panel(&message)
             && !(ncrs_search::needs_keys(&message) && !ctx.has_keys)
         {
-            self.active_panel = self.search.side;
+            self.panels.active = self.search.side;
         }
         let (task, asked) = ncrs_search::update(&mut self.search, message, &ctx);
         let mapped = task.map(Message::Search);
@@ -11633,7 +11224,7 @@ impl App {
             }
             SavedQueriesMessage::StartExport => {
                 // The other panel's folder is where files are usually wanted.
-                let folder = self.panel(self.active_panel.other()).path.clone();
+                let folder = self.panel(self.panels.active.other()).path.clone();
                 if let Some(view) = self.saved_queries.as_mut() {
                     view.start_export(folder);
                 }
@@ -14206,7 +13797,7 @@ impl App {
         };
         let directory = parent.to_path_buf();
         let name = file.to_string_lossy().into_owned();
-        self.load(self.active_panel, directory, Some(name))
+        self.load(self.panels.active, directory, Some(name))
     }
 
     fn title_bar_view(&self) -> Element<'_, Message> {
@@ -14239,7 +13830,7 @@ impl App {
             titlebar::Tab {
                 side,
                 title,
-                active: self.active_panel == side && !self.page_tab_is_open(),
+                active: self.panels.active == side && !self.page_tab_is_open(),
             }
         };
         titlebar::view(&titlebar::TitleBar {
@@ -14960,7 +14551,7 @@ impl App {
         let panel = self.panel_mut(side);
         let request_id = panel.begin_load();
         Task::perform(fs::read_directory(path, panel.sort), move |listing| {
-            Message::DirectoryLoaded {
+            Message::Panel(PanelMessage::DirectoryLoaded {
                 side,
                 request_id,
                 path: listing.path,
@@ -14969,7 +14560,7 @@ impl App {
                 sorted_by: listing.sorted_by,
                 select: select.clone(),
                 archive: listing.archive,
-            }
+            })
         })
     }
 
@@ -15051,7 +14642,7 @@ impl App {
             RemoteMessage::OpenServer(url) => {
                 self.job_error = None;
                 self.notice = None;
-                let side = self.active_panel;
+                let side = self.panels.active;
                 self.load(side, url, None)
             }
             RemoteMessage::FocusField { backwards } => {
@@ -15294,7 +14885,7 @@ impl App {
         let start = RemotePath::new(server.clone(), &home);
         let side = then
             .as_ref()
-            .map_or(self.active_panel, |waiting| waiting.side);
+            .map_or(self.panels.active, |waiting| waiting.side);
         let (target, select) = match (typed_path, then) {
             (Some(typed), _) => (start.resolve_typed(&typed, &home).to_path_buf(), None),
             (None, Some(Then { path, select, .. }))
@@ -15529,7 +15120,7 @@ impl App {
     ) -> Task<Message> {
         let server = remote.server().clone();
         if self.blocking_overlay_is_open() {
-            return Task::done(Message::DirectoryLoaded {
+            return Task::done(Message::Panel(PanelMessage::DirectoryLoaded {
                 side,
                 request_id,
                 path: remote.to_path_buf(),
@@ -15542,7 +15133,7 @@ impl App {
                 sorted_by: self.panel(side).sort,
                 select: None,
                 archive: None,
-            });
+            }));
         }
         let host_text = server.host.clone();
         let failure_text = failure
@@ -15582,15 +15173,17 @@ fn remote_listing(
 ) -> Task<Message> {
     Task::perform(
         async move { fs::remote::list::list(&pool, remote, sort).await },
-        move |listing| Message::DirectoryLoaded {
-            side,
-            request_id,
-            path: listing.path,
-            entries: listing.entries,
-            error: listing.error,
-            sorted_by: listing.sorted_by,
-            select: select.clone(),
-            archive: listing.archive,
+        move |listing| {
+            Message::Panel(PanelMessage::DirectoryLoaded {
+                side,
+                request_id,
+                path: listing.path,
+                entries: listing.entries,
+                error: listing.error,
+                sorted_by: listing.sorted_by,
+                select: select.clone(),
+                archive: listing.archive,
+            })
         },
     )
 }
@@ -15628,8 +15221,8 @@ mod render_timing {
 
     fn app_with_rows(n: usize) -> App {
         let mut app = App::with_environment(Environment::isolated()).0;
-        app.left_panel.entries = entries(n);
-        app.right_panel.entries = entries(n);
+        app.panels.left.entries = entries(n);
+        app.panels.right.entries = entries(n);
         app.visible_rows = 35;
         app
     }
@@ -15775,7 +15368,7 @@ mod perf_numbers {
     fn enter(app: &mut App, path: &std::path::Path, entries: Vec<FileEntry>) {
         app.panel_mut(PanelSide::Left).path = PathBuf::from("/");
         let request_id = app.panel_mut(PanelSide::Left).begin_load();
-        drop(app.update(Message::DirectoryLoaded {
+        drop(app.update(Message::Panel(PanelMessage::DirectoryLoaded {
             side: PanelSide::Left,
             request_id,
             path: path.to_path_buf(),
@@ -15784,7 +15377,7 @@ mod perf_numbers {
             sorted_by: SortKey::default(),
             select: None,
             archive: None,
-        }));
+        })));
     }
 
     fn per_step(app: &mut App, message: &Message) -> Duration {
@@ -15823,10 +15416,16 @@ mod perf_numbers {
     fn tag_all_and_view(app: &mut App) -> Duration {
         let shared = std::cell::RefCell::new(app);
         median_time(
-            || drop(shared.borrow_mut().update(Message::ClearTags)),
+            || {
+                drop(
+                    shared
+                        .borrow_mut()
+                        .update(Message::Panel(PanelMessage::ClearTags)),
+                )
+            },
             |()| {
                 let mut borrowed = shared.borrow_mut();
-                drop(borrowed.update(Message::TagAll));
+                drop(borrowed.update(Message::Panel(PanelMessage::TagAll)));
                 drop(borrowed.view());
             },
         )
@@ -15836,7 +15435,7 @@ mod perf_numbers {
     /// built and the next view drawn. The scan and the conflict count it
     /// starts run on the blocking pool and are not part of it.
     fn copy_dialog_and_view(app: &mut App) -> Duration {
-        drop(app.update(Message::TagAll));
+        drop(app.update(Message::Panel(PanelMessage::TagAll)));
         let shared = std::cell::RefCell::new(app);
         median_time(
             || shared.borrow_mut().transfer_dialog = None,
@@ -15894,9 +15493,9 @@ mod perf_numbers {
             let hand_to_panel =
                 median_time(|| entries.clone(), |listing| enter(&mut app, path, listing));
             let view_top = median_time(|| (), |()| drop(app.view()));
-            let arrow = per_step(&mut app, &Message::MoveSelection(1));
-            let page_down = per_step(&mut app, &Message::PageDown);
-            let end = per_step(&mut app, &Message::SelectLast);
+            let arrow = per_step(&mut app, &Message::Panel(PanelMessage::MoveSelection(1)));
+            let page_down = per_step(&mut app, &Message::Panel(PanelMessage::PageDown));
+            let end = per_step(&mut app, &Message::Panel(PanelMessage::SelectLast));
             let view_end = median_time(|| (), |()| drop(app.view()));
 
             println!(
@@ -16017,8 +15616,8 @@ mod prompt_routing {
             let routed = press(&app, key.clone());
             let leaked = matches!(
                 routed,
-                Some(Message::MoveSelection(_))
-                    | Some(Message::SwitchPanel)
+                Some(Message::Panel(PanelMessage::MoveSelection(_)))
+                    | Some(Message::Panel(PanelMessage::SwitchPanel))
                     | Some(Message::Quit)
                     | Some(Message::CreateDirPrompt)
             );
@@ -16172,11 +15771,11 @@ mod prompt_routing {
         let app = app();
         assert_eq!(
             press(&app, Key::Named(Named::ArrowDown)),
-            Some(Message::MoveSelection(1))
+            Some(Message::Panel(PanelMessage::MoveSelection(1)))
         );
         assert_eq!(
             press(&app, Key::Named(Named::Enter)),
-            Some(Message::OpenSelected)
+            Some(Message::Panel(PanelMessage::OpenSelected))
         );
     }
 
@@ -16222,7 +15821,7 @@ mod prompt_routing {
         let base = scratch.path().to_path_buf();
         std::fs::create_dir_all(&base).unwrap();
         let mut app = app();
-        app.left_panel.path = base.clone();
+        app.panels.left.path = base.clone();
 
         press_and_update(&mut app, Key::Named(Named::F7));
         assert!(app.prompt.is_some(), "F7 did not open the prompt");
@@ -16250,7 +15849,7 @@ mod prompt_routing {
         let base = scratch.path().to_path_buf();
         std::fs::create_dir_all(&base).unwrap();
         let mut app = app();
-        app.left_panel.path = base.clone();
+        app.panels.left.path = base.clone();
 
         press_and_update(&mut app, Key::Named(Named::F7));
         let _task = app.update(Message::PromptSubmit);
@@ -16423,7 +16022,7 @@ mod reload_order {
         std::fs::create_dir_all(&base).unwrap();
 
         let mut app = App::with_environment(Environment::isolated()).0;
-        app.left_panel.path = base.clone();
+        app.panels.left.path = base.clone();
         app.prompt = Some(Prompt::create_dir(base.clone()));
         app.prompt.as_mut().unwrap().set_name("neu".into());
         // Submitting queues the reload instead of running it.
@@ -16450,7 +16049,7 @@ mod reload_order {
         std::fs::create_dir_all(&base).unwrap();
 
         let mut app = App::with_environment(Environment::isolated()).0;
-        app.left_panel.path = base.clone();
+        app.panels.left.path = base.clone();
         app.prompt = Some(Prompt::create_dir(base.clone()));
         app.prompt.as_mut().unwrap().set_name("spaet".into());
         app.prompt_request_id = 1;
@@ -16481,7 +16080,7 @@ mod reload_order {
         std::fs::create_dir_all(&base).unwrap();
 
         let mut app = App::with_environment(Environment::isolated()).0;
-        app.left_panel.path = base.clone();
+        app.panels.left.path = base.clone();
         app.prompt = Some(Prompt::create_dir(base.clone()));
         app.prompt.as_mut().unwrap().set_name("weg".into());
         app.prompt_request_id = 2;
@@ -16534,7 +16133,7 @@ mod reload_order {
             edit: Some(config::ProgramLine::new("editor", &[])),
             ..config::OpenPrograms::default()
         };
-        app.left_panel.path = base.to_path_buf();
+        app.panels.left.path = base.to_path_buf();
         drop(app.update(Message::CreateFilePrompt));
         app.prompt.as_mut().unwrap().set_name(name.into());
         drop(app.update(Message::PromptSubmit));
@@ -16567,8 +16166,8 @@ mod reload_order {
 
         // The reload that follows puts the cursor on the new name.
         let listing = fs::read_directory(base.clone(), fs::SortKey::default()).await;
-        let request_id = app.left_panel.begin_load();
-        drop(app.update(Message::DirectoryLoaded {
+        let request_id = app.panels.left.begin_load();
+        drop(app.update(Message::Panel(PanelMessage::DirectoryLoaded {
             side: PanelSide::Left,
             request_id,
             path: listing.path,
@@ -16577,9 +16176,10 @@ mod reload_order {
             sorted_by: listing.sorted_by,
             select: Some("note.txt".into()),
             archive: listing.archive,
-        }));
+        })));
         assert_eq!(
-            app.left_panel
+            app.panels
+                .left
                 .selected_entry()
                 .map(|entry| entry.path.clone()),
             Some(base.join("note.txt"))
@@ -16727,9 +16327,11 @@ impl App {
     /// code. This one renders the same bytes everywhere.
     pub fn with_fixed_panels() -> Self {
         let mut app = Self {
-            left_panel: PanelState::new(PathBuf::from("/home/test/links")),
-            right_panel: PanelState::new(PathBuf::from("/home/test/files")),
-            active_panel: PanelSide::Left,
+            panels: Panels::new(
+                PanelState::new(PathBuf::from("/home/test/links")),
+                PanelState::new(PathBuf::from("/home/test/files")),
+                PanelSide::Left,
+            ),
             visible_rows: 12,
             lang: Language::default(),
             function_keys: Keymap::built_in().function_keys(Language::default(), KeyScope::Panel),
@@ -16775,8 +16377,6 @@ impl App {
             notice: None,
             notice_generation: 0,
             drop_hover: false,
-            panel_drag: None,
-            hovered_panel: None,
             dropped_files: Vec::new(),
             drop_generation: 0,
             job_done: 0,
@@ -16792,7 +16392,6 @@ impl App {
             context_menu: None,
             quick_fix: None,
             quick_fix_generation: 0,
-            type_ahead: TypeAhead::default(),
             path_field: None,
             command_line: CommandLine::default(),
             path_check_id: 0,
@@ -17057,9 +16656,9 @@ impl App {
             location("Filed", ncrs_intake::LocationMode::Archive, true),
             location("Archive", ncrs_intake::LocationMode::Archive, false),
         ];
-        app.active_panel = PanelSide::Right;
-        app.left_panel.path = home.clone();
-        app.right_panel.path = files_dir.clone();
+        app.panels.active = PanelSide::Right;
+        app.panels.left.path = home.clone();
+        app.panels.right.path = files_dir.clone();
 
         let entry = |directory: &Path, name: &str, is_dir: bool, is_parent: bool| fs::FileEntry {
             name: name.into(),
@@ -17071,7 +16670,7 @@ impl App {
             modified: None,
             folder_size: None,
         };
-        app.left_panel.entries = [".."]
+        app.panels.left.entries = [".."]
             .into_iter()
             .map(|name| entry(&home, name, true, true))
             .chain(
@@ -17088,7 +16687,7 @@ impl App {
             ("2025-01 damaged scan.pdf", DocumentStatus::New),
             ("2024-12 private diary.pdf", DocumentStatus::New),
         ];
-        app.right_panel.entries = [entry(&files_dir, "..", true, true)]
+        app.panels.right.entries = [entry(&files_dir, "..", true, true)]
             .into_iter()
             .chain(
                 files
@@ -17097,7 +16696,7 @@ impl App {
             )
             .collect();
         let inquiry = 4;
-        app.right_panel.selected = inquiry;
+        app.panels.right.selected = inquiry;
 
         let counted = |path: &str, counts: StatusCounts| FolderReading {
             path: home.join(path),
@@ -17208,7 +16807,7 @@ impl App {
     /// one file whose sender was not read and whose suggestion is known.
     pub fn with_hermes_quick_fix_sample() -> Self {
         let mut app = Self::with_hermes_column_sample();
-        let path = app.right_panel.path.join("2025-03 receipt market.pdf");
+        let path = app.panels.right.path.join("2025-03 receipt market.pdf");
         let mut item = crate::review_list::tests::loaded_list()
             .rows()
             .to_vec()
@@ -17220,9 +16819,10 @@ impl App {
         item.proposed_pattern = Some("Receipts/2025/Market/2025-03 {kind}.pdf".to_owned());
         let anchor = layout::cursor_row_anchor(
             true,
-            app.right_panel
+            app.panels
+                .right
                 .selected
-                .saturating_sub(app.right_panel.scroll_offset),
+                .saturating_sub(app.panels.right.scroll_offset),
             layout::ROW_HEIGHT,
             app.window_size,
         );
@@ -17245,7 +16845,7 @@ impl App {
     /// Hermes submenu out.
     pub fn with_hermes_context_menu_sample() -> Self {
         let mut app = Self::with_hermes_column_sample();
-        let index = app.right_panel.selected;
+        let index = app.panels.right.selected;
         app.open_context_menu(PanelSide::Right, index, None);
         if let Some(menu) = app.context_menu.as_mut() {
             menu.select_last();
@@ -17605,7 +17205,7 @@ impl App {
     ) -> Self {
         let mut app = Self::with_fixed_panels();
         // The home the README screenshots use, so the search shows the same paths.
-        app.left_panel.path = PathBuf::from("/Users/alex/Documents");
+        app.panels.left.path = PathBuf::from("/Users/alex/Documents");
         drop(app.update(Message::OpenSearch));
         let root = app.panel(PanelSide::Left).path.clone();
         app.refresh_search_rows();
@@ -17808,28 +17408,29 @@ impl App {
 
     /// Tags the row at `index`, addressed by position the way a keypress is.
     pub fn toggle_tag_for_test(&mut self, index: usize) {
-        let Some(path) = self.left_panel.entries.get(index).map(|e| e.path.clone()) else {
+        let Some(path) = self.panels.left.entries.get(index).map(|e| e.path.clone()) else {
             return;
         };
-        self.left_panel.selection.toggle(&path);
+        self.panels.left.selection.toggle(&path);
     }
 
     pub fn tag_all_for_test(&mut self) {
         let mut selection = crate::selection::SelectionSet::new();
-        selection.tag_all(&self.left_panel.entries);
-        self.left_panel.selection = selection;
+        selection.tag_all(&self.panels.left.entries);
+        self.panels.left.selection = selection;
     }
 
     pub fn left_panel_selection_tagged_for_test(&self, index: usize) -> bool {
-        self.left_panel
+        self.panels
+            .left
             .entries
             .get(index)
-            .is_some_and(|e| self.left_panel.selection.is_tagged(&e.path))
+            .is_some_and(|e| self.panels.left.selection.is_tagged(&e.path))
     }
 
     pub fn move_selection_for_test(&mut self, delta: isize) {
         let rows = self.visible_rows;
-        self.left_panel.move_selection(delta, rows);
+        self.panels.left.move_selection(delta, rows);
     }
 
     /// Whether the delete confirmation is up.
@@ -17970,7 +17571,7 @@ impl App {
     }
 
     pub fn active_panel_side_for_test(&self) -> PanelSide {
-        self.active_panel
+        self.panels.active
     }
 
     /// Replaces the trash, so a test never fills the developer's real one.
@@ -18015,7 +17616,7 @@ impl App {
             1,
             TransferKind::Copy,
             sources,
-            self.right_panel.path.clone(),
+            self.panels.right.path.clone(),
         );
         dialog.set_scan(Some(transfer_dialog::Scan {
             files: count * 4,
@@ -18031,7 +17632,7 @@ impl App {
     /// open them as a list are enabled, for the snapshot tests.
     pub fn with_fixed_search_hits() -> Self {
         let mut app = Self::with_fixed_panels();
-        app.left_panel.path = fixed_hit_scope();
+        app.panels.left.path = fixed_hit_scope();
         app.show_search_results_for_test("Telekom", fixed_hit_search_results());
         app
     }
@@ -18105,7 +17706,7 @@ impl App {
             entry("sonnenuntergang.jpg", false, false, 3_100_000),
             entry("notizen.txt", false, false, 812),
         ];
-        self.left_panel = panel;
+        self.panels.left = panel;
         drop(self.apply_unless_refused(Message::Transfer(TransferKind::Move)));
     }
 
@@ -18115,7 +17716,7 @@ impl App {
         self.transfer = Some(Transfer {
             kind: TransferKind::Copy,
             sources: vec![PathBuf::from("/home/test/links/entry-1")],
-            target: self.right_panel.path.clone(),
+            target: self.panels.right.path.clone(),
             names: Vec::new(),
         });
         self.job_progress = Some(fs::transfer::Tick { done, total });
@@ -18180,9 +17781,9 @@ mod transfer_tests {
     /// ready to receive.
     fn app_with_files() -> App {
         let mut app = App::with_environment(Environment::isolated()).0;
-        app.left_panel.path = PathBuf::from("/left");
-        app.right_panel.path = PathBuf::from("/right");
-        app.left_panel.entries = vec![file("a.txt"), file("b.txt"), file("c.txt")];
+        app.panels.left.path = PathBuf::from("/left");
+        app.panels.right.path = PathBuf::from("/right");
+        app.panels.left.entries = vec![file("a.txt"), file("b.txt"), file("c.txt")];
         app
     }
 
@@ -18191,7 +17792,7 @@ mod transfer_tests {
     #[tokio::test]
     async fn an_untagged_panel_transfers_the_cursor_row() {
         let mut app = app_with_files();
-        app.left_panel.selected = 1;
+        app.panels.left.selected = 1;
 
         let _task = app.start_transfer(TransferKind::Copy);
 
@@ -18207,11 +17808,11 @@ mod transfer_tests {
         std::fs::create_dir_all(&to).unwrap();
         std::fs::write(from.join("a.txt"), "a").unwrap();
         let mut app = App::with_environment(Environment::isolated()).0;
-        app.left_panel.path = from.clone();
-        app.right_panel.path = to.clone();
+        app.panels.left.path = from.clone();
+        app.panels.right.path = to.clone();
         let mut entry = file("a.txt");
         entry.path = from.join("a.txt");
-        app.left_panel.entries = vec![entry];
+        app.panels.left.entries = vec![entry];
         (app, from, to)
     }
 
@@ -18317,10 +17918,10 @@ mod transfer_tests {
     #[tokio::test]
     async fn tagged_rows_win_over_the_cursor() {
         let mut app = app_with_files();
-        app.left_panel.selected = 2;
-        let left = app.left_panel.path.clone();
-        app.left_panel.selection.toggle(&left.join("a.txt"));
-        app.left_panel.selection.toggle(&left.join("c.txt"));
+        app.panels.left.selected = 2;
+        let left = app.panels.left.path.clone();
+        app.panels.left.selection.toggle(&left.join("a.txt"));
+        app.panels.left.selection.toggle(&left.join("c.txt"));
 
         let _task = app.start_transfer(TransferKind::Copy);
 
@@ -18336,12 +17937,13 @@ mod transfer_tests {
     #[test]
     fn the_parent_entry_is_never_transferred() {
         let mut app = app_with_files();
-        app.left_panel
+        app.panels
+            .left
             .entries
             .get_mut(1)
             .expect("the fixture has three files")
             .is_parent = true;
-        app.left_panel.selected = 1;
+        app.panels.left.selected = 1;
 
         let _task = app.start_transfer(TransferKind::Copy);
 
@@ -18356,12 +17958,12 @@ mod transfer_tests {
     #[tokio::test]
     async fn the_target_is_the_other_panel() {
         let mut app = app_with_files();
-        app.left_panel.selected = 0;
+        app.panels.left.selected = 0;
 
         let _task = app.start_transfer(TransferKind::Copy);
 
         let transfer = app.transfer.as_ref().expect("F5 set up nothing");
-        assert_eq!(transfer.target, app.right_panel.path);
+        assert_eq!(transfer.target, app.panels.right.path);
         assert_ne!(transfer.target, transfer.sources[0].parent().unwrap());
     }
 
@@ -18369,12 +17971,12 @@ mod transfer_tests {
     #[tokio::test]
     async fn the_target_follows_the_active_panel() {
         let mut app = app_with_files();
-        app.active_panel = PanelSide::Right;
+        app.panels.active = PanelSide::Right;
         // A file in the right panel, so the path matches the panel it is in.
         let mut x = file("x.txt");
         x.path = PathBuf::from("/right/x.txt");
-        app.right_panel.entries = vec![x];
-        app.right_panel.selected = 0;
+        app.panels.right.entries = vec![x];
+        app.panels.right.selected = 0;
 
         let _task = app.start_transfer(TransferKind::Copy);
 
@@ -18401,9 +18003,9 @@ mod mouse_tagging {
 
     fn app_with_files() -> App {
         let mut app = App::with_environment(Environment::isolated()).0;
-        app.left_panel.path = PathBuf::from("/left");
-        app.right_panel.path = PathBuf::from("/right");
-        app.left_panel.entries = (0..3)
+        app.panels.left.path = PathBuf::from("/left");
+        app.panels.right.path = PathBuf::from("/right");
+        app.panels.left.entries = (0..3)
             .map(|i| FileEntry {
                 name: OsString::from(format!("f{i}.txt")),
                 path: PathBuf::from("/left").join(format!("f{i}.txt")),
@@ -18440,11 +18042,11 @@ mod mouse_tagging {
 
     fn press_row_one(app: &mut App) {
         feed(app, pointer_at(50.0, 50.0));
-        drop(app.update(Message::RowClicked {
+        drop(app.update(Message::Panel(PanelMessage::RowClicked {
             side: PanelSide::Left,
             index: 1,
             on_tag: false,
-        }));
+        })));
     }
 
     fn move_modifier() -> Modifiers {
@@ -18467,15 +18069,15 @@ mod mouse_tagging {
     fn a_click_without_movement_only_selects() {
         let mut app = app_with_files();
         press_row_one(&mut app);
-        drop(app.update(Message::PanelEntered(PanelSide::Right)));
+        drop(app.update(Message::Panel(PanelMessage::PanelEntered(PanelSide::Right))));
 
         feed(&mut app, pointer_at(52.0, 50.0));
         feed(&mut app, left_released());
 
         assert!(app.transfer_dialog.is_none());
-        assert_eq!(app.left_panel.selected, 1);
-        assert!(!app.left_panel.selection.any_tagged());
-        assert!(app.panel_drag.is_none());
+        assert_eq!(app.panels.left.selected, 1);
+        assert!(!app.panels.left.selection.any_tagged());
+        assert!(app.panels.drag.is_none());
     }
 
     #[tokio::test]
@@ -18484,7 +18086,7 @@ mod mouse_tagging {
         press_row_one(&mut app);
 
         feed(&mut app, pointer_at(70.0, 50.0));
-        drop(app.update(Message::PanelEntered(PanelSide::Right)));
+        drop(app.update(Message::Panel(PanelMessage::PanelEntered(PanelSide::Right))));
         feed(&mut app, left_released());
 
         let dialog = app.transfer_dialog.as_ref().expect("the dialog opens");
@@ -18499,7 +18101,7 @@ mod mouse_tagging {
         press_row_one(&mut app);
 
         feed(&mut app, pointer_at(70.0, 50.0));
-        drop(app.update(Message::PanelEntered(PanelSide::Right)));
+        drop(app.update(Message::Panel(PanelMessage::PanelEntered(PanelSide::Right))));
         drop(app.update(Message::ModifiersChanged(move_modifier())));
         feed(&mut app, left_released());
 
@@ -18511,7 +18113,7 @@ mod mouse_tagging {
     fn the_other_panel_is_outlined_while_a_drag_hovers_it() {
         let mut app = app_with_files();
         press_row_one(&mut app);
-        drop(app.update(Message::PanelEntered(PanelSide::Right)));
+        drop(app.update(Message::Panel(PanelMessage::PanelEntered(PanelSide::Right))));
         assert!(!app.is_drop_target(PanelSide::Right));
 
         feed(&mut app, pointer_at(70.0, 50.0));
@@ -18525,7 +18127,7 @@ mod mouse_tagging {
         let mut app = app_with_files();
         assert_eq!(app.drag_cursor(PanelSide::Right), None);
         press_row_one(&mut app);
-        drop(app.update(Message::PanelEntered(PanelSide::Right)));
+        drop(app.update(Message::Panel(PanelMessage::PanelEntered(PanelSide::Right))));
         assert_eq!(app.drag_cursor(PanelSide::Right), None);
 
         feed(&mut app, pointer_at(70.0, 50.0));
@@ -18541,7 +18143,7 @@ mod mouse_tagging {
             Some(mouse::Interaction::Move)
         );
 
-        drop(app.update(Message::PanelEntered(PanelSide::Left)));
+        drop(app.update(Message::Panel(PanelMessage::PanelEntered(PanelSide::Left))));
         assert_eq!(
             app.drag_cursor(PanelSide::Left),
             Some(mouse::Interaction::NoDrop)
@@ -18552,7 +18154,7 @@ mod mouse_tagging {
     fn files_from_another_app_keep_the_os_cursor() {
         let mut app = app_with_files();
         app.drop_hover = true;
-        drop(app.update(Message::PanelEntered(PanelSide::Left)));
+        drop(app.update(Message::Panel(PanelMessage::PanelEntered(PanelSide::Left))));
 
         assert_eq!(app.drag_cursor(PanelSide::Left), None);
         assert_eq!(app.drag_cursor(PanelSide::Right), None);
@@ -18564,7 +18166,7 @@ mod mouse_tagging {
         press_row_one(&mut app);
 
         feed(&mut app, pointer_at(70.0, 50.0));
-        drop(app.update(Message::PanelEntered(PanelSide::Left)));
+        drop(app.update(Message::Panel(PanelMessage::PanelEntered(PanelSide::Left))));
         feed(&mut app, left_released());
 
         assert!(app.transfer_dialog.is_none());
@@ -18574,7 +18176,7 @@ mod mouse_tagging {
     #[test]
     fn dragging_a_server_file_out_of_the_window_shows_the_local_only_notice() {
         let mut app = app_with_files();
-        app.left_panel.entries[1].path =
+        app.panels.left.entries[1].path =
             RemotePath::new(ServerId::new("user", "files.invalid", 22), "/f1.txt").to_path_buf();
         press_row_one(&mut app);
 
@@ -18585,7 +18187,7 @@ mod mouse_tagging {
             app.notice.as_deref(),
             Some(app.lang.text(Msg::StatusDragOutLocalOnly))
         );
-        assert!(app.panel_drag.is_none());
+        assert!(app.panels.drag.is_none());
         assert!(!app.input.lock().panel_drag_armed);
     }
 
@@ -18594,8 +18196,8 @@ mod mouse_tagging {
         let base = tempfile::tempdir().unwrap();
         std::fs::create_dir(base.path().join("sub")).unwrap();
         let mut app = App::with_fixed_panels();
-        app.left_panel = PanelState::new(base.path().to_path_buf());
-        app.active_panel = PanelSide::Right;
+        app.panels.left = PanelState::new(base.path().to_path_buf());
+        app.panels.active = PanelSide::Right;
         let mut stream = iced_test::runtime::task::into_stream(app.load(
             PanelSide::Left,
             base.path().into(),
@@ -18608,16 +18210,17 @@ mod mouse_tagging {
             }
         }
         let index = app
-            .left_panel
+            .panels
+            .left
             .entries
             .iter()
             .position(|entry| entry.name == "sub")
             .unwrap();
 
-        let opening = app.update(Message::RowActivated {
+        let opening = app.update(Message::Panel(PanelMessage::RowActivated {
             side: PanelSide::Left,
             index,
-        });
+        }));
         let mut opened = iced_test::runtime::task::into_stream(opening).unwrap();
         while let Some(action) = futures::StreamExt::next(&mut opened).await {
             if let iced_test::runtime::Action::Output(reported) = action {
@@ -18625,8 +18228,8 @@ mod mouse_tagging {
             }
         }
 
-        assert_eq!(app.active_panel, PanelSide::Left);
-        assert_eq!(app.left_panel.path, base.path().join("sub"));
+        assert_eq!(app.panels.active, PanelSide::Left);
+        assert_eq!(app.panels.left.path, base.path().join("sub"));
     }
 
     /// A click on the star tags; a click anywhere else does not. Without the
@@ -18635,21 +18238,22 @@ mod mouse_tagging {
     fn a_click_on_the_star_tags_the_row() {
         let mut app = app_with_files();
 
-        let _task = app.update(Message::RowClicked {
+        let _task = app.update(Message::Panel(PanelMessage::RowClicked {
             side: PanelSide::Left,
             index: 1,
             on_tag: true,
-        });
+        }));
 
         let name = app
-            .left_panel
+            .panels
+            .left
             .entries
             .get(1)
             .expect("the fixture has three files")
             .path
             .clone();
         assert!(
-            app.left_panel.selection.is_tagged(&name),
+            app.panels.left.selection.is_tagged(&name),
             "clicking the star did not tag the row"
         );
     }
@@ -18660,15 +18264,15 @@ mod mouse_tagging {
     fn a_click_on_the_row_only_moves_the_cursor() {
         let mut app = app_with_files();
 
-        let _task = app.update(Message::RowClicked {
+        let _task = app.update(Message::Panel(PanelMessage::RowClicked {
             side: PanelSide::Left,
             index: 2,
             on_tag: false,
-        });
+        }));
 
-        assert_eq!(app.left_panel.selected, 2);
+        assert_eq!(app.panels.left.selected, 2);
         assert!(
-            app.left_panel.selection.is_empty(),
+            app.panels.left.selection.is_empty(),
             "clicking a row tagged it"
         );
     }
@@ -18678,47 +18282,48 @@ mod mouse_tagging {
     fn a_second_click_on_the_star_untags() {
         let mut app = app_with_files();
         for _ in 0..2 {
-            let _task = app.update(Message::RowClicked {
+            let _task = app.update(Message::Panel(PanelMessage::RowClicked {
                 side: PanelSide::Left,
                 index: 1,
                 on_tag: true,
-            });
+            }));
         }
-        assert!(app.left_panel.selection.is_empty());
+        assert!(app.panels.left.selection.is_empty());
     }
 
     /// `..` has no star to click, and must not be taggable if it somehow is.
     #[test]
     fn the_parent_entry_cannot_be_tagged_by_click() {
         let mut app = app_with_files();
-        app.left_panel
+        app.panels
+            .left
             .entries
             .get_mut(0)
             .expect("the fixture has three files")
             .is_parent = true;
 
-        let _task = app.update(Message::RowClicked {
+        let _task = app.update(Message::Panel(PanelMessage::RowClicked {
             side: PanelSide::Left,
             index: 0,
             on_tag: true,
-        });
+        }));
 
-        assert!(app.left_panel.selection.is_empty());
+        assert!(app.panels.left.selection.is_empty());
     }
 
     /// Clicking a row in the other panel makes that panel the source of F5.
     #[test]
     fn clicking_a_row_activates_its_panel() {
         let mut app = app_with_files();
-        app.right_panel.entries = app.left_panel.entries.clone();
+        app.panels.right.entries = app.panels.left.entries.clone();
 
-        let _task = app.update(Message::RowClicked {
+        let _task = app.update(Message::Panel(PanelMessage::RowClicked {
             side: PanelSide::Right,
             index: 0,
             on_tag: false,
-        });
+        }));
 
-        assert_eq!(app.active_panel, PanelSide::Right);
+        assert_eq!(app.panels.active, PanelSide::Right);
     }
 }
 
@@ -18919,9 +18524,9 @@ mod abort_tests {
 
     fn app_with_files() -> App {
         let mut app = App::with_environment(Environment::isolated()).0;
-        app.left_panel.path = PathBuf::from("/left");
-        app.right_panel.path = PathBuf::from("/right");
-        app.left_panel.entries = (0..3)
+        app.panels.left.path = PathBuf::from("/left");
+        app.panels.right.path = PathBuf::from("/right");
+        app.panels.left.entries = (0..3)
             .map(|i| FileEntry {
                 name: OsString::from(format!("f{i}.txt")),
                 path: PathBuf::from("/left").join(format!("f{i}.txt")),
@@ -18933,7 +18538,7 @@ mod abort_tests {
                 folder_size: None,
             })
             .collect();
-        app.left_panel.selected = 0;
+        app.panels.left.selected = 0;
         app
     }
 
@@ -19035,9 +18640,9 @@ mod conflict_tests {
         std::fs::write(right.join("f0.txt"), b"existing").unwrap();
 
         let mut app = App::with_environment(Environment::isolated()).0;
-        app.left_panel.path = left.clone();
-        app.right_panel.path = right.clone();
-        app.left_panel.entries = (0..3)
+        app.panels.left.path = left.clone();
+        app.panels.right.path = right.clone();
+        app.panels.left.entries = (0..3)
             .map(|i| FileEntry {
                 name: OsString::from(format!("f{i}.txt")),
                 path: left.join(format!("f{i}.txt")),
@@ -19049,7 +18654,7 @@ mod conflict_tests {
                 folder_size: None,
             })
             .collect();
-        app.left_panel.selected = 0;
+        app.panels.left.selected = 0;
         (app, scratch)
     }
 
@@ -19282,9 +18887,9 @@ mod progress_bar {
 
     fn app_with_one_file() -> App {
         let mut app = App::with_environment(Environment::isolated()).0;
-        app.left_panel.path = PathBuf::from("/left");
-        app.right_panel.path = PathBuf::from("/right");
-        app.left_panel.entries = vec![FileEntry {
+        app.panels.left.path = PathBuf::from("/left");
+        app.panels.right.path = PathBuf::from("/right");
+        app.panels.left.entries = vec![FileEntry {
             name: OsString::from("a.txt"),
             path: PathBuf::from("/left/a.txt"),
             is_dir: false,
@@ -19294,7 +18899,7 @@ mod progress_bar {
             modified: None,
             folder_size: None,
         }];
-        app.left_panel.selected = 0;
+        app.panels.left.selected = 0;
         app
     }
 
@@ -19373,9 +18978,9 @@ mod conflict_keys {
         std::fs::write(right.join("a.txt"), b"old").unwrap();
 
         let mut app = App::with_environment(Environment::isolated()).0;
-        app.left_panel.path = left.clone();
-        app.right_panel.path = right;
-        app.left_panel.entries = vec![FileEntry {
+        app.panels.left.path = left.clone();
+        app.panels.right.path = right;
+        app.panels.left.entries = vec![FileEntry {
             name: OsString::from("a.txt"),
             path: left.join("a.txt"),
             is_dir: false,
@@ -19385,7 +18990,7 @@ mod conflict_keys {
             modified: None,
             folder_size: None,
         }];
-        app.left_panel.selected = 0;
+        app.panels.left.selected = 0;
         (app, scratch)
     }
 
@@ -19476,7 +19081,7 @@ mod conflict_keys {
         let (app, _scratch) = app_with_conflict();
         assert_eq!(
             press(&app, Key::Named(Named::Enter), Modifiers::default()),
-            Some(Message::OpenSelected),
+            Some(Message::Panel(PanelMessage::OpenSelected)),
             "Enter no longer opens the selected entry"
         );
         assert_eq!(
@@ -19652,19 +19257,19 @@ mod delete_tests {
         let idle = PromptKeyState::default();
         assert_eq!(
             route(&idle, Named::Space, Modifiers::default()),
-            Some(Message::ToggleTag)
+            Some(Message::Panel(PanelMessage::ToggleTag))
         );
         assert_eq!(
             route(&idle, Named::ArrowDown, Modifiers::SHIFT),
-            Some(Message::TagMove(1))
+            Some(Message::Panel(PanelMessage::TagMove(1)))
         );
         assert_eq!(
             route(&idle, Named::ArrowUp, Modifiers::SHIFT),
-            Some(Message::TagMove(-1))
+            Some(Message::Panel(PanelMessage::TagMove(-1)))
         );
         assert_eq!(
             route(&idle, Named::ArrowDown, Modifiers::default()),
-            Some(Message::MoveSelection(1))
+            Some(Message::Panel(PanelMessage::MoveSelection(1)))
         );
     }
 
@@ -19743,22 +19348,22 @@ mod delete_tests {
     async fn a_command_click_tags_the_row() {
         let mut app = app_with_entries(&["a.txt", "b.txt"]);
         let click = |target: &mut App| {
-            let _task = target.update(Message::RowClicked {
+            let _task = target.update(Message::Panel(PanelMessage::RowClicked {
                 side: PanelSide::Left,
                 index: 1,
                 on_tag: false,
-            });
+            }));
         };
         click(&mut app);
         assert!(
-            !app.left_panel.selection.any_tagged(),
+            !app.panels.left.selection.any_tagged(),
             "a plain click tagged"
         );
 
         let _held = app.update(Message::ModifiersChanged(Modifiers::COMMAND));
         click(&mut app);
         assert!(
-            app.left_panel.selection.any_tagged(),
+            app.panels.left.selection.any_tagged(),
             "Cmd-click did not tag"
         );
     }
@@ -19766,19 +19371,20 @@ mod delete_tests {
     #[tokio::test]
     async fn space_tags_and_moves_down_but_skips_the_parent_entry() {
         let mut app = app_with_entries(&["..", "a.txt", "b.txt"]);
-        app.left_panel.selected = 0;
-        let _parent = app.update(Message::ToggleTag);
-        assert!(!app.left_panel.selection.any_tagged(), "`..` was tagged");
-        assert_eq!(app.left_panel.selected, 1);
+        app.panels.left.selected = 0;
+        let _parent = app.update(Message::Panel(PanelMessage::ToggleTag));
+        assert!(!app.panels.left.selection.any_tagged(), "`..` was tagged");
+        assert_eq!(app.panels.left.selected, 1);
 
-        let _tag = app.update(Message::ToggleTag);
-        assert_eq!(app.left_panel.selected, 2);
-        let _up = app.update(Message::TagMove(-1));
-        assert_eq!(app.left_panel.selected, 1);
+        let _tag = app.update(Message::Panel(PanelMessage::ToggleTag));
+        assert_eq!(app.panels.left.selected, 2);
+        let _up = app.update(Message::Panel(PanelMessage::TagMove(-1)));
+        assert_eq!(app.panels.left.selected, 1);
         assert_eq!(
-            app.left_panel
+            app.panels
+                .left
                 .selection
-                .ordered(&app.left_panel.entries)
+                .ordered(&app.panels.left.entries)
                 .len(),
             2
         );
@@ -19786,8 +19392,8 @@ mod delete_tests {
 
     fn app_with_entries(names: &[&str]) -> App {
         let mut app = App::with_environment(Environment::isolated()).0;
-        app.left_panel.path = PathBuf::from("/left");
-        app.left_panel.entries = names
+        app.panels.left.path = PathBuf::from("/left");
+        app.panels.left.entries = names
             .iter()
             .map(|name| fs::FileEntry {
                 name: (*name).into(),
@@ -19813,14 +19419,14 @@ mod delete_tests {
     #[tokio::test]
     async fn the_subject_is_the_name_for_one_and_the_count_for_many() {
         let mut app = app_with_entries(&["a.txt", "b.txt"]);
-        app.left_panel.selected = 0;
+        app.panels.left.selected = 0;
         let _task = app.update(Message::Delete { permanent: false });
         let one = app.delete_dialog.clone().unwrap();
         assert_eq!(app.delete_subject(&one), "a.txt");
 
         app.delete_dialog = None;
-        app.left_panel.selection.toggle(Path::new("/left/a.txt"));
-        app.left_panel.selection.toggle(Path::new("/left/b.txt"));
+        app.panels.left.selection.toggle(Path::new("/left/a.txt"));
+        app.panels.left.selection.toggle(Path::new("/left/b.txt"));
         let _again = app.update(Message::Delete { permanent: true });
         let many = app.delete_dialog.clone().unwrap();
         assert_eq!(app.delete_subject(&many), "2 items\na.txt\nb.txt");
@@ -19850,7 +19456,9 @@ mod delete_tests {
         let binding = keymap::sort_binding(crate::fs::SortColumn::Size);
         assert_eq!(
             route_key(&PromptKeyState::default(), binding.key, binding.modifiers),
-            Some(Message::SortActive(crate::fs::SortColumn::Size))
+            Some(Message::Panel(PanelMessage::SortActive(
+                crate::fs::SortColumn::Size
+            )))
         );
     }
 
@@ -19868,19 +19476,19 @@ mod delete_tests {
                 Key::Character("*".into()),
                 Modifiers::CTRL | Modifiers::SHIFT
             ),
-            Some(Message::ClearTags)
+            Some(Message::Panel(PanelMessage::ClearTags))
         );
         // Shift alone still reaches the bare key, as `*` needs.
         assert_eq!(
             route_key(&idle, Key::Character("*".into()), Modifiers::SHIFT),
-            Some(Message::TagAll)
+            Some(Message::Panel(PanelMessage::TagAll))
         );
     }
 
     #[test]
     fn only_movement_tagging_and_typing_repeat() {
-        assert!(repeats(&Message::MoveSelection(1)));
-        assert!(repeats(&Message::ToggleTag));
+        assert!(repeats(&Message::Panel(PanelMessage::MoveSelection(1))));
+        assert!(repeats(&Message::Panel(PanelMessage::ToggleTag)));
         assert!(repeats(&Message::PromptInput("a".into())));
         assert!(!repeats(&Message::Delete { permanent: true }));
         assert!(!repeats(&Message::DeleteConfirm));
@@ -20021,7 +19629,7 @@ mod volume_menu_tests {
         let _down = app.update(Message::VolumeMenuMove(1));
         let _enter = app.update(Message::VolumeMenuActivate);
         assert!(!app.volume_menu_is_open());
-        assert_eq!(app.active_panel, PanelSide::Right);
+        assert_eq!(app.panels.active, PanelSide::Right);
         assert!(app.panel(PanelSide::Right).loading);
         assert!(!app.panel(PanelSide::Left).loading);
     }
@@ -20042,7 +19650,7 @@ mod scroll_tests {
     /// The fixed app has 12 visible rows; the left panel gets 100 entries.
     fn app_with_long_list() -> App {
         let mut app = App::with_fixed_panels();
-        app.left_panel.entries = (0..100)
+        app.panels.left.entries = (0..100)
             .map(|i| fs::FileEntry {
                 name: format!("f{i:03}").into(),
                 path: PathBuf::from(format!("/left/f{i:03}")),
@@ -20058,7 +19666,7 @@ mod scroll_tests {
     }
 
     fn scroll(app: &mut App, side: PanelSide, delta: ScrollDelta) {
-        let _task = app.update(Message::PanelScrolled { side, delta });
+        let _task = app.update(Message::Panel(PanelMessage::PanelScrolled { side, delta }));
     }
 
     fn pixels(y: f32) -> ScrollDelta {
@@ -20078,55 +19686,58 @@ mod scroll_tests {
         for _ in 0..5 {
             scroll(&mut app, PanelSide::Left, pixels(-10.0));
         }
-        assert_eq!(app.left_panel.scroll_offset, 2);
+        assert_eq!(app.panels.left.scroll_offset, 2);
         // The rest of each event is kept: 80 px in all is 3.6 rows.
         for _ in 0..3 {
             scroll(&mut app, PanelSide::Left, pixels(-10.0));
         }
-        assert_eq!(app.left_panel.scroll_offset, 3);
+        assert_eq!(app.panels.left.scroll_offset, 3);
         // And back up, towards the top of the list.
         scroll(&mut app, PanelSide::Left, pixels(88.0));
-        assert_eq!(app.left_panel.scroll_offset, 0);
+        assert_eq!(app.panels.left.scroll_offset, 0);
     }
 
     #[test]
     fn wheel_lines_scroll_by_rows() {
         let mut app = app_with_long_list();
         scroll(&mut app, PanelSide::Left, lines(-3.0));
-        assert_eq!(app.left_panel.scroll_offset, 3);
+        assert_eq!(app.panels.left.scroll_offset, 3);
         scroll(&mut app, PanelSide::Left, lines(1.0));
-        assert_eq!(app.left_panel.scroll_offset, 2);
+        assert_eq!(app.panels.left.scroll_offset, 2);
     }
 
     #[test]
     fn only_the_panel_under_the_pointer_scrolls_and_the_ends_hold() {
         let mut app = app_with_long_list();
         scroll(&mut app, PanelSide::Right, lines(-5.0));
-        assert_eq!(app.left_panel.scroll_offset, 0);
+        assert_eq!(app.panels.left.scroll_offset, 0);
 
         scroll(&mut app, PanelSide::Left, lines(500.0));
-        assert_eq!(app.left_panel.scroll_offset, 0, "scrolled above the top");
+        assert_eq!(app.panels.left.scroll_offset, 0, "scrolled above the top");
         scroll(&mut app, PanelSide::Left, lines(-500.0));
-        assert_eq!(app.left_panel.scroll_offset, 88, "scrolled past the end");
+        assert_eq!(app.panels.left.scroll_offset, 88, "scrolled past the end");
         // Scrolling up from the end moves at once; nothing was banked.
         scroll(&mut app, PanelSide::Left, lines(1.0));
-        assert_eq!(app.left_panel.scroll_offset, 87);
+        assert_eq!(app.panels.left.scroll_offset, 87);
     }
 
     #[test]
     fn the_cursor_stays_while_visible_and_is_held_at_the_edge() {
         let mut app = app_with_long_list();
-        app.left_panel.select(5, 12);
+        app.panels.left.select(5, 12);
         scroll(&mut app, PanelSide::Left, lines(-2.0));
-        assert_eq!(app.left_panel.selected, 5, "the cursor moved while in view");
+        assert_eq!(
+            app.panels.left.selected, 5,
+            "the cursor moved while in view"
+        );
 
         scroll(&mut app, PanelSide::Left, lines(-10.0));
-        assert_eq!(app.left_panel.scroll_offset, 12);
-        assert_eq!(app.left_panel.selected, 12, "the cursor left the top");
+        assert_eq!(app.panels.left.scroll_offset, 12);
+        assert_eq!(app.panels.left.selected, 12, "the cursor left the top");
 
         scroll(&mut app, PanelSide::Left, lines(20.0));
-        assert_eq!(app.left_panel.scroll_offset, 0);
-        assert_eq!(app.left_panel.selected, 11, "the cursor left the bottom");
+        assert_eq!(app.panels.left.scroll_offset, 0);
+        assert_eq!(app.panels.left.selected, 11, "the cursor left the bottom");
     }
 
     #[test]
@@ -20134,7 +19745,10 @@ mod scroll_tests {
         let mut app = app_with_long_list();
         app.open_delete_dialog_for_test(1, false);
         scroll(&mut app, PanelSide::Left, lines(-4.0));
-        assert_eq!(app.left_panel.scroll_offset, 0, "scrolled under the dialog");
+        assert_eq!(
+            app.panels.left.scroll_offset, 0,
+            "scrolled under the dialog"
+        );
 
         let mut with_menu = app_with_long_list().with_volumes(|| {
             vec![fs::Volume {
@@ -20145,7 +19759,7 @@ mod scroll_tests {
         let _open = with_menu.update(Message::VolumeMenu(PanelSide::Left));
         scroll(&mut with_menu, PanelSide::Left, lines(-4.0));
         assert_eq!(
-            with_menu.left_panel.scroll_offset, 0,
+            with_menu.panels.left.scroll_offset, 0,
             "scrolled under the menu"
         );
 
@@ -20153,7 +19767,7 @@ mod scroll_tests {
         let _prompt = with_prompt.update(Message::CreateDirPrompt);
         scroll(&mut with_prompt, PanelSide::Left, lines(-4.0));
         assert_eq!(
-            with_prompt.left_panel.scroll_offset, 0,
+            with_prompt.panels.left.scroll_offset, 0,
             "scrolled under the prompt"
         );
     }
@@ -20162,10 +19776,26 @@ mod scroll_tests {
     fn page_keys_and_cmd_arrows_turn_a_page() {
         let idle = PromptKeyState::default();
         for (key, modifiers, message) in [
-            (Named::PageDown, Modifiers::default(), Message::PageDown),
-            (Named::PageUp, Modifiers::default(), Message::PageUp),
-            (Named::ArrowDown, Modifiers::COMMAND, Message::PageDown),
-            (Named::ArrowUp, Modifiers::COMMAND, Message::PageUp),
+            (
+                Named::PageDown,
+                Modifiers::default(),
+                Message::Panel(PanelMessage::PageDown),
+            ),
+            (
+                Named::PageUp,
+                Modifiers::default(),
+                Message::Panel(PanelMessage::PageUp),
+            ),
+            (
+                Named::ArrowDown,
+                Modifiers::COMMAND,
+                Message::Panel(PanelMessage::PageDown),
+            ),
+            (
+                Named::ArrowUp,
+                Modifiers::COMMAND,
+                Message::Panel(PanelMessage::PageUp),
+            ),
         ] {
             assert_eq!(
                 route_key(&idle, Key::Named(key), modifiers),
@@ -20173,16 +19803,16 @@ mod scroll_tests {
                 "{key:?} {modifiers:?}"
             );
         }
-        assert!(repeats(&Message::PageDown));
-        assert!(repeats(&Message::PageUp));
+        assert!(repeats(&Message::Panel(PanelMessage::PageDown)));
+        assert!(repeats(&Message::Panel(PanelMessage::PageUp)));
 
         let mut app = app_with_long_list();
-        let _down = app.update(Message::PageDown);
-        assert_eq!(app.left_panel.selected, 12);
-        assert_eq!(app.left_panel.scroll_offset, 1);
-        let _up = app.update(Message::PageUp);
-        assert_eq!(app.left_panel.selected, 0);
-        assert_eq!(app.left_panel.scroll_offset, 0);
+        let _down = app.update(Message::Panel(PanelMessage::PageDown));
+        assert_eq!(app.panels.left.selected, 12);
+        assert_eq!(app.panels.left.scroll_offset, 1);
+        let _up = app.update(Message::Panel(PanelMessage::PageUp));
+        assert_eq!(app.panels.left.selected, 0);
+        assert_eq!(app.panels.left.scroll_offset, 0);
     }
 }
 
@@ -20356,9 +19986,9 @@ mod copy_to_clipboard_tests {
     #[tokio::test]
     async fn copying_says_so_in_the_status_bar_and_an_overlay_blocks_it() {
         let mut app = App::with_environment(Environment::isolated()).0;
-        app.left_panel.path = PathBuf::from("/left");
-        app.left_panel.entries = vec![entry("a.txt", false)];
-        app.left_panel.selected = 0;
+        app.panels.left.path = PathBuf::from("/left");
+        app.panels.left.entries = vec![entry("a.txt", false)];
+        app.panels.left.selected = 0;
 
         let _open = app.update(Message::Delete { permanent: false });
         assert!(app.overlay_is_open(), "the delete dialog did not open");
@@ -20397,7 +20027,7 @@ mod context_menu_tests {
     }
 
     fn loaded(app: &App, side: PanelSide) -> Message {
-        Message::DirectoryLoaded {
+        Message::Panel(PanelMessage::DirectoryLoaded {
             side,
             request_id: app.panel(side).request_id,
             path: app.panel(side).path.clone(),
@@ -20406,7 +20036,7 @@ mod context_menu_tests {
             sorted_by: fs::SortKey::default(),
             select: None,
             archive: None,
-        }
+        })
     }
 
     #[test]
@@ -20434,11 +20064,11 @@ mod context_menu_tests {
         open_at(&mut app, LEFT, FILE);
         let first = enabled_actions(&app);
         app.set_modifiers_for_test(Modifiers::CTRL);
-        drop(app.update(Message::RowClicked {
+        drop(app.update(Message::Panel(PanelMessage::RowClicked {
             side: LEFT,
             index: DIRECTORY,
             on_tag: false,
-        }));
+        })));
         assert!(app.context_menu_for_test().is_some(), "a new menu");
         let second = enabled_actions(&app);
         assert_ne!(first, second, "the directory's menu, not the file's");
@@ -20449,7 +20079,7 @@ mod context_menu_tests {
         let mut app = App::with_fixed_panels();
         open_at(&mut app, LEFT, FILE);
         let mut stale = loaded(&app, LEFT);
-        if let Message::DirectoryLoaded { request_id, .. } = &mut stale {
+        if let Message::Panel(PanelMessage::DirectoryLoaded { request_id, .. }) = &mut stale {
             *request_id = request_id.wrapping_add(1);
         }
         drop(app.update(stale));
@@ -20492,7 +20122,7 @@ mod context_menu_tests {
     fn a_right_click_on_an_untagged_row_moves_the_cursor_and_the_pointer_places_the_menu() {
         let mut app = App::with_fixed_panels();
         app.set_pointer_for_test(Point::new(100.0, 120.0));
-        app.active_panel = PanelSide::Right;
+        app.panels.active = PanelSide::Right;
         open_at(&mut app, LEFT, FILE);
 
         assert!(app.context_menu_is_open());
@@ -20694,7 +20324,7 @@ mod context_menu_tests {
     #[test]
     fn the_keyboard_opens_the_menu_at_the_cursor_row_of_the_active_panel() {
         let mut app = App::with_fixed_panels();
-        app.active_panel = PanelSide::Right;
+        app.panels.active = PanelSide::Right;
         app.panel_mut(PanelSide::Right).selected = 2;
         drop(app.update(Message::ContextMenuKey));
 
@@ -20748,11 +20378,11 @@ mod context_menu_tests {
     fn a_left_click_on_a_row_only_closes_the_menu() {
         let mut app = App::with_fixed_panels();
         open_at(&mut app, LEFT, DIRECTORY);
-        drop(app.update(Message::RowClicked {
+        drop(app.update(Message::Panel(PanelMessage::RowClicked {
             side: LEFT,
             index: FILE,
             on_tag: false,
-        }));
+        })));
         assert!(!app.context_menu_is_open());
         assert_eq!(app.panel(LEFT).selected, DIRECTORY);
     }
@@ -20765,21 +20395,21 @@ mod context_menu_tests {
 
         let mut app = App::with_fixed_panels();
         app.set_modifiers_for_test(Modifiers::CTRL);
-        drop(app.update(Message::RowClicked {
+        drop(app.update(Message::Panel(PanelMessage::RowClicked {
             side: LEFT,
             index: FILE,
             on_tag: false,
-        }));
+        })));
         assert_eq!(app.context_menu_is_open(), cfg!(target_os = "macos"));
         assert_eq!(app.panel(LEFT).selected, FILE);
     }
 
     #[test]
     fn the_panels_do_not_scroll_under_the_menu() {
-        let wheel = Message::PanelScrolled {
+        let wheel = Message::Panel(PanelMessage::PanelScrolled {
             side: LEFT,
             delta: iced::mouse::ScrollDelta::Lines { x: 0.0, y: -1.0 },
-        };
+        });
         let mut app = App::with_fixed_panels();
         app.set_visible_rows_for_test(2);
         drop(app.update(wheel.clone()));
@@ -20840,7 +20470,7 @@ mod type_ahead_tests {
     }
 
     fn type_key(app: &mut App, typed: &str) {
-        drop(app.update(Message::TypeAhead(typed.to_string())));
+        drop(app.update(Message::Panel(PanelMessage::TypeAhead(typed.to_string()))));
     }
 
     fn advance(clock: &Arc<Mutex<Instant>>, by: Duration) {
@@ -20859,7 +20489,10 @@ mod type_ahead_tests {
         let state = app.prompt_key_state();
         let q = || Key::Character("q".into());
         let typed = route_key(&state, q(), Modifiers::default());
-        assert_eq!(typed, Some(Message::TypeAhead("q".to_string())));
+        assert_eq!(
+            typed,
+            Some(Message::Panel(PanelMessage::TypeAhead("q".to_string())))
+        );
         drop(app.update(typed.unwrap()));
         assert_eq!(cursor(&app), 2);
         assert_eq!(
@@ -20909,15 +20542,15 @@ mod type_ahead_tests {
     #[test]
     fn moving_the_cursor_or_the_panel_ends_the_prefix() {
         for reset in [
-            Message::MoveSelection(1),
-            Message::SwitchPanel,
-            Message::SelectFirst,
-            Message::PageDown,
+            Message::Panel(PanelMessage::MoveSelection(1)),
+            Message::Panel(PanelMessage::SwitchPanel),
+            Message::Panel(PanelMessage::SelectFirst),
+            Message::Panel(PanelMessage::PageDown),
         ] {
             let (mut app, _clock) = app_with(&["ab", "ba", "bb", "ca"]);
             type_key(&mut app, "b");
             drop(app.update(reset.clone()));
-            app.active_panel = PanelSide::Left;
+            app.panels.active = PanelSide::Left;
             type_key(&mut app, "a");
             assert_eq!(cursor(&app), 1, "{reset:?} did not end the prefix");
         }
@@ -20957,23 +20590,26 @@ mod type_ahead_tests {
         };
         assert_eq!(
             route("a", Modifiers::default()),
-            Some(Message::TypeAhead("a".into()))
+            Some(Message::Panel(PanelMessage::TypeAhead("a".into())))
         );
         assert_eq!(
             route("A", Modifiers::SHIFT),
-            Some(Message::TypeAhead("A".into()))
+            Some(Message::Panel(PanelMessage::TypeAhead("A".into())))
         );
         assert_eq!(route("ç", Modifiers::ALT), None);
         assert_eq!(route("a", Modifiers::CTRL), None);
         assert_eq!(route("a", Modifiers::LOGO), None);
-        assert_eq!(route("*", Modifiers::SHIFT), Some(Message::TagAll));
+        assert_eq!(
+            route("*", Modifiers::SHIFT),
+            Some(Message::Panel(PanelMessage::TagAll))
+        );
         assert_eq!(
             route_key(
                 &PromptKeyState::default(),
                 Key::Named(Named::Space),
                 Modifiers::default()
             ),
-            Some(Message::ToggleTag)
+            Some(Message::Panel(PanelMessage::ToggleTag))
         );
         let prompt = PromptKeyState {
             open: true,
@@ -21027,7 +20663,7 @@ mod command_line_tests {
     ) -> Message {
         Message::CommandLine(CommandLineMessage::CdChecked {
             request_id,
-            side: app.active_panel,
+            side: app.panels.active,
             target: PathBuf::from("/home/test/links/sub"),
             result,
         })
@@ -21044,7 +20680,10 @@ mod command_line_tests {
     fn without_the_focus_letters_stay_type_ahead_and_f2_focuses() {
         let idle = PromptKeyState::default();
         let typed = route_key(&idle, Key::Character("l".into()), NONE);
-        assert_eq!(typed, Some(Message::TypeAhead("l".into())));
+        assert_eq!(
+            typed,
+            Some(Message::Panel(PanelMessage::TypeAhead("l".into())))
+        );
         assert_eq!(
             route_key(&idle, Key::Named(Named::F2), NONE),
             line(CommandLineMessage::Focus)
@@ -21132,7 +20771,7 @@ mod command_line_tests {
     fn other_actions_end_the_command_line() {
         let mut app = focused_app();
         type_line(&mut app, "ls");
-        drop(app.update(Message::SwitchPanel));
+        drop(app.update(Message::Panel(PanelMessage::SwitchPanel)));
         assert!(!app.command_line_for_test().is_focused());
         assert_eq!(app.command_line_for_test().typed(), "");
     }
@@ -21273,10 +20912,10 @@ mod command_line_tests {
     #[test]
     fn finishing_reloads_both_panels() {
         let mut app = App::with_fixed_panels();
-        let before = (app.left_panel.request_id, app.right_panel.request_id);
+        let before = (app.panels.left.request_id, app.panels.right.request_id);
         finished(&mut app, ShellOutcome::Exited(0));
-        assert_ne!(app.left_panel.request_id, before.0);
-        assert_ne!(app.right_panel.request_id, before.1);
+        assert_ne!(app.panels.left.request_id, before.0);
+        assert_ne!(app.panels.right.request_id, before.1);
     }
 
     #[test]
@@ -21438,16 +21077,16 @@ mod path_field_tests {
         for leave in [
             Message::PathFieldCancel,
             Message::ClickedOutside,
-            Message::SwitchPanel,
-            Message::RowClicked {
+            Message::Panel(PanelMessage::SwitchPanel),
+            Message::Panel(PanelMessage::RowClicked {
                 side: PanelSide::Left,
                 index: 1,
                 on_tag: false,
-            },
-            Message::SortBy {
+            }),
+            Message::Panel(PanelMessage::SortBy {
                 side: PanelSide::Left,
                 column: fs::SortColumn::Size,
-            },
+            }),
         ] {
             let mut app = App::with_fixed_panels();
             open(&mut app);
@@ -21620,7 +21259,7 @@ mod config_status_tests {
         app.set_status_error("x");
         assert_eq!(app.status_error(), Some("x"));
 
-        drop(app.update(Message::MoveSelection(1)));
+        drop(app.update(Message::Panel(PanelMessage::MoveSelection(1))));
 
         assert_eq!(app.status_error(), config_text.as_deref());
     }
@@ -22268,7 +21907,7 @@ mod configured_keys_tests {
         assert_eq!(route_key(&state, character("a"), none), None);
         assert_eq!(
             route_key(&state, Key::Named(Named::Tab), none),
-            Some(Message::SwitchPanel)
+            Some(Message::Panel(PanelMessage::SwitchPanel))
         );
         assert_eq!(
             route_key(&state, character("z"), Modifiers::COMMAND),
@@ -22311,7 +21950,7 @@ mod configured_keys_tests {
     fn a_typed_star_with_ctrl_still_clears_the_tags() {
         assert_eq!(
             press_physical("*", Code::Digit8, Modifiers::CTRL | Modifiers::SHIFT),
-            Some(Message::ClearTags)
+            Some(Message::Panel(PanelMessage::ClearTags))
         );
     }
 
@@ -22332,7 +21971,9 @@ mod configured_keys_tests {
         };
         assert_eq!(
             routed,
-            Some(Message::SortActive(crate::fs::SortColumn::Name))
+            Some(Message::Panel(PanelMessage::SortActive(
+                crate::fs::SortColumn::Name
+            )))
         );
     }
 
@@ -22446,7 +22087,7 @@ mod search_tests {
         let shown = app.search_status().unwrap();
         assert!(!shown.is_empty() && !shown.starts_with('/'), "{shown}");
 
-        drop(app.update(Message::SwitchPanel));
+        drop(app.update(Message::Panel(PanelMessage::SwitchPanel)));
         assert_eq!(app.search_status(), None);
     }
 
@@ -22508,7 +22149,7 @@ mod search_tests {
         );
         assert_eq!(
             route(false, named(Named::ArrowDown), none),
-            Some(Message::MoveSelection(1)),
+            Some(Message::Panel(PanelMessage::MoveSelection(1))),
             "without the search the arrows are the panel's"
         );
     }
@@ -22934,7 +22575,7 @@ mod search_tests {
     #[test]
     fn after_a_switch_to_the_other_panel_the_keys_and_actions_are_the_panels() {
         let mut app = app_with_results(&[("/home/test/links/a.txt", &[1])]);
-        drop(app.update(Message::SwitchPanel));
+        drop(app.update(Message::Panel(PanelMessage::SwitchPanel)));
 
         assert!(!app.prompt_key_state().search);
         assert_eq!(
@@ -22943,7 +22584,7 @@ mod search_tests {
                 named(Named::ArrowDown),
                 Modifiers::default()
             ),
-            Some(Message::MoveSelection(1))
+            Some(Message::Panel(PanelMessage::MoveSelection(1)))
         );
         let other_cursor = app
             .panel(PanelSide::Right)
@@ -22981,7 +22622,7 @@ mod search_tests {
         drop(app.update(Message::OpenSearch));
         drop(app.update(Message::OpenSearch));
         assert_eq!(app.search_for_test().unwrap().focused, SearchField::Include);
-        drop(app.update(Message::SwitchPanel));
+        drop(app.update(Message::Panel(PanelMessage::SwitchPanel)));
         assert!(!app.prompt_key_state().search);
 
         drop(app.update(Message::OpenSearch));
@@ -22993,15 +22634,15 @@ mod search_tests {
     #[test]
     fn using_the_search_makes_its_panel_active_again() {
         let mut app = app_with_results(&[("/home/test/links/a.txt", &[1])]);
-        drop(app.update(Message::SwitchPanel));
+        drop(app.update(Message::Panel(PanelMessage::SwitchPanel)));
         drop(app.update(Message::Search(SearchMessage::RowClicked(0))));
         assert!(app.prompt_key_state().search);
 
-        drop(app.update(Message::SwitchPanel));
+        drop(app.update(Message::Panel(PanelMessage::SwitchPanel)));
         drop(app.update(Message::Search(SearchMessage::ToggleCase)));
         assert!(app.prompt_key_state().search);
 
-        drop(app.update(Message::SwitchPanel));
+        drop(app.update(Message::Panel(PanelMessage::SwitchPanel)));
         let generation = app.search_for_test().unwrap().generation;
         drop(app.update(Message::Search(SearchMessage::Debounced(generation))));
         assert!(
@@ -23190,7 +22831,7 @@ mod search_tests {
         drop(app.update(Message::HitList(HitListMessage::ShowOnOtherSide)));
 
         assert!(app.panel(other).loading);
-        assert_eq!(app.active_panel, other);
+        assert_eq!(app.panels.active, other);
         assert!(app.search_is_open_for_test());
     }
 
@@ -24158,9 +23799,9 @@ mod command_palette_tests {
 
     fn app_with_files() -> App {
         let mut app = App::with_environment(Environment::isolated()).0;
-        app.left_panel.path = PathBuf::from("/left");
-        app.right_panel.path = PathBuf::from("/right");
-        app.left_panel.entries = (0..3)
+        app.panels.left.path = PathBuf::from("/left");
+        app.panels.right.path = PathBuf::from("/right");
+        app.panels.left.entries = (0..3)
             .map(|i| FileEntry {
                 name: OsString::from(format!("f{i}.txt")),
                 path: PathBuf::from("/left").join(format!("f{i}.txt")),
@@ -24172,7 +23813,7 @@ mod command_palette_tests {
                 folder_size: None,
             })
             .collect();
-        app.left_panel.selected = 0;
+        app.panels.left.selected = 0;
         app
     }
 
@@ -24329,8 +23970,8 @@ mod command_palette_tests {
         let message = crate::menu::command_message(KeyAction::SwitchPanel.name()).unwrap();
         drop(menu.update(message));
 
-        assert_eq!(menu.active_panel, PanelSide::Right);
-        assert_eq!(menu.active_panel, lab.active_panel);
+        assert_eq!(menu.panels.active, PanelSide::Right);
+        assert_eq!(menu.panels.active, lab.panels.active);
         assert_eq!(menu.recent_commands, [KeyAction::SwitchPanel]);
         assert_eq!(menu.recent_commands, lab.recent_commands);
     }
@@ -25328,7 +24969,9 @@ mod settings_tab_tests {
             press(&app, Key::Named(Named::Escape), Modifiers::empty()),
             Some(Message::Settings(SettingsMessage::Close))
         );
-        drop(app.update(Message::ActivatePanel(PanelSide::Right)));
+        drop(app.update(Message::Panel(PanelMessage::ActivatePanel(
+            PanelSide::Right,
+        ))));
         assert!(app.settings.is_none());
     }
 
@@ -25596,17 +25239,17 @@ mod session_state_tests {
         let scratch = tempfile::tempdir().unwrap();
         let app = started(&scratch);
 
-        assert_eq!(app.left_panel.path, scratch.path().join("left"));
-        assert_eq!(app.right_panel.path, scratch.path().join("right"));
+        assert_eq!(app.panels.left.path, scratch.path().join("left"));
+        assert_eq!(app.panels.right.path, scratch.path().join("right"));
         assert_eq!(
-            app.left_panel.sort,
+            app.panels.left.sort,
             SortKey {
                 column: SortColumn::Size,
                 descending: true
             }
         );
-        assert_eq!(app.right_panel.sort.column, SortColumn::Modified);
-        assert_eq!(app.active_panel, PanelSide::Right);
+        assert_eq!(app.panels.right.sort.column, SortColumn::Modified);
+        assert_eq!(app.panels.active, PanelSide::Right);
         assert_eq!(app.window_size, Size::new(1000.0, 700.0));
     }
 
@@ -25655,15 +25298,15 @@ mod session_state_tests {
         saved.window = None;
 
         let mut app = started_and_listed(saved).await;
-        assert_eq!(cursor_name(&app.left_panel).as_deref(), Some("gamma.txt"));
-        assert_eq!(cursor_name(&app.right_panel).as_deref(), Some(".."));
-        assert!(app.left_panel.selected >= app.left_panel.scroll_offset);
+        assert_eq!(cursor_name(&app.panels.left).as_deref(), Some("gamma.txt"));
+        assert_eq!(cursor_name(&app.panels.right).as_deref(), Some(".."));
+        assert!(app.panels.left.selected >= app.panels.left.scroll_offset);
 
         assert_eq!(
             app.session_state().left.cursor.as_deref(),
             Some("gamma.txt")
         );
-        app.left_panel.select(0, app.visible_rows);
+        app.panels.left.select(0, app.visible_rows);
         assert_eq!(
             app.session_state().left.cursor,
             None,
@@ -25681,7 +25324,7 @@ mod session_state_tests {
 
         let app = started_and_listed(saved).await;
 
-        assert_eq!(app.left_panel.selected, 0);
+        assert_eq!(app.panels.left.selected, 0);
     }
 
     #[tokio::test]
@@ -25695,8 +25338,8 @@ mod session_state_tests {
 
         let app = started_and_listed(saved).await;
 
-        assert_eq!(app.left_panel.path, scratch.path());
-        assert_eq!(app.left_panel.selected, 0);
+        assert_eq!(app.panels.left.path, scratch.path());
+        assert_eq!(app.panels.left.selected, 0);
     }
 
     #[tokio::test]
@@ -25709,25 +25352,25 @@ mod session_state_tests {
 
         let app = started_and_listed(saved).await;
 
-        assert_eq!(app.active_panel, PanelSide::Right);
+        assert_eq!(app.panels.active, PanelSide::Right);
     }
 
     #[test]
     fn switching_panels_schedules_a_write_of_the_new_active_panel() {
         let scratch = tempfile::tempdir().unwrap();
         let mut app = started(&scratch);
-        assert_eq!(app.active_panel, PanelSide::Right);
+        assert_eq!(app.panels.active, PanelSide::Right);
 
-        drop(app.update(Message::SwitchPanel));
+        drop(app.update(Message::Panel(PanelMessage::SwitchPanel)));
         assert_eq!(app.session_save_generation, 1);
         let (_, after_switch) = app.due_session_state(1).unwrap();
         assert_eq!(after_switch.active, Some(PanelSide::Left));
 
-        drop(app.update(Message::RowClicked {
+        drop(app.update(Message::Panel(PanelMessage::RowClicked {
             side: PanelSide::Right,
             index: 0,
             on_tag: false,
-        }));
+        })));
         assert_eq!(app.session_save_generation, 2);
         let (_, after_click) = app.due_session_state(2).unwrap();
         assert_eq!(after_click.active, Some(PanelSide::Right));
@@ -25748,7 +25391,7 @@ mod session_state_tests {
 
         let app = App::restored(Environment::isolated(), saved).0;
 
-        assert_eq!(app.left_panel.path, scratch.path());
+        assert_eq!(app.panels.left.path, scratch.path());
     }
 
     #[test]
@@ -25786,16 +25429,16 @@ mod session_state_tests {
         let scratch = tempfile::tempdir().unwrap();
         let mut app = started(&scratch);
 
-        drop(app.update(Message::SortBy {
+        drop(app.update(Message::Panel(PanelMessage::SortBy {
             side: PanelSide::Left,
             column: SortColumn::Name,
-        }));
+        })));
         let first = app.session_save_generation;
         assert_eq!(first, 1);
-        drop(app.update(Message::SortBy {
+        drop(app.update(Message::Panel(PanelMessage::SortBy {
             side: PanelSide::Right,
             column: SortColumn::Name,
-        }));
+        })));
 
         assert_eq!(app.session_save_generation, 2);
         assert!(app.due_session_state(first).is_none());
@@ -25810,7 +25453,7 @@ mod session_state_tests {
         let scratch = tempfile::tempdir().unwrap();
         let mut app = started(&scratch);
 
-        drop(app.update(Message::MoveSelection(1)));
+        drop(app.update(Message::Panel(PanelMessage::MoveSelection(1))));
 
         assert_eq!(app.session_save_generation, 0);
     }
@@ -25835,10 +25478,10 @@ mod session_state_tests {
     fn without_a_state_path_nothing_is_scheduled() {
         let mut app = App::with_environment(Environment::isolated()).0;
 
-        drop(app.update(Message::SortBy {
+        drop(app.update(Message::Panel(PanelMessage::SortBy {
             side: PanelSide::Left,
             column: SortColumn::Size,
-        }));
+        })));
         drop(app.update(Message::WindowResized(Size::new(900.0, 600.0))));
 
         assert_eq!(app.session_save_generation, 0);
@@ -25903,7 +25546,8 @@ mod favourites_and_history_tests {
     }
 
     fn cursor_name(app: &App) -> String {
-        app.left_panel
+        app.panels
+            .left
             .selected_entry()
             .unwrap()
             .name
@@ -25927,18 +25571,18 @@ mod favourites_and_history_tests {
         go(&mut app, &base.join("a")).await;
         go(&mut app, &base.join("a").join("b")).await;
 
-        settle(&mut app, Message::HistoryBack).await;
-        assert_eq!(app.left_panel.path, base.join("a"));
+        settle(&mut app, Message::Panel(PanelMessage::HistoryBack)).await;
+        assert_eq!(app.panels.left.path, base.join("a"));
         assert_eq!(cursor_name(&app), "b");
 
-        settle(&mut app, Message::HistoryBack).await;
-        assert_eq!(app.left_panel.path, base);
+        settle(&mut app, Message::Panel(PanelMessage::HistoryBack)).await;
+        assert_eq!(app.panels.left.path, base);
         assert_eq!(cursor_name(&app), "a");
 
-        settle(&mut app, Message::HistoryForward).await;
-        assert_eq!(app.left_panel.path, base.join("a"));
-        settle(&mut app, Message::HistoryForward).await;
-        assert_eq!(app.left_panel.path, base.join("a").join("b"));
+        settle(&mut app, Message::Panel(PanelMessage::HistoryForward)).await;
+        assert_eq!(app.panels.left.path, base.join("a"));
+        settle(&mut app, Message::Panel(PanelMessage::HistoryForward)).await;
+        assert_eq!(app.panels.left.path, base.join("a").join("b"));
     }
 
     #[tokio::test]
@@ -25947,7 +25591,7 @@ mod favourites_and_history_tests {
         let mut app = started_in(scratch.path());
         go(&mut app, scratch.path()).await;
         go(&mut app, scratch.path()).await;
-        assert!(app.left_panel.history.back().is_empty());
+        assert!(app.panels.left.history.back().is_empty());
     }
 
     #[tokio::test]
@@ -25956,12 +25600,12 @@ mod favourites_and_history_tests {
         let base = scratch.path();
         let mut app = started_in(base);
         go(&mut app, &base.join("a")).await;
-        settle(&mut app, Message::HistoryBack).await;
-        assert_eq!(app.left_panel.history.forward(), [base.join("a")]);
+        settle(&mut app, Message::Panel(PanelMessage::HistoryBack)).await;
+        assert_eq!(app.panels.left.history.forward(), [base.join("a")]);
 
         go(&mut app, &base.join("c")).await;
 
-        assert!(app.left_panel.history.forward().is_empty());
+        assert!(app.panels.left.history.forward().is_empty());
     }
 
     #[tokio::test]
@@ -25973,9 +25617,9 @@ mod favourites_and_history_tests {
         go(&mut app, &base.join("a").join("b")).await;
         std::fs::remove_dir_all(base.join("a")).unwrap();
 
-        settle(&mut app, Message::HistoryBack).await;
+        settle(&mut app, Message::Panel(PanelMessage::HistoryBack)).await;
 
-        assert_eq!(app.left_panel.path, base);
+        assert_eq!(app.panels.left.path, base);
     }
 
     #[test]
@@ -25985,7 +25629,7 @@ mod favourites_and_history_tests {
         let file = scratch.path().join("state.toml");
         let mut app = started_in(base);
         app.state_path = Some(file.clone());
-        app.left_panel.history = PanelHistory::restored(
+        app.panels.left.history = PanelHistory::restored(
             vec![base.join("a"), base.join("c")],
             vec![base.join("a").join("b")],
         );
@@ -25998,7 +25642,7 @@ mod favourites_and_history_tests {
         };
         let restored = App::restored(environment, session_state::load(&file)).0;
 
-        assert_eq!(restored.left_panel.history, app.left_panel.history);
+        assert_eq!(restored.panels.left.history, app.panels.left.history);
         assert_eq!(restored.favourites, app.favourites);
     }
 
@@ -26068,7 +25712,7 @@ mod favourites_and_history_tests {
         settle(&mut app, Message::VolumeMenuClick(2)).await;
 
         assert!(!app.volume_menu_is_open());
-        assert_eq!(app.left_panel.path, favourite);
+        assert_eq!(app.panels.left.path, favourite);
     }
 
     #[test]
@@ -26151,11 +25795,11 @@ mod favourites_and_history_tests {
         let panels = PromptKeyState::default();
         assert_eq!(
             route_key(&panels, Key::Named(Named::ArrowLeft), Modifiers::ALT),
-            Some(Message::HistoryBack)
+            Some(Message::Panel(PanelMessage::HistoryBack))
         );
         assert_eq!(
             route_key(&panels, Key::Named(Named::ArrowRight), Modifiers::ALT),
-            Some(Message::HistoryForward)
+            Some(Message::Panel(PanelMessage::HistoryForward))
         );
     }
 
@@ -26192,8 +25836,8 @@ mod favourites_and_history_tests {
         for state in fields {
             for key in [Named::ArrowLeft, Named::ArrowRight] {
                 let routed = route_key(&state, Key::Named(key), Modifiers::ALT);
-                assert_ne!(routed, Some(Message::HistoryBack));
-                assert_ne!(routed, Some(Message::HistoryForward));
+                assert_ne!(routed, Some(Message::Panel(PanelMessage::HistoryBack)));
+                assert_ne!(routed, Some(Message::Panel(PanelMessage::HistoryForward)));
             }
         }
     }
@@ -26241,7 +25885,7 @@ mod archive_panel_tests {
         panel.archive = None;
         for message in [
             Message::Transfer(TransferKind::Move),
-            Message::OpenSelected,
+            Message::Panel(PanelMessage::OpenSelected),
             Message::CreateDirPrompt,
         ] {
             assert!(archive_refusal(&panel, &message).is_none());
@@ -26319,8 +25963,8 @@ mod archive_panel_tests {
             Message::Transfer(TransferKind::Copy),
             Message::Delete { permanent: false },
             Message::Delete { permanent: true },
-            Message::GoUp,
-            Message::OpenSelected,
+            Message::Panel(PanelMessage::GoUp),
+            Message::Panel(PanelMessage::OpenSelected),
         ] {
             assert!(archive_refusal(&panel, &message).is_none(), "{message:?}");
         }
@@ -26338,8 +25982,8 @@ mod archive_panel_tests {
     #[test]
     fn packing_beside_an_archive_suggests_the_own_folder() {
         let mut app = App::with_fixed_panels();
-        app.left_panel.entries = vec![entry("fotos", true)];
-        app.right_panel = panel_in_archive(Vec::new());
+        app.panels.left.entries = vec![entry("fotos", true)];
+        app.panels.right = panel_in_archive(Vec::new());
         drop(app.update(Message::PackPrompt));
         assert_eq!(
             app.prompt.as_ref().map(Prompt::archive_path),
@@ -26365,7 +26009,7 @@ mod archive_panel_tests {
     fn an_archive_inside_an_archive_is_not_opened() {
         let panel = panel_in_archive(vec![entry("inner.tar.gz", false)]);
         assert!(matches!(
-            archive_refusal(&panel, &Message::OpenSelected),
+            archive_refusal(&panel, &Message::Panel(PanelMessage::OpenSelected)),
             Some(Msg::StatusArchiveNested)
         ));
     }
@@ -26373,7 +26017,7 @@ mod archive_panel_tests {
     #[test]
     fn a_panel_in_an_archive_is_recorded_as_standing_on_the_archive_file() {
         let mut app = App::with_environment(Environment::isolated()).0;
-        app.left_panel = panel_in_archive(vec![entry("a.txt", false)]);
+        app.panels.left = panel_in_archive(vec![entry("a.txt", false)]);
 
         let record = app.session_state().left;
 
@@ -26605,7 +26249,7 @@ mod archive_view_tests {
 
     fn leave(app: &mut App, side: PanelSide) {
         let request_id = app.panel_mut(side).begin_load();
-        drop(app.update(Message::DirectoryLoaded {
+        drop(app.update(Message::Panel(PanelMessage::DirectoryLoaded {
             side,
             request_id,
             path: PathBuf::from("/"),
@@ -26614,7 +26258,7 @@ mod archive_view_tests {
             sorted_by: SortKey::default(),
             select: None,
             archive: None,
-        }));
+        })));
     }
 
     /// The state F3 leaves behind while its job runs, without a thread: the
@@ -27179,13 +26823,13 @@ mod grant_tests {
         let folder = PathBuf::from("chosen-and-saved");
         let mut app = sandboxed(false, recording_grant);
         app.open_grant_dialog_if_needed();
-        let before = (app.left_panel.request_id, app.right_panel.request_id);
+        let before = (app.panels.left.request_id, app.panels.right.request_id);
 
         let reported = reports(&mut app, GrantMessage::Picked(Some(folder.clone()))).await;
 
         assert!(!app.grant_dialog, "the dialog goes at the choice");
         assert_eq!(
-            (app.left_panel.request_id, app.right_panel.request_id),
+            (app.panels.left.request_id, app.panels.right.request_id),
             before,
             "nothing reloads before the grant is saved"
         );
@@ -27203,8 +26847,8 @@ mod grant_tests {
         for message in reported {
             drop(app.update(message));
         }
-        assert_ne!(app.left_panel.request_id, before.0);
-        assert_ne!(app.right_panel.request_id, before.1);
+        assert_ne!(app.panels.left.request_id, before.0);
+        assert_ne!(app.panels.right.request_id, before.1);
         assert!(app.notice.as_deref().unwrap().contains("chosen-and-saved"));
         assert!(app.status_error().is_none());
     }
@@ -27213,7 +26857,7 @@ mod grant_tests {
     async fn a_grant_that_cannot_be_saved_is_reported_and_loads_nothing() {
         let mut app = sandboxed(false, refusing_grant);
         app.open_grant_dialog_if_needed();
-        let before = (app.left_panel.request_id, app.right_panel.request_id);
+        let before = (app.panels.left.request_id, app.panels.right.request_id);
 
         pick(&mut app, PathBuf::from("refused")).await;
 
@@ -27224,7 +26868,7 @@ mod grant_tests {
         );
         assert!(!app.grant_dialog, "the status bar must not stay dimmed");
         assert_eq!(
-            (app.left_panel.request_id, app.right_panel.request_id),
+            (app.panels.left.request_id, app.panels.right.request_id),
             before
         );
     }
@@ -27452,7 +27096,7 @@ mod remote_panel_tests {
     #[test]
     fn a_refused_key_on_a_server_panel_shows_the_notice_and_does_nothing() {
         let mut app = App::with_environment(Environment::isolated()).0;
-        app.left_panel.path = url("/home");
+        app.panels.left.path = url("/home");
 
         drop(app.update(Message::Delete { permanent: true }));
 
@@ -27467,11 +27111,11 @@ mod remote_panel_tests {
     fn a_server_panel_is_remembered_as_home_and_history_drops_server_paths() {
         let mut app = App::with_environment(Environment::isolated()).0;
         let local = std::env::temp_dir();
-        app.left_panel.path = url("/home/tester");
-        app.left_panel.history.visit(local.clone());
-        app.left_panel.history.visit(url("/etc"));
-        app.left_panel.history.visit(url("/home"));
-        app.right_panel.path = url("/srv");
+        app.panels.left.path = url("/home/tester");
+        app.panels.left.history.visit(local.clone());
+        app.panels.left.history.visit(url("/etc"));
+        app.panels.left.history.visit(url("/home"));
+        app.panels.right.path = url("/srv");
         app.favourites = vec![local.clone()];
 
         let state = app.session_state();
@@ -27540,7 +27184,7 @@ mod remote_panel_tests {
         assert_eq!(dialog.value(ConnectField::Host), HOST);
         assert_eq!(dialog.value(ConnectField::User), USER);
         assert_eq!(dialog.value(ConnectField::Password), "");
-        assert!(app.left_panel.loading, "the panel waits for the answer");
+        assert!(app.panels.left.loading, "the panel waits for the answer");
         assert!(!fixture.pool.is_connected(&Fixture::id()));
         assert!(app.prompt_key_state().connect_dialog);
         assert!(app.blocking_overlay_is_open());
@@ -27555,10 +27199,10 @@ mod remote_panel_tests {
         open(&mut app, PanelSide::Right, url("/home"), None).await;
 
         assert!(matches!(
-            app.right_panel.error,
+            app.panels.right.error,
             Some(fs::ReadError::RemoteDisconnected { .. })
         ));
-        assert_eq!(app.right_panel.path, url("/home"));
+        assert_eq!(app.panels.right.path, url("/home"));
     }
 
     #[tokio::test]
@@ -27572,9 +27216,9 @@ mod remote_panel_tests {
 
         assert!(app.connect_dialog.is_none());
         assert!(fixture.pool.is_connected(&Fixture::id()));
-        assert_eq!(app.left_panel.path, url("/home/tester"));
+        assert_eq!(app.panels.left.path, url("/home/tester"));
         assert_eq!(names(&app, PanelSide::Left), ["..", "a.txt"]);
-        assert_eq!(app.left_panel.error, None);
+        assert_eq!(app.panels.left.error, None);
     }
 
     #[tokio::test]
@@ -27782,8 +27426,8 @@ mod remote_panel_tests {
         settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
 
         assert!(app.connect_dialog.is_none());
-        assert_eq!(app.left_panel.path, url(HOME));
-        assert_eq!(app.left_panel.error, None);
+        assert_eq!(app.panels.left.path, url(HOME));
+        assert_eq!(app.panels.left.error, None);
         assert_eq!(
             app.notice_for_test(),
             Some("Connected to tester@test.invalid")
@@ -27825,7 +27469,7 @@ mod remote_panel_tests {
 
         settle(&mut app, Message::Remote(RemoteMessage::Submit)).await;
 
-        assert_eq!(app.left_panel.path, url("/srv/files"));
+        assert_eq!(app.panels.left.path, url("/srv/files"));
     }
 
     #[tokio::test]
@@ -27901,7 +27545,7 @@ mod remote_panel_tests {
         let fixture = Fixture::trusted();
         let mut app = app_over(&fixture);
         open(&mut app, PanelSide::Left, url("/home"), None).await;
-        assert!(app.left_panel.loading);
+        assert!(app.panels.left.loading);
 
         let route = route_key(
             &app.prompt_key_state(),
@@ -27912,7 +27556,7 @@ mod remote_panel_tests {
         settle(&mut app, Message::Remote(RemoteMessage::Cancel)).await;
 
         assert!(app.connect_dialog.is_none());
-        assert!(!app.left_panel.loading);
+        assert!(!app.panels.left.loading);
     }
 
     #[tokio::test]
@@ -27961,20 +27605,20 @@ mod remote_panel_tests {
         let fixture = Fixture::connected().await;
         let mut app = app_over(&fixture);
         open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
-        assert_eq!(app.left_panel.path, url("/home/tester"));
+        assert_eq!(app.panels.left.path, url("/home/tester"));
 
-        settle(&mut app, Message::GoUp).await;
-        assert_eq!(app.left_panel.path, url("/home"));
-        assert_eq!(app.left_panel.selected_entry().unwrap().name, "tester");
+        settle(&mut app, Message::Panel(PanelMessage::GoUp)).await;
+        assert_eq!(app.panels.left.path, url("/home"));
+        assert_eq!(app.panels.left.selected_entry().unwrap().name, "tester");
 
-        settle(&mut app, Message::GoUp).await;
-        assert_eq!(app.left_panel.path, url("/"));
-        assert!(app.left_panel.entries.iter().all(|entry| !entry.is_parent));
+        settle(&mut app, Message::Panel(PanelMessage::GoUp)).await;
+        assert_eq!(app.panels.left.path, url("/"));
+        assert!(app.panels.left.entries.iter().all(|entry| !entry.is_parent));
 
-        let before = app.left_panel.request_id;
-        settle(&mut app, Message::GoUp).await;
-        assert_eq!(app.left_panel.request_id, before, "the root has no parent");
-        assert_eq!(app.left_panel.path, url("/"));
+        let before = app.panels.left.request_id;
+        settle(&mut app, Message::Panel(PanelMessage::GoUp)).await;
+        assert_eq!(app.panels.left.request_id, before, "the root has no parent");
+        assert_eq!(app.panels.left.path, url("/"));
     }
 
     #[tokio::test]
@@ -27984,20 +27628,21 @@ mod remote_panel_tests {
         let mut app = app_over(&fixture);
         open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
         let docs = app
-            .left_panel
+            .panels
+            .left
             .entries
             .iter()
             .position(|e| e.name == "docs")
             .unwrap();
-        app.left_panel.selected = docs;
+        app.panels.left.selected = docs;
 
-        settle(&mut app, Message::OpenSelected).await;
-        assert_eq!(app.left_panel.path, url("/home/tester/docs"));
+        settle(&mut app, Message::Panel(PanelMessage::OpenSelected)).await;
+        assert_eq!(app.panels.left.path, url("/home/tester/docs"));
 
-        app.left_panel.selected = 0;
-        settle(&mut app, Message::OpenSelected).await;
-        assert_eq!(app.left_panel.path, url("/home/tester"));
-        assert_eq!(app.left_panel.selected_entry().unwrap().name, "docs");
+        app.panels.left.selected = 0;
+        settle(&mut app, Message::Panel(PanelMessage::OpenSelected)).await;
+        assert_eq!(app.panels.left.path, url("/home/tester"));
+        assert_eq!(app.panels.left.selected_entry().unwrap().name, "docs");
     }
 
     #[tokio::test]
@@ -28006,18 +27651,19 @@ mod remote_panel_tests {
         std::fs::write(fixture.server.local("/home/tester/pack.zip"), "not a zip").unwrap();
         let mut app = app_over(&fixture);
         open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
-        app.left_panel.selected = app
-            .left_panel
+        app.panels.left.selected = app
+            .panels
+            .left
             .entries
             .iter()
             .position(|e| e.name == "pack.zip")
             .unwrap();
-        let before = app.left_panel.request_id;
+        let before = app.panels.left.request_id;
 
-        settle(&mut app, Message::OpenSelected).await;
+        settle(&mut app, Message::Panel(PanelMessage::OpenSelected)).await;
 
-        assert_eq!(app.left_panel.request_id, before);
-        assert_eq!(app.left_panel.path, url("/home/tester"));
+        assert_eq!(app.panels.left.request_id, before);
+        assert_eq!(app.panels.left.path, url("/home/tester"));
     }
 
     #[tokio::test]
@@ -28028,12 +27674,12 @@ mod remote_panel_tests {
         open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
         open(&mut app, PanelSide::Left, url("/home/tester/docs"), None).await;
 
-        settle(&mut app, Message::HistoryBack).await;
-        assert_eq!(app.left_panel.path, url("/home/tester"));
-        assert_eq!(app.left_panel.selected_entry().unwrap().name, "docs");
+        settle(&mut app, Message::Panel(PanelMessage::HistoryBack)).await;
+        assert_eq!(app.panels.left.path, url("/home/tester"));
+        assert_eq!(app.panels.left.selected_entry().unwrap().name, "docs");
 
-        settle(&mut app, Message::HistoryForward).await;
-        assert_eq!(app.left_panel.path, url("/home/tester/docs"));
+        settle(&mut app, Message::Panel(PanelMessage::HistoryForward)).await;
+        assert_eq!(app.panels.left.path, url("/home/tester/docs"));
     }
 
     #[tokio::test]
@@ -28051,7 +27697,7 @@ mod remote_panel_tests {
         ] {
             drop(app.update(Message::PathFieldInput(typed.into())));
             settle(&mut app, Message::PathFieldSubmit).await;
-            assert_eq!(app.left_panel.path, url(expected), "{typed}");
+            assert_eq!(app.panels.left.path, url(expected), "{typed}");
             assert_eq!(app.path_field_for_test(), None);
         }
     }
@@ -28080,8 +27726,9 @@ mod remote_panel_tests {
         std::fs::write(fixture.server.local("/home/tester/a.txt"), "a").unwrap();
         let mut app = app_over(&fixture);
         open(&mut app, PanelSide::Left, url("/home/tester"), None).await;
-        app.left_panel.selected = app
-            .left_panel
+        app.panels.left.selected = app
+            .panels
+            .left
             .entries
             .iter()
             .position(|e| e.name == "a.txt")
@@ -28114,7 +27761,7 @@ mod remote_panel_tests {
                 .is_some_and(|open| open.servers.is_empty()),
             "the trash row keeps the menu open"
         );
-        assert_eq!(app.left_panel.path, app.home, "the panel went home");
+        assert_eq!(app.panels.left.path, app.home, "the panel went home");
         assert!(app
             .notice_for_test()
             .unwrap()
@@ -28129,8 +27776,8 @@ mod remote_panel_tests {
 
         settle(&mut app, Message::VolumeMenuActivate).await;
 
-        assert_eq!(app.right_panel.path, url("/"));
-        assert_eq!(app.right_panel.error, None);
+        assert_eq!(app.panels.right.path, url("/"));
+        assert_eq!(app.panels.right.error, None);
     }
 
     #[tokio::test]
@@ -28636,7 +28283,7 @@ mod remote_panel_tests {
     async fn a_saved_server_opens_from_the_settings_in_the_active_panel() {
         let fixture = Fixture::connected().await;
         let mut app = app_over(&fixture);
-        app.active_panel = PanelSide::Right;
+        app.panels.active = PanelSide::Right;
 
         settle(
             &mut app,
@@ -28644,8 +28291,8 @@ mod remote_panel_tests {
         )
         .await;
 
-        assert_eq!(app.right_panel.path, url("/home"));
-        assert_eq!(app.right_panel.error, None);
+        assert_eq!(app.panels.right.path, url("/home"));
+        assert_eq!(app.panels.right.error, None);
     }
 
     #[tokio::test]
@@ -28689,7 +28336,7 @@ mod remote_panel_tests {
         assert!(text.contains("host = \"test.invalid\"") && text.contains("path = \"/home\""));
         assert!(!text.contains(PASSWORD), "{text}");
         assert_eq!(app.saved_servers, [saved(None, HOST, Some("/home"))]);
-        assert_eq!(app.left_panel.path, url("/home"));
+        assert_eq!(app.panels.left.path, url("/home"));
     }
 
     #[tokio::test]
@@ -28923,7 +28570,8 @@ mod window_focus_tests {
     }
 
     fn size_of(app: &App, name: &str) -> u64 {
-        app.left_panel
+        app.panels
+            .left
             .entries
             .iter()
             .find(|entry| entry.name == name)
@@ -28938,7 +28586,7 @@ mod window_focus_tests {
             std::fs::write(dir.path().join(name), "").unwrap();
         }
         let mut app = App::with_fixed_panels();
-        app.left_panel = PanelState::new(dir.path().to_path_buf());
+        app.panels.left = PanelState::new(dir.path().to_path_buf());
         let first = app.load(PanelSide::Left, dir.path().to_path_buf(), None);
         let mut stream = task::into_stream(first).unwrap();
         while let Some(action) = stream.next().await {
@@ -28948,22 +28596,24 @@ mod window_focus_tests {
         }
         let rows = app.visible_rows;
         let index = app
-            .left_panel
+            .panels
+            .left
             .entries
             .iter()
             .position(|entry| entry.name == "b.txt")
             .unwrap();
-        app.left_panel.select(index, rows);
-        app.left_panel.selection.toggle(&dir.path().join("c.txt"));
+        app.panels.left.select(index, rows);
+        app.panels.left.selection.toggle(&dir.path().join("c.txt"));
         assert_eq!(size_of(&app, "b.txt"), 0);
 
         std::fs::write(dir.path().join("b.txt"), "edited").unwrap();
         deliver(&mut app, Message::WindowFocused).await;
 
         assert_eq!(size_of(&app, "b.txt"), 6);
-        assert_eq!(app.left_panel.selected_entry().unwrap().name, "b.txt");
+        assert_eq!(app.panels.left.selected_entry().unwrap().name, "b.txt");
         assert!(app
-            .left_panel
+            .panels
+            .left
             .selection
             .is_tagged(&dir.path().join("c.txt")));
     }
@@ -28971,11 +28621,11 @@ mod window_focus_tests {
     #[tokio::test]
     async fn focus_returning_leaves_a_panel_inside_an_archive_alone() {
         let mut app = App::with_fixed_panels();
-        app.left_panel.archive = Some(PathBuf::from("/home/test/a.zip"));
-        let request_before = app.left_panel.request_id;
+        app.panels.left.archive = Some(PathBuf::from("/home/test/a.zip"));
+        let request_before = app.panels.left.request_id;
         drop(app.update(Message::WindowFocused));
-        assert_eq!(app.left_panel.request_id, request_before);
-        assert_ne!(app.right_panel.request_id, 0);
+        assert_eq!(app.panels.left.request_id, request_before);
+        assert_ne!(app.panels.right.request_id, 0);
     }
 }
 
@@ -30456,9 +30106,9 @@ mod file_drop_tests {
         std::fs::write(&source_file, "note").unwrap();
         std::fs::write(source_folder.join("a.txt"), "a").unwrap();
         let mut app = App::with_environment(Environment::isolated()).0;
-        app.left_panel.path = root.path().join("left");
-        app.right_panel.path = target.clone();
-        app.active_panel = PanelSide::Right;
+        app.panels.left.path = root.path().join("left");
+        app.panels.right.path = target.clone();
+        app.panels.active = PanelSide::Right;
         Dropping {
             app,
             _root: root,
@@ -30508,9 +30158,9 @@ mod file_drop_tests {
     #[tokio::test]
     async fn a_drop_goes_to_the_left_panel_when_that_is_active() {
         let mut case = dropping();
-        let left = case.app.left_panel.path.clone();
+        let left = case.app.panels.left.path.clone();
         std::fs::create_dir_all(&left).unwrap();
-        case.app.active_panel = PanelSide::Left;
+        case.app.panels.active = PanelSide::Left;
         let generation = drop_both(&mut case);
 
         drop(case.app.update(Message::DropSettled(generation)));
@@ -30563,7 +30213,7 @@ mod file_drop_tests {
     #[tokio::test]
     async fn a_drop_into_the_folder_it_comes_from_is_refused_in_words() {
         let mut case = dropping();
-        case.app.right_panel.path = case.source_file.parent().unwrap().to_path_buf();
+        case.app.panels.right.path = case.source_file.parent().unwrap().to_path_buf();
         let generation = drop_both(&mut case);
 
         drop(case.app.update(Message::DropSettled(generation)));
@@ -30615,9 +30265,9 @@ mod clipboard_tests {
         let target = root.path().join("target");
         std::fs::create_dir_all(&target).unwrap();
         let mut app = App::with_environment(Environment::isolated()).0;
-        app.left_panel.path = root.path().join("left");
-        app.right_panel.path = target.clone();
-        app.active_panel = PanelSide::Right;
+        app.panels.left.path = root.path().join("left");
+        app.panels.right.path = target.clone();
+        app.panels.active = PanelSide::Right;
         Pasting {
             app,
             _root: root,
@@ -30851,7 +30501,7 @@ mod clipboard_tests {
     fn copy_files_writes_the_cursor_file_and_says_so() {
         let mut case = pasting();
         let file = case.target.join("a.txt");
-        case.app.right_panel.entries = vec![entry_at(file.clone())];
+        case.app.panels.right.entries = vec![entry_at(file.clone())];
         let written = recording_writer(&mut case.app);
 
         drop(case.app.update(Message::CopyFilesToClipboard));
@@ -30867,11 +30517,12 @@ mod clipboard_tests {
     fn copy_files_writes_all_tagged_files() {
         let mut case = pasting();
         let (first, second) = (case.target.join("a.txt"), case.target.join("b.txt"));
-        case.app.right_panel.entries = vec![entry_at(first.clone()), entry_at(second.clone())];
+        case.app.panels.right.entries = vec![entry_at(first.clone()), entry_at(second.clone())];
         case.app
-            .right_panel
+            .panels
+            .right
             .selection
-            .tag_all(&case.app.right_panel.entries);
+            .tag_all(&case.app.panels.right.entries);
         let written = recording_writer(&mut case.app);
 
         drop(case.app.update(Message::CopyFilesToClipboard));
@@ -30888,7 +30539,7 @@ mod clipboard_tests {
         let mut case = pasting();
         let archive = case.target.join("fotos.zip");
         std::fs::write(&archive, "").unwrap();
-        case.app.right_panel.entries = vec![entry_at(archive.join("inner.txt"))];
+        case.app.panels.right.entries = vec![entry_at(archive.join("inner.txt"))];
         let written = recording_writer(&mut case.app);
 
         drop(case.app.update(Message::CopyFilesToClipboard));
@@ -30906,7 +30557,7 @@ mod clipboard_tests {
         let mut case = pasting();
         let archive = case.target.join("fotos.zip");
         std::fs::write(&archive, "").unwrap();
-        case.app.right_panel.entries = vec![entry_at(archive.clone())];
+        case.app.panels.right.entries = vec![entry_at(archive.clone())];
         let written = recording_writer(&mut case.app);
 
         drop(case.app.update(Message::CopyFilesToClipboard));
@@ -30917,7 +30568,7 @@ mod clipboard_tests {
     #[test]
     fn a_refused_clipboard_shows_the_reason() {
         let mut case = pasting();
-        case.app.right_panel.entries = vec![entry_at(case.target.join("a.txt"))];
+        case.app.panels.right.entries = vec![entry_at(case.target.join("a.txt"))];
         case.app.write_clipboard_files = Box::new(|_| Err("no display".to_owned()));
 
         drop(case.app.update(Message::CopyFilesToClipboard));
@@ -30984,7 +30635,7 @@ mod folder_size_tests {
 
     fn load(app: &mut App, path: PathBuf, entries: Vec<FileEntry>, sorted_by: fs::SortKey) {
         let request_id = app.panel_mut(SIDE).begin_load();
-        drop(app.update(Message::DirectoryLoaded {
+        drop(app.update(Message::Panel(PanelMessage::DirectoryLoaded {
             side: SIDE,
             request_id,
             path,
@@ -30993,7 +30644,7 @@ mod folder_size_tests {
             sorted_by,
             select: None,
             archive: None,
-        }));
+        })));
     }
 
     fn app_in_links() -> App {
@@ -31651,7 +31302,7 @@ mod hit_list_tests {
     fn opening_on_the_other_side_keeps_the_search_and_activates_the_list() {
         let hits = opened(&["a.txt"], PanelSide::Right);
         assert!(hits.app.search.open);
-        assert_eq!(hits.app.active_panel, PanelSide::Right);
+        assert_eq!(hits.app.panels.active, PanelSide::Right);
         assert!(hits.app.panel(PanelSide::Right).is_hit_list());
         assert!(!hits.app.panel(PanelSide::Left).is_hit_list());
     }
@@ -31739,9 +31390,9 @@ mod hit_list_tests {
 
     #[test]
     fn going_up_does_nothing_in_a_list() {
-        let mut hits = opened(&["a.txt"], PanelSide::Left);
+        let hits = opened(&["a.txt"], PanelSide::Left);
         let path = hits.app.panel(PanelSide::Left).path.clone();
-        drop(hits.app.go_up(PanelSide::Left));
+        assert!(ncrs_files::update::go_up(&hits.app.panels, PanelSide::Left).is_none());
         assert!(hits.app.panel(PanelSide::Left).is_hit_list());
         assert_eq!(hits.app.panel(PanelSide::Left).path, path);
     }
@@ -31811,7 +31462,7 @@ mod hit_list_tests {
                 .update(Message::HitList(HitListMessage::ShowOnOtherSide)),
         );
         assert!(hits.app.panel(PanelSide::Left).is_hit_list());
-        assert_eq!(hits.app.active_panel, PanelSide::Right);
+        assert_eq!(hits.app.panels.active, PanelSide::Right);
         assert!(hits.app.panel(PanelSide::Right).loading);
     }
 
@@ -31838,7 +31489,7 @@ mod hit_list_tests {
         hits.app
             .panel_mut(PanelSide::Left)
             .apply_listing(folder, vec![entry], None, None, 12);
-        hits.app.active_panel = PanelSide::Left;
+        hits.app.panels.active = PanelSide::Left;
         hits.app.search.open = false;
         drop(hits.app.open_transfer_dialog_to(TransferKind::Copy, None));
         assert!(hits.app.transfer_dialog.is_none());
@@ -31914,7 +31565,10 @@ mod hit_list_tests {
         let names: Vec<String> = (0..10).map(|n| format!("f{n}.txt")).collect();
         let refs: Vec<&str> = names.iter().map(String::as_str).collect();
         let mut hits = opened(&refs, PanelSide::Left);
-        let rows = hits.app.visible_rows_of(PanelSide::Left);
+        let rows = hits
+            .app
+            .panels
+            .visible_rows_of(PanelSide::Left, hits.app.visible_rows);
         assert_eq!(rows, 6);
         let folder_rows = hits.app.visible_rows;
         let panel = hits.app.panel_mut(PanelSide::Left);

@@ -7,6 +7,7 @@ use iced::{event, mouse, window, Point, Size};
 use crate::fs::OpenKind;
 use crate::hermes_column::FolderRole;
 use crate::i18n::Msg;
+use crate::messages::PanelMessage;
 use crate::messages::{
     ClipboardKind, CommandLineMessage, CommandPaletteMessage, HermesFileMessage, HitListMessage,
     KeyBindingsMessage, Message, QuickFixMessage, QuickOpenMessage, ReorganisationPlanMessage,
@@ -101,7 +102,7 @@ impl ContextAction {
 
     pub fn message(self) -> Message {
         match self {
-            ContextAction::Open => Message::OpenSelected,
+            ContextAction::Open => Message::Panel(PanelMessage::OpenSelected),
             ContextAction::View => Message::OpenExternal(OpenKind::View),
             ContextAction::Edit => Message::OpenExternal(OpenKind::Edit),
             ContextAction::Copy => Message::Transfer(TransferKind::Copy),
@@ -882,12 +883,12 @@ impl InputState {
             event::Event::Mouse(mouse::Event::CursorMoved { position }) => {
                 self.pointer = *position;
                 self.panel_drag_armed
-                    .then_some(Message::PanelDragMoved(*position))
+                    .then_some(Message::Panel(PanelMessage::PanelDragMoved(*position)))
             }
             event::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
                 if self.panel_drag_armed =>
             {
-                Some(Message::PanelDragReleased)
+                Some(Message::Panel(PanelMessage::PanelDragReleased))
             }
             event::Event::Mouse(mouse::Event::ButtonPressed(_)) => {
                 self.alt_tap.cancel();
@@ -1123,7 +1124,10 @@ mod tests {
 
     #[test]
     fn each_entry_sends_the_message_of_its_key() {
-        assert_eq!(ContextAction::Open.message(), Message::OpenSelected);
+        assert_eq!(
+            ContextAction::Open.message(),
+            Message::Panel(PanelMessage::OpenSelected)
+        );
         assert_eq!(
             ContextAction::Trash.message(),
             Message::Delete { permanent: false }

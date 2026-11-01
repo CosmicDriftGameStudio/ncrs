@@ -4,7 +4,7 @@
 use iced::keyboard::Modifiers;
 use iced::Point;
 
-use crate::messages::PanelSide;
+use ncrs_core::PanelSide;
 
 /// Logical pixels the pointer must travel before a press counts as a drag.
 pub const DRAG_THRESHOLD: f32 = 6.0;
