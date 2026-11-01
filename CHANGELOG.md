@@ -8,86 +8,81 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- Tags take the place of the tax contexts. Every document read carries tags
-  that ncrs derives from the fields (kind, sender, recipient, year) and tags of
-  your own; your own stay when a document is read again. The review list lets
-  you add and remove them, and says which ones are automatic.
-- The kind of a document uses one list of known kinds (invoice, credit note,
-  contract and so on), shown in your language in the review list, the rules,
-  the search, the reports and the tags, so a rule on "invoice" or "Rechnung"
-  finds the same documents.
-- Own document kinds: `[[kinds]]` entries in `config.toml` add kinds or further
-  words to the known ones (for example a payslip, or "Honorarnote" for an
-  invoice); the AI is offered them too, and a skipped entry is named in the
-  status line.
-- Recipient is a field of its own: ncrs reads it from the address block, the
-  review list shows it, and the document search and the reports can narrow by
-  it. A tag filter also finds the more specific tags below it ("firma-a" finds
-  "firma-a-gmbh").
-- Rules test tags ("invoice and firma-a", "contract and not firma-a") and show
-  as cards: the conditions as chips, the target as folder chips, and the origin
-  with the number of hits. Rules from several tags that file to the same place
-  are two rules with the same target.
-- A default target for documents without a rule, built from the same folder
-  pieces as a rule (recipient, year, sender, ...). It only proposes a place in
-  the review list; nothing is filed before you confirm. It replaces the filing
-  pattern with curly braces in the settings.
-- File lists show the tags of a read document after its name (up to three, then
-  "+1"; your own tags have an accent outline). Settings › Appearance chooses
-  which: kind, recipient, sender, year, your own, or only some tags. The command
-  list switches them on and off.
-- The reports page and the document search page show the sum of the amounts
-  when all hits share one currency, and say that filters apply together.
-- The document search page shows, under each hit, the piece of its text around
-  the words, with the words marked, and previews the selected document beside
-  the list. "Save as report" opens the Reports page with a new report that asks
-  what the page asks (words, year, recipient, sender, kind, tags); it is
-  saved there like any other report.
-- A Filing page "Search documents" searches the text of every document ncrs
-  has read. Click a year, kind, recipient, sender or tag to narrow the hits;
-  the numbers show how many documents each value leaves. Quick Open ends its
-  document hits with a row that opens the page with the typed words, and "Go to
-  file" shows the hit in the file panel.
-- Rule suggestions now come per sender: when most documents of a sender lie in
-  one folder, ncrs suggests a rule for that sender with the folder's filing
-  pattern, and takes over the kind and tags that most of those
-  documents share. Each suggestion says why, for example "4 of 5 documents
-  from this sender are in Insurance". Suggestions for a phrase remain for
-  folders without a sender suggestion.
+- Filing is a tab of its own. A sidebar lists its pages: Overview, Review,
+  Rules, Rule suggestions, Sort again, Reports, Tags and Status and errors.
+  The tab stays open while you switch pages.
+- The Rules page has a form to make and change rules; while it holds unsaved
+  changes, the rule list waits until you save or cancel. Conditions combine as
+  "all of", "any of" and "not", and test a tag, a word, the sender, the sender
+  address, the recipient, an IBAN (checked by its check digits while you
+  type), a tax number or the folder. The form
+  opens prefilled from a review item, a quick fix (`Cmd`+`.` / `Ctrl`+`.`) or a
+  rule suggestion, and shows which documents the rule would match while you
+  edit it.
+- "Apply to open cases" on the Review page and "Reprocess folder" for a folder
+  in the inbox plan the documents again with the current rules and show what
+  would happen before anything moves.
+- The Review page has a longer list and a real preview of the document. Its
+  fields are grouped, each says where its value came from, and the target path
+  is shown.
+- Sort again (before: the reorganisation plan) explains every step in one
+  sentence with a link to the rule behind it, and marks only the parts of a
+  path that change.
+- Tags: every document ncrs has read carries tags derived from its fields
+  (kind, sender, recipient, year) and tags of your own, which stay when a
+  document is read again. Rules can test tags ("invoice and firma-a"), and a
+  tag also finds the more specific tags below it ("firma-a" finds
+  "firma-a-gmbh"). The
+  Tags page lists all tags, chooses with a tick which ones the file list
+  shows, and renames or deletes your own.
+- File lists show the tags of a document after its name (up to three, then
+  "+1"). The command list switches them on and off.
+- The search has filters for the documents ncrs has read: Tags, Kind, Year,
+  Sender and Recipient. With a filter set, it lists the matching documents
+  below the search folder with their tags, date, amount and the piece of text
+  around the words, and adds the sum when all amounts share one currency.
+  "Save as report" turns the search into a report; a report opened in the
+  search can be updated there. Quick Open lists matching documents in a
+  Documents section.
+- Reports (before: saved queries) say what they are for, start from templates
+  (invoices of a year, contracts, open invoices), can ask for a sender and show
+  the sum of the amounts per currency.
+- One list of known document kinds (invoice, credit note, contract and so on),
+  shown in your language everywhere, so "invoice" and "Rechnung" are the same
+  kind. `[[kinds]]` entries in `config.toml` add own kinds or more words.
+- Recipient is a field of its own, read from the address block.
+- The sender is detected without the AI, from the letterhead, the footer or an
+  identifier of a confirmed sender alias (IBAN, tax number, e-mail or web
+  domain). Freemail domains and your own identifiers are never offered as an
+  alias.
+- Rule suggestions come per sender when most documents of a sender lie in one
+  folder, and each says why ("4 of 5 documents from this sender are in
+  Insurance").
+- A default target for documents no rule covers. It only proposes a place in
+  the review; nothing is filed before you confirm.
+- Folder sizes on request, from the command list and the context menu.
+- The App Store build restores files from the trash, as the other builds do.
+- Signed package repositories for apt, dnf and zypper; see the README.
+- Futurama language variants `en-futurama` and `de-futurama`, switched on with
+  "Futurama names" in the language settings.
 
 ### Changed
 
-- The index schema is now 20. Open reviews about a missing tax context become
-  "No rule matches". The review "Move to" row shows the target as folder
-  chips with a "Change …" button.
-- The plain names now also reach the texts that still used the Futurama names:
-  no body text, title or subtitle in English or German names Hermes, the
-  Inspection, Pending, Smell-o-scope or another Futurama name any more. The
-  module is "Filing" / "Ablage", the status page "Status and errors", and the
-  review list "Review" / "Rückfragen". The load
-  presets are "Gentle", "Balanced" and "Full" ("Schonend", "Ausgewogen", "Volle
-  Last"), and Status and errors says in one sentence what each preset uses.
-  The Futurama variants keep the names beside the plain ones ("Gentle (By the
-  book)"). The Filing pages that lacked a one-line purpose have one, and the
-  review list, rules and rule suggestions give an example.
-- A discarded rule suggestion is remembered per kind of condition, so
-  discarding a phrase no longer hides the suggestion for the sender of the same
-  name, and an edited sender suggestion does not come back after the next
-  analysis.
-- English and German show plain names only. The Futurama names (e.g.
-  "Smell-o-scope", "Inquiries") moved into the language variants
-  `en-futurama` and `de-futurama`, switched on with "Futurama names" in the
-  language settings; an existing `lang = "en"` or `"de"` keeps its language
-  and now shows plain text. The beta mark of Hermes stands after the plain name.
-  An unknown `lang` falls back to English with a warning instead of rejecting
-  the config.
-- Saved queries are now called Reports (German: Auswertungen) and say what they
-  are for: a saved search for recurring questions, such as all invoices of a
-  year from one company for the tax return. A report can also ask for a sender,
-  and its result shows the sum of the amounts per currency. Templates start a
-  report for the tax year before this one, for contracts
-  and for open invoices (invoices tagged "open"). The export step explains what
-  the lines of the CSV file hold.
+- The index schema is now 21; the index is migrated on the first start and
+  keeps its documents.
+- English and German show plain names only ("Filing", "Review", "Status and
+  errors", load "Gentle", "Balanced", "Full"). The Futurama names appear only
+  in the Futurama variants, beside the plain names. An existing `lang = "en"`
+  or `"de"` keeps its language; an unknown `lang` falls back to English with a
+  warning.
+- The first rule that matches files the document; rules are checked from top
+  to bottom.
+- The AI only fills fields the rules left open, and a document whose AI answer
+  is below the threshold goes to review.
+- The separate "Search documents" page is gone; its filters are part of the
+  search.
+- The protection of the index (encryption) moved to Settings › Filing.
+- Settings › Appearance links to the Tags page for the tags in the file list.
 
 ## [1.1.1] — 2026-10-30
 
