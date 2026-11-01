@@ -1,8 +1,12 @@
 //! What the open prompt shows while its operation runs and after it failed.
 
+use std::path::Path;
+
+use ncrs_core::PanelSide;
 use ncrs_fs::CreateDirError;
 use ncrs_i18n::{Language, Msg};
 
+use crate::archive_flow::PackRequest;
 use crate::prompt::PromptKind;
 use crate::state::Ops;
 
@@ -67,5 +71,21 @@ impl Ops {
         if let Some(prompt) = self.prompt.as_mut().filter(|prompt| !prompt.busy()) {
             prompt.toggle_keep_folders();
         }
+    }
+}
+
+impl Ops {
+    /// Enter in the pack prompt, once its name passed `Prompt::validate`: the
+    /// prompt closes and what it held is the archive to write. `fallback_side`
+    /// is the target panel when the prompt does not remember one.
+    pub fn take_pack_request(&mut self, fallback_side: PanelSide) -> Option<PackRequest> {
+        let prompt = self.prompt.take()?;
+        let target_side = self.prompt_side.take().unwrap_or(fallback_side);
+        Some(PackRequest {
+            archive: prompt.archive_path(),
+            sources: prompt.sources().to_vec(),
+            keep_under: prompt.kept_folders_under().map(Path::to_path_buf),
+            target_side,
+        })
     }
 }

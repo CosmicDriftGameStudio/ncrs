@@ -3364,7 +3364,6 @@ dependencies = [
  "arboard",
  "chrono",
  "clipboard-win",
- "drag",
  "globset",
  "grep-matcher",
  "grep-regex",
@@ -3396,7 +3395,6 @@ dependencies = [
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
- "png 0.18.1",
  "rfd",
  "russh",
  "serde",
@@ -3458,6 +3456,7 @@ dependencies = [
  "ncrs-fs",
  "ncrs-i18n",
  "ncrs-ui-kit",
+ "tokio",
 ]
 
 [[package]]
@@ -3595,12 +3594,16 @@ dependencies = [
 name = "ncrs-ops"
 version = "0.0.0"
 dependencies = [
+ "arboard",
+ "chrono",
+ "drag",
  "iced",
  "ncrs-core",
  "ncrs-fs",
  "ncrs-i18n",
  "ncrs-jobs",
  "ncrs-ui-kit",
+ "png 0.18.1",
  "tempfile",
  "tokio",
 ]

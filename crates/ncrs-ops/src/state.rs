@@ -8,8 +8,11 @@ use ncrs_fs::archive::ViewCopies;
 use ncrs_fs::transfer::OnConflict;
 use ncrs_fs::TrashedItem;
 
+use crate::clipboard_paste::PastedContent;
 use crate::message::ConflictChoice;
 use crate::prompt::Prompt;
+use crate::transfer::TransferDialog;
+use crate::trash::TrashView;
 
 /// What a transfer does, and to which rows.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,6 +142,27 @@ pub struct Ops {
     pub extracting: Option<Extracting>,
     /// The pack, copy into an archive or delete from one that is running.
     pub archive_write: Option<ArchiveWrite>,
+    /// The trash view, in place of the panel on `trash_side`.
+    /// Files from another app are held over the window.
+    pub drop_hover: bool,
+    /// The files of the drop still arriving.
+    pub dropped_files: Vec<PathBuf>,
+    /// Counts the dropped files, so the settle timer knows the burst is over.
+    pub drop_generation: u64,
+    /// The picture or text of a paste while its file name is being asked for.
+    pub pending_paste: Option<PastedContent>,
+    /// Where a pasted picture or text is written before it is copied into the
+    /// panel. Kept until the next paste so the running copy keeps its source.
+    pub paste_staging: Option<tempfile::TempDir>,
+    /// The copy or move confirmation, while it is up.
+    pub transfer_dialog: Option<TransferDialog>,
+    /// Counts the confirmations opened, so a result of the background scan can
+    /// tell if its dialog is still the one on screen.
+    pub transfer_dialogs_opened: u64,
+    pub trash_view: Option<TrashView>,
+    pub trash_side: PanelSide,
+    /// Counts the listings of the trash, so a late one is dropped.
+    pub trash_generation: u64,
     pub generation: u64,
 }
 

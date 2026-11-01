@@ -7,9 +7,12 @@ use iced::keyboard::Modifiers;
 use iced::mouse;
 use ncrs_core::PanelSide;
 
+use crate::context_menu::ContextMenu;
 use crate::folder_size::{FolderSizeRun, FolderSizes};
 use crate::panel::PanelState;
 use crate::panel_drag::{self, PanelDrag};
+use crate::reload::PendingReload;
+use crate::volumes::VolumeMenu;
 
 /// How long a typed character still belongs to the same prefix.
 const TYPE_AHEAD_WINDOW: Duration = Duration::from_secs(1);
@@ -57,6 +60,16 @@ pub struct Panels {
     /// The "Compute folder sizes" run that is under way.
     pub folder_size_run: Option<FolderSizeRun>,
     pub folder_size_runs_started: u64,
+    /// The context menu, while it is up.
+    pub context_menu: Option<ContextMenu>,
+    /// The drive menu, while it is up.
+    pub volume_menu: Option<VolumeMenu>,
+    /// The path as typed while the status bar's path field is being edited.
+    pub path_field: Option<String>,
+    /// Id of the latest path check; an older answer is ignored.
+    pub path_check_id: u64,
+    /// Reload queued by `PromptSubmit`, run once the create has reported.
+    pub pending_reload: Option<PendingReload>,
 }
 
 impl Panels {
@@ -71,6 +84,11 @@ impl Panels {
             folder_sizes: FolderSizes::new(),
             folder_size_run: None,
             folder_size_runs_started: 0,
+            context_menu: None,
+            volume_menu: None,
+            path_field: None,
+            path_check_id: 0,
+            pending_reload: None,
         }
     }
 

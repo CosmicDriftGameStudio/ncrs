@@ -14,7 +14,7 @@ mod ui_tests;
 mod about;
 mod app;
 mod backend;
-mod clipboard_paste;
+pub use ncrs_ops::clipboard_paste;
 #[cfg(test)]
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod clipboard_system_tests;
@@ -22,10 +22,10 @@ mod command_line;
 pub use ncrs_config::commands;
 pub use ncrs_config::config;
 mod context_action_message;
+pub use ncrs_config::file_list_tags;
 pub use ncrs_files::context_menu;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-mod drag_out;
-pub use ncrs_config::file_list_tags;
+pub use ncrs_ops::drag_out;
 mod fs;
 mod input_state;
 pub use ncrs_filing::{

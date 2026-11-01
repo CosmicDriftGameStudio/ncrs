@@ -5,9 +5,20 @@ use std::sync::OnceLock;
 
 use crate::clipboard_paste::{encode_png, RgbaImage};
 
+/// The picture that hangs on the pointer during the drag: square, RGBA.
+#[derive(Debug, Clone, Copy)]
+pub struct DragIcon {
+    pub size: u32,
+    pub rgba: &'static [u8],
+}
+
 /// Must run on the main thread: iced's `window::run` does.
-pub fn start(window: &dyn iced::window::Window, files: Vec<PathBuf>) -> Result<(), String> {
-    let png = drag_image().ok_or_else(|| "the drag image could not be encoded".to_owned())?;
+pub fn start(
+    window: &dyn iced::window::Window,
+    files: Vec<PathBuf>,
+    icon: DragIcon,
+) -> Result<(), String> {
+    let png = drag_image(icon).ok_or_else(|| "the drag image could not be encoded".to_owned())?;
     // Copy only: the files stay in ncrs's panel whatever the drop target does.
     let options = drag::Options {
         mode: drag::DragMode::Copy,
@@ -25,13 +36,13 @@ pub fn start(window: &dyn iced::window::Window, files: Vec<PathBuf>) -> Result<(
 
 /// macOS builds an `NSImage` from these bytes and panics on raw pixels, so
 /// they have to be an encoded picture.
-fn drag_image() -> Option<&'static [u8]> {
+fn drag_image(icon: DragIcon) -> Option<&'static [u8]> {
     static PNG: OnceLock<Option<Vec<u8>>> = OnceLock::new();
     PNG.get_or_init(|| {
         encode_png(&RgbaImage {
-            width: crate::WINDOW_ICON_SIZE,
-            height: crate::WINDOW_ICON_SIZE,
-            rgba: crate::WINDOW_ICON_RGBA.to_vec(),
+            width: icon.size,
+            height: icon.size,
+            rgba: icon.rgba.to_vec(),
         })
     })
     .as_deref()

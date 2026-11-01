@@ -20,10 +20,32 @@ ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
 # The work of a flow runs on the blocking pool, as in the app.
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
 
+# Cmd+V / Ctrl+V pastes files, an image or text from the system clipboard, and
+# "Copy files to the clipboard" puts a file list on it. "image-data" reads and
+# writes the picture; no other defaults.
+arboard = { version = "3.6", default-features = false, features = ["image-data"] }
+# Encodes a pasted picture as PNG. Already in the tree through arboard's image
+# dependency and iced.
+png = "0.18"
+# The files of a paste are written to a private folder first.
+tempfile = "3.27"
+# The name of a pasted file carries the time.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+# Without the data-control protocol the clipboard cannot be read or written on
+# a Wayland desktop that has no X11 clipboard (Cargo adds this to the feature
+# set above).
+arboard = { version = "3.6", default-features = false, features = ["image-data", "wayland-data-control"] }
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+# Starts the system drag of files out of the window, into the Finder, Explorer
+# or a browser upload. Not on Linux, where it needs GTK.
+drag = { version = "=2.1.1", default-features = false }
+
 [dev-dependencies]
 # The archive fixtures and the temporary folders of the dialog tests.
 ncrs-fs = { path = "../ncrs-fs", version = "0.0.0", features = ["test-support"] }
-tempfile = "3.27"
 
 [lints]
 workspace = true

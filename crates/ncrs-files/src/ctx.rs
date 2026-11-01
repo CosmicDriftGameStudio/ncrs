@@ -69,3 +69,8 @@ impl std::fmt::Debug for ViewCtx<'_> {
             .finish_non_exhaustive()
     }
 }
+
+/// Ctrl+click is the Mac's right click.
+pub fn is_context_click(modifiers: Modifiers) -> bool {
+    cfg!(target_os = "macos") && modifiers.control()
+}

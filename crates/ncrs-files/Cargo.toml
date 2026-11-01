@@ -16,6 +16,9 @@ ncrs-fs = { path = "../ncrs-fs", version = "0.0.0" }
 ncrs-i18n = { path = "../ncrs-i18n", version = "0.0.0" }
 ncrs-ui-kit = { path = "../ncrs-ui-kit", version = "0.0.0" }
 
+# The reads of the hit list run on the blocking pool.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+
 [features]
 # `PanelState::apply_listing`, for the tests of the app.
 test-support = []

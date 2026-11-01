@@ -6,7 +6,7 @@ use iced::{alignment, Background, Element, Length};
 use super::theme;
 use crate::messages::Message;
 
-pub use ncrs_ops::prompt_view::{view, FIELD_ID};
+pub use ncrs_ops::prompt_view::view;
 
 /// A scrim behind the dialog, so clicks outside it do not reach the panels.
 pub fn scrim<'a>(content: Element<'a, Message>) -> Element<'a, Message> {

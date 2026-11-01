@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 /// Identifies one of the two file panels.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PanelSide {
+    #[default]
     Left,
     Right,
 }

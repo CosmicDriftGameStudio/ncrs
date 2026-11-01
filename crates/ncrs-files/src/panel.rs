@@ -1,6 +1,6 @@
 //! The state of a file panel ([`PanelState`]): the rows, the cursor, the tags,
 //! the sort, the history. The view is built from it in the app.
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use iced::mouse::ScrollDelta;
 use ncrs_core::{FileEntry, SelectionSet};
@@ -10,6 +10,13 @@ use ncrs_ui_kit::layout::{self, HIT_LIST_ROW_HEIGHT, ROW_HEIGHT};
 
 use crate::hit_list::HitList;
 use crate::panel_history::PanelHistory;
+
+/// Not inside an archive and not on an SFTP server: something other apps can
+/// be handed by path.
+pub fn is_file_on_local_disk(path: &Path) -> bool {
+    RemotePath::parse(path).is_none()
+        && ncrs_fs::archive::locate_in_archive(path).is_none_or(|place| place.inner.is_empty())
+}
 
 #[derive(Debug, Clone)]
 pub struct PanelState {

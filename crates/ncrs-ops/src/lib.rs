@@ -3,10 +3,14 @@
 
 pub mod action;
 pub mod archive_flow;
+pub mod clipboard_paste;
 pub mod conflict;
 pub mod ctx;
 pub mod delete;
 pub mod delete_flow;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub mod drag_out;
+pub mod drop_paste;
 pub mod message;
 pub mod prompt;
 pub mod prompt_flow;
@@ -16,7 +20,9 @@ pub mod row_failure;
 pub mod state;
 pub mod transfer;
 pub mod transfer_flow;
+pub mod transfer_open;
 pub mod trash;
+pub mod trash_flow;
 pub mod update;
 pub mod view_copy_flow;
 
@@ -48,6 +54,8 @@ pub use transfer_flow::{
     answer_conflict, begin_transfer, child_path, end_transfer, refusal_text,
     start_validated_transfer, transfer_row_done,
 };
+pub use transfer_open::{conflicts_task, scan_task, unreachable_server_text, ValidTransfer};
 pub use trash::TrashView;
+pub use trash_flow::menu_row as trash_menu_row;
 pub use update::{update_transfer_dialog, update_trash};
 pub use view_copy_flow::{end_extraction, start_view_copy, view_extracted};

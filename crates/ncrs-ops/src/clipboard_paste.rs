@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::NaiveDateTime;
 
-use crate::i18n::{Language, Msg};
+use ncrs_i18n::{Language, Msg};
 
 /// What is pasted. Files are copied as they are; a picture and text have no
 /// file yet and get a name from the user first.
@@ -158,6 +158,23 @@ impl FileListWriter {
             .file_list(&paths)
             .map_err(|error| error.to_string())
     }
+}
+
+/// Puts a list of files on the system clipboard.
+pub type ClipboardFileWriter = Box<dyn FnMut(&[PathBuf]) -> Result<(), String>>;
+
+/// The system clipboard is read on a blocking thread: on X11 it can wait for
+/// the program that owns the content.
+pub fn read_clipboard_off_the_ui_thread() -> iced::Task<Option<PastedContent>> {
+    iced::Task::perform(
+        async {
+            tokio::task::spawn_blocking(read_system_clipboard)
+                .await
+                .ok()
+                .flatten()
+        },
+        std::convert::identity,
+    )
 }
 
 // A failing assertion in a test is the signal, so `unwrap` belongs here; the

@@ -111,9 +111,6 @@ russh = { version = "=0.65.0", default-features = false, features = ["ring"] }
 # "Copy files to the clipboard" puts a file list on it. "image-data" reads and
 # writes the picture; no other defaults.
 arboard = { version = "3.6", default-features = false, features = ["image-data"] }
-# Encodes a pasted picture as PNG. Already in the tree through arboard's image
-# dependency and iced.
-png = "0.18"
 # The document preview decodes pictures itself, with limits on size and memory,
 # and scales them down before iced sees them. Only the formats the file types
 # of the intake name (HEIC stays unsupported).
@@ -130,11 +127,6 @@ arboard = { version = "3.6", default-features = false, features = ["image-data",
 # would need GTK, and on Windows installing the menu takes an unsafe call that
 # the app crate forbids. No features, so no GTK and no xdo.
 muda = { version = "=0.21.2", default-features = false }
-
-[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
-# Starts the system drag of files out of the window, into the Finder, Explorer
-# or a browser upload. Not on Linux, where it needs GTK.
-drag = { version = "=2.1.1", default-features = false }
 
 # winit 0.30 references the private CGS API (see vendor/winit/NCRS-PATCH.md).
 [patch.crates-io]

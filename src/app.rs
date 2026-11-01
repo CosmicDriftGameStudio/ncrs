@@ -107,14 +107,15 @@ use crate::tags_page::TagsPage;
 #[cfg(test)]
 use crate::theme_fetch::{Fetched, Stage, ThemeFetch};
 use crate::theme_fetch::{Installed, Pick};
-use crate::transfer_dialog::{self, Policy, TransferDialog, TransferDialogMessage};
+#[cfg(test)]
+use crate::transfer_dialog::TransferDialog;
+use crate::transfer_dialog::{self, Policy, TransferDialogMessage};
 use crate::trash_view::TrashView;
 use crate::ui::about as about_ui;
 use crate::ui::ai_model as ai_model_ui;
 use crate::ui::command_line as command_line_ui;
 use crate::ui::context_menu as context_menu_view;
 use crate::ui::delete as delete_dialog_view;
-use crate::ui::dialog::FIELD_ID;
 use crate::ui::filing as filing_ui;
 use crate::ui::filing_setup as filing_setup_ui;
 use crate::ui::grant as grant_ui;
@@ -135,7 +136,7 @@ use crate::ui::trash as trash_ui;
 use crate::ui::volumes::{self as volumes_view, FavouriteRow, ServerRow};
 use crate::ui::{conflict, dialog, fkeys, layout, panel, statusbar, theme, PanelState};
 use ncrs_files::volumes::VolumeMenu;
-use ncrs_files::{PanelMessage, Panels};
+use ncrs_files::{PanelMessage, Panels, PendingReload};
 use ncrs_hermes_ui::{SavedFilingApplies, SetupCard};
 pub use ncrs_i18n::fill_template;
 use ncrs_index::{KeyStore, KeyringKeyStore, KindSkip, Kinds, QuerySpec, SavedQueryId};
@@ -181,43 +182,6 @@ fn suggested_archive_name(sources: &[PathBuf]) -> String {
     format!(
         "{}.zip",
         named.map_or_else(|| "archive".into(), |name| name.to_string_lossy())
-    )
-}
-
-/// The archive name a hit list suggests: its query, when that is one plain
-/// file name on every platform.
-fn hit_archive_name(typed: &str) -> Option<String> {
-    let query = typed.trim();
-    let forbidden = |c: char| c.is_control() || "<>:\"/\\|?*".contains(c);
-    let plain = !query.chars().any(forbidden)
-        && matches!(
-            fs::archive::safe_components(query).as_deref(),
-            Some([only]) if only == query
-        );
-    plain.then(|| format!("{query}.zip"))
-}
-
-/// Reads the files of a hit list off the UI thread. A file that is gone is
-/// left out.
-fn read_hit_files(side: PanelSide, request_id: u64, paths: Vec<PathBuf>) -> Task<Message> {
-    Task::perform(
-        async move {
-            tokio::task::spawn_blocking(move || {
-                paths
-                    .iter()
-                    .filter_map(|path| fs::FileEntry::from_path(path))
-                    .collect::<Vec<_>>()
-            })
-            .await
-            .unwrap_or_default()
-        },
-        move |entries| {
-            Message::HitList(HitListMessage::Read {
-                side,
-                request_id,
-                entries,
-            })
-        },
     )
 }
 
@@ -309,22 +273,6 @@ fn remote_refusal(panel: &PanelState, message: &Message) -> Option<Msg> {
     }
 }
 
-type ClipboardFileWriter = Box<dyn FnMut(&[PathBuf]) -> Result<(), String>>;
-
-/// The system clipboard is read on a blocking thread: on X11 it can wait for
-/// the program that owns the content.
-fn read_clipboard_off_the_ui_thread() -> Task<Option<PastedContent>> {
-    Task::perform(
-        async {
-            tokio::task::spawn_blocking(clipboard_paste::read_system_clipboard)
-                .await
-                .ok()
-                .flatten()
-        },
-        std::convert::identity,
-    )
-}
-
 /// Where a shell command of this panel runs. A path inside an archive is no
 /// directory a process can start in, so it runs in the folder the archive
 /// lies in.
@@ -382,7 +330,6 @@ fn quick_open_batch(generation: u64, events: Vec<fs::search::SearchEvent>) -> Me
 
 /// How long a confirmation stays in the status bar.
 /// per file, all in one burst, so the burst becomes one transfer.
-const DROP_SETTLE: std::time::Duration = std::time::Duration::from_millis(100);
 const NOTICE_DURATION: std::time::Duration = std::time::Duration::from_secs(3);
 
 const APP_NAME: &str = "NC-rs";
@@ -465,13 +412,6 @@ impl std::hash::Hash for InputCell {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         "ncrs-input-state".hash(state);
     }
-}
-
-/// Not inside an archive and not on an SFTP server: something other apps can
-/// be handed by path.
-fn is_file_on_local_disk(path: &Path) -> bool {
-    RemotePath::parse(path).is_none()
-        && fs::archive::locate_in_archive(path).is_none_or(|place| place.inner.is_empty())
 }
 
 /// The user asks for something only Hermes can do, as opposed to the answers
@@ -573,53 +513,6 @@ fn folder_size_task(walk: Option<ncrs_files::folder_size::FolderWalk>) -> Task<M
     )
 }
 
-/// Counts what the selection of `dialog` holds, off the UI thread. The dialog's
-/// stop flag ends the walk when the dialog goes away.
-fn scan_task(dialog: &TransferDialog) -> Task<Message> {
-    // Nothing on a server is counted: that would be a listing of the whole
-    // tree before the copy.
-    if dialog.counts_unknown() {
-        return Task::none();
-    }
-    let (id, sources, stop) = (dialog.id(), dialog.sources().to_vec(), dialog.stop_flag());
-    Task::perform(
-        tokio::task::spawn_blocking(move || transfer_dialog::scan(&sources, &stop)),
-        move |done| {
-            Message::TransferDialog(TransferDialogMessage::Scanned {
-                dialog: id,
-                scan: done.ok(),
-            })
-        },
-    )
-}
-
-/// Counts which top-level names of the selection the typed target already
-/// has, off the UI thread. The result carries the edit it was counted for.
-fn conflicts_task(dialog: &TransferDialog) -> Task<Message> {
-    if dialog.involves_server() {
-        return Task::none();
-    }
-    let (id, edit, stop) = (dialog.id(), dialog.edit(), dialog.stop_flag());
-    let (sources, target) = (dialog.sources().to_vec(), dialog.target_path());
-    Task::perform(
-        tokio::task::spawn_blocking(move || {
-            transfer_dialog::count_conflicts(&sources, &target, &stop)
-        }),
-        move |counted| {
-            Message::TransferDialog(TransferDialogMessage::ConflictsCounted {
-                dialog: id,
-                edit,
-                count: counted.unwrap_or_default(),
-            })
-        },
-    )
-}
-
-/// Ctrl+click is the Mac's right click.
-fn is_context_click(modifiers: Modifiers) -> bool {
-    cfg!(target_os = "macos") && modifiers.control()
-}
-
 /// Runs one job and reports what happens as messages.
 ///
 /// Separate from `App` so the queue can hand it to `Task::abortable` without
@@ -627,18 +520,6 @@ fn is_context_click(modifiers: Modifiers) -> bool {
 /// that reaches the queue's `start_next` here has nothing left to do.
 fn run_job(_job: jobs::Job) -> Task<Message> {
     Task::done(Message::JobFinished(JobEvent::Done))
-}
-
-/// A reload waiting for its operation to finish.
-///
-/// F7 creates a directory and then reads the panel. Both were started at once,
-/// which races: a read that finishes first does not see the new entry. The
-/// reload waits here until the create has reported back.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct PendingReload {
-    side: PanelSide,
-    /// Name to select afterwards, so Enter opens what was just created.
-    name: String,
 }
 
 /// What a file handed to the viewer or editor is a copy of.
@@ -702,22 +583,10 @@ pub struct App {
     search_function_keys: [Option<&'static str>; keymap::FUNCTION_KEY_COUNT],
     /// The keys in effect: the built-in ones, or those of the config file.
     keymap: Arc<Keymap>,
-    /// Reload queued by `PromptSubmit`, run once the create has reported.
-    pending_reload: Option<PendingReload>,
     /// Long-running file operations, one at a time.
     jobs: jobs::Queue,
-    /// The trash view, in place of the panel on `trash_side`.
-    trash_view: Option<TrashView>,
-    trash_side: PanelSide,
-    /// Counts the listings of the trash, so a late one is dropped.
-    trash_generation: u64,
     /// Folder sizes computed this session, by directory and then entry name.
     /// Kept in memory only, so coming back to a folder shows them again.
-    /// The copy or move confirmation, while it is up.
-    transfer_dialog: Option<TransferDialog>,
-    /// Counts the confirmations opened, so a result of the background scan can
-    /// tell if its dialog is still the one on screen.
-    transfer_dialogs_opened: u64,
     /// The question whether to remove the Hermes index and begin again.
     start_over_dialog: bool,
     /// The button the open dialog has focused, counted from the left.
@@ -749,12 +618,6 @@ pub struct App {
     notice: Option<String>,
     /// Counts the notices shown, so a timer can tell if it is still the latest.
     notice_generation: u64,
-    /// Files from another app are held over the window.
-    drop_hover: bool,
-    /// The files of the drop still arriving.
-    dropped_files: Vec<PathBuf>,
-    /// Counts the dropped files, so the settle timer knows the burst is over.
-    drop_generation: u64,
     /// How many items the running job has finished, for the progress bar.
     job_done: usize,
     /// The state of the transfer, delete, restore and archive flows and the
@@ -776,17 +639,9 @@ pub struct App {
     /// subscription puts its cell here, and `update` keeps the value in it
     /// current after every message.
     key_state: OnceLock<Arc<KeyStateCell>>,
-    /// The drive menu, while it is up.
-    volume_menu: Option<VolumeMenu>,
     /// Folders the user bookmarked, in the order they were added.
     favourites: Vec<PathBuf>,
-    /// The context menu, while it is up.
-    context_menu: Option<ContextMenu>,
-    /// The path as typed while the status bar's path field is being edited.
-    path_field: Option<String>,
     command_line: CommandLine,
-    /// Id of the latest path check; an older answer is ignored.
-    path_check_id: u64,
     /// What a leading `~` in a typed path stands for.
     home: PathBuf,
     /// The time type-ahead measures against. Injected so tests control it.
@@ -854,12 +709,7 @@ pub struct App {
     read_clipboard: fn() -> Task<Option<PastedContent>>,
     /// Puts files on the system clipboard. A closure rather than a function
     /// pointer: the real one keeps the clipboard open between calls.
-    write_clipboard_files: ClipboardFileWriter,
-    /// The picture or text of a paste while its file name is being asked for.
-    pending_paste: Option<PastedContent>,
-    /// Where a pasted picture or text is written before it is copied into the
-    /// panel. Kept until the next paste so the running copy keeps its source.
-    paste_staging: Option<tempfile::TempDir>,
+    write_clipboard_files: clipboard_paste::ClipboardFileWriter,
     /// The tags the file list shows against their group, from the index.
     tag_exceptions: TagExceptions,
     /// Whether the arrow keys act on the sidebar or the page of the Hermes card.
@@ -2526,13 +2376,7 @@ impl App {
             search_function_keys: Keymap::built_in()
                 .function_keys(Language::default(), KeyScope::Search),
             keymap: Keymap::built_in(),
-            pending_reload: None,
             jobs: jobs::Queue::new(),
-            trash_view: None,
-            trash_side: PanelSide::Left,
-            trash_generation: 0,
-            transfer_dialog: None,
-            transfer_dialogs_opened: 0,
             start_over_dialog: false,
             dialog_focus: 0,
             modifiers: Modifiers::default(),
@@ -2546,21 +2390,14 @@ impl App {
             job_error_press: None,
             notice: None,
             notice_generation: 0,
-            drop_hover: false,
-            dropped_files: Vec::new(),
-            drop_generation: 0,
             job_done: 0,
             ops: ncrs_ops::Ops::default(),
             job_progress: None,
             progress_rx: None,
             progress_tx: None,
             key_state: OnceLock::new(),
-            volume_menu: None,
             favourites: Vec::new(),
-            context_menu: None,
-            path_field: None,
             command_line: CommandLine::default(),
-            path_check_id: 0,
             home,
             clock: Arc::new(std::time::Instant::now),
             window_size: layout::INITIAL_WINDOW_SIZE,
@@ -2588,13 +2425,11 @@ impl App {
             resolve_folder: filing_setup::resolve_folder,
             pick_folder: crate::system_dialogs::pick_folder_with_system_dialog,
             pick_file: crate::system_dialogs::pick_file_with_system_dialog,
-            read_clipboard: read_clipboard_off_the_ui_thread,
+            read_clipboard: clipboard_paste::read_clipboard_off_the_ui_thread,
             write_clipboard_files: {
                 let mut writer = FileListWriter::default();
                 Box::new(move |files| writer.write(files))
             },
-            pending_paste: None,
-            paste_staging: None,
             tag_exceptions: TagExceptions::new(),
             hermes_focus: HermesFocus::default(),
             fetch_extension: open_vsx::fetch_extension,
@@ -2811,7 +2646,7 @@ impl App {
             return Task::none();
         }
         if leaves_bar_fields(&message) {
-            self.set_path_field(None);
+            self.panels.set_path_field(None);
             self.command_line.leave();
         }
         if let Message::SaveSessionState(generation) = message {
@@ -2942,19 +2777,19 @@ impl App {
                 Task::none()
             }
             Message::VolumeMenuMove(delta) => {
-                if let Some(menu) = self.volume_menu.as_mut() {
+                if let Some(menu) = self.panels.volume_menu.as_mut() {
                     menu.move_by(delta);
                 }
                 Task::none()
             }
             Message::VolumeMenuFirst => {
-                if let Some(menu) = self.volume_menu.as_mut() {
+                if let Some(menu) = self.panels.volume_menu.as_mut() {
                     menu.selected = 0;
                 }
                 Task::none()
             }
             Message::VolumeMenuLast => {
-                if let Some(menu) = self.volume_menu.as_mut() {
+                if let Some(menu) = self.panels.volume_menu.as_mut() {
                     menu.selected = menu.last_row();
                 }
                 Task::none()
@@ -2965,13 +2800,13 @@ impl App {
             Message::OpenFavourites => self.open_favourites(),
             Message::VolumeMenuActivate => self.go_to_selected_volume(),
             Message::VolumeMenuClick(index) => {
-                if let Some(menu) = self.volume_menu.as_mut() {
+                if let Some(menu) = self.panels.volume_menu.as_mut() {
                     menu.selected = index;
                 }
                 self.go_to_selected_volume()
             }
             Message::VolumeMenuClose => {
-                self.volume_menu = None;
+                self.panels.volume_menu = None;
                 Task::none()
             }
 
@@ -3098,7 +2933,7 @@ impl App {
                 // Running both at once races: a read that finishes first sees a
                 // directory that does not contain the new entry yet, and the
                 // selection then points at whatever is there instead.
-                self.pending_reload = Some(PendingReload {
+                self.panels.pending_reload = Some(PendingReload {
                     side,
                     name: new_name,
                 });
@@ -3106,7 +2941,7 @@ impl App {
             }
             Message::PromptCancel => {
                 self.ops.prompt = None;
-                self.pending_paste = None;
+                self.ops.pending_paste = None;
                 self.ops.prompt_side = None;
                 Task::none()
             }
@@ -3141,15 +2976,20 @@ impl App {
             }
             Message::WindowFocused => self.reload_local_panels(),
             Message::FilesHovered => {
-                self.drop_hover = true;
+                self.ops.drop_hover = true;
                 Task::none()
             }
             Message::FilesHoverLeft => {
-                self.drop_hover = false;
+                self.ops.drop_hover = false;
                 Task::none()
             }
-            Message::FileDropped(path) => self.queue_dropped_file(path),
-            Message::DropSettled(generation) => self.copy_settled_drop(generation),
+            Message::FileDropped(path) => {
+                self.ops.queue_dropped_file(path).map(Message::DropSettled)
+            }
+            Message::DropSettled(generation) => match self.ops.settled_drop(generation) {
+                Some(paths) => self.copy_external_files_into_active_panel(paths),
+                None => Task::none(),
+            },
             Message::OpenSearch => self.open_search(),
             Message::Search(search) => self.update_search(search),
             Message::QuickOpen(quick_open) => self.update_quick_open(quick_open),
@@ -3283,32 +3123,32 @@ impl App {
                 Task::none()
             }
             Message::ContextMenuMove(delta) => {
-                if let Some(menu) = self.context_menu.as_mut() {
+                if let Some(menu) = self.panels.context_menu.as_mut() {
                     menu.move_by(delta);
                 }
                 Task::none()
             }
             Message::ContextMenuFirst => {
-                if let Some(menu) = self.context_menu.as_mut() {
+                if let Some(menu) = self.panels.context_menu.as_mut() {
                     menu.select_first();
                 }
                 Task::none()
             }
             Message::ContextMenuLast => {
-                if let Some(menu) = self.context_menu.as_mut() {
+                if let Some(menu) = self.panels.context_menu.as_mut() {
                     menu.select_last();
                 }
                 Task::none()
             }
             Message::ContextMenuHover(index) => {
-                if let Some(menu) = self.context_menu.as_mut() {
+                if let Some(menu) = self.panels.context_menu.as_mut() {
                     menu.hover(index);
                 }
                 Task::none()
             }
             Message::ContextMenuActivate => self.run_context_menu_entry(),
             Message::ContextMenuClick(index) => {
-                if let Some(menu) = self.context_menu.as_mut() {
+                if let Some(menu) = self.panels.context_menu.as_mut() {
                     menu.select(index);
                     if menu.selected_is_hermes() {
                         menu.open_submenu();
@@ -3319,31 +3159,31 @@ impl App {
                 self.run_context_menu_entry()
             }
             Message::ContextMenuOpenSub => {
-                if let Some(menu) = self.context_menu.as_mut() {
+                if let Some(menu) = self.panels.context_menu.as_mut() {
                     menu.open_submenu();
                 }
                 Task::none()
             }
             Message::ContextMenuCloseSub => {
-                if let Some(menu) = self.context_menu.as_mut() {
+                if let Some(menu) = self.panels.context_menu.as_mut() {
                     menu.close_submenu();
                 }
                 Task::none()
             }
             Message::ContextMenuSubHover(index) => {
-                if let Some(menu) = self.context_menu.as_mut() {
+                if let Some(menu) = self.panels.context_menu.as_mut() {
                     menu.select_sub(index);
                 }
                 Task::none()
             }
             Message::ContextMenuSubClick(index) => {
-                if let Some(menu) = self.context_menu.as_mut() {
+                if let Some(menu) = self.panels.context_menu.as_mut() {
                     menu.select_sub(index);
                 }
                 self.run_context_menu_entry()
             }
             Message::ContextMenuClose => {
-                self.context_menu = None;
+                self.panels.context_menu = None;
                 Task::none()
             }
             _ => Task::none(),
@@ -3354,7 +3194,7 @@ impl App {
         match message {
             Message::PathFieldInput(typed) => {
                 self.command_line.leave();
-                self.set_path_field(Some(typed));
+                self.panels.set_path_field(Some(typed));
                 Task::none()
             }
             Message::PathFieldSubmit => self.go_to_typed_path(),
@@ -3365,12 +3205,12 @@ impl App {
                 result,
             } => self.finish_path_check(request_id, side, &target, result),
             Message::PathFieldCancel => {
-                self.set_path_field(None);
+                self.panels.set_path_field(None);
                 release_focus()
             }
             Message::ClickedOutside => {
-                self.context_menu = None;
-                self.set_path_field(None);
+                self.panels.context_menu = None;
+                self.panels.set_path_field(None);
                 self.command_line.leave();
                 Task::none()
             }
@@ -3393,7 +3233,7 @@ impl App {
         match action {
             None => task,
             Some(CommandLineAction::ClosePathField) => {
-                self.set_path_field(None);
+                self.panels.set_path_field(None);
                 task
             }
             Some(CommandLineAction::ShowError(text)) => {
@@ -3409,7 +3249,7 @@ impl App {
                 ])
             }
             Some(CommandLineAction::ShowPathProblem { problem, target }) => {
-                let reason = self.path_problem_text(&problem, &target);
+                let reason = ncrs_files::path_field::problem_text(self.lang, &problem, &target);
                 self.set_status_error(&reason);
                 task
             }
@@ -3442,30 +3282,15 @@ impl App {
         Task::batch(reloads.into_iter().chain([notice]))
     }
 
-    /// The rows the menu was opened on are gone. It acts on the active panel,
-    /// so only that panel's reload closes it.
-    fn close_menu_of_reloaded(&mut self, side: PanelSide) {
-        if side == self.panels.active {
-            self.context_menu = None;
-        }
-    }
-
-    /// Sets what the path field shows, or ends the editing with `None`. Any
-    /// change makes an answer still on its way stale.
-    fn set_path_field(&mut self, value: Option<String>) {
-        self.path_check_id = self.path_check_id.wrapping_add(1);
-        self.path_field = value;
-    }
-
     /// Enter in the path field: looks at the typed path on the blocking pool and
     /// opens it in the active panel once the answer is in.
     fn go_to_typed_path(&mut self) -> Task<Message> {
-        let Some(raw_path) = self.path_field.clone() else {
+        let Some(raw_path) = self.panels.path_field.clone() else {
             return Task::none();
         };
         let typed = raw_path.trim();
         if typed.is_empty() {
-            self.set_path_field(None);
+            self.panels.set_path_field(None);
             return release_focus();
         }
         let side = self.panels.active;
@@ -3475,8 +3300,8 @@ impl App {
             return opened;
         }
         let target = fs::resolve_typed_path(&self.active_panel().path, &self.home, typed);
-        self.path_check_id = self.path_check_id.wrapping_add(1);
-        let request_id = self.path_check_id;
+        self.panels.path_check_id = self.panels.path_check_id.wrapping_add(1);
+        let request_id = self.panels.path_check_id;
         Task::perform(fs::locate(target.clone()), move |result| {
             Message::PathChecked {
                 request_id,
@@ -3500,7 +3325,7 @@ impl App {
                 Ok(url) => match url.remote_path() {
                     Some(place) => place,
                     None => {
-                        self.set_path_field(None);
+                        self.panels.set_path_field(None);
                         let outcome = self.with_connect_feature(|remote, ctx| {
                             ncrs_remote::open_connect_dialog_for(remote, ctx, &url)
                         });
@@ -3522,7 +3347,7 @@ impl App {
                 .map_or_else(|| "/".to_owned(), |session| session.home().to_owned());
             place.resolve_typed(typed, &home)
         };
-        self.set_path_field(None);
+        self.panels.set_path_field(None);
         self.job_error = None;
         self.notice = None;
         Some(Task::batch([
@@ -3541,12 +3366,12 @@ impl App {
         target: &Path,
         result: Result<fs::Destination, fs::PathProblem>,
     ) -> Task<Message> {
-        if request_id != self.path_check_id || self.path_field.is_none() {
+        if request_id != self.panels.path_check_id || self.panels.path_field.is_none() {
             return Task::none();
         }
         match result {
             Ok(destination) => {
-                self.set_path_field(None);
+                self.panels.set_path_field(None);
                 self.job_error = None;
                 self.notice = None;
                 Task::batch([
@@ -3555,25 +3380,10 @@ impl App {
                 ])
             }
             Err(problem) => {
-                let reason = self.path_problem_text(&problem, target);
+                let reason = ncrs_files::path_field::problem_text(self.lang, &problem, target);
                 self.set_status_error(&reason);
                 Task::none()
             }
-        }
-    }
-
-    /// Why `target` cannot be opened, for the status bar.
-    fn path_problem_text(&self, problem: &fs::PathProblem, target: &Path) -> String {
-        let shown = target.display().to_string();
-        match problem {
-            fs::PathProblem::Missing => fill_template(
-                self.lang.text(Msg::StatusPathMissing),
-                &[("{path}", &shown)],
-            ),
-            fs::PathProblem::Unreadable { reason } => fill_template(
-                self.lang.text(Msg::StatusPathUnreadable),
-                &[("{path}", &shown), ("{reason}", reason)],
-            ),
         }
     }
 
@@ -3605,7 +3415,7 @@ impl App {
         input.saved_queries = self.hermes.saved_queries.is_some();
         input.tags = self.hermes.tags.is_some();
         input.hermes_sidebar = state.hermes_sidebar;
-        input.transfer_dialog = self.transfer_dialog.is_some();
+        input.transfer_dialog = self.ops.transfer_dialog.is_some();
         input.reorganisation_plan = self.hermes.reorganisation.is_some();
         input.settings = self.settings.page.is_some()
             && self.hermes.filing_setup.is_none()
@@ -3661,7 +3471,9 @@ impl App {
         };
 
         let side_view_plain = |side: PanelSide| match self.search.view.as_ref() {
-            _ if self.trash_view.is_some() && side == self.trash_side => self.trash_panel(side),
+            _ if self.ops.trash_view.is_some() && side == self.ops.trash_side => {
+                self.trash_panel(side)
+            }
             Some(search) if self.search.open && side == self.search.side => {
                 let keymap = &self.keymap;
                 ncrs_search::view(
@@ -3766,7 +3578,7 @@ impl App {
                         self.status_error(),
                         self.search_status(),
                         statusbar::PathBar {
-                            editing: self.path_field.as_deref(),
+                            editing: self.panels.path_field.as_deref(),
                             on_input: Message::PathFieldInput,
                             on_submit: Message::PathFieldSubmit,
                             on_copy: Message::CopyToClipboard(ClipboardKind::Directory),
@@ -3837,7 +3649,7 @@ impl App {
             .into();
         }
 
-        if let Some(menu) = self.context_menu.as_ref() {
+        if let Some(menu) = self.panels.context_menu.as_ref() {
             // A left press anywhere beside the menu closes it, the path field
             // and the column titles included: those take their own clicks and
             // would never report one. A right press passes through, so another
@@ -3845,7 +3657,7 @@ impl App {
             // A Ctrl+click on a Mac is a right click and passes through too.
             let mut click_catcher =
                 mouse_area(Space::new().width(Length::Fill).height(Length::Fill));
-            if !is_context_click(self.modifiers) {
+            if !ncrs_files::ctx::is_context_click(self.modifiers) {
                 click_catcher = click_catcher.on_press(Message::ContextMenuClose);
             }
             return Stack::with_children([
@@ -3865,7 +3677,7 @@ impl App {
             .into();
         }
 
-        if let Some(menu) = self.volume_menu.as_ref() {
+        if let Some(menu) = self.panels.volume_menu.as_ref() {
             let menu_element = volumes_view::view(
                 menu.side,
                 volumes_view::MenuRows {
@@ -3976,8 +3788,8 @@ impl App {
         // turned out to be taken — so behind the prompt's early return the
         // dialog was never drawn. That was a real bug, and the snapshot test is
         // what found it.
-        if self.conflict_is_open() {
-            let name = self.conflict_name();
+        if self.ops.conflict_is_open() {
+            let name = self.ops.conflict_name();
             let conflict_element = conflict::view(
                 &name,
                 self.lang,
@@ -3990,14 +3802,14 @@ impl App {
             return Stack::with_children([root, dialog::scrim(conflict_element)]).into();
         }
 
-        if let Some(confirm) = self.transfer_dialog.as_ref() {
+        if let Some(confirm) = self.ops.transfer_dialog.as_ref() {
             let confirm_element =
                 transfer_ui::confirm(confirm, self.window_size, self.lang, &self.palette)
                     .map(Message::from);
             return Stack::with_children([root, dialog::scrim(confirm_element)]).into();
         }
 
-        if let Some(running) = self.progress_mask() {
+        if let Some(running) = self.ops.progress_mask(self.job_progress) {
             let progress_element =
                 transfer_ui::progress(&running, self.window_size, self.lang, &self.palette)
                     .map(Message::from);
@@ -4158,14 +3970,15 @@ impl App {
     fn prompt_key_state(&self) -> PromptKeyState {
         let job_running = self.jobs.is_busy();
         let config_error = self.config_error.is_some();
-        let volume_menu = self.volume_menu.is_some();
-        let context_menu = self.context_menu.is_some();
+        let volume_menu = self.panels.volume_menu.is_some();
+        let context_menu = self.panels.context_menu.is_some();
         let context_submenu = self
+            .panels
             .context_menu
             .as_ref()
             .is_some_and(ContextMenu::submenu_is_open);
         let quick_fix = self.hermes.quick_fix.is_some();
-        let path_editing = self.path_field.is_some();
+        let path_editing = self.panels.path_field.is_some();
         let command_line = self.command_line.is_focused();
         let search = self.search_has_keys();
         let trash = self.trash_has_keys();
@@ -4227,8 +4040,8 @@ impl App {
         let grant_dialog = self.grant_dialog;
         let connect_dialog = self.remote_ui.dialog.is_some();
         let settings = self.settings.page.is_some();
-        let transfer_dialog = self.transfer_dialog.is_some();
-        let transfer_progress = self.progress_mask_is_open();
+        let transfer_dialog = self.ops.transfer_dialog.is_some();
+        let transfer_progress = self.ops.progress_mask_is_open();
         let start_over_dialog = self.start_over_dialog;
         let delete_dialog = match &self.ops.delete_dialog {
             None => DeleteKeys::Closed,
@@ -4282,7 +4095,7 @@ impl App {
                 // A conflict is asked while no prompt is open — the prompt is
                 // gone by then, the transfer is what is running. Without this
                 // the dialog's keys would fall through to the panels.
-                conflict_open: self.conflict_is_open(),
+                conflict_open: self.ops.conflict_is_open(),
                 transfer_dialog,
                 transfer_progress,
                 ..PromptKeyState::default()
@@ -4331,7 +4144,7 @@ impl App {
                 grant_dialog,
                 connect_dialog,
                 settings,
-                conflict_open: self.conflict_is_open(),
+                conflict_open: self.ops.conflict_is_open(),
                 transfer_dialog,
                 transfer_progress,
                 busy: prompt.busy(),
@@ -4419,6 +4232,38 @@ impl App {
 
     /// Shows `text` in the status bar for [`NOTICE_DURATION`]. The timer carries
     /// the generation, so it cannot clear a notice that came after it.
+    /// F7 and Shift+F4: the name prompt for the active panel's folder.
+    fn open_prompt(&mut self, prompt: Prompt) -> Task<Message> {
+        let side = self.panels.active;
+        self.ops.open_prompt(prompt, side)
+    }
+
+    /// The picture or text of a paste needs a name before it becomes a file.
+    fn ask_for_pasted_file_name(&mut self, pasted: PastedContent) -> Task<Message> {
+        if self.active_panel().is_hit_list() {
+            let text = self.lang.text(Msg::StatusHitListNotAFolder).to_owned();
+            self.set_status_error(&text);
+            return Task::none();
+        }
+        let Some(kind) = pasted.kind() else {
+            return Task::none();
+        };
+        if self
+            .ops
+            .transfer_into_panel_is_blocked(self.ops.transfer_dialog.is_some())
+        {
+            let text = self.lang.text(Msg::StatusPasteBusy).to_owned();
+            return self.show_notice(text);
+        }
+        let panel = self.panels.active_panel();
+        let place = (panel.path.clone(), self.panels.active);
+        let entries = &panel.entries;
+        self.ops
+            .ask_for_pasted_file_name(pasted, kind, self.lang, place, |candidate| {
+                entries.iter().any(|entry| entry.name == candidate)
+            })
+    }
+
     fn show_notice(&mut self, text: String) -> Task<Message> {
         self.notice_generation = self.notice_generation.wrapping_add(1);
         self.notice = Some(text);
@@ -4457,7 +4302,7 @@ impl App {
             || self.grant_dialog
         {
             2
-        } else if self.conflict_is_open() {
+        } else if self.ops.conflict_is_open() {
             3
         } else {
             0
@@ -4548,7 +4393,7 @@ impl App {
                 self.update_grant(GrantMessage::Later)
             };
         }
-        if self.conflict_is_open() {
+        if self.ops.conflict_is_open() {
             let choice = match self.dialog_focus {
                 conflict::OVERWRITE_FOCUS => ConflictChoice::ThisOverwrite,
                 conflict::KEEP_FOCUS => ConflictChoice::ThisKeep,
@@ -4561,7 +4406,7 @@ impl App {
 
     /// A prompt, dialog or menu is on top of the panels.
     fn overlay_is_open(&self) -> bool {
-        self.blocking_overlay_is_open() || self.context_menu.is_some()
+        self.blocking_overlay_is_open() || self.panels.context_menu.is_some()
     }
 
     /// Everything on top of the panels except the context menu, which a new
@@ -4593,12 +4438,12 @@ impl App {
 
     fn overlay_apart_from_overview_and_hermes_is_open(&self) -> bool {
         self.ops.prompt.is_some()
-            || self.conflict_is_open()
-            || self.transfer_dialog.is_some()
-            || self.progress_mask_is_open()
+            || self.ops.conflict_is_open()
+            || self.ops.transfer_dialog.is_some()
+            || self.ops.progress_mask_is_open()
             || self.ops.delete_dialog.is_some()
             || self.start_over_dialog
-            || self.volume_menu.is_some()
+            || self.panels.volume_menu.is_some()
             || self.quick_open.is_some()
             || self.command_palette.is_some()
             || self.settings.key_bindings.is_some()
@@ -4662,7 +4507,7 @@ impl App {
         self.notice = None;
         let pointer = self.input.lock().pointer;
         let is_enabled = |action| self.context_action_enabled(action);
-        self.context_menu = Some(ContextMenu::for_search_results(
+        self.panels.context_menu = Some(ContextMenu::for_search_results(
             pointer,
             self.window_size,
             is_enabled,
@@ -4677,7 +4522,7 @@ impl App {
             return;
         }
         // An open menu is replaced by a right click and left alone by the keys.
-        if anchor.is_none() && self.context_menu.is_some() {
+        if anchor.is_none() && self.panels.context_menu.is_some() {
             return;
         }
         let rows = self.visible_rows;
@@ -4713,7 +4558,7 @@ impl App {
             is_enabled: &hermes_enabled,
         });
         let is_enabled = |action| self.context_action_enabled(action);
-        self.context_menu = Some(if self.panel(side).is_hit_list() {
+        self.panels.context_menu = Some(if self.panel(side).is_hit_list() {
             ContextMenu::for_hit_list(place_at, self.window_size, is_enabled, hermes)
         } else {
             ContextMenu::with_hermes(place_at, self.window_size, is_enabled, hermes)
@@ -4724,7 +4569,7 @@ impl App {
     /// the same one its key sends. Closed first: the actions refuse to run
     /// under an overlay.
     fn run_context_menu_entry(&mut self) -> Task<Message> {
-        let Some(open) = self.context_menu.as_mut() else {
+        let Some(open) = self.panels.context_menu.as_mut() else {
             return Task::none();
         };
         if open.selected_is_hermes() && !open.submenu_is_open() {
@@ -4732,7 +4577,7 @@ impl App {
             return Task::none();
         }
         let from_search = self.search_has_keys();
-        let Some(menu) = self.context_menu.take() else {
+        let Some(menu) = self.panels.context_menu.take() else {
             return Task::none();
         };
         let chosen = if menu.submenu_is_open() {
@@ -4921,7 +4766,7 @@ impl App {
         let mut menu = VolumeMenu::new(side, volumes, &self.panel(side).path)
             .with_favourites(favourites)
             .with_servers(servers)
-            .with_trash(self.trash_menu_row());
+            .with_trash(ncrs_ops::trash_menu_row(self.trash.reach()));
         if on_favourites {
             menu.selected = menu.volumes.len();
         }
@@ -4931,7 +4776,7 @@ impl App {
                 menu.selected = menu.volumes.len() + menu.favourites.len() + index;
             }
         }
-        self.volume_menu = Some(menu);
+        self.panels.volume_menu = Some(menu);
     }
 
     /// The servers the drive menu lists: the saved ones in the order of the
@@ -4988,10 +4833,11 @@ impl App {
         // failure it still re-reads, because the name may belong to
         // something else that appeared meanwhile.
         let created = self
+            .panels
             .pending_reload
             .as_ref()
             .map(|pending| self.panel(pending.side).path.join(&pending.name));
-        let reload = self.pending_reload.take().map(|pending| {
+        let reload = self.panels.pending_reload.take().map(|pending| {
             let path = self.panel(pending.side).path.clone();
             self.load(pending.side, path, Some(pending.name))
         });
@@ -5015,7 +4861,7 @@ impl App {
 
     /// Delete or Backspace in the drive menu. A drive row ignores it.
     fn remove_highlighted_row(&mut self) -> Task<Message> {
-        let Some(menu) = self.volume_menu.as_mut() else {
+        let Some(menu) = self.panels.volume_menu.as_mut() else {
             return Task::none();
         };
         let mut task = Task::none();
@@ -5046,11 +4892,12 @@ impl App {
         }
         // Without drives, the last favourite leaves nothing to pick.
         if self
+            .panels
             .volume_menu
             .as_ref()
             .is_some_and(|open| open.row_count() == 0)
         {
-            self.volume_menu = None;
+            self.panels.volume_menu = None;
         }
         task
     }
@@ -5132,7 +4979,7 @@ impl App {
     /// Closes the menu and takes its panel to the highlighted drive, as any
     /// directory change does: a failing read shows its error in the status bar.
     fn go_to_selected_volume(&mut self) -> Task<Message> {
-        let Some(menu) = self.volume_menu.take() else {
+        let Some(menu) = self.panels.volume_menu.take() else {
             return Task::none();
         };
         if menu.selected_trash() {
@@ -5224,7 +5071,8 @@ impl App {
         step: impl FnOnce(&mut ncrs_ops::Ops, &ncrs_ops::FlowCtx<'_>) -> R,
     ) -> R {
         let start_blocked =
-            self.jobs.is_busy() || self.ops.prompt.is_some() || self.conflict_is_open();
+            self.jobs.is_busy() || self.ops.prompt.is_some() || self.ops.conflict_is_open();
+        let transfer_dialog_open = self.ops.transfer_dialog.is_some();
         let permanent_delete_key = self
             .keymap
             .shortcut_label(&Message::Delete { permanent: true });
@@ -5239,7 +5087,7 @@ impl App {
                 trash: &self.trash,
                 jobs_busy: self.jobs.is_busy(),
                 start_blocked,
-                transfer_dialog_open: self.transfer_dialog.is_some(),
+                transfer_dialog_open,
                 has_job_error: self.job_error.is_some(),
                 sandbox: &self.sandbox,
                 source_side: self.source_side(),
@@ -5357,15 +5205,16 @@ impl App {
     fn update_trash(&mut self, message: TrashMessage) -> Task<Message> {
         let ctx = ncrs_ops::Ctx {
             trash_rows: self.trash_rows(),
-            trash_generation: self.trash_generation,
+            trash_generation: self.ops.trash_generation,
         };
-        let Some(action) = ncrs_ops::update_trash(self.trash_view.as_mut(), message, &ctx) else {
+        let Some(action) = ncrs_ops::update_trash(self.ops.trash_view.as_mut(), message, &ctx)
+        else {
             return Task::none();
         };
         match action {
             TrashAction::Open => self.open_trash_on(self.source_side()),
             TrashAction::Close => {
-                self.close_trash();
+                self.ops.close_trash();
                 release_focus()
             }
             TrashAction::Restore(items) => {
@@ -5389,17 +5238,6 @@ impl App {
         layout::trash_visible_rows(self.window_size)
     }
 
-    /// What the last row of the drive menu is called, if this build has one.
-    fn trash_menu_row(&self) -> Option<Msg> {
-        match self.trash.reach() {
-            fs::TrashReach::Everything => Some(Msg::TrashTitleEverything),
-            fs::TrashReach::OwnDeletions => Some(Msg::TrashTitleOwn),
-            fs::TrashReach::FinderOnly => {
-                cfg!(target_os = "macos").then_some(Msg::ActionOpenTrashInFinder)
-            }
-        }
-    }
-
     /// Shows the trash in place of the panel on `side` and reads it. Where the
     /// app cannot read the trash, the Finder opens it instead.
     fn open_trash_on(&mut self, side: PanelSide) -> Task<Message> {
@@ -5410,7 +5248,7 @@ impl App {
         if reach == fs::TrashReach::FinderOnly {
             return self.open_trash_in_finder();
         }
-        self.context_menu = None;
+        self.panels.context_menu = None;
         self.job_error = None;
         self.notice = None;
         let closed_search = if self.search.open && self.search.side == side {
@@ -5419,41 +5257,19 @@ impl App {
             Task::none()
         };
         self.panels.active = side;
-        self.trash_side = side;
-        self.trash_view = Some(TrashView::new(reach));
+        self.ops.trash_side = side;
+        self.ops.trash_view = Some(TrashView::new(reach));
         Task::batch([closed_search, self.list_trash()])
-    }
-
-    fn close_trash(&mut self) {
-        self.trash_view = None;
-        self.trash_generation = self.trash_generation.wrapping_add(1);
     }
 
     /// Reads the trash on the blocking pool; the answer carries the generation,
     /// so a late one finds the view closed or read again.
     fn list_trash(&mut self) -> Task<Message> {
-        if self.trash_view.is_none() {
-            return Task::none();
-        }
-        self.trash_generation = self.trash_generation.wrapping_add(1);
-        let generation = self.trash_generation;
-        if let Some(view) = self.trash_view.as_mut() {
-            view.begin_reading();
-        }
-        let trash = Arc::clone(&self.trash);
-        Task::perform(
-            tokio::task::spawn_blocking(move || trash.list()),
-            move |outcome| {
-                Message::Trash(TrashMessage::Listed {
-                    generation,
-                    result: outcome.unwrap_or_else(|join| Err(join.to_string())),
-                })
-            },
-        )
+        self.ops.list_trash(&self.trash).map(Message::Trash)
     }
 
     fn trash_panel(&self, side: PanelSide) -> Element<'_, Message> {
-        let Some(view) = self.trash_view.as_ref() else {
+        let Some(view) = self.ops.trash_view.as_ref() else {
             return Space::new().into();
         };
         trash_ui::view(trash_ui::Props {
@@ -5488,16 +5304,6 @@ impl App {
     #[cfg(not(target_os = "macos"))]
     fn open_trash_in_finder(&mut self) -> Task<Message> {
         Task::none()
-    }
-
-    /// F7 and Shift+F4: the name prompt for the active panel's folder.
-    fn open_prompt(&mut self, prompt: Prompt) -> Task<Message> {
-        self.ops.prompt = Some(prompt);
-        self.ops.prompt_side = Some(self.panels.active);
-        // The field has to be focused or the prompt swallows every
-        // keystroke: `TextInput` only takes keys while focused, and
-        // giving it an Id does not focus it.
-        operation::focus(FIELD_ID)
     }
 
     /// F3 / F4: the row under the cursor goes to the external program. Tags
@@ -5585,18 +5391,6 @@ impl App {
         })
     }
 
-    /// Whether a panel is in `place`: an archive, or the root address of the
-    /// server whose folder it shows.
-    fn panel_shows(&self, place: &Path) -> bool {
-        [PanelSide::Left, PanelSide::Right].into_iter().any(|side| {
-            let panel = self.panel(side);
-            panel.archive.as_deref() == Some(place)
-                || panel
-                    .remote()
-                    .is_some_and(|server| server.root_path() == place)
-        })
-    }
-
     /// Reads both panels again, except those inside an archive or on a server.
     fn reload_local_panels(&mut self) -> Task<Message> {
         let reloads = [PanelSide::Left, PanelSide::Right].map(|side| {
@@ -5617,9 +5411,9 @@ impl App {
     fn open_pack_prompt(&mut self) -> Task<Message> {
         if self.jobs.is_busy()
             || self.ops.prompt.is_some()
-            || self.conflict_is_open()
+            || self.ops.conflict_is_open()
             || self.ops.delete_dialog.is_some()
-            || self.transfer_dialog.is_some()
+            || self.ops.transfer_dialog.is_some()
             || self.ops.transfer.is_some()
         {
             return Task::none();
@@ -5647,9 +5441,9 @@ impl App {
         self.notice = None;
         let target = self.panel(target_side).path.clone();
         let hit_list = self.panel(source_side).hit_list.as_ref();
-        self.ops.prompt = Some(match hit_list {
+        let prompt = match hit_list {
             Some(list) => {
-                let name = hit_archive_name(&list.query)
+                let name = ncrs_files::hit_list::hit_archive_name(&list.query)
                     .unwrap_or_else(|| suggested_archive_name(&sources));
                 Prompt::pack_hits(target, sources, list.scope.clone(), &name)
             }
@@ -5657,9 +5451,8 @@ impl App {
                 let name = suggested_archive_name(&sources);
                 Prompt::pack(target, sources, &name)
             }
-        });
-        self.ops.prompt_side = Some(target_side);
-        operation::focus(FIELD_ID)
+        };
+        self.ops.open_prompt(prompt, target_side)
     }
 
     fn toggle_keep_folders(&mut self) -> Task<Message> {
@@ -5674,15 +5467,8 @@ impl App {
             let text = self.lang.text(Msg::StatusArchiveWriteBusy).to_owned();
             return self.show_notice(text);
         }
-        let Some(prompt) = self.ops.prompt.take() else {
+        let Some(request) = self.ops.take_pack_request(self.panels.active) else {
             return Task::none();
-        };
-        let target_side = self.ops.prompt_side.take().unwrap_or(self.panels.active);
-        let request = ncrs_ops::PackRequest {
-            archive: prompt.archive_path(),
-            sources: prompt.sources().to_vec(),
-            keep_under: prompt.kept_folders_under().map(Path::to_path_buf),
-            target_side,
         };
         self.with_ops(|ops, ctx| ncrs_ops::start_pack(ops, request, ctx))
     }
@@ -5722,7 +5508,7 @@ impl App {
     /// A panel has left `archive`: the copies made for the viewer go, unless
     /// the other panel is still in it. A running unpacking stops first.
     fn drop_view_copies_of(&mut self, archive: &Path) {
-        if self.panel_shows(archive) {
+        if self.panels.shows(archive) {
             return;
         }
         if self
@@ -5832,12 +5618,7 @@ impl App {
             let text = self.lang.text(Msg::StatusArchiveViewBusy).to_owned();
             return self.show_notice(text);
         }
-        if self.ops.prompt.is_some()
-            || self.conflict_is_open()
-            || self.ops.delete_dialog.is_some()
-            || self.transfer_dialog.is_some()
-            || self.ops.archive_write.is_some()
-        {
+        if self.ops.transfer_dialog_is_blocked() {
             return Task::none();
         }
         let sources = self.action_sources();
@@ -5851,7 +5632,6 @@ impl App {
         }
         self.job_error = None;
         self.notice = None;
-        self.transfer_dialogs_opened = self.transfer_dialogs_opened.wrapping_add(1);
         let base = preset.unwrap_or_else(|| self.panel(self.source_side().other()).path.clone());
         let remote_home = RemotePath::parse(&base).and_then(|place| {
             self.remote
@@ -5863,30 +5643,24 @@ impl App {
             .hit_list
             .as_ref()
             .map(|list| list.scope.clone());
-        let dialog = TransferDialog::new(self.transfer_dialogs_opened, kind, sources, base)
-            .with_remote_home(remote_home)
-            .with_hit_scope(hit_scope);
-        let scan = scan_task(&dialog);
-        let conflicts = conflicts_task(&dialog);
-        self.transfer_dialog = Some(dialog);
-        let target = transfer_ui::TARGET_FIELD_ID;
-        Task::batch([
-            scan,
-            conflicts,
-            operation::focus(target).chain(operation::move_cursor_to_end(target)),
-        ])
+        self.ops
+            .show_transfer_dialog(kind, sources, base, (remote_home, hit_scope))
+            .map(Message::TransferDialog)
     }
 
     fn update_transfer_dialog(&mut self, message: TransferDialogMessage) -> Task<Message> {
-        let Some(action) = ncrs_ops::update_transfer_dialog(&mut self.transfer_dialog, message)
+        let Some(action) = ncrs_ops::update_transfer_dialog(&mut self.ops.transfer_dialog, message)
         else {
             return Task::none();
         };
         match action {
             TransferAction::CountConflicts => self
+                .ops
                 .transfer_dialog
                 .as_ref()
-                .map_or_else(Task::none, conflicts_task),
+                .map_or_else(Task::none, |dialog| {
+                    ncrs_ops::conflicts_task(dialog).map(Message::TransferDialog)
+                }),
             TransferAction::Closed => release_focus(),
             TransferAction::Confirm => self.confirm_transfer(),
             TransferAction::HideProgress => {
@@ -5903,22 +5677,19 @@ impl App {
     /// Enter in the confirmation: refuse a target that cannot take the
     /// selection, with the reason in the dialog, or start the transfer.
     fn confirm_transfer(&mut self) -> Task<Message> {
-        let Some(open) = self.transfer_dialog.as_mut() else {
+        let Some(ncrs_ops::ValidTransfer {
+            kind,
+            sources,
+            target,
+            policy,
+        }) = self.ops.validate_transfer_dialog()
+        else {
             return Task::none();
         };
-        let target =
-            match transfer_dialog::validate(open.kind(), open.sources(), &open.target_path()) {
-                Ok(target) => target,
-                Err(refusal) => {
-                    open.refuse(refusal);
-                    return Task::none();
-                }
-            };
-        let (kind, sources, policy) = (open.kind(), open.sources().to_vec(), open.policy());
         if !self.target_server_is_reachable(&target) {
             return Task::none();
         }
-        self.transfer_dialog = None;
+        self.ops.transfer_dialog = None;
         Task::batch([
             release_focus(),
             self.with_ops(|ops, ctx| {
@@ -5930,48 +5701,13 @@ impl App {
     /// Says so in the status bar when `target` is on a server that is not
     /// connected.
     fn target_server_is_reachable(&mut self, target: &Path) -> bool {
-        let Some(place) = RemotePath::parse(target) else {
-            return true;
-        };
-        if self.remote.is_connected(place.server()) {
-            return true;
+        match ncrs_ops::unreachable_server_text(&self.remote, target, self.lang) {
+            Some(text) => {
+                self.set_status_error(&text);
+                false
+            }
+            None => true,
         }
-        let text = fill_template(
-            self.lang.text(Msg::ErrorRemoteDisconnected),
-            &[("{server}", &place.server().to_string())],
-        );
-        self.set_status_error(&text);
-        false
-    }
-
-    fn queue_dropped_file(&mut self, path: PathBuf) -> Task<Message> {
-        self.drop_hover = false;
-        self.dropped_files.push(path);
-        self.drop_generation = self.drop_generation.wrapping_add(1);
-        let generation = self.drop_generation;
-        Task::perform(async { tokio::time::sleep(DROP_SETTLE).await }, move |()| {
-            Message::DropSettled(generation)
-        })
-    }
-
-    fn copy_settled_drop(&mut self, generation: u64) -> Task<Message> {
-        if generation != self.drop_generation || self.dropped_files.is_empty() {
-            return Task::none();
-        }
-        let paths = std::mem::take(&mut self.dropped_files);
-        self.copy_external_files_into_active_panel(paths)
-    }
-
-    /// A job runs or a dialog is open, so nothing may start a transfer into
-    /// the active panel.
-    fn transfer_into_panel_is_blocked(&self) -> bool {
-        self.ops.transfer.is_some()
-            || self.ops.extracting.is_some()
-            || self.ops.prompt.is_some()
-            || self.conflict_is_open()
-            || self.ops.delete_dialog.is_some()
-            || self.transfer_dialog.is_some()
-            || self.ops.archive_write.is_some()
     }
 
     /// Copies files that come from outside the panels (dropped from another
@@ -5984,7 +5720,10 @@ impl App {
             self.set_status_error(&text);
             return Task::none();
         }
-        if self.transfer_into_panel_is_blocked() {
+        if self
+            .ops
+            .transfer_into_panel_is_blocked(self.ops.transfer_dialog.is_some())
+        {
             let text = self.lang.text(Msg::StatusDropBusy).to_owned();
             return self.show_notice(text);
         }
@@ -6021,14 +5760,20 @@ impl App {
     fn start_prompt_job(&mut self) -> Task<Message> {
         match self.ops.prompt.as_ref().map(Prompt::kind) {
             Some(PromptKind::Pack) => self.start_pack(),
-            Some(PromptKind::Paste) => self.submit_paste(),
+            Some(PromptKind::Paste) => match self.ops.stage_paste() {
+                Some(file) => self.copy_external_files_into_active_panel(vec![file]),
+                None => Task::none(),
+            },
             Some(PromptKind::CreateDir | PromptKind::CreateFile) | None => Task::none(),
         }
     }
 
     /// Cmd+V / Ctrl+V: reads the system clipboard, then `paste_content` decides.
     fn paste_from_clipboard(&mut self) -> Task<Message> {
-        if self.transfer_into_panel_is_blocked() {
+        if self
+            .ops
+            .transfer_into_panel_is_blocked(self.ops.transfer_dialog.is_some())
+        {
             let text = self.lang.text(Msg::StatusPasteBusy).to_owned();
             return self.show_notice(text);
         }
@@ -6048,69 +5793,10 @@ impl App {
         }
     }
 
-    fn ask_for_pasted_file_name(&mut self, pasted: PastedContent) -> Task<Message> {
-        if self.active_panel().is_hit_list() {
-            let text = self.lang.text(Msg::StatusHitListNotAFolder).to_owned();
-            self.set_status_error(&text);
-            return Task::none();
-        }
-        let Some(kind) = pasted.kind() else {
-            return Task::none();
-        };
-        if self.transfer_into_panel_is_blocked() {
-            let text = self.lang.text(Msg::StatusPasteBusy).to_owned();
-            return self.show_notice(text);
-        }
-        let panel = self.active_panel();
-        let name = clipboard_paste::pasted_name(
-            kind,
-            chrono::Local::now().naive_local(),
-            self.lang,
-            |candidate| panel.entries.iter().any(|entry| entry.name == candidate),
-        );
-        let parent = panel.path.clone();
-        self.pending_paste = Some(pasted);
-        self.open_prompt(Prompt::paste(parent, name))
-    }
-
-    /// The name of a pasted picture or text is confirmed: write it into a
-    /// private folder and copy it into the panel the way F5 would.
-    fn submit_paste(&mut self) -> Task<Message> {
-        let (Some(prompt), Some(bytes)) = (
-            self.ops.prompt.as_ref(),
-            self.pending_paste
-                .as_ref()
-                .and_then(PastedContent::file_bytes),
-        ) else {
-            return Task::none();
-        };
-        let name = prompt.name().trim().to_owned();
-        let written = tempfile::Builder::new()
-            .prefix("ncrs-paste-")
-            .tempdir()
-            .and_then(|folder| {
-                let file = folder.path().join(&name);
-                std::fs::write(&file, bytes)?;
-                Ok((folder, file))
-            });
-        let (folder, file) = match written {
-            Ok(staging) => staging,
-            Err(error) => {
-                self.ops.set_prompt_error_text(&error.to_string());
-                return Task::none();
-            }
-        };
-        self.ops.prompt = None;
-        self.ops.prompt_side = None;
-        self.pending_paste = None;
-        self.paste_staging = Some(folder);
-        self.copy_external_files_into_active_panel(vec![file])
-    }
-
     /// Files from another app held over the window outline the active panel;
     /// a row dragged over the other panel outlines that one.
     fn is_drop_target(&self, side: PanelSide) -> bool {
-        (self.drop_hover && side == self.panels.active) || self.panels.drag_hovers_side(side)
+        (self.ops.drop_hover && side == self.panels.active) || self.panels.drag_hovers_side(side)
     }
 
     /// A cursor only where a drag from a panel is over a panel; files held over
@@ -6146,14 +5832,26 @@ impl App {
         if sources.is_empty() {
             return Task::none();
         }
-        if !sources.iter().all(|path| is_file_on_local_disk(path)) {
+        if !sources
+            .iter()
+            .all(|path| ncrs_files::panel::is_file_on_local_disk(path))
+        {
             let text = self.lang.text(Msg::StatusDragOutLocalOnly).to_owned();
             return self.show_notice(text);
         }
         window::latest()
             .and_then(move |id| {
                 let files = sources.clone();
-                window::run(id, move |window| crate::drag_out::start(window, files))
+                window::run(id, move |window| {
+                    crate::drag_out::start(
+                        window,
+                        files,
+                        crate::drag_out::DragIcon {
+                            size: crate::WINDOW_ICON_SIZE,
+                            rgba: crate::WINDOW_ICON_RGBA,
+                        },
+                    )
+                })
             })
             .map(Message::DragOutStarted)
     }
@@ -6168,7 +5866,10 @@ impl App {
         if sources.is_empty() {
             return Task::none();
         }
-        if !sources.iter().all(|path| is_file_on_local_disk(path)) {
+        if !sources
+            .iter()
+            .all(|path| ncrs_files::panel::is_file_on_local_disk(path))
+        {
             let text = self
                 .lang
                 .text(Msg::StatusClipboardFilesLocalOnly)
@@ -6195,45 +5896,6 @@ impl App {
             ),
         };
         self.show_notice(text)
-    }
-
-    /// Whether the progress mask is up over a running transfer.
-    fn progress_mask_is_open(&self) -> bool {
-        self.ops.progress_mask_is_open()
-    }
-
-    /// What the progress mask shows: how far, counted in rows when there are
-    /// several (the tick only knows the row it is in) and in the tick's items
-    /// when a single entry, maybe a whole folder, is the transfer.
-    fn progress_mask(&self) -> Option<transfer_ui::Progress<'_>> {
-        let transfer = self
-            .ops
-            .transfer
-            .as_ref()
-            .filter(|_| self.ops.transfer_mask_visible)?;
-        let (done, total) = if transfer.sources.len() > 1 {
-            (self.ops.transfer_rows_done, transfer.sources.len())
-        } else {
-            self.job_progress
-                .map_or((0, 0), |tick| (tick.done, tick.total))
-        };
-        Some(transfer_ui::Progress {
-            kind: transfer.kind,
-            target: &transfer.target,
-            done,
-            total,
-        })
-    }
-
-    /// The file the open conflict dialog asks about.
-    fn conflict_name(&self) -> String {
-        self.ops.conflict_name()
-    }
-
-    /// Whether a name that is taken waits for an answer, in a transfer or in
-    /// a restore from the trash.
-    fn conflict_is_open(&self) -> bool {
-        self.ops.conflict_is_open()
     }
 
     fn progress_sender(&mut self) -> mpsc::UnboundedSender<fs::transfer::Tick> {
@@ -6302,7 +5964,7 @@ impl App {
             waiting: self.jobs.waiting(),
             // Escape belongs to the prompt while one is open, so the hint is
             // only true when nothing else is claiming the key.
-            abortable: self.ops.prompt.is_none() && !self.conflict_is_open(),
+            abortable: self.ops.prompt.is_none() && !self.ops.conflict_is_open(),
         })
     }
 
@@ -6366,7 +6028,7 @@ impl App {
     /// The trash view is up and its panel is the active one: its keys are
     /// the cursor's.
     fn trash_has_keys(&self) -> bool {
-        self.trash_view.is_some() && self.panels.active == self.trash_side
+        self.ops.trash_view.is_some() && self.panels.active == self.ops.trash_side
     }
 
     fn search_has_keys(&self) -> bool {
@@ -6379,7 +6041,7 @@ impl App {
         if self.search_has_keys() {
             self.search.side
         } else if self.trash_has_keys() {
-            self.trash_side
+            self.ops.trash_side
         } else {
             self.panels.active
         }
@@ -6539,12 +6201,12 @@ impl App {
             }
             return self.focus_search_field();
         }
-        self.context_menu = None;
+        self.panels.context_menu = None;
         self.job_error = None;
         self.notice = None;
         let side = self.panels.active;
-        if self.trash_side == side {
-            self.close_trash();
+        if self.ops.trash_side == side {
+            self.ops.close_trash();
         }
         let root = self.panel(side).path.clone();
         self.search.side = side;
@@ -6603,14 +6265,14 @@ impl App {
         let query = view.query.trim().to_owned();
         let scope = view.root.clone();
         let origin = self.search.side;
-        self.context_menu = None;
+        self.panels.context_menu = None;
         self.job_error = None;
         self.notice = None;
         let closed = if target == origin {
             self.close_search()
         } else {
-            if self.trash_view.is_some() && self.trash_side == target {
-                self.close_trash();
+            if self.ops.trash_view.is_some() && self.ops.trash_side == target {
+                self.ops.close_trash();
             }
             Task::none()
         };
@@ -6625,7 +6287,10 @@ impl App {
             return_to,
         });
         self.panels.active = target;
-        Task::batch([closed, read_hit_files(target, request_id, paths)])
+        Task::batch([
+            closed,
+            ncrs_files::hit_list::read_hit_files(target, request_id, paths).map(Message::HitList),
+        ])
     }
 
     /// Reads the files of the list again: the rows that vanished drop out.
@@ -6637,7 +6302,7 @@ impl App {
             .map(|entry| entry.path.clone())
             .collect();
         let request_id = panel.begin_load();
-        read_hit_files(side, request_id, paths)
+        ncrs_files::hit_list::read_hit_files(side, request_id, paths).map(Message::HitList)
     }
 
     fn update_hit_list(&mut self, message: HitListMessage) -> Task<Message> {
@@ -6690,7 +6355,7 @@ impl App {
         let Some(list) = self.panel_mut(side).drop_hit_list() else {
             return Task::none();
         };
-        self.context_menu = None;
+        self.panels.context_menu = None;
         let load = self.load(side, list.return_to, None);
         if !search || self.search.view.is_none() {
             return load;
@@ -6733,8 +6398,8 @@ impl App {
         } else {
             Task::none()
         };
-        if self.trash_view.is_some() && self.trash_side == other {
-            self.close_trash();
+        if self.ops.trash_view.is_some() && self.ops.trash_side == other {
+            self.ops.close_trash();
         }
         self.panel_mut(other).drop_hit_list();
         self.panels.active = other;
@@ -6786,13 +6451,13 @@ impl App {
 
     fn update_panel(&mut self, message: PanelMessage) -> Task<Message> {
         let overlay_is_open = self.overlay_is_open();
-        let context_menu_is_open = self.context_menu.is_some();
+        let context_menu_is_open = self.panels.context_menu.is_some();
         let pointer = self.input.lock().pointer;
         let ctx = ncrs_files::Ctx {
             visible_rows: self.visible_rows,
             window_size: self.window_size,
             modifiers: self.modifiers,
-            is_context_click: is_context_click(self.modifiers),
+            is_context_click: ncrs_files::ctx::is_context_click(self.modifiers),
             pointer,
             overlay_is_open,
             context_menu_is_open,
@@ -6834,11 +6499,11 @@ impl App {
                 self.update(Message::ContextMenuAt { side, index })
             }
             Action::CloseContextMenu => {
-                self.context_menu = None;
+                self.panels.context_menu = None;
                 Task::none()
             }
             Action::CloseMenuOfReloaded(side) => {
-                self.close_menu_of_reloaded(side);
+                self.panels.close_menu_of_reloaded(side);
                 Task::none()
             }
             Action::DropViewCopies(place) => {
@@ -6927,7 +6592,7 @@ impl App {
         if self.blocking_overlay_is_open() {
             return Task::none();
         }
-        self.context_menu = None;
+        self.panels.context_menu = None;
         let root = self.active_panel().path.clone();
         self.quick_open_walk_generation = self.quick_open_walk_generation.wrapping_add(1);
         let generation = self.quick_open_walk_generation;
@@ -7215,7 +6880,7 @@ impl App {
         use ncrs_settings::Action as Ask;
         match action {
             Ask::CloseContextMenu => {
-                self.context_menu = None;
+                self.panels.context_menu = None;
                 Task::none()
             }
             Ask::SetDialogFocus(focus) => {
@@ -7225,8 +6890,8 @@ impl App {
             Ask::ShowNotice(text) => self.show_notice(text),
             Ask::LeaveAblagePage => {
                 let left_ablage = self.close_ablage_tab();
-                self.context_menu = None;
-                self.set_path_field(None);
+                self.panels.context_menu = None;
+                self.panels.set_path_field(None);
                 self.notice = None;
                 left_ablage
             }
@@ -7308,7 +6973,7 @@ impl App {
             model_is_installed,
             active_panel_path: &panel.path,
             other_panel_path: &self.panel(side.other()).path,
-            context_menu_open: self.context_menu.is_some(),
+            context_menu_open: self.panels.context_menu.is_some(),
             search_open: self.search.open,
             hermes_active: hermes.is_active(),
             hermes_counts_missing: hermes.filing_status.hermes_counts().is_none(),
@@ -7436,7 +7101,7 @@ impl App {
             Ask::RevealFile(path) => self.reveal_file(&path),
             Ask::FilingRestarted(generation) => self.filing_restarted(generation),
             Ask::CloseContextMenu => {
-                self.context_menu = None;
+                self.panels.context_menu = None;
                 Task::none()
             }
             Ask::ClearStatus => {
@@ -7824,7 +7489,7 @@ impl App {
                 if self.blocking_overlay_is_open() {
                     return Task::none();
                 }
-                self.context_menu = None;
+                self.panels.context_menu = None;
                 self.dialog_focus = about_ui::CLOSE_FOCUS;
                 self.about = Some(AboutCard::new());
             }
@@ -7872,14 +7537,14 @@ impl App {
                 if self.blocking_overlay_is_open() {
                     return Task::none();
                 }
-                self.context_menu = None;
+                self.panels.context_menu = None;
                 self.pick_grant_folder()
             }
             GrantMessage::OpenFor(blocked) => {
                 if self.blocking_overlay_is_open() {
                     return Task::none();
                 }
-                self.context_menu = None;
+                self.panels.context_menu = None;
                 (self.pick_folder)(&fs::grant_start_dir_for(&blocked))
                     .map(|folder| Message::Grant(GrantMessage::Picked(folder)))
             }
@@ -8076,7 +7741,7 @@ impl App {
         match action {
             None => task,
             Some(CommandPaletteAction::CloseContextMenu) => {
-                self.context_menu = None;
+                self.panels.context_menu = None;
                 task
             }
             // The closing task comes first and is chained, not batched: a
@@ -8204,8 +7869,8 @@ impl App {
                 Some(search) if self.search.open && side == self.search.side => {
                     titlebar::TabTitle::Search(ncrs_search::title(search, self.lang))
                 }
-                _ => match self.trash_view.as_ref() {
-                    Some(view) if side == self.trash_side => titlebar::TabTitle::Trash(
+                _ => match self.ops.trash_view.as_ref() {
+                    Some(view) if side == self.ops.trash_side => titlebar::TabTitle::Trash(
                         trash_ui::heading(view.reach, self.lang).to_owned(),
                     ),
                     _ => titlebar::TabTitle::Path {
@@ -8447,7 +8112,7 @@ impl App {
         use ncrs_remote::Action as Ask;
         match action {
             Ask::CloseContextMenu => {
-                self.context_menu = None;
+                self.panels.context_menu = None;
                 Task::none()
             }
             Ask::ClearJobError => {
@@ -8835,7 +8500,7 @@ mod perf_numbers {
         drop(app.update(Message::Panel(PanelMessage::TagAll)));
         let shared = std::cell::RefCell::new(app);
         median_time(
-            || shared.borrow_mut().transfer_dialog = None,
+            || shared.borrow_mut().ops.transfer_dialog = None,
             |()| {
                 let mut borrowed = shared.borrow_mut();
                 drop(borrowed.update(Message::Transfer(TransferKind::Copy)));
@@ -8911,7 +8576,7 @@ mod perf_numbers {
 
             let tag_all = tag_all_and_view(&mut app);
             let copy_dialog = copy_dialog_and_view(&mut app);
-            app.transfer_dialog = None;
+            app.ops.transfer_dialog = None;
 
             let by_name_query = SearchQuery {
                 include: NAME_GLOB.to_owned(),
@@ -9440,7 +9105,7 @@ mod reload_order {
         // Submitting queues the reload instead of running it.
         let _ = app.update(Message::PromptSubmit);
         assert!(
-            app.pending_reload.is_some(),
+            app.panels.pending_reload.is_some(),
             "no reload was queued, so the panel would never refresh"
         );
         assert_ne!(
@@ -9465,7 +9130,7 @@ mod reload_order {
         app.ops.prompt = Some(Prompt::create_dir(base.clone()));
         app.ops.prompt.as_mut().unwrap().set_name("spaet".into());
         app.ops.prompt_request_id = 1;
-        app.pending_reload = Some(PendingReload {
+        app.panels.pending_reload = Some(PendingReload {
             side: PanelSide::Left,
             name: "spaet".into(),
         });
@@ -9477,7 +9142,7 @@ mod reload_order {
         });
 
         assert!(
-            app.pending_reload.is_none(),
+            app.panels.pending_reload.is_none(),
             "the reload was not consumed and would run again"
         );
         assert!(
@@ -9499,7 +9164,7 @@ mod reload_order {
         app.ops.prompt = Some(Prompt::create_dir(base.clone()));
         app.ops.prompt.as_mut().unwrap().set_name("weg".into());
         app.ops.prompt_request_id = 2;
-        app.pending_reload = Some(PendingReload {
+        app.panels.pending_reload = Some(PendingReload {
             side: PanelSide::Left,
             name: "weg".into(),
         });
@@ -9514,7 +9179,7 @@ mod reload_order {
         });
 
         assert!(
-            app.pending_reload.is_none(),
+            app.panels.pending_reload.is_none(),
             "a failed create left a reload queued"
         );
         assert!(
@@ -9630,7 +9295,7 @@ mod reload_order {
     fn a_stale_result_touches_neither() {
         let mut app = App::with_environment(Environment::isolated()).0;
         app.ops.prompt_request_id = 5;
-        app.pending_reload = Some(PendingReload {
+        app.panels.pending_reload = Some(PendingReload {
             side: PanelSide::Left,
             name: "x".into(),
         });
@@ -9643,7 +9308,7 @@ mod reload_order {
 
         assert!(app.ops.prompt.is_none());
         assert!(
-            app.pending_reload.is_some(),
+            app.panels.pending_reload.is_some(),
             "a stale result consumed the queued reload"
         );
     }
@@ -9760,13 +9425,7 @@ impl App {
             search_function_keys: Keymap::built_in()
                 .function_keys(Language::default(), KeyScope::Search),
             keymap: Keymap::built_in(),
-            pending_reload: None,
             jobs: jobs::Queue::new(),
-            trash_view: None,
-            trash_side: PanelSide::Left,
-            trash_generation: 0,
-            transfer_dialog: None,
-            transfer_dialogs_opened: 0,
             start_over_dialog: false,
             dialog_focus: 0,
             modifiers: Modifiers::default(),
@@ -9780,21 +9439,14 @@ impl App {
             job_error_press: None,
             notice: None,
             notice_generation: 0,
-            drop_hover: false,
-            dropped_files: Vec::new(),
-            drop_generation: 0,
             job_done: 0,
             ops: ncrs_ops::Ops::default(),
             job_progress: None,
             progress_rx: None,
             progress_tx: None,
             key_state: OnceLock::new(),
-            volume_menu: None,
             favourites: Vec::new(),
-            context_menu: None,
-            path_field: None,
             command_line: CommandLine::default(),
-            path_check_id: 0,
             home: PathBuf::from("/home/test"),
             clock: Arc::new(std::time::Instant::now),
             window_size: layout::INITIAL_WINDOW_SIZE,
@@ -9824,8 +9476,6 @@ impl App {
             pick_file: |_| Task::none(),
             read_clipboard: || Task::done(None),
             write_clipboard_files: Box::new(|_| Ok(())),
-            pending_paste: None,
-            paste_staging: None,
             tag_exceptions: TagExceptions::new(),
             hermes_focus: HermesFocus::default(),
             fetch_extension: |_| Err(FetchError::NoConnection("no network in tests".to_owned())),
@@ -10208,7 +9858,7 @@ impl App {
         let mut app = Self::with_hermes_column_sample();
         let index = app.panels.right.selected;
         app.open_context_menu(PanelSide::Right, index, None);
-        if let Some(menu) = app.context_menu.as_mut() {
+        if let Some(menu) = app.panels.context_menu.as_mut() {
             menu.select_last();
             menu.open_submenu();
         }
@@ -10319,7 +9969,7 @@ impl App {
         );
         view.toggle_tag();
         view.move_cursor(1, app.trash_rows());
-        app.trash_view = Some(view);
+        app.ops.trash_view = Some(view);
         app
     }
 
@@ -10737,12 +10387,12 @@ impl App {
     ///
     /// Read by the end-to-end tests, which cannot reach the private field.
     pub fn conflict_is_pending(&self) -> bool {
-        self.conflict_is_open()
+        self.ops.conflict_is_open()
     }
 
     /// The originals the open trash view lists, newest first.
     pub fn trash_view_originals(&self) -> Option<Vec<PathBuf>> {
-        self.trash_view.as_ref().map(|view| {
+        self.ops.trash_view.as_ref().map(|view| {
             view.items
                 .iter()
                 .map(|item| item.original.clone())
@@ -10794,7 +10444,7 @@ impl App {
 
     /// Replaces the clock type-ahead reads.
     pub fn path_field_for_test(&self) -> Option<&str> {
-        self.path_field.as_deref()
+        self.panels.path_field.as_deref()
     }
 
     pub fn command_line_for_test(&self) -> &CommandLine {
@@ -10857,19 +10507,19 @@ impl App {
 
     /// Whether the drive menu is up.
     pub fn volume_menu_is_open(&self) -> bool {
-        self.volume_menu.is_some()
+        self.panels.volume_menu.is_some()
     }
 
     /// The highlighted row of the open drive menu.
     pub fn volume_menu_selected(&self) -> Option<usize> {
-        self.volume_menu.as_ref().map(|menu| menu.selected)
+        self.panels.volume_menu.as_ref().map(|menu| menu.selected)
     }
 
     /// Puts the drive menu in front of the user with a fixed list, for the
     /// snapshot tests.
     pub fn open_volume_menu_for_test(&mut self, side: PanelSide, volumes: Vec<fs::Volume>) {
         let current = self.panel(side).path.clone();
-        self.volume_menu = Some(VolumeMenu::new(side, volumes, &current));
+        self.panels.volume_menu = Some(VolumeMenu::new(side, volumes, &current));
     }
 
     /// `open_volume_menu_for_test` with favourite rows, each with the
@@ -10891,23 +10541,24 @@ impl App {
             .collect();
         let mut menu = VolumeMenu::new(side, volumes, &current).with_favourites(rows);
         menu.selected = selected;
-        self.volume_menu = Some(menu);
+        self.panels.volume_menu = Some(menu);
     }
 
     /// Whether the context menu is up.
     pub fn context_menu_is_open(&self) -> bool {
-        self.context_menu.is_some()
+        self.panels.context_menu.is_some()
     }
 
     /// The entry Enter would run in the open context menu.
     pub fn context_menu_selected_action(&self) -> Option<ContextAction> {
-        self.context_menu
+        self.panels
+            .context_menu
             .as_ref()
             .and_then(ContextMenu::selected_action)
     }
 
     pub fn context_menu_for_test(&self) -> Option<&ContextMenu> {
-        self.context_menu.as_ref()
+        self.panels.context_menu.as_ref()
     }
 
     /// Where the pointer is for the next right click, as the raw event
@@ -10981,7 +10632,7 @@ impl App {
             unreadable: 0,
         }));
         dialog.set_conflicts(dialog.edit(), 3);
-        self.transfer_dialog = Some(dialog);
+        self.ops.transfer_dialog = Some(dialog);
     }
 
     /// The search view with four fixed hits for "Telekom", so the buttons that
@@ -11181,7 +10832,7 @@ mod transfer_tests {
         let root = tempfile::tempdir().unwrap();
         let (mut app, _, to) = dialog_app(root.path());
         let _task = app.update(Message::Transfer(TransferKind::Copy));
-        let dialog = app.transfer_dialog.as_ref().expect("no confirmation");
+        let dialog = app.ops.transfer_dialog.as_ref().expect("no confirmation");
         assert_eq!(dialog.target_path(), to);
         assert!(app.ops.transfer.is_none());
         assert!(!app.jobs.is_busy());
@@ -11196,7 +10847,7 @@ mod transfer_tests {
             Policy::Overwrite,
         )));
         let _confirm = app.update(dialog_message(TransferDialogMessage::Confirm));
-        assert!(app.transfer_dialog.is_none());
+        assert!(app.ops.transfer_dialog.is_none());
         let transfer = app.ops.transfer.as_ref().expect("nothing started");
         assert_eq!(transfer.target, std::fs::canonicalize(&to).unwrap());
         assert_eq!(
@@ -11226,7 +10877,7 @@ mod transfer_tests {
         )));
         let _confirm = app.update(dialog_message(TransferDialogMessage::Confirm));
         assert!(app.ops.transfer.is_none());
-        let dialog = app.transfer_dialog.as_ref().expect("dialog closed");
+        let dialog = app.ops.transfer_dialog.as_ref().expect("dialog closed");
         assert!(dialog.refusal().is_some());
     }
 
@@ -11243,7 +10894,7 @@ mod transfer_tests {
         assert_eq!(tab, Some(dialog_message(TransferDialogMessage::ToggleKind)));
         let _toggled = app.update(tab.unwrap());
         assert_eq!(
-            app.transfer_dialog.as_ref().unwrap().kind(),
+            app.ops.transfer_dialog.as_ref().unwrap().kind(),
             TransferKind::Move
         );
 
@@ -11254,7 +10905,7 @@ mod transfer_tests {
         );
         assert_eq!(escape, Some(dialog_message(TransferDialogMessage::Cancel)));
         let _closed = app.update(escape.unwrap());
-        assert!(app.transfer_dialog.is_none());
+        assert!(app.ops.transfer_dialog.is_none());
         assert!(app.ops.transfer.is_none());
     }
 
@@ -11265,10 +10916,10 @@ mod transfer_tests {
         let _open = app.update(Message::Transfer(TransferKind::Copy));
         let _confirm = app.update(dialog_message(TransferDialogMessage::Confirm));
         let _hidden = app.update(dialog_message(TransferDialogMessage::Background));
-        assert!(!app.progress_mask_is_open());
+        assert!(!app.ops.progress_mask_is_open());
         let _again = app.update(Message::Transfer(TransferKind::Copy));
-        assert!(app.progress_mask_is_open());
-        assert!(app.transfer_dialog.is_none());
+        assert!(app.ops.progress_mask_is_open());
+        assert!(app.ops.transfer_dialog.is_none());
     }
 
     /// Tagged rows win over the cursor. This is the whole point of tagging: the
@@ -11433,7 +11084,7 @@ mod mouse_tagging {
         feed(&mut app, pointer_at(52.0, 50.0));
         feed(&mut app, left_released());
 
-        assert!(app.transfer_dialog.is_none());
+        assert!(app.ops.transfer_dialog.is_none());
         assert_eq!(app.panels.left.selected, 1);
         assert!(!app.panels.left.selection.any_tagged());
         assert!(app.panels.drag.is_none());
@@ -11448,7 +11099,7 @@ mod mouse_tagging {
         drop(app.update(Message::Panel(PanelMessage::PanelEntered(PanelSide::Right))));
         feed(&mut app, left_released());
 
-        let dialog = app.transfer_dialog.as_ref().expect("the dialog opens");
+        let dialog = app.ops.transfer_dialog.as_ref().expect("the dialog opens");
         assert_eq!(dialog.kind(), TransferKind::Copy);
         assert_eq!(dialog.target_path(), PathBuf::from("/right"));
         assert_eq!(dialog.sources(), [PathBuf::from("/left/f1.txt")]);
@@ -11464,7 +11115,7 @@ mod mouse_tagging {
         drop(app.update(Message::ModifiersChanged(move_modifier())));
         feed(&mut app, left_released());
 
-        let dialog = app.transfer_dialog.as_ref().expect("the dialog opens");
+        let dialog = app.ops.transfer_dialog.as_ref().expect("the dialog opens");
         assert_eq!(dialog.kind(), TransferKind::Move);
     }
 
@@ -11512,7 +11163,7 @@ mod mouse_tagging {
     #[test]
     fn files_from_another_app_keep_the_os_cursor() {
         let mut app = app_with_files();
-        app.drop_hover = true;
+        app.ops.drop_hover = true;
         drop(app.update(Message::Panel(PanelMessage::PanelEntered(PanelSide::Left))));
 
         assert_eq!(app.drag_cursor(PanelSide::Left), None);
@@ -11528,7 +11179,7 @@ mod mouse_tagging {
         drop(app.update(Message::Panel(PanelMessage::PanelEntered(PanelSide::Left))));
         feed(&mut app, left_released());
 
-        assert!(app.transfer_dialog.is_none());
+        assert!(app.ops.transfer_dialog.is_none());
     }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -12984,7 +12635,10 @@ mod volume_menu_tests {
     fn the_menu_opens_for_the_panel_that_asked() {
         let mut app = App::with_fixed_panels().with_volumes(drives);
         let _open = app.update(Message::VolumeMenu(PanelSide::Right));
-        assert_eq!(app.volume_menu.as_ref().unwrap().side, PanelSide::Right);
+        assert_eq!(
+            app.panels.volume_menu.as_ref().unwrap().side,
+            PanelSide::Right
+        );
         // `/home/test/files` is the right panel's path.
         assert_eq!(app.volume_menu_selected(), Some(1));
         assert!(app.prompt_key_state().volume_menu);
@@ -13772,9 +13426,12 @@ mod context_menu_tests {
 
     #[test]
     fn control_click_is_a_right_click_on_a_mac_only() {
-        assert_eq!(is_context_click(Modifiers::CTRL), cfg!(target_os = "macos"));
-        assert!(!is_context_click(Modifiers::default()));
-        assert!(!is_context_click(Modifiers::SHIFT));
+        assert_eq!(
+            ncrs_files::ctx::is_context_click(Modifiers::CTRL),
+            cfg!(target_os = "macos")
+        );
+        assert!(!ncrs_files::ctx::is_context_click(Modifiers::default()));
+        assert!(!ncrs_files::ctx::is_context_click(Modifiers::SHIFT));
 
         let mut app = App::with_fixed_panels();
         app.set_modifiers_for_test(Modifiers::CTRL);
@@ -14315,7 +13972,7 @@ mod command_line_tests {
         let mut app = focused_app();
         type_line(&mut app, "ls");
         drop(app.update(Message::VolumeMenu(PanelSide::Left)));
-        assert!(app.volume_menu.is_some());
+        assert!(app.panels.volume_menu.is_some());
         assert!(!app.command_line_for_test().is_focused());
         assert!(!app.prompt_key_state().command_line);
     }
@@ -14351,18 +14008,24 @@ mod path_field_tests {
     #[test]
     fn typing_replaces_what_the_field_shows_and_a_cancel_restores_the_panels_path() {
         let mut app = App::with_fixed_panels();
-        assert_eq!(app.path_field, None, "unedited, the field shows the panel");
+        assert_eq!(
+            app.panels.path_field, None,
+            "unedited, the field shows the panel"
+        );
         type_path(&mut app, "/home/test/links/Docu");
-        assert_eq!(app.path_field.as_deref(), Some("/home/test/links/Docu"));
+        assert_eq!(
+            app.panels.path_field.as_deref(),
+            Some("/home/test/links/Docu")
+        );
         drop(app.update(Message::PathFieldCancel));
-        assert_eq!(app.path_field, None);
+        assert_eq!(app.panels.path_field, None);
     }
 
     fn submit(app: &mut App, typed: &str) -> u64 {
         open(app);
         type_path(app, typed);
         drop(app.update(Message::PathFieldSubmit));
-        app.path_check_id
+        app.panels.path_check_id
     }
 
     fn checked(app: &mut App, request_id: u64, result: Result<fs::Destination, fs::PathProblem>) {
@@ -14379,7 +14042,7 @@ mod path_field_tests {
         let mut app = App::with_fixed_panels();
         let before = app.active_panel().request_id;
         submit(&mut app, "/typed/path");
-        assert_eq!(app.path_field.as_deref(), Some("/typed/path"));
+        assert_eq!(app.panels.path_field.as_deref(), Some("/typed/path"));
         assert_eq!(app.active_panel().request_id, before);
     }
 
@@ -14396,7 +14059,7 @@ mod path_field_tests {
                 select: None,
             }),
         );
-        assert_eq!(app.path_field, None);
+        assert_eq!(app.panels.path_field, None);
         assert_ne!(app.active_panel().request_id, before, "a load started");
     }
 
@@ -14406,7 +14069,7 @@ mod path_field_tests {
         let id = submit(&mut app, "/typed/path");
         let before = app.active_panel().request_id;
         checked(&mut app, id, Err(fs::PathProblem::Missing));
-        assert_eq!(app.path_field.as_deref(), Some("/typed/path"));
+        assert_eq!(app.panels.path_field.as_deref(), Some("/typed/path"));
         assert_eq!(app.active_panel().request_id, before, "nothing was loaded");
         assert!(app
             .job_error
@@ -14443,7 +14106,7 @@ mod path_field_tests {
         type_path(&mut app, "/typed/path/more");
         let before = app.active_panel().request_id;
         checked(&mut app, first_id, destination());
-        assert_eq!(app.path_field.as_deref(), Some("/typed/path/more"));
+        assert_eq!(app.panels.path_field.as_deref(), Some("/typed/path/more"));
         assert_eq!(app.active_panel().request_id, before);
 
         let second_id = submit(&mut app, "/typed/path");
@@ -14475,7 +14138,7 @@ mod path_field_tests {
             let mut app = App::with_fixed_panels();
             open(&mut app);
             drop(app.update(leave));
-            assert_eq!(app.path_field, None);
+            assert_eq!(app.panels.path_field, None);
         }
     }
 
@@ -19181,7 +18844,7 @@ mod favourites_and_history_tests {
         drop(app.update(Message::VolumeMenuLast));
         drop(app.update(Message::VolumeMenuRemove));
         assert_eq!(app.favourites.len(), 2, "the trash row is not removable");
-        if let Some(menu) = app.volume_menu.as_mut() {
+        if let Some(menu) = app.panels.volume_menu.as_mut() {
             menu.selected = menu.last_row().saturating_sub(1);
         }
         drop(app.update(Message::VolumeMenuRemove));
@@ -19852,7 +19515,7 @@ mod archive_view_tests {
 
         drop(app.update(Message::Transfer(TransferKind::Copy)));
 
-        assert!(app.transfer_dialog.is_none(), "the dialog opened");
+        assert!(app.ops.transfer_dialog.is_none(), "the dialog opened");
         assert_eq!(
             app.notice.as_deref(),
             Some(app.lang.text(Msg::StatusArchiveViewBusy))
@@ -19891,7 +19554,7 @@ mod archive_view_tests {
             "deleting" => app.ops.deleting = Some(deletion),
             "delete dialog" => app.ops.delete_dialog = Some(deletion),
             "transfer dialog" => {
-                app.transfer_dialog = Some(TransferDialog::new(
+                app.ops.transfer_dialog = Some(TransferDialog::new(
                     1,
                     TransferKind::Copy,
                     vec![file],
@@ -21200,7 +20863,7 @@ mod remote_panel_tests {
         open(&mut app, PanelSide::Left, url("/home"), None).await;
 
         drop(app.update(Message::VolumeMenu(PanelSide::Left)));
-        let menu = app.volume_menu.as_ref().unwrap();
+        let menu = app.panels.volume_menu.as_ref().unwrap();
         assert_eq!(menu.servers.len(), 1);
         assert_eq!(menu.servers[0].label, "tester@test.invalid");
         assert!(menu.servers[0].connected);
@@ -21210,7 +20873,8 @@ mod remote_panel_tests {
 
         assert!(!fixture.pool.is_connected(&Fixture::id()));
         assert!(
-            app.volume_menu
+            app.panels
+                .volume_menu
                 .as_ref()
                 .is_some_and(|open| open.servers.is_empty()),
             "the trash row keeps the menu open"
@@ -21577,7 +21241,7 @@ mod remote_panel_tests {
 
         drop(app.update(Message::TransferDialog(TransferDialogMessage::Confirm)));
 
-        let dialog = app.transfer_dialog.as_ref().unwrap();
+        let dialog = app.ops.transfer_dialog.as_ref().unwrap();
         assert_eq!(dialog.refusal(), Some(transfer_dialog::Refusal::BadAddress));
         assert!(app.ops.transfer.is_none());
     }
@@ -21647,7 +21311,7 @@ mod remote_panel_tests {
             )),
             "{reported:?}"
         );
-        assert!(app.transfer_dialog.as_ref().unwrap().counts_unknown());
+        assert!(app.ops.transfer_dialog.as_ref().unwrap().counts_unknown());
     }
 
     #[tokio::test]
@@ -21667,7 +21331,7 @@ mod remote_panel_tests {
 
         drop(app.update(Message::TransferDialog(TransferDialogMessage::Confirm)));
 
-        let dialog = app.transfer_dialog.as_ref().unwrap();
+        let dialog = app.ops.transfer_dialog.as_ref().unwrap();
         assert_eq!(
             dialog.refusal(),
             Some(transfer_dialog::Refusal::MoveFromServer)
@@ -21695,7 +21359,7 @@ mod remote_panel_tests {
         ];
         drop(app.update(Message::VolumeMenu(PanelSide::Left)));
 
-        let menu = app.volume_menu.as_ref().unwrap();
+        let menu = app.panels.volume_menu.as_ref().unwrap();
         let shown: Vec<(&str, bool)> = menu
             .servers
             .iter()
@@ -21708,6 +21372,7 @@ mod remote_panel_tests {
 
         assert!(!fixture.pool.is_connected(&Fixture::id()));
         let kept = app
+            .panels
             .volume_menu
             .as_ref()
             .expect("a saved server stays listed");
@@ -22138,7 +21803,7 @@ mod hermes_roles_and_off_tests {
             side: LEFT,
             index: DOCUMENTS,
         }));
-        let menu = app.context_menu.as_mut().unwrap();
+        let menu = app.panels.context_menu.as_mut().unwrap();
         menu.select_last();
         assert!(menu.selected_is_hermes());
         menu.open_submenu();
@@ -23588,7 +23253,7 @@ mod file_drop_tests {
         for path in [case.source_file.clone(), case.source_folder.clone()] {
             drop(case.app.update(Message::FileDropped(path)));
         }
-        case.app.drop_generation
+        case.app.ops.drop_generation
     }
 
     async fn deliver(app: &mut App, message: Message) {
@@ -23695,12 +23360,12 @@ mod file_drop_tests {
     fn hovering_marks_the_panel_until_it_is_left_or_dropped() {
         let mut app = App::with_environment(Environment::isolated()).0;
         drop(app.update(Message::FilesHovered));
-        assert!(app.drop_hover);
+        assert!(app.ops.drop_hover);
         drop(app.update(Message::FilesHoverLeft));
-        assert!(!app.drop_hover);
+        assert!(!app.ops.drop_hover);
         drop(app.update(Message::FilesHovered));
         drop(app.update(Message::FileDropped(PathBuf::from("/x"))));
-        assert!(!app.drop_hover);
+        assert!(!app.ops.drop_hover);
     }
 }
 
@@ -23808,7 +23473,7 @@ mod clipboard_tests {
         deliver(&mut case.app, Message::PromptSubmit).await;
 
         assert!(case.app.ops.prompt.is_none());
-        assert!(case.app.pending_paste.is_none());
+        assert!(case.app.ops.pending_paste.is_none());
         let created = only_file_in(&case.target);
         assert_eq!(created.file_name().unwrap().to_string_lossy(), name);
         assert_eq!(
@@ -23866,7 +23531,7 @@ mod clipboard_tests {
         deliver(&mut case.app, Message::PromptSubmit).await;
 
         assert!(case.app.ops.prompt.as_ref().unwrap().error().is_some());
-        assert!(case.app.paste_staging.is_none());
+        assert!(case.app.ops.paste_staging.is_none());
         assert_eq!(std::fs::read_dir(&case.target).unwrap().count(), 0);
     }
 
@@ -23875,12 +23540,12 @@ mod clipboard_tests {
         let mut case = pasting();
         case.app.read_clipboard = || Task::done(pasted_text());
         deliver(&mut case.app, Message::Paste).await;
-        assert!(case.app.pending_paste.is_some());
+        assert!(case.app.ops.pending_paste.is_some());
 
         drop(case.app.update(Message::PromptCancel));
 
         assert!(case.app.ops.prompt.is_none());
-        assert!(case.app.pending_paste.is_none());
+        assert!(case.app.ops.pending_paste.is_none());
         assert_eq!(std::fs::read_dir(&case.target).unwrap().count(), 0);
     }
 
@@ -24974,7 +24639,7 @@ mod hit_list_tests {
         hits.app.panels.active = PanelSide::Left;
         hits.app.search.open = false;
         drop(hits.app.open_transfer_dialog_to(TransferKind::Copy, None));
-        assert!(hits.app.transfer_dialog.is_none());
+        assert!(hits.app.ops.transfer_dialog.is_none());
         let shown = hits.app.job_error.clone().unwrap();
         assert_eq!(shown, hits.app.lang.text(Msg::StatusHitListNotAFolder));
     }
@@ -25078,13 +24743,13 @@ mod hit_list_tests {
     #[test]
     fn the_archive_name_comes_from_a_plain_query_only() {
         assert_eq!(
-            hit_archive_name(" invoice "),
+            ncrs_files::hit_list::hit_archive_name(" invoice "),
             Some("invoice.zip".to_owned())
         );
-        assert_eq!(hit_archive_name("rech.*nung"), None);
-        assert_eq!(hit_archive_name("a/b"), None);
-        assert_eq!(hit_archive_name(".."), None);
-        assert_eq!(hit_archive_name(""), None);
+        assert_eq!(ncrs_files::hit_list::hit_archive_name("rech.*nung"), None);
+        assert_eq!(ncrs_files::hit_list::hit_archive_name("a/b"), None);
+        assert_eq!(ncrs_files::hit_list::hit_archive_name(".."), None);
+        assert_eq!(ncrs_files::hit_list::hit_archive_name(""), None);
     }
 
     fn pack_prompt_of(hits: &mut Hits) {

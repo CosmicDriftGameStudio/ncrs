@@ -34,3 +34,42 @@ pub enum HitListMessage {
     /// Context menu: take the tagged rows, else the cursor row, off the list.
     RemoveFromList,
 }
+
+/// The archive name a hit list suggests: its query, when that is one plain
+/// file name on every platform.
+pub fn hit_archive_name(typed: &str) -> Option<String> {
+    let query = typed.trim();
+    let forbidden = |c: char| c.is_control() || "<>:\"/\\|?*".contains(c);
+    let plain = !query.chars().any(forbidden)
+        && matches!(
+            ncrs_fs::archive::safe_components(query).as_deref(),
+            Some([only]) if only == query
+        );
+    plain.then(|| format!("{query}.zip"))
+}
+
+/// Reads the files of a hit list off the UI thread. A file that is gone is
+/// left out.
+pub fn read_hit_files(
+    side: PanelSide,
+    request_id: u64,
+    paths: Vec<PathBuf>,
+) -> iced::Task<HitListMessage> {
+    iced::Task::perform(
+        async move {
+            tokio::task::spawn_blocking(move || {
+                paths
+                    .iter()
+                    .filter_map(|path| FileEntry::from_path(path))
+                    .collect::<Vec<_>>()
+            })
+            .await
+            .unwrap_or_default()
+        },
+        move |entries| HitListMessage::Read {
+            side,
+            request_id,
+            entries,
+        },
+    )
+}
