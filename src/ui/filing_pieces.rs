@@ -1,17 +1,20 @@
-//! The "Move to" widget: the folders of a filing target as chips, the buttons
-//! that add one, the file name and the path of an example document. Pure view
-//! over a [`TargetEditor`]; the host decides which message carries an edit.
+//! The "Move to" widget: the folders and the file name of a filing target as
+//! pieces, the menus that add one, and the path of an example document. Pure
+//! view over a [`TargetEditor`]; the host decides which message carries an edit.
 
 use iced::widget::{column, row, Row};
 use iced::{alignment, Element};
 
-use super::kit::{self, dim, error_line, Tone};
-use super::theme::{self, spacing};
-use crate::app::fill_template;
-use crate::filing_pieces::{FilingTarget, FolderField, FolderPiece, TargetEdit, TargetEditor};
+use super::hermes_kit::{self as kit, MenuItem, MenuLook, GAP_S, GAP_XS, TEXT_SMALL};
+use crate::filing_pieces::{
+    FileName, FileNameField, FilingTarget, FolderField, FolderPiece, TargetEdit, TargetEditor,
+};
 use crate::i18n::{Language, Msg};
 use crate::messages::Message;
 use crate::palette::Palette;
+
+/// The id of the field for the text of a piece of the file name.
+pub const FILE_NAME_TEXT_FIELD_ID: &str = "filing-pieces-file-name-text";
 
 /// What the host gives the widget.
 pub struct TargetHost<'p> {
@@ -22,168 +25,233 @@ pub struct TargetHost<'p> {
     pub palette: &'p Palette,
 }
 
-/// The folders offered as buttons, in this order.
+/// The folders offered in the menu, in this order.
 const OFFERED_FIELDS: [FolderField; 5] = FolderField::ALL;
+const FOLDER_SEPARATOR: &str = "/";
+const FILE_NAME_SEPARATOR: &str = "_";
 
+/// The rows "Move to" and "File name" with their problems, and the example.
 pub fn target_view<'a>(editor: &TargetEditor, host: &TargetHost<'_>) -> Element<'a, Message> {
-    let TargetHost { lang, palette, .. } = *host;
-    let mut content = column![
-        folder_chips(&editor.target, host),
-        add_buttons(editor, host)
-    ]
-    .spacing(spacing::S);
+    let (lang, palette) = (host.lang, host.palette);
+    let mut folder_cell = column![folder_pieces(editor, host)].spacing(GAP_XS);
     if editor.own_name.is_some() {
-        content = content.push(own_name_row(editor, host));
+        folder_cell = folder_cell.push(own_name_row(editor, host));
     }
     if let Some(problem) = editor.name_problem {
-        content = content.push(error_line(problem.text(lang), palette));
+        folder_cell = folder_cell.push(kit::error_line(problem.text(lang), palette));
     }
     if editor.target.is_empty() {
-        content = content.push(error_line(
+        folder_cell = folder_cell.push(kit::error_line(
             lang.text(Msg::FilingPiecesProblemEmpty),
             palette,
         ));
     }
-    content
-        .push(dim(
-            format!(
-                "{}{}",
-                lang.text(Msg::FilingPiecesFileNamePrefix),
-                editor.target.file_name_in_words(lang)
-            ),
-            palette,
-        ))
-        .push(example_line(&editor.target, lang, palette))
-        .into()
+    let mut name_cell = column![file_name_pieces(editor, host)].spacing(GAP_XS);
+    if editor.name_text.is_some() {
+        name_cell = name_cell.push(name_text_row(editor, host));
+    }
+    if let Some(problem) = editor.name_text_problem {
+        name_cell = name_cell.push(kit::error_line(problem.text(lang), palette));
+    }
+    column![
+        kit::form_row(
+            lang.text(Msg::ReviewListMoveTo),
+            folder_cell.into(),
+            None,
+            palette
+        ),
+        kit::form_row(
+            lang.text(Msg::FilingPiecesFileNameLabel),
+            name_cell.into(),
+            None,
+            palette
+        ),
+        example_line(&editor.target, lang, palette),
+    ]
+    .spacing(GAP_S)
+    .into()
 }
 
-/// Only the example line, for the places that show the target read-only.
+/// The example path: "Example: " dimmed, the path in monospace.
 pub fn example_line<'a>(
     target: &FilingTarget,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, Message> {
-    dim(
-        match target.example(lang) {
-            Some(path) => fill_template(lang.text(Msg::FilingPiecesExample), &[("{path}", &path)]),
-            None => lang.text(Msg::FilingPiecesExampleNone).to_owned(),
-        },
-        palette,
-    )
+    let Some(path) = target.example(lang) else {
+        return kit::hint(lang.text(Msg::FilingPiecesExampleNone), palette);
+    };
+    let template = lang.text(Msg::FilingPiecesExample);
+    let (before, after) = template.split_once("{path}").unwrap_or((template, ""));
+    row![
+        kit::hint(before.to_owned(), palette),
+        kit::mono(path, TEXT_SMALL, palette.text),
+        kit::hint(after.to_owned(), palette),
+    ]
+    .align_y(alignment::Vertical::Center)
+    .into()
 }
 
 fn folder_label(piece: &FolderPiece, lang: Language) -> String {
     FilingTarget {
         folders: vec![piece.clone()],
-        file_name: crate::filing_pieces::FileName::Automatic,
+        file_name: FileName::Automatic,
     }
     .in_words(lang)
 }
 
-/// The folders of a target as chips without a cross, a dimmed slash between
-/// them: for the places that show a target and do not edit it.
+/// The folders of a target as one line of monospace text, for the places
+/// that show a target and do not edit it.
 pub fn folder_chips_read_only<'a, M: 'a>(
     target: &FilingTarget,
     on_fill: bool,
     lang: Language,
     palette: &Palette,
 ) -> Element<'a, M> {
-    let mut chips = Row::new()
-        .spacing(spacing::XS)
-        .align_y(alignment::Vertical::Center);
-    for (position, piece) in target.folders.iter().enumerate() {
-        if position > 0 {
-            chips = chips.push(
-                iced::widget::text("/")
-                    .size(theme::font_size::SMALL)
-                    .color(palette.dim_text),
-            );
-        }
-        chips = chips.push(kit::chip(&folder_label(piece, lang), on_fill, palette));
-    }
-    chips.into()
+    let words = target
+        .folders
+        .iter()
+        .map(|piece| folder_label(piece, lang))
+        .collect::<Vec<_>>()
+        .join(" / ");
+    let color = if on_fill {
+        palette.cursor_text
+    } else {
+        palette.text
+    };
+    kit::mono(words, TEXT_SMALL, color)
 }
 
-/// The folders as chips with a cross, a dimmed slash between them.
-fn folder_chips<'a>(target: &FilingTarget, host: &TargetHost<'_>) -> Element<'a, Message> {
+fn add_label(lang: Language) -> String {
+    format!("+ {}", lang.text(Msg::RulesFormTagsAdd))
+}
+
+fn folder_pieces<'a>(editor: &TargetEditor, host: &TargetHost<'_>) -> Element<'a, Message> {
     let TargetHost {
         wrap,
         lang,
         palette,
         ..
     } = *host;
-    let mut chips = Row::new()
-        .spacing(spacing::XS)
-        .align_y(alignment::Vertical::Center);
-    for (position, piece) in target.folders.iter().enumerate() {
-        if position > 0 {
-            chips = chips.push(dim("/", palette));
-        }
-        chips = chips.push(kit::removable_chip(
-            &folder_label(piece, lang),
-            wrap(TargetEdit::Remove(position)),
-            palette,
-        ));
-    }
-    chips.wrap().into()
-}
-
-fn add_buttons<'a>(editor: &TargetEditor, host: &TargetHost<'_>) -> Element<'a, Message> {
-    let TargetHost {
-        wrap,
-        lang,
-        palette,
-        ..
-    } = *host;
-    let mut buttons = Row::new()
-        .spacing(spacing::XS)
-        .align_y(alignment::Vertical::Center)
-        .push(dim(lang.text(Msg::FilingPiecesAddFolder), palette))
-        .push(kit::button(
+    let pieces = editor
+        .target
+        .folders
+        .iter()
+        .enumerate()
+        .map(|(position, piece)| {
+            kit::piece(
+                &folder_label(piece, lang),
+                Some(wrap(TargetEdit::Remove(position))),
+                palette,
+            )
+        })
+        .collect();
+    let mut items: Vec<MenuItem> = OFFERED_FIELDS
+        .into_iter()
+        .map(|field| MenuItem::new(field.name(lang), wrap(TargetEdit::AddField(field))))
+        .collect();
+    if editor.own_name.is_none() {
+        items.push(MenuItem::new(
             lang.text(Msg::FilingPiecesAddOwn),
-            editor
-                .own_name
-                .is_none()
-                .then(|| wrap(TargetEdit::StartOwnName)),
-            Tone::Secondary,
-            palette,
-        ));
-    for field in OFFERED_FIELDS {
-        buttons = buttons.push(kit::button(
-            field.name(lang),
-            Some(wrap(TargetEdit::AddField(field))),
-            Tone::Secondary,
-            palette,
+            wrap(TargetEdit::StartOwnName),
         ));
     }
-    buttons.wrap().into()
+    let add = kit::menu_button(&add_label(lang), &items, MenuLook::PieceAdd, palette);
+    kit::pieces(pieces, FOLDER_SEPARATOR, Some(add), palette)
+}
+
+fn file_name_pieces<'a>(editor: &TargetEditor, host: &TargetHost<'_>) -> Element<'a, Message> {
+    let TargetHost {
+        wrap,
+        lang,
+        palette,
+        ..
+    } = *host;
+    let labels: Vec<String> = match &editor.target.file_name {
+        FileName::Automatic => FileName::automatic_pieces()
+            .iter()
+            .map(|piece| piece.label(lang).to_owned())
+            .collect(),
+        FileName::Pieces(pieces) => pieces
+            .iter()
+            .map(|piece| piece.label(lang).to_owned())
+            .collect(),
+        FileName::Own(_) => vec![editor.target.file_name_in_words(lang)],
+    };
+    let last_one = labels.len() == 1 && matches!(editor.target.file_name, FileName::Pieces(_));
+    let pieces = labels
+        .iter()
+        .enumerate()
+        .map(|(position, label)| {
+            let remove = (!last_one).then(|| wrap(TargetEdit::RemoveNamePiece(position)));
+            kit::piece(label, remove, palette)
+        })
+        .collect();
+    let add = (!matches!(editor.target.file_name, FileName::Own(_))).then(|| {
+        let mut items: Vec<MenuItem> = FileNameField::ALL
+            .into_iter()
+            .map(|field| MenuItem::new(field.name(lang), wrap(TargetEdit::AddNameField(field))))
+            .collect();
+        if editor.name_text.is_none() {
+            items.push(MenuItem::new(
+                crate::filing_pieces::own_text_name(lang),
+                wrap(TargetEdit::StartNameText),
+            ));
+        }
+        kit::menu_button(&add_label(lang), &items, MenuLook::PieceAdd, palette)
+    });
+    kit::pieces(pieces, FILE_NAME_SEPARATOR, add, palette)
+}
+
+fn typing_row<'a>(
+    placeholder: &str,
+    typed: &str,
+    id: &'static str,
+    on_input: fn(String) -> TargetEdit,
+    wrap: fn(TargetEdit) -> Message,
+    submit: TargetEdit,
+    host: &TargetHost<'_>,
+) -> Element<'a, Message> {
+    let (lang, palette) = (host.lang, host.palette);
+    Row::new()
+        .push(kit::text_field(
+            placeholder,
+            typed,
+            id,
+            Some(move |text| wrap(on_input(text))),
+            wrap(submit.clone()),
+            palette,
+        ))
+        .push(kit::secondary(
+            lang.text(Msg::FilingPiecesAddOwnConfirm),
+            Some(wrap(submit)),
+            palette,
+        ))
+        .spacing(GAP_S)
+        .align_y(alignment::Vertical::Center)
+        .into()
 }
 
 fn own_name_row<'a>(editor: &TargetEditor, host: &TargetHost<'_>) -> Element<'a, Message> {
-    let TargetHost {
-        wrap,
-        name_field_id,
-        lang,
-        palette,
-    } = *host;
-    let typed = editor.own_name.as_deref().unwrap_or_default();
-    row![
-        kit::text_field(
-            lang.text(Msg::FilingPiecesOwnPlaceholder),
-            typed,
-            name_field_id,
-            Some(move |text| wrap(TargetEdit::OwnNameTyped(text))),
-            wrap(TargetEdit::OwnNameSubmit),
-            palette,
-        ),
-        kit::button(
-            lang.text(Msg::FilingPiecesAddOwnConfirm),
-            Some(wrap(TargetEdit::OwnNameSubmit)),
-            Tone::Secondary,
-            palette,
-        ),
-    ]
-    .spacing(spacing::S)
-    .align_y(alignment::Vertical::Center)
-    .into()
+    typing_row(
+        host.lang.text(Msg::FilingPiecesOwnPlaceholder),
+        editor.own_name.as_deref().unwrap_or_default(),
+        host.name_field_id,
+        TargetEdit::OwnNameTyped,
+        host.wrap,
+        TargetEdit::OwnNameSubmit,
+        host,
+    )
+}
+
+fn name_text_row<'a>(editor: &TargetEditor, host: &TargetHost<'_>) -> Element<'a, Message> {
+    typing_row(
+        host.lang.text(Msg::FilingPiecesNameTextPlaceholder),
+        editor.name_text.as_deref().unwrap_or_default(),
+        FILE_NAME_TEXT_FIELD_ID,
+        TargetEdit::NameTextTyped,
+        host.wrap,
+        TargetEdit::NameTextSubmit,
+        host,
+    )
 }

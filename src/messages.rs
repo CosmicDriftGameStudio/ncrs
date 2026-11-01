@@ -765,10 +765,19 @@ pub enum FilingStatusMessage {
     IndexFigures(Result<IndexFigures, String>),
     /// The counts of Hermes, read in the background.
     HermesCounts(Result<HermesCounts, String>),
-    /// An error row was pressed: show its file in the panel.
+    /// The link under the selected error: show its file in the panel.
     ErrorActivated(PathBuf),
     MoveError(i32),
-    ActivateSelectedError,
+    /// A click on the row at this position of the list as shown, newest first.
+    SelectError(usize),
+    /// The box of an error file, or Space on the selected one.
+    ToggleErrorChecked(PathBuf),
+    ToggleSelectedErrorChecked,
+    /// Enter and the button under the page: the checked files, or the selected
+    /// one when none is checked, are read again.
+    ProcessAgain,
+    /// Shows or hides the tables of the steps and of the workers.
+    ToggleSteps,
 }
 
 /// What the background reads for the Hermes column answer with.
@@ -878,9 +887,11 @@ pub enum HermesOverviewMessage {
     ChangeFolders,
     LoadOcrModels,
     LoadAiModel,
-    ReadReviewsAgainWithAi,
-    ReviewsToReadAgain(Result<Vec<ReviewItem>, String>),
     ShowOwnServerSettings,
+    /// Opens the settings of filing at the protection of the index.
+    ShowProtectionSettings,
+    /// Opens the review list, when there is something to review.
+    ShowReviews,
     SwitchHermesOn,
     ContinueSetup,
     TryAgain,

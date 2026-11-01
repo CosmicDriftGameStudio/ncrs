@@ -1315,13 +1315,41 @@ mod tests {
     }
 
     #[test]
+    fn a_version_20_database_gains_an_empty_file_list_tag_table() {
+        let dir = TempDir::new().unwrap();
+        let path = db_in(&dir);
+        let old = Index::create_plain_with_migrations(&path, &MIGRATIONS[..20]).unwrap();
+        assert_eq!(user_version(&old), 20);
+        old.conn
+            .execute_batch(
+                "INSERT INTO tag (id, name, name_key) VALUES (1, 'steuer', 'steuer');
+                 INSERT INTO document (id, hash, path, source, received_at, status)
+                     VALUES (1, zeroblob(32), 'a.pdf', 'inbox', 1700000000, 'in_review');
+                 INSERT INTO document_tag (document_id, tag_id, automatic) VALUES (1, 1, 0);",
+            )
+            .unwrap();
+        drop(old);
+
+        let index = Index::open(&path, &InMemoryKeyStore::empty()).unwrap();
+
+        assert_eq!(user_version(&index), 21);
+        assert!(index.file_list_tag_exceptions().unwrap().is_empty());
+        index.set_file_list_tag("steuer", Some(false)).unwrap();
+        assert_eq!(index.file_list_tag_exceptions().unwrap().len(), 1);
+        assert_eq!(
+            index.tag_tally().unwrap().own,
+            vec![("steuer".to_owned(), 1)]
+        );
+    }
+
+    #[test]
     fn a_version_19_database_loses_its_tax_context_tables_and_columns() {
         use crate::model::RuleId;
 
         let (_dir, index) = migrated_from_19();
 
         assert_eq!(user_version(&index), latest_version());
-        assert_eq!(user_version(&index), 20);
+        assert_eq!(user_version(&index), 21);
         let violations = index
             .conn
             .prepare("PRAGMA foreign_key_check")

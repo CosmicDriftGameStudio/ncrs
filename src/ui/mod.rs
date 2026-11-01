@@ -23,6 +23,7 @@ pub mod frame;
 pub mod grant;
 pub mod hermes;
 pub mod hermes_flow;
+pub mod hermes_kit;
 pub mod hermes_overview;
 pub mod hermes_setup;
 pub mod key_bindings;

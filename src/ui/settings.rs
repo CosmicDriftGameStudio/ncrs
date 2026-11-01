@@ -15,6 +15,7 @@ use ncrs_index::tag_name;
 
 use super::format::ellipsize_middle;
 use super::frame::{SCROLLBAR_MARGIN, SCROLLBAR_WIDTH};
+use super::hermes_overview;
 use super::kit::{self, Check, Tone};
 use super::layout::{
     SETTINGS_NAV_WIDTH, SETTINGS_PAGE_MAX_WIDTH, SETTINGS_WIDE_CONTROL_WIDTH, STATUSBAR_HEIGHT,
@@ -28,6 +29,7 @@ use crate::config::{
 use crate::file_list_tags::{FileListTags, TagGroup};
 use crate::filing_setup::shown_path;
 use crate::fs::OpenKind;
+use crate::hermes_overview::OverviewFacts;
 use crate::i18n::{FuturamaName, Language, Msg};
 use crate::messages::{
     FilingStatusMessage, KeyBindingsMessage, Message, OcrModelsMessage, RemoteMessage,
@@ -490,6 +492,8 @@ pub struct SettingsView<'a> {
     pub filing: &'a Filing,
     /// The saved SFTP servers.
     pub servers: &'a [ServerEntry],
+    /// How the index of filing is protected, while filing has a module.
+    pub protection: Option<OverviewFacts>,
     pub home: &'a Path,
     /// How many actions have keys other than their built-in ones.
     pub keys_changed: usize,
@@ -1423,13 +1427,14 @@ fn hermes_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
     let lang = view.lang;
     let mut advanced_rows = ocr_rows(view);
     advanced_rows.extend(provider_rows(view));
-    vec![
-        Group {
-            intro: None,
-            advanced: false,
-            title: String::new(),
-            rows: hermes_main_rows(view),
-        },
+    let mut groups = vec![Group {
+        intro: None,
+        advanced: false,
+        title: String::new(),
+        rows: hermes_main_rows(view),
+    }];
+    groups.extend(protection_group(view));
+    groups.extend([
         Group {
             intro: Some(lang.text(Msg::SettingsGroupOwnDetailsIntro).to_owned()),
             advanced: false,
@@ -1445,7 +1450,59 @@ fn hermes_groups<'a>(view: &SettingsView<'a>) -> Vec<Group<'a>> {
             title: lang.text(Msg::SettingsGroupAdvanced).to_owned(),
             rows: advanced_rows,
         },
-    ]
+    ]);
+    groups
+}
+
+/// The protection of the index: its state and the buttons that change it. The
+/// question before the index is removed is asked by the app.
+fn protection_group<'a>(view: &SettingsView<'a>) -> Option<Group<'a>> {
+    let facts = view.protection.as_ref()?;
+    let lang = view.lang;
+    let palette = view.palette;
+    let text = hermes_overview::protection_text(facts, lang);
+    let color = if text.good {
+        palette.success
+    } else {
+        palette.accent
+    };
+    let mut control = column![status_text(
+        text.state.unwrap_or_default().to_owned(),
+        color
+    )]
+    .spacing(spacing::S)
+    .align_x(alignment::Horizontal::Right);
+    for action in hermes_overview::protection_actions(facts) {
+        control = control.push(kit::button(
+            lang.text(action.label),
+            action
+                .enabled
+                .then(|| Message::HermesOverview(action.message)),
+            if action.primary {
+                Tone::Primary
+            } else {
+                Tone::Secondary
+            },
+            palette,
+        ));
+    }
+    let protection = SettingRow {
+        problem: text.failure,
+        description: Some(text.sentence.to_owned()),
+        in_command_list: false,
+        ..simple_row(
+            Msg::HermesOverviewSectionProtection,
+            None,
+            control.into(),
+            lang,
+        )
+    };
+    Some(Group {
+        intro: None,
+        advanced: false,
+        title: String::new(),
+        rows: vec![protection],
+    })
 }
 
 fn groups_of<'a>(feature: SettingsFeature, view: &SettingsView<'a>) -> Vec<Group<'a>> {
@@ -1900,6 +1957,7 @@ mod tests {
                 vscode_theme: None,
                 filing: &filing,
                 servers: &[],
+                protection: None,
                 home: Path::new("/home/test"),
                 keys_changed: 0,
                 lang: Language::EnglishFuturama,
@@ -1938,6 +1996,7 @@ mod tests {
             vscode_theme: None,
             filing: &filing,
             servers: &[],
+            protection: None,
             home: Path::new("/home/test"),
             keys_changed: 0,
             lang: Language::English,

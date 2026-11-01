@@ -64,12 +64,130 @@ pub enum FolderPiece {
     Mixed(String),
 }
 
+/// The fields a piece of the file name can stand for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileNameField {
+    Date,
+    Year,
+    Month,
+    Day,
+    Sender,
+    Recipient,
+    Kind,
+    Number,
+}
+
+impl FileNameField {
+    pub const ALL: [Self; 8] = [
+        Self::Date,
+        Self::Year,
+        Self::Month,
+        Self::Day,
+        Self::Sender,
+        Self::Recipient,
+        Self::Kind,
+        Self::Number,
+    ];
+
+    fn placeholder(self) -> &'static str {
+        match self {
+            Self::Date => "date",
+            Self::Year => "year",
+            Self::Month => "month",
+            Self::Day => "day",
+            Self::Sender => "sender",
+            Self::Recipient => "recipient",
+            Self::Kind => "kind",
+            Self::Number => "number",
+        }
+    }
+
+    fn of_placeholder(name: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|field| field.placeholder() == name)
+    }
+
+    pub fn name(self, lang: Language) -> &'static str {
+        match self {
+            Self::Date => lang.text(Msg::FilingPiecesFieldDate),
+            Self::Year => FolderField::Year.name(lang),
+            Self::Month => FolderField::Month.name(lang),
+            Self::Day => lang.text(Msg::FilingPiecesFieldDay),
+            Self::Sender => FolderField::Sender.name(lang),
+            Self::Recipient => FolderField::Recipient.name(lang),
+            Self::Kind => FolderField::Kind.name(lang),
+            Self::Number => lang.text(Msg::FilingPiecesFieldNumber),
+        }
+    }
+}
+
+/// The name of a piece of text of its own, as the menu offers it.
+pub fn own_text_name(lang: Language) -> &'static str {
+    lang.text(Msg::FilingPiecesFieldOwnText)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FileNamePiece {
+    Field(FileNameField),
+    /// Text of its own, without `_`, which separates the pieces.
+    Text(String),
+}
+
+impl FileNamePiece {
+    /// The piece as the page shows it.
+    pub fn label(&self, lang: Language) -> &str {
+        match self {
+            Self::Field(field) => field.name(lang),
+            Self::Text(text) => text,
+        }
+    }
+}
+
+/// The file name a pattern gives. Stored in the pattern: `Automatic` as a
+/// pattern that ends in `/`, `Pieces` as the last segment with the pieces
+/// joined by `_`, `Own` as any other last segment, which stays as it is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileName {
     /// Made from the date, sender and number, whichever are known.
     Automatic,
+    Pieces(Vec<FileNamePiece>),
     /// The last segment of an old pattern, kept as it is.
     Own(String),
+}
+
+impl FileName {
+    /// The pieces the automatic file name stands for.
+    pub fn automatic_pieces() -> Vec<FileNamePiece> {
+        [
+            FileNameField::Date,
+            FileNameField::Sender,
+            FileNameField::Number,
+        ]
+        .map(FileNamePiece::Field)
+        .to_vec()
+    }
+
+    fn parse(segment: &str) -> Self {
+        segment
+            .split('_')
+            .map(parse_file_name_piece)
+            .collect::<Option<Vec<_>>>()
+            .map_or_else(|| Self::Own(segment.to_owned()), Self::Pieces)
+    }
+}
+
+fn parse_file_name_piece(part: &str) -> Option<FileNamePiece> {
+    let single_placeholder = part
+        .strip_prefix('{')
+        .and_then(|rest| rest.strip_suffix('}'));
+    match single_placeholder {
+        Some(name) => FileNameField::of_placeholder(name).map(FileNamePiece::Field),
+        None => own_file_name_text(part)
+            .ok()
+            .filter(|text| text == part)
+            .map(FileNamePiece::Text),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,6 +204,8 @@ pub enum FolderNameProblem {
     Dots,
     /// A separator, a brace, a reserved or a control character.
     Character,
+    /// An underscore in the text of a file name piece.
+    Underscore,
 }
 
 impl FolderNameProblem {
@@ -94,6 +214,7 @@ impl FolderNameProblem {
             Self::Empty => Msg::FilingPiecesNameEmpty,
             Self::Dots => Msg::FilingPiecesNameDots,
             Self::Character => Msg::FilingPiecesNameCharacter,
+            Self::Underscore => Msg::FilingPiecesNameUnderscore,
         })
     }
 }
@@ -112,6 +233,17 @@ pub fn own_folder_name(input: &str) -> Result<String, FolderNameProblem> {
     }
 }
 
+/// The text typed for a piece of the file name: checked like a folder name,
+/// and without `_`.
+pub fn own_file_name_text(input: &str) -> Result<String, FolderNameProblem> {
+    let name = own_folder_name(input)?;
+    if name.contains('_') {
+        Err(FolderNameProblem::Underscore)
+    } else {
+        Ok(name)
+    }
+}
+
 impl FilingTarget {
     pub fn parse(pattern: &str) -> Self {
         let mut segments: Vec<&str> = pattern.split('/').collect();
@@ -119,7 +251,7 @@ impl FilingTarget {
         let file_name = if last.is_empty() {
             FileName::Automatic
         } else {
-            FileName::Own(last.to_owned())
+            FileName::parse(last)
         };
         if matches!(pattern, "" | "/") {
             segments.clear();
@@ -140,9 +272,19 @@ impl FilingTarget {
             pattern.push('/');
         }
         match &self.file_name {
-            FileName::Automatic if self.folders.is_empty() => "/".to_owned(),
-            FileName::Automatic => pattern,
             FileName::Own(segment) => pattern + segment,
+            FileName::Pieces(pieces) if !pieces.is_empty() => {
+                let names: Vec<_> = pieces
+                    .iter()
+                    .map(|piece| match piece {
+                        FileNamePiece::Field(field) => format!("{{{}}}", field.placeholder()),
+                        FileNamePiece::Text(text) => text.clone(),
+                    })
+                    .collect();
+                pattern + &names.join("_")
+            }
+            FileName::Automatic | FileName::Pieces(_) if self.folders.is_empty() => "/".to_owned(),
+            FileName::Automatic | FileName::Pieces(_) => pattern,
         }
     }
 
@@ -159,8 +301,7 @@ impl FilingTarget {
             })
             .collect::<Vec<_>>()
             .join(" / ");
-        if let FileName::Own(segment) = &self.file_name {
-            let name = segment_in_words(segment, lang);
+        if let Some(name) = self.explicit_file_name_in_words(lang) {
             if words.is_empty() {
                 words = name;
             } else {
@@ -172,14 +313,20 @@ impl FilingTarget {
         words
     }
 
+    /// The file name in words when the pattern gives one of its own.
+    fn explicit_file_name_in_words(&self, lang: Language) -> Option<String> {
+        match &self.file_name {
+            FileName::Automatic => None,
+            FileName::Pieces(pieces) => (!pieces.is_empty()).then(|| pieces_in_words(pieces, lang)),
+            FileName::Own(segment) => Some(segment_in_words(segment, lang)),
+        }
+    }
+
     /// The file name part in words: "Date_Sender_Number" for the automatic one.
     pub fn file_name_in_words(&self, lang: Language) -> String {
         match &self.file_name {
-            FileName::Automatic => {
-                let [date, sender, number] =
-                    [Word::Date, Word::Sender, Word::Number].map(|word| word.text(lang));
-                format!("{date}_{sender}_{number}")
-            }
+            FileName::Automatic => pieces_in_words(&FileName::automatic_pieces(), lang),
+            FileName::Pieces(pieces) => pieces_in_words(pieces, lang),
             FileName::Own(segment) => segment_in_words(segment, lang),
         }
     }
@@ -223,6 +370,12 @@ pub enum TargetEdit {
     OwnNameSubmit,
     /// Closes the field without adding the folder.
     OwnNameCancel,
+    RemoveNamePiece(usize),
+    AddNameField(FileNameField),
+    /// Opens the field for a piece of text of its own in the file name.
+    StartNameText,
+    NameTextTyped(String),
+    NameTextSubmit,
 }
 
 /// A target being edited, with the folder name being typed.
@@ -232,6 +385,9 @@ pub struct TargetEditor {
     /// The text of the field for an own folder name while it is open.
     pub own_name: Option<String>,
     pub name_problem: Option<FolderNameProblem>,
+    /// The text of the field for a piece of the file name while it is open.
+    pub name_text: Option<String>,
+    pub name_text_problem: Option<FolderNameProblem>,
 }
 
 impl TargetEditor {
@@ -240,6 +396,8 @@ impl TargetEditor {
             target: FilingTarget::parse(pattern),
             own_name: None,
             name_problem: None,
+            name_text: None,
+            name_text_problem: None,
         }
     }
 
@@ -272,6 +430,33 @@ impl TargetEditor {
                 self.own_name = None;
                 self.name_problem = None;
             }
+            TargetEdit::RemoveNamePiece(position) => return self.remove_name_piece(position),
+            TargetEdit::AddNameField(field) => {
+                return self.add_name_piece(FileNamePiece::Field(field));
+            }
+            TargetEdit::StartNameText => {
+                self.name_text.get_or_insert_with(String::new);
+                self.name_text_problem = None;
+            }
+            TargetEdit::NameTextTyped(typed) => {
+                self.name_text = Some(typed);
+                self.name_text_problem = None;
+            }
+            TargetEdit::NameTextSubmit => {
+                let Some(typed) = self.name_text.as_deref() else {
+                    return false;
+                };
+                match own_file_name_text(typed) {
+                    Ok(text) => {
+                        if self.add_name_piece(FileNamePiece::Text(text)) {
+                            self.name_text = None;
+                            self.name_text_problem = None;
+                            return true;
+                        }
+                    }
+                    Err(problem) => self.name_text_problem = Some(problem),
+                }
+            }
             TargetEdit::OwnNameSubmit => {
                 let Some(typed) = self.own_name.as_deref() else {
                     return false;
@@ -288,6 +473,44 @@ impl TargetEditor {
             }
         }
         false
+    }
+
+    /// The pieces of the file name, which the automatic one turns into the
+    /// moment the user changes it. `None` for a file name of its own, which
+    /// has no pieces to change.
+    fn name_pieces_mut(&mut self) -> Option<&mut Vec<FileNamePiece>> {
+        if self.target.file_name == FileName::Automatic {
+            self.target.file_name = FileName::Pieces(FileName::automatic_pieces());
+        }
+        match &mut self.target.file_name {
+            FileName::Pieces(pieces) => Some(pieces),
+            FileName::Automatic | FileName::Own(_) => None,
+        }
+    }
+
+    fn add_name_piece(&mut self, piece: FileNamePiece) -> bool {
+        self.name_pieces_mut()
+            .map(|pieces| pieces.push(piece))
+            .is_some()
+    }
+
+    /// The last piece stays; a file name of its own goes back to the
+    /// automatic one.
+    fn remove_name_piece(&mut self, position: usize) -> bool {
+        let mut pieces = match &self.target.file_name {
+            FileName::Own(_) => {
+                self.target.file_name = FileName::Automatic;
+                return true;
+            }
+            FileName::Automatic => FileName::automatic_pieces(),
+            FileName::Pieces(current) => current.clone(),
+        };
+        if pieces.len() <= 1 || position >= pieces.len() {
+            return false;
+        }
+        pieces.remove(position);
+        self.target.file_name = FileName::Pieces(pieces);
+        true
     }
 
     /// The target is something a rule can file by.
@@ -344,6 +567,14 @@ impl Word {
             Self::Field(field) => field.name(lang),
         }
     }
+}
+
+fn pieces_in_words(pieces: &[FileNamePiece], lang: Language) -> String {
+    pieces
+        .iter()
+        .map(|piece| piece.label(lang))
+        .collect::<Vec<_>>()
+        .join("_")
 }
 
 /// A segment of a pattern with the blocks replaced by their field names; the
@@ -410,7 +641,7 @@ mod tests {
 
     #[test]
     fn a_folder_of_several_parts_and_a_file_name_of_its_own_stay_whole() {
-        let target = FilingTarget::parse("{year}-{month}/{date}_{number}");
+        let target = FilingTarget::parse("{year}-{month}/{year}{month}{day}_{number}");
 
         assert_eq!(
             target.folders,
@@ -418,7 +649,103 @@ mod tests {
         );
         assert_eq!(
             target.file_name,
-            FileName::Own("{date}_{number}".to_owned())
+            FileName::Own("{year}{month}{day}_{number}".to_owned())
+        );
+        assert_eq!(
+            target.to_pattern(),
+            "{year}-{month}/{year}{month}{day}_{number}"
+        );
+    }
+
+    #[test]
+    fn a_file_name_of_known_fields_and_plain_text_reads_as_pieces() {
+        let target = FilingTarget::parse("{year}/{date}_Rent_{number}");
+
+        assert_eq!(
+            target.file_name,
+            FileName::Pieces(vec![
+                FileNamePiece::Field(FileNameField::Date),
+                FileNamePiece::Text("Rent".to_owned()),
+                FileNamePiece::Field(FileNameField::Number),
+            ])
+        );
+        assert_eq!(target.to_pattern(), "{year}/{date}_Rent_{number}");
+        assert_eq!(
+            target.file_name_in_words(Language::German),
+            "Datum_Rent_Nummer"
+        );
+        assert_eq!(
+            target.in_words(Language::German),
+            "Jahr · Dateiname: Datum_Rent_Nummer"
+        );
+        for own in [
+            "{date}__{number}",
+            "{date}{number}",
+            "a{date}",
+            "{nope}",
+            "_x",
+        ] {
+            assert!(
+                matches!(FilingTarget::parse(own).file_name, FileName::Own(_)),
+                "{own}"
+            );
+            assert_eq!(FilingTarget::parse(own).to_pattern(), own);
+        }
+    }
+
+    #[test]
+    fn the_automatic_file_name_becomes_pieces_with_the_first_change() {
+        let mut editor = TargetEditor::new("{year}/");
+
+        assert!(editor.apply(TargetEdit::AddNameField(FileNameField::Recipient)));
+        assert_eq!(
+            editor.pattern(),
+            "{year}/{date}_{sender}_{number}_{recipient}"
+        );
+
+        let mut removing = TargetEditor::new("{year}/");
+        assert!(removing.apply(TargetEdit::RemoveNamePiece(2)));
+        assert_eq!(removing.pattern(), "{year}/{date}_{sender}");
+        assert!(removing.apply(TargetEdit::RemoveNamePiece(0)));
+        assert!(!removing.apply(TargetEdit::RemoveNamePiece(0)));
+        assert_eq!(removing.pattern(), "{year}/{sender}");
+
+        let mut untouched = TargetEditor::new("{year}/");
+        assert!(!untouched.apply(TargetEdit::RemoveNamePiece(7)));
+        assert_eq!(untouched.pattern(), "{year}/");
+    }
+
+    #[test]
+    fn a_file_name_of_its_own_goes_back_to_automatic_with_its_cross() {
+        let mut editor = TargetEditor::new("{year}/{year}{month}{day}_{sender}");
+
+        assert!(!editor.apply(TargetEdit::AddNameField(FileNameField::Day)));
+        assert_eq!(editor.pattern(), "{year}/{year}{month}{day}_{sender}");
+        assert!(editor.apply(TargetEdit::RemoveNamePiece(0)));
+        assert_eq!(editor.pattern(), "{year}/");
+    }
+
+    #[test]
+    fn a_text_piece_is_checked_and_may_not_hold_an_underscore() {
+        let mut editor = TargetEditor::new("{year}/");
+
+        assert!(!editor.apply(TargetEdit::StartNameText));
+        assert!(!editor.apply(TargetEdit::NameTextTyped("a_b".to_owned())));
+        assert!(!editor.apply(TargetEdit::NameTextSubmit));
+        assert_eq!(
+            editor.name_text_problem,
+            Some(FolderNameProblem::Underscore)
+        );
+        assert!(!editor.apply(TargetEdit::NameTextTyped("a/b".to_owned())));
+        assert!(!editor.apply(TargetEdit::NameTextSubmit));
+        assert_eq!(editor.name_text_problem, Some(FolderNameProblem::Character));
+        assert!(!editor.apply(TargetEdit::NameTextTyped(" Rent ".to_owned())));
+        assert!(editor.apply(TargetEdit::NameTextSubmit));
+        assert_eq!(editor.pattern(), "{year}/{date}_{sender}_{number}_Rent");
+        assert_eq!(editor.name_text, None);
+        assert_eq!(
+            own_file_name_text("x_y"),
+            Err(FolderNameProblem::Underscore)
         );
     }
 
@@ -541,6 +868,15 @@ mod tests {
         editor.apply(TargetEdit::Remove(0));
         editor.apply(TargetEdit::Remove(0));
         assert!(!editor.is_usable());
+    }
+
+    #[test]
+    fn the_month_folder_is_appended_behind_the_year() {
+        let mut editor = TargetEditor::new("{year}/");
+
+        assert!(editor.apply(TargetEdit::AddField(FolderField::Month)));
+
+        assert_eq!(editor.pattern(), "{year}/{month}/");
     }
 
     #[test]

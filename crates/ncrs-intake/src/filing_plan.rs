@@ -9,6 +9,10 @@
 //!
 //! A pattern that ends in `/` names folders only; the file name is then made
 //! from the date, the sender and the number, as far as they are known.
+//!
+//! An explicit file name, the last part of a pattern that does not end in `/`,
+//! is read as pieces joined by `_`: a piece whose value is unknown is left out
+//! with its separator, and the name fails only when no piece has a value.
 
 use std::path::{Path, PathBuf};
 
@@ -374,7 +378,7 @@ pub const AI_FIELD_ORDER: [Field; 6] = Field::ALL;
 /// from the text; a value that is empty after sanitising is missing.
 fn first_missing(fields: &DocumentFields, spec: &RuleSpec, pattern: &Pattern) -> Option<Field> {
     let needed = |field: Field| {
-        pattern.uses(field)
+        pattern.uses_in_folders(field)
             || match field {
                 Field::Date => spec.extract_date.is_some(),
                 Field::Number => spec.extract_number.is_some(),
@@ -385,6 +389,7 @@ fn first_missing(fields: &DocumentFields, spec: &RuleSpec, pattern: &Pattern) ->
     AI_FIELD_ORDER
         .into_iter()
         .find(|&field| needed(field) && !field_is_present(fields, field))
+        .or_else(|| pattern.file_name_missing(fields))
 }
 
 fn field_is_present(fields: &DocumentFields, field: Field) -> bool {
@@ -408,7 +413,8 @@ pub fn missing_field(source: &str, fields: &DocumentFields) -> Option<Field> {
     let pattern = Pattern::parse(source)?;
     AI_FIELD_ORDER
         .into_iter()
-        .find(|&field| pattern.uses(field) && !field_is_present(fields, field))
+        .find(|&field| pattern.uses_in_folders(field) && !field_is_present(fields, field))
+        .or_else(|| pattern.file_name_missing(fields))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -546,12 +552,54 @@ impl Pattern {
         (!only_dots && plain).then_some(tokens)
     }
 
-    fn uses(&self, field: Field) -> bool {
+    /// The components that are folders: all of them when the file name is made
+    /// automatically, otherwise all but the last.
+    fn folders(&self) -> &[Vec<Token>] {
+        if self.automatic_file_name {
+            &self.components
+        } else {
+            self.components
+                .split_last()
+                .map_or(&[], |(_, folders)| folders)
+        }
+    }
+
+    /// The explicit file name: the last component of a pattern that does not
+    /// end in `/`.
+    fn explicit_file_name(&self) -> Option<&[Token]> {
+        if self.automatic_file_name {
+            return None;
+        }
+        self.components.last().map(Vec::as_slice)
+    }
+
+    /// Whether a folder, or the automatic file name, needs the field.
+    fn uses_in_folders(&self, field: Field) -> bool {
         (self.automatic_file_name && field == Field::Date)
-            || self.components.iter().flatten().any(|token| match token {
+            || self.folders().iter().flatten().any(|token| match token {
                 Token::Placeholder(placeholder) => placeholder.field() == field,
                 Token::Literal(_) => false,
             })
+    }
+
+    /// The field of the first piece of an explicit file name, when it has
+    /// pieces to fill in and none of them has a value.
+    fn file_name_missing(&self, fields: &DocumentFields) -> Option<Field> {
+        let placeholders: Vec<Placeholder> = self
+            .explicit_file_name()?
+            .iter()
+            .filter_map(|token| match token {
+                Token::Placeholder(placeholder) => Some(*placeholder),
+                Token::Literal(_) => None,
+            })
+            .collect();
+        let none_known = placeholders
+            .iter()
+            .all(|placeholder| placeholder.value(fields, None).is_none());
+        placeholders
+            .first()
+            .filter(|_| none_known)
+            .map(|placeholder| placeholder.field())
     }
 
     /// `None` when a value is missing.
@@ -566,12 +614,13 @@ impl Pattern {
         kinds: Option<&Kinds>,
     ) -> Option<Vec<Vec<PatternPart>>> {
         let mut rendered = self
-            .components
+            .folders()
             .iter()
             .map(|component| render_tokens(component, fields, false, kinds))
             .collect::<Option<Vec<_>>>()?;
-        if self.automatic_file_name {
-            rendered.push(automatic_file_name(fields)?);
+        match self.explicit_file_name() {
+            Some(tokens) => rendered.push(render_file_name(tokens, fields, kinds)?),
+            None => rendered.push(automatic_file_name(fields)?),
         }
         Some(rendered)
     }
@@ -605,6 +654,70 @@ fn render_tokens(
             }
         })
         .collect()
+}
+
+/// The tokens of an explicit file name cut at the `_` of its literals.
+fn file_name_pieces(tokens: &[Token]) -> Vec<Vec<Token>> {
+    let mut pieces = Vec::new();
+    let mut current = Vec::new();
+    for token in tokens {
+        match token {
+            Token::Literal(literal) => {
+                let mut parts = literal.split('_');
+                if let Some(first) = parts.next().filter(|first| !first.is_empty()) {
+                    current.push(Token::Literal(first.to_owned()));
+                }
+                for part in parts {
+                    pieces.push(std::mem::take(&mut current));
+                    if !part.is_empty() {
+                        current.push(Token::Literal(part.to_owned()));
+                    }
+                }
+            }
+            Token::Placeholder(_) => current.push(token.clone()),
+        }
+    }
+    pieces.push(current);
+    pieces
+}
+
+/// An explicit file name: a piece with an unknown value is left out together
+/// with its `_`. `None` when it has pieces to fill in and none has a value.
+fn render_file_name(
+    tokens: &[Token],
+    fields: &DocumentFields,
+    kinds: Option<&Kinds>,
+) -> Option<Vec<PatternPart>> {
+    let has_placeholder = |piece: &[Token]| {
+        piece
+            .iter()
+            .any(|token| matches!(token, Token::Placeholder(_)))
+    };
+    let mut kept: Vec<Vec<PatternPart>> = Vec::new();
+    let mut any_value = false;
+    let mut any_placeholder = false;
+    for piece in file_name_pieces(tokens) {
+        let is_filled_in = has_placeholder(&piece);
+        any_placeholder |= is_filled_in;
+        if let Some(rendered) = render_tokens(&piece, fields, false, kinds) {
+            any_value |= is_filled_in;
+            kept.push(rendered);
+        }
+    }
+    if any_placeholder && !any_value {
+        return None;
+    }
+    let mut parts = Vec::new();
+    for (position, piece) in kept.into_iter().enumerate() {
+        if position > 0 {
+            parts.push(PatternPart {
+                text: "_".to_owned(),
+                field: None,
+            });
+        }
+        parts.extend(piece);
+    }
+    Some(parts)
 }
 
 fn automatic_file_name(fields: &DocumentFields) -> Option<Vec<PatternPart>> {
@@ -1323,6 +1436,74 @@ mod tests {
             &DocumentFields::default(),
         );
         assert_eq!(reason(&no_date), ReviewReason::MissingField(Field::Date));
+    }
+
+    fn planned_path(pattern: &str, fields: &DocumentFields) -> Option<PathBuf> {
+        let mut plain = spec(pattern);
+        plain.extract_number = None;
+        plain.extract_date = None;
+        plain.extract_amount = None;
+        match plan_for(plain, TEXT, fields) {
+            Planning::Plan(filing) => Some(filing.relative_path),
+            Planning::Review { .. } => None,
+        }
+    }
+
+    fn known(sender: Option<&str>, number: Option<&str>, date: bool) -> DocumentFields {
+        DocumentFields {
+            sender: sender.map(str::to_owned),
+            number: number.map(str::to_owned),
+            date: date.then(|| NaiveDate::from_ymd_opt(2026, 3, 9).unwrap()),
+            ..DocumentFields::default()
+        }
+    }
+
+    #[test]
+    fn an_explicit_file_name_leaves_out_the_pieces_it_does_not_know() {
+        let pattern = "{year}/{date}_{sender}_{number}";
+
+        assert_eq!(
+            planned_path(pattern, &known(Some("Telekom"), Some("42"), true)),
+            Some(PathBuf::from("2026/2026-03-09_Telekom_42"))
+        );
+        assert_eq!(
+            planned_path(pattern, &known(Some("Telekom"), None, true)),
+            Some(PathBuf::from("2026/2026-03-09_Telekom"))
+        );
+        assert_eq!(
+            planned_path("{sender}_{number}", &known(None, Some("42"), true)),
+            Some(PathBuf::from("42"))
+        );
+        assert_eq!(
+            planned_path("{date}_Miete_{number}", &known(None, None, true)),
+            Some(PathBuf::from("2026-03-09_Miete"))
+        );
+    }
+
+    #[test]
+    fn an_explicit_file_name_with_no_known_piece_is_a_missing_field() {
+        let mut plain = spec("{sender}_{number}");
+        plain.extract_number = None;
+        let planning = plan_for(plain, TEXT, &DocumentFields::default());
+
+        assert_eq!(reason(&planning), ReviewReason::MissingField(Field::Sender));
+        assert_eq!(
+            missing_field("{year}/{sender}_{number}", &known(None, None, true)),
+            Some(Field::Sender)
+        );
+    }
+
+    #[test]
+    fn a_folder_still_needs_its_field_and_a_slash_pattern_its_date() {
+        assert_eq!(
+            planned_path("{sender}/{number}", &known(None, Some("42"), true)),
+            None
+        );
+        assert_eq!(planned_path("{year}/", &known(None, None, false)), None);
+        assert_eq!(
+            planned_path("{year}/", &known(None, None, true)),
+            Some(PathBuf::from("2026/2026-03-09"))
+        );
     }
 
     #[test]

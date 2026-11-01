@@ -2083,12 +2083,6 @@
       "de": "Eine Änderung gilt bis zum Neustart von ncrs; config.toml wird nicht geändert."
     },
     {
-      "key": "filing_status.load_explain",
-      "context": "Note next to the load buttons on the filing status page: what the three loads mean in workers. Keep the numbers in line with the worker counts of the pipeline.",
-      "en": "Gentle uses up to 2 workers, so the computer stays usable. Balanced uses up to 4. Full uses one per processor core. Never more than the computer has cores.",
-      "de": "Schonend nutzt bis zu 2 Worker, damit der Computer benutzbar bleibt. Ausgewogen nutzt bis zu 4. Volle Last nutzt einen je Prozessorkern. Nie mehr, als der Computer Kerne hat."
-    },
-    {
       "key": "filing_status.step_intake",
       "context": "Visible name of the pipeline step that takes documents into the index, in the step lines, the worker lines and the error list of the inspection page. Themed name.",
       "en": "Intake",
@@ -2161,12 +2155,6 @@
       "de": "durchsucht Ordner"
     },
     {
-      "key": "filing_status.index_path",
-      "context": "Label for the path of the index file on the filing status page.",
-      "en": "Path",
-      "de": "Pfad"
-    },
-    {
       "key": "filing_status.index_size",
       "context": "Label for the size of the index file on disk.",
       "en": "File size",
@@ -2191,22 +2179,10 @@
       "de": "nein"
     },
     {
-      "key": "filing_status.index_schema",
-      "context": "Label for the version of the index database schema.",
-      "en": "Schema version",
-      "de": "Schema-Version"
-    },
-    {
       "key": "filing_status.index_documents",
       "context": "Label for the number of documents in the index.",
       "en": "Documents",
       "de": "Dokumente"
-    },
-    {
-      "key": "filing_status.index_full_text",
-      "context": "Label for the disk space used by the full text search part of the index.",
-      "en": "Full text size",
-      "de": "Volltextgröße"
     },
     {
       "key": "filing_status.index_reviews",
@@ -2297,12 +2273,6 @@
       "context": "Column title in the table of pipeline steps on the filing status page: documents this step found unchanged and skipped.",
       "en": "unchanged",
       "de": "unverändert"
-    },
-    {
-      "key": "filing_status.hint_errors",
-      "context": "Word next to the up and down arrow key caps in the footer of the filing status page: the keys move through the list of errors, Enter opens one. Only the word, the key caps are drawn separately.",
-      "en": "errors",
-      "de": "Fehler"
     },
     {
       "key": "saved_queries.summary_missing_one",
@@ -6199,24 +6169,6 @@
       "de": "Lieferdienst"
     },
     {
-      "key": "hermes_overview.hint_pause",
-      "context": "Verb next to the P key cap in the footer of the Hermes overview: the key pauses or resumes the pipeline. Only the verb, the key cap is drawn separately.",
-      "en": "pause",
-      "de": "Pause"
-    },
-    {
-      "key": "hermes_overview.hint_load",
-      "context": "Word next to the 1 2 3 key caps in the footer of the Hermes overview: the keys choose the load. Only the word, the key caps are drawn separately.",
-      "en": "load",
-      "de": "Last"
-    },
-    {
-      "key": "hermes_overview.hint_workers",
-      "context": "Word next to the + - key caps in the footer of the Hermes overview: the keys change the number of workers. Only the word, the key caps are drawn separately.",
-      "en": "workers",
-      "de": "Worker"
-    },
-    {
       "key": "hermes_overview.title",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Headline of the page: the promise of the feature.",
       "en": "ncrs files your documents",
@@ -6259,76 +6211,10 @@
       "de": "Startet …"
     },
     {
-      "key": "hermes_overview.flow_inbox_note",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the inbox box of the flow picture: the name of the inbox folder and how many documents are new. {name} is a folder name, {count} a number.",
-      "en": "{name} · {count} new",
-      "de": "{name} · {count} neu"
-    },
-    {
-      "key": "hermes_overview.flow_archive_note",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the archive box of the flow picture: the archive is only read, and how many documents it holds. {count} is a number.",
-      "en": "read only · {count} documents",
-      "de": "nur lesen · {count} Dokumente"
-    },
-    {
-      "key": "hermes_overview.flow_archive_none",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the archive box of the flow picture when the user has no archive folder.",
-      "en": "none yet",
-      "de": "noch keins"
-    },
-    {
-      "key": "hermes_overview.flow_read_ai",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the reading box of the flow picture when the AI model is ready.",
-      "en": "Text recognition and AI find sender, date, amount",
-      "de": "Texterkennung und KI finden Absender, Datum, Betrag"
-    },
-    {
-      "key": "hermes_overview.flow_read_model_missing",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the reading box of the flow picture when the AI is on but its model is not loaded.",
-      "en": "Text recognition finds sender, date, amount · AI model missing",
-      "de": "Texterkennung findet Absender, Datum, Betrag · KI-Modell fehlt"
-    },
-    {
-      "key": "hermes_overview.flow_read_no_ai",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the reading box of the flow picture when the AI is off.",
-      "en": "Text recognition finds sender, date, amount · without AI",
-      "de": "Texterkennung findet Absender, Datum, Betrag · ohne KI"
-    },
-    {
-      "key": "hermes_overview.flow_rules_note",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the rules box of the flow picture: how many rules the user confirmed. {count} is a number, at least 2 or 0.",
-      "en": "learn from every document you confirm · {count} rules",
-      "de": "lernen aus jedem Dokument, das du bestätigst · {count} Regeln"
-    },
-    {
-      "key": "hermes_overview.flow_rules_note_one",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the rules box of the flow picture when exactly one rule is confirmed.",
-      "en": "learn from every document you confirm · 1 rule",
-      "de": "lernen aus jedem Dokument, das du bestätigst · 1 Regel"
-    },
-    {
       "key": "hermes_overview.flow_filed_note",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Line under the filing box of the flow picture: the filing location and how the documents are sorted into it. {path} is a folder, {pattern} the way the documents are sorted.",
       "en": "{path} · {pattern}",
       "de": "{path} · {pattern}"
-    },
-    {
-      "key": "hermes_overview.tile_folders_title",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the tile about the folders.",
-      "en": "Folders",
-      "de": "Ordner"
-    },
-    {
-      "key": "hermes_overview.tile_folders_ok",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the folders tile when inbox and filing location are set.",
-      "en": "Inbox and filing location are set up",
-      "de": "Eingang und Ablageort sind eingerichtet"
-    },
-    {
-      "key": "hermes_overview.tile_folders_missing",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the folders tile when inbox or filing location is missing.",
-      "en": "Choose an inbox and a filing location",
-      "de": "Wähle einen Eingang und einen Ablageort"
     },
     {
       "key": "hermes_overview.tile_folders_button",
@@ -6415,6 +6301,12 @@
       "de": "Konnte nicht geladen werden: {reason}"
     },
     {
+      "key": "hermes_overview.tile_review_button",
+      "context": "Primary button in the action bar of the Hermes overview; it opens the list of documents that wait for the user. Its label must differ from the sidebar entry Review.",
+      "en": "Check",
+      "de": "Prüfen"
+    },
+    {
       "key": "hermes_overview.tile_review_waiting",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the tile about open reviews. {count} is a number above one.",
       "en": "{count} wait for you",
@@ -6427,40 +6319,10 @@
       "de": "1 wartet auf dich"
     },
     {
-      "key": "hermes_overview.tile_review_text",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the open reviews tile: what confirming does.",
-      "en": "Confirm once, then ncrs suggests a rule",
-      "de": "Einmal bestätigen, dann schlägt ncrs eine Regel vor"
-    },
-    {
-      "key": "hermes_overview.tile_review_button",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button of the open reviews tile that opens the review page. One word, verb.",
-      "en": "Review",
-      "de": "Prüfen"
-    },
-    {
       "key": "hermes_overview.tile_review_clear",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the open reviews tile when nothing waits.",
       "en": "Nothing open",
       "de": "Nichts offen"
-    },
-    {
-      "key": "hermes_overview.tile_review_clear_text",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Text of the open reviews tile when nothing waits.",
-      "en": "ncrs files what it can read by itself",
-      "de": "ncrs legt ab, was es selbst lesen kann"
-    },
-    {
-      "key": "hermes_overview.read_again",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button under the tiles: hand every open review to Hermes again now that the AI is ready. {count} is a number above one.",
-      "en": "Read {count} documents again with AI",
-      "de": "{count} Dokumente mit KI neu lesen"
-    },
-    {
-      "key": "hermes_overview.read_again_one",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Button under the tiles: hand the one open review to Hermes again now that the AI is ready.",
-      "en": "Read 1 document again with AI",
-      "de": "1 Dokument mit KI neu lesen"
     },
     {
       "key": "hermes_overview.section_folders",
@@ -6499,12 +6361,6 @@
       "de": "noch keins · optional"
     },
     {
-      "key": "hermes_overview.section_filing",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the section where the user sets how documents are named and sorted.",
-      "en": "Filing",
-      "de": "Ablage"
-    },
-    {
       "key": "hermes_overview.pattern_label",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Label of the text field with the filing pattern for new documents.",
       "en": "Default target",
@@ -6523,34 +6379,16 @@
       "de": "Das Standardziel konnte nicht gespeichert werden: {reason}"
     },
     {
-      "key": "hermes_overview.section_ai",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the section about the AI.",
-      "en": "AI",
-      "de": "KI"
-    },
-    {
       "key": "hermes_overview.ai_switch",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Label of the switch that turns the AI on or off.",
       "en": "Use AI",
       "de": "KI verwenden"
     },
     {
-      "key": "hermes_overview.ai_switch_note",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Note under the AI switch.",
-      "en": "Reads what the text recognition cannot and fills in the fields. The model runs on your own machine.",
-      "de": "Liest, was die Texterkennung nicht schafft, und füllt die Felder aus. Das Modell läuft auf deinem eigenen Gerät."
-    },
-    {
       "key": "hermes_overview.own_server",
       "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Link in the AI section that opens the advanced settings, where an own AI server can be set. The ellipsis says the settings follow.",
       "en": "Own server…",
       "de": "Eigener Server…"
-    },
-    {
-      "key": "hermes_overview.section_load",
-      "context": "Hermes overview (the first page of the Hermes card, the one place for non-technical users). Heading of the section where the user sets how much of the machine Hermes may use.",
-      "en": "Load",
-      "de": "Last"
     },
     {
       "key": "hermes_overview.section_protection",
@@ -6759,8 +6597,8 @@
     {
       "key": "settings.row_hermes_open_note",
       "context": "Note under the row that opens the Hermes overview: says what lives there instead of in the settings.",
-      "en": "Folders, default target, AI, text recognition, load and protection are on the overview of filing.",
-      "de": "Ordner, Standardziel, KI, Texterkennung, Last und Schutz stehen in der Übersicht der Ablage."
+      "en": "Folders, default target, AI and text recognition are on the overview of filing, the load on its status page.",
+      "de": "Ordner, Standardziel, KI und Texterkennung stehen in der Übersicht der Ablage, die Last im Status."
     },
     {
       "key": "settings.hermes_open_button",
@@ -7831,6 +7669,12 @@
       "de": "Art"
     },
     {
+      "key": "filing_pieces.field_own_text",
+      "context": "Entry of the menu that adds a piece to the file name: a piece of text the user types.",
+      "en": "Own text",
+      "de": "Eigener Text"
+    },
+    {
       "key": "filing_pieces.file_name_prefix",
       "context": "Before the file name of its own, after the folders: \"Firma A / Year · File name: Date_Sender\".",
       "en": "File name: ",
@@ -7867,6 +7711,24 @@
       "de": "Ein Ordnername darf keine Schrägstriche, geschweiften Klammern, Steuerzeichen oder eines der Zeichen < > : \" | ? * enthalten und nicht mit einem Punkt enden."
     },
     {
+      "key": "filing_pieces.name_underscore",
+      "context": "Problem: the text typed for a piece of the file name holds an underscore, which separates the pieces.",
+      "en": "Leave out the underscore, it separates the pieces.",
+      "de": "Ohne Unterstrich, er trennt die Bausteine."
+    },
+    {
+      "key": "filing_pieces.file_name_label",
+      "context": "Label of the form row that shows the file name of a filing target as pieces, next to the row Move to.",
+      "en": "File name",
+      "de": "Dateiname"
+    },
+    {
+      "key": "filing_pieces.name_text_placeholder",
+      "context": "Placeholder of the field in which the text of a piece of the file name is typed.",
+      "en": "Text",
+      "de": "Text"
+    },
+    {
       "key": "condition_kind.tag",
       "context": "Kind of a condition: the document has a tag that starts with the value.",
       "en": "Tag",
@@ -7883,12 +7745,6 @@
       "context": "Condition in a rule sentence on the rules page: the document has no tag with this value. Takes the value. Reads after “If” or after “and” / “or”.",
       "en": "the document does not have the tag “{value}”",
       "de": "das Dokument das Schlagwort „{value}“ nicht hat"
-    },
-    {
-      "key": "filing_pieces.add_folder",
-      "context": "Label before the buttons that add a folder to the filing target.",
-      "en": "Add folder:",
-      "de": "Ordner hinzufügen:"
     },
     {
       "key": "filing_pieces.add_own",
@@ -8123,6 +7979,72 @@
       "context": "Note under the field of the tags that alone are shown in the file lists.",
       "en": "At most 3 per file, then “+1”. Saved at once. Applies to both file lists.",
       "de": "Höchstens 3 pro Datei, dann „+1“. Wird sofort gespeichert. Gilt für beide Dateilisten."
+    },
+    {
+      "key": "hermes_overview.section_state",
+      "context": "Heading of the group of rows on the filing overview that shows the state: whether filing runs, the text recognition and the AI model.",
+      "en": "State",
+      "de": "Stand"
+    },
+    {
+      "key": "hermes_overview.in_progress",
+      "context": "Behind the word Running on the filing overview and the status page: how many files are being worked on right now. {count} is a number.",
+      "en": "{count} in progress",
+      "de": "{count} in Arbeit"
+    },
+    {
+      "key": "hermes_overview.menu_protection",
+      "context": "Entry in the menu behind the three dots on the filing overview. Opens the settings of filing at the protection of the index. The dots tell that a page follows.",
+      "en": "Protection …",
+      "de": "Schutz …"
+    },
+    {
+      "key": "filing_status.show_workers",
+      "context": "Entry in the menu behind the three dots on the status page. Shows the tables of the steps and of the workers under the index figures.",
+      "en": "Show workers and steps",
+      "de": "Worker und Stufen anzeigen"
+    },
+    {
+      "key": "filing_status.hide_workers",
+      "context": "Entry in the menu behind the three dots on the status page while the tables of the steps and of the workers are shown. Hides them again.",
+      "en": "Hide workers and steps",
+      "de": "Worker und Stufen ausblenden"
+    },
+    {
+      "key": "filing_status.process_again",
+      "context": "Main button in the bar under the status page. Reads the files with errors that are checked again, or the selected one.",
+      "en": "Process again",
+      "de": "Erneut verarbeiten"
+    },
+    {
+      "key": "filing_status.show_file",
+      "context": "Link under the selected error on the status page. Shows the file with the error in the file list.",
+      "en": "Show file",
+      "de": "Datei zeigen"
+    },
+    {
+      "key": "hermes_kit.hint_select",
+      "context": "Word behind the arrow keys in the status line of a filing page: the keys move the selection in the list or the page.",
+      "en": "Select",
+      "de": "Auswahl"
+    },
+    {
+      "key": "hermes_kit.hint_next_field",
+      "context": "Word behind the Tab key in the status line of a filing page: Tab moves to the next field.",
+      "en": "Next field",
+      "de": "Nächstes Feld"
+    },
+    {
+      "key": "hermes_kit.hint_check",
+      "context": "Word behind the Space key in the status line of a filing page: Space checks or unchecks the row under the cursor.",
+      "en": "Check",
+      "de": "Auswählen"
+    },
+    {
+      "key": "hermes_kit.key_space",
+      "context": "Name of the space bar on the key cap in the status line of a filing page. Only the name, the verb is drawn next to it.",
+      "en": "Space",
+      "de": "Leertaste"
     }
   ]
 }
