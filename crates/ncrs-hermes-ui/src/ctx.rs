@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use iced::{Point, Size};
+use ncrs_config::config::FilingLocation;
 use ncrs_config::file_list_tags::FileListTags;
 use ncrs_filing::filing::FilingModule;
 use ncrs_i18n::Language;
@@ -29,8 +30,9 @@ pub struct Ctx<'a> {
     pub search_open: bool,
     pub hermes_active: bool,
     pub hermes_counts_missing: bool,
-    /// Documents confirmed to be filed again are waiting for a free queue.
-    pub refile_pending: bool,
+    pub jobs_busy: bool,
+    /// The folders of the config, with their roles.
+    pub filing_locations: &'a [FilingLocation],
     pub window_size: Size,
     pub config_path: Option<&'a Path>,
     /// Blocking; the app swaps it in its tests.

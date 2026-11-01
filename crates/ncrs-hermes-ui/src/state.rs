@@ -1,3 +1,7 @@
+use std::path::PathBuf;
+
+use ncrs_filing::replan_work::ReplanItem;
+
 use crate::filing_setup::FilingSetup;
 use crate::hermes_setup::HermesSetup;
 use crate::message::HermesPage;
@@ -33,6 +37,11 @@ pub struct Hermes {
     pub saved_queries_generation: u64,
     pub tags: Option<TagsPage>,
     pub tags_generation: u64,
+    /// The planned documents wait for a free queue; the next tick asks again.
+    pub filing_due: bool,
+    /// The folder and the documents of a confirmed replan, waiting for a free
+    /// queue.
+    pub pending_refile: Option<(PathBuf, Vec<ReplanItem>)>,
 }
 
 impl Hermes {

@@ -1,10 +1,14 @@
 use iced::Task;
 use ncrs_core::INDEX_NOT_OPEN;
+use ncrs_filing::execute::UndoReport;
 use ncrs_filing::filing::FilingModule;
+use ncrs_filing::reorganisation_work::{ExecutionSummary, PlannedItem};
+use ncrs_i18n::Msg;
+use ncrs_jobs::{Job, JobKind};
 use ncrs_ui_kit::focus::release_focus;
 
 use super::{blocking_overlay_is_open, open_rule_of_plan};
-use crate::action::Action;
+use crate::action::{Action, StartProgressJob};
 use crate::ctx::Ctx;
 use crate::message::{HermesPage, Message, ReorganisationPlanMessage};
 use crate::reorganisation_plan::ReorganisationView;
@@ -144,4 +148,109 @@ fn run_planning(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Task<Message> {
             Message::ReorganisationPlan(ReorganisationPlanMessage::Loaded { generation, result })
         },
     )
+}
+
+/// Runs the selected plan entries on the blocking pool, as one job. Escape
+/// closes the progress channel, which stops the run between two files.
+pub fn run_selection(selection: Vec<PlannedItem>, ctx: &Ctx<'_>, actions: &mut Vec<Action>) {
+    if ctx.jobs_busy || selection.is_empty() {
+        return;
+    }
+    let Some(access) = ctx.filing.and_then(FilingModule::plan_access) else {
+        actions.push(Action::ShowError(INDEX_NOT_OPEN.to_owned()));
+        return;
+    };
+    let total = selection.len();
+    let path = selection
+        .first()
+        .map(|entry| entry.location.clone())
+        .unwrap_or_default();
+    actions.push(Action::SetJobProgress(ncrs_fs::transfer::Tick {
+        done: 0,
+        total,
+    }));
+    actions.push(Action::StartJobWithProgress(StartProgressJob {
+        job: Job {
+            kind: JobKind::Reorganise,
+            path,
+            total: Some(total),
+        },
+        build: Box::new(move |progress_tx| {
+            Task::perform(
+                tokio::task::spawn_blocking(move || {
+                    let mut progress = ncrs_fs::transfer::Reporting::new(&progress_tx);
+                    access.execute(&selection, &mut progress)
+                }),
+                |joined| {
+                    Message::ReorganisationExecuted(
+                        joined.unwrap_or_else(|join| Err(join.to_string())),
+                    )
+                },
+            )
+        }),
+    }));
+}
+
+/// The run of the plan is over.
+pub fn executed(
+    hermes: &mut Hermes,
+    result: Result<ExecutionSummary, String>,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) -> Task<Message> {
+    actions.extend([Action::FinishJob, Action::ClearJobProgress]);
+    match result {
+        Ok(summary) => {
+            let text = ctx
+                .lang
+                .text(Msg::StatusReorganised)
+                .replace("{moved}", &summary.moved.to_string())
+                .replace("{skipped}", &summary.skipped.to_string());
+            actions.push(Action::ShowNotice(text));
+        }
+        Err(detail) => actions.push(Action::ShowError(detail)),
+    }
+    replan_if_open(hermes, ctx)
+}
+
+pub fn undo(ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> Task<Message> {
+    if ctx.jobs_busy {
+        return Task::none();
+    }
+    let Some(access) = ctx.filing.and_then(FilingModule::plan_access) else {
+        actions.push(Action::ShowError(INDEX_NOT_OPEN.to_owned()));
+        return Task::none();
+    };
+    Task::perform(
+        tokio::task::spawn_blocking(move || access.undo_last()),
+        |joined| Message::ReorganisationUndone(joined.unwrap_or_else(|join| Err(join.to_string()))),
+    )
+}
+
+pub fn undone(
+    hermes: &mut Hermes,
+    result: Result<Option<UndoReport>, String>,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) -> Task<Message> {
+    match result {
+        Ok(Some(report)) => {
+            let text = ctx
+                .lang
+                .text(Msg::StatusReorganisationUndone)
+                .replace("{moved}", &report.undone.to_string())
+                .replace("{skipped}", &report.left.to_string());
+            actions.push(Action::ShowNotice(text));
+            replan_if_open(hermes, ctx)
+        }
+        Ok(None) => {
+            let text = ctx.lang.text(Msg::StatusNothingToUndo).to_owned();
+            actions.push(Action::ShowNotice(text));
+            Task::none()
+        }
+        Err(detail) => {
+            actions.push(Action::ShowError(detail));
+            Task::none()
+        }
+    }
 }

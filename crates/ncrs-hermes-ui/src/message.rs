@@ -6,10 +6,12 @@ use std::path::PathBuf;
 use ncrs_config::config::{Config, Filing, FilingWriteError};
 use ncrs_config::file_list_tags::{TagExceptions, TagGroup};
 use ncrs_core::PanelSide;
+use ncrs_filing::execute::UndoReport;
 use ncrs_filing::filing::{FilingMessage, IndexFigures};
+use ncrs_filing::filing_work::FilingSummary;
 use ncrs_filing::query_work::{ExportSummary, QueryHit};
-use ncrs_filing::reorganisation_work::PlannedItem;
-use ncrs_filing::replan_work::ReplanItem;
+use ncrs_filing::reorganisation_work::{ExecutionSummary, PlannedItem};
+use ncrs_filing::replan_work::{ReplanItem, ReplanSummary};
 use ncrs_filing::review_work::{AcceptSummary, ConfirmOutcome, ReviewItem};
 use ncrs_filing::rules_work::{RulesLoad, TryResult};
 use ncrs_filing::suggestion_work::SuggestedRule;
@@ -43,6 +45,15 @@ pub enum Message {
     HermesPage(HermesPage),
     /// Runs the entries of the reorganisation plan that are checked.
     ExecuteReorganisation(Vec<PlannedItem>),
+    /// The executor on its blocking thread is done.
+    ReorganisationExecuted(Result<ExecutionSummary, String>),
+    /// The filing job on its blocking thread is done.
+    DocumentsFiled(Result<FilingSummary, String>),
+    /// The job that files the previewed documents is done.
+    DocumentsRefiled(Result<ReplanSummary, String>),
+    /// `None`: there was no carried out reorganisation left to undo.
+    ReorganisationUndone(Result<Option<UndoReport>, String>),
+    HermesColumn(HermesColumnMessage),
     /// The tags page offers to show the tags in the file list: the settings
     /// switch of the same name.
     ToggleFileListTags,

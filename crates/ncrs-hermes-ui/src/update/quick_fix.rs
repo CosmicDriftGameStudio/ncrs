@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use iced::Task;
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_filing::filing::FilingModule;
@@ -8,7 +10,7 @@ use super::rules::open_rule_form;
 use super::{blocking_overlay_is_open, review_list};
 use crate::action::Action;
 use crate::ctx::Ctx;
-use crate::message::{Message, QuickFixMessage};
+use crate::message::{HermesColumnMessage, Message, QuickFixMessage};
 use crate::quick_fix::{field_to_fix, QuickFix, QuickFixAction};
 use crate::review_list::rule_prefill_of;
 use crate::rule_form::RuleForm;
@@ -139,10 +141,32 @@ fn run_entry(hermes: &mut Hermes, ctx: &Ctx<'_>, actions: &mut Vec<Action>) -> T
         QuickFixAction::Exclude => {
             let paths = menu.paths();
             hermes.quick_fix = None;
-            actions.push(Action::ExcludeFromHermes(paths));
-            Task::none()
+            exclude_from_hermes(paths, ctx, actions)
         }
     }
+}
+
+/// Tells the index that Hermes leaves `paths` alone from now on; the column
+/// shows them as excluded once the index has answered.
+pub fn exclude_from_hermes(
+    paths: Vec<PathBuf>,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) -> Task<Message> {
+    let Some(access) = ctx.filing.and_then(FilingModule::review_access) else {
+        actions.push(Action::ShowError(INDEX_NOT_OPEN.to_owned()));
+        return Task::none();
+    };
+    let excluded = paths.clone();
+    Task::perform(
+        tokio::task::spawn_blocking(move || access.exclude(&paths)),
+        move |joined| {
+            Message::HermesColumn(HermesColumnMessage::Excluded {
+                paths: excluded.clone(),
+                result: joined.unwrap_or_else(|err| Err(err.to_string())),
+            })
+        },
+    )
 }
 
 /// Files the documents of a group one after the other, each through the

@@ -477,6 +477,11 @@ impl From<ncrs_hermes_ui::Message> for Message {
             Hermes::Tags(inner) => Self::Tags(inner),
             Hermes::HermesPage(page) => Self::HermesPage(page),
             Hermes::ExecuteReorganisation(entries) => Self::ExecuteReorganisation(entries),
+            Hermes::ReorganisationExecuted(result) => Self::ReorganisationExecuted(result),
+            Hermes::DocumentsFiled(result) => Self::DocumentsFiled(result),
+            Hermes::DocumentsRefiled(result) => Self::DocumentsRefiled(result),
+            Hermes::ReorganisationUndone(result) => Self::ReorganisationUndone(result),
+            Hermes::HermesColumn(inner) => Self::HermesColumn(inner),
             Hermes::ToggleFileListTags => Self::Settings(SettingsMessage::ToggleFileListTags),
         }
     }

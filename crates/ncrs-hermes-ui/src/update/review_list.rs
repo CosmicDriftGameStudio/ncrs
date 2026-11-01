@@ -200,7 +200,7 @@ pub fn update(
             Task::none()
         }
         ReviewListMessage::ReplanConfirm => {
-            if ctx.refile_pending {
+            if hermes.pending_refile.is_some() {
                 return Task::none();
             }
             let Some((scope, items)) = hermes
@@ -210,7 +210,7 @@ pub fn update(
             else {
                 return Task::none();
             };
-            actions.push(Action::Refile { scope, items });
+            super::refile::confirm_replan(hermes, scope, items, ctx, actions);
             Task::none()
         }
         ReviewListMessage::ReplanCancel => {

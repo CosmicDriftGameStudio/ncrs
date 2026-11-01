@@ -31,9 +31,7 @@ use crate::context_menu::{ContextAction, ContextMenu, HermesAction, HermesMenu, 
 use crate::dialog::{Prompt, PromptKind};
 use crate::execute;
 use crate::file_list_tags::{FileListTags, TagExceptions};
-use crate::filing::{
-    DocumentFinder, FilingMessage, FilingModule, LocationStatus, Phase, Work, WorkOutcome,
-};
+use crate::filing::{DocumentFinder, FilingMessage, FilingModule, LocationStatus, Phase, Work};
 use crate::filing_pieces::TargetEdit;
 use crate::filing_setup::{self, FilingSetup, SetupNote};
 use crate::filing_status::{FilingStatus, SNAPSHOT_EVERY};
@@ -87,7 +85,7 @@ use crate::quick_open::{
 #[cfg(test)]
 use crate::reorganisation_plan::ReorganisationView;
 use crate::reorganisation_work::{ExecutionSummary, PlannedItem};
-use crate::replan_work::{ReplanItem, ReplanScope, ReplanSummary};
+use crate::replan_work::ReplanSummary;
 use crate::review_list::ReviewList;
 use crate::review_work::AcceptSummary;
 #[cfg(test)]
@@ -649,30 +647,6 @@ fn conflicts_task(dialog: &TransferDialog) -> Task<Message> {
     )
 }
 
-/// Runs one blocking step of the filing module off the UI thread.
-fn run_filing_work(work: Work) -> Task<Message> {
-    run_filing_work_after(None, work)
-}
-
-/// Like [`run_filing_work`], with the pipeline dropped first on the same
-/// blocking thread: joining its threads blocks, and the work needs the index
-/// free of them.
-fn run_filing_work_after(pipeline: Option<ncrs_pipeline::Runner>, work: Work) -> Task<Message> {
-    let generation = work.generation();
-    Task::perform(
-        tokio::task::spawn_blocking(move || {
-            drop(pipeline);
-            work.run()
-        }),
-        move |joined| {
-            Message::Filing(joined.unwrap_or_else(|join| FilingMessage::WorkDone {
-                generation,
-                outcome: WorkOutcome::Crashed(join.to_string()),
-            }))
-        },
-    )
-}
-
 /// Ctrl+click is the Mac's right click.
 fn is_context_click(modifiers: Modifiers) -> bool {
     cfg!(target_os = "macos") && modifiers.control()
@@ -1071,10 +1045,6 @@ pub struct App {
     return_to_hermes_overview: bool,
     /// `Snapshot::plans_made` the filing job was last asked for.
     plans_filed_for: usize,
-    /// The filing job was due but another job was running.
-    filing_due: bool,
-    /// Documents the user confirmed to file again, waiting for a free queue.
-    pending_refile: Option<(PathBuf, Vec<ReplanItem>)>,
     /// Downloads an extension, on a blocking thread. Injected so tests need
     /// no network.
     fetch_extension: fn(&ExtensionId) -> Result<FetchedExtension, FetchError>,
@@ -2748,7 +2718,9 @@ impl App {
         module.set_kind_language(self.lang.kind_language());
         module.set_kinds(Arc::clone(&self.kinds.catalog));
         self.filing = Some(module);
-        work.map_or_else(Task::none, run_filing_work)
+        work.map_or_else(Task::none, |started| {
+            ncrs_hermes_ui::run_filing_work(started).map(Message::from)
+        })
     }
 
     /// Applies a loaded config. A broken one leaves the defaults and says why
@@ -3063,8 +3035,6 @@ impl App {
             hermes_focus: HermesFocus::default(),
             return_to_hermes_overview: false,
             plans_filed_for: 0,
-            filing_due: false,
-            pending_refile: None,
             fetch_extension: open_vsx::fetch_extension,
             install_theme: ncrs_settings::theme_fetch::install::install_picked_theme,
             about: None,
@@ -4965,7 +4935,10 @@ impl App {
             && !module.is_changing_protection()
             && (asks_encryption || module.has_card());
         let exceptions_access = work_finished.then(|| module.tags_access()).flatten();
-        let mut tasks: Vec<Task<Message>> = work.map(run_filing_work).into_iter().collect();
+        let mut tasks: Vec<Task<Message>> = work
+            .map(|started| ncrs_hermes_ui::run_filing_work(started).map(Message::from))
+            .into_iter()
+            .collect();
         tasks.extend(exceptions_access.map(|access| {
             Task::perform(
                 tokio::task::spawn_blocking(move || access.exceptions()),
@@ -5223,7 +5196,10 @@ impl App {
         if card_is_done {
             self.hermes.hermes_setup = None;
         }
-        let mut tasks: Vec<Task<Message>> = creation.map(run_filing_work).into_iter().collect();
+        let mut tasks: Vec<Task<Message>> = creation
+            .map(|started| ncrs_hermes_ui::run_filing_work(started).map(Message::from))
+            .into_iter()
+            .collect();
         if let PlanStep::Done { load_model } = step {
             // The choice was made on the card; the module does not ask again.
             self.ai_model_asked = true;
@@ -6332,20 +6308,9 @@ impl App {
                 self.dialog_focus = button;
                 Task::none()
             }
-            Ask::StartJob(start) => {
-                self.jobs.enqueue(start.job);
-                let build = start.build;
-                self.jobs
-                    .start_next(move |_| build().map(Message::from))
-                    .unwrap_or_else(Task::none)
-            }
+            Ask::StartJob(start) => self.start_job(start.job, start.build),
             Ask::StartJobWithProgress(start) => {
-                let progress_tx = self.progress_sender();
-                self.jobs.enqueue(start.job);
-                let build = start.build;
-                self.jobs
-                    .start_next(move |_| build(progress_tx).map(Message::from))
-                    .unwrap_or_else(Task::none)
+                self.start_job_with_progress(start.job, start.build)
             }
             Ask::FinishJob => {
                 self.jobs.finish();
@@ -7316,166 +7281,44 @@ impl App {
         }
     }
 
-    /// Runs the selected plan entries on the blocking pool, as one job. Escape
-    /// closes the progress channel, which stops the run between two files.
     fn run_reorganisation(&mut self, selection: Vec<PlannedItem>) -> Task<Message> {
-        if self.jobs.is_busy() || selection.is_empty() {
-            return Task::none();
-        }
-        let Some(access) = self.filing.as_ref().and_then(FilingModule::plan_access) else {
-            self.set_status_error(INDEX_NOT_OPEN);
-            return Task::none();
-        };
-        let progress_tx = self.progress_sender();
-        let total = selection.len();
-        self.job_progress = Some(fs::transfer::Tick { done: 0, total });
-        self.jobs.enqueue(jobs::Job {
-            kind: jobs::JobKind::Reorganise,
-            path: selection
-                .first()
-                .map(|entry| entry.location.clone())
-                .unwrap_or_default(),
-            total: Some(total),
-        });
-        self.jobs
-            .start_next(|_| {
-                Task::perform(
-                    tokio::task::spawn_blocking(move || {
-                        let mut progress = fs::transfer::Reporting::new(&progress_tx);
-                        access.execute(&selection, &mut progress)
-                    }),
-                    |joined| {
-                        Message::ReorganisationExecuted(
-                            joined.unwrap_or_else(|join| Err(join.to_string())),
-                        )
-                    },
-                )
-            })
-            .unwrap_or_else(Task::none)
+        self.run_hermes_flow(Vec::new(), |_, ctx| {
+            ncrs_hermes_ui::run_reorganisation(selection, ctx)
+        })
     }
 
-    /// One job files every planned document. Waits for a running job instead
-    /// of queueing behind it, and is asked for again on the next tick.
     fn run_filing(&mut self) -> Task<Message> {
-        if self.jobs.is_busy() {
-            self.filing_due = true;
-            return Task::none();
-        }
-        self.filing_due = false;
-        let Some(access) = self.filing.as_ref().and_then(FilingModule::filing_access) else {
-            return Task::none();
-        };
-        let progress_tx = self.progress_sender();
-        self.jobs.enqueue(jobs::Job {
-            kind: jobs::JobKind::File,
-            path: PathBuf::new(),
-            total: None,
-        });
-        self.jobs
-            .start_next(|_| {
-                Task::perform(
-                    tokio::task::spawn_blocking(move || {
-                        let mut progress = fs::transfer::Reporting::new(&progress_tx);
-                        access.file_planned(&mut progress)
-                    }),
-                    |joined| {
-                        Message::DocumentsFiled(joined.unwrap_or_else(|join| Err(join.to_string())))
-                    },
-                )
-            })
-            .unwrap_or_else(Task::none)
+        self.run_hermes_flow(Vec::new(), ncrs_hermes_ui::run_filing)
     }
 
     fn documents_filed(&mut self, result: Result<FilingSummary, String>) -> Task<Message> {
-        self.jobs.finish();
-        self.job_progress = None;
-        match result {
-            Ok(summary) if summary.filed + summary.reviewed > 0 => {
-                let text = fill_template(
-                    self.lang.text(Msg::StatusDocumentsFiled),
-                    &[
-                        ("{filed}", &summary.filed.to_string()),
-                        ("{reviewed}", &summary.reviewed.to_string()),
-                    ],
-                );
-                self.show_notice(text)
-            }
-            Ok(_) => Task::none(),
-            Err(detail) => {
-                self.set_status_error(&detail);
-                Task::none()
-            }
-        }
+        self.run_hermes_flow(Vec::new(), |_, ctx| {
+            ncrs_hermes_ui::documents_filed(result, ctx)
+        })
     }
 
     fn reorganisation_executed(
         &mut self,
         result: Result<ExecutionSummary, String>,
     ) -> Task<Message> {
-        self.jobs.finish();
-        self.job_progress = None;
-        match result {
-            Ok(summary) => {
-                let text = self
-                    .lang
-                    .text(Msg::StatusReorganised)
-                    .replace("{moved}", &summary.moved.to_string())
-                    .replace("{skipped}", &summary.skipped.to_string());
-                Task::batch([self.show_notice(text), self.replan_if_open()])
-            }
-            Err(detail) => {
-                self.set_status_error(&detail);
-                self.replan_if_open()
-            }
-        }
+        self.run_hermes_flow(Vec::new(), |hermes, ctx| {
+            ncrs_hermes_ui::reorganisation_executed(hermes, result, ctx)
+        })
     }
 
     fn undo_reorganisation(&mut self) -> Task<Message> {
-        if self.jobs.is_busy() {
-            return Task::none();
-        }
-        let Some(access) = self.filing.as_ref().and_then(FilingModule::plan_access) else {
-            self.set_status_error(INDEX_NOT_OPEN);
-            return Task::none();
-        };
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.undo_last()),
-            |joined| {
-                Message::ReorganisationUndone(joined.unwrap_or_else(|join| Err(join.to_string())))
-            },
-        )
+        self.run_hermes_flow(Vec::new(), |_, ctx| {
+            ncrs_hermes_ui::undo_reorganisation(ctx)
+        })
     }
 
     fn reorganisation_undone(
         &mut self,
         result: Result<Option<execute::UndoReport>, String>,
     ) -> Task<Message> {
-        match result {
-            Ok(Some(report)) => {
-                let text = self
-                    .lang
-                    .text(Msg::StatusReorganisationUndone)
-                    .replace("{moved}", &report.undone.to_string())
-                    .replace("{skipped}", &report.left.to_string());
-                Task::batch([self.show_notice(text), self.replan_if_open()])
-            }
-            Ok(None) => {
-                let text = self.lang.text(Msg::StatusNothingToUndo).to_string();
-                self.show_notice(text)
-            }
-            Err(detail) => {
-                self.set_status_error(&detail);
-                Task::none()
-            }
-        }
-    }
-
-    /// The files moved, so an open plan is out of date.
-    fn replan_if_open(&mut self) -> Task<Message> {
-        let task = self.with_hermes(Vec::new(), |hermes, ctx| {
-            ncrs_hermes_ui::replan_reorganisation_if_open(hermes, ctx)
-        });
-        task.map(Message::from)
+        self.run_hermes_flow(Vec::new(), |hermes, ctx| {
+            ncrs_hermes_ui::reorganisation_undone(hermes, result, ctx)
+        })
     }
 
     /// What the status bar shows about the queue: the running job, how far
@@ -8188,101 +8031,20 @@ impl App {
         Task::batch([focus, task])
     }
 
-    /// Plans the documents below `folder` again, if it lies in an inbox
-    /// location. Anywhere else nothing happens but the message.
     fn reprocess_folder(&mut self, folder: PathBuf) -> Task<Message> {
-        let inbox_roots: Vec<PathBuf> = self
-            .filing_config
-            .locations
-            .iter()
-            .filter(|location| location.mode == LocationMode::Inbox)
-            .map(|location| location.path.clone())
-            .collect();
-        if !crate::replan_work::lies_in_inbox(&folder, &inbox_roots) {
-            let text = self.lang.text(Msg::StatusReprocessOutsideInbox).to_owned();
-            return self.show_notice(text);
-        }
-        self.start_replan(ReplanScope::Folder(folder))
+        self.run_hermes_flow(Vec::new(), |hermes, ctx| {
+            ncrs_hermes_ui::reprocess_folder(hermes, folder, ctx)
+        })
     }
 
-    /// The user confirmed the preview: the previewed documents are filed by
-    /// one job, as soon as the queue is free.
-    fn confirm_replan(&mut self, scope: ReplanScope, items: Vec<ReplanItem>) -> Task<Message> {
-        let folder = match scope {
-            ReplanScope::Folder(folder) => folder,
-            ReplanScope::OpenCases => PathBuf::new(),
-        };
-        self.pending_refile = Some((folder, items));
-        if self.jobs.is_busy() {
-            let text = self.lang.text(Msg::StatusRefileWaiting).to_owned();
-            return self.show_notice(text);
-        }
-        self.run_refile()
-    }
-
-    /// Starts the confirmed refiling if no other job runs; asked for again on
-    /// the next tick otherwise, so it never queues behind another job.
     fn run_refile(&mut self) -> Task<Message> {
-        if self.jobs.is_busy() {
-            return Task::none();
-        }
-        let Some((folder, items)) = self.pending_refile.take() else {
-            return Task::none();
-        };
-        let Some(access) = self.filing.as_ref().and_then(FilingModule::replan_access) else {
-            self.set_status_error(INDEX_NOT_OPEN);
-            return Task::none();
-        };
-        let progress_tx = self.progress_sender();
-        self.jobs.enqueue(jobs::Job {
-            kind: jobs::JobKind::File,
-            path: folder,
-            total: Some(items.iter().filter(|item| item.would_be_filed()).count()),
-        });
-        self.jobs
-            .start_next(|_| {
-                Task::perform(
-                    tokio::task::spawn_blocking(move || {
-                        let mut progress = fs::transfer::Reporting::new(&progress_tx);
-                        access.file_previewed(&items, &mut progress)
-                    }),
-                    |joined| {
-                        Message::DocumentsRefiled(
-                            joined.unwrap_or_else(|join| Err(join.to_string())),
-                        )
-                    },
-                )
-            })
-            .unwrap_or_else(Task::none)
+        self.run_hermes_flow(Vec::new(), ncrs_hermes_ui::run_refile)
     }
 
     fn documents_refiled(&mut self, result: Result<ReplanSummary, String>) -> Task<Message> {
-        self.jobs.finish();
-        self.job_progress = None;
-        let reload = if self.hermes.review_list.is_some() {
-            self.run_review_load()
-        } else {
-            Task::none()
-        };
-        let notice = match result {
-            Ok(summary) => {
-                let text = fill_template(
-                    self.lang.text(Msg::StatusRefileDone),
-                    &[
-                        ("{filed}", &summary.filed.to_string()),
-                        ("{reviewed}", &summary.reviewed.to_string()),
-                        ("{changed}", &summary.changed.to_string()),
-                        ("{requeued}", &summary.requeued.to_string()),
-                    ],
-                );
-                self.show_notice(text)
-            }
-            Err(detail) => {
-                self.set_status_error(&detail);
-                Task::none()
-            }
-        };
-        Task::batch([notice, reload])
+        self.run_hermes_flow(Vec::new(), |hermes, ctx| {
+            ncrs_hermes_ui::documents_refiled(hermes, result, ctx)
+        })
     }
 
     fn read_paths_again(&mut self, paths: Vec<PathBuf>) -> Task<Message> {
@@ -8840,7 +8602,7 @@ impl App {
         self.plans_filed_for = 0;
         let pipeline = self.pipeline.take();
         self.refresh_filing_snapshot();
-        run_filing_work_after(pipeline, work)
+        ncrs_hermes_ui::run_filing_work_after(pipeline, work).map(Message::from)
     }
 
     /// Builds the module again from the config it started with, when it is not
@@ -9128,7 +8890,8 @@ impl App {
             search_open: self.search.open,
             hermes_active: self.hermes_active(),
             hermes_counts_missing: self.filing_status.hermes_counts().is_none(),
-            refile_pending: self.pending_refile.is_some(),
+            jobs_busy: self.jobs.is_busy(),
+            filing_locations: &self.filing_config.locations,
             window_size: self.window_size,
             config_path: self.config_path.as_deref(),
             resolve_folder: self.resolve_folder,
@@ -9155,6 +8918,53 @@ impl App {
         let outcome = step(&mut hermes, &self.hermes_ctx(inquiry_paths));
         self.hermes = hermes;
         outcome
+    }
+
+    /// Runs a flow of the Hermes pages and then the actions it asked for.
+    fn run_hermes_flow(
+        &mut self,
+        inquiry_paths: Vec<PathBuf>,
+        step: impl FnOnce(
+            &mut ncrs_hermes_ui::Hermes,
+            &ncrs_hermes_ui::Ctx<'_>,
+        ) -> ncrs_hermes_ui::Outcome,
+    ) -> Task<Message> {
+        let outcome = self.with_hermes(inquiry_paths, step);
+        self.run_hermes_outcome(outcome)
+    }
+
+    /// Puts the job into the queue and starts it if nothing runs.
+    fn start_job<M>(
+        &mut self,
+        job: jobs::Job,
+        build: impl FnOnce() -> Task<M> + 'static,
+    ) -> Task<Message>
+    where
+        Message: From<M>,
+        M: Send + 'static,
+    {
+        self.jobs.enqueue(job);
+        self.jobs
+            .start_next(move |_| build().map(Message::from))
+            .unwrap_or_else(Task::none)
+    }
+
+    /// As `start_job`, for work that sends its progress through the channel,
+    /// which is made first.
+    fn start_job_with_progress<M>(
+        &mut self,
+        job: jobs::Job,
+        build: impl FnOnce(mpsc::UnboundedSender<fs::transfer::Tick>) -> Task<M> + 'static,
+    ) -> Task<Message>
+    where
+        Message: From<M>,
+        M: Send + 'static,
+    {
+        let progress_tx = self.progress_sender();
+        self.jobs.enqueue(job);
+        self.jobs
+            .start_next(move |_| build(progress_tx).map(Message::from))
+            .unwrap_or_else(Task::none)
     }
 
     fn run_hermes_outcome(&mut self, (task, actions): ncrs_hermes_ui::Outcome) -> Task<Message> {
@@ -9223,8 +9033,21 @@ impl App {
                     }),
                 })
             }
-            Ask::ExcludeFromHermes(paths) => self.exclude_from_hermes(paths),
-            Ask::Refile { scope, items } => self.confirm_replan(scope, items),
+            Ask::StartJobWithProgress(start) => {
+                self.start_job_with_progress(start.job, start.build)
+            }
+            Ask::FinishJob => {
+                self.jobs.finish();
+                Task::none()
+            }
+            Ask::SetJobProgress(tick) => {
+                self.job_progress = Some(tick);
+                Task::none()
+            }
+            Ask::ClearJobProgress => {
+                self.job_progress = None;
+                Task::none()
+            }
             Ask::QuickFixFiled(summary) => self.quick_fix_filed(&summary),
         }
     }
@@ -9311,20 +9134,6 @@ impl App {
     fn open_reorganisation(&mut self) -> Task<Message> {
         let outcome = self.with_hermes(Vec::new(), ncrs_hermes_ui::open_reorganisation);
         self.run_hermes_outcome(outcome)
-    }
-
-    /// Opens the review page if it is not up and plans the documents of
-    /// `scope` again there.
-    fn start_replan(&mut self, scope: ReplanScope) -> Task<Message> {
-        let outcome = self.with_hermes(Vec::new(), |hermes, ctx| {
-            ncrs_hermes_ui::start_replan(hermes, scope, ctx)
-        });
-        self.run_hermes_outcome(outcome)
-    }
-
-    fn run_review_load(&mut self) -> Task<Message> {
-        let task = self.with_hermes(Vec::new(), ncrs_hermes_ui::run_review_load);
-        task.map(Message::from)
     }
 
     fn request_review_preview(&mut self) -> Task<Message> {
@@ -10269,23 +10078,10 @@ impl App {
         }
     }
 
-    /// Tells the index that Hermes leaves `paths` alone from now on; the column
-    /// shows them as excluded once the index has answered.
     fn exclude_from_hermes(&mut self, paths: Vec<PathBuf>) -> Task<Message> {
-        let Some(access) = self.filing.as_ref().and_then(FilingModule::review_access) else {
-            self.set_status_error(INDEX_NOT_OPEN);
-            return Task::none();
-        };
-        let excluded = paths.clone();
-        Task::perform(
-            tokio::task::spawn_blocking(move || access.exclude(&paths)),
-            move |joined| {
-                Message::HermesColumn(HermesColumnMessage::Excluded {
-                    paths: excluded.clone(),
-                    result: joined.unwrap_or_else(|err| Err(err.to_string())),
-                })
-            },
-        )
+        self.run_hermes_flow(Vec::new(), |_, ctx| {
+            ncrs_hermes_ui::exclude_from_hermes(paths, ctx)
+        })
     }
 
     fn paths_excluded(&mut self, paths: &[PathBuf], result: Result<(), String>) -> Task<Message> {
@@ -10516,7 +10312,7 @@ impl App {
                 let plans_made = self
                     .live_pipeline()
                     .map_or(0, |runner| runner.snapshot().plans_made);
-                let filing = if plans_made > self.plans_filed_for || self.filing_due {
+                let filing = if plans_made > self.plans_filed_for || self.hermes.filing_due {
                     self.plans_filed_for = plans_made;
                     self.run_filing()
                 } else {
@@ -12106,8 +11902,6 @@ impl App {
             hermes_focus: HermesFocus::default(),
             return_to_hermes_overview: false,
             plans_filed_for: 0,
-            filing_due: false,
-            pending_refile: None,
             fetch_extension: |_| Err(FetchError::NoConnection("no network in tests".to_owned())),
             install_theme: |_, _| Err(FetchError::NoConfigPath),
             about: None,
@@ -26656,7 +26450,7 @@ mod replan_flow {
 
     use super::*;
     use crate::replan_work::fixtures::Setup;
-    use crate::replan_work::ReplanAfter;
+    use crate::replan_work::{ReplanAfter, ReplanItem};
     use crate::review_list::ReplanStep;
 
     /// Runs the tasks `message` starts and hands their answers back to `update`.
@@ -26766,7 +26560,7 @@ mod replan_flow {
             "nothing moves before the confirm"
         );
         assert!(!fixture.app.jobs.is_busy());
-        assert!(fixture.app.pending_refile.is_none());
+        assert!(fixture.app.hermes.pending_refile.is_none());
         assert!(review_open(&fixture.app));
     }
 
@@ -26868,7 +26662,7 @@ mod replan_flow {
 
         assert_eq!(fixture.app.jobs.waiting(), 0, "it does not queue behind");
         assert_eq!(
-            fixture.app.pending_refile,
+            fixture.app.hermes.pending_refile,
             Some((PathBuf::new(), previewed))
         );
         assert!(fixture.document.exists());
@@ -26880,7 +26674,7 @@ mod replan_flow {
         assert_eq!(running.kind, jobs::JobKind::File);
         assert_eq!(running.total, Some(1));
         assert_eq!(fixture.app.jobs.waiting(), 0);
-        assert!(fixture.app.pending_refile.is_none());
+        assert!(fixture.app.hermes.pending_refile.is_none());
     }
 
     #[tokio::test]

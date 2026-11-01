@@ -1,19 +1,39 @@
 use std::path::PathBuf;
 
 use ncrs_config::file_list_tags::{FileListTags, TagExceptions};
-use ncrs_filing::replan_work::{ReplanItem, ReplanScope};
 use ncrs_filing::review_work::AcceptSummary;
 use ncrs_index::{QuerySpec, SavedQueryId};
 use ncrs_intake::LocationMode;
+use ncrs_jobs::Job;
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::hermes_setup::FolderSlot;
-use crate::message::HermesPage;
+use crate::message::{HermesPage, Message};
 
 /// The setup card a folder dialog or a folder access belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SetupCard {
     Filing(LocationMode),
     Hermes(FolderSlot),
+}
+
+/// The task of a job that reports its progress, made only when the queue
+/// starts the job. It gets the sender of the app's progress channel.
+pub type ProgressJobBuilder =
+    Box<dyn FnOnce(UnboundedSender<ncrs_fs::transfer::Tick>) -> iced::Task<Message>>;
+
+/// A job for the queue and the work that runs it and reports progress.
+pub struct StartProgressJob {
+    pub job: Job,
+    pub build: ProgressJobBuilder,
+}
+
+impl std::fmt::Debug for StartProgressJob {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StartProgressJob")
+            .field("job", &self.job)
+            .finish()
+    }
 }
 
 /// What the Hermes pages ask of the app, which they cannot do themselves. The
@@ -54,12 +74,14 @@ pub enum Action {
         card: SetupCard,
         folder: PathBuf,
     },
-    ExcludeFromHermes(Vec<PathBuf>),
-    /// The documents of the previewed replan were confirmed: one job files them.
-    Refile {
-        scope: ReplanScope,
-        items: Vec<ReplanItem>,
-    },
+    /// Put the job into the queue and start it if nothing runs; the work
+    /// sends its progress through the app's channel, which the app makes
+    /// first.
+    StartJobWithProgress(StartProgressJob),
+    /// The running job is over: the next one may start.
+    FinishJob,
+    SetJobProgress(ncrs_fs::transfer::Tick),
+    ClearJobProgress,
     /// The documents of a group were filed from the quick-fix menu.
     QuickFixFiled(AcceptSummary),
 }

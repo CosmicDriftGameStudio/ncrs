@@ -28,7 +28,7 @@ pub mod tags_page;
 pub mod ui;
 pub mod update;
 
-pub use action::{Action, SetupCard};
+pub use action::{Action, ProgressJobBuilder, SetupCard, StartProgressJob};
 pub use ctx::Ctx;
 pub use message::{
     FilingSetupMessage, FilingStatusMessage, HermesColumnMessage, HermesFileMessage, HermesFocus,
@@ -38,9 +38,11 @@ pub use message::{
 };
 pub use state::Hermes;
 pub use update::{
-    open_reorganisation, open_review_list, open_rule_suggestions, open_rules, open_saved_queries,
-    open_tags, replan_reorganisation_if_open, request_review_preview, run_review_load,
-    start_replan, update_filing_setup, update_hermes_setup, update_quick_fix,
-    update_reorganisation, update_review_list, update_rule_suggestions, update_rules,
-    update_saved_queries, update_tags, Outcome,
+    documents_filed, documents_refiled, exclude_from_hermes, open_reorganisation, open_review_list,
+    open_rule_suggestions, open_rules, open_saved_queries, open_tags, reorganisation_executed,
+    reorganisation_undone, reprocess_folder, request_review_preview, run_filing, run_filing_work,
+    run_filing_work_after, run_refile, run_reorganisation, undo_reorganisation,
+    update_filing_setup, update_hermes_setup, update_quick_fix, update_reorganisation,
+    update_review_list, update_rule_suggestions, update_rules, update_saved_queries, update_tags,
+    Outcome,
 };

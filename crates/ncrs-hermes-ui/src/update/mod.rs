@@ -1,9 +1,11 @@
 //! The state changes of the Hermes pages. What reaches outside them comes back
 //! as actions. Each page has its own entry; the app routes the messages.
 
+mod filing_job;
 mod filing_setup;
 mod hermes_setup;
 mod quick_fix;
+mod refile;
 mod reorganisation;
 mod review_list;
 mod rule_suggestions;
@@ -11,8 +13,13 @@ mod rules;
 mod saved_queries;
 mod tags;
 
+use std::path::PathBuf;
+
 use iced::Task;
-use ncrs_filing::replan_work::ReplanScope;
+use ncrs_filing::execute::UndoReport;
+use ncrs_filing::filing_work::FilingSummary;
+use ncrs_filing::reorganisation_work::{ExecutionSummary, PlannedItem};
+use ncrs_filing::replan_work::ReplanSummary;
 use ncrs_ui_kit::focus::release_focus;
 
 use crate::action::Action;
@@ -25,7 +32,8 @@ use crate::message::{
 use crate::state::Hermes;
 use ncrs_index::RuleId;
 
-pub use self::review_list::{request_review_preview, run_review_load};
+pub use self::filing_job::{run_filing_work, run_filing_work_after};
+pub use self::review_list::request_review_preview;
 
 pub type Outcome = (Task<Message>, Vec<Action>);
 
@@ -209,16 +217,78 @@ pub fn open_review_list(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
     (task, actions)
 }
 
-pub fn start_replan(hermes: &mut Hermes, scope: ReplanScope, ctx: &Ctx<'_>) -> Outcome {
-    let mut actions = Vec::new();
-    let task = review_list::start_replan(hermes, scope, ctx, &mut actions);
-    (task, actions)
-}
-
 pub fn open_reorganisation(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
     let mut actions = Vec::new();
     let task = reorganisation::open(hermes, ctx, &mut actions);
     (task, actions)
 }
 
-pub use self::reorganisation::replan_if_open as replan_reorganisation_if_open;
+pub fn run_reorganisation(selection: Vec<PlannedItem>, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    reorganisation::run_selection(selection, ctx, &mut actions);
+    (Task::none(), actions)
+}
+
+pub fn exclude_from_hermes(paths: Vec<PathBuf>, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    let task = quick_fix::exclude_from_hermes(paths, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn reorganisation_executed(
+    hermes: &mut Hermes,
+    result: Result<ExecutionSummary, String>,
+    ctx: &Ctx<'_>,
+) -> Outcome {
+    let mut actions = Vec::new();
+    let task = reorganisation::executed(hermes, result, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn undo_reorganisation(ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    let task = reorganisation::undo(ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn reorganisation_undone(
+    hermes: &mut Hermes,
+    result: Result<Option<UndoReport>, String>,
+    ctx: &Ctx<'_>,
+) -> Outcome {
+    let mut actions = Vec::new();
+    let task = reorganisation::undone(hermes, result, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn documents_filed(result: Result<FilingSummary, String>, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    filing_job::documents_filed(result, ctx, &mut actions);
+    (Task::none(), actions)
+}
+
+pub fn run_filing(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    filing_job::run_filing(hermes, ctx, &mut actions);
+    (Task::none(), actions)
+}
+
+pub fn run_refile(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    refile::run_refile(hermes, ctx, &mut actions);
+    (Task::none(), actions)
+}
+
+pub fn reprocess_folder(hermes: &mut Hermes, folder: PathBuf, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    let task = refile::reprocess_folder(hermes, folder, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn documents_refiled(
+    hermes: &mut Hermes,
+    result: Result<ReplanSummary, String>,
+    ctx: &Ctx<'_>,
+) -> Outcome {
+    refile::documents_refiled(hermes, result, ctx)
+}
