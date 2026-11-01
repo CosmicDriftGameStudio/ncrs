@@ -443,14 +443,7 @@ pub enum GrantMessage {
 pub use ncrs_remote::ConnectField;
 pub use ncrs_remote::Message as RemoteMessage;
 
-/// What the copy chords put on the clipboard.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClipboardKind {
-    Path,
-    Name,
-    /// The directory the active panel shows, not a row in it.
-    Directory,
-}
+pub use ncrs_ops::ClipboardKind;
 
 pub use ncrs_core::TransferKind;
 pub use ncrs_palette::{CommandLineMessage, CommandPaletteMessage, QuickOpenMessage};

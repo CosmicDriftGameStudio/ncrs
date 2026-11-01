@@ -3,6 +3,10 @@
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+use iced::{window, Task};
+use ncrs_i18n::{fill_template, Language, Msg};
+
+use crate::action::Action;
 use crate::clipboard_paste::{encode_png, RgbaImage};
 
 /// The picture that hangs on the pointer during the drag: square, RGBA.
@@ -46,4 +50,34 @@ fn drag_image(icon: DragIcon) -> Option<&'static [u8]> {
         })
     })
     .as_deref()
+}
+
+/// The pointer left the window with files held: hands `sources` to the system
+/// drag, which takes over the mouse until the drop. Only files of this
+/// computer's disk can leave (`all_on_local_disk`).
+pub fn start_drag_out(
+    lang: Language,
+    sources: Vec<PathBuf>,
+    all_on_local_disk: bool,
+    icon: DragIcon,
+) -> (Task<Result<(), String>>, Vec<Action>) {
+    if sources.is_empty() {
+        return (Task::none(), Vec::new());
+    }
+    if !all_on_local_disk {
+        let text = lang.text(Msg::StatusDragOutLocalOnly).to_owned();
+        return (Task::none(), vec![Action::ShowNotice(text)]);
+    }
+    let started = window::latest().and_then(move |id| {
+        let files = sources.clone();
+        window::run(id, move |window| start(window, files, icon))
+    });
+    (started, Vec::new())
+}
+
+/// What a system drag that could not start says.
+pub fn drag_out_failure(lang: Language, started: Result<(), String>) -> Option<Action> {
+    let reason = started.err()?;
+    let text = fill_template(lang.text(Msg::ErrorDragOutFailed), &[("{reason}", &reason)]);
+    Some(Action::ShowError(text))
 }

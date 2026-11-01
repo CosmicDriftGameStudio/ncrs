@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use iced::Point;
 use ncrs_core::{PanelSide, TransferKind};
+use ncrs_fs::remote::{RemoteUrl, ServerId};
 
 /// What a panel asks the app for, because it reaches outside the panels. The
 /// app runs the actions of one `update` in order, right after it.
@@ -47,4 +48,16 @@ pub enum Action {
     /// refusals of archives and hit lists apply.
     OpenSelected,
     CloseSettings,
+    /// Shows `text` in the status bar for a while.
+    ShowNotice(String),
+    /// Shows `text` as the error of the status bar.
+    ShowError(String),
+    /// The trash row of the drive menu: shows the trash on `side`.
+    OpenTrash(PanelSide),
+    /// A server closed from its row in the drive menu.
+    Disconnect(ServerId),
+    /// Gives the keyboard focus back to the panels.
+    ReleaseFocus,
+    /// The connect dialog for an address typed without a user.
+    OpenConnectDialog(RemoteUrl),
 }

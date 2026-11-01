@@ -3,16 +3,72 @@
 use std::sync::Arc;
 
 use iced::Task;
+use ncrs_core::PanelSide;
 use ncrs_fs::{Trash, TrashReach};
 use ncrs_i18n::Msg;
+use ncrs_ui_kit::focus::release_focus;
 
+use crate::action::{Action, TrashAction};
+use crate::ctx::{Ctx, FlowCtx};
+use crate::delete_flow::{actions, idle, Outcome};
 use crate::message::TrashMessage;
+use crate::restore_flow::{
+    restore_last_deletion, restore_listed_deletion, restore_row_done, start_restore,
+};
 use crate::state::Ops;
+use crate::trash::TrashView;
+use crate::update::update_trash;
+
+/// A message of the trash view, and what it starts.
+pub fn update_trash_flow(
+    ops: &mut Ops,
+    message: TrashMessage,
+    rows: usize,
+    flow: &FlowCtx<'_>,
+) -> Outcome {
+    let ctx = Ctx {
+        trash_rows: rows,
+        trash_generation: ops.trash_generation,
+    };
+    let Some(action) = update_trash(ops.trash_view.as_mut(), message, &ctx) else {
+        return idle();
+    };
+    match action {
+        TrashAction::Open => actions(vec![Action::OpenTrash(flow.source_side)]),
+        TrashAction::Close => {
+            ops.close_trash();
+            (release_focus(), Vec::new())
+        }
+        TrashAction::Restore(items) => start_restore(ops, items, flow),
+        TrashAction::RestoreRowDone {
+            result,
+            index,
+            generation,
+        } => restore_row_done(ops, result, index, generation, flow),
+        TrashAction::RestoreLast => restore_last_deletion(ops, flow),
+        TrashAction::LastListed { generation, result } => {
+            restore_listed_deletion(ops, generation, result, flow)
+        }
+        TrashAction::OpenInFinder => actions(vec![Action::OpenTrashInFinder]),
+    }
+}
 
 impl Ops {
     pub fn close_trash(&mut self) {
         self.trash_view = None;
         self.trash_generation = self.trash_generation.wrapping_add(1);
+    }
+
+    /// Shows the trash in place of the panel on `side` and reads it.
+    pub fn show_trash(
+        &mut self,
+        side: PanelSide,
+        reach: TrashReach,
+        source: &Arc<dyn Trash>,
+    ) -> Task<TrashMessage> {
+        self.trash_side = side;
+        self.trash_view = Some(TrashView::new(reach));
+        self.list_trash(source)
     }
 
     /// Reads the trash on the blocking pool; the answer carries the generation,

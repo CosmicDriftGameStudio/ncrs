@@ -1,6 +1,7 @@
 //! The state the two panels share: both panels, which one is active, the
 //! type-ahead prefix and the drag between the panels.
 
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use iced::keyboard::Modifiers;
@@ -70,6 +71,8 @@ pub struct Panels {
     pub path_check_id: u64,
     /// Reload queued by `PromptSubmit`, run once the create has reported.
     pub pending_reload: Option<PendingReload>,
+    /// The folders pinned in the drive menu.
+    pub favourites: Vec<PathBuf>,
 }
 
 impl Panels {
@@ -89,6 +92,7 @@ impl Panels {
             path_field: None,
             path_check_id: 0,
             pending_reload: None,
+            favourites: Vec::new(),
         }
     }
 
