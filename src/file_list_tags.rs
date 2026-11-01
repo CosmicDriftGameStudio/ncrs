@@ -1,7 +1,9 @@
 //! Which tags the file panels show after a file name: the setting and the
 //! choice from the tags a document has. Pure; the panel draws the result.
 
-use ncrs_index::{FileTags, Kinds};
+use std::collections::BTreeMap;
+
+use ncrs_index::{tag_name, FileTags, Kinds};
 
 /// Most chips after one name; the rest is counted.
 pub const MOST_CHIPS: usize = 3;
@@ -41,10 +43,8 @@ impl TagGroup {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileListTags {
     pub show: bool,
+    /// The tags of these groups show unless a tag has an exception.
     pub groups: Vec<TagGroup>,
-    /// When there are any, only tags that match one of them are shown, from
-    /// every group.
-    pub only: Vec<String>,
 }
 
 impl Default for FileListTags {
@@ -52,7 +52,6 @@ impl Default for FileListTags {
         Self {
             show: true,
             groups: vec![TagGroup::Kind, TagGroup::Own],
-            only: Vec::new(),
         }
     }
 }
@@ -104,33 +103,49 @@ fn worded(group: TagGroup, tag: &str, kinds: &Kinds) -> String {
     }
 }
 
-/// Kind, recipient, sender, year, then the own tags. A tag that is both read
-/// and set shows once, as an own one. A known kind is worded in the language
-/// of `kinds`.
-pub fn shown_tags(tags: &FileTags, setting: &FileListTags, kinds: &Kinds) -> ShownTags {
+/// The tags that differ from their group's default, by tag name: `true` shows
+/// the tag although its group is off, `false` hides it although the group is on.
+pub type TagExceptions = BTreeMap<String, bool>;
+
+/// Kind, recipient, sender, year, then the own tags. A tag shows when its
+/// exception says so, else when its group is on. A tag that is both read and
+/// set shows once, as an own one. A known kind is worded in the language of
+/// `kinds`.
+pub fn shown_tags(
+    tags: &FileTags,
+    setting: &FileListTags,
+    exceptions: &TagExceptions,
+    kinds: &Kinds,
+) -> ShownTags {
     if !setting.show {
         return ShownTags::default();
     }
-    let narrowed = !setting.only.is_empty();
-    let wanted = |group: TagGroup| narrowed || setting.has_group(group);
+    let wanted = |group: TagGroup, tag: &str| {
+        exceptions
+            .get(&tag_name(tag))
+            .copied()
+            .unwrap_or_else(|| setting.has_group(group))
+    };
+    let own_shown: Vec<&String> = tags
+        .own
+        .iter()
+        .filter(|tag| wanted(TagGroup::Own, tag))
+        .collect();
     let automatic = [
         (TagGroup::Kind, tags.kind.as_ref()),
         (TagGroup::Recipient, tags.recipient.as_ref()),
         (TagGroup::Sender, tags.sender.as_ref()),
         (TagGroup::Year, tags.year.as_ref()),
     ];
-    let own_listed = wanted(TagGroup::Own);
     let mut candidates: Vec<FileChip> = Vec::new();
     for (group, automatic_tag) in automatic {
-        let Some(tag) = automatic_tag.filter(|_| wanted(group)) else {
+        let Some(tag) = automatic_tag.filter(|tag| wanted(group, tag)) else {
             continue;
         };
         let shown = worded(group, tag, kinds);
-        let set_by_user = own_listed
-            && tags
-                .own
-                .iter()
-                .any(|own| worded(group, own, kinds) == shown);
+        let set_by_user = own_shown
+            .iter()
+            .any(|own| worded(group, own, kinds) == shown);
         let seen = candidates.iter().any(|chip| chip.tag == shown);
         if !set_by_user && !seen {
             candidates.push(FileChip {
@@ -139,20 +154,10 @@ pub fn shown_tags(tags: &FileTags, setting: &FileListTags, kinds: &Kinds) -> Sho
             });
         }
     }
-    if own_listed {
-        candidates.extend(tags.own.iter().map(|tag| FileChip {
-            tag: tag.clone(),
-            own: true,
-        }));
-    }
-    if narrowed {
-        candidates.retain(|chip| {
-            setting
-                .only
-                .iter()
-                .any(|entry| kinds.catalog.tag_matches(&chip.tag, entry))
-        });
-    }
+    candidates.extend(own_shown.into_iter().map(|tag| FileChip {
+        tag: tag.clone(),
+        own: true,
+    }));
     let more = candidates.len().saturating_sub(MOST_CHIPS);
     candidates.truncate(MOST_CHIPS);
     ShownTags {
@@ -191,6 +196,7 @@ mod tests {
         let shown = shown_tags(
             &read_document(),
             &FileListTags::default(),
+            &TagExceptions::new(),
             &Kinds::built_in(GERMAN),
         );
 
@@ -206,11 +212,22 @@ mod tests {
         let english = shown_tags(
             &tags,
             &FileListTags::default(),
+            &TagExceptions::new(),
             &Kinds::built_in(KindLanguage::English),
         );
-        let german = shown_tags(&tags, &FileListTags::default(), &Kinds::built_in(GERMAN));
+        let german = shown_tags(
+            &tags,
+            &FileListTags::default(),
+            &TagExceptions::new(),
+            &Kinds::built_in(GERMAN),
+        );
         tags.own = vec!["rechnung".to_owned()];
-        let twin = shown_tags(&tags, &FileListTags::default(), &Kinds::built_in(GERMAN));
+        let twin = shown_tags(
+            &tags,
+            &FileListTags::default(),
+            &TagExceptions::new(),
+            &Kinds::built_in(GERMAN),
+        );
 
         assert_eq!(texts(&english), [("invoice", false), ("steuer", true)]);
         assert_eq!(texts(&german), [("rechnung", false), ("steuer", true)]);
@@ -224,7 +241,12 @@ mod tests {
             ..FileListTags::default()
         };
 
-        let shown = shown_tags(&read_document(), &setting, &Kinds::built_in(GERMAN));
+        let shown = shown_tags(
+            &read_document(),
+            &setting,
+            &TagExceptions::new(),
+            &Kinds::built_in(GERMAN),
+        );
 
         assert_eq!(
             texts(&shown),
@@ -242,7 +264,12 @@ mod tests {
         let mut tags = read_document();
         tags.own = vec!["rechnung".to_owned()];
 
-        let shown = shown_tags(&tags, &FileListTags::default(), &Kinds::built_in(GERMAN));
+        let shown = shown_tags(
+            &tags,
+            &FileListTags::default(),
+            &TagExceptions::new(),
+            &Kinds::built_in(GERMAN),
+        );
 
         assert_eq!(texts(&shown), [("rechnung", true)]);
     }
@@ -254,22 +281,48 @@ mod tests {
         let setting = FileListTags::default().with_group(TagGroup::Own, false);
 
         assert_eq!(
-            texts(&shown_tags(&tags, &setting, &Kinds::built_in(GERMAN))),
+            texts(&shown_tags(
+                &tags,
+                &setting,
+                &TagExceptions::new(),
+                &Kinds::built_in(GERMAN)
+            )),
             [("rechnung", false)]
         );
     }
 
     #[test]
-    fn only_these_replaces_the_groups_and_matches_like_a_search() {
-        let setting = FileListTags {
-            groups: vec![TagGroup::Own],
-            only: vec!["firma-a".to_owned(), "2026".to_owned()],
-            ..FileListTags::default()
-        };
+    fn an_exception_beats_the_default_of_its_group_in_both_directions() {
+        let exceptions = TagExceptions::from([
+            ("telekom".to_owned(), true),
+            ("rechnung".to_owned(), false),
+            ("steuer".to_owned(), false),
+        ]);
 
-        let shown = shown_tags(&read_document(), &setting, &Kinds::built_in(GERMAN));
+        let shown = shown_tags(
+            &read_document(),
+            &FileListTags::default(),
+            &exceptions,
+            &Kinds::built_in(GERMAN),
+        );
 
-        assert_eq!(texts(&shown), [("firma-a-gmbh", false), ("2026", false)]);
+        assert_eq!(texts(&shown), [("telekom", false)]);
+    }
+
+    #[test]
+    fn the_exception_of_a_kind_is_found_by_the_tag_in_the_index_in_every_language() {
+        let mut tags = read_document();
+        tags.kind = Some("invoice".to_owned());
+        let exceptions = TagExceptions::from([("invoice".to_owned(), false)]);
+
+        let shown = shown_tags(
+            &tags,
+            &FileListTags::default(),
+            &exceptions,
+            &Kinds::built_in(GERMAN),
+        );
+
+        assert_eq!(texts(&shown), [("steuer", true)]);
     }
 
     #[test]
@@ -280,13 +333,19 @@ mod tests {
         };
 
         assert_eq!(
-            shown_tags(&read_document(), &off, &Kinds::built_in(GERMAN)),
+            shown_tags(
+                &read_document(),
+                &off,
+                &TagExceptions::new(),
+                &Kinds::built_in(GERMAN)
+            ),
             ShownTags::default()
         );
         assert_eq!(
             shown_tags(
                 &FileTags::default(),
                 &FileListTags::default(),
+                &TagExceptions::new(),
                 &Kinds::built_in(GERMAN)
             ),
             ShownTags::default()

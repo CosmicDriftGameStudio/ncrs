@@ -11,7 +11,7 @@ use crate::messages::{
     ClipboardKind, CommandLineMessage, CommandPaletteMessage, HermesFileMessage,
     KeyBindingsMessage, Message, QuickFixMessage, QuickOpenMessage, ReorganisationPlanMessage,
     ReviewListMessage, RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage,
-    SettingsMessage, ThemeFetchMessage, TransferKind,
+    SettingsMessage, TagsMessage, ThemeFetchMessage, TransferKind,
 };
 use crate::transfer_dialog::TransferDialogMessage;
 use crate::ui::layout::{
@@ -732,6 +732,8 @@ pub struct InputState {
     pub rules: bool,
     pub review_list: bool,
     pub saved_queries: bool,
+    /// The tags page is up: same as Quick Open.
+    pub tags: bool,
     /// The document search page is up: same as Quick Open.
     /// The sidebar of the Hermes card has the arrows, not the page.
     pub hermes_sidebar: bool,
@@ -789,6 +791,7 @@ impl InputState {
                 self.saved_queries,
                 Message::SavedQueries(SavedQueriesMessage::Close),
             ),
+            (self.tags, Message::Tags(TagsMessage::Close)),
             (
                 self.reorganisation_plan,
                 Message::ReorganisationPlan(ReorganisationPlanMessage::Close),
@@ -857,6 +860,7 @@ impl InputState {
                     && !self.rules
                     && !self.review_list
                     && !self.saved_queries
+                    && !self.tags
                     && !self.transfer_dialog
                     && !self.reorganisation_plan
                     && !self.settings)

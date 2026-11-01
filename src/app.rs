@@ -31,7 +31,7 @@ use crate::context_menu::{ContextAction, ContextMenu, HermesAction, HermesMenu, 
 use crate::dialog::{Prompt, PromptKind};
 use crate::document_preview;
 use crate::execute;
-use crate::file_list_tags::FileListTags;
+use crate::file_list_tags::{FileListTags, TagExceptions, TagGroup};
 use crate::filing::{
     DocumentFinder, FilingMessage, FilingModule, LocationStatus, Phase, Work, WorkOutcome,
 };
@@ -69,7 +69,7 @@ use crate::messages::{
     HermesSetupMessage, KeyBindingsMessage, Message, OcrModelsMessage, PanelSide, QuickFixMessage,
     QuickOpenMessage, RemoteMessage, ReorganisationPlanMessage, ReviewListMessage, RuleFormMessage,
     RuleSuggestionsMessage, RulesMessage, SavedQueriesMessage, SearchMessage, SettingChange,
-    SettingsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
+    SettingsMessage, TagsMessage, ThemeFetchMessage, TitleBarMessage, TransferKind, TrashMessage,
 };
 #[cfg(target_os = "macos")]
 use crate::native_menu;
@@ -95,6 +95,8 @@ use crate::search_filters::SearchFilters;
 use crate::search_view::{stays_on_file_system, SearchField, SearchView};
 use crate::session_state::{self, PanelRecord, SessionState, WindowSize, WriteOrder};
 use crate::suggestion_work::{SuggestedRule, SuggestionAccess, INDEX_NOT_OPEN};
+use crate::tags_page::{TagRow, TagsPage};
+use crate::tags_work::{TagsAccess, TagsFailure, TagsLoaded};
 use crate::theme_fetch::{Fetched, Installed, Pick, Stage, ThemeFetch};
 use crate::transfer_dialog::{self, Policy, TransferDialog, TransferDialogMessage};
 use crate::trash_view::TrashView;
@@ -126,6 +128,7 @@ use crate::ui::rules as rules_ui;
 use crate::ui::saved_queries as saved_queries_ui;
 use crate::ui::search as search_ui;
 use crate::ui::settings as settings_ui;
+use crate::ui::tags as tags_ui;
 use crate::ui::theme_fetch as theme_fetch_ui;
 use crate::ui::titlebar;
 use crate::ui::transfer as transfer_ui;
@@ -1484,6 +1487,11 @@ pub struct App {
     saved_queries: Option<SavedQueries>,
     /// Tells the answer of the work that is current from a stale one.
     saved_queries_generation: u64,
+    tags: Option<TagsPage>,
+    /// Tells the answer of the work that is current from a stale one.
+    tags_generation: u64,
+    /// The tags the file list shows against their group, from the index.
+    tag_exceptions: TagExceptions,
     reorganisation: Option<ReorganisationView>,
     /// Whether the arrow keys act on the sidebar or the page of the Hermes card.
     hermes_focus: HermesFocus,
@@ -1624,6 +1632,8 @@ pub struct PromptKeyState {
     pub review_list_replanning: bool,
     /// The saved queries page is up, so Enter, the arrows and Tab are its.
     pub saved_queries: bool,
+    /// The tags page is up, so the arrows, Space and Enter are its.
+    pub tags: bool,
     /// The overview's pattern field has the focus, so the letters are the field's.
     pub hermes_overview_editing: bool,
     /// A Hermes page is up and the arrow keys act on its sidebar.
@@ -1693,6 +1703,7 @@ impl Default for PromptKeyState {
             review_list_editing: false,
             review_list_replanning: false,
             saved_queries: false,
+            tags: false,
             hermes_overview_editing: false,
             hermes_sidebar: false,
             reorganisation_plan: false,
@@ -1841,6 +1852,32 @@ fn saved_queries_key(
         Key::Named(Named::Delete) if plain => queries(SavedQueriesMessage::AskDelete),
         Key::Named(Named::ArrowUp) if plain => queries(SavedQueriesMessage::Move(-1)),
         Key::Named(Named::ArrowDown) if plain => queries(SavedQueriesMessage::Move(1)),
+        _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
+            .filter(|message| *message == Message::Quit)
+            .filter(|_| is_not_typed_by_text_field(key, key_modifiers)),
+    }
+}
+
+/// The tags page: the arrows move in the table, Space switches the tag or
+/// group under the cursor, Enter answers the delete question, Delete asks it.
+/// The search and the name field take the keys they type.
+fn tags_key(
+    prompt: &PromptKeyState,
+    key: &Key,
+    key_modifiers: Modifiers,
+    scope: KeyScope,
+) -> Option<Message> {
+    let tags = |message| Some(Message::Tags(message));
+    let plain = key_modifiers.is_empty();
+    if let Some(focus) = hermes_focus_key(prompt, key, key_modifiers, false) {
+        return Some(focus);
+    }
+    match key.as_ref() {
+        Key::Named(Named::Escape) => tags(TagsMessage::Close),
+        Key::Named(Named::Enter) if plain => tags(TagsMessage::ConfirmDelete),
+        Key::Named(Named::Space) if plain => tags(TagsMessage::ToggleSelected),
+        Key::Named(Named::ArrowUp) if plain => tags(TagsMessage::Move(-1)),
+        Key::Named(Named::ArrowDown) if plain => tags(TagsMessage::Move(1)),
         _ => bound_message(&prompt.keymap, key, key_modifiers, scope)
             .filter(|message| *message == Message::Quit)
             .filter(|_| is_not_typed_by_text_field(key, key_modifiers)),
@@ -2192,6 +2229,10 @@ fn keys_without_prompt(
 
     if prompt.saved_queries {
         return saved_queries_key(prompt, &key, key_modifiers, scope);
+    }
+
+    if prompt.tags {
+        return tags_key(prompt, &key, key_modifiers, scope);
     }
 
     // Like the command palette: the field takes the typing, the card the
@@ -2853,6 +2894,7 @@ fn repeats(message: &Message) -> bool {
             | Message::Rules(RulesMessage::Move(_))
             | Message::ReviewList(ReviewListMessage::Move(_))
             | Message::SavedQueries(SavedQueriesMessage::Move(_))
+            | Message::Tags(TagsMessage::Move(_))
             | Message::ReorganisationPlan(ReorganisationPlanMessage::Move(_))
             | Message::HermesStep(_)
             | Message::FilingStatus(FilingStatusMessage::MoveError(_))
@@ -3226,7 +3268,10 @@ impl App {
             list.set_kinds(kinds.clone());
         }
         if let Some(view) = &mut self.saved_queries {
-            view.set_kinds(kinds);
+            view.set_kinds(kinds.clone());
+        }
+        if let Some(page) = &mut self.tags {
+            page.set_kinds(kinds);
         }
         self.refresh_function_keys();
         if let Some(problem) = &self.config_problem {
@@ -3496,6 +3541,9 @@ impl App {
             review_list_generation: 0,
             saved_queries: None,
             saved_queries_generation: 0,
+            tags: None,
+            tags_generation: 0,
+            tag_exceptions: TagExceptions::new(),
             reorganisation: None,
             hermes_focus: HermesFocus::default(),
             return_to_hermes_overview: false,
@@ -4286,6 +4334,7 @@ impl App {
                 Task::batch([update, self.request_review_preview()])
             }
             Message::SavedQueries(queries) => self.update_saved_queries(queries),
+            Message::Tags(tags) => self.update_tags(tags),
             Message::HermesPage(page) => self.show_hermes_page(page),
             Message::HermesFocus(focus) => self.focus_hermes(focus),
             Message::HermesStep(step) => self.step_hermes_page(step),
@@ -5180,6 +5229,7 @@ impl App {
         input.rules = self.rules.is_some();
         input.review_list = self.review_list.is_some();
         input.saved_queries = self.saved_queries.is_some();
+        input.tags = self.tags.is_some();
         input.hermes_sidebar = state.hermes_sidebar;
         input.transfer_dialog = self.transfer_dialog.is_some();
         input.reorganisation_plan = self.reorganisation.is_some();
@@ -5218,6 +5268,7 @@ impl App {
                             &self.filing_config.locations,
                             self.hermes_spinner_angle,
                             &self.file_list_tags,
+                            &self.tag_exceptions,
                             self.window_size.width / 2.0,
                             &self.kinds,
                         )
@@ -5711,6 +5762,7 @@ impl App {
             .as_ref()
             .is_some_and(|view| view.replan().is_some());
         let saved_queries = self.saved_queries.is_some();
+        let tags = self.tags.is_some();
         let hermes_sidebar =
             self.hermes_focus == HermesFocus::Sidebar && self.open_hermes_page().is_some();
         let reorganisation_plan = self.reorganisation.is_some();
@@ -5762,6 +5814,7 @@ impl App {
                 review_list_editing,
                 review_list_replanning,
                 saved_queries,
+                tags,
                 hermes_sidebar,
                 reorganisation_plan,
                 about,
@@ -5812,6 +5865,7 @@ impl App {
                 review_list_editing,
                 review_list_replanning,
                 saved_queries,
+                tags,
                 hermes_sidebar,
                 reorganisation_plan,
                 about,
@@ -5912,7 +5966,17 @@ impl App {
         let protection_change_wants_a_card = was_changing_protection
             && !module.is_changing_protection()
             && (asks_encryption || module.has_card());
+        let exceptions_access = work_finished.then(|| module.tags_access()).flatten();
         let mut tasks: Vec<Task<Message>> = work.map(run_filing_work).into_iter().collect();
+        tasks.extend(exceptions_access.map(|access| {
+            Task::perform(
+                tokio::task::spawn_blocking(move || access.exceptions()),
+                |joined| {
+                    let result = joined.unwrap_or_else(|join| Err(join.to_string()));
+                    Message::Tags(TagsMessage::ExceptionsRead(result))
+                },
+            )
+        }));
         if asks_encryption && self.hermes_setup.is_none() && self.pending_hermes_start.is_none() {
             self.open_hermes_setup();
         }
@@ -6589,6 +6653,7 @@ impl App {
             || self.review_list.is_some()
             || self.rules.is_some()
             || self.saved_queries.is_some()
+            || self.tags.is_some()
             || self.reorganisation.is_some()
     }
 
@@ -6599,6 +6664,7 @@ impl App {
         self.review_list = None;
         self.rules = None;
         self.saved_queries = None;
+        self.tags = None;
         self.reorganisation = None;
         self.leave_hermes_overview()
     }
@@ -11675,6 +11741,209 @@ impl App {
         access
     }
 
+    fn update_tags(&mut self, message: TagsMessage) -> Task<Message> {
+        match message {
+            TagsMessage::Close => self.close_tags(),
+            TagsMessage::Done { generation, result } => {
+                if generation != self.tags_generation {
+                    return Task::none();
+                }
+                match result {
+                    Ok(loaded) => {
+                        self.tag_exceptions = loaded.exceptions.clone();
+                        if let Some(page) = self.tags.as_mut() {
+                            page.loaded(loaded);
+                        }
+                    }
+                    Err(failure) => {
+                        if let Some(page) = self.tags.as_mut() {
+                            page.failed(failure);
+                        }
+                    }
+                }
+                Task::none()
+            }
+            TagsMessage::ExceptionsRead(result) => {
+                if let Ok(exceptions) = result {
+                    self.tag_exceptions = exceptions;
+                }
+                Task::none()
+            }
+            TagsMessage::Scrolled(delta) => {
+                if let Some(page) = self.tags.as_mut() {
+                    page.scroll(delta);
+                }
+                Task::none()
+            }
+            TagsMessage::Move(delta) => {
+                if let Some(page) = self.tags.as_mut() {
+                    page.move_cursor(delta);
+                }
+                Task::none()
+            }
+            TagsMessage::Select(index) => {
+                if let Some(page) = self.tags.as_mut() {
+                    page.select(index);
+                }
+                Task::none()
+            }
+            TagsMessage::ToggleSelected => {
+                let next = match self.tags.as_ref().and_then(TagsPage::selected) {
+                    Some(TagRow::Group(group)) => TagsMessage::ToggleGroup(group),
+                    Some(TagRow::Tag { group, tag, .. }) => TagsMessage::ToggleTag { group, tag },
+                    Some(TagRow::More { group, .. }) => TagsMessage::Unfold(group),
+                    None => return Task::none(),
+                };
+                self.update_tags(next)
+            }
+            TagsMessage::ToggleOpen(group) => {
+                if let Some(page) = self.tags.as_mut() {
+                    page.toggle_open(group);
+                }
+                Task::none()
+            }
+            TagsMessage::Unfold(group) => {
+                if let Some(page) = self.tags.as_mut() {
+                    page.unfold(group);
+                }
+                Task::none()
+            }
+            TagsMessage::ToggleTag { group, tag } => {
+                let Some(page) = self.tags.as_mut().filter(|page| !page.is_busy()) else {
+                    return Task::none();
+                };
+                let shown = page.exception_after_toggle(&self.file_list_tags, group, &tag);
+                page.begin_change();
+                self.run_tags_work(move |access| access.set_shown(&tag, shown))
+            }
+            TagsMessage::ToggleGroup(group) => self.toggle_tag_group(group),
+            TagsMessage::SearchChanged(text) => {
+                if let Some(page) = self.tags.as_mut() {
+                    page.set_search(text);
+                }
+                Task::none()
+            }
+            TagsMessage::StartRename(tag) => {
+                let Some(page) = self.tags.as_mut() else {
+                    return Task::none();
+                };
+                page.start_rename(tag);
+                if page.is_editing() {
+                    operation::focus(tags_ui::RENAME_ID)
+                } else {
+                    Task::none()
+                }
+            }
+            TagsMessage::RenameChanged(text) => {
+                if let Some(page) = self.tags.as_mut() {
+                    page.set_rename_text(text);
+                }
+                Task::none()
+            }
+            TagsMessage::ConfirmRename => {
+                let Some((old_name, new_name)) =
+                    self.tags.as_mut().and_then(TagsPage::begin_rename)
+                else {
+                    return Task::none();
+                };
+                self.run_tags_work(move |access| access.rename(&old_name, &new_name))
+            }
+            TagsMessage::AskDelete(tag) => {
+                if let Some(page) = self.tags.as_mut() {
+                    page.ask_delete(tag);
+                }
+                Task::none()
+            }
+            TagsMessage::ConfirmDelete => {
+                let Some(page) = self.tags.as_mut() else {
+                    return Task::none();
+                };
+                if page.step().is_none() {
+                    return self.update_tags(TagsMessage::ToggleSelected);
+                }
+                let Some(name) = page.begin_delete() else {
+                    return Task::none();
+                };
+                self.run_tags_work(move |access| access.delete(&name))
+            }
+        }
+    }
+
+    /// The default of the group follows the tick; the tags of the group that
+    /// differed from it follow the group again.
+    fn toggle_tag_group(&mut self, group: TagGroup) -> Task<Message> {
+        let Some(page) = self.tags.as_mut().filter(|page| !page.is_busy()) else {
+            return Task::none();
+        };
+        let on = page.group_will_be_on(&self.file_list_tags, group);
+        let exceptional = page.exceptional_tags(group);
+        let switched = self.file_list_tags.with_group(group, on);
+        let write = self.write_setting(SettingChange::FileListTags(switched));
+        if exceptional.is_empty() {
+            return write;
+        }
+        if let Some(open) = self.tags.as_mut() {
+            open.begin_change();
+        }
+        let clear = self.run_tags_work(move |access| access.clear_exceptions(&exceptional));
+        Task::batch([write, clear])
+    }
+
+    /// The tags page, from the settings or the command list: in place of the
+    /// page of the Ablage tab that is up, if any.
+    fn show_tags_page(&mut self) -> Task<Message> {
+        let left = self.leave_settings_page(Self::close_settings);
+        let opened = if self.open_hermes_page().is_some() {
+            self.show_hermes_page(HermesPage::Tags)
+        } else {
+            self.open_tags()
+        };
+        Task::batch([left, opened])
+    }
+
+    fn open_tags(&mut self) -> Task<Message> {
+        if self.tags.is_some() || self.blocking_overlay_is_open() {
+            return Task::none();
+        }
+        self.context_menu = None;
+        self.tags_generation = self.tags_generation.wrapping_add(1);
+        self.tags = Some(TagsPage::new(self.kinds.clone()));
+        self.run_tags_work(TagsAccess::load)
+    }
+
+    /// Escape backs out of the step that is up first, then leaves the page.
+    fn close_tags(&mut self) -> Task<Message> {
+        let Some(page) = self.tags.as_mut() else {
+            return Task::none();
+        };
+        if page.cancel_step() {
+            return Task::none();
+        }
+        self.tags = None;
+        release_focus()
+    }
+
+    fn run_tags_work(
+        &mut self,
+        work: impl FnOnce(&TagsAccess) -> Result<TagsLoaded, TagsFailure> + Send + 'static,
+    ) -> Task<Message> {
+        let generation = self.tags_generation;
+        let Some(access) = self.filing.as_ref().and_then(FilingModule::tags_access) else {
+            if let Some(page) = self.tags.as_mut() {
+                page.failed(TagsFailure::Other(INDEX_NOT_OPEN.to_owned()));
+            }
+            return Task::none();
+        };
+        Task::perform(
+            tokio::task::spawn_blocking(move || work(&access)),
+            move |joined| {
+                let result =
+                    joined.unwrap_or_else(|join| Err(TagsFailure::Other(join.to_string())));
+                Message::Tags(TagsMessage::Done { generation, result })
+            },
+        )
+    }
+
     fn open_saved_queries(&mut self) -> Task<Message> {
         if self.saved_queries.is_some() || self.blocking_overlay_is_open() {
             return Task::none();
@@ -11828,6 +12097,17 @@ impl App {
         ))
     }
 
+    fn tags_view(&self) -> Option<Element<'_, Message>> {
+        let state = self.tags.as_ref()?;
+        Some(tags_ui::view(
+            state,
+            &self.file_list_tags,
+            self.hermes_badges(),
+            self.lang,
+            &self.palette,
+        ))
+    }
+
     fn review_list_view(&self) -> Option<Element<'_, Message>> {
         let state = self.review_list.as_ref()?;
         Some(review_list_ui::view(
@@ -11899,6 +12179,15 @@ impl App {
                     (self.lang.text(Msg::HermesKitKeySpace), Msg::RulesHintToggle),
                     ("Alt ↑↓", Msg::RulesHintOrder),
                     ("Del", Msg::RulesHintDelete),
+                ],
+            )
+        } else if let Some(page) = self.tags_view() {
+            (
+                page,
+                vec![
+                    ("↑↓", Msg::HermesKitHintSelect),
+                    (self.lang.text(Msg::HermesKitKeySpace), Msg::RulesHintToggle),
+                    ("Esc", Msg::DialogClose),
                 ],
             )
         } else if let Some(page) = self.saved_queries_view() {
@@ -12224,6 +12513,8 @@ impl App {
             Some(HermesPage::Rules)
         } else if self.rule_suggestions.is_some() {
             Some(HermesPage::RuleSuggestions)
+        } else if self.tags.is_some() {
+            Some(HermesPage::Tags)
         } else if self.reorganisation.is_some() {
             Some(HermesPage::Reorganisation)
         } else {
@@ -12246,6 +12537,7 @@ impl App {
         self.rules = None;
         self.review_list = None;
         self.saved_queries = None;
+        self.tags = None;
         self.reorganisation = None;
         let open = match page {
             HermesPage::Overview => self.open_hermes_overview(),
@@ -12254,6 +12546,7 @@ impl App {
             HermesPage::SavedQueries => self.open_saved_queries(),
             HermesPage::Rules => self.open_rules(),
             HermesPage::RuleSuggestions => self.open_rule_suggestions(),
+            HermesPage::Tags => self.open_tags(),
             HermesPage::Reorganisation => self.open_reorganisation(),
         };
         Task::batch([release_focus(), pattern_write, open])
@@ -12670,16 +12963,7 @@ impl App {
                 };
                 self.write_setting(SettingChange::FileListTags(switched))
             }
-            SettingsMessage::ChooseFileListTags => {
-                let row = self.lang.text(Msg::SettingsRowFileTagsShow).to_owned();
-                let shown = self.show_setting(crate::messages::SettingsFeature::Look, Some(row));
-                // The row is marked, but the page stays whole: the choice has
-                // more rows than the one that is found by its label.
-                if let Some(state) = self.settings.as_mut() {
-                    state.query.clear();
-                }
-                shown
-            }
+            SettingsMessage::ChooseFileListTags => self.show_tags_page(),
             SettingsMessage::Close => self.leave_settings_page(Self::close_settings),
             SettingsMessage::Select(feature)
                 if self
@@ -13980,6 +14264,7 @@ impl App {
             HermesPage::SavedQueries => Message::SavedQueries(SavedQueriesMessage::Close),
             HermesPage::Rules => Message::Rules(RulesMessage::Close),
             HermesPage::RuleSuggestions => Message::RuleSuggestions(RuleSuggestionsMessage::Close),
+            HermesPage::Tags => Message::Tags(TagsMessage::Close),
             HermesPage::Reorganisation => {
                 Message::ReorganisationPlan(ReorganisationPlanMessage::Close)
             }
@@ -16490,6 +16775,9 @@ impl App {
             review_list_generation: 0,
             saved_queries: None,
             saved_queries_generation: 0,
+            tags: None,
+            tags_generation: 0,
+            tag_exceptions: TagExceptions::new(),
             reorganisation: None,
             hermes_focus: HermesFocus::default(),
             return_to_hermes_overview: false,
@@ -17254,6 +17542,25 @@ impl App {
 
     pub fn search_for_test_mut(&mut self) -> Option<&mut SearchView> {
         self.search.as_mut()
+    }
+
+    pub fn tags_for_test(&self) -> Option<&TagsPage> {
+        self.tags.as_ref()
+    }
+
+    pub fn tags_generation_for_test(&self) -> u64 {
+        self.tags_generation
+    }
+
+    pub fn tag_exceptions_for_test(&self) -> &TagExceptions {
+        &self.tag_exceptions
+    }
+
+    /// Fixed panels with the tags page up, in the state of `page`.
+    pub fn with_tags(page: TagsPage) -> Self {
+        let mut app = Self::with_fixed_panels();
+        app.tags = Some(page);
+        app
     }
 
     pub fn saved_queries_for_test(&self) -> Option<&SavedQueries> {
