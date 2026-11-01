@@ -21,11 +21,13 @@ use crate::replan_work::ReplanSummary;
 pub use ncrs_core::PanelSide;
 pub use ncrs_files::hit_list::HitListMessage;
 pub use ncrs_files::message::PanelMessage;
+#[cfg(test)]
+pub use ncrs_hermes_ui::message::RuleFormMessage;
 pub use ncrs_hermes_ui::message::{
     FilingSetupMessage, FilingStatusMessage, HermesColumnMessage, HermesFileMessage, HermesFocus,
     HermesOverviewMessage, HermesPage, HermesSetupMessage, QuickFixMessage,
-    ReorganisationPlanMessage, ReviewListMessage, RuleFormMessage, RuleSuggestionsMessage,
-    RulesMessage, SavedQueriesMessage, TagsMessage,
+    ReorganisationPlanMessage, ReviewListMessage, RuleSuggestionsMessage, RulesMessage,
+    SavedQueriesMessage, TagsMessage,
 };
 pub use ncrs_ops::{ConflictChoice, OpsMessage, TransferDialogMessage, TrashMessage};
 pub use ncrs_search::message::SearchMessage;

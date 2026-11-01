@@ -1,15 +1,17 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use ncrs_config::config::Filing;
 use ncrs_filing::filing::{FilingModule, Phase};
 use ncrs_filing::replan_work::ReplanItem;
+use ncrs_index::KeyStore;
 
 use crate::filing_setup::FilingSetup;
 use crate::filing_status::FilingStatus;
 use crate::hermes_column::{ColumnStage, HermesColumn};
 use crate::hermes_overview::OverviewState;
-use crate::hermes_setup::{HermesSetup, StartPlan};
+use crate::hermes_setup::{ExistingIndex, HermesSetup, SetupFocus, SetupOffer, StartPlan};
 use crate::message::HermesPage;
 use crate::quick_fix::QuickFix;
 use crate::reading_again::ReadingAgain;
@@ -85,6 +87,20 @@ pub struct Hermes {
     /// generation and the filing config it starts with.
     pub filing_restart: Option<(u64, Filing)>,
     pub filing_restart_generation: u64,
+    /// Where the index lives; `None` without a data directory.
+    pub index_path: Option<PathBuf>,
+    /// Opens the key of the index; the module cannot start without it.
+    pub key_store: Option<KeyStoreHandle>,
+}
+
+/// The key store of the index, shared with the module that opens it.
+#[derive(Clone)]
+pub struct KeyStoreHandle(pub Arc<dyn KeyStore + Send + Sync>);
+
+impl std::fmt::Debug for KeyStoreHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("KeyStoreHandle")
+    }
 }
 
 impl Hermes {
@@ -153,5 +169,37 @@ impl Hermes {
         self.rules = None;
         self.saved_queries = None;
         self.tags = None;
+    }
+
+    /// The card that sets Hermes up cannot be changed while the folders are
+    /// written or the module starts and creates the index.
+    pub fn setup_is_busy(&self) -> bool {
+        self.pending_hermes_start.is_some()
+            || self.hermes_setup.as_ref().is_some_and(HermesSetup::is_busy)
+            || self
+                .filing
+                .as_ref()
+                .is_some_and(FilingModule::is_creating_index)
+    }
+
+    /// The elements of the setup card the keys go through, in order.
+    pub fn setup_focus_order(&self) -> Vec<SetupFocus> {
+        self.hermes_setup
+            .as_ref()
+            .map(|setup| setup.focus_order(setup.can_start() && !self.setup_is_busy()))
+            .unwrap_or_default()
+    }
+
+    /// What the setup card is told about the index and the model on disk.
+    pub fn setup_offer(&self, model_is_installed: fn(&Path) -> bool) -> SetupOffer {
+        let models_dir = self
+            .index_path
+            .as_deref()
+            .and_then(ncrs_filing::filing::ai_models_dir);
+        SetupOffer {
+            existing_index: self.index_path.as_deref().and_then(ExistingIndex::of_file),
+            model_download: models_dir.is_some_and(|dir| !model_is_installed(&dir)),
+            hermes_was_off: self.is_off(),
+        }
     }
 }

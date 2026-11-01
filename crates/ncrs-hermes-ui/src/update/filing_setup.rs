@@ -10,8 +10,6 @@ use crate::message::{FilingSetupMessage, Message};
 use crate::state::Hermes;
 use ncrs_config::config::FilingWriteError;
 
-/// Everything the card sends except `Toggle` and `Saved`, which start or
-/// restart the filing module: the app runs those itself.
 pub fn update(
     hermes: &mut Hermes,
     message: FilingSetupMessage,
@@ -19,7 +17,34 @@ pub fn update(
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
     match message {
-        FilingSetupMessage::Toggle | FilingSetupMessage::Saved(_) => Task::none(),
+        FilingSetupMessage::Toggle => {
+            if hermes.hermes_setup.take().is_some() {
+                hermes.pending_hermes_start = None;
+            } else if hermes.filing_setup.take().is_none() {
+                if hermes.filing_config.locations.is_empty() {
+                    super::lifecycle::open_hermes_setup(hermes, ctx, actions);
+                } else {
+                    hermes.filing_setup = Some(FilingSetup::new(&hermes.filing_config.locations));
+                }
+            }
+            Task::none()
+        }
+        // The file is written even when the card was closed meanwhile, so the
+        // module follows it all the same.
+        FilingSetupMessage::Saved(Ok(filing)) => {
+            let (applies, task) = super::lifecycle::apply_saved_filing(hermes, filing, ctx);
+            hermes.filing_setup = None;
+            actions.push(Action::ShowNotice(super::lifecycle::saved_filing_notice(
+                applies, ctx,
+            )));
+            task
+        }
+        FilingSetupMessage::Saved(Err(error)) => {
+            if let Some(setup) = hermes.filing_setup.as_mut() {
+                setup.finish_saving(SetupNote::SaveFailed(error));
+            }
+            Task::none()
+        }
         FilingSetupMessage::Close => {
             hermes.filing_setup = None;
             Task::none()

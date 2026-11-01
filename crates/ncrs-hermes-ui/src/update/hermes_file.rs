@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use iced::Task;
-use ncrs_config::config::FilingWriteError;
+use ncrs_config::config::{Filing, FilingWriteError};
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_filing::filing::FilingModule;
 use ncrs_i18n::{fill_template, Msg};
@@ -14,7 +14,7 @@ use crate::action::Action;
 use crate::ctx::Ctx;
 use crate::filing_setup::{self, SetupProblem};
 use crate::hermes_column::{FolderRole, HermesFileState};
-use crate::message::{HermesFileMessage, Message};
+use crate::message::{HermesFileMessage, HermesPage, Message};
 use crate::state::Hermes;
 use crate::ui::filing_setup as filing_setup_ui;
 
@@ -206,4 +206,40 @@ pub fn hermes_included(
         }
     };
     actions.push(Action::ShowNotice(text));
+}
+
+/// The file with the new role is written: the module follows it, and the
+/// column asks again.
+pub fn role_saved(
+    hermes: &mut Hermes,
+    result: Result<Filing, FilingWriteError>,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) -> Task<Message> {
+    match result {
+        Ok(filing) => {
+            let (applies, task) = super::lifecycle::apply_saved_filing(hermes, filing, ctx);
+            hermes.hermes_column.invalidate_all();
+            hermes.hermes_reads.clear();
+            actions.push(Action::ShowNotice(super::lifecycle::saved_filing_notice(
+                applies, ctx,
+            )));
+            task
+        }
+        Err(error) => {
+            role_save_failed(hermes, &error, ctx, actions);
+            Task::none()
+        }
+    }
+}
+
+/// Opens the Hermes page on the inspection, at the file's error if the page
+/// lists one for it.
+pub fn show_in_inspection(hermes: &Hermes, path: &Path, ctx: &Ctx<'_>, actions: &mut Vec<Action>) {
+    actions.push(if super::open_page(hermes, ctx).is_some() {
+        Action::GoToHermesPage(HermesPage::Inspection)
+    } else {
+        Action::OpenFilingStatus
+    });
+    actions.push(Action::SelectErrorOf(path.to_path_buf()));
 }

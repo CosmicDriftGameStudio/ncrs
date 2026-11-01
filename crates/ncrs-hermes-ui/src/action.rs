@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use ncrs_config::file_list_tags::{FileListTags, TagExceptions};
 use ncrs_filing::filing::{FilingModule, Work};
-use ncrs_filing::review_work::AcceptSummary;
 use ncrs_index::{QuerySpec, SavedQueryId};
 use ncrs_intake::LocationMode;
 use ncrs_jobs::Job;
@@ -55,6 +54,14 @@ pub enum Action {
     /// The module of the previous settings is gone: the one of this
     /// generation starts now.
     FilingRestarted(u64),
+    /// Opens the card of the AI model, and notes whether the user was asked.
+    OpenAiModelCard,
+    /// Moves the focus of the dialog or card that is up.
+    SetDialogFocus(usize),
+    /// Selects the error of the file on the status page.
+    SelectErrorOf(PathBuf),
+    /// Both panels read their folder again, keeping the cursor.
+    ReloadPanels,
     /// Clears the error and the notice in the status bar.
     ClearStatus,
     ShowNotice(String),
@@ -119,6 +126,4 @@ pub enum Action {
     FinishJob,
     SetJobProgress(ncrs_fs::transfer::Tick),
     ClearJobProgress,
-    /// The documents of a group were filed from the quick-fix menu.
-    QuickFixFiled(AcceptSummary),
 }

@@ -4,7 +4,7 @@ use iced::Task;
 use ncrs_core::INDEX_NOT_OPEN;
 use ncrs_filing::filing::FilingModule;
 use ncrs_filing::review_work::{AcceptSummary, ReviewItem};
-use ncrs_i18n::Msg;
+use ncrs_i18n::{fill_template, Msg};
 
 use super::rules::open_rule_form;
 use super::{blocking_overlay_is_open, review_list};
@@ -41,7 +41,7 @@ pub fn update(
             run_entry(hermes, ctx, actions)
         }
         QuickFixMessage::Filed(summary) => {
-            actions.push(Action::QuickFixFiled(summary));
+            filed(hermes, &summary, ctx, actions);
             Task::none()
         }
     }
@@ -241,4 +241,54 @@ fn open_rule_form_from_menu(
         ctx,
         actions,
     )
+}
+
+/// What the status bar says about the documents filed from the menu; `None`
+/// when the only one failed, which is an error rather than a notice.
+fn accept_notice(summary: &AcceptSummary, lang: ncrs_i18n::Language) -> Option<String> {
+    let template = |msg: Msg| lang.text(msg).to_owned();
+    match (summary.total(), summary) {
+        (
+            1,
+            AcceptSummary {
+                last_filed: Some(path),
+                ..
+            },
+        ) => Some(fill_template(
+            lang.text(Msg::StatusQuickFixFiled),
+            &[("{path}", &path.display().to_string())],
+        )),
+        (
+            1,
+            AcceptSummary {
+                target_exists: 1, ..
+            },
+        ) => Some(template(Msg::StatusQuickFixTargetExists)),
+        (1, AcceptSummary { requeued: 1, .. }) => Some(template(Msg::StatusQuickFixRequeued)),
+        (1, _) => None,
+        _ => Some(fill_template(
+            lang.text(Msg::StatusQuickFixSummary),
+            &[
+                ("{filed}", &summary.filed.to_string()),
+                ("{taken}", &summary.target_exists.to_string()),
+                ("{requeued}", &summary.requeued.to_string()),
+                ("{failed}", &summary.failed.to_string()),
+            ],
+        )),
+    }
+}
+
+/// The documents of a group were filed from the menu: the column asks again
+/// and the panels read their folders.
+fn filed(hermes: &mut Hermes, summary: &AcceptSummary, ctx: &Ctx<'_>, actions: &mut Vec<Action>) {
+    hermes.hermes_column.invalidate_all();
+    hermes.hermes_reads.clear();
+    hermes.hermes_detail_reads.clear();
+    match accept_notice(summary, ctx.lang) {
+        Some(text) => actions.push(Action::ShowNotice(text)),
+        None => actions.push(Action::ShowError(
+            summary.first_failure.clone().unwrap_or_default(),
+        )),
+    }
+    actions.push(Action::ReloadPanels);
 }

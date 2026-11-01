@@ -36,6 +36,12 @@ pub struct Ctx<'a> {
     pub home: &'a Path,
     /// Blocking; the app swaps it in its tests.
     pub resolve_folder: fn(&Path) -> Result<PathBuf, String>,
+    /// The element of a dialog or card that has the focus.
+    pub dialog_focus: usize,
+    /// The key that opens the status page, worded for a notice.
+    pub filing_status_shortcut: Option<String>,
+    /// Whether the files of a model are all in this folder.
+    pub model_is_installed: fn(&Path) -> bool,
     pub active_panel_path: &'a Path,
     pub other_panel_path: &'a Path,
     /// Where the quick-fix menu opens: under the cursor row of the active panel.

@@ -1,15 +1,14 @@
 use iced::Task;
 
 use super::filing_setup::resolve_in_background;
+use super::lifecycle;
 use crate::action::{Action, SetupCard};
 use crate::ctx::Ctx;
 use crate::filing_setup::SetupNote;
+use crate::hermes_setup::{FolderSlot, SetupFocus};
 use crate::message::{HermesSetupMessage, Message};
 use crate::state::Hermes;
 
-/// Everything the card sends except `Start`, `Written` and `Later`, which
-/// write the config and start or stop the filing module: the app runs those
-/// itself.
 pub fn update(
     hermes: &mut Hermes,
     message: HermesSetupMessage,
@@ -17,9 +16,18 @@ pub fn update(
     actions: &mut Vec<Action>,
 ) -> Task<Message> {
     match message {
-        HermesSetupMessage::Start | HermesSetupMessage::Written(_) | HermesSetupMessage::Later => {
-            Task::none()
-        }
+        HermesSetupMessage::Start => lifecycle::start_hermes_setup(hermes, ctx),
+        HermesSetupMessage::Written(result) => match result {
+            Ok(filing) => lifecycle::hermes_written(hermes, filing, ctx, actions),
+            Err(error) => {
+                hermes.pending_hermes_start = None;
+                if let Some(setup) = hermes.hermes_setup.as_mut() {
+                    setup.stop_writing(SetupNote::SaveFailed(error));
+                }
+                Task::none()
+            }
+        },
+        HermesSetupMessage::Later => lifecycle::hermes_later(hermes, ctx, actions),
         HermesSetupMessage::PickFolder(slot) => {
             let Some(setup) = hermes.hermes_setup.as_mut() else {
                 return Task::none();
@@ -79,4 +87,31 @@ pub fn update(
             Task::none()
         }
     }
+}
+
+/// Enter on the element that has the focus.
+pub fn activate_focus(
+    hermes: &mut Hermes,
+    ctx: &Ctx<'_>,
+    actions: &mut Vec<Action>,
+) -> Task<Message> {
+    let Some(element) = hermes.setup_focus_order().get(ctx.dialog_focus).copied() else {
+        return Task::none();
+    };
+    update(
+        hermes,
+        match element {
+            SetupFocus::ChooseInbox => HermesSetupMessage::PickFolder(FolderSlot::Inbox),
+            SetupFocus::ChooseFilingLocation => {
+                HermesSetupMessage::PickFolder(FolderSlot::FilingLocation)
+            }
+            SetupFocus::Encrypted => HermesSetupMessage::ChooseEncrypted(true),
+            SetupFocus::Plain => HermesSetupMessage::ChooseEncrypted(false),
+            SetupFocus::LoadModel => HermesSetupMessage::ToggleLoadModel,
+            SetupFocus::Later => HermesSetupMessage::Later,
+            SetupFocus::Start => HermesSetupMessage::Start,
+        },
+        ctx,
+        actions,
+    )
 }

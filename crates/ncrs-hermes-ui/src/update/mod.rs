@@ -6,6 +6,7 @@ mod filing_job;
 mod filing_setup;
 mod hermes_file;
 mod hermes_setup;
+mod lifecycle;
 mod overview;
 mod quick_fix;
 mod refile;
@@ -28,7 +29,7 @@ use ncrs_filing::replan_work::ReplanSummary;
 use ncrs_index::IncludeOutcome;
 use ncrs_ui_kit::focus::release_focus;
 
-use crate::action::Action;
+use crate::action::{Action, ProtectionStep};
 use crate::ctx::Ctx;
 use crate::hermes_column::FolderRole;
 use crate::message::{
@@ -37,10 +38,13 @@ use crate::message::{
     RulesMessage, SavedQueriesMessage, TagsMessage,
 };
 use crate::state::Hermes;
+use ncrs_config::config::Filing;
+use ncrs_filing::filing::FilingMessage;
 use ncrs_index::RuleId;
 
 pub use self::column::{refresh_hermes_column, request_hermes_column};
 pub use self::filing_job::{run_filing_work, run_filing_work_after};
+pub use self::lifecycle::SavedFilingApplies;
 pub use self::review_list::request_review_preview;
 pub use self::status::{
     open_filing_status_page, request_hermes_counts, request_index_figures, update_filing_status,
@@ -359,4 +363,89 @@ pub fn hermes_included(
     let mut actions = Vec::new();
     hermes_file::hermes_included(hermes, path, result, ctx, &mut actions);
     (Task::none(), actions)
+}
+
+pub fn update_filing(hermes: &mut Hermes, message: FilingMessage, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    let task = lifecycle::update_filing(hermes, message, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn start_filing_module(hermes: &mut Hermes, filing: &Filing, ctx: &Ctx<'_>) -> Outcome {
+    (
+        lifecycle::start_filing_module(hermes, filing, ctx),
+        Vec::new(),
+    )
+}
+
+pub fn open_hermes_setup(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    lifecycle::open_hermes_setup(hermes, ctx, &mut actions);
+    (Task::none(), actions)
+}
+
+pub fn activate_hermes_focus(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    let task = hermes_setup::activate_focus(hermes, ctx, &mut actions);
+    (task, actions)
+}
+
+pub fn restart_hermes_module(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
+    (lifecycle::restart_hermes_module(hermes, ctx), Vec::new())
+}
+
+pub fn filing_restarted(hermes: &mut Hermes, generation: u64, ctx: &Ctx<'_>) -> Outcome {
+    (
+        lifecycle::filing_restarted(hermes, generation, ctx),
+        Vec::new(),
+    )
+}
+
+pub fn change_protection(hermes: &mut Hermes, begin: ProtectionStep, ctx: &Ctx<'_>) -> Outcome {
+    (lifecycle::change_protection(hermes, begin, ctx), Vec::new())
+}
+
+/// The saved filing list takes over, now or at the next start.
+pub fn apply_saved_filing(
+    hermes: &mut Hermes,
+    filing: Filing,
+    ctx: &Ctx<'_>,
+) -> (SavedFilingApplies, Outcome) {
+    let (applies, task) = lifecycle::apply_saved_filing(hermes, filing, ctx);
+    (applies, (task, Vec::new()))
+}
+
+/// An AI setting changed: the module is rebuilt now or at the next start.
+pub fn apply_ai_change(
+    hermes: &mut Hermes,
+    filing: Filing,
+    ctx: &Ctx<'_>,
+) -> (SavedFilingApplies, Outcome) {
+    let (applies, task) = lifecycle::apply_ai_change(hermes, filing, ctx);
+    (applies, (task, Vec::new()))
+}
+
+pub fn hermes_role_saved(
+    hermes: &mut Hermes,
+    result: Result<Filing, FilingWriteError>,
+    ctx: &Ctx<'_>,
+) -> Outcome {
+    let mut actions = Vec::new();
+    let task = hermes_file::role_saved(hermes, result, ctx, &mut actions);
+    (task, actions)
+}
+
+/// Opens the inspection page, at the file's error if the page lists one.
+pub fn show_in_inspection(hermes: &Hermes, path: &Path, ctx: &Ctx<'_>) -> Outcome {
+    let mut actions = Vec::new();
+    hermes_file::show_in_inspection(hermes, path, ctx, &mut actions);
+    (Task::none(), actions)
+}
+
+/// Takes the next step of "Hermes starten" the module's phase allows.
+pub fn advance_hermes_plan(hermes: &mut Hermes, ctx: &Ctx<'_>) -> Outcome {
+    let _ = ctx;
+    let mut actions = Vec::new();
+    let task = lifecycle::advance_hermes_plan(hermes, &mut actions);
+    (task, actions)
 }
